@@ -32,7 +32,7 @@ inline constexpr base::u32 builtin_type_count = 15;
 }
 
 [[nodiscard]] bool builtin_is_copyable(const BuiltinType type) noexcept {
-    return type != BuiltinType::void_ && type != BuiltinType::str;
+    return type != BuiltinType::void_;
 }
 
 [[nodiscard]] std::string builtin_display_name(const BuiltinType type) {
@@ -144,6 +144,11 @@ void TypeTable::set_record_properties(const TypeHandle handle, const bool contai
     types_[handle.value].is_copyable = is_copyable;
 }
 
+void TypeTable::set_enum_underlying(const TypeHandle handle, const TypeHandle underlying) noexcept {
+    assert(handle.value < types_.size());
+    types_[handle.value].enum_underlying = underlying;
+}
+
 bool TypeTable::same(const TypeHandle lhs, const TypeHandle rhs) const noexcept {
     return lhs.value == rhs.value;
 }
@@ -169,6 +174,13 @@ bool TypeTable::is_bool(const TypeHandle type) const noexcept {
            type.value < types_.size() &&
            types_[type.value].kind == TypeKind::builtin &&
            types_[type.value].builtin == BuiltinType::bool_;
+}
+
+bool TypeTable::is_str(const TypeHandle type) const noexcept {
+    return is_valid(type) &&
+           type.value < types_.size() &&
+           types_[type.value].kind == TypeKind::builtin &&
+           types_[type.value].builtin == BuiltinType::str;
 }
 
 bool TypeTable::is_void(const TypeHandle type) const noexcept {

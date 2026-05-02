@@ -54,6 +54,10 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_cast: return "kw_cast";
     case TokenKind::kw_ptr_cast: return "kw_ptr_cast";
     case TokenKind::kw_bit_cast: return "kw_bit_cast";
+    case TokenKind::kw_size_of: return "kw_size_of";
+    case TokenKind::kw_align_of: return "kw_align_of";
+    case TokenKind::kw_ptr_addr: return "kw_ptr_addr";
+    case TokenKind::kw_ptr_from_addr: return "kw_ptr_from_addr";
     case TokenKind::l_paren: return "l_paren";
     case TokenKind::r_paren: return "r_paren";
     case TokenKind::l_brace: return "l_brace";
@@ -191,6 +195,10 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::cast: return "cast";
     case ExprKind::ptr_cast: return "ptr_cast";
     case ExprKind::bit_cast: return "bit_cast";
+    case ExprKind::size_of: return "size_of";
+    case ExprKind::align_of: return "align_of";
+    case ExprKind::ptr_addr: return "ptr_addr";
+    case ExprKind::ptr_from_addr: return "ptr_from_addr";
     }
     return "unknown";
 }

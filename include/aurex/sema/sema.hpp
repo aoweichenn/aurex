@@ -80,8 +80,13 @@ private:
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
+    [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] base::u64 abi_size(TypeHandle type) const noexcept;
+    [[nodiscard]] base::u64 abi_align(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_integer_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_null_literal(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] bool is_place_expr(syntax::ExprId expr);
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
     [[nodiscard]] bool is_copy_forbidden_value(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;

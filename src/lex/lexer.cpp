@@ -79,6 +79,10 @@ namespace {
         Entry {"cast", TokenKind::kw_cast},
         Entry {"ptr_cast", TokenKind::kw_ptr_cast},
         Entry {"bit_cast", TokenKind::kw_bit_cast},
+        Entry {"size_of", TokenKind::kw_size_of},
+        Entry {"align_of", TokenKind::kw_align_of},
+        Entry {"ptr_addr", TokenKind::kw_ptr_addr},
+        Entry {"ptr_from_addr", TokenKind::kw_ptr_from_addr},
     });
 
     for (const Entry& entry : entries) {

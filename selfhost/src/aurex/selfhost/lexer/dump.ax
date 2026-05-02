@@ -56,6 +56,10 @@ fn print_kind(kind: i32) -> void {
     if kind == TK_KW_CAST { puts(c"kw_cast"); return; }
     if kind == TK_KW_PTR_CAST { puts(c"kw_ptr_cast"); return; }
     if kind == TK_KW_BIT_CAST { puts(c"kw_bit_cast"); return; }
+    if kind == TK_KW_SIZE_OF { puts(c"kw_size_of"); return; }
+    if kind == TK_KW_ALIGN_OF { puts(c"kw_align_of"); return; }
+    if kind == TK_KW_PTR_ADDR { puts(c"kw_ptr_addr"); return; }
+    if kind == TK_KW_PTR_FROM_ADDR { puts(c"kw_ptr_from_addr"); return; }
     if kind == TK_L_PAREN { puts(c"l_paren"); return; }
     if kind == TK_R_PAREN { puts(c"r_paren"); return; }
     if kind == TK_L_BRACE { puts(c"l_brace"); return; }

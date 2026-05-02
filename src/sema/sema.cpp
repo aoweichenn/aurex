@@ -1,6 +1,10 @@
 #include "aurex/sema/sema.hpp"
 
+#include "aurex/syntax/module.hpp"
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <sstream>
 #include <utility>
 
@@ -44,6 +48,14 @@ namespace {
     return c_name;
 }
 
+[[nodiscard]] base::u64 align_forward(const base::u64 offset, const base::u64 alignment) noexcept {
+    if (alignment == 0) {
+        return offset;
+    }
+    const base::u64 mask = alignment - 1;
+    return (offset + mask) & ~mask;
+}
+
 } // namespace
 
 SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::DiagnosticSink& diagnostics) noexcept
@@ -55,8 +67,8 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     checked_.syntax_type_handles.assign(module_.types.size(), invalid_type_handle);
     checked_.item_c_names.assign(module_.items.size(), {});
     register_type_names();
-    register_value_names();
     analyze_struct_properties();
+    register_value_names();
     analyze_const_decls();
 
     for (const syntax::ItemNode& item : module_.items) {
@@ -131,13 +143,22 @@ void SemanticAnalyzer::register_value_names() {
             signature.is_export_c = item.is_export_c;
             for (const syntax::ParamDecl& param : item.params) {
                 TypeHandle param_type = resolve_type(param.type);
+                if (!is_valid_storage_type(param_type)) {
+                    report(param.range, "function parameter type is not valid storage");
+                }
                 if (checked_.types.is_array(param_type)) {
                     report(param.range, "array type cannot be used as a function parameter");
+                }
+                if (checked_.types.contains_array(param_type)) {
+                    report(param.range, "struct containing array cannot be passed by value");
                 }
                 signature.param_types.push_back(param_type);
             }
             if (checked_.types.is_array(signature.return_type)) {
                 report(item.range, "array type cannot be used as a function return type");
+            }
+            if (checked_.types.contains_array(signature.return_type)) {
+                report(item.range, "struct containing array cannot be returned by value");
             }
             const auto* const begin = module_.items.data();
             const base::usize item_index = static_cast<base::usize>(&item - begin);
@@ -181,8 +202,14 @@ void SemanticAnalyzer::register_value_names() {
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
             const TypeHandle enum_type = resolve_type(item.enum_base_type);
+            if (!checked_.types.is_integer(enum_type)) {
+                report(item.range, "enum base type must be an integer type");
+            }
             const auto type_found = named_types_.find(key);
             const TypeHandle named_enum_type = type_found == named_types_.end() ? enum_type : type_found->second;
+            if (is_valid(named_enum_type)) {
+                checked_.types.set_enum_underlying(named_enum_type, enum_type);
+            }
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
                 const std::string enum_case_key = module_key(current_module_, full_name);
@@ -223,6 +250,9 @@ void SemanticAnalyzer::analyze_struct_properties() {
         bool copyable = true;
         for (const syntax::FieldDecl& field : item.fields) {
             const TypeHandle field_type = resolve_type(field.type);
+            if (!is_valid_storage_type(field_type)) {
+                report(field.range, "field type is not valid storage");
+            }
             if (const auto struct_found = checked_.structs.find(key); struct_found != checked_.structs.end()) {
                 struct_found->second.fields.push_back(StructFieldInfo {
                     std::string(field.name),
@@ -232,7 +262,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
                     field.range,
                 });
             }
-            if (checked_.types.is_array(field_type)) {
+            if (checked_.types.contains_array(field_type)) {
                 contains_array = true;
             }
             if (!checked_.types.is_copyable(field_type)) {
@@ -255,6 +285,9 @@ void SemanticAnalyzer::analyze_const_decls() {
         current_module_ = item_module(item);
         const TypeHandle declared = resolve_type(item.const_type);
         const TypeHandle actual = analyze_expr(item.const_value);
+        if (!is_valid_storage_type(declared)) {
+            report(item.range, "const type is not valid storage");
+        }
         if (!can_assign(declared, actual, item.const_value)) {
             report(item.range, "const initializer type does not match declared type");
         }
@@ -311,6 +344,9 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
     case syntax::StmtKind::var: {
         const TypeHandle declared = resolve_type(stmt.declared_type);
         const TypeHandle init = analyze_expr(stmt.init);
+        if (!is_valid_storage_type(declared)) {
+            report(stmt.range, "local variable type is not valid storage");
+        }
         if (!can_assign(declared, init, stmt.init)) {
             report(stmt.range, "initializer type does not match declared type");
         }
@@ -373,6 +409,11 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         break;
     }
     case syntax::StmtKind::expr:
+        if (syntax::is_valid(stmt.init) &&
+            stmt.init.value < module_.exprs.size() &&
+            module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
+            report(module_.exprs[stmt.init.value].range, "expression statement must be a function call");
+        }
         static_cast<void>(analyze_expr(stmt.init));
         break;
     case syntax::StmtKind::block:
@@ -461,10 +502,13 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             return record_expr_type(expr_id, checked_.types.get(operand).pointee);
         }
         if (expr.unary_op == syntax::UnaryOp::address_of) {
-            if (!is_writable_place(expr.unary_operand)) {
+            if (!is_place_expr(expr.unary_operand)) {
                 report(expr.range, "address-of requires a place expression");
             }
-            return record_expr_type(expr_id, checked_.types.pointer(PointerMutability::mut, operand));
+            const PointerMutability mutability = is_writable_place(expr.unary_operand)
+                ? PointerMutability::mut
+                : PointerMutability::const_;
+            return record_expr_type(expr_id, checked_.types.pointer(mutability, operand));
         }
         return record_expr_type(expr_id, operand);
     }
@@ -478,7 +522,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             is_equality &&
             ((checked_.types.is_pointer(lhs) && is_null_literal(expr.binary_rhs)) ||
              (checked_.types.is_pointer(rhs) && is_null_literal(expr.binary_lhs)));
-        if (!checked_.types.same(lhs, rhs) && !is_integer_literal(expr.binary_rhs) && !is_null_pointer_comparison) {
+        if (!checked_.types.same(lhs, rhs) && !is_null_pointer_comparison) {
             report(expr.range, "binary operands must have the same type");
         }
         switch (expr.binary_op) {
@@ -486,12 +530,43 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         case syntax::BinaryOp::less_equal:
         case syntax::BinaryOp::greater:
         case syntax::BinaryOp::greater_equal:
+            if (!checked_.types.is_integer(lhs) && !checked_.types.is_float(lhs)) {
+                report(expr.range, "comparison operator requires numeric operands");
+            }
+            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
         case syntax::BinaryOp::equal:
-        case syntax::BinaryOp::not_equal:
+        case syntax::BinaryOp::not_equal: {
+            const bool scalar =
+                checked_.types.is_bool(lhs) ||
+                checked_.types.is_integer(lhs) ||
+                checked_.types.is_float(lhs) ||
+                checked_.types.is_pointer(lhs) ||
+                (is_valid(lhs) && checked_.types.get(lhs).kind == TypeKind::enum_);
+            if (!scalar && !is_null_pointer_comparison) {
+                report(expr.range, "equality operator requires scalar operands");
+            }
+            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
+        }
         case syntax::BinaryOp::logical_and:
         case syntax::BinaryOp::logical_or:
+            if (!checked_.types.is_bool(lhs) || !checked_.types.is_bool(rhs)) {
+                report(expr.range, "logical operator requires bool operands");
+            }
             return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
+        case syntax::BinaryOp::bit_and:
+        case syntax::BinaryOp::bit_xor:
+        case syntax::BinaryOp::bit_or:
+        case syntax::BinaryOp::shl:
+        case syntax::BinaryOp::shr:
+        case syntax::BinaryOp::mod:
+            if (!checked_.types.is_integer(lhs)) {
+                report(expr.range, "integer operator requires integer operands");
+            }
+            return record_expr_type(expr_id, lhs);
         default:
+            if (!checked_.types.is_integer(lhs) && !checked_.types.is_float(lhs)) {
+                report(expr.range, "binary operator requires numeric operands");
+            }
             return record_expr_type(expr_id, lhs);
         }
     }
@@ -559,9 +634,40 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
     }
     case syntax::ExprKind::cast:
     case syntax::ExprKind::ptr_cast:
-    case syntax::ExprKind::bit_cast:
-        static_cast<void>(analyze_expr(expr.cast_expr));
-        return record_expr_type(expr_id, resolve_type(expr.cast_type));
+    case syntax::ExprKind::bit_cast: {
+        const TypeHandle source = analyze_expr(expr.cast_expr);
+        const TypeHandle target = resolve_type(expr.cast_type);
+        if (!is_valid_cast(expr.kind, target, source)) {
+            report(expr.range, "invalid explicit conversion");
+        }
+        return record_expr_type(expr_id, target);
+    }
+    case syntax::ExprKind::size_of:
+    case syntax::ExprKind::align_of: {
+        const TypeHandle queried = resolve_type(expr.cast_type);
+        if (is_valid(queried) && checked_.types.get(queried).kind == TypeKind::opaque_struct) {
+            report(expr.range, "opaque struct cannot be queried by size_of or align_of directly");
+        }
+        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
+    }
+    case syntax::ExprKind::ptr_addr: {
+        const TypeHandle value = analyze_expr(expr.cast_expr);
+        if (!checked_.types.is_pointer(value)) {
+            report(expr.range, "ptr_addr requires a pointer value");
+        }
+        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
+    }
+    case syntax::ExprKind::ptr_from_addr: {
+        const TypeHandle target = resolve_type(expr.cast_type);
+        const TypeHandle address = analyze_expr(expr.cast_expr);
+        if (!checked_.types.is_pointer(target)) {
+            report(expr.range, "ptr_from_addr target type must be a pointer");
+        }
+        if (!checked_.types.is_integer(address)) {
+            report(module_.exprs[expr.cast_expr.value].range, "ptr_from_addr address must be an integer");
+        }
+        return record_expr_type(expr_id, target);
+    }
     case syntax::ExprKind::invalid:
         return record_expr_type(expr_id, invalid_type_handle);
     }
@@ -614,7 +720,132 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
     if (!is_valid(dst) || !is_valid(src)) {
         return is_valid(dst) && is_null_literal(value) && checked_.types.is_pointer(dst);
     }
-    return checked_.types.same(dst, src) || (checked_.types.is_integer(dst) && is_integer_literal(value));
+    if (checked_.types.is_integer(dst) && checked_.types.is_integer(src) && is_integer_literal(value)) {
+        return true;
+    }
+    return checked_.types.same(dst, src);
+}
+
+bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const noexcept {
+    return is_valid(type) && !checked_.types.is_void(type) && checked_.types.get(type).kind != TypeKind::opaque_struct;
+}
+
+bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const noexcept {
+    if (!is_valid(dst) || !is_valid(src)) {
+        return false;
+    }
+
+    if (kind == syntax::ExprKind::cast) {
+        return (checked_.types.is_integer(dst) || checked_.types.is_float(dst) || checked_.types.is_bool(dst)) &&
+               (checked_.types.is_integer(src) || checked_.types.is_float(src) || checked_.types.is_bool(src));
+    }
+    if (kind == syntax::ExprKind::ptr_cast) {
+        return checked_.types.is_pointer(dst) && checked_.types.is_pointer(src);
+    }
+    if (kind == syntax::ExprKind::bit_cast) {
+        return checked_.types.is_copyable(dst) && checked_.types.is_copyable(src) && abi_size(dst) == abi_size(src);
+    }
+    return false;
+}
+
+base::u64 SemanticAnalyzer::abi_size(const TypeHandle type) const noexcept {
+    if (!is_valid(type)) {
+        return 0;
+    }
+    const TypeInfo& info = checked_.types.get(type);
+    switch (info.kind) {
+    case TypeKind::builtin:
+        switch (info.builtin) {
+        case BuiltinType::void_: return 0;
+        case BuiltinType::bool_: return sizeof(bool);
+        case BuiltinType::i8:
+        case BuiltinType::u8: return sizeof(std::uint8_t);
+        case BuiltinType::i16:
+        case BuiltinType::u16: return sizeof(std::uint16_t);
+        case BuiltinType::i32:
+        case BuiltinType::u32: return sizeof(std::uint32_t);
+        case BuiltinType::i64:
+        case BuiltinType::u64: return sizeof(std::uint64_t);
+        case BuiltinType::isize: return sizeof(std::ptrdiff_t);
+        case BuiltinType::usize: return sizeof(std::size_t);
+        case BuiltinType::f32: return sizeof(float);
+        case BuiltinType::f64: return sizeof(double);
+        case BuiltinType::str: return sizeof(void*) + sizeof(std::size_t);
+        }
+        return 0;
+    case TypeKind::pointer:
+        return sizeof(void*);
+    case TypeKind::array:
+        return info.array_count * abi_size(info.array_element);
+    case TypeKind::enum_:
+        return abi_size(info.enum_underlying);
+    case TypeKind::struct_: {
+        const StructInfo* struct_info = find_struct(type);
+        if (struct_info == nullptr) {
+            return 0;
+        }
+        base::u64 offset = 0;
+        base::u64 max_align = 1;
+        for (const StructFieldInfo& field : struct_info->fields) {
+            const base::u64 field_align = abi_align(field.type);
+            max_align = std::max(max_align, field_align);
+            offset = align_forward(offset, field_align);
+            offset += abi_size(field.type);
+        }
+        return align_forward(offset, max_align);
+    }
+    case TypeKind::opaque_struct:
+        return 0;
+    }
+    return 0;
+}
+
+base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const noexcept {
+    if (!is_valid(type)) {
+        return 1;
+    }
+    const TypeInfo& info = checked_.types.get(type);
+    switch (info.kind) {
+    case TypeKind::builtin:
+        switch (info.builtin) {
+        case BuiltinType::void_: return 1;
+        case BuiltinType::bool_: return alignof(bool);
+        case BuiltinType::i8:
+        case BuiltinType::u8: return alignof(std::uint8_t);
+        case BuiltinType::i16:
+        case BuiltinType::u16: return alignof(std::uint16_t);
+        case BuiltinType::i32:
+        case BuiltinType::u32: return alignof(std::uint32_t);
+        case BuiltinType::i64:
+        case BuiltinType::u64: return alignof(std::uint64_t);
+        case BuiltinType::isize: return alignof(std::ptrdiff_t);
+        case BuiltinType::usize: return alignof(std::size_t);
+        case BuiltinType::f32: return alignof(float);
+        case BuiltinType::f64: return alignof(double);
+        case BuiltinType::str: return alignof(void*);
+        }
+        return 1;
+    case TypeKind::pointer:
+        return alignof(void*);
+    case TypeKind::array:
+        return abi_align(info.array_element);
+    case TypeKind::enum_:
+        return abi_align(info.enum_underlying);
+    case TypeKind::struct_: {
+        const StructInfo* struct_info = find_struct(type);
+        if (struct_info == nullptr) {
+            return 1;
+        }
+        base::u64 max_align = 1;
+        for (const StructFieldInfo& field : struct_info->fields) {
+            max_align = std::max(max_align, abi_align(field.type));
+        }
+        return max_align;
+    }
+    case TypeKind::opaque_struct:
+        return 1;
+    }
+    return 1;
 }
 
 bool SemanticAnalyzer::is_integer_literal(const syntax::ExprId expr_id) const noexcept {
@@ -627,6 +858,24 @@ bool SemanticAnalyzer::is_null_literal(const syntax::ExprId expr_id) const noexc
     return syntax::is_valid(expr_id) &&
            expr_id.value < module_.exprs.size() &&
            module_.exprs[expr_id.value].kind == syntax::ExprKind::null_literal;
+}
+
+bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return false;
+    }
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    switch (expr.kind) {
+    case syntax::ExprKind::name:
+        return find_symbol(expr.text, expr.range) != nullptr;
+    case syntax::ExprKind::field:
+    case syntax::ExprKind::index:
+        return is_place_expr(expr.object);
+    case syntax::ExprKind::unary:
+        return expr.unary_op == syntax::UnaryOp::dereference;
+    default:
+        return false;
+    }
 }
 
 bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
@@ -642,8 +891,14 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
     case syntax::ExprKind::field:
     case syntax::ExprKind::index:
         return is_writable_place(expr.object);
-    case syntax::ExprKind::unary:
-        return expr.unary_op == syntax::UnaryOp::dereference;
+    case syntax::ExprKind::unary: {
+        if (expr.unary_op != syntax::UnaryOp::dereference) {
+            return false;
+        }
+        const TypeHandle pointer = analyze_expr(expr.unary_operand);
+        return checked_.types.is_pointer(pointer) &&
+               checked_.types.get(pointer).pointer_mutability == PointerMutability::mut;
+    }
     default:
         return false;
     }
@@ -699,15 +954,7 @@ std::string SemanticAnalyzer::module_name(const syntax::ModuleId module) const {
     if (!syntax::is_valid(module) || module.value >= module_.modules.size()) {
         return "<unknown>";
     }
-    std::ostringstream out;
-    const syntax::ModulePath& path = module_.modules[module.value].path;
-    for (base::usize i = 0; i < path.parts.size(); ++i) {
-        if (i != 0) {
-            out << ".";
-        }
-        out << path.parts[i];
-    }
-    return out.str();
+    return syntax::module_path_to_string(module_.modules[module.value].path);
 }
 
 std::string SemanticAnalyzer::qualified_name(const syntax::ModuleId module, const std::string_view name) const {
@@ -719,22 +966,10 @@ std::string SemanticAnalyzer::qualified_name(const syntax::ModuleId module, cons
 }
 
 std::string SemanticAnalyzer::c_symbol_name(const syntax::ModuleId module, const std::string_view name) const {
-    std::string result = "m0";
-    if (syntax::is_valid(module) && module.value < module_.modules.size()) {
-        for (std::string_view part : module_.modules[module.value].path.parts) {
-            result += "_";
-            for (const char c : part) {
-                const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-                result += alnum ? c : '_';
-            }
-        }
+    if (!syntax::is_valid(module) || module.value >= module_.modules.size()) {
+        return std::string(name);
     }
-    result += "_";
-    for (const char c : name) {
-        const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-        result += alnum ? c : '_';
-    }
-    return result;
+    return syntax::mangle_c_symbol(module_.modules[module.value].path, name);
 }
 
 std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const std::string_view name) const {

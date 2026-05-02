@@ -15,6 +15,7 @@ target_include_directories(m0_base PUBLIC include)
 
 add_library(m0_syntax
     src/syntax/ast_dump.cpp
+    src/syntax/module.cpp
 )
 target_link_libraries(m0_syntax PUBLIC m0_base)
 target_include_directories(m0_syntax PUBLIC include)
@@ -40,6 +41,8 @@ target_link_libraries(m0_sema PUBLIC m0_base m0_syntax)
 target_include_directories(m0_sema PUBLIC include)
 
 add_library(m0_codegen_c
+    src/codegen_c/c_type.cpp
+    src/codegen_c/expr_order.cpp
     src/codegen_c/c_emitter.cpp
 )
 target_link_libraries(m0_codegen_c PUBLIC m0_base m0_syntax m0_sema)
@@ -47,6 +50,7 @@ target_include_directories(m0_codegen_c PUBLIC include)
 
 add_library(m0_driver
     src/driver/compiler.cpp
+    src/driver/module_loader.cpp
 )
 target_link_libraries(m0_driver PUBLIC m0_base m0_syntax m0_lex m0_parse m0_sema m0_codegen_c)
 target_include_directories(m0_driver PUBLIC include)

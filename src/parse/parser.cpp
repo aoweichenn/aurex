@@ -978,6 +978,37 @@ syntax::ExprId Parser::parse_primary() {
     if (match(TokenKind::kw_bit_cast)) {
         return parse_builtin_cast(syntax::ExprKind::bit_cast);
     }
+    if (match(TokenKind::kw_size_of)) {
+        return parse_type_builtin(syntax::ExprKind::size_of);
+    }
+    if (match(TokenKind::kw_align_of)) {
+        return parse_type_builtin(syntax::ExprKind::align_of);
+    }
+    if (match(TokenKind::kw_ptr_addr)) {
+        const syntax::Token& begin = previous();
+        expect(TokenKind::l_paren, "expected '(' after ptr_addr");
+        const syntax::ExprId value = parse_expr();
+        const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after ptr_addr argument");
+        syntax::ExprNode expr;
+        expr.kind = syntax::ExprKind::ptr_addr;
+        expr.range = merge(begin.range, end.range);
+        expr.cast_expr = value;
+        return module_.push_expr(std::move(expr));
+    }
+    if (match(TokenKind::kw_ptr_from_addr)) {
+        const syntax::Token& begin = previous();
+        expect(TokenKind::l_paren, "expected '(' after ptr_from_addr");
+        const syntax::TypeId type = parse_type();
+        expect(TokenKind::comma, "expected ',' after ptr_from_addr type");
+        const syntax::ExprId value = parse_expr();
+        const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after ptr_from_addr argument");
+        syntax::ExprNode expr;
+        expr.kind = syntax::ExprKind::ptr_from_addr;
+        expr.range = merge(begin.range, end.range);
+        expr.cast_type = type;
+        expr.cast_expr = value;
+        return module_.push_expr(std::move(expr));
+    }
 
     report_here("expected expression");
     return make_invalid_expr();
@@ -996,6 +1027,19 @@ syntax::ExprId Parser::parse_builtin_cast(const syntax::ExprKind kind) {
     expr.range = merge(begin.range, end.range);
     expr.cast_type = type;
     expr.cast_expr = value;
+    return module_.push_expr(std::move(expr));
+}
+
+syntax::ExprId Parser::parse_type_builtin(const syntax::ExprKind kind) {
+    const syntax::Token& begin = previous();
+    expect(TokenKind::l_paren, "expected '(' after type builtin");
+    const syntax::TypeId type = parse_type();
+    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after type builtin");
+
+    syntax::ExprNode expr;
+    expr.kind = kind;
+    expr.range = merge(begin.range, end.range);
+    expr.cast_type = type;
     return module_.push_expr(std::move(expr));
 }
 

@@ -58,6 +58,7 @@ struct TypeInfo {
     TypeHandle pointee = invalid_type_handle;
     base::u64 array_count = 0;
     TypeHandle array_element = invalid_type_handle;
+    TypeHandle enum_underlying = invalid_type_handle;
     std::string name;
     std::string c_name;
     bool contains_array = false;
@@ -76,11 +77,13 @@ public:
     [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
 
     void set_record_properties(TypeHandle handle, bool contains_array, bool is_copyable) noexcept;
+    void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
 
     [[nodiscard]] bool same(TypeHandle lhs, TypeHandle rhs) const noexcept;
     [[nodiscard]] bool is_integer(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_float(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_bool(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_str(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_void(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_pointer(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;

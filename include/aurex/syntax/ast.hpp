@@ -68,6 +68,10 @@ enum class ExprKind {
     cast,
     ptr_cast,
     bit_cast,
+    size_of,
+    align_of,
+    ptr_addr,
+    ptr_from_addr,
 };
 
 enum class UnaryOp {

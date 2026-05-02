@@ -72,6 +72,7 @@ private:
     [[nodiscard]] syntax::ExprId parse_postfix();
     [[nodiscard]] syntax::ExprId parse_primary();
     [[nodiscard]] syntax::ExprId parse_builtin_cast(syntax::ExprKind kind);
+    [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);
     [[nodiscard]] syntax::ExprId make_binary(syntax::BinaryOp op, syntax::ExprId lhs, syntax::ExprId rhs, base::SourceRange range);
     [[nodiscard]] syntax::ExprId make_invalid_expr();
 

@@ -1,0 +1,14 @@
+module aurex.selfhost.m0c_seed;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+// This is the first M0 source seed for the future self-hosted compiler.
+// It is intentionally tiny today: it verifies that the selfhost directory is
+// part of the normal build discipline. Later iterations should replace this
+// with real lexer/parser/sema modules written in M0.
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    puts(c"Aurex M0 selfhost seed");
+    return 0;
+}

@@ -1,0 +1,5 @@
+module wrong.name;
+
+fn nope() -> i32 {
+    return 0;
+}

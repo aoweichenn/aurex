@@ -1,0 +1,99 @@
+module aurex.selfhost.lexer_ranges;
+
+import aurex.selfhost.lexer.core;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+fn expected_kind(position: i32) -> i32 {
+    if position == 0 { return TK_KW_MODULE; }
+    if position == 1 { return TK_IDENTIFIER; }
+    if position == 2 { return TK_SEMICOLON; }
+    if position == 3 { return TK_KW_FN; }
+    if position == 4 { return TK_IDENTIFIER; }
+    if position == 5 { return TK_L_PAREN; }
+    if position == 6 { return TK_R_PAREN; }
+    if position == 7 { return TK_ARROW; }
+    if position == 8 { return TK_KW_I32; }
+    if position == 9 { return TK_L_BRACE; }
+    if position == 10 { return TK_KW_RETURN; }
+    if position == 11 { return TK_INTEGER; }
+    if position == 12 { return TK_SEMICOLON; }
+    if position == 13 { return TK_R_BRACE; }
+    if position == 14 { return TK_C_STRING; }
+    if position == 15 { return TK_EOF; }
+    return TK_INVALID;
+}
+
+fn expected_begin(position: i32) -> i32 {
+    if position == 0 { return 3; }
+    if position == 1 { return 10; }
+    if position == 2 { return 14; }
+    if position == 3 { return 25; }
+    if position == 4 { return 28; }
+    if position == 5 { return 32; }
+    if position == 6 { return 33; }
+    if position == 7 { return 35; }
+    if position == 8 { return 38; }
+    if position == 9 { return 42; }
+    if position == 10 { return 44; }
+    if position == 11 { return 51; }
+    if position == 12 { return 52; }
+    if position == 13 { return 54; }
+    if position == 14 { return 56; }
+    if position == 15 { return 60; }
+    return 0;
+}
+
+fn expected_end(position: i32) -> i32 {
+    if position == 0 { return 9; }
+    if position == 1 { return 14; }
+    if position == 2 { return 15; }
+    if position == 3 { return 27; }
+    if position == 4 { return 32; }
+    if position == 5 { return 33; }
+    if position == 6 { return 34; }
+    if position == 7 { return 37; }
+    if position == 8 { return 41; }
+    if position == 9 { return 43; }
+    if position == 10 { return 50; }
+    if position == 11 { return 52; }
+    if position == 12 { return 53; }
+    if position == 13 { return 55; }
+    if position == 14 { return 60; }
+    if position == 15 { return 60; }
+    return 0;
+}
+
+fn validate_ranges(source: *const u8) -> i32 {
+    var index: i32 = 0;
+    var position: i32 = 0;
+
+    while position < 16 {
+        let token: TokenSpan = scan_token(source, &index);
+        if token.kind != expected_kind(position) {
+            return 100 + position;
+        }
+        if token.begin != expected_begin(position) {
+            return 200 + position;
+        }
+        if token.end != expected_end(position) {
+            return 300 + position;
+        }
+        position = position + 1;
+    }
+
+    return 0;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let source: *const u8 = c" \n module demo; /*skip*/ fn main() -> i32 { return 0; } c\"x\"";
+    let code: i32 = validate_ranges(source);
+    if code == 0 {
+        puts(c"selfhost lexer ranges ok");
+        return 0;
+    }
+    puts(c"selfhost lexer ranges failed");
+    return code;
+}

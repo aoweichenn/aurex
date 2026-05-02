@@ -1,0 +1,17 @@
+module aurex.selfhost.parser_smoke;
+
+import aurex.selfhost.parser.seed;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let source: *const u8 = c"module app.main; import lib.math; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    if parse_seed_module(source) {
+        puts(c"selfhost parser seed ok");
+        return 0;
+    }
+    puts(c"selfhost parser seed failed");
+    return 1;
+}

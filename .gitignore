@@ -1,0 +1,9 @@
+build/
+cmake-build-*/
+bootstrap/m0_bootstrap
+bootstrap/*.bootstrap
+bootstrap/*.bootstrap.c
+tools/__pycache__/
+*.o
+*.a
+*.dSYM/

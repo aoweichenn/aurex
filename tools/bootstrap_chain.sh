@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${ROOT}/build"
+M0C="${BUILD_DIR}/m0c"
+SELFHOST_IMPORT_FLAGS=(-I "${ROOT}/selfhost/src")
+SEED="${ROOT}/selfhost/src/m0c_seed.ax"
+LEXER_SMOKE="${ROOT}/selfhost/src/lexer_smoke.ax"
+LEXER_RANGES="${ROOT}/selfhost/src/lexer_ranges.ax"
+LEXER_DUMP="${ROOT}/selfhost/src/lexer_dump.ax"
+LEXER_FILE="${ROOT}/selfhost/src/lexer_file.ax"
+PARSER_SMOKE="${ROOT}/selfhost/src/parser_smoke.ax"
+SEED_C="${BUILD_DIR}/m0c_seed.c"
+SEED_BIN="${BUILD_DIR}/m0c_seed"
+LEXER_SMOKE_C="${BUILD_DIR}/lexer_smoke.c"
+LEXER_SMOKE_BIN="${BUILD_DIR}/lexer_smoke"
+LEXER_RANGES_C="${BUILD_DIR}/lexer_ranges.c"
+LEXER_RANGES_BIN="${BUILD_DIR}/lexer_ranges"
+LEXER_DUMP_C="${BUILD_DIR}/lexer_dump.c"
+LEXER_DUMP_BIN="${BUILD_DIR}/lexer_dump"
+LEXER_FILE_C="${BUILD_DIR}/lexer_file.c"
+LEXER_FILE_BIN="${BUILD_DIR}/lexer_file"
+PARSER_SMOKE_C="${BUILD_DIR}/parser_smoke.c"
+PARSER_SMOKE_BIN="${BUILD_DIR}/parser_smoke"
+BOOT_C="${BUILD_DIR}/hello.bootstrap.c"
+BOOT_BIN="${BUILD_DIR}/hello.bootstrap"
+
+cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
+cmake --build "${BUILD_DIR}" -j >/dev/null
+
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${SEED}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${SEED}" -o "${SEED_C}"
+cc "${SEED_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${SEED_BIN}"
+SEED_OUT="$("${SEED_BIN}")"
+test "${SEED_OUT}" = "Aurex M0 selfhost seed"
+
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_SMOKE}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_SMOKE}" -o "${LEXER_SMOKE_C}"
+cc "${LEXER_SMOKE_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_SMOKE_BIN}"
+LEXER_SMOKE_OUT="$("${LEXER_SMOKE_BIN}")"
+test "${LEXER_SMOKE_OUT}" = "selfhost lexer sequence ok"
+
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_RANGES}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_RANGES}" -o "${LEXER_RANGES_C}"
+cc "${LEXER_RANGES_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_RANGES_BIN}"
+LEXER_RANGES_OUT="$("${LEXER_RANGES_BIN}")"
+test "${LEXER_RANGES_OUT}" = "selfhost lexer ranges ok"
+
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${PARSER_SMOKE}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${PARSER_SMOKE}" >"${BUILD_DIR}/parser_smoke.modules"
+grep -q 'aurex.selfhost.parser.seed' "${BUILD_DIR}/parser_smoke.modules"
+grep -q 'aurex.selfhost.lexer.core' "${BUILD_DIR}/parser_smoke.modules"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${PARSER_SMOKE}" -o "${PARSER_SMOKE_C}"
+cc "${PARSER_SMOKE_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${PARSER_SMOKE_BIN}"
+PARSER_SMOKE_OUT="$("${PARSER_SMOKE_BIN}")"
+test "${PARSER_SMOKE_OUT}" = "selfhost parser seed ok"
+
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_DUMP}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_DUMP}" -o "${LEXER_DUMP_C}"
+cc "${LEXER_DUMP_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_DUMP_BIN}"
+"${LEXER_DUMP_BIN}" >"${BUILD_DIR}/lexer_dump.tokens"
+diff -u "${ROOT}/tests/golden/selfhost_lexer_dump.tokens" "${BUILD_DIR}/lexer_dump.tokens"
+
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_FILE}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${LEXER_FILE}" >"${BUILD_DIR}/lexer_file.modules"
+grep -q 'aurex.selfhost.lexer.dump' "${BUILD_DIR}/lexer_file.modules"
+grep -q 'aurex.selfhost.lexer.core' "${BUILD_DIR}/lexer_file.modules"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_FILE}" -o "${LEXER_FILE_C}"
+cc "${LEXER_FILE_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_FILE_BIN}"
+"${LEXER_FILE_BIN}" "${ROOT}/examples/hello.ax" >"${BUILD_DIR}/lexer_file_hello.tokens"
+diff -u "${ROOT}/tests/golden/selfhost_lexer_file_hello.tokens" "${BUILD_DIR}/lexer_file_hello.tokens"
+"${ROOT}/tools/compare_selfhost_lexer.sh" >/tmp/aurex_selfhost_lexer_compare.txt
+grep -q 'selfhost lexer matches Stage0 lexer for local corpus' /tmp/aurex_selfhost_lexer_compare.txt
+
+make -C "${ROOT}/bootstrap" >/dev/null
+"${ROOT}/bootstrap/m0_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
+cc "${BOOT_C}" -o "${BOOT_BIN}"
+BOOT_OUT="$("${BOOT_BIN}")"
+test "${BOOT_OUT}" = "hello from Aurex M0"
+
+echo "bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/ranges/dump/file + parser seed + standalone bootstrap seed"

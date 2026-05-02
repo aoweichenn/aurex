@@ -1,0 +1,12 @@
+module const_enum;
+
+const answer: i32 = 42;
+
+enum Mode: u8 {
+    fast = 1,
+    slow = 2,
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    return answer;
+}

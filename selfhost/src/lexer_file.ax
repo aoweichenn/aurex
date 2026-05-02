@@ -1,0 +1,32 @@
+module aurex.selfhost.lexer_file;
+
+import aurex.selfhost.lexer.dump;
+
+struct FileBuffer {
+    data: *mut u8;
+    len: i32;
+}
+
+extern c {
+    fn read_file(path: *const u8) -> FileBuffer @name("m0_runtime_read_file");
+    fn free_file(buffer: FileBuffer) -> void @name("m0_runtime_free_file");
+}
+
+fn select_input_path(argc: i32, argv: *mut *mut u8) -> *const u8 {
+    if argc > 1 {
+        return ptr_cast(*const u8, argv[1]);
+    }
+    return c"examples/hello.ax";
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let path: *const u8 = select_input_path(argc, argv);
+    let buffer: FileBuffer = read_file(path);
+    if buffer.data == null {
+        puts(c"read_file failed");
+        return 1;
+    }
+    dump_tokens(ptr_cast(*const u8, buffer.data));
+    free_file(buffer);
+    return 0;
+}

@@ -1,0 +1,105 @@
+module aurex.selfhost.lexer.dump;
+
+import aurex.selfhost.lexer.core;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+// The selfhost golden tests compare token kind names rather than full token
+// ranges and text. That keeps the M0 side small while still proving that a real
+// M0 scanner is producing externally checked output.
+fn print_kind(kind: i32) -> void {
+    if kind == TK_EOF { puts(c"eof"); return; }
+    if kind == TK_IDENTIFIER { puts(c"identifier"); return; }
+    if kind == TK_INTEGER { puts(c"integer_literal"); return; }
+    if kind == TK_STRING { puts(c"string_literal"); return; }
+    if kind == TK_C_STRING { puts(c"c_string_literal"); return; }
+    if kind == TK_BYTE { puts(c"byte_literal"); return; }
+    if kind == TK_KW_MODULE { puts(c"kw_module"); return; }
+    if kind == TK_KW_IMPORT { puts(c"kw_import"); return; }
+    if kind == TK_KW_EXTERN { puts(c"kw_extern"); return; }
+    if kind == TK_KW_EXPORT { puts(c"kw_export"); return; }
+    if kind == TK_KW_C { puts(c"kw_c"); return; }
+    if kind == TK_KW_FN { puts(c"kw_fn"); return; }
+    if kind == TK_KW_STRUCT { puts(c"kw_struct"); return; }
+    if kind == TK_KW_OPAQUE { puts(c"kw_opaque"); return; }
+    if kind == TK_KW_ENUM { puts(c"kw_enum"); return; }
+    if kind == TK_KW_CONST { puts(c"kw_const"); return; }
+    if kind == TK_KW_LET { puts(c"kw_let"); return; }
+    if kind == TK_KW_VAR { puts(c"kw_var"); return; }
+    if kind == TK_KW_IF { puts(c"kw_if"); return; }
+    if kind == TK_KW_ELSE { puts(c"kw_else"); return; }
+    if kind == TK_KW_WHILE { puts(c"kw_while"); return; }
+    if kind == TK_KW_BREAK { puts(c"kw_break"); return; }
+    if kind == TK_KW_CONTINUE { puts(c"kw_continue"); return; }
+    if kind == TK_KW_MUT { puts(c"kw_mut"); return; }
+    if kind == TK_KW_RETURN { puts(c"kw_return"); return; }
+    if kind == TK_KW_TRUE { puts(c"kw_true"); return; }
+    if kind == TK_KW_FALSE { puts(c"kw_false"); return; }
+    if kind == TK_KW_NULL { puts(c"kw_null"); return; }
+    if kind == TK_KW_VOID { puts(c"kw_void"); return; }
+    if kind == TK_KW_BOOL { puts(c"kw_bool"); return; }
+    if kind == TK_KW_I8 { puts(c"kw_i8"); return; }
+    if kind == TK_KW_I32 { puts(c"kw_i32"); return; }
+    if kind == TK_KW_U8 { puts(c"kw_u8"); return; }
+    if kind == TK_KW_I16 { puts(c"kw_i16"); return; }
+    if kind == TK_KW_U16 { puts(c"kw_u16"); return; }
+    if kind == TK_KW_U32 { puts(c"kw_u32"); return; }
+    if kind == TK_KW_I64 { puts(c"kw_i64"); return; }
+    if kind == TK_KW_U64 { puts(c"kw_u64"); return; }
+    if kind == TK_KW_ISIZE { puts(c"kw_isize"); return; }
+    if kind == TK_KW_USIZE { puts(c"kw_usize"); return; }
+    if kind == TK_KW_F32 { puts(c"kw_f32"); return; }
+    if kind == TK_KW_F64 { puts(c"kw_f64"); return; }
+    if kind == TK_KW_STR { puts(c"kw_str"); return; }
+    if kind == TK_KW_CAST { puts(c"kw_cast"); return; }
+    if kind == TK_KW_PTR_CAST { puts(c"kw_ptr_cast"); return; }
+    if kind == TK_KW_BIT_CAST { puts(c"kw_bit_cast"); return; }
+    if kind == TK_L_PAREN { puts(c"l_paren"); return; }
+    if kind == TK_R_PAREN { puts(c"r_paren"); return; }
+    if kind == TK_L_BRACE { puts(c"l_brace"); return; }
+    if kind == TK_R_BRACE { puts(c"r_brace"); return; }
+    if kind == TK_L_BRACKET { puts(c"l_bracket"); return; }
+    if kind == TK_R_BRACKET { puts(c"r_bracket"); return; }
+    if kind == TK_COMMA { puts(c"comma"); return; }
+    if kind == TK_DOT { puts(c"dot"); return; }
+    if kind == TK_SEMICOLON { puts(c"semicolon"); return; }
+    if kind == TK_COLON { puts(c"colon"); return; }
+    if kind == TK_ARROW { puts(c"arrow"); return; }
+    if kind == TK_PLUS { puts(c"plus"); return; }
+    if kind == TK_MINUS { puts(c"minus"); return; }
+    if kind == TK_STAR { puts(c"star"); return; }
+    if kind == TK_SLASH { puts(c"slash"); return; }
+    if kind == TK_PERCENT { puts(c"percent"); return; }
+    if kind == TK_AMP { puts(c"amp"); return; }
+    if kind == TK_PIPE { puts(c"pipe"); return; }
+    if kind == TK_CARET { puts(c"caret"); return; }
+    if kind == TK_TILDE { puts(c"tilde"); return; }
+    if kind == TK_BANG { puts(c"bang"); return; }
+    if kind == TK_EQUAL { puts(c"equal"); return; }
+    if kind == TK_EQUAL_EQUAL { puts(c"equal_equal"); return; }
+    if kind == TK_BANG_EQUAL { puts(c"bang_equal"); return; }
+    if kind == TK_LESS { puts(c"less"); return; }
+    if kind == TK_LESS_EQUAL { puts(c"less_equal"); return; }
+    if kind == TK_GREATER { puts(c"greater"); return; }
+    if kind == TK_GREATER_EQUAL { puts(c"greater_equal"); return; }
+    if kind == TK_LESS_LESS { puts(c"less_less"); return; }
+    if kind == TK_GREATER_GREATER { puts(c"greater_greater"); return; }
+    if kind == TK_AMP_AMP { puts(c"amp_amp"); return; }
+    if kind == TK_PIPE_PIPE { puts(c"pipe_pipe"); return; }
+    if kind == TK_AT { puts(c"at"); return; }
+    puts(c"invalid");
+}
+
+fn dump_tokens(source: *const u8) -> void {
+    var index: i32 = 0;
+    var running: bool = true;
+    while running {
+        let kind: i32 = scan_next(source, &index);
+        print_kind(kind);
+        if kind == TK_EOF || kind == TK_INVALID {
+            running = false;
+        }
+    }
+}

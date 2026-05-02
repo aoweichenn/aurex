@@ -1,0 +1,7 @@
+module let_assign;
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let x: i32 = 1;
+    x = 2;
+    return x;
+}

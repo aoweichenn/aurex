@@ -1,0 +1,15 @@
+module condition_regression;
+
+fn not_equal(actual: i32, expected: i32) -> bool {
+    if actual != expected {
+        return true;
+    }
+    return false;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    if not_equal(1, 2) {
+        return 0;
+    }
+    return 1;
+}

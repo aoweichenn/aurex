@@ -1,0 +1,9 @@
+module array_param;
+
+fn bad(xs: [4]u8) -> i32 {
+    return 0;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    return 0;
+}

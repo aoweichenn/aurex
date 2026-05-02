@@ -1,0 +1,7 @@
+module cycle.a;
+
+import cycle.b;
+
+fn cycle_a() -> i32 {
+    return 1;
+}

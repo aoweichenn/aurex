@@ -45,9 +45,11 @@ check: all
 	$(BUILD_DIR)/m0c_stage1 src/m0c_seed.ax $(BUILD_DIR)/m0c_seed.stage1.c
 	$(CC) $(BUILD_DIR)/m0c_seed.stage1.c -o $(BUILD_DIR)/m0c_seed.stage1
 	test "$$($(BUILD_DIR)/m0c_seed.stage1)" = "Aurex M0 selfhost seed"
-	$(BUILD_DIR)/m0c_stage1 src/lexer_smoke.ax $(BUILD_DIR)/lexer_smoke.stage1.c
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/lexer_smoke.ax $(BUILD_DIR)/lexer_smoke.stage1.c
 	grep -q 'static bool validate_sequence' $(BUILD_DIR)/lexer_smoke.stage1.c
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_smoke.stage1.c
+	$(CC) $(BUILD_DIR)/lexer_smoke.stage1.c -o $(BUILD_DIR)/lexer_smoke.stage1
+	test "$$($(BUILD_DIR)/lexer_smoke.stage1)" = "selfhost lexer sequence ok"
 
 clean:
 	rm -rf $(BUILD_DIR)

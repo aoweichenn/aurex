@@ -78,9 +78,9 @@ Current exact capability:
 - `emit_subset.ax` is the active expansion path for compiling broader selfhost
   files. It is now the first Stage1 backend attempted by the driver, with the
   original narrow emitter retained as fallback.
-- `m0c_stage1` can parse and emit a C translation for
-  `selfhost/src/lexer_smoke.ax`; compiling that C still needs dependency/module
-  bundling because the emitted file references imported `lexer.core` symbols.
+- `m0c_stage1` can bundle `selfhost/src/aurex/selfhost/lexer/core.ax` with
+  `selfhost/src/lexer_smoke.ax`, emit one C file, compile it with `cc`, and run
+  the resulting lexer smoke executable successfully.
 
 ## Milestones
 
@@ -174,7 +174,8 @@ important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
 token kind sequence for the local corpus, the first M0 parser seed can parse a
 fixed module/import/extern/function-signature source, and the M0-written Stage1
 compiler slice can compile both `examples/hello.ax` and the selfhost seed into
-runnable C.
+runnable C. It also proves a two-source Stage1 bundle for
+`lexer.core.ax + lexer_smoke.ax` can compile and run.
 
 They also assert that `selfhost/src/lexer_file.ax` and
 `selfhost/src/parser_smoke.ax` load the expected shared lexer/parser modules.

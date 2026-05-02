@@ -90,9 +90,10 @@ compiles it to a native executable; that M0-written executable can compile the
 current Stage1 subset, including `examples/hello.ax` and
 `selfhost/src/m0c_seed.ax`, into runnable C. This is a real bootstrap slice, not
 the final fixed point: Stage1 does not yet compile the full compiler source.
-The next backend path, `emit_subset.ax`, is already wired into the Stage1 driver
-and can emit C for broader selfhost sources such as `lexer_smoke.ax`; imported
-module bundling is the next required step before those broader outputs link.
+The next backend path, `emit_subset.ax`, is already wired into the Stage1 driver.
+It now supports a two-source bundle mode: Stage1 can combine
+`lexer.core.ax + lexer_smoke.ax`, emit one C file, compile it, and run the
+resulting lexer smoke executable.
 
 Manual Stage1 run:
 
@@ -108,6 +109,20 @@ Expected output:
 
 ```text
 Aurex M0 selfhost seed
+```
+
+Manual two-source bundle smoke:
+
+```sh
+build/m0c_stage1 selfhost/src/aurex/selfhost/lexer/core.ax selfhost/src/lexer_smoke.ax build/lexer_smoke.stage1.c
+cc build/lexer_smoke.stage1.c -o build/lexer_smoke.stage1
+build/lexer_smoke.stage1
+```
+
+Expected output:
+
+```text
+selfhost lexer sequence ok
 ```
 
 ```sh

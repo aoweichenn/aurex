@@ -41,6 +41,9 @@ check: all
 	$(BUILD_DIR)/m0c_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.c
 	$(CC) $(BUILD_DIR)/hello.stage1.c -o $(BUILD_DIR)/hello.stage1
 	test "$$($(BUILD_DIR)/hello.stage1)" = "hello from Aurex M0"
+	$(BUILD_DIR)/m0c_stage1 src/m0c_seed.ax $(BUILD_DIR)/m0c_seed.stage1.c
+	$(CC) $(BUILD_DIR)/m0c_seed.stage1.c -o $(BUILD_DIR)/m0c_seed.stage1
+	test "$$($(BUILD_DIR)/m0c_seed.stage1)" = "Aurex M0 selfhost seed"
 
 clean:
 	rm -rf $(BUILD_DIR)

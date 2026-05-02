@@ -106,7 +106,8 @@ core scanner now returns token ranges through `TokenSpan`.
 - Compile selfhost sources with Stage1.
 
 M0V0.1.8 now has the first Stage F slice: `m0c_stage1.ax` can compile
-`examples/hello.ax` through the M0-written lexer/parser/emitter path.
+`examples/hello.ax` and `selfhost/src/m0c_seed.ax` through the M0-written
+lexer/parser/emitter path.
 
 ### Stage G: Fixed Point
 
@@ -137,7 +138,8 @@ Both `bootstrap_chain.sh` and `make -C selfhost check` now prove the same
 important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
 token kind sequence for the local corpus, the first M0 parser seed can parse a
 fixed module/import/extern/function-signature source, and the M0-written Stage1
-compiler slice can compile `examples/hello.ax` into runnable C.
+compiler slice can compile both `examples/hello.ax` and the selfhost seed into
+runnable C.
 
 They also assert that `selfhost/src/lexer_file.ax` and
 `selfhost/src/parser_smoke.ax` load the expected shared lexer/parser modules.

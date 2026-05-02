@@ -1,0 +1,23 @@
+module eval_order_condition;
+
+fn check(state: *mut i32, expected: i32, result: bool) -> bool {
+    if *state != expected {
+        return false;
+    }
+    *state = *state + 1;
+    return result;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    var state: i32 = 0;
+    if check(&state, 0, true) && check(&state, 1, false) {
+        return 1;
+    }
+    if state != 2 {
+        return 2;
+    }
+    if check(&state, 2, true) || check(&state, 3, true) {
+        return state - 3;
+    }
+    return 3;
+}

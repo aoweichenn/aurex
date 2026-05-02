@@ -1,0 +1,12 @@
+module assign_field_through_const_pointer;
+
+struct Pair {
+    value: i32;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let pair: Pair = Pair { value: 1 };
+    let ptr: *const Pair = &pair;
+    ptr.value = 42;
+    return 0;
+}

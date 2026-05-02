@@ -1,0 +1,19 @@
+module eval_order_call_stmt;
+
+fn next(state: *mut i32, expected: i32) -> i32 {
+    if *state != expected {
+        return 100;
+    }
+    *state = *state + 1;
+    return expected;
+}
+
+fn consume(state: *mut i32, value: i32) -> void {
+    *state = *state + value;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    var state: i32 = 0;
+    consume(&state, next(&state, 0) + next(&state, 1));
+    return state - 3;
+}

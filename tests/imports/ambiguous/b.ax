@@ -1,0 +1,5 @@
+module ambiguous.b;
+
+fn helper() -> i32 {
+    return 2;
+}

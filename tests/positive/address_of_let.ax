@@ -1,0 +1,10 @@
+module address_of_let;
+
+fn read(value: *const i32) -> i32 {
+    return *value;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let value: i32 = 42;
+    return read(&value) - 42;
+}

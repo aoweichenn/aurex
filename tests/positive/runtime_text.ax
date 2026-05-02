@@ -1,0 +1,23 @@
+module runtime_text;
+
+import runtime.text;
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let hello: *const u8 = c"hello";
+    let same: SpanU8 = span_u8(hello, cast(usize, 5));
+    let again: SpanU8 = span_u8(c"hello", cast(usize, 5));
+    let different: SpanU8 = span_u8(c"world", cast(usize, 5));
+    if !bytes_equal(same, again) {
+        return 1;
+    }
+    if bytes_equal(same, different) {
+        return 2;
+    }
+    if c_strlen(hello) != cast(usize, 5) {
+        return 3;
+    }
+    if !is_ascii_digit(b'7') || !is_ascii_alpha(b'A') || !is_ascii_space(b'\n') {
+        return 4;
+    }
+    return 0;
+}

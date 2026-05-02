@@ -1,0 +1,24 @@
+module runtime_file;
+
+import runtime.file;
+import runtime.text;
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let path: *const u8 = c"/tmp/aurex_m0_runtime_file_test.txt";
+    let bytes: SpanU8 = span_u8(c"runtime-ok", cast(usize, 10));
+    let write_result: WriteFileResult = write_entire_file(path, bytes);
+    if !write_result.ok {
+        return 1;
+    }
+    let read_result: ReadFileResult = read_entire_file(path);
+    if !read_result.ok {
+        return 2;
+    }
+    let read_span: SpanU8 = span_u8(ptr_cast(*const u8, read_result.data), read_result.len);
+    if !bytes_equal(bytes, read_span) {
+        free_file_buffer(read_result);
+        return 3;
+    }
+    free_file_buffer(read_result);
+    return 0;
+}

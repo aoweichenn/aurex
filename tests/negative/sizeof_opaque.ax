@@ -1,0 +1,10 @@
+module sizeof_opaque;
+
+extern c {
+    opaque struct File;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let size: usize = size_of(File);
+    return cast(i32, size);
+}

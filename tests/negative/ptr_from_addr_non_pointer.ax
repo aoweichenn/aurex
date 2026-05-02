@@ -1,0 +1,6 @@
+module ptr_from_addr_non_pointer;
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    let value: i32 = ptr_from_addr(i32, 0);
+    return value;
+}

@@ -1,0 +1,38 @@
+module aurex.selfhost.compiler.driver;
+
+import aurex.selfhost.compiler.emit_c;
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.compiler.subset;
+
+fn compile_file(input_path: *const u8, output_path: *const u8) -> i32 {
+    let buffer: FileBuffer = read_file(input_path);
+    if buffer.data == null {
+        puts(c"stage1: failed to read input");
+        return 1;
+    }
+
+    let source: *const u8 = ptr_cast(*const u8, buffer.data);
+    let program: Stage1Program = parse_stage1_subset(source);
+    if !program.ok {
+        free_file(buffer);
+        puts(c"stage1: unsupported M0 subset");
+        return 1;
+    }
+
+    if !emit_stage1_c(output_path, source, program) {
+        free_file(buffer);
+        puts(c"stage1: failed to write output");
+        return 1;
+    }
+
+    free_file(buffer);
+    return 0;
+}
+
+fn run_stage1(argc: i32, argv: *mut *mut u8) -> i32 {
+    if argc < 3 {
+        puts(c"usage: m0c_stage1 <input.ax> <output.c>");
+        return 1;
+    }
+    return compile_file(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]));
+}

@@ -1,0 +1,66 @@
+module runtime.file;
+
+import runtime.c;
+import runtime.text;
+
+struct ReadFileResult {
+    ok: bool;
+    data: *mut u8;
+    len: usize;
+}
+
+struct WriteFileResult {
+    ok: bool;
+    written: usize;
+}
+
+fn read_entire_file(path: *const u8) -> ReadFileResult {
+    let file: *mut CFile = fopen(path, c"rb");
+    if file == null {
+        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+    }
+    if fseek(file, 0, SEEK_END) != 0 {
+        fclose(file);
+        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+    }
+    let end_pos: i64 = ftell(file);
+    if end_pos < cast(i64, 0) {
+        fclose(file);
+        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+    }
+    if fseek(file, 0, SEEK_SET) != 0 {
+        fclose(file);
+        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+    }
+
+    let len: usize = cast(usize, end_pos);
+    let data: *mut u8 = ptr_cast(*mut u8, malloc(len + cast(usize, 1)));
+    if data == null {
+        fclose(file);
+        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+    }
+    let read_count: usize = fread(ptr_cast(*mut void, data), 1, len, file);
+    fclose(file);
+    if read_count != len {
+        free(ptr_cast(*mut void, data));
+        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+    }
+    data[len] = b'\0';
+    return ReadFileResult { ok: true, data: data, len: len };
+}
+
+fn free_file_buffer(result: ReadFileResult) -> void {
+    if result.data != null {
+        free(ptr_cast(*mut void, result.data));
+    }
+}
+
+fn write_entire_file(path: *const u8, bytes: SpanU8) -> WriteFileResult {
+    let file: *mut CFile = fopen(path, c"wb");
+    if file == null {
+        return WriteFileResult { ok: false, written: cast(usize, 0) };
+    }
+    let written: usize = fwrite(ptr_cast(*const void, bytes.data), 1, bytes.len, file);
+    fclose(file);
+    return WriteFileResult { ok: written == bytes.len, written: written };
+}

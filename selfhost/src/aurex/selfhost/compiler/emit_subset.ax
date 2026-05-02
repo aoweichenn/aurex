@@ -1,0 +1,467 @@
+module aurex.selfhost.compiler.emit_subset;
+
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.lexer.core;
+
+const TYPE_VOID: i32 = 0;
+const TYPE_BOOL: i32 = 1;
+const TYPE_I32: i32 = 2;
+const TYPE_U8: i32 = 3;
+
+struct SimpleType {
+    ok: bool;
+    base: i32;
+    pointers: i32;
+    const_base: bool;
+}
+
+fn make_bad_type() -> SimpleType {
+    return SimpleType { ok: false, base: TYPE_VOID, pointers: 0, const_base: false };
+}
+
+fn make_type(base: i32, pointers: i32, const_base: bool) -> SimpleType {
+    return SimpleType { ok: true, base: base, pointers: pointers, const_base: const_base };
+}
+
+fn write_piece(file: *mut OutputFile, text: *const u8) -> bool {
+    return output_write_c_string(file, text);
+}
+
+fn write_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
+    return output_write_source_range(file, source, begin, end);
+}
+
+fn advance(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> TokenSpan {
+    let previous: TokenSpan = *current;
+    *current = scan_token(source, index);
+    return previous;
+}
+
+fn check(current: *mut TokenSpan, kind: i32) -> bool {
+    return current.kind == kind;
+}
+
+fn match_token(source: *const u8, index: *mut i32, current: *mut TokenSpan, kind: i32) -> bool {
+    if check(current, kind) {
+        advance(source, index, current);
+        return true;
+    }
+    return false;
+}
+
+fn expect_token(source: *const u8, index: *mut i32, current: *mut TokenSpan, kind: i32) -> bool {
+    return match_token(source, index, current, kind);
+}
+
+fn parse_path_tail(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    while match_token(source, index, current, TK_DOT) {
+        if !(match_token(source, index, current, TK_IDENTIFIER) || match_token(source, index, current, TK_KW_C)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn parse_module_or_import(source: *const u8, index: *mut i32, current: *mut TokenSpan, keyword: i32) -> bool {
+    if !expect_token(source, index, current, keyword) {
+        return false;
+    }
+    if !(match_token(source, index, current, TK_IDENTIFIER) || match_token(source, index, current, TK_KW_C)) {
+        return false;
+    }
+    if !parse_path_tail(source, index, current) {
+        return false;
+    }
+    return expect_token(source, index, current, TK_SEMICOLON);
+}
+
+fn parse_simple_type(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> SimpleType {
+    var pointer_count: i32 = 0;
+    var saw_const: bool = false;
+    while match_token(source, index, current, TK_STAR) {
+        pointer_count = pointer_count + 1;
+        if match_token(source, index, current, TK_KW_CONST) {
+            saw_const = true;
+        } else {
+            if !expect_token(source, index, current, TK_KW_MUT) {
+                return make_bad_type();
+            }
+        }
+    }
+
+    if match_token(source, index, current, TK_KW_VOID) { return make_type(TYPE_VOID, pointer_count, saw_const); }
+    if match_token(source, index, current, TK_KW_BOOL) { return make_type(TYPE_BOOL, pointer_count, saw_const); }
+    if match_token(source, index, current, TK_KW_I32) { return make_type(TYPE_I32, pointer_count, saw_const); }
+    if match_token(source, index, current, TK_KW_U8) { return make_type(TYPE_U8, pointer_count, saw_const); }
+    return make_bad_type();
+}
+
+fn emit_base_type(file: *mut OutputFile, ty: SimpleType) -> bool {
+    if ty.const_base && ty.base == TYPE_U8 {
+        return write_piece(file, c"const uint8_t");
+    }
+    if ty.base == TYPE_VOID { return write_piece(file, c"void"); }
+    if ty.base == TYPE_BOOL { return write_piece(file, c"bool"); }
+    if ty.base == TYPE_I32 { return write_piece(file, c"int32_t"); }
+    if ty.base == TYPE_U8 { return write_piece(file, c"uint8_t"); }
+    return false;
+}
+
+fn emit_type_name(file: *mut OutputFile, source: *const u8, ty: SimpleType, name: TokenSpan) -> bool {
+    if !ty.ok {
+        return false;
+    }
+    if !emit_base_type(file, ty) { return false; }
+    if !write_piece(file, c" ") { return false; }
+    var count: i32 = 0;
+    while count < ty.pointers {
+        if !write_piece(file, c"*") { return false; }
+        count = count + 1;
+    }
+    return write_range(file, source, name.begin, name.end);
+}
+
+fn emit_type_only(file: *mut OutputFile, ty: SimpleType) -> bool {
+    if !ty.ok {
+        return false;
+    }
+    if !emit_base_type(file, ty) { return false; }
+    var count: i32 = 0;
+    while count < ty.pointers {
+        if !write_piece(file, c"*") { return false; }
+        count = count + 1;
+    }
+    return true;
+}
+
+fn emit_token_expr(file: *mut OutputFile, source: *const u8, token: TokenSpan) -> bool {
+    if token.kind == TK_C_STRING {
+        if !write_piece(file, c"((const uint8_t *)") { return false; }
+        if !write_range(file, source, token.begin + 1, token.end) { return false; }
+        return write_piece(file, c")");
+    }
+    if token.kind == TK_BYTE {
+        return write_range(file, source, token.begin + 1, token.end);
+    }
+    if token.kind == TK_KW_TRUE {
+        return write_piece(file, c"true ");
+    }
+    if token.kind == TK_KW_FALSE {
+        return write_piece(file, c"false ");
+    }
+    if token.kind == TK_KW_NULL {
+        return write_piece(file, c"NULL ");
+    }
+    if token.kind == TK_IDENTIFIER || token.kind == TK_INTEGER {
+        if !write_range(file, source, token.begin, token.end) { return false; }
+        return write_piece(file, c" ");
+    }
+    return write_range(file, source, token.begin, token.end);
+}
+
+fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, stop_kind: i32) -> bool {
+    while !check(current, stop_kind) && !check(current, TK_EOF) {
+        let token: TokenSpan = advance(source, index, current);
+        if !emit_token_expr(file, source, token) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn emit_block(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool;
+
+fn emit_let_or_var(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    advance(source, index, current);
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return false;
+    }
+    if !expect_token(source, index, current, TK_COLON) {
+        return false;
+    }
+    let ty: SimpleType = parse_simple_type(source, index, current);
+    if !ty.ok {
+        return false;
+    }
+    if !expect_token(source, index, current, TK_EQUAL) {
+        return false;
+    }
+    if !write_piece(file, c"    ") { return false; }
+    if !emit_type_name(file, source, ty, name) { return false; }
+    if !write_piece(file, c" = ") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
+    if !expect_token(source, index, current, TK_SEMICOLON) {
+        return false;
+    }
+    return write_piece(file, c";\n");
+}
+
+fn emit_return_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    advance(source, index, current);
+    if !write_piece(file, c"    return ") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
+    if !expect_token(source, index, current, TK_SEMICOLON) {
+        return false;
+    }
+    return write_piece(file, c";\n");
+}
+
+fn emit_if_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    advance(source, index, current);
+    if !write_piece(file, c"    if (") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_L_BRACE) { return false; }
+    if !write_piece(file, c") ") { return false; }
+    if !emit_block(file, source, index, current) { return false; }
+    if match_token(source, index, current, TK_KW_ELSE) {
+        if !write_piece(file, c"    else ") { return false; }
+        if !emit_block(file, source, index, current) { return false; }
+    }
+    return true;
+}
+
+fn emit_while_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    advance(source, index, current);
+    if !write_piece(file, c"    while (") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_L_BRACE) { return false; }
+    if !write_piece(file, c") ") { return false; }
+    return emit_block(file, source, index, current);
+}
+
+fn emit_expr_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !write_piece(file, c"    ") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
+    if !expect_token(source, index, current, TK_SEMICOLON) {
+        return false;
+    }
+    return write_piece(file, c";\n");
+}
+
+fn emit_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if check(current, TK_KW_LET) || check(current, TK_KW_VAR) {
+        return emit_let_or_var(file, source, index, current);
+    }
+    if check(current, TK_KW_RETURN) {
+        return emit_return_stmt(file, source, index, current);
+    }
+    if check(current, TK_KW_IF) {
+        return emit_if_stmt(file, source, index, current);
+    }
+    if check(current, TK_KW_WHILE) {
+        return emit_while_stmt(file, source, index, current);
+    }
+    return emit_expr_stmt(file, source, index, current);
+}
+
+fn emit_block(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_L_BRACE) {
+        return false;
+    }
+    if !write_piece(file, c"{\n") { return false; }
+    while !check(current, TK_R_BRACE) && !check(current, TK_EOF) {
+        if !emit_stmt(file, source, index, current) {
+            return false;
+        }
+    }
+    if !expect_token(source, index, current, TK_R_BRACE) {
+        return false;
+    }
+    return write_piece(file, c"}\n");
+}
+
+fn skip_abi_name(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !match_token(source, index, current, TK_AT) {
+        return true;
+    }
+    if !expect_token(source, index, current, TK_IDENTIFIER) { return false; }
+    if !expect_token(source, index, current, TK_L_PAREN) { return false; }
+    if !expect_token(source, index, current, TK_STRING) { return false; }
+    return expect_token(source, index, current, TK_R_PAREN);
+}
+
+fn emit_param_list(file: *mut OutputFile, source: *const u8, start: i32) -> bool {
+    var pindex: i32 = start;
+    var pcurrent: TokenSpan = scan_token(source, &pindex);
+    if check(&pcurrent, TK_R_PAREN) {
+        return true;
+    }
+    var first: bool = true;
+    while !check(&pcurrent, TK_R_PAREN) && !check(&pcurrent, TK_EOF) {
+        let name: TokenSpan = advance(source, &pindex, &pcurrent);
+        if name.kind != TK_IDENTIFIER { return false; }
+        if !expect_token(source, &pindex, &pcurrent, TK_COLON) { return false; }
+        let ty: SimpleType = parse_simple_type(source, &pindex, &pcurrent);
+        if !ty.ok { return false; }
+        if !first {
+            if !write_piece(file, c", ") { return false; }
+        }
+        if !emit_type_name(file, source, ty, name) { return false; }
+        first = false;
+        if check(&pcurrent, TK_COMMA) {
+            advance(source, &pindex, &pcurrent);
+        }
+    }
+    return check(&pcurrent, TK_R_PAREN);
+}
+
+fn parse_params_only(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if check(current, TK_R_PAREN) {
+        return true;
+    }
+    while !check(current, TK_R_PAREN) && !check(current, TK_EOF) {
+        if !expect_token(source, index, current, TK_IDENTIFIER) { return false; }
+        if !expect_token(source, index, current, TK_COLON) { return false; }
+        let ty: SimpleType = parse_simple_type(source, index, current);
+        if !ty.ok { return false; }
+        if check(current, TK_COMMA) {
+            advance(source, index, current);
+        }
+    }
+    return check(current, TK_R_PAREN);
+}
+
+fn emit_function(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, exported: bool) -> bool {
+    if exported {
+        if !expect_token(source, index, current, TK_KW_EXPORT) { return false; }
+        if !expect_token(source, index, current, TK_KW_C) { return false; }
+    }
+    if !expect_token(source, index, current, TK_KW_FN) { return false; }
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER { return false; }
+    if !expect_token(source, index, current, TK_L_PAREN) { return false; }
+    let params_start: i32 = current.begin;
+    if !parse_params_only(source, index, current) { return false; }
+    if !expect_token(source, index, current, TK_R_PAREN) { return false; }
+
+    var return_type: SimpleType = make_type(TYPE_VOID, 0, false);
+    if match_token(source, index, current, TK_ARROW) {
+        return_type = parse_simple_type(source, index, current);
+        if !return_type.ok { return false; }
+    }
+
+    if exported {
+        if !write_piece(file, c"static ") { return false; }
+    } else {
+        if !write_piece(file, c"static ") { return false; }
+    }
+    if !emit_type_only(file, return_type) { return false; }
+    if !write_piece(file, c" ") { return false; }
+    if exported {
+        if !write_piece(file, c"aurex_m0_main") { return false; }
+    } else {
+        if !write_range(file, source, name.begin, name.end) { return false; }
+    }
+    if !write_piece(file, c"(") { return false; }
+    if !emit_param_list(file, source, params_start) { return false; }
+    if !write_piece(file, c") ") { return false; }
+    if !emit_block(file, source, index, current) { return false; }
+    if !write_piece(file, c"\n") { return false; }
+
+    if exported {
+        if !write_piece(file, c"int main(int argc, char **argv) {\n") { return false; }
+        if !write_piece(file, c"    return (int)aurex_m0_main((int32_t)argc, (uint8_t **)argv);\n") { return false; }
+        if !write_piece(file, c"}\n") { return false; }
+    }
+    return true;
+}
+
+fn emit_const_decl(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_KW_CONST) { return false; }
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER { return false; }
+    if !expect_token(source, index, current, TK_COLON) { return false; }
+    let ty: SimpleType = parse_simple_type(source, index, current);
+    if !ty.ok { return false; }
+    if !expect_token(source, index, current, TK_EQUAL) { return false; }
+    if !write_piece(file, c"static const ") { return false; }
+    if !emit_type_name(file, source, ty, name) { return false; }
+    if !write_piece(file, c" = ") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
+    if !expect_token(source, index, current, TK_SEMICOLON) { return false; }
+    return write_piece(file, c";\n");
+}
+
+fn emit_extern_fn(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_KW_FN) { return false; }
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER { return false; }
+    if !expect_token(source, index, current, TK_L_PAREN) { return false; }
+    let params_start: i32 = current.begin;
+    if !parse_params_only(source, index, current) { return false; }
+    if !expect_token(source, index, current, TK_R_PAREN) { return false; }
+    var return_type: SimpleType = make_type(TYPE_VOID, 0, false);
+    if match_token(source, index, current, TK_ARROW) {
+        return_type = parse_simple_type(source, index, current);
+        if !return_type.ok { return false; }
+    }
+    if !skip_abi_name(source, index, current) { return false; }
+    if !expect_token(source, index, current, TK_SEMICOLON) { return false; }
+
+    if !emit_type_only(file, return_type) { return false; }
+    if !write_piece(file, c" ") { return false; }
+    if !write_range(file, source, name.begin, name.end) { return false; }
+    if !write_piece(file, c"(") { return false; }
+    if !emit_param_list(file, source, params_start) { return false; }
+    if !write_piece(file, c");\n") { return false; }
+    return true;
+}
+
+fn emit_extern_block(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_KW_EXTERN) { return false; }
+    if !expect_token(source, index, current, TK_KW_C) { return false; }
+    if !expect_token(source, index, current, TK_L_BRACE) { return false; }
+    while !check(current, TK_R_BRACE) && !check(current, TK_EOF) {
+        if !emit_extern_fn(file, source, index, current) {
+            return false;
+        }
+    }
+    return expect_token(source, index, current, TK_R_BRACE);
+}
+
+fn emit_transpile_subset(path: *const u8, source: *const u8) -> bool {
+    let file: *mut OutputFile = output_open(path);
+    if file == null {
+        return false;
+    }
+
+    if !write_piece(file, c"#include <stdint.h>\n") { output_close(file); return false; }
+    if !write_piece(file, c"#include <stddef.h>\n") { output_close(file); return false; }
+    if !write_piece(file, c"#include <stdbool.h>\n") { output_close(file); return false; }
+    if !write_piece(file, c"#include <stdlib.h>\n\n") { output_close(file); return false; }
+
+    var index: i32 = 0;
+    var current: TokenSpan = scan_token(source, &index);
+    if !parse_module_or_import(source, &index, &current, TK_KW_MODULE) {
+        output_close(file);
+        return false;
+    }
+    while check(&current, TK_KW_IMPORT) {
+        if !parse_module_or_import(source, &index, &current, TK_KW_IMPORT) {
+            output_close(file);
+            return false;
+        }
+    }
+
+    while !check(&current, TK_EOF) {
+        if check(&current, TK_KW_EXTERN) {
+            if !emit_extern_block(file, source, &index, &current) { output_close(file); return false; }
+        } else {
+            if check(&current, TK_KW_CONST) {
+                if !emit_const_decl(file, source, &index, &current) { output_close(file); return false; }
+            } else {
+                if check(&current, TK_KW_FN) {
+                    if !emit_function(file, source, &index, &current, false) { output_close(file); return false; }
+                } else {
+                    if check(&current, TK_KW_EXPORT) {
+                        if !emit_function(file, source, &index, &current, true) { output_close(file); return false; }
+                    } else {
+                        output_close(file);
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    return output_close(file);
+}

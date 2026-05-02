@@ -1,0 +1,58 @@
+module runtime.mem;
+
+import runtime.c;
+
+struct Arena {
+    base: *mut u8;
+    capacity: usize;
+    used: usize;
+}
+
+fn is_power_of_two(value: usize) -> bool {
+    if value == cast(usize, 0) {
+        return false;
+    }
+    return (value & (value - cast(usize, 1))) == cast(usize, 0);
+}
+
+fn align_forward_addr(address: usize, alignment: usize) -> usize {
+    if alignment == cast(usize, 0) {
+        return address;
+    }
+    let mask: usize = alignment - cast(usize, 1);
+    return (address + mask) & ~mask;
+}
+
+fn arena_create(capacity: usize) -> Arena {
+    let data: *mut u8 = ptr_cast(*mut u8, malloc(capacity));
+    return Arena { base: data, capacity: capacity, used: cast(usize, 0) };
+}
+
+fn arena_destroy(arena: *mut Arena) -> void {
+    if arena.base != null {
+        free(ptr_cast(*mut void, arena.base));
+    }
+    arena.base = null;
+    arena.capacity = cast(usize, 0);
+    arena.used = cast(usize, 0);
+}
+
+fn arena_alloc(arena: *mut Arena, size: usize, alignment: usize) -> *mut u8 {
+    if arena.base == null {
+        return null;
+    }
+    if !is_power_of_two(alignment) {
+        return null;
+    }
+    let absolute: usize = ptr_addr(arena.base) + arena.used;
+    let aligned: usize = align_forward_addr(absolute, alignment);
+    let padding: usize = aligned - ptr_addr(arena.base);
+    if padding > arena.capacity {
+        return null;
+    }
+    if size > arena.capacity - padding {
+        return null;
+    }
+    arena.used = padding + size;
+    return ptr_from_addr(*mut u8, aligned);
+}

@@ -213,6 +213,7 @@ void Parser::synchronize() {
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
         case TokenKind::kw_enum:
+        case TokenKind::kw_opaque:
         case TokenKind::kw_const:
         case TokenKind::kw_extern:
         case TokenKind::kw_export:
@@ -278,6 +279,9 @@ syntax::ItemId Parser::parse_item() {
     }
     if (check(TokenKind::kw_enum)) {
         return parse_enum_decl();
+    }
+    if (check(TokenKind::kw_opaque)) {
+        return parse_opaque_struct_decl();
     }
     if (check(TokenKind::kw_extern)) {
         return parse_extern_block();

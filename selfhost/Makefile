@@ -111,7 +111,9 @@ check: all
 	test "$$($(BUILD_DIR)/stage1_lang.stage1)" = "selfhost stage1 lang ok"
 	$(BUILD_DIR)/m0c_stage1 $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'typedef struct NativeFile NativeFile;' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'typedef struct TopOpaque TopOpaque;' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'Stage1Tag_one' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'const Cell \*const_cell' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uintptr_t' $(BUILD_DIR)/stage1_core.stage1.c

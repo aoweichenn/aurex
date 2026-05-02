@@ -334,19 +334,23 @@ fn emit_subset_source_items(file: *mut OutputFile, source: *const u8) -> bool {
             if check(&current, TK_KW_CONST) {
                 if !emit_const_decl(file, source, &index, &current) { return false; }
             } else {
-                if check(&current, TK_KW_STRUCT) {
-                    if !emit_struct_decl(file, source, &index, &current) { return false; }
+                if check(&current, TK_KW_OPAQUE) {
+                    if !emit_opaque_struct_decl(file, source, &index, &current) { return false; }
                 } else {
-                    if check(&current, TK_KW_ENUM) {
-                        if !emit_enum_decl(file, source, &index, &current) { return false; }
+                    if check(&current, TK_KW_STRUCT) {
+                        if !emit_struct_decl(file, source, &index, &current) { return false; }
                     } else {
-                        if check(&current, TK_KW_FN) {
-                            if !emit_function(file, source, &index, &current, false) { return false; }
+                        if check(&current, TK_KW_ENUM) {
+                            if !emit_enum_decl(file, source, &index, &current) { return false; }
                         } else {
-                            if check(&current, TK_KW_EXPORT) {
-                                if !emit_function(file, source, &index, &current, true) { return false; }
+                            if check(&current, TK_KW_FN) {
+                                if !emit_function(file, source, &index, &current, false) { return false; }
                             } else {
-                                return false;
+                                if check(&current, TK_KW_EXPORT) {
+                                    if !emit_function(file, source, &index, &current, true) { return false; }
+                                } else {
+                                    return false;
+                                }
                             }
                         }
                     }

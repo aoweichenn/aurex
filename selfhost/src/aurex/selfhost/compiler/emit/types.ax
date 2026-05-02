@@ -47,8 +47,8 @@ fn make_type(base: i32, pointers: i32, const_base: bool) -> SimpleType {
     return SimpleType { ok: true, base: base, pointers: pointers, const_base: const_base, array_count: 0, array_is_outer: false, name_begin: 0, name_end: 0 };
 }
 
-fn make_named_type(name: TokenSpan, pointers: i32) -> SimpleType {
-    return SimpleType { ok: true, base: TYPE_NAMED, pointers: pointers, const_base: false, array_count: 0, array_is_outer: false, name_begin: name.begin, name_end: name.end };
+fn make_named_type(name: TokenSpan, pointers: i32, const_base: bool) -> SimpleType {
+    return SimpleType { ok: true, base: TYPE_NAMED, pointers: pointers, const_base: const_base, array_count: 0, array_is_outer: false, name_begin: name.begin, name_end: name.end };
 }
 
 fn with_array_count(ty: SimpleType, count: i32, is_outer: bool) -> SimpleType {
@@ -103,7 +103,7 @@ fn parse_type_base(source: *const u8, index: *mut i32, current: *mut TokenSpan, 
     if match_token(source, index, current, TK_KW_STR) { return with_array_count(make_type(TYPE_STR, pointer_count, saw_const), array_count, array_is_outer); }
     if check(current, TK_IDENTIFIER) {
         let name: TokenSpan = advance(source, index, current);
-        return with_array_count(make_named_type(name, pointer_count), array_count, array_is_outer);
+        return with_array_count(make_named_type(name, pointer_count, saw_const), array_count, array_is_outer);
     }
     return make_bad_type();
 }
@@ -148,8 +148,8 @@ fn parse_simple_type(source: *const u8, index: *mut i32, current: *mut TokenSpan
 }
 
 fn emit_base_type(file: *mut OutputFile, source: *const u8, ty: SimpleType) -> bool {
-    if ty.const_base && ty.base == TYPE_U8 {
-        return write_piece(file, c"const uint8_t");
+    if ty.const_base {
+        if !write_piece(file, c"const ") { return false; }
     }
     if ty.base == TYPE_VOID { return write_piece(file, c"void"); }
     if ty.base == TYPE_BOOL { return write_piece(file, c"bool"); }

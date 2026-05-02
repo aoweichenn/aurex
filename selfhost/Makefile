@@ -34,6 +34,9 @@ check: all
 	grep -q 'aurex.selfhost.compiler.driver' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.subset' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit_c' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.emit.bundle' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.emit.item' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.emit.stmt' $(BUILD_DIR)/m0c_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
 	$(BUILD_DIR)/lexer_file ../examples/hello.ax > $(BUILD_DIR)/lexer_file_hello.tokens
 	diff -u ../tests/golden/selfhost_lexer_dump.tokens $(BUILD_DIR)/lexer_dump.tokens
@@ -50,6 +53,11 @@ check: all
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_smoke.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_smoke.stage1.c -o $(BUILD_DIR)/lexer_smoke.stage1
 	test "$$($(BUILD_DIR)/lexer_smoke.stage1)" = "selfhost lexer sequence ok"
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/lexer_ranges.ax $(BUILD_DIR)/lexer_ranges.stage1.c
+	grep -q 'static bool token_is' $(BUILD_DIR)/lexer_ranges.stage1.c
+	grep -q 'scan_next' $(BUILD_DIR)/lexer_ranges.stage1.c
+	$(CC) $(BUILD_DIR)/lexer_ranges.stage1.c -o $(BUILD_DIR)/lexer_ranges.stage1
+	test "$$($(BUILD_DIR)/lexer_ranges.stage1)" = "selfhost lexer ranges ok"
 
 clean:
 	rm -rf $(BUILD_DIR)

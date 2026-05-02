@@ -1,0 +1,97 @@
+module aurex.selfhost.compiler.emit.types;
+
+import aurex.selfhost.compiler.emit.cursor;
+import aurex.selfhost.compiler.emit.writer;
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.lexer.core;
+
+const TYPE_VOID: i32 = 0;
+const TYPE_BOOL: i32 = 1;
+const TYPE_I32: i32 = 2;
+const TYPE_U8: i32 = 3;
+const TYPE_NAMED: i32 = 4;
+
+struct SimpleType {
+    ok: bool;
+    base: i32;
+    pointers: i32;
+    const_base: bool;
+    name_begin: i32;
+    name_end: i32;
+}
+
+fn make_bad_type() -> SimpleType {
+    return SimpleType { ok: false, base: TYPE_VOID, pointers: 0, const_base: false, name_begin: 0, name_end: 0 };
+}
+
+fn make_type(base: i32, pointers: i32, const_base: bool) -> SimpleType {
+    return SimpleType { ok: true, base: base, pointers: pointers, const_base: const_base, name_begin: 0, name_end: 0 };
+}
+
+fn make_named_type(name: TokenSpan, pointers: i32) -> SimpleType {
+    return SimpleType { ok: true, base: TYPE_NAMED, pointers: pointers, const_base: false, name_begin: name.begin, name_end: name.end };
+}
+
+fn parse_simple_type(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> SimpleType {
+    var pointer_count: i32 = 0;
+    var saw_const: bool = false;
+    while match_token(source, index, current, TK_STAR) {
+        pointer_count = pointer_count + 1;
+        if match_token(source, index, current, TK_KW_CONST) {
+            saw_const = true;
+        } else {
+            if !expect_token(source, index, current, TK_KW_MUT) {
+                return make_bad_type();
+            }
+        }
+    }
+
+    if match_token(source, index, current, TK_KW_VOID) { return make_type(TYPE_VOID, pointer_count, saw_const); }
+    if match_token(source, index, current, TK_KW_BOOL) { return make_type(TYPE_BOOL, pointer_count, saw_const); }
+    if match_token(source, index, current, TK_KW_I32) { return make_type(TYPE_I32, pointer_count, saw_const); }
+    if match_token(source, index, current, TK_KW_U8) { return make_type(TYPE_U8, pointer_count, saw_const); }
+    if check(current, TK_IDENTIFIER) {
+        let name: TokenSpan = advance(source, index, current);
+        return make_named_type(name, pointer_count);
+    }
+    return make_bad_type();
+}
+
+fn emit_base_type(file: *mut OutputFile, source: *const u8, ty: SimpleType) -> bool {
+    if ty.const_base && ty.base == TYPE_U8 {
+        return write_piece(file, c"const uint8_t");
+    }
+    if ty.base == TYPE_VOID { return write_piece(file, c"void"); }
+    if ty.base == TYPE_BOOL { return write_piece(file, c"bool"); }
+    if ty.base == TYPE_I32 { return write_piece(file, c"int32_t"); }
+    if ty.base == TYPE_U8 { return write_piece(file, c"uint8_t"); }
+    if ty.base == TYPE_NAMED { return write_range(file, source, ty.name_begin, ty.name_end); }
+    return false;
+}
+
+fn emit_type_name(file: *mut OutputFile, source: *const u8, ty: SimpleType, name: TokenSpan) -> bool {
+    if !ty.ok {
+        return false;
+    }
+    if !emit_base_type(file, source, ty) { return false; }
+    if !write_piece(file, c" ") { return false; }
+    var count: i32 = 0;
+    while count < ty.pointers {
+        if !write_piece(file, c"*") { return false; }
+        count = count + 1;
+    }
+    return write_range(file, source, name.begin, name.end);
+}
+
+fn emit_type_only(file: *mut OutputFile, source: *const u8, ty: SimpleType) -> bool {
+    if !ty.ok {
+        return false;
+    }
+    if !emit_base_type(file, source, ty) { return false; }
+    var count: i32 = 0;
+    while count < ty.pointers {
+        if !write_piece(file, c"*") { return false; }
+        count = count + 1;
+    }
+    return true;
+}

@@ -1,0 +1,11 @@
+module aurex.selfhost.compiler.emit.writer;
+
+import aurex.selfhost.compiler.io;
+
+fn write_piece(file: *mut OutputFile, text: *const u8) -> bool {
+    return output_write_c_string(file, text);
+}
+
+fn write_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
+    return output_write_source_range(file, source, begin, end);
+}

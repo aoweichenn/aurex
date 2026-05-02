@@ -1,0 +1,80 @@
+module aurex.selfhost.compiler.emit.expr;
+
+import aurex.selfhost.compiler.emit.cursor;
+import aurex.selfhost.compiler.emit.writer;
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.lexer.core;
+
+fn emit_token_expr(file: *mut OutputFile, source: *const u8, token: TokenSpan) -> bool {
+    if token.kind == TK_C_STRING {
+        if !write_piece(file, c"((const uint8_t *)") { return false; }
+        if !write_range(file, source, token.begin + 1, token.end) { return false; }
+        return write_piece(file, c")");
+    }
+    if token.kind == TK_BYTE {
+        return write_range(file, source, token.begin + 1, token.end);
+    }
+    if token.kind == TK_KW_TRUE {
+        return write_piece(file, c"true ");
+    }
+    if token.kind == TK_KW_FALSE {
+        return write_piece(file, c"false ");
+    }
+    if token.kind == TK_KW_NULL {
+        return write_piece(file, c"NULL ");
+    }
+    if token.kind == TK_IDENTIFIER || token.kind == TK_INTEGER {
+        if !write_range(file, source, token.begin, token.end) { return false; }
+        return write_piece(file, c" ");
+    }
+    return write_range(file, source, token.begin, token.end);
+}
+
+fn emit_struct_literal_tail(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, type_name: TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_L_BRACE) {
+        return false;
+    }
+    if !write_piece(file, c"(") { return false; }
+    if !write_range(file, source, type_name.begin, type_name.end) { return false; }
+    if !write_piece(file, c"){") { return false; }
+    var first: bool = true;
+    while !check(current, TK_R_BRACE) && !check(current, TK_EOF) {
+        let field: TokenSpan = advance(source, index, current);
+        if field.kind != TK_IDENTIFIER { return false; }
+        if !expect_token(source, index, current, TK_COLON) { return false; }
+        if !first {
+            if !write_piece(file, c", ") { return false; }
+        }
+        if !write_piece(file, c".") { return false; }
+        if !write_range(file, source, field.begin, field.end) { return false; }
+        if !write_piece(file, c" = ") { return false; }
+        while !check(current, TK_COMMA) && !check(current, TK_R_BRACE) && !check(current, TK_EOF) {
+            let value: TokenSpan = advance(source, index, current);
+            if !emit_token_expr(file, source, value) { return false; }
+        }
+        first = false;
+        if check(current, TK_COMMA) {
+            advance(source, index, current);
+        }
+    }
+    if !expect_token(source, index, current, TK_R_BRACE) {
+        return false;
+    }
+    return write_piece(file, c"}");
+}
+
+fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, stop_kind: i32) -> bool {
+    while !check(current, stop_kind) && !check(current, TK_EOF) {
+        let token: TokenSpan = advance(source, index, current);
+        if token.kind == TK_IDENTIFIER && check(current, TK_L_BRACE) && stop_kind != TK_L_BRACE {
+            if !emit_struct_literal_tail(file, source, index, current, token) {
+                return false;
+            }
+        } else {
+            if !emit_token_expr(file, source, token) {
+                return false;
+            }
+        }
+    }
+    return true;
+}

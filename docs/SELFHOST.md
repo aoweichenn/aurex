@@ -92,8 +92,13 @@ Current exact capability:
 - The expanding token-stream emitter now handles the selfhost `cast` and
   `ptr_cast`/`bit_cast` forms it needs, maps all primitive scalar type spellings
   used by M0, supports simple assignment statements, `break`, `continue`, empty
-  `return`, and emits C wrappers for `extern c @name("...")` declarations. That
-  lets Stage1 compile
+  `return`, and emits C wrappers for `extern c @name("...")` declarations.
+  `export c fn main` still receives the host entry wrapper; non-main
+  `export c fn` declarations are emitted directly as C ABI functions with
+  forward declarations. Assignment handling lives in `emit.assign` and now
+  covers non-bare left sides used by the selfhost smoke path, including
+  pointer-field writes. That lets
+  Stage1 compile
   `lexer.core + lexer.dump + lexer_file`, link the result with
   `selfhost/runtime/runtime.c`, and reproduce the file-backed lexer golden
   output for `examples/hello.ax`.
@@ -143,16 +148,18 @@ core scanner now returns token ranges through `TokenSpan`.
 - Build `m0c-stage1`.
 - Compile selfhost sources with Stage1.
 
-M0V0.1.8 now has the first Stage F slice: `m0c_stage1.ax` can compile
-`examples/hello.ax` and `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` through
-the M0-written lexer/parser/emitter path.
+M0V0.1.8 now has a Stage F/G smoke slice: `m0c_stage1.ax` can compile
+`examples/hello.ax`, `selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, and the
+current selfhost compiler smoke bundle through the M0-written lexer/parser/
+emitter path.
 
 ### Stage G: Fixed Point
 
 - Stage0 builds Stage1.
 - Stage1 builds Stage2.
-- Stage1 and Stage2 generated C outputs match after normalizing timestamps and
-  paths.
+- Stage2 builds Stage3 from the same selfhost compiler smoke sources.
+- Stage2 and Stage3 generated compiler C outputs match byte-for-byte.
+- Stage2 and Stage3 generated seed/core smoke outputs match byte-for-byte.
 
 ## Current Command
 
@@ -163,7 +170,7 @@ tools/bootstrap_chain.sh
 Expected output:
 
 ```text
-bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/ranges/dump/file + parser seed + M0 stage1 compiler slice + standalone bootstrap seed
+bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/ranges/dump/file + parser seed + M0 stage1/stage2/stage3 fixed-point smoke + standalone bootstrap seed
 ```
 
 The selfhost subtree also has its own entry point:
@@ -195,17 +202,21 @@ important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
 token kind sequence for the local corpus, the first M0 parser seed can parse a
 fixed module/import/extern/function-signature source, and the M0-written Stage1
 compiler slice can compile `examples/hello.ax`, the selfhost seed, and a Stage2
-smoke compiler bundle into runnable C. It also proves Stage1 bundle paths for
-lexer smoke, lexer ranges, the parser seed smoke, and the file-backed lexer tool
-can compile and run. The file-backed Stage1 bundle also proves explicit runtime
-ABI bindings survive through the M0-written emitter path. `stage1_lang.ax`
+smoke compiler bundle into runnable C. The script now also uses Stage2 to build
+a Stage3 smoke compiler and requires Stage2/Stage3 compiler output, seed output,
+and core smoke output to match byte-for-byte. It also proves Stage1 bundle paths
+for lexer smoke, lexer ranges, the parser seed smoke, and the file-backed lexer
+tool can compile and run. The file-backed Stage1 bundle also proves explicit
+runtime ABI bindings survive through the M0-written emitter path. `stage1_lang.ax`
 separately covers the
 newly expanded Stage1 statement/type surface, including scalar primitives,
 `str`, assignment, loop jumps, and empty `return`. `stage1_core.ax` covers the
 next core type layer: `enum`, `opaque struct`, `*mut [N]T` pointer-to-array
 declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, module-qualified
-C symbol output, and pointer field access for non-special pointer parameter
-names.
+C symbol output, pointer field access for non-special pointer parameter names,
+recursive emission of nested struct literal values, and non-main
+`export c fn` output/prototypes, plus pointer-field assignment emission through
+`emit.assign`.
 
 They also assert that `selfhost/src/aurex/selfhost/tool/lexer_file.ax` and
 `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` load the expected shared

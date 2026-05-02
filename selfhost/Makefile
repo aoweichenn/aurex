@@ -15,6 +15,23 @@ STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
 PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/m0c_stage1
+STAGE_COMPILER_SOURCES := \
+	src/aurex/selfhost/lexer/core.ax \
+	src/aurex/selfhost/compiler/io.ax \
+	src/aurex/selfhost/compiler/subset.ax \
+	src/aurex/selfhost/compiler/emit/cursor.ax \
+	src/aurex/selfhost/compiler/emit/writer.ax \
+	src/aurex/selfhost/compiler/emit/symbols.ax \
+	src/aurex/selfhost/compiler/emit/types.ax \
+	src/aurex/selfhost/compiler/emit/expr.ax \
+	src/aurex/selfhost/compiler/emit/assign.ax \
+	src/aurex/selfhost/compiler/emit/stmt.ax \
+	src/aurex/selfhost/compiler/emit/item.ax \
+	src/aurex/selfhost/compiler/emit/bundle.ax \
+	src/aurex/selfhost/compiler/emit_subset.ax \
+	src/aurex/selfhost/compiler/emit_c.ax \
+	src/aurex/selfhost/compiler/driver.ax \
+	$(STAGE1_SRC)
 
 all: $(PROGRAMS)
 
@@ -70,6 +87,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.emit_c' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.bundle' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.symbols' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.emit.assign' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.item' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.stmt' $(BUILD_DIR)/m0c_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
@@ -117,11 +135,30 @@ check: all
 	grep -q 'const Cell \*const_cell' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'pair_ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'pair_ptr->value  = value' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'int32_t exported_value();' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'int32_t exported_value()' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'WrappedCell' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uintptr_t' $(BUILD_DIR)/stage1_core.stage1.c
 	$(CC) $(BUILD_DIR)/stage1_core.stage1.c -o $(BUILD_DIR)/stage1_core.stage1
 	test "$$($(BUILD_DIR)/stage1_core.stage1)" = "selfhost stage1 core ok"
+	$(BUILD_DIR)/m0c_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage2.smoke.c
+	$(CC) $(BUILD_DIR)/m0c_stage2.smoke.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage2.smoke
+	$(BUILD_DIR)/m0c_stage2.smoke $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage3.smoke.c
+	cmp -s $(BUILD_DIR)/m0c_stage2.smoke.c $(BUILD_DIR)/m0c_stage3.smoke.c
+	$(CC) $(BUILD_DIR)/m0c_stage3.smoke.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage3.smoke
+	$(BUILD_DIR)/m0c_stage2.smoke $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage2.c
+	$(BUILD_DIR)/m0c_stage3.smoke $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage3.c
+	cmp -s $(BUILD_DIR)/m0c_seed.stage2.c $(BUILD_DIR)/m0c_seed.stage3.c
+	$(CC) $(BUILD_DIR)/m0c_seed.stage3.c -o $(BUILD_DIR)/m0c_seed.stage3
+	test "$$($(BUILD_DIR)/m0c_seed.stage3)" = "Aurex M0 selfhost seed"
+	$(BUILD_DIR)/m0c_stage2.smoke $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage2.c
+	$(BUILD_DIR)/m0c_stage3.smoke $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage3.c
+	cmp -s $(BUILD_DIR)/stage1_core.stage2.c $(BUILD_DIR)/stage1_core.stage3.c
+	$(CC) $(BUILD_DIR)/stage1_core.stage3.c -o $(BUILD_DIR)/stage1_core.stage3
+	test "$$($(BUILD_DIR)/stage1_core.stage3)" = "selfhost stage1 core ok"
 
 clean:
 	rm -rf $(BUILD_DIR)

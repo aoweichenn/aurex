@@ -1,5 +1,6 @@
 module aurex.selfhost.compiler.emit.stmt;
 
+import aurex.selfhost.compiler.emit.assign;
 import aurex.selfhost.compiler.emit.cursor;
 import aurex.selfhost.compiler.emit.expr;
 import aurex.selfhost.compiler.emit.types;
@@ -77,24 +78,6 @@ fn emit_expr_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, cur
     return write_piece(file, c";\n");
 }
 
-fn emit_assign_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
-    let name: TokenSpan = advance(source, index, current);
-    if name.kind != TK_IDENTIFIER {
-        return false;
-    }
-    if !expect_token(source, index, current, TK_EQUAL) {
-        return false;
-    }
-    if !write_piece(file, c"    ") { return false; }
-    if !write_range(file, source, name.begin, name.end) { return false; }
-    if !write_piece(file, c" = ") { return false; }
-    if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
-    if !expect_token(source, index, current, TK_SEMICOLON) {
-        return false;
-    }
-    return write_piece(file, c";\n");
-}
-
 fn emit_jump_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, text: *const u8) -> bool {
     advance(source, index, current);
     if !expect_token(source, index, current, TK_SEMICOLON) {
@@ -124,12 +107,8 @@ fn emit_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current:
     if check(current, TK_KW_CONTINUE) {
         return emit_jump_stmt(file, source, index, current, c"continue");
     }
-    if check(current, TK_IDENTIFIER) {
-        var look_index: i32 = current.end;
-        var look: TokenSpan = scan_token(source, &look_index);
-        if look.kind == TK_EQUAL {
-            return emit_assign_stmt(file, source, index, current);
-        }
+    if stmt_has_assignment(source, *current) {
+        return emit_assign_stmt(file, source, index, current);
     }
     return emit_expr_stmt(file, source, index, current);
 }

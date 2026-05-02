@@ -228,10 +228,7 @@ fn emit_struct_literal_tail(file: *mut OutputFile, source: *const u8, index: *mu
         if !write_piece(file, c".") { return false; }
         if !write_range(file, source, field.begin, field.end) { return false; }
         if !write_piece(file, c" = ") { return false; }
-        while !check(current, TK_COMMA) && !check(current, TK_R_BRACE) && !check(current, TK_EOF) {
-            let value: TokenSpan = advance(source, index, current);
-            if !emit_token_expr(file, source, value) { return false; }
-        }
+        if !emit_expr_until2(file, source, index, current, TK_COMMA, TK_R_BRACE) { return false; }
         first = false;
         if check(current, TK_COMMA) {
             advance(source, index, current);
@@ -315,8 +312,48 @@ fn emit_ptr_from_addr_tail(file: *mut OutputFile, source: *const u8, index: *mut
     return write_piece(file, c"))");
 }
 
-fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, stop_kind: i32) -> bool {
-    while !check(current, stop_kind) && !check(current, TK_EOF) {
+fn emit_expr_stop_reached(current: *mut TokenSpan, stop0: i32, stop1: i32, paren_depth: i32, bracket_depth: i32, brace_depth: i32) -> bool {
+    if paren_depth != 0 || bracket_depth != 0 || brace_depth != 0 {
+        return false;
+    }
+    return check(current, stop0) || check(current, stop1);
+}
+
+fn emit_expr_track_token(token: TokenSpan, paren_depth: *mut i32, bracket_depth: *mut i32, brace_depth: *mut i32) -> void {
+    if token.kind == TK_L_PAREN {
+        *paren_depth = *paren_depth + 1;
+    } else {
+        if token.kind == TK_R_PAREN {
+            if *paren_depth > 0 { *paren_depth = *paren_depth - 1; }
+        } else {
+            if token.kind == TK_L_BRACKET {
+                *bracket_depth = *bracket_depth + 1;
+            } else {
+                if token.kind == TK_R_BRACKET {
+                    if *bracket_depth > 0 { *bracket_depth = *bracket_depth - 1; }
+                } else {
+                    if token.kind == TK_L_BRACE {
+                        *brace_depth = *brace_depth + 1;
+                    } else {
+                        if token.kind == TK_R_BRACE {
+                            if *brace_depth > 0 { *brace_depth = *brace_depth - 1; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn emit_expr_allows_struct_literal(stop0: i32, stop1: i32) -> bool {
+    return stop0 != TK_L_BRACE && stop1 != TK_L_BRACE;
+}
+
+fn emit_expr_until2(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, stop0: i32, stop1: i32) -> bool {
+    var paren_depth: i32 = 0;
+    var bracket_depth: i32 = 0;
+    var brace_depth: i32 = 0;
+    while !check(current, TK_EOF) && !emit_expr_stop_reached(current, stop0, stop1, paren_depth, bracket_depth, brace_depth) {
         let token: TokenSpan = advance(source, index, current);
         if token.kind == TK_KW_CAST || token.kind == TK_KW_PTR_CAST || token.kind == TK_KW_BIT_CAST {
             if !emit_cast_expr_tail(file, source, index, current) {
@@ -343,7 +380,7 @@ fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, cu
                                 return false;
                             }
         } else {
-            if token.kind == TK_IDENTIFIER && check(current, TK_L_BRACE) && stop_kind != TK_L_BRACE {
+            if token.kind == TK_IDENTIFIER && check(current, TK_L_BRACE) && emit_expr_allows_struct_literal(stop0, stop1) {
             if !emit_struct_literal_tail(file, source, index, current, token) {
                 return false;
             }
@@ -361,6 +398,7 @@ fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, cu
             if !emit_token_expr(file, source, token) {
                 return false;
             }
+            emit_expr_track_token(token, &paren_depth, &bracket_depth, &brace_depth);
         }
         }
         }
@@ -370,4 +408,8 @@ fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, cu
         }
     }
     return true;
+}
+
+fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, stop_kind: i32) -> bool {
+    return emit_expr_until2(file, source, index, current, stop_kind, TK_EOF);
 }

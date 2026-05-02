@@ -89,9 +89,11 @@ The current Stage1 compiler entry is
 `selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`. Stage0 compiles it to a native
 executable; that M0-written executable can compile `examples/hello.ax`,
 `selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, the selfhost lexer/parser smoke
-bundles, and a Stage2 smoke compiler bundle into runnable C. This is now a real
-Stage1 -> Stage2 smoke chain, not the final fixed point: Stage1 still does not
-compile the complete production compiler.
+bundles, and a Stage2 smoke compiler bundle into runnable C. The bootstrap chain
+then uses Stage2 to rebuild the same compiler smoke bundle as Stage3 and checks
+that the Stage2/Stage3 compiler C and smoke outputs match byte-for-byte. This is
+a real fixed-point smoke chain, not the final production fixed point: Stage1
+still does not compile the complete C++ production compiler replacement.
 
 The selfhost source tree is now role-based:
 
@@ -111,10 +113,16 @@ current selfhost `cast`/`ptr_cast`/`bit_cast` syntax, all M0 primitive scalar
 spellings, simple assignment statements, `break`, `continue`, empty `return`,
 `enum`, opaque C structs, one-dimensional arrays, pointer-to-array C
 declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, and emits
-small C wrappers for `extern c @name("...")`. It also emits module-qualified C
+small C wrappers for `extern c @name("...")`. `export c fn main` still lowers
+through the host `main` wrapper, while other `export c fn` declarations are
+emitted directly as C ABI functions with forward declarations. Assignment
+emission is split into `emit.assign` and now handles non-bare left sides such as
+pointer-field writes. It also emits module-qualified C
 symbol macros using the same `m0_<module_path>_<name>` spelling as Stage0, and
 uses a small source scan to choose `.` versus `->` for pointer field access in
-the Stage1 subset. Stage1 can now compile `lexer.core.ax + lexer.dump.ax +
+the Stage1 subset. Nested struct literal values are emitted recursively, so
+smoke sources can initialize nested records without falling back to hand-written
+C. Stage1 can now compile `lexer.core.ax + lexer.dump.ax +
 lexer_file.ax`, link it with `selfhost/runtime/runtime.c`, and reproduce the
 lexer golden output for `examples/hello.ax`.
 

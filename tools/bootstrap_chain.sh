@@ -54,6 +54,12 @@ STAGE2_SEED_C="${BUILD_DIR}/m0c_seed.stage2.c"
 STAGE2_SEED_BIN="${BUILD_DIR}/m0c_seed.stage2"
 STAGE2_CORE_C="${BUILD_DIR}/stage1_core.stage2.c"
 STAGE2_CORE_BIN="${BUILD_DIR}/stage1_core.stage2"
+STAGE3_C="${BUILD_DIR}/m0c_stage3.smoke.c"
+STAGE3_BIN="${BUILD_DIR}/m0c_stage3.smoke"
+STAGE3_SEED_C="${BUILD_DIR}/m0c_seed.stage3.c"
+STAGE3_SEED_BIN="${BUILD_DIR}/m0c_seed.stage3"
+STAGE3_CORE_C="${BUILD_DIR}/stage1_core.stage3.c"
+STAGE3_CORE_BIN="${BUILD_DIR}/stage1_core.stage3"
 BOOT_C="${BUILD_DIR}/hello.bootstrap.c"
 BOOT_BIN="${BUILD_DIR}/hello.bootstrap"
 
@@ -156,6 +162,10 @@ grep -q 'Stage1Tag_one' "${STAGE1_CORE_STAGE1_C}"
 grep -q 'const Cell \*const_cell' "${STAGE1_CORE_STAGE1_C}"
 grep -q 'ptr->value' "${STAGE1_CORE_STAGE1_C}"
 grep -q 'pair_ptr->value' "${STAGE1_CORE_STAGE1_C}"
+grep -q 'pair_ptr->value  = value' "${STAGE1_CORE_STAGE1_C}"
+grep -q 'int32_t exported_value();' "${STAGE1_CORE_STAGE1_C}"
+grep -q 'int32_t exported_value()' "${STAGE1_CORE_STAGE1_C}"
+grep -q 'WrappedCell' "${STAGE1_CORE_STAGE1_C}"
 grep -q 'uint8_t (\*buf)\[4\]' "${STAGE1_CORE_STAGE1_C}"
 grep -q 'alignof' "${STAGE1_CORE_STAGE1_C}"
 grep -q 'uintptr_t' "${STAGE1_CORE_STAGE1_C}"
@@ -172,6 +182,7 @@ test "${STAGE1_CORE_STAGE1_OUT}" = "selfhost stage1 core ok"
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/symbols.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/expr.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/assign.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/stmt.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/item.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/bundle.ax" \
@@ -188,9 +199,47 @@ test "${STAGE2_SEED_OUT}" = "Aurex M0 selfhost seed"
 "${STAGE2_BIN}" "${STAGE1_CORE}" "${STAGE2_CORE_C}"
 grep -q 'ptr->value' "${STAGE2_CORE_C}"
 grep -q 'pair_ptr->value' "${STAGE2_CORE_C}"
+grep -q 'pair_ptr->value  = value' "${STAGE2_CORE_C}"
 cc "${STAGE2_CORE_C}" -o "${STAGE2_CORE_BIN}"
 STAGE2_CORE_OUT="$("${STAGE2_CORE_BIN}")"
 test "${STAGE2_CORE_OUT}" = "selfhost stage1 core ok"
+
+"${STAGE2_BIN}" \
+    "${ROOT}/selfhost/src/aurex/selfhost/lexer/core.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/subset.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/cursor.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/writer.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/symbols.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/types.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/expr.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/assign.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/stmt.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/item.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/bundle.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit_subset.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit_c.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/driver.ax" \
+    "${STAGE1}" \
+    "${STAGE3_C}"
+cmp -s "${STAGE2_C}" "${STAGE3_C}"
+cc "${STAGE3_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${STAGE3_BIN}"
+"${STAGE3_BIN}" "${SEED}" "${STAGE3_SEED_C}"
+cmp -s "${STAGE2_SEED_C}" "${STAGE3_SEED_C}"
+cc "${STAGE3_SEED_C}" -o "${STAGE3_SEED_BIN}"
+STAGE3_SEED_OUT="$("${STAGE3_SEED_BIN}")"
+test "${STAGE3_SEED_OUT}" = "Aurex M0 selfhost seed"
+"${STAGE3_BIN}" "${STAGE1_CORE}" "${STAGE3_CORE_C}"
+cmp -s "${STAGE2_CORE_C}" "${STAGE3_CORE_C}"
+grep -q 'ptr->value' "${STAGE3_CORE_C}"
+grep -q 'pair_ptr->value' "${STAGE3_CORE_C}"
+grep -q 'pair_ptr->value  = value' "${STAGE3_CORE_C}"
+grep -q 'int32_t exported_value();' "${STAGE3_CORE_C}"
+grep -q 'int32_t exported_value()' "${STAGE3_CORE_C}"
+grep -q 'WrappedCell' "${STAGE3_CORE_C}"
+cc "${STAGE3_CORE_C}" -o "${STAGE3_CORE_BIN}"
+STAGE3_CORE_OUT="$("${STAGE3_CORE_BIN}")"
+test "${STAGE3_CORE_OUT}" = "selfhost stage1 core ok"
 
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_DUMP}"
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_DUMP}" -o "${LEXER_DUMP_C}"
@@ -215,4 +264,4 @@ cc "${BOOT_C}" -o "${BOOT_BIN}"
 BOOT_OUT="$("${BOOT_BIN}")"
 test "${BOOT_OUT}" = "hello from Aurex M0"
 
-echo "bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/ranges/dump/file + parser seed + M0 stage1/stage2 compiler smoke + standalone bootstrap seed"
+echo "bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/ranges/dump/file + parser seed + M0 stage1/stage2/stage3 fixed-point smoke + standalone bootstrap seed"

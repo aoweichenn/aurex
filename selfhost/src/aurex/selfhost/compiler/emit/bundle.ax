@@ -8,7 +8,12 @@ fn emit_subset_prelude(file: *mut OutputFile) -> bool {
     if !write_piece(file, c"#include <stdint.h>\n") { return false; }
     if !write_piece(file, c"#include <stddef.h>\n") { return false; }
     if !write_piece(file, c"#include <stdbool.h>\n") { return false; }
+    if !write_piece(file, c"#include <stdalign.h>\n") { return false; }
     if !write_piece(file, c"#include <stdlib.h>\n\n") { return false; }
+    if !write_piece(file, c"typedef struct aurex_m0_str {\n") { return false; }
+    if !write_piece(file, c"    const uint8_t *data;\n") { return false; }
+    if !write_piece(file, c"    size_t len;\n") { return false; }
+    if !write_piece(file, c"} aurex_m0_str;\n\n") { return false; }
     return true;
 }
 
@@ -31,6 +36,19 @@ fn emit_subset_bundle_file(path: *const u8, dep_source: *const u8, main_source: 
 
     if !emit_subset_prelude(file) { output_close(file); return false; }
     if !emit_subset_source_items(file, dep_source) { output_close(file); return false; }
+    if !emit_subset_source_items(file, main_source) { output_close(file); return false; }
+    return output_close(file);
+}
+
+fn emit_subset_bundle2_file(path: *const u8, dep0_source: *const u8, dep1_source: *const u8, main_source: *const u8) -> bool {
+    let file: *mut OutputFile = output_open(path);
+    if file == null {
+        return false;
+    }
+
+    if !emit_subset_prelude(file) { output_close(file); return false; }
+    if !emit_subset_source_items(file, dep0_source) { output_close(file); return false; }
+    if !emit_subset_source_items(file, dep1_source) { output_close(file); return false; }
     if !emit_subset_source_items(file, main_source) { output_close(file); return false; }
     return output_close(file);
 }

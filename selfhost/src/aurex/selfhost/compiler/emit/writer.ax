@@ -9,3 +9,7 @@ fn write_piece(file: *mut OutputFile, text: *const u8) -> bool {
 fn write_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
     return output_write_source_range(file, source, begin, end);
 }
+
+fn write_piece_i32(file: *mut OutputFile, value: i32) -> bool {
+    return output_write_i32(file, value);
+}

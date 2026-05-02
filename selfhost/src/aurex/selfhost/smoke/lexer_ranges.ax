@@ -1,4 +1,4 @@
-module aurex.selfhost.lexer_ranges;
+module aurex.selfhost.smoke.lexer_ranges;
 
 import aurex.selfhost.lexer.core;
 

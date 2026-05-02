@@ -108,6 +108,18 @@ bool m0_runtime_output_write_source_range(FILE *file, const uint8_t *source, int
     return fwrite(source + begin, 1, len, file) == len;
 }
 
+bool m0_runtime_output_write_i32(FILE *file, int32_t value) {
+    if (file == NULL) {
+        return false;
+    }
+    char buffer[32];
+    const int len = snprintf(buffer, sizeof(buffer), "%d", value);
+    if (len < 0 || (size_t)len >= sizeof(buffer)) {
+        return false;
+    }
+    return fwrite(buffer, 1, (size_t)len, file) == (size_t)len;
+}
+
 bool m0_runtime_output_close(FILE *file) {
     if (file == NULL) {
         return false;

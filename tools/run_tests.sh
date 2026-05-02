@@ -15,18 +15,19 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --help | grep -q -- '--dump-modules'
 "${M0C}" --check "${ROOT}/examples/hello.ax"
 "${M0C}" --emit=check "${ROOT}/examples/hello.ax"
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/m0c_seed.ax"
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/lexer_smoke.ax"
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/lexer_ranges.ax"
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/lexer_dump.ax"
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/lexer_file.ax"
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/parser_smoke.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/bin/m0c_seed.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_dump.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_lang.ax"
 "${M0C}" --dump-tokens "${ROOT}/examples/hello.ax" >/tmp/aurex_tokens.txt
 "${M0C}" --emit=ast "${ROOT}/examples/hello.ax" >/tmp/aurex_ast.txt
 "${M0C}" --emit=checked "${ROOT}/examples/hello.ax" >/tmp/aurex_checked.txt
 "${M0C}" --dump-modules "${ROOT}/tests/positive/module_math.ax" >/tmp/aurex_modules.txt
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/lexer_file.ax" >/tmp/aurex_selfhost_modules.txt
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/parser_smoke.ax" >/tmp/aurex_selfhost_parser_modules.txt
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax" >/tmp/aurex_selfhost_modules.txt
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax" >/tmp/aurex_selfhost_parser_modules.txt
 grep -q 'c_string_literal' /tmp/aurex_tokens.txt
 grep -q 'extern_block' /tmp/aurex_ast.txt
 grep -q 'checked_module' /tmp/aurex_checked.txt

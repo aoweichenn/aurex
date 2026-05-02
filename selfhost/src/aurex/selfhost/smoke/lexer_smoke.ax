@@ -1,4 +1,4 @@
-module aurex.selfhost.lexer_smoke;
+module aurex.selfhost.smoke.lexer_smoke;
 
 import aurex.selfhost.lexer.core;
 

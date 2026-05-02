@@ -16,6 +16,7 @@ extern c {
     fn output_open(path: *const u8) -> *mut OutputFile @name("m0_runtime_output_open");
     fn output_write_c_string(file: *mut OutputFile, text: *const u8) -> bool @name("m0_runtime_output_write_c_string");
     fn output_write_source_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool @name("m0_runtime_output_write_source_range");
+    fn output_write_i32(file: *mut OutputFile, value: i32) -> bool @name("m0_runtime_output_write_i32");
     fn output_close(file: *mut OutputFile) -> bool @name("m0_runtime_output_close");
 }
 

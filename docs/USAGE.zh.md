@@ -210,20 +210,21 @@ tools/bench.py
 tools/bootstrap_chain.sh
 ```
 
-M0V0.1.8 还没有完全自举。当前目标是让自举路线可见、可测试、可逐步替换：把编译器组件逐步迁移到 `selfhost/src`，用 Stage0 `m0c` 编译出 Stage1，再比较 Stage1 和 Stage0 的输出稳定性。当前已经有 `selfhost/src/lexer_smoke.ax`，它是一个小型 M0 lexer 方向程序，可以校验内置源码的 token kind 序列。
+M0V0.1.8 还没有完全自举。当前目标是让自举路线可见、可测试、可逐步替换：把编译器组件逐步迁移到 `selfhost/src`，用 Stage0 `m0c` 编译出 Stage1，再比较 Stage1 和 Stage0 的输出稳定性。当前已经有 `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`，它是一个小型 M0 lexer 方向程序，可以校验内置源码的 token kind 序列。
 
 M0V0.1.8 把 selfhost lexer 拆成真正的 M0 模块：
 
 - `selfhost/src/aurex/selfhost/lexer/core.ax`：token 常量、`TokenSpan`、字符分类、关键字识别、trivia 跳过、`scan_token` 和兼容包装 `scan_next`。
 - `selfhost/src/aurex/selfhost/lexer/dump.ax`：token kind 打印和 `dump_tokens`。
-- `selfhost/src/lexer_smoke.ax`、`lexer_ranges.ax`、`lexer_dump.ax`、`lexer_file.ax`：很薄的入口程序，通过 import 复用这些模块。
+- `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`、`lexer_ranges.ax`：很薄的 smoke 入口程序，通过 import 复用这些模块。
+- `selfhost/src/aurex/selfhost/tool/lexer_dump.ax`、`lexer_file.ax`：用于 golden 测试的小工具入口。
 
 这还不是完整自举，但已经是一个重要结构进展：M0 selfhost 代码开始依赖 Stage0 模块加载器，而不是在每个入口文件里复制同一份 scanner。
 
-`selfhost/src/lexer_ranges.ax` 证明 scanner 现在能返回 parser 所需的 `kind/begin/end` byte offset。
-`selfhost/src/parser_smoke.ax` 是第一个 parser seed，会校验一个小型递归下降子集：`module`、`import`、`extern c`、函数签名和一个 `export c fn` 函数体外壳。
+`selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` 证明 scanner 现在能返回 parser 所需的 `kind/begin/end` byte offset。
+`selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是第一个 parser seed smoke，会校验一个小型递归下降子集：`module`、`import`、`extern c`、函数签名和一个 `export c fn` 函数体外壳。
 
-现在 `selfhost/src/lexer_file.ax` 也已经加入。它通过显式 runtime file IO 读取 `examples/hello.ax`，输出 token kind 流，并和 `tests/golden/selfhost_lexer_file_hello.tokens` 对比。
+现在 `selfhost/src/aurex/selfhost/tool/lexer_file.ax` 也已经加入。它通过显式 runtime file IO 读取 `examples/hello.ax`，输出 token kind 流，并和 `tests/golden/selfhost_lexer_file_hello.tokens` 对比。
 `tools/compare_selfhost_lexer.sh` 还会在本地 corpus 上把这个 M0 lexer 输出和生产 C++ Stage0 lexer 的 token kind 输出直接对比。
 
 ```sh
@@ -233,6 +234,6 @@ make -C selfhost check
 手动编译 selfhost 源码时，需要传入 selfhost import root：
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/lexer_file.ax -o build/lexer_file.c
-build/m0c -I selfhost/src selfhost/src/parser_smoke.ax -o build/parser_smoke.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax -o build/lexer_file.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax -o build/parser_smoke.c
 ```

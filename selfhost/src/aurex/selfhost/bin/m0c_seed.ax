@@ -1,4 +1,4 @@
-module aurex.selfhost.m0c_seed;
+module aurex.selfhost.bin.m0c_seed;
 
 extern c {
     fn puts(s: *const u8) -> i32 @name("puts");

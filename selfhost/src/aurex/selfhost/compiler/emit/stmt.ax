@@ -35,6 +35,10 @@ fn emit_let_or_var(file: *mut OutputFile, source: *const u8, index: *mut i32, cu
 
 fn emit_return_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
     advance(source, index, current);
+    if check(current, TK_SEMICOLON) {
+        advance(source, index, current);
+        return write_piece(file, c"    return;\n");
+    }
     if !write_piece(file, c"    return ") { return false; }
     if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
     if !expect_token(source, index, current, TK_SEMICOLON) {
@@ -73,6 +77,34 @@ fn emit_expr_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, cur
     return write_piece(file, c";\n");
 }
 
+fn emit_assign_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return false;
+    }
+    if !expect_token(source, index, current, TK_EQUAL) {
+        return false;
+    }
+    if !write_piece(file, c"    ") { return false; }
+    if !write_range(file, source, name.begin, name.end) { return false; }
+    if !write_piece(file, c" = ") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_SEMICOLON) { return false; }
+    if !expect_token(source, index, current, TK_SEMICOLON) {
+        return false;
+    }
+    return write_piece(file, c";\n");
+}
+
+fn emit_jump_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, text: *const u8) -> bool {
+    advance(source, index, current);
+    if !expect_token(source, index, current, TK_SEMICOLON) {
+        return false;
+    }
+    if !write_piece(file, c"    ") { return false; }
+    if !write_piece(file, text) { return false; }
+    return write_piece(file, c";\n");
+}
+
 fn emit_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
     if check(current, TK_KW_LET) || check(current, TK_KW_VAR) {
         return emit_let_or_var(file, source, index, current);
@@ -85,6 +117,19 @@ fn emit_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, current:
     }
     if check(current, TK_KW_WHILE) {
         return emit_while_stmt(file, source, index, current);
+    }
+    if check(current, TK_KW_BREAK) {
+        return emit_jump_stmt(file, source, index, current, c"break");
+    }
+    if check(current, TK_KW_CONTINUE) {
+        return emit_jump_stmt(file, source, index, current, c"continue");
+    }
+    if check(current, TK_IDENTIFIER) {
+        var look_index: i32 = current.end;
+        var look: TokenSpan = scan_token(source, &look_index);
+        if look.kind == TK_EQUAL {
+            return emit_assign_stmt(file, source, index, current);
+        }
     }
     return emit_expr_stmt(file, source, index, current);
 }

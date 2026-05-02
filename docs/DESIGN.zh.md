@@ -159,15 +159,15 @@ Stage0 C++ compiler
 当前 M0V0.1.8 状态：
 
 - `bootstrap/` 有 standalone Stage0-mini compiler；
-- `selfhost/src/m0c_seed.ax` 是第一个 M0 seed；
+- `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` 是第一个 M0 seed；
 - `selfhost/src/aurex/selfhost/lexer/core.ax` 是共享 M0 lexer core，包含 `TokenSpan` token 形状和 `scan_token`；
 - `selfhost/src/aurex/selfhost/lexer/dump.ax` 是共享 token dump helper；
-- `selfhost/src/lexer_smoke.ax` import 共享 core scanner，并校验一段小 token 序列；
-- `selfhost/src/lexer_ranges.ax` import 共享 core scanner，并校验 token kind 加 `begin/end` byte range；
-- `selfhost/src/lexer_dump.ax` import 共享 dump helper，用 M0 输出 token kind 流，并和 golden 文件对比；
-- `selfhost/src/lexer_file.ax` import 共享 dump helper，通过显式 runtime IO 读取源码文件，并输出可 golden 对比的 token kind 流；
+- `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax` import 共享 core scanner，并校验一段小 token 序列；
+- `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` import 共享 core scanner，并校验 token kind 加 `begin/end` byte range；
+- `selfhost/src/aurex/selfhost/tool/lexer_dump.ax` import 共享 dump helper，用 M0 输出 token kind 流，并和 golden 文件对比；
+- `selfhost/src/aurex/selfhost/tool/lexer_file.ax` import 共享 dump helper，通过显式 runtime IO 读取源码文件，并输出可 golden 对比的 token kind 流；
 - `selfhost/src/aurex/selfhost/parser/seed.ax` 是第一个 M0 parser seed，基于 `TokenSpan` 递归下降光标校验 `module`、`import`、`extern c`、函数签名和一个 `export c fn` 函数体外壳；
-- `selfhost/src/parser_smoke.ax` 是可执行 parser seed smoke test；
+- `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是可执行 parser seed smoke test；
 - `tools/compare_selfhost_lexer.sh` 会把 M0 lexer 输出和生产 C++ Stage0 lexer 输出在 `examples/hello.ax` 以及所有本地 positive/negative 测试输入上直接对比；
 - selfhost 测试会检查 `lexer_file.ax` 和 `parser_smoke.ax` 确实加载了共享 lexer/parser 模块，因此 import 使用也进入了回归测试；
 - 生产编译器仍然是 C++ 实现。

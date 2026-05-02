@@ -224,8 +224,9 @@ tools/bootstrap_chain.sh
 M0V0.1.8 is not fully self-hosted yet. The goal is explicit and testable:
 move compiler components into `selfhost/src`, compile them with Stage0 `m0c`,
 then compare Stage1 output against Stage0 output. The current tree already
-contains `selfhost/src/lexer_smoke.ax`, a small M0 lexer-oriented program that
-validates a token kind sequence for an embedded source string.
+contains `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`, a small M0
+lexer-oriented program that validates a token kind sequence for an embedded
+source string.
 
 M0V0.1.8 splits the selfhost lexer into actual M0 modules:
 
@@ -234,22 +235,26 @@ M0V0.1.8 splits the selfhost lexer into actual M0 modules:
   the compatibility wrapper `scan_next`.
 - `selfhost/src/aurex/selfhost/lexer/dump.ax`: token-kind printing and
   `dump_tokens`.
-- `selfhost/src/lexer_smoke.ax`, `lexer_ranges.ax`, `lexer_dump.ax`, and
-  `lexer_file.ax`: small entry programs that import and reuse those modules.
+- `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax` and
+  `lexer_ranges.ax`: small smoke entry programs that import and reuse those
+  modules.
+- `selfhost/src/aurex/selfhost/tool/lexer_dump.ax` and `lexer_file.ax`: small
+  golden-test tools built on the shared lexer modules.
 
 This is not full self-hosting yet, but it is an important structural step: the
 M0 selfhost code now depends on the Stage0 module loader instead of copying the
 same scanner into every entry point.
 
-`selfhost/src/lexer_ranges.ax` proves the scanner now returns parser-ready
-`kind/begin/end` byte offsets for a fixed source string.
-`selfhost/src/parser_smoke.ax` is the first parser seed. It validates a small
-recursive-descent subset: `module`, `import`, `extern c`, function signatures,
-and an `export c fn` body shell.
+`selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` proves the scanner now
+returns parser-ready `kind/begin/end` byte offsets for a fixed source string.
+`selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` is the first parser seed
+smoke. It validates a small recursive-descent subset: `module`, `import`,
+`extern c`, function signatures, and an `export c fn` body shell.
 
-The selfhost directory now also includes `selfhost/src/lexer_file.ax`, which
-reads `examples/hello.ax` through explicit runtime file IO and compares its
-token-kind stream with `tests/golden/selfhost_lexer_file_hello.tokens`.
+The selfhost directory now also includes
+`selfhost/src/aurex/selfhost/tool/lexer_file.ax`, which reads
+`examples/hello.ax` through explicit runtime file IO and compares its token-kind
+stream with `tests/golden/selfhost_lexer_file_hello.tokens`.
 `tools/compare_selfhost_lexer.sh` additionally compares that M0 lexer stream
 with the production C++ Stage0 lexer stream over the local corpus.
 
@@ -260,6 +265,6 @@ make -C selfhost check
 When compiling selfhost sources manually, pass the selfhost import root:
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/lexer_file.ax -o build/lexer_file.c
-build/m0c -I selfhost/src selfhost/src/parser_smoke.ax -o build/parser_smoke.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax -o build/lexer_file.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax -o build/parser_smoke.c
 ```

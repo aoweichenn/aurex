@@ -9,3 +9,7 @@ fn emit_transpile_subset(path: *const u8, source: *const u8) -> bool {
 fn emit_transpile_subset_bundle(path: *const u8, dep_source: *const u8, main_source: *const u8) -> bool {
     return emit_subset_bundle_file(path, dep_source, main_source);
 }
+
+fn emit_transpile_subset_bundle2(path: *const u8, dep0_source: *const u8, dep1_source: *const u8, main_source: *const u8) -> bool {
+    return emit_subset_bundle2_file(path, dep0_source, dep1_source, main_source);
+}

@@ -60,13 +60,62 @@ fn compile_bundle(dep_path: *const u8, input_path: *const u8, output_path: *cons
     return 0;
 }
 
-fn run_stage1(argc: i32, argv: *mut *mut u8) -> i32 {
-    if argc < 3 {
-        puts(c"usage: m0c_stage1 <input.ax> <output.c> | <dep.ax> <input.ax> <output.c>");
+fn compile_bundle2(dep0_path: *const u8, dep1_path: *const u8, input_path: *const u8, output_path: *const u8) -> i32 {
+    let dep0_buffer: FileBuffer = read_file(dep0_path);
+    if dep0_buffer.data == null {
+        puts(c"stage1: failed to read first dependency");
         return 1;
     }
-    if argc > 3 {
+
+    let dep1_buffer: FileBuffer = read_file(dep1_path);
+    if dep1_buffer.data == null {
+        free_file(dep0_buffer);
+        puts(c"stage1: failed to read second dependency");
+        return 1;
+    }
+
+    let input_buffer: FileBuffer = read_file(input_path);
+    if input_buffer.data == null {
+        free_file(dep1_buffer);
+        free_file(dep0_buffer);
+        puts(c"stage1: failed to read input");
+        return 1;
+    }
+
+    let dep0_source: *const u8 = ptr_cast(*const u8, dep0_buffer.data);
+    let dep1_source: *const u8 = ptr_cast(*const u8, dep1_buffer.data);
+    let input_source: *const u8 = ptr_cast(*const u8, input_buffer.data);
+    if !emit_transpile_subset_bundle2(output_path, dep0_source, dep1_source, input_source) {
+        free_file(input_buffer);
+        free_file(dep1_buffer);
+        free_file(dep0_buffer);
+        puts(c"stage1: failed to emit bundle");
+        return 1;
+    }
+
+    free_file(input_buffer);
+    free_file(dep1_buffer);
+    free_file(dep0_buffer);
+    return 0;
+}
+
+fn print_stage1_usage() -> i32 {
+    puts(c"usage: m0c_stage1 <input.ax> <output.c> | <dep.ax> <input.ax> <output.c> | <dep0.ax> <dep1.ax> <input.ax> <output.c>");
+    return 1;
+}
+
+fn run_stage1(argc: i32, argv: *mut *mut u8) -> i32 {
+    if argc < 3 {
+        return print_stage1_usage();
+    }
+    if argc == 5 {
+        return compile_bundle2(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]), ptr_cast(*const u8, argv[3]), ptr_cast(*const u8, argv[4]));
+    }
+    if argc == 4 {
         return compile_bundle(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]), ptr_cast(*const u8, argv[3]));
     }
-    return compile_file(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]));
+    if argc == 3 {
+        return compile_file(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]));
+    }
+    return print_stage1_usage();
 }

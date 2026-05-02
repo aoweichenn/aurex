@@ -85,22 +85,40 @@ checks that token stream against `tests/golden/selfhost_lexer_file_hello.tokens`
 `tools/compare_selfhost_lexer.sh` compares the M0 lexer stream directly with
 the production C++ Stage0 lexer stream over the local corpus.
 
-The current Stage1 compiler entry is `selfhost/src/m0c_stage1.ax`. Stage0
+The current Stage1 compiler entry is
+`selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`. Stage0
 compiles it to a native executable; that M0-written executable can compile the
 current Stage1 subset, including `examples/hello.ax` and
-`selfhost/src/m0c_seed.ax`, into runnable C. This is a real bootstrap slice, not
-the final fixed point: Stage1 does not yet compile the full compiler source.
-The next backend path, `emit_subset.ax`, is already wired into the Stage1 driver.
-It now supports a two-source bundle mode: Stage1 can combine
-`lexer.core.ax + lexer_smoke.ax`, emit one C file, compile it, and run the
-resulting lexer smoke executable.
+`selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, into runnable C. This is a real
+bootstrap slice, not the final fixed point: Stage1 does not yet compile the full
+compiler source.
+
+The selfhost source tree is now role-based:
+
+- `aurex/selfhost/bin/`: executable entry points.
+- `aurex/selfhost/compiler/`: Stage1 compiler slices.
+- `aurex/selfhost/compiler/emit/`: modular token-stream C emitter pieces.
+- `aurex/selfhost/lexer/` and `parser/`: reusable frontend modules.
+- `aurex/selfhost/smoke/` and `tool/`: smoke binaries and golden-test tools.
+
+The next backend path, `emit_subset.ax`, is already wired into the Stage1
+driver. It now supports one- and two-dependency bundle modes: Stage1 can combine
+`lexer.core.ax + lexer_smoke.ax`, `lexer.core.ax + lexer_ranges.ax`, and
+`lexer.core.ax + parser.seed.ax + parser_smoke.ax`, emit one C file, compile it,
+and run the resulting executables. The token-stream emitter also handles the
+current selfhost `cast`/`ptr_cast`/`bit_cast` syntax, all M0 primitive scalar
+spellings, simple assignment statements, `break`, `continue`, empty `return`,
+and emits small C wrappers for `extern c @name("...")`, so Stage1 can now compile
+`lexer.core.ax + lexer.dump.ax + lexer_file.ax`, link it with
+`selfhost/runtime/runtime.c`, and reproduce the lexer golden output for
+`examples/hello.ax`.
 
 Manual Stage1 run:
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/m0c_stage1.ax -o build/m0c_stage1.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/bin/m0c_stage1.ax -o build/m0c_stage1.c
 cc build/m0c_stage1.c selfhost/runtime/runtime.c -o build/m0c_stage1
-build/m0c_stage1 selfhost/src/m0c_seed.ax build/m0c_seed.stage1.c
+build/m0c_stage1 selfhost/src/aurex/selfhost/bin/m0c_seed.ax build/m0c_seed.stage1.c
 cc build/m0c_seed.stage1.c -o build/m0c_seed.stage1
 build/m0c_seed.stage1
 ```
@@ -114,7 +132,7 @@ Aurex M0 selfhost seed
 Manual two-source bundle smoke:
 
 ```sh
-build/m0c_stage1 selfhost/src/aurex/selfhost/lexer/core.ax selfhost/src/lexer_smoke.ax build/lexer_smoke.stage1.c
+build/m0c_stage1 selfhost/src/aurex/selfhost/lexer/core.ax selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax build/lexer_smoke.stage1.c
 cc build/lexer_smoke.stage1.c -o build/lexer_smoke.stage1
 build/lexer_smoke.stage1
 ```
@@ -123,6 +141,14 @@ Expected output:
 
 ```text
 selfhost lexer sequence ok
+```
+
+Manual three-source runtime bundle smoke:
+
+```sh
+build/m0c_stage1 selfhost/src/aurex/selfhost/lexer/core.ax selfhost/src/aurex/selfhost/lexer/dump.ax selfhost/src/aurex/selfhost/tool/lexer_file.ax build/lexer_file.stage1.c
+cc build/lexer_file.stage1.c selfhost/runtime/runtime.c -o build/lexer_file.stage1
+build/lexer_file.stage1 examples/hello.ax
 ```
 
 ```sh

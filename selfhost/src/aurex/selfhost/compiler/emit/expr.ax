@@ -1,11 +1,19 @@
 module aurex.selfhost.compiler.emit.expr;
 
 import aurex.selfhost.compiler.emit.cursor;
+import aurex.selfhost.compiler.emit.types;
 import aurex.selfhost.compiler.emit.writer;
 import aurex.selfhost.compiler.io;
 import aurex.selfhost.lexer.core;
 
 fn emit_token_expr(file: *mut OutputFile, source: *const u8, token: TokenSpan) -> bool {
+    if token.kind == TK_STRING {
+        if !write_piece(file, c"(aurex_m0_str){ .data = (const uint8_t *)") { return false; }
+        if !write_range(file, source, token.begin, token.end) { return false; }
+        if !write_piece(file, c", .len = (sizeof(") { return false; }
+        if !write_range(file, source, token.begin, token.end) { return false; }
+        return write_piece(file, c") - 1) }");
+    }
     if token.kind == TK_C_STRING {
         if !write_piece(file, c"((const uint8_t *)") { return false; }
         if !write_range(file, source, token.begin + 1, token.end) { return false; }
@@ -63,16 +71,118 @@ fn emit_struct_literal_tail(file: *mut OutputFile, source: *const u8, index: *mu
     return write_piece(file, c"}");
 }
 
+fn emit_cast_expr_tail(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_L_PAREN) {
+        return false;
+    }
+    let ty: SimpleType = parse_simple_type(source, index, current);
+    if !ty.ok {
+        return false;
+    }
+    if !expect_token(source, index, current, TK_COMMA) {
+        return false;
+    }
+    if !write_piece(file, c"((") { return false; }
+    if !emit_type_only(file, source, ty) { return false; }
+    if !write_piece(file, c")(") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_R_PAREN) { return false; }
+    if !expect_token(source, index, current, TK_R_PAREN) {
+        return false;
+    }
+    return write_piece(file, c"))");
+}
+
+fn emit_type_query_tail(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, text: *const u8) -> bool {
+    if !expect_token(source, index, current, TK_L_PAREN) {
+        return false;
+    }
+    let ty: SimpleType = parse_simple_type(source, index, current);
+    if !ty.ok {
+        return false;
+    }
+    if !expect_token(source, index, current, TK_R_PAREN) {
+        return false;
+    }
+    if !write_piece(file, c"((size_t)") { return false; }
+    if !write_piece(file, text) { return false; }
+    if !write_piece(file, c"(") { return false; }
+    if !emit_type_only(file, source, ty) { return false; }
+    return write_piece(file, c"))");
+}
+
+fn emit_ptr_addr_tail(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_L_PAREN) {
+        return false;
+    }
+    if !write_piece(file, c"((size_t)(uintptr_t)(") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_R_PAREN) { return false; }
+    if !expect_token(source, index, current, TK_R_PAREN) {
+        return false;
+    }
+    return write_piece(file, c"))");
+}
+
+fn emit_ptr_from_addr_tail(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    if !expect_token(source, index, current, TK_L_PAREN) {
+        return false;
+    }
+    let ty: SimpleType = parse_simple_type(source, index, current);
+    if !ty.ok {
+        return false;
+    }
+    if !expect_token(source, index, current, TK_COMMA) {
+        return false;
+    }
+    if !write_piece(file, c"((") { return false; }
+    if !emit_type_only(file, source, ty) { return false; }
+    if !write_piece(file, c")(uintptr_t)(") { return false; }
+    if !emit_expr_until(file, source, index, current, TK_R_PAREN) { return false; }
+    if !expect_token(source, index, current, TK_R_PAREN) {
+        return false;
+    }
+    return write_piece(file, c"))");
+}
+
 fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan, stop_kind: i32) -> bool {
     while !check(current, stop_kind) && !check(current, TK_EOF) {
         let token: TokenSpan = advance(source, index, current);
-        if token.kind == TK_IDENTIFIER && check(current, TK_L_BRACE) && stop_kind != TK_L_BRACE {
+        if token.kind == TK_KW_CAST || token.kind == TK_KW_PTR_CAST || token.kind == TK_KW_BIT_CAST {
+            if !emit_cast_expr_tail(file, source, index, current) {
+                return false;
+            }
+        } else {
+            if token.kind == TK_KW_SIZE_OF {
+                if !emit_type_query_tail(file, source, index, current, c"sizeof") {
+                    return false;
+                }
+            } else {
+                if token.kind == TK_KW_ALIGN_OF {
+                    if !emit_type_query_tail(file, source, index, current, c"alignof") {
+                        return false;
+                    }
+                } else {
+                    if token.kind == TK_KW_PTR_ADDR {
+                        if !emit_ptr_addr_tail(file, source, index, current) {
+                            return false;
+                        }
+                    } else {
+                        if token.kind == TK_KW_PTR_FROM_ADDR {
+                            if !emit_ptr_from_addr_tail(file, source, index, current) {
+                                return false;
+                            }
+        } else {
+            if token.kind == TK_IDENTIFIER && check(current, TK_L_BRACE) && stop_kind != TK_L_BRACE {
             if !emit_struct_literal_tail(file, source, index, current, token) {
                 return false;
             }
         } else {
             if !emit_token_expr(file, source, token) {
                 return false;
+            }
+        }
+        }
+                    }
+                }
             }
         }
     }

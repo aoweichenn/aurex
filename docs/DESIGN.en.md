@@ -168,24 +168,26 @@ Stage0 C++ compiler
 Current M0V0.1.8 status:
 
 - `bootstrap/` contains a standalone Stage0-mini compiler;
-- `selfhost/src/m0c_seed.ax` is the first M0 seed;
+- `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` is the first M0 seed;
 - `selfhost/src/aurex/selfhost/lexer/core.ax` is the shared M0 lexer core,
   including the `TokenSpan` token shape and `scan_token`;
 - `selfhost/src/aurex/selfhost/lexer/dump.ax` is the shared token dump helper;
-- `selfhost/src/lexer_smoke.ax` imports the shared core scanner and validates a
-  small token sequence;
-- `selfhost/src/lexer_ranges.ax` imports the shared core scanner and validates
-  token kind plus `begin/end` byte ranges;
-- `selfhost/src/lexer_dump.ax` imports the shared dump helper, prints a
+- `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax` imports the shared core
+  scanner and validates a small token sequence;
+- `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` imports the shared core
+  scanner and validates token kind plus `begin/end` byte ranges;
+- `selfhost/src/aurex/selfhost/tool/lexer_dump.ax` imports the shared dump
+  helper, prints a
   token-kind stream from M0, and is
   checked against a golden file;
-- `selfhost/src/lexer_file.ax` imports the shared dump helper, reads a source
-  file through explicit runtime IO, and emits a token-kind stream checked
-  against a golden file;
+- `selfhost/src/aurex/selfhost/tool/lexer_file.ax` imports the shared dump
+  helper, reads a source file through explicit runtime IO, and emits a
+  token-kind stream checked against a golden file;
 - `selfhost/src/aurex/selfhost/parser/seed.ax` is the first M0 parser seed. It
   validates `module`, `import`, `extern c`, function signatures, and an
   `export c fn` body shell using a recursive-descent cursor over `TokenSpan`;
-- `selfhost/src/parser_smoke.ax` is the executable parser seed smoke test;
+- `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` is the executable parser
+  seed smoke test;
 - `tools/compare_selfhost_lexer.sh` directly compares that M0 lexer stream with
   the production C++ Stage0 lexer stream over `examples/hello.ax` and every
   local positive/negative test input;

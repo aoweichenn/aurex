@@ -1,4 +1,4 @@
-module aurex.selfhost.parser_smoke;
+module aurex.selfhost.smoke.parser_smoke;
 
 import aurex.selfhost.parser.seed;
 

@@ -4,17 +4,45 @@ CC ?= cc
 RUNTIME := runtime/runtime.c
 IMPORT_FLAGS := -I src
 
-SOURCES := src/m0c_seed.ax src/lexer_smoke.ax src/lexer_ranges.ax src/lexer_dump.ax src/lexer_file.ax src/parser_smoke.ax src/m0c_stage1.ax
-PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/m0c_stage1
 MODULES := $(shell find src/aurex -name '*.ax' -print)
+SEED_SRC := src/aurex/selfhost/bin/m0c_seed.ax
+STAGE1_SRC := src/aurex/selfhost/bin/m0c_stage1.ax
+LEXER_SMOKE_SRC := src/aurex/selfhost/smoke/lexer_smoke.ax
+LEXER_RANGES_SRC := src/aurex/selfhost/smoke/lexer_ranges.ax
+PARSER_SMOKE_SRC := src/aurex/selfhost/smoke/parser_smoke.ax
+STAGE1_LANG_SRC := src/aurex/selfhost/smoke/stage1_lang.ax
+LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
+LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
+PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/m0c_stage1
 
 all: $(PROGRAMS)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/%.c: src/%.ax $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $< -o $@
+$(BUILD_DIR)/m0c_seed.c: $(SEED_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(SEED_SRC) -o $@
+
+$(BUILD_DIR)/m0c_stage1.c: $(STAGE1_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_SRC) -o $@
+
+$(BUILD_DIR)/lexer_smoke.c: $(LEXER_SMOKE_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_SMOKE_SRC) -o $@
+
+$(BUILD_DIR)/lexer_ranges.c: $(LEXER_RANGES_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_RANGES_SRC) -o $@
+
+$(BUILD_DIR)/parser_smoke.c: $(PARSER_SMOKE_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(PARSER_SMOKE_SRC) -o $@
+
+$(BUILD_DIR)/stage1_lang.c: $(STAGE1_LANG_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_LANG_SRC) -o $@
+
+$(BUILD_DIR)/lexer_dump.c: $(LEXER_DUMP_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_DUMP_SRC) -o $@
+
+$(BUILD_DIR)/lexer_file.c: $(LEXER_FILE_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_FILE_SRC) -o $@
 
 $(BUILD_DIR)/%: $(BUILD_DIR)/%.c $(RUNTIME)
 	$(CC) $< $(RUNTIME) -o $@
@@ -24,13 +52,14 @@ check: all
 	$(BUILD_DIR)/lexer_smoke
 	$(BUILD_DIR)/lexer_ranges
 	$(BUILD_DIR)/parser_smoke
-	$(M0C) $(IMPORT_FLAGS) --dump-modules src/lexer_file.ax > $(BUILD_DIR)/lexer_file.modules
+	$(BUILD_DIR)/stage1_lang
+	$(M0C) $(IMPORT_FLAGS) --dump-modules $(LEXER_FILE_SRC) > $(BUILD_DIR)/lexer_file.modules
 	grep -q 'aurex.selfhost.lexer.dump' $(BUILD_DIR)/lexer_file.modules
 	grep -q 'aurex.selfhost.lexer.core' $(BUILD_DIR)/lexer_file.modules
-	$(M0C) $(IMPORT_FLAGS) --dump-modules src/parser_smoke.ax > $(BUILD_DIR)/parser_smoke.modules
+	$(M0C) $(IMPORT_FLAGS) --dump-modules $(PARSER_SMOKE_SRC) > $(BUILD_DIR)/parser_smoke.modules
 	grep -q 'aurex.selfhost.parser.seed' $(BUILD_DIR)/parser_smoke.modules
 	grep -q 'aurex.selfhost.lexer.core' $(BUILD_DIR)/parser_smoke.modules
-	$(M0C) $(IMPORT_FLAGS) --dump-modules src/m0c_stage1.ax > $(BUILD_DIR)/m0c_stage1.modules
+	$(M0C) $(IMPORT_FLAGS) --dump-modules $(STAGE1_SRC) > $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.driver' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.subset' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit_c' $(BUILD_DIR)/m0c_stage1.modules
@@ -45,19 +74,36 @@ check: all
 	$(BUILD_DIR)/m0c_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.c
 	$(CC) $(BUILD_DIR)/hello.stage1.c -o $(BUILD_DIR)/hello.stage1
 	test "$$($(BUILD_DIR)/hello.stage1)" = "hello from Aurex M0"
-	$(BUILD_DIR)/m0c_stage1 src/m0c_seed.ax $(BUILD_DIR)/m0c_seed.stage1.c
+	$(BUILD_DIR)/m0c_stage1 $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage1.c
 	$(CC) $(BUILD_DIR)/m0c_seed.stage1.c -o $(BUILD_DIR)/m0c_seed.stage1
 	test "$$($(BUILD_DIR)/m0c_seed.stage1)" = "Aurex M0 selfhost seed"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/lexer_smoke.ax $(BUILD_DIR)/lexer_smoke.stage1.c
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax $(LEXER_SMOKE_SRC) $(BUILD_DIR)/lexer_smoke.stage1.c
 	grep -q 'static bool validate_sequence' $(BUILD_DIR)/lexer_smoke.stage1.c
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_smoke.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_smoke.stage1.c -o $(BUILD_DIR)/lexer_smoke.stage1
 	test "$$($(BUILD_DIR)/lexer_smoke.stage1)" = "selfhost lexer sequence ok"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/lexer_ranges.ax $(BUILD_DIR)/lexer_ranges.stage1.c
-	grep -q 'static bool token_is' $(BUILD_DIR)/lexer_ranges.stage1.c
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax $(LEXER_RANGES_SRC) $(BUILD_DIR)/lexer_ranges.stage1.c
+	grep -q 'static int32_t validate_ranges' $(BUILD_DIR)/lexer_ranges.stage1.c
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_ranges.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_ranges.stage1.c -o $(BUILD_DIR)/lexer_ranges.stage1
 	test "$$($(BUILD_DIR)/lexer_ranges.stage1)" = "selfhost lexer ranges ok"
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/parser/seed.ax $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.c
+	grep -q 'static bool parse_seed_module' $(BUILD_DIR)/parser_smoke.stage1.c
+	grep -q 'scan_token' $(BUILD_DIR)/parser_smoke.stage1.c
+	$(CC) $(BUILD_DIR)/parser_smoke.stage1.c -o $(BUILD_DIR)/parser_smoke.stage1
+	test "$$($(BUILD_DIR)/parser_smoke.stage1)" = "selfhost parser seed ok"
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/lexer/dump.ax $(LEXER_FILE_SRC) $(BUILD_DIR)/lexer_file.stage1.c
+	grep -q 'static FileBuffer read_file' $(BUILD_DIR)/lexer_file.stage1.c
+	grep -q 'm0_runtime_read_file' $(BUILD_DIR)/lexer_file.stage1.c
+	$(CC) $(BUILD_DIR)/lexer_file.stage1.c $(RUNTIME) -o $(BUILD_DIR)/lexer_file.stage1
+	$(BUILD_DIR)/lexer_file.stage1 ../examples/hello.ax > $(BUILD_DIR)/lexer_file.stage1.tokens
+	diff -u ../tests/golden/selfhost_lexer_file_hello.tokens $(BUILD_DIR)/lexer_file.stage1.tokens
+	$(BUILD_DIR)/m0c_stage1 $(STAGE1_LANG_SRC) $(BUILD_DIR)/stage1_lang.stage1.c
+	grep -q 'aurex_m0_str' $(BUILD_DIR)/stage1_lang.stage1.c
+	grep -q 'continue;' $(BUILD_DIR)/stage1_lang.stage1.c
+	grep -q 'break;' $(BUILD_DIR)/stage1_lang.stage1.c
+	$(CC) $(BUILD_DIR)/stage1_lang.stage1.c -o $(BUILD_DIR)/stage1_lang.stage1
+	test "$$($(BUILD_DIR)/stage1_lang.stage1)" = "selfhost stage1 lang ok"
 
 clean:
 	rm -rf $(BUILD_DIR)

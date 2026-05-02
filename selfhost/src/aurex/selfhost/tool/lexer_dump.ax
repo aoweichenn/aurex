@@ -1,4 +1,4 @@
-module aurex.selfhost.lexer_dump;
+module aurex.selfhost.tool.lexer_dump;
 
 import aurex.selfhost.lexer.dump;
 

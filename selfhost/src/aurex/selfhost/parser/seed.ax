@@ -13,7 +13,8 @@ fn parser_advance(source: *const u8, index: *mut i32, current: *mut TokenSpan) -
 }
 
 fn parser_check(current: *mut TokenSpan, kind: i32) -> bool {
-    return current.kind == kind;
+    let token: TokenSpan = *current;
+    return token.kind == kind;
 }
 
 fn parser_match(source: *const u8, index: *mut i32, current: *mut TokenSpan, kind: i32) -> bool {

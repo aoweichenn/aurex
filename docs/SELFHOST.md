@@ -8,32 +8,35 @@ Implemented now:
 
 - `bootstrap/m0_bootstrap.cpp`: standalone Stage0-mini compiler, built with a
   plain Makefile.
-- `selfhost/src/m0c_seed.ax`: first M0 source seed compiled by the production
-  C++ Stage0 compiler.
+- `selfhost/src/aurex/selfhost/bin/m0c_seed.ax`: first M0 source seed compiled
+  by the production C++ Stage0 compiler.
 - `selfhost/src/aurex/selfhost/lexer/core.ax`: shared M0 lexer core. It owns
   token constants, the `TokenSpan` token shape, character classification,
   keyword matching, trivia skipping, `scan_token`, and the compatibility wrapper
   `scan_next`.
 - `selfhost/src/aurex/selfhost/lexer/dump.ax`: shared token-kind dump helper
   built on the core scanner.
-- `selfhost/src/lexer_smoke.ax`: lexer-oriented M0 smoke test. It imports the
-  shared core scanner, scans an embedded source string, validates the token kind
-  sequence for a small corpus, and is compiled/run by the bootstrap chain.
-- `selfhost/src/lexer_ranges.ax`: range-aware M0 lexer smoke test. It imports
-  the shared core scanner and validates token kind plus `begin/end` byte ranges.
-- `selfhost/src/lexer_dump.ax`: first token dump generator written in M0. It
-  imports the shared dump helper, scans an embedded source, and prints one token
-  kind per line. The output is compared with
+- `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`: lexer-oriented M0 smoke
+  test. It imports the shared core scanner, scans an embedded source string,
+  validates the token kind sequence for a small corpus, and is compiled/run by
+  the bootstrap chain.
+- `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax`: range-aware M0 lexer
+  smoke test. It imports the shared core scanner and validates token kind plus
+  `begin/end` byte ranges.
+- `selfhost/src/aurex/selfhost/tool/lexer_dump.ax`: token dump generator written
+  in M0. It imports the shared dump helper, scans an embedded source, and prints
+  one token kind per line. The output is compared with
   `tests/golden/selfhost_lexer_dump.tokens`.
-- `selfhost/src/lexer_file.ax`: file-backed lexer driver written in M0. It
-  imports the shared dump helper, reads a source file through explicit runtime
-  IO, and compares the token stream for `examples/hello.ax` with
-  `tests/golden/selfhost_lexer_file_hello.tokens`.
+- `selfhost/src/aurex/selfhost/tool/lexer_file.ax`: file-backed lexer driver
+  written in M0. It imports the shared dump helper, reads a source file through
+  explicit runtime IO, and compares the token stream for `examples/hello.ax`
+  with `tests/golden/selfhost_lexer_file_hello.tokens`.
 - `selfhost/src/aurex/selfhost/parser/seed.ax`: first parser seed written in
   M0. It uses a one-token `TokenSpan` cursor and validates a small
   recursive-descent syntax subset.
-- `selfhost/src/parser_smoke.ax`: parser seed entry point covering `module`,
-  `import`, `extern c`, function signatures, and an `export c fn` body shell.
+- `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax`: parser seed entry point
+  covering `module`, `import`, `extern c`, function signatures, and an
+  `export c fn` body shell.
 - `selfhost/src/aurex/selfhost/compiler/io.ax`: explicit runtime IO bridge for
   the selfhost compiler slice.
 - `selfhost/src/aurex/selfhost/compiler/subset.ax`: first Stage1 compiler
@@ -41,13 +44,15 @@ Implemented now:
   module/import declarations, an `extern c` block, and `export c fn main`
   containing `puts(c"..."); return <integer>;`.
 - `selfhost/src/aurex/selfhost/compiler/emit_c.ax`: C emitter for that subset.
-- `selfhost/src/aurex/selfhost/compiler/emit_subset.ax`: next experimental
-  token-stream emitter. It is checked by Stage0 and is intended to replace the
-  first narrow emitter once it can compile broader selfhost programs.
+- `selfhost/src/aurex/selfhost/compiler/emit_subset.ax`: compatibility facade
+  for the expanding token-stream emitter.
+- `selfhost/src/aurex/selfhost/compiler/emit/`: modular token-stream emitter
+  pieces split into cursor, writer, type, expression, statement, item, and bundle
+  responsibilities.
 - `selfhost/src/aurex/selfhost/compiler/driver.ax`: Stage1 compile pipeline
   wiring.
-- `selfhost/src/m0c_stage1.ax`: executable entry point for the Stage1 compiler
-  slice.
+- `selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`: executable entry point for
+  the Stage1 compiler slice.
 - `selfhost/runtime/runtime.c`: explicit runtime services used by the selfhost
   lexer driver and Stage1 compiler slice.
 - `tools/bootstrap_chain.sh`: verifies both the selfhost seed and standalone
@@ -63,10 +68,11 @@ by an earlier compiler, and then capable of compiling itself again with stable
 output.
 
 The current production compiler is still C++20. The selfhost tree now has a real
-Stage1 vertical slice: Stage0 compiles `m0c_stage1.ax`, that M0 program reads an
-M0 source file, validates the supported subset, emits C, and the generated C is
-compiled and run. That is meaningful bootstrap progress, but it is not yet a
-fixed-point self-host because Stage1 cannot compile the full compiler source.
+Stage1 vertical slice: Stage0 compiles `aurex/selfhost/bin/m0c_stage1.ax`, that
+M0 program reads M0 source files, emits C for the supported subset, and the
+generated C is compiled and run. That is meaningful bootstrap progress, but it
+is not yet a fixed-point self-host because Stage1 cannot compile the full
+compiler source.
 
 Current exact capability:
 
@@ -74,13 +80,22 @@ Current exact capability:
 - The M0 lexer stream is checked against the C++ Stage0 lexer over the local
   corpus.
 - `m0c_stage1` compiles `examples/hello.ax` and
-  `selfhost/src/m0c_seed.ax` into runnable C.
+  `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` into runnable C.
 - `emit_subset.ax` is the active expansion path for compiling broader selfhost
   files. It is now the first Stage1 backend attempted by the driver, with the
   original narrow emitter retained as fallback.
-- `m0c_stage1` can bundle `selfhost/src/aurex/selfhost/lexer/core.ax` with
-  `selfhost/src/lexer_smoke.ax`, emit one C file, compile it with `cc`, and run
-  the resulting lexer smoke executable successfully.
+- `m0c_stage1` can bundle `lexer.core + lexer_smoke`,
+  `lexer.core + lexer_ranges`, and `lexer.core + parser.seed + parser_smoke`,
+  emit one C file, compile it with `cc`, and run the resulting executables
+  successfully.
+- The expanding token-stream emitter now handles the selfhost `cast` and
+  `ptr_cast`/`bit_cast` forms it needs, maps all primitive scalar type spellings
+  used by M0, supports simple assignment statements, `break`, `continue`, empty
+  `return`, and emits C wrappers for `extern c @name("...")` declarations. That
+  lets Stage1 compile
+  `lexer.core + lexer.dump + lexer_file`, link the result with
+  `selfhost/runtime/runtime.c`, and reproduce the file-backed lexer golden
+  output for `examples/hello.ax`.
 
 ## Milestones
 
@@ -123,8 +138,8 @@ core scanner now returns token ranges through `TokenSpan`.
 - Compile selfhost sources with Stage1.
 
 M0V0.1.8 now has the first Stage F slice: `m0c_stage1.ax` can compile
-`examples/hello.ax` and `selfhost/src/m0c_seed.ax` through the M0-written
-lexer/parser/emitter path.
+`examples/hello.ax` and `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` through
+the M0-written lexer/parser/emitter path.
 
 ### Stage G: Fixed Point
 
@@ -156,9 +171,9 @@ Manual Stage1 usage:
 ```sh
 cmake -S . -B build
 cmake --build build -j
-build/m0c -I selfhost/src selfhost/src/m0c_stage1.ax -o build/m0c_stage1.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/bin/m0c_stage1.ax -o build/m0c_stage1.c
 cc build/m0c_stage1.c selfhost/runtime/runtime.c -o build/m0c_stage1
-build/m0c_stage1 selfhost/src/m0c_seed.ax build/m0c_seed.stage1.c
+build/m0c_stage1 selfhost/src/aurex/selfhost/bin/m0c_seed.ax build/m0c_seed.stage1.c
 cc build/m0c_seed.stage1.c -o build/m0c_seed.stage1
 build/m0c_seed.stage1
 ```
@@ -174,11 +189,16 @@ important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
 token kind sequence for the local corpus, the first M0 parser seed can parse a
 fixed module/import/extern/function-signature source, and the M0-written Stage1
 compiler slice can compile both `examples/hello.ax` and the selfhost seed into
-runnable C. It also proves a two-source Stage1 bundle for
-`lexer.core.ax + lexer_smoke.ax` can compile and run.
+runnable C. It also proves Stage1 bundle paths for lexer smoke, lexer ranges,
+the parser seed smoke, and the file-backed lexer tool can compile and run. The
+file-backed Stage1 bundle also proves explicit runtime ABI bindings survive
+through the M0-written emitter path. `stage1_lang.ax` separately covers the
+newly expanded Stage1 statement/type surface, including scalar primitives,
+`str`, assignment, loop jumps, and empty `return`.
 
-They also assert that `selfhost/src/lexer_file.ax` and
-`selfhost/src/parser_smoke.ax` load the expected shared lexer/parser modules.
-The same check now covers `selfhost/src/m0c_stage1.ax` and its compiler modules,
-so selfhost module usage is part of the regression suite rather than a
+They also assert that `selfhost/src/aurex/selfhost/tool/lexer_file.ax` and
+`selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` load the expected shared
+lexer/parser modules. The same check now covers
+`selfhost/src/aurex/selfhost/bin/m0c_stage1.ax` and its compiler modules, so
+selfhost module usage is part of the regression suite rather than a
 documentation-only claim.

@@ -32,6 +32,10 @@ using syntax::TokenKind;
     }
 }
 
+[[nodiscard]] bool is_path_segment_token(const TokenKind kind) noexcept {
+    return kind == TokenKind::identifier || kind == TokenKind::kw_c;
+}
+
 [[nodiscard]] syntax::PrimitiveTypeKind primitive_from_token(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::kw_void: return syntax::PrimitiveTypeKind::void_;
@@ -243,14 +247,18 @@ void Parser::report_at(const syntax::Token& token, std::string message) {
 
 syntax::ModulePath Parser::parse_path() {
     syntax::ModulePath path;
-    const syntax::Token& first = expect(TokenKind::identifier, "expected identifier in path");
+    const syntax::Token& first = is_path_segment_token(peek().kind)
+        ? advance()
+        : expect(TokenKind::identifier, "expected identifier in path");
     base::SourceRange range = first.range;
-    if (first.kind == TokenKind::identifier) {
+    if (is_path_segment_token(first.kind)) {
         path.parts.push_back(first.text);
     }
     while (match(TokenKind::dot)) {
-        const syntax::Token& part = expect(TokenKind::identifier, "expected identifier after '.'");
-        if (part.kind == TokenKind::identifier) {
+        const syntax::Token& part = is_path_segment_token(peek().kind)
+            ? advance()
+            : expect(TokenKind::identifier, "expected identifier after '.'");
+        if (is_path_segment_token(part.kind)) {
             path.parts.push_back(part.text);
             range = merge(range, part.range);
         }

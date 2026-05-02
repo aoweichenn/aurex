@@ -34,7 +34,19 @@ Implemented now:
   recursive-descent syntax subset.
 - `selfhost/src/parser_smoke.ax`: parser seed entry point covering `module`,
   `import`, `extern c`, function signatures, and an `export c fn` body shell.
-- `selfhost/runtime/runtime.c`: placeholder for explicit runtime services.
+- `selfhost/src/aurex/selfhost/compiler/io.ax`: explicit runtime IO bridge for
+  the selfhost compiler slice.
+- `selfhost/src/aurex/selfhost/compiler/subset.ax`: first Stage1 compiler
+  parser. It reuses the selfhost lexer and parses a deliberately small M0 subset:
+  module/import declarations, an `extern c` block, and `export c fn main`
+  containing `puts(c"..."); return <integer>;`.
+- `selfhost/src/aurex/selfhost/compiler/emit_c.ax`: C emitter for that subset.
+- `selfhost/src/aurex/selfhost/compiler/driver.ax`: Stage1 compile pipeline
+  wiring.
+- `selfhost/src/m0c_stage1.ax`: executable entry point for the Stage1 compiler
+  slice.
+- `selfhost/runtime/runtime.c`: explicit runtime services used by the selfhost
+  lexer driver and Stage1 compiler slice.
 - `tools/bootstrap_chain.sh`: verifies both the selfhost seed and standalone
   bootstrap path.
 - `tools/compare_selfhost_lexer.sh`: compares the M0 file-backed lexer output
@@ -47,9 +59,11 @@ Full self-hosting means the compiler implementation is written in M0, compiled
 by an earlier compiler, and then capable of compiling itself again with stable
 output.
 
-The current production compiler is still C++20. The standalone bootstrap
-compiler is intentionally tiny and only supports a subset needed for hello-like
-programs. That is a seed, not the final self-hosted compiler.
+The current production compiler is still C++20. The selfhost tree now has a real
+Stage1 vertical slice: Stage0 compiles `m0c_stage1.ax`, that M0 program reads an
+M0 source file, validates the supported subset, emits C, and the generated C is
+compiled and run. That is meaningful bootstrap progress, but it is not yet a
+fixed-point self-host because Stage1 cannot compile the full compiler source.
 
 ## Milestones
 
@@ -91,6 +105,9 @@ core scanner now returns token ranges through `TokenSpan`.
 - Build `m0c-stage1`.
 - Compile selfhost sources with Stage1.
 
+M0V0.1.8 now has the first Stage F slice: `m0c_stage1.ax` can compile
+`examples/hello.ax` through the M0-written lexer/parser/emitter path.
+
 ### Stage G: Fixed Point
 
 - Stage0 builds Stage1.
@@ -107,7 +124,7 @@ tools/bootstrap_chain.sh
 Expected output:
 
 ```text
-bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/dump/file + standalone bootstrap seed
+bootstrap chain passed: Stage0 m0c + selfhost lexer smoke/ranges/dump/file + parser seed + M0 stage1 compiler slice + standalone bootstrap seed
 ```
 
 The selfhost subtree also has its own entry point:
@@ -118,10 +135,12 @@ make -C selfhost check
 
 Both `bootstrap_chain.sh` and `make -C selfhost check` now prove the same
 important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
-token kind sequence for the local corpus, and the first M0 parser seed can parse
-a fixed module/import/extern/function-signature source.
+token kind sequence for the local corpus, the first M0 parser seed can parse a
+fixed module/import/extern/function-signature source, and the M0-written Stage1
+compiler slice can compile `examples/hello.ax` into runnable C.
 
 They also assert that `selfhost/src/lexer_file.ax` and
-`selfhost/src/parser_smoke.ax` load the expected shared lexer/parser modules, so
-selfhost module usage is part of the regression suite rather than a
+`selfhost/src/parser_smoke.ax` load the expected shared lexer/parser modules.
+The same check now covers `selfhost/src/m0c_stage1.ax` and its compiler modules,
+so selfhost module usage is part of the regression suite rather than a
 documentation-only claim.

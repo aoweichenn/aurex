@@ -84,6 +84,7 @@ void CEmitter::emit_prelude() {
     out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
     out_ << "#include <stdalign.h>\n\n";
+    out_ << "#include <stdlib.h>\n\n";
     out_ << "typedef struct aurex_m0_str {\n";
     out_ << "    const uint8_t *data;\n";
     out_ << "    size_t len;\n";

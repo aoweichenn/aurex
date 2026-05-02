@@ -45,7 +45,7 @@ test "${HELLO_OUT}" = "hello from Aurex M0"
 
 for src in "${ROOT}"/tests/positive/*.ax; do
     case "$(basename "${src}" .ax)" in
-        import_path|module_name_collision)
+        import_path|module_name_collision|runtime_text|runtime_mem|runtime_file)
             continue
             ;;
     esac
@@ -57,7 +57,18 @@ for src in "${ROOT}"/tests/positive/*.ax; do
         condition_regression|pointer_ops)
             "${bin}" >/dev/null
             ;;
+        address_of_let|pointer_field_write|eval_order_call_stmt|eval_order_return|eval_order_assign|eval_order_condition|builtins)
+            "${bin}" >/dev/null
+            ;;
     esac
+done
+
+for src in "${ROOT}"/tests/positive/runtime_*.ax; do
+    out="${BUILD_DIR}/$(basename "${src}" .ax).c"
+    bin="${BUILD_DIR}/$(basename "${src}" .ax)"
+    "${M0C}" -I "${ROOT}" "${src}" -o "${out}"
+    cc "${out}" -o "${bin}"
+    "${bin}" >/dev/null
 done
 
 "${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/import_path.ax" -o "${BUILD_DIR}/import_path.c"

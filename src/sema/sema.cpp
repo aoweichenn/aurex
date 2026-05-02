@@ -888,9 +888,20 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
         const Symbol* symbol = find_symbol(expr.text, expr.range);
         return symbol != nullptr && symbol->is_mutable;
     }
-    case syntax::ExprKind::field:
-    case syntax::ExprKind::index:
+    case syntax::ExprKind::field: {
+        const TypeHandle object = analyze_expr(expr.object);
+        if (checked_.types.is_pointer(object)) {
+            return checked_.types.get(object).pointer_mutability == PointerMutability::mut;
+        }
         return is_writable_place(expr.object);
+    }
+    case syntax::ExprKind::index: {
+        const TypeHandle object = analyze_expr(expr.object);
+        if (checked_.types.is_pointer(object)) {
+            return checked_.types.get(object).pointer_mutability == PointerMutability::mut;
+        }
+        return is_writable_place(expr.object);
+    }
     case syntax::ExprKind::unary: {
         if (expr.unary_op != syntax::UnaryOp::dereference) {
             return false;

@@ -84,6 +84,7 @@ void CEmitter::emit_prelude() {
     out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
     out_ << "#include <stdalign.h>\n\n";
+    out_ << "#include <stdio.h>\n";
     out_ << "#include <stdlib.h>\n\n";
     out_ << "typedef struct aurex_m0_str {\n";
     out_ << "    const uint8_t *data;\n";
@@ -554,11 +555,31 @@ std::string CEmitter::emit_expr(syntax::ExprId expr_id) {
     return "/*unknown*/0";
 }
 
-std::string CEmitter::emit_condition(const syntax::ExprId expr_id) {
-    const std::string value = emit_expr_ordered(expr_id);
-    if (!value.empty() && value.front() == '(' && value.back() == ')') {
-        return value;
+std::string CEmitter::emit_condition_value(const syntax::ExprId expr_id) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return "/*invalid*/0";
     }
+    if (expr_contains_call(module_, expr_id)) {
+        return emit_expr_ordered(expr_id);
+    }
+
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    if (expr.kind == syntax::ExprKind::binary) {
+        return emit_expr(expr.binary_lhs) + " " + binary_op_text(expr.binary_op) + " " + emit_expr(expr.binary_rhs);
+    }
+    if (expr.kind == syntax::ExprKind::unary ||
+        expr.kind == syntax::ExprKind::cast ||
+        expr.kind == syntax::ExprKind::ptr_cast ||
+        expr.kind == syntax::ExprKind::bit_cast ||
+        expr.kind == syntax::ExprKind::ptr_addr ||
+        expr.kind == syntax::ExprKind::ptr_from_addr) {
+        return emit_expr(expr_id);
+    }
+    return emit_expr(expr_id);
+}
+
+std::string CEmitter::emit_condition(const syntax::ExprId expr_id) {
+    const std::string value = emit_condition_value(expr_id);
     return "(" + value + ")";
 }
 

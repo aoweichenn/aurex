@@ -19,7 +19,7 @@ entry names.
   low-level builtin emission, module-qualified C symbols, and pointer field
   access for pointer parameters with non-special names, plus nested struct
   literal emission, pointer-field assignment emission, and non-main
-  `export c fn` output.
+  `export c fn` output with optional ABI names.
 - `aurex/selfhost/tool/`: small command-line tools used by golden tests.
 
 The import root is `selfhost/src`, so file paths intentionally mirror module

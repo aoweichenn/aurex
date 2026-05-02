@@ -115,9 +115,10 @@ spellings, simple assignment statements, `break`, `continue`, empty `return`,
 declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, and emits
 small C wrappers for `extern c @name("...")`. `export c fn main` still lowers
 through the host `main` wrapper, while other `export c fn` declarations are
-emitted directly as C ABI functions with forward declarations. Assignment
-emission is split into `emit.assign` and now handles non-bare left sides such as
-pointer-field writes. It also emits module-qualified C
+emitted directly as C ABI functions with forward declarations and optional
+`@name("...")` ABI names. Assignment emission is split into `emit.assign` and
+now handles non-bare left sides such as pointer-field writes. It also emits
+module-qualified C
 symbol macros using the same `m0_<module_path>_<name>` spelling as Stage0, and
 uses a small source scan to choose `.` versus `->` for pointer field access in
 the Stage1 subset. Nested struct literal values are emitted recursively, so

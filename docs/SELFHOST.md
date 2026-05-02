@@ -95,9 +95,9 @@ Current exact capability:
   `return`, and emits C wrappers for `extern c @name("...")` declarations.
   `export c fn main` still receives the host entry wrapper; non-main
   `export c fn` declarations are emitted directly as C ABI functions with
-  forward declarations. Assignment handling lives in `emit.assign` and now
-  covers non-bare left sides used by the selfhost smoke path, including
-  pointer-field writes. That lets
+  forward declarations and optional `@name("...")` ABI names. Assignment
+  handling lives in `emit.assign` and now covers non-bare left sides used by the
+  selfhost smoke path, including pointer-field writes. That lets
   Stage1 compile
   `lexer.core + lexer.dump + lexer_file`, link the result with
   `selfhost/runtime/runtime.c`, and reproduce the file-backed lexer golden
@@ -215,8 +215,8 @@ next core type layer: `enum`, `opaque struct`, `*mut [N]T` pointer-to-array
 declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, module-qualified
 C symbol output, pointer field access for non-special pointer parameter names,
 recursive emission of nested struct literal values, and non-main
-`export c fn` output/prototypes, plus pointer-field assignment emission through
-`emit.assign`.
+`export c fn` output/prototypes/ABI names, plus pointer-field assignment
+emission through `emit.assign`.
 
 They also assert that `selfhost/src/aurex/selfhost/tool/lexer_file.ax` and
 `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` load the expected shared

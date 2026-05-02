@@ -136,8 +136,9 @@ check: all
 	grep -q 'ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'pair_ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'pair_ptr->value  = value' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'int32_t exported_value();' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'int32_t exported_value()' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q '#define exported_value m0_stage1_exported_value' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'int32_t m0_stage1_exported_value();' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'int32_t m0_stage1_exported_value()' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'WrappedCell' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c

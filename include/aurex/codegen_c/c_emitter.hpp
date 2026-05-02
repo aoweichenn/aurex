@@ -40,6 +40,7 @@ private:
     [[nodiscard]] std::string lower_logical_expr_to_temp(syntax::ExprId expr);
     [[nodiscard]] std::string lower_child_if_needed(syntax::ExprId expr);
     [[nodiscard]] std::string emit_expr(syntax::ExprId expr);
+    [[nodiscard]] std::string emit_condition_value(syntax::ExprId expr);
     [[nodiscard]] std::string emit_condition(syntax::ExprId expr);
     [[nodiscard]] std::string emit_type(syntax::TypeId type, std::string declarator = {});
     [[nodiscard]] std::string emit_callee(syntax::ExprId callee) const;

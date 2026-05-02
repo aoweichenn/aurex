@@ -63,7 +63,7 @@ fn check_builtins(ptr: *mut u8) -> bool {
         check_array_ptr(array_ptr);
 }
 
-export c fn exported_value() -> i32 {
+export c fn exported_value() -> i32 @name("m0_stage1_exported_value") {
     return 23;
 }
 

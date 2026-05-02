@@ -99,6 +99,16 @@ fn emit_symbol_define(file: *mut OutputFile, source: *const u8, mod_info: Module
     return write_piece(file, c"\n");
 }
 
+fn emit_symbol_alias_define(file: *mut OutputFile, source: *const u8, name: TokenSpan, target: TokenSpan) -> bool {
+    if !write_piece(file, c"#undef ") { return false; }
+    if !write_range(file, source, name.begin, name.end) { return false; }
+    if !write_piece(file, c"\n#define ") { return false; }
+    if !write_range(file, source, name.begin, name.end) { return false; }
+    if !write_piece(file, c" ") { return false; }
+    if !write_range(file, source, target.begin + 1, target.end - 1) { return false; }
+    return write_piece(file, c"\n");
+}
+
 fn emit_enum_case_define(file: *mut OutputFile, source: *const u8, mod_info: ModuleInfo, enum_name: TokenSpan, case_name: TokenSpan) -> bool {
     if !write_piece(file, c"#undef ") { return false; }
     if !write_range(file, source, enum_name.begin, enum_name.end) { return false; }
@@ -280,13 +290,26 @@ fn emit_fn_symbol_macro(file: *mut OutputFile, source: *const u8, mod_info: Modu
     return symbols_skip_block(source, index, current);
 }
 
-fn emit_export_fn_symbol_macro(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+fn emit_export_fn_symbol_macro(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
     if !expect_token(source, index, current, TK_KW_EXPORT) { return false; }
     if !expect_token(source, index, current, TK_KW_C) { return false; }
     if !expect_token(source, index, current, TK_KW_FN) { return false; }
-    if !expect_token(source, index, current, TK_IDENTIFIER) { return false; }
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER { return false; }
+    var abi_name: TokenSpan = make_token(TK_INVALID, 0, 0);
     while !check(current, TK_L_BRACE) && !check(current, TK_EOF) {
-        advance(source, index, current);
+        let token: TokenSpan = advance(source, index, current);
+        if token.kind == TK_AT {
+            if !expect_token(source, index, current, TK_IDENTIFIER) { return false; }
+            if !expect_token(source, index, current, TK_L_PAREN) { return false; }
+            let value: TokenSpan = advance(source, index, current);
+            if value.kind != TK_STRING { return false; }
+            abi_name = value;
+            if !expect_token(source, index, current, TK_R_PAREN) { return false; }
+        }
+    }
+    if abi_name.kind == TK_STRING && !symbols_string_literal_equals_ident(source, abi_name, name) {
+        if !emit_symbol_alias_define(file, source, name, abi_name) { return false; }
     }
     return symbols_skip_block(source, index, current);
 }
@@ -328,7 +351,7 @@ fn emit_source_symbol_macros(file: *mut OutputFile, source: *const u8) -> bool {
                                 if !emit_fn_symbol_macro(file, source, mod_info, &index, &current) { return false; }
                             } else {
                                 if check(&current, TK_KW_EXPORT) {
-                                    if !emit_export_fn_symbol_macro(source, &index, &current) { return false; }
+                                    if !emit_export_fn_symbol_macro(file, source, &index, &current) { return false; }
                                 } else {
                                     advance(source, &index, &current);
                                 }

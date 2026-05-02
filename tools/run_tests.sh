@@ -22,6 +22,7 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax"
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax"
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_lang.ax"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_core.ax"
 "${M0C}" --dump-tokens "${ROOT}/examples/hello.ax" >/tmp/aurex_tokens.txt
 "${M0C}" --emit=ast "${ROOT}/examples/hello.ax" >/tmp/aurex_ast.txt
 "${M0C}" --emit=checked "${ROOT}/examples/hello.ax" >/tmp/aurex_checked.txt

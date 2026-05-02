@@ -108,7 +108,9 @@ driver. It now supports one- and two-dependency bundle modes: Stage1 can combine
 and run the resulting executables. The token-stream emitter also handles the
 current selfhost `cast`/`ptr_cast`/`bit_cast` syntax, all M0 primitive scalar
 spellings, simple assignment statements, `break`, `continue`, empty `return`,
-and emits small C wrappers for `extern c @name("...")`, so Stage1 can now compile
+`enum`, opaque C structs, one-dimensional arrays, pointer-to-array C
+declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, and emits
+small C wrappers for `extern c @name("...")`, so Stage1 can now compile
 `lexer.core.ax + lexer.dump.ax + lexer_file.ax`, link it with
 `selfhost/runtime/runtime.c`, and reproduce the lexer golden output for
 `examples/hello.ax`.

@@ -194,7 +194,9 @@ the parser seed smoke, and the file-backed lexer tool can compile and run. The
 file-backed Stage1 bundle also proves explicit runtime ABI bindings survive
 through the M0-written emitter path. `stage1_lang.ax` separately covers the
 newly expanded Stage1 statement/type surface, including scalar primitives,
-`str`, assignment, loop jumps, and empty `return`.
+`str`, assignment, loop jumps, and empty `return`. `stage1_core.ax` covers the
+next core type layer: `enum`, `opaque struct`, `*mut [N]T` pointer-to-array
+declarators, `size_of`, `align_of`, `ptr_addr`, and `ptr_from_addr`.
 
 They also assert that `selfhost/src/aurex/selfhost/tool/lexer_file.ax` and
 `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` load the expected shared

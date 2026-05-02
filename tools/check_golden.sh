@@ -29,6 +29,11 @@ STAGE1_LANG_BIN="${BUILD_DIR}/stage1_lang"
 cc "${BUILD_DIR}/stage1_lang.c" "${ROOT}/selfhost/runtime/runtime.c" -o "${STAGE1_LANG_BIN}"
 test "$("${STAGE1_LANG_BIN}")" = "selfhost stage1 lang ok"
 
+STAGE1_CORE_BIN="${BUILD_DIR}/stage1_core"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_core.ax" -o "${BUILD_DIR}/stage1_core.c"
+cc "${BUILD_DIR}/stage1_core.c" "${ROOT}/selfhost/runtime/runtime.c" -o "${STAGE1_CORE_BIN}"
+test "$("${STAGE1_CORE_BIN}")" = "selfhost stage1 core ok"
+
 SELFHOST_TOKENS="${BUILD_DIR}/lexer_dump.tokens"
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_dump.ax" -o "${BUILD_DIR}/lexer_dump.c"
 cc "${BUILD_DIR}/lexer_dump.c" "${ROOT}/selfhost/runtime/runtime.c" -o "${BUILD_DIR}/lexer_dump"

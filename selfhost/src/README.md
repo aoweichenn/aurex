@@ -12,7 +12,8 @@ entry names.
 - `aurex/selfhost/parser/`: reusable parser seed modules.
 - `aurex/selfhost/smoke/`: executable smoke tests for selfhost modules.
   `stage1_lang.ax` specifically guards the Stage1 emitter statement/type
-  surface.
+  surface, and `stage1_core.ax` guards enum, opaque struct, pointer-to-array,
+  and low-level builtin emission.
 - `aurex/selfhost/tool/`: small command-line tools used by golden tests.
 
 The import root is `selfhost/src`, so file paths intentionally mirror module

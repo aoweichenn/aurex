@@ -11,9 +11,10 @@ LEXER_SMOKE_SRC := src/aurex/selfhost/smoke/lexer_smoke.ax
 LEXER_RANGES_SRC := src/aurex/selfhost/smoke/lexer_ranges.ax
 PARSER_SMOKE_SRC := src/aurex/selfhost/smoke/parser_smoke.ax
 STAGE1_LANG_SRC := src/aurex/selfhost/smoke/stage1_lang.ax
+STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
-PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/m0c_stage1
+PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/m0c_stage1
 
 all: $(PROGRAMS)
 
@@ -38,6 +39,9 @@ $(BUILD_DIR)/parser_smoke.c: $(PARSER_SMOKE_SRC) $(MODULES) | $(BUILD_DIR)
 $(BUILD_DIR)/stage1_lang.c: $(STAGE1_LANG_SRC) $(MODULES) | $(BUILD_DIR)
 	$(M0C) $(IMPORT_FLAGS) $(STAGE1_LANG_SRC) -o $@
 
+$(BUILD_DIR)/stage1_core.c: $(STAGE1_CORE_SRC) $(MODULES) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_CORE_SRC) -o $@
+
 $(BUILD_DIR)/lexer_dump.c: $(LEXER_DUMP_SRC) $(MODULES) | $(BUILD_DIR)
 	$(M0C) $(IMPORT_FLAGS) $(LEXER_DUMP_SRC) -o $@
 
@@ -53,6 +57,7 @@ check: all
 	$(BUILD_DIR)/lexer_ranges
 	$(BUILD_DIR)/parser_smoke
 	$(BUILD_DIR)/stage1_lang
+	$(BUILD_DIR)/stage1_core
 	$(M0C) $(IMPORT_FLAGS) --dump-modules $(LEXER_FILE_SRC) > $(BUILD_DIR)/lexer_file.modules
 	grep -q 'aurex.selfhost.lexer.dump' $(BUILD_DIR)/lexer_file.modules
 	grep -q 'aurex.selfhost.lexer.core' $(BUILD_DIR)/lexer_file.modules
@@ -104,6 +109,14 @@ check: all
 	grep -q 'break;' $(BUILD_DIR)/stage1_lang.stage1.c
 	$(CC) $(BUILD_DIR)/stage1_lang.stage1.c -o $(BUILD_DIR)/stage1_lang.stage1
 	test "$$($(BUILD_DIR)/stage1_lang.stage1)" = "selfhost stage1 lang ok"
+	$(BUILD_DIR)/m0c_stage1 $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'typedef struct NativeFile NativeFile;' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'Stage1Tag_one' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'uintptr_t' $(BUILD_DIR)/stage1_core.stage1.c
+	$(CC) $(BUILD_DIR)/stage1_core.stage1.c -o $(BUILD_DIR)/stage1_core.stage1
+	test "$$($(BUILD_DIR)/stage1_core.stage1)" = "selfhost stage1 core ok"
 
 clean:
 	rm -rf $(BUILD_DIR)

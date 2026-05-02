@@ -3,11 +3,11 @@ module aurex.selfhost.compiler.emit_c;
 import aurex.selfhost.compiler.io;
 import aurex.selfhost.compiler.subset;
 
-fn write_piece(file: *mut OutputFile, text: *const u8) -> bool {
+fn legacy_write_piece(file: *mut OutputFile, text: *const u8) -> bool {
     return output_write_c_string(file, text);
 }
 
-fn write_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
+fn legacy_write_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
     return output_write_source_range(file, source, begin, end);
 }
 
@@ -17,23 +17,23 @@ fn emit_stage1_c(path: *const u8, source: *const u8, program: Stage1Program) -> 
         return false;
     }
 
-    if !write_piece(file, c"#include <stdint.h>\n") { output_close(file); return false; }
-    if !write_piece(file, c"#include <stddef.h>\n") { output_close(file); return false; }
-    if !write_piece(file, c"#include <stdbool.h>\n\n") { output_close(file); return false; }
-    if !write_piece(file, c"int puts(const char *s);\n\n") { output_close(file); return false; }
-    if !write_piece(file, c"static int32_t aurex_m0_main(int32_t argc, uint8_t **argv) {\n") { output_close(file); return false; }
-    if !write_piece(file, c"    (void)argc;\n") { output_close(file); return false; }
-    if !write_piece(file, c"    (void)argv;\n") { output_close(file); return false; }
-    if !write_piece(file, c"    puts(") { output_close(file); return false; }
-    if !write_range(file, source, program.message_begin + 1, program.message_end) { output_close(file); return false; }
-    if !write_piece(file, c");\n") { output_close(file); return false; }
-    if !write_piece(file, c"    return ") { output_close(file); return false; }
-    if !write_range(file, source, program.return_begin, program.return_end) { output_close(file); return false; }
-    if !write_piece(file, c";\n") { output_close(file); return false; }
-    if !write_piece(file, c"}\n\n") { output_close(file); return false; }
-    if !write_piece(file, c"int main(int argc, char **argv) {\n") { output_close(file); return false; }
-    if !write_piece(file, c"    return (int)aurex_m0_main((int32_t)argc, (uint8_t **)argv);\n") { output_close(file); return false; }
-    if !write_piece(file, c"}\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"#include <stdint.h>\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"#include <stddef.h>\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"#include <stdbool.h>\n\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"int puts(const char *s);\n\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"static int32_t aurex_m0_main(int32_t argc, uint8_t **argv) {\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"    (void)argc;\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"    (void)argv;\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"    puts(") { output_close(file); return false; }
+    if !legacy_write_range(file, source, program.message_begin + 1, program.message_end) { output_close(file); return false; }
+    if !legacy_write_piece(file, c");\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"    return ") { output_close(file); return false; }
+    if !legacy_write_range(file, source, program.return_begin, program.return_end) { output_close(file); return false; }
+    if !legacy_write_piece(file, c";\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"}\n\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"int main(int argc, char **argv) {\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"    return (int)aurex_m0_main((int32_t)argc, (uint8_t **)argv);\n") { output_close(file); return false; }
+    if !legacy_write_piece(file, c"}\n") { output_close(file); return false; }
 
     return output_close(file);
 }

@@ -28,6 +28,26 @@ fn emit_subset_file(path: *const u8, source: *const u8) -> bool {
     return output_close(file);
 }
 
+fn emit_subset_open_bundle_file(path: *const u8) -> *mut OutputFile {
+    let file: *mut OutputFile = output_open(path);
+    if file == null {
+        return null;
+    }
+    if !emit_subset_prelude(file) {
+        output_close(file);
+        return null;
+    }
+    return file;
+}
+
+fn emit_subset_add_bundle_source(file: *mut OutputFile, source: *const u8) -> bool {
+    return emit_subset_source_items(file, source);
+}
+
+fn emit_subset_close_bundle_file(file: *mut OutputFile) -> bool {
+    return output_close(file);
+}
+
 fn emit_subset_bundle_file(path: *const u8, dep_source: *const u8, main_source: *const u8) -> bool {
     let file: *mut OutputFile = output_open(path);
     if file == null {

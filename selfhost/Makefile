@@ -114,6 +114,7 @@ check: all
 	grep -q 'typedef struct TopOpaque TopOpaque;' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'Stage1Tag_one' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'const Cell \*const_cell' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uintptr_t' $(BUILD_DIR)/stage1_core.stage1.c

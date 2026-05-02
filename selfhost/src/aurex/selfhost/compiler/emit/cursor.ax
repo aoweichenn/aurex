@@ -24,7 +24,7 @@ fn expect_token(source: *const u8, index: *mut i32, current: *mut TokenSpan, kin
     return match_token(source, index, current, kind);
 }
 
-fn parse_path_tail(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+fn emit_parse_path_tail(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
     while match_token(source, index, current, TK_DOT) {
         if !(match_token(source, index, current, TK_IDENTIFIER) || match_token(source, index, current, TK_KW_C)) {
             return false;
@@ -40,7 +40,7 @@ fn parse_module_or_import(source: *const u8, index: *mut i32, current: *mut Toke
     if !(match_token(source, index, current, TK_IDENTIFIER) || match_token(source, index, current, TK_KW_C)) {
         return false;
     }
-    if !parse_path_tail(source, index, current) {
+    if !emit_parse_path_tail(source, index, current) {
         return false;
     }
     return expect_token(source, index, current, TK_SEMICOLON);

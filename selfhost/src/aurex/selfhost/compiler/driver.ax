@@ -99,8 +99,44 @@ fn compile_bundle2(dep0_path: *const u8, dep1_path: *const u8, input_path: *cons
     return 0;
 }
 
+fn compile_many(argc: i32, argv: *mut *mut u8) -> i32 {
+    let output_path: *const u8 = ptr_cast(*const u8, argv[argc - 1]);
+    let file: *mut OutputFile = emit_transpile_open_bundle(output_path);
+    if file == null {
+        puts(c"stage1: failed to open bundle output");
+        return 1;
+    }
+
+    var arg_index: i32 = 1;
+    while arg_index < argc - 1 {
+        let input_path: *const u8 = ptr_cast(*const u8, argv[arg_index]);
+        let buffer: FileBuffer = read_file(input_path);
+        if buffer.data == null {
+            emit_transpile_close_bundle(file);
+            puts(c"stage1: failed to read bundle input");
+            return 1;
+        }
+
+        let source: *const u8 = ptr_cast(*const u8, buffer.data);
+        if !emit_transpile_add_bundle_source(file, source) {
+            free_file(buffer);
+            emit_transpile_close_bundle(file);
+            puts(c"stage1: failed to emit bundle input");
+            return 1;
+        }
+        free_file(buffer);
+        arg_index = arg_index + 1;
+    }
+
+    if !emit_transpile_close_bundle(file) {
+        puts(c"stage1: failed to close bundle output");
+        return 1;
+    }
+    return 0;
+}
+
 fn print_stage1_usage() -> i32 {
-    puts(c"usage: m0c_stage1 <input.ax> <output.c> | <dep.ax> <input.ax> <output.c> | <dep0.ax> <dep1.ax> <input.ax> <output.c>");
+    puts(c"usage: m0c_stage1 <input.ax>... <output.c>");
     return 1;
 }
 
@@ -117,5 +153,5 @@ fn run_stage1(argc: i32, argv: *mut *mut u8) -> i32 {
     if argc == 3 {
         return compile_file(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]));
     }
-    return print_stage1_usage();
+    return compile_many(argc, argv);
 }

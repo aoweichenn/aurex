@@ -6,6 +6,45 @@ import aurex.selfhost.compiler.emit.writer;
 import aurex.selfhost.compiler.io;
 import aurex.selfhost.lexer.core;
 
+fn token_matches_3(source: *const u8, token: TokenSpan, ch0: u8, ch1: u8, ch2: u8) -> bool {
+    return token.end - token.begin == 3 &&
+        source[token.begin] == ch0 &&
+        source[token.begin + 1] == ch1 &&
+        source[token.begin + 2] == ch2;
+}
+
+fn token_matches_7(source: *const u8, token: TokenSpan, ch0: u8, ch1: u8, ch2: u8, ch3: u8, ch4: u8, ch5: u8, ch6: u8) -> bool {
+    return token.end - token.begin == 7 &&
+        source[token.begin] == ch0 &&
+        source[token.begin + 1] == ch1 &&
+        source[token.begin + 2] == ch2 &&
+        source[token.begin + 3] == ch3 &&
+        source[token.begin + 4] == ch4 &&
+        source[token.begin + 5] == ch5 &&
+        source[token.begin + 6] == ch6;
+}
+
+fn is_pointer_field_owner(source: *const u8, token: TokenSpan) -> bool {
+    if token_matches_7(source, token, b'c', b'u', b'r', b'r', b'e', b'n', b't') {
+        return true;
+    }
+    if token_matches_3(source, token, b'p', b't', b'r') {
+        return true;
+    }
+    return false;
+}
+
+fn emit_field_access(file: *mut OutputFile, source: *const u8, owner: TokenSpan, field: TokenSpan) -> bool {
+    if !write_range(file, source, owner.begin, owner.end) { return false; }
+    if is_pointer_field_owner(source, owner) {
+        if !write_piece(file, c"->") { return false; }
+    } else {
+        if !write_piece(file, c".") { return false; }
+    }
+    if !write_range(file, source, field.begin, field.end) { return false; }
+    return write_piece(file, c" ");
+}
+
 fn emit_token_expr(file: *mut OutputFile, source: *const u8, token: TokenSpan) -> bool {
     if token.kind == TK_STRING {
         if !write_piece(file, c"(aurex_m0_str){ .data = (const uint8_t *)") { return false; }
@@ -176,9 +215,20 @@ fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, cu
                 return false;
             }
         } else {
+            if token.kind == TK_IDENTIFIER && check(current, TK_DOT) {
+                advance(source, index, current);
+                let field: TokenSpan = advance(source, index, current);
+                if field.kind != TK_IDENTIFIER {
+                    return false;
+                }
+                if !emit_field_access(file, source, token, field) {
+                    return false;
+                }
+        } else {
             if !emit_token_expr(file, source, token) {
                 return false;
             }
+        }
         }
         }
                     }

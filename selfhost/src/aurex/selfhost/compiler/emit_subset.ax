@@ -169,8 +169,6 @@ fn emit_expr_until(file: *mut OutputFile, source: *const u8, index: *mut i32, cu
     return true;
 }
 
-fn emit_block(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool;
-
 fn emit_let_or_var(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
     advance(source, index, current);
     let name: TokenSpan = advance(source, index, current);

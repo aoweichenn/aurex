@@ -110,6 +110,8 @@ void CEmitter::emit_forward_decls() {
                     out_ << "typedef struct " << c_type_name(child) << " " << c_type_name(child) << ";\n";
                 }
             }
+        } else if (item.kind == syntax::ItemKind::fn_decl && !item.is_extern_c && !is_exported_main(item)) {
+            emit_function_decl(item, true);
         }
     }
     out_ << "\n";

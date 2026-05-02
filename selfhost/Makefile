@@ -6,13 +6,14 @@ IMPORT_FLAGS := -I src
 
 SOURCES := src/m0c_seed.ax src/lexer_smoke.ax src/lexer_ranges.ax src/lexer_dump.ax src/lexer_file.ax src/parser_smoke.ax src/m0c_stage1.ax
 PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/m0c_stage1
+MODULES := $(shell find src/aurex -name '*.ax' -print)
 
 all: $(PROGRAMS)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/%.c: src/%.ax | $(BUILD_DIR)
+$(BUILD_DIR)/%.c: src/%.ax $(MODULES) | $(BUILD_DIR)
 	$(M0C) $(IMPORT_FLAGS) $< -o $@
 
 $(BUILD_DIR)/%: $(BUILD_DIR)/%.c $(RUNTIME)
@@ -44,6 +45,9 @@ check: all
 	$(BUILD_DIR)/m0c_stage1 src/m0c_seed.ax $(BUILD_DIR)/m0c_seed.stage1.c
 	$(CC) $(BUILD_DIR)/m0c_seed.stage1.c -o $(BUILD_DIR)/m0c_seed.stage1
 	test "$$($(BUILD_DIR)/m0c_seed.stage1)" = "Aurex M0 selfhost seed"
+	$(BUILD_DIR)/m0c_stage1 src/lexer_smoke.ax $(BUILD_DIR)/lexer_smoke.stage1.c
+	grep -q 'static bool validate_sequence' $(BUILD_DIR)/lexer_smoke.stage1.c
+	grep -q 'scan_next' $(BUILD_DIR)/lexer_smoke.stage1.c
 
 clean:
 	rm -rf $(BUILD_DIR)

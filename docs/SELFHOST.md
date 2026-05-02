@@ -41,6 +41,9 @@ Implemented now:
   module/import declarations, an `extern c` block, and `export c fn main`
   containing `puts(c"..."); return <integer>;`.
 - `selfhost/src/aurex/selfhost/compiler/emit_c.ax`: C emitter for that subset.
+- `selfhost/src/aurex/selfhost/compiler/emit_subset.ax`: next experimental
+  token-stream emitter. It is checked by Stage0 and is intended to replace the
+  first narrow emitter once it can compile broader selfhost programs.
 - `selfhost/src/aurex/selfhost/compiler/driver.ax`: Stage1 compile pipeline
   wiring.
 - `selfhost/src/m0c_stage1.ax`: executable entry point for the Stage1 compiler
@@ -64,6 +67,20 @@ Stage1 vertical slice: Stage0 compiles `m0c_stage1.ax`, that M0 program reads an
 M0 source file, validates the supported subset, emits C, and the generated C is
 compiled and run. That is meaningful bootstrap progress, but it is not yet a
 fixed-point self-host because Stage1 cannot compile the full compiler source.
+
+Current exact capability:
+
+- Stage0 compiles the M0 selfhost lexer, parser seed, and `m0c_stage1.ax`.
+- The M0 lexer stream is checked against the C++ Stage0 lexer over the local
+  corpus.
+- `m0c_stage1` compiles `examples/hello.ax` and
+  `selfhost/src/m0c_seed.ax` into runnable C.
+- `emit_subset.ax` is the active expansion path for compiling broader selfhost
+  files. It is now the first Stage1 backend attempted by the driver, with the
+  original narrow emitter retained as fallback.
+- `m0c_stage1` can parse and emit a C translation for
+  `selfhost/src/lexer_smoke.ax`; compiling that C still needs dependency/module
+  bundling because the emitted file references imported `lexer.core` symbols.
 
 ## Milestones
 
@@ -132,6 +149,24 @@ The selfhost subtree also has its own entry point:
 
 ```sh
 make -C selfhost check
+```
+
+Manual Stage1 usage:
+
+```sh
+cmake -S . -B build
+cmake --build build -j
+build/m0c -I selfhost/src selfhost/src/m0c_stage1.ax -o build/m0c_stage1.c
+cc build/m0c_stage1.c selfhost/runtime/runtime.c -o build/m0c_stage1
+build/m0c_stage1 selfhost/src/m0c_seed.ax build/m0c_seed.stage1.c
+cc build/m0c_seed.stage1.c -o build/m0c_seed.stage1
+build/m0c_seed.stage1
+```
+
+Expected output:
+
+```text
+Aurex M0 selfhost seed
 ```
 
 Both `bootstrap_chain.sh` and `make -C selfhost check` now prove the same

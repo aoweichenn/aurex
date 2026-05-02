@@ -62,8 +62,9 @@ tools/bootstrap_chain.sh
 ```
 
 M0V0.1.8 is not fully self-hosted yet. The current tree contains a visible
-bootstrap seed and a tested chain so future iterations can move compiler
-components into M0 without hiding the status.
+bootstrap seed, reusable M0 lexer/parser pieces, and a tested Stage1 compiler
+slice so future iterations can move compiler components into M0 without hiding
+the status.
 
 The selfhost track now has a reusable M0 lexer module in
 `selfhost/src/aurex/selfhost/lexer/`. `core.ax` owns token constants,
@@ -83,6 +84,31 @@ stream checked against `tests/golden/selfhost_lexer_dump.tokens`.
 checks that token stream against `tests/golden/selfhost_lexer_file_hello.tokens`.
 `tools/compare_selfhost_lexer.sh` compares the M0 lexer stream directly with
 the production C++ Stage0 lexer stream over the local corpus.
+
+The current Stage1 compiler entry is `selfhost/src/m0c_stage1.ax`. Stage0
+compiles it to a native executable; that M0-written executable can compile the
+current Stage1 subset, including `examples/hello.ax` and
+`selfhost/src/m0c_seed.ax`, into runnable C. This is a real bootstrap slice, not
+the final fixed point: Stage1 does not yet compile the full compiler source.
+The next backend path, `emit_subset.ax`, is already wired into the Stage1 driver
+and can emit C for broader selfhost sources such as `lexer_smoke.ax`; imported
+module bundling is the next required step before those broader outputs link.
+
+Manual Stage1 run:
+
+```sh
+build/m0c -I selfhost/src selfhost/src/m0c_stage1.ax -o build/m0c_stage1.c
+cc build/m0c_stage1.c selfhost/runtime/runtime.c -o build/m0c_stage1
+build/m0c_stage1 selfhost/src/m0c_seed.ax build/m0c_seed.stage1.c
+cc build/m0c_seed.stage1.c -o build/m0c_seed.stage1
+build/m0c_seed.stage1
+```
+
+Expected output:
+
+```text
+Aurex M0 selfhost seed
+```
 
 ```sh
 make selfhost

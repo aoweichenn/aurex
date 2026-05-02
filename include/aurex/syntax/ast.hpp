@@ -204,16 +204,23 @@ struct ModulePath {
     base::SourceRange range {};
 };
 
+struct ModuleInfo {
+    ModulePath path;
+    std::vector<ModuleId> imports;
+};
+
 struct AstModule {
     // The AST is intentionally stored as parallel vectors addressed by small
     // IDs. This keeps nodes compact, avoids virtual dispatch, and lets later
     // compiler stages attach side tables without changing syntax nodes.
     ModulePath module_path;
     std::vector<ModulePath> imports;
+    std::vector<ModuleInfo> modules;
     std::vector<TypeNode> types;
     std::vector<ExprNode> exprs;
     std::vector<StmtNode> stmts;
     std::vector<ItemNode> items;
+    std::vector<ModuleId> item_modules;
 
     AstModule() {
         types.reserve(base::config::initial_ast_node_capacity);
@@ -243,6 +250,7 @@ struct AstModule {
     [[nodiscard]] ItemId push_item(ItemNode node) {
         const ItemId id {static_cast<base::u32>(items.size())};
         items.push_back(std::move(node));
+        item_modules.push_back(invalid_module_id);
         return id;
     }
 };

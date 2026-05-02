@@ -151,7 +151,7 @@ Some industrial rules still need deeper lowering support:
 - guaranteed left-to-right evaluation in emitted C for all complex expressions
 - temporary generation for side-effectful call arguments
 - complete constant evaluation
-- module visibility/export rules and namespace qualification
+- explicit export/visibility controls beyond direct imports
 - full C ABI validation
 
 ## 6.1 Module Loading
@@ -164,13 +164,14 @@ import shared.util;
 ```
 
 Resolution maps `shared.util` to `shared/util.ax`. The importer directory is
-searched first, followed by every `-I` path. Imported ASTs are merged into one
-checked module for this first implementation.
+searched first, followed by every `-I` path. Stage0 keeps each loaded module's
+top-level namespace while still using one checked module internally.
 
 Current limitations:
 
-- no visibility/export model between modules yet;
-- duplicate global names across loaded modules are still rejected by sema;
+- imports expose direct top-level names; there is not yet an explicit public/private export model;
+- the importing module's own top-level names take precedence over imported names;
+- if two direct imports provide the same referenced name, sema reports an ambiguity;
 - imported module declarations must match the import path;
 - missing imports and module-name mismatches are reported at the import/module
   source range;

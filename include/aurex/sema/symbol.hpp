@@ -3,6 +3,7 @@
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
 #include "aurex/sema/type.hpp"
+#include "aurex/syntax/ast_ids.hpp"
 
 #include <limits>
 #include <string>
@@ -35,6 +36,8 @@ inline constexpr SymbolId invalid_symbol_id {SymbolId::invalid_value};
 struct Symbol {
     SymbolKind kind = SymbolKind::local;
     std::string name;
+    std::string c_name;
+    syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle type = invalid_type_handle;
     base::SourceRange range {};
     bool is_mutable = false;

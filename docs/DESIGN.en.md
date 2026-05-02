@@ -71,7 +71,10 @@ not depend on parser internals.
 - orchestrates file IO and stage execution;
 - owns diagnostics presentation.
 - resolves imports by loading `a/b.ax` for `import a.b;`;
-- merges imported ASTs into one Stage0 checked module with ID remapping.
+- merges imported ASTs into one Stage0 checked module with ID remapping and
+  per-item module ownership.
+- lets sema resolve top-level names through the current module and its direct
+  imports, while codegen emits module-qualified C symbols.
 - validates that imported files declare the module path they were imported as;
 - reports missing imports and module-name mismatches with source ranges.
 - detects cyclic imports while loading modules.

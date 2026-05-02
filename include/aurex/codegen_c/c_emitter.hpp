@@ -39,7 +39,10 @@ private:
     [[nodiscard]] std::string emit_type(syntax::TypeId type, std::string declarator = {});
     [[nodiscard]] std::string emit_primitive(syntax::PrimitiveTypeKind primitive) const;
     [[nodiscard]] std::string emit_callee(syntax::ExprId callee) const;
+    [[nodiscard]] std::string emit_name(syntax::ExprId expr) const;
+    [[nodiscard]] sema::TypeHandle type_handle(syntax::TypeId type) const noexcept;
     [[nodiscard]] std::string c_name(const syntax::ItemNode& item) const;
+    [[nodiscard]] std::string c_type_name(const syntax::ItemNode& item) const;
     [[nodiscard]] std::string escape_c_string(std::string_view literal) const;
     [[nodiscard]] bool is_exported_main(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] bool expr_has_pointer_type(syntax::ExprId expr) const noexcept;

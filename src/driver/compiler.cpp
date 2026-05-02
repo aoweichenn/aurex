@@ -253,7 +253,12 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map) {
     }
 }
 
-void append_module_into(syntax::AstModule& destination, syntax::AstModule&& source, const bool keep_imports) {
+void append_module_into(
+    syntax::AstModule& destination,
+    syntax::AstModule&& source,
+    const bool keep_imports,
+    const syntax::ModuleId owner_module
+) {
     IdMap map;
     map.types.reserve(source.types.size());
     map.exprs.reserve(source.exprs.size());
@@ -275,6 +280,7 @@ void append_module_into(syntax::AstModule& destination, syntax::AstModule&& sour
     for (const syntax::ItemNode& node : source.items) {
         map.items.push_back(syntax::ItemId {static_cast<base::u32>(destination.items.size())});
         destination.items.push_back(node);
+        destination.item_modules.push_back(owner_module);
     }
 
     const base::usize type_begin = destination.types.size() - source.types.size();
@@ -330,10 +336,11 @@ public:
 private:
     struct LoadedModule {
         std::filesystem::path path;
+        syntax::ModuleId id = syntax::invalid_module_id;
         base::SourceRange range {};
     };
 
-    [[nodiscard]] base::Result<void> load_file(
+    [[nodiscard]] base::Result<syntax::ModuleId> load_file(
         const std::filesystem::path& path,
         syntax::AstModule& combined,
         base::usize depth,
@@ -341,24 +348,24 @@ private:
         const syntax::ModulePath* expected_module
     ) {
         if (depth > base::config::max_include_depth) {
-            return base::Result<void>::fail({base::ErrorCode::invalid_source, "maximum import depth exceeded"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::invalid_source, "maximum import depth exceeded"});
         }
 
         const std::filesystem::path canonical = canonical_or_absolute(path);
         const std::string key = canonical.string();
         if (loading_files_.contains(key)) {
             push_error(diagnostics_, expected_module != nullptr ? expected_module->range : base::SourceRange {}, "cyclic import involving: " + key);
-            return base::Result<void>::fail({base::ErrorCode::parse_error, "module loading failed"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
         }
-        if (loaded_files_.contains(key)) {
-            return base::Result<void>::ok();
+        if (const auto loaded = loaded_file_modules_.find(key); loaded != loaded_file_modules_.end()) {
+            return base::Result<syntax::ModuleId>::ok(loaded->second);
         }
         loading_files_.insert(key);
 
         auto source_result = read_file(canonical);
         if (!source_result) {
             loading_files_.erase(key);
-            return base::Result<void>::fail(source_result.error());
+            return base::Result<syntax::ModuleId>::fail(source_result.error());
         }
 
         const base::SourceId source_id = sources_.add_source(canonical.string(), std::move(source_result.value()));
@@ -366,20 +373,20 @@ private:
         auto token_result = lexer.tokenize();
         if (!token_result) {
             loading_files_.erase(key);
-            return base::Result<void>::fail(token_result.error());
+            return base::Result<syntax::ModuleId>::fail(token_result.error());
         }
         parse::Parser parser(token_result.value(), diagnostics_);
         auto ast_result = parser.parse_module();
         if (!ast_result) {
             loading_files_.erase(key);
-            return base::Result<void>::fail(ast_result.error());
+            return base::Result<syntax::ModuleId>::fail(ast_result.error());
         }
 
         syntax::AstModule module = std::move(ast_result.value());
         if (module.module_path.parts.empty()) {
             push_error(diagnostics_, base::SourceRange {source_id, 0, 0}, "module declaration is required for importable files");
             loading_files_.erase(key);
-            return base::Result<void>::fail({base::ErrorCode::parse_error, "module loading failed"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
         }
         if (expected_module != nullptr && !module_paths_equal(module.module_path, *expected_module)) {
             push_error(
@@ -389,10 +396,10 @@ private:
                     "' does not match import '" + module_path_to_string(*expected_module) + "'"
             );
             loading_files_.erase(key);
-            return base::Result<void>::fail({base::ErrorCode::parse_error, "module loading failed"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
         }
         const std::string module_name = module_path_to_string(module.module_path);
-        const auto module_inserted = loaded_modules_.emplace(module_name, LoadedModule {canonical, module.module_path.range});
+        const auto module_inserted = loaded_modules_.emplace(module_name, LoadedModule {canonical, syntax::invalid_module_id, module.module_path.range});
         if (!module_inserted.second && module_inserted.first->second.path != canonical) {
             push_error(
                 diagnostics_,
@@ -400,9 +407,14 @@ private:
                 "duplicate module name '" + module_name + "' already loaded from " + module_inserted.first->second.path.string()
             );
             loading_files_.erase(key);
-            return base::Result<void>::fail({base::ErrorCode::parse_error, "module loading failed"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
         }
+
+        syntax::ModuleId module_id = module_inserted.first->second.id;
         if (module_inserted.second) {
+            module_id = syntax::ModuleId {static_cast<base::u32>(combined.modules.size())};
+            module_inserted.first->second.id = module_id;
+            combined.modules.push_back(syntax::ModuleInfo {module.module_path, {}});
             modules_.push_back(ModuleRecord {module_name, canonical});
         }
         if (is_root) {
@@ -410,6 +422,8 @@ private:
         }
 
         const std::vector<syntax::ModulePath> imports = module.imports;
+        std::vector<syntax::ModuleId> direct_imports;
+        direct_imports.reserve(imports.size());
         for (const syntax::ModulePath& import : imports) {
             const auto import_file = find_import_file(import, canonical.parent_path(), invocation_.import_paths);
             if (!import_file) {
@@ -421,26 +435,30 @@ private:
                         " (searched: " + format_import_candidates(candidates) + ")"
                 );
                 loading_files_.erase(key);
-                return base::Result<void>::fail({base::ErrorCode::io_error, "module loading failed"});
+                return base::Result<syntax::ModuleId>::fail({base::ErrorCode::io_error, "module loading failed"});
             }
             auto import_result = load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import);
             if (!import_result) {
                 loading_files_.erase(key);
                 return import_result;
             }
+            direct_imports.push_back(import_result.value());
+        }
+        if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
+            combined.modules[module_id.value].imports = std::move(direct_imports);
         }
 
-        append_module_into(combined, std::move(module), is_root);
+        append_module_into(combined, std::move(module), is_root, module_id);
         loading_files_.erase(key);
-        loaded_files_.insert(key);
-        return base::Result<void>::ok();
+        loaded_file_modules_.emplace(key, module_id);
+        return base::Result<syntax::ModuleId>::ok(module_id);
     }
 
     const CompilerInvocation& invocation_;
     base::SourceManager& sources_;
     base::DiagnosticSink& diagnostics_;
-    std::unordered_set<std::string> loaded_files_;
     std::unordered_set<std::string> loading_files_;
+    std::unordered_map<std::string, syntax::ModuleId> loaded_file_modules_;
     std::unordered_map<std::string, LoadedModule> loaded_modules_;
     std::vector<ModuleRecord> modules_;
 };

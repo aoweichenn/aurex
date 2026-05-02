@@ -91,14 +91,14 @@ void CEmitter::emit_forward_decls() {
         }
         const syntax::ItemNode& item = module_.items[i];
         if (item.kind == syntax::ItemKind::struct_decl) {
-            out_ << "typedef struct " << item.name << " " << item.name << ";\n";
+            out_ << "typedef struct " << c_type_name(item) << " " << c_type_name(item) << ";\n";
         } else if (item.kind == syntax::ItemKind::opaque_struct_decl) {
-            out_ << "typedef struct " << item.name << " " << item.name << ";\n";
+            out_ << "typedef struct " << c_type_name(item) << " " << c_type_name(item) << ";\n";
         } else if (item.kind == syntax::ItemKind::extern_block) {
             for (syntax::ItemId id : item.extern_items) {
                 const syntax::ItemNode& child = module_.items[id.value];
                 if (child.kind == syntax::ItemKind::opaque_struct_decl) {
-                    out_ << "typedef struct " << child.name << " " << child.name << ";\n";
+                    out_ << "typedef struct " << c_type_name(child) << " " << c_type_name(child) << ";\n";
                 }
             }
         }
@@ -141,28 +141,28 @@ void CEmitter::emit_item(const syntax::ItemNode& item) {
 }
 
 void CEmitter::emit_const(const syntax::ItemNode& item) {
-    out_ << "static const " << emit_type(item.const_type, std::string(item.name))
+    out_ << "static const " << emit_type(item.const_type, c_name(item))
          << " = " << emit_expr(item.const_value) << ";\n\n";
 }
 
 void CEmitter::emit_struct(const syntax::ItemNode& item) {
-    out_ << "typedef struct " << item.name << " {\n";
+    out_ << "typedef struct " << c_type_name(item) << " {\n";
     ++indent_;
     for (const syntax::FieldDecl& field : item.fields) {
         write_indent();
         out_ << emit_type(field.type, std::string(field.name)) << ";\n";
     }
     --indent_;
-    out_ << "} " << item.name << ";\n\n";
+    out_ << "} " << c_type_name(item) << ";\n\n";
 }
 
 void CEmitter::emit_enum(const syntax::ItemNode& item) {
-    out_ << "typedef " << emit_type(item.enum_base_type) << " " << item.name << ";\n";
+    out_ << "typedef " << emit_type(item.enum_base_type) << " " << c_type_name(item) << ";\n";
     out_ << "enum {\n";
     ++indent_;
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
         write_indent();
-        out_ << item.name << "_" << enum_case.name << " = " << enum_case.value_text << ",\n";
+        out_ << c_name(item) << "_" << enum_case.name << " = " << enum_case.value_text << ",\n";
     }
     --indent_;
     out_ << "};\n\n";
@@ -279,7 +279,7 @@ std::string CEmitter::emit_expr(syntax::ExprId expr_id) {
     case syntax::ExprKind::byte_literal:
         return std::string(expr.text.substr(1));
     case syntax::ExprKind::name:
-        return std::string(expr.text);
+        return emit_name(expr_id);
     case syntax::ExprKind::unary:
         return "(" + unary_op_text(expr.unary_op) + emit_expr(expr.unary_operand) + ")";
     case syntax::ExprKind::binary:
@@ -301,7 +301,7 @@ std::string CEmitter::emit_expr(syntax::ExprId expr_id) {
     case syntax::ExprKind::index:
         return emit_expr(expr.object) + "[" + emit_expr(expr.index) + "]";
     case syntax::ExprKind::struct_literal: {
-        std::string result = "(" + std::string(expr.struct_name) + "){";
+        std::string result = "(" + checked_.types.c_name(checked_.expr_types[expr_id.value]) + "){";
         for (base::usize i = 0; i < expr.field_inits.size(); ++i) {
             if (i != 0) {
                 result += ", ";
@@ -340,7 +340,7 @@ std::string CEmitter::emit_type(syntax::TypeId type_id, std::string declarator) 
         return declarator.empty() ? primitive : primitive + " " + declarator;
     }
     case syntax::TypeKind::named:
-        return declarator.empty() ? std::string(type.name) : std::string(type.name) + " " + declarator;
+        return declarator.empty() ? checked_.types.c_name(type_handle(type_id)) : checked_.types.c_name(type_handle(type_id)) + " " + declarator;
     case syntax::TypeKind::pointer: {
         const syntax::TypeNode& pointee = module_.types[type.pointee.value];
         if (pointee.kind == syntax::TypeKind::array) {
@@ -397,16 +397,66 @@ std::string CEmitter::emit_callee(const syntax::ExprId callee) const {
     if (expr.kind != syntax::ExprKind::name) {
         return std::string(expr.text);
     }
-    const auto found = checked_.functions.find(std::string(expr.text));
-    if (found == checked_.functions.end()) {
-        return std::string(expr.text);
+    return emit_name(callee);
+}
+
+std::string CEmitter::emit_name(const syntax::ExprId expr) const {
+    if (!syntax::is_valid(expr) || expr.value >= module_.exprs.size()) {
+        return "/*invalid_name*/";
     }
-    return found->second.c_name;
+    if (expr.value < checked_.expr_c_names.size() && !checked_.expr_c_names[expr.value].empty()) {
+        return checked_.expr_c_names[expr.value];
+    }
+    return std::string(module_.exprs[expr.value].text);
+}
+
+sema::TypeHandle CEmitter::type_handle(const syntax::TypeId type) const noexcept {
+    if (!syntax::is_valid(type) || type.value >= checked_.syntax_type_handles.size()) {
+        return sema::invalid_type_handle;
+    }
+    return checked_.syntax_type_handles[type.value];
 }
 
 std::string CEmitter::c_name(const syntax::ItemNode& item) const {
-    if (!item.abi_name.empty()) {
-        return std::string(item.abi_name);
+    const auto item_begin = module_.items.data();
+    const auto item_end = item_begin + module_.items.size();
+    if (&item < item_begin || &item >= item_end) {
+        return std::string(item.name);
+    }
+    const base::usize item_index = static_cast<base::usize>(&item - item_begin);
+    if (item_index < checked_.item_c_names.size() && !checked_.item_c_names[item_index].empty()) {
+        return checked_.item_c_names[item_index];
+    }
+    return std::string(item.name);
+}
+
+std::string CEmitter::c_type_name(const syntax::ItemNode& item) const {
+    if (item.kind != syntax::ItemKind::struct_decl &&
+        item.kind != syntax::ItemKind::enum_decl &&
+        item.kind != syntax::ItemKind::opaque_struct_decl) {
+        return std::string(item.name);
+    }
+    const auto item_begin = module_.items.data();
+    const auto item_end = item_begin + module_.items.size();
+    if (&item < item_begin || &item >= item_end) {
+        return std::string(item.name);
+    }
+    const base::usize item_index = static_cast<base::usize>(&item - item_begin);
+    if (item_index >= module_.item_modules.size()) {
+        return std::string(item.name);
+    }
+    const syntax::ModuleId item_module = module_.item_modules[item_index];
+    for (const auto& entry : checked_.structs) {
+        const sema::StructInfo& info = entry.second;
+        if (info.module.value == item_module.value && info.name == item.name) {
+            return info.c_name;
+        }
+    }
+    if (item.kind == syntax::ItemKind::enum_decl) {
+        const base::usize item_index = static_cast<base::usize>(&item - item_begin);
+        if (item_index < checked_.item_c_names.size() && !checked_.item_c_names[item_index].empty()) {
+            return checked_.item_c_names[item_index];
+        }
     }
     return std::string(item.name);
 }

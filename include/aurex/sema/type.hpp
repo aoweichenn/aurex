@@ -59,6 +59,7 @@ struct TypeInfo {
     base::u64 array_count = 0;
     TypeHandle array_element = invalid_type_handle;
     std::string name;
+    std::string c_name;
     bool contains_array = false;
     bool is_copyable = true;
 };
@@ -70,9 +71,9 @@ public:
     [[nodiscard]] TypeHandle builtin(BuiltinType type) const noexcept;
     [[nodiscard]] TypeHandle pointer(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
-    [[nodiscard]] TypeHandle named_struct(std::string name, bool contains_array);
-    [[nodiscard]] TypeHandle named_enum(std::string name);
-    [[nodiscard]] TypeHandle opaque_struct(std::string name);
+    [[nodiscard]] TypeHandle named_struct(std::string name, std::string c_name, bool contains_array);
+    [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
+    [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
 
     void set_record_properties(TypeHandle handle, bool contains_array, bool is_copyable) noexcept;
 
@@ -86,6 +87,7 @@ public:
     [[nodiscard]] bool is_copyable(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
+    [[nodiscard]] std::string c_name(TypeHandle type) const;
     [[nodiscard]] const TypeInfo& get(TypeHandle handle) const noexcept;
 
 private:

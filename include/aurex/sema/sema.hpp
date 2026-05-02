@@ -15,6 +15,7 @@ namespace aurex::sema {
 struct FunctionSignature {
     std::string name;
     std::string c_name;
+    syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle return_type = invalid_type_handle;
     std::vector<TypeHandle> param_types;
     base::SourceRange range {};
@@ -24,12 +25,16 @@ struct FunctionSignature {
 
 struct StructFieldInfo {
     std::string name;
+    std::string c_name;
+    syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle type = invalid_type_handle;
     base::SourceRange range {};
 };
 
 struct StructInfo {
     std::string name;
+    std::string c_name;
+    syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle type = invalid_type_handle;
     std::vector<StructFieldInfo> fields;
     bool is_opaque = false;
@@ -37,6 +42,8 @@ struct StructInfo {
 
 struct EnumCaseInfo {
     std::string name;
+    std::string c_name;
+    syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle type = invalid_type_handle;
     std::string value_text;
     base::SourceRange range {};
@@ -47,6 +54,9 @@ struct CheckedModule {
     // side-table based so AST nodes remain parse-only data.
     TypeTable types;
     std::vector<TypeHandle> expr_types;
+    std::vector<std::string> expr_c_names;
+    std::vector<TypeHandle> syntax_type_handles;
+    std::vector<std::string> item_c_names;
     std::unordered_map<std::string, FunctionSignature> functions;
     std::unordered_map<std::string, StructInfo> structs;
     std::unordered_map<std::string, EnumCaseInfo> enum_cases;
@@ -75,6 +85,15 @@ private:
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
     [[nodiscard]] bool is_copy_forbidden_value(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
+    [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
+    [[nodiscard]] std::vector<syntax::ModuleId> visible_modules(syntax::ModuleId module) const;
+    [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
+    [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range);
+    [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
+    [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
     void report(base::SourceRange range, std::string message);
 
@@ -83,6 +102,8 @@ private:
     CheckedModule checked_;
     SymbolTable symbols_;
     std::unordered_map<std::string, TypeHandle> named_types_;
+    std::unordered_map<std::string, Symbol> global_values_;
+    syntax::ModuleId current_module_ = syntax::invalid_module_id;
     int loop_depth_ = 0;
 };
 

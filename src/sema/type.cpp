@@ -110,27 +110,30 @@ TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element) {
     return push(std::move(info));
 }
 
-TypeHandle TypeTable::named_struct(std::string name, const bool contains_array) {
+TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const bool contains_array) {
     TypeInfo info;
     info.kind = TypeKind::struct_;
     info.name = std::move(name);
+    info.c_name = std::move(c_name);
     info.contains_array = contains_array;
     info.is_copyable = !contains_array;
     return push(std::move(info));
 }
 
-TypeHandle TypeTable::named_enum(std::string name) {
+TypeHandle TypeTable::named_enum(std::string name, std::string c_name) {
     TypeInfo info;
     info.kind = TypeKind::enum_;
     info.name = std::move(name);
+    info.c_name = std::move(c_name);
     info.is_copyable = true;
     return push(std::move(info));
 }
 
-TypeHandle TypeTable::opaque_struct(std::string name) {
+TypeHandle TypeTable::opaque_struct(std::string name, std::string c_name) {
     TypeInfo info;
     info.kind = TypeKind::opaque_struct;
     info.name = std::move(name);
+    info.c_name = std::move(c_name);
     info.is_copyable = false;
     return push(std::move(info));
 }
@@ -209,6 +212,17 @@ std::string TypeTable::display_name(const TypeHandle type) const {
         return info.name;
     }
     return "<unknown>";
+}
+
+std::string TypeTable::c_name(const TypeHandle type) const {
+    if (!is_valid(type) || type.value >= types_.size()) {
+        return "void";
+    }
+    const TypeInfo& info = types_[type.value];
+    if (info.c_name.empty()) {
+        return display_name(type);
+    }
+    return info.c_name;
 }
 
 const TypeInfo& TypeTable::get(const TypeHandle handle) const noexcept {

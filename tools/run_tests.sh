@@ -44,9 +44,11 @@ HELLO_OUT="$("${BUILD_DIR}/hello")"
 test "${HELLO_OUT}" = "hello from Aurex M0"
 
 for src in "${ROOT}"/tests/positive/*.ax; do
-    if [ "$(basename "${src}" .ax)" = "import_path" ]; then
-        continue
-    fi
+    case "$(basename "${src}" .ax)" in
+        import_path|module_name_collision)
+            continue
+            ;;
+    esac
     out="${BUILD_DIR}/$(basename "${src}" .ax).c"
     bin="${BUILD_DIR}/$(basename "${src}" .ax)"
     "${M0C}" "${src}" -o "${out}"
@@ -62,6 +64,12 @@ done
 cc "${BUILD_DIR}/import_path.c" -o "${BUILD_DIR}/import_path"
 "${BUILD_DIR}/import_path" >/dev/null
 
+"${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/module_name_collision.ax" -o "${BUILD_DIR}/module_name_collision.c"
+grep -q 'm0_module_name_collision_helper' "${BUILD_DIR}/module_name_collision.c"
+grep -q 'm0_collide_a_helper' "${BUILD_DIR}/module_name_collision.c"
+cc "${BUILD_DIR}/module_name_collision.c" -o "${BUILD_DIR}/module_name_collision"
+"${BUILD_DIR}/module_name_collision" >/dev/null
+
 for src in "${ROOT}"/tests/negative/*.ax; do
     if [ "$(basename "${src}" .ax)" = "module_name_mismatch" ]; then
         if "${M0C}" -I "${ROOT}/tests/imports" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
@@ -75,6 +83,14 @@ for src in "${ROOT}"/tests/negative/*.ax; do
             echo "expected semantic failure: ${src}" >&2
             exit 1
         fi
+        continue
+    fi
+    if [ "$(basename "${src}" .ax)" = "ambiguous_import_name" ]; then
+        if "${M0C}" -I "${ROOT}/tests/imports" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
+            echo "expected semantic failure: ${src}" >&2
+            exit 1
+        fi
+        grep -q 'ambiguous function name' /tmp/aurex_negative.err
         continue
     fi
     if "${M0C}" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then

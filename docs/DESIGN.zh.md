@@ -70,7 +70,8 @@ Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖
 - 编排文件 IO 和编译阶段；
 - 负责诊断展示。
 - 解析 import：`import a.b;` 会加载 `a/b.ax`；
-- 合并 imported AST 到同一个 Stage0 checked module，并重映射 AST ID。
+- 合并 imported AST 到同一个 Stage0 checked module，并重映射 AST ID，同时保留每个顶层 item 的所属模块。
+- sema 会通过当前模块和直接 import 的模块解析顶层名字，codegen 会输出模块限定的 C 符号。
 - 校验 imported 文件声明的 module path 必须和 import path 一致；
 - 对缺失 import 和 module name 不匹配给出带源码范围的诊断。
 - 加载阶段检测循环 import。

@@ -37,11 +37,11 @@ namespace {
     return item.kind == syntax::ItemKind::fn_decl;
 }
 
-[[nodiscard]] std::string abi_or_m0_name(const syntax::ItemNode& item) {
+[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name) {
     if (!item.abi_name.empty()) {
         return std::string(item.abi_name);
     }
-    return std::string(item.name);
+    return c_name;
 }
 
 } // namespace
@@ -51,6 +51,9 @@ SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::Diagno
 
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     checked_.expr_types.assign(module_.exprs.size(), invalid_type_handle);
+    checked_.expr_c_names.assign(module_.exprs.size(), {});
+    checked_.syntax_type_handles.assign(module_.types.size(), invalid_type_handle);
+    checked_.item_c_names.assign(module_.items.size(), {});
     register_type_names();
     register_value_names();
     analyze_struct_properties();
@@ -70,39 +73,43 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
 
 void SemanticAnalyzer::register_type_names() {
     for (const syntax::ItemNode& item : module_.items) {
+        const syntax::ModuleId owner = item_module(item);
+        const std::string key = module_key(owner, item.name);
+        const std::string qualified = qualified_name(owner, item.name);
+        const std::string c_name = c_symbol_name(owner, item.name);
         TypeHandle handle = invalid_type_handle;
         if (item.kind == syntax::ItemKind::struct_decl) {
-            handle = checked_.types.named_struct(std::string(item.name), false);
+            handle = checked_.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
-            handle = checked_.types.named_enum(std::string(item.name));
+            handle = checked_.types.named_enum(qualified, c_name);
         } else if (item.kind == syntax::ItemKind::opaque_struct_decl) {
-            handle = checked_.types.opaque_struct(std::string(item.name));
+            handle = checked_.types.opaque_struct(qualified, c_name);
         }
 
         if (!is_valid(handle)) {
             continue;
         }
-        auto inserted = named_types_.emplace(std::string(item.name), handle);
+        const auto* const begin = module_.items.data();
+        const base::usize item_index = static_cast<base::usize>(&item - begin);
+        if (item_index < checked_.item_c_names.size()) {
+            checked_.item_c_names[item_index] = c_name;
+        }
+        auto inserted = named_types_.emplace(key, handle);
         if (!inserted.second) {
-            report(item.range, "duplicate type definition: " + std::string(item.name));
+            report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
             continue;
         }
-        static_cast<void>(symbols_.insert(Symbol {
-            SymbolKind::type,
-            std::string(item.name),
-            handle,
-            item.range,
-            false,
-        }, diagnostics_));
 
         if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::opaque_struct_decl) {
             StructInfo info;
             info.name = std::string(item.name);
+            info.c_name = c_name;
+            info.module = owner;
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
-            auto struct_inserted = checked_.structs.emplace(info.name, std::move(info));
+            auto struct_inserted = checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
-                report(item.range, "duplicate struct definition: " + std::string(item.name));
+                report(item.range, "duplicate struct definition in module " + module_name(owner) + ": " + std::string(item.name));
             }
         }
     }
@@ -110,10 +117,14 @@ void SemanticAnalyzer::register_type_names() {
 
 void SemanticAnalyzer::register_value_names() {
     for (const syntax::ItemNode& item : module_.items) {
+        current_module_ = item_module(item);
+        const std::string key = module_key(current_module_, item.name);
+        const std::string c_name = c_symbol_name(current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             FunctionSignature signature;
             signature.name = std::string(item.name);
-            signature.c_name = abi_or_m0_name(item);
+            signature.c_name = abi_or_c_name(item, c_name);
+            signature.module = current_module_;
             signature.return_type = resolve_type(item.return_type);
             signature.range = item.range;
             signature.is_extern_c = item.is_extern_c;
@@ -128,48 +139,77 @@ void SemanticAnalyzer::register_value_names() {
             if (checked_.types.is_array(signature.return_type)) {
                 report(item.range, "array type cannot be used as a function return type");
             }
-            auto inserted = checked_.functions.emplace(signature.name, std::move(signature));
-            if (!inserted.second) {
-                report(item.range, "function overloading is not allowed: " + std::string(item.name));
+            const auto* const begin = module_.items.data();
+            const base::usize item_index = static_cast<base::usize>(&item - begin);
+            if (item_index < checked_.item_c_names.size()) {
+                checked_.item_c_names[item_index] = signature.c_name;
             }
-            static_cast<void>(symbols_.insert(Symbol {
+            auto inserted = checked_.functions.emplace(key, std::move(signature));
+            if (!inserted.second) {
+                report(item.range, "function overloading is not allowed in module " + module_name(current_module_) + ": " + std::string(item.name));
+            }
+            const auto value_inserted = global_values_.emplace(key, Symbol {
                 SymbolKind::function,
                 std::string(item.name),
+                inserted.first->second.c_name,
+                current_module_,
                 inserted.first->second.return_type,
                 item.range,
                 false,
-            }, diagnostics_));
+            });
+            if (!value_inserted.second) {
+                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
+            }
         } else if (item.kind == syntax::ItemKind::const_decl) {
             TypeHandle type = resolve_type(item.const_type);
-            static_cast<void>(symbols_.insert(Symbol {
+            const auto* const begin = module_.items.data();
+            const base::usize item_index = static_cast<base::usize>(&item - begin);
+            if (item_index < checked_.item_c_names.size()) {
+                checked_.item_c_names[item_index] = c_name;
+            }
+            const auto inserted = global_values_.emplace(key, Symbol {
                 SymbolKind::const_,
                 std::string(item.name),
+                c_name,
+                current_module_,
                 type,
                 item.range,
                 false,
-            }, diagnostics_));
+            });
+            if (!inserted.second) {
+                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
+            }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
             const TypeHandle enum_type = resolve_type(item.enum_base_type);
-            const auto type_found = named_types_.find(std::string(item.name));
+            const auto type_found = named_types_.find(key);
             const TypeHandle named_enum_type = type_found == named_types_.end() ? enum_type : type_found->second;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
-                checked_.enum_cases.emplace(full_name, EnumCaseInfo {
+                const std::string enum_case_key = module_key(current_module_, full_name);
+                checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
                     full_name,
+                    c_symbol_name(current_module_, full_name),
+                    current_module_,
                     named_enum_type,
                     std::string(enum_case.value_text),
                     enum_case.range,
                 });
-                static_cast<void>(symbols_.insert(Symbol {
+                const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
                     SymbolKind::enum_case,
                     full_name,
+                    c_symbol_name(current_module_, full_name),
+                    current_module_,
                     named_enum_type,
                     enum_case.range,
                     false,
-                }, diagnostics_));
+                });
+                if (!value_inserted.second) {
+                    report(enum_case.range, "duplicate value definition in module " + module_name(current_module_) + ": " + full_name);
+                }
             }
         }
     }
+    current_module_ = syntax::invalid_module_id;
 }
 
 void SemanticAnalyzer::analyze_struct_properties() {
@@ -177,13 +217,17 @@ void SemanticAnalyzer::analyze_struct_properties() {
         if (item.kind != syntax::ItemKind::struct_decl) {
             continue;
         }
+        current_module_ = item_module(item);
+        const std::string key = module_key(current_module_, item.name);
         bool contains_array = false;
         bool copyable = true;
         for (const syntax::FieldDecl& field : item.fields) {
             const TypeHandle field_type = resolve_type(field.type);
-            if (const auto struct_found = checked_.structs.find(std::string(item.name)); struct_found != checked_.structs.end()) {
+            if (const auto struct_found = checked_.structs.find(key); struct_found != checked_.structs.end()) {
                 struct_found->second.fields.push_back(StructFieldInfo {
                     std::string(field.name),
+                    {},
+                    syntax::invalid_module_id,
                     field_type,
                     field.range,
                 });
@@ -195,11 +239,12 @@ void SemanticAnalyzer::analyze_struct_properties() {
                 copyable = false;
             }
         }
-        const auto found = named_types_.find(std::string(item.name));
+        const auto found = named_types_.find(key);
         if (found != named_types_.end()) {
             checked_.types.set_record_properties(found->second, contains_array, copyable && !contains_array);
         }
     }
+    current_module_ = syntax::invalid_module_id;
 }
 
 void SemanticAnalyzer::analyze_const_decls() {
@@ -207,16 +252,19 @@ void SemanticAnalyzer::analyze_const_decls() {
         if (item.kind != syntax::ItemKind::const_decl) {
             continue;
         }
+        current_module_ = item_module(item);
         const TypeHandle declared = resolve_type(item.const_type);
         const TypeHandle actual = analyze_expr(item.const_value);
         if (!can_assign(declared, actual, item.const_value)) {
             report(item.range, "const initializer type does not match declared type");
         }
     }
+    current_module_ = syntax::invalid_module_id;
 }
 
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
-    const auto found = checked_.functions.find(std::string(function.name));
+    current_module_ = item_module(function);
+    const auto found = checked_.functions.find(module_key(current_module_, function.name));
     const TypeHandle expected_return = found == checked_.functions.end()
         ? checked_.types.builtin(BuiltinType::void_)
         : found->second.return_type;
@@ -226,6 +274,8 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
         static_cast<void>(symbols_.insert(Symbol {
             SymbolKind::parameter,
             std::string(param.name),
+            {},
+            syntax::invalid_module_id,
             resolve_type(param.type),
             param.range,
             false,
@@ -233,6 +283,7 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     }
     analyze_block(function.body, expected_return);
     symbols_.pop_scope();
+    current_module_ = syntax::invalid_module_id;
 }
 
 void SemanticAnalyzer::analyze_block(const syntax::StmtId block, const TypeHandle expected_return) {
@@ -269,6 +320,8 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         static_cast<void>(symbols_.insert(Symbol {
             SymbolKind::local,
             std::string(stmt.name),
+            {},
+            syntax::invalid_module_id,
             declared,
             stmt.range,
             stmt.kind == syntax::StmtKind::var,
@@ -354,10 +407,12 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
     case syntax::ExprKind::byte_literal:
         return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::u8));
     case syntax::ExprKind::name: {
-        const Symbol* symbol = symbols_.find(expr.text);
+        const Symbol* symbol = find_symbol(expr.text, expr.range);
         if (symbol == nullptr) {
-            report(expr.range, "unknown name: " + std::string(expr.text));
             return record_expr_type(expr_id, invalid_type_handle);
+        }
+        if (!symbol->c_name.empty() && expr_id.value < checked_.expr_c_names.size()) {
+            checked_.expr_c_names[expr_id.value] = symbol->c_name;
         }
         return record_expr_type(expr_id, symbol->type);
     }
@@ -367,26 +422,27 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
         const std::string name(module_.exprs[expr.callee.value].text);
-        const auto found = checked_.functions.find(name);
-        if (found == checked_.functions.end()) {
-            report(expr.range, "unknown function: " + name);
+        const FunctionSignature* signature = find_function_in_visible_modules(name, module_.exprs[expr.callee.value].range);
+        if (signature == nullptr) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
-        const FunctionSignature& signature = found->second;
-        if (signature.param_types.size() != expr.args.size()) {
+        if (expr.callee.value < checked_.expr_c_names.size()) {
+            checked_.expr_c_names[expr.callee.value] = signature->c_name;
+        }
+        if (signature->param_types.size() != expr.args.size()) {
             report(expr.range, "argument count mismatch in call to " + name);
         }
-        const base::usize count = expr.args.size() < signature.param_types.size() ? expr.args.size() : signature.param_types.size();
+        const base::usize count = expr.args.size() < signature->param_types.size() ? expr.args.size() : signature->param_types.size();
         for (base::usize i = 0; i < count; ++i) {
             const TypeHandle actual = analyze_expr(expr.args[i]);
-            if (!can_assign(signature.param_types[i], actual, expr.args[i])) {
+            if (!can_assign(signature->param_types[i], actual, expr.args[i])) {
                 report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
             }
-            if (is_copy_forbidden_value(signature.param_types[i])) {
+            if (is_copy_forbidden_value(signature->param_types[i])) {
                 report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
             }
         }
-        return record_expr_type(expr_id, signature.return_type);
+        return record_expr_type(expr_id, signature->return_type);
     }
     case syntax::ExprKind::unary: {
         const TypeHandle operand = analyze_expr(expr.unary_operand);
@@ -473,12 +529,11 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         return record_expr_type(expr_id, invalid_type_handle);
     }
     case syntax::ExprKind::struct_literal: {
-        const auto type_found = named_types_.find(std::string(expr.struct_name));
-        if (type_found == named_types_.end()) {
-            report(expr.range, "unknown struct type: " + std::string(expr.struct_name));
+        const TypeHandle struct_type = find_type_in_visible_modules(expr.struct_name, expr.range);
+        if (!is_valid(struct_type)) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
-        const StructInfo* info = find_struct(type_found->second);
+        const StructInfo* info = find_struct(struct_type);
         if (info == nullptr || info->is_opaque) {
             report(expr.range, "struct literal requires a non-opaque struct type");
             return record_expr_type(expr_id, invalid_type_handle);
@@ -500,7 +555,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
                 report(init.range, "struct literal field type mismatch");
             }
         }
-        return record_expr_type(expr_id, type_found->second);
+        return record_expr_type(expr_id, struct_type);
     }
     case syntax::ExprKind::cast:
     case syntax::ExprKind::ptr_cast:
@@ -522,27 +577,37 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
         return invalid_type_handle;
     }
 
+    if (type_id.value < checked_.syntax_type_handles.size() && is_valid(checked_.syntax_type_handles[type_id.value])) {
+        return checked_.syntax_type_handles[type_id.value];
+    }
+
     const syntax::TypeNode& type = module_.types[type_id.value];
+    TypeHandle resolved = invalid_type_handle;
     switch (type.kind) {
     case syntax::TypeKind::primitive:
-        return checked_.types.builtin(map_builtin(type.primitive));
+        resolved = checked_.types.builtin(map_builtin(type.primitive));
+        break;
     case syntax::TypeKind::pointer:
-        return checked_.types.pointer(map_mutability(type.pointer_mutability), resolve_type(type.pointee, true));
+        resolved = checked_.types.pointer(map_mutability(type.pointer_mutability), resolve_type(type.pointee, true));
+        break;
     case syntax::TypeKind::array:
-        return checked_.types.array(type.array_count, resolve_type(type.array_element));
+        resolved = checked_.types.array(type.array_count, resolve_type(type.array_element));
+        break;
     case syntax::TypeKind::named: {
-        const auto found = named_types_.find(std::string(type.name));
-        if (found == named_types_.end()) {
-            report(type.range, "unknown type: " + std::string(type.name));
-            return invalid_type_handle;
+        resolved = find_type_in_visible_modules(type.name, type.range);
+        if (!is_valid(resolved)) {
+            break;
         }
-        if (checked_.types.get(found->second).kind == TypeKind::opaque_struct && !opaque_allowed_as_pointee) {
+        if (checked_.types.get(resolved).kind == TypeKind::opaque_struct && !opaque_allowed_as_pointee) {
             report(type.range, "opaque struct can only be used as a pointer target");
         }
-        return found->second;
+        break;
     }
     }
-    return invalid_type_handle;
+    if (type_id.value < checked_.syntax_type_handles.size()) {
+        checked_.syntax_type_handles[type_id.value] = resolved;
+    }
+    return resolved;
 }
 
 bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept {
@@ -571,7 +636,7 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::name: {
-        const Symbol* symbol = symbols_.find(expr.text);
+        const Symbol* symbol = find_symbol(expr.text, expr.range);
         return symbol != nullptr && symbol->is_mutable;
     }
     case syntax::ExprKind::field:
@@ -598,6 +663,167 @@ const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noe
         }
     }
     return nullptr;
+}
+
+syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) const noexcept {
+    const auto* const begin = module_.items.data();
+    const auto* const end = begin + module_.items.size();
+    if (&item < begin || &item >= end) {
+        return syntax::invalid_module_id;
+    }
+    const base::usize index = static_cast<base::usize>(&item - begin);
+    if (index >= module_.item_modules.size()) {
+        return syntax::invalid_module_id;
+    }
+    return module_.item_modules[index];
+}
+
+std::vector<syntax::ModuleId> SemanticAnalyzer::visible_modules(const syntax::ModuleId module) const {
+    std::vector<syntax::ModuleId> result;
+    if (!syntax::is_valid(module)) {
+        return result;
+    }
+    result.push_back(module);
+    if (module.value >= module_.modules.size()) {
+        return result;
+    }
+    for (syntax::ModuleId import : module_.modules[module.value].imports) {
+        if (syntax::is_valid(import)) {
+            result.push_back(import);
+        }
+    }
+    return result;
+}
+
+std::string SemanticAnalyzer::module_name(const syntax::ModuleId module) const {
+    if (!syntax::is_valid(module) || module.value >= module_.modules.size()) {
+        return "<unknown>";
+    }
+    std::ostringstream out;
+    const syntax::ModulePath& path = module_.modules[module.value].path;
+    for (base::usize i = 0; i < path.parts.size(); ++i) {
+        if (i != 0) {
+            out << ".";
+        }
+        out << path.parts[i];
+    }
+    return out.str();
+}
+
+std::string SemanticAnalyzer::qualified_name(const syntax::ModuleId module, const std::string_view name) const {
+    const std::string module_text = module_name(module);
+    if (module_text.empty() || module_text == "<unknown>") {
+        return std::string(name);
+    }
+    return module_text + "." + std::string(name);
+}
+
+std::string SemanticAnalyzer::c_symbol_name(const syntax::ModuleId module, const std::string_view name) const {
+    std::string result = "m0";
+    if (syntax::is_valid(module) && module.value < module_.modules.size()) {
+        for (std::string_view part : module_.modules[module.value].path.parts) {
+            result += "_";
+            for (const char c : part) {
+                const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+                result += alnum ? c : '_';
+            }
+        }
+    }
+    result += "_";
+    for (const char c : name) {
+        const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        result += alnum ? c : '_';
+    }
+    return result;
+}
+
+std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const std::string_view name) const {
+    return std::to_string(module.value) + ":" + std::string(name);
+}
+
+TypeHandle SemanticAnalyzer::find_type_in_visible_modules(const std::string_view name, const base::SourceRange range) {
+    if (const auto found = named_types_.find(module_key(current_module_, name)); found != named_types_.end()) {
+        return found->second;
+    }
+
+    TypeHandle imported_result = invalid_type_handle;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
+        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+            const auto found = named_types_.find(module_key(module, name));
+            if (found == named_types_.end()) {
+                continue;
+            }
+            if (is_valid(imported_result)) {
+                report(range, "ambiguous type name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return invalid_type_handle;
+            }
+            imported_result = found->second;
+            result_module = module;
+        }
+    }
+    if (!is_valid(imported_result)) {
+        report(range, "unknown type: " + std::string(name));
+    }
+    return imported_result;
+}
+
+const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(const std::string_view name, const base::SourceRange range) {
+    if (const auto found = checked_.functions.find(module_key(current_module_, name)); found != checked_.functions.end()) {
+        return &found->second;
+    }
+
+    const FunctionSignature* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
+        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+            const auto found = checked_.functions.find(module_key(module, name));
+            if (found == checked_.functions.end()) {
+                continue;
+            }
+            if (imported_result != nullptr) {
+                report(range, "ambiguous function name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return nullptr;
+            }
+            imported_result = &found->second;
+            result_module = module;
+        }
+    }
+    if (imported_result == nullptr) {
+        report(range, "unknown function: " + std::string(name));
+    }
+    return imported_result;
+}
+
+const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const base::SourceRange range) {
+    if (const Symbol* local = symbols_.find(name); local != nullptr) {
+        return local;
+    }
+
+    if (const auto found = global_values_.find(module_key(current_module_, name)); found != global_values_.end()) {
+        return &found->second;
+    }
+
+    const Symbol* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
+        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+            const auto found = global_values_.find(module_key(module, name));
+            if (found == global_values_.end()) {
+                continue;
+            }
+            if (imported_result != nullptr) {
+                report(range, "ambiguous name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return nullptr;
+            }
+            imported_result = &found->second;
+            result_module = module;
+        }
+    }
+    if (imported_result == nullptr) {
+        report(range, "unknown name: " + std::string(name));
+    }
+    return imported_result;
 }
 
 TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const TypeHandle type) noexcept {

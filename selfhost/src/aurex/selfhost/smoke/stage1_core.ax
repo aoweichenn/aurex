@@ -25,6 +25,10 @@ fn read_pair(ptr: *mut Pair) -> i32 {
     return ptr.value;
 }
 
+fn read_named_pair(pair_ptr: *mut Pair) -> i32 {
+    return pair_ptr.value;
+}
+
 fn check_array_ptr(buf: *mut [4]u8) -> bool {
     return size_of([4]u8) == cast(usize, 4) &&
         align_of([4]u8) == cast(usize, 1) &&
@@ -53,7 +57,7 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let native: *mut NativeFile = null;
     let top: *mut TopOpaque = null;
     var pair: Pair = Pair { value: 17 };
-    if native == null && top == null && byte == b'a' && cell.tag == Stage1Tag_one && read_pair(&pair) == 17 && check_builtins(&byte) {
+    if native == null && top == null && byte == b'a' && cell.tag == Stage1Tag_one && read_pair(&pair) == 17 && read_named_pair(&pair) == 17 && check_builtins(&byte) {
         puts(c"selfhost stage1 core ok");
         return 0;
     }

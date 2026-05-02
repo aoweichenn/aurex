@@ -79,8 +79,9 @@ Current exact capability:
 - Stage0 compiles the M0 selfhost lexer, parser seed, and `m0c_stage1.ax`.
 - The M0 lexer stream is checked against the C++ Stage0 lexer over the local
   corpus.
-- `m0c_stage1` compiles `examples/hello.ax` and
-  `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` into runnable C.
+- `m0c_stage1` compiles `examples/hello.ax`,
+  `selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, and a Stage2 smoke compiler
+  bundle into runnable C.
 - `emit_subset.ax` is the active expansion path for compiling broader selfhost
   files. It is now the first Stage1 backend attempted by the driver, with the
   original narrow emitter retained as fallback.
@@ -96,6 +97,11 @@ Current exact capability:
   `lexer.core + lexer.dump + lexer_file`, link the result with
   `selfhost/runtime/runtime.c`, and reproduce the file-backed lexer golden
   output for `examples/hello.ax`.
+- The Stage1 emitter has a dedicated `emit.symbols` module that emits
+  module-qualified C symbol macros using the Stage0-compatible
+  `m0_<module_path>_<name>` spelling. It also has a source-scanned pointer field
+  access path so pointer parameters such as `pair_ptr.value` emit as
+  `pair_ptr->value` without relying on special variable names.
 
 ## Milestones
 
@@ -188,15 +194,18 @@ Both `bootstrap_chain.sh` and `make -C selfhost check` now prove the same
 important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
 token kind sequence for the local corpus, the first M0 parser seed can parse a
 fixed module/import/extern/function-signature source, and the M0-written Stage1
-compiler slice can compile both `examples/hello.ax` and the selfhost seed into
-runnable C. It also proves Stage1 bundle paths for lexer smoke, lexer ranges,
-the parser seed smoke, and the file-backed lexer tool can compile and run. The
-file-backed Stage1 bundle also proves explicit runtime ABI bindings survive
-through the M0-written emitter path. `stage1_lang.ax` separately covers the
+compiler slice can compile `examples/hello.ax`, the selfhost seed, and a Stage2
+smoke compiler bundle into runnable C. It also proves Stage1 bundle paths for
+lexer smoke, lexer ranges, the parser seed smoke, and the file-backed lexer tool
+can compile and run. The file-backed Stage1 bundle also proves explicit runtime
+ABI bindings survive through the M0-written emitter path. `stage1_lang.ax`
+separately covers the
 newly expanded Stage1 statement/type surface, including scalar primitives,
 `str`, assignment, loop jumps, and empty `return`. `stage1_core.ax` covers the
 next core type layer: `enum`, `opaque struct`, `*mut [N]T` pointer-to-array
-declarators, `size_of`, `align_of`, `ptr_addr`, and `ptr_from_addr`.
+declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, module-qualified
+C symbol output, and pointer field access for non-special pointer parameter
+names.
 
 They also assert that `selfhost/src/aurex/selfhost/tool/lexer_file.ax` and
 `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` load the expected shared

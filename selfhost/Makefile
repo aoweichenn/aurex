@@ -69,6 +69,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.subset' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit_c' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.bundle' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.emit.symbols' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.item' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.stmt' $(BUILD_DIR)/m0c_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
@@ -83,22 +84,22 @@ check: all
 	$(CC) $(BUILD_DIR)/m0c_seed.stage1.c -o $(BUILD_DIR)/m0c_seed.stage1
 	test "$$($(BUILD_DIR)/m0c_seed.stage1)" = "Aurex M0 selfhost seed"
 	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax $(LEXER_SMOKE_SRC) $(BUILD_DIR)/lexer_smoke.stage1.c
-	grep -q 'static bool validate_sequence' $(BUILD_DIR)/lexer_smoke.stage1.c
+	grep -q '#define validate_sequence m0_aurex_selfhost_smoke_lexer_smoke_validate_sequence' $(BUILD_DIR)/lexer_smoke.stage1.c
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_smoke.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_smoke.stage1.c -o $(BUILD_DIR)/lexer_smoke.stage1
 	test "$$($(BUILD_DIR)/lexer_smoke.stage1)" = "selfhost lexer sequence ok"
 	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax $(LEXER_RANGES_SRC) $(BUILD_DIR)/lexer_ranges.stage1.c
-	grep -q 'static int32_t validate_ranges' $(BUILD_DIR)/lexer_ranges.stage1.c
+	grep -q '#define validate_ranges m0_aurex_selfhost_smoke_lexer_ranges_validate_ranges' $(BUILD_DIR)/lexer_ranges.stage1.c
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_ranges.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_ranges.stage1.c -o $(BUILD_DIR)/lexer_ranges.stage1
 	test "$$($(BUILD_DIR)/lexer_ranges.stage1)" = "selfhost lexer ranges ok"
 	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/parser/seed.ax $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.c
-	grep -q 'static bool parse_seed_module' $(BUILD_DIR)/parser_smoke.stage1.c
+	grep -q '#define parse_seed_module m0_aurex_selfhost_parser_seed_parse_seed_module' $(BUILD_DIR)/parser_smoke.stage1.c
 	grep -q 'scan_token' $(BUILD_DIR)/parser_smoke.stage1.c
 	$(CC) $(BUILD_DIR)/parser_smoke.stage1.c -o $(BUILD_DIR)/parser_smoke.stage1
 	test "$$($(BUILD_DIR)/parser_smoke.stage1)" = "selfhost parser seed ok"
 	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/lexer/dump.ax $(LEXER_FILE_SRC) $(BUILD_DIR)/lexer_file.stage1.c
-	grep -q 'static FileBuffer read_file' $(BUILD_DIR)/lexer_file.stage1.c
+	grep -q '#define read_file m0_aurex_selfhost_tool_lexer_file_read_file' $(BUILD_DIR)/lexer_file.stage1.c
 	grep -q 'm0_runtime_read_file' $(BUILD_DIR)/lexer_file.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_file.stage1.c $(RUNTIME) -o $(BUILD_DIR)/lexer_file.stage1
 	$(BUILD_DIR)/lexer_file.stage1 ../examples/hello.ax > $(BUILD_DIR)/lexer_file.stage1.tokens
@@ -115,6 +116,7 @@ check: all
 	grep -q 'Stage1Tag_one' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'const Cell \*const_cell' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
+	grep -q 'pair_ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c
 	grep -q 'uintptr_t' $(BUILD_DIR)/stage1_core.stage1.c

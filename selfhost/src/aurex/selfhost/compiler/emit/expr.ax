@@ -24,14 +24,147 @@ fn token_matches_7(source: *const u8, token: TokenSpan, ch0: u8, ch1: u8, ch2: u
         source[token.begin + 6] == ch6;
 }
 
-fn is_pointer_field_owner(source: *const u8, token: TokenSpan) -> bool {
-    if token_matches_7(source, token, b'c', b'u', b'r', b'r', b'e', b'n', b't') {
+fn token_text_equals(source: *const u8, left: TokenSpan, right: TokenSpan) -> bool {
+    let left_len: i32 = left.end - left.begin;
+    let right_len: i32 = right.end - right.begin;
+    if left_len != right_len {
+        return false;
+    }
+    var offset: i32 = 0;
+    while offset < left_len {
+        if source[left.begin + offset] != source[right.begin + offset] {
+            return false;
+        }
+        offset = offset + 1;
+    }
+    return true;
+}
+
+fn expr_matching_stop_kind(kind: i32) -> i32 {
+    if kind == TK_L_PAREN { return TK_R_PAREN; }
+    if kind == TK_L_BRACE { return TK_R_BRACE; }
+    if kind == TK_L_BRACKET { return TK_R_BRACKET; }
+    return TK_EOF;
+}
+
+fn skip_decl_until(source: *const u8, index: *mut i32, current: *mut TokenSpan, stop0: i32, stop1: i32) -> bool {
+    while !check(current, stop0) && !check(current, stop1) && !check(current, TK_EOF) {
+        let token: TokenSpan = advance(source, index, current);
+        if token.kind == TK_L_PAREN || token.kind == TK_L_BRACE || token.kind == TK_L_BRACKET {
+            let nested_stop: i32 = expr_matching_stop_kind(token.kind);
+            if !skip_decl_until(source, index, current, nested_stop, TK_EOF) {
+                return false;
+            }
+            if !expect_token(source, index, current, nested_stop) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+fn scan_decl_type_is_pointer(source: *const u8, index: *mut i32, current: *mut TokenSpan, stop0: i32, stop1: i32) -> bool {
+    var is_pointer: bool = false;
+    while match_token(source, index, current, TK_STAR) {
+        is_pointer = true;
+        if !(match_token(source, index, current, TK_KW_MUT) || match_token(source, index, current, TK_KW_CONST)) {
+            return is_pointer;
+        }
+    }
+    skip_decl_until(source, index, current, stop0, stop1);
+    return is_pointer;
+}
+
+fn scan_param_list_for_pointer_owner(source: *const u8, index: *mut i32, current: *mut TokenSpan, owner: TokenSpan, pointer_state: *mut bool) -> bool {
+    if check(current, TK_R_PAREN) {
         return true;
     }
-    if token_matches_3(source, token, b'p', b't', b'r') {
-        return true;
+    while !check(current, TK_R_PAREN) && !check(current, TK_EOF) {
+        let name: TokenSpan = advance(source, index, current);
+        if name.kind != TK_IDENTIFIER { return false; }
+        if !expect_token(source, index, current, TK_COLON) { return false; }
+        let is_pointer: bool = scan_decl_type_is_pointer(source, index, current, TK_COMMA, TK_R_PAREN);
+        if token_text_equals(source, name, owner) {
+            *pointer_state = is_pointer;
+        }
+        if check(current, TK_COMMA) {
+            advance(source, index, current);
+        }
     }
-    return false;
+    return check(current, TK_R_PAREN);
+}
+
+fn scan_fn_header_for_pointer_owner(source: *const u8, index: *mut i32, current: *mut TokenSpan, owner: TokenSpan, pointer_state: *mut bool) -> bool {
+    if !expect_token(source, index, current, TK_KW_FN) { return false; }
+    if !expect_token(source, index, current, TK_IDENTIFIER) { return false; }
+    if !expect_token(source, index, current, TK_L_PAREN) { return false; }
+    if !scan_param_list_for_pointer_owner(source, index, current, owner, pointer_state) { return false; }
+    if !expect_token(source, index, current, TK_R_PAREN) { return false; }
+    while !check(current, TK_L_BRACE) && !check(current, TK_EOF) {
+        advance(source, index, current);
+    }
+    return true;
+}
+
+fn scan_local_decl_for_pointer_owner(source: *const u8, index: *mut i32, current: *mut TokenSpan, owner: TokenSpan, pointer_state: *mut bool) -> bool {
+    advance(source, index, current);
+    let name: TokenSpan = advance(source, index, current);
+    if name.kind != TK_IDENTIFIER { return false; }
+    if !expect_token(source, index, current, TK_COLON) { return false; }
+    let is_pointer: bool = scan_decl_type_is_pointer(source, index, current, TK_EQUAL, TK_SEMICOLON);
+    if token_text_equals(source, name, owner) {
+        *pointer_state = is_pointer;
+    }
+    return skip_decl_until(source, index, current, TK_SEMICOLON, TK_EOF);
+}
+
+fn is_pointer_field_owner(source: *const u8, owner: TokenSpan) -> bool {
+    var index: i32 = 0;
+    var current: TokenSpan = scan_token(source, &index);
+    var pointer_state: bool = false;
+    var brace_depth: i32 = 0;
+    while current.begin < owner.begin && !check(&current, TK_EOF) {
+        if check(&current, TK_KW_EXPORT) {
+            advance(source, &index, &current);
+            if check(&current, TK_KW_C) {
+                advance(source, &index, &current);
+            }
+            if check(&current, TK_KW_FN) {
+                pointer_state = false;
+                if !scan_fn_header_for_pointer_owner(source, &index, &current, owner, &pointer_state) {
+                    return false;
+                }
+            }
+        } else {
+            if check(&current, TK_KW_FN) {
+                pointer_state = false;
+                if !scan_fn_header_for_pointer_owner(source, &index, &current, owner, &pointer_state) {
+                    return false;
+                }
+            } else {
+                if check(&current, TK_KW_LET) || check(&current, TK_KW_VAR) {
+                    if !scan_local_decl_for_pointer_owner(source, &index, &current, owner, &pointer_state) {
+                        return false;
+                    }
+                } else {
+                    let token: TokenSpan = advance(source, &index, &current);
+                    if token.kind == TK_L_BRACE {
+                        brace_depth = brace_depth + 1;
+                    } else {
+                        if token.kind == TK_R_BRACE {
+                            if brace_depth > 0 {
+                                brace_depth = brace_depth - 1;
+                            }
+                            if brace_depth == 0 {
+                                pointer_state = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return pointer_state;
 }
 
 fn emit_field_access(file: *mut OutputFile, source: *const u8, owner: TokenSpan, field: TokenSpan) -> bool {

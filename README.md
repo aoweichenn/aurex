@@ -86,18 +86,19 @@ checks that token stream against `tests/golden/selfhost_lexer_file_hello.tokens`
 the production C++ Stage0 lexer stream over the local corpus.
 
 The current Stage1 compiler entry is
-`selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`. Stage0
-compiles it to a native executable; that M0-written executable can compile the
-current Stage1 subset, including `examples/hello.ax` and
-`selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, into runnable C. This is a real
-bootstrap slice, not the final fixed point: Stage1 does not yet compile the full
-compiler source.
+`selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`. Stage0 compiles it to a native
+executable; that M0-written executable can compile `examples/hello.ax`,
+`selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, the selfhost lexer/parser smoke
+bundles, and a Stage2 smoke compiler bundle into runnable C. This is now a real
+Stage1 -> Stage2 smoke chain, not the final fixed point: Stage1 still does not
+compile the complete production compiler.
 
 The selfhost source tree is now role-based:
 
 - `aurex/selfhost/bin/`: executable entry points.
 - `aurex/selfhost/compiler/`: Stage1 compiler slices.
-- `aurex/selfhost/compiler/emit/`: modular token-stream C emitter pieces.
+- `aurex/selfhost/compiler/emit/`: modular token-stream C emitter pieces,
+  including `symbols.ax` for the current module-qualified C symbol layer.
 - `aurex/selfhost/lexer/` and `parser/`: reusable frontend modules.
 - `aurex/selfhost/smoke/` and `tool/`: smoke binaries and golden-test tools.
 
@@ -110,10 +111,12 @@ current selfhost `cast`/`ptr_cast`/`bit_cast` syntax, all M0 primitive scalar
 spellings, simple assignment statements, `break`, `continue`, empty `return`,
 `enum`, opaque C structs, one-dimensional arrays, pointer-to-array C
 declarators, `size_of`, `align_of`, `ptr_addr`, `ptr_from_addr`, and emits
-small C wrappers for `extern c @name("...")`, so Stage1 can now compile
-`lexer.core.ax + lexer.dump.ax + lexer_file.ax`, link it with
-`selfhost/runtime/runtime.c`, and reproduce the lexer golden output for
-`examples/hello.ax`.
+small C wrappers for `extern c @name("...")`. It also emits module-qualified C
+symbol macros using the same `m0_<module_path>_<name>` spelling as Stage0, and
+uses a small source scan to choose `.` versus `->` for pointer field access in
+the Stage1 subset. Stage1 can now compile `lexer.core.ax + lexer.dump.ax +
+lexer_file.ax`, link it with `selfhost/runtime/runtime.c`, and reproduce the
+lexer golden output for `examples/hello.ax`.
 
 Manual Stage1 run:
 

@@ -1,6 +1,7 @@
 module aurex.selfhost.compiler.emit.bundle;
 
 import aurex.selfhost.compiler.emit.item;
+import aurex.selfhost.compiler.emit.symbols;
 import aurex.selfhost.compiler.emit.writer;
 import aurex.selfhost.compiler.io;
 
@@ -24,6 +25,7 @@ fn emit_subset_file(path: *const u8, source: *const u8) -> bool {
     }
 
     if !emit_subset_prelude(file) { output_close(file); return false; }
+    if !emit_source_symbol_macros(file, source) { output_close(file); return false; }
     if !emit_subset_source_items(file, source) { output_close(file); return false; }
     return output_close(file);
 }
@@ -41,6 +43,9 @@ fn emit_subset_open_bundle_file(path: *const u8) -> *mut OutputFile {
 }
 
 fn emit_subset_add_bundle_source(file: *mut OutputFile, source: *const u8) -> bool {
+    if !emit_source_symbol_macros(file, source) {
+        return false;
+    }
     return emit_subset_source_items(file, source);
 }
 
@@ -55,7 +60,9 @@ fn emit_subset_bundle_file(path: *const u8, dep_source: *const u8, main_source: 
     }
 
     if !emit_subset_prelude(file) { output_close(file); return false; }
+    if !emit_source_symbol_macros(file, dep_source) { output_close(file); return false; }
     if !emit_subset_source_items(file, dep_source) { output_close(file); return false; }
+    if !emit_source_symbol_macros(file, main_source) { output_close(file); return false; }
     if !emit_subset_source_items(file, main_source) { output_close(file); return false; }
     return output_close(file);
 }
@@ -67,8 +74,11 @@ fn emit_subset_bundle2_file(path: *const u8, dep0_source: *const u8, dep1_source
     }
 
     if !emit_subset_prelude(file) { output_close(file); return false; }
+    if !emit_source_symbol_macros(file, dep0_source) { output_close(file); return false; }
     if !emit_subset_source_items(file, dep0_source) { output_close(file); return false; }
+    if !emit_source_symbol_macros(file, dep1_source) { output_close(file); return false; }
     if !emit_subset_source_items(file, dep1_source) { output_close(file); return false; }
+    if !emit_source_symbol_macros(file, main_source) { output_close(file); return false; }
     if !emit_subset_source_items(file, main_source) { output_close(file); return false; }
     return output_close(file);
 }

@@ -1,0 +1,20 @@
+# Aurex Selfhost Source Layout
+
+`selfhost/src` is organized by module role instead of by temporary smoke-test
+entry names.
+
+- `aurex/selfhost/bin/`: executable entry points, including the Stage1 compiler
+  driver and small seed binaries.
+- `aurex/selfhost/compiler/`: M0 compiler implementation slices.
+- `aurex/selfhost/compiler/emit/`: modular pieces of the expanding Stage1
+  token-stream C emitter.
+- `aurex/selfhost/lexer/`: reusable lexer core and token dump helpers.
+- `aurex/selfhost/parser/`: reusable parser seed modules.
+- `aurex/selfhost/smoke/`: executable smoke tests for selfhost modules.
+  `stage1_lang.ax` specifically guards the Stage1 emitter statement/type
+  surface.
+- `aurex/selfhost/tool/`: small command-line tools used by golden tests.
+
+The import root is `selfhost/src`, so file paths intentionally mirror module
+names. For example, `aurex.selfhost.smoke.parser_smoke` lives at
+`aurex/selfhost/smoke/parser_smoke.ax`.

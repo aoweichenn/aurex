@@ -1,0 +1,48 @@
+module aurex.selfhost.smoke.stage1_core;
+
+extern c {
+    opaque struct NativeFile;
+
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+enum Stage1Tag: u16 {
+    zero = 0,
+    one = 1,
+}
+
+struct Cell {
+    tag: Stage1Tag;
+}
+
+fn check_array_ptr(buf: *mut [4]u8) -> bool {
+    return size_of([4]u8) == cast(usize, 4) &&
+        align_of([4]u8) == cast(usize, 1) &&
+        buf == null;
+}
+
+fn check_builtins(ptr: *mut u8) -> bool {
+    let array_ptr: *mut [4]u8 = null;
+    let byte_size: usize = size_of(u8);
+    let byte_align: usize = align_of(u8);
+    let ptr_size: usize = size_of(*mut u8);
+    let addr: usize = ptr_addr(ptr);
+    let again: *mut u8 = ptr_from_addr(*mut u8, addr);
+    return byte_size == cast(usize, 1) &&
+        byte_align == cast(usize, 1) &&
+        ptr_size != cast(usize, 0) &&
+        again == ptr &&
+        check_array_ptr(array_ptr);
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    var byte: u8 = b'a';
+    var cell: Cell = Cell { tag: Stage1Tag_one };
+    let native: *mut NativeFile = null;
+    if native == null && byte == b'a' && cell.tag == Stage1Tag_one && check_builtins(&byte) {
+        puts(c"selfhost stage1 core ok");
+        return 0;
+    }
+    puts(c"selfhost stage1 core failed");
+    return 1;
+}

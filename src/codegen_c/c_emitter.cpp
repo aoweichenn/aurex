@@ -69,6 +69,7 @@ base::Result<COutput> CEmitter::emit() {
     static_cast<void>(checked_);
     emit_prelude();
     emit_forward_decls();
+    emit_wrapped_extern_helpers();
     const std::unordered_set<base::u32> nested = collect_nested_extern_items(module_);
     for (base::u32 i = 0; i < module_.items.size(); ++i) {
         if (nested.contains(i)) {
@@ -83,8 +84,8 @@ void CEmitter::emit_prelude() {
     out_ << "#include <stdint.h>\n";
     out_ << "#include <stddef.h>\n";
     out_ << "#include <stdbool.h>\n";
-    out_ << "#include <stdalign.h>\n\n";
-    out_ << "#include <stdio.h>\n";
+    out_ << "#include <stdalign.h>\n";
+    out_ << "#include <stdio.h>\n\n";
     out_ << "#include <stdlib.h>\n\n";
     out_ << "typedef struct aurex_m0_str {\n";
     out_ << "    const uint8_t *data;\n";
@@ -111,11 +112,65 @@ void CEmitter::emit_forward_decls() {
                     out_ << "typedef struct " << c_type_name(child) << " " << c_type_name(child) << ";\n";
                 }
             }
-        } else if (item.kind == syntax::ItemKind::fn_decl && !item.is_extern_c && !is_exported_main(item)) {
+        } else if (item.kind == syntax::ItemKind::fn_decl &&
+                   !item.is_extern_c &&
+                   !is_exported_main(item)) {
             emit_function_decl(item, true);
         }
     }
     out_ << "\n";
+}
+
+void CEmitter::emit_wrapped_extern_helpers() {
+    bool emitted = false;
+    std::unordered_set<std::string> emitted_symbols;
+    auto emit_wrapped_item = [&](const syntax::ItemNode& item) {
+        if (!is_wrapped_extern(item)) {
+            return;
+        }
+        const std::string symbol = std::string(item.abi_name);
+        if (!emitted_symbols.insert(symbol).second) {
+            return;
+        }
+        if (!emitted) {
+            emitted = true;
+        }
+
+        if (symbol == "fopen") {
+            out_ << "#define fopen(path, mode) ((" << emit_type(item.return_type)
+                 << ")fopen((const char *)(path), (const char *)(mode)))\n\n";
+        } else if (symbol == "fclose") {
+            out_ << "#define fclose(file) ((" << emit_type(item.return_type)
+                 << ")fclose((FILE *)(file)))\n\n";
+        } else if (symbol == "fread") {
+            out_ << "#define fread(ptr, size, count, file) ((" << emit_type(item.return_type)
+                 << ")fread((ptr), (size), (count), (FILE *)(file)))\n\n";
+        } else if (symbol == "fwrite") {
+            out_ << "#define fwrite(ptr, size, count, file) ((" << emit_type(item.return_type)
+                 << ")fwrite((ptr), (size), (count), (FILE *)(file)))\n\n";
+        } else if (symbol == "fseek") {
+            out_ << "#define fseek(file, offset, origin) ((" << emit_type(item.return_type)
+                 << ")fseek((FILE *)(file), (long)(offset), (origin)))\n\n";
+        } else if (symbol == "ftell") {
+            out_ << "#define ftell(file) ((" << emit_type(item.return_type)
+                 << ")ftell((FILE *)(file)))\n\n";
+        } else if (symbol == "puts") {
+            out_ << "#define puts(s) ((" << emit_type(item.return_type)
+                 << ")puts((const char *)(s)))\n\n";
+        }
+    };
+
+    for (const syntax::ItemNode& item : module_.items) {
+        if (item.kind == syntax::ItemKind::extern_block) {
+            for (syntax::ItemId id : item.extern_items) {
+                if (syntax::is_valid(id) && id.value < module_.items.size()) {
+                    emit_wrapped_item(module_.items[id.value]);
+                }
+            }
+            continue;
+        }
+        emit_wrapped_item(item);
+    }
 }
 
 void CEmitter::emit_item(const syntax::ItemNode& item) {
@@ -133,13 +188,15 @@ void CEmitter::emit_item(const syntax::ItemNode& item) {
         break;
     case syntax::ItemKind::fn_decl:
         if (item.is_extern_c) {
-            emit_function_decl(item, true);
+            if (!is_wrapped_extern(item)) {
+                emit_function_decl(item, true);
+            }
         } else if (is_exported_main(item)) {
             emit_main_wrapper(item);
         } else {
             emit_function_decl(item, false);
             out_ << " ";
-            emit_block(item.body);
+            emit_function_body(item);
             out_ << "\n";
         }
         break;
@@ -186,12 +243,16 @@ void CEmitter::emit_function_decl(const syntax::ItemNode& item, const bool with_
 
 void CEmitter::emit_function_decl_named(const syntax::ItemNode& item, const std::string_view name, const bool with_semicolon) {
     out_ << emit_type(item.return_type) << " " << name << "(";
-    for (base::usize i = 0; i < item.params.size(); ++i) {
-        if (i != 0) {
-            out_ << ", ";
+    if (item.params.empty()) {
+        out_ << "void";
+    } else {
+        for (base::usize i = 0; i < item.params.size(); ++i) {
+            if (i != 0) {
+                out_ << ", ";
+            }
+            const syntax::ParamDecl& param = item.params[i];
+            out_ << emit_type(param.type, std::string(param.name));
         }
-        const syntax::ParamDecl& param = item.params[i];
-        out_ << emit_type(param.type, std::string(param.name));
     }
     out_ << ")";
     if (with_semicolon) {
@@ -199,11 +260,29 @@ void CEmitter::emit_function_decl_named(const syntax::ItemNode& item, const std:
     }
 }
 
+void CEmitter::emit_function_body(const syntax::ItemNode& item) {
+    out_ << "{\n";
+    ++indent_;
+    for (const syntax::ParamDecl& param : item.params) {
+        write_indent();
+        out_ << "(void)" << param.name << ";\n";
+    }
+    if (syntax::is_valid(item.body) && item.body.value < module_.stmts.size()) {
+        const syntax::StmtNode& block = module_.stmts[item.body.value];
+        for (syntax::StmtId stmt : block.statements) {
+            emit_stmt(stmt);
+        }
+    }
+    --indent_;
+    write_indent();
+    out_ << "}\n";
+}
+
 void CEmitter::emit_main_wrapper(const syntax::ItemNode& item) {
     out_ << "static ";
     emit_function_decl_named(item, "aurex_m0_main", false);
     out_ << " ";
-    emit_block(item.body);
+    emit_function_body(item);
     out_ << "\n";
     out_ << "int main(int argc, char **argv) {\n";
     out_ << "    return (int)aurex_m0_main((int32_t)argc, (uint8_t **)argv);\n";
@@ -446,7 +525,15 @@ std::string CEmitter::lower_logical_expr_to_temp(const syntax::ExprId expr_id) {
     write_indent();
     out_ << format_c_type(checked_.types, bool_type, temp_name) << " = false;\n";
 
-    const std::string lhs = lower_child_if_needed(expr.binary_lhs);
+    const auto lower_condition_child = [&](const syntax::ExprId child) -> std::string {
+        if (expr_contains_call(module_, child)) {
+            const std::string temp = lower_expr_to_temp(child);
+            return temp.empty() ? emit_condition_value(child) : temp;
+        }
+        return emit_condition_value(child);
+    };
+
+    const std::string lhs = lower_condition_child(expr.binary_lhs);
     write_indent();
     if (expr.binary_op == syntax::BinaryOp::logical_and) {
         out_ << "if (" << lhs << ") ";
@@ -661,6 +748,19 @@ std::string CEmitter::c_type_name(const syntax::ItemNode& item) const {
 
 std::string CEmitter::escape_c_string(const std::string_view literal) const {
     return std::string(literal);
+}
+
+bool CEmitter::is_wrapped_extern(const syntax::ItemNode& item) const noexcept {
+    if (item.kind != syntax::ItemKind::fn_decl || !item.is_extern_c || item.abi_name.empty()) {
+        return false;
+    }
+    return item.abi_name == "fopen" ||
+        item.abi_name == "fclose" ||
+        item.abi_name == "fread" ||
+        item.abi_name == "fwrite" ||
+        item.abi_name == "fseek" ||
+        item.abi_name == "ftell" ||
+        item.abi_name == "puts";
 }
 
 bool CEmitter::is_exported_main(const syntax::ItemNode& item) const noexcept {

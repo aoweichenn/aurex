@@ -255,8 +255,10 @@ fn emit_extern_fn_symbol_macro(file: *mut OutputFile, source: *const u8, mod_inf
         }
     }
     if !expect_token(source, index, current, TK_SEMICOLON) { return false; }
-    if abi_name.kind == TK_STRING && !symbols_string_literal_equals_ident(source, abi_name, name) {
-        return emit_symbol_define(file, source, mod_info, name);
+    if abi_name.kind == TK_STRING {
+        if !symbols_string_literal_equals_ident(source, abi_name, name) {
+            return emit_symbol_define(file, source, mod_info, name);
+        }
     }
     return true;
 }
@@ -308,8 +310,10 @@ fn emit_export_fn_symbol_macro(file: *mut OutputFile, source: *const u8, index: 
             if !expect_token(source, index, current, TK_R_PAREN) { return false; }
         }
     }
-    if abi_name.kind == TK_STRING && !symbols_string_literal_equals_ident(source, abi_name, name) {
-        if !emit_symbol_alias_define(file, source, name, abi_name) { return false; }
+    if abi_name.kind == TK_STRING {
+        if !symbols_string_literal_equals_ident(source, abi_name, name) {
+            if !emit_symbol_alias_define(file, source, name, abi_name) { return false; }
+        }
     }
     return symbols_skip_block(source, index, current);
 }

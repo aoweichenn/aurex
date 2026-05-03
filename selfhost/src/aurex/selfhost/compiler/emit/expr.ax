@@ -380,27 +380,36 @@ fn emit_expr_until2(file: *mut OutputFile, source: *const u8, index: *mut i32, c
                                 return false;
                             }
         } else {
-            if token.kind == TK_IDENTIFIER && check(current, TK_L_BRACE) && emit_expr_allows_struct_literal(stop0, stop1) {
-            if !emit_struct_literal_tail(file, source, index, current, token) {
-                return false;
+            var handled: bool = false;
+            if token.kind == TK_IDENTIFIER {
+                if check(current, TK_L_BRACE) {
+                    if emit_expr_allows_struct_literal(stop0, stop1) {
+                        if !emit_struct_literal_tail(file, source, index, current, token) {
+                            return false;
+                        }
+                        handled = true;
+                    }
+                }
+                if !handled {
+                    if check(current, TK_DOT) {
+                        advance(source, index, current);
+                        let field: TokenSpan = advance(source, index, current);
+                        if field.kind != TK_IDENTIFIER {
+                            return false;
+                        }
+                        if !emit_field_access(file, source, token, field) {
+                            return false;
+                        }
+                        handled = true;
+                    }
+                }
             }
-        } else {
-            if token.kind == TK_IDENTIFIER && check(current, TK_DOT) {
-                advance(source, index, current);
-                let field: TokenSpan = advance(source, index, current);
-                if field.kind != TK_IDENTIFIER {
+            if !handled {
+                if !emit_token_expr(file, source, token) {
                     return false;
                 }
-                if !emit_field_access(file, source, token, field) {
-                    return false;
-                }
-        } else {
-            if !emit_token_expr(file, source, token) {
-                return false;
+                emit_expr_track_token(token, &paren_depth, &bracket_depth, &brace_depth);
             }
-            emit_expr_track_token(token, &paren_depth, &bracket_depth, &brace_depth);
-        }
-        }
         }
                     }
                 }

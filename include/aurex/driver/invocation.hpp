@@ -12,6 +12,7 @@ enum class EmitKind {
     modules,
     checked,
     ir,
+    llvm_ir,
     check,
     c,
     assembly,

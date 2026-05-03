@@ -28,7 +28,7 @@ namespace {
 base::Result<void> invoke_clang(const NativeCompileRequest& request) {
     std::vector<std::string> args;
     args.push_back(request.clang_path.empty() ? "clang" : request.clang_path);
-    args.push_back(request.c_path.string());
+    args.push_back(request.input_path.string());
     for (const std::filesystem::path& runtime_path : request.runtime_c_paths) {
         args.push_back(runtime_path.string());
     }

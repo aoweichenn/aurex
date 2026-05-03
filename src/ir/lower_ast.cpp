@@ -74,6 +74,14 @@ struct LocalBinding {
     bool is_mutable = false;
 };
 
+struct PendingConstant {
+    GlobalConstantId id = invalid_global_constant_id;
+    syntax::ExprId initializer = syntax::invalid_expr_id;
+    sema::TypeHandle type = sema::invalid_type_handle;
+    std::string literal_text;
+    bool is_literal = false;
+};
+
 class Lowerer final {
 public:
     Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked)
@@ -83,7 +91,10 @@ public:
     }
 
     [[nodiscard]] Module lower() {
+        lower_record_layouts();
+        declare_global_constants();
         lower_function_declarations();
+        lower_global_constant_initializers();
         for (base::u32 index = 0; index < ast_.items.size(); ++index) {
             const syntax::ItemNode& item = ast_.items[index];
             if (item.kind != syntax::ItemKind::fn_decl || item.is_extern_c || !syntax::is_valid(item.body)) {
@@ -95,6 +106,64 @@ public:
     }
 
 private:
+    void lower_record_layouts() {
+        for (const auto& entry : checked_.structs) {
+            const sema::StructInfo& info = entry.second;
+            RecordLayout record;
+            record.type = info.type;
+            record.name = info.name;
+            record.symbol = info.c_name;
+            record.is_opaque = info.is_opaque;
+            for (const sema::StructFieldInfo& field : info.fields) {
+                record.fields.push_back(RecordField {
+                    field.name,
+                    field.type,
+                });
+            }
+            module_.records.push_back(std::move(record));
+        }
+    }
+
+    void declare_global_constants() {
+        for (base::u32 index = 0; index < ast_.items.size(); ++index) {
+            const syntax::ItemNode& item = ast_.items[index];
+            if (item.kind == syntax::ItemKind::const_decl) {
+                GlobalConstant constant;
+                constant.name = std::string(item.name);
+                constant.symbol = item_symbol(index, item);
+                constant.type = syntax_type(item.const_type);
+                const GlobalConstantId id = add_global_constant(module_, std::move(constant));
+                constant_symbols_[module_.constants[id.value].symbol] = id;
+                pending_constants_.push_back(PendingConstant {
+                    id,
+                    item.const_value,
+                    module_.constants[id.value].type,
+                    {},
+                    false,
+                });
+                continue;
+            }
+            if (item.kind != syntax::ItemKind::enum_decl) {
+                continue;
+            }
+            for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
+                GlobalConstant constant;
+                constant.name = std::string(item.name) + "_" + std::string(enum_case.name);
+                constant.symbol = enum_case_symbol(index, item, enum_case);
+                constant.type = enum_case_type(constant.symbol);
+                const GlobalConstantId id = add_global_constant(module_, std::move(constant));
+                constant_symbols_[module_.constants[id.value].symbol] = id;
+                pending_constants_.push_back(PendingConstant {
+                    id,
+                    syntax::invalid_expr_id,
+                    module_.constants[id.value].type,
+                    std::string(enum_case.value_text),
+                    true,
+                });
+            }
+        }
+    }
+
     void lower_function_declarations() {
         for (base::u32 index = 0; index < ast_.items.size(); ++index) {
             const syntax::ItemNode& item = ast_.items[index];
@@ -103,7 +172,7 @@ private:
             }
             Function function;
             function.name = std::string(item.name);
-            function.symbol = function_symbol(index, item);
+            function.symbol = item_symbol(index, item);
             function.linkage = item_linkage(item);
             function.return_type = syntax_type(item.return_type);
             for (const syntax::ParamDecl& param : item.params) {
@@ -119,7 +188,27 @@ private:
         }
     }
 
-    [[nodiscard]] std::string function_symbol(const base::u32 index, const syntax::ItemNode& item) const {
+    void lower_global_constant_initializers() {
+        for (const PendingConstant& pending : pending_constants_) {
+            if (!is_valid(pending.id) || pending.id.value >= module_.constants.size()) {
+                continue;
+            }
+            ValueId initializer = invalid_value_id;
+            if (pending.is_literal) {
+                Value value;
+                value.kind = ValueKind::integer_literal;
+                value.type = pending.type;
+                value.text = pending.literal_text;
+                initializer = append_value(value);
+            } else {
+                initializer = lower_expr(pending.initializer, pending.type);
+                initializer = coerce_value(initializer, pending.type);
+            }
+            module_.constants[pending.id.value].initializer = initializer;
+        }
+    }
+
+    [[nodiscard]] std::string item_symbol(const base::u32 index, const syntax::ItemNode& item) const {
         if (index < checked_.item_c_names.size() && !checked_.item_c_names[index].empty()) {
             return checked_.item_c_names[index];
         }
@@ -127,6 +216,23 @@ private:
             return std::string(item.abi_name);
         }
         return std::string(item.name);
+    }
+
+    [[nodiscard]] std::string enum_case_symbol(
+        const base::u32 index,
+        const syntax::ItemNode& item,
+        const syntax::EnumCaseDecl& enum_case
+    ) const {
+        return item_symbol(index, item) + "_" + std::string(enum_case.name);
+    }
+
+    [[nodiscard]] sema::TypeHandle enum_case_type(const std::string& symbol) const noexcept {
+        for (const auto& entry : checked_.enum_cases) {
+            if (entry.second.c_name == symbol) {
+                return entry.second.type;
+            }
+        }
+        return sema::invalid_type_handle;
     }
 
     void lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
@@ -189,17 +295,18 @@ private:
         switch (stmt.kind) {
         case syntax::StmtKind::let:
         case syntax::StmtKind::var: {
+            const sema::TypeHandle declared_type = syntax_type(stmt.declared_type);
             Value slot;
             slot.kind = ValueKind::alloca;
             slot.name = std::string(stmt.name);
-            slot.type = module_.types.pointer(sema::PointerMutability::mut, syntax_type(stmt.declared_type));
+            slot.type = module_.types.pointer(sema::PointerMutability::mut, declared_type);
             const ValueId slot_id = append_value(slot);
             locals_[std::string(stmt.name)] = LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var};
-            append_store(slot_id, lower_expr(stmt.init));
+            append_store(slot_id, lower_expr(stmt.init, declared_type));
             break;
         }
         case syntax::StmtKind::assign:
-            append_store(lower_place_addr(stmt.lhs), lower_expr(stmt.rhs));
+            append_store(lower_place_addr(stmt.lhs), lower_expr(stmt.rhs, expr_type(checked_, stmt.lhs)));
             break;
         case syntax::StmtKind::if_:
             lower_if(stmt);
@@ -225,7 +332,7 @@ private:
             Terminator term;
             term.kind = TerminatorKind::return_;
             if (syntax::is_valid(stmt.return_value)) {
-                term.value = lower_expr(stmt.return_value);
+                term.value = coerce_value(lower_expr(stmt.return_value, current_function_->return_type), current_function_->return_type);
             }
             set_terminator(current_block_, term);
             break;
@@ -328,6 +435,10 @@ private:
     }
 
     [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id) {
+        return lower_expr(expr_id, sema::invalid_type_handle);
+    }
+
+    [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle expected_type) {
         if (!syntax::is_valid(expr_id) || expr_id.value >= ast_.exprs.size()) {
             return invalid_value_id;
         }
@@ -346,7 +457,7 @@ private:
         case syntax::ExprKind::null_literal: {
             Value value;
             value.kind = ValueKind::null_literal;
-            value.type = expr_type(checked_, expr_id);
+            value.type = sema::is_valid(expected_type) ? expected_type : expr_type(checked_, expr_id);
             return append_value(value);
         }
         case syntax::ExprKind::string_literal:
@@ -358,7 +469,7 @@ private:
             return append_value(value);
         }
         case syntax::ExprKind::name:
-            return lower_name(expr);
+            return lower_name(expr_id, expr);
         case syntax::ExprKind::unary: {
             if (expr.unary_op == syntax::UnaryOp::address_of) {
                 return coerce_value(lower_place_addr(expr.unary_operand), expr_type(checked_, expr_id));
@@ -385,8 +496,16 @@ private:
             value.kind = ValueKind::binary;
             value.type = expr_type(checked_, expr_id);
             value.binary_op = map_binary(expr.binary_op);
-            value.lhs = lower_expr(expr.binary_lhs);
-            value.rhs = lower_expr(expr.binary_rhs);
+            const sema::TypeHandle lhs_type = expr_type(checked_, expr.binary_lhs);
+            const sema::TypeHandle rhs_type = expr_type(checked_, expr.binary_rhs);
+            const sema::TypeHandle lhs_expected = !sema::is_valid(lhs_type) && module_.types.is_pointer(rhs_type)
+                ? rhs_type
+                : sema::invalid_type_handle;
+            const sema::TypeHandle rhs_expected = !sema::is_valid(rhs_type) && module_.types.is_pointer(lhs_type)
+                ? lhs_type
+                : sema::invalid_type_handle;
+            value.lhs = lower_expr(expr.binary_lhs, lhs_expected);
+            value.rhs = lower_expr(expr.binary_rhs, rhs_expected);
             return append_value(value);
         }
         case syntax::ExprKind::call: {
@@ -397,7 +516,8 @@ private:
             value.name = target.symbol;
             value.call_target = target.function;
             for (base::usize i = 0; i < expr.args.size(); ++i) {
-                value.args.push_back(coerce_value(lower_expr(expr.args[i]), call_param_type(target.function, i)));
+                const sema::TypeHandle param_type = call_param_type(target.function, i);
+                value.args.push_back(coerce_value(lower_expr(expr.args[i], param_type), param_type));
             }
             return append_value(value);
         }
@@ -414,7 +534,10 @@ private:
             value.kind = ValueKind::aggregate;
             value.type = expr_type(checked_, expr_id);
             for (const syntax::FieldInit& init : expr.field_inits) {
-                value.fields.push_back(FieldValue {std::string(init.name), lower_expr(init.value)});
+                value.fields.push_back(FieldValue {
+                    std::string(init.name),
+                    lower_expr(init.value, aggregate_field_type(value.type, init.name)),
+                });
             }
             return append_value(value);
         }
@@ -427,7 +550,7 @@ private:
             value.kind = ValueKind::cast;
             value.type = expr_type(checked_, expr_id);
             value.target_type = expr_type(checked_, expr_id);
-            value.lhs = lower_expr(expr.cast_expr);
+            value.lhs = lower_expr(expr.cast_expr, expr_type(checked_, expr.cast_expr));
             if (expr.kind == syntax::ExprKind::ptr_cast) {
                 value.cast_kind = CastKind::pointer;
             } else if (expr.kind == syntax::ExprKind::bit_cast) {
@@ -453,7 +576,7 @@ private:
         return invalid_value_id;
     }
 
-    [[nodiscard]] ValueId lower_name(const syntax::ExprNode& expr) {
+    [[nodiscard]] ValueId lower_name(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
         const std::string name(expr.text);
         const auto local = locals_.find(name);
         if (local != locals_.end()) {
@@ -462,6 +585,15 @@ private:
             value.name = name;
             value.type = local_load_type(local->second.slot);
             value.object = local->second.slot;
+            return append_value(value);
+        }
+        const std::string symbol = value_symbol(expr_id, expr);
+        if (const auto constant = constant_symbols_.find(symbol); constant != constant_symbols_.end()) {
+            Value value;
+            value.kind = ValueKind::constant_ref;
+            value.name = symbol;
+            value.constant = constant->second;
+            value.type = module_.constants[constant->second.value].type;
             return append_value(value);
         }
         Value value;
@@ -559,6 +691,15 @@ private:
         return "<invalid>";
     }
 
+    [[nodiscard]] std::string value_symbol(const syntax::ExprId expr_id, const syntax::ExprNode& expr) const {
+        if (syntax::is_valid(expr_id) &&
+            expr_id.value < checked_.expr_c_names.size() &&
+            !checked_.expr_c_names[expr_id.value].empty()) {
+            return checked_.expr_c_names[expr_id.value];
+        }
+        return std::string(expr.text);
+    }
+
     [[nodiscard]] sema::TypeHandle call_param_type(const FunctionId function_id, const base::usize index) const noexcept {
         if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
             return sema::invalid_type_handle;
@@ -577,6 +718,14 @@ private:
         return checked_.syntax_type_handles[type.value];
     }
 
+    [[nodiscard]] sema::TypeHandle aggregate_field_type(
+        const sema::TypeHandle aggregate_type,
+        const std::string_view name
+    ) const noexcept {
+        const RecordField* field = find_record_field(module_, aggregate_type, std::string(name));
+        return field == nullptr ? sema::invalid_type_handle : field->type;
+    }
+
     [[nodiscard]] sema::TypeHandle local_load_type(const ValueId slot) const noexcept {
         if (!is_valid(slot) || slot.value >= module_.values.size()) {
             return sema::invalid_type_handle;
@@ -593,6 +742,11 @@ private:
             return value_id;
         }
         const sema::TypeHandle source_type = module_.values[value_id.value].type;
+        if (!sema::is_valid(source_type) && module_.values[value_id.value].kind == ValueKind::null_literal &&
+            sema::is_valid(target_type) && module_.types.is_pointer(target_type)) {
+            module_.values[value_id.value].type = target_type;
+            return value_id;
+        }
         if (!sema::is_valid(target_type) || !sema::is_valid(source_type) || module_.types.same(source_type, target_type)) {
             return value_id;
         }
@@ -665,6 +819,8 @@ private:
     BlockId current_block_ = invalid_block_id;
     std::unordered_map<std::string, LocalBinding> locals_;
     std::unordered_map<std::string, FunctionId> function_symbols_;
+    std::unordered_map<std::string, GlobalConstantId> constant_symbols_;
+    std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
     std::vector<BlockId> loop_breaks_;
     std::vector<BlockId> loop_continues_;

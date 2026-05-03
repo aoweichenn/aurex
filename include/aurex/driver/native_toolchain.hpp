@@ -12,7 +12,7 @@ namespace aurex::driver {
 struct NativeCompileRequest {
     std::string clang_path;
     std::vector<std::string> clang_args;
-    std::filesystem::path c_path;
+    std::filesystem::path input_path;
     std::filesystem::path output_path;
     std::vector<std::filesystem::path> runtime_c_paths;
     EmitKind emit_kind = EmitKind::executable;

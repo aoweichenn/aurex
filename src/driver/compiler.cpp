@@ -8,6 +8,7 @@
 #include "aurex/driver/native_toolchain.hpp"
 #include "aurex/ir/ir_dump.hpp"
 #include "aurex/ir/lower_ast.hpp"
+#include "aurex/ir/llvm_emit.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/sema/sema.hpp"
 #include "aurex/syntax/ast_dump.hpp"
@@ -50,6 +51,19 @@ namespace {
         ("aurex_m0_" +
          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
          ".c");
+    auto write_result = write_file(path, text);
+    if (!write_result) {
+        return base::Result<std::filesystem::path>::fail(write_result.error());
+    }
+    return base::Result<std::filesystem::path>::ok(path);
+}
+
+[[nodiscard]] base::Result<std::filesystem::path> write_temporary_llvm_file(const std::string_view text) {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() /
+        ("aurex_m0_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ".ll");
     auto write_result = write_file(path, text);
     if (!write_result) {
         return base::Result<std::filesystem::path>::fail(write_result.error());
@@ -150,12 +164,52 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         return base::Result<void>::ok();
     }
 
-    if (invocation.emit_kind == EmitKind::ir) {
+    if (invocation.emit_kind == EmitKind::ir || invocation.emit_kind == EmitKind::llvm_ir) {
         auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
         }
-        std::cout << ir::dump_module(ir_result.value());
+        if (invocation.emit_kind == EmitKind::ir) {
+            std::cout << ir::dump_module(ir_result.value());
+            return base::Result<void>::ok();
+        }
+        auto llvm_result = ir::emit_llvm_ir(ir_result.value(), invocation.input_path.stem().string());
+        if (!llvm_result) {
+            return base::Result<void>::fail(llvm_result.error());
+        }
+        std::cout << llvm_result.value().text;
+        return base::Result<void>::ok();
+    }
+
+    if (invocation.emit_kind == EmitKind::assembly || invocation.emit_kind == EmitKind::executable) {
+        if (invocation.output_path.empty()) {
+            return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
+        }
+        auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
+        if (!ir_result) {
+            return base::Result<void>::fail(ir_result.error());
+        }
+        auto llvm_result = ir::emit_llvm_ir(ir_result.value(), invocation.input_path.stem().string());
+        if (!llvm_result) {
+            return base::Result<void>::fail(llvm_result.error());
+        }
+        auto temp_ir_result = write_temporary_llvm_file(llvm_result.value().text);
+        if (!temp_ir_result) {
+            return base::Result<void>::fail(temp_ir_result.error());
+        }
+        NativeCompileRequest request;
+        request.clang_path = invocation.clang_path;
+        request.clang_args = invocation.clang_args;
+        request.input_path = temp_ir_result.value();
+        request.output_path = invocation.output_path;
+        request.runtime_c_paths = invocation.runtime_c_paths;
+        request.emit_kind = invocation.emit_kind;
+        auto native_result = invoke_clang(request);
+        std::error_code remove_error;
+        std::filesystem::remove(temp_ir_result.value(), remove_error);
+        if (!native_result) {
+            return native_result;
+        }
         return base::Result<void>::ok();
     }
 
@@ -191,7 +245,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
     NativeCompileRequest request;
     request.clang_path = invocation.clang_path;
     request.clang_args = invocation.clang_args;
-    request.c_path = temp_c_result.value();
+    request.input_path = temp_c_result.value();
     request.output_path = invocation.output_path;
     request.runtime_c_paths = invocation.runtime_c_paths;
     request.emit_kind = invocation.emit_kind;

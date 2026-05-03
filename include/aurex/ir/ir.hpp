@@ -24,9 +24,15 @@ struct FunctionId {
     static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
 };
 
+struct GlobalConstantId {
+    base::u32 value = invalid_value;
+    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+};
+
 inline constexpr ValueId invalid_value_id {ValueId::invalid_value};
 inline constexpr BlockId invalid_block_id {BlockId::invalid_value};
 inline constexpr FunctionId invalid_function_id {FunctionId::invalid_value};
+inline constexpr GlobalConstantId invalid_global_constant_id {GlobalConstantId::invalid_value};
 
 [[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept {
     return id.value != ValueId::invalid_value;
@@ -38,6 +44,10 @@ inline constexpr FunctionId invalid_function_id {FunctionId::invalid_value};
 
 [[nodiscard]] inline constexpr bool is_valid(const FunctionId id) noexcept {
     return id.value != FunctionId::invalid_value;
+}
+
+[[nodiscard]] inline constexpr bool is_valid(const GlobalConstantId id) noexcept {
+    return id.value != GlobalConstantId::invalid_value;
 }
 
 enum class Linkage {
@@ -54,6 +64,7 @@ enum class ValueKind {
     string_literal,
     c_string_literal,
     byte_literal,
+    constant_ref,
     alloca,
     load,
     store,
@@ -121,6 +132,26 @@ struct FunctionParam {
     sema::TypeHandle type = sema::invalid_type_handle;
 };
 
+struct GlobalConstant {
+    std::string name;
+    std::string symbol;
+    sema::TypeHandle type = sema::invalid_type_handle;
+    ValueId initializer = invalid_value_id;
+};
+
+struct RecordField {
+    std::string name;
+    sema::TypeHandle type = sema::invalid_type_handle;
+};
+
+struct RecordLayout {
+    sema::TypeHandle type = sema::invalid_type_handle;
+    std::string name;
+    std::string symbol;
+    bool is_opaque = false;
+    std::vector<RecordField> fields;
+};
+
 struct Value {
     ValueKind kind = ValueKind::integer_literal;
     sema::TypeHandle type = sema::invalid_type_handle;
@@ -134,6 +165,7 @@ struct Value {
     std::vector<ValueId> args;
     std::vector<FieldValue> fields;
     std::vector<PhiInput> incoming;
+    GlobalConstantId constant = invalid_global_constant_id;
     UnaryOp unary_op = UnaryOp::logical_not;
     BinaryOp binary_op = BinaryOp::add;
     CastKind cast_kind = CastKind::numeric;
@@ -174,11 +206,18 @@ struct Function {
 
 struct Module {
     sema::TypeTable types;
+    std::vector<GlobalConstant> constants;
+    std::vector<RecordLayout> records;
     std::vector<Value> values;
     std::vector<Function> functions;
 };
 
 [[nodiscard]] ValueId add_value(Module& module, Value value);
+[[nodiscard]] GlobalConstantId add_global_constant(Module& module, GlobalConstant constant);
 [[nodiscard]] BlockId add_block(Function& function, std::string name);
+[[nodiscard]] const GlobalConstant* find_global_constant(const Module& module, GlobalConstantId id) noexcept;
+[[nodiscard]] const RecordLayout* find_record(const Module& module, sema::TypeHandle type) noexcept;
+[[nodiscard]] const RecordField* find_record_field(const Module& module, sema::TypeHandle type, const std::string& name) noexcept;
+[[nodiscard]] base::usize record_field_index(const RecordLayout& record, const std::string& name) noexcept;
 
 } // namespace aurex::ir

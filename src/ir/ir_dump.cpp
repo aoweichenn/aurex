@@ -87,6 +87,11 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     case ValueKind::byte_literal:
         out << "literal " << value.text;
         break;
+    case ValueKind::constant_ref: {
+        const GlobalConstant* constant = find_global_constant(module, value.constant);
+        out << "const_ref @" << (constant == nullptr ? value.name : constant->symbol);
+        break;
+    }
     case ValueKind::null_literal:
         out << "null";
         break;
@@ -188,6 +193,22 @@ void dump_terminator(std::ostream& out, const Function& function, const Terminat
 std::string dump_module(const Module& module) {
     std::ostringstream out;
     out << "aurex_ir v0\n";
+    for (const GlobalConstant& constant : module.constants) {
+        out << "const " << constant.name << " @" << constant.symbol
+            << ": " << module.types.display_name(constant.type)
+            << " = " << value_ref(constant.initializer) << "\n";
+    }
+    for (const RecordLayout& record : module.records) {
+        out << "record " << record.name << " @" << record.symbol;
+        if (record.is_opaque) {
+            out << " opaque";
+        }
+        out << " {\n";
+        for (const RecordField& field : record.fields) {
+            out << "  ." << field.name << ": " << module.types.display_name(field.type) << "\n";
+        }
+        out << "}\n";
+    }
     for (const Function& function : module.functions) {
         out << "fn " << function.name << "(";
         for (base::usize i = 0; i < function.signature_params.size(); ++i) {

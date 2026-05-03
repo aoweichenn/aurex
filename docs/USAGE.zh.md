@@ -54,6 +54,7 @@ build/m0c --dump-modules tests/positive/module_math.ax
 build/m0c --check examples/hello.ax
 build/m0c --emit=ast examples/hello.ax
 build/m0c --emit=ir examples/hello.ax
+build/m0c --emit=llvm-ir examples/hello.ax
 build/m0c --emit=check examples/hello.ax
 build/m0c --emit=c examples/hello.ax -o build/hello.c
 build/m0c --emit=asm examples/hello.ax -o build/hello.s
@@ -68,33 +69,38 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 - `--dump-ast`：运行 lexer 和 parser，并输出稳定 AST dump。
 - `--dump-modules`：解析 import，并输出已加载模块名和路径。
 - `--dump-ir`：运行到语义分析后，降到 Aurex IR 并输出 IR dump。
+- `--dump-llvm-ir`：把 Aurex IR 再 lowering 成 LLVM IR 并输出。
 - `--check`：运行 lexer、parser、语义分析，但不生成 C。
 - `--emit=tokens`：等价于 `--dump-tokens`。
 - `--emit=ast`：等价于 `--dump-ast`。
 - `--emit=modules`：等价于 `--dump-modules`。
 - `--emit=ir`：等价于 `--dump-ir`。
+- `--emit=llvm-ir`：等价于 `--dump-llvm-ir`。
 - `--emit=check`：等价于 `--check`。
 - `--emit=c`：生成 C，这是默认行为。
-- `--emit=asm`：先生成临时 C，再调用 clang 输出汇编。
-- `--emit=exe`：先生成临时 C，再调用 clang 输出本机可执行文件。
+- `--emit=asm`：先生成临时 LLVM IR，再调用 clang 输出汇编。
+- `--emit=exe`：先生成临时 LLVM IR，再调用 clang 输出本机可执行文件。
 - `--clang path`：指定 `--emit=asm` / `--emit=exe` 使用的 clang 可执行文件。
 - `--clang-arg arg`：向 clang 透传一个参数，可重复使用，例如 `--clang-arg -O2`。
 - `--runtime-c path`：向 clang 链接额外 C runtime 源文件，可重复使用。
 - `-o path`：把生成的 C 写入指定路径。
 - `-I path`：增加 import 搜索根。`import a.b;` 会查找 `a/b.ax`，先查导入者所在目录，再查每个 `-I` 路径。
 
-`--emit=c` 会保留完整 C 输出，适合对比和调试；`--emit=asm` / `--emit=exe`
-是 clang 集成路径，第一版不改变前端、语义分析或 C 后端。
+`--emit=c` 会保留完整 C 输出，适合对比和调试；`--emit=llvm-ir` 可以直接看
+LLVM lowering 结果；`--emit=asm` / `--emit=exe` 现在走 Aurex IR -> LLVM IR ->
+clang 路线。
 
 ### Aurex IR 输出
 
-`--emit=ir` 输出的是 Aurex 自有中间代码，不是 LLVM IR。当前 IR 已经显式记录：
+`--emit=ir` 输出的是 Aurex 自有中间代码，不是 LLVM IR。`--emit=llvm-ir`
+会继续把它 lowering 成 LLVM IR。当前 IR 已经显式记录：
 
 - 函数签名、ABI symbol 和 linkage：`internal`、`export_c`、`extern_c`。
 - basic block、`br`、`br_if`、`ret` terminator。
 - typed value、`alloca/load/store`、函数调用、聚合值、cast。
 - `field_addr` / `index_addr`，后续可直接映射到 LLVM GEP。
 - `phi`，用于表达 `&&` / `||` 这类短路控制流值。
+- 还包括编译期全局常量引用，便于 `const` 和 enum case 直接进入 LLVM。
 
 示例：
 

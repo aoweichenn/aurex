@@ -40,18 +40,17 @@ build/m0c --emit=exe examples/hello.ax -o build/hello
 compared. `--clang <path>` selects a clang binary, and repeated
 `--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
 
-The new IR path is visible with:
+The IR path is visible with:
 
 ```sh
 build/m0c --emit=ir examples/hello.ax
+build/m0c --emit=llvm-ir examples/hello.ax
 ```
 
-This emits Aurex's typed CFG/SSA IR, not LLVM IR yet. It records function
-signatures, ABI linkage (`internal`, `export_c`, `extern_c`), memory slots,
-loads/stores, calls, field/index addresses, casts, terminators, and `phi`
-values for short-circuit control flow. The next native backend step is lowering
-this IR to LLVM IR while keeping the C emitter as a reference backend and C ABI
-interoperability surface.
+`--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
+LLVM IR and prints the result. Native output (`--emit=asm` / `--emit=exe`) now
+runs Aurex IR -> LLVM IR -> clang, while `--emit=c` stays as the readable
+reference backend for comparison and bootstrap continuity.
 
 ## Quality Gates
 

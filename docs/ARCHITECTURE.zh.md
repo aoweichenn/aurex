@@ -16,7 +16,7 @@ Stage1 自举编译器切片。
   形态，为后续 LLVM IR 后端提供稳定输入。
 - `src/codegen_c/`：C 后端，包括 C 类型格式化、表达式求值顺序和 emitter。
 - `src/driver/`：编译驱动、模块加载器和 clang 本机输出封装，负责 import
-  解析、跨模块合并以及 C/汇编/可执行文件输出选择。
+  解析、跨模块合并以及 C/LLVM IR/汇编/可执行文件输出选择。
 - `src/cli/`：`m0c` 命令行入口。
 - `cmake/`：按编译器组件拆分的构建定义，根 `CMakeLists.txt` 只负责组装。
 - `runtime/`：Aurex 程序可显式 import 的运行时模块。
@@ -34,13 +34,15 @@ Stage1 自举编译器切片。
 3. `parse` 将 token 转为 AST。AST 只表达语法事实，不保存类型检查结果。
 4. `sema` 建立类型、符号、函数、结构体和枚举 case 边表。
 5. `ir` 可以把 AST 与 `CheckedModule` 降为 Aurex IR，用 `--emit=ir` 观察。
-6. `codegen_c` 仍可使用 AST 与 `CheckedModule` 生成 C。
-7. `driver` 可以直接写出 C，也可以把临时 C 交给 clang 输出汇编或本机可执行文件。
+6. `ir` 还能继续 lowering 到 LLVM IR，用 `--emit=llvm-ir` 观察。
+7. `codegen_c` 仍可使用 AST 与 `CheckedModule` 生成 C。
+8. `driver` 可以直接写出 C，或者走 Aurex IR -> LLVM IR -> clang 输出汇编或本机可执行文件。
 
 这种分层刻意避免让 parser 依赖 lexer 实现，也避免把语义信息写回 AST。
 后续替换前端或把组件迁移到 M0 时，每个阶段都有清晰接口。
 当前 clang 集成是 driver 层的封装：`--emit=c` 仍保留完整 C 输出，
-`--emit=asm` / `--emit=exe` 复用同一份 C 后端产物并调用 clang。
+`--emit=llvm-ir` 输出 LLVM lowering 结果，`--emit=asm` / `--emit=exe`
+复用 LLVM 路线并调用 clang。
 
 ## Aurex IR 与 LLVM 路线
 
@@ -52,12 +54,13 @@ IR 当前具有这些性质：
 
 - `Module` 持有 `TypeTable`、函数表和值表。
 - `Function` 显式记录源码名、ABI symbol、linkage、返回类型和参数签名。
-- `Linkage` 区分 `internal`、`export_c`、`extern_c`，后续 LLVM lowering 可直接映射到符号可见性和外部声明。
+- `Linkage` 区分 `internal`、`export_c`、`extern_c`，LLVM lowering 可直接映射到符号可见性和外部声明。
 - 控制流由 basic block + terminator 表示，terminator 包含 `br`、`br_if` 和 `ret`。
 - 局部变量、参数 shadow copy 和可写 storage 先降为 `alloca/load/store`，后续可以做 mem2reg/SSA 构造。
 - 字段和下标访问先降为 `field_addr` / `index_addr`，再由 `load/store` 使用，便于 LLVM GEP lowering。
 - 函数调用记录最终 ABI symbol，也记录可解析的 `FunctionId`，避免后续阶段重新查 AST 名字。
 - `&&` / `||` 降成 CFG + `phi`，不再当作普通二元指令，因此短路语义在 IR 中是显式的。
+- 编译期常量单独进入 IR 常量表，避免 `const` 和 enum case 被误当成运行期 load。
 
 后续推荐的后端路线：
 

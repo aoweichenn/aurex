@@ -24,8 +24,9 @@ source.ax
   -> SemanticAnalyzer
   -> CheckedModule
   -> Aurex IR
-  -> LLVM IR (planned) / CEmitter reference path
-  -> output.c / clang -> output.s or executable
+  -> LLVM IR
+  -> clang -> output.s or executable
+  -> CEmitter reference path remains available
 ```
 
 Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖 parser
@@ -66,7 +67,8 @@ Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖
 - 把 AST + `CheckedModule` 降为 Aurex 自有 IR；
 - 使用 typed value、basic block、terminator 和 `phi` 表达控制流和值；
 - 保留 `extern_c` / `export_c` linkage 和 ABI symbol；
-- 作为后续 LLVM IR lowering 的主要输入，不依赖 C 后端文本。
+- 作为 LLVM IR lowering 的主要输入，不依赖 C 后端文本；
+- 显式表示编译期常量引用，避免把 `const` 和 enum case 误降成 load。
 
 `m0_codegen_c`
 
@@ -84,8 +86,9 @@ Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖
 - 对缺失 import 和 module name 不匹配给出带源码范围的诊断。
 - 加载阶段检测循环 import。
 - 提供 `--dump-modules` 用来查看解析后的模块集合。
-- 在 `--emit=asm` 和 `--emit=exe` 模式下调用 clang；`--emit=c` 仍然只写出
-  生成的 C，便于对比和调试。
+- 在 `--emit=llvm-ir` 模式下输出 LLVM lowering 结果；在 `--emit=asm`
+  和 `--emit=exe` 模式下调用 clang；`--emit=c` 仍然只写出生成的 C，便于
+  对比和调试。
 
 `m0c`
 

@@ -51,7 +51,7 @@ if ((${#obsolete_version_docs[@]} != 0)); then
     exit 1
 fi
 
-"${AUREXC}" --version | grep -q 'M0V0.1.8'
+"${AUREXC}" --version | grep -q '0.1.2'
 "${AUREXC}" --help | grep -q -- '--check'
 "${AUREXC}" --help | grep -q -- '--emit=ast'
 "${AUREXC}" --help | grep -q -- '--emit=ir'
@@ -210,4 +210,4 @@ grep -q 'golden tests passed' "${TMP_DIR}/aurex_golden.txt"
 "${ROOT}/tools/compare_selfhost_lexer.sh" >"${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 grep -q 'selfhost lexer matches Stage0 lexer for local corpus' "${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 
-echo "M0V0.1.8 tests passed"
+echo "0.1.2 tests passed"

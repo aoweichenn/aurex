@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small performance smoke benchmark for Aurex M0V0.1.8.
+"""Small performance smoke benchmark for Aurex 0.1.2.
 
 This is not a statistically rigorous benchmark suite. It is a repeatable
 engineering smoke test that catches obvious regressions in lexer/parser/IR/native

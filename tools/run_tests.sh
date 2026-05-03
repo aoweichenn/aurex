@@ -13,6 +13,44 @@ cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
 cmake --build "${BUILD_DIR}" -j >/dev/null
 mkdir -p "${TEST_DIR}" "${TMP_DIR}" "${BOOT_DIR}"
 
+test -f "${ROOT}/docs/README.md"
+test -f "${ROOT}/docs/zh/README.md"
+test -f "${ROOT}/docs/zh/architecture.md"
+test -f "${ROOT}/docs/zh/requirements.md"
+test -f "${ROOT}/docs/zh/runtime-flow.md"
+test -f "${ROOT}/docs/zh/api.md"
+test -f "${ROOT}/docs/zh/implementation.md"
+test -f "${ROOT}/docs/zh/usage.md"
+test -f "${ROOT}/docs/zh/introduction.md"
+test -f "${ROOT}/docs/zh/version.md"
+test -f "${ROOT}/docs/en/README.md"
+test -f "${ROOT}/docs/en/architecture.md"
+test -f "${ROOT}/docs/en/requirements.md"
+test -f "${ROOT}/docs/en/runtime-flow.md"
+test -f "${ROOT}/docs/en/api.md"
+test -f "${ROOT}/docs/en/implementation.md"
+test -f "${ROOT}/docs/en/usage.md"
+test -f "${ROOT}/docs/en/introduction.md"
+test -f "${ROOT}/docs/en/version.md"
+obsolete_doc_paths=(
+    "${ROOT}/docs/ARCHITECTURE.zh.md"
+    "${ROOT}/docs/DESIGN.en.md"
+    "${ROOT}/docs/DESIGN.zh.md"
+    "${ROOT}/docs/SELFHOST.md"
+    "${ROOT}/docs/SEMANTICS.md"
+    "${ROOT}/docs/USAGE.en.md"
+    "${ROOT}/docs/USAGE.zh.md"
+)
+for obsolete_doc_path in "${obsolete_doc_paths[@]}"; do
+    test ! -e "${obsolete_doc_path}"
+done
+mapfile -t obsolete_version_docs < <(find "${ROOT}/docs" -maxdepth 1 -type f -name 'M0V0.1.*.md' -print)
+if ((${#obsolete_version_docs[@]} != 0)); then
+    printf 'unexpected per-small-version documentation files:\n' >&2
+    printf '%s\n' "${obsolete_version_docs[@]}" >&2
+    exit 1
+fi
+
 "${AUREXC}" --version | grep -q 'M0V0.1.8'
 "${AUREXC}" --help | grep -q -- '--check'
 "${AUREXC}" --help | grep -q -- '--emit=ast'

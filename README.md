@@ -1,6 +1,6 @@
 # Aurex M0
 
-Current baseline: **M0V0.1.8**.
+Documentation baseline: **0.1.2**.
 
 Aurex M0 is a small bootstrap compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
@@ -84,7 +84,7 @@ authoritative implementation.
 
 ## Selfhost Track
 
-Self-hosting is explicit in `selfhost/`, but M0V0.1.8 is not fully self-hosted
+Self-hosting is explicit in `selfhost/`, but 0.1.2 is not fully self-hosted
 yet. The current track contains reusable M0 lexer/parser pieces, an ID-backed
 AST seed, and a Stage1 compiler entry that emits `aurex_ir v0` snapshots.
 
@@ -110,18 +110,9 @@ build/selfhost/aurexc_stage1 examples/hello.ax build/selfhost/hello.stage1.air
 
 See:
 
-- `docs/USAGE.en.md`
-- `docs/USAGE.zh.md`
-- `docs/ARCHITECTURE.zh.md`
-- `docs/SELFHOST.md`
-- `docs/DESIGN.en.md`
-- `docs/DESIGN.zh.md`
-- `docs/SEMANTICS.md`
-- `docs/M0V0.1.8.md`
-- `docs/M0V0.1.7.md`
-- `docs/M0V0.1.6.md`
-- `docs/M0V0.1.5.md`
-- `docs/M0V0.1.4.md`
-- `docs/M0V0.1.3.md`
-- `docs/M0V0.1.2.md`
-- `docs/M0V0.1.1.md` for the previous release baseline.
+- `docs/README.md`
+- `docs/zh/README.md`
+- `docs/en/README.md`
+
+The documentation is now organized by topic and language instead of one file
+per small 0.1.x increment.

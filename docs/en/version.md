@@ -1,0 +1,68 @@
+# Version Document
+
+Version: 0.1.2
+
+## Version Positioning
+
+0.1.2 is the current documentation baseline. This document no longer lists tiny
+per-version changes for every 0.1.x step. Instead, it summarizes the 0.1.x
+capability set as one coherent state.
+
+The version document describes the current public state, compatibility strategy,
+and future direction. Historical per-small-version changes are no longer kept
+as standalone documents; use git history for that level of detail.
+
+## 0.1.2 Scope
+
+Included:
+
+- Stage0 C++20 compiler main path.
+- lexer/parser/sema/IR/LLVM/driver/cli layering.
+- Aurex IR verifier and pass pipeline.
+- Relocatable std lookup.
+- std host-c backend support and stable `aurex_std_v0_*` symbols.
+- selfhost lexer/parser/IR-emitter slices.
+- bootstrap, golden, positive, and negative test flows.
+- Chinese and English topic-based documentation sets.
+
+Not included:
+
+- Complete Stage1 sema.
+- Stage1 IR verifier.
+- Stage1 LLVM backend handoff.
+- Fixed-point self-host.
+- Complete cross-block SSA/mem2reg and production optimizer.
+
+## Compatibility Strategy
+
+- New std host support symbols use `aurex_std_v0_*`.
+- Old `aurex_std_*` wrappers are retained for now.
+- `std/native_support.c` remains as a compatibility entry for older build
+  scripts.
+- New documentation entry points are `docs/zh/` and `docs/en/`.
+- Per-small-version files in the form `docs/M0V0.1.x.md` are not restored.
+
+## Public Stable Surface
+
+- CLI option names and `--emit=` modes.
+- Basic Aurex IR dump structure.
+- `std` module paths and install directory `share/aurex/std`.
+- std host support ABI v0 symbols.
+- C++ driver, IR pass, and standard-library helper header APIs.
+
+## Allowed Evolution Surface
+
+- M0 syntax and semantic details.
+- Number and strength of IR passes.
+- Stage1 selfhost coverage.
+- std backend support backend types.
+- LLVM lowering internals.
+
+## Future Version Direction
+
+- Complete IR constant folding.
+- Cross-block mem2reg and phi insertion.
+- Fuller ABI attributes and target configuration.
+- Stage1 sema and IR verifier.
+- Stage1 output handoff into the existing LLVM backend.
+- Fixed-point self-host validation.

@@ -4,6 +4,11 @@ add_library(m0_ir
     src/ir/ir.cpp
     src/ir/ir_dump.cpp
     src/ir/llvm_emit.cpp
+    src/ir/llvm_emit_function.cpp
+    src/ir/llvm_emit_module.cpp
+    src/ir/llvm_emit_types.cpp
+    src/ir/llvm_emit_util.cpp
+    src/ir/llvm_emit_value.cpp
     src/ir/lower_ast.cpp
     src/ir/verify.cpp
 )

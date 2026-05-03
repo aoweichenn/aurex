@@ -5,6 +5,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Target/TargetMachine.h>
 
 #include <memory>
 #include <string>
@@ -15,7 +16,6 @@ class BasicBlock;
 class DataLayout;
 class Function;
 class PHINode;
-class TargetMachine;
 class Type;
 class Value;
 } // namespace llvm

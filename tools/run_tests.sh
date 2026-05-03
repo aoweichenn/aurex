@@ -12,6 +12,8 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --version | grep -q 'M0V0.1.8'
 "${M0C}" --help | grep -q -- '--check'
 "${M0C}" --help | grep -q -- '--emit=ast'
+"${M0C}" --help | grep -q -- '--emit=asm'
+"${M0C}" --help | grep -q -- '--emit=exe'
 "${M0C}" --help | grep -q -- '--dump-modules'
 "${M0C}" --check "${ROOT}/examples/hello.ax"
 "${M0C}" --emit=check "${ROOT}/examples/hello.ax"
@@ -47,6 +49,11 @@ diff -u "${ROOT}/tests/golden/hello.tokens" /tmp/aurex_tokens.txt
 cc "${BUILD_DIR}/hello.c" -o "${BUILD_DIR}/hello"
 HELLO_OUT="$("${BUILD_DIR}/hello")"
 test "${HELLO_OUT}" = "hello from Aurex M0"
+"${M0C}" --emit=asm "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.s"
+test -s "${BUILD_DIR}/hello.s"
+"${M0C}" --emit=exe "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.direct"
+HELLO_DIRECT_OUT="$("${BUILD_DIR}/hello.direct")"
+test "${HELLO_DIRECT_OUT}" = "hello from Aurex M0"
 
 for src in "${ROOT}"/tests/positive/*.ax; do
     case "$(basename "${src}" .ax)" in
@@ -71,9 +78,12 @@ done
 for src in "${ROOT}"/tests/positive/runtime_*.ax; do
     out="${BUILD_DIR}/$(basename "${src}" .ax).c"
     bin="${BUILD_DIR}/$(basename "${src}" .ax)"
+    direct="${BUILD_DIR}/$(basename "${src}" .ax).direct"
     "${M0C}" -I "${ROOT}" "${src}" -o "${out}"
     cc "${out}" -o "${bin}"
     "${bin}" >/dev/null
+    "${M0C}" --emit=exe -I "${ROOT}" "${src}" -o "${direct}"
+    "${direct}" >/dev/null
 done
 
 "${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/import_path.ax" -o "${BUILD_DIR}/import_path.c"

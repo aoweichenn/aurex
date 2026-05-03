@@ -55,6 +55,8 @@ build/m0c --check examples/hello.ax
 build/m0c --emit=ast examples/hello.ax
 build/m0c --emit=check examples/hello.ax
 build/m0c --emit=c examples/hello.ax -o build/hello.c
+build/m0c --emit=asm examples/hello.ax -o build/hello.s
+build/m0c --emit=exe examples/hello.ax -o build/hello
 build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 ```
 
@@ -70,8 +72,16 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 - `--emit=modules`：等价于 `--dump-modules`。
 - `--emit=check`：等价于 `--check`。
 - `--emit=c`：生成 C，这是默认行为。
+- `--emit=asm`：先生成临时 C，再调用 clang 输出汇编。
+- `--emit=exe`：先生成临时 C，再调用 clang 输出本机可执行文件。
+- `--clang path`：指定 `--emit=asm` / `--emit=exe` 使用的 clang 可执行文件。
+- `--clang-arg arg`：向 clang 透传一个参数，可重复使用，例如 `--clang-arg -O2`。
+- `--runtime-c path`：向 clang 链接额外 C runtime 源文件，可重复使用。
 - `-o path`：把生成的 C 写入指定路径。
 - `-I path`：增加 import 搜索根。`import a.b;` 会查找 `a/b.ax`，先查导入者所在目录，再查每个 `-I` 路径。
+
+`--emit=c` 会保留完整 C 输出，适合对比和调试；`--emit=asm` / `--emit=exe`
+是 clang 集成路径，第一版不改变前端、语义分析或 C 后端。
 
 ## 5. 当前语言能力
 

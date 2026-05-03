@@ -9,7 +9,7 @@ namespace {
 
 void print_usage(std::ostream& out, const std::string_view argv0) {
     out
-        << "usage: " << argv0 << " [options] input.ax [-o output.c]\n"
+        << "usage: " << argv0 << " [options] input.ax [-o output]\n"
         << "options:\n"
         << "  --help           show this help text\n"
         << "  --version        print compiler version\n"
@@ -24,6 +24,11 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --emit=checked   same as --dump-checked\n"
         << "  --emit=check     same as --check\n"
         << "  --emit=c         emit C (default)\n"
+        << "  --emit=asm       emit assembly through clang\n"
+        << "  --emit=exe       emit a native executable through clang\n"
+        << "  --clang path     clang executable to use for asm/exe output\n"
+        << "  --clang-arg arg  pass one raw argument to clang; repeat as needed\n"
+        << "  --runtime-c path add a C runtime source when linking asm/exe output\n"
         << "  -I path          add an import search path\n";
 }
 
@@ -46,6 +51,10 @@ int main(const int argc, char** argv) {
             invocation.emit_kind = aurex::driver::EmitKind::check;
         } else if (arg == "--emit=c") {
             invocation.emit_kind = aurex::driver::EmitKind::c;
+        } else if (arg == "--emit=asm") {
+            invocation.emit_kind = aurex::driver::EmitKind::assembly;
+        } else if (arg == "--emit=exe") {
+            invocation.emit_kind = aurex::driver::EmitKind::executable;
         } else if (arg == "--help" || arg == "-h") {
             print_usage(std::cout, argv[0]);
             return 0;
@@ -64,6 +73,24 @@ int main(const int argc, char** argv) {
                 return 2;
             }
             invocation.import_paths.push_back(argv[++i]);
+        } else if (arg == "--clang") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            invocation.clang_path = argv[++i];
+        } else if (arg == "--clang-arg") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            invocation.clang_args.push_back(argv[++i]);
+        } else if (arg == "--runtime-c") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            invocation.runtime_c_paths.push_back(argv[++i]);
         } else if (arg.starts_with("-I") && arg.size() > 2) {
             invocation.import_paths.push_back(std::string(arg.substr(2)));
         } else if (!arg.empty() && arg.front() == '-') {

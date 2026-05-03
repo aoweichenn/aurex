@@ -28,6 +28,17 @@ Stage0 now resolves imports:
 build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 ```
 
+Stage0 can also hand the generated C to clang directly:
+
+```sh
+build/m0c --emit=asm examples/hello.ax -o build/hello.s
+build/m0c --emit=exe examples/hello.ax -o build/hello
+```
+
+`--emit=c` remains the default so generated C can still be inspected and
+compared. `--clang <path>` selects a clang binary, and repeated
+`--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
+
 ## Quality Gates
 
 ```sh

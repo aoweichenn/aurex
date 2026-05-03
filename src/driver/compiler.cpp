@@ -5,10 +5,12 @@
 #include "aurex/base/text.hpp"
 #include "aurex/codegen_c/c_emitter.hpp"
 #include "aurex/driver/module_loader.hpp"
+#include "aurex/driver/native_toolchain.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/sema/sema.hpp"
 #include "aurex/syntax/ast_dump.hpp"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -38,6 +40,19 @@ namespace {
         return base::Result<void>::fail({base::ErrorCode::io_error, "failed to write output file"});
     }
     return base::Result<void>::ok();
+}
+
+[[nodiscard]] base::Result<std::filesystem::path> write_temporary_c_file(const std::string_view text) {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() /
+        ("aurex_m0_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ".c");
+    auto write_result = write_file(path, text);
+    if (!write_result) {
+        return base::Result<std::filesystem::path>::fail(write_result.error());
+    }
+    return base::Result<std::filesystem::path>::ok(path);
 }
 
 void print_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics) {
@@ -140,14 +155,40 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         return base::Result<void>::fail(c_result.error());
     }
 
-    if (invocation.output_path.empty()) {
+    if (invocation.emit_kind == EmitKind::c && invocation.output_path.empty()) {
         std::cout << c_result.value().text;
         return base::Result<void>::ok();
     }
 
-    auto write_result = write_file(invocation.output_path, c_result.value().text);
-    if (!write_result) {
-        return write_result;
+    if (invocation.emit_kind == EmitKind::c) {
+        auto write_result = write_file(invocation.output_path, c_result.value().text);
+        if (!write_result) {
+            return write_result;
+        }
+        return base::Result<void>::ok();
+    }
+
+    if (invocation.output_path.empty()) {
+        return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
+    }
+
+    auto temp_c_result = write_temporary_c_file(c_result.value().text);
+    if (!temp_c_result) {
+        return base::Result<void>::fail(temp_c_result.error());
+    }
+
+    NativeCompileRequest request;
+    request.clang_path = invocation.clang_path;
+    request.clang_args = invocation.clang_args;
+    request.c_path = temp_c_result.value();
+    request.output_path = invocation.output_path;
+    request.runtime_c_paths = invocation.runtime_c_paths;
+    request.emit_kind = invocation.emit_kind;
+    auto native_result = invoke_clang(request);
+    std::error_code remove_error;
+    std::filesystem::remove(temp_c_result.value(), remove_error);
+    if (!native_result) {
+        return native_result;
     }
     return base::Result<void>::ok();
 }

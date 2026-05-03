@@ -1,0 +1,178 @@
+module aurex.selfhost.parser.types;
+
+import aurex.selfhost.lexer.core;
+import aurex.selfhost.parser.cursor;
+import aurex.selfhost.syntax.ast;
+
+extern c {
+    fn malloc(size: usize) -> *mut void @name("malloc");
+    fn free(ptr: *mut void) -> void @name("free");
+}
+
+struct TypeResult {
+    ok: bool;
+    id: i32;
+}
+
+struct SignatureResult {
+    ok: bool;
+    name_begin: i32;
+    name_end: i32;
+    first_param: i32;
+    param_count: i32;
+    return_type: i32;
+}
+
+fn make_bad_type_result() -> TypeResult {
+    return TypeResult { ok: false, id: 0 };
+}
+
+fn make_type_result(id: i32) -> TypeResult {
+    return TypeResult { ok: true, id: id };
+}
+
+fn make_bad_signature_result() -> SignatureResult {
+    return SignatureResult { ok: false, name_begin: 0, name_end: 0, first_param: 0, param_count: 0, return_type: 0 };
+}
+
+fn make_signature_result(name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32) -> SignatureResult {
+    return SignatureResult { ok: true, name_begin: name_begin, name_end: name_end, first_param: first_param, param_count: param_count, return_type: return_type };
+}
+
+fn parse_type_atom(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> TypeResult {
+    if parser_match(source, index, current, TK_KW_VOID) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_VOID)); }
+    if parser_match(source, index, current, TK_KW_BOOL) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_BOOL)); }
+    if parser_match(source, index, current, TK_KW_I8) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_I8)); }
+    if parser_match(source, index, current, TK_KW_U8) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_U8)); }
+    if parser_match(source, index, current, TK_KW_I16) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_I16)); }
+    if parser_match(source, index, current, TK_KW_U16) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_U16)); }
+    if parser_match(source, index, current, TK_KW_I32) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_I32)); }
+    if parser_match(source, index, current, TK_KW_U32) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_U32)); }
+    if parser_match(source, index, current, TK_KW_I64) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_I64)); }
+    if parser_match(source, index, current, TK_KW_U64) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_U64)); }
+    if parser_match(source, index, current, TK_KW_ISIZE) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_ISIZE)); }
+    if parser_match(source, index, current, TK_KW_USIZE) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_USIZE)); }
+    if parser_match(source, index, current, TK_KW_F32) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_F32)); }
+    if parser_match(source, index, current, TK_KW_F64) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_F64)); }
+    if parser_match(source, index, current, TK_KW_STR) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_STR)); }
+    if parser_check(current, TK_IDENTIFIER) {
+        let name: TokenSpan = parser_advance(source, index, current);
+        return make_type_result(ast_add_named_type(ast, name.begin, name.end));
+    }
+    return make_bad_type_result();
+}
+
+fn parse_type(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> TypeResult {
+    let mut_stack: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_TYPES)));
+    if mut_stack == null {
+        return make_bad_type_result();
+    }
+
+    var pointer_count: i32 = 0;
+    while parser_match(source, index, current, TK_STAR) {
+        if pointer_count >= AST_MAX_TYPES {
+            free(ptr_cast(*mut void, mut_stack));
+            return make_bad_type_result();
+        }
+        if parser_match(source, index, current, TK_KW_MUT) {
+            mut_stack[pointer_count] = AST_MUT_MUT;
+        } else {
+            if parser_match(source, index, current, TK_KW_CONST) {
+                mut_stack[pointer_count] = AST_MUT_CONST;
+            } else {
+                free(ptr_cast(*mut void, mut_stack));
+                return make_bad_type_result();
+            }
+        }
+        pointer_count = pointer_count + 1;
+    }
+
+    let base: TypeResult = parse_type_atom(source, index, current, ast);
+    if !base.ok {
+        free(ptr_cast(*mut void, mut_stack));
+        return make_bad_type_result();
+    }
+
+    var type_id: i32 = base.id;
+    var offset: i32 = pointer_count;
+    while offset > 0 {
+        offset = offset - 1;
+        type_id = ast_add_pointer_type(ast, mut_stack[offset], type_id);
+    }
+
+    free(ptr_cast(*mut void, mut_stack));
+    return make_type_result(type_id);
+}
+
+fn parse_param(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    let name: TokenSpan = parser_advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_COLON) {
+        return false;
+    }
+    let ty: TypeResult = parse_type(source, index, current, ast);
+    if !ty.ok {
+        return false;
+    }
+    ast_add_param(ast, name.begin, name.end, ty.id);
+    return true;
+}
+
+fn parse_param_list(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    if parser_check(current, TK_R_PAREN) {
+        return true;
+    }
+    if !parse_param(source, index, current, ast) {
+        return false;
+    }
+    while parser_match(source, index, current, TK_COMMA) {
+        if parser_check(current, TK_R_PAREN) {
+            return true;
+        }
+        if !parse_param(source, index, current, ast) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn parse_return_type_id(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> TypeResult {
+    if parser_match(source, index, current, TK_ARROW) {
+        let ty: TypeResult = parse_type(source, index, current, ast);
+        if !ty.ok {
+            return make_bad_type_result();
+        }
+        ast_add_return_type(ast);
+        return ty;
+    }
+    ast_add_return_type(ast);
+    return make_type_result(ast_add_primitive_type(ast, AST_PRIM_VOID));
+}
+
+fn parse_fn_signature(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> SignatureResult {
+    if !parser_expect(source, index, current, TK_KW_FN) {
+        return make_bad_signature_result();
+    }
+    let name: TokenSpan = parser_advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return make_bad_signature_result();
+    }
+    if !parser_expect(source, index, current, TK_L_PAREN) {
+        return make_bad_signature_result();
+    }
+    let first_param: i32 = ast.param_count;
+    if !parse_param_list(source, index, current, ast) {
+        return make_bad_signature_result();
+    }
+    let param_count: i32 = ast.param_count - first_param;
+    if !parser_expect(source, index, current, TK_R_PAREN) {
+        return make_bad_signature_result();
+    }
+    let return_type: TypeResult = parse_return_type_id(source, index, current, ast);
+    if !return_type.ok {
+        return make_bad_signature_result();
+    }
+    return make_signature_result(name.begin, name.end, first_param, param_count, return_type.id);
+}

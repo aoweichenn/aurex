@@ -183,9 +183,10 @@ Current M0V0.1.8 status:
 - `selfhost/src/aurex/selfhost/tool/lexer_file.ax` imports the shared dump
   helper, reads a source file through explicit runtime IO, and emits a
   token-kind stream checked against a golden file;
-- `selfhost/src/aurex/selfhost/parser/seed.ax` is the first M0 parser seed. It
-  validates `module`, `import`, `extern c`, function signatures, and an
-  `export c fn` body shell using a recursive-descent cursor over `TokenSpan`;
+- `selfhost/src/aurex/selfhost/parser/` is the first M0 parser seed, split into
+  `cursor.ax`, `types.ax`, `expr.ax`, and `seed.ax`. Type parsing uses an
+  explicit pointer-prefix stack, expression parsing uses explicit operator and
+  frame stacks, and the parser produces an ID-backed `AstModule`;
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` is the executable parser
   seed smoke test;
 - `tools/compare_selfhost_lexer.sh` directly compares that M0 lexer stream with
@@ -195,9 +196,9 @@ Current M0V0.1.8 status:
   shared lexer/parser modules, so import use is part of the regression suite;
 - the actual production compiler is still C++.
 
-The next real self-hosting milestone should make the parser seed produce a tiny
-AST summary or stable parse dump, then compare that output with the C++ parser
-on a small shared corpus.
+The next real self-hosting milestone should keep expanding this iterative
+parser seed's AST coverage, produce a stable AST summary or parse dump, then
+compare that output with the C++ parser on a small shared corpus.
 
 ## 9. Industrial Hardening Roadmap
 

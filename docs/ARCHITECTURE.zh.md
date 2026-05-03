@@ -60,7 +60,9 @@ Stage1 自举编译器切片。
 - `lexer/`：M0 词法器核心与 token dump 工具。
 - `syntax/`：M0 AST 数据模块。当前已落地 ID-backed 节点池，覆盖路径、
   顶层 item、类型、参数、block、statement 和 expression。
-- `parser/`：M0 parser seed，当前已能为覆盖的语法返回 `AstModule` 节点图。
+- `parser/`：M0 parser seed，按职责拆成 `cursor.ax`、`types.ax`、`expr.ax`
+  和 `seed.ax`。其中类型解析用显式指针前缀栈，表达式解析用 operator/frame
+  栈，当前已能为覆盖的语法返回 `AstModule` 节点图。
 - `compiler/`：Stage1 编译器切片。
 - `compiler/emit/`：Stage1 token-stream C emitter 的模块化实现。
 - `compiler/imports.ax`：Stage1 入口模块加载器，解析 `import`，推导 import
@@ -79,8 +81,9 @@ Stage1 已覆盖自举 smoke 所需的核心面：
 - module/import 外壳和多源码 bundle 输出。
 - parser seed 已从纯语法校验推进到生成 `AstModule` 节点图，覆盖 module path、
   import、extern block、extern fn、opaque struct、export fn、参数、类型、ABI 名称、
-  block、表达式语句、`return` statement、调用、字面量、标识符、一元表达式和
-  Pratt/precedence-climbing 二元表达式树。
+  block、表达式语句、`return` statement、调用、调用参数池、字面量、标识符、
+  一元表达式和基于显式 operator 栈的二元表达式树。调用参数现在按完整表达式
+  解析，支持分组、优先级和一元前缀。
 - 单入口 import-aware 编译：`m0c_stage1 <入口.ax> <输出.c>` 能读取入口
   `import` 并自行加载依赖，当前已用于从 `m0c_stage1.ax` 生成 Stage2 编译器。
 - `extern c`、`export c fn`、ABI 名称和主函数包装。

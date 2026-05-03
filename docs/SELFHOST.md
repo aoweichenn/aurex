@@ -31,10 +31,12 @@ Implemented now:
   written in M0. It imports the shared dump helper, reads a source file through
   explicit runtime IO, and compares the token stream for `examples/hello.ax`
   with `tests/golden/selfhost_lexer_file_hello.tokens`.
-- `selfhost/src/aurex/selfhost/parser/seed.ax`: first parser seed written in
-  M0. It uses a one-token `TokenSpan` cursor and validates a small
-  recursive-descent syntax subset. It now returns an ID-backed `AstModule` for
-  the covered syntax instead of only returning `bool`.
+- `selfhost/src/aurex/selfhost/parser/`: first parser seed written in M0, split
+  by responsibility. `cursor.ax` owns one-token movement, `types.ax` owns
+  signature/type parsing with an iterative pointer-prefix stack, `expr.ax` owns
+  an iterative operator/frame-stack expression parser, and `seed.ax` owns
+  module/item/block orchestration. It returns an ID-backed `AstModule` for the
+  covered syntax instead of only returning `bool`.
 - `selfhost/src/aurex/selfhost/syntax/ast.ax`: first M0 AST data module. The
   current shape is a deliberately small node-pool AST with stable IDs for
   import paths, top-level items, types, parameters, blocks, statements, and
@@ -45,9 +47,10 @@ Implemented now:
   production AST.
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax`: parser seed entry point
   covering `module`, `import`, `extern c`, function signatures, and an
-  `export c fn` body containing a call expression statement plus a precedence
-  checked return expression. It now asserts the node IDs and source ranges
-  produced by `parse_seed_ast`.
+  `export c fn` body containing call expression statements, nested call
+  arguments, unary/binary expressions, and a precedence checked return
+  expression. It now asserts the node IDs and source ranges produced by
+  `parse_seed_ast`.
 - `selfhost/src/aurex/selfhost/compiler/io.ax`: explicit runtime IO bridge for
   the selfhost compiler slice.
 - `selfhost/src/aurex/selfhost/compiler/imports.ax`: Stage1 import graph loader.
@@ -95,7 +98,9 @@ Current exact capability:
 - Stage0 compiles the M0 selfhost lexer, parser seed, and `m0c_stage1.ax`.
 - The M0 parser seed constructs an ID-backed AST for the syntax it covers, and
   Stage1 can compile/run that parser+AST smoke bundle. The expression parser is
-  now a Pratt/precedence-climbing parser for the covered expression subset.
+  now an iterative shunting-yard style parser with explicit operator and frame
+  stacks for grouping and calls; call arguments are full expressions, not only
+  primary tokens.
 - The M0 lexer stream is checked against the C++ Stage0 lexer over the local
   corpus.
 - `m0c_stage1` compiles `examples/hello.ax`,
@@ -109,9 +114,9 @@ Current exact capability:
   files. It is now the first Stage1 backend attempted by the driver, with the
   original narrow emitter retained as fallback.
 - `m0c_stage1` can bundle `lexer.core + lexer_smoke`,
-  `lexer.core + lexer_ranges`, and `lexer.core + parser.seed + parser_smoke`,
-  emit one C file, compile it with `cc`, and run the resulting executables
-  successfully.
+  `lexer.core + lexer_ranges`, and `lexer.core + syntax.ast + parser.cursor +
+  parser.types + parser.expr + parser.seed + parser_smoke`, emit one C file,
+  compile it with `cc`, and run the resulting executables successfully.
 - The expanding token-stream emitter now handles the selfhost `cast` and
   `ptr_cast`/`bit_cast` forms it needs, maps all primitive scalar type spellings
   used by M0, supports simple assignment statements, `break`, `continue`, empty
@@ -162,7 +167,8 @@ core scanner now returns token ranges through `TokenSpan`.
 
 ### Stage D: Parser In M0
 
-- Expand the parser seed into a larger recursive descent parser.
+- Expand the parser seed into a larger iterative parser with explicit stacks for
+  nested syntax and expression precedence.
 - Produce a stable parse summary from M0.
 - Compare parse summaries or AST dumps between C++ parser and M0 parser.
 

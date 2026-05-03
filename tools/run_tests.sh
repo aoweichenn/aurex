@@ -37,6 +37,9 @@ grep -q 'module_math' /tmp/aurex_modules.txt
 grep -q 'aurex.selfhost.lexer.dump' /tmp/aurex_selfhost_modules.txt
 grep -q 'aurex.selfhost.lexer.core' /tmp/aurex_selfhost_modules.txt
 grep -q 'aurex.selfhost.parser.seed' /tmp/aurex_selfhost_parser_modules.txt
+grep -q 'aurex.selfhost.parser.cursor' /tmp/aurex_selfhost_parser_modules.txt
+grep -q 'aurex.selfhost.parser.expr' /tmp/aurex_selfhost_parser_modules.txt
+grep -q 'aurex.selfhost.parser.types' /tmp/aurex_selfhost_parser_modules.txt
 grep -q 'aurex.selfhost.lexer.core' /tmp/aurex_selfhost_parser_modules.txt
 diff -u "${ROOT}/tests/golden/hello.tokens" /tmp/aurex_tokens.txt
 

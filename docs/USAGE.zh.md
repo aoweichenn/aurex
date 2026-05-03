@@ -222,7 +222,7 @@ M0V0.1.8 把 selfhost lexer 拆成真正的 M0 模块：
 这还不是完整自举，但已经是一个重要结构进展：M0 selfhost 代码开始依赖 Stage0 模块加载器，而不是在每个入口文件里复制同一份 scanner。
 
 `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` 证明 scanner 现在能返回 parser 所需的 `kind/begin/end` byte offset。
-`selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是第一个 parser seed smoke，会校验一个小型递归下降子集：`module`、`import`、`extern c`、函数签名和一个 `export c fn` 函数体外壳。
+`selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是第一个 parser seed smoke。当前 parser 已拆成 `parser.cursor`、`parser.types`、`parser.expr` 和 `parser.seed`，会生成 ID-backed `AstModule`，并覆盖 `module`、`import`、`extern c`、函数签名、`export c fn` 函数体、调用表达式、完整调用参数表达式、一元表达式和二元优先级表达式。
 
 现在 `selfhost/src/aurex/selfhost/tool/lexer_file.ax` 也已经加入。它通过显式 runtime file IO 读取 `examples/hello.ax`，输出 token kind 流，并和 `tests/golden/selfhost_lexer_file_hello.tokens` 对比。
 `tools/compare_selfhost_lexer.sh` 还会在本地 corpus 上把这个 M0 lexer 输出和生产 C++ Stage0 lexer 的 token kind 输出直接对比。

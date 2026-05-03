@@ -248,8 +248,11 @@ same scanner into every entry point.
 `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` proves the scanner now
 returns parser-ready `kind/begin/end` byte offsets for a fixed source string.
 `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` is the first parser seed
-smoke. It validates a small recursive-descent subset: `module`, `import`,
-`extern c`, function signatures, and an `export c fn` body shell.
+smoke. The parser is now split into `parser.cursor`, `parser.types`,
+`parser.expr`, and `parser.seed`; it produces an ID-backed `AstModule` and
+covers `module`, `import`, `extern c`, function signatures, an `export c fn`
+body, call expressions, full call-argument expressions, unary expressions, and
+binary precedence expressions.
 
 The selfhost directory now also includes
 `selfhost/src/aurex/selfhost/tool/lexer_file.ax`, which reads

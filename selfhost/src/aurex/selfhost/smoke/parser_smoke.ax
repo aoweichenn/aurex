@@ -41,6 +41,52 @@ fn range_matches_10(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, c
         source[begin + 9] == ch9;
 }
 
+fn validate_complex_expr_seed() -> bool {
+    let source: *const u8 = c"module app.expr; extern c { fn foo(a: i32, b: i32) -> i32 @name(\"foo\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return foo((1 + 2), -3 * 4); }";
+    let ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let export_fn: AstItemNode = ast.items[2];
+    let body: AstBlockNode = ast.blocks[export_fn.body_block];
+    let return_stmt: AstStmtNode = ast.stmts[body.first_stmt];
+    let call_expr: AstExprNode = ast.exprs[return_stmt.expr_id];
+    let arg0_ref: AstExprArg = ast.expr_args[call_expr.first_arg];
+    let arg1_ref: AstExprArg = ast.expr_args[call_expr.first_arg + 1];
+    let arg0: AstExprNode = ast.exprs[arg0_ref.expr_id];
+    let arg1: AstExprNode = ast.exprs[arg1_ref.expr_id];
+    let arg1_left: AstExprNode = ast.exprs[arg1.left];
+    let ok: bool = ast.item_count == 3 &&
+        ast.extern_block_count == 1 &&
+        ast.extern_fn_count == 1 &&
+        ast.export_fn_count == 1 &&
+        ast.param_count == 4 &&
+        ast.pointer_type_count == 2 &&
+        ast.return_type_count == 2 &&
+        ast.block_count == 1 &&
+        ast.stmt_count == 1 &&
+        ast.return_stmt_count == 1 &&
+        ast.expr_count == 9 &&
+        ast.integer_expr_count == 4 &&
+        ast.identifier_expr_count == 1 &&
+        ast.unary_expr_count == 1 &&
+        ast.binary_expr_count == 2 &&
+        ast.call_expr_count == 1 &&
+        ast.expr_arg_count == 2 &&
+        return_stmt.kind == AST_STMT_RETURN &&
+        call_expr.kind == AST_EXPR_CALL &&
+        call_expr.arg_count == 2 &&
+        arg0.kind == AST_EXPR_BINARY &&
+        arg0.op == AST_OP_ADD &&
+        arg1.kind == AST_EXPR_BINARY &&
+        arg1.op == AST_OP_MUL &&
+        arg1_left.kind == AST_EXPR_UNARY &&
+        arg1_left.op == AST_OP_NEG;
+    ast_free_module(ast);
+    return ok;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 @name(\"aurex_main\") { puts(c\"ok\"); return 1 + 2 * 3; }";
     let ast: AstModule = parse_seed_ast(source);
@@ -166,7 +212,8 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         export_argv_inner.primitive == AST_PRIM_U8 &&
         export_return_type.kind == AST_TYPE_PRIMITIVE &&
         export_return_type.primitive == AST_PRIM_I32 &&
-        parse_seed_module(source) {
+        parse_seed_module(source) &&
+        validate_complex_expr_seed() {
         ast_free_module(ast);
         puts(c"selfhost parser seed ok");
         return 0;

@@ -1,0 +1,508 @@
+module aurex.selfhost.parser.expr;
+
+import aurex.selfhost.lexer.core;
+import aurex.selfhost.parser.cursor;
+import aurex.selfhost.syntax.ast;
+
+const EXPR_OP_BINARY: i32 = 1;
+const EXPR_OP_PREFIX: i32 = 2;
+const EXPR_FRAME_GROUP: i32 = 1;
+const EXPR_FRAME_CALL: i32 = 2;
+
+struct ExprResult {
+    ok: bool;
+    id: i32;
+}
+
+struct ExprStack {
+    ok: bool;
+    values: *mut i32;
+    ops: *mut i32;
+    op_modes: *mut i32;
+    op_begins: *mut i32;
+    frame_kinds: *mut i32;
+    frame_op_bases: *mut i32;
+    frame_value_bases: *mut i32;
+    frame_callees: *mut i32;
+    frame_first_args: *mut i32;
+    frame_arg_counts: *mut i32;
+    value_count: i32;
+    op_count: i32;
+    frame_count: i32;
+}
+
+extern c {
+    fn malloc(size: usize) -> *mut void @name("malloc");
+    fn free(ptr: *mut void) -> void @name("free");
+}
+
+fn make_bad_expr_result() -> ExprResult {
+    return ExprResult { ok: false, id: 0 };
+}
+
+fn make_expr_result(id: i32) -> ExprResult {
+    return ExprResult { ok: true, id: id };
+}
+
+fn make_expr_stack() -> ExprStack {
+    let values: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let ops: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let op_modes: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let op_begins: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let frame_kinds: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let frame_op_bases: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let frame_value_bases: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let frame_callees: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let frame_first_args: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let frame_arg_counts: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    return ExprStack {
+        ok: values != null &&
+            ops != null &&
+            op_modes != null &&
+            op_begins != null &&
+            frame_kinds != null &&
+            frame_op_bases != null &&
+            frame_value_bases != null &&
+            frame_callees != null &&
+            frame_first_args != null &&
+            frame_arg_counts != null,
+        values: values,
+        ops: ops,
+        op_modes: op_modes,
+        op_begins: op_begins,
+        frame_kinds: frame_kinds,
+        frame_op_bases: frame_op_bases,
+        frame_value_bases: frame_value_bases,
+        frame_callees: frame_callees,
+        frame_first_args: frame_first_args,
+        frame_arg_counts: frame_arg_counts,
+        value_count: 0,
+        op_count: 0,
+        frame_count: 0
+    };
+}
+
+fn free_expr_stack(stack: ExprStack) -> void {
+    free(ptr_cast(*mut void, stack.values));
+    free(ptr_cast(*mut void, stack.ops));
+    free(ptr_cast(*mut void, stack.op_modes));
+    free(ptr_cast(*mut void, stack.op_begins));
+    free(ptr_cast(*mut void, stack.frame_kinds));
+    free(ptr_cast(*mut void, stack.frame_op_bases));
+    free(ptr_cast(*mut void, stack.frame_value_bases));
+    free(ptr_cast(*mut void, stack.frame_callees));
+    free(ptr_cast(*mut void, stack.frame_first_args));
+    free(ptr_cast(*mut void, stack.frame_arg_counts));
+}
+
+fn expr_push_value(stack: *mut ExprStack, id: i32) -> bool {
+    if stack.value_count >= AST_MAX_EXPRS {
+        return false;
+    }
+    stack.values[stack.value_count] = id;
+    stack.value_count = stack.value_count + 1;
+    return true;
+}
+
+fn expr_push_op(stack: *mut ExprStack, op: i32, mode: i32, begin: i32) -> bool {
+    if stack.op_count >= AST_MAX_EXPRS {
+        return false;
+    }
+    stack.ops[stack.op_count] = op;
+    stack.op_modes[stack.op_count] = mode;
+    stack.op_begins[stack.op_count] = begin;
+    stack.op_count = stack.op_count + 1;
+    return true;
+}
+
+fn expr_top_op(stack: *mut ExprStack) -> i32 {
+    if stack.op_count == 0 {
+        return AST_OP_NONE;
+    }
+    return stack.ops[stack.op_count - 1];
+}
+
+fn expr_top_mode(stack: *mut ExprStack) -> i32 {
+    if stack.op_count == 0 {
+        return 0;
+    }
+    return stack.op_modes[stack.op_count - 1];
+}
+
+fn expr_current_op_base(stack: *mut ExprStack) -> i32 {
+    if stack.frame_count == 0 {
+        return 0;
+    }
+    return stack.frame_op_bases[stack.frame_count - 1];
+}
+
+fn expr_current_value_base(stack: *mut ExprStack) -> i32 {
+    if stack.frame_count == 0 {
+        return 0;
+    }
+    return stack.frame_value_bases[stack.frame_count - 1];
+}
+
+fn expr_push_frame(stack: *mut ExprStack, kind: i32, callee: i32, first_arg: i32) -> bool {
+    if stack.frame_count >= AST_MAX_EXPRS {
+        return false;
+    }
+    stack.frame_kinds[stack.frame_count] = kind;
+    stack.frame_op_bases[stack.frame_count] = stack.op_count;
+    stack.frame_value_bases[stack.frame_count] = stack.value_count;
+    stack.frame_callees[stack.frame_count] = callee;
+    stack.frame_first_args[stack.frame_count] = first_arg;
+    stack.frame_arg_counts[stack.frame_count] = 0;
+    stack.frame_count = stack.frame_count + 1;
+    return true;
+}
+
+fn expr_reduce_prefix(stack: *mut ExprStack, ast: *mut AstModule) -> bool {
+    if stack.op_count == 0 || stack.value_count == 0 {
+        return false;
+    }
+    let op_index: i32 = stack.op_count - 1;
+    if stack.op_modes[op_index] != EXPR_OP_PREFIX {
+        return false;
+    }
+    stack.op_count = op_index;
+    let operand_id: i32 = stack.values[stack.value_count - 1];
+    stack.value_count = stack.value_count - 1;
+    let operand: AstExprNode = ast.exprs[operand_id];
+    let id: i32 = ast_add_unary_expr(ast, stack.op_begins[op_index], operand.end, stack.ops[op_index], operand_id);
+    return expr_push_value(stack, id);
+}
+
+fn expr_reduce_prefixes(stack: *mut ExprStack, ast: *mut AstModule) -> bool {
+    while stack.op_count > expr_current_op_base(stack) && expr_top_mode(stack) == EXPR_OP_PREFIX {
+        if !expr_reduce_prefix(stack, ast) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn token_binary_precedence(kind: i32) -> i32 {
+    if kind == TK_PIPE_PIPE { return 1; }
+    if kind == TK_AMP_AMP { return 2; }
+    if kind == TK_PIPE { return 3; }
+    if kind == TK_CARET { return 4; }
+    if kind == TK_AMP { return 5; }
+    if kind == TK_EQUAL_EQUAL || kind == TK_BANG_EQUAL { return 6; }
+    if kind == TK_LESS || kind == TK_LESS_EQUAL || kind == TK_GREATER || kind == TK_GREATER_EQUAL { return 7; }
+    if kind == TK_LESS_LESS || kind == TK_GREATER_GREATER { return 8; }
+    if kind == TK_PLUS || kind == TK_MINUS { return 9; }
+    if kind == TK_STAR || kind == TK_SLASH || kind == TK_PERCENT { return 10; }
+    return 0;
+}
+
+fn token_binary_op(kind: i32) -> i32 {
+    if kind == TK_PLUS { return AST_OP_ADD; }
+    if kind == TK_MINUS { return AST_OP_SUB; }
+    if kind == TK_STAR { return AST_OP_MUL; }
+    if kind == TK_SLASH { return AST_OP_DIV; }
+    if kind == TK_PERCENT { return AST_OP_MOD; }
+    if kind == TK_LESS_LESS { return AST_OP_SHL; }
+    if kind == TK_GREATER_GREATER { return AST_OP_SHR; }
+    if kind == TK_LESS { return AST_OP_LT; }
+    if kind == TK_LESS_EQUAL { return AST_OP_LE; }
+    if kind == TK_GREATER { return AST_OP_GT; }
+    if kind == TK_GREATER_EQUAL { return AST_OP_GE; }
+    if kind == TK_EQUAL_EQUAL { return AST_OP_EQ; }
+    if kind == TK_BANG_EQUAL { return AST_OP_NE; }
+    if kind == TK_AMP { return AST_OP_BIT_AND; }
+    if kind == TK_CARET { return AST_OP_BIT_XOR; }
+    if kind == TK_PIPE { return AST_OP_BIT_OR; }
+    if kind == TK_AMP_AMP { return AST_OP_AND; }
+    if kind == TK_PIPE_PIPE { return AST_OP_OR; }
+    return AST_OP_NONE;
+}
+
+fn token_unary_op(kind: i32) -> i32 {
+    if kind == TK_BANG { return AST_OP_NOT; }
+    if kind == TK_TILDE { return AST_OP_BIT_NOT; }
+    if kind == TK_MINUS { return AST_OP_NEG; }
+    if kind == TK_AMP { return AST_OP_ADDR; }
+    if kind == TK_STAR { return AST_OP_DEREF; }
+    return AST_OP_NONE;
+}
+
+fn expr_reduce_top_binary(stack: *mut ExprStack, ast: *mut AstModule) -> bool {
+    if stack.op_count == 0 || stack.value_count < 2 {
+        return false;
+    }
+    let op_index: i32 = stack.op_count - 1;
+    if stack.op_modes[op_index] != EXPR_OP_BINARY {
+        return false;
+    }
+    let op_kind: i32 = stack.ops[op_index];
+    stack.op_count = op_index;
+    let right_id: i32 = stack.values[stack.value_count - 1];
+    let left_id: i32 = stack.values[stack.value_count - 2];
+    stack.value_count = stack.value_count - 2;
+    let left: AstExprNode = ast.exprs[left_id];
+    let right: AstExprNode = ast.exprs[right_id];
+    let id: i32 = ast_add_binary_expr(ast, left.begin, right.end, token_binary_op(op_kind), left_id, right_id);
+    return expr_push_value(stack, id);
+}
+
+fn expr_reduce_to_base(stack: *mut ExprStack, ast: *mut AstModule, base: i32) -> bool {
+    while stack.op_count > base {
+        if expr_top_mode(stack) == EXPR_OP_PREFIX {
+            if !expr_reduce_prefix(stack, ast) {
+                return false;
+            }
+        } else {
+            if expr_top_mode(stack) == EXPR_OP_BINARY {
+                if !expr_reduce_top_binary(stack, ast) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+fn expr_reduce_for_precedence(stack: *mut ExprStack, ast: *mut AstModule, precedence: i32) -> bool {
+    let base: i32 = expr_current_op_base(stack);
+    while stack.op_count > base {
+        if expr_top_mode(stack) == EXPR_OP_PREFIX {
+            if !expr_reduce_prefix(stack, ast) {
+                return false;
+            }
+        } else {
+            if expr_top_mode(stack) == EXPR_OP_BINARY && token_binary_precedence(expr_top_op(stack)) >= precedence {
+                if !expr_reduce_top_binary(stack, ast) {
+                    return false;
+                }
+            } else {
+                return true;
+            }
+        }
+    }
+    return true;
+}
+
+fn parse_atom(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> ExprResult {
+    let token: TokenSpan = parser_advance(source, index, current);
+    var id: i32 = -1;
+    if token.kind == TK_INTEGER {
+        id = ast_add_integer_expr(ast, token.begin, token.end);
+    } else {
+        if token.kind == TK_IDENTIFIER {
+            id = ast_add_identifier_expr(ast, token.begin, token.end);
+        } else {
+            if token.kind == TK_STRING {
+                id = ast_add_string_expr(ast, token.begin, token.end);
+            } else {
+                if token.kind == TK_C_STRING {
+                    id = ast_add_c_string_expr(ast, token.begin, token.end);
+                } else {
+                    if token.kind == TK_KW_TRUE || token.kind == TK_KW_FALSE {
+                        id = ast_add_bool_expr(ast, token.begin, token.end);
+                    } else {
+                        if token.kind == TK_KW_NULL {
+                            id = ast_add_null_expr(ast, token.begin, token.end);
+                        } else {
+                            return make_bad_expr_result();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return make_expr_result(id);
+}
+
+fn expr_current_frame_kind(stack: *mut ExprStack) -> i32 {
+    if stack.frame_count == 0 {
+        return 0;
+    }
+    return stack.frame_kinds[stack.frame_count - 1];
+}
+
+fn expr_commit_call_arg(stack: *mut ExprStack, ast: *mut AstModule) -> bool {
+    if stack.frame_count == 0 || expr_current_frame_kind(stack) != EXPR_FRAME_CALL {
+        return false;
+    }
+    let frame_index: i32 = stack.frame_count - 1;
+    let base: i32 = stack.frame_op_bases[frame_index];
+    let value_base: i32 = stack.frame_value_bases[frame_index];
+    if !expr_reduce_to_base(stack, ast, base) {
+        return false;
+    }
+    if stack.value_count != value_base + 1 {
+        return false;
+    }
+    ast_add_expr_arg(ast, stack.values[value_base]);
+    stack.frame_arg_counts[frame_index] = stack.frame_arg_counts[frame_index] + 1;
+    stack.value_count = value_base;
+    return true;
+}
+
+fn expr_close_frame(stack: *mut ExprStack, ast: *mut AstModule, close: TokenSpan) -> bool {
+    if stack.frame_count == 0 {
+        return false;
+    }
+    let frame_index: i32 = stack.frame_count - 1;
+    let kind: i32 = stack.frame_kinds[frame_index];
+    let base: i32 = stack.frame_op_bases[frame_index];
+    let value_base: i32 = stack.frame_value_bases[frame_index];
+    if kind == EXPR_FRAME_GROUP {
+        if !expr_reduce_to_base(stack, ast, base) {
+            return false;
+        }
+        if stack.value_count != value_base + 1 {
+            return false;
+        }
+        stack.frame_count = frame_index;
+        return true;
+    }
+    if kind == EXPR_FRAME_CALL {
+        if !expr_reduce_to_base(stack, ast, base) {
+            return false;
+        }
+        if stack.value_count == value_base + 1 {
+            if !expr_commit_call_arg(stack, ast) {
+                return false;
+            }
+        } else {
+            if stack.value_count != value_base || stack.op_count != base {
+                return false;
+            }
+        }
+        let callee_id: i32 = stack.frame_callees[frame_index];
+        let first_arg: i32 = stack.frame_first_args[frame_index];
+        let arg_count: i32 = stack.frame_arg_counts[frame_index];
+        let callee: AstExprNode = ast.exprs[callee_id];
+        stack.frame_count = frame_index;
+        return expr_push_value(stack, ast_add_call_expr(ast, callee.begin, close.end, callee_id, first_arg, arg_count));
+    }
+    return false;
+}
+
+fn expression_stop(current: *mut TokenSpan, stop0: i32, stop1: i32) -> bool {
+    return parser_check(current, stop0) || parser_check(current, stop1) || parser_check(current, TK_EOF);
+}
+
+fn parse_expression_until(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule, stop0: i32, stop1: i32) -> ExprResult {
+    var stack: ExprStack = make_expr_stack();
+    if !stack.ok {
+        free_expr_stack(stack);
+        return make_bad_expr_result();
+    }
+
+    var expecting_operand: bool = true;
+    while !parser_check(current, TK_EOF) {
+        if stack.frame_count == 0 && expression_stop(current, stop0, stop1) {
+            break;
+        }
+        if expecting_operand {
+            if parser_check(current, TK_L_PAREN) {
+                parser_advance(source, index, current);
+                if !expr_push_frame(&stack, EXPR_FRAME_GROUP, -1, 0) {
+                    free_expr_stack(stack);
+                    return make_bad_expr_result();
+                }
+            } else {
+                if parser_check(current, TK_R_PAREN) && expr_current_frame_kind(&stack) == EXPR_FRAME_CALL && stack.value_count == expr_current_value_base(&stack) {
+                    let close: TokenSpan = parser_advance(source, index, current);
+                    if !expr_close_frame(&stack, ast, close) {
+                        free_expr_stack(stack);
+                        return make_bad_expr_result();
+                    }
+                    expecting_operand = false;
+                } else {
+                    let unary_op: i32 = token_unary_op((*current).kind);
+                    if unary_op != AST_OP_NONE {
+                        let op_token: TokenSpan = parser_advance(source, index, current);
+                        if !expr_push_op(&stack, unary_op, EXPR_OP_PREFIX, op_token.begin) {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                    } else {
+                        let value: ExprResult = parse_atom(source, index, current, ast);
+                        if !value.ok {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        if !expr_push_value(&stack, value.id) {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        expecting_operand = false;
+                    }
+                }
+            }
+        } else {
+            if parser_check(current, TK_L_PAREN) {
+                if stack.value_count <= expr_current_value_base(&stack) {
+                    free_expr_stack(stack);
+                    return make_bad_expr_result();
+                }
+                let callee_id: i32 = stack.values[stack.value_count - 1];
+                stack.value_count = stack.value_count - 1;
+                parser_advance(source, index, current);
+                if !expr_push_frame(&stack, EXPR_FRAME_CALL, callee_id, ast.expr_arg_count) {
+                    free_expr_stack(stack);
+                    return make_bad_expr_result();
+                }
+                expecting_operand = true;
+            } else {
+                if parser_check(current, TK_COMMA) && expr_current_frame_kind(&stack) == EXPR_FRAME_CALL {
+                    if !expr_commit_call_arg(&stack, ast) {
+                        free_expr_stack(stack);
+                        return make_bad_expr_result();
+                    }
+                    parser_advance(source, index, current);
+                    expecting_operand = true;
+                } else {
+                    if parser_check(current, TK_R_PAREN) && stack.frame_count > 0 {
+                        let close: TokenSpan = parser_advance(source, index, current);
+                        if !expr_close_frame(&stack, ast, close) {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                    } else {
+                        let precedence: i32 = token_binary_precedence((*current).kind);
+                        if precedence == 0 {
+                            if stack.frame_count == 0 {
+                                break;
+                            }
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        if !expr_reduce_for_precedence(&stack, ast, precedence) {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        let op_token: TokenSpan = parser_advance(source, index, current);
+                        if !expr_push_op(&stack, op_token.kind, EXPR_OP_BINARY, op_token.begin) {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        expecting_operand = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if expecting_operand || stack.frame_count != 0 {
+        free_expr_stack(stack);
+        return make_bad_expr_result();
+    }
+    if !expr_reduce_to_base(&stack, ast, 0) {
+        free_expr_stack(stack);
+        return make_bad_expr_result();
+    }
+    if stack.value_count != 1 {
+        free_expr_stack(stack);
+        return make_bad_expr_result();
+    }
+    let result: i32 = stack.values[0];
+    free_expr_stack(stack);
+    return make_expr_result(result);
+}

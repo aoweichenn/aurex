@@ -166,13 +166,13 @@ Stage0 C++ compiler
 - `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` import 共享 core scanner，并校验 token kind 加 `begin/end` byte range；
 - `selfhost/src/aurex/selfhost/tool/lexer_dump.ax` import 共享 dump helper，用 M0 输出 token kind 流，并和 golden 文件对比；
 - `selfhost/src/aurex/selfhost/tool/lexer_file.ax` import 共享 dump helper，通过显式 runtime IO 读取源码文件，并输出可 golden 对比的 token kind 流；
-- `selfhost/src/aurex/selfhost/parser/seed.ax` 是第一个 M0 parser seed，基于 `TokenSpan` 递归下降光标校验 `module`、`import`、`extern c`、函数签名和一个 `export c fn` 函数体外壳；
+- `selfhost/src/aurex/selfhost/parser/` 是第一个 M0 parser seed，已按职责拆成 `cursor.ax`、`types.ax`、`expr.ax` 和 `seed.ax`；类型解析使用显式指针前缀栈，表达式解析使用显式 operator/frame 栈，并生成 ID-backed `AstModule`；
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是可执行 parser seed smoke test；
 - `tools/compare_selfhost_lexer.sh` 会把 M0 lexer 输出和生产 C++ Stage0 lexer 输出在 `examples/hello.ax` 以及所有本地 positive/negative 测试输入上直接对比；
 - selfhost 测试会检查 `lexer_file.ax` 和 `parser_smoke.ax` 确实加载了共享 lexer/parser 模块，因此 import 使用也进入了回归测试；
 - 生产编译器仍然是 C++ 实现。
 
-下一步真正自举里程碑应该是：让 parser seed 输出一个小型 AST summary 或稳定 parse dump，然后在小型共享语料上和 C++ parser 对比。
+下一步真正自举里程碑应该是：继续扩大这个迭代式 parser seed 的 AST 覆盖面，输出稳定 AST summary 或 parse dump，然后在小型共享语料上和 C++ parser 对比。
 
 ## 9. 工业级强化路线
 

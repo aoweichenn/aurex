@@ -75,11 +75,13 @@ copied lexer logic.
 
 `lexer_ranges.ax` verifies that the M0 scanner returns parser-ready
 `kind/begin/end` token metadata for a fixed source string.
-`parser_smoke.ax` is the first M0 parser seed. It uses a tiny recursive-descent
-cursor over `TokenSpan` and validates `module`, `import`, `extern c`, and
-`export c fn` syntax for a fixed source string. It now returns an ID-backed
-`AstModule` from `aurex.selfhost.syntax.ast`, with node pools for paths, items,
-types, params, blocks, statements, and expressions.
+`parser_smoke.ax` is the first M0 parser seed. The parser is split into
+`parser.cursor`, `parser.types`, `parser.expr`, and `parser.seed`: cursor owns
+one-token movement, types uses an iterative pointer-prefix stack, expr uses an
+iterative operator/frame stack, and seed owns item/block orchestration. It
+returns an ID-backed `AstModule` from `aurex.selfhost.syntax.ast`, with node
+pools for paths, items, types, params, blocks, statements, expressions, and call
+arguments.
 `lexer_dump.ax` scans an embedded M0 source and prints a stable token-kind
 stream checked against `tests/golden/selfhost_lexer_dump.tokens`.
 `lexer_file.ax` reads `examples/hello.ax` through explicit runtime file IO and
@@ -110,10 +112,11 @@ The selfhost source tree is now role-based:
 - `aurex/selfhost/smoke/` and `tool/`: smoke binaries and golden-test tools.
 
 The next backend path, `emit_subset.ax`, is already wired into the Stage1
-driver. It now supports one- and two-dependency bundle modes: Stage1 can combine
+driver. It now supports dependency bundle modes: Stage1 can combine
 `lexer.core.ax + lexer_smoke.ax`, `lexer.core.ax + lexer_ranges.ax`, and
-`lexer.core.ax + parser.seed.ax + parser_smoke.ax`, emit one C file, compile it,
-and run the resulting executables. The token-stream emitter also handles the
+`lexer.core.ax + syntax.ast.ax + parser.cursor.ax + parser.types.ax +
+parser.expr.ax + parser.seed.ax + parser_smoke.ax`, emit one C file, compile
+it, and run the resulting executables. The token-stream emitter also handles the
 current selfhost `cast`/`ptr_cast`/`bit_cast` syntax, all M0 primitive scalar
 spellings, simple assignment statements, `break`, `continue`, empty `return`,
 `enum`, opaque C structs, one-dimensional arrays, pointer-to-array C

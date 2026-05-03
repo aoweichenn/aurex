@@ -1,0 +1,20 @@
+# Nexfile — Project build descriptor
+# Docs: https://github.com/example/nex
+
+project = my_project
+
+[target:main]
+entry   = src/main.ax
+output  = my_program
+import  = src
+import  = runtime
+link    = runtime/runtime.c
+m0_flags =
+c_flags  = -O2
+
+[target:lib]
+entry   = src/lib.ax
+output  = libmy.a
+kind    = static_library
+import  = src
+c_flags  = -O2

@@ -81,6 +81,9 @@ check: all
 	grep -q 'aurex.selfhost.lexer.core' $(BUILD_DIR)/lexer_file.modules
 	$(M0C) $(IMPORT_FLAGS) --dump-modules $(PARSER_SMOKE_SRC) > $(BUILD_DIR)/parser_smoke.modules
 	grep -q 'aurex.selfhost.parser.seed' $(BUILD_DIR)/parser_smoke.modules
+	grep -q 'aurex.selfhost.parser.cursor' $(BUILD_DIR)/parser_smoke.modules
+	grep -q 'aurex.selfhost.parser.expr' $(BUILD_DIR)/parser_smoke.modules
+	grep -q 'aurex.selfhost.parser.types' $(BUILD_DIR)/parser_smoke.modules
 	grep -q 'aurex.selfhost.lexer.core' $(BUILD_DIR)/parser_smoke.modules
 	grep -q 'aurex.selfhost.syntax.ast' $(BUILD_DIR)/parser_smoke.modules
 	$(M0C) $(IMPORT_FLAGS) --dump-modules $(STAGE1_SRC) > $(BUILD_DIR)/m0c_stage1.modules
@@ -114,7 +117,7 @@ check: all
 	grep -q 'scan_next' $(BUILD_DIR)/lexer_ranges.stage1.c
 	$(CC) $(BUILD_DIR)/lexer_ranges.stage1.c -o $(BUILD_DIR)/lexer_ranges.stage1
 	test "$$($(BUILD_DIR)/lexer_ranges.stage1)" = "selfhost lexer ranges ok"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/syntax/ast.ax src/aurex/selfhost/parser/seed.ax $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.c
+	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/syntax/ast.ax src/aurex/selfhost/parser/cursor.ax src/aurex/selfhost/parser/types.ax src/aurex/selfhost/parser/expr.ax src/aurex/selfhost/parser/seed.ax $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.c
 	grep -q '#define parse_seed_module m0_aurex_selfhost_parser_seed_parse_seed_module' $(BUILD_DIR)/parser_smoke.stage1.c
 	grep -q '#define AstModule m0_aurex_selfhost_syntax_ast_AstModule' $(BUILD_DIR)/parser_smoke.stage1.c
 	grep -q 'scan_token' $(BUILD_DIR)/parser_smoke.stage1.c

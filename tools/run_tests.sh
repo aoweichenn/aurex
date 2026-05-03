@@ -200,7 +200,7 @@ done
 make -C "${ROOT}/bootstrap" >/dev/null
 BOOT_C="${BOOT_DIR}/hello.bootstrap.c"
 BOOT_BIN="${BOOT_DIR}/hello.bootstrap"
-"${ROOT}/bootstrap/m0_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
+"${ROOT}/bootstrap/aurex_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
 cc "${BOOT_C}" -o "${BOOT_BIN}"
 BOOT_OUT="$("${BOOT_BIN}")"
 test "${BOOT_OUT}" = "hello from Aurex M0"

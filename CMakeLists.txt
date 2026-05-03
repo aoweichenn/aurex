@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(aurex_m0 LANGUAGES C CXX)
+project(aurex LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,7 +20,7 @@ include(cmake/AurexDriver.cmake)
 include(cmake/AurexTools.cmake)
 
 if(MSVC)
-    target_compile_options(m0_base PRIVATE /W4)
+    target_compile_options(aurex_base PRIVATE /W4)
 else()
-    aurex_enable_warnings(m0_base m0_syntax m0_lex m0_parse m0_sema m0_ir m0_backend_llvm m0_driver aurexc)
+    aurex_enable_warnings(aurex_base aurex_syntax aurex_lex aurex_parse aurex_sema aurex_ir aurex_backend_llvm aurex_driver aurexc)
 endif()

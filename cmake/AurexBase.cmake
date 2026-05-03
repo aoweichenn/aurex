@@ -1,6 +1,6 @@
-add_library(m0_base
+add_library(aurex_base
     src/base/source.cpp
     src/base/diagnostic.cpp
     src/base/text.cpp
 )
-target_include_directories(m0_base PUBLIC include)
+target_include_directories(aurex_base PUBLIC include)

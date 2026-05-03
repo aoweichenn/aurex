@@ -49,7 +49,7 @@ namespace {
 [[nodiscard]] base::Result<std::filesystem::path> write_temporary_llvm_file(const std::string_view text) {
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() /
-        ("aurex_m0_llvm_" +
+        ("aurex_llvm_" +
          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
          ".ll");
     auto write_result = write_file(path, text);

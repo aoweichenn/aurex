@@ -144,7 +144,7 @@ diff -u "${ROOT}/tests/golden/selfhost_lexer_file_hello.tokens" "${SELFHOST_BUIL
 grep -q 'selfhost lexer matches Stage0 lexer for local corpus' "${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 
 make -C "${ROOT}/bootstrap" >/dev/null
-"${ROOT}/bootstrap/m0_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
+"${ROOT}/bootstrap/aurex_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
 cc "${BOOT_C}" -o "${BOOT_BIN}"
 test "$("${BOOT_BIN}")" = "hello from Aurex M0"
 

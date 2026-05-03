@@ -75,7 +75,7 @@ plain Makefile:
 
 ```sh
 make -C bootstrap
-bootstrap/m0_bootstrap examples/hello.ax -o bootstrap/hello.bootstrap.c
+bootstrap/aurex_bootstrap examples/hello.ax -o bootstrap/hello.bootstrap.c
 ```
 
 The standalone bootstrap compiler is intentionally small and heavily commented.

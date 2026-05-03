@@ -1,11 +1,11 @@
-add_library(m0_lex
+add_library(aurex_lex
     src/lex/lexer.cpp
 )
-target_link_libraries(m0_lex PUBLIC m0_base m0_syntax)
-target_include_directories(m0_lex PUBLIC include)
+target_link_libraries(aurex_lex PUBLIC aurex_base aurex_syntax)
+target_include_directories(aurex_lex PUBLIC include)
 
-add_library(m0_parse
+add_library(aurex_parse
     src/parse/parser.cpp
 )
-target_link_libraries(m0_parse PUBLIC m0_base m0_syntax)
-target_include_directories(m0_parse PUBLIC include)
+target_link_libraries(aurex_parse PUBLIC aurex_base aurex_syntax)
+target_include_directories(aurex_parse PUBLIC include)

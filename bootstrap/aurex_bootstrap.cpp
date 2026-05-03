@@ -1,4 +1,4 @@
-// Aurex 0.1.2 bootstrap compiler.
+// Aurex 0.1.2 standalone bootstrap compiler.
 //
 // This file is intentionally standalone: it uses only the C++20 standard
 // library and can be built with `make -C bootstrap`. It is not the full
@@ -429,7 +429,7 @@ void write_c(const std::vector<Function>& functions, std::ostream& out) {
         if (fn.is_extern) continue;
         const bool is_main = fn.is_export && fn.name == "main";
         out << (is_main ? "static " : "") << fn.return_type << " "
-            << (is_main ? "aurex_m0_main" : fn.c_name) << "(";
+            << (is_main ? "aurex_bootstrap_main" : fn.c_name) << "(";
         for (std::size_t i = 0; i < fn.params.size(); ++i) {
             if (i != 0) out << ", ";
             out << fn.params[i].c_type << " " << fn.params[i].name;
@@ -441,7 +441,7 @@ void write_c(const std::vector<Function>& functions, std::ostream& out) {
         out << "}\n\n";
         if (is_main) {
             out << "int main(int argc, char **argv) {\n";
-            out << "    return (int)aurex_m0_main((int32_t)argc, (uint8_t **)argv);\n";
+            out << "    return (int)aurex_bootstrap_main((int32_t)argc, (uint8_t **)argv);\n";
             out << "}\n";
         }
     }
@@ -451,7 +451,7 @@ void write_c(const std::vector<Function>& functions, std::ostream& out) {
 
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 4) {
-        std::cerr << "usage: m0_bootstrap input.ax [-o output.c]\n";
+        std::cerr << "usage: aurex_bootstrap input.ax [-o output.c]\n";
         return 2;
     }
     std::filesystem::path input = argv[1];

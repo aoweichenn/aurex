@@ -38,12 +38,16 @@ Implemented now:
 - `selfhost/src/aurex/selfhost/syntax/ast.ax`: first M0 AST data module. The
   current shape is a deliberately small node-pool AST with stable IDs for
   import paths, top-level items, types, parameters, blocks, statements, and
-  expressions. It has capacity checks and explicit `malloc`/`free` ownership,
-  but it is still only the parser seed subset, not the full production AST.
+  expressions. Expression nodes now cover identifiers, integer/string/C-string
+  literals, booleans, null, unary/binary operators, and calls with an explicit
+  call-argument pool. It has capacity checks and explicit `malloc`/`free`
+  ownership, but it is still only the parser seed subset, not the full
+  production AST.
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax`: parser seed entry point
   covering `module`, `import`, `extern c`, function signatures, and an
-  `export c fn` body containing `return 0;`. It now asserts the node IDs and
-  source ranges produced by `parse_seed_ast`.
+  `export c fn` body containing a call expression statement plus a precedence
+  checked return expression. It now asserts the node IDs and source ranges
+  produced by `parse_seed_ast`.
 - `selfhost/src/aurex/selfhost/compiler/io.ax`: explicit runtime IO bridge for
   the selfhost compiler slice.
 - `selfhost/src/aurex/selfhost/compiler/imports.ax`: Stage1 import graph loader.
@@ -90,7 +94,8 @@ Current exact capability:
 
 - Stage0 compiles the M0 selfhost lexer, parser seed, and `m0c_stage1.ax`.
 - The M0 parser seed constructs an ID-backed AST for the syntax it covers, and
-  Stage1 can compile/run that parser+AST smoke bundle.
+  Stage1 can compile/run that parser+AST smoke bundle. The expression parser is
+  now a Pratt/precedence-climbing parser for the covered expression subset.
 - The M0 lexer stream is checked against the C++ Stage0 lexer over the local
   corpus.
 - `m0c_stage1` compiles `examples/hello.ax`,

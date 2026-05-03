@@ -42,7 +42,7 @@ fn range_matches_10(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, c
 }
 
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
-    let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 @name(\"aurex_main\") { return 0; }";
+    let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 @name(\"aurex_main\") { puts(c\"ok\"); return 1 + 2 * 3; }";
     let ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -66,8 +66,17 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let export_argv_inner: AstTypeNode = ast.types[export_argv_pointee.pointee];
     let export_return_type: AstTypeNode = ast.types[export_fn.return_type];
     let body: AstBlockNode = ast.blocks[export_fn.body_block];
-    let return_stmt: AstStmtNode = ast.stmts[body.first_stmt];
+    let expr_stmt: AstStmtNode = ast.stmts[body.first_stmt];
+    let return_stmt: AstStmtNode = ast.stmts[body.first_stmt + 1];
+    let call_expr: AstExprNode = ast.exprs[expr_stmt.expr_id];
+    let call_callee: AstExprNode = ast.exprs[call_expr.left];
+    let call_arg_ref: AstExprArg = ast.expr_args[call_expr.first_arg];
+    let call_arg: AstExprNode = ast.exprs[call_arg_ref.expr_id];
     let return_expr: AstExprNode = ast.exprs[return_stmt.expr_id];
+    let return_left: AstExprNode = ast.exprs[return_expr.left];
+    let return_right: AstExprNode = ast.exprs[return_expr.right];
+    let multiply_left: AstExprNode = ast.exprs[return_right.left];
+    let multiply_right: AstExprNode = ast.exprs[return_right.right];
     if ast.ok &&
         ast.module_begin == 7 &&
         ast.module_end == 15 &&
@@ -82,10 +91,16 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         ast.return_type_count == 2 &&
         ast.abi_name_count == 2 &&
         ast.block_count == 1 &&
-        ast.stmt_count == 1 &&
+        ast.stmt_count == 2 &&
         ast.return_stmt_count == 1 &&
-        ast.expr_count == 1 &&
-        ast.integer_expr_count == 1 &&
+        ast.expr_stmt_count == 1 &&
+        ast.expr_count == 8 &&
+        ast.integer_expr_count == 3 &&
+        ast.identifier_expr_count == 1 &&
+        ast.c_string_expr_count == 1 &&
+        ast.binary_expr_count == 2 &&
+        ast.call_expr_count == 1 &&
+        ast.expr_arg_count == 1 &&
         import0.begin == 24 &&
         import0.end == 32 &&
         range_matches_8(source, import0.begin, import0.end, b'l', b'i', b'b', b'.', b'm', b'a', b't', b'h') &&
@@ -112,12 +127,33 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         range_matches_10(source, export_fn.abi_begin, export_fn.abi_end, b'a', b'u', b'r', b'e', b'x', b'_', b'm', b'a', b'i', b'n') &&
         export_fn.body_block == 0 &&
         body.first_stmt == 0 &&
-        body.stmt_count == 1 &&
+        body.stmt_count == 2 &&
+        expr_stmt.kind == AST_STMT_EXPR &&
+        call_expr.kind == AST_EXPR_CALL &&
+        call_expr.arg_count == 1 &&
+        call_callee.kind == AST_EXPR_IDENTIFIER &&
+        range_matches_4(source, call_callee.begin, call_callee.end, b'p', b'u', b't', b's') &&
+        call_arg.kind == AST_EXPR_C_STRING &&
+        call_arg.end - call_arg.begin == 5 &&
+        source[call_arg.begin] == b'c' &&
+        source[call_arg.begin + 2] == b'o' &&
+        source[call_arg.begin + 3] == b'k' &&
         return_stmt.kind == AST_STMT_RETURN &&
-        return_stmt.expr_id == 0 &&
-        return_expr.kind == AST_EXPR_INTEGER &&
-        return_expr.end - return_expr.begin == 1 &&
-        source[return_expr.begin] == b'0' &&
+        return_expr.kind == AST_EXPR_BINARY &&
+        return_expr.op == AST_OP_ADD &&
+        return_left.kind == AST_EXPR_INTEGER &&
+        return_left.end - return_left.begin == 1 &&
+        source[return_left.begin] == b'1' &&
+        return_right.kind == AST_EXPR_BINARY &&
+        return_right.op == AST_OP_MUL &&
+        multiply_left.kind == AST_EXPR_INTEGER &&
+        multiply_left.end - multiply_left.begin == 1 &&
+        source[multiply_left.begin] == b'2' &&
+        multiply_right.kind == AST_EXPR_INTEGER &&
+        multiply_right.end - multiply_right.begin == 1 &&
+        source[multiply_right.begin] == b'3' &&
+        return_expr.end - return_expr.begin == 9 &&
+        source[return_expr.begin] == b'1' &&
         range_matches_4(source, export_argc.name_begin, export_argc.name_end, b'a', b'r', b'g', b'c') &&
         export_argc_type.kind == AST_TYPE_PRIMITIVE &&
         export_argc_type.primitive == AST_PRIM_I32 &&

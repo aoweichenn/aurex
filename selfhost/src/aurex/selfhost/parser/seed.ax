@@ -34,6 +34,11 @@ struct BlockResult {
     id: i32;
 }
 
+struct ExprResult {
+    ok: bool;
+    id: i32;
+}
+
 fn make_bad_path_range() -> PathRange {
     return PathRange { ok: false, begin: 0, end: 0 };
 }
@@ -68,6 +73,14 @@ fn make_bad_block_result() -> BlockResult {
 
 fn make_block_result(id: i32) -> BlockResult {
     return BlockResult { ok: true, id: id };
+}
+
+fn make_bad_expr_result() -> ExprResult {
+    return ExprResult { ok: false, id: 0 };
+}
+
+fn make_expr_result(id: i32) -> ExprResult {
+    return ExprResult { ok: true, id: id };
 }
 
 // The parser keeps one-token lookahead in a mutable TokenSpan local. The current
@@ -342,12 +355,158 @@ fn parse_extern_block(source: *const u8, index: *mut i32, current: *mut TokenSpa
     return parser_expect(source, index, current, TK_R_BRACE);
 }
 
-fn parse_integer_expr(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> TypeResult {
-    let token: TokenSpan = parser_advance(source, index, current);
-    if token.kind != TK_INTEGER {
-        return make_bad_type_result();
+fn token_binary_precedence(kind: i32) -> i32 {
+    if kind == TK_PIPE_PIPE { return 1; }
+    if kind == TK_AMP_AMP { return 2; }
+    if kind == TK_PIPE { return 3; }
+    if kind == TK_CARET { return 4; }
+    if kind == TK_AMP { return 5; }
+    if kind == TK_EQUAL_EQUAL || kind == TK_BANG_EQUAL { return 6; }
+    if kind == TK_LESS || kind == TK_LESS_EQUAL || kind == TK_GREATER || kind == TK_GREATER_EQUAL { return 7; }
+    if kind == TK_LESS_LESS || kind == TK_GREATER_GREATER { return 8; }
+    if kind == TK_PLUS || kind == TK_MINUS { return 9; }
+    if kind == TK_STAR || kind == TK_SLASH || kind == TK_PERCENT { return 10; }
+    return 0;
+}
+
+fn token_binary_op(kind: i32) -> i32 {
+    if kind == TK_PLUS { return AST_OP_ADD; }
+    if kind == TK_MINUS { return AST_OP_SUB; }
+    if kind == TK_STAR { return AST_OP_MUL; }
+    if kind == TK_SLASH { return AST_OP_DIV; }
+    if kind == TK_PERCENT { return AST_OP_MOD; }
+    if kind == TK_LESS_LESS { return AST_OP_SHL; }
+    if kind == TK_GREATER_GREATER { return AST_OP_SHR; }
+    if kind == TK_LESS { return AST_OP_LT; }
+    if kind == TK_LESS_EQUAL { return AST_OP_LE; }
+    if kind == TK_GREATER { return AST_OP_GT; }
+    if kind == TK_GREATER_EQUAL { return AST_OP_GE; }
+    if kind == TK_EQUAL_EQUAL { return AST_OP_EQ; }
+    if kind == TK_BANG_EQUAL { return AST_OP_NE; }
+    if kind == TK_AMP { return AST_OP_BIT_AND; }
+    if kind == TK_CARET { return AST_OP_BIT_XOR; }
+    if kind == TK_PIPE { return AST_OP_BIT_OR; }
+    if kind == TK_AMP_AMP { return AST_OP_AND; }
+    if kind == TK_PIPE_PIPE { return AST_OP_OR; }
+    return AST_OP_NONE;
+}
+
+fn token_unary_op(kind: i32) -> i32 {
+    if kind == TK_BANG { return AST_OP_NOT; }
+    if kind == TK_TILDE { return AST_OP_BIT_NOT; }
+    if kind == TK_MINUS { return AST_OP_NEG; }
+    if kind == TK_AMP { return AST_OP_ADDR; }
+    if kind == TK_STAR { return AST_OP_DEREF; }
+    return AST_OP_NONE;
+}
+
+fn parse_call_tail(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule, callee: ExprResult) -> ExprResult {
+    if !parser_expect(source, index, current, TK_L_PAREN) {
+        return make_bad_expr_result();
     }
-    return make_type_result(ast_add_integer_expr(ast, token.begin, token.end));
+    let first_arg: i32 = ast.expr_arg_count;
+    var arg_count: i32 = 0;
+    if !parser_check(current, TK_R_PAREN) {
+        let first: ExprResult = parse_expression_bp(source, index, current, ast, 1);
+        if !first.ok {
+            return make_bad_expr_result();
+        }
+        ast_add_expr_arg(ast, first.id);
+        arg_count = arg_count + 1;
+        while parser_match(source, index, current, TK_COMMA) {
+            if parser_check(current, TK_R_PAREN) {
+                return make_bad_expr_result();
+            }
+            let arg: ExprResult = parse_expression_bp(source, index, current, ast, 1);
+            if !arg.ok {
+                return make_bad_expr_result();
+            }
+            ast_add_expr_arg(ast, arg.id);
+            arg_count = arg_count + 1;
+        }
+    }
+    let close: TokenSpan = parser_advance(source, index, current);
+    if close.kind != TK_R_PAREN {
+        return make_bad_expr_result();
+    }
+    let callee_node: AstExprNode = ast.exprs[callee.id];
+    return make_expr_result(ast_add_call_expr(ast, callee_node.begin, close.end, callee.id, first_arg, arg_count));
+}
+
+fn parse_primary_expr(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> ExprResult {
+    let token: TokenSpan = parser_advance(source, index, current);
+    if token.kind == TK_INTEGER {
+        return make_expr_result(ast_add_integer_expr(ast, token.begin, token.end));
+    }
+    if token.kind == TK_IDENTIFIER {
+        return make_expr_result(ast_add_identifier_expr(ast, token.begin, token.end));
+    }
+    if token.kind == TK_STRING {
+        return make_expr_result(ast_add_string_expr(ast, token.begin, token.end));
+    }
+    if token.kind == TK_C_STRING {
+        return make_expr_result(ast_add_c_string_expr(ast, token.begin, token.end));
+    }
+    if token.kind == TK_KW_TRUE || token.kind == TK_KW_FALSE {
+        return make_expr_result(ast_add_bool_expr(ast, token.begin, token.end));
+    }
+    if token.kind == TK_KW_NULL {
+        return make_expr_result(ast_add_null_expr(ast, token.begin, token.end));
+    }
+    if token.kind == TK_L_PAREN {
+        let grouped: ExprResult = parse_expression_bp(source, index, current, ast, 1);
+        if !grouped.ok {
+            return make_bad_expr_result();
+        }
+        if !parser_expect(source, index, current, TK_R_PAREN) {
+            return make_bad_expr_result();
+        }
+        return grouped;
+    }
+    let op: i32 = token_unary_op(token.kind);
+    if op != AST_OP_NONE {
+        let operand: ExprResult = parse_expression_bp(source, index, current, ast, 11);
+        if !operand.ok {
+            return make_bad_expr_result();
+        }
+        let operand_node: AstExprNode = ast.exprs[operand.id];
+        return make_expr_result(ast_add_unary_expr(ast, token.begin, operand_node.end, op, operand.id));
+    }
+    return make_bad_expr_result();
+}
+
+fn parse_expression_bp(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule, min_bp: i32) -> ExprResult {
+    var left: ExprResult = parse_primary_expr(source, index, current, ast);
+    if !left.ok {
+        return make_bad_expr_result();
+    }
+
+    while true {
+        if parser_check(current, TK_L_PAREN) {
+            left = parse_call_tail(source, index, current, ast, left);
+            if !left.ok {
+                return make_bad_expr_result();
+            }
+        } else {
+            let precedence: i32 = token_binary_precedence((*current).kind);
+            if precedence < min_bp || precedence == 0 {
+                return left;
+            }
+            let op_token: TokenSpan = parser_advance(source, index, current);
+            let right: ExprResult = parse_expression_bp(source, index, current, ast, precedence + 1);
+            if !right.ok {
+                return make_bad_expr_result();
+            }
+            let left_node: AstExprNode = ast.exprs[left.id];
+            let right_node: AstExprNode = ast.exprs[right.id];
+            left = make_expr_result(ast_add_binary_expr(ast, left_node.begin, right_node.end, token_binary_op(op_token.kind), left.id, right.id));
+        }
+    }
+    return left;
+}
+
+fn parse_expression(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> ExprResult {
+    return parse_expression_bp(source, index, current, ast, 1);
 }
 
 fn parse_return_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
@@ -355,7 +514,7 @@ fn parse_return_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan
     if begin_token.kind != TK_KW_RETURN {
         return false;
     }
-    let expr: TypeResult = parse_integer_expr(source, index, current, ast);
+    let expr: ExprResult = parse_expression(source, index, current, ast);
     if !expr.ok {
         return false;
     }
@@ -364,6 +523,20 @@ fn parse_return_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan
         return false;
     }
     ast_add_return_stmt(ast, begin_token.begin, semi.end, expr.id);
+    return true;
+}
+
+fn parse_expr_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    let expr: ExprResult = parse_expression(source, index, current, ast);
+    if !expr.ok {
+        return false;
+    }
+    let semi: TokenSpan = parser_advance(source, index, current);
+    if semi.kind != TK_SEMICOLON {
+        return false;
+    }
+    let node: AstExprNode = ast.exprs[expr.id];
+    ast_add_expr_stmt(ast, node.begin, semi.end, expr.id);
     return true;
 }
 
@@ -379,7 +552,9 @@ fn parse_block(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast:
                 return make_bad_block_result();
             }
         } else {
-            return make_bad_block_result();
+            if !parse_expr_stmt(source, index, current, ast) {
+                return make_bad_block_result();
+            }
         }
     }
     let close: TokenSpan = parser_advance(source, index, current);

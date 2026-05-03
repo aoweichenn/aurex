@@ -239,6 +239,9 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     if (is_valid(stmt.else_block)) {
         dump_stmt(out, module, stmt.else_block, depth + 1);
     }
+    if (is_valid(stmt.else_if)) {
+        dump_stmt(out, module, stmt.else_if, depth + 1);
+    }
     if (is_valid(stmt.body)) {
         dump_stmt(out, module, stmt.body, depth + 1);
     }

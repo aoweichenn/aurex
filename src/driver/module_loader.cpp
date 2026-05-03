@@ -141,6 +141,7 @@ void remap_stmt_node(syntax::StmtNode& node, const IdMap& map) {
     node.condition = remap_expr(node.condition, map);
     node.then_block = remap_stmt(node.then_block, map);
     node.else_block = remap_stmt(node.else_block, map);
+    node.else_if = remap_stmt(node.else_if, map);
     node.body = remap_stmt(node.body, map);
     node.return_value = remap_expr(node.return_value, map);
     for (syntax::StmtId& stmt : node.statements) {

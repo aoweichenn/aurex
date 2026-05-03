@@ -244,9 +244,11 @@ void Lexer::scan_token() {
     case '+':
         add_token(TokenKind::plus, begin, offset_);
         break;
-    case '-':
-        add_token(match('>') ? TokenKind::arrow : TokenKind::minus, begin, offset_);
+    case '-': {
+        const TokenKind kind = match('>') ? TokenKind::arrow : TokenKind::minus;
+        add_token(kind, begin, offset_);
         break;
+    }
     case '*':
         add_token(TokenKind::star, begin, offset_);
         break;

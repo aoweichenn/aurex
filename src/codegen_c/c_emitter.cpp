@@ -332,6 +332,11 @@ void CEmitter::emit_stmt(const syntax::StmtId stmt_id) {
             out_ << "else ";
             emit_block(stmt.else_block);
         }
+        if (syntax::is_valid(stmt.else_if)) {
+            write_indent();
+            out_ << "else ";
+            emit_stmt(stmt.else_if);
+        }
         break;
     }
     case syntax::StmtKind::while_:

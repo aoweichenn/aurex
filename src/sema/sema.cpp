@@ -387,6 +387,9 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         if (syntax::is_valid(stmt.else_block)) {
             analyze_block(stmt.else_block, expected_return);
         }
+        if (syntax::is_valid(stmt.else_if)) {
+            analyze_stmt(stmt.else_if, expected_return);
+        }
         break;
     }
     case syntax::StmtKind::while_: {

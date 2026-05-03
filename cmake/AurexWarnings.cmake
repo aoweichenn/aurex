@@ -1,0 +1,5 @@
+function(aurex_enable_warnings)
+    foreach(target IN LISTS ARGN)
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endforeach()
+endfunction()

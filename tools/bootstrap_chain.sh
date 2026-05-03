@@ -152,6 +152,7 @@ diff -u "${ROOT}/tests/golden/selfhost_lexer_file_hello.tokens" "${BUILD_DIR}/le
 grep -q 'aurex_m0_str' "${STAGE1_LANG_STAGE1_C}"
 grep -q 'continue;' "${STAGE1_LANG_STAGE1_C}"
 grep -q 'break;' "${STAGE1_LANG_STAGE1_C}"
+grep -q 'else .*if' "${STAGE1_LANG_STAGE1_C}"
 cc "${STAGE1_LANG_STAGE1_C}" -o "${STAGE1_LANG_STAGE1_BIN}"
 STAGE1_LANG_STAGE1_OUT="$("${STAGE1_LANG_STAGE1_BIN}")"
 test "${STAGE1_LANG_STAGE1_OUT}" = "selfhost stage1 lang ok"

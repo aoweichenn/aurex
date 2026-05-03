@@ -659,16 +659,28 @@ syntax::StmtId Parser::parse_if_stmt() {
     allow_struct_literal_ = previous_struct_literal_mode;
     const syntax::StmtId then_block = parse_block();
     syntax::StmtId else_block = syntax::invalid_stmt_id;
+    syntax::StmtId else_if = syntax::invalid_stmt_id;
     if (match(TokenKind::kw_else)) {
-        else_block = parse_block();
+        if (check(TokenKind::kw_if)) {
+            else_if = parse_if_stmt();
+        } else {
+            else_block = parse_block();
+        }
     }
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::if_;
-    stmt.range = syntax::is_valid(else_block) ? merge(begin.range, module_.stmts[else_block.value].range) : merge(begin.range, module_.stmts[then_block.value].range);
+    if (syntax::is_valid(else_if)) {
+        stmt.range = merge(begin.range, module_.stmts[else_if.value].range);
+    } else if (syntax::is_valid(else_block)) {
+        stmt.range = merge(begin.range, module_.stmts[else_block.value].range);
+    } else {
+        stmt.range = merge(begin.range, module_.stmts[then_block.value].range);
+    }
     stmt.condition = condition;
     stmt.then_block = then_block;
     stmt.else_block = else_block;
+    stmt.else_if = else_if;
     return module_.push_stmt(std::move(stmt));
 }
 

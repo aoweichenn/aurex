@@ -107,6 +107,10 @@ Current exact capability:
   `m0_<module_path>_<name>` spelling. It also has a source-scanned pointer field
   access path so pointer parameters such as `pair_ptr.value` emit as
   `pair_ptr->value` without relying on special variable names.
+- Stage1 statement emission accepts `else if` directly instead of requiring
+  nested `else { if ... }` blocks. The production C++ Stage0 parser, semantic
+  analyzer, AST dump, module remapper, and C backend support the same shape, so
+  this syntax is checked before it enters the selfhost fixed-point smoke path.
 
 ## Milestones
 

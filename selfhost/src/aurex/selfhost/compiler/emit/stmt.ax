@@ -56,7 +56,11 @@ fn emit_if_stmt(file: *mut OutputFile, source: *const u8, index: *mut i32, curre
     if !emit_block(file, source, index, current) { return false; }
     if match_token(source, index, current, TK_KW_ELSE) {
         if !write_piece(file, c"    else ") { return false; }
-        if !emit_block(file, source, index, current) { return false; }
+        if check(current, TK_KW_IF) {
+            if !emit_if_stmt(file, source, index, current) { return false; }
+        } else {
+            if !emit_block(file, source, index, current) { return false; }
+        }
     }
     return true;
 }

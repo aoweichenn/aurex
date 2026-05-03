@@ -126,6 +126,7 @@ check: all
 	grep -q 'aurex_m0_str' $(BUILD_DIR)/stage1_lang.stage1.c
 	grep -q 'continue;' $(BUILD_DIR)/stage1_lang.stage1.c
 	grep -q 'break;' $(BUILD_DIR)/stage1_lang.stage1.c
+	grep -q 'else .*if' $(BUILD_DIR)/stage1_lang.stage1.c
 	$(CC) $(BUILD_DIR)/stage1_lang.stage1.c -o $(BUILD_DIR)/stage1_lang.stage1
 	test "$$($(BUILD_DIR)/stage1_lang.stage1)" = "selfhost stage1 lang ok"
 	$(BUILD_DIR)/m0c_stage1 $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage1.c

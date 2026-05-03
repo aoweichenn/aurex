@@ -175,6 +175,7 @@ See:
 
 - `docs/USAGE.en.md`
 - `docs/USAGE.zh.md`
+- `docs/ARCHITECTURE.zh.md`
 - `docs/SELFHOST.md`
 - `docs/DESIGN.en.md`
 - `docs/DESIGN.zh.md`

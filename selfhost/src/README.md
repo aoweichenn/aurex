@@ -15,7 +15,7 @@ entry names.
 - `aurex/selfhost/parser/`: reusable parser seed modules.
 - `aurex/selfhost/smoke/`: executable smoke tests for selfhost modules.
   `stage1_lang.ax` specifically guards the Stage1 emitter statement/type
-  surface, and `stage1_core.ax` guards enum, opaque struct, pointer-to-array,
+  surface, including `else if` emission. `stage1_core.ax` guards enum, opaque struct, pointer-to-array,
   low-level builtin emission, module-qualified C symbols, and pointer field
   access for pointer parameters with non-special names, plus nested struct
   literal emission, pointer-field assignment emission, and non-main

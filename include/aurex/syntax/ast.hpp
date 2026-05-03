@@ -153,6 +153,7 @@ struct StmtNode {
     ExprId condition = invalid_expr_id;
     StmtId then_block = invalid_stmt_id;
     StmtId else_block = invalid_stmt_id;
+    StmtId else_if = invalid_stmt_id;
     StmtId body = invalid_stmt_id;
     ExprId return_value = invalid_expr_id;
     std::vector<StmtId> statements;

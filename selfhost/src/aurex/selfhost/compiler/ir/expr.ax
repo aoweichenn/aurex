@@ -106,9 +106,10 @@ fn ir_write_expr_value(file: *mut OutputFile, source: *const u8, ast: *mut AstMo
     return ir_write_text(file, c"expr?");
 }
 
-fn ir_emit_expr_values(file: *mut OutputFile, source: *const u8, ast: *mut AstModule) -> bool {
-    var index: i32 = 0;
-    while index < ast.expr_count {
+fn ir_emit_expr_values(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, first_expr: i32, expr_count: i32) -> bool {
+    var index: i32 = first_expr;
+    let end: i32 = first_expr + expr_count;
+    while index < end {
         let expr: AstExprNode = ast.exprs[index];
         if !ir_write_text(file, c"    ") { return false; }
         if !ir_write_expr_ref(file, index) { return false; }

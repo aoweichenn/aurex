@@ -84,11 +84,11 @@ fn ir_write_export_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstMod
     if !ir_write_text(file, c" {\n  ^entry:\n") {
         return false;
     }
-    if !ir_emit_expr_values(file, source, ast) {
-        return false;
-    }
     if item.body_block >= 0 && item.body_block < ast.block_count {
         let block: AstBlockNode = ast.blocks[item.body_block];
+        if !ir_emit_expr_values(file, source, ast, block.first_expr, block.expr_count) {
+            return false;
+        }
         var index: i32 = 0;
         while index < block.stmt_count {
             let stmt: AstStmtNode = ast.stmts[block.first_stmt + index];

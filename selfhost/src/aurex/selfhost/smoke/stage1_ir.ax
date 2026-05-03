@@ -4,7 +4,12 @@ extern c {
     fn puts(s: *const u8) -> i32 @name("puts");
 }
 
+export c fn helper() -> i32 @name("stage1_ir_helper") {
+    return 40 + 2;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     puts(c"stage1 ir");
+    helper();
     return 1 + 2 * 3 - 7;
 }

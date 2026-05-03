@@ -106,6 +106,8 @@ check: all
 	$(BUILD_DIR)/aurexc_stage1 $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.air
 	grep -q '; selfhost_module aurex.selfhost.smoke.parser_smoke lowering(ast_pending)' $(BUILD_DIR)/parser_smoke.stage1.air
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_IR_SRC) $(BUILD_DIR)/stage1_ir.stage1.air
+	grep -q 'fn helper() @stage1_ir_helper linkage(export_c) abi(c) -> i32' $(BUILD_DIR)/stage1_ir.stage1.air
+	grep -q 'literal 40' $(BUILD_DIR)/stage1_ir.stage1.air
 	grep -q 'call %e' $(BUILD_DIR)/stage1_ir.stage1.air
 	grep -q 'add %e' $(BUILD_DIR)/stage1_ir.stage1.air
 	grep -q 'mul %e' $(BUILD_DIR)/stage1_ir.stage1.air

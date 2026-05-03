@@ -128,7 +128,9 @@ The selfhost tree is split by component:
 - `smoke` / `tool`: validation programs.
 
 Stage1 currently emits Aurex IR snapshots. It is not yet a full fixed-point
-compiler.
+compiler. The seed parser covers a module shape with one `extern c` block plus
+multiple `export c fn` items, and IR snapshots emit expression values scoped to
+the current function block.
 
 ## Verification Architecture
 

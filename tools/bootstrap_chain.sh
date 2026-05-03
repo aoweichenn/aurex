@@ -102,6 +102,8 @@ grep -q 'c_string c"Aurex M0 selfhost seed"' "${STAGE1_SEED_IR}"
 grep -q '; selfhost_module aurex.selfhost.smoke.parser_smoke lowering(ast_pending)' "${STAGE1_PARSER_IR}"
 
 "${STAGE1_BIN}" "${STAGE1_IR}" "${STAGE1_IR_OUT}"
+grep -q 'fn helper() @stage1_ir_helper linkage(export_c) abi(c) -> i32' "${STAGE1_IR_OUT}"
+grep -q 'literal 40' "${STAGE1_IR_OUT}"
 grep -q 'call %e' "${STAGE1_IR_OUT}"
 grep -q 'add %e' "${STAGE1_IR_OUT}"
 grep -q 'mul %e' "${STAGE1_IR_OUT}"

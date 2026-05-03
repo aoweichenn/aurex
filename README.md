@@ -90,9 +90,11 @@ AST seed, and a Stage1 compiler entry that emits `aurex_ir v0` snapshots.
 
 The old selfhost C emitter has been removed from the active tree. Stage1 now
 uses `aurex/selfhost/compiler/ir/`, split into writer, name, type, expression,
-and emission modules. For syntax not yet covered by the parser seed, Stage1
-records deterministic `selfhost_module ... lowering(ast_pending)` markers so
-the compiler bundle remains measurable without claiming full lowering.
+and emission modules. The seed parser now covers multiple `export c fn` items
+in one module, and Stage1 IR snapshots emit expression values per function
+block. For syntax not yet covered by the parser seed, Stage1 records
+deterministic `selfhost_module ... lowering(ast_pending)` markers so the
+compiler bundle remains measurable without claiming full lowering.
 
 ```sh
 tools/bootstrap_chain.sh

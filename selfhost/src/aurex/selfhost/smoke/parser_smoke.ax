@@ -15,6 +15,16 @@ fn range_matches_4(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, ch
         source[begin + 3] == ch3;
 }
 
+fn range_matches_6(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, ch2: u8, ch3: u8, ch4: u8, ch5: u8) -> bool {
+    return end - begin == 6 &&
+        source[begin] == ch0 &&
+        source[begin + 1] == ch1 &&
+        source[begin + 2] == ch2 &&
+        source[begin + 3] == ch3 &&
+        source[begin + 4] == ch4 &&
+        source[begin + 5] == ch5;
+}
+
 fn range_matches_8(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, ch2: u8, ch3: u8, ch4: u8, ch5: u8, ch6: u8, ch7: u8) -> bool {
     return end - begin == 8 &&
         source[begin] == ch0 &&
@@ -74,6 +84,8 @@ fn validate_complex_expr_seed() -> bool {
         ast.binary_expr_count == 2 &&
         ast.call_expr_count == 1 &&
         ast.expr_arg_count == 2 &&
+        body.first_expr == 0 &&
+        body.expr_count == 9 &&
         return_stmt.kind == AST_STMT_RETURN &&
         call_expr.kind == AST_EXPR_CALL &&
         call_expr.arg_count == 2 &&
@@ -83,6 +95,61 @@ fn validate_complex_expr_seed() -> bool {
         arg1.op == AST_OP_MUL &&
         arg1_left.kind == AST_EXPR_UNARY &&
         arg1_left.op == AST_OP_NEG;
+    ast_free_module(ast);
+    return ok;
+}
+
+fn validate_multi_export_seed() -> bool {
+    let source: *const u8 = c"module app.multi; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn helper() -> i32 @name(\"helper\") { return 7; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { puts(c\"multi\"); return helper(); }";
+    let ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let helper_fn: AstItemNode = ast.items[2];
+    let main_fn: AstItemNode = ast.items[3];
+    let helper_body: AstBlockNode = ast.blocks[helper_fn.body_block];
+    let main_body: AstBlockNode = ast.blocks[main_fn.body_block];
+    let helper_return: AstStmtNode = ast.stmts[helper_body.first_stmt];
+    let helper_value: AstExprNode = ast.exprs[helper_return.expr_id];
+    let main_expr_stmt: AstStmtNode = ast.stmts[main_body.first_stmt];
+    let main_return: AstStmtNode = ast.stmts[main_body.first_stmt + 1];
+    let puts_call: AstExprNode = ast.exprs[main_expr_stmt.expr_id];
+    let helper_call: AstExprNode = ast.exprs[main_return.expr_id];
+    let ok: bool = ast.item_count == 4 &&
+        ast.extern_block_count == 1 &&
+        ast.extern_fn_count == 1 &&
+        ast.export_fn_count == 2 &&
+        ast.param_count == 3 &&
+        ast.return_type_count == 3 &&
+        ast.block_count == 2 &&
+        ast.stmt_count == 3 &&
+        ast.return_stmt_count == 2 &&
+        ast.expr_stmt_count == 1 &&
+        ast.integer_expr_count == 1 &&
+        ast.identifier_expr_count == 2 &&
+        ast.c_string_expr_count == 1 &&
+        ast.call_expr_count == 2 &&
+        ast.expr_arg_count == 1 &&
+        helper_fn.kind == AST_ITEM_EXPORT_FN &&
+        helper_fn.param_count == 0 &&
+        range_matches_6(source, helper_fn.abi_begin, helper_fn.abi_end, b'h', b'e', b'l', b'p', b'e', b'r') &&
+        main_fn.kind == AST_ITEM_EXPORT_FN &&
+        main_fn.param_count == 2 &&
+        helper_body.first_expr == 0 &&
+        helper_body.expr_count == 1 &&
+        helper_body.stmt_count == 1 &&
+        main_body.first_expr == 1 &&
+        main_body.expr_count == 5 &&
+        main_body.stmt_count == 2 &&
+        helper_return.kind == AST_STMT_RETURN &&
+        helper_value.kind == AST_EXPR_INTEGER &&
+        helper_value.end - helper_value.begin == 1 &&
+        source[helper_value.begin] == b'7' &&
+        puts_call.kind == AST_EXPR_CALL &&
+        puts_call.arg_count == 1 &&
+        helper_call.kind == AST_EXPR_CALL &&
+        helper_call.arg_count == 0;
     ast_free_module(ast);
     return ok;
 }
@@ -174,6 +241,8 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         export_fn.body_block == 0 &&
         body.first_stmt == 0 &&
         body.stmt_count == 2 &&
+        body.first_expr == 0 &&
+        body.expr_count == 8 &&
         expr_stmt.kind == AST_STMT_EXPR &&
         call_expr.kind == AST_EXPR_CALL &&
         call_expr.arg_count == 1 &&
@@ -213,7 +282,8 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         export_return_type.kind == AST_TYPE_PRIMITIVE &&
         export_return_type.primitive == AST_PRIM_I32 &&
         parse_seed_module(source) &&
-        validate_complex_expr_seed() {
+        validate_complex_expr_seed() &&
+        validate_multi_export_seed() {
         ast_free_module(ast);
         puts(c"selfhost parser seed ok");
         return 0;

@@ -108,7 +108,7 @@ selfhost 目录按组件拆分：
 - `bin`：Stage1 CLI 入口。
 - `smoke` / `tool`：验证程序。
 
-当前 Stage1 输出 Aurex IR snapshot，不是完整 fixed-point 编译器。
+当前 Stage1 输出 Aurex IR snapshot，不是完整 fixed-point 编译器。seed parser 已覆盖一个 `extern c` block 加多个 `export c fn` item 的模块形态；IR snapshot 按当前函数 block 输出表达式值。
 
 ## 验证架构
 

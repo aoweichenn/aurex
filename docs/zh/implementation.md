@@ -22,6 +22,8 @@ AST 设计：
 - item 记录所属 module，合并多个模块后仍能区分定义来源。
 - AST dump 用于结构回归，不承担语义展示职责。
 
+selfhost parser seed 当前支持 module/import、一个 `extern c` block、多个 `export c fn` item、函数参数/返回类型、表达式语句和 return 语句。每个 block 记录自己的 statement range 和 expression range，Stage1 IR 输出可按函数 block 限定表达式。
+
 ## Module Loader
 
 module loader 负责把根文件和 import 文件合并为一个 `AstModule`。它会记录已加载文件和模块，避免重复加载和递归导入失控。模块声明必须与 import 路径一致，例如 `import std.text;` 对应 `module std.text;`。

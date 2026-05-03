@@ -113,6 +113,8 @@ struct AstBlockNode {
     end: i32;
     first_stmt: i32;
     stmt_count: i32;
+    first_expr: i32;
+    expr_count: i32;
 }
 
 struct AstStmtNode {
@@ -299,8 +301,8 @@ fn ast_make_item_node(kind: i32, name_begin: i32, name_end: i32, first_param: i3
     };
 }
 
-fn ast_make_block_node(begin: i32, end: i32, first_stmt: i32, stmt_count: i32) -> AstBlockNode {
-    return AstBlockNode { begin: begin, end: end, first_stmt: first_stmt, stmt_count: stmt_count };
+fn ast_make_block_node(begin: i32, end: i32, first_stmt: i32, stmt_count: i32, first_expr: i32, expr_count: i32) -> AstBlockNode {
+    return AstBlockNode { begin: begin, end: end, first_stmt: first_stmt, stmt_count: stmt_count, first_expr: first_expr, expr_count: expr_count };
 }
 
 fn ast_make_stmt_node(kind: i32, begin: i32, end: i32, expr_id: i32) -> AstStmtNode {
@@ -405,10 +407,10 @@ fn ast_add_abi_name(ast: *mut AstModule) -> void {
     ast.abi_name_count = ast.abi_name_count + 1;
 }
 
-fn ast_add_block(ast: *mut AstModule, begin: i32, end: i32, first_stmt: i32, stmt_count: i32) -> i32 {
+fn ast_add_block(ast: *mut AstModule, begin: i32, end: i32, first_stmt: i32, stmt_count: i32, first_expr: i32, expr_count: i32) -> i32 {
     let id: i32 = ast.block_count;
     if id < AST_MAX_BLOCKS && ast.blocks != null {
-        ast.blocks[id] = ast_make_block_node(begin, end, first_stmt, stmt_count);
+        ast.blocks[id] = ast_make_block_node(begin, end, first_stmt, stmt_count, first_expr, expr_count);
         ast.block_count = ast.block_count + 1;
         return id;
     }

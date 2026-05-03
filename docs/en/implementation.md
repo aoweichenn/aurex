@@ -31,6 +31,12 @@ AST design:
   origin.
 - AST dump is for structural regression; it is not a semantic report.
 
+The selfhost parser seed currently supports module/import declarations, one
+`extern c` block, multiple `export c fn` items, function parameters and return
+types, expression statements, and return statements. Each block records its own
+statement range and expression range, so Stage1 IR output can scope expression
+values to the current function block.
+
 ## Module Loader
 
 The module loader merges the root file and imported files into one `AstModule`.

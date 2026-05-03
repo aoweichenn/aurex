@@ -16,6 +16,7 @@ layout.
 - [设计实现文档](zh/implementation.md)
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
+- [下一步计划文档](zh/next-steps.md)
 
 ## English
 
@@ -27,3 +28,4 @@ layout.
 - [Design And Implementation](en/implementation.md)
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
+- [Next Steps](en/next-steps.md)

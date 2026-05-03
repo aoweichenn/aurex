@@ -174,6 +174,9 @@ private:
             function.name = std::string(item.name);
             function.symbol = item_symbol(index, item);
             function.linkage = item_linkage(item);
+            function.call_conv = item.is_extern_c || item.is_export_c
+                ? AbiCallConv::c
+                : AbiCallConv::aurex;
             function.return_type = syntax_type(item.return_type);
             for (const syntax::ParamDecl& param : item.params) {
                 function.signature_params.push_back(FunctionParam {
@@ -350,7 +353,13 @@ private:
         const ValueId condition = lower_expr(stmt.condition);
         const BlockId then_block = add_block(*current_function_, "if.then" + std::to_string(current_function_->blocks.size()));
         const BlockId else_block = add_block(*current_function_, "if.else" + std::to_string(current_function_->blocks.size()));
-        const BlockId join_block = add_block(*current_function_, "if.join" + std::to_string(current_function_->blocks.size()));
+        BlockId join_block = invalid_block_id;
+        const auto ensure_join_block = [&]() -> BlockId {
+            if (!is_valid(join_block)) {
+                join_block = add_block(*current_function_, "if.join" + std::to_string(current_function_->blocks.size()));
+            }
+            return join_block;
+        };
 
         Terminator cond;
         cond.kind = TerminatorKind::cond_branch;
@@ -361,7 +370,10 @@ private:
 
         current_block_ = then_block;
         lower_block(stmt.then_block);
-        append_branch_if_open(join_block);
+        const bool then_open = !has_terminator(current_block_);
+        if (then_open) {
+            append_branch_if_open(ensure_join_block());
+        }
 
         current_block_ = else_block;
         if (syntax::is_valid(stmt.else_block)) {
@@ -370,9 +382,12 @@ private:
         if (syntax::is_valid(stmt.else_if)) {
             lower_stmt(stmt.else_if);
         }
-        append_branch_if_open(join_block);
+        const bool else_open = !has_terminator(current_block_);
+        if (else_open) {
+            append_branch_if_open(ensure_join_block());
+        }
 
-        current_block_ = join_block;
+        current_block_ = is_valid(join_block) ? join_block : invalid_block_id;
     }
 
     void lower_while(const syntax::StmtNode& stmt) {
@@ -799,10 +814,10 @@ private:
     }
 
     [[nodiscard]] bool has_terminator(const BlockId block) const {
-        return current_function_ != nullptr &&
-               is_valid(block) &&
-               block.value < current_function_->blocks.size() &&
-               current_function_->blocks[block.value].terminator.kind != TerminatorKind::none;
+        if (current_function_ == nullptr || !is_valid(block) || block.value >= current_function_->blocks.size()) {
+            return true;
+        }
+        return current_function_->blocks[block.value].terminator.kind != TerminatorKind::none;
     }
 
     void set_terminator(const BlockId block, const Terminator& terminator) {

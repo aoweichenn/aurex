@@ -15,10 +15,10 @@ Stage1 自举编译器切片。
 - `src/ir/`：Aurex 自有中间代码，负责把 AST + sema 边表降为 typed CFG/SSA
   形态。该层不依赖 LLVM，是后端无关的内部契约。
 - `src/backend/llvm/`：LLVM 后端，把 Aurex IR lowering 到 LLVM IR。当前
-  `--emit=llvm-ir`、`--emit=asm` 和 `--emit=exe` 都消费这个后端。
-- `src/codegen_c/`：C 后端，包括 C 类型格式化、表达式求值顺序和 emitter。
+  默认输出、`--emit=llvm-ir`、`--emit=asm`、`--emit=obj` 和 `--emit=exe`
+  都消费这个后端。
 - `src/driver/`：编译驱动、模块加载器和 clang 本机输出封装，负责 import
-  解析、跨模块合并以及 C/LLVM IR/汇编/可执行文件输出选择。
+  解析、跨模块合并以及 LLVM IR/汇编/object/可执行文件输出选择。
 - `src/cli/`：`m0c` 命令行入口。
 - `cmake/`：按编译器组件拆分的构建定义，根 `CMakeLists.txt` 只负责组装。
 - `runtime/`：Aurex 程序可显式 import 的运行时模块。
@@ -37,14 +37,13 @@ Stage1 自举编译器切片。
 4. `sema` 建立类型、符号、函数、结构体和枚举 case 边表。
 5. `ir` 可以把 AST 与 `CheckedModule` 降为 Aurex IR，用 `--emit=ir` 观察。
 6. `backend/llvm` 消费 Aurex IR 并 lowering 到 LLVM IR，用 `--emit=llvm-ir` 观察。
-7. `codegen_c` 仍可使用 AST 与 `CheckedModule` 生成 C。
-8. `driver` 可以直接写出 C，或者走 Aurex IR -> LLVM backend -> clang 输出汇编或本机可执行文件。
+7. `driver` 把 LLVM IR 交给 clang，输出汇编、object 或本机可执行文件。默认输出是本机可执行文件。
 
 这种分层刻意避免让 parser 依赖 lexer 实现，也避免把语义信息写回 AST。
 后续替换前端或把组件迁移到 M0 时，每个阶段都有清晰接口。
-当前 clang 集成是 driver 层的封装：`--emit=c` 仍保留完整 C 输出，
-`--emit=llvm-ir` 输出 LLVM lowering 结果，`--emit=asm` / `--emit=exe`
-复用 LLVM 后端并调用 clang。
+当前 clang 集成是 driver 层的封装：`--emit=llvm-ir` 输出 LLVM lowering 结果，
+默认输出、`--emit=asm`、`--emit=obj` 和 `--emit=exe` 复用 LLVM 后端并调用 clang。
+生产 C 后端已经从 Stage0 构建链路中移除。
 
 ## Aurex IR 与 LLVM 路线
 
@@ -57,7 +56,7 @@ IR 当前具有这些性质：
 - `Module` 持有 `TypeTable`、函数表和值表。
 - 全局 `const` 和 enum case 进入 `Module.constants`，由普通 `Value` 表达初始化式；
   LLVM 后端会把它们物化成只读 `global constant`，运行期引用再生成 load。
-- `Function` 显式记录源码名、ABI symbol、linkage、返回类型和参数签名。
+- `Function` 显式记录源码名、ABI symbol、linkage、调用约定、返回类型和参数签名。
 - `Linkage` 区分 `internal`、`export_c`、`extern_c`，LLVM lowering 可直接映射到符号可见性和外部声明。
 - 控制流由 basic block + terminator 表示，terminator 包含 `br`、`br_if` 和 `ret`。
 - 局部变量、参数 shadow copy 和可写 storage 先降为 `alloca/load/store`，后续可以做 mem2reg/SSA 构造。
@@ -73,14 +72,15 @@ AST + CheckedModule
   -> Aurex IR
   -> IR verifier
   -> mem2reg / CFG cleanup / 常量折叠
-  -> 后端选择：LLVM IR / 未来自研后端 / C reference backend
+  -> 后端选择：LLVM IR / 未来自研后端
   -> LLVM target machine 输出 asm/object/exe
 ```
 
-C 后端不会删除。它继续作为可读 reference backend、bootstrap 过渡路径和 C ABI
-接口验证工具存在；未来 `extern c` 和运行时库应优先走 Aurex IR 后端接口，同时保持
-`--emit=c` 用于差异对比。LLVM 只是当前第一个生产后端，不能把 LLVM 私有语义写回
-Aurex IR；自研后端后续应消费同一个 IR、verifier 和 ABI 描述。
+当前状态可以概括为：LLVM 主链路已经搭好，M0 正向样例、runtime 样例和
+selfhost smoke 入口都可以经 Stage0 的 Aurex IR -> LLVM IR -> clang 编译运行。
+还不能称为完整工业级后端的部分包括：独立 IR pass pipeline、mem2reg/CFG cleanup、
+优化级别控制、更完整 ABI 属性和未来自研后端代码生成。LLVM 只是当前第一个生产后端，
+不能把 LLVM 私有语义写回 Aurex IR；自研后端后续应消费同一个 IR、verifier 和 ABI 描述。
 
 ## CMake 组件边界
 
@@ -93,12 +93,11 @@ Aurex IR；自研后端后续应消费同一个 IR、verifier 和 ABI 描述。
 - `AurexIr.cmake` 定义 `m0_ir`。
 - `AurexLLVM.cmake` 定义 `m0_llvm`，集中发现 LLVM 并暴露 include/link 设置。
 - `AurexBackendLLVM.cmake` 定义 `m0_backend_llvm`。
-- `AurexCodegenC.cmake` 定义 `m0_codegen_c`。
 - `AurexDriver.cmake` 定义 `m0_driver`。
 - `AurexTools.cmake` 定义 `m0c`。
 - `AurexWarnings.cmake` 集中管理编译告警。
 
-依赖方向保持单向：base -> syntax/frontend -> sema -> ir/codegen/backend -> driver -> cli。
+依赖方向保持单向：base -> syntax/frontend -> sema -> ir/backend -> driver -> cli。
 新增目标时应优先放入对应组件文件，而不是把目标堆回根 CMake。
 
 ## 自举编译器边界
@@ -142,8 +141,8 @@ Stage1 已覆盖自举 smoke 所需的核心面：
 - struct/enum/const 输出、嵌套 struct literal、指针字段访问和字段赋值。
 - Stage2/Stage3 smoke 编译器输出 byte-for-byte 固定点检查。
 
-仍未完成的部分包括完整生产级 AST parser、完整语义分析、诊断质量、生产 C 后端迁移
-以及全量生产编译器自编译。当前 Stage1 的 import loader 只覆盖
+仍未完成的部分包括完整生产级 AST parser、完整语义分析、诊断质量、从 Stage1 C
+emitter 迁移到 Stage1 IR/LLVM 路线以及全量生产编译器自编译。当前 Stage1 的 import loader 只覆盖
 `module`/`import` 头部和 `selfhost/src` 风格的模块路径。相关状态以
 `docs/SELFHOST.md` 和 `tools/bootstrap_chain.sh` 为准。
 
@@ -162,8 +161,8 @@ make -C selfhost check
 
 ## 扩展约定
 
-- 新语言特性应先补生产 Stage0 的 parse/sema/codegen，再补 Stage1 支持。
+- 新语言特性应先补生产 Stage0 的 parse/sema/IR/LLVM lowering，再补 Stage1 支持。
 - Stage1 新能力必须进入 `selfhost/src/aurex/selfhost/smoke/` 或自举链路断言。
 - AST 保持语法层数据结构，语义结果继续放在 `CheckedModule` 边表。
 - import 相关行为必须覆盖 `tests/imports/` 语料。
-- C 后端改动需要同时考虑表达式求值顺序和生成 C 的可读性。
+- FFI 改动必须同时覆盖 Aurex IR verifier、LLVM lowering 和 runtime 链接测试。

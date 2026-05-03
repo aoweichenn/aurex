@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -104,22 +105,41 @@ void LlvmEmitter::declare_constants() {
 
 void LlvmEmitter::declare_functions() {
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
-        const Function& function = source_.functions[i];
-        std::vector<llvm::Type*> params;
-        params.reserve(function.signature_params.size());
-        for (const FunctionParam& param : function.signature_params) {
-            params.push_back(llvm_type(param.type));
-        }
-        llvm::FunctionType* function_type = llvm::FunctionType::get(llvm_type(function.return_type), params, false);
-        llvm::Function* llvm_function = llvm::Function::Create(
-            function_type,
-            function.linkage == Linkage::internal ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage,
-            function.symbol,
-            module_.get()
-        );
-        functions_[i] = llvm_function;
+        functions_[i] = declare_function(FunctionId {i}, source_.functions[i]);
     }
     declare_main_wrapper();
+}
+
+llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, const Function& function) {
+    std::vector<llvm::Type*> params;
+    params.reserve(function.signature_params.size());
+    for (const FunctionParam& param : function.signature_params) {
+        params.push_back(llvm_type(param.type));
+    }
+    llvm::FunctionType* function_type = llvm::FunctionType::get(llvm_type(function.return_type), params, false);
+
+    if (function.linkage == Linkage::extern_c) {
+        if (const auto found = extern_functions_.find(function.symbol); found != extern_functions_.end()) {
+            return found->second;
+        }
+        if (llvm::Function* existing = module_->getFunction(function.symbol); existing != nullptr) {
+            extern_functions_[function.symbol] = existing;
+            return existing;
+        }
+    }
+
+    llvm::Function* llvm_function = llvm::Function::Create(
+        function_type,
+        function.linkage == Linkage::internal ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage,
+        function.symbol,
+        module_.get()
+    );
+    llvm_function->setCallingConv(llvm::CallingConv::C);
+    llvm_function->addFnAttr("aurex.ir.fn_id", std::to_string(function_id.value));
+    if (function.linkage == Linkage::extern_c) {
+        extern_functions_[function.symbol] = llvm_function;
+    }
+    return llvm_function;
 }
 
 void LlvmEmitter::declare_main_wrapper() {

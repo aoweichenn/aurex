@@ -6,13 +6,13 @@ Version: M0V0.1.8
 
 Aurex M0 is the bootstrap core of Aurex. It is intentionally small: no type
 inference, no generics, no overloads, no hidden copies, and no implicit
-conversions. The C backend remains available, and Stage0 now also has an Aurex
-IR layer for the future LLVM backend.
+conversions. Stage0 now compiles through Aurex IR -> LLVM IR -> clang by
+default.
 
 The current production compiler is written in C++20 and is split into libraries:
 
 ```text
-source -> lexer -> tokens -> parser -> AST -> sema -> checked module -> Aurex IR / C emitter
+source -> lexer -> tokens -> parser -> AST -> sema -> checked module -> Aurex IR -> LLVM
 ```
 
 The lexer and parser are handwritten. No ANTLR, Flex, Bison, or parser
@@ -36,8 +36,7 @@ build/m0c
 ## 3. Compile A Program
 
 ```sh
-build/m0c examples/hello.ax -o build/hello.c
-cc build/hello.c -o build/hello
+build/m0c examples/hello.ax -o build/hello
 build/hello
 ```
 
@@ -58,11 +57,12 @@ build/m0c --dump-modules tests/positive/module_math.ax
 build/m0c --check examples/hello.ax
 build/m0c --emit=ast examples/hello.ax
 build/m0c --emit=ir examples/hello.ax
+build/m0c --emit=llvm-ir examples/hello.ax
 build/m0c --emit=check examples/hello.ax
-build/m0c --emit=c examples/hello.ax -o build/hello.c
 build/m0c --emit=asm examples/hello.ax -o build/hello.s
+build/m0c --emit=obj examples/hello.ax -o build/hello.o
 build/m0c --emit=exe examples/hello.ax -o build/hello
-build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
+build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
 ```
 
 Options:
@@ -72,38 +72,39 @@ Options:
 - `--dump-ast`: run lexer and parser, then print a stable AST dump.
 - `--dump-modules`: resolve imports and print loaded module names plus paths.
 - `--dump-ir`: run semantic analysis, lower to Aurex IR, and print the IR dump.
-- `--check`: run lexer, parser, and semantic analysis without emitting C.
+- `--check`: run lexer, parser, and semantic analysis without code generation.
 - `--emit=tokens`: same as `--dump-tokens`.
 - `--emit=ast`: same as `--dump-ast`.
 - `--emit=modules`: same as `--dump-modules`.
 - `--emit=ir`: same as `--dump-ir`.
+- `--emit=llvm-ir`: same as `--dump-llvm-ir`.
 - `--emit=check`: same as `--check`.
-- `--emit=c`: emit C. This is the default.
-- `--emit=asm`: emit temporary C, then call clang to produce assembly.
-- `--emit=exe`: emit temporary C, then call clang to produce a native executable.
-- `--clang path`: select the clang executable used by `--emit=asm` / `--emit=exe`.
+- `--emit=asm`: lower through LLVM and call clang to produce assembly.
+- `--emit=obj`: lower through LLVM and call clang to produce an object file.
+- `--emit=exe`: lower through LLVM and call clang to produce a native executable. This is the default.
+- `--clang path`: select the clang executable used for native output.
 - `--clang-arg arg`: pass one raw argument to clang; repeat as needed, for example
   `--clang-arg -O2`.
-- `--runtime-c path`: add an extra C runtime source to the clang link step; repeat
-  as needed.
-- `-o path`: write generated C to `path`.
+- `--runtime-c path`: add an extra C runtime source when producing executable
+  output; repeat as needed.
+- `-o path`: write the native output path.
 - `-I path`: add an import root. `import a.b;` searches for `a/b.ax` in the
   importing file's directory, then each `-I` root.
 
-`--emit=c` keeps the generated C available for comparison and debugging.
-`--emit=asm` and `--emit=exe` are the first clang-integrated path; they do not
-change the frontend, semantic analyzer, or C backend.
+`--emit=llvm-ir` prints the LLVM lowering result. Default output,
+`--emit=asm`, `--emit=obj`, and `--emit=exe` all run Aurex IR -> LLVM IR ->
+clang.
 
 ### Aurex IR Output
 
-`--emit=ir` prints Aurex's own typed CFG/SSA IR, not LLVM IR yet. It records
+`--emit=ir` prints Aurex's own typed CFG/SSA IR. It records
 function signatures, ABI symbols, linkage (`internal`, `export_c`, `extern_c`),
-basic blocks, terminators, typed values, memory slots, calls, field/index
-addresses, casts, and `phi` nodes for short-circuit values.
+calling convention, basic blocks, terminators, typed values, memory slots,
+calls, field/index addresses, casts, and `phi` nodes for short-circuit values.
 
-The planned LLVM backend should lower from Aurex IR instead of reverse
-engineering the C backend. The C backend remains the readable reference output,
-debug comparison path, and C ABI transition surface.
+LLVM and future native backends should lower from Aurex IR. The old Stage0 C
+backend has been removed from the production build; the selfhost Stage1
+compiler still emits C as its current fixed-point output.
 
 ## 5. Language Snapshot
 

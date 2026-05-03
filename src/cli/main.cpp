@@ -19,7 +19,7 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --dump-checked   run sema and print checked summary\n"
         << "  --dump-ir        lower to Aurex IR and print it\n"
         << "  --dump-llvm-ir   lower to LLVM IR and print it\n"
-        << "  --check          run lexer, parser, and sema without emitting C\n"
+        << "  --check          run lexer, parser, and sema without code generation\n"
         << "  --emit=tokens    same as --dump-tokens\n"
         << "  --emit=ast       same as --dump-ast\n"
         << "  --emit=modules   same as --dump-modules\n"
@@ -27,12 +27,12 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --emit=ir        same as --dump-ir\n"
         << "  --emit=llvm-ir   same as --dump-llvm-ir\n"
         << "  --emit=check     same as --check\n"
-        << "  --emit=c         emit C (default)\n"
         << "  --emit=asm       emit assembly through clang\n"
-        << "  --emit=exe       emit a native executable through clang\n"
+        << "  --emit=obj       emit an object file through clang\n"
+        << "  --emit=exe       emit a native executable through clang (default)\n"
         << "  --clang path     clang executable to use for asm/exe output\n"
         << "  --clang-arg arg  pass one raw argument to clang; repeat as needed\n"
-        << "  --runtime-c path add a C runtime source when linking asm/exe output\n"
+        << "  --runtime-c path add a C runtime source when linking executable output\n"
         << "  -I path          add an import search path\n";
 }
 
@@ -57,10 +57,10 @@ int main(const int argc, char** argv) {
             invocation.emit_kind = aurex::driver::EmitKind::llvm_ir;
         } else if (arg == "--check" || arg == "--emit=check") {
             invocation.emit_kind = aurex::driver::EmitKind::check;
-        } else if (arg == "--emit=c") {
-            invocation.emit_kind = aurex::driver::EmitKind::c;
         } else if (arg == "--emit=asm") {
             invocation.emit_kind = aurex::driver::EmitKind::assembly;
+        } else if (arg == "--emit=obj" || arg == "--emit=object") {
+            invocation.emit_kind = aurex::driver::EmitKind::object;
         } else if (arg == "--emit=exe") {
             invocation.emit_kind = aurex::driver::EmitKind::executable;
         } else if (arg == "--help" || arg == "-h") {

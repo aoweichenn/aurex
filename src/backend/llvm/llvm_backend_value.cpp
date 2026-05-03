@@ -269,6 +269,9 @@ llvm::Value* LlvmEmitter::emit_call(const Value& value) {
     } else {
         target = module_->getFunction(value.name);
     }
+    if (target == nullptr) {
+        return llvm::UndefValue::get(llvm_type(value.type));
+    }
     std::vector<llvm::Value*> args;
     args.reserve(value.args.size());
     for (const ValueId arg : value.args) {

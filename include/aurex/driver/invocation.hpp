@@ -14,15 +14,15 @@ enum class EmitKind {
     ir,
     llvm_ir,
     check,
-    c,
     assembly,
+    object,
     executable,
 };
 
 struct CompilerInvocation {
     std::filesystem::path input_path;
     std::filesystem::path output_path;
-    EmitKind emit_kind = EmitKind::c;
+    EmitKind emit_kind = EmitKind::executable;
     std::vector<std::filesystem::path> import_paths;
     std::string clang_path = "clang";
     std::vector<std::string> clang_args;

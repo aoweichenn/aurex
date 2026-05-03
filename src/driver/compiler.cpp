@@ -4,7 +4,6 @@
 #include "aurex/base/source.hpp"
 #include "aurex/base/text.hpp"
 #include "aurex/backend/llvm_backend.hpp"
-#include "aurex/codegen_c/c_emitter.hpp"
 #include "aurex/driver/module_loader.hpp"
 #include "aurex/driver/native_toolchain.hpp"
 #include "aurex/ir/ir_dump.hpp"
@@ -45,23 +44,10 @@ namespace {
     return base::Result<void>::ok();
 }
 
-[[nodiscard]] base::Result<std::filesystem::path> write_temporary_c_file(const std::string_view text) {
-    const std::filesystem::path path =
-        std::filesystem::temp_directory_path() /
-        ("aurex_m0_" +
-         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
-         ".c");
-    auto write_result = write_file(path, text);
-    if (!write_result) {
-        return base::Result<std::filesystem::path>::fail(write_result.error());
-    }
-    return base::Result<std::filesystem::path>::ok(path);
-}
-
 [[nodiscard]] base::Result<std::filesystem::path> write_temporary_llvm_file(const std::string_view text) {
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() /
-        ("aurex_m0_" +
+        ("aurex_m0_llvm_" +
          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
          ".ll");
     auto write_result = write_file(path, text);
@@ -184,7 +170,9 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         return base::Result<void>::ok();
     }
 
-    if (invocation.emit_kind == EmitKind::assembly || invocation.emit_kind == EmitKind::executable) {
+    if (invocation.emit_kind == EmitKind::assembly ||
+        invocation.emit_kind == EmitKind::object ||
+        invocation.emit_kind == EmitKind::executable) {
         if (invocation.output_path.empty()) {
             return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
         }
@@ -210,6 +198,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         request.output_path = invocation.output_path;
         request.runtime_c_paths = invocation.runtime_c_paths;
         request.emit_kind = invocation.emit_kind;
+        request.input_is_llvm_ir = true;
         auto native_result = invoke_clang(request);
         std::error_code remove_error;
         std::filesystem::remove(temp_ir_result.value(), remove_error);
@@ -219,49 +208,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         return base::Result<void>::ok();
     }
 
-    codegen_c::CEmitter emitter(ast_result.value(), checked_result.value());
-    auto c_result = emitter.emit();
-    if (!c_result) {
-        print_diagnostics(sources, diagnostics);
-        return base::Result<void>::fail(c_result.error());
-    }
-
-    if (invocation.emit_kind == EmitKind::c && invocation.output_path.empty()) {
-        std::cout << c_result.value().text;
-        return base::Result<void>::ok();
-    }
-
-    if (invocation.emit_kind == EmitKind::c) {
-        auto write_result = write_file(invocation.output_path, c_result.value().text);
-        if (!write_result) {
-            return write_result;
-        }
-        return base::Result<void>::ok();
-    }
-
-    if (invocation.output_path.empty()) {
-        return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
-    }
-
-    auto temp_c_result = write_temporary_c_file(c_result.value().text);
-    if (!temp_c_result) {
-        return base::Result<void>::fail(temp_c_result.error());
-    }
-
-    NativeCompileRequest request;
-    request.clang_path = invocation.clang_path;
-    request.clang_args = invocation.clang_args;
-    request.input_path = temp_c_result.value();
-    request.output_path = invocation.output_path;
-    request.runtime_c_paths = invocation.runtime_c_paths;
-    request.emit_kind = invocation.emit_kind;
-    auto native_result = invoke_clang(request);
-    std::error_code remove_error;
-    std::filesystem::remove(temp_c_result.value(), remove_error);
-    if (!native_result) {
-        return native_result;
-    }
-    return base::Result<void>::ok();
+    return base::Result<void>::fail({base::ErrorCode::codegen_error, "unsupported emission mode"});
 }
 
 } // namespace aurex::driver

@@ -23,8 +23,9 @@ source.ax
   -> AstModule
   -> SemanticAnalyzer
   -> CheckedModule
-  -> CEmitter
-  -> output.c / clang -> output.s or executable
+  -> Aurex IR
+  -> LLVM IR
+  -> clang -> output.s / output.o / executable
 ```
 
 The parser never depends on the lexer class. It only consumes
@@ -61,18 +62,13 @@ not depend on parser internals.
 - owns `TypeTable`, `SymbolTable`, and `CheckedModule`;
 - records side tables such as expression types.
 
-`m0_codegen_c`
-
-- emits C from AST plus `CheckedModule`;
-- should not guess types or resolve names.
-
 `m0_ir`
 
 - lowers AST plus `CheckedModule` into Aurex's own IR;
 - represents control flow with typed values, basic blocks, terminators, and
   `phi`;
 - preserves `extern_c` / `export_c` linkage and ABI symbols;
-- is the intended input for LLVM IR lowering, independent of C backend text.
+- is the intended input for LLVM IR lowering and future native backends.
 
 `m0_driver`
 
@@ -82,13 +78,13 @@ not depend on parser internals.
 - merges imported ASTs into one Stage0 checked module with ID remapping and
   per-item module ownership.
 - lets sema resolve top-level names through the current module and its direct
-  imports, while codegen emits module-qualified C symbols.
+  imports, while IR lowering emits module-qualified ABI symbols.
 - validates that imported files declare the module path they were imported as;
 - reports missing imports and module-name mismatches with source ranges.
 - detects cyclic imports while loading modules.
 - exposes `--dump-modules` for inspecting the resolved module set.
-- invokes clang for `--emit=asm` and `--emit=exe`; `--emit=c` still only writes
-  generated C for comparison and debugging.
+- invokes clang for default native output, `--emit=asm`, `--emit=obj`, and
+  `--emit=exe`.
 
 `m0c`
 
@@ -153,33 +149,40 @@ Current choices:
 
 - functions record source name, ABI symbol, linkage, return type, and parameter
   signature;
+- functions explicitly record ABI calling convention; `extern c` and
+  `export c` use the C ABI path;
 - locals remain explicit `alloca/load/store` slots until a later mem2reg pass;
 - field and index operations lower to `field_addr` / `index_addr`, ready for
   LLVM GEP lowering;
 - calls keep both final symbol text and an internal function id when resolvable;
 - `&&` / `||` lower to control flow plus `phi`, so short-circuiting is explicit.
 
-Recommended next steps are an IR verifier, mem2reg, CFG cleanup, LLVM IR
-lowering, and C ABI tests for `extern c`, `export c`, and runtime calls.
+Recommended next steps are mem2reg, CFG cleanup, pass management, deeper LLVM
+target configuration, and ABI tests for `extern c`, `export c`, and runtime
+calls.
 
-## 8. C Backend Model
+## 8. LLVM Backend And FFI
 
-The C backend maps M0 types to stable C spellings:
+The Stage0 production backend is now LLVM-only: Aurex IR lowers to LLVM IR
+text, and the driver invokes clang to produce assembly, object files, or native
+executables. `extern c` / `export c` flow through ABI symbols, linkage, and
+calling convention in IR.
 
-- `i32` -> `int32_t`
-- `u8` -> `uint8_t`
-- `usize` -> `size_t`
-- `isize` -> `ptrdiff_t`
-- `*mut T` -> `T*`
-- `*const T` -> `const T*`
-- `[N]T` -> `T[N]`
+Current coverage:
 
-Known future work:
+- positive M0 samples run through default native output;
+- `--emit=llvm-ir` exposes the LLVM lowering result;
+- `--emit=asm`, `--emit=obj`, and `--emit=exe` all consume LLVM output;
+- repeated same-signature `extern c` declarations across modules merge to one
+  LLVM declaration;
+- runtime C sources can be linked with `--runtime-c`.
 
-- keep `--emit=c` as a reference backend;
-- generate temporaries for guaranteed left-to-right evaluation;
-- normalize ABI names and exported symbols;
-- split expression emission into value emission and statement lowering.
+Remaining work:
+
+- optimization pipeline and pass management;
+- tighter runtime-linking rules for object/assembly modes;
+- fuller ABI attributes and target triple/CPU/feature control;
+- future custom native backends consuming the same IR/verifier/ABI contract.
 
 ## 9. Self-Hosting Design
 

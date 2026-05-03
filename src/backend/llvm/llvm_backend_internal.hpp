@@ -60,6 +60,7 @@ private:
     void declare_records();
     void declare_constants();
     void declare_functions();
+    [[nodiscard]] llvm::Function* declare_function(FunctionId function_id, const Function& function);
     void declare_main_wrapper();
     void emit_function(FunctionId function_id, const Function& function);
     void emit_block_phi_nodes(const Function& function, base::u32 block_index);
@@ -102,6 +103,7 @@ private:
     std::unordered_map<base::u32, llvm::StructType*> records_;
     std::unordered_map<base::u32, llvm::GlobalVariable*> constants_;
     std::unordered_map<base::u32, llvm::Function*> functions_;
+    std::unordered_map<std::string, llvm::Function*> extern_functions_;
     std::unordered_map<base::u32, llvm::BasicBlock*> blocks_;
     std::unordered_map<base::u32, llvm::Value*> values_;
     std::unordered_map<base::u32, llvm::PHINode*> pending_phis_;

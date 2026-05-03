@@ -26,15 +26,31 @@ namespace {
 } // namespace
 
 base::Result<void> invoke_clang(const NativeCompileRequest& request) {
+    if (!request.runtime_c_paths.empty() && request.emit_kind != EmitKind::executable) {
+        return base::Result<void>::fail({base::ErrorCode::codegen_error, "--runtime-c is only supported for executable output"});
+    }
+
     std::vector<std::string> args;
     args.push_back(request.clang_path.empty() ? "clang" : request.clang_path);
+    if (request.input_is_llvm_ir) {
+        args.push_back("-x");
+        args.push_back("ir");
+    }
     args.push_back(request.input_path.string());
-    for (const std::filesystem::path& runtime_path : request.runtime_c_paths) {
-        args.push_back(runtime_path.string());
+    if (!request.runtime_c_paths.empty()) {
+        if (request.input_is_llvm_ir) {
+            args.push_back("-x");
+            args.push_back("c");
+        }
+        for (const std::filesystem::path& runtime_path : request.runtime_c_paths) {
+            args.push_back(runtime_path.string());
+        }
     }
     args.insert(args.end(), request.clang_args.begin(), request.clang_args.end());
     if (request.emit_kind == EmitKind::assembly) {
         args.push_back("-S");
+    } else if (request.emit_kind == EmitKind::object) {
+        args.push_back("-c");
     }
     args.push_back("-o");
     args.push_back(request.output_path.string());

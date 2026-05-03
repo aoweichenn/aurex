@@ -39,35 +39,32 @@ all: $(PROGRAMS)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/m0c_seed.c: $(SEED_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(SEED_SRC) -o $@
+$(BUILD_DIR)/m0c_seed: $(SEED_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(SEED_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/m0c_stage1.c: $(STAGE1_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(STAGE1_SRC) -o $@
+$(BUILD_DIR)/m0c_stage1: $(STAGE1_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/lexer_smoke.c: $(LEXER_SMOKE_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(LEXER_SMOKE_SRC) -o $@
+$(BUILD_DIR)/lexer_smoke: $(LEXER_SMOKE_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_SMOKE_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/lexer_ranges.c: $(LEXER_RANGES_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(LEXER_RANGES_SRC) -o $@
+$(BUILD_DIR)/lexer_ranges: $(LEXER_RANGES_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_RANGES_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/parser_smoke.c: $(PARSER_SMOKE_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(PARSER_SMOKE_SRC) -o $@
+$(BUILD_DIR)/parser_smoke: $(PARSER_SMOKE_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(PARSER_SMOKE_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/stage1_lang.c: $(STAGE1_LANG_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(STAGE1_LANG_SRC) -o $@
+$(BUILD_DIR)/stage1_lang: $(STAGE1_LANG_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_LANG_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/stage1_core.c: $(STAGE1_CORE_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(STAGE1_CORE_SRC) -o $@
+$(BUILD_DIR)/stage1_core: $(STAGE1_CORE_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_CORE_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/lexer_dump.c: $(LEXER_DUMP_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(LEXER_DUMP_SRC) -o $@
+$(BUILD_DIR)/lexer_dump: $(LEXER_DUMP_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_DUMP_SRC) --runtime-c $(RUNTIME) -o $@
 
-$(BUILD_DIR)/lexer_file.c: $(LEXER_FILE_SRC) $(MODULES) | $(BUILD_DIR)
-	$(M0C) $(IMPORT_FLAGS) $(LEXER_FILE_SRC) -o $@
-
-$(BUILD_DIR)/%: $(BUILD_DIR)/%.c $(RUNTIME)
-	$(CC) $< $(RUNTIME) -o $@
+$(BUILD_DIR)/lexer_file: $(LEXER_FILE_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(LEXER_FILE_SRC) --runtime-c $(RUNTIME) -o $@
 
 check: all
 	$(BUILD_DIR)/m0c_seed

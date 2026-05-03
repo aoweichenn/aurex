@@ -4,16 +4,14 @@ Current baseline: **M0V0.1.8**.
 
 Aurex M0 is a small bootstrap compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
-Stage0 now has an Aurex IR layer before the long-term LLVM path; the C backend
-is still available for comparison and bootstrap continuity.
+Stage0 now compiles through Aurex IR -> LLVM IR -> clang by default.
 
 ## Quick Start
 
 ```sh
 cmake -S . -B build
 cmake --build build -j
-build/m0c examples/hello.ax -o build/hello.c
-cc build/hello.c -o build/hello
+build/m0c examples/hello.ax -o build/hello
 build/hello
 ```
 
@@ -26,19 +24,19 @@ hello from Aurex M0
 Stage0 now resolves imports:
 
 ```sh
-build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
+build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
 ```
 
-Stage0 can also hand the generated C to clang directly:
+Stage0 can also produce assembly and object files through clang:
 
 ```sh
 build/m0c --emit=asm examples/hello.ax -o build/hello.s
+build/m0c --emit=obj examples/hello.ax -o build/hello.o
 build/m0c --emit=exe examples/hello.ax -o build/hello
 ```
 
-`--emit=c` remains the default so generated C can still be inspected and
-compared. `--clang <path>` selects a clang binary, and repeated
-`--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
+`--emit=exe` is the default. `--clang <path>` selects a clang binary, and
+repeated `--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
 
 The IR path is visible with:
 
@@ -48,9 +46,9 @@ build/m0c --emit=llvm-ir examples/hello.ax
 ```
 
 `--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
-LLVM IR and prints the result. Native output (`--emit=asm` / `--emit=exe`) now
-runs Aurex IR -> LLVM IR -> clang, while `--emit=c` stays as the readable
-reference backend for comparison and bootstrap continuity.
+LLVM IR and prints the result. Native output runs Aurex IR -> LLVM IR -> clang.
+The old Stage0 C backend has been removed from the production build; the
+selfhost Stage1 compiler still emits C as its current fixed-point output.
 
 ## Quality Gates
 

@@ -16,6 +16,7 @@ struct NativeCompileRequest {
     std::filesystem::path output_path;
     std::vector<std::filesystem::path> runtime_c_paths;
     EmitKind emit_kind = EmitKind::executable;
+    bool input_is_llvm_ir = false;
 };
 
 [[nodiscard]] base::Result<void> invoke_clang(const NativeCompileRequest& request);

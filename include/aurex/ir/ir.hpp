@@ -56,6 +56,11 @@ enum class Linkage {
     extern_c,
 };
 
+enum class AbiCallConv {
+    aurex,
+    c,
+};
+
 enum class ValueKind {
     param,
     integer_literal,
@@ -198,6 +203,7 @@ struct Function {
     std::string name;
     std::string symbol;
     Linkage linkage = Linkage::internal;
+    AbiCallConv call_conv = AbiCallConv::aurex;
     sema::TypeHandle return_type = sema::invalid_type_handle;
     std::vector<FunctionParam> signature_params;
     std::vector<ValueId> param_values;

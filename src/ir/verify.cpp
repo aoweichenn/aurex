@@ -131,7 +131,13 @@ private:
     }
 
     void verify_function(const FunctionId function_id, const Function& function) {
-        static_cast<void>(function_id);
+        verify_function_symbol(function_id, function);
+        if (function.linkage == Linkage::extern_c && function.call_conv != AbiCallConv::c) {
+            fail("extern function @" + function.symbol + " must use C ABI");
+        }
+        if (function.linkage == Linkage::export_c && function.call_conv != AbiCallConv::c) {
+            fail("exported function @" + function.symbol + " must use C ABI");
+        }
         if (function.linkage != Linkage::extern_c && function.blocks.empty()) {
             fail("function @" + function.symbol + " has no blocks");
         }
@@ -154,6 +160,30 @@ private:
 
         for (base::u32 block_index = 0; block_index < function.blocks.size(); ++block_index) {
             verify_block(function, BlockId {block_index}, function.blocks[block_index]);
+        }
+    }
+
+    void verify_function_symbol(const FunctionId function_id, const Function& function) {
+        if (function.symbol.empty()) {
+            fail("function has an empty ABI symbol");
+            return;
+        }
+        for (base::u32 i = 0; i < module_.functions.size(); ++i) {
+            if (i == function_id.value) {
+                continue;
+            }
+            const Function& other = module_.functions[i];
+            if (other.symbol != function.symbol) {
+                continue;
+            }
+            if (function.linkage != Linkage::extern_c || other.linkage != Linkage::extern_c) {
+                fail("duplicate non-extern function ABI symbol @" + function.symbol);
+                return;
+            }
+            if (!same_signature(function, other)) {
+                fail("extern function @" + function.symbol + " has inconsistent declarations");
+                return;
+            }
         }
     }
 
@@ -267,9 +297,7 @@ private:
     void verify_call(const Value& value) {
         verify_type(value.type, "call result");
         if (!is_valid(value.call_target)) {
-            if (value.name.empty()) {
-                fail("call has no target symbol");
-            }
+            fail(value.name.empty() ? "call has no target symbol" : "call target @" + value.name + " is unresolved");
             return;
         }
         if (value.call_target.value >= module_.functions.size()) {
@@ -287,6 +315,21 @@ private:
         if (!module_.types.same(value.type, target.return_type)) {
             fail("call to @" + target.symbol + " result type mismatch");
         }
+    }
+
+    [[nodiscard]] bool same_signature(const Function& lhs, const Function& rhs) const noexcept {
+        if (!module_.types.same(lhs.return_type, rhs.return_type)) {
+            return false;
+        }
+        if (lhs.signature_params.size() != rhs.signature_params.size()) {
+            return false;
+        }
+        for (base::usize i = 0; i < lhs.signature_params.size(); ++i) {
+            if (!module_.types.same(lhs.signature_params[i].type, rhs.signature_params[i].type)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     void verify_constant_ref(const Value& value) {

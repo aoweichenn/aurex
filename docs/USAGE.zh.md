@@ -4,7 +4,7 @@
 
 ## 1. M0 是什么
 
-Aurex M0 是 Aurex 语言的最小自举核心。它刻意保持小而透明：没有类型推导、没有泛型、没有重载、没有隐藏拷贝、没有隐式类型转换。当前仍保留 C 后端，同时已经新增 Aurex IR 层，作为后续 LLVM 后端的输入。
+Aurex M0 是 Aurex 语言的最小自举核心。它刻意保持小而透明：没有类型推导、没有泛型、没有重载、没有隐藏拷贝、没有隐式类型转换。当前 Stage0 主路径已经切到 Aurex IR -> LLVM IR -> clang，不再通过生产 C 后端生成本机程序。
 
 当前生产编译器用 C++20 编写，分层如下：
 
@@ -39,8 +39,7 @@ build/m0c
 ## 3. 编译一个程序
 
 ```sh
-build/m0c examples/hello.ax -o build/hello.c
-cc build/hello.c -o build/hello
+build/m0c examples/hello.ax -o build/hello
 build/hello
 ```
 
@@ -63,10 +62,10 @@ build/m0c --emit=ast examples/hello.ax
 build/m0c --emit=ir examples/hello.ax
 build/m0c --emit=llvm-ir examples/hello.ax
 build/m0c --emit=check examples/hello.ax
-build/m0c --emit=c examples/hello.ax -o build/hello.c
 build/m0c --emit=asm examples/hello.ax -o build/hello.s
+build/m0c --emit=obj examples/hello.ax -o build/hello.o
 build/m0c --emit=exe examples/hello.ax -o build/hello
-build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
+build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
 ```
 
 参数说明：
@@ -77,32 +76,31 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 - `--dump-modules`：解析 import，并输出已加载模块名和路径。
 - `--dump-ir`：运行到语义分析后，降到 Aurex IR 并输出 IR dump。
 - `--dump-llvm-ir`：把 Aurex IR 再 lowering 成 LLVM IR 并输出。
-- `--check`：运行 lexer、parser、语义分析，但不生成 C。
+- `--check`：运行 lexer、parser、语义分析，但不生成代码。
 - `--emit=tokens`：等价于 `--dump-tokens`。
 - `--emit=ast`：等价于 `--dump-ast`。
 - `--emit=modules`：等价于 `--dump-modules`。
 - `--emit=ir`：等价于 `--dump-ir`。
 - `--emit=llvm-ir`：等价于 `--dump-llvm-ir`。
 - `--emit=check`：等价于 `--check`。
-- `--emit=c`：生成 C，这是默认行为。
 - `--emit=asm`：走 Aurex IR -> LLVM 后端生成临时 LLVM IR，再调用 clang 输出汇编。
-- `--emit=exe`：走 Aurex IR -> LLVM 后端生成临时 LLVM IR，再调用 clang 输出本机可执行文件。
-- `--clang path`：指定 `--emit=asm` / `--emit=exe` 使用的 clang 可执行文件。
+- `--emit=obj`：走 Aurex IR -> LLVM 后端生成临时 LLVM IR，再调用 clang 输出 object 文件。
+- `--emit=exe`：走 Aurex IR -> LLVM 后端生成临时 LLVM IR，再调用 clang 输出本机可执行文件。这是默认行为。
+- `--clang path`：指定本机输出使用的 clang 可执行文件。
 - `--clang-arg arg`：向 clang 透传一个参数，可重复使用，例如 `--clang-arg -O2`。
-- `--runtime-c path`：向 clang 链接额外 C runtime 源文件，可重复使用。
-- `-o path`：把生成的 C 写入指定路径。
+- `--runtime-c path`：在生成可执行文件时向 clang 链接额外 C runtime 源文件，可重复使用。
+- `-o path`：写入本机输出文件；默认/`--emit=exe` 下是可执行文件。
 - `-I path`：增加 import 搜索根。`import a.b;` 会查找 `a/b.ax`，先查导入者所在目录，再查每个 `-I` 路径。
 
-`--emit=c` 会保留完整 C 输出，适合对比和调试；`--emit=llvm-ir` 可以直接看
-LLVM lowering 结果；`--emit=asm` / `--emit=exe` 现在走 Aurex IR -> LLVM IR ->
-clang 路线。
+`--emit=llvm-ir` 可以直接看 LLVM lowering 结果；默认输出、`--emit=asm`、
+`--emit=obj` 和 `--emit=exe` 都走 Aurex IR -> LLVM IR -> clang 路线。
 
 ### Aurex IR 输出
 
 `--emit=ir` 输出的是 Aurex 自有中间代码，不是 LLVM IR。`--emit=llvm-ir`
 会继续把它 lowering 成 LLVM IR。当前 IR 已经显式记录：
 
-- 函数签名、ABI symbol 和 linkage：`internal`、`export_c`、`extern_c`。
+- 函数签名、ABI symbol、调用约定和 linkage：`internal`、`export_c`、`extern_c`。
 - basic block、`br`、`br_if`、`ret` terminator。
 - typed value、`alloca/load/store`、函数调用、聚合值、cast。
 - `field_addr` / `index_addr`，后续可直接映射到 LLVM GEP。
@@ -116,8 +114,9 @@ clang 路线。
 build/m0c --emit=ir examples/hello.ax
 ```
 
-后续 LLVM 后端和未来自研后端都应从 Aurex IR lowering，而不是从 C 后端反推。
-C 后端继续作为可读参考输出、调试对比路径和 C ABI 过渡接口保留。
+LLVM 后端和未来自研后端都应从 Aurex IR lowering。Stage0 生产 C 后端已经从
+构建链路中移除；`selfhost/` 中的 Stage1 仍会生成 C，这是当前自举固定点
+验证的输出协议，不是 Stage0 的后端。
 
 ## 5. 当前语言能力
 
@@ -190,7 +189,7 @@ M0V0.1.8 已经检查：
 
 仍需后续补强的工业级规则：
 
-- 所有复杂表达式在 C 后端中的严格左到右求值顺序
+- IR pass 中更系统的求值顺序、临时值和副作用建模
 - 对带副作用的函数实参生成临时变量
 - 完整常量求值
 - 模块 visibility/export 规则和命名空间限定
@@ -241,7 +240,7 @@ tools/run_tests.sh
 tools/bench.py
 ```
 
-脚本会生成一个合成 M0 源文件，并测量 token dump、AST dump、C emission 的墙钟时间。这是轻量性能烟测，不是严格统计 benchmark。
+脚本会生成一个合成 M0 源文件，并测量 token dump、AST dump、Aurex IR、LLVM IR 和 native 输出的墙钟时间。这是轻量性能烟测，不是严格统计 benchmark。
 
 ## 9. 自举与 selfhost
 
@@ -280,6 +279,6 @@ make -C selfhost check
 手动编译 selfhost 源码时，需要传入 selfhost import root：
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax -o build/lexer_file.c
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax -o build/parser_smoke.c
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax --runtime-c selfhost/runtime/runtime.c -o build/lexer_file
+build/m0c -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax --runtime-c selfhost/runtime/runtime.c -o build/parser_smoke
 ```

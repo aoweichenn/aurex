@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build"
 M0C="${BUILD_DIR}/m0c"
 LEXER_FILE="${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax"
-LEXER_C="${BUILD_DIR}/lexer_file.c"
 LEXER_BIN="${BUILD_DIR}/lexer_file"
 COMPARE_DIR="${BUILD_DIR}/selfhost_lexer_compare"
 SELFHOST_IMPORT_FLAGS=(-I "${ROOT}/selfhost/src")
@@ -13,8 +12,7 @@ SELFHOST_IMPORT_FLAGS=(-I "${ROOT}/selfhost/src")
 cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
 cmake --build "${BUILD_DIR}" -j >/dev/null
 
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_FILE}" -o "${LEXER_C}"
-cc "${LEXER_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_BIN}"
+"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_FILE}" --runtime-c "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_BIN}"
 
 rm -rf "${COMPARE_DIR}"
 mkdir -p "${COMPARE_DIR}"

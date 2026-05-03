@@ -29,6 +29,14 @@ namespace {
     return "internal";
 }
 
+[[nodiscard]] std::string call_conv_name(const AbiCallConv call_conv) {
+    switch (call_conv) {
+    case AbiCallConv::aurex: return "aurex";
+    case AbiCallConv::c: return "c";
+    }
+    return "aurex";
+}
+
 [[nodiscard]] std::string unary_name(const UnaryOp op) {
     switch (op) {
     case UnaryOp::logical_not: return "not";
@@ -219,7 +227,8 @@ std::string dump_module(const Module& module) {
             out << param.name << ": " << module.types.display_name(param.type);
         }
         out << ") @" << function.symbol
-            << " linkage(" << linkage_name(function.linkage) << ") -> "
+            << " linkage(" << linkage_name(function.linkage) << ")"
+            << " abi(" << call_conv_name(function.call_conv) << ") -> "
             << module.types.display_name(function.return_type) << " {\n";
         if (!function.param_values.empty()) {
             out << "  params";

@@ -2,7 +2,7 @@
 """Small performance smoke benchmark for Aurex M0V0.1.8.
 
 This is not a statistically rigorous benchmark suite. It is a repeatable
-engineering smoke test that catches obvious regressions in lexer/parser/codegen
+engineering smoke test that catches obvious regressions in lexer/parser/IR/native
 throughput while keeping the repository dependency-free.
 """
 
@@ -58,14 +58,18 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = pathlib.Path(tmp)
         source = tmpdir / "bench.ax"
-        output = tmpdir / "bench.c"
+        output = tmpdir / "bench"
         source.write_text(make_source(80), encoding="utf-8")
         token_time = run([str(M0C), "--dump-tokens", str(source)])
         ast_time = run([str(M0C), "--dump-ast", str(source)])
-        c_time = run([str(M0C), str(source), "-o", str(output)])
+        ir_time = run([str(M0C), "--emit=ir", str(source)])
+        llvm_ir_time = run([str(M0C), "--emit=llvm-ir", str(source)])
+        native_time = run([str(M0C), str(source), "-o", str(output)])
         print(f"tokens: {token_time:.4f}s")
         print(f"ast:    {ast_time:.4f}s")
-        print(f"c:      {c_time:.4f}s")
+        print(f"ir:     {ir_time:.4f}s")
+        print(f"llvm:   {llvm_ir_time:.4f}s")
+        print(f"native: {native_time:.4f}s")
 
 
 if __name__ == "__main__":

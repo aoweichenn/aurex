@@ -15,6 +15,7 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --help | grep -q -- '--emit=ir'
 "${M0C}" --help | grep -q -- '--emit=llvm-ir'
 "${M0C}" --help | grep -q -- '--emit=asm'
+"${M0C}" --help | grep -q -- '--emit=obj'
 "${M0C}" --help | grep -q -- '--emit=exe'
 "${M0C}" --help | grep -q -- '--dump-modules'
 "${M0C}" --check "${ROOT}/examples/hello.ax"
@@ -42,7 +43,7 @@ grep -q 'extern_block' /tmp/aurex_ast.txt
 grep -q 'checked_module' /tmp/aurex_checked.txt
 grep -q 'aurex_ir v0' /tmp/aurex_ir_hello.txt
 grep -q 'define i32 @main' /tmp/aurex_llvm_ir_hello.ll
-grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) -> i32' /tmp/aurex_ir_hello.txt
+grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' /tmp/aurex_ir_hello.txt
 grep -q 'call puts' /tmp/aurex_ir_hello.txt
 grep -q 'phi \[' /tmp/aurex_ir_runtime_text.txt
 grep -q 'usize = cast' /tmp/aurex_ir_runtime_text.txt
@@ -58,12 +59,13 @@ grep -q 'aurex.selfhost.parser.types' /tmp/aurex_selfhost_parser_modules.txt
 grep -q 'aurex.selfhost.lexer.core' /tmp/aurex_selfhost_parser_modules.txt
 diff -u "${ROOT}/tests/golden/hello.tokens" /tmp/aurex_tokens.txt
 
-"${M0C}" "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.c"
-cc "${BUILD_DIR}/hello.c" -o "${BUILD_DIR}/hello"
+"${M0C}" "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello"
 HELLO_OUT="$("${BUILD_DIR}/hello")"
 test "${HELLO_OUT}" = "hello from Aurex M0"
 "${M0C}" --emit=asm "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.s"
 test -s "${BUILD_DIR}/hello.s"
+"${M0C}" --emit=obj "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.o"
+test -s "${BUILD_DIR}/hello.o"
 "${M0C}" --emit=exe "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.direct"
 HELLO_DIRECT_OUT="$("${BUILD_DIR}/hello.direct")"
 test "${HELLO_DIRECT_OUT}" = "hello from Aurex M0"
@@ -77,10 +79,8 @@ for src in "${ROOT}"/tests/positive/*.ax; do
             continue
             ;;
     esac
-    out="${BUILD_DIR}/$(basename "${src}" .ax).c"
     bin="${BUILD_DIR}/$(basename "${src}" .ax)"
-    "${M0C}" "${src}" -o "${out}"
-    cc "${out}" -o "${bin}"
+    "${M0C}" "${src}" -o "${bin}"
     case "$(basename "${src}" .ax)" in
         condition_regression|pointer_ops)
             "${bin}" >/dev/null
@@ -92,50 +92,47 @@ for src in "${ROOT}"/tests/positive/*.ax; do
 done
 
 for src in "${ROOT}"/tests/positive/runtime_*.ax; do
-    out="${BUILD_DIR}/$(basename "${src}" .ax).c"
     bin="${BUILD_DIR}/$(basename "${src}" .ax)"
     direct="${BUILD_DIR}/$(basename "${src}" .ax).direct"
-    "${M0C}" -I "${ROOT}" "${src}" -o "${out}"
-    cc "${out}" -o "${bin}"
+    "${M0C}" -I "${ROOT}" "${src}" -o "${bin}"
     "${bin}" >/dev/null
     "${M0C}" --emit=exe -I "${ROOT}" "${src}" -o "${direct}"
     "${direct}" >/dev/null
 done
 
-"${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/import_path.ax" -o "${BUILD_DIR}/import_path.c"
-cc "${BUILD_DIR}/import_path.c" -o "${BUILD_DIR}/import_path"
+"${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/import_path.ax" -o "${BUILD_DIR}/import_path"
 "${BUILD_DIR}/import_path" >/dev/null
 
-"${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/module_name_collision.ax" -o "${BUILD_DIR}/module_name_collision.c"
-grep -q 'm0_module_name_collision_helper' "${BUILD_DIR}/module_name_collision.c"
-grep -q 'm0_collide_a_helper' "${BUILD_DIR}/module_name_collision.c"
-cc "${BUILD_DIR}/module_name_collision.c" -o "${BUILD_DIR}/module_name_collision"
+"${M0C}" -I "${ROOT}/tests/imports" --emit=llvm-ir "${ROOT}/tests/positive/module_name_collision.ax" >"${BUILD_DIR}/module_name_collision.ll"
+grep -q '@m0_module_name_collision_helper' "${BUILD_DIR}/module_name_collision.ll"
+grep -q '@m0_collide_a_helper' "${BUILD_DIR}/module_name_collision.ll"
+"${M0C}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/module_name_collision.ax" -o "${BUILD_DIR}/module_name_collision"
 "${BUILD_DIR}/module_name_collision" >/dev/null
 
 for src in "${ROOT}"/tests/negative/*.ax; do
     if [ "$(basename "${src}" .ax)" = "module_name_mismatch" ]; then
-        if "${M0C}" -I "${ROOT}/tests/imports" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
+        if "${M0C}" -I "${ROOT}/tests/imports" --check "${src}" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
             echo "expected semantic failure: ${src}" >&2
             exit 1
         fi
         continue
     fi
     if [ "$(basename "${src}" .ax)" = "cyclic_import" ]; then
-        if "${M0C}" -I "${ROOT}/tests/imports" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
+        if "${M0C}" -I "${ROOT}/tests/imports" --check "${src}" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
             echo "expected semantic failure: ${src}" >&2
             exit 1
         fi
         continue
     fi
     if [ "$(basename "${src}" .ax)" = "ambiguous_import_name" ]; then
-        if "${M0C}" -I "${ROOT}/tests/imports" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
+        if "${M0C}" -I "${ROOT}/tests/imports" --check "${src}" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
             echo "expected semantic failure: ${src}" >&2
             exit 1
         fi
         grep -q 'ambiguous function name' /tmp/aurex_negative.err
         continue
     fi
-    if "${M0C}" "${src}" -o "${BUILD_DIR}/negative.c" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
+    if "${M0C}" --check "${src}" >/tmp/aurex_negative.out 2>/tmp/aurex_negative.err; then
         echo "expected semantic failure: ${src}" >&2
         exit 1
     fi

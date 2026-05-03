@@ -33,14 +33,14 @@ cmake -S . -B build -DLLVM_DIR=/path/to/lib/cmake/llvm
 编译器可执行文件是：
 
 ```sh
-build/m0c
+build/bin/aurexc
 ```
 
 ## 3. 编译一个程序
 
 ```sh
-build/m0c examples/hello.ax -o build/hello
-build/hello
+build/bin/aurexc examples/hello.ax -o build/tests/hello
+build/tests/hello
 ```
 
 预期输出：
@@ -52,20 +52,20 @@ hello from Aurex M0
 ## 4. CLI 命令
 
 ```sh
-build/m0c --help
-build/m0c --version
-build/m0c --dump-tokens examples/hello.ax
-build/m0c --dump-ast examples/hello.ax
-build/m0c --dump-modules tests/positive/module_math.ax
-build/m0c --check examples/hello.ax
-build/m0c --emit=ast examples/hello.ax
-build/m0c --emit=ir examples/hello.ax
-build/m0c --emit=llvm-ir examples/hello.ax
-build/m0c --emit=check examples/hello.ax
-build/m0c --emit=asm examples/hello.ax -o build/hello.s
-build/m0c --emit=obj examples/hello.ax -o build/hello.o
-build/m0c --emit=exe examples/hello.ax -o build/hello
-build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
+build/bin/aurexc --help
+build/bin/aurexc --version
+build/bin/aurexc --dump-tokens examples/hello.ax
+build/bin/aurexc --dump-ast examples/hello.ax
+build/bin/aurexc --dump-modules tests/positive/module_math.ax
+build/bin/aurexc --check examples/hello.ax
+build/bin/aurexc --emit=ast examples/hello.ax
+build/bin/aurexc --emit=ir examples/hello.ax
+build/bin/aurexc --emit=llvm-ir examples/hello.ax
+build/bin/aurexc --emit=check examples/hello.ax
+build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
+build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
+build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
+build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
 ```
 
 参数说明：
@@ -88,7 +88,7 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
 - `--emit=exe`：走 Aurex IR -> LLVM 后端生成临时 LLVM IR，再调用 clang 输出本机可执行文件。这是默认行为。
 - `--clang path`：指定本机输出使用的 clang 可执行文件。
 - `--clang-arg arg`：向 clang 透传一个参数，可重复使用，例如 `--clang-arg -O2`。
-- `--runtime-c path`：在生成可执行文件时向 clang 链接额外 C runtime 源文件，可重复使用。
+- `--no-stdlib`：关闭默认 `std` import root 和 native 支持链接。
 - `-o path`：写入本机输出文件；默认/`--emit=exe` 下是可执行文件。
 - `-I path`：增加 import 搜索根。`import a.b;` 会查找 `a/b.ax`，先查导入者所在目录，再查每个 `-I` 路径。
 
@@ -111,8 +111,15 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
 示例：
 
 ```sh
-build/m0c --emit=ir examples/hello.ax
+build/bin/aurexc --emit=ir examples/hello.ax
 ```
+
+### 标准库
+
+`std/` 是当前标准库根，默认进入 import 搜索路径。因此程序可以直接
+`import std.text;`、`import std.mem;` 或 `import std.file;`，无需手动 `-I .`。
+生成可执行文件时，driver 会自动链接 `std/native_support.c` 提供 selfhost IO
+等主机支持符号。`--no-stdlib` 可关闭这两项默认行为，主要用于底层实验和隔离测试。
 
 LLVM 后端和未来自研后端都应从 Aurex IR lowering。Stage0 生产 C 后端已经从
 构建链路中移除；`selfhost/` 中的 Stage1 也已经改为输出 Aurex IR 快照，
@@ -247,7 +254,7 @@ tools/bench.py
 当前有两个相关目录：
 
 - `bootstrap/`：单文件 C++20 Stage0-mini 编译器，用 Makefile 独立构建。
-- `selfhost/`：未来用 M0 编写编译器自身的源码种子和 runtime 占位。
+- `selfhost/`：未来用 M0 编写编译器自身的源码种子。
 
 执行：
 
@@ -255,7 +262,7 @@ tools/bench.py
 tools/bootstrap_chain.sh
 ```
 
-M0V0.1.8 还没有完全自举。当前目标是让自举路线可见、可测试、可逐步替换：把编译器组件逐步迁移到 `selfhost/src`，用 Stage0 `m0c` 编译出 Stage1，再比较 Stage1 和 Stage0 的输出稳定性。当前已经有 `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`，它是一个小型 M0 lexer 方向程序，可以校验内置源码的 token kind 序列。
+M0V0.1.8 还没有完全自举。当前目标是让自举路线可见、可测试、可逐步替换：把编译器组件逐步迁移到 `selfhost/src`，用 Stage0 `aurexc` 编译出 Stage1，再比较 Stage1 和 Stage0 的输出稳定性。当前已经有 `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`，它是一个小型 M0 lexer 方向程序，可以校验内置源码的 token kind 序列。
 
 M0V0.1.8 把 selfhost lexer 拆成真正的 M0 模块：
 
@@ -269,7 +276,7 @@ M0V0.1.8 把 selfhost lexer 拆成真正的 M0 模块：
 `selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax` 证明 scanner 现在能返回 parser 所需的 `kind/begin/end` byte offset。
 `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是第一个 parser seed smoke。当前 parser 已拆成 `parser.cursor`、`parser.types`、`parser.expr` 和 `parser.seed`，会生成 ID-backed `AstModule`，并覆盖 `module`、`import`、`extern c`、函数签名、`export c fn` 函数体、调用表达式、完整调用参数表达式、一元表达式和二元优先级表达式。
 
-现在 `selfhost/src/aurex/selfhost/tool/lexer_file.ax` 也已经加入。它通过显式 runtime file IO 读取 `examples/hello.ax`，输出 token kind 流，并和 `tests/golden/selfhost_lexer_file_hello.tokens` 对比。
+现在 `selfhost/src/aurex/selfhost/tool/lexer_file.ax` 也已经加入。它通过 `std` native 支持层提供的文件 IO 读取 `examples/hello.ax`，输出 token kind 流，并和 `tests/golden/selfhost_lexer_file_hello.tokens` 对比。
 `tools/compare_selfhost_lexer.sh` 还会在本地 corpus 上把这个 M0 lexer 输出和生产 C++ Stage0 lexer 的 token kind 输出直接对比。
 
 ```sh
@@ -279,6 +286,6 @@ make -C selfhost check
 手动编译 selfhost 源码时，需要传入 selfhost import root：
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax --runtime-c selfhost/runtime/runtime.c -o build/lexer_file
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax --runtime-c selfhost/runtime/runtime.c -o build/parser_smoke
+build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax -o build/selfhost/lexer_file
+build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax -o build/selfhost/parser_smoke
 ```

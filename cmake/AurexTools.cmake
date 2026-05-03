@@ -1,4 +1,4 @@
-add_executable(m0c
+add_executable(aurexc
     src/cli/main.cpp
 )
-target_link_libraries(m0c PRIVATE m0_driver)
+target_link_libraries(aurexc PRIVATE m0_driver)

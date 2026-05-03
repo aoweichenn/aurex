@@ -18,8 +18,9 @@ Implemented now:
   orchestration.
 - `selfhost/src/aurex/selfhost/compiler/ir/`: Stage1 Aurex IR emission modules
   split by writer, names, types, expressions, and AST-to-IR emission.
-- `selfhost/src/aurex/selfhost/compiler/driver.ax`: `m0c_stage1` CLI driver.
-- `selfhost/runtime/runtime.c`: explicit host runtime shims for selfhost IO.
+- `selfhost/src/aurex/selfhost/compiler/driver.ax`: `aurexc_stage1` CLI driver.
+- Selfhost native IO shims are provided by the bundled `std` native support and
+  linked automatically by Stage0 `aurexc`.
 
 The old selfhost C emitter path has been removed from the active source tree.
 Stage1 now writes `aurex_ir v0` snapshots. For files not yet covered by the
@@ -30,14 +31,14 @@ compiler has been lowered.
 ## Current Capability
 
 - Stage0 compiles the M0 selfhost lexer, parser seed, smoke programs, and
-  `m0c_stage1.ax`.
+  `aurexc_stage1.ax`.
 - The M0 lexer stream is compared with the C++ Stage0 lexer over the local
   corpus.
 - The parser seed builds an `AstModule` for the covered module/import/extern/
   export-function subset and validates source ranges and expression trees.
-- `m0c_stage1` can emit Aurex IR snapshots for `examples/hello.ax`,
-  `m0c_seed.ax`, and the Stage1 IR smoke source.
-- `m0c_stage1` can scan the current selfhost compiler source bundle and emit
+- `aurexc_stage1` can emit Aurex IR snapshots for `examples/hello.ax`,
+  `aurexc_seed.ax`, and the Stage1 IR smoke source.
+- `aurexc_stage1` can scan the current selfhost compiler source bundle and emit
   deterministic IR/pending-lowering records for the modules it cannot yet fully
   lower.
 
@@ -93,7 +94,7 @@ make -C selfhost check
 Expected bootstrap-chain marker:
 
 ```text
-bootstrap chain passed: Stage0 m0c + selfhost lexer/parser + Stage1 Aurex IR snapshots + standalone bootstrap seed
+bootstrap chain passed: Stage0 aurexc + selfhost lexer/parser + Stage1 Aurex IR snapshots + standalone bootstrap seed
 ```
 
 Manual Stage1 IR run:
@@ -101,9 +102,9 @@ Manual Stage1 IR run:
 ```sh
 cmake -S . -B build
 cmake --build build -j
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/bin/m0c_stage1.ax --runtime-c selfhost/runtime/runtime.c -o build/m0c_stage1
-build/m0c_stage1 examples/hello.ax build/hello.stage1.air
+build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/bin/aurexc_stage1.ax -o build/selfhost/aurexc_stage1
+build/selfhost/aurexc_stage1 examples/hello.ax build/selfhost/hello.stage1.air
 ```
 
-`build/hello.stage1.air` starts with `aurex_ir v0` and contains the Stage1
+`build/selfhost/hello.stage1.air` starts with `aurex_ir v0` and contains the Stage1
 IR snapshot for the supported parser-seed subset.

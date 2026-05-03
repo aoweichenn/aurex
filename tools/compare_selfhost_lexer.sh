@@ -3,16 +3,17 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build"
-M0C="${BUILD_DIR}/m0c"
+AUREXC="${BUILD_DIR}/bin/aurexc"
 LEXER_FILE="${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax"
-LEXER_BIN="${BUILD_DIR}/lexer_file"
-COMPARE_DIR="${BUILD_DIR}/selfhost_lexer_compare"
+LEXER_BIN="${BUILD_DIR}/selfhost/lexer_file"
+COMPARE_DIR="${BUILD_DIR}/tmp/selfhost_lexer_compare"
 SELFHOST_IMPORT_FLAGS=(-I "${ROOT}/selfhost/src")
 
 cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
 cmake --build "${BUILD_DIR}" -j >/dev/null
+mkdir -p "${BUILD_DIR}/selfhost" "${BUILD_DIR}/tmp"
 
-"${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_FILE}" --runtime-c "${ROOT}/selfhost/runtime/runtime.c" -o "${LEXER_BIN}"
+"${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_FILE}" -o "${LEXER_BIN}"
 
 rm -rf "${COMPARE_DIR}"
 mkdir -p "${COMPARE_DIR}"
@@ -24,7 +25,7 @@ compare_one() {
     local stage0="${COMPARE_DIR}/${stem}.stage0.kinds"
     local selfhost="${COMPARE_DIR}/${stem}.selfhost.kinds"
 
-    "${M0C}" --dump-tokens "${source}" | awk '{ print $2 }' >"${stage0}"
+    "${AUREXC}" --dump-tokens "${source}" | awk '{ print $2 }' >"${stage0}"
     "${LEXER_BIN}" "${source}" >"${selfhost}"
     diff -u "${stage0}" "${selfhost}"
 }

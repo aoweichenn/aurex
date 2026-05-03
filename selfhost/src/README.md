@@ -2,7 +2,7 @@
 
 `selfhost/src` mirrors module names and is organized by compiler responsibility:
 
-- `aurex/selfhost/bin/`: executable entry points, including `m0c_stage1.ax`.
+- `aurex/selfhost/bin/`: executable entry points, including `aurexc_stage1.ax`.
 - `aurex/selfhost/compiler/`: M0 compiler implementation slices.
 - `aurex/selfhost/compiler/ir/`: Stage1 Aurex IR output modules. `writer.ax`
   owns output primitives, `names.ax` owns stable module/name spelling,

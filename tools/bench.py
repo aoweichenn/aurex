@@ -16,7 +16,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
-M0C = BUILD / "m0c"
+AUREXC = BUILD / "bin" / "aurexc"
 
 
 def run(cmd: list[str]) -> float:
@@ -60,11 +60,11 @@ def main() -> None:
         source = tmpdir / "bench.ax"
         output = tmpdir / "bench"
         source.write_text(make_source(80), encoding="utf-8")
-        token_time = run([str(M0C), "--dump-tokens", str(source)])
-        ast_time = run([str(M0C), "--dump-ast", str(source)])
-        ir_time = run([str(M0C), "--emit=ir", str(source)])
-        llvm_ir_time = run([str(M0C), "--emit=llvm-ir", str(source)])
-        native_time = run([str(M0C), str(source), "-o", str(output)])
+        token_time = run([str(AUREXC), "--dump-tokens", str(source)])
+        ast_time = run([str(AUREXC), "--dump-ast", str(source)])
+        ir_time = run([str(AUREXC), "--emit=ir", str(source)])
+        llvm_ir_time = run([str(AUREXC), "--emit=llvm-ir", str(source)])
+        native_time = run([str(AUREXC), str(source), "-o", str(output)])
         print(f"tokens: {token_time:.4f}s")
         print(f"ast:    {ast_time:.4f}s")
         print(f"ir:     {ir_time:.4f}s")

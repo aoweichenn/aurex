@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <sys/wait.h>
@@ -23,11 +24,32 @@ namespace {
     return out.str();
 }
 
+[[nodiscard]] base::Result<void> ensure_output_parent_exists(const std::filesystem::path& output_path) {
+    const std::filesystem::path parent = output_path.parent_path();
+    if (parent.empty()) {
+        return base::Result<void>::ok();
+    }
+
+    std::error_code error;
+    std::filesystem::create_directories(parent, error);
+    if (error) {
+        return base::Result<void>::fail({
+            base::ErrorCode::io_error,
+            "failed to create native output directory: " + parent.string()
+        });
+    }
+    return base::Result<void>::ok();
+}
+
 } // namespace
 
 base::Result<void> invoke_clang(const NativeCompileRequest& request) {
-    if (!request.runtime_c_paths.empty() && request.emit_kind != EmitKind::executable) {
-        return base::Result<void>::fail({base::ErrorCode::codegen_error, "--runtime-c is only supported for executable output"});
+    if (!request.support_source_paths.empty() && request.emit_kind != EmitKind::executable) {
+        return base::Result<void>::fail({base::ErrorCode::codegen_error, "native support sources are only supported for executable output"});
+    }
+    auto output_parent_result = ensure_output_parent_exists(request.output_path);
+    if (!output_parent_result) {
+        return output_parent_result;
     }
 
     std::vector<std::string> args;
@@ -37,13 +59,13 @@ base::Result<void> invoke_clang(const NativeCompileRequest& request) {
         args.push_back("ir");
     }
     args.push_back(request.input_path.string());
-    if (!request.runtime_c_paths.empty()) {
+    if (!request.support_source_paths.empty()) {
         if (request.input_is_llvm_ir) {
             args.push_back("-x");
-            args.push_back("c");
+            args.push_back("none");
         }
-        for (const std::filesystem::path& runtime_path : request.runtime_c_paths) {
-            args.push_back(runtime_path.string());
+        for (const std::filesystem::path& support_path : request.support_source_paths) {
+            args.push_back(support_path.string());
         }
     }
     args.insert(args.end(), request.clang_args.begin(), request.clang_args.end());

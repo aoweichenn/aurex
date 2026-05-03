@@ -11,8 +11,9 @@ Current status:
   expression, and orchestration modules.
 - `src/aurex/selfhost/compiler/ir/`: Stage1 Aurex IR output path split into
   writer, name mangling, type printing, expression printing, and module emission.
-- `src/aurex/selfhost/compiler/driver.ax`: `m0c_stage1` command-line driver.
-- `runtime/runtime.c`: explicit host IO/runtime shims used by selfhost tools.
+- `src/aurex/selfhost/compiler/driver.ax`: `aurexc_stage1` command-line driver.
+- Standard-library native support is linked by Stage0 `aurexc` for executable
+  outputs; selfhost tools no longer pass an explicit host-support source.
 
 The old selfhost C emitter has been removed from the active tree. Stage1 now
 emits `aurex_ir v0` snapshots instead of C source. For syntax not yet covered
@@ -32,6 +33,6 @@ tools/bootstrap_chain.sh
 ```
 
 These checks compile and run the current M0 lexer/parser smoke programs, compare
-lexer golden output with Stage0, build `m0c_stage1`, and verify Stage1 IR
+lexer golden output with Stage0, build `aurexc_stage1`, and verify Stage1 IR
 snapshots for `examples/hello.ax`, the seed program, the parser smoke program,
 the Stage1 IR smoke program, and the current selfhost compiler bundle.

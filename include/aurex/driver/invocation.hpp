@@ -21,12 +21,13 @@ enum class EmitKind {
 
 struct CompilerInvocation {
     std::filesystem::path input_path;
+    std::filesystem::path tool_path;
     std::filesystem::path output_path;
     EmitKind emit_kind = EmitKind::executable;
     std::vector<std::filesystem::path> import_paths;
     std::string clang_path = "clang";
     std::vector<std::string> clang_args;
-    std::vector<std::filesystem::path> runtime_c_paths;
+    bool use_standard_library = true;
 };
 
 } // namespace aurex::driver

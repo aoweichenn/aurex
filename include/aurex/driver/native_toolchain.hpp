@@ -14,7 +14,7 @@ struct NativeCompileRequest {
     std::vector<std::string> clang_args;
     std::filesystem::path input_path;
     std::filesystem::path output_path;
-    std::vector<std::filesystem::path> runtime_c_paths;
+    std::vector<std::filesystem::path> support_source_paths;
     EmitKind emit_kind = EmitKind::executable;
     bool input_is_llvm_ir = false;
 };

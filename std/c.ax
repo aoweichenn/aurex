@@ -1,4 +1,4 @@
-module runtime.c;
+module std.c;
 
 extern c {
     opaque struct CFile;

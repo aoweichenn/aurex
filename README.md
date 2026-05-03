@@ -11,8 +11,8 @@ Stage0 now compiles through Aurex IR -> LLVM IR -> clang by default.
 ```sh
 cmake -S . -B build
 cmake --build build -j
-build/m0c examples/hello.ax -o build/hello
-build/hello
+build/bin/aurexc examples/hello.ax -o build/tests/hello
+build/tests/hello
 ```
 
 Expected output:
@@ -24,15 +24,15 @@ hello from Aurex M0
 Stage0 now resolves imports:
 
 ```sh
-build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
+build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
 ```
 
 Stage0 can also produce assembly and object files through clang:
 
 ```sh
-build/m0c --emit=asm examples/hello.ax -o build/hello.s
-build/m0c --emit=obj examples/hello.ax -o build/hello.o
-build/m0c --emit=exe examples/hello.ax -o build/hello
+build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
+build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
+build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
 `--emit=exe` is the default. `--clang <path>` selects a clang binary, and
@@ -41,8 +41,8 @@ repeated `--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
 The IR path is visible with:
 
 ```sh
-build/m0c --emit=ir examples/hello.ax
-build/m0c --emit=llvm-ir examples/hello.ax
+build/bin/aurexc --emit=ir examples/hello.ax
+build/bin/aurexc --emit=llvm-ir examples/hello.ax
 ```
 
 `--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
@@ -95,8 +95,8 @@ make -C selfhost check
 Manual Stage1 IR run:
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/bin/m0c_stage1.ax --runtime-c selfhost/runtime/runtime.c -o build/m0c_stage1
-build/m0c_stage1 examples/hello.ax build/hello.stage1.air
+build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/bin/aurexc_stage1.ax -o build/selfhost/aurexc_stage1
+build/selfhost/aurexc_stage1 examples/hello.ax build/selfhost/hello.stage1.air
 ```
 
 ## Documentation

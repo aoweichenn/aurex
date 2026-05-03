@@ -1,27 +1,26 @@
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 /*
- * Runtime shims for M0 selfhost tools. Compiler output is now Aurex IR; this
- * file only provides explicit host services such as file IO and text writing.
+ * Native support shims for the M0 selfhost tools. This is part of Aurex std's
+ * host-facing ABI layer; it is linked by the driver for executable output.
  */
 
-typedef struct M0FileBuffer {
+typedef struct AurexStdFileBuffer {
     uint8_t *data;
     int32_t len;
-} M0FileBuffer;
+} AurexStdFileBuffer;
 
-typedef struct M0WriteResult {
+typedef struct AurexStdWriteResult {
     bool ok;
     int32_t written;
-} M0WriteResult;
+} AurexStdWriteResult;
 
-M0FileBuffer m0_runtime_read_file(const uint8_t *path) {
-    M0FileBuffer result = {NULL, 0};
+AurexStdFileBuffer aurex_std_read_file(const uint8_t *path) {
+    AurexStdFileBuffer result = {NULL, 0};
     FILE *file = fopen((const char *)path, "rb");
     if (file == NULL) {
         return result;
@@ -60,11 +59,11 @@ M0FileBuffer m0_runtime_read_file(const uint8_t *path) {
     return result;
 }
 
-void m0_runtime_free_file(M0FileBuffer buffer) {
+void aurex_std_free_file(AurexStdFileBuffer buffer) {
     free(buffer.data);
 }
 
-static int32_t m0_runtime_c_string_len(const uint8_t *text) {
+static int32_t aurex_std_c_string_len(const uint8_t *text) {
     int32_t len = 0;
     if (text == NULL) {
         return 0;
@@ -75,15 +74,14 @@ static int32_t m0_runtime_c_string_len(const uint8_t *text) {
     return len;
 }
 
-M0WriteResult m0_runtime_write_text(const uint8_t *path, const uint8_t *data) {
-    M0WriteResult result = {false, 0};
+AurexStdWriteResult aurex_std_write_text(const uint8_t *path, const uint8_t *data) {
+    AurexStdWriteResult result = {false, 0};
     FILE *file = fopen((const char *)path, "wb");
     if (file == NULL) {
         return result;
     }
 
-    const int32_t len = m0_runtime_c_string_len(data);
-
+    const int32_t len = aurex_std_c_string_len(data);
     const size_t written = fwrite(data, 1, (size_t)len, file);
     const int close_result = fclose(file);
     result.ok = written == (size_t)len && close_result == 0;
@@ -91,19 +89,19 @@ M0WriteResult m0_runtime_write_text(const uint8_t *path, const uint8_t *data) {
     return result;
 }
 
-FILE *m0_runtime_output_open(const uint8_t *path) {
+FILE *aurex_std_output_open(const uint8_t *path) {
     return fopen((const char *)path, "wb");
 }
 
-bool m0_runtime_output_write_text(FILE *file, const uint8_t *text) {
+bool aurex_std_output_write_text(FILE *file, const uint8_t *text) {
     if (file == NULL) {
         return false;
     }
-    const int32_t len = m0_runtime_c_string_len(text);
+    const int32_t len = aurex_std_c_string_len(text);
     return fwrite(text, 1, (size_t)len, file) == (size_t)len;
 }
 
-bool m0_runtime_output_write_source_range(FILE *file, const uint8_t *source, int32_t begin, int32_t end) {
+bool aurex_std_output_write_source_range(FILE *file, const uint8_t *source, int32_t begin, int32_t end) {
     if (file == NULL || source == NULL || begin < 0 || end < begin) {
         return false;
     }
@@ -111,7 +109,7 @@ bool m0_runtime_output_write_source_range(FILE *file, const uint8_t *source, int
     return fwrite(source + begin, 1, len, file) == len;
 }
 
-bool m0_runtime_output_write_i32(FILE *file, int32_t value) {
+bool aurex_std_output_write_i32(FILE *file, int32_t value) {
     if (file == NULL) {
         return false;
     }
@@ -123,7 +121,7 @@ bool m0_runtime_output_write_i32(FILE *file, int32_t value) {
     return fwrite(buffer, 1, (size_t)len, file) == (size_t)len;
 }
 
-bool m0_runtime_output_close(FILE *file) {
+bool aurex_std_output_close(FILE *file) {
     if (file == NULL) {
         return false;
     }

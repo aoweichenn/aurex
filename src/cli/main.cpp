@@ -32,7 +32,7 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --emit=exe       emit a native executable through clang (default)\n"
         << "  --clang path     clang executable to use for asm/exe output\n"
         << "  --clang-arg arg  pass one raw argument to clang; repeat as needed\n"
-        << "  --runtime-c path add a C runtime source when linking executable output\n"
+        << "  --no-stdlib      do not import or link the bundled Aurex standard library\n"
         << "  -I path          add an import search path\n";
 }
 
@@ -40,6 +40,7 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
 
 int main(const int argc, char** argv) {
     aurex::driver::CompilerInvocation invocation;
+    invocation.tool_path = argv[0];
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
@@ -93,12 +94,8 @@ int main(const int argc, char** argv) {
                 return 2;
             }
             invocation.clang_args.push_back(argv[++i]);
-        } else if (arg == "--runtime-c") {
-            if (i + 1 >= argc) {
-                print_usage(std::cerr, argv[0]);
-                return 2;
-            }
-            invocation.runtime_c_paths.push_back(argv[++i]);
+        } else if (arg == "--no-stdlib") {
+            invocation.use_standard_library = false;
         } else if (arg.starts_with("-I") && arg.size() > 2) {
             invocation.import_paths.push_back(std::string(arg.substr(2)));
         } else if (!arg.empty() && arg.front() == '-') {
@@ -117,7 +114,7 @@ int main(const int argc, char** argv) {
     aurex::driver::Compiler compiler;
     auto result = compiler.run(invocation);
     if (!result) {
-        std::cerr << "m0c: " << result.error().message << "\n";
+        std::cerr << "aurexc: " << result.error().message << "\n";
         return 1;
     }
     return 0;

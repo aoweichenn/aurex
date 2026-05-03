@@ -19,9 +19,10 @@ Stage1 自举编译器切片。
   都消费这个后端。
 - `src/driver/`：编译驱动、模块加载器和 clang 本机输出封装，负责 import
   解析、跨模块合并以及 LLVM IR/汇编/object/可执行文件输出选择。
-- `src/cli/`：`m0c` 命令行入口。
+- `src/cli/`：`aurexc` 命令行入口。
 - `cmake/`：按编译器组件拆分的构建定义，根 `CMakeLists.txt` 只负责组装。
-- `runtime/`：Aurex 程序可显式 import 的运行时模块。
+- `std/`：Aurex 标准库模块。`std.*` 默认进入 import 搜索路径；
+  `std/native_support.c` 是当前 native 输出自动链接的主机支持层。
 - `bootstrap/`：单文件 Stage0-mini 编译器，用于证明最小翻译链路。
 - `selfhost/`：M0 编写的自举编译器源码、运行时和自举验证。
 - `tests/`：正向、反向、import 和 golden 测试语料。
@@ -29,7 +30,7 @@ Stage1 自举编译器切片。
 
 ## 生产编译管线
 
-当前 `m0c` 的主路径是：
+当前 `aurexc` 的主路径是：
 
 1. `driver` 读取根源码，并通过 `module_loader` 解析 import。
 2. `lex` 将每个源码文件扫描为 token。
@@ -37,7 +38,7 @@ Stage1 自举编译器切片。
 4. `sema` 建立类型、符号、函数、结构体和枚举 case 边表。
 5. `ir` 可以把 AST 与 `CheckedModule` 降为 Aurex IR，用 `--emit=ir` 观察。
 6. `backend/llvm` 消费 Aurex IR 并 lowering 到 LLVM IR，用 `--emit=llvm-ir` 观察。
-7. `driver` 把 LLVM IR 交给 clang，输出汇编、object 或本机可执行文件。默认输出是本机可执行文件。
+7. `driver` 把 LLVM IR 交给 clang，输出汇编、object 或本机可执行文件。默认输出是本机可执行文件；生成可执行文件时会自动链接 `std/native_support.c`。
 
 这种分层刻意避免让 parser 依赖 lexer 实现，也避免把语义信息写回 AST。
 后续替换前端或把组件迁移到 M0 时，每个阶段都有清晰接口。
@@ -76,7 +77,7 @@ AST + CheckedModule
   -> LLVM target machine 输出 asm/object/exe
 ```
 
-当前状态可以概括为：LLVM 主链路已经搭好，M0 正向样例、runtime 样例和
+当前状态可以概括为：LLVM 主链路已经搭好，M0 正向样例、`std` 样例和
 selfhost smoke 入口都可以经 Stage0 的 Aurex IR -> LLVM IR -> clang 编译运行。
 还不能称为完整工业级后端的部分包括：独立 IR pass pipeline、mem2reg/CFG cleanup、
 优化级别控制、更完整 ABI 属性和未来自研后端代码生成。LLVM 只是当前第一个生产后端，
@@ -94,7 +95,7 @@ selfhost smoke 入口都可以经 Stage0 的 Aurex IR -> LLVM IR -> clang 编译
 - `AurexLLVM.cmake` 定义 `m0_llvm`，集中发现 LLVM 并暴露 include/link 设置。
 - `AurexBackendLLVM.cmake` 定义 `m0_backend_llvm`。
 - `AurexDriver.cmake` 定义 `m0_driver`。
-- `AurexTools.cmake` 定义 `m0c`。
+- `AurexTools.cmake` 定义 `aurexc`。
 - `AurexWarnings.cmake` 集中管理编译告警。
 
 依赖方向保持单向：base -> syntax/frontend -> sema -> ir/backend -> driver -> cli。
@@ -104,7 +105,7 @@ selfhost smoke 入口都可以经 Stage0 的 Aurex IR -> LLVM IR -> clang 编译
 
 `selfhost/src/aurex/selfhost/` 按角色组织：
 
-- `bin/`：可执行入口，当前包括 `m0c_seed.ax` 和 `m0c_stage1.ax`。
+- `bin/`：可执行入口，当前包括 `aurexc_seed.ax` 和 `aurexc_stage1.ax`。
 - `lexer/`：M0 词法器核心与 token dump 工具。
 - `syntax/`：M0 AST 数据模块。当前已落地 ID-backed 节点池，覆盖路径、
   顶层 item、类型、参数、block、statement 和 expression。
@@ -132,7 +133,7 @@ Stage1 已覆盖自举 smoke 所需的核心面：
   block、表达式语句、`return` statement、调用、调用参数池、字面量、标识符、
   一元表达式和基于显式 operator 栈的二元表达式树。调用参数现在按完整表达式
   解析，支持分组、优先级和一元前缀。
-- `m0c_stage1 <输入.ax> <输出.air>` 能为 `examples/hello.ax`、selfhost seed
+- `aurexc_stage1 <输入.ax> <输出.air>` 能为 `examples/hello.ax`、selfhost seed
   和 parser smoke 输出 Aurex IR 快照。
 - 多源码输入会生成一个 IR bundle；对完整 lowering 尚未覆盖的 selfhost 模块，
   输出 deterministic pending-lowering marker。
@@ -161,4 +162,4 @@ make -C selfhost check
 - Stage1 新能力必须进入 `selfhost/src/aurex/selfhost/smoke/` 或自举链路断言。
 - AST 保持语法层数据结构，语义结果继续放在 `CheckedModule` 边表。
 - import 相关行为必须覆盖 `tests/imports/` 语料。
-- FFI 改动必须同时覆盖 Aurex IR verifier、LLVM lowering 和 runtime 链接测试。
+- FFI 改动必须同时覆盖 Aurex IR verifier、LLVM lowering 和标准库 native 支持链接测试。

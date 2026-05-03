@@ -1,7 +1,7 @@
-module runtime.file;
+module std.file;
 
-import runtime.c;
-import runtime.text;
+import std.c;
+import std.text;
 
 struct ReadFileResult {
     ok: bool;

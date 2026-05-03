@@ -3,6 +3,7 @@
 #include "aurex/base/config.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/parse/parser.hpp"
+#include "aurex/driver/standard_library.hpp"
 #include "aurex/syntax/module.hpp"
 
 #include <fstream>
@@ -226,7 +227,10 @@ ModuleLoader::ModuleLoader(
     base::SourceManager& sources,
     base::DiagnosticSink& diagnostics
 ) noexcept
-    : invocation_(invocation), sources_(sources), diagnostics_(diagnostics) {}
+    : invocation_(invocation),
+      sources_(sources),
+      diagnostics_(diagnostics),
+      import_paths_(standard_library_import_paths(invocation)) {}
 
 base::Result<syntax::AstModule> ModuleLoader::load_root() {
     syntax::AstModule combined;
@@ -326,9 +330,9 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     std::vector<syntax::ModuleId> direct_imports;
     direct_imports.reserve(imports.size());
     for (const syntax::ModulePath& import : imports) {
-        const auto import_file = find_import_file(import, canonical.parent_path(), invocation_.import_paths);
+        const auto import_file = find_import_file(import, canonical.parent_path(), import_paths_);
         if (!import_file) {
-            const std::vector<std::filesystem::path> candidates = import_candidates(import, canonical.parent_path(), invocation_.import_paths);
+            const std::vector<std::filesystem::path> candidates = import_candidates(import, canonical.parent_path(), import_paths_);
             push_error(
                 diagnostics_,
                 import.range,

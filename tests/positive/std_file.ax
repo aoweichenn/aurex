@@ -1,11 +1,11 @@
-module runtime_file;
+module std_file;
 
-import runtime.file;
-import runtime.text;
+import std.file;
+import std.text;
 
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
-    let path: *const u8 = c"/tmp/aurex_m0_runtime_file_test.txt";
-    let bytes: SpanU8 = span_u8(c"runtime-ok", cast(usize, 10));
+    let path: *const u8 = c"/tmp/aurex_std_file_test.txt";
+    let bytes: SpanU8 = span_u8(c"stdlib-ok", cast(usize, 9));
     let write_result: WriteFileResult = write_entire_file(path, bytes);
     if !write_result.ok {
         return 1;

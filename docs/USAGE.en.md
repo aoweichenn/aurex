@@ -30,14 +30,14 @@ cmake --build build -j
 The compiler executable is:
 
 ```sh
-build/m0c
+build/bin/aurexc
 ```
 
 ## 3. Compile A Program
 
 ```sh
-build/m0c examples/hello.ax -o build/hello
-build/hello
+build/bin/aurexc examples/hello.ax -o build/tests/hello
+build/tests/hello
 ```
 
 Expected output:
@@ -49,20 +49,20 @@ hello from Aurex M0
 ## 4. CLI Reference
 
 ```sh
-build/m0c --help
-build/m0c --version
-build/m0c --dump-tokens examples/hello.ax
-build/m0c --dump-ast examples/hello.ax
-build/m0c --dump-modules tests/positive/module_math.ax
-build/m0c --check examples/hello.ax
-build/m0c --emit=ast examples/hello.ax
-build/m0c --emit=ir examples/hello.ax
-build/m0c --emit=llvm-ir examples/hello.ax
-build/m0c --emit=check examples/hello.ax
-build/m0c --emit=asm examples/hello.ax -o build/hello.s
-build/m0c --emit=obj examples/hello.ax -o build/hello.o
-build/m0c --emit=exe examples/hello.ax -o build/hello
-build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path
+build/bin/aurexc --help
+build/bin/aurexc --version
+build/bin/aurexc --dump-tokens examples/hello.ax
+build/bin/aurexc --dump-ast examples/hello.ax
+build/bin/aurexc --dump-modules tests/positive/module_math.ax
+build/bin/aurexc --check examples/hello.ax
+build/bin/aurexc --emit=ast examples/hello.ax
+build/bin/aurexc --emit=ir examples/hello.ax
+build/bin/aurexc --emit=llvm-ir examples/hello.ax
+build/bin/aurexc --emit=check examples/hello.ax
+build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
+build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
+build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
+build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
 ```
 
 Options:
@@ -85,8 +85,7 @@ Options:
 - `--clang path`: select the clang executable used for native output.
 - `--clang-arg arg`: pass one raw argument to clang; repeat as needed, for example
   `--clang-arg -O2`.
-- `--runtime-c path`: add an extra C runtime source when producing executable
-  output; repeat as needed.
+- `--no-stdlib`: disable the bundled `std` import root and native support link.
 - `-o path`: write the native output path.
 - `-I path`: add an import root. `import a.b;` searches for `a/b.ax` in the
   importing file's directory, then each `-I` root.
@@ -105,6 +104,14 @@ calls, field/index addresses, casts, and `phi` nodes for short-circuit values.
 LLVM and future native backends should lower from Aurex IR. The old Stage0 C
 backend has been removed from the production build; the selfhost Stage1 path
 now emits Aurex IR snapshots instead of C.
+
+### Standard Library
+
+`std/` is the current standard library root and is added to import resolution by
+default. Programs can import `std.text`, `std.mem`, or `std.file` without
+manually passing `-I .`. Executable output also links `std/native_support.c`
+automatically for host support symbols used by the selfhost tools. `--no-stdlib`
+disables both defaults for low-level experiments and isolation tests.
 
 ## 5. Language Snapshot
 
@@ -241,8 +248,7 @@ benchmark suite.
 There are two related directories:
 
 - `bootstrap/`: standalone C++20 Stage0-mini compiler with a Makefile.
-- `selfhost/`: M0 source seeds and runtime placeholders for the future
-  self-hosted compiler.
+- `selfhost/`: M0 source seeds for the future self-hosted compiler.
 
 Run:
 
@@ -251,7 +257,7 @@ tools/bootstrap_chain.sh
 ```
 
 M0V0.1.8 is not fully self-hosted yet. The goal is explicit and testable:
-move compiler components into `selfhost/src`, compile them with Stage0 `m0c`,
+move compiler components into `selfhost/src`, compile them with Stage0 `aurexc`,
 then compare Stage1 output against Stage0 output. The current tree already
 contains `selfhost/src/aurex/selfhost/smoke/lexer_smoke.ax`, a small M0
 lexer-oriented program that validates a token kind sequence for an embedded
@@ -285,8 +291,8 @@ binary precedence expressions.
 
 The selfhost directory now also includes
 `selfhost/src/aurex/selfhost/tool/lexer_file.ax`, which reads
-`examples/hello.ax` through explicit runtime file IO and compares its token-kind
-stream with `tests/golden/selfhost_lexer_file_hello.tokens`.
+`examples/hello.ax` through the `std` native support file IO and compares its
+token-kind stream with `tests/golden/selfhost_lexer_file_hello.tokens`.
 `tools/compare_selfhost_lexer.sh` additionally compares that M0 lexer stream
 with the production C++ Stage0 lexer stream over the local corpus.
 
@@ -297,6 +303,6 @@ make -C selfhost check
 When compiling selfhost sources manually, pass the selfhost import root:
 
 ```sh
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax -o build/lexer_file.c
-build/m0c -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax -o build/parser_smoke.c
+build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/tool/lexer_file.ax -o build/selfhost/lexer_file
+build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/smoke/parser_smoke.ax -o build/selfhost/parser_smoke
 ```

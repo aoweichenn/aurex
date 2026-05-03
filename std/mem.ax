@@ -1,6 +1,6 @@
-module runtime.mem;
+module std.mem;
 
-import runtime.c;
+import std.c;
 
 struct Arena {
     base: *mut u8;

@@ -13,16 +13,16 @@ struct WriteResult {
 extern c {
     opaque struct OutputFile;
 
-    fn output_open(path: *const u8) -> *mut OutputFile @name("m0_runtime_output_open");
-    fn output_write_text(file: *mut OutputFile, text: *const u8) -> bool @name("m0_runtime_output_write_text");
-    fn output_write_source_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool @name("m0_runtime_output_write_source_range");
-    fn output_write_i32(file: *mut OutputFile, value: i32) -> bool @name("m0_runtime_output_write_i32");
-    fn output_close(file: *mut OutputFile) -> bool @name("m0_runtime_output_close");
+    fn output_open(path: *const u8) -> *mut OutputFile @name("aurex_std_output_open");
+    fn output_write_text(file: *mut OutputFile, text: *const u8) -> bool @name("aurex_std_output_write_text");
+    fn output_write_source_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool @name("aurex_std_output_write_source_range");
+    fn output_write_i32(file: *mut OutputFile, value: i32) -> bool @name("aurex_std_output_write_i32");
+    fn output_close(file: *mut OutputFile) -> bool @name("aurex_std_output_close");
 }
 
 extern c {
-    fn read_file(path: *const u8) -> FileBuffer @name("m0_runtime_read_file");
-    fn free_file(buffer: FileBuffer) -> void @name("m0_runtime_free_file");
-    fn write_file(path: *const u8, data: *const u8) -> WriteResult @name("m0_runtime_write_text");
+    fn read_file(path: *const u8) -> FileBuffer @name("aurex_std_read_file");
+    fn free_file(buffer: FileBuffer) -> void @name("aurex_std_free_file");
+    fn write_file(path: *const u8, data: *const u8) -> WriteResult @name("aurex_std_write_text");
     fn puts(s: *const u8) -> i32 @name("puts");
 }

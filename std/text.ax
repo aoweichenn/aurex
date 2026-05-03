@@ -1,4 +1,4 @@
-module runtime.text;
+module std.text;
 
 struct SpanU8 {
     data: *const u8;

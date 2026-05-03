@@ -86,7 +86,7 @@ not depend on parser internals.
 - invokes clang for default native output, `--emit=asm`, `--emit=obj`, and
   `--emit=exe`.
 
-`m0c`
+`aurexc`
 
 - parses command line arguments only.
 
@@ -158,8 +158,8 @@ Current choices:
 - `&&` / `||` lower to control flow plus `phi`, so short-circuiting is explicit.
 
 Recommended next steps are mem2reg, CFG cleanup, pass management, deeper LLVM
-target configuration, and ABI tests for `extern c`, `export c`, and runtime
-calls.
+target configuration, and ABI tests for `extern c`, `export c`, and standard
+library native-support calls.
 
 ## 8. LLVM Backend And FFI
 
@@ -175,12 +175,12 @@ Current coverage:
 - `--emit=asm`, `--emit=obj`, and `--emit=exe` all consume LLVM output;
 - repeated same-signature `extern c` declarations across modules merge to one
   LLVM declaration;
-- runtime C sources can be linked with `--runtime-c`.
+- the bundled `std` native support is linked automatically for executable output.
 
 Remaining work:
 
 - optimization pipeline and pass management;
-- tighter runtime-linking rules for object/assembly modes;
+- tighter standard-library and host-support linking rules for object/assembly modes;
 - fuller ABI attributes and target triple/CPU/feature control;
 - future custom native backends consuming the same IR/verifier/ABI contract.
 
@@ -193,15 +193,15 @@ The intended fixed-point chain is:
 ```text
 Stage0 C++ compiler
   -> compiles M0 compiler sources
-  -> produces m0c-stage1
-  -> m0c-stage1 compiles the same sources
+  -> produces aurexc-stage1
+  -> aurexc-stage1 compiles the same sources
   -> stage1/stage2 IR and executable behavior match
 ```
 
 Current M0V0.1.8 status:
 
 - `bootstrap/` contains a standalone Stage0-mini compiler;
-- `selfhost/src/aurex/selfhost/bin/m0c_seed.ax` is the first M0 seed;
+- `selfhost/src/aurex/selfhost/bin/aurexc_seed.ax` is the first M0 seed;
 - `selfhost/src/aurex/selfhost/lexer/core.ax` is the shared M0 lexer core,
   including the `TokenSpan` token shape and `scan_token`;
 - `selfhost/src/aurex/selfhost/lexer/dump.ax` is the shared token dump helper;
@@ -214,7 +214,7 @@ Current M0V0.1.8 status:
   token-kind stream from M0, and is
   checked against a golden file;
 - `selfhost/src/aurex/selfhost/tool/lexer_file.ax` imports the shared dump
-  helper, reads a source file through explicit runtime IO, and emits a
+  helper, reads a source file through `std` native support, and emits a
   token-kind stream checked against a golden file;
 - `selfhost/src/aurex/selfhost/parser/` is the first M0 parser seed, split into
   `cursor.ax`, `types.ax`, `expr.ax`, and `seed.ax`. Type parsing uses an
@@ -224,7 +224,7 @@ Current M0V0.1.8 status:
   seed smoke test;
 - `selfhost/src/aurex/selfhost/compiler/ir/` is the Stage1 Aurex IR output path,
   split into writer, names, types, expressions, and AST-to-IR emission;
-- `m0c_stage1` currently emits `aurex_ir v0` snapshots and deterministic
+- `aurexc_stage1` currently emits `aurex_ir v0` snapshots and deterministic
   `lowering(ast_pending)` markers for selfhost modules not yet covered by the
   parser seed;
 - the old selfhost C emitter has been removed from the active source tree;

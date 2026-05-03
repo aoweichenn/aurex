@@ -1,10 +1,10 @@
-#include "llvm_emit_internal.hpp"
+#include "llvm_backend_internal.hpp"
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 
-namespace aurex::ir {
+namespace aurex::backend {
 
 void LlvmEmitter::emit_function(const FunctionId function_id, const Function& function) {
     llvm::Function* llvm_function = functions_.at(function_id.value);
@@ -95,4 +95,4 @@ llvm::Value* LlvmEmitter::get(const ValueId id) const {
     return values_.at(id.value);
 }
 
-} // namespace aurex::ir
+} // namespace aurex::backend

@@ -68,7 +68,8 @@ test -s "${BUILD_DIR}/hello.s"
 HELLO_DIRECT_OUT="$("${BUILD_DIR}/hello.direct")"
 test "${HELLO_DIRECT_OUT}" = "hello from Aurex M0"
 "${M0C}" --emit=llvm-ir "${ROOT}/tests/positive/const_enum.ax" >/tmp/aurex_llvm_ir_const_enum.ll
-grep -q 'ret i32 42' /tmp/aurex_llvm_ir_const_enum.ll
+grep -q '@m0_const_enum_answer = internal unnamed_addr constant i32 42' /tmp/aurex_llvm_ir_const_enum.ll
+grep -q 'load i32, ptr @m0_const_enum_answer' /tmp/aurex_llvm_ir_const_enum.ll
 
 for src in "${ROOT}"/tests/positive/*.ax; do
     case "$(basename "${src}" .ax)" in

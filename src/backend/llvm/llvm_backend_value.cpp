@@ -1,13 +1,14 @@
-#include "llvm_emit_internal.hpp"
+#include "llvm_backend_internal.hpp"
 
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/ConstantFold.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
 
 #include <vector>
 
-namespace aurex::ir {
+namespace aurex::backend {
 
 llvm::Value* LlvmEmitter::emit_value(const ValueId id) {
     const Value& value = source_.values[id.value];
@@ -91,7 +92,129 @@ llvm::Value* LlvmEmitter::emit_constant_ref(const Value& value) {
     if (constant == nullptr) {
         return llvm::UndefValue::get(llvm_type(value.type));
     }
-    return emit_runtime_value(source_.values[constant->initializer.value]);
+    auto found = constants_.find(value.constant.value);
+    if (found == constants_.end()) {
+        return emit_runtime_value(source_.values[constant->initializer.value]);
+    }
+    return builder_.CreateLoad(llvm_type(constant->type), found->second, constant->symbol + ".value");
+}
+
+llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
+    switch (value.kind) {
+    case ValueKind::integer_literal:
+        return llvm::cast<llvm::Constant>(integer_constant(value.type, value.text));
+    case ValueKind::bool_literal:
+        return llvm::ConstantInt::get(llvm_type(value.type), value.text == "true" ? 1 : 0, false);
+    case ValueKind::byte_literal:
+        return llvm::ConstantInt::get(llvm_type(value.type), parse_byte_literal(value.text), false);
+    case ValueKind::null_literal:
+        return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(llvm_type(value.type)));
+    case ValueKind::string_literal:
+        return emit_constant_string(value.text, false);
+    case ValueKind::c_string_literal:
+        return emit_constant_string(value.text, true);
+    case ValueKind::constant_ref: {
+        const GlobalConstant* constant = find_global_constant(source_, value.constant);
+        if (constant == nullptr) {
+            return llvm::UndefValue::get(llvm_type(value.type));
+        }
+        return emit_constant_initializer(source_.values[constant->initializer.value]);
+    }
+    case ValueKind::aggregate:
+        return emit_constant_aggregate(value);
+    case ValueKind::cast:
+        return emit_constant_cast(value);
+    case ValueKind::size_of:
+        return llvm::cast<llvm::Constant>(emit_size_of(value.target_type));
+    case ValueKind::align_of:
+        return llvm::cast<llvm::Constant>(emit_align_of(value.target_type));
+    default:
+        return llvm::UndefValue::get(llvm_type(value.type));
+    }
+}
+
+llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
+    llvm::Constant* operand = emit_constant_initializer(source_.values[value.lhs.value]);
+    llvm::Type* target = llvm_type(value.target_type);
+    if (operand->getType() == target) {
+        return operand;
+    }
+    const bool source_unsigned = is_unsigned_integer(source_.values[value.lhs.value].type);
+    unsigned opcode = llvm::Instruction::BitCast;
+    switch (value.cast_kind) {
+    case CastKind::numeric:
+        if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
+            const unsigned source_bits = operand->getType()->getIntegerBitWidth();
+            const unsigned target_bits = target->getIntegerBitWidth();
+            if (source_bits == target_bits) {
+                return operand;
+            }
+            opcode = target_bits < source_bits
+                ? llvm::Instruction::Trunc
+                : (source_unsigned ? llvm::Instruction::ZExt : llvm::Instruction::SExt);
+            break;
+        }
+        if (operand->getType()->isIntegerTy() && target->isFloatingPointTy()) {
+            opcode = source_unsigned ? llvm::Instruction::UIToFP : llvm::Instruction::SIToFP;
+            break;
+        }
+        if (operand->getType()->isFloatingPointTy() && target->isIntegerTy()) {
+            opcode = is_unsigned_integer(value.target_type) ? llvm::Instruction::FPToUI : llvm::Instruction::FPToSI;
+            break;
+        }
+        if (operand->getType()->isFloatingPointTy() && target->isFloatingPointTy()) {
+            const unsigned source_bits = operand->getType()->getScalarSizeInBits();
+            const unsigned target_bits = target->getScalarSizeInBits();
+            opcode = target_bits < source_bits ? llvm::Instruction::FPTrunc : llvm::Instruction::FPExt;
+            break;
+        }
+        return operand;
+    case CastKind::pointer:
+        opcode = llvm::Instruction::BitCast;
+        break;
+    case CastKind::bitcast:
+        opcode = llvm::Instruction::BitCast;
+        break;
+    case CastKind::ptr_addr:
+        opcode = llvm::Instruction::PtrToInt;
+        break;
+    case CastKind::ptr_from_addr:
+        opcode = llvm::Instruction::IntToPtr;
+        break;
+    }
+    llvm::Constant* folded = llvm::ConstantFoldCastInstruction(opcode, operand, target);
+    return folded == nullptr ? llvm::UndefValue::get(target) : folded;
+}
+
+llvm::Constant* LlvmEmitter::emit_constant_aggregate(const Value& value) {
+    llvm::StructType* type = llvm::cast<llvm::StructType>(llvm_type(value.type));
+    const RecordLayout* record = find_record(source_, value.type);
+    if (record == nullptr) {
+        return llvm::UndefValue::get(type);
+    }
+
+    std::vector<llvm::Constant*> fields(record->fields.size());
+    for (const FieldValue& field : value.fields) {
+        const base::usize index = record_field_index(*record, field.name);
+        if (index < fields.size()) {
+            fields[index] = emit_constant_initializer(source_.values[field.value.value]);
+        }
+    }
+    for (base::usize i = 0; i < fields.size(); ++i) {
+        if (fields[i] == nullptr) {
+            fields[i] = llvm::UndefValue::get(llvm_type(record->fields[i].type));
+        }
+    }
+    return llvm::ConstantStruct::get(type, fields);
+}
+
+llvm::Constant* LlvmEmitter::emit_constant_string(const std::string& literal, const bool c_string) {
+    if (c_string) {
+        std::string decoded = decode_string_literal(literal, true);
+        decoded.push_back('\0');
+        return llvm::cast<llvm::Constant>(global_string_pointer(decoded, "const.cstr", false));
+    }
+    return llvm::cast<llvm::Constant>(emit_string_literal(literal, false));
 }
 
 llvm::Value* LlvmEmitter::emit_unary(const Value& value) {
@@ -262,4 +385,4 @@ llvm::Value* LlvmEmitter::global_string_pointer(const std::string& text, const s
     return builder_.CreateInBoundsGEP(global->getValueType(), global, {zero, zero}, name + ".ptr");
 }
 
-} // namespace aurex::ir
+} // namespace aurex::backend

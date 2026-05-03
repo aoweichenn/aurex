@@ -1,11 +1,11 @@
-#include "llvm_emit_internal.hpp"
+#include "llvm_backend_internal.hpp"
 
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Target/TargetMachine.h>
 
-namespace aurex::ir {
+namespace aurex::backend {
 
 void LlvmEmitter::declare_records() {
     for (const RecordLayout& record : source_.records) {
@@ -113,4 +113,4 @@ const llvm::DataLayout& LlvmEmitter::data_layout() const {
     return module_->getDataLayout();
 }
 
-} // namespace aurex::ir
+} // namespace aurex::backend

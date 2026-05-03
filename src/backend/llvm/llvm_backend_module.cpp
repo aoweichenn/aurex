@@ -1,4 +1,4 @@
-#include "llvm_emit_internal.hpp"
+#include "llvm_backend_internal.hpp"
 
 #include "aurex/ir/verify.hpp"
 
@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace aurex::ir {
+namespace aurex::backend {
 
 LlvmEmitter::LlvmEmitter(const Module& module, std::string module_name)
     : source_(module),
@@ -30,8 +30,11 @@ base::Result<LlvmIrOutput> LlvmEmitter::run() {
         return base::Result<LlvmIrOutput>::fail(verified.error());
     }
 
-    configure_target();
+    if (auto target = configure_target(); !target) {
+        return base::Result<LlvmIrOutput>::fail(target.error());
+    }
     declare_records();
+    declare_constants();
     declare_functions();
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
         const Function& function = source_.functions[i];
@@ -54,7 +57,7 @@ base::Result<LlvmIrOutput> LlvmEmitter::run() {
     return base::Result<LlvmIrOutput>::ok(LlvmIrOutput {std::move(text)});
 }
 
-void LlvmEmitter::configure_target() {
+base::Result<void> LlvmEmitter::configure_target() {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
 
@@ -65,7 +68,7 @@ void LlvmEmitter::configure_target() {
     std::string error;
     const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, error);
     if (target == nullptr) {
-        return;
+        return base::Result<void>::fail({base::ErrorCode::codegen_error, "LLVM target lookup failed for " + triple_text + ": " + error});
     }
 
     target_machine_.reset(target->createTargetMachine(
@@ -75,8 +78,27 @@ void LlvmEmitter::configure_target() {
         llvm::TargetOptions {},
         std::nullopt
     ));
-    if (target_machine_ != nullptr) {
-        module_->setDataLayout(target_machine_->createDataLayout());
+    if (target_machine_ == nullptr) {
+        return base::Result<void>::fail({base::ErrorCode::codegen_error, "LLVM target machine creation failed for " + triple_text});
+    }
+    module_->setDataLayout(target_machine_->createDataLayout());
+    return base::Result<void>::ok();
+}
+
+void LlvmEmitter::declare_constants() {
+    for (base::u32 i = 0; i < source_.constants.size(); ++i) {
+        const GlobalConstant& constant = source_.constants[i];
+        llvm::Constant* initializer = emit_constant_initializer(source_.values[constant.initializer.value]);
+        llvm::GlobalVariable* global = new llvm::GlobalVariable(
+            *module_,
+            llvm_type(constant.type),
+            true,
+            llvm::GlobalValue::InternalLinkage,
+            initializer,
+            constant.symbol
+        );
+        global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+        constants_[i] = global;
     }
 }
 
@@ -129,4 +151,4 @@ void LlvmEmitter::declare_main_wrapper() {
     }
 }
 
-} // namespace aurex::ir
+} // namespace aurex::backend

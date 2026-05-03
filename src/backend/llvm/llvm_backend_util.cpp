@@ -1,8 +1,8 @@
-#include "llvm_emit_internal.hpp"
+#include "llvm_backend_internal.hpp"
 
 #include <charconv>
 
-namespace aurex::ir {
+namespace aurex::backend {
 
 bool parse_u64(const std::string& text, std::uint64_t& out) noexcept {
     int base = 10;
@@ -70,4 +70,4 @@ std::uint64_t parse_byte_literal(const std::string& literal) {
     return text.empty() ? 0 : static_cast<unsigned char>(text.front());
 }
 
-} // namespace aurex::ir
+} // namespace aurex::backend

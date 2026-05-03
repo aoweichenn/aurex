@@ -125,6 +125,9 @@ private:
             }
             verify_constant_value(field.value, expected->type, constant_stack);
         }
+        if (seen.size() != record->fields.size()) {
+            fail("aggregate constant does not initialize every field");
+        }
     }
 
     void verify_function(const FunctionId function_id, const Function& function) {
@@ -328,6 +331,9 @@ private:
                 continue;
             }
             verify_value_type(field.value, expected->type, "aggregate field");
+        }
+        if (seen.size() != record->fields.size()) {
+            fail("aggregate does not initialize every field");
         }
     }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/ir/llvm_emit.hpp"
+#include "aurex/backend/llvm_backend.hpp"
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -15,12 +15,39 @@ namespace llvm {
 class BasicBlock;
 class DataLayout;
 class Function;
+class GlobalVariable;
 class PHINode;
 class Type;
 class Value;
 } // namespace llvm
 
-namespace aurex::ir {
+namespace aurex::backend {
+
+using aurex::ir::BasicBlock;
+using aurex::ir::BinaryOp;
+using aurex::ir::BlockId;
+using aurex::ir::CastKind;
+using aurex::ir::FieldValue;
+using aurex::ir::Function;
+using aurex::ir::FunctionId;
+using aurex::ir::FunctionParam;
+using aurex::ir::GlobalConstant;
+using aurex::ir::GlobalConstantId;
+using aurex::ir::Linkage;
+using aurex::ir::Module;
+using aurex::ir::PhiInput;
+using aurex::ir::RecordField;
+using aurex::ir::RecordLayout;
+using aurex::ir::Terminator;
+using aurex::ir::TerminatorKind;
+using aurex::ir::UnaryOp;
+using aurex::ir::Value;
+using aurex::ir::ValueId;
+using aurex::ir::ValueKind;
+using aurex::ir::find_global_constant;
+using aurex::ir::find_record;
+using aurex::ir::is_valid;
+using aurex::ir::record_field_index;
 
 class LlvmEmitter final {
 public:
@@ -29,8 +56,9 @@ public:
     [[nodiscard]] base::Result<LlvmIrOutput> run();
 
 private:
-    void configure_target();
+    [[nodiscard]] base::Result<void> configure_target();
     void declare_records();
+    void declare_constants();
     void declare_functions();
     void declare_main_wrapper();
     void emit_function(FunctionId function_id, const Function& function);
@@ -40,6 +68,10 @@ private:
     [[nodiscard]] llvm::Value* emit_value(ValueId id);
     [[nodiscard]] llvm::Value* emit_runtime_value(const Value& value);
     [[nodiscard]] llvm::Value* emit_constant_ref(const Value& value);
+    [[nodiscard]] llvm::Constant* emit_constant_initializer(const Value& value);
+    [[nodiscard]] llvm::Constant* emit_constant_cast(const Value& value);
+    [[nodiscard]] llvm::Constant* emit_constant_aggregate(const Value& value);
+    [[nodiscard]] llvm::Constant* emit_constant_string(const std::string& literal, bool c_string);
     [[nodiscard]] llvm::Value* emit_unary(const Value& value);
     [[nodiscard]] llvm::Value* emit_binary(const Value& value);
     [[nodiscard]] llvm::Value* emit_call(const Value& value);
@@ -68,6 +100,7 @@ private:
     std::unique_ptr<llvm::TargetMachine> target_machine_;
     const Function* current_function_ = nullptr;
     std::unordered_map<base::u32, llvm::StructType*> records_;
+    std::unordered_map<base::u32, llvm::GlobalVariable*> constants_;
     std::unordered_map<base::u32, llvm::Function*> functions_;
     std::unordered_map<base::u32, llvm::BasicBlock*> blocks_;
     std::unordered_map<base::u32, llvm::Value*> values_;
@@ -78,4 +111,4 @@ private:
 [[nodiscard]] std::string decode_string_literal(const std::string& literal, bool has_c_prefix);
 [[nodiscard]] std::uint64_t parse_byte_literal(const std::string& literal);
 
-} // namespace aurex::ir
+} // namespace aurex::backend

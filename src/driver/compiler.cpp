@@ -3,12 +3,12 @@
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/source.hpp"
 #include "aurex/base/text.hpp"
+#include "aurex/backend/llvm_backend.hpp"
 #include "aurex/codegen_c/c_emitter.hpp"
 #include "aurex/driver/module_loader.hpp"
 #include "aurex/driver/native_toolchain.hpp"
 #include "aurex/ir/ir_dump.hpp"
 #include "aurex/ir/lower_ast.hpp"
-#include "aurex/ir/llvm_emit.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/sema/sema.hpp"
 #include "aurex/syntax/ast_dump.hpp"
@@ -173,7 +173,10 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
             std::cout << ir::dump_module(ir_result.value());
             return base::Result<void>::ok();
         }
-        auto llvm_result = ir::emit_llvm_ir(ir_result.value(), invocation.input_path.stem().string());
+        auto llvm_result = backend::emit_llvm_ir(backend::LlvmEmitRequest {
+            &ir_result.value(),
+            invocation.input_path.stem().string(),
+        });
         if (!llvm_result) {
             return base::Result<void>::fail(llvm_result.error());
         }
@@ -189,7 +192,10 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
         }
-        auto llvm_result = ir::emit_llvm_ir(ir_result.value(), invocation.input_path.stem().string());
+        auto llvm_result = backend::emit_llvm_ir(backend::LlvmEmitRequest {
+            &ir_result.value(),
+            invocation.input_path.stem().string(),
+        });
         if (!llvm_result) {
             return base::Result<void>::fail(llvm_result.error());
         }

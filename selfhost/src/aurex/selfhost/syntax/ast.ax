@@ -1,0 +1,110 @@
+module aurex.selfhost.syntax.ast;
+
+struct AstModule {
+    ok: bool;
+    module_begin: i32;
+    module_end: i32;
+    import_count: i32;
+    item_count: i32;
+    extern_block_count: i32;
+    extern_fn_count: i32;
+    opaque_struct_count: i32;
+    export_fn_count: i32;
+    param_count: i32;
+    type_count: i32;
+    primitive_type_count: i32;
+    named_type_count: i32;
+    pointer_type_count: i32;
+    return_type_count: i32;
+    abi_name_count: i32;
+    block_count: i32;
+    eof_end: i32;
+}
+
+fn ast_make_module() -> AstModule {
+    return AstModule {
+        ok: false,
+        module_begin: 0,
+        module_end: 0,
+        import_count: 0,
+        item_count: 0,
+        extern_block_count: 0,
+        extern_fn_count: 0,
+        opaque_struct_count: 0,
+        export_fn_count: 0,
+        param_count: 0,
+        type_count: 0,
+        primitive_type_count: 0,
+        named_type_count: 0,
+        pointer_type_count: 0,
+        return_type_count: 0,
+        abi_name_count: 0,
+        block_count: 0,
+        eof_end: 0
+    };
+}
+
+fn ast_mark_ok(ast: *mut AstModule, eof_end: i32) -> void {
+    ast.ok = true;
+    ast.eof_end = eof_end;
+}
+
+fn ast_set_module_path(ast: *mut AstModule, begin: i32, end: i32) -> void {
+    ast.module_begin = begin;
+    ast.module_end = end;
+}
+
+fn ast_add_import(ast: *mut AstModule) -> void {
+    ast.import_count = ast.import_count + 1;
+}
+
+fn ast_add_extern_block(ast: *mut AstModule) -> void {
+    ast.item_count = ast.item_count + 1;
+    ast.extern_block_count = ast.extern_block_count + 1;
+}
+
+fn ast_add_extern_fn(ast: *mut AstModule) -> void {
+    ast.item_count = ast.item_count + 1;
+    ast.extern_fn_count = ast.extern_fn_count + 1;
+}
+
+fn ast_add_opaque_struct(ast: *mut AstModule) -> void {
+    ast.item_count = ast.item_count + 1;
+    ast.opaque_struct_count = ast.opaque_struct_count + 1;
+}
+
+fn ast_add_export_fn(ast: *mut AstModule) -> void {
+    ast.item_count = ast.item_count + 1;
+    ast.export_fn_count = ast.export_fn_count + 1;
+}
+
+fn ast_add_param(ast: *mut AstModule) -> void {
+    ast.param_count = ast.param_count + 1;
+}
+
+fn ast_add_primitive_type(ast: *mut AstModule) -> void {
+    ast.type_count = ast.type_count + 1;
+    ast.primitive_type_count = ast.primitive_type_count + 1;
+}
+
+fn ast_add_named_type(ast: *mut AstModule) -> void {
+    ast.type_count = ast.type_count + 1;
+    ast.named_type_count = ast.named_type_count + 1;
+}
+
+fn ast_add_pointer_type(ast: *mut AstModule) -> void {
+    ast.type_count = ast.type_count + 1;
+    ast.pointer_type_count = ast.pointer_type_count + 1;
+}
+
+fn ast_add_return_type(ast: *mut AstModule) -> void {
+    ast.return_type_count = ast.return_type_count + 1;
+}
+
+fn ast_add_abi_name(ast: *mut AstModule) -> void {
+    ast.abi_name_count = ast.abi_name_count + 1;
+}
+
+fn ast_add_block(ast: *mut AstModule) -> void {
+    ast.block_count = ast.block_count + 1;
+}

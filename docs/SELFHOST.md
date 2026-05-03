@@ -33,10 +33,16 @@ Implemented now:
   with `tests/golden/selfhost_lexer_file_hello.tokens`.
 - `selfhost/src/aurex/selfhost/parser/seed.ax`: first parser seed written in
   M0. It uses a one-token `TokenSpan` cursor and validates a small
-  recursive-descent syntax subset.
+  recursive-descent syntax subset. It now returns a compact AST summary for the
+  covered syntax instead of only returning `bool`.
+- `selfhost/src/aurex/selfhost/syntax/ast.ax`: first M0 AST data module. The
+  current shape is a deliberately small parse summary covering module path
+  ranges plus top-level import/item/type/parameter counters; later iterations can
+  replace the counters with full ID-backed node storage.
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax`: parser seed entry point
   covering `module`, `import`, `extern c`, function signatures, and an
-  `export c fn` body shell.
+  `export c fn` body shell. It now asserts the AST summary produced by
+  `parse_seed_ast`.
 - `selfhost/src/aurex/selfhost/compiler/io.ax`: explicit runtime IO bridge for
   the selfhost compiler slice.
 - `selfhost/src/aurex/selfhost/compiler/imports.ax`: Stage1 import graph loader.
@@ -82,6 +88,8 @@ compiler source.
 Current exact capability:
 
 - Stage0 compiles the M0 selfhost lexer, parser seed, and `m0c_stage1.ax`.
+- The M0 parser seed constructs a compact AST summary for the syntax it covers,
+  and Stage1 can compile/run that parser+AST smoke bundle.
 - The M0 lexer stream is checked against the C++ Stage0 lexer over the local
   corpus.
 - `m0c_stage1` compiles `examples/hello.ax`,
@@ -215,8 +223,9 @@ Aurex M0 selfhost seed
 Both `bootstrap_chain.sh` and `make -C selfhost check` now prove the same
 important properties: the M0 lexer driver and the C++ Stage0 lexer agree on the
 token kind sequence for the local corpus, the first M0 parser seed can parse a
-fixed module/import/extern/function-signature source, and the M0-written Stage1
-compiler slice can compile `examples/hello.ax`, the selfhost seed, and a Stage2
+fixed module/import/extern/function-signature source and produce a checked AST
+summary for it, and the M0-written Stage1 compiler slice can compile
+`examples/hello.ax`, the selfhost seed, and a Stage2
 smoke compiler bundle into runnable C. The script now also uses Stage2 to build
 a Stage3 smoke compiler and requires Stage2/Stage3 compiler output, seed output,
 and core smoke output to match byte-for-byte. It also proves Stage1 bundle paths

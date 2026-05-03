@@ -35,8 +35,9 @@ build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
-`--emit=exe` is the default. `--clang <path>` selects a clang binary, and
-repeated `--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
+`--emit=exe` is the default. `--clang <path>` selects a clang binary,
+`--opt-level O1` enables Aurex IR passes, and repeated `--clang-arg <arg>`
+options pass raw arguments such as `-O2` or `-g` to clang.
 
 The IR path is visible with:
 
@@ -49,6 +50,12 @@ build/bin/aurexc --emit=llvm-ir examples/hello.ax
 LLVM IR and prints the result. Native output runs Aurex IR -> LLVM IR -> clang.
 The old Stage0 C backend has been removed from the production build; the
 selfhost Stage1 path now emits Aurex IR snapshots instead of C.
+
+The bundled std root is found through `--stdlib`, `AUREX_STDLIB`, build-tree
+defaults, and relocatable install layouts such as `share/aurex/std` next to the
+installed `bin/aurexc`. Executable output links the selected std support backend
+(`--std-backend host-c` by default), whose stable host-facing symbols are
+versioned as `aurex_std_v0_*`.
 
 ## Quality Gates
 

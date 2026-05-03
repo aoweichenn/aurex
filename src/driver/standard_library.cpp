@@ -1,6 +1,7 @@
 #include "aurex/driver/standard_library.hpp"
 
 #include <cstdlib>
+#include <string_view>
 
 namespace aurex::driver {
 
@@ -22,7 +23,8 @@ namespace {
 [[nodiscard]] bool is_standard_library_root(const std::filesystem::path& path) {
     std::error_code error;
     return std::filesystem::exists(path / "text.ax", error) && !error &&
-           std::filesystem::exists(path / "native_support.c", error) && !error;
+           std::filesystem::exists(path / "c.ax", error) && !error &&
+           std::filesystem::exists(path / "support" / "host_c.c", error) && !error;
 }
 
 void append_candidate(std::vector<std::filesystem::path>& candidates, const std::filesystem::path& path) {
@@ -33,6 +35,7 @@ void append_candidate(std::vector<std::filesystem::path>& candidates, const std:
 
 [[nodiscard]] std::vector<std::filesystem::path> standard_library_candidates(const CompilerInvocation& invocation) {
     std::vector<std::filesystem::path> candidates;
+    append_candidate(candidates, invocation.standard_library_path);
     if (const char* env = std::getenv("AUREX_STDLIB"); env != nullptr && env[0] != '\0') {
         append_candidate(candidates, env);
     }
@@ -44,6 +47,9 @@ void append_candidate(std::vector<std::filesystem::path>& candidates, const std:
         append_candidate(candidates, tool_dir / "std");
         append_candidate(candidates, tool_dir / ".." / "std");
         append_candidate(candidates, tool_dir / ".." / ".." / "std");
+        append_candidate(candidates, tool_dir / ".." / "share" / "aurex" / "std");
+        append_candidate(candidates, tool_dir / ".." / "lib" / "aurex" / "std");
+        append_candidate(candidates, tool_dir / ".." / ".." / "share" / "aurex" / "std");
     }
 
     append_candidate(candidates, std::filesystem::current_path() / "std");
@@ -52,13 +58,21 @@ void append_candidate(std::vector<std::filesystem::path>& candidates, const std:
 
 } // namespace
 
+std::string_view standard_library_backend_name(const StandardLibraryBackend backend) noexcept {
+    switch (backend) {
+    case StandardLibraryBackend::host_c: return "host-c";
+    case StandardLibraryBackend::none: return "none";
+    }
+    return "host-c";
+}
+
 std::optional<StandardLibraryLayout> find_standard_library(const CompilerInvocation& invocation) {
     for (const std::filesystem::path& candidate : standard_library_candidates(invocation)) {
         const std::filesystem::path root = canonical_or_absolute(candidate);
         if (is_standard_library_root(root)) {
             return StandardLibraryLayout {
                 root,
-                root / "native_support.c",
+                root / "support" / "host_c.c",
             };
         }
     }
@@ -75,6 +89,19 @@ std::vector<std::filesystem::path> standard_library_import_paths(const CompilerI
         paths.push_back(layout->root.parent_path());
     }
     return paths;
+}
+
+std::vector<std::filesystem::path> standard_library_support_sources(
+    const StandardLibraryLayout& layout,
+    const StandardLibraryBackend backend
+) {
+    switch (backend) {
+    case StandardLibraryBackend::host_c:
+        return {layout.host_c_support_source};
+    case StandardLibraryBackend::none:
+        return {};
+    }
+    return {};
 }
 
 } // namespace aurex::driver

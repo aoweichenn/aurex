@@ -32,6 +32,9 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --emit=exe       emit a native executable through clang (default)\n"
         << "  --clang path     clang executable to use for asm/exe output\n"
         << "  --clang-arg arg  pass one raw argument to clang; repeat as needed\n"
+        << "  --opt-level n    run Aurex IR passes at O0, O1, O2, or O3 (default O0)\n"
+        << "  --stdlib path    use an explicit Aurex standard library root\n"
+        << "  --std-backend b  std support backend: host-c or none (default host-c)\n"
         << "  --no-stdlib      do not import or link the bundled Aurex standard library\n"
         << "  -I path          add an import search path\n";
 }
@@ -94,8 +97,48 @@ int main(const int argc, char** argv) {
                 return 2;
             }
             invocation.clang_args.push_back(argv[++i]);
+        } else if (arg == "--opt-level" || arg == "-O") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            const std::string_view level(argv[++i]);
+            if (level == "0" || level == "O0") {
+                invocation.optimization_level = aurex::ir::OptimizationLevel::none;
+            } else if (level == "1" || level == "O1") {
+                invocation.optimization_level = aurex::ir::OptimizationLevel::basic;
+            } else if (level == "2" || level == "O2") {
+                invocation.optimization_level = aurex::ir::OptimizationLevel::standard;
+            } else if (level == "3" || level == "O3") {
+                invocation.optimization_level = aurex::ir::OptimizationLevel::aggressive;
+            } else {
+                std::cerr << "invalid optimization level: " << level << "\n";
+                return 2;
+            }
+        } else if (arg == "--stdlib") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            invocation.standard_library_path = argv[++i];
+        } else if (arg == "--std-backend") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            const std::string_view backend(argv[++i]);
+            if (backend == "host-c") {
+                invocation.standard_library_backend = aurex::driver::StandardLibraryBackend::host_c;
+            } else if (backend == "none") {
+                invocation.standard_library_backend = aurex::driver::StandardLibraryBackend::none;
+            } else {
+                std::cerr << "invalid std backend: " << backend << "\n";
+                return 2;
+            }
         } else if (arg == "--no-stdlib") {
             invocation.use_standard_library = false;
+        } else if ((arg == "-O0" || arg == "-O1" || arg == "-O2" || arg == "-O3") && arg.size() == 3) {
+            invocation.optimization_level = static_cast<aurex::ir::OptimizationLevel>(arg[2] - '0');
         } else if (arg.starts_with("-I") && arg.size() > 2) {
             invocation.import_paths.push_back(std::string(arg.substr(2)));
         } else if (!arg.empty() && arg.front() == '-') {

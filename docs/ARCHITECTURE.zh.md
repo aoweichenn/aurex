@@ -22,7 +22,8 @@ Stage1 自举编译器切片。
 - `src/cli/`：`aurexc` 命令行入口。
 - `cmake/`：按编译器组件拆分的构建定义，根 `CMakeLists.txt` 只负责组装。
 - `std/`：Aurex 标准库模块。`std.*` 默认进入 import 搜索路径；
-  `std/native_support.c` 是当前 native 输出自动链接的主机支持层。
+  `std/support/host_c.c` 是当前默认 native 输出自动链接的 host-c backend
+  support，稳定主机侧符号采用 `aurex_std_v0_*` 命名。
 - `bootstrap/`：单文件 Stage0-mini 编译器，用于证明最小翻译链路。
 - `selfhost/`：M0 编写的自举编译器源码、运行时和自举验证。
 - `tests/`：正向、反向、import 和 golden 测试语料。
@@ -37,8 +38,9 @@ Stage1 自举编译器切片。
 3. `parse` 将 token 转为 AST。AST 只表达语法事实，不保存类型检查结果。
 4. `sema` 建立类型、符号、函数、结构体和枚举 case 边表。
 5. `ir` 可以把 AST 与 `CheckedModule` 降为 Aurex IR，用 `--emit=ir` 观察。
-6. `backend/llvm` 消费 Aurex IR 并 lowering 到 LLVM IR，用 `--emit=llvm-ir` 观察。
-7. `driver` 把 LLVM IR 交给 clang，输出汇编、object 或本机可执行文件。默认输出是本机可执行文件；生成可执行文件时会自动链接 `std/native_support.c`。
+6. `ir` pass pipeline 根据 `--opt-level` 运行 verifier、局部 mem2reg 和 CFG cleanup。
+7. `backend/llvm` 消费 Aurex IR 并 lowering 到 LLVM IR，用 `--emit=llvm-ir` 观察。
+8. `driver` 把 LLVM IR 交给 clang，输出汇编、object 或本机可执行文件。默认输出是本机可执行文件；生成可执行文件时会按 `--std-backend` 自动链接 std backend support。
 
 这种分层刻意避免让 parser 依赖 lexer 实现，也避免把语义信息写回 AST。
 后续替换前端或把组件迁移到 M0 时，每个阶段都有清晰接口。
@@ -72,15 +74,16 @@ IR 当前具有这些性质：
 AST + CheckedModule
   -> Aurex IR
   -> IR verifier
-  -> mem2reg / CFG cleanup / 常量折叠
+  -> pass pipeline: local mem2reg / CFG cleanup / 后续常量折叠
   -> 后端选择：LLVM IR / 未来自研后端
   -> LLVM target machine 输出 asm/object/exe
 ```
 
 当前状态可以概括为：LLVM 主链路已经搭好，M0 正向样例、`std` 样例和
 selfhost smoke 入口都可以经 Stage0 的 Aurex IR -> LLVM IR -> clang 编译运行。
-还不能称为完整工业级后端的部分包括：独立 IR pass pipeline、mem2reg/CFG cleanup、
-优化级别控制、更完整 ABI 属性和未来自研后端代码生成。LLVM 只是当前第一个生产后端，
+IR pass pipeline 已有独立入口，`O0` 只验证，`O1` 及以上启用当前保守的局部
+mem2reg 和 CFG cleanup。还不能称为完整工业级后端的部分包括：完整 SSA 构造、
+跨块 mem2reg、常量折叠、更完整 ABI 属性和未来自研后端代码生成。LLVM 只是当前第一个生产后端，
 不能把 LLVM 私有语义写回 Aurex IR；自研后端后续应消费同一个 IR、verifier 和 ABI 描述。
 
 ## CMake 组件边界

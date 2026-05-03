@@ -23,6 +23,9 @@ mkdir -p "${TEST_DIR}" "${TMP_DIR}" "${BOOT_DIR}"
 "${AUREXC}" --help | grep -q -- '--emit=exe'
 "${AUREXC}" --help | grep -q -- '--no-stdlib'
 "${AUREXC}" --help | grep -q -- '--dump-modules'
+"${AUREXC}" --help | grep -q -- '--opt-level'
+"${AUREXC}" --help | grep -q -- '--stdlib'
+"${AUREXC}" --help | grep -q -- '--std-backend'
 "${AUREXC}" --check "${ROOT}/examples/hello.ax"
 "${AUREXC}" --emit=check "${ROOT}/examples/hello.ax"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/bin/aurexc_seed.ax"
@@ -38,8 +41,10 @@ mkdir -p "${TEST_DIR}" "${TMP_DIR}" "${BOOT_DIR}"
 "${AUREXC}" --emit=checked "${ROOT}/examples/hello.ax" >"${TMP_DIR}/aurex_checked.txt"
 "${AUREXC}" --emit=ir "${ROOT}/examples/hello.ax" >"${TMP_DIR}/aurex_ir_hello.txt"
 "${AUREXC}" --emit=llvm-ir "${ROOT}/examples/hello.ax" >"${TMP_DIR}/aurex_llvm_ir_hello.ll"
+"${AUREXC}" --emit=ir --opt-level O1 "${ROOT}/tests/positive/eval_order_assign.ax" >"${TMP_DIR}/aurex_ir_eval_order_assign_o1.txt"
 "${AUREXC}" --emit=ir "${ROOT}/tests/positive/std_text.ax" >"${TMP_DIR}/aurex_ir_std_text.txt"
 "${AUREXC}" --emit=ir "${ROOT}/tests/positive/pointer_field_write.ax" >"${TMP_DIR}/aurex_ir_pointer_field.txt"
+"${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --emit=llvm-ir "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax" >"${TMP_DIR}/aurex_selfhost_lexer_file.ll"
 "${AUREXC}" --dump-modules "${ROOT}/tests/positive/module_math.ax" >"${TMP_DIR}/aurex_modules.txt"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax" >"${TMP_DIR}/aurex_selfhost_modules.txt"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax" >"${TMP_DIR}/aurex_selfhost_parser_modules.txt"
@@ -50,9 +55,11 @@ grep -q 'aurex_ir v0' "${TMP_DIR}/aurex_ir_hello.txt"
 grep -q 'define i32 @main' "${TMP_DIR}/aurex_llvm_ir_hello.ll"
 grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' "${TMP_DIR}/aurex_ir_hello.txt"
 grep -q 'call puts' "${TMP_DIR}/aurex_ir_hello.txt"
+grep -q 'call m0_eval_order_assign_next(%' "${TMP_DIR}/aurex_ir_eval_order_assign_o1.txt"
 grep -q 'phi \[' "${TMP_DIR}/aurex_ir_std_text.txt"
 grep -q 'usize = cast' "${TMP_DIR}/aurex_ir_std_text.txt"
 grep -q 'field_addr .*\.value' "${TMP_DIR}/aurex_ir_pointer_field.txt"
+grep -q 'aurex_std_v0_read_file' "${TMP_DIR}/aurex_selfhost_lexer_file.ll"
 grep -q 'lib.math' "${TMP_DIR}/aurex_modules.txt"
 grep -q 'module_math' "${TMP_DIR}/aurex_modules.txt"
 grep -q 'aurex.selfhost.lexer.dump' "${TMP_DIR}/aurex_selfhost_modules.txt"
@@ -74,6 +81,9 @@ test -s "${TEST_DIR}/hello.o"
 "${AUREXC}" --emit=exe "${ROOT}/examples/hello.ax" -o "${TEST_DIR}/hello.direct"
 HELLO_DIRECT_OUT="$("${TEST_DIR}/hello.direct")"
 test "${HELLO_DIRECT_OUT}" = "hello from Aurex M0"
+"${AUREXC}" --std-backend none "${ROOT}/examples/hello.ax" -o "${TEST_DIR}/hello.stdnone"
+HELLO_STDNONE_OUT="$("${TEST_DIR}/hello.stdnone")"
+test "${HELLO_STDNONE_OUT}" = "hello from Aurex M0"
 "${AUREXC}" --emit=llvm-ir "${ROOT}/tests/positive/const_enum.ax" >"${TMP_DIR}/aurex_llvm_ir_const_enum.ll"
 grep -q '@m0_const_enum_answer = internal unnamed_addr constant i32 42' "${TMP_DIR}/aurex_llvm_ir_const_enum.ll"
 grep -q 'load i32, ptr @m0_const_enum_answer' "${TMP_DIR}/aurex_llvm_ir_const_enum.ll"
@@ -104,6 +114,10 @@ for src in "${ROOT}"/tests/positive/std_*.ax; do
     "${AUREXC}" --emit=exe "${src}" -o "${direct}"
     "${direct}" >/dev/null
 done
+
+cmake --install "${BUILD_DIR}" --prefix "${BUILD_DIR}/install" >/dev/null
+"${BUILD_DIR}/install/bin/aurexc" "${ROOT}/tests/positive/std_text.ax" -o "${TEST_DIR}/std_text.installed"
+"${TEST_DIR}/std_text.installed" >/dev/null
 
 "${AUREXC}" -I "${ROOT}/tests/imports" "${ROOT}/tests/positive/import_path.ax" -o "${TEST_DIR}/import_path"
 "${TEST_DIR}/import_path" >/dev/null

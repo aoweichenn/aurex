@@ -62,6 +62,7 @@ build/bin/aurexc --emit=check examples/hello.ax
 build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
 build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
+build/bin/aurexc --emit=ir --opt-level O1 examples/hello.ax
 build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
 ```
 
@@ -85,6 +86,13 @@ Options:
 - `--clang path`: select the clang executable used for native output.
 - `--clang-arg arg`: pass one raw argument to clang; repeat as needed, for example
   `--clang-arg -O2`.
+- `--opt-level O0|O1|O2|O3`: control the Aurex IR pass pipeline. The default
+  `O0` verifies only; `O1` and above enable the current conservative local
+  mem2reg and CFG cleanup passes.
+- `--stdlib path`: use an explicit Aurex standard library root before
+  environment and built-in lookup paths.
+- `--std-backend host-c|none`: select the std backend support linked for
+  executable output. The default is `host-c`.
 - `--no-stdlib`: disable the bundled `std` import root and native support link.
 - `-o path`: write the native output path.
 - `-I path`: add an import root. `import a.b;` searches for `a/b.ax` in the
@@ -109,9 +117,18 @@ now emits Aurex IR snapshots instead of C.
 
 `std/` is the current standard library root and is added to import resolution by
 default. Programs can import `std.text`, `std.mem`, or `std.file` without
-manually passing `-I .`. Executable output also links `std/native_support.c`
-automatically for host support symbols used by the selfhost tools. `--no-stdlib`
-disables both defaults for low-level experiments and isolation tests.
+manually passing `-I .`. Lookup checks `--stdlib`, `AUREX_STDLIB`, built-in
+build-tree paths, `std` / `share/aurex/std` / `lib/aurex/std` relative to the
+`aurexc` executable, and the current working directory's `std`. This supports
+relocatable installs where `bin/aurexc` finds `share/aurex/std` in the same
+prefix.
+
+Executable output links backend support selected by `--std-backend`. The default
+host-c backend source is `std/support/host_c.c`, exporting stable
+`aurex_std_v0_*` host-facing symbols. `std/native_support.c` remains only as a
+compatibility entry for older build scripts. `--no-stdlib` disables both the
+default import root and backend support link for low-level experiments and
+isolation tests.
 
 ## 5. Language Snapshot
 

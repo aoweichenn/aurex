@@ -164,11 +164,12 @@ driver 再用 clang 生成汇编、object 或可执行文件。`extern c` / `exp
 - `--emit=llvm-ir` 可观察 LLVM IR；
 - `--emit=asm`、`--emit=obj`、`--emit=exe` 均走 LLVM；
 - 多模块中重复声明的同名 `extern c` 会在 LLVM 侧合并到同一个外部声明；
-- 生成可执行文件时会自动链接 `std` 的 native 支持层。
+- `--opt-level` 会运行独立 Aurex IR pass pipeline，当前 `O1+` 覆盖局部 mem2reg 和 CFG cleanup；
+- 生成可执行文件时会自动链接所选 `std` backend support，默认 host-c support 使用 `aurex_std_v0_*` 稳定符号。
 
 仍需补强：
 
-- 优化 pipeline 和 pass 管理；
+- 完整跨块 SSA/mem2reg、常量折叠和更丰富的优化 pipeline；
 - object/assembly 模式下更细的标准库/主机支持链接约束；
 - 更完整的 ABI 属性、目标 triple/CPU/feature 配置；
 - 未来自研后端复用同一 IR/verifier/ABI 描述。

@@ -175,11 +175,14 @@ Current coverage:
 - `--emit=asm`, `--emit=obj`, and `--emit=exe` all consume LLVM output;
 - repeated same-signature `extern c` declarations across modules merge to one
   LLVM declaration;
-- the bundled `std` native support is linked automatically for executable output.
+- `--opt-level` runs the standalone Aurex IR pass pipeline, with conservative
+  local mem2reg and CFG cleanup enabled at `O1+`;
+- executable output links the selected `std` backend support, with the default
+  host-c backend exporting stable `aurex_std_v0_*` symbols.
 
 Remaining work:
 
-- optimization pipeline and pass management;
+- full cross-block SSA/mem2reg, constant folding, and richer optimization passes;
 - tighter standard-library and host-support linking rules for object/assembly modes;
 - fuller ABI attributes and target triple/CPU/feature control;
 - future custom native backends consuming the same IR/verifier/ABI contract.

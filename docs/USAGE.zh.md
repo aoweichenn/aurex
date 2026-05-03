@@ -65,6 +65,7 @@ build/bin/aurexc --emit=check examples/hello.ax
 build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
 build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
+build/bin/aurexc --emit=ir --opt-level O1 examples/hello.ax
 build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
 ```
 
@@ -88,6 +89,9 @@ build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/i
 - `--emit=exe`：走 Aurex IR -> LLVM 后端生成临时 LLVM IR，再调用 clang 输出本机可执行文件。这是默认行为。
 - `--clang path`：指定本机输出使用的 clang 可执行文件。
 - `--clang-arg arg`：向 clang 透传一个参数，可重复使用，例如 `--clang-arg -O2`。
+- `--opt-level O0|O1|O2|O3`：控制 Aurex IR pass pipeline；默认 `O0` 只做验证，`O1` 及以上启用当前保守的局部 mem2reg 和 CFG cleanup。
+- `--stdlib path`：指定 Aurex 标准库根，优先级高于环境变量和内置查找路径。
+- `--std-backend host-c|none`：选择可执行输出自动链接的 std backend support；默认 `host-c`。
 - `--no-stdlib`：关闭默认 `std` import root 和 native 支持链接。
 - `-o path`：写入本机输出文件；默认/`--emit=exe` 下是可执行文件。
 - `-I path`：增加 import 搜索根。`import a.b;` 会查找 `a/b.ax`，先查导入者所在目录，再查每个 `-I` 路径。
@@ -118,8 +122,15 @@ build/bin/aurexc --emit=ir examples/hello.ax
 
 `std/` 是当前标准库根，默认进入 import 搜索路径。因此程序可以直接
 `import std.text;`、`import std.mem;` 或 `import std.file;`，无需手动 `-I .`。
-生成可执行文件时，driver 会自动链接 `std/native_support.c` 提供 selfhost IO
-等主机支持符号。`--no-stdlib` 可关闭这两项默认行为，主要用于底层实验和隔离测试。
+查找顺序包括 `--stdlib`、`AUREX_STDLIB`、构建时内置路径、`aurexc` 可执行文件
+相对路径下的 `std` / `share/aurex/std` / `lib/aurex/std`，以及当前工作目录的
+`std`。这允许 `cmake --install` 后的 `bin/aurexc` 从安装前缀中的
+`share/aurex/std` 可重定位查找标准库。
+
+生成可执行文件时，driver 会按 `--std-backend` 自动链接 backend support。
+当前默认 `host-c` backend 源文件是 `std/support/host_c.c`，其稳定主机侧符号
+使用 `aurex_std_v0_*` 命名。`std/native_support.c` 仅保留为旧构建脚本兼容入口。
+`--no-stdlib` 可关闭默认 import root 和 backend support 链接，主要用于底层实验和隔离测试。
 
 LLVM 后端和未来自研后端都应从 Aurex IR lowering。Stage0 生产 C 后端已经从
 构建链路中移除；`selfhost/` 中的 Stage1 也已经改为输出 Aurex IR 快照，

@@ -9,6 +9,7 @@
 #include "aurex/driver/standard_library.hpp"
 #include "aurex/ir/ir_dump.hpp"
 #include "aurex/ir/lower_ast.hpp"
+#include "aurex/ir/pass_pipeline.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/sema/sema.hpp"
 #include "aurex/syntax/ast_dump.hpp"
@@ -156,6 +157,16 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
         }
+        auto pipeline_result = ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
+            invocation.optimization_level,
+            true,
+            true,
+            true,
+            true,
+        });
+        if (!pipeline_result) {
+            return pipeline_result;
+        }
         if (invocation.emit_kind == EmitKind::ir) {
             std::cout << ir::dump_module(ir_result.value());
             return base::Result<void>::ok();
@@ -180,6 +191,16 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
+        }
+        auto pipeline_result = ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
+            invocation.optimization_level,
+            true,
+            true,
+            true,
+            true,
+        });
+        if (!pipeline_result) {
+            return pipeline_result;
         }
         auto llvm_result = backend::emit_llvm_ir(backend::LlvmEmitRequest {
             &ir_result.value(),
@@ -207,7 +228,10 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
                     "failed to locate Aurex standard library; set AUREX_STDLIB or pass --no-stdlib"
                 });
             }
-            request.support_source_paths.push_back(standard_library->native_support_source);
+            request.support_source_paths = standard_library_support_sources(
+                *standard_library,
+                invocation.standard_library_backend
+            );
         }
         request.emit_kind = invocation.emit_kind;
         request.input_is_llvm_ir = true;

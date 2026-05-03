@@ -1,5 +1,7 @@
 #include "aurex/syntax/module.hpp"
 
+#include "aurex/base/abi.hpp"
+
 #include <sstream>
 
 namespace aurex::syntax {
@@ -37,7 +39,7 @@ bool module_paths_equal(const ModulePath& lhs, const ModulePath& rhs) noexcept {
 }
 
 std::string mangle_c_symbol(const ModulePath& module, const std::string_view name) {
-    std::string result = "m0";
+    std::string result(aurex::base::abi::internal_symbol_prefix);
     for (std::string_view part : module.parts) {
         result += "_";
         for (const char c : part) {

@@ -17,7 +17,7 @@ entry names.
   entry source.
 - `aurex/selfhost/lexer/`: reusable lexer core and token dump helpers.
 - `aurex/selfhost/syntax/`: selfhost syntax data modules. `ast.ax` currently
-  holds the compact AST summary produced by the parser seed.
+  holds the ID-backed node-pool AST produced by the parser seed.
 - `aurex/selfhost/parser/`: reusable parser seed modules.
 - `aurex/selfhost/smoke/`: executable smoke tests for selfhost modules.
   `stage1_lang.ax` specifically guards the Stage1 emitter statement/type

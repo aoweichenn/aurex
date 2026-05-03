@@ -7,9 +7,67 @@ extern c {
     fn puts(s: *const u8) -> i32 @name("puts");
 }
 
+fn range_matches_4(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, ch2: u8, ch3: u8) -> bool {
+    return end - begin == 4 &&
+        source[begin] == ch0 &&
+        source[begin + 1] == ch1 &&
+        source[begin + 2] == ch2 &&
+        source[begin + 3] == ch3;
+}
+
+fn range_matches_8(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, ch2: u8, ch3: u8, ch4: u8, ch5: u8, ch6: u8, ch7: u8) -> bool {
+    return end - begin == 8 &&
+        source[begin] == ch0 &&
+        source[begin + 1] == ch1 &&
+        source[begin + 2] == ch2 &&
+        source[begin + 3] == ch3 &&
+        source[begin + 4] == ch4 &&
+        source[begin + 5] == ch5 &&
+        source[begin + 6] == ch6 &&
+        source[begin + 7] == ch7;
+}
+
+fn range_matches_10(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, ch2: u8, ch3: u8, ch4: u8, ch5: u8, ch6: u8, ch7: u8, ch8: u8, ch9: u8) -> bool {
+    return end - begin == 10 &&
+        source[begin] == ch0 &&
+        source[begin + 1] == ch1 &&
+        source[begin + 2] == ch2 &&
+        source[begin + 3] == ch3 &&
+        source[begin + 4] == ch4 &&
+        source[begin + 5] == ch5 &&
+        source[begin + 6] == ch6 &&
+        source[begin + 7] == ch7 &&
+        source[begin + 8] == ch8 &&
+        source[begin + 9] == ch9;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 @name(\"aurex_main\") { return 0; }";
     let ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        puts(c"selfhost parser seed failed");
+        return 1;
+    }
+    let import0: AstPath = ast.imports[0];
+    let extern_block: AstItemNode = ast.items[0];
+    let opaque_struct: AstItemNode = ast.items[1];
+    let extern_fn: AstItemNode = ast.items[2];
+    let export_fn: AstItemNode = ast.items[3];
+    let extern_param: AstParamNode = ast.params[0];
+    let export_argc: AstParamNode = ast.params[1];
+    let export_argv: AstParamNode = ast.params[2];
+    let extern_param_type: AstTypeNode = ast.types[extern_param.type_id];
+    let extern_param_pointee: AstTypeNode = ast.types[extern_param_type.pointee];
+    let extern_return_type: AstTypeNode = ast.types[extern_fn.return_type];
+    let export_argc_type: AstTypeNode = ast.types[export_argc.type_id];
+    let export_argv_type: AstTypeNode = ast.types[export_argv.type_id];
+    let export_argv_pointee: AstTypeNode = ast.types[export_argv_type.pointee];
+    let export_argv_inner: AstTypeNode = ast.types[export_argv_pointee.pointee];
+    let export_return_type: AstTypeNode = ast.types[export_fn.return_type];
+    let body: AstBlockNode = ast.blocks[export_fn.body_block];
+    let return_stmt: AstStmtNode = ast.stmts[body.first_stmt];
+    let return_expr: AstExprNode = ast.exprs[return_stmt.expr_id];
     if ast.ok &&
         ast.module_begin == 7 &&
         ast.module_end == 15 &&
@@ -24,10 +82,60 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         ast.return_type_count == 2 &&
         ast.abi_name_count == 2 &&
         ast.block_count == 1 &&
+        ast.stmt_count == 1 &&
+        ast.return_stmt_count == 1 &&
+        ast.expr_count == 1 &&
+        ast.integer_expr_count == 1 &&
+        import0.begin == 24 &&
+        import0.end == 32 &&
+        range_matches_8(source, import0.begin, import0.end, b'l', b'i', b'b', b'.', b'm', b'a', b't', b'h') &&
+        extern_block.kind == AST_ITEM_EXTERN_BLOCK &&
+        opaque_struct.kind == AST_ITEM_OPAQUE_STRUCT &&
+        range_matches_4(source, opaque_struct.name_begin, opaque_struct.name_end, b'F', b'i', b'l', b'e') &&
+        extern_fn.kind == AST_ITEM_EXTERN_FN &&
+        extern_fn.first_param == 0 &&
+        extern_fn.param_count == 1 &&
+        range_matches_4(source, extern_fn.name_begin, extern_fn.name_end, b'p', b'u', b't', b's') &&
+        range_matches_4(source, extern_fn.abi_begin, extern_fn.abi_end, b'p', b'u', b't', b's') &&
+        extern_param.type_id == 1 &&
+        extern_param_type.kind == AST_TYPE_POINTER &&
+        extern_param_type.mutability == AST_MUT_CONST &&
+        extern_param_type.pointee == 0 &&
+        extern_param_pointee.kind == AST_TYPE_PRIMITIVE &&
+        extern_param_pointee.primitive == AST_PRIM_U8 &&
+        extern_return_type.kind == AST_TYPE_PRIMITIVE &&
+        extern_return_type.primitive == AST_PRIM_I32 &&
+        export_fn.kind == AST_ITEM_EXPORT_FN &&
+        export_fn.first_param == 1 &&
+        export_fn.param_count == 2 &&
+        range_matches_4(source, export_fn.name_begin, export_fn.name_end, b'm', b'a', b'i', b'n') &&
+        range_matches_10(source, export_fn.abi_begin, export_fn.abi_end, b'a', b'u', b'r', b'e', b'x', b'_', b'm', b'a', b'i', b'n') &&
+        export_fn.body_block == 0 &&
+        body.first_stmt == 0 &&
+        body.stmt_count == 1 &&
+        return_stmt.kind == AST_STMT_RETURN &&
+        return_stmt.expr_id == 0 &&
+        return_expr.kind == AST_EXPR_INTEGER &&
+        return_expr.end - return_expr.begin == 1 &&
+        source[return_expr.begin] == b'0' &&
+        range_matches_4(source, export_argc.name_begin, export_argc.name_end, b'a', b'r', b'g', b'c') &&
+        export_argc_type.kind == AST_TYPE_PRIMITIVE &&
+        export_argc_type.primitive == AST_PRIM_I32 &&
+        range_matches_4(source, export_argv.name_begin, export_argv.name_end, b'a', b'r', b'g', b'v') &&
+        export_argv_type.kind == AST_TYPE_POINTER &&
+        export_argv_type.mutability == AST_MUT_MUT &&
+        export_argv_pointee.kind == AST_TYPE_POINTER &&
+        export_argv_pointee.mutability == AST_MUT_MUT &&
+        export_argv_inner.kind == AST_TYPE_PRIMITIVE &&
+        export_argv_inner.primitive == AST_PRIM_U8 &&
+        export_return_type.kind == AST_TYPE_PRIMITIVE &&
+        export_return_type.primitive == AST_PRIM_I32 &&
         parse_seed_module(source) {
+        ast_free_module(ast);
         puts(c"selfhost parser seed ok");
         return 0;
     }
+    ast_free_module(ast);
     puts(c"selfhost parser seed failed");
     return 1;
 }

@@ -55,6 +55,31 @@ fn token_is_main_ident(source: *const u8, token: TokenSpan) -> bool {
         source[token.begin + 3] == b'n';
 }
 
+fn token_is_puts_ident(source: *const u8, token: TokenSpan) -> bool {
+    return token.kind == TK_IDENTIFIER &&
+        token.end - token.begin == 4 &&
+        source[token.begin] == b'p' &&
+        source[token.begin + 1] == b'u' &&
+        source[token.begin + 2] == b't' &&
+        source[token.begin + 3] == b's';
+}
+
+fn string_literal_is_puts(source: *const u8, token: TokenSpan) -> bool {
+    return token.kind == TK_STRING &&
+        token.end - token.begin == 6 &&
+        source[token.begin + 1] == b'p' &&
+        source[token.begin + 2] == b'u' &&
+        source[token.begin + 3] == b't' &&
+        source[token.begin + 4] == b's';
+}
+
+fn abi_name_is_puts(source: *const u8, name: TokenSpan, abi_name: TokenSpan) -> bool {
+    if abi_name.kind == TK_STRING {
+        return string_literal_is_puts(source, abi_name);
+    }
+    return token_is_puts_ident(source, name);
+}
+
 fn emit_param_list(file: *mut OutputFile, source: *const u8, start: i32) -> bool {
     var pindex: i32 = start;
     var pcurrent: TokenSpan = scan_token(source, &pindex);
@@ -402,6 +427,14 @@ fn emit_extern_fn(file: *mut OutputFile, source: *const u8, index: *mut i32, cur
     var abi_name: TokenSpan = make_token(TK_INVALID, 0, 0);
     if !emit_parse_abi_name(source, index, current, &abi_name) { return false; }
     if !expect_token(source, index, current, TK_SEMICOLON) { return false; }
+
+    if abi_name_is_puts(source, name, abi_name) {
+        if !write_piece(file, c"#undef ") { return false; }
+        if !write_range(file, source, name.begin, name.end) { return false; }
+        if !write_piece(file, c"\n#define ") { return false; }
+        if !write_range(file, source, name.begin, name.end) { return false; }
+        return write_piece(file, c"(s) ((int32_t)puts((const char *)(s)))\n");
+    }
 
     if !emit_type_only(file, source, return_type) { return false; }
     if !write_piece(file, c" ") { return false; }

@@ -10,6 +10,7 @@ fn emit_subset_prelude(file: *mut OutputFile) -> bool {
     if !write_piece(file, c"#include <stddef.h>\n") { return false; }
     if !write_piece(file, c"#include <stdbool.h>\n") { return false; }
     if !write_piece(file, c"#include <stdalign.h>\n") { return false; }
+    if !write_piece(file, c"#include <stdio.h>\n") { return false; }
     if !write_piece(file, c"#include <stdlib.h>\n\n") { return false; }
     if !write_piece(file, c"typedef struct aurex_m0_str {\n") { return false; }
     if !write_piece(file, c"    const uint8_t *data;\n") { return false; }

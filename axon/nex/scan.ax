@@ -1,0 +1,56 @@
+module nex.scan;
+
+import aurex.selfhost.lexer.core;
+
+fn is_path_segment(kind: i32) -> bool {
+    return kind == TK_IDENTIFIER || kind == TK_KW_C;
+}
+
+fn check(current: *mut TokenSpan, kind: i32) -> bool {
+    return current.kind == kind;
+}
+
+fn advance(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> TokenSpan {
+    let previous: TokenSpan = *current;
+    *current = scan_token(source, index);
+    return previous;
+}
+
+fn match_token(source: *const u8, index: *mut i32, current: *mut TokenSpan, kind: i32) -> bool {
+    if current.kind != kind {
+        return false;
+    }
+    advance(source, index, current);
+    return true;
+}
+
+fn expect_token(source: *const u8, index: *mut i32, current: *mut TokenSpan, kind: i32) -> bool {
+    if !match_token(source, index, current, kind) {
+        return false;
+    }
+    return true;
+}
+
+fn scan_module_name(source: *const u8, begin: *mut i32, end: *mut i32) -> bool {
+    var index: i32 = 0;
+    var current: TokenSpan = scan_token(source, &index);
+    if current.kind != TK_KW_MODULE {
+        return false;
+    }
+    current = scan_token(source, &index);
+    if !is_path_segment(current.kind) {
+        return false;
+    }
+    *begin = current.begin;
+    *end = current.end;
+    current = scan_token(source, &index);
+    while current.kind == TK_DOT {
+        current = scan_token(source, &index);
+        if !is_path_segment(current.kind) {
+            return false;
+        }
+        *end = current.end;
+        current = scan_token(source, &index);
+    }
+    return current.kind == TK_SEMICOLON;
+}

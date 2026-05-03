@@ -77,8 +77,9 @@ copied lexer logic.
 `kind/begin/end` token metadata for a fixed source string.
 `parser_smoke.ax` is the first M0 parser seed. It uses a tiny recursive-descent
 cursor over `TokenSpan` and validates `module`, `import`, `extern c`, and
-`export c fn` syntax for a fixed source string. It now returns a compact
-`AstModule` summary from `aurex.selfhost.syntax.ast`.
+`export c fn` syntax for a fixed source string. It now returns an ID-backed
+`AstModule` from `aurex.selfhost.syntax.ast`, with node pools for paths, items,
+types, params, blocks, statements, and expressions.
 `lexer_dump.ax` scans an embedded M0 source and prints a stable token-kind
 stream checked against `tests/golden/selfhost_lexer_dump.tokens`.
 `lexer_file.ax` reads `examples/hello.ax` through explicit runtime file IO and

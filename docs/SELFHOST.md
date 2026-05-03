@@ -39,6 +39,11 @@ Implemented now:
   `export c fn` body shell.
 - `selfhost/src/aurex/selfhost/compiler/io.ax`: explicit runtime IO bridge for
   the selfhost compiler slice.
+- `selfhost/src/aurex/selfhost/compiler/imports.ax`: Stage1 import graph loader.
+  It parses the entry module/import header with the M0 lexer, derives the import
+  root from the entry file path, resolves imported modules to source paths,
+  avoids duplicate source emission, and feeds sources to the bundle emitter in
+  dependency order.
 - `selfhost/src/aurex/selfhost/compiler/subset.ax`: first Stage1 compiler
   parser. It reuses the selfhost lexer and parses a deliberately small M0 subset:
   module/import declarations, an `extern c` block, and `export c fn main`
@@ -82,6 +87,10 @@ Current exact capability:
 - `m0c_stage1` compiles `examples/hello.ax`,
   `selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, and a Stage2 smoke compiler
   bundle into runnable C.
+- `m0c_stage1` can now compile `selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`
+  as a single entry file. Stage1 reads its imports and emits the compiler bundle
+  itself, so the selfhost compiler is no longer limited to externally supplied
+  source lists for this path.
 - `emit_subset.ax` is the active expansion path for compiling broader selfhost
   files. It is now the first Stage1 backend attempted by the driver, with the
   original narrow emitter retained as fallback.
@@ -111,6 +120,8 @@ Current exact capability:
   nested `else { if ... }` blocks. The production C++ Stage0 parser, semantic
   analyzer, AST dump, module remapper, and C backend support the same shape, so
   this syntax is checked before it enters the selfhost fixed-point smoke path.
+- The Stage1 driver first attempts the import-aware entry path, then falls back
+  to the original narrow subset parser for legacy single-file smoke sources.
 
 ## Milestones
 
@@ -210,7 +221,11 @@ smoke compiler bundle into runnable C. The script now also uses Stage2 to build
 a Stage3 smoke compiler and requires Stage2/Stage3 compiler output, seed output,
 and core smoke output to match byte-for-byte. It also proves Stage1 bundle paths
 for lexer smoke, lexer ranges, the parser seed smoke, and the file-backed lexer
-tool can compile and run. The file-backed Stage1 bundle also proves explicit
+tool can compile and run. It also proves the new import-aware single-entry
+compiler path by building a Stage2 compiler from only `m0c_stage1.ax`, using
+that Stage2 compiler to rebuild the same entry as Stage3 with byte-for-byte C
+output, and then using the Stage2 compiler to rebuild the seed. The file-backed
+Stage1 bundle also proves explicit
 runtime ABI bindings survive through the M0-written emitter path. `stage1_lang.ax`
 separately covers the
 newly expanded Stage1 statement/type surface, including scalar primitives,

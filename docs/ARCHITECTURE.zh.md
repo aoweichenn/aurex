@@ -61,6 +61,8 @@ Stage1 自举编译器切片。
 - `parser/`：M0 parser seed。
 - `compiler/`：Stage1 编译器切片。
 - `compiler/emit/`：Stage1 token-stream C emitter 的模块化实现。
+- `compiler/imports.ax`：Stage1 入口模块加载器，解析 `import`，推导 import
+  root，按依赖优先顺序把源码送入 bundle emitter。
 - `smoke/`：自举能力回归测试。
 - `tool/`：golden 测试使用的小工具。
 
@@ -73,6 +75,8 @@ Stage1 目前不是完整 AST 编译器，而是 M0 编写的 token-stream C emi
 Stage1 已覆盖自举 smoke 所需的核心面：
 
 - module/import 外壳和多源码 bundle 输出。
+- 单入口 import-aware 编译：`m0c_stage1 <入口.ax> <输出.c>` 能读取入口
+  `import` 并自行加载依赖，当前已用于从 `m0c_stage1.ax` 生成 Stage2 编译器。
 - `extern c`、`export c fn`、ABI 名称和主函数包装。
 - 标量类型、`str`、指针、数组、命名类型、opaque C struct。
 - `let`、`var`、赋值、`return`、`if`、`else`、`else if`、`while`、`break`、`continue`。
@@ -81,8 +85,9 @@ Stage1 已覆盖自举 smoke 所需的核心面：
 - Stage2/Stage3 smoke 编译器输出 byte-for-byte 固定点检查。
 
 仍未完成的部分包括完整 AST parser、完整语义分析、诊断质量、生产 C 后端迁移
-以及全量生产编译器自编译。相关状态以 `docs/SELFHOST.md` 和
-`tools/bootstrap_chain.sh` 为准。
+以及全量生产编译器自编译。当前 Stage1 的 import loader 只覆盖
+`module`/`import` 头部和 `selfhost/src` 风格的模块路径。相关状态以
+`docs/SELFHOST.md` 和 `tools/bootstrap_chain.sh` 为准。
 
 ## 质量门
 

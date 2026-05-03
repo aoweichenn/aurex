@@ -18,7 +18,6 @@ PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ra
 STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/lexer/core.ax \
 	src/aurex/selfhost/compiler/io.ax \
-	src/aurex/selfhost/compiler/subset.ax \
 	src/aurex/selfhost/compiler/emit/cursor.ax \
 	src/aurex/selfhost/compiler/emit/writer.ax \
 	src/aurex/selfhost/compiler/emit/symbols.ax \
@@ -29,7 +28,9 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/compiler/emit/item.ax \
 	src/aurex/selfhost/compiler/emit/bundle.ax \
 	src/aurex/selfhost/compiler/emit_subset.ax \
+	src/aurex/selfhost/compiler/subset.ax \
 	src/aurex/selfhost/compiler/emit_c.ax \
+	src/aurex/selfhost/compiler/imports.ax \
 	src/aurex/selfhost/compiler/driver.ax \
 	$(STAGE1_SRC)
 
@@ -85,6 +86,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.driver' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.subset' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit_c' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.imports' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.bundle' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.symbols' $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.emit.assign' $(BUILD_DIR)/m0c_stage1.modules
@@ -148,6 +150,13 @@ check: all
 	test "$$($(BUILD_DIR)/stage1_core.stage1)" = "selfhost stage1 core ok"
 	$(BUILD_DIR)/m0c_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage2.smoke.c
 	$(CC) $(BUILD_DIR)/m0c_stage2.smoke.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage2.smoke
+	$(BUILD_DIR)/m0c_stage1 $(STAGE1_SRC) $(BUILD_DIR)/m0c_stage2.auto.c
+	$(CC) $(BUILD_DIR)/m0c_stage2.auto.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage2.auto
+	$(BUILD_DIR)/m0c_stage2.auto $(STAGE1_SRC) $(BUILD_DIR)/m0c_stage3.auto.c
+	cmp -s $(BUILD_DIR)/m0c_stage2.auto.c $(BUILD_DIR)/m0c_stage3.auto.c
+	$(BUILD_DIR)/m0c_stage2.auto $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage2.auto.c
+	$(CC) $(BUILD_DIR)/m0c_seed.stage2.auto.c -o $(BUILD_DIR)/m0c_seed.stage2.auto
+	test "$$($(BUILD_DIR)/m0c_seed.stage2.auto)" = "Aurex M0 selfhost seed"
 	$(BUILD_DIR)/m0c_stage2.smoke $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage3.smoke.c
 	cmp -s $(BUILD_DIR)/m0c_stage2.smoke.c $(BUILD_DIR)/m0c_stage3.smoke.c
 	$(CC) $(BUILD_DIR)/m0c_stage3.smoke.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage3.smoke

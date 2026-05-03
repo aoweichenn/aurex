@@ -50,6 +50,9 @@ STAGE1_CORE_STAGE1_C="${BUILD_DIR}/stage1_core.stage1.c"
 STAGE1_CORE_STAGE1_BIN="${BUILD_DIR}/stage1_core.stage1"
 STAGE2_C="${BUILD_DIR}/m0c_stage2.smoke.c"
 STAGE2_BIN="${BUILD_DIR}/m0c_stage2.smoke"
+STAGE2_AUTO_C="${BUILD_DIR}/m0c_stage2.auto.c"
+STAGE2_AUTO_BIN="${BUILD_DIR}/m0c_stage2.auto"
+STAGE3_AUTO_C="${BUILD_DIR}/m0c_stage3.auto.c"
 STAGE2_SEED_C="${BUILD_DIR}/m0c_seed.stage2.c"
 STAGE2_SEED_BIN="${BUILD_DIR}/m0c_seed.stage2"
 STAGE2_CORE_C="${BUILD_DIR}/stage1_core.stage2.c"
@@ -110,6 +113,7 @@ test "${STAGE1_CORE_OUT}" = "selfhost stage1 core ok"
 grep -q 'aurex.selfhost.compiler.driver' "${BUILD_DIR}/m0c_stage1.modules"
 grep -q 'aurex.selfhost.compiler.subset' "${BUILD_DIR}/m0c_stage1.modules"
 grep -q 'aurex.selfhost.compiler.emit_c' "${BUILD_DIR}/m0c_stage1.modules"
+grep -q 'aurex.selfhost.compiler.imports' "${BUILD_DIR}/m0c_stage1.modules"
 grep -q 'aurex.selfhost.compiler.emit.bundle' "${BUILD_DIR}/m0c_stage1.modules"
 grep -q 'aurex.selfhost.compiler.emit.symbols' "${BUILD_DIR}/m0c_stage1.modules"
 grep -q 'aurex.selfhost.compiler.emit.item' "${BUILD_DIR}/m0c_stage1.modules"
@@ -178,7 +182,6 @@ test "${STAGE1_CORE_STAGE1_OUT}" = "selfhost stage1 core ok"
 "${STAGE1_BIN}" \
     "${ROOT}/selfhost/src/aurex/selfhost/lexer/core.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \
-    "${ROOT}/selfhost/src/aurex/selfhost/compiler/subset.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/cursor.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/writer.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/symbols.ax" \
@@ -189,11 +192,21 @@ test "${STAGE1_CORE_STAGE1_OUT}" = "selfhost stage1 core ok"
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/item.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/bundle.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit_subset.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/subset.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit_c.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/imports.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/driver.ax" \
     "${STAGE1}" \
     "${STAGE2_C}"
 cc "${STAGE2_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${STAGE2_BIN}"
+"${STAGE1_BIN}" "${STAGE1}" "${STAGE2_AUTO_C}"
+cc "${STAGE2_AUTO_C}" "${ROOT}/selfhost/runtime/runtime.c" -o "${STAGE2_AUTO_BIN}"
+"${STAGE2_AUTO_BIN}" "${STAGE1}" "${STAGE3_AUTO_C}"
+cmp -s "${STAGE2_AUTO_C}" "${STAGE3_AUTO_C}"
+"${STAGE2_AUTO_BIN}" "${SEED}" "${BUILD_DIR}/m0c_seed.stage2.auto.c"
+cc "${BUILD_DIR}/m0c_seed.stage2.auto.c" -o "${BUILD_DIR}/m0c_seed.stage2.auto"
+STAGE2_AUTO_SEED_OUT="$("${BUILD_DIR}/m0c_seed.stage2.auto")"
+test "${STAGE2_AUTO_SEED_OUT}" = "Aurex M0 selfhost seed"
 "${STAGE2_BIN}" "${SEED}" "${STAGE2_SEED_C}"
 cc "${STAGE2_SEED_C}" -o "${STAGE2_SEED_BIN}"
 STAGE2_SEED_OUT="$("${STAGE2_SEED_BIN}")"
@@ -209,7 +222,6 @@ test "${STAGE2_CORE_OUT}" = "selfhost stage1 core ok"
 "${STAGE2_BIN}" \
     "${ROOT}/selfhost/src/aurex/selfhost/lexer/core.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \
-    "${ROOT}/selfhost/src/aurex/selfhost/compiler/subset.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/cursor.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/writer.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/symbols.ax" \
@@ -220,7 +232,9 @@ test "${STAGE2_CORE_OUT}" = "selfhost stage1 core ok"
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/item.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit/bundle.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit_subset.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/subset.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/emit_c.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/imports.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/driver.ax" \
     "${STAGE1}" \
     "${STAGE3_C}"

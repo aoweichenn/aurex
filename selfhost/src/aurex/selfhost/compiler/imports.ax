@@ -1,0 +1,139 @@
+module aurex.selfhost.compiler.imports;
+
+import aurex.selfhost.compiler.emit_subset;
+import aurex.selfhost.compiler.emit.cursor;
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.lexer.core;
+
+struct PathRange {
+    ok: bool;
+    begin: i32;
+    end: i32;
+}
+
+fn make_bad_path_range() -> PathRange {
+    return PathRange { ok: false, begin: 0, end: 0 };
+}
+
+fn make_path_range(begin: i32, end: i32) -> PathRange {
+    return PathRange { ok: true, begin: begin, end: end };
+}
+
+fn import_segment_token(token: TokenSpan) -> bool {
+    return token.kind == TK_IDENTIFIER || token.kind == TK_KW_C;
+}
+
+fn parse_path_range(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> PathRange {
+    let first: TokenSpan = advance(source, index, current);
+    if !import_segment_token(first) {
+        return make_bad_path_range();
+    }
+    var end: i32 = first.end;
+    while match_token(source, index, current, TK_DOT) {
+        let part: TokenSpan = advance(source, index, current);
+        if !import_segment_token(part) {
+            return make_bad_path_range();
+        }
+        end = part.end;
+    }
+    return make_path_range(first.begin, end);
+}
+
+fn parse_module_range(source: *const u8) -> PathRange {
+    var index: i32 = 0;
+    var current: TokenSpan = scan_token(source, &index);
+    if !expect_token(source, &index, &current, TK_KW_MODULE) {
+        return make_bad_path_range();
+    }
+    let path: PathRange = parse_path_range(source, &index, &current);
+    if !path.ok {
+        return path;
+    }
+    if !expect_token(source, &index, &current, TK_SEMICOLON) {
+        return make_bad_path_range();
+    }
+    return path;
+}
+
+fn emit_source_imports(file: *mut OutputFile, import_root: *const u8, source: *const u8, seen: *mut SourceSet) -> bool {
+    var index: i32 = 0;
+    var current: TokenSpan = scan_token(source, &index);
+    if !expect_token(source, &index, &current, TK_KW_MODULE) {
+        return false;
+    }
+    let module_path: PathRange = parse_path_range(source, &index, &current);
+    if !module_path.ok {
+        return false;
+    }
+    if !expect_token(source, &index, &current, TK_SEMICOLON) {
+        return false;
+    }
+
+    while check(&current, TK_KW_IMPORT) {
+        advance(source, &index, &current);
+        let dep_module: PathRange = parse_path_range(source, &index, &current);
+        if !dep_module.ok {
+            return false;
+        }
+        if !expect_token(source, &index, &current, TK_SEMICOLON) {
+            return false;
+        }
+
+        let dep_path: FileBuffer = import_path(import_root, source, dep_module.begin, dep_module.end);
+        if dep_path.data == null {
+            return false;
+        }
+
+        let dep_path_text: *const u8 = ptr_cast(*const u8, dep_path.data);
+        if source_set_add(seen, dep_path_text) {
+            let dep_buffer: FileBuffer = read_file(dep_path_text);
+            if dep_buffer.data == null {
+                free_file(dep_path);
+                return false;
+            }
+            let dep_source: *const u8 = ptr_cast(*const u8, dep_buffer.data);
+            if !emit_source_imports(file, import_root, dep_source, seen) {
+                free_file(dep_buffer);
+                free_file(dep_path);
+                return false;
+            }
+            free_file(dep_buffer);
+        }
+        free_file(dep_path);
+    }
+
+    return emit_transpile_add_bundle_source(file, source);
+}
+
+fn emit_entry_with_imports(input_path: *const u8, output_path: *const u8, source: *const u8) -> bool {
+    let module_path: PathRange = parse_module_range(source);
+    if !module_path.ok {
+        return false;
+    }
+
+    let import_root_buffer: FileBuffer = module_import_root(input_path, source, module_path.begin, module_path.end);
+    if import_root_buffer.data == null {
+        return false;
+    }
+
+    let seen: *mut SourceSet = source_set_create();
+    if seen == null {
+        free_file(import_root_buffer);
+        return false;
+    }
+    source_set_add(seen, input_path);
+
+    let file: *mut OutputFile = emit_transpile_open_bundle(output_path);
+    if file == null {
+        source_set_destroy(seen);
+        free_file(import_root_buffer);
+        return false;
+    }
+
+    let import_root: *const u8 = ptr_cast(*const u8, import_root_buffer.data);
+    let ok: bool = emit_source_imports(file, import_root, source, seen);
+    let close_ok: bool = emit_transpile_close_bundle(file);
+    source_set_destroy(seen);
+    free_file(import_root_buffer);
+    return ok && close_ok;
+}

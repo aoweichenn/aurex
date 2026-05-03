@@ -2,6 +2,7 @@ module aurex.selfhost.compiler.driver;
 
 import aurex.selfhost.compiler.emit_c;
 import aurex.selfhost.compiler.emit_subset;
+import aurex.selfhost.compiler.imports;
 import aurex.selfhost.compiler.io;
 import aurex.selfhost.compiler.subset;
 
@@ -13,7 +14,7 @@ fn compile_file(input_path: *const u8, output_path: *const u8) -> i32 {
     }
 
     let source: *const u8 = ptr_cast(*const u8, buffer.data);
-    if !emit_transpile_subset(output_path, source) {
+    if !emit_entry_with_imports(input_path, output_path, source) {
         let program: Stage1Program = parse_stage1_subset(source);
         if !program.ok {
             free_file(buffer);

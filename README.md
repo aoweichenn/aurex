@@ -89,11 +89,14 @@ The current Stage1 compiler entry is
 `selfhost/src/aurex/selfhost/bin/m0c_stage1.ax`. Stage0 compiles it to a native
 executable; that M0-written executable can compile `examples/hello.ax`,
 `selfhost/src/aurex/selfhost/bin/m0c_seed.ax`, the selfhost lexer/parser smoke
-bundles, and a Stage2 smoke compiler bundle into runnable C. The bootstrap chain
-then uses Stage2 to rebuild the same compiler smoke bundle as Stage3 and checks
-that the Stage2/Stage3 compiler C and smoke outputs match byte-for-byte. This is
-a real fixed-point smoke chain, not the final production fixed point: Stage1
-still does not compile the complete C++ production compiler replacement.
+bundles, and a Stage2 smoke compiler bundle into runnable C. Stage1 now also has
+an import-aware entry path: it can take only `m0c_stage1.ax`, read the imported
+selfhost compiler modules itself, and emit a runnable Stage2 compiler bundle.
+The bootstrap chain then uses Stage2 to rebuild the same compiler smoke bundle
+as Stage3 and checks that the Stage2/Stage3 compiler C and smoke outputs match
+byte-for-byte. This is a real fixed-point smoke chain, not the final production
+fixed point: Stage1 still does not compile the complete C++ production compiler
+replacement.
 
 The selfhost source tree is now role-based:
 
@@ -141,6 +144,13 @@ Expected output:
 
 ```text
 Aurex M0 selfhost seed
+```
+
+Manual two-source bundle smoke:
+
+```sh
+build/m0c_stage1 selfhost/src/aurex/selfhost/bin/m0c_stage1.ax build/m0c_stage2.auto.c
+cc build/m0c_stage2.auto.c selfhost/runtime/runtime.c -o build/m0c_stage2.auto
 ```
 
 Manual two-source bundle smoke:

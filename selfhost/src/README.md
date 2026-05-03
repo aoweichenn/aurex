@@ -11,6 +11,10 @@ entry names.
   symbol macro layer, while `item.ax`, `stmt.ax`, `assign.ax`, `expr.ax`, and
   `types.ax` keep top-level item, statement dispatch, assignment, expression,
   and C type emission separated.
+- `aurex/selfhost/compiler/imports.ax`: import-aware Stage1 entry loader. It
+  scans module/import headers, resolves imported modules to source files, avoids
+  duplicate emission, and feeds dependencies to the bundle emitter before the
+  entry source.
 - `aurex/selfhost/lexer/`: reusable lexer core and token dump helpers.
 - `aurex/selfhost/parser/`: reusable parser seed modules.
 - `aurex/selfhost/smoke/`: executable smoke tests for selfhost modules.

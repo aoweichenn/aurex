@@ -24,7 +24,7 @@ source.ax
   -> SemanticAnalyzer
   -> CheckedModule
   -> CEmitter
-  -> output.c
+  -> output.c / clang -> output.s or executable
 ```
 
 The parser never depends on the lexer class. It only consumes
@@ -79,6 +79,8 @@ not depend on parser internals.
 - reports missing imports and module-name mismatches with source ranges.
 - detects cyclic imports while loading modules.
 - exposes `--dump-modules` for inspecting the resolved module set.
+- invokes clang for `--emit=asm` and `--emit=exe`; `--emit=c` still only writes
+  generated C for comparison and debugging.
 
 `m0c`
 

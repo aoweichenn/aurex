@@ -24,7 +24,7 @@ source.ax
   -> SemanticAnalyzer
   -> CheckedModule
   -> CEmitter
-  -> output.c
+  -> output.c / clang -> output.s or executable
 ```
 
 Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖 parser
@@ -76,6 +76,8 @@ Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖
 - 对缺失 import 和 module name 不匹配给出带源码范围的诊断。
 - 加载阶段检测循环 import。
 - 提供 `--dump-modules` 用来查看解析后的模块集合。
+- 在 `--emit=asm` 和 `--emit=exe` 模式下调用 clang；`--emit=c` 仍然只写出
+  生成的 C，便于对比和调试。
 
 `m0c`
 

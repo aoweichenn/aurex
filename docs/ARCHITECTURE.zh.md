@@ -13,7 +13,8 @@ Stage1 自举编译器切片。
 - `src/parse/`：手写递归下降解析器，输入 token，输出 parse-only AST。
 - `src/sema/`：类型表、符号表和语义检查，输出 `CheckedModule` 边表。
 - `src/codegen_c/`：C 后端，包括 C 类型格式化、表达式求值顺序和 emitter。
-- `src/driver/`：编译驱动和模块加载器，负责 import 解析和跨模块合并。
+- `src/driver/`：编译驱动、模块加载器和 clang 本机输出封装，负责 import
+  解析、跨模块合并以及 C/汇编/可执行文件输出选择。
 - `src/cli/`：`m0c` 命令行入口。
 - `cmake/`：按编译器组件拆分的构建定义，根 `CMakeLists.txt` 只负责组装。
 - `runtime/`：Aurex 程序可显式 import 的运行时模块。
@@ -31,10 +32,12 @@ Stage1 自举编译器切片。
 3. `parse` 将 token 转为 AST。AST 只表达语法事实，不保存类型检查结果。
 4. `sema` 建立类型、符号、函数、结构体和枚举 case 边表。
 5. `codegen_c` 使用 AST 与 `CheckedModule` 生成 C。
-6. 外部 C 编译器负责将生成的 C 编译为本机程序。
+6. `driver` 可以直接写出 C，也可以把临时 C 交给 clang 输出汇编或本机可执行文件。
 
 这种分层刻意避免让 parser 依赖 lexer 实现，也避免把语义信息写回 AST。
 后续替换前端或把组件迁移到 M0 时，每个阶段都有清晰接口。
+当前 clang 集成是 driver 层的封装：`--emit=c` 仍保留完整 C 输出，
+`--emit=asm` / `--emit=exe` 复用同一份 C 后端产物并调用 clang。
 
 ## CMake 组件边界
 

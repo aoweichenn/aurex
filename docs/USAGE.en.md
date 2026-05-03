@@ -58,6 +58,8 @@ build/m0c --check examples/hello.ax
 build/m0c --emit=ast examples/hello.ax
 build/m0c --emit=check examples/hello.ax
 build/m0c --emit=c examples/hello.ax -o build/hello.c
+build/m0c --emit=asm examples/hello.ax -o build/hello.s
+build/m0c --emit=exe examples/hello.ax -o build/hello
 build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 ```
 
@@ -73,9 +75,20 @@ Options:
 - `--emit=modules`: same as `--dump-modules`.
 - `--emit=check`: same as `--check`.
 - `--emit=c`: emit C. This is the default.
+- `--emit=asm`: emit temporary C, then call clang to produce assembly.
+- `--emit=exe`: emit temporary C, then call clang to produce a native executable.
+- `--clang path`: select the clang executable used by `--emit=asm` / `--emit=exe`.
+- `--clang-arg arg`: pass one raw argument to clang; repeat as needed, for example
+  `--clang-arg -O2`.
+- `--runtime-c path`: add an extra C runtime source to the clang link step; repeat
+  as needed.
 - `-o path`: write generated C to `path`.
 - `-I path`: add an import root. `import a.b;` searches for `a/b.ax` in the
   importing file's directory, then each `-I` root.
+
+`--emit=c` keeps the generated C available for comparison and debugging.
+`--emit=asm` and `--emit=exe` are the first clang-integrated path; they do not
+change the frontend, semantic analyzer, or C backend.
 
 ## 5. Language Snapshot
 

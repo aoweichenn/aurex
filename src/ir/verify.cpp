@@ -13,7 +13,10 @@ public:
     explicit Verifier(const Module& module) noexcept : module_(module) {}
 
     [[nodiscard]] base::Result<void> run() {
-        verify_constants();
+        std::unordered_set<base::u32> constant_stack;
+        for (base::u32 i = 0; i < module_.constants.size(); ++i) {
+            verify_constant(GlobalConstantId {i}, constant_stack);
+        }
         for (base::usize i = 0; i < module_.functions.size(); ++i) {
             verify_function(FunctionId {static_cast<base::u32>(i)}, module_.functions[i]);
         }
@@ -29,14 +32,26 @@ public:
     }
 
 private:
-    void verify_constants() {
-        for (const GlobalConstant& constant : module_.constants) {
-            verify_type(constant.type, "constant type");
-            verify_constant_initializer(constant.initializer, constant.type);
+    void verify_constant(const GlobalConstantId id, std::unordered_set<base::u32>& constant_stack) {
+        const GlobalConstant* constant = find_global_constant(module_, id);
+        if (constant == nullptr) {
+            fail("constant id is invalid");
+            return;
         }
+        if (!constant_stack.insert(id.value).second) {
+            fail("cyclic constant definition");
+            return;
+        }
+        verify_type(constant->type, "constant type");
+        verify_constant_value(constant->initializer, constant->type, constant_stack);
+        constant_stack.erase(id.value);
     }
 
-    void verify_constant_initializer(const ValueId initializer, const sema::TypeHandle expected_type) {
+    void verify_constant_value(
+        const ValueId initializer,
+        const sema::TypeHandle expected_type,
+        std::unordered_set<base::u32>& constant_stack
+    ) {
         const Value* value = get(initializer);
         if (value == nullptr) {
             fail("constant initializer value id is invalid");
@@ -52,16 +67,63 @@ private:
         case ValueKind::null_literal:
         case ValueKind::string_literal:
         case ValueKind::c_string_literal:
-        case ValueKind::aggregate:
-        case ValueKind::cast:
         case ValueKind::size_of:
         case ValueKind::align_of:
-        case ValueKind::constant_ref:
-            verify_value(Function {}, invalid_block_id, initializer);
+            verify_type(value->type, "constant value type");
             break;
+        case ValueKind::constant_ref: {
+            verify_constant_ref(*value);
+            const GlobalConstant* constant = find_global_constant(module_, value->constant);
+            if (constant == nullptr) {
+                fail("constant reference id is invalid");
+                return;
+            }
+            if (!constant_stack.insert(value->constant.value).second) {
+                fail("cyclic constant reference");
+                return;
+            }
+            verify_constant_value(constant->initializer, constant->type, constant_stack);
+            constant_stack.erase(value->constant.value);
+            break;
+        }
+        case ValueKind::aggregate: {
+            verify_constant_aggregate(*value, constant_stack);
+            break;
+        }
+        case ValueKind::cast: {
+            verify_value_id(value->lhs, "cast operand");
+            verify_type(value->type, "cast result");
+            verify_type(value->target_type, "cast target");
+            const Value* operand = get(value->lhs);
+            if (operand != nullptr) {
+                verify_constant_value(value->lhs, operand->type, constant_stack);
+            }
+            break;
+        }
         default:
             fail("constant initializer is not compile-time constant");
             break;
+        }
+    }
+
+    void verify_constant_aggregate(const Value& value, std::unordered_set<base::u32>& constant_stack) {
+        verify_type(value.type, "aggregate result");
+        const RecordLayout* record = find_record(module_, value.type);
+        if (record == nullptr) {
+            fail("aggregate result is not a record");
+            return;
+        }
+        std::unordered_set<std::string> seen;
+        for (const FieldValue& field : value.fields) {
+            if (!seen.insert(field.name).second) {
+                fail("duplicate aggregate field " + field.name);
+            }
+            const RecordField* expected = find_record_field(module_, value.type, field.name);
+            if (expected == nullptr) {
+                fail("unknown aggregate field " + field.name);
+                continue;
+            }
+            verify_constant_value(field.value, expected->type, constant_stack);
         }
     }
 

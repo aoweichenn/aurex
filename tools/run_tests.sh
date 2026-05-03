@@ -13,6 +13,7 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --help | grep -q -- '--check'
 "${M0C}" --help | grep -q -- '--emit=ast'
 "${M0C}" --help | grep -q -- '--emit=ir'
+"${M0C}" --help | grep -q -- '--emit=llvm-ir'
 "${M0C}" --help | grep -q -- '--emit=asm'
 "${M0C}" --help | grep -q -- '--emit=exe'
 "${M0C}" --help | grep -q -- '--dump-modules'
@@ -30,6 +31,7 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --emit=ast "${ROOT}/examples/hello.ax" >/tmp/aurex_ast.txt
 "${M0C}" --emit=checked "${ROOT}/examples/hello.ax" >/tmp/aurex_checked.txt
 "${M0C}" --emit=ir "${ROOT}/examples/hello.ax" >/tmp/aurex_ir_hello.txt
+"${M0C}" --emit=llvm-ir "${ROOT}/examples/hello.ax" >/tmp/aurex_llvm_ir_hello.ll
 "${M0C}" --emit=ir "${ROOT}/tests/positive/runtime_text.ax" -I "${ROOT}" >/tmp/aurex_ir_runtime_text.txt
 "${M0C}" --emit=ir "${ROOT}/tests/positive/pointer_field_write.ax" >/tmp/aurex_ir_pointer_field.txt
 "${M0C}" --dump-modules "${ROOT}/tests/positive/module_math.ax" >/tmp/aurex_modules.txt
@@ -39,6 +41,7 @@ grep -q 'c_string_literal' /tmp/aurex_tokens.txt
 grep -q 'extern_block' /tmp/aurex_ast.txt
 grep -q 'checked_module' /tmp/aurex_checked.txt
 grep -q 'aurex_ir v0' /tmp/aurex_ir_hello.txt
+grep -q 'define i32 @main' /tmp/aurex_llvm_ir_hello.ll
 grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) -> i32' /tmp/aurex_ir_hello.txt
 grep -q 'call puts' /tmp/aurex_ir_hello.txt
 grep -q 'phi \[' /tmp/aurex_ir_runtime_text.txt
@@ -64,6 +67,8 @@ test -s "${BUILD_DIR}/hello.s"
 "${M0C}" --emit=exe "${ROOT}/examples/hello.ax" -o "${BUILD_DIR}/hello.direct"
 HELLO_DIRECT_OUT="$("${BUILD_DIR}/hello.direct")"
 test "${HELLO_DIRECT_OUT}" = "hello from Aurex M0"
+"${M0C}" --emit=llvm-ir "${ROOT}/tests/positive/const_enum.ax" >/tmp/aurex_llvm_ir_const_enum.ll
+grep -q 'ret i32 42' /tmp/aurex_llvm_ir_const_enum.ll
 
 for src in "${ROOT}"/tests/positive/*.ax; do
     case "$(basename "${src}" .ax)" in

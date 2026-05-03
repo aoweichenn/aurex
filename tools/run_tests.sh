@@ -12,6 +12,7 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --version | grep -q 'M0V0.1.8'
 "${M0C}" --help | grep -q -- '--check'
 "${M0C}" --help | grep -q -- '--emit=ast'
+"${M0C}" --help | grep -q -- '--emit=ir'
 "${M0C}" --help | grep -q -- '--emit=asm'
 "${M0C}" --help | grep -q -- '--emit=exe'
 "${M0C}" --help | grep -q -- '--dump-modules'
@@ -28,12 +29,21 @@ cmake --build "${BUILD_DIR}" -j >/dev/null
 "${M0C}" --dump-tokens "${ROOT}/examples/hello.ax" >/tmp/aurex_tokens.txt
 "${M0C}" --emit=ast "${ROOT}/examples/hello.ax" >/tmp/aurex_ast.txt
 "${M0C}" --emit=checked "${ROOT}/examples/hello.ax" >/tmp/aurex_checked.txt
+"${M0C}" --emit=ir "${ROOT}/examples/hello.ax" >/tmp/aurex_ir_hello.txt
+"${M0C}" --emit=ir "${ROOT}/tests/positive/runtime_text.ax" -I "${ROOT}" >/tmp/aurex_ir_runtime_text.txt
+"${M0C}" --emit=ir "${ROOT}/tests/positive/pointer_field_write.ax" >/tmp/aurex_ir_pointer_field.txt
 "${M0C}" --dump-modules "${ROOT}/tests/positive/module_math.ax" >/tmp/aurex_modules.txt
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax" >/tmp/aurex_selfhost_modules.txt
 "${M0C}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax" >/tmp/aurex_selfhost_parser_modules.txt
 grep -q 'c_string_literal' /tmp/aurex_tokens.txt
 grep -q 'extern_block' /tmp/aurex_ast.txt
 grep -q 'checked_module' /tmp/aurex_checked.txt
+grep -q 'aurex_ir v0' /tmp/aurex_ir_hello.txt
+grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) -> i32' /tmp/aurex_ir_hello.txt
+grep -q 'call puts' /tmp/aurex_ir_hello.txt
+grep -q 'phi \[' /tmp/aurex_ir_runtime_text.txt
+grep -q 'usize = cast' /tmp/aurex_ir_runtime_text.txt
+grep -q 'field_addr .*\.value' /tmp/aurex_ir_pointer_field.txt
 grep -q 'lib.math' /tmp/aurex_modules.txt
 grep -q 'module_math' /tmp/aurex_modules.txt
 grep -q 'aurex.selfhost.lexer.dump' /tmp/aurex_selfhost_modules.txt

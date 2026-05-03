@@ -23,7 +23,8 @@ source.ax
   -> AstModule
   -> SemanticAnalyzer
   -> CheckedModule
-  -> CEmitter
+  -> Aurex IR
+  -> LLVM IR (planned) / CEmitter reference path
   -> output.c / clang -> output.s or executable
 ```
 
@@ -59,6 +60,13 @@ Parser 不依赖 Lexer 类，只消费 `std::span<const Token>`。Sema 不依赖
 - 做名称解析和类型解析；
 - 管理 `TypeTable`、`SymbolTable`、`CheckedModule`；
 - 记录表达式类型等 side table。
+
+`m0_ir`
+
+- 把 AST + `CheckedModule` 降为 Aurex 自有 IR；
+- 使用 typed value、basic block、terminator 和 `phi` 表达控制流和值；
+- 保留 `extern_c` / `export_c` linkage 和 ABI symbol；
+- 作为后续 LLVM IR lowering 的主要输入，不依赖 C 后端文本。
 
 `m0_codegen_c`
 
@@ -125,7 +133,28 @@ M0 拒绝隐式成本：
 
 当前 sema 会把表达式类型记录在 `CheckedModule::expr_types` 中。这样 C emitter 不需要自己猜类型，也避免把类型逻辑散落到后端。
 
-## 7. C 后端设计
+## 7. Aurex IR 设计
+
+M0 新增的 IR 是 typed CFG/SSA-like 中间代码，不是 LLVM IR 直出。它的目标是隔离前端和后端：AST 只表达语法，`CheckedModule` 提供类型/ABI 边表，IR 则表达可优化、可验证、可 lowering 的程序。
+
+当前 IR 选择：
+
+- 函数有源码名、ABI symbol、linkage、返回类型和参数签名。
+- 值全局编号，block 内保存 value 序列。
+- 局部 storage 先用 `alloca/load/store` 表示，后续统一做 mem2reg。
+- 字段/下标使用地址指令 `field_addr` / `index_addr`，便于 lowered 到 LLVM GEP。
+- 调用同时保存最终 symbol 和可解析的内部 `FunctionId`。
+- `&&` / `||` lowering 为 block + `phi`，短路语义不隐藏在普通二元 op 里。
+
+后续 IR 强化顺序：
+
+1. IR verifier：检查 terminator、value type、block predecessor 和 call signature。
+2. mem2reg：把局部 slot 提升为 SSA value。
+3. CFG cleanup：删除不可达 block，合并空跳转 block。
+4. LLVM lowering：把 Aurex type/value/block/function 映射到 LLVM IR。
+5. C ABI 测试：验证 `extern c`、`export c`、runtime 调用和 host linker 行为。
+
+## 8. C 后端设计
 
 C 后端把 M0 类型映射到稳定 C 拼写：
 
@@ -139,12 +168,12 @@ C 后端把 M0 类型映射到稳定 C 拼写：
 
 已知后续工作：
 
-- 在 C emission 前增加 lowering 层；
+- 继续保留 `--emit=c` 作为 reference backend；
 - 为严格左到右求值顺序生成临时变量；
 - 规范 ABI 名称和导出符号；
 - 把表达式生成拆成 value emission 和 statement lowering。
 
-## 8. 自举设计
+## 9. 自举设计
 
 自举路线在 `selfhost/` 中显式维护。
 
@@ -176,13 +205,13 @@ Stage0 C++ compiler
 
 下一步真正自举里程碑应该是：继续扩大这个迭代式 parser seed 的 AST 覆盖面，输出稳定 AST summary 或 parse dump，然后在小型共享语料上和 C++ parser 对比。
 
-## 9. 工业级强化路线
+## 10. 工业级强化路线
 
 近期：
 
 - 从 shell-only 测试升级到真正的单元测试可执行文件；
 - 增加 diagnostics 和 C output 的 golden file；
-- 增加 lowering 层处理求值顺序；
+- 增加 IR verifier 和 LLVM lowering 骨架；
 - 实现 import path 和 module graph；
 - 支持更完整的多行诊断。
 
@@ -191,6 +220,7 @@ Stage0 C++ compiler
 - 用 M0 实现 lexer；
 - 用 M0 实现 parser；
 - C ABI 校验测试套件；
+- Aurex IR mem2reg 和 CFG cleanup；
 - lexer/parser fuzzing；
 - 固定语料 benchmark 和趋势追踪。
 

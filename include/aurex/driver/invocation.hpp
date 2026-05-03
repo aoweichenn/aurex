@@ -11,6 +11,7 @@ enum class EmitKind {
     ast,
     modules,
     checked,
+    ir,
     check,
     c,
     assembly,

@@ -6,6 +6,8 @@
 #include "aurex/codegen_c/c_emitter.hpp"
 #include "aurex/driver/module_loader.hpp"
 #include "aurex/driver/native_toolchain.hpp"
+#include "aurex/ir/ir_dump.hpp"
+#include "aurex/ir/lower_ast.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/sema/sema.hpp"
 #include "aurex/syntax/ast_dump.hpp"
@@ -145,6 +147,15 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
 
     if (invocation.emit_kind == EmitKind::checked) {
         std::cout << sema::dump_checked_module(checked_result.value());
+        return base::Result<void>::ok();
+    }
+
+    if (invocation.emit_kind == EmitKind::ir) {
+        auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
+        if (!ir_result) {
+            return base::Result<void>::fail(ir_result.error());
+        }
+        std::cout << ir::dump_module(ir_result.value());
         return base::Result<void>::ok();
     }
 

@@ -6,12 +6,13 @@ Version: M0V0.1.8
 
 Aurex M0 is the bootstrap core of Aurex. It is intentionally small: no type
 inference, no generics, no overloads, no hidden copies, and no implicit
-conversions. The first backend emits C.
+conversions. The C backend remains available, and Stage0 now also has an Aurex
+IR layer for the future LLVM backend.
 
 The current production compiler is written in C++20 and is split into libraries:
 
 ```text
-source -> lexer -> tokens -> parser -> AST -> sema -> checked module -> C emitter
+source -> lexer -> tokens -> parser -> AST -> sema -> checked module -> Aurex IR / C emitter
 ```
 
 The lexer and parser are handwritten. No ANTLR, Flex, Bison, or parser
@@ -56,6 +57,7 @@ build/m0c --dump-ast examples/hello.ax
 build/m0c --dump-modules tests/positive/module_math.ax
 build/m0c --check examples/hello.ax
 build/m0c --emit=ast examples/hello.ax
+build/m0c --emit=ir examples/hello.ax
 build/m0c --emit=check examples/hello.ax
 build/m0c --emit=c examples/hello.ax -o build/hello.c
 build/m0c --emit=asm examples/hello.ax -o build/hello.s
@@ -69,10 +71,12 @@ Options:
 - `--dump-tokens`: run lexer only and print tokens.
 - `--dump-ast`: run lexer and parser, then print a stable AST dump.
 - `--dump-modules`: resolve imports and print loaded module names plus paths.
+- `--dump-ir`: run semantic analysis, lower to Aurex IR, and print the IR dump.
 - `--check`: run lexer, parser, and semantic analysis without emitting C.
 - `--emit=tokens`: same as `--dump-tokens`.
 - `--emit=ast`: same as `--dump-ast`.
 - `--emit=modules`: same as `--dump-modules`.
+- `--emit=ir`: same as `--dump-ir`.
 - `--emit=check`: same as `--check`.
 - `--emit=c`: emit C. This is the default.
 - `--emit=asm`: emit temporary C, then call clang to produce assembly.
@@ -89,6 +93,17 @@ Options:
 `--emit=c` keeps the generated C available for comparison and debugging.
 `--emit=asm` and `--emit=exe` are the first clang-integrated path; they do not
 change the frontend, semantic analyzer, or C backend.
+
+### Aurex IR Output
+
+`--emit=ir` prints Aurex's own typed CFG/SSA IR, not LLVM IR yet. It records
+function signatures, ABI symbols, linkage (`internal`, `export_c`, `extern_c`),
+basic blocks, terminators, typed values, memory slots, calls, field/index
+addresses, casts, and `phi` nodes for short-circuit values.
+
+The planned LLVM backend should lower from Aurex IR instead of reverse
+engineering the C backend. The C backend remains the readable reference output,
+debug comparison path, and C ABI transition surface.
 
 ## 5. Language Snapshot
 

@@ -4,12 +4,12 @@
 
 ## 1. M0 是什么
 
-Aurex M0 是 Aurex 语言的最小自举核心。它刻意保持小而透明：没有类型推导、没有泛型、没有重载、没有隐藏拷贝、没有隐式类型转换。当前第一后端生成 C。
+Aurex M0 是 Aurex 语言的最小自举核心。它刻意保持小而透明：没有类型推导、没有泛型、没有重载、没有隐藏拷贝、没有隐式类型转换。当前仍保留 C 后端，同时已经新增 Aurex IR 层，作为后续 LLVM 后端的输入。
 
 当前生产编译器用 C++20 编写，分层如下：
 
 ```text
-source -> lexer -> tokens -> parser -> AST -> sema -> checked module -> C emitter
+source -> lexer -> tokens -> parser -> AST -> sema -> checked module -> Aurex IR / C emitter
 ```
 
 Lexer 和 Parser 都是纯手写实现，没有使用 ANTLR、Flex、Bison 或任何 parser generator。
@@ -53,6 +53,7 @@ build/m0c --dump-ast examples/hello.ax
 build/m0c --dump-modules tests/positive/module_math.ax
 build/m0c --check examples/hello.ax
 build/m0c --emit=ast examples/hello.ax
+build/m0c --emit=ir examples/hello.ax
 build/m0c --emit=check examples/hello.ax
 build/m0c --emit=c examples/hello.ax -o build/hello.c
 build/m0c --emit=asm examples/hello.ax -o build/hello.s
@@ -66,10 +67,12 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 - `--dump-tokens`：只运行 lexer，并输出 token。
 - `--dump-ast`：运行 lexer 和 parser，并输出稳定 AST dump。
 - `--dump-modules`：解析 import，并输出已加载模块名和路径。
+- `--dump-ir`：运行到语义分析后，降到 Aurex IR 并输出 IR dump。
 - `--check`：运行 lexer、parser、语义分析，但不生成 C。
 - `--emit=tokens`：等价于 `--dump-tokens`。
 - `--emit=ast`：等价于 `--dump-ast`。
 - `--emit=modules`：等价于 `--dump-modules`。
+- `--emit=ir`：等价于 `--dump-ir`。
 - `--emit=check`：等价于 `--check`。
 - `--emit=c`：生成 C，这是默认行为。
 - `--emit=asm`：先生成临时 C，再调用 clang 输出汇编。
@@ -82,6 +85,24 @@ build/m0c -I tests/imports tests/positive/import_path.ax -o build/import_path.c
 
 `--emit=c` 会保留完整 C 输出，适合对比和调试；`--emit=asm` / `--emit=exe`
 是 clang 集成路径，第一版不改变前端、语义分析或 C 后端。
+
+### Aurex IR 输出
+
+`--emit=ir` 输出的是 Aurex 自有中间代码，不是 LLVM IR。当前 IR 已经显式记录：
+
+- 函数签名、ABI symbol 和 linkage：`internal`、`export_c`、`extern_c`。
+- basic block、`br`、`br_if`、`ret` terminator。
+- typed value、`alloca/load/store`、函数调用、聚合值、cast。
+- `field_addr` / `index_addr`，后续可直接映射到 LLVM GEP。
+- `phi`，用于表达 `&&` / `||` 这类短路控制流值。
+
+示例：
+
+```sh
+build/m0c --emit=ir examples/hello.ax
+```
+
+后续 LLVM 后端应从 Aurex IR lowering，而不是从 C 后端反推。C 后端继续作为可读参考输出、调试对比路径和 C ABI 过渡接口保留。
 
 ## 5. 当前语言能力
 

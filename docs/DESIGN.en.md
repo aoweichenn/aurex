@@ -66,6 +66,14 @@ not depend on parser internals.
 - emits C from AST plus `CheckedModule`;
 - should not guess types or resolve names.
 
+`m0_ir`
+
+- lowers AST plus `CheckedModule` into Aurex's own IR;
+- represents control flow with typed values, basic blocks, terminators, and
+  `phi`;
+- preserves `extern_c` / `export_c` linkage and ABI symbols;
+- is the intended input for LLVM IR lowering, independent of C backend text.
+
 `m0_driver`
 
 - orchestrates file IO and stage execution;
@@ -134,7 +142,27 @@ The current sema implementation intentionally records expression types in
 `CheckedModule::expr_types`. This makes codegen simpler and keeps type logic out
 of the emitter.
 
-## 7. C Backend Model
+## 7. Aurex IR Model
+
+The new M0 IR is a typed CFG/SSA-like intermediate representation. It is not a
+direct LLVM IR printer. The goal is to decouple frontend semantics from backend
+printing: the AST stays parse-only, `CheckedModule` provides type and ABI side
+tables, and IR describes a verifiable, optimizable program.
+
+Current choices:
+
+- functions record source name, ABI symbol, linkage, return type, and parameter
+  signature;
+- locals remain explicit `alloca/load/store` slots until a later mem2reg pass;
+- field and index operations lower to `field_addr` / `index_addr`, ready for
+  LLVM GEP lowering;
+- calls keep both final symbol text and an internal function id when resolvable;
+- `&&` / `||` lower to control flow plus `phi`, so short-circuiting is explicit.
+
+Recommended next steps are an IR verifier, mem2reg, CFG cleanup, LLVM IR
+lowering, and C ABI tests for `extern c`, `export c`, and runtime calls.
+
+## 8. C Backend Model
 
 The C backend maps M0 types to stable C spellings:
 
@@ -148,12 +176,12 @@ The C backend maps M0 types to stable C spellings:
 
 Known future work:
 
-- introduce a lowering layer before C emission;
+- keep `--emit=c` as a reference backend;
 - generate temporaries for guaranteed left-to-right evaluation;
 - normalize ABI names and exported symbols;
 - split expression emission into value emission and statement lowering.
 
-## 8. Self-Hosting Design
+## 9. Self-Hosting Design
 
 Self-hosting is tracked in `selfhost/`.
 
@@ -202,7 +230,7 @@ The next real self-hosting milestone should keep expanding this iterative
 parser seed's AST coverage, produce a stable AST summary or parse dump, then
 compare that output with the C++ parser on a small shared corpus.
 
-## 9. Industrial Hardening Roadmap
+## 10. Industrial Hardening Roadmap
 
 Near-term:
 

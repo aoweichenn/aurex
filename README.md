@@ -4,7 +4,8 @@ Current baseline: **M0V0.1.8**.
 
 Aurex M0 is a small bootstrap compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
-The first backend emits C.
+Stage0 now has an Aurex IR layer before the long-term LLVM path; the C backend
+is still available for comparison and bootstrap continuity.
 
 ## Quick Start
 
@@ -38,6 +39,19 @@ build/m0c --emit=exe examples/hello.ax -o build/hello
 `--emit=c` remains the default so generated C can still be inspected and
 compared. `--clang <path>` selects a clang binary, and repeated
 `--clang-arg <arg>` options pass raw arguments such as `-O2` or `-g`.
+
+The new IR path is visible with:
+
+```sh
+build/m0c --emit=ir examples/hello.ax
+```
+
+This emits Aurex's typed CFG/SSA IR, not LLVM IR yet. It records function
+signatures, ABI linkage (`internal`, `export_c`, `extern_c`), memory slots,
+loads/stores, calls, field/index addresses, casts, terminators, and `phi`
+values for short-circuit control flow. The next native backend step is lowering
+this IR to LLVM IR while keeping the C emitter as a reference backend and C ABI
+interoperability surface.
 
 ## Quality Gates
 

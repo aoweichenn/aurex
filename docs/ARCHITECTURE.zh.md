@@ -12,6 +12,8 @@ Stage1 自举编译器切片。
 - `src/lex/`：手写词法分析器，输出稳定 token 流。
 - `src/parse/`：手写递归下降解析器，输入 token，输出 parse-only AST。
 - `src/sema/`：类型表、符号表和语义检查，输出 `CheckedModule` 边表。
+- `src/ir/`：Aurex 自有中间代码，负责把 AST + sema 边表降为 typed CFG/SSA
+  形态，为后续 LLVM IR 后端提供稳定输入。
 - `src/codegen_c/`：C 后端，包括 C 类型格式化、表达式求值顺序和 emitter。
 - `src/driver/`：编译驱动、模块加载器和 clang 本机输出封装，负责 import
   解析、跨模块合并以及 C/汇编/可执行文件输出选择。
@@ -31,13 +33,46 @@ Stage1 自举编译器切片。
 2. `lex` 将每个源码文件扫描为 token。
 3. `parse` 将 token 转为 AST。AST 只表达语法事实，不保存类型检查结果。
 4. `sema` 建立类型、符号、函数、结构体和枚举 case 边表。
-5. `codegen_c` 使用 AST 与 `CheckedModule` 生成 C。
-6. `driver` 可以直接写出 C，也可以把临时 C 交给 clang 输出汇编或本机可执行文件。
+5. `ir` 可以把 AST 与 `CheckedModule` 降为 Aurex IR，用 `--emit=ir` 观察。
+6. `codegen_c` 仍可使用 AST 与 `CheckedModule` 生成 C。
+7. `driver` 可以直接写出 C，也可以把临时 C 交给 clang 输出汇编或本机可执行文件。
 
 这种分层刻意避免让 parser 依赖 lexer 实现，也避免把语义信息写回 AST。
 后续替换前端或把组件迁移到 M0 时，每个阶段都有清晰接口。
 当前 clang 集成是 driver 层的封装：`--emit=c` 仍保留完整 C 输出，
 `--emit=asm` / `--emit=exe` 复用同一份 C 后端产物并调用 clang。
+
+## Aurex IR 与 LLVM 路线
+
+当前新增的 Aurex IR 不是 LLVM IR 文本直出，而是项目自己的 typed CFG/SSA
+中间层。这样做的原因是：前端语义、C ABI 互操作、后端优化和 LLVM lowering
+需要一个稳定的内部协议，不能把 AST 直接绑死到 C 或 LLVM 的打印格式上。
+
+IR 当前具有这些性质：
+
+- `Module` 持有 `TypeTable`、函数表和值表。
+- `Function` 显式记录源码名、ABI symbol、linkage、返回类型和参数签名。
+- `Linkage` 区分 `internal`、`export_c`、`extern_c`，后续 LLVM lowering 可直接映射到符号可见性和外部声明。
+- 控制流由 basic block + terminator 表示，terminator 包含 `br`、`br_if` 和 `ret`。
+- 局部变量、参数 shadow copy 和可写 storage 先降为 `alloca/load/store`，后续可以做 mem2reg/SSA 构造。
+- 字段和下标访问先降为 `field_addr` / `index_addr`，再由 `load/store` 使用，便于 LLVM GEP lowering。
+- 函数调用记录最终 ABI symbol，也记录可解析的 `FunctionId`，避免后续阶段重新查 AST 名字。
+- `&&` / `||` 降成 CFG + `phi`，不再当作普通二元指令，因此短路语义在 IR 中是显式的。
+
+后续推荐的后端路线：
+
+```text
+AST + CheckedModule
+  -> Aurex IR
+  -> IR verifier
+  -> mem2reg / CFG cleanup / 常量折叠
+  -> LLVM IR
+  -> LLVM target machine 输出 asm/object/exe
+```
+
+C 后端不会删除。它继续作为可读 reference backend、bootstrap 过渡路径和 C ABI
+接口验证工具存在；未来 `extern c` 和运行时库应优先走 Aurex IR/LLVM 路线，同时保持
+`--emit=c` 用于差异对比。
 
 ## CMake 组件边界
 
@@ -47,12 +82,13 @@ Stage1 自举编译器切片。
 - `AurexSyntax.cmake` 定义 `m0_syntax`。
 - `AurexFrontend.cmake` 定义 `m0_lex` 和 `m0_parse`。
 - `AurexSema.cmake` 定义 `m0_sema`。
+- `AurexIr.cmake` 定义 `m0_ir`。
 - `AurexCodegenC.cmake` 定义 `m0_codegen_c`。
 - `AurexDriver.cmake` 定义 `m0_driver`。
 - `AurexTools.cmake` 定义 `m0c`。
 - `AurexWarnings.cmake` 集中管理编译告警。
 
-依赖方向保持单向：base -> syntax/frontend -> sema -> codegen -> driver -> cli。
+依赖方向保持单向：base -> syntax/frontend -> sema -> ir/codegen -> driver -> cli。
 新增目标时应优先放入对应组件文件，而不是把目标堆回根 CMake。
 
 ## 自举编译器边界

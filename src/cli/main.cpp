@@ -17,11 +17,13 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --dump-ast       parse and print AST\n"
         << "  --dump-modules   resolve imports and print loaded modules\n"
         << "  --dump-checked   run sema and print checked summary\n"
+        << "  --dump-ir        lower to Aurex IR and print it\n"
         << "  --check          run lexer, parser, and sema without emitting C\n"
         << "  --emit=tokens    same as --dump-tokens\n"
         << "  --emit=ast       same as --dump-ast\n"
         << "  --emit=modules   same as --dump-modules\n"
         << "  --emit=checked   same as --dump-checked\n"
+        << "  --emit=ir        same as --dump-ir\n"
         << "  --emit=check     same as --check\n"
         << "  --emit=c         emit C (default)\n"
         << "  --emit=asm       emit assembly through clang\n"
@@ -47,6 +49,8 @@ int main(const int argc, char** argv) {
             invocation.emit_kind = aurex::driver::EmitKind::modules;
         } else if (arg == "--dump-checked" || arg == "--emit=checked") {
             invocation.emit_kind = aurex::driver::EmitKind::checked;
+        } else if (arg == "--dump-ir" || arg == "--emit=ir") {
+            invocation.emit_kind = aurex::driver::EmitKind::ir;
         } else if (arg == "--check" || arg == "--emit=check") {
             invocation.emit_kind = aurex::driver::EmitKind::check;
         } else if (arg == "--emit=c") {

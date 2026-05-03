@@ -1,0 +1,121 @@
+module aurex.selfhost.compiler.ir.expr;
+
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.compiler.ir.writer;
+import aurex.selfhost.syntax.ast;
+
+fn ir_write_op(file: *mut OutputFile, op: i32) -> bool {
+    if op == AST_OP_ADD { return ir_write_text(file, c"add"); }
+    if op == AST_OP_SUB { return ir_write_text(file, c"sub"); }
+    if op == AST_OP_MUL { return ir_write_text(file, c"mul"); }
+    if op == AST_OP_DIV { return ir_write_text(file, c"div"); }
+    if op == AST_OP_MOD { return ir_write_text(file, c"mod"); }
+    if op == AST_OP_SHL { return ir_write_text(file, c"shl"); }
+    if op == AST_OP_SHR { return ir_write_text(file, c"shr"); }
+    if op == AST_OP_LT { return ir_write_text(file, c"lt"); }
+    if op == AST_OP_LE { return ir_write_text(file, c"le"); }
+    if op == AST_OP_GT { return ir_write_text(file, c"gt"); }
+    if op == AST_OP_GE { return ir_write_text(file, c"ge"); }
+    if op == AST_OP_EQ { return ir_write_text(file, c"eq"); }
+    if op == AST_OP_NE { return ir_write_text(file, c"ne"); }
+    if op == AST_OP_BIT_AND { return ir_write_text(file, c"bit_and"); }
+    if op == AST_OP_BIT_XOR { return ir_write_text(file, c"bit_xor"); }
+    if op == AST_OP_BIT_OR { return ir_write_text(file, c"bit_or"); }
+    if op == AST_OP_AND { return ir_write_text(file, c"and"); }
+    if op == AST_OP_OR { return ir_write_text(file, c"or"); }
+    if op == AST_OP_NOT { return ir_write_text(file, c"not"); }
+    if op == AST_OP_BIT_NOT { return ir_write_text(file, c"bit_not"); }
+    if op == AST_OP_NEG { return ir_write_text(file, c"neg"); }
+    if op == AST_OP_ADDR { return ir_write_text(file, c"addr"); }
+    if op == AST_OP_DEREF { return ir_write_text(file, c"deref"); }
+    return ir_write_text(file, c"op?");
+}
+
+fn ir_expr_is_leaf(kind: i32) -> bool {
+    return kind == AST_EXPR_INTEGER ||
+        kind == AST_EXPR_IDENTIFIER ||
+        kind == AST_EXPR_STRING ||
+        kind == AST_EXPR_C_STRING ||
+        kind == AST_EXPR_BOOL ||
+        kind == AST_EXPR_NULL;
+}
+
+fn ir_write_expr_leaf(file: *mut OutputFile, source: *const u8, expr: AstExprNode) -> bool {
+    if expr.kind == AST_EXPR_INTEGER {
+        return ir_write_text(file, c"literal ") &&
+            ir_write_range(file, source, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_IDENTIFIER {
+        return ir_write_text(file, c"name ") &&
+            ir_write_range(file, source, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_STRING {
+        return ir_write_text(file, c"string ") &&
+            ir_write_range(file, source, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_C_STRING {
+        return ir_write_text(file, c"c_string ") &&
+            ir_write_range(file, source, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_BOOL {
+        return ir_write_text(file, c"bool ") &&
+            ir_write_range(file, source, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_NULL {
+        return ir_write_text(file, c"null");
+    }
+    return ir_write_text(file, c"expr?");
+}
+
+fn ir_write_expr_ref(file: *mut OutputFile, expr_id: i32) -> bool {
+    return ir_write_text(file, c"%e") &&
+        ir_write_i32(file, expr_id);
+}
+
+fn ir_write_expr_value(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, expr: AstExprNode) -> bool {
+    if ir_expr_is_leaf(expr.kind) {
+        return ir_write_expr_leaf(file, source, expr);
+    }
+    if expr.kind == AST_EXPR_UNARY {
+        return ir_write_op(file, expr.op) &&
+            ir_write_text(file, c" ") &&
+            ir_write_expr_ref(file, expr.left);
+    }
+    if expr.kind == AST_EXPR_BINARY {
+        return ir_write_op(file, expr.op) &&
+            ir_write_text(file, c" ") &&
+            ir_write_expr_ref(file, expr.left) &&
+            ir_write_text(file, c", ") &&
+            ir_write_expr_ref(file, expr.right);
+    }
+    if expr.kind == AST_EXPR_CALL {
+        if !ir_write_text(file, c"call ") { return false; }
+        if !ir_write_expr_ref(file, expr.left) { return false; }
+        if !ir_write_text(file, c"(") { return false; }
+        var arg_index: i32 = 0;
+        while arg_index < expr.arg_count {
+            if arg_index > 0 {
+                if !ir_write_text(file, c", ") { return false; }
+            }
+            let arg: AstExprArg = ast.expr_args[expr.first_arg + arg_index];
+            if !ir_write_expr_ref(file, arg.expr_id) { return false; }
+            arg_index = arg_index + 1;
+        }
+        return ir_write_text(file, c")");
+    }
+    return ir_write_text(file, c"expr?");
+}
+
+fn ir_emit_expr_values(file: *mut OutputFile, source: *const u8, ast: *mut AstModule) -> bool {
+    var index: i32 = 0;
+    while index < ast.expr_count {
+        let expr: AstExprNode = ast.exprs[index];
+        if !ir_write_text(file, c"    ") { return false; }
+        if !ir_write_expr_ref(file, index) { return false; }
+        if !ir_write_text(file, c" = ") { return false; }
+        if !ir_write_expr_value(file, source, ast, expr) { return false; }
+        if !ir_write_text(file, c"\n") { return false; }
+        index = index + 1;
+    }
+    return true;
+}

@@ -195,7 +195,7 @@ Stage0 C++ compiler
   -> compiles M0 compiler sources
   -> produces m0c-stage1
   -> m0c-stage1 compiles the same sources
-  -> stage1/stage2 generated outputs match
+  -> stage1/stage2 IR and executable behavior match
 ```
 
 Current M0V0.1.8 status:
@@ -222,6 +222,12 @@ Current M0V0.1.8 status:
   frame stacks, and the parser produces an ID-backed `AstModule`;
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` is the executable parser
   seed smoke test;
+- `selfhost/src/aurex/selfhost/compiler/ir/` is the Stage1 Aurex IR output path,
+  split into writer, names, types, expressions, and AST-to-IR emission;
+- `m0c_stage1` currently emits `aurex_ir v0` snapshots and deterministic
+  `lowering(ast_pending)` markers for selfhost modules not yet covered by the
+  parser seed;
+- the old selfhost C emitter has been removed from the active source tree;
 - `tools/compare_selfhost_lexer.sh` directly compares that M0 lexer stream with
   the production C++ Stage0 lexer stream over `examples/hello.ax` and every
   local positive/negative test input;
@@ -230,16 +236,16 @@ Current M0V0.1.8 status:
 - the actual production compiler is still C++.
 
 The next real self-hosting milestone should keep expanding this iterative
-parser seed's AST coverage, produce a stable AST summary or parse dump, then
-compare that output with the C++ parser on a small shared corpus.
+parser seed's AST coverage, add Stage1 sema and IR verifier coverage, then feed
+Stage1-produced Aurex IR into the existing LLVM backend.
 
 ## 10. Industrial Hardening Roadmap
 
 Near-term:
 
 - real unit test executable instead of shell-only tests;
-- golden file tests for diagnostics and C output;
-- lowering layer for evaluation order;
+- golden file tests for diagnostics and IR output;
+- Stage1 IR verifier and LLVM handoff;
 - import path and module graph;
 - richer source locations and multi-line diagnostics.
 

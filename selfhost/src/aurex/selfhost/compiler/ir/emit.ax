@@ -1,0 +1,238 @@
+module aurex.selfhost.compiler.ir.emit;
+
+import aurex.selfhost.compiler.ir.expr;
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.compiler.ir.names;
+import aurex.selfhost.compiler.ir.types;
+import aurex.selfhost.compiler.ir.writer;
+import aurex.selfhost.lexer.core;
+import aurex.selfhost.parser.seed;
+import aurex.selfhost.syntax.ast;
+
+fn ir_write_header(file: *mut OutputFile) -> bool {
+    return ir_write_text(file, c"aurex_ir v0\n");
+}
+
+fn ir_write_abi_name_or_symbol(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    if item.abi_begin < item.abi_end {
+        return ir_write_range(file, source, item.abi_begin, item.abi_end);
+    }
+    return ir_write_mangled_name(file, source, ast.module_begin, ast.module_end, item.name_begin, item.name_end);
+}
+
+fn ir_write_param_list(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    var index: i32 = 0;
+    while index < item.param_count {
+        if index > 0 {
+            if !ir_write_text(file, c", ") {
+                return false;
+            }
+        }
+        let param: AstParamNode = ast.params[item.first_param + index];
+        if !ir_write_range(file, source, param.name_begin, param.name_end) { return false; }
+        if !ir_write_text(file, c": ") { return false; }
+        if !ir_write_type(file, source, ast, param.type_id) { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn ir_write_record(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    return ir_write_text(file, c"record ") &&
+        ir_write_range(file, source, item.name_begin, item.name_end) &&
+        ir_write_text(file, c" @") &&
+        ir_write_mangled_name(file, source, ast.module_begin, ast.module_end, item.name_begin, item.name_end) &&
+        ir_write_text(file, c" opaque {\n}\n");
+}
+
+fn ir_write_fn_signature(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode, linkage: *const u8) -> bool {
+    return ir_write_text(file, c"fn ") &&
+        ir_write_range(file, source, item.name_begin, item.name_end) &&
+        ir_write_text(file, c"(") &&
+        ir_write_param_list(file, source, ast, item) &&
+        ir_write_text(file, c") @") &&
+        ir_write_abi_name_or_symbol(file, source, ast, item) &&
+        ir_write_text(file, c" linkage(") &&
+        ir_write_text(file, linkage) &&
+        ir_write_text(file, c") abi(c) -> ") &&
+        ir_write_type(file, source, ast, item.return_type);
+}
+
+fn ir_write_extern_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    return ir_write_fn_signature(file, source, ast, item, c"extern_c") &&
+        ir_write_text(file, c" {\n}\n");
+}
+
+fn ir_write_stmt(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, stmt: AstStmtNode) -> bool {
+    if stmt.kind == AST_STMT_EXPR {
+        if !ir_write_text(file, c"    expr ") { return false; }
+        if !ir_write_expr_ref(file, stmt.expr_id) { return false; }
+        return ir_write_text(file, c"\n");
+    }
+    if stmt.kind == AST_STMT_RETURN {
+        if !ir_write_text(file, c"    ret ") { return false; }
+        if !ir_write_expr_ref(file, stmt.expr_id) { return false; }
+        return ir_write_text(file, c"\n");
+    }
+    return ir_write_text(file, c"    <invalid-stmt>\n");
+}
+
+fn ir_write_export_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    if !ir_write_fn_signature(file, source, ast, item, c"export_c") {
+        return false;
+    }
+    if !ir_write_text(file, c" {\n  ^entry:\n") {
+        return false;
+    }
+    if !ir_emit_expr_values(file, source, ast) {
+        return false;
+    }
+    if item.body_block >= 0 && item.body_block < ast.block_count {
+        let block: AstBlockNode = ast.blocks[item.body_block];
+        var index: i32 = 0;
+        while index < block.stmt_count {
+            let stmt: AstStmtNode = ast.stmts[block.first_stmt + index];
+            if !ir_write_stmt(file, source, ast, stmt) {
+                return false;
+            }
+            index = index + 1;
+        }
+    }
+    return ir_write_text(file, c"}\n");
+}
+
+fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return emit_ir_pending_source(file, source);
+    }
+
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if item.kind == AST_ITEM_OPAQUE_STRUCT {
+            if !ir_write_record(file, source, &ast, item) {
+                ast_free_module(ast);
+                return false;
+            }
+        } else {
+            if item.kind == AST_ITEM_EXTERN_FN {
+                if !ir_write_extern_fn(file, source, &ast, item) {
+                    ast_free_module(ast);
+                    return false;
+                }
+            } else {
+                if item.kind == AST_ITEM_EXPORT_FN {
+                    if !ir_write_export_fn(file, source, &ast, item) {
+                        ast_free_module(ast);
+                        return false;
+                    }
+                }
+            }
+        }
+        index = index + 1;
+    }
+
+    ast_free_module(ast);
+    return true;
+}
+
+fn ir_pending_path_segment(token: TokenSpan) -> bool {
+    return token.kind == TK_IDENTIFIER || token.kind == TK_KW_C;
+}
+
+fn ir_pending_advance(source: *const u8, index: *mut i32, current: *mut TokenSpan) -> TokenSpan {
+    let previous: TokenSpan = *current;
+    *current = scan_token(source, index);
+    return previous;
+}
+
+fn emit_ir_pending_path(file: *mut OutputFile, source: *const u8, index: *mut i32, current: *mut TokenSpan) -> bool {
+    let first: TokenSpan = ir_pending_advance(source, index, current);
+    if !ir_pending_path_segment(first) {
+        return false;
+    }
+    if !ir_write_range(file, source, first.begin, first.end) {
+        return false;
+    }
+    while current.kind == TK_DOT {
+        ir_pending_advance(source, index, current);
+        let part: TokenSpan = ir_pending_advance(source, index, current);
+        if !ir_pending_path_segment(part) {
+            return false;
+        }
+        if !ir_write_text(file, c".") { return false; }
+        if !ir_write_range(file, source, part.begin, part.end) { return false; }
+    }
+    return true;
+}
+
+fn emit_ir_pending_source(file: *mut OutputFile, source: *const u8) -> bool {
+    var index: i32 = 0;
+    var current: TokenSpan = scan_token(source, &index);
+    if current.kind != TK_KW_MODULE {
+        return false;
+    }
+    ir_pending_advance(source, &index, &current);
+    if !ir_write_text(file, c"; selfhost_module ") { return false; }
+    if !emit_ir_pending_path(file, source, &index, &current) { return false; }
+    if current.kind != TK_SEMICOLON {
+        return false;
+    }
+    ir_pending_advance(source, &index, &current);
+    if !ir_write_text(file, c" lowering(ast_pending)\n") { return false; }
+
+    while current.kind == TK_KW_IMPORT {
+        ir_pending_advance(source, &index, &current);
+        if !ir_write_text(file, c"; import ") { return false; }
+        if !emit_ir_pending_path(file, source, &index, &current) { return false; }
+        if current.kind != TK_SEMICOLON {
+            return false;
+        }
+        ir_pending_advance(source, &index, &current);
+        if !ir_write_text(file, c"\n") { return false; }
+    }
+    return true;
+}
+
+fn emit_ir_file(path: *const u8, source: *const u8) -> bool {
+    let file: *mut OutputFile = ir_open_output(path);
+    if file == null {
+        return false;
+    }
+    let ok: bool = ir_write_header(file) && emit_ir_source(file, source);
+    let close_ok: bool = ir_close_output(file);
+    return ok && close_ok;
+}
+
+fn emit_ir_bundle(path: *const u8, argc: i32, argv: *mut *mut u8) -> bool {
+    let file: *mut OutputFile = ir_open_output(path);
+    if file == null {
+        return false;
+    }
+    if !ir_write_header(file) {
+        ir_close_output(file);
+        return false;
+    }
+
+    var arg_index: i32 = 1;
+    while arg_index < argc - 1 {
+        let input_path: *const u8 = ptr_cast(*const u8, argv[arg_index]);
+        let buffer: FileBuffer = read_file(input_path);
+        if buffer.data == null {
+            ir_close_output(file);
+            return false;
+        }
+        let source: *const u8 = ptr_cast(*const u8, buffer.data);
+        let ok: bool = emit_ir_source(file, source);
+        free_file(buffer);
+        if !ok {
+            ir_close_output(file);
+            return false;
+        }
+        arg_index = arg_index + 1;
+    }
+
+    return ir_close_output(file);
+}

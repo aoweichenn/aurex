@@ -1,10 +1,7 @@
 module aurex.selfhost.compiler.driver;
 
-import aurex.selfhost.compiler.emit_c;
-import aurex.selfhost.compiler.emit_subset;
-import aurex.selfhost.compiler.imports;
+import aurex.selfhost.compiler.ir.emit;
 import aurex.selfhost.compiler.io;
-import aurex.selfhost.compiler.subset;
 
 fn compile_file(input_path: *const u8, output_path: *const u8) -> i32 {
     let buffer: FileBuffer = read_file(input_path);
@@ -14,142 +11,33 @@ fn compile_file(input_path: *const u8, output_path: *const u8) -> i32 {
     }
 
     let source: *const u8 = ptr_cast(*const u8, buffer.data);
-    if !emit_entry_with_imports(input_path, output_path, source) {
-        let program: Stage1Program = parse_stage1_subset(source);
-        if !program.ok {
-            free_file(buffer);
-            puts(c"stage1: unsupported M0 subset");
-            return 1;
-        }
-
-        if !emit_stage1_c(output_path, source, program) {
-            free_file(buffer);
-            puts(c"stage1: failed to write output");
-            return 1;
-        }
+    if !emit_ir_file(output_path, source) {
+        free_file(buffer);
+        puts(c"stage1: failed to emit Aurex IR");
+        return 1;
     }
 
     free_file(buffer);
     return 0;
 }
 
-fn compile_bundle(dep_path: *const u8, input_path: *const u8, output_path: *const u8) -> i32 {
-    let dep_buffer: FileBuffer = read_file(dep_path);
-    if dep_buffer.data == null {
-        puts(c"stage1: failed to read dependency");
-        return 1;
-    }
-
-    let input_buffer: FileBuffer = read_file(input_path);
-    if input_buffer.data == null {
-        free_file(dep_buffer);
-        puts(c"stage1: failed to read input");
-        return 1;
-    }
-
-    let dep_source: *const u8 = ptr_cast(*const u8, dep_buffer.data);
-    let input_source: *const u8 = ptr_cast(*const u8, input_buffer.data);
-    if !emit_transpile_subset_bundle(output_path, dep_source, input_source) {
-        free_file(input_buffer);
-        free_file(dep_buffer);
-        puts(c"stage1: failed to emit bundle");
-        return 1;
-    }
-
-    free_file(input_buffer);
-    free_file(dep_buffer);
-    return 0;
-}
-
-fn compile_bundle2(dep0_path: *const u8, dep1_path: *const u8, input_path: *const u8, output_path: *const u8) -> i32 {
-    let dep0_buffer: FileBuffer = read_file(dep0_path);
-    if dep0_buffer.data == null {
-        puts(c"stage1: failed to read first dependency");
-        return 1;
-    }
-
-    let dep1_buffer: FileBuffer = read_file(dep1_path);
-    if dep1_buffer.data == null {
-        free_file(dep0_buffer);
-        puts(c"stage1: failed to read second dependency");
-        return 1;
-    }
-
-    let input_buffer: FileBuffer = read_file(input_path);
-    if input_buffer.data == null {
-        free_file(dep1_buffer);
-        free_file(dep0_buffer);
-        puts(c"stage1: failed to read input");
-        return 1;
-    }
-
-    let dep0_source: *const u8 = ptr_cast(*const u8, dep0_buffer.data);
-    let dep1_source: *const u8 = ptr_cast(*const u8, dep1_buffer.data);
-    let input_source: *const u8 = ptr_cast(*const u8, input_buffer.data);
-    if !emit_transpile_subset_bundle2(output_path, dep0_source, dep1_source, input_source) {
-        free_file(input_buffer);
-        free_file(dep1_buffer);
-        free_file(dep0_buffer);
-        puts(c"stage1: failed to emit bundle");
-        return 1;
-    }
-
-    free_file(input_buffer);
-    free_file(dep1_buffer);
-    free_file(dep0_buffer);
-    return 0;
-}
-
 fn compile_many(argc: i32, argv: *mut *mut u8) -> i32 {
     let output_path: *const u8 = ptr_cast(*const u8, argv[argc - 1]);
-    let file: *mut OutputFile = emit_transpile_open_bundle(output_path);
-    if file == null {
-        puts(c"stage1: failed to open bundle output");
-        return 1;
-    }
-
-    var arg_index: i32 = 1;
-    while arg_index < argc - 1 {
-        let input_path: *const u8 = ptr_cast(*const u8, argv[arg_index]);
-        let buffer: FileBuffer = read_file(input_path);
-        if buffer.data == null {
-            emit_transpile_close_bundle(file);
-            puts(c"stage1: failed to read bundle input");
-            return 1;
-        }
-
-        let source: *const u8 = ptr_cast(*const u8, buffer.data);
-        if !emit_transpile_add_bundle_source(file, source) {
-            free_file(buffer);
-            emit_transpile_close_bundle(file);
-            puts(c"stage1: failed to emit bundle input");
-            return 1;
-        }
-        free_file(buffer);
-        arg_index = arg_index + 1;
-    }
-
-    if !emit_transpile_close_bundle(file) {
-        puts(c"stage1: failed to close bundle output");
+    if !emit_ir_bundle(output_path, argc, argv) {
+        puts(c"stage1: failed to emit Aurex IR bundle");
         return 1;
     }
     return 0;
 }
 
 fn print_stage1_usage() -> i32 {
-    puts(c"usage: m0c_stage1 <input.ax>... <output.c>");
+    puts(c"usage: m0c_stage1 <input.ax>... <output.air>");
     return 1;
 }
 
 fn run_stage1(argc: i32, argv: *mut *mut u8) -> i32 {
     if argc < 3 {
         return print_stage1_usage();
-    }
-    if argc == 5 {
-        return compile_bundle2(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]), ptr_cast(*const u8, argv[3]), ptr_cast(*const u8, argv[4]));
-    }
-    if argc == 4 {
-        return compile_bundle(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]), ptr_cast(*const u8, argv[3]));
     }
     if argc == 3 {
         return compile_file(ptr_cast(*const u8, argv[1]), ptr_cast(*const u8, argv[2]));

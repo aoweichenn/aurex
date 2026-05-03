@@ -115,8 +115,8 @@ build/m0c --emit=ir examples/hello.ax
 ```
 
 LLVM 后端和未来自研后端都应从 Aurex IR lowering。Stage0 生产 C 后端已经从
-构建链路中移除；`selfhost/` 中的 Stage1 仍会生成 C，这是当前自举固定点
-验证的输出协议，不是 Stage0 的后端。
+构建链路中移除；`selfhost/` 中的 Stage1 也已经改为输出 Aurex IR 快照，
+不再把 C 当作自举输出协议。
 
 ## 5. 当前语言能力
 

@@ -112,15 +112,15 @@ selfhost smoke 入口都可以经 Stage0 的 Aurex IR -> LLVM IR -> clang 编译
   和 `seed.ax`。其中类型解析用显式指针前缀栈，表达式解析用 operator/frame
   栈，当前已能为覆盖的语法返回 `AstModule` 节点图。
 - `compiler/`：Stage1 编译器切片。
-- `compiler/emit/`：Stage1 token-stream C emitter 的模块化实现。
-- `compiler/imports.ax`：Stage1 入口模块加载器，解析 `import`，推导 import
-  root，按依赖优先顺序把源码送入 bundle emitter。
+- `compiler/ir/`：Stage1 Aurex IR 输出模块，按 writer、name mangling、type、
+  expression 和 AST-to-IR emission 拆分。
 - `smoke/`：自举能力回归测试。
 - `tool/`：golden 测试使用的小工具。
 
-Stage1 目前不是完整 AST 编译器，而是 M0 编写的 token-stream C emitter。
-它能读取受支持的 M0 子集并直接生成 C。这个实现方式适合 M0 自举阶段：
-代码量小、依赖少、每个新增语法点都能通过固定点 smoke 链路验证。
+Stage1 目前不是完整 AST 编译器，而是 M0 编写的 AST-to-Aurex-IR seed。
+它能把 parser seed 覆盖的 M0 子集输出为 `aurex_ir v0` 快照；对尚未覆盖
+的 selfhost 编译器模块，会输出稳定的 `lowering(ast_pending)` 记录，避免
+把未完成的 lowering 伪装成可执行编译结果。
 
 ## 当前 Stage1 能力
 
@@ -132,18 +132,14 @@ Stage1 已覆盖自举 smoke 所需的核心面：
   block、表达式语句、`return` statement、调用、调用参数池、字面量、标识符、
   一元表达式和基于显式 operator 栈的二元表达式树。调用参数现在按完整表达式
   解析，支持分组、优先级和一元前缀。
-- 单入口 import-aware 编译：`m0c_stage1 <入口.ax> <输出.c>` 能读取入口
-  `import` 并自行加载依赖，当前已用于从 `m0c_stage1.ax` 生成 Stage2 编译器。
-- `extern c`、`export c fn`、ABI 名称和主函数包装。
-- 标量类型、`str`、指针、数组、命名类型、opaque C struct。
-- `let`、`var`、赋值、`return`、`if`、`else`、`else if`、`while`、`break`、`continue`。
-- `cast`、`ptr_cast`、`bit_cast`、`size_of`、`align_of`、`ptr_addr`、`ptr_from_addr`。
-- struct/enum/const 输出、嵌套 struct literal、指针字段访问和字段赋值。
-- Stage2/Stage3 smoke 编译器输出 byte-for-byte 固定点检查。
+- `m0c_stage1 <输入.ax> <输出.air>` 能为 `examples/hello.ax`、selfhost seed
+  和 parser smoke 输出 Aurex IR 快照。
+- 多源码输入会生成一个 IR bundle；对完整 lowering 尚未覆盖的 selfhost 模块，
+  输出 deterministic pending-lowering marker。
+- 旧 selfhost C emitter、C bundle emitter 和 C 固定点检查已经从活跃链路移除。
 
-仍未完成的部分包括完整生产级 AST parser、完整语义分析、诊断质量、从 Stage1 C
-emitter 迁移到 Stage1 IR/LLVM 路线以及全量生产编译器自编译。当前 Stage1 的 import loader 只覆盖
-`module`/`import` 头部和 `selfhost/src` 风格的模块路径。相关状态以
+仍未完成的部分包括完整生产级 AST parser、完整语义分析、诊断质量、Stage1 IR
+verifier、把 Stage1 IR 接入现有 LLVM 后端，以及全量生产编译器自编译。相关状态以
 `docs/SELFHOST.md` 和 `tools/bootstrap_chain.sh` 为准。
 
 ## 质量门

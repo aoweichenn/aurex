@@ -12,23 +12,17 @@ struct WriteResult {
 
 extern c {
     opaque struct OutputFile;
-    opaque struct SourceSet;
 
     fn output_open(path: *const u8) -> *mut OutputFile @name("m0_runtime_output_open");
-    fn output_write_c_string(file: *mut OutputFile, text: *const u8) -> bool @name("m0_runtime_output_write_c_string");
+    fn output_write_text(file: *mut OutputFile, text: *const u8) -> bool @name("m0_runtime_output_write_text");
     fn output_write_source_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool @name("m0_runtime_output_write_source_range");
     fn output_write_i32(file: *mut OutputFile, value: i32) -> bool @name("m0_runtime_output_write_i32");
     fn output_close(file: *mut OutputFile) -> bool @name("m0_runtime_output_close");
-    fn source_set_create() -> *mut SourceSet @name("m0_runtime_source_set_create");
-    fn source_set_add(set: *mut SourceSet, path: *const u8) -> bool @name("m0_runtime_source_set_add");
-    fn source_set_destroy(set: *mut SourceSet) -> void @name("m0_runtime_source_set_destroy");
-    fn module_import_root(input_path: *const u8, source: *const u8, begin: i32, end: i32) -> FileBuffer @name("m0_runtime_module_import_root");
-    fn import_path(import_root: *const u8, source: *const u8, begin: i32, end: i32) -> FileBuffer @name("m0_runtime_import_path");
 }
 
 extern c {
     fn read_file(path: *const u8) -> FileBuffer @name("m0_runtime_read_file");
     fn free_file(buffer: FileBuffer) -> void @name("m0_runtime_free_file");
-    fn write_file(path: *const u8, data: *const u8) -> WriteResult @name("m0_runtime_write_c_string");
+    fn write_file(path: *const u8, data: *const u8) -> WriteResult @name("m0_runtime_write_text");
     fn puts(s: *const u8) -> i32 @name("puts");
 }

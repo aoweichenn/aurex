@@ -1,6 +1,5 @@
 BUILD_DIR ?= ../build/selfhost
 M0C ?= ../build/m0c
-CC ?= cc
 RUNTIME := runtime/runtime.c
 IMPORT_FLAGS := -I src
 
@@ -12,25 +11,23 @@ LEXER_RANGES_SRC := src/aurex/selfhost/smoke/lexer_ranges.ax
 PARSER_SMOKE_SRC := src/aurex/selfhost/smoke/parser_smoke.ax
 STAGE1_LANG_SRC := src/aurex/selfhost/smoke/stage1_lang.ax
 STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
+STAGE1_IR_SRC := src/aurex/selfhost/smoke/stage1_ir.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
-PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/m0c_stage1
+PROGRAMS := $(BUILD_DIR)/m0c_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/stage1_ir $(BUILD_DIR)/m0c_stage1
 STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/lexer/core.ax \
+	src/aurex/selfhost/syntax/ast.ax \
+	src/aurex/selfhost/parser/cursor.ax \
+	src/aurex/selfhost/parser/types.ax \
+	src/aurex/selfhost/parser/expr.ax \
+	src/aurex/selfhost/parser/seed.ax \
 	src/aurex/selfhost/compiler/io.ax \
-	src/aurex/selfhost/compiler/emit/cursor.ax \
-	src/aurex/selfhost/compiler/emit/writer.ax \
-	src/aurex/selfhost/compiler/emit/symbols.ax \
-	src/aurex/selfhost/compiler/emit/types.ax \
-	src/aurex/selfhost/compiler/emit/expr.ax \
-	src/aurex/selfhost/compiler/emit/assign.ax \
-	src/aurex/selfhost/compiler/emit/stmt.ax \
-	src/aurex/selfhost/compiler/emit/item.ax \
-	src/aurex/selfhost/compiler/emit/bundle.ax \
-	src/aurex/selfhost/compiler/emit_subset.ax \
-	src/aurex/selfhost/compiler/subset.ax \
-	src/aurex/selfhost/compiler/emit_c.ax \
-	src/aurex/selfhost/compiler/imports.ax \
+	src/aurex/selfhost/compiler/ir/writer.ax \
+	src/aurex/selfhost/compiler/ir/names.ax \
+	src/aurex/selfhost/compiler/ir/types.ax \
+	src/aurex/selfhost/compiler/ir/expr.ax \
+	src/aurex/selfhost/compiler/ir/emit.ax \
 	src/aurex/selfhost/compiler/driver.ax \
 	$(STAGE1_SRC)
 
@@ -60,6 +57,9 @@ $(BUILD_DIR)/stage1_lang: $(STAGE1_LANG_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR
 $(BUILD_DIR)/stage1_core: $(STAGE1_CORE_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
 	$(M0C) $(IMPORT_FLAGS) $(STAGE1_CORE_SRC) --runtime-c $(RUNTIME) -o $@
 
+$(BUILD_DIR)/stage1_ir: $(STAGE1_IR_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
+	$(M0C) $(IMPORT_FLAGS) $(STAGE1_IR_SRC) --runtime-c $(RUNTIME) -o $@
+
 $(BUILD_DIR)/lexer_dump: $(LEXER_DUMP_SRC) $(MODULES) $(RUNTIME) | $(BUILD_DIR)
 	$(M0C) $(IMPORT_FLAGS) $(LEXER_DUMP_SRC) --runtime-c $(RUNTIME) -o $@
 
@@ -73,6 +73,7 @@ check: all
 	$(BUILD_DIR)/parser_smoke
 	$(BUILD_DIR)/stage1_lang
 	$(BUILD_DIR)/stage1_core
+	$(BUILD_DIR)/stage1_ir
 	$(M0C) $(IMPORT_FLAGS) --dump-modules $(LEXER_FILE_SRC) > $(BUILD_DIR)/lexer_file.modules
 	grep -q 'aurex.selfhost.lexer.dump' $(BUILD_DIR)/lexer_file.modules
 	grep -q 'aurex.selfhost.lexer.core' $(BUILD_DIR)/lexer_file.modules
@@ -85,93 +86,34 @@ check: all
 	grep -q 'aurex.selfhost.syntax.ast' $(BUILD_DIR)/parser_smoke.modules
 	$(M0C) $(IMPORT_FLAGS) --dump-modules $(STAGE1_SRC) > $(BUILD_DIR)/m0c_stage1.modules
 	grep -q 'aurex.selfhost.compiler.driver' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.subset' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.emit_c' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.imports' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.emit.bundle' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.emit.symbols' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.emit.assign' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.emit.item' $(BUILD_DIR)/m0c_stage1.modules
-	grep -q 'aurex.selfhost.compiler.emit.stmt' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.ir.emit' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.ir.expr' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.ir.types' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.ir.names' $(BUILD_DIR)/m0c_stage1.modules
+	grep -q 'aurex.selfhost.compiler.ir.writer' $(BUILD_DIR)/m0c_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
 	$(BUILD_DIR)/lexer_file ../examples/hello.ax > $(BUILD_DIR)/lexer_file_hello.tokens
 	diff -u ../tests/golden/selfhost_lexer_dump.tokens $(BUILD_DIR)/lexer_dump.tokens
 	diff -u ../tests/golden/selfhost_lexer_file_hello.tokens $(BUILD_DIR)/lexer_file_hello.tokens
 	../tools/compare_selfhost_lexer.sh
-	$(BUILD_DIR)/m0c_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.c
-	$(CC) $(BUILD_DIR)/hello.stage1.c -o $(BUILD_DIR)/hello.stage1
-	test "$$($(BUILD_DIR)/hello.stage1)" = "hello from Aurex M0"
-	$(BUILD_DIR)/m0c_stage1 $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage1.c
-	$(CC) $(BUILD_DIR)/m0c_seed.stage1.c -o $(BUILD_DIR)/m0c_seed.stage1
-	test "$$($(BUILD_DIR)/m0c_seed.stage1)" = "Aurex M0 selfhost seed"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax $(LEXER_SMOKE_SRC) $(BUILD_DIR)/lexer_smoke.stage1.c
-	grep -q '#define validate_sequence m0_aurex_selfhost_smoke_lexer_smoke_validate_sequence' $(BUILD_DIR)/lexer_smoke.stage1.c
-	grep -q 'scan_next' $(BUILD_DIR)/lexer_smoke.stage1.c
-	$(CC) $(BUILD_DIR)/lexer_smoke.stage1.c -o $(BUILD_DIR)/lexer_smoke.stage1
-	test "$$($(BUILD_DIR)/lexer_smoke.stage1)" = "selfhost lexer sequence ok"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax $(LEXER_RANGES_SRC) $(BUILD_DIR)/lexer_ranges.stage1.c
-	grep -q '#define validate_ranges m0_aurex_selfhost_smoke_lexer_ranges_validate_ranges' $(BUILD_DIR)/lexer_ranges.stage1.c
-	grep -q 'scan_next' $(BUILD_DIR)/lexer_ranges.stage1.c
-	$(CC) $(BUILD_DIR)/lexer_ranges.stage1.c -o $(BUILD_DIR)/lexer_ranges.stage1
-	test "$$($(BUILD_DIR)/lexer_ranges.stage1)" = "selfhost lexer ranges ok"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/syntax/ast.ax src/aurex/selfhost/parser/cursor.ax src/aurex/selfhost/parser/types.ax src/aurex/selfhost/parser/expr.ax src/aurex/selfhost/parser/seed.ax $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.c
-	grep -q '#define parse_seed_module m0_aurex_selfhost_parser_seed_parse_seed_module' $(BUILD_DIR)/parser_smoke.stage1.c
-	grep -q '#define AstModule m0_aurex_selfhost_syntax_ast_AstModule' $(BUILD_DIR)/parser_smoke.stage1.c
-	grep -q 'scan_token' $(BUILD_DIR)/parser_smoke.stage1.c
-	$(CC) $(BUILD_DIR)/parser_smoke.stage1.c -o $(BUILD_DIR)/parser_smoke.stage1
-	test "$$($(BUILD_DIR)/parser_smoke.stage1)" = "selfhost parser seed ok"
-	$(BUILD_DIR)/m0c_stage1 src/aurex/selfhost/lexer/core.ax src/aurex/selfhost/lexer/dump.ax $(LEXER_FILE_SRC) $(BUILD_DIR)/lexer_file.stage1.c
-	grep -q '#define read_file m0_aurex_selfhost_tool_lexer_file_read_file' $(BUILD_DIR)/lexer_file.stage1.c
-	grep -q 'm0_runtime_read_file' $(BUILD_DIR)/lexer_file.stage1.c
-	$(CC) $(BUILD_DIR)/lexer_file.stage1.c $(RUNTIME) -o $(BUILD_DIR)/lexer_file.stage1
-	$(BUILD_DIR)/lexer_file.stage1 ../examples/hello.ax > $(BUILD_DIR)/lexer_file.stage1.tokens
-	diff -u ../tests/golden/selfhost_lexer_file_hello.tokens $(BUILD_DIR)/lexer_file.stage1.tokens
-	$(BUILD_DIR)/m0c_stage1 $(STAGE1_LANG_SRC) $(BUILD_DIR)/stage1_lang.stage1.c
-	grep -q 'aurex_m0_str' $(BUILD_DIR)/stage1_lang.stage1.c
-	grep -q 'continue;' $(BUILD_DIR)/stage1_lang.stage1.c
-	grep -q 'break;' $(BUILD_DIR)/stage1_lang.stage1.c
-	grep -q 'else .*if' $(BUILD_DIR)/stage1_lang.stage1.c
-	$(CC) $(BUILD_DIR)/stage1_lang.stage1.c -o $(BUILD_DIR)/stage1_lang.stage1
-	test "$$($(BUILD_DIR)/stage1_lang.stage1)" = "selfhost stage1 lang ok"
-	$(BUILD_DIR)/m0c_stage1 $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'typedef struct NativeFile NativeFile;' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'typedef struct TopOpaque TopOpaque;' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'Stage1Tag_one' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'const Cell \*const_cell' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'pair_ptr->value' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'pair_ptr->value  = value' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q '#define exported_value m0_stage1_exported_value' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'int32_t m0_stage1_exported_value();' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'int32_t m0_stage1_exported_value()' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'WrappedCell' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'uint8_t (\*buf)\[4\]' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'alignof' $(BUILD_DIR)/stage1_core.stage1.c
-	grep -q 'uintptr_t' $(BUILD_DIR)/stage1_core.stage1.c
-	$(CC) $(BUILD_DIR)/stage1_core.stage1.c -o $(BUILD_DIR)/stage1_core.stage1
-	test "$$($(BUILD_DIR)/stage1_core.stage1)" = "selfhost stage1 core ok"
-	$(BUILD_DIR)/m0c_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage2.smoke.c
-	$(CC) $(BUILD_DIR)/m0c_stage2.smoke.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage2.smoke
-	$(BUILD_DIR)/m0c_stage1 $(STAGE1_SRC) $(BUILD_DIR)/m0c_stage2.auto.c
-	$(CC) $(BUILD_DIR)/m0c_stage2.auto.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage2.auto
-	$(BUILD_DIR)/m0c_stage2.auto $(STAGE1_SRC) $(BUILD_DIR)/m0c_stage3.auto.c
-	cmp -s $(BUILD_DIR)/m0c_stage2.auto.c $(BUILD_DIR)/m0c_stage3.auto.c
-	$(BUILD_DIR)/m0c_stage2.auto $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage2.auto.c
-	$(CC) $(BUILD_DIR)/m0c_seed.stage2.auto.c -o $(BUILD_DIR)/m0c_seed.stage2.auto
-	test "$$($(BUILD_DIR)/m0c_seed.stage2.auto)" = "Aurex M0 selfhost seed"
-	$(BUILD_DIR)/m0c_stage2.smoke $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage3.smoke.c
-	cmp -s $(BUILD_DIR)/m0c_stage2.smoke.c $(BUILD_DIR)/m0c_stage3.smoke.c
-	$(CC) $(BUILD_DIR)/m0c_stage3.smoke.c $(RUNTIME) -o $(BUILD_DIR)/m0c_stage3.smoke
-	$(BUILD_DIR)/m0c_stage2.smoke $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage2.c
-	$(BUILD_DIR)/m0c_stage3.smoke $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage3.c
-	cmp -s $(BUILD_DIR)/m0c_seed.stage2.c $(BUILD_DIR)/m0c_seed.stage3.c
-	$(CC) $(BUILD_DIR)/m0c_seed.stage3.c -o $(BUILD_DIR)/m0c_seed.stage3
-	test "$$($(BUILD_DIR)/m0c_seed.stage3)" = "Aurex M0 selfhost seed"
-	$(BUILD_DIR)/m0c_stage2.smoke $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage2.c
-	$(BUILD_DIR)/m0c_stage3.smoke $(STAGE1_CORE_SRC) $(BUILD_DIR)/stage1_core.stage3.c
-	cmp -s $(BUILD_DIR)/stage1_core.stage2.c $(BUILD_DIR)/stage1_core.stage3.c
-	$(CC) $(BUILD_DIR)/stage1_core.stage3.c -o $(BUILD_DIR)/stage1_core.stage3
-	test "$$($(BUILD_DIR)/stage1_core.stage3)" = "selfhost stage1 core ok"
+	$(BUILD_DIR)/m0c_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.air
+	grep -q 'aurex_ir v0' $(BUILD_DIR)/hello.stage1.air
+	grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' $(BUILD_DIR)/hello.stage1.air
+	grep -q 'fn main(argc: i32, argv: \*mut \*mut u8)' $(BUILD_DIR)/hello.stage1.air
+	grep -q 'c_string c"hello from Aurex M0"' $(BUILD_DIR)/hello.stage1.air
+	grep -q 'ret %e' $(BUILD_DIR)/hello.stage1.air
+	$(BUILD_DIR)/m0c_stage1 $(SEED_SRC) $(BUILD_DIR)/m0c_seed.stage1.air
+	grep -q 'c_string c"Aurex M0 selfhost seed"' $(BUILD_DIR)/m0c_seed.stage1.air
+	$(BUILD_DIR)/m0c_stage1 $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.air
+	grep -q '; selfhost_module aurex.selfhost.smoke.parser_smoke lowering(ast_pending)' $(BUILD_DIR)/parser_smoke.stage1.air
+	$(BUILD_DIR)/m0c_stage1 $(STAGE1_IR_SRC) $(BUILD_DIR)/stage1_ir.stage1.air
+	grep -q 'call %e' $(BUILD_DIR)/stage1_ir.stage1.air
+	grep -q 'add %e' $(BUILD_DIR)/stage1_ir.stage1.air
+	grep -q 'mul %e' $(BUILD_DIR)/stage1_ir.stage1.air
+	$(BUILD_DIR)/m0c_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/m0c_stage1.bundle.air
+	grep -q 'aurex_ir v0' $(BUILD_DIR)/m0c_stage1.bundle.air
+	grep -q '; selfhost_module aurex.selfhost.compiler.driver lowering(ast_pending)' $(BUILD_DIR)/m0c_stage1.bundle.air
+	grep -q '; selfhost_module aurex.selfhost.bin.m0c_stage1 lowering(ast_pending)' $(BUILD_DIR)/m0c_stage1.bundle.air
 
 clean:
 	rm -rf $(BUILD_DIR)

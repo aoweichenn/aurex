@@ -1,0 +1,60 @@
+module aurex.selfhost.compiler.ir.types;
+
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.compiler.ir.names;
+import aurex.selfhost.compiler.ir.writer;
+import aurex.selfhost.syntax.ast;
+
+fn ir_write_primitive_type(file: *mut OutputFile, primitive: i32) -> bool {
+    if primitive == AST_PRIM_VOID { return ir_write_text(file, c"void"); }
+    if primitive == AST_PRIM_BOOL { return ir_write_text(file, c"bool"); }
+    if primitive == AST_PRIM_I8 { return ir_write_text(file, c"i8"); }
+    if primitive == AST_PRIM_U8 { return ir_write_text(file, c"u8"); }
+    if primitive == AST_PRIM_I16 { return ir_write_text(file, c"i16"); }
+    if primitive == AST_PRIM_U16 { return ir_write_text(file, c"u16"); }
+    if primitive == AST_PRIM_I32 { return ir_write_text(file, c"i32"); }
+    if primitive == AST_PRIM_U32 { return ir_write_text(file, c"u32"); }
+    if primitive == AST_PRIM_I64 { return ir_write_text(file, c"i64"); }
+    if primitive == AST_PRIM_U64 { return ir_write_text(file, c"u64"); }
+    if primitive == AST_PRIM_ISIZE { return ir_write_text(file, c"isize"); }
+    if primitive == AST_PRIM_USIZE { return ir_write_text(file, c"usize"); }
+    if primitive == AST_PRIM_F32 { return ir_write_text(file, c"f32"); }
+    if primitive == AST_PRIM_F64 { return ir_write_text(file, c"f64"); }
+    if primitive == AST_PRIM_STR { return ir_write_text(file, c"str"); }
+    return ir_write_text(file, c"<invalid-type>");
+}
+
+fn ir_write_type(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, type_id: i32) -> bool {
+    if type_id < 0 || type_id >= ast.type_count {
+        return ir_write_text(file, c"<invalid-type>");
+    }
+
+    var current_id: i32 = type_id;
+    var ty: AstTypeNode = ast.types[current_id];
+    while ty.kind == AST_TYPE_POINTER {
+        if ty.mutability == AST_MUT_MUT {
+            if !ir_write_text(file, c"*mut ") {
+                return false;
+            }
+        } else {
+            if !ir_write_text(file, c"*const ") {
+                return false;
+            }
+        }
+        current_id = ty.pointee;
+        if current_id < 0 || current_id >= ast.type_count {
+            return ir_write_text(file, c"<invalid-type>");
+        }
+        ty = ast.types[current_id];
+    }
+
+    if ty.kind == AST_TYPE_PRIMITIVE {
+        return ir_write_primitive_type(file, ty.primitive);
+    }
+    if ty.kind == AST_TYPE_NAMED {
+        return ir_write_path(file, source, ast.module_begin, ast.module_end) &&
+            ir_write_text(file, c".") &&
+            ir_write_range(file, source, ty.name_begin, ty.name_end);
+    }
+    return ir_write_text(file, c"<invalid-type>");
+}

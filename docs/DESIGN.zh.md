@@ -127,7 +127,8 @@ M0 拒绝隐式成本：
 - 数组是 storage-only；
 - opaque struct 只能通过指针使用。
 
-当前 sema 会把表达式类型记录在 `CheckedModule::expr_types` 中。这样 C emitter 不需要自己猜类型，也避免把类型逻辑散落到后端。
+当前 sema 会把表达式类型记录在 `CheckedModule::expr_types` 中。IR lowering
+从这些 checked metadata 读取类型，后端不需要重新猜测表达式类型。
 
 ## 7. Aurex IR 设计
 
@@ -183,7 +184,7 @@ Stage0 C++ compiler
   -> 编译 M0 编译器源码
   -> 生成 m0c-stage1
   -> m0c-stage1 再编译同一批源码
-  -> stage1/stage2 输出一致
+  -> stage1/stage2 IR 和可执行行为一致
 ```
 
 当前 M0V0.1.8 状态：
@@ -198,19 +199,25 @@ Stage0 C++ compiler
 - `selfhost/src/aurex/selfhost/tool/lexer_file.ax` import 共享 dump helper，通过显式 runtime IO 读取源码文件，并输出可 golden 对比的 token kind 流；
 - `selfhost/src/aurex/selfhost/parser/` 是第一个 M0 parser seed，已按职责拆成 `cursor.ax`、`types.ax`、`expr.ax` 和 `seed.ax`；类型解析使用显式指针前缀栈，表达式解析使用显式 operator/frame 栈，并生成 ID-backed `AstModule`；
 - `selfhost/src/aurex/selfhost/smoke/parser_smoke.ax` 是可执行 parser seed smoke test；
+- `selfhost/src/aurex/selfhost/compiler/ir/` 是 Stage1 Aurex IR 输出路径，
+  按 writer、name、type、expression 和 emission 拆分；
+- `m0c_stage1` 当前输出 `aurex_ir v0` 快照；对尚未被 parser seed 覆盖的
+  selfhost 编译器模块，会输出 deterministic `lowering(ast_pending)` 记录；
+- 旧 selfhost C emitter 已从活跃源码树移除；
 - `tools/compare_selfhost_lexer.sh` 会把 M0 lexer 输出和生产 C++ Stage0 lexer 输出在 `examples/hello.ax` 以及所有本地 positive/negative 测试输入上直接对比；
 - selfhost 测试会检查 `lexer_file.ax` 和 `parser_smoke.ax` 确实加载了共享 lexer/parser 模块，因此 import 使用也进入了回归测试；
 - 生产编译器仍然是 C++ 实现。
 
-下一步真正自举里程碑应该是：继续扩大这个迭代式 parser seed 的 AST 覆盖面，输出稳定 AST summary 或 parse dump，然后在小型共享语料上和 C++ parser 对比。
+下一步真正自举里程碑应该是：继续扩大这个迭代式 parser seed 的 AST 覆盖面，
+补 Stage1 sema 和 IR verifier，然后把 Stage1 产出的 Aurex IR 接入现有 LLVM 后端。
 
 ## 10. 工业级强化路线
 
 近期：
 
 - 从 shell-only 测试升级到真正的单元测试可执行文件；
-- 增加 diagnostics 和 C output 的 golden file；
-- 增加 IR verifier 和 LLVM lowering 骨架；
+- 增加 diagnostics 和 IR output 的 golden file；
+- 增加 Stage1 IR verifier 和 LLVM 接入；
 - 实现 import path 和 module graph；
 - 支持更完整的多行诊断。
 

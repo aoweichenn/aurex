@@ -1,0 +1,52 @@
+module aurex.selfhost.compiler.ir.names;
+
+import aurex.selfhost.compiler.io;
+import aurex.selfhost.compiler.ir.writer;
+
+fn ir_is_name_byte(ch: u8) -> bool {
+    return (ch >= b'a' && ch <= b'z') ||
+        (ch >= b'A' && ch <= b'Z') ||
+        (ch >= b'0' && ch <= b'9') ||
+        ch == b'_';
+}
+
+fn ir_write_path(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
+    var index: i32 = begin;
+    while index < end {
+        let ch: u8 = source[index];
+        if ir_is_name_byte(ch) || ch == b'.' {
+            if !ir_write_range(file, source, index, index + 1) {
+                return false;
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn ir_write_symbol_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
+    var index: i32 = begin;
+    while index < end {
+        let ch: u8 = source[index];
+        if ir_is_name_byte(ch) {
+            if !ir_write_range(file, source, index, index + 1) {
+                return false;
+            }
+        } else {
+            if ch == b'.' {
+                if !ir_write_text(file, c"_") {
+                    return false;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn ir_write_mangled_name(file: *mut OutputFile, source: *const u8, module_begin: i32, module_end: i32, name_begin: i32, name_end: i32) -> bool {
+    return ir_write_text(file, c"m0_") &&
+        ir_write_symbol_range(file, source, module_begin, module_end) &&
+        ir_write_text(file, c"_") &&
+        ir_write_symbol_range(file, source, name_begin, name_end);
+}

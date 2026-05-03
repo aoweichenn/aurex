@@ -103,8 +103,8 @@ calling convention, basic blocks, terminators, typed values, memory slots,
 calls, field/index addresses, casts, and `phi` nodes for short-circuit values.
 
 LLVM and future native backends should lower from Aurex IR. The old Stage0 C
-backend has been removed from the production build; the selfhost Stage1
-compiler still emits C as its current fixed-point output.
+backend has been removed from the production build; the selfhost Stage1 path
+now emits Aurex IR snapshots instead of C.
 
 ## 5. Language Snapshot
 

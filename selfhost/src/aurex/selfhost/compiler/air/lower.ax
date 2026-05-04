@@ -3,6 +3,8 @@ module aurex.selfhost.compiler.air.lower;
 import aurex.selfhost.compiler.air.model;
 import aurex.selfhost.compiler.air.bind;
 import aurex.selfhost.compiler.air.place;
+import aurex.selfhost.compiler.air.memory;
+import aurex.selfhost.compiler.air.cfg;
 import aurex.selfhost.sema.annotate;
 import aurex.selfhost.sema.typing_types;
 import aurex.selfhost.syntax.ast;
@@ -139,6 +141,103 @@ fn air_lower_block_value_for_expr(function: *mut AirFunction, block_id: i32, ast
         index = index + 1;
     }
     return -1;
+}
+
+fn air_lower_expr_tree(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations, block_id: i32, ast_expr_id: i32, readable: bool) -> bool {
+    if ast_expr_id < 0 || ast_expr_id >= ast.expr_count {
+        function.ok = false;
+        return false;
+    }
+    if air_lower_block_value_for_expr(function, block_id, ast_expr_id) >= 0 {
+        return true;
+    }
+    let expr: AstExprNode = ast.exprs[ast_expr_id];
+    if expr.kind == AST_EXPR_UNARY ||
+        expr.kind == AST_EXPR_CAST ||
+        expr.kind == AST_EXPR_PTR_CAST ||
+        expr.kind == AST_EXPR_BIT_CAST ||
+        expr.kind == AST_EXPR_PTR_FROM_ADDR ||
+        expr.kind == AST_EXPR_PTR_ADDR {
+        var child_readable: bool = true;
+        if expr.kind == AST_EXPR_UNARY && expr.op == AST_OP_ADDR {
+            child_readable = false;
+        }
+        if !air_lower_expr_tree(function, source, ast, annotations, block_id, expr.left, child_readable) {
+            return false;
+        }
+    } else {
+        if expr.kind == AST_EXPR_BINARY || expr.kind == AST_EXPR_INDEX {
+            if !air_lower_expr_tree(function, source, ast, annotations, block_id, expr.left, true) {
+                return false;
+            }
+            if !air_lower_expr_tree(function, source, ast, annotations, block_id, expr.right, true) {
+                return false;
+            }
+        } else {
+            if expr.kind == AST_EXPR_CALL || expr.kind == AST_EXPR_FIELD {
+                if !air_lower_expr_tree(function, source, ast, annotations, block_id, expr.left, true) {
+                    return false;
+                }
+                if expr.kind == AST_EXPR_CALL {
+                    var arg_index: i32 = 0;
+                    while arg_index < expr.arg_count {
+                        if expr.first_arg + arg_index < 0 || expr.first_arg + arg_index >= ast.expr_arg_count {
+                            function.ok = false;
+                            return false;
+                        }
+                        let arg: AstExprArg = ast.expr_args[expr.first_arg + arg_index];
+                        if !air_lower_expr_tree(function, source, ast, annotations, block_id, arg.expr_id, true) {
+                            return false;
+                        }
+                        arg_index = arg_index + 1;
+                    }
+                }
+            } else {
+                if expr.kind == AST_EXPR_STRUCT_LITERAL {
+                    var field_index: i32 = 0;
+                    while field_index < expr.field_count {
+                        if expr.first_field + field_index < 0 || expr.first_field + field_index >= ast.field_init_count {
+                            function.ok = false;
+                            return false;
+                        }
+                        let field: AstFieldInit = ast.field_inits[expr.first_field + field_index];
+                        if !air_lower_expr_tree(function, source, ast, annotations, block_id, field.expr_id, true) {
+                            return false;
+                        }
+                        field_index = field_index + 1;
+                    }
+                }
+            }
+        }
+    }
+    if air_lower_expr_value(function, source, ast, annotations, block_id, ast_expr_id) < 0 {
+        return false;
+    }
+    if readable {
+        let value_id: i32 = air_lower_block_value_for_expr(function, block_id, ast_expr_id);
+        if value_id < 0 || !air_add_read_load_for_value(function, block_id, value_id) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn air_lower_stmt_exprs(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations, block_id: i32, stmt: AstStmtNode) -> bool {
+    if stmt.kind == AST_STMT_RETURN ||
+        stmt.kind == AST_STMT_EXPR ||
+        stmt.kind == AST_STMT_LET ||
+        stmt.kind == AST_STMT_VAR ||
+        stmt.kind == AST_STMT_IF ||
+        stmt.kind == AST_STMT_WHILE {
+        return air_lower_expr_tree(function, source, ast, annotations, block_id, stmt.expr_id, true);
+    }
+    if stmt.kind == AST_STMT_ASSIGN {
+        if !air_lower_expr_tree(function, source, ast, annotations, block_id, stmt.expr_id, false) {
+            return false;
+        }
+        return air_lower_expr_tree(function, source, ast, annotations, block_id, stmt.rhs_expr_id, true);
+    }
+    return true;
 }
 
 fn air_lower_set_value_name(value: *mut AirValue, expr: AstExprNode) -> void {
@@ -314,16 +413,16 @@ fn air_lower_block_expr_values(function: *mut AirFunction, source: *const u8, as
     }
     function.blocks[air_block_id].first_value = function.block_value_count;
     let block: AstBlockNode = ast.blocks[ast_block_id];
-    var expr_index: i32 = 0;
-    while expr_index < block.expr_count {
-        let expr_id: i32 = block.first_expr + expr_index;
-        if expr_id < 0 || expr_id >= ast.expr_count {
+    var stmt_index: i32 = 0;
+    while stmt_index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + stmt_index];
+        if stmt_id < 0 || stmt_id >= ast.stmt_count {
             return false;
         }
-        if air_lower_expr_value(function, source, ast, annotations, air_block_id, expr_id) < 0 {
+        if !air_lower_stmt_exprs(function, source, ast, annotations, air_block_id, ast.stmts[stmt_id]) {
             return false;
         }
-        expr_index = expr_index + 1;
+        stmt_index = stmt_index + 1;
     }
     return true;
 }
@@ -363,6 +462,10 @@ fn air_lower_add_stmt_instruction(function: *mut AirFunction, ast: *mut AstModul
         }
         instruction.binding_id = local_id;
         instruction.slot_id = function.locals[local_id].slot_id;
+        if !air_add_slot_init_store(function, air_block_id, &instruction, value) {
+            function.ok = false;
+            return false;
+        }
         return air_add_instruction(function, air_block_id, instruction) >= 0;
     }
     if stmt.kind == AST_STMT_ASSIGN {
@@ -375,6 +478,10 @@ fn air_lower_add_stmt_instruction(function: *mut AirFunction, ast: *mut AstModul
         var instruction: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, stmt_id, lhs, rhs, -1, -1, 0, 0);
         instruction.lvalue_id = air_lvalue_for_value(function, lhs);
         if instruction.lvalue_id < 0 || !air_lvalue_sets_direct_binding(function, &instruction, instruction.lvalue_id) {
+            function.ok = false;
+            return false;
+        }
+        if !air_add_assignment_store(function, air_block_id, &instruction, rhs) {
             function.ok = false;
             return false;
         }
@@ -408,46 +515,6 @@ fn air_lower_block_instructions(function: *mut AirFunction, ast: *mut AstModule,
     return true;
 }
 
-fn air_lower_first_control_stmt(ast: *mut AstModule, block: AstBlockNode) -> AstStmtNode {
-    var index: i32 = 0;
-    while index < block.stmt_count {
-        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
-        let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if stmt.kind == AST_STMT_RETURN || stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE || stmt.kind == AST_STMT_BLOCK {
-            return stmt;
-        }
-        index = index + 1;
-    }
-    return ast_make_stmt_node(AST_STMT_EXPR, 0, 0, 0, 0, -1, -1, -1, -1, -1);
-}
-
-fn air_lower_set_block_terminator(function: *mut AirFunction, ast: *mut AstModule, air_block_id: i32, ast_block_id: i32) -> bool {
-    let block: AstBlockNode = ast.blocks[ast_block_id];
-    let stmt: AstStmtNode = air_lower_first_control_stmt(ast, block);
-    if stmt.kind == AST_STMT_RETURN {
-        return air_set_terminator(function, air_block_id, air_return_terminator(air_lower_block_value_for_expr(function, air_block_id, stmt.expr_id)));
-    }
-    if stmt.kind == AST_STMT_BLOCK {
-        return air_set_terminator(function, air_block_id, air_jump_terminator(air_lower_find_block(function, stmt.then_block)));
-    }
-    if stmt.kind == AST_STMT_IF {
-        let then_block: i32 = air_lower_find_block(function, stmt.then_block);
-        var else_block: i32 = air_lower_find_block(function, ast_block_id);
-        if stmt.else_block >= 0 {
-            else_block = air_lower_find_block(function, stmt.else_block);
-        }
-        return air_set_terminator(function, air_block_id, air_branch_terminator(air_lower_block_value_for_expr(function, air_block_id, stmt.expr_id), then_block, else_block));
-    }
-    if stmt.kind == AST_STMT_WHILE {
-        return air_set_terminator(function, air_block_id, air_branch_terminator(
-            air_lower_block_value_for_expr(function, air_block_id, stmt.expr_id),
-            air_lower_find_block(function, stmt.then_block),
-            air_block_id
-        ));
-    }
-    return air_set_terminator(function, air_block_id, air_fallthrough_terminator());
-}
-
 fn air_lower_populate_function(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations) -> bool {
     var index: i32 = 0;
     while index < function.block_count {
@@ -455,24 +522,12 @@ fn air_lower_populate_function(function: *mut AirFunction, source: *const u8, as
         if !air_lower_block_expr_values(function, source, ast, annotations, index, ast_block_id) {
             return false;
         }
-        index = index + 1;
-    }
-    index = 0;
-    while index < function.block_count {
-        let ast_block_id: i32 = function.blocks[index].ast_block_id;
         if !air_lower_block_instructions(function, ast, index, ast_block_id) {
             return false;
         }
         index = index + 1;
     }
-    index = 0;
-    while index < function.block_count {
-        if !air_lower_set_block_terminator(function, ast, index, function.blocks[index].ast_block_id) {
-            return false;
-        }
-        index = index + 1;
-    }
-    return true;
+    return air_build_cfg_edges(function, ast);
 }
 
 fn air_lower_function(source: *const u8, ast: *mut AstModule, item_id: i32) -> AirFunction {

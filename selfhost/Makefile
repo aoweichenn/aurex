@@ -43,6 +43,8 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/compiler/air/model.ax \
 	src/aurex/selfhost/compiler/air/bind.ax \
 	src/aurex/selfhost/compiler/air/place.ax \
+	src/aurex/selfhost/compiler/air/memory.ax \
+	src/aurex/selfhost/compiler/air/cfg.ax \
 	src/aurex/selfhost/compiler/air/lower.ax \
 	src/aurex/selfhost/compiler/air/text.ax \
 	src/aurex/selfhost/compiler/air/verify.ax \
@@ -123,6 +125,8 @@ check: all
 	grep -q 'aurex.selfhost.compiler.air.model' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.bind' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.place' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.memory' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.cfg' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.lower' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.text' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.verify' $(BUILD_DIR)/aurexc_stage1.modules
@@ -167,11 +171,17 @@ check: all
 	grep -q 'if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q '\^block4:' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'air_ir v0' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'air_edges v0' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'air_cfg v0' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'inst let' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'inst assign' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'target(\^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'slot @slot' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'slot_addr' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'load' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'read(%v' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'store' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'effect(%v' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'lvalue @lv' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'lvalue(@lv' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'bind(param' $(BUILD_DIR)/stage1_flow.stage1.tac
@@ -180,6 +190,12 @@ check: all
 	grep -q 'type(' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'sema_type(type_id' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'sema_type(primitive' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge while_true \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge while_false \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge loop_back \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge if_true \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge if_false \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge return \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge loop_back \^entry' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
@@ -209,6 +225,11 @@ check: all
 	grep -q 'lvalue @lv.*field' $(BUILD_DIR)/stage1_place.stage1.tac
 	grep -q 'lvalue @lv.*index' $(BUILD_DIR)/stage1_place.stage1.tac
 	grep -q 'lvalue @lv.*deref' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'field_addr' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'index_addr' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'deref_addr' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'load' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'read(%v' $(BUILD_DIR)/stage1_place.stage1.tac
 	grep -q 'lvalue(@lv' $(BUILD_DIR)/stage1_place.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_ITEMS_SRC) $(BUILD_DIR)/stage1_items.stage1.tac
 	grep -q 'record NativeFile' $(BUILD_DIR)/stage1_items.stage1.tac

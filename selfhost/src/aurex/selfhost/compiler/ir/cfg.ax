@@ -138,104 +138,100 @@ fn cfg_write_edge_prefix(file: *mut OutputFile, block_id: i32, is_entry: bool) -
         ir_write_text(file, c" ");
 }
 
-fn cfg_write_stmt_edge(file: *mut OutputFile, ast: *mut AstModule, block_id: i32, is_entry: bool, stmt: AstStmtNode) -> bool {
-    if stmt.kind == AST_STMT_RETURN {
-        if !cfg_write_edge_prefix(file, block_id, is_entry) { return false; }
-        if !ir_write_text(file, c"term ret ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        return ir_write_text(file, c"\n");
+fn cfg_write_air_edge_prefix(file: *mut OutputFile, function: *mut AirFunction, air_block_id: i32) -> bool {
+    if air_block_id < 0 || air_block_id >= function.block_count {
+        return false;
     }
-    if stmt.kind == AST_STMT_BLOCK {
-        if !cfg_write_edge_prefix(file, block_id, is_entry) { return false; }
-        if !ir_write_text(file, c"scope ") { return false; }
-        if !cfg_write_block_ref(file, stmt.then_block) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_IF {
-        if !cfg_write_edge_prefix(file, block_id, is_entry) { return false; }
-        if !ir_write_text(file, c"edge if ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        if !ir_write_text(file, c" true ") { return false; }
-        if !cfg_write_block_ref(file, stmt.then_block) { return false; }
-        if !ir_write_text(file, c" false ") { return false; }
-        if stmt.else_block >= 0 {
-            if !cfg_write_block_ref(file, stmt.else_block) { return false; }
-        } else {
-            if !ir_write_text(file, c"fallthrough") { return false; }
-        }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_WHILE {
-        if !cfg_write_edge_prefix(file, block_id, is_entry) { return false; }
-        if !ir_write_text(file, c"edge while ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        if !ir_write_text(file, c" true ") { return false; }
-        if !cfg_write_block_ref(file, stmt.then_block) { return false; }
-        if !ir_write_text(file, c" false fallthrough\n") { return false; }
-        if !cfg_write_edge_prefix(file, stmt.then_block, false) { return false; }
-        if !ir_write_text(file, c"edge loop_back ") { return false; }
-        if !cfg_write_source_block_ref(file, block_id, is_entry) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    return true;
+    return cfg_write_edge_prefix(file, function.blocks[air_block_id].ast_block_id, air_block_id == function.entry_block);
 }
 
-fn cfg_block_has_explicit_return(ast: *mut AstModule, block: AstBlockNode) -> bool {
-    if block.stmt_count <= 0 {
-        return false;
+fn cfg_write_air_block_ref(file: *mut OutputFile, function: *mut AirFunction, air_block_id: i32) -> bool {
+    if air_block_id < 0 || air_block_id >= function.block_count {
+        return ir_write_text(file, c"fallthrough");
     }
-    let stmt_id: i32 = ast.stmt_refs[block.first_stmt + block.stmt_count - 1];
-    if stmt_id < 0 || stmt_id >= ast.stmt_count {
-        return false;
-    }
-    return ast.stmts[stmt_id].kind == AST_STMT_RETURN;
+    return cfg_write_source_block_ref(file, function.blocks[air_block_id].ast_block_id, air_block_id == function.entry_block);
 }
 
-fn cfg_write_block_edges(file: *mut OutputFile, ast: *mut AstModule, block_id: i32, is_entry: bool) -> bool {
-    if block_id < 0 || block_id >= ast.block_count {
+fn cfg_write_air_temp(file: *mut OutputFile, function: *mut AirFunction, value_id: i32) -> bool {
+    if value_id < 0 || value_id >= function.value_count {
         return false;
     }
-    let block: AstBlockNode = ast.blocks[block_id];
+    return tac_write_temp(file, function.values[value_id].ast_expr_id);
+}
+
+fn cfg_find_air_edge(function: *mut AirFunction, kind: i32, source: i32, stmt_id: i32) -> i32 {
     var index: i32 = 0;
-    while index < block.stmt_count {
-        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
-        if stmt_id < 0 || stmt_id >= ast.stmt_count {
-            return false;
-        }
-        let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if !cfg_write_stmt_edge(file, ast, block_id, is_entry, stmt) {
-            return false;
+    while index < function.edge_count {
+        let edge: AirEdge = function.edges[index];
+        if edge.kind == kind && edge.source == source && edge.ast_stmt_id == stmt_id {
+            return index;
         }
         index = index + 1;
     }
-    if !cfg_block_has_explicit_return(ast, block) {
-        if !cfg_write_edge_prefix(file, block_id, is_entry) { return false; }
-        if !ir_write_text(file, c"term fallthrough\n") { return false; }
-    }
-    return true;
+    return -1;
 }
 
-fn cfg_write_child_edges(file: *mut OutputFile, ast: *mut AstModule, block_id: i32) -> bool {
-    if block_id < 0 || block_id >= ast.block_count {
+fn cfg_write_air_branch_edge(file: *mut OutputFile, function: *mut AirFunction, edge: AirEdge, false_kind: i32, name: *const u8) -> bool {
+    let false_edge_id: i32 = cfg_find_air_edge(function, false_kind, edge.source, edge.ast_stmt_id);
+    if false_edge_id < 0 {
         return false;
     }
-    let block: AstBlockNode = ast.blocks[block_id];
+    let false_edge: AirEdge = function.edges[false_edge_id];
+    if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+    if !ir_write_text(file, c"edge ") { return false; }
+    if !ir_write_text(file, name) { return false; }
+    if !ir_write_text(file, c" ") { return false; }
+    if !cfg_write_air_temp(file, function, edge.condition) { return false; }
+    if !ir_write_text(file, c" true ") { return false; }
+    if !cfg_write_air_block_ref(file, function, edge.target) { return false; }
+    if !ir_write_text(file, c" false ") { return false; }
+    if !cfg_write_air_block_ref(file, function, false_edge.target) { return false; }
+    return ir_write_text(file, c"\n");
+}
+
+fn cfg_write_air_cfg_edge(file: *mut OutputFile, function: *mut AirFunction, edge: AirEdge) -> bool {
+    if edge.kind == AIR_EDGE_IF_FALSE || edge.kind == AIR_EDGE_WHILE_FALSE {
+        return true;
+    }
+    if edge.kind == AIR_EDGE_IF_TRUE {
+        return cfg_write_air_branch_edge(file, function, edge, AIR_EDGE_IF_FALSE, c"if");
+    }
+    if edge.kind == AIR_EDGE_WHILE_TRUE {
+        return cfg_write_air_branch_edge(file, function, edge, AIR_EDGE_WHILE_FALSE, c"while");
+    }
+    if edge.kind == AIR_EDGE_LOOP_BACK {
+        if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+        if !ir_write_text(file, c"edge loop_back ") { return false; }
+        if !cfg_write_air_block_ref(file, function, edge.target) { return false; }
+        return ir_write_text(file, c"\n");
+    }
+    if edge.kind == AIR_EDGE_SCOPE {
+        if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+        if !ir_write_text(file, c"scope ") { return false; }
+        if !cfg_write_air_block_ref(file, function, edge.target) { return false; }
+        return ir_write_text(file, c"\n");
+    }
+    if edge.kind == AIR_EDGE_RETURN {
+        if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+        if !ir_write_text(file, c"term ret") { return false; }
+        if edge.value >= 0 {
+            if !ir_write_text(file, c" ") { return false; }
+            if !cfg_write_air_temp(file, function, edge.value) { return false; }
+        }
+        return ir_write_text(file, c"\n");
+    }
+    if edge.kind == AIR_EDGE_FALLTHROUGH {
+        if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+        return ir_write_text(file, c"term fallthrough\n");
+    }
+    return false;
+}
+
+fn cfg_write_air_cfg_edges(file: *mut OutputFile, function: *mut AirFunction) -> bool {
     var index: i32 = 0;
-    while index < block.stmt_count {
-        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
-        let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
-            if !cfg_write_block_edges(file, ast, stmt.then_block, false) { return false; }
-            if !cfg_write_child_edges(file, ast, stmt.then_block) { return false; }
-        } else {
-            if stmt.kind == AST_STMT_IF {
-                if !cfg_write_block_edges(file, ast, stmt.then_block, false) { return false; }
-                if !cfg_write_child_edges(file, ast, stmt.then_block) { return false; }
-                if stmt.else_block >= 0 {
-                    if !cfg_write_block_edges(file, ast, stmt.else_block, false) { return false; }
-                    if !cfg_write_child_edges(file, ast, stmt.else_block) { return false; }
-                }
-            }
+    while index < function.edge_count {
+        if !cfg_write_air_cfg_edge(file, function, function.edges[index]) {
+            return false;
         }
         index = index + 1;
     }
@@ -260,13 +256,12 @@ fn cfg_write_snapshot(file: *mut OutputFile, source: *const u8, ast: *mut AstMod
         air_free_function(function);
         return false;
     }
-    if !cfg_write_block_edges(file, ast, body_block, true) {
+    if !cfg_write_air_cfg_edges(file, &function) {
         air_free_function(function);
         return false;
     }
-    let ok: bool = cfg_write_child_edges(file, ast, body_block);
     air_free_function(function);
-    return ok;
+    return true;
 }
 
 fn cfg_write_function_body(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, body_block: i32) -> bool {

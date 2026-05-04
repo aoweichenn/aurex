@@ -55,12 +55,23 @@ fn air_make_deref_lvalue(function: *mut AirFunction, value: AirValue) -> i32 {
     return air_add_lvalue(function, lvalue);
 }
 
+fn air_value_is_lvalue_place(value: AirValue) -> bool {
+    return value.kind == AIR_VALUE_NAME ||
+        value.kind == AIR_VALUE_FIELD ||
+        value.kind == AIR_VALUE_INDEX ||
+        (value.kind == AIR_VALUE_UNARY && value.op == AST_OP_DEREF);
+}
+
 fn air_lvalue_for_value(function: *mut AirFunction, value_id: i32) -> i32 {
     if value_id < 0 || value_id >= function.value_count {
         function.ok = false;
         return -1;
     }
     let value: AirValue = function.values[value_id];
+    if !air_value_is_lvalue_place(value) {
+        function.ok = false;
+        return -1;
+    }
     if value.kind == AIR_VALUE_NAME {
         return air_make_binding_lvalue(function, value);
     }

@@ -22,6 +22,10 @@ fn air_valid_lvalue(function: *mut AirFunction, lvalue_id: i32) -> bool {
     return lvalue_id >= 0 && lvalue_id < function.lvalue_count;
 }
 
+fn air_valid_edge(function: *mut AirFunction, edge_id: i32) -> bool {
+    return edge_id >= 0 && edge_id < function.edge_count;
+}
+
 fn air_valid_linkage(linkage: i32) -> bool {
     return linkage == AIR_LINKAGE_INTERNAL || linkage == AIR_LINKAGE_EXPORT_C;
 }
@@ -42,6 +46,17 @@ fn air_valid_lvalue_kind(kind: i32) -> bool {
         kind == AIR_LVALUE_FIELD ||
         kind == AIR_LVALUE_INDEX ||
         kind == AIR_LVALUE_DEREF;
+}
+
+fn air_valid_edge_kind(kind: i32) -> bool {
+    return kind == AIR_EDGE_FALLTHROUGH ||
+        kind == AIR_EDGE_SCOPE ||
+        kind == AIR_EDGE_IF_TRUE ||
+        kind == AIR_EDGE_IF_FALSE ||
+        kind == AIR_EDGE_WHILE_TRUE ||
+        kind == AIR_EDGE_WHILE_FALSE ||
+        kind == AIR_EDGE_LOOP_BACK ||
+        kind == AIR_EDGE_RETURN;
 }
 
 fn air_valid_binding_ref(function: *mut AirFunction, binding_kind: i32, binding_id: i32, allow_none: bool) -> bool {
@@ -95,6 +110,10 @@ fn air_verify_value_binding(function: *mut AirFunction, value: AirValue) -> bool
             value.binding_kind == AIR_BIND_NONE;
     }
     return air_valid_binding_ref(function, value.binding_kind, value.binding_id, true);
+}
+
+fn air_valid_value_default_place_fields(value: AirValue) -> bool {
+    return value.slot_id < 0 && value.lvalue_id < 0;
 }
 
 fn air_instruction_local_kind_valid(function: *mut AirFunction, instruction: AirInstruction) -> bool {
@@ -327,6 +346,15 @@ fn air_value_is_leaf(kind: i32) -> bool {
         kind == AIR_VALUE_TYPE_OP;
 }
 
+fn air_value_is_memory(kind: i32) -> bool {
+    return kind == AIR_VALUE_SLOT_ADDR ||
+        kind == AIR_VALUE_FIELD_ADDR ||
+        kind == AIR_VALUE_INDEX_ADDR ||
+        kind == AIR_VALUE_DEREF_ADDR ||
+        kind == AIR_VALUE_STORE ||
+        kind == AIR_VALUE_LOAD;
+}
+
 fn air_value_arg_range_valid(function: *mut AirFunction, value: AirValue, require_names: bool) -> bool {
     if value.arg_count < 0 || value.first_arg < 0 {
         return false;
@@ -364,6 +392,31 @@ fn air_value_name_range_valid(value: AirValue) -> bool {
     return value.name_end > value.name_begin;
 }
 
+fn air_value_is_address_kind(kind: i32) -> bool {
+    return kind == AIR_VALUE_SLOT_ADDR ||
+        kind == AIR_VALUE_FIELD_ADDR ||
+        kind == AIR_VALUE_INDEX_ADDR ||
+        kind == AIR_VALUE_DEREF_ADDR;
+}
+
+fn air_value_has_read_metadata(function: *mut AirFunction, value: AirValue) -> bool {
+    if value.address_value < 0 && value.read_value < 0 {
+        return true;
+    }
+    if !air_valid_lvalue(function, value.lvalue_id) ||
+        !air_valid_value(function, value.address_value) ||
+        !air_valid_value(function, value.read_value) {
+        return false;
+    }
+    let address: AirValue = function.values[value.address_value];
+    let load: AirValue = function.values[value.read_value];
+    return air_value_is_address_kind(address.kind) &&
+        load.kind == AIR_VALUE_LOAD &&
+        load.lhs == value.address_value &&
+        load.lvalue_id == value.lvalue_id &&
+        load.slot_id == value.slot_id;
+}
+
 fn air_verify_value(function: *mut AirFunction, value: AirValue) -> bool {
     if !air_verify_value_binding(function, value) {
         return false;
@@ -372,6 +425,12 @@ fn air_verify_value(function: *mut AirFunction, value: AirValue) -> bool {
         return false;
     }
     if !air_value_name_range_valid(value) {
+        return false;
+    }
+    if !air_value_has_read_metadata(function, value) {
+        return false;
+    }
+    if !air_value_is_memory(value.kind) && value.address_value < 0 && !air_valid_value_default_place_fields(value) {
         return false;
     }
     if air_value_is_leaf(value.kind) {
@@ -405,7 +464,75 @@ fn air_verify_value(function: *mut AirFunction, value: AirValue) -> bool {
             value.rhs < 0 &&
             air_value_arg_range_valid(function, value, true);
     }
+    if value.kind == AIR_VALUE_SLOT_ADDR {
+        return value.lhs < 0 &&
+            value.rhs < 0 &&
+            value.arg_count == 0 &&
+            air_valid_slot(function, value.slot_id) &&
+            value.lvalue_id < 0 &&
+            value.address_value < 0 &&
+            value.read_value < 0;
+    }
+    if value.kind == AIR_VALUE_FIELD_ADDR {
+        return air_valid_value(function, value.lhs) &&
+            value.rhs < 0 &&
+            value.arg_count == 0 &&
+            value.slot_id < 0 &&
+            value.lvalue_id < 0 &&
+            value.name_begin >= 0 &&
+            value.address_value < 0 &&
+            value.read_value < 0;
+    }
+    if value.kind == AIR_VALUE_INDEX_ADDR {
+        return air_valid_value(function, value.lhs) &&
+            air_valid_value(function, value.rhs) &&
+            value.arg_count == 0 &&
+            value.slot_id < 0 &&
+            value.lvalue_id < 0 &&
+            value.address_value < 0 &&
+            value.read_value < 0;
+    }
+    if value.kind == AIR_VALUE_DEREF_ADDR {
+        return air_valid_value(function, value.lhs) &&
+            value.rhs < 0 &&
+            value.arg_count == 0 &&
+            value.slot_id < 0 &&
+            value.lvalue_id < 0 &&
+            value.address_value < 0 &&
+            value.read_value < 0;
+    }
+    if value.kind == AIR_VALUE_STORE {
+        return air_valid_value(function, value.lhs) &&
+            air_valid_value(function, value.rhs) &&
+            value.arg_count == 0 &&
+            (value.slot_id < 0 || air_valid_slot(function, value.slot_id)) &&
+            (value.lvalue_id < 0 || air_valid_lvalue(function, value.lvalue_id)) &&
+            value.address_value < 0 &&
+            value.read_value < 0;
+    }
+    if value.kind == AIR_VALUE_LOAD {
+        return air_valid_value(function, value.lhs) &&
+            air_value_is_address_kind(function.values[value.lhs].kind) &&
+            value.rhs < 0 &&
+            value.arg_count == 0 &&
+            (value.slot_id < 0 || air_valid_slot(function, value.slot_id)) &&
+            air_valid_lvalue(function, value.lvalue_id) &&
+            value.address_value < 0 &&
+            value.read_value < 0;
+    }
     return false;
+}
+
+fn air_instruction_effect_valid(function: *mut AirFunction, instruction: AirInstruction) -> bool {
+    if !air_valid_value(function, instruction.address_value) ||
+        !air_valid_value(function, instruction.effect_value) {
+        return false;
+    }
+    let address: AirValue = function.values[instruction.address_value];
+    let effect: AirValue = function.values[instruction.effect_value];
+    return air_value_is_address_kind(address.kind) &&
+        effect.kind == AIR_VALUE_STORE &&
+        effect.rhs == instruction.address_value;
 }
 
 fn air_verify_block_values(function: *mut AirFunction, block: AirBlock) -> bool {
@@ -445,6 +572,10 @@ fn air_verify_instruction(function: *mut AirFunction, instruction: AirInstructio
             air_valid_binding_ref(function, instruction.binding_kind, instruction.binding_id, false) &&
             air_instruction_local_kind_valid(function, instruction) &&
             air_instruction_slot_local_kind_valid(function, instruction) &&
+            air_instruction_effect_valid(function, instruction) &&
+            function.values[instruction.effect_value].lhs == instruction.lhs &&
+            function.values[instruction.effect_value].slot_id == instruction.slot_id &&
+            function.values[instruction.effect_value].lvalue_id < 0 &&
             instruction.lvalue_id < 0;
     }
     if instruction.kind == AIR_INST_ASSIGN {
@@ -452,7 +583,10 @@ fn air_verify_instruction(function: *mut AirFunction, instruction: AirInstructio
             air_valid_value(function, instruction.rhs) &&
             instruction.target < 0 &&
             instruction.slot_id < 0 &&
-            air_assignment_lvalue_valid(function, instruction);
+            air_assignment_lvalue_valid(function, instruction) &&
+            air_instruction_effect_valid(function, instruction) &&
+            function.values[instruction.effect_value].lhs == instruction.rhs &&
+            function.values[instruction.effect_value].lvalue_id == instruction.lvalue_id;
     }
     if instruction.kind == AIR_INST_SCOPE {
         return instruction.lhs < 0 &&
@@ -504,6 +638,148 @@ fn air_verify_terminator(function: *mut AirFunction, terminator: AirTerminator) 
             terminator.then_target < 0 &&
             terminator.else_target < 0;
     }
+    if terminator.kind == AIR_TERM_EDGES {
+        return terminator.condition < 0 &&
+            terminator.value < 0 &&
+            terminator.target < 0 &&
+            terminator.then_target < 0 &&
+            terminator.else_target < 0;
+    }
+    return false;
+}
+
+fn air_verify_edge(function: *mut AirFunction, edge: AirEdge) -> bool {
+    if !air_valid_edge_kind(edge.kind) ||
+        !air_valid_block(function, edge.source) {
+        return false;
+    }
+    if edge.kind == AIR_EDGE_FALLTHROUGH {
+        return edge.ast_stmt_id < 0 &&
+            edge.target < 0 &&
+            edge.condition < 0 &&
+            edge.value < 0;
+    }
+    if edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK {
+        return edge.ast_stmt_id >= 0 &&
+            air_valid_block(function, edge.target) &&
+            edge.condition < 0 &&
+            edge.value < 0;
+    }
+    if edge.kind == AIR_EDGE_IF_TRUE ||
+        edge.kind == AIR_EDGE_WHILE_TRUE {
+        return edge.ast_stmt_id >= 0 &&
+            air_valid_block(function, edge.target) &&
+            air_valid_value(function, edge.condition) &&
+            edge.value < 0;
+    }
+    if edge.kind == AIR_EDGE_IF_FALSE ||
+        edge.kind == AIR_EDGE_WHILE_FALSE {
+        return edge.ast_stmt_id >= 0 &&
+            (edge.target < 0 || air_valid_block(function, edge.target)) &&
+            air_valid_value(function, edge.condition) &&
+            edge.value < 0;
+    }
+    if edge.kind == AIR_EDGE_RETURN {
+        return edge.ast_stmt_id >= 0 &&
+            edge.target < 0 &&
+            edge.condition < 0 &&
+            (edge.value < 0 || air_valid_value(function, edge.value));
+    }
+    return false;
+}
+
+fn air_verify_edges(function: *mut AirFunction) -> bool {
+    var index: i32 = 0;
+    while index < function.edge_count {
+        if !air_valid_edge(function, index) {
+            return false;
+        }
+        if !air_verify_edge(function, function.edges[index]) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_verify_block_edge_count(function: *mut AirFunction, block_id: i32) -> i32 {
+    var count: i32 = 0;
+    var index: i32 = 0;
+    while index < function.edge_count {
+        if function.edges[index].source == block_id {
+            count = count + 1;
+        }
+        index = index + 1;
+    }
+    return count;
+}
+
+fn air_verify_single_block_edge(function: *mut AirFunction, block_id: i32) -> AirEdge {
+    var index: i32 = 0;
+    while index < function.edge_count {
+        let edge: AirEdge = function.edges[index];
+        if edge.source == block_id {
+            return edge;
+        }
+        index = index + 1;
+    }
+    return air_make_edge(AIR_EDGE_FALLTHROUGH, -1, block_id, -1, -1, -1);
+}
+
+fn air_verify_find_block_edge(function: *mut AirFunction, block_id: i32, kind: i32) -> AirEdge {
+    var index: i32 = 0;
+    while index < function.edge_count {
+        let edge: AirEdge = function.edges[index];
+        if edge.source == block_id && edge.kind == kind {
+            return edge;
+        }
+        index = index + 1;
+    }
+    return air_make_edge(AIR_EDGE_FALLTHROUGH, -1, -1, -1, -1, -1);
+}
+
+fn air_verify_branch_terminator_matches_edges(function: *mut AirFunction, block_id: i32, terminator: AirTerminator, true_kind: i32, false_kind: i32) -> bool {
+    let true_edge: AirEdge = air_verify_find_block_edge(function, block_id, true_kind);
+    let false_edge: AirEdge = air_verify_find_block_edge(function, block_id, false_kind);
+    return true_edge.source == block_id &&
+        false_edge.source == block_id &&
+        true_edge.condition == terminator.condition &&
+        false_edge.condition == terminator.condition &&
+        true_edge.target == terminator.then_target &&
+        false_edge.target == terminator.else_target;
+}
+
+fn air_verify_terminator_matches_edges(function: *mut AirFunction, block_id: i32, terminator: AirTerminator) -> bool {
+    if function.edge_count == 0 {
+        return true;
+    }
+    let edge_count: i32 = air_verify_block_edge_count(function, block_id);
+    if terminator.kind == AIR_TERM_EDGES {
+        return edge_count > 1;
+    }
+    if edge_count != 1 && terminator.kind != AIR_TERM_BRANCH {
+        return false;
+    }
+    if terminator.kind == AIR_TERM_FALLTHROUGH {
+        let edge: AirEdge = air_verify_single_block_edge(function, block_id);
+        return edge.kind == AIR_EDGE_FALLTHROUGH;
+    }
+    if terminator.kind == AIR_TERM_RETURN {
+        let edge: AirEdge = air_verify_single_block_edge(function, block_id);
+        return edge.kind == AIR_EDGE_RETURN && edge.value == terminator.value;
+    }
+    if terminator.kind == AIR_TERM_JUMP {
+        let edge: AirEdge = air_verify_single_block_edge(function, block_id);
+        return (edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK) &&
+            edge.target == terminator.target;
+    }
+    if terminator.kind == AIR_TERM_BRANCH {
+        if edge_count != 2 {
+            return false;
+        }
+        return air_verify_branch_terminator_matches_edges(function, block_id, terminator, AIR_EDGE_IF_TRUE, AIR_EDGE_IF_FALSE) ||
+            air_verify_branch_terminator_matches_edges(function, block_id, terminator, AIR_EDGE_WHILE_TRUE, AIR_EDGE_WHILE_FALSE);
+    }
     return false;
 }
 
@@ -518,7 +794,8 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         function.params == null ||
         function.locals == null ||
         function.slots == null ||
-        function.lvalues == null {
+        function.lvalues == null ||
+        function.edges == null {
         return false;
     }
     if function.block_count <= 0 || function.block_count > AIR_MAX_BLOCKS {
@@ -532,7 +809,8 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         function.param_count < 0 || function.param_count > AIR_MAX_PARAMS ||
         function.local_count < 0 || function.local_count > AIR_MAX_LOCALS ||
         function.slot_count < 0 || function.slot_count > AIR_MAX_SLOTS ||
-        function.lvalue_count < 0 || function.lvalue_count > AIR_MAX_LVALUES {
+        function.lvalue_count < 0 || function.lvalue_count > AIR_MAX_LVALUES ||
+        function.edge_count < 0 || function.edge_count > AIR_MAX_EDGES {
         return false;
     }
     if !air_verify_header(function) ||
@@ -557,7 +835,10 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         if !air_verify_terminator(function, block.terminator) {
             return false;
         }
+        if !air_verify_terminator_matches_edges(function, block_index, block.terminator) {
+            return false;
+        }
         block_index = block_index + 1;
     }
-    return true;
+    return air_verify_edges(function);
 }

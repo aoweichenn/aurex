@@ -2,6 +2,7 @@ module aurex.selfhost.smoke.air_verify;
 
 import aurex.selfhost.compiler.air.model;
 import aurex.selfhost.compiler.air.verify;
+import aurex.selfhost.compiler.air.memory;
 
 extern c {
     fn puts(s: *const u8) -> i32 @name("puts");
@@ -37,6 +38,7 @@ fn check_valid_air_function() -> bool {
     let_inst.binding_kind = AIR_BIND_LOCAL;
     let_inst.binding_id = local_id;
     let_inst.slot_id = function.locals[local_id].slot_id;
+    air_add_slot_init_store(&function, entry, &let_inst, left);
     air_add_instruction(&function, entry, let_inst);
     var lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_BINDING, 0, 1);
     lvalue.slot_id = function.locals[local_id].slot_id;
@@ -49,14 +51,52 @@ fn check_valid_air_function() -> bool {
     assign_inst.binding_kind = AIR_BIND_LOCAL;
     assign_inst.binding_id = local_id;
     assign_inst.lvalue_id = lvalue_id;
+    air_add_assignment_store(&function, entry, &assign_inst, right);
     air_add_instruction(&function, entry, assign_inst);
     air_add_instruction(&function, exit, air_make_instruction(AIR_INST_EXPR, 2, result, -1, -1, -1, 0, 0));
     let ok: bool = air_set_terminator(&function, entry, air_branch_terminator(condition, exit, exit)) &&
         air_set_terminator(&function, exit, air_return_terminator(result)) &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_IF_TRUE, 0, entry, exit, condition, -1)) >= 0 &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_IF_FALSE, 0, entry, exit, condition, -1)) >= 0 &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 2, exit, -1, -1, result)) >= 0 &&
         param_id >= 0 &&
         local_id >= 0 &&
         lvalue_id >= 0 &&
         air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_edge_target_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let value: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    air_set_terminator(&function, entry, air_return_terminator(value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_SCOPE, 0, entry, 99, -1, -1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_edge_condition_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let exit: i32 = air_add_block(&function, 1);
+    let value: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    air_set_terminator(&function, entry, air_branch_terminator(value, exit, exit));
+    air_set_terminator(&function, exit, air_return_terminator(value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_IF_TRUE, 0, entry, exit, 99, -1));
+    let ok: bool = !air_verify_function(&function);
     air_free_function(function);
     return ok;
 }
@@ -189,6 +229,8 @@ fn check_bad_let_binding_rejected() -> bool {
     var instruction: AirInstruction = air_make_instruction(AIR_INST_LET, 0, value, -1, -1, 1, 0, 1);
     instruction.binding_kind = AIR_BIND_LOCAL;
     instruction.binding_id = 99;
+    instruction.address_value = value;
+    instruction.effect_value = value;
     air_add_instruction(&function, entry, instruction);
     air_set_terminator(&function, entry, air_return_terminator(value));
     let ok: bool = !air_verify_function(&function);
@@ -210,6 +252,7 @@ fn check_bad_let_kind_rejected() -> bool {
     instruction.binding_kind = AIR_BIND_LOCAL;
     instruction.binding_id = local_id;
     instruction.slot_id = function.locals[local_id].slot_id;
+    air_add_slot_init_store(&function, entry, &instruction, value);
     air_add_instruction(&function, entry, instruction);
     air_set_terminator(&function, entry, air_return_terminator(value));
     let ok: bool = !air_verify_function(&function);
@@ -239,6 +282,7 @@ fn check_bad_assign_let_target_rejected() -> bool {
     instruction.binding_kind = AIR_BIND_LOCAL;
     instruction.binding_id = local_id;
     instruction.lvalue_id = lvalue_id;
+    air_add_assignment_store(&function, entry, &instruction, right);
     air_add_instruction(&function, entry, instruction);
     air_set_terminator(&function, entry, air_return_terminator(right));
     let ok: bool = !air_verify_function(&function);
@@ -440,6 +484,8 @@ fn check_bad_assign_missing_lvalue_rejected() -> bool {
     var instruction: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 0, left, right, -1, -1, 0, 0);
     instruction.binding_kind = AIR_BIND_LOCAL;
     instruction.binding_id = local_id;
+    instruction.address_value = right;
+    instruction.effect_value = right;
     air_add_instruction(&function, entry, instruction);
     air_set_terminator(&function, entry, air_return_terminator(right));
     let ok: bool = !air_verify_function(&function);
@@ -472,12 +518,15 @@ fn check_valid_complex_lvalues() -> bool {
     let deref_id: i32 = air_add_lvalue(&function, deref_lvalue);
     var field_assign: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 0, base, rhs, -1, -1, 0, 0);
     field_assign.lvalue_id = field_id;
+    air_add_assignment_store(&function, entry, &field_assign, rhs);
     air_add_instruction(&function, entry, field_assign);
     var index_assign: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 1, base, rhs, -1, -1, 0, 0);
     index_assign.lvalue_id = index_id;
+    air_add_assignment_store(&function, entry, &index_assign, rhs);
     air_add_instruction(&function, entry, index_assign);
     var deref_assign: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 2, base, rhs, -1, -1, 0, 0);
     deref_assign.lvalue_id = deref_id;
+    air_add_assignment_store(&function, entry, &deref_assign, rhs);
     air_add_instruction(&function, entry, deref_assign);
     let ok: bool = field_id >= 0 &&
         index_id >= 0 &&
@@ -490,6 +539,8 @@ fn check_valid_complex_lvalues() -> bool {
 
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if check_valid_air_function() &&
+        check_bad_edge_target_rejected() &&
+        check_bad_edge_condition_rejected() &&
         check_missing_terminator_rejected() &&
         check_bad_branch_target_rejected() &&
         check_bad_return_value_rejected() &&

@@ -99,6 +99,7 @@ grep -q 'aurex.selfhost.compiler.driver' "${SELFHOST_BUILD_DIR}/aurexc_stage1.mo
 grep -q 'aurex.selfhost.compiler.ir.emit' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.model' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.lower' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.text' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.verify' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.expr' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.cfg' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -138,7 +139,11 @@ grep -q 'assign %t' "${STAGE1_FLOW_TAC}"
 grep -q 'while %t' "${STAGE1_FLOW_TAC}"
 grep -q 'if %t' "${STAGE1_FLOW_TAC}"
 grep -q 'block \^block' "${STAGE1_FLOW_TAC}"
+grep -q 'air_ir v0' "${STAGE1_FLOW_TAC}"
 grep -q 'air_cfg v0' "${STAGE1_FLOW_TAC}"
+grep -q 'inst let' "${STAGE1_FLOW_TAC}"
+grep -q 'inst assign' "${STAGE1_FLOW_TAC}"
+grep -q 'target(\^air' "${STAGE1_FLOW_TAC}"
 grep -q 'edge while %t' "${STAGE1_FLOW_TAC}"
 grep -q 'edge loop_back \^entry' "${STAGE1_FLOW_TAC}"
 grep -q 'edge if %t' "${STAGE1_FLOW_TAC}"
@@ -155,6 +160,7 @@ grep -q 'bit_cast <u32> %t' "${STAGE1_EXPR_TAC}"
 grep -q 'struct Pair' "${STAGE1_EXPR_TAC}"
 grep -q '.value' "${STAGE1_EXPR_TAC}"
 grep -q 'index ' "${STAGE1_EXPR_TAC}"
+grep -q 'struct_literal' "${STAGE1_EXPR_TAC}"
 grep -q '4]u8' "${STAGE1_EXPR_TAC}"
 
 "${STAGE1_BIN}" "${STAGE1_ITEMS}" "${STAGE1_ITEMS_TAC}"
@@ -196,6 +202,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/model.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/lower.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/text.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/verify.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/writer.ax" \

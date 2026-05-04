@@ -10,6 +10,10 @@ fn air_valid_value(function: *mut AirFunction, value_id: i32) -> bool {
     return value_id >= 0 && value_id < function.value_count;
 }
 
+fn air_valid_instruction(function: *mut AirFunction, instruction_id: i32) -> bool {
+    return instruction_id >= 0 && instruction_id < function.instruction_count;
+}
+
 fn air_value_is_leaf(kind: i32) -> bool {
     return kind == AIR_VALUE_TEMP ||
         kind == AIR_VALUE_PARAM ||
@@ -96,6 +100,51 @@ fn air_verify_block_values(function: *mut AirFunction, block: AirBlock) -> bool 
     return true;
 }
 
+fn air_verify_instruction(function: *mut AirFunction, instruction: AirInstruction) -> bool {
+    if instruction.kind == AIR_INST_EXPR {
+        return air_valid_value(function, instruction.lhs) &&
+            instruction.rhs < 0 &&
+            instruction.target < 0;
+    }
+    if instruction.kind == AIR_INST_LET || instruction.kind == AIR_INST_VAR {
+        return air_valid_value(function, instruction.lhs) &&
+            instruction.rhs < 0 &&
+            instruction.target < 0 &&
+            instruction.name_begin >= 0 &&
+            instruction.name_end >= instruction.name_begin;
+    }
+    if instruction.kind == AIR_INST_ASSIGN {
+        return air_valid_value(function, instruction.lhs) &&
+            air_valid_value(function, instruction.rhs) &&
+            instruction.target < 0;
+    }
+    if instruction.kind == AIR_INST_SCOPE {
+        return instruction.lhs < 0 &&
+            instruction.rhs < 0 &&
+            air_valid_block(function, instruction.target);
+    }
+    return false;
+}
+
+fn air_verify_block_instructions(function: *mut AirFunction, block: AirBlock) -> bool {
+    if block.first_instruction < 0 || block.instruction_count < 0 ||
+        block.first_instruction + block.instruction_count > function.block_instruction_count {
+        return false;
+    }
+    var index: i32 = 0;
+    while index < block.instruction_count {
+        let instruction_id: i32 = function.block_instructions[block.first_instruction + index];
+        if !air_valid_instruction(function, instruction_id) {
+            return false;
+        }
+        if !air_verify_instruction(function, function.instructions[instruction_id]) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
 fn air_verify_terminator(function: *mut AirFunction, terminator: AirTerminator) -> bool {
     if terminator.kind == AIR_TERM_JUMP {
         return air_valid_block(function, terminator.target);
@@ -108,11 +157,24 @@ fn air_verify_terminator(function: *mut AirFunction, terminator: AirTerminator) 
     if terminator.kind == AIR_TERM_RETURN {
         return terminator.value < 0 || air_valid_value(function, terminator.value);
     }
+    if terminator.kind == AIR_TERM_FALLTHROUGH {
+        return terminator.condition < 0 &&
+            terminator.value < 0 &&
+            terminator.target < 0 &&
+            terminator.then_target < 0 &&
+            terminator.else_target < 0;
+    }
     return false;
 }
 
 fn air_verify_function(function: *mut AirFunction) -> bool {
-    if !function.ok || function.blocks == null || function.values == null || function.block_values == null || function.value_args == null {
+    if !function.ok ||
+        function.blocks == null ||
+        function.values == null ||
+        function.block_values == null ||
+        function.value_args == null ||
+        function.instructions == null ||
+        function.block_instructions == null {
         return false;
     }
     if function.block_count <= 0 || function.block_count > AIR_MAX_BLOCKS {
@@ -120,7 +182,9 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
     }
     if function.value_count < 0 || function.value_count > AIR_MAX_VALUES ||
         function.block_value_count < 0 || function.block_value_count > AIR_MAX_BLOCK_VALUES ||
-        function.value_arg_count < 0 || function.value_arg_count > AIR_MAX_VALUE_ARGS {
+        function.value_arg_count < 0 || function.value_arg_count > AIR_MAX_VALUE_ARGS ||
+        function.instruction_count < 0 || function.instruction_count > AIR_MAX_INSTRUCTIONS ||
+        function.block_instruction_count < 0 || function.block_instruction_count > AIR_MAX_BLOCK_INSTRUCTIONS {
         return false;
     }
     if !air_valid_block(function, function.entry_block) {
@@ -130,6 +194,9 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
     while block_index < function.block_count {
         let block: AirBlock = function.blocks[block_index];
         if !air_verify_block_values(function, block) {
+            return false;
+        }
+        if !air_verify_block_instructions(function, block) {
             return false;
         }
         if !air_verify_terminator(function, block.terminator) {

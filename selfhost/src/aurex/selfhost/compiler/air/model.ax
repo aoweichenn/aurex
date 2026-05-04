@@ -4,6 +4,8 @@ const AIR_MAX_BLOCKS: i32 = 64;
 const AIR_MAX_VALUES: i32 = 256;
 const AIR_MAX_BLOCK_VALUES: i32 = 256;
 const AIR_MAX_VALUE_ARGS: i32 = 512;
+const AIR_MAX_INSTRUCTIONS: i32 = 256;
+const AIR_MAX_BLOCK_INSTRUCTIONS: i32 = 256;
 
 const AIR_VALUE_NONE: i32 = 0;
 const AIR_VALUE_TEMP: i32 = 1;
@@ -29,6 +31,14 @@ const AIR_TERM_NONE: i32 = 0;
 const AIR_TERM_JUMP: i32 = 1;
 const AIR_TERM_BRANCH: i32 = 2;
 const AIR_TERM_RETURN: i32 = 3;
+const AIR_TERM_FALLTHROUGH: i32 = 4;
+
+const AIR_INST_NONE: i32 = 0;
+const AIR_INST_EXPR: i32 = 1;
+const AIR_INST_LET: i32 = 2;
+const AIR_INST_VAR: i32 = 3;
+const AIR_INST_ASSIGN: i32 = 4;
+const AIR_INST_SCOPE: i32 = 5;
 
 struct AirValue {
     kind: i32;
@@ -39,6 +49,17 @@ struct AirValue {
     rhs: i32;
     first_arg: i32;
     arg_count: i32;
+}
+
+struct AirInstruction {
+    kind: i32;
+    ast_stmt_id: i32;
+    name_begin: i32;
+    name_end: i32;
+    type_id: i32;
+    lhs: i32;
+    rhs: i32;
+    target: i32;
 }
 
 struct AirTerminator {
@@ -54,6 +75,8 @@ struct AirBlock {
     ast_block_id: i32;
     first_value: i32;
     value_count: i32;
+    first_instruction: i32;
+    instruction_count: i32;
     terminator: AirTerminator;
 }
 
@@ -63,11 +86,15 @@ struct AirFunction {
     value_count: i32;
     block_value_count: i32;
     value_arg_count: i32;
+    instruction_count: i32;
+    block_instruction_count: i32;
     entry_block: i32;
     blocks: *mut AirBlock;
     values: *mut AirValue;
     block_values: *mut i32;
     value_args: *mut i32;
+    instructions: *mut AirInstruction;
+    block_instructions: *mut i32;
 }
 
 extern c {
@@ -102,6 +129,10 @@ fn air_return_terminator(value: i32) -> AirTerminator {
     return air_make_terminator(AIR_TERM_RETURN, -1, value, -1, -1, -1);
 }
 
+fn air_fallthrough_terminator() -> AirTerminator {
+    return air_make_terminator(AIR_TERM_FALLTHROUGH, -1, -1, -1, -1, -1);
+}
+
 fn air_make_value(kind: i32, ast_expr_id: i32, type_id: i32) -> AirValue {
     return AirValue {
         kind: kind,
@@ -115,11 +146,26 @@ fn air_make_value(kind: i32, ast_expr_id: i32, type_id: i32) -> AirValue {
     };
 }
 
-fn air_make_block(ast_block_id: i32, first_value: i32) -> AirBlock {
+fn air_make_instruction(kind: i32, ast_stmt_id: i32, lhs: i32, rhs: i32, target: i32, type_id: i32, name_begin: i32, name_end: i32) -> AirInstruction {
+    return AirInstruction {
+        kind: kind,
+        ast_stmt_id: ast_stmt_id,
+        name_begin: name_begin,
+        name_end: name_end,
+        type_id: type_id,
+        lhs: lhs,
+        rhs: rhs,
+        target: target
+    };
+}
+
+fn air_make_block(ast_block_id: i32, first_value: i32, first_instruction: i32) -> AirBlock {
     return AirBlock {
         ast_block_id: ast_block_id,
         first_value: first_value,
         value_count: 0,
+        first_instruction: first_instruction,
+        instruction_count: 0,
         terminator: air_none_terminator()
     };
 }
@@ -129,17 +175,23 @@ fn air_make_function() -> AirFunction {
     let values: *mut AirValue = ptr_cast(*mut AirValue, malloc(size_of(AirValue) * cast(usize, AIR_MAX_VALUES)));
     let block_values: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_BLOCK_VALUES)));
     let value_args: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_VALUE_ARGS)));
+    let instructions: *mut AirInstruction = ptr_cast(*mut AirInstruction, malloc(size_of(AirInstruction) * cast(usize, AIR_MAX_INSTRUCTIONS)));
+    let block_instructions: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_BLOCK_INSTRUCTIONS)));
     return AirFunction {
-        ok: blocks != null && values != null && block_values != null && value_args != null,
+        ok: blocks != null && values != null && block_values != null && value_args != null && instructions != null && block_instructions != null,
         block_count: 0,
         value_count: 0,
         block_value_count: 0,
         value_arg_count: 0,
+        instruction_count: 0,
+        block_instruction_count: 0,
         entry_block: -1,
         blocks: blocks,
         values: values,
         block_values: block_values,
-        value_args: value_args
+        value_args: value_args,
+        instructions: instructions,
+        block_instructions: block_instructions
     };
 }
 
@@ -148,6 +200,8 @@ fn air_free_function(function: AirFunction) -> void {
     free(ptr_cast(*mut void, function.values));
     free(ptr_cast(*mut void, function.block_values));
     free(ptr_cast(*mut void, function.value_args));
+    free(ptr_cast(*mut void, function.instructions));
+    free(ptr_cast(*mut void, function.block_instructions));
 }
 
 fn air_add_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
@@ -156,7 +210,7 @@ fn air_add_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
         return -1;
     }
     let id: i32 = function.block_count;
-    function.blocks[id] = air_make_block(ast_block_id, function.block_value_count);
+    function.blocks[id] = air_make_block(ast_block_id, function.block_value_count, function.block_instruction_count);
     function.block_count = function.block_count + 1;
     if function.entry_block < 0 {
         function.entry_block = id;
@@ -180,6 +234,25 @@ fn air_add_value(function: *mut AirFunction, block_id: i32, value: AirValue) -> 
     function.block_value_count = function.block_value_count + 1;
     function.blocks[block_id].value_count = function.blocks[block_id].value_count + 1;
     return value_id;
+}
+
+fn air_add_instruction(function: *mut AirFunction, block_id: i32, instruction: AirInstruction) -> i32 {
+    if !function.ok || block_id < 0 || block_id >= function.block_count ||
+        function.instruction_count >= AIR_MAX_INSTRUCTIONS ||
+        function.block_instruction_count >= AIR_MAX_BLOCK_INSTRUCTIONS {
+        function.ok = false;
+        return -1;
+    }
+    if function.blocks[block_id].instruction_count == 0 {
+        function.blocks[block_id].first_instruction = function.block_instruction_count;
+    }
+    let instruction_id: i32 = function.instruction_count;
+    function.instructions[instruction_id] = instruction;
+    function.instruction_count = function.instruction_count + 1;
+    function.block_instructions[function.block_instruction_count] = instruction_id;
+    function.block_instruction_count = function.block_instruction_count + 1;
+    function.blocks[block_id].instruction_count = function.blocks[block_id].instruction_count + 1;
+    return instruction_id;
 }
 
 fn air_set_terminator(function: *mut AirFunction, block_id: i32, terminator: AirTerminator) -> bool {

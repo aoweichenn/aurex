@@ -27,6 +27,9 @@ fn check_valid_air_function() -> bool {
     call_value.lhs = callee;
     let result: i32 = air_add_value(&function, exit, call_value);
     air_add_value_arg(&function, result, arg);
+    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_LET, 0, left, -1, -1, -1, 0, 1));
+    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_ASSIGN, 1, left, right, -1, -1, 0, 0));
+    air_add_instruction(&function, exit, air_make_instruction(AIR_INST_EXPR, 2, result, -1, -1, -1, 0, 0));
     let ok: bool = air_set_terminator(&function, entry, air_branch_terminator(condition, exit, exit)) &&
         air_set_terminator(&function, exit, air_return_terminator(result)) &&
         air_verify_function(&function);
@@ -109,13 +112,43 @@ fn check_bad_call_arg_rejected() -> bool {
     return ok;
 }
 
+fn check_bad_instruction_value_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    let entry: i32 = air_add_block(&function, 0);
+    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_EXPR, 0, 99, -1, -1, -1, 0, 0));
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_scope_target_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    let entry: i32 = air_add_block(&function, 0);
+    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_SCOPE, 0, -1, -1, 99, -1, 0, 0));
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if check_valid_air_function() &&
         check_missing_terminator_rejected() &&
         check_bad_branch_target_rejected() &&
         check_bad_return_value_rejected() &&
         check_bad_binary_operand_rejected() &&
-        check_bad_call_arg_rejected() {
+        check_bad_call_arg_rejected() &&
+        check_bad_instruction_value_rejected() &&
+        check_bad_scope_target_rejected() {
         puts(c"selfhost air verifier ok");
         return 0;
     }

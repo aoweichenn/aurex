@@ -2,6 +2,7 @@ module aurex.selfhost.compiler.ir.cfg;
 
 import aurex.selfhost.compiler.air.model;
 import aurex.selfhost.compiler.air.lower;
+import aurex.selfhost.compiler.air.text;
 import aurex.selfhost.compiler.air.verify;
 import aurex.selfhost.compiler.ir.expr;
 import aurex.selfhost.compiler.ir.types;
@@ -247,17 +248,25 @@ fn cfg_write_snapshot(file: *mut OutputFile, ast: *mut AstModule, body_block: i3
     }
     var function: AirFunction = air_lower_function(ast, body_block);
     let verified: bool = air_verify_function(&function);
-    air_free_function(function);
     if !verified {
+        air_free_function(function);
+        return false;
+    }
+    if !air_text_write_function(file, &function) {
+        air_free_function(function);
         return false;
     }
     if !ir_write_text(file, c"  ; air_cfg v0\n") {
+        air_free_function(function);
         return false;
     }
     if !cfg_write_block_edges(file, ast, body_block, true) {
+        air_free_function(function);
         return false;
     }
-    return cfg_write_child_edges(file, ast, body_block);
+    let ok: bool = cfg_write_child_edges(file, ast, body_block);
+    air_free_function(function);
+    return ok;
 }
 
 fn cfg_write_function_body(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, body_block: i32) -> bool {

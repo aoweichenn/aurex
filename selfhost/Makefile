@@ -40,6 +40,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/types.ax \
 	src/aurex/selfhost/compiler/air/model.ax \
 	src/aurex/selfhost/compiler/air/lower.ax \
+	src/aurex/selfhost/compiler/air/text.ax \
 	src/aurex/selfhost/compiler/air/verify.ax \
 	src/aurex/selfhost/compiler/io.ax \
 	src/aurex/selfhost/compiler/ir/writer.ax \
@@ -117,6 +118,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.ir.emit' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.model' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.lower' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.text' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.verify' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.expr' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.cfg' $(BUILD_DIR)/aurexc_stage1.modules
@@ -157,7 +159,11 @@ check: all
 	grep -q 'while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q '\^block4:' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'air_ir v0' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'air_cfg v0' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'inst let' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'inst assign' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'target(\^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge loop_back \^entry' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
@@ -173,6 +179,7 @@ check: all
 	grep -q 'struct Pair' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q '.value' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q 'index ' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'struct_literal' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q '4]u8' $(BUILD_DIR)/stage1_expr.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_ITEMS_SRC) $(BUILD_DIR)/stage1_items.stage1.tac
 	grep -q 'record NativeFile' $(BUILD_DIR)/stage1_items.stage1.tac

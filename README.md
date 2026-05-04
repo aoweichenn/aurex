@@ -83,10 +83,11 @@ uses `aurex/selfhost/compiler/air/` for structured function-level AIR and
 `aurex/selfhost/compiler/ir/` for the compatibility TAC snapshot bridge. AIR is
 split into model, binding, lowering, text, and verifier modules. The seed parser
 now covers multiple `export c fn` items in one module, and Stage1 emits
-three-address-code temporaries per function block. For syntax not yet covered by
-the parser seed, Stage1 records deterministic `selfhost_module ...
-lowering(ast_pending)` markers so the compiler bundle remains measurable
-without claiming full lowering.
+three-address-code temporaries per function block. Stage1 records deterministic
+pending markers (`ast_pending`, named sema phase markers, and AIR
+lowering/verify markers) so the compiler bundle remains measurable without
+claiming full lowering. The current selfhost compiler bundle parses and passes
+Stage1 sema; remaining placeholders are AIR snapshot gaps.
 
 ```sh
 tools/bootstrap_chain.sh

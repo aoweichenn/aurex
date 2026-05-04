@@ -20,9 +20,9 @@ The old selfhost C emitter has been removed from the active tree. Stage1 now
 emits `aurex_tac v0` snapshots instead of C source. The current seed parser can
 lower modules with an `extern c` block and multiple `export c fn` items, and the
 TAC snapshot path now emits expression temporaries only for the function block
-being written. For syntax not yet covered by the parser seed, Stage1 records a
-deterministic `selfhost_module ... lowering(ast_pending)` placeholder, so the
-compiler bundle remains visible without pretending it is fully lowered.
+being written. Stage1 records deterministic pending markers for parser, sema,
+and AIR boundaries. The current selfhost compiler bundle parses and passes
+Stage1 sema; remaining placeholders are AIR lowering/verifier gaps.
 
 Important boundary: this is not full self-hosting yet. The next milestone is
 to expand the M0 AST/parser coverage until Stage1 can lower the complete

@@ -124,6 +124,18 @@ fn check_duplicate_nested_locals() -> bool {
     return ok;
 }
 
+fn check_sibling_scope_local_reuse() -> bool {
+    let source: *const u8 = c"module sema.locals.sibling_reuse; fn helper(flag: bool) -> i32 { if flag { let value: i32 = 1; } else { let value: i32 = 2; } { let step: i32 = 1; } { let step: i32 = 2; } return 0; } fn main() -> i32 { return helper(true); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = sema_check_module_locals(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
 fn check_valid_members() -> bool {
     let source: *const u8 = c"module sema.members.valid; struct Pair { value: i32; tag: i32; } enum Tag: u8 { zero = 0, one = 1, } fn helper() -> i32 { let pair: Pair = Pair { value: 1, tag: 2 }; return pair.value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
@@ -557,6 +569,7 @@ fn main() -> i32 {
         check_duplicate_local_with_param() &&
         check_duplicate_locals() &&
         check_duplicate_nested_locals() &&
+        check_sibling_scope_local_reuse() &&
         check_valid_members() &&
         check_duplicate_struct_fields() &&
         check_duplicate_enum_cases() &&

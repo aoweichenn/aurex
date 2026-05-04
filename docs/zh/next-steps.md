@@ -42,14 +42,14 @@ Stage1 TAC/AIR snapshot：
 - sema 已有独立表达式注解表，能按 expr id 持久化 `type_id`、primitive、integer、null、item、c string 等推导结果，AIR lowering 通过注解表读取类型信息。
 - AIR verifier 已覆盖 header、params、locals、value 引用、value args、binding、instruction 和 terminator 合法性。
 - 临时值已按当前函数 block 限定，不再把全模块表达式重复输出到每个函数。
-- 对 parser seed 未覆盖的模块输出 `selfhost_module ... lowering(ast_pending)` 占位，保持 selfhost bundle 可度量。
+- bundle fallback 已按阶段拆分：parser 缺口输出 `ast_pending`，sema 缺口输出具名 sema 阶段标记，AIR 快照缺口输出 `air_lower_pending` 或 `air_verify_pending`。当前 selfhost compiler bundle 已无 parser/sema 占位，剩余占位都在 AIR。
 
 ## 距离 M0 最终自举的缺口
 
-- Parser 覆盖还没达到完整编译 selfhost 的程度，后续仍要补 module bundle 中的未覆盖语法边界和错误恢复。
+- Parser 和 Stage1 sema 已覆盖当前 selfhost compiler bundle；后续 parser 工作主要是边界语法、诊断和错误恢复。
 - Stage1 typed AST 还没最终定型：当前已有表达式注解表，但 item/local binding、call signature、record layout 等还没全部持久化成统一 backend annotation。
 - Stage1 lowering 还没有真实可执行 AIR 后端：当前 AIR 是结构化注释快照，不是 backend handoff 格式。
-- AIR 还缺 slots/alloca、record layout、global constant lowering、复杂 lvalue descriptor、phi/SSA 合流、跨模块 item/import 绑定。
+- AIR 还缺完整 loop-control lowering、slots/alloca、record layout、global constant lowering、复杂 lvalue descriptor、phi/SSA 合流、跨模块 item/import 绑定。
 - Stage1 没有完整 TAC/AIR verifier 与 backend verifier 的闭环：目前 verifier 已覆盖 AIR 结构合法性，但还没校验类型等价、call signature、control-flow dominance。
 - Stage1 没有 LLVM handoff：还不能把 Stage1 产物交给现有 LLVM backend 编译成 native。
 - 还没有 fixed-point：Stage1 不能完整编译自己，也不能证明 `Stage0 -> Stage1 -> Stage1'` 收敛。

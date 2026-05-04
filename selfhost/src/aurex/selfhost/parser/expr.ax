@@ -27,9 +27,11 @@ struct ExprStack {
     frame_callees: *mut i32;
     frame_first_args: *mut i32;
     frame_arg_counts: *mut i32;
+    arg_values: *mut i32;
     value_count: i32;
     op_count: i32;
     frame_count: i32;
+    arg_count: i32;
 }
 
 extern c {
@@ -56,6 +58,7 @@ fn make_expr_stack() -> ExprStack {
     let frame_callees: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
     let frame_first_args: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
     let frame_arg_counts: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPRS)));
+    let arg_values: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_EXPR_ARGS)));
     return ExprStack {
         ok: values != null &&
             ops != null &&
@@ -66,7 +69,8 @@ fn make_expr_stack() -> ExprStack {
             frame_value_bases != null &&
             frame_callees != null &&
             frame_first_args != null &&
-            frame_arg_counts != null,
+            frame_arg_counts != null &&
+            arg_values != null,
         values: values,
         ops: ops,
         op_modes: op_modes,
@@ -77,9 +81,11 @@ fn make_expr_stack() -> ExprStack {
         frame_callees: frame_callees,
         frame_first_args: frame_first_args,
         frame_arg_counts: frame_arg_counts,
+        arg_values: arg_values,
         value_count: 0,
         op_count: 0,
-        frame_count: 0
+        frame_count: 0,
+        arg_count: 0
     };
 }
 
@@ -94,6 +100,7 @@ fn free_expr_stack(stack: ExprStack) -> void {
     free(ptr_cast(*mut void, stack.frame_callees));
     free(ptr_cast(*mut void, stack.frame_first_args));
     free(ptr_cast(*mut void, stack.frame_arg_counts));
+    free(ptr_cast(*mut void, stack.arg_values));
 }
 
 fn expr_push_value(stack: *mut ExprStack, id: i32) -> bool {
@@ -479,10 +486,25 @@ fn expr_commit_call_arg(stack: *mut ExprStack, ast: *mut AstModule) -> bool {
     if stack.value_count != value_base + 1 {
         return false;
     }
-    ast_add_expr_arg(ast, stack.values[value_base]);
+    if stack.arg_count >= AST_MAX_EXPR_ARGS {
+        return false;
+    }
+    stack.arg_values[stack.arg_count] = stack.values[value_base];
+    stack.arg_count = stack.arg_count + 1;
     stack.frame_arg_counts[frame_index] = stack.frame_arg_counts[frame_index] + 1;
     stack.value_count = value_base;
     return true;
+}
+
+fn expr_copy_call_args(stack: *mut ExprStack, ast: *mut AstModule, first_arg: i32, arg_count: i32) -> i32 {
+    let ast_first_arg: i32 = ast.expr_arg_count;
+    var index: i32 = 0;
+    while index < arg_count {
+        ast_add_expr_arg(ast, stack.arg_values[first_arg + index]);
+        index = index + 1;
+    }
+    stack.arg_count = first_arg;
+    return ast_first_arg;
 }
 
 fn expr_close_frame(stack: *mut ExprStack, ast: *mut AstModule, close: TokenSpan) -> bool {
@@ -517,7 +539,7 @@ fn expr_close_frame(stack: *mut ExprStack, ast: *mut AstModule, close: TokenSpan
             }
         }
         let callee_id: i32 = stack.frame_callees[frame_index];
-        let first_arg: i32 = stack.frame_first_args[frame_index];
+        let first_arg: i32 = expr_copy_call_args(stack, ast, stack.frame_first_args[frame_index], stack.frame_arg_counts[frame_index]);
         let arg_count: i32 = stack.frame_arg_counts[frame_index];
         let callee: AstExprNode = ast.exprs[callee_id];
         stack.frame_count = frame_index;
@@ -604,7 +626,7 @@ fn parse_expression_until(source: *const u8, index: *mut i32, current: *mut Toke
                 let callee_id: i32 = stack.values[stack.value_count - 1];
                 stack.value_count = stack.value_count - 1;
                 parser_advance(source, index, current);
-                if !expr_push_frame(&stack, EXPR_FRAME_CALL, callee_id, ast.expr_arg_count) {
+                if !expr_push_frame(&stack, EXPR_FRAME_CALL, callee_id, stack.arg_count) {
                     free_expr_stack(stack);
                     return make_bad_expr_result();
                 }

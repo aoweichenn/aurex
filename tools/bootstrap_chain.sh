@@ -286,7 +286,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${STAGE1}" \
     "${STAGE1_COMPILER_TAC}"
 grep -q 'aurex_tac v0' "${STAGE1_COMPILER_TAC}"
-grep -q '; selfhost_module aurex.selfhost.compiler.driver lowering(ast_pending)' "${STAGE1_COMPILER_TAC}"
+grep -q 'fn compile_file(input_path: \*const u8, output_path: \*const u8)' "${STAGE1_COMPILER_TAC}"
 grep -q 'm0_aurex_selfhost_bin_aurexc_stage1_main' "${STAGE1_COMPILER_TAC}"
 
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_DUMP}"

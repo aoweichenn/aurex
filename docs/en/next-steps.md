@@ -58,22 +58,23 @@ Stage1 TAC/AIR snapshot:
   arguments, bindings, instructions, and terminators.
 - Temporaries are scoped to the current function block, so module-wide
   expressions are not repeated in every function.
-- Modules outside parser seed coverage emit a deterministic
-  `selfhost_module ... lowering(ast_pending)` placeholder, keeping the selfhost
-  bundle measurable.
+- Bundle fallback is split by phase: parser gaps use `ast_pending`, sema gaps
+  use named sema phase markers, and AIR snapshot gaps use `air_lower_pending`
+  or `air_verify_pending`. The current selfhost compiler bundle has no
+  parser/sema placeholders; remaining placeholders are AIR gaps.
 
 ## Gaps Before Final M0 Self-Hosting
 
-- Parser coverage is not yet enough to compile the entire selfhost compiler.
-  The remaining work is mostly bundle edge cases and error recovery.
+- Parser and Stage1 sema now cover the current selfhost compiler bundle. The
+  remaining parser work is mostly edge cases, diagnostics, and error recovery.
 - Stage1 typed AST is not finalized yet. Expression annotations exist, but item
   bindings, local bindings, call signatures, record layout, and lvalue data are
   not all persisted in one backend annotation layer.
 - Stage1 lowering does not yet produce a real backend handoff format. AIR is
   currently a structured comment snapshot.
-- AIR still needs slots/alloca, record layout, global constant lowering,
-  complex lvalue descriptors, phi/SSA joins, and cross-module item/import
-  bindings.
+- AIR still needs full loop-control lowering, slots/alloca, record layout,
+  global constant lowering, complex lvalue descriptors, phi/SSA joins, and
+  cross-module item/import bindings.
 - Stage1 does not yet have a complete TAC/AIR/backend verifier loop. The AIR
   verifier checks structure, but not type equivalence, call signatures, control
   dominance, or reachability.

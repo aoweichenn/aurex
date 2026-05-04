@@ -102,6 +102,148 @@ fn sema_infer_call_type(source: *const u8, ast: *mut AstModule, fn_item: AstItem
     return sema_type_id_expr_type(item.return_type);
 }
 
+fn sema_call_arg_type_shape_reason(ast: *mut AstModule, expected_type: i32, inferred: SemaExprType, fallback: *const u8) -> *const u8 {
+    if inferred.kind == SEMA_EXPR_TYPE_ID {
+        if expected_type >= 0 && expected_type < ast.type_count && inferred.type_id >= 0 && inferred.type_id < ast.type_count {
+            let expected: AstTypeNode = ast.types[expected_type];
+            let actual: AstTypeNode = ast.types[inferred.type_id];
+            if expected.kind == AST_TYPE_PRIMITIVE && actual.kind == AST_TYPE_PRIMITIVE {
+                return c"sema_typing_call_arg_primitive_shape_pending";
+            }
+            if expected.kind == AST_TYPE_POINTER && actual.kind == AST_TYPE_POINTER {
+                return c"sema_typing_call_arg_pointer_shape_pending";
+            }
+            if expected.kind == AST_TYPE_NAMED && actual.kind == AST_TYPE_NAMED {
+                return c"sema_typing_call_arg_named_shape_pending";
+            }
+            if expected.kind == AST_TYPE_ARRAY && actual.kind == AST_TYPE_ARRAY {
+                return c"sema_typing_call_arg_array_shape_pending";
+            }
+            if expected.kind == AST_TYPE_PRIMITIVE {
+                if actual.kind == AST_TYPE_POINTER {
+                    return c"sema_typing_call_arg_expected_primitive_actual_pointer_pending";
+                }
+                if actual.kind == AST_TYPE_NAMED {
+                    return c"sema_typing_call_arg_expected_primitive_actual_named_pending";
+                }
+                if actual.kind == AST_TYPE_ARRAY {
+                    return c"sema_typing_call_arg_expected_primitive_actual_array_pending";
+                }
+                return c"sema_typing_call_arg_expected_primitive_pending";
+            }
+            if expected.kind == AST_TYPE_POINTER {
+                if actual.kind == AST_TYPE_PRIMITIVE {
+                    return c"sema_typing_call_arg_expected_pointer_actual_primitive_pending";
+                }
+                if actual.kind == AST_TYPE_NAMED {
+                    return c"sema_typing_call_arg_expected_pointer_actual_named_pending";
+                }
+                if actual.kind == AST_TYPE_ARRAY {
+                    return c"sema_typing_call_arg_expected_pointer_actual_array_pending";
+                }
+                return c"sema_typing_call_arg_expected_pointer_pending";
+            }
+            if expected.kind == AST_TYPE_NAMED {
+                if actual.kind == AST_TYPE_PRIMITIVE {
+                    return c"sema_typing_call_arg_expected_named_actual_primitive_pending";
+                }
+                if actual.kind == AST_TYPE_POINTER {
+                    return c"sema_typing_call_arg_expected_named_actual_pointer_pending";
+                }
+                if actual.kind == AST_TYPE_ARRAY {
+                    return c"sema_typing_call_arg_expected_named_actual_array_pending";
+                }
+                return c"sema_typing_call_arg_expected_named_pending";
+            }
+            if expected.kind == AST_TYPE_ARRAY {
+                if actual.kind == AST_TYPE_PRIMITIVE {
+                    return c"sema_typing_call_arg_expected_array_actual_primitive_pending";
+                }
+                if actual.kind == AST_TYPE_POINTER {
+                    return c"sema_typing_call_arg_expected_array_actual_pointer_pending";
+                }
+                if actual.kind == AST_TYPE_NAMED {
+                    return c"sema_typing_call_arg_expected_array_actual_named_pending";
+                }
+                return c"sema_typing_call_arg_expected_array_pending";
+            }
+        }
+        if expected_type < 0 || expected_type >= ast.type_count {
+            return c"sema_typing_call_arg_expected_invalid_pending";
+        }
+        if inferred.type_id < 0 || inferred.type_id >= ast.type_count {
+            return c"sema_typing_call_arg_actual_invalid_pending";
+        }
+        return c"sema_typing_call_arg_type_shape_pending";
+    }
+    if inferred.kind == SEMA_EXPR_PRIMITIVE { return c"sema_typing_call_arg_primitive_expr_pending"; }
+    if inferred.kind == SEMA_EXPR_INTEGER { return c"sema_typing_call_arg_integer_expr_pending"; }
+    if inferred.kind == SEMA_EXPR_NULL { return c"sema_typing_call_arg_null_expr_pending"; }
+    if inferred.kind == SEMA_EXPR_ITEM { return c"sema_typing_call_arg_item_expr_pending"; }
+    if inferred.kind == SEMA_EXPR_C_STRING { return c"sema_typing_call_arg_c_string_expr_pending"; }
+    return fallback;
+}
+
+fn sema_call_arg_identifier_reason(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode, expected_type: i32, inferred: SemaExprType) -> *const u8 {
+    if sema_find_param_type(source, ast, fn_item, expr.begin, expr.end) >= 0 {
+        return sema_call_arg_type_shape_reason(ast, expected_type, inferred, c"sema_typing_call_arg_param_pending");
+    }
+    if fn_item.body_block >= 0 {
+        if sema_find_local_type_in_block(source, ast, fn_item.body_block, expr.begin, expr.end) >= 0 {
+            return sema_call_arg_type_shape_reason(ast, expected_type, inferred, c"sema_typing_call_arg_local_pending");
+        }
+    }
+    let item_id: i32 = sema_find_item_by_name(source, ast, expr.begin, expr.end);
+    if item_id >= 0 {
+        return sema_call_arg_type_shape_reason(ast, expected_type, inferred, c"sema_typing_call_arg_item_pending");
+    }
+    return c"sema_typing_call_arg_identifier_pending";
+}
+
+fn sema_call_arg_reason_for_expr(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr_id: i32, expected_type: i32, inferred: SemaExprType) -> *const u8 {
+    if expr_id < 0 || expr_id >= ast.expr_count {
+        return c"sema_typing_call_arg_pending";
+    }
+    let expr: AstExprNode = ast.exprs[expr_id];
+    if expr.kind == AST_EXPR_CALL { return c"sema_typing_call_arg_call_pending"; }
+    if expr.kind == AST_EXPR_BINARY { return c"sema_typing_call_arg_binary_pending"; }
+    if expr.kind == AST_EXPR_UNARY { return c"sema_typing_call_arg_unary_pending"; }
+    if expr.kind == AST_EXPR_INDEX { return c"sema_typing_call_arg_index_pending"; }
+    if expr.kind == AST_EXPR_FIELD { return c"sema_typing_call_arg_field_pending"; }
+    if expr.kind == AST_EXPR_STRUCT_LITERAL { return c"sema_typing_call_arg_struct_literal_pending"; }
+    if expr.kind == AST_EXPR_CAST || expr.kind == AST_EXPR_PTR_CAST || expr.kind == AST_EXPR_BIT_CAST {
+        return c"sema_typing_call_arg_cast_pending";
+    }
+    if expr.kind == AST_EXPR_IDENTIFIER { return sema_call_arg_identifier_reason(source, ast, fn_item, expr, expected_type, inferred); }
+    return sema_call_arg_type_shape_reason(ast, expected_type, inferred, c"sema_typing_call_arg_pending");
+}
+
+fn sema_call_typing_pending_reason(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> *const u8 {
+    if expr.left < 0 || expr.left >= ast.expr_count {
+        return c"sema_typing_call_callee_pending";
+    }
+    let callee: AstExprNode = ast.exprs[expr.left];
+    if callee.kind != AST_EXPR_IDENTIFIER {
+        return c"sema_typing_call_callee_pending";
+    }
+    let item_id: i32 = sema_find_function_item(source, ast, callee.begin, callee.end);
+    if item_id < 0 {
+        return null;
+    }
+    let item: AstItemNode = ast.items[item_id];
+    var index: i32 = 0;
+    while index < item.param_count {
+        let param: AstParamNode = ast.params[item.first_param + index];
+        let arg: AstExprArg = ast.expr_args[expr.first_arg + index];
+        let inferred: SemaExprType = sema_infer_expr_type(source, ast, fn_item, arg.expr_id);
+        if !inferred.ok || !sema_expr_matches_type(source, ast, fn_item, param.type_id, arg.expr_id) {
+            return sema_call_arg_reason_for_expr(source, ast, fn_item, arg.expr_id, param.type_id, inferred);
+        }
+        index = index + 1;
+    }
+    return null;
+}
+
 fn sema_infer_field_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> SemaExprType {
     let object_type: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
     if !object_type.ok {
@@ -135,17 +277,13 @@ fn sema_infer_index_type(source: *const u8, ast: *mut AstModule, fn_item: AstIte
     }
     var ty: AstTypeNode = ast.types[type_id];
     if ty.kind == AST_TYPE_POINTER {
-        type_id = ty.pointee;
-        if type_id < 0 || type_id >= ast.type_count {
+        if ty.pointee < 0 || ty.pointee >= ast.type_count {
             return sema_bad_expr_type();
         }
-        ty = ast.types[type_id];
+        return sema_type_id_expr_type(ty.pointee);
     }
     if ty.kind == AST_TYPE_ARRAY {
         return sema_type_id_expr_type(ty.array_element);
-    }
-    if ty.kind == AST_TYPE_POINTER {
-        return sema_type_id_expr_type(ty.pointee);
     }
     return sema_unknown_expr_type();
 }
@@ -215,8 +353,14 @@ fn sema_expr_is_numeric_like(ast: *mut AstModule, value: SemaExprType) -> bool {
     return false;
 }
 
-fn sema_expr_is_bool_like(value: SemaExprType) -> bool {
-    return value.kind == SEMA_EXPR_PRIMITIVE && value.primitive == AST_PRIM_BOOL;
+fn sema_expr_is_bool_like(ast: *mut AstModule, value: SemaExprType) -> bool {
+    if value.kind == SEMA_EXPR_PRIMITIVE {
+        return value.primitive == AST_PRIM_BOOL;
+    }
+    if value.kind == SEMA_EXPR_TYPE_ID {
+        return sema_expected_is_primitive(ast, value.type_id, AST_PRIM_BOOL);
+    }
+    return false;
 }
 
 fn sema_binary_is_arithmetic(op: i32) -> bool {
@@ -255,6 +399,12 @@ fn sema_known_exprs_compatible(source: *const u8, ast: *mut AstModule, left: Sem
     if left.kind == SEMA_EXPR_PRIMITIVE && right.kind == SEMA_EXPR_PRIMITIVE {
         return left.primitive == right.primitive;
     }
+    if left.kind == SEMA_EXPR_TYPE_ID && right.kind == SEMA_EXPR_PRIMITIVE {
+        return sema_expected_is_primitive(ast, left.type_id, right.primitive);
+    }
+    if right.kind == SEMA_EXPR_TYPE_ID && left.kind == SEMA_EXPR_PRIMITIVE {
+        return sema_expected_is_primitive(ast, right.type_id, left.primitive);
+    }
     if left.kind == SEMA_EXPR_TYPE_ID && right.kind == SEMA_EXPR_TYPE_ID {
         return sema_type_ids_match(source, ast, left.type_id, right.type_id);
     }
@@ -274,7 +424,7 @@ fn sema_check_binary_operands(source: *const u8, ast: *mut AstModule, fn_item: A
         if left.kind == SEMA_EXPR_UNKNOWN || right.kind == SEMA_EXPR_UNKNOWN {
             return true;
         }
-        return sema_expr_is_bool_like(left) && sema_expr_is_bool_like(right);
+        return sema_expr_is_bool_like(ast, left) && sema_expr_is_bool_like(ast, right);
     }
     if sema_binary_is_arithmetic(expr.op) || sema_binary_is_ordering(expr.op) {
         if left.kind == SEMA_EXPR_UNKNOWN || right.kind == SEMA_EXPR_UNKNOWN {

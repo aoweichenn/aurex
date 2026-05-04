@@ -4,88 +4,160 @@ import aurex.selfhost.sema.typing_infer;
 import aurex.selfhost.sema.typing_types;
 import aurex.selfhost.syntax.ast;
 
-fn sema_check_stmt_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, stmt: AstStmtNode) -> bool {
+fn sema_typing_kind_reason(reason: *const u8, inferred: SemaExprType) -> *const u8 {
+    if inferred.kind == SEMA_EXPR_TYPE_ID { return c"sema_typing_type_id_pending"; }
+    if inferred.kind == SEMA_EXPR_PRIMITIVE { return c"sema_typing_primitive_pending"; }
+    if inferred.kind == SEMA_EXPR_INTEGER { return c"sema_typing_integer_pending"; }
+    if inferred.kind == SEMA_EXPR_NULL { return c"sema_typing_null_pending"; }
+    if inferred.kind == SEMA_EXPR_ITEM { return c"sema_typing_item_pending"; }
+    if inferred.kind == SEMA_EXPR_C_STRING { return c"sema_typing_c_string_pending"; }
+    return reason;
+}
+
+fn sema_typing_expr_reason(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr_id: i32, reason: *const u8) -> *const u8 {
+    if expr_id < 0 || expr_id >= ast.expr_count {
+        return reason;
+    }
+    let expr: AstExprNode = ast.exprs[expr_id];
+    if expr.kind == AST_EXPR_CALL {
+        let call_reason: *const u8 = sema_call_typing_pending_reason(source, ast, fn_item, expr);
+        if call_reason != null {
+            return call_reason;
+        }
+        return c"sema_typing_call_pending";
+    }
+    if expr.kind == AST_EXPR_BINARY { return c"sema_typing_binary_pending"; }
+    if expr.kind == AST_EXPR_INDEX { return c"sema_typing_index_pending"; }
+    if expr.kind == AST_EXPR_FIELD { return c"sema_typing_field_pending"; }
+    if expr.kind == AST_EXPR_STRUCT_LITERAL { return c"sema_typing_struct_literal_pending"; }
+    if expr.kind == AST_EXPR_UNARY { return c"sema_typing_unary_pending"; }
+    if expr.kind == AST_EXPR_CAST || expr.kind == AST_EXPR_PTR_CAST || expr.kind == AST_EXPR_BIT_CAST {
+        return c"sema_typing_cast_pending";
+    }
+    return reason;
+}
+
+fn sema_expr_typing_pending_reason(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expected_type: i32, expr_id: i32, reason: *const u8) -> *const u8 {
+    let inferred: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr_id);
+    if !inferred.ok {
+        return sema_typing_expr_reason(source, ast, fn_item, expr_id, reason);
+    }
+    if sema_expr_matches_type(source, ast, fn_item, expected_type, expr_id) {
+        return null;
+    }
+    return sema_typing_kind_reason(reason, inferred);
+}
+
+fn sema_stmt_typing_pending_reason(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, stmt: AstStmtNode) -> *const u8 {
     if stmt.kind == AST_STMT_RETURN {
         if stmt.expr_id < 0 {
-            return sema_expected_is_primitive(ast, fn_item.return_type, AST_PRIM_VOID);
+            if sema_expected_is_primitive(ast, fn_item.return_type, AST_PRIM_VOID) {
+                return null;
+            }
+            return c"sema_typing_return_pending";
         }
-        return sema_expr_matches_type(source, ast, fn_item, fn_item.return_type, stmt.expr_id);
+        return sema_expr_typing_pending_reason(source, ast, fn_item, fn_item.return_type, stmt.expr_id, c"sema_typing_return_pending");
     }
     if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
-        return sema_expr_matches_type(source, ast, fn_item, stmt.type_id, stmt.expr_id);
+        return sema_expr_typing_pending_reason(source, ast, fn_item, stmt.type_id, stmt.expr_id, c"sema_typing_local_pending");
     }
     if stmt.kind == AST_STMT_ASSIGN {
         let target: SemaExprType = sema_infer_expr_type(source, ast, fn_item, stmt.expr_id);
         if !target.ok {
-            return false;
+            return c"sema_typing_assign_pending";
         }
         if target.kind == SEMA_EXPR_TYPE_ID {
-            return sema_expr_matches_type(source, ast, fn_item, target.type_id, stmt.rhs_expr_id);
+            return sema_expr_typing_pending_reason(source, ast, fn_item, target.type_id, stmt.rhs_expr_id, c"sema_typing_assign_pending");
         }
-        return true;
+        return null;
     }
     if stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE {
         if !sema_expr_matches_primitive(source, ast, fn_item, AST_PRIM_BOOL, stmt.expr_id) {
-            return false;
+            return c"sema_typing_condition_pending";
         }
     }
-    return true;
+    return null;
 }
 
-fn sema_check_block_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, block_id: i32) -> bool {
+fn sema_check_stmt_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, stmt: AstStmtNode) -> bool {
+    return sema_stmt_typing_pending_reason(source, ast, fn_item, stmt) == null;
+}
+
+fn sema_block_typing_pending_reason(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, block_id: i32) -> *const u8 {
     if block_id < 0 || block_id >= ast.block_count {
-        return false;
+        return c"sema_typing_block_pending";
     }
     let block: AstBlockNode = ast.blocks[block_id];
     var index: i32 = 0;
     while index < block.stmt_count {
         let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
         if stmt_id < 0 || stmt_id >= ast.stmt_count {
-            return false;
+            return c"sema_typing_block_pending";
         }
         let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if !sema_check_stmt_typing(source, ast, fn_item, stmt) {
-            return false;
+        let stmt_reason: *const u8 = sema_stmt_typing_pending_reason(source, ast, fn_item, stmt);
+        if stmt_reason != null {
+            return stmt_reason;
         }
         if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
-            if !sema_check_block_typing(source, ast, fn_item, stmt.then_block) {
-                return false;
+            let child_reason: *const u8 = sema_block_typing_pending_reason(source, ast, fn_item, stmt.then_block);
+            if child_reason != null {
+                return child_reason;
             }
         }
         if stmt.kind == AST_STMT_IF {
-            if !sema_check_block_typing(source, ast, fn_item, stmt.then_block) {
-                return false;
+            let then_reason: *const u8 = sema_block_typing_pending_reason(source, ast, fn_item, stmt.then_block);
+            if then_reason != null {
+                return then_reason;
             }
             if stmt.else_block >= 0 {
-                if !sema_check_block_typing(source, ast, fn_item, stmt.else_block) {
-                    return false;
+                let else_reason: *const u8 = sema_block_typing_pending_reason(source, ast, fn_item, stmt.else_block);
+                if else_reason != null {
+                    return else_reason;
                 }
             }
         }
         index = index + 1;
     }
-    return true;
+    return null;
+}
+
+fn sema_check_block_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, block_id: i32) -> bool {
+    return sema_block_typing_pending_reason(source, ast, fn_item, block_id) == null;
+}
+
+fn sema_const_typing_pending_reason(source: *const u8, ast: *mut AstModule, item: AstItemNode) -> *const u8 {
+    if sema_expr_matches_type(source, ast, item, item.const_type, item.const_expr) {
+        return null;
+    }
+    return c"sema_typing_const_pending";
 }
 
 fn sema_check_const_typing(source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
-    return sema_expr_matches_type(source, ast, item, item.const_type, item.const_expr);
+    return sema_const_typing_pending_reason(source, ast, item) == null;
 }
 
-fn sema_check_module_typing(source: *const u8, ast: *mut AstModule) -> bool {
+fn sema_module_typing_pending_reason(source: *const u8, ast: *mut AstModule) -> *const u8 {
     var index: i32 = 0;
     while index < ast.item_count {
         let item: AstItemNode = ast.items[index];
         if item.kind == AST_ITEM_CONST {
-            if !sema_check_const_typing(source, ast, item) {
-                return false;
+            let const_reason: *const u8 = sema_const_typing_pending_reason(source, ast, item);
+            if const_reason != null {
+                return const_reason;
             }
         }
         if item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN {
-            if !sema_check_block_typing(source, ast, item, item.body_block) {
-                return false;
+            let block_reason: *const u8 = sema_block_typing_pending_reason(source, ast, item, item.body_block);
+            if block_reason != null {
+                return block_reason;
             }
         }
         index = index + 1;
     }
-    return true;
+    return null;
+}
+
+fn sema_check_module_typing(source: *const u8, ast: *mut AstModule) -> bool {
+    return sema_module_typing_pending_reason(source, ast) == null;
 }

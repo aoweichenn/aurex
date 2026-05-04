@@ -142,16 +142,38 @@ fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
         ast_free_module(ast);
         return emit_ir_pending_source(file, source);
     }
-    if !sema_check_module_items(source, &ast) ||
-        !sema_check_module_locals(source, &ast) ||
-        !sema_check_module_members(source, &ast) ||
-        !sema_check_module_resolution(source, &ast) ||
-        !sema_check_module_types(source, &ast) ||
-        !sema_check_module_calls(source, &ast) ||
-        !sema_check_module_lvalues(source, &ast) ||
-        !sema_check_module_typing(source, &ast) {
+    if !sema_check_module_items(source, &ast) {
         ast_free_module(ast);
-        return emit_ir_pending_source_reason(file, source, c"sema_pending");
+        return emit_ir_pending_source_reason(file, source, c"sema_items_pending");
+    }
+    if !sema_check_module_locals(source, &ast) {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, c"sema_locals_pending");
+    }
+    if !sema_check_module_members(source, &ast) {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, c"sema_members_pending");
+    }
+    if !sema_check_module_resolution(source, &ast) {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, c"sema_resolve_pending");
+    }
+    if !sema_check_module_types(source, &ast) {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, c"sema_types_pending");
+    }
+    if !sema_check_module_calls(source, &ast) {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, c"sema_calls_pending");
+    }
+    if !sema_check_module_lvalues(source, &ast) {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, c"sema_lvalues_pending");
+    }
+    let typing_reason: *const u8 = sema_module_typing_pending_reason(source, &ast);
+    if typing_reason != null {
+        ast_free_module(ast);
+        return emit_ir_pending_source_reason(file, source, typing_reason);
     }
 
     var index: i32 = 0;

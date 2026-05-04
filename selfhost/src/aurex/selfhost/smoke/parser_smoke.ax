@@ -100,6 +100,41 @@ fn validate_complex_expr_seed() -> bool {
     return ok;
 }
 
+fn validate_nested_call_arg_seed() -> bool {
+    let source: *const u8 = c"module app.nested; fn inner(source: *const u8, begin: i32, end: i32) -> i32 { return begin + end; } fn outer(kind: i32, begin: i32, end: i32) -> i32 { return kind + begin + end; } fn main(source: *const u8, begin: i32, index: *mut i32) -> i32 { return outer(inner(source, begin, *index), begin, *index); }";
+    let ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let main_fn: AstItemNode = ast.items[2];
+    let body: AstBlockNode = ast.blocks[main_fn.body_block];
+    let return_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[body.first_stmt]];
+    let outer_call: AstExprNode = ast.exprs[return_stmt.expr_id];
+    let outer_arg0: AstExprNode = ast.exprs[ast.expr_args[outer_call.first_arg].expr_id];
+    let outer_arg1: AstExprNode = ast.exprs[ast.expr_args[outer_call.first_arg + 1].expr_id];
+    let outer_arg2: AstExprNode = ast.exprs[ast.expr_args[outer_call.first_arg + 2].expr_id];
+    let inner_call: AstExprNode = outer_arg0;
+    let inner_arg0: AstExprNode = ast.exprs[ast.expr_args[inner_call.first_arg].expr_id];
+    let inner_arg1: AstExprNode = ast.exprs[ast.expr_args[inner_call.first_arg + 1].expr_id];
+    let inner_arg2: AstExprNode = ast.exprs[ast.expr_args[inner_call.first_arg + 2].expr_id];
+    let ok: bool = ast.item_count == 3 &&
+        ast.fn_count == 3 &&
+        ast.call_expr_count == 2 &&
+        ast.expr_arg_count == 6 &&
+        outer_call.kind == AST_EXPR_CALL &&
+        outer_call.arg_count == 3 &&
+        inner_call.kind == AST_EXPR_CALL &&
+        inner_call.arg_count == 3 &&
+        outer_arg1.kind == AST_EXPR_IDENTIFIER &&
+        outer_arg2.kind == AST_EXPR_UNARY &&
+        inner_arg0.kind == AST_EXPR_IDENTIFIER &&
+        inner_arg1.kind == AST_EXPR_IDENTIFIER &&
+        inner_arg2.kind == AST_EXPR_UNARY;
+    ast_free_module(ast);
+    return ok;
+}
+
 fn validate_multi_export_seed() -> bool {
     let source: *const u8 = c"module app.multi; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn helper() -> i32 @name(\"helper\") { return 7; } fn main() -> i32 { puts(c\"multi\"); return helper(); }";
     let ast: AstModule = parse_seed_ast(source);
@@ -362,6 +397,7 @@ fn main() -> i32 {
         export_return_type.primitive == AST_PRIM_I32 &&
         parse_seed_module(source) &&
         validate_complex_expr_seed() &&
+        validate_nested_call_arg_seed() &&
         validate_multi_export_seed() &&
         validate_control_flow_seed() &&
         validate_edge_syntax_seed() {

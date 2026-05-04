@@ -267,7 +267,7 @@ check: all
 	grep -q 'mul %t' $(BUILD_DIR)/stage1_ir.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/aurexc_stage1.bundle.tac
 	grep -q 'aurex_tac v0' $(BUILD_DIR)/aurexc_stage1.bundle.tac
-	grep -q '; selfhost_module aurex.selfhost.compiler.driver lowering(ast_pending)' $(BUILD_DIR)/aurexc_stage1.bundle.tac
+	grep -q 'fn compile_file(input_path: \*const u8, output_path: \*const u8)' $(BUILD_DIR)/aurexc_stage1.bundle.tac
 	grep -q 'm0_aurex_selfhost_bin_aurexc_stage1_main' $(BUILD_DIR)/aurexc_stage1.bundle.tac
 
 clean:

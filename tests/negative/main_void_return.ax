@@ -1,0 +1,5 @@
+module main_void_return;
+
+fn main() -> void {
+    return;
+}

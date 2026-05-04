@@ -139,7 +139,7 @@ grep -q 'aurex.selfhost.sema.types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules
 "${STAGE1_BIN}" "${ROOT}/examples/hello.ax" "${STAGE1_HELLO_TAC}"
 grep -q 'aurex_tac v0' "${STAGE1_HELLO_TAC}"
 grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' "${STAGE1_HELLO_TAC}"
-grep -q 'fn main(argc: i32, argv: \*mut \*mut u8)' "${STAGE1_HELLO_TAC}"
+grep -q 'fn main() @m0_hello_main linkage(internal)' "${STAGE1_HELLO_TAC}"
 grep -q 'c_string c"hello from Aurex M0"' "${STAGE1_HELLO_TAC}"
 grep -q 'ret %t' "${STAGE1_HELLO_TAC}"
 

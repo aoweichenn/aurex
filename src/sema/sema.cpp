@@ -69,6 +69,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     register_type_names();
     analyze_struct_properties();
     register_value_names();
+    analyze_entry_points();
     analyze_const_decls();
 
     for (const syntax::ItemNode& item : module_.items) {
@@ -237,6 +238,49 @@ void SemanticAnalyzer::register_value_names() {
         }
     }
     current_module_ = syntax::invalid_module_id;
+}
+
+void SemanticAnalyzer::analyze_entry_points() {
+    const syntax::ModuleId root_module {0};
+    const FunctionSignature* aurex_entry = nullptr;
+    const FunctionSignature* c_entry = nullptr;
+
+    for (const auto& entry : checked_.functions) {
+        const FunctionSignature& function = entry.second;
+        if (function.module.value != root_module.value) {
+            continue;
+        }
+        if (function.is_extern_c) {
+            continue;
+        }
+        if (function.is_export_c && (function.name == "main" || function.c_name == "main")) {
+            c_entry = &function;
+            continue;
+        }
+        if (!function.is_export_c && function.name == "main") {
+            aurex_entry = &function;
+        }
+    }
+
+    if (aurex_entry == nullptr) {
+        return;
+    }
+    if (c_entry != nullptr) {
+        report(
+            aurex_entry->range,
+            "ordinary fn main cannot be combined with an exported C main entry"
+        );
+    }
+    if (aurex_entry->c_name == "main") {
+        report(aurex_entry->range, "ordinary fn main cannot use ABI name 'main'");
+    }
+    if (!aurex_entry->param_types.empty()) {
+        report(aurex_entry->range, "ordinary fn main must not declare parameters");
+    }
+    const TypeHandle i32_type = checked_.types.builtin(BuiltinType::i32);
+    if (!checked_.types.same(aurex_entry->return_type, i32_type)) {
+        report(aurex_entry->range, "ordinary fn main must return i32");
+    }
 }
 
 void SemanticAnalyzer::analyze_struct_properties() {

@@ -22,33 +22,20 @@
 71..72 r_paren `)`
 72..73 semicolon `;`
 74..75 r_brace `}`
-77..83 kw_export `export`
-84..85 kw_c `c`
-86..88 kw_fn `fn`
-89..93 identifier `main`
-93..94 l_paren `(`
-94..98 identifier `argc`
-98..99 colon `:`
-100..103 kw_i32 `i32`
-103..104 comma `,`
-105..109 identifier `argv`
-109..110 colon `:`
-111..112 star `*`
-112..115 kw_mut `mut`
-116..117 star `*`
-117..120 kw_mut `mut`
-121..123 kw_u8 `u8`
-123..124 r_paren `)`
-125..127 arrow `->`
-128..131 kw_i32 `i32`
-132..133 l_brace `{`
-138..142 identifier `puts`
-142..143 l_paren `(`
-143..165 c_string_literal `c"hello from Aurex M0"`
-165..166 r_paren `)`
-166..167 semicolon `;`
-172..178 kw_return `return`
-179..180 integer_literal `0`
-180..181 semicolon `;`
-182..183 r_brace `}`
-184..184 eof
+77..79 kw_fn `fn`
+80..84 identifier `main`
+84..85 l_paren `(`
+85..86 r_paren `)`
+87..89 arrow `->`
+90..93 kw_i32 `i32`
+94..95 l_brace `{`
+100..104 identifier `puts`
+104..105 l_paren `(`
+105..127 c_string_literal `c"hello from Aurex M0"`
+127..128 r_paren `)`
+128..129 semicolon `;`
+134..140 kw_return `return`
+141..142 integer_literal `0`
+142..143 semicolon `;`
+144..145 r_brace `}`
+146..146 eof

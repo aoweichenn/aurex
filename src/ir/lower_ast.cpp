@@ -52,6 +52,15 @@ namespace {
     return Linkage::internal;
 }
 
+[[nodiscard]] bool is_root_aurex_entry(const syntax::AstModule& ast, const base::u32 index, const syntax::ItemNode& item) noexcept {
+    return item.kind == syntax::ItemKind::fn_decl &&
+           item.name == "main" &&
+           !item.is_extern_c &&
+           !item.is_export_c &&
+           index < ast.item_modules.size() &&
+           ast.item_modules[index].value == 0;
+}
+
 [[nodiscard]] sema::TypeHandle expr_type(const sema::CheckedModule& checked, const syntax::ExprId expr) noexcept {
     if (!syntax::is_valid(expr) || expr.value >= checked.expr_types.size()) {
         return sema::invalid_type_handle;
@@ -177,6 +186,7 @@ private:
             function.call_conv = item.is_extern_c || item.is_export_c
                 ? AbiCallConv::c
                 : AbiCallConv::aurex;
+            function.is_entry = is_root_aurex_entry(ast_, index, item);
             function.return_type = syntax_type(item.return_type);
             for (const syntax::ParamDecl& param : item.params) {
                 function.signature_params.push_back(FunctionParam {

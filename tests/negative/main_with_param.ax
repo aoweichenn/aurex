@@ -1,0 +1,5 @@
+module main_with_param;
+
+fn main(argc: i32) -> i32 {
+    return argc;
+}

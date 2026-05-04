@@ -138,6 +138,20 @@ private:
         if (function.linkage == Linkage::export_c && function.call_conv != AbiCallConv::c) {
             fail("exported function @" + function.symbol + " must use C ABI");
         }
+        if (function.is_entry) {
+            if (function.linkage != Linkage::internal) {
+                fail("entry function @" + function.symbol + " must use internal linkage");
+            }
+            if (function.call_conv != AbiCallConv::aurex) {
+                fail("entry function @" + function.symbol + " must use Aurex ABI");
+            }
+            if (!function.signature_params.empty()) {
+                fail("entry function @" + function.symbol + " must not have parameters");
+            }
+            if (!module_.types.same(function.return_type, module_.types.builtin(sema::BuiltinType::i32))) {
+                fail("entry function @" + function.symbol + " must return i32");
+            }
+        }
         if (function.linkage != Linkage::extern_c && function.blocks.empty()) {
             fail("function @" + function.symbol + " has no blocks");
         }

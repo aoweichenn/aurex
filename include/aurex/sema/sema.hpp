@@ -71,6 +71,7 @@ public:
 private:
     void register_type_names();
     void register_value_names();
+    void analyze_entry_points();
     void analyze_struct_properties();
     void analyze_const_decls();
     void analyze_function_body(const syntax::ItemNode& function);

@@ -228,8 +228,11 @@ std::string dump_module(const Module& module) {
         }
         out << ") @" << function.symbol
             << " linkage(" << linkage_name(function.linkage) << ")"
-            << " abi(" << call_conv_name(function.call_conv) << ") -> "
-            << module.types.display_name(function.return_type) << " {\n";
+            << " abi(" << call_conv_name(function.call_conv) << ")";
+        if (function.is_entry) {
+            out << " entry";
+        }
+        out << " -> " << module.types.display_name(function.return_type) << " {\n";
         if (!function.param_values.empty()) {
             out << "  params";
             for (ValueId param : function.param_values) {

@@ -232,6 +232,18 @@ fn cfg_write_air_cfg_edge(file: *mut OutputFile, function: *mut AirFunction, edg
         if !cfg_write_air_block_ref(file, function, edge.target) { return false; }
         return ir_write_text(file, c"\n");
     }
+    if edge.kind == AIR_EDGE_BREAK {
+        if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+        if !ir_write_text(file, c"edge break ") { return false; }
+        if !cfg_write_air_block_ref(file, function, edge.target) { return false; }
+        return ir_write_text(file, c"\n");
+    }
+    if edge.kind == AIR_EDGE_CONTINUE {
+        if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
+        if !ir_write_text(file, c"edge continue ") { return false; }
+        if !cfg_write_air_block_ref(file, function, edge.target) { return false; }
+        return ir_write_text(file, c"\n");
+    }
     if edge.kind == AIR_EDGE_SCOPE {
         if !cfg_write_air_edge_prefix(file, function, edge.source) { return false; }
         if !ir_write_text(file, c"scope ") { return false; }
@@ -265,38 +277,6 @@ fn cfg_write_air_cfg_edges(file: *mut OutputFile, function: *mut AirFunction) ->
     return true;
 }
 
-fn cfg_block_has_loop_control(ast: *mut AstModule, block_id: i32) -> bool {
-    if block_id < 0 || block_id >= ast.block_count {
-        return false;
-    }
-    let block: AstBlockNode = ast.blocks[block_id];
-    var index: i32 = 0;
-    while index < block.stmt_count {
-        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
-        if stmt_id >= 0 && stmt_id < ast.stmt_count {
-            let stmt: AstStmtNode = ast.stmts[stmt_id];
-            if stmt.kind == AST_STMT_BREAK || stmt.kind == AST_STMT_CONTINUE {
-                return true;
-            }
-            if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
-                if cfg_block_has_loop_control(ast, stmt.then_block) {
-                    return true;
-                }
-            }
-            if stmt.kind == AST_STMT_IF {
-                if cfg_block_has_loop_control(ast, stmt.then_block) {
-                    return true;
-                }
-                if cfg_block_has_loop_control(ast, stmt.else_block) {
-                    return true;
-                }
-            }
-        }
-        index = index + 1;
-    }
-    return false;
-}
-
 fn cfg_write_snapshot(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, body_block: i32) -> bool {
     if body_block < 0 || body_block >= ast.block_count {
         return true;
@@ -304,9 +284,6 @@ fn cfg_write_snapshot(file: *mut OutputFile, source: *const u8, ast: *mut AstMod
     var function: AirFunction = air_lower_function(source, ast, item_id);
     if !function.ok {
         air_free_function(function);
-        if cfg_block_has_loop_control(ast, body_block) {
-            return ir_write_text(file, c"  ; air_ir lowering(air_loop_control_pending)\n");
-        }
         return ir_write_text(file, c"  ; air_ir lowering(air_lower_pending)\n");
     }
     let verified: bool = air_verify_function(&function);

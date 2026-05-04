@@ -650,6 +650,15 @@ TEST_F(AurexIntegrationTest, Stage1ModuleGraphAndSnapshots) {
     expect_contains(seed_tac, "c_string c\"Aurex M0 selfhost seed\"");
     EXPECT_EQ(count_lines_starting_with(seed_tac, "  ; air_ir lowering("), 0);
 
+    const std::string lang_tac = read_text(run_stage1(stage1_bin, selfhost / "smoke" / "stage1_lang.ax", "stage1_lang.stage1.tac"));
+    expect_contains_all(lang_tac, {
+        "edge break ^air",
+        "edge continue ^air",
+        "cfg ^block3 edge break",
+        "cfg ^block4 edge continue",
+    });
+    EXPECT_EQ(count_lines_starting_with(lang_tac, "  ; air_ir lowering("), 0);
+
     const std::string flow_tac = read_text(run_stage1(stage1_bin, selfhost / "smoke" / "stage1_flow.ax", "stage1_flow.stage1.tac"));
     expect_contains_all(flow_tac, {
         "fn helper(limit: i32)",
@@ -783,9 +792,8 @@ TEST_F(AurexIntegrationTest, Stage1CompilerBundleAirGapBaseline) {
 
     EXPECT_EQ(count_lines_starting_with(bundle, "; selfhost_module "), 0)
         << "the selfhost compiler bundle should not fall back to parser or sema module placeholders";
-    EXPECT_EQ(count_lines_starting_with(bundle, "  ; air_ir lowering(air_lower_pending)"), 0);
-    EXPECT_EQ(count_lines_starting_with(bundle, "  ; air_ir lowering(air_verify_pending)"), 34);
-    EXPECT_EQ(count_lines_starting_with(bundle, "  ; air_ir lowering(air_loop_control_pending)"), 2);
+    EXPECT_EQ(count_lines_starting_with(bundle, "  ; air_ir lowering("), 0);
+    EXPECT_EQ(bundle.find("air_loop_control_pending"), std::string::npos);
 }
 
 } // namespace

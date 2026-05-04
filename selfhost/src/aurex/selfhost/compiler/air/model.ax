@@ -57,6 +57,8 @@ const AIR_EDGE_WHILE_TRUE: i32 = 5;
 const AIR_EDGE_WHILE_FALSE: i32 = 6;
 const AIR_EDGE_LOOP_BACK: i32 = 7;
 const AIR_EDGE_RETURN: i32 = 8;
+const AIR_EDGE_BREAK: i32 = 9;
+const AIR_EDGE_CONTINUE: i32 = 10;
 
 const AIR_INST_NONE: i32 = 0;
 const AIR_INST_EXPR: i32 = 1;

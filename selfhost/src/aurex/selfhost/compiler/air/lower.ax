@@ -43,10 +43,10 @@ fn air_lower_stmt_is_control(stmt: AstStmtNode) -> bool {
 }
 
 fn air_lower_add_block_tree(function: *mut AirFunction, ast: *mut AstModule, block_id: i32) -> bool {
-    return air_lower_add_block_segments(function, ast, block_id, 0, -1, AIR_EDGE_FALLTHROUGH, true) >= 0;
+    return air_lower_add_block_segments(function, ast, block_id, 0, -1, AIR_EDGE_FALLTHROUGH, -1, -1, false, true) >= 0;
 }
 
-fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule, block_id: i32, start_stmt: i32, fallthrough_target: i32, fallthrough_kind: i32, require_block: bool) -> i32 {
+fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule, block_id: i32, start_stmt: i32, fallthrough_target: i32, fallthrough_kind: i32, break_target: i32, continue_target: i32, in_loop: bool, require_block: bool) -> i32 {
     if block_id < 0 || block_id >= ast.block_count {
         function.ok = false;
         return -1;
@@ -94,12 +94,28 @@ fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule,
     if stmt.kind == AST_STMT_RETURN {
         return segment_id;
     }
-    if stmt.kind == AST_STMT_BREAK || stmt.kind == AST_STMT_CONTINUE {
-        function.ok = false;
-        return -1;
+    if stmt.kind == AST_STMT_BREAK {
+        if !in_loop {
+            function.ok = false;
+            return -1;
+        }
+        if !air_set_block_fallthrough(function, segment_id, break_target, AIR_EDGE_BREAK) {
+            return -1;
+        }
+        return segment_id;
+    }
+    if stmt.kind == AST_STMT_CONTINUE {
+        if !in_loop || continue_target < 0 {
+            function.ok = false;
+            return -1;
+        }
+        if !air_set_block_fallthrough(function, segment_id, continue_target, AIR_EDGE_CONTINUE) {
+            return -1;
+        }
+        return segment_id;
     }
 
-    let continuation: i32 = air_lower_add_block_segments(function, ast, block_id, control_index + 1, fallthrough_target, fallthrough_kind, false);
+    let continuation: i32 = air_lower_add_block_segments(function, ast, block_id, control_index + 1, fallthrough_target, fallthrough_kind, break_target, continue_target, in_loop, false);
     if continuation < 0 && control_index + 1 < block.stmt_count {
         return -1;
     }
@@ -107,19 +123,19 @@ fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule,
         return -1;
     }
     if stmt.kind == AST_STMT_BLOCK {
-        let child: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, continuation, AIR_EDGE_FALLTHROUGH, true);
+        let child: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, continuation, AIR_EDGE_FALLTHROUGH, break_target, continue_target, in_loop, true);
         if child < 0 {
             return -1;
         }
         return segment_id;
     }
     if stmt.kind == AST_STMT_IF {
-        let then_child: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, continuation, AIR_EDGE_FALLTHROUGH, true);
+        let then_child: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, continuation, AIR_EDGE_FALLTHROUGH, break_target, continue_target, in_loop, true);
         if then_child < 0 {
             return -1;
         }
         if stmt.else_block >= 0 {
-            let else_child: i32 = air_lower_add_block_segments(function, ast, stmt.else_block, 0, continuation, AIR_EDGE_FALLTHROUGH, true);
+            let else_child: i32 = air_lower_add_block_segments(function, ast, stmt.else_block, 0, continuation, AIR_EDGE_FALLTHROUGH, break_target, continue_target, in_loop, true);
             if else_child < 0 {
                 return -1;
             }
@@ -127,7 +143,7 @@ fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule,
         return segment_id;
     }
     if stmt.kind == AST_STMT_WHILE {
-        let body: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, segment_id, AIR_EDGE_LOOP_BACK, true);
+        let body: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, segment_id, AIR_EDGE_LOOP_BACK, continuation, segment_id, true, true);
         if body < 0 {
             return -1;
         }
@@ -503,7 +519,8 @@ fn air_lower_add_stmt_instruction(function: *mut AirFunction, ast: *mut AstModul
         return false;
     }
     let stmt: AstStmtNode = ast.stmts[stmt_id];
-    if stmt.kind == AST_STMT_RETURN || stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE {
+    if stmt.kind == AST_STMT_RETURN || stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE ||
+        stmt.kind == AST_STMT_BREAK || stmt.kind == AST_STMT_CONTINUE {
         return true;
     }
     if stmt.kind == AST_STMT_EXPR {

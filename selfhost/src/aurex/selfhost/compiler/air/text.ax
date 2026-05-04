@@ -64,6 +64,8 @@ fn air_text_write_edge_kind(file: *mut OutputFile, kind: i32) -> bool {
     if kind == AIR_EDGE_WHILE_FALSE { return ir_write_text(file, c"while_false"); }
     if kind == AIR_EDGE_LOOP_BACK { return ir_write_text(file, c"loop_back"); }
     if kind == AIR_EDGE_RETURN { return ir_write_text(file, c"return"); }
+    if kind == AIR_EDGE_BREAK { return ir_write_text(file, c"break"); }
+    if kind == AIR_EDGE_CONTINUE { return ir_write_text(file, c"continue"); }
     return ir_write_text(file, c"edge?");
 }
 

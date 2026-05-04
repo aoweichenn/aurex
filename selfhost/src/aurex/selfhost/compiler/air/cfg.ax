@@ -57,6 +57,12 @@ fn air_cfg_add_stmt_edges(function: *mut AirFunction, ast: *mut AstModule, air_b
         }
         return air_cfg_add_value_edge(function, AIR_EDGE_RETURN, stmt_id, air_block_id, -1, value);
     }
+    if stmt.kind == AST_STMT_BREAK {
+        return air_cfg_add_value_edge(function, AIR_EDGE_BREAK, stmt_id, air_block_id, function.blocks[air_block_id].fallthrough_target, -1);
+    }
+    if stmt.kind == AST_STMT_CONTINUE {
+        return air_cfg_add_value_edge(function, AIR_EDGE_CONTINUE, stmt_id, air_block_id, function.blocks[air_block_id].fallthrough_target, -1);
+    }
     if stmt.kind == AST_STMT_BLOCK {
         let target: i32 = air_cfg_find_block(function, stmt.then_block);
         if target < 0 {
@@ -170,7 +176,9 @@ fn air_cfg_add_block_edges(function: *mut AirFunction, ast: *mut AstModule, air_
         if stmt.kind == AST_STMT_RETURN ||
             stmt.kind == AST_STMT_BLOCK ||
             stmt.kind == AST_STMT_IF ||
-            stmt.kind == AST_STMT_WHILE {
+            stmt.kind == AST_STMT_WHILE ||
+            stmt.kind == AST_STMT_BREAK ||
+            stmt.kind == AST_STMT_CONTINUE {
             saw_control = true;
         }
         index = index + 1;
@@ -254,9 +262,15 @@ fn air_cfg_apply_block_terminators(function: *mut AirFunction) -> bool {
                         }
                     }
                 } else {
-                    if edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK {
-                        if !air_set_terminator(function, block_id, air_jump_terminator(edge.target)) {
-                            return false;
+                    if edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK || edge.kind == AIR_EDGE_BREAK || edge.kind == AIR_EDGE_CONTINUE {
+                        if edge.target >= 0 {
+                            if !air_set_terminator(function, block_id, air_jump_terminator(edge.target)) {
+                                return false;
+                            }
+                        } else {
+                            if !air_set_terminator(function, block_id, air_fallthrough_terminator()) {
+                                return false;
+                            }
                         }
                     } else {
                         if !air_set_terminator(function, block_id, air_edges_terminator()) {

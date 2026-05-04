@@ -35,6 +35,10 @@ fn air_flow_attach_condition_arg(function: *mut AirFunction, edge_id: i32) -> bo
     if air_flow_target_predecessor_count(function, edge.target) != 1 {
         return true;
     }
+    let condition_value: AirValue = function.values[edge.condition];
+    if condition_value.type_id < 0 && condition_value.sema_kind == AIR_SEMA_UNKNOWN {
+        return true;
+    }
     let block: AirBlock = function.blocks[edge.target];
     if block.param_count == 0 {
         if air_add_block_param_for_value(function, edge.target, edge.condition, -1, -1) < 0 {

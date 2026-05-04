@@ -60,7 +60,9 @@ fn air_valid_edge_kind(kind: i32) -> bool {
         kind == AIR_EDGE_WHILE_TRUE ||
         kind == AIR_EDGE_WHILE_FALSE ||
         kind == AIR_EDGE_LOOP_BACK ||
-        kind == AIR_EDGE_RETURN;
+        kind == AIR_EDGE_RETURN ||
+        kind == AIR_EDGE_BREAK ||
+        kind == AIR_EDGE_CONTINUE;
 }
 
 fn air_valid_binding_ref(function: *mut AirFunction, binding_kind: i32, binding_id: i32, allow_none: bool) -> bool {
@@ -675,10 +677,14 @@ fn air_verify_block_segment(function: *mut AirFunction, block: AirBlock) -> bool
         return false;
     }
     if block.fallthrough_target < 0 {
-        return block.fallthrough_kind == AIR_EDGE_FALLTHROUGH;
+        return block.fallthrough_kind == AIR_EDGE_FALLTHROUGH ||
+            block.fallthrough_kind == AIR_EDGE_BREAK ||
+            block.fallthrough_kind == AIR_EDGE_CONTINUE;
     }
     return block.fallthrough_kind == AIR_EDGE_FALLTHROUGH ||
-        block.fallthrough_kind == AIR_EDGE_LOOP_BACK;
+        block.fallthrough_kind == AIR_EDGE_LOOP_BACK ||
+        block.fallthrough_kind == AIR_EDGE_BREAK ||
+        block.fallthrough_kind == AIR_EDGE_CONTINUE;
 }
 
 fn air_verify_terminator(function: *mut AirFunction, terminator: AirTerminator) -> bool {
@@ -751,6 +757,12 @@ fn air_verify_edge(function: *mut AirFunction, edge: AirEdge) -> bool {
             edge.target < 0 &&
             edge.condition < 0 &&
             (edge.value < 0 || air_valid_value(function, edge.value));
+    }
+    if edge.kind == AIR_EDGE_BREAK || edge.kind == AIR_EDGE_CONTINUE {
+        return edge.ast_stmt_id >= 0 &&
+            (edge.target < 0 || air_valid_block(function, edge.target)) &&
+            edge.condition < 0 &&
+            edge.value < 0;
     }
     return false;
 }
@@ -930,7 +942,8 @@ fn air_verify_terminator_matches_edges(function: *mut AirFunction, block_id: i32
     }
     if terminator.kind == AIR_TERM_FALLTHROUGH {
         let edge: AirEdge = air_verify_single_block_edge(function, block_id);
-        return edge.kind == AIR_EDGE_FALLTHROUGH;
+        return edge.kind == AIR_EDGE_FALLTHROUGH ||
+            ((edge.kind == AIR_EDGE_BREAK || edge.kind == AIR_EDGE_CONTINUE) && edge.target < 0);
     }
     if terminator.kind == AIR_TERM_RETURN {
         let edge: AirEdge = air_verify_single_block_edge(function, block_id);
@@ -938,7 +951,7 @@ fn air_verify_terminator_matches_edges(function: *mut AirFunction, block_id: i32
     }
     if terminator.kind == AIR_TERM_JUMP {
         let edge: AirEdge = air_verify_single_block_edge(function, block_id);
-        return (edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK || edge.kind == AIR_EDGE_FALLTHROUGH) &&
+        return (edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK || edge.kind == AIR_EDGE_FALLTHROUGH || edge.kind == AIR_EDGE_BREAK || edge.kind == AIR_EDGE_CONTINUE) &&
             edge.target == terminator.target;
     }
     if terminator.kind == AIR_TERM_BRANCH {

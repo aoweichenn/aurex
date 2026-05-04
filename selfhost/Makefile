@@ -26,10 +26,12 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/parser/expr.ax \
 	src/aurex/selfhost/parser/seed.ax \
 	src/aurex/selfhost/sema/names.ax \
+	src/aurex/selfhost/sema/calls.ax \
 	src/aurex/selfhost/sema/items.ax \
 	src/aurex/selfhost/sema/locals.ax \
 	src/aurex/selfhost/sema/members.ax \
 	src/aurex/selfhost/sema/resolve.ax \
+	src/aurex/selfhost/sema/typing.ax \
 	src/aurex/selfhost/sema/types.ax \
 	src/aurex/selfhost/compiler/io.ax \
 	src/aurex/selfhost/compiler/ir/writer.ax \
@@ -105,10 +107,12 @@ check: all
 	grep -q 'aurex.selfhost.compiler.ir.names' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.writer' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.names' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.calls' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.items' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.locals' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.members' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.resolve' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.typing' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.types' $(BUILD_DIR)/aurexc_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
 	$(BUILD_DIR)/lexer_file ../examples/hello.ax > $(BUILD_DIR)/lexer_file_hello.tokens

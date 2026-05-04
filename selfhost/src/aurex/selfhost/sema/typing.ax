@@ -1,0 +1,566 @@
+module aurex.selfhost.sema.typing;
+
+import aurex.selfhost.sema.names;
+import aurex.selfhost.syntax.ast;
+
+const SEMA_EXPR_UNKNOWN: i32 = 0;
+const SEMA_EXPR_TYPE_ID: i32 = 1;
+const SEMA_EXPR_PRIMITIVE: i32 = 2;
+const SEMA_EXPR_INTEGER: i32 = 3;
+const SEMA_EXPR_NULL: i32 = 4;
+const SEMA_EXPR_ITEM: i32 = 5;
+const SEMA_EXPR_C_STRING: i32 = 6;
+
+struct SemaExprType {
+    ok: bool;
+    kind: i32;
+    type_id: i32;
+    primitive: i32;
+    item_id: i32;
+}
+
+fn sema_unknown_expr_type() -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_UNKNOWN, type_id: -1, primitive: -1, item_id: -1 };
+}
+
+fn sema_bad_expr_type() -> SemaExprType {
+    return SemaExprType { ok: false, kind: SEMA_EXPR_UNKNOWN, type_id: -1, primitive: -1, item_id: -1 };
+}
+
+fn sema_type_id_expr_type(type_id: i32) -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_TYPE_ID, type_id: type_id, primitive: -1, item_id: -1 };
+}
+
+fn sema_primitive_expr_type(primitive: i32) -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_PRIMITIVE, type_id: -1, primitive: primitive, item_id: -1 };
+}
+
+fn sema_integer_expr_type() -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_INTEGER, type_id: -1, primitive: -1, item_id: -1 };
+}
+
+fn sema_null_expr_type() -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_NULL, type_id: -1, primitive: -1, item_id: -1 };
+}
+
+fn sema_item_expr_type(item_id: i32) -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_ITEM, type_id: -1, primitive: -1, item_id: item_id };
+}
+
+fn sema_c_string_expr_type() -> SemaExprType {
+    return SemaExprType { ok: true, kind: SEMA_EXPR_C_STRING, type_id: -1, primitive: -1, item_id: -1 };
+}
+
+fn sema_primitive_is_integer(primitive: i32) -> bool {
+    return primitive == AST_PRIM_I8 || primitive == AST_PRIM_U8 ||
+        primitive == AST_PRIM_I16 || primitive == AST_PRIM_U16 ||
+        primitive == AST_PRIM_I32 || primitive == AST_PRIM_U32 ||
+        primitive == AST_PRIM_I64 || primitive == AST_PRIM_U64 ||
+        primitive == AST_PRIM_ISIZE || primitive == AST_PRIM_USIZE;
+}
+
+fn sema_type_ids_match(source: *const u8, ast: *mut AstModule, expected_id: i32, actual_id: i32) -> bool {
+    if expected_id < 0 || expected_id >= ast.type_count || actual_id < 0 || actual_id >= ast.type_count {
+        return false;
+    }
+    let expected: AstTypeNode = ast.types[expected_id];
+    let actual: AstTypeNode = ast.types[actual_id];
+    if expected.kind != actual.kind {
+        return false;
+    }
+    if expected.kind == AST_TYPE_PRIMITIVE {
+        return expected.primitive == actual.primitive;
+    }
+    if expected.kind == AST_TYPE_NAMED {
+        return sema_range_equal(source, expected.name_begin, expected.name_end, actual.name_begin, actual.name_end);
+    }
+    if expected.kind == AST_TYPE_POINTER {
+        if expected.mutability != actual.mutability {
+            return false;
+        }
+        return sema_type_ids_match(source, ast, expected.pointee, actual.pointee);
+    }
+    if expected.kind == AST_TYPE_ARRAY {
+        if !sema_range_equal(source, expected.array_count_begin, expected.array_count_end, actual.array_count_begin, actual.array_count_end) {
+            return false;
+        }
+        return sema_type_ids_match(source, ast, expected.array_element, actual.array_element);
+    }
+    return false;
+}
+
+fn sema_expected_is_primitive(ast: *mut AstModule, expected_id: i32, primitive: i32) -> bool {
+    if expected_id < 0 || expected_id >= ast.type_count {
+        return false;
+    }
+    let expected: AstTypeNode = ast.types[expected_id];
+    return expected.kind == AST_TYPE_PRIMITIVE && expected.primitive == primitive;
+}
+
+fn sema_expected_is_integer(ast: *mut AstModule, expected_id: i32) -> bool {
+    if expected_id < 0 || expected_id >= ast.type_count {
+        return false;
+    }
+    let expected: AstTypeNode = ast.types[expected_id];
+    return expected.kind == AST_TYPE_PRIMITIVE && sema_primitive_is_integer(expected.primitive);
+}
+
+fn sema_expected_is_pointer(ast: *mut AstModule, expected_id: i32) -> bool {
+    if expected_id < 0 || expected_id >= ast.type_count {
+        return false;
+    }
+    return ast.types[expected_id].kind == AST_TYPE_POINTER;
+}
+
+fn sema_expected_is_c_string(ast: *mut AstModule, expected_id: i32) -> bool {
+    if expected_id < 0 || expected_id >= ast.type_count {
+        return false;
+    }
+    let expected: AstTypeNode = ast.types[expected_id];
+    if expected.kind != AST_TYPE_POINTER || expected.mutability != AST_MUT_CONST {
+        return false;
+    }
+    if expected.pointee < 0 || expected.pointee >= ast.type_count {
+        return false;
+    }
+    let pointee: AstTypeNode = ast.types[expected.pointee];
+    return pointee.kind == AST_TYPE_PRIMITIVE && pointee.primitive == AST_PRIM_U8;
+}
+
+fn sema_find_item_by_name(source: *const u8, ast: *mut AstModule, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if sema_range_equal(source, item.name_begin, item.name_end, name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_find_function_item(source: *const u8, ast: *mut AstModule, name_begin: i32, name_end: i32) -> i32 {
+    let item_id: i32 = sema_find_item_by_name(source, ast, name_begin, name_end);
+    if item_id < 0 {
+        return -1;
+    }
+    let item: AstItemNode = ast.items[item_id];
+    if item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN || item.kind == AST_ITEM_EXTERN_FN {
+        return item_id;
+    }
+    return -1;
+}
+
+fn sema_find_param_type(source: *const u8, ast: *mut AstModule, item: AstItemNode, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < item.param_count {
+        let param: AstParamNode = ast.params[item.first_param + index];
+        if sema_range_equal(source, param.name_begin, param.name_end, name_begin, name_end) {
+            return param.type_id;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_find_local_type_in_block(source: *const u8, ast: *mut AstModule, block_id: i32, name_begin: i32, name_end: i32) -> i32 {
+    if block_id < 0 || block_id >= ast.block_count {
+        return -1;
+    }
+    let block: AstBlockNode = ast.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
+            if sema_range_equal(source, stmt.name_begin, stmt.name_end, name_begin, name_end) {
+                return stmt.type_id;
+            }
+        }
+        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
+            let found: i32 = sema_find_local_type_in_block(source, ast, stmt.then_block, name_begin, name_end);
+            if found >= 0 {
+                return found;
+            }
+        }
+        if stmt.kind == AST_STMT_IF {
+            let then_found: i32 = sema_find_local_type_in_block(source, ast, stmt.then_block, name_begin, name_end);
+            if then_found >= 0 {
+                return then_found;
+            }
+            if stmt.else_block >= 0 {
+                let else_found: i32 = sema_find_local_type_in_block(source, ast, stmt.else_block, name_begin, name_end);
+                if else_found >= 0 {
+                    return else_found;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_find_struct_item_for_type(source: *const u8, ast: *mut AstModule, type_id: i32) -> i32 {
+    if type_id < 0 || type_id >= ast.type_count {
+        return -1;
+    }
+    var current_id: i32 = type_id;
+    var ty: AstTypeNode = ast.types[current_id];
+    if ty.kind == AST_TYPE_POINTER {
+        current_id = ty.pointee;
+        if current_id < 0 || current_id >= ast.type_count {
+            return -1;
+        }
+        ty = ast.types[current_id];
+    }
+    if ty.kind != AST_TYPE_NAMED {
+        return -1;
+    }
+    let item_id: i32 = sema_find_item_by_name(source, ast, ty.name_begin, ty.name_end);
+    if item_id < 0 {
+        return -1;
+    }
+    if ast.items[item_id].kind == AST_ITEM_STRUCT {
+        return item_id;
+    }
+    return -1;
+}
+
+fn sema_find_struct_field_type(source: *const u8, ast: *mut AstModule, item: AstItemNode, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < item.field_count {
+        let field: AstFieldNode = ast.fields[item.first_field + index];
+        if sema_range_equal(source, field.name_begin, field.name_end, name_begin, name_end) {
+            return field.type_id;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_expr_matches_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expected_type: i32, expr_id: i32) -> bool {
+    let inferred: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr_id);
+    if !inferred.ok {
+        return false;
+    }
+    if inferred.kind == SEMA_EXPR_UNKNOWN {
+        return true;
+    }
+    if inferred.kind == SEMA_EXPR_TYPE_ID {
+        return sema_type_ids_match(source, ast, expected_type, inferred.type_id);
+    }
+    if inferred.kind == SEMA_EXPR_PRIMITIVE {
+        return sema_expected_is_primitive(ast, expected_type, inferred.primitive);
+    }
+    if inferred.kind == SEMA_EXPR_INTEGER {
+        return sema_expected_is_integer(ast, expected_type);
+    }
+    if inferred.kind == SEMA_EXPR_NULL {
+        return sema_expected_is_pointer(ast, expected_type);
+    }
+    if inferred.kind == SEMA_EXPR_C_STRING {
+        return sema_expected_is_c_string(ast, expected_type);
+    }
+    if inferred.kind == SEMA_EXPR_ITEM {
+        if expected_type < 0 || expected_type >= ast.type_count || inferred.item_id < 0 || inferred.item_id >= ast.item_count {
+            return false;
+        }
+        let expected: AstTypeNode = ast.types[expected_type];
+        let item: AstItemNode = ast.items[inferred.item_id];
+        return expected.kind == AST_TYPE_NAMED && sema_range_equal(source, expected.name_begin, expected.name_end, item.name_begin, item.name_end);
+    }
+    return true;
+}
+
+fn sema_expr_matches_primitive(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, primitive: i32, expr_id: i32) -> bool {
+    let inferred: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr_id);
+    if !inferred.ok {
+        return false;
+    }
+    if inferred.kind == SEMA_EXPR_UNKNOWN {
+        return true;
+    }
+    if inferred.kind == SEMA_EXPR_PRIMITIVE {
+        return inferred.primitive == primitive;
+    }
+    if inferred.kind == SEMA_EXPR_TYPE_ID {
+        return sema_expected_is_primitive(ast, inferred.type_id, primitive);
+    }
+    return false;
+}
+
+fn sema_infer_identifier_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, name_begin: i32, name_end: i32) -> SemaExprType {
+    let param_type: i32 = sema_find_param_type(source, ast, fn_item, name_begin, name_end);
+    if param_type >= 0 {
+        return sema_type_id_expr_type(param_type);
+    }
+    if fn_item.body_block >= 0 {
+        let local_type: i32 = sema_find_local_type_in_block(source, ast, fn_item.body_block, name_begin, name_end);
+        if local_type >= 0 {
+            return sema_type_id_expr_type(local_type);
+        }
+    }
+    let item_id: i32 = sema_find_item_by_name(source, ast, name_begin, name_end);
+    if item_id >= 0 {
+        let item: AstItemNode = ast.items[item_id];
+        if item.kind == AST_ITEM_CONST {
+            return sema_type_id_expr_type(item.const_type);
+        }
+    }
+    return sema_unknown_expr_type();
+}
+
+fn sema_infer_call_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> SemaExprType {
+    if expr.left < 0 || expr.left >= ast.expr_count {
+        return sema_bad_expr_type();
+    }
+    let callee: AstExprNode = ast.exprs[expr.left];
+    if callee.kind != AST_EXPR_IDENTIFIER {
+        return sema_unknown_expr_type();
+    }
+    let item_id: i32 = sema_find_function_item(source, ast, callee.begin, callee.end);
+    if item_id < 0 {
+        return sema_unknown_expr_type();
+    }
+    let item: AstItemNode = ast.items[item_id];
+    var index: i32 = 0;
+    while index < item.param_count {
+        let param: AstParamNode = ast.params[item.first_param + index];
+        let arg: AstExprArg = ast.expr_args[expr.first_arg + index];
+        if !sema_expr_matches_type(source, ast, fn_item, param.type_id, arg.expr_id) {
+            return sema_bad_expr_type();
+        }
+        index = index + 1;
+    }
+    return sema_type_id_expr_type(item.return_type);
+}
+
+fn sema_infer_field_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> SemaExprType {
+    let object_type: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+    if !object_type.ok {
+        return sema_bad_expr_type();
+    }
+    if object_type.kind != SEMA_EXPR_TYPE_ID {
+        return sema_unknown_expr_type();
+    }
+    let item_id: i32 = sema_find_struct_item_for_type(source, ast, object_type.type_id);
+    if item_id < 0 {
+        return sema_unknown_expr_type();
+    }
+    let field_type: i32 = sema_find_struct_field_type(source, ast, ast.items[item_id], expr.name_begin, expr.name_end);
+    if field_type < 0 {
+        return sema_bad_expr_type();
+    }
+    return sema_type_id_expr_type(field_type);
+}
+
+fn sema_infer_index_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> SemaExprType {
+    let object_type: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+    if !object_type.ok {
+        return sema_bad_expr_type();
+    }
+    if object_type.kind != SEMA_EXPR_TYPE_ID {
+        return sema_unknown_expr_type();
+    }
+    var type_id: i32 = object_type.type_id;
+    if type_id < 0 || type_id >= ast.type_count {
+        return sema_bad_expr_type();
+    }
+    var ty: AstTypeNode = ast.types[type_id];
+    if ty.kind == AST_TYPE_POINTER {
+        type_id = ty.pointee;
+        if type_id < 0 || type_id >= ast.type_count {
+            return sema_bad_expr_type();
+        }
+        ty = ast.types[type_id];
+    }
+    if ty.kind == AST_TYPE_ARRAY {
+        return sema_type_id_expr_type(ty.array_element);
+    }
+    if ty.kind == AST_TYPE_POINTER {
+        return sema_type_id_expr_type(ty.pointee);
+    }
+    return sema_unknown_expr_type();
+}
+
+fn sema_infer_deref_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> SemaExprType {
+    let operand: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+    if !operand.ok {
+        return sema_bad_expr_type();
+    }
+    if operand.kind != SEMA_EXPR_TYPE_ID {
+        return sema_unknown_expr_type();
+    }
+    if operand.type_id < 0 || operand.type_id >= ast.type_count {
+        return sema_bad_expr_type();
+    }
+    let ty: AstTypeNode = ast.types[operand.type_id];
+    if ty.kind == AST_TYPE_POINTER {
+        return sema_type_id_expr_type(ty.pointee);
+    }
+    return sema_unknown_expr_type();
+}
+
+fn sema_binary_result_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> SemaExprType {
+    if expr.op == AST_OP_LT || expr.op == AST_OP_LE || expr.op == AST_OP_GT || expr.op == AST_OP_GE ||
+        expr.op == AST_OP_EQ || expr.op == AST_OP_NE || expr.op == AST_OP_AND || expr.op == AST_OP_OR {
+        return sema_primitive_expr_type(AST_PRIM_BOOL);
+    }
+    let left: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+    if !left.ok {
+        return sema_bad_expr_type();
+    }
+    if left.kind != SEMA_EXPR_UNKNOWN {
+        return left;
+    }
+    let right: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.right);
+    if !right.ok {
+        return sema_bad_expr_type();
+    }
+    if right.kind != SEMA_EXPR_UNKNOWN {
+        return right;
+    }
+    return sema_unknown_expr_type();
+}
+
+fn sema_infer_expr_type(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr_id: i32) -> SemaExprType {
+    if expr_id < 0 || expr_id >= ast.expr_count {
+        return sema_bad_expr_type();
+    }
+    let expr: AstExprNode = ast.exprs[expr_id];
+    if expr.kind == AST_EXPR_INTEGER {
+        return sema_integer_expr_type();
+    }
+    if expr.kind == AST_EXPR_BOOL {
+        return sema_primitive_expr_type(AST_PRIM_BOOL);
+    }
+    if expr.kind == AST_EXPR_NULL {
+        return sema_null_expr_type();
+    }
+    if expr.kind == AST_EXPR_C_STRING {
+        return sema_c_string_expr_type();
+    }
+    if expr.kind == AST_EXPR_IDENTIFIER {
+        return sema_infer_identifier_type(source, ast, fn_item, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_CAST || expr.kind == AST_EXPR_PTR_CAST || expr.kind == AST_EXPR_BIT_CAST || expr.kind == AST_EXPR_PTR_FROM_ADDR {
+        return sema_type_id_expr_type(expr.type_id);
+    }
+    if expr.kind == AST_EXPR_SIZE_OF || expr.kind == AST_EXPR_ALIGN_OF || expr.kind == AST_EXPR_PTR_ADDR {
+        return sema_primitive_expr_type(AST_PRIM_USIZE);
+    }
+    if expr.kind == AST_EXPR_CALL {
+        return sema_infer_call_type(source, ast, fn_item, expr);
+    }
+    if expr.kind == AST_EXPR_FIELD {
+        return sema_infer_field_type(source, ast, fn_item, expr);
+    }
+    if expr.kind == AST_EXPR_INDEX {
+        return sema_infer_index_type(source, ast, fn_item, expr);
+    }
+    if expr.kind == AST_EXPR_STRUCT_LITERAL {
+        let item_id: i32 = sema_find_item_by_name(source, ast, expr.name_begin, expr.name_end);
+        if item_id >= 0 {
+            return sema_item_expr_type(item_id);
+        }
+        return sema_unknown_expr_type();
+    }
+    if expr.kind == AST_EXPR_BINARY {
+        return sema_binary_result_type(source, ast, fn_item, expr);
+    }
+    if expr.kind == AST_EXPR_UNARY {
+        if expr.op == AST_OP_NOT {
+            return sema_primitive_expr_type(AST_PRIM_BOOL);
+        }
+        if expr.op == AST_OP_DEREF {
+            return sema_infer_deref_type(source, ast, fn_item, expr);
+        }
+        if expr.op == AST_OP_NEG {
+            return sema_infer_expr_type(source, ast, fn_item, expr.left);
+        }
+    }
+    return sema_unknown_expr_type();
+}
+
+fn sema_check_stmt_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, stmt: AstStmtNode) -> bool {
+    if stmt.kind == AST_STMT_RETURN {
+        return sema_expr_matches_type(source, ast, fn_item, fn_item.return_type, stmt.expr_id);
+    }
+    if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
+        return sema_expr_matches_type(source, ast, fn_item, stmt.type_id, stmt.expr_id);
+    }
+    if stmt.kind == AST_STMT_ASSIGN {
+        let target: SemaExprType = sema_infer_expr_type(source, ast, fn_item, stmt.expr_id);
+        if !target.ok {
+            return false;
+        }
+        if target.kind == SEMA_EXPR_TYPE_ID {
+            return sema_expr_matches_type(source, ast, fn_item, target.type_id, stmt.rhs_expr_id);
+        }
+        return true;
+    }
+    if stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE {
+        if !sema_expr_matches_primitive(source, ast, fn_item, AST_PRIM_BOOL, stmt.expr_id) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn sema_check_block_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, block_id: i32) -> bool {
+    if block_id < 0 || block_id >= ast.block_count {
+        return false;
+    }
+    let block: AstBlockNode = ast.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        if stmt_id < 0 || stmt_id >= ast.stmt_count {
+            return false;
+        }
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if !sema_check_stmt_typing(source, ast, fn_item, stmt) {
+            return false;
+        }
+        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
+            if !sema_check_block_typing(source, ast, fn_item, stmt.then_block) {
+                return false;
+            }
+        }
+        if stmt.kind == AST_STMT_IF {
+            if !sema_check_block_typing(source, ast, fn_item, stmt.then_block) {
+                return false;
+            }
+            if stmt.else_block >= 0 {
+                if !sema_check_block_typing(source, ast, fn_item, stmt.else_block) {
+                    return false;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn sema_check_const_typing(source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    return sema_expr_matches_type(source, ast, item, item.const_type, item.const_expr);
+}
+
+fn sema_check_module_typing(source: *const u8, ast: *mut AstModule) -> bool {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if item.kind == AST_ITEM_CONST {
+            if !sema_check_const_typing(source, ast, item) {
+                return false;
+            }
+        }
+        if item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN {
+            if !sema_check_block_typing(source, ast, item, item.body_block) {
+                return false;
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}

@@ -198,12 +198,6 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         invocation.emit_kind == EmitKind::executable) {
 #ifdef AUREX_HAS_AURORA_BACKEND
         if (invocation.backend == BackendKind::aurora) {
-            if (invocation.emit_kind == EmitKind::executable) {
-                return base::Result<void>::fail({
-                    base::ErrorCode::codegen_error,
-                    "Aurora backend does not yet support executable output; use --emit=asm or --emit=obj"
-                });
-            }
             if (invocation.output_path.empty()) {
                 return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
             }
@@ -237,13 +231,55 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
                     return base::Result<void>::fail(write_result.error());
                 }
                 return base::Result<void>::ok();
-            } else {
-                auto aurora_result = backend::emit_aurora_obj(aurora_req);
-                if (!aurora_result) {
-                    return base::Result<void>::fail(aurora_result.error());
-                }
+            }
+
+            const std::filesystem::path obj_path =
+                invocation.emit_kind == EmitKind::executable
+                    ? (std::filesystem::temp_directory_path() /
+                       ("aurex_aurora_" +
+                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+                        ".o"))
+                    : invocation.output_path;
+
+            aurora_req.output_path = obj_path.string();
+            auto aurora_result = backend::emit_aurora_obj(aurora_req);
+            if (!aurora_result) {
+                return base::Result<void>::fail(aurora_result.error());
+            }
+
+            if (invocation.emit_kind == EmitKind::object) {
                 return base::Result<void>::ok();
             }
+
+            NativeCompileRequest link_req;
+            link_req.clang_path = invocation.clang_path;
+            link_req.clang_args = invocation.clang_args;
+            link_req.input_path = obj_path;
+            link_req.output_path = invocation.output_path;
+            link_req.emit_kind = EmitKind::executable;
+            link_req.input_is_llvm_ir = false;
+            if (invocation.use_standard_library) {
+                const std::optional<StandardLibraryLayout> standard_library = find_standard_library(invocation);
+                if (!standard_library) {
+                    std::error_code remove_error;
+                    std::filesystem::remove(obj_path, remove_error);
+                    return base::Result<void>::fail({
+                        base::ErrorCode::io_error,
+                        "failed to locate Aurex standard library; set AUREX_STDLIB or pass --no-stdlib"
+                    });
+                }
+                link_req.support_source_paths = standard_library_support_sources(
+                    *standard_library,
+                    invocation.standard_library_backend
+                );
+            }
+            auto link_result = invoke_clang(link_req);
+            std::error_code remove_error;
+            std::filesystem::remove(obj_path, remove_error);
+            if (!link_result) {
+                return link_result;
+            }
+            return base::Result<void>::ok();
         }
 #endif
 

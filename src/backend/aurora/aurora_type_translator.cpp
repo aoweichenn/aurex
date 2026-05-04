@@ -1,5 +1,6 @@
 #include "aurora_backend_internal.hpp"
 
+#include "Aurora/Air/Function.h"
 #include "Aurora/Air/Type.h"
 
 #include <cstdint>
@@ -129,7 +130,7 @@ aurora::Type* TypeTranslator::translate_record_layout(const ir::RecordLayout& re
 
 void TypeTranslator::translate_all_records() {
     for (const ir::RecordLayout& record : src_module_.records) {
-        translate_type(record.type);
+        static_cast<void>(translate_type(record.type));
     }
 }
 

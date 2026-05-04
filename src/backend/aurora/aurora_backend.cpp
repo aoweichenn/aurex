@@ -51,6 +51,10 @@ base::Result<AuroraEmitOutput> AuroraEmitter::emit_asm(const AuroraEmitRequest& 
     aurora::X86AsmPrinter printer(streamer, x86_reg_info);
 
     for (auto& fn : air_module->getFunctions()) {
+        if (fn->getBlocks().size() <= 1 &&
+            fn->getBlocks()[0]->getFirst() == nullptr) {
+            continue;
+        }
         aurora::MachineFunction mf(*fn, *target_machine);
         aurora::PassManager pm;
         aurora::CodeGenContext::addStandardPasses(pm, *target_machine);
@@ -90,12 +94,21 @@ base::Result<void> AuroraEmitter::emit_obj(const AuroraEmitRequest& request) {
     aurora::ObjectWriter writer;
 
     for (auto& fn : air_module->getFunctions()) {
+        if (fn->getBlocks().size() <= 1 &&
+            fn->getBlocks()[0]->getFirst() == nullptr) {
+            writer.addExternSymbol(fn->getName());
+            continue;
+        }
         aurora::MachineFunction mf(*fn, *target_machine);
         aurora::PassManager pm;
         aurora::CodeGenContext::addStandardPasses(pm, *target_machine);
         pm.run(mf);
 
         writer.addFunction(mf);
+    }
+
+    for (auto& gv : air_module->getGlobals()) {
+        writer.addGlobal(*gv);
     }
 
     if (!writer.write(request.output_path)) {

@@ -5,6 +5,8 @@
 #include "aurex/ir/ir.hpp"
 #include "aurex/sema/type.hpp"
 
+#include "Aurora/Air/Instruction.h"
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -52,7 +54,7 @@ private:
     void translate_block(base::u32 block_idx, const ir::BasicBlock& src_block, aurora::Function* dst_fn);
     [[nodiscard]] unsigned translate_value(const ir::Value& value, aurora::AIRBuilder& builder);
     void translate_terminator(const ir::Terminator& terminator, aurora::AIRBuilder& builder);
-    void translate_global_constant(const ir::GlobalConstant& constant);
+    void translate_global_constant(const ir::GlobalConstant& constant, base::u32 idx);
     void translate_record(const ir::RecordLayout& record);
 
     [[nodiscard]] bool is_signed_integer(sema::TypeHandle type) const;
@@ -67,6 +69,9 @@ private:
     std::unordered_map<base::u32, aurora::BasicBlock*> block_map_;
     std::unordered_map<base::u32, aurora::GlobalVariable*> const_map_;
     std::unordered_map<base::u32, aurora::Function*> func_map_;
+    std::unordered_map<std::string, aurora::GlobalVariable*> string_map_;
+    std::unordered_map<std::string, aurora::Function*> extern_func_map_;
+    int string_counter_ = 0;
 };
 
 class AuroraEmitter {

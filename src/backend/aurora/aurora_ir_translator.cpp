@@ -1,6 +1,7 @@
 #include "aurora_backend_internal.hpp"
 
 #include "Aurora/Air/Builder.h"
+#include "Aurora/Air/Constant.h"
 #include "Aurora/Air/Function.h"
 #include "Aurora/Air/Instruction.h"
 #include "Aurora/Air/Module.h"
@@ -57,12 +58,12 @@ aurora::ICmpCond IrTranslator::map_compare(const aurex::ir::BinaryOp op, const b
 }
 
 std::unique_ptr<aurora::Module> IrTranslator::translate() {
-    dst_module_ = std::make_unique<aurora::Module>(src_module_.values.empty() ? "aurex" : "aurex");
+    dst_module_ = std::make_unique<aurora::Module>("aurex");
 
     type_translator_.translate_all_records();
 
-    for (const ir::GlobalConstant& constant : src_module_.constants) {
-        translate_global_constant(constant);
+    for (base::u32 i = 0; i < static_cast<base::u32>(src_module_.constants.size()); ++i) {
+        translate_global_constant(src_module_.constants[i], i);
     }
 
     for (base::u32 i = 0; i < static_cast<base::u32>(src_module_.functions.size()); ++i) {
@@ -72,10 +73,30 @@ std::unique_ptr<aurora::Module> IrTranslator::translate() {
     return std::move(dst_module_);
 }
 
-void IrTranslator::translate_global_constant(const ir::GlobalConstant& constant) {
+void IrTranslator::translate_global_constant(const ir::GlobalConstant& constant, const base::u32 idx) {
     aurora::Type* type = type_translator_.translate_type(constant.type);
-    aurora::GlobalVariable* gv = dst_module_->createGlobal(type, constant.symbol.empty() ? constant.name : constant.symbol);
-    const_map_[static_cast<base::u32>(dst_module_->getGlobals().size())] = gv;
+    std::string symbol = constant.symbol.empty() ? constant.name : constant.symbol;
+
+    aurora::Constant* init = nullptr;
+    if (ir::is_valid(constant.initializer)) {
+        const ir::Value& init_val = src_module_.values[constant.initializer.value];
+        if (init_val.kind == ir::ValueKind::integer_literal ||
+            init_val.kind == ir::ValueKind::bool_literal ||
+            init_val.kind == ir::ValueKind::byte_literal ||
+            init_val.kind == ir::ValueKind::null_literal) {
+            int64_t val = 0;
+            if (init_val.kind != ir::ValueKind::null_literal) {
+                try { val = std::stoll(init_val.text, nullptr, 0); } catch (...) {}
+            }
+            init = aurora::ConstantInt::getInt(type, static_cast<uint64_t>(val));
+        }
+    }
+
+    aurora::GlobalVariable* gv = dst_module_->createGlobal(type, symbol);
+    if (init != nullptr) {
+        gv->setInitializer(init);
+    }
+    const_map_[idx] = gv;
 }
 
 void IrTranslator::translate_function(const ir::Function& src_fn, const base::u32 fn_idx) {
@@ -83,9 +104,19 @@ void IrTranslator::translate_function(const ir::Function& src_fn, const base::u3
         src_fn.return_type, src_fn.signature_params);
 
     std::string symbol = src_fn.symbol.empty() ? src_fn.name : src_fn.symbol;
+
+    if (src_fn.linkage == ir::Linkage::extern_c) {
+        func_map_[fn_idx] = nullptr;
+        return;
+    }
+
     aurora::Function* dst_fn = dst_module_->createFunction(fn_type, symbol);
 
     func_map_[fn_idx] = dst_fn;
+
+    if (src_fn.blocks.empty()) {
+        return;
+    }
 
     value_map_.clear();
     block_map_.clear();
@@ -104,7 +135,12 @@ void IrTranslator::translate_function(const ir::Function& src_fn, const base::u3
 }
 
 void IrTranslator::translate_block(const base::u32 block_idx, const ir::BasicBlock& src_block, aurora::Function* dst_fn) {
-    aurora::BasicBlock* dst_bb = dst_fn->createBasicBlock(src_block.name);
+    aurora::BasicBlock* dst_bb = nullptr;
+    if (block_idx == 0) {
+        dst_bb = dst_fn->getEntryBlock();
+    } else {
+        dst_bb = dst_fn->createBasicBlock(src_block.name);
+    }
     block_map_[block_idx] = dst_bb;
 
     aurora::AIRBuilder builder(dst_bb);
@@ -147,9 +183,28 @@ unsigned IrTranslator::translate_value(const ir::Value& value, aurora::AIRBuilde
     case ir::ValueKind::param: {
         return 0;
     }
-    case ir::ValueKind::constant_ref:
     case ir::ValueKind::string_literal:
     case ir::ValueKind::c_string_literal: {
+        auto it = string_map_.find(value.text);
+        if (it != string_map_.end()) {
+            return builder.createConstantInt(0);
+        }
+        aurora::Type* elem_ty = aurora::Type::getInt8Ty();
+        base::u32 len = static_cast<base::u32>(value.text.size());
+        if (value.kind == ir::ValueKind::c_string_literal) {
+            len = len + 1;
+        }
+        aurora::Type* arr_ty = aurora::Type::getArrayTy(elem_ty, len);
+        std::string gv_name = ".str." + std::to_string(string_counter_++);
+        aurora::GlobalVariable* gv = dst_module_->createGlobal(arr_ty, gv_name);
+        string_map_[value.text] = gv;
+        return builder.createConstantInt(0);
+    }
+    case ir::ValueKind::constant_ref: {
+        auto it = const_map_.find(value.constant.value);
+        if (it != const_map_.end()) {
+            return builder.createConstantInt(0);
+        }
         return builder.createConstantInt(0);
     }
     case ir::ValueKind::alloca: {
@@ -164,7 +219,7 @@ unsigned IrTranslator::translate_value(const ir::Value& value, aurora::AIRBuilde
     }
     case ir::ValueKind::store: {
         auto val_it = value_map_.find(value.lhs.value);
-        auto ptr_it = value_map_.find(value.rhs.value);
+        auto ptr_it = value_map_.find(value.object.value);
         unsigned val_vreg = (val_it != value_map_.end()) ? val_it->second : 0;
         unsigned ptr_vreg = (ptr_it != value_map_.end()) ? ptr_it->second : 0;
         builder.createStore(val_vreg, ptr_vreg);
@@ -270,6 +325,22 @@ unsigned IrTranslator::translate_value(const ir::Value& value, aurora::AIRBuilde
         if (fit != func_map_.end()) {
             callee_fn = fit->second;
         }
+
+        if (callee_fn == nullptr && value.call_target.value < src_module_.functions.size()) {
+            const ir::Function& target_fn = src_module_.functions[value.call_target.value];
+            std::string extern_sym = target_fn.symbol.empty() ? target_fn.name : target_fn.symbol;
+            auto eit = extern_func_map_.find(extern_sym);
+            if (eit != extern_func_map_.end()) {
+                callee_fn = eit->second;
+            } else {
+                aurora::FunctionType* extern_ty = type_translator_.translate_function_type(
+                    target_fn.return_type, target_fn.signature_params);
+                callee_fn = dst_module_->createFunction(extern_ty, extern_sym);
+                extern_func_map_[extern_sym] = callee_fn;
+                func_map_[value.call_target.value] = callee_fn;
+            }
+        }
+
         aurora::SmallVector<unsigned, 8> args;
         for (const ir::ValueId& arg_id : value.args) {
             auto ait = value_map_.find(arg_id.value);
@@ -371,7 +442,7 @@ unsigned IrTranslator::translate_value(const ir::Value& value, aurora::AIRBuilde
     }
     case ir::ValueKind::size_of:
     case ir::ValueKind::align_of: {
-        if (ir::is_valid(value.type)) {
+        if (sema::is_valid(value.type)) {
             aurora::Type* ty = type_translator_.translate_type(value.type);
             if (ty != nullptr) {
                 int64_t result_val = 0;

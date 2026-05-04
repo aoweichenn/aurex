@@ -92,6 +92,7 @@ test "$("${STAGE1_CORE_BIN}")" = "selfhost stage1 core ok"
 grep -q 'aurex.selfhost.compiler.driver' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.emit' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.expr' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.ir.cfg' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.names' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.writer' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -128,6 +129,11 @@ grep -q 'assign %t' "${STAGE1_FLOW_TAC}"
 grep -q 'while %t' "${STAGE1_FLOW_TAC}"
 grep -q 'if %t' "${STAGE1_FLOW_TAC}"
 grep -q 'block \^block' "${STAGE1_FLOW_TAC}"
+grep -q 'air_cfg v0' "${STAGE1_FLOW_TAC}"
+grep -q 'edge while %t' "${STAGE1_FLOW_TAC}"
+grep -q 'edge loop_back \^entry' "${STAGE1_FLOW_TAC}"
+grep -q 'edge if %t' "${STAGE1_FLOW_TAC}"
+grep -q 'term ret %t' "${STAGE1_FLOW_TAC}"
 
 "${STAGE1_BIN}" "${STAGE1_EXPR}" "${STAGE1_EXPR_TAC}"
 grep -q 'size_of <u8>' "${STAGE1_EXPR_TAC}"
@@ -184,6 +190,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/names.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/expr.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/cfg.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/emit.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/driver.ax" \
     "${STAGE1}" \

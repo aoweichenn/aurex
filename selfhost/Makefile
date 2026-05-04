@@ -42,6 +42,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/compiler/ir/names.ax \
 	src/aurex/selfhost/compiler/ir/types.ax \
 	src/aurex/selfhost/compiler/ir/expr.ax \
+	src/aurex/selfhost/compiler/ir/cfg.ax \
 	src/aurex/selfhost/compiler/ir/emit.ax \
 	src/aurex/selfhost/compiler/driver.ax \
 	$(STAGE1_SRC)
@@ -107,6 +108,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.driver' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.emit' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.expr' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.ir.cfg' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.types' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.names' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.writer' $(BUILD_DIR)/aurexc_stage1.modules
@@ -144,6 +146,11 @@ check: all
 	grep -q 'while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q '\^block4:' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'air_cfg v0' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge loop_back \^entry' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'term ret %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_EXPR_SRC) $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q 'size_of <u8>' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q 'align_of <u8>' $(BUILD_DIR)/stage1_expr.stage1.tac

@@ -1,5 +1,6 @@
 module aurex.selfhost.compiler.ir.emit;
 
+import aurex.selfhost.compiler.ir.cfg;
 import aurex.selfhost.compiler.ir.expr;
 import aurex.selfhost.compiler.io;
 import aurex.selfhost.compiler.ir.names;
@@ -120,133 +121,11 @@ fn ir_write_extern_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstMod
         ir_write_text(file, c" {\n}\n");
 }
 
-fn ir_write_stmt_block_ref(file: *mut OutputFile, block_id: i32) -> bool {
-    return ir_write_text(file, c"^block") && ir_write_i32(file, block_id);
-}
-
-fn ir_write_stmt(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, stmt: AstStmtNode) -> bool {
-    if stmt.kind == AST_STMT_EXPR {
-        if !ir_write_text(file, c"    expr ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_RETURN {
-        if !ir_write_text(file, c"    ret ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
-        if stmt.kind == AST_STMT_LET {
-            if !ir_write_text(file, c"    let ") { return false; }
-        } else {
-            if !ir_write_text(file, c"    var ") { return false; }
-        }
-        if !ir_write_range(file, source, stmt.name_begin, stmt.name_end) { return false; }
-        if !ir_write_text(file, c": ") { return false; }
-        if !ir_write_type(file, source, ast, stmt.type_id) { return false; }
-        if !ir_write_text(file, c" = ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_ASSIGN {
-        if !ir_write_text(file, c"    assign ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        if !ir_write_text(file, c", ") { return false; }
-        if !tac_write_temp(file, stmt.rhs_expr_id) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_BLOCK {
-        if !ir_write_text(file, c"    block ") { return false; }
-        if !ir_write_stmt_block_ref(file, stmt.then_block) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_IF {
-        if !ir_write_text(file, c"    if ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        if !ir_write_text(file, c" then ") { return false; }
-        if !ir_write_stmt_block_ref(file, stmt.then_block) { return false; }
-        if stmt.else_block >= 0 {
-            if !ir_write_text(file, c" else ") { return false; }
-            if !ir_write_stmt_block_ref(file, stmt.else_block) { return false; }
-        }
-        return ir_write_text(file, c"\n");
-    }
-    if stmt.kind == AST_STMT_WHILE {
-        if !ir_write_text(file, c"    while ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
-        if !ir_write_text(file, c" do ") { return false; }
-        if !ir_write_stmt_block_ref(file, stmt.then_block) { return false; }
-        return ir_write_text(file, c"\n");
-    }
-    return ir_write_text(file, c"    <invalid-stmt>\n");
-}
-
-fn ir_write_block(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, block_id: i32, is_entry: bool) -> bool {
-    if block_id < 0 || block_id >= ast.block_count {
-        return ir_write_text(file, c"  ^invalid:\n");
-    }
-    if is_entry {
-        if !ir_write_text(file, c"  ^entry:\n") { return false; }
-    } else {
-        if !ir_write_text(file, c"  ") { return false; }
-        if !ir_write_stmt_block_ref(file, block_id) { return false; }
-        if !ir_write_text(file, c":\n") { return false; }
-    }
-    let block: AstBlockNode = ast.blocks[block_id];
-    if !tac_emit_expr_values(file, source, ast, block.first_expr, block.expr_count) {
-        return false;
-    }
-    var index: i32 = 0;
-    while index < block.stmt_count {
-        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
-        let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if !ir_write_stmt(file, source, ast, stmt) {
-            return false;
-        }
-        index = index + 1;
-    }
-    return true;
-}
-
-fn ir_write_child_blocks(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, block_id: i32) -> bool {
-    if block_id < 0 || block_id >= ast.block_count {
-        return false;
-    }
-    let block: AstBlockNode = ast.blocks[block_id];
-    var index: i32 = 0;
-    while index < block.stmt_count {
-        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
-        let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
-            if !ir_write_block(file, source, ast, stmt.then_block, false) { return false; }
-            if !ir_write_child_blocks(file, source, ast, stmt.then_block) { return false; }
-        } else {
-            if stmt.kind == AST_STMT_IF {
-                if !ir_write_block(file, source, ast, stmt.then_block, false) { return false; }
-                if !ir_write_child_blocks(file, source, ast, stmt.then_block) { return false; }
-                if stmt.else_block >= 0 {
-                    if !ir_write_block(file, source, ast, stmt.else_block, false) { return false; }
-                    if !ir_write_child_blocks(file, source, ast, stmt.else_block) { return false; }
-                }
-            }
-        }
-        index = index + 1;
-    }
-    return true;
-}
-
 fn ir_write_body_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode, linkage: *const u8) -> bool {
     if !ir_write_fn_signature(file, source, ast, item, linkage) {
         return false;
     }
-    if !ir_write_text(file, c" {\n") {
-        return false;
-    }
-    if item.body_block >= 0 && item.body_block < ast.block_count {
-        if !ir_write_block(file, source, ast, item.body_block, true) { return false; }
-        if !ir_write_child_blocks(file, source, ast, item.body_block) { return false; }
-    }
-    return ir_write_text(file, c"}\n");
+    return cfg_write_function_body(file, source, ast, item.body_block);
 }
 
 fn ir_write_export_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {

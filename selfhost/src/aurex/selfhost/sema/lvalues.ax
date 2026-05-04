@@ -1,0 +1,251 @@
+module aurex.selfhost.sema.lvalues;
+
+import aurex.selfhost.sema.names;
+import aurex.selfhost.sema.typing_infer;
+import aurex.selfhost.sema.typing_lookup;
+import aurex.selfhost.sema.typing_types;
+import aurex.selfhost.syntax.ast;
+
+const SEMA_BINDING_UNKNOWN: i32 = 0;
+const SEMA_BINDING_PARAM: i32 = 1;
+const SEMA_BINDING_LET: i32 = 2;
+const SEMA_BINDING_VAR: i32 = 3;
+const SEMA_BINDING_CONST: i32 = 4;
+const SEMA_BINDING_FN: i32 = 5;
+const SEMA_BINDING_TYPE: i32 = 6;
+const SEMA_BINDING_BAD: i32 = 7;
+
+fn sema_type_is_mut_pointer(ast: *mut AstModule, type_id: i32) -> bool {
+    if type_id < 0 || type_id >= ast.type_count {
+        return false;
+    }
+    let ty: AstTypeNode = ast.types[type_id];
+    return ty.kind == AST_TYPE_POINTER && ty.mutability == AST_MUT_MUT;
+}
+
+fn sema_type_is_const_pointer(ast: *mut AstModule, type_id: i32) -> bool {
+    if type_id < 0 || type_id >= ast.type_count {
+        return false;
+    }
+    let ty: AstTypeNode = ast.types[type_id];
+    return ty.kind == AST_TYPE_POINTER && ty.mutability == AST_MUT_CONST;
+}
+
+fn sema_type_is_array(ast: *mut AstModule, type_id: i32) -> bool {
+    if type_id < 0 || type_id >= ast.type_count {
+        return false;
+    }
+    return ast.types[type_id].kind == AST_TYPE_ARRAY;
+}
+
+fn sema_item_binding_kind(item: AstItemNode) -> i32 {
+    if item.kind == AST_ITEM_CONST {
+        return SEMA_BINDING_CONST;
+    }
+    if item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN || item.kind == AST_ITEM_EXTERN_FN {
+        return SEMA_BINDING_FN;
+    }
+    if item.kind == AST_ITEM_STRUCT || item.kind == AST_ITEM_ENUM || item.kind == AST_ITEM_OPAQUE_STRUCT {
+        return SEMA_BINDING_TYPE;
+    }
+    return SEMA_BINDING_UNKNOWN;
+}
+
+fn sema_find_local_binding_in_block(source: *const u8, ast: *mut AstModule, block_id: i32, name_begin: i32, name_end: i32) -> i32 {
+    if block_id < 0 || block_id >= ast.block_count {
+        return SEMA_BINDING_BAD;
+    }
+    let block: AstBlockNode = ast.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        if stmt_id < 0 || stmt_id >= ast.stmt_count {
+            return SEMA_BINDING_BAD;
+        }
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
+            if sema_range_equal(source, stmt.name_begin, stmt.name_end, name_begin, name_end) {
+                if stmt.kind == AST_STMT_VAR {
+                    return SEMA_BINDING_VAR;
+                }
+                return SEMA_BINDING_LET;
+            }
+        }
+        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
+            let found: i32 = sema_find_local_binding_in_block(source, ast, stmt.then_block, name_begin, name_end);
+            if found != SEMA_BINDING_UNKNOWN {
+                return found;
+            }
+        }
+        if stmt.kind == AST_STMT_IF {
+            let then_found: i32 = sema_find_local_binding_in_block(source, ast, stmt.then_block, name_begin, name_end);
+            if then_found != SEMA_BINDING_UNKNOWN {
+                return then_found;
+            }
+            if stmt.else_block >= 0 {
+                let else_found: i32 = sema_find_local_binding_in_block(source, ast, stmt.else_block, name_begin, name_end);
+                if else_found != SEMA_BINDING_UNKNOWN {
+                    return else_found;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return SEMA_BINDING_UNKNOWN;
+}
+
+fn sema_find_identifier_binding(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < fn_item.param_count {
+        let param: AstParamNode = ast.params[fn_item.first_param + index];
+        if sema_range_equal(source, param.name_begin, param.name_end, name_begin, name_end) {
+            return SEMA_BINDING_PARAM;
+        }
+        index = index + 1;
+    }
+    if fn_item.body_block >= 0 {
+        let local_kind: i32 = sema_find_local_binding_in_block(source, ast, fn_item.body_block, name_begin, name_end);
+        if local_kind != SEMA_BINDING_UNKNOWN {
+            return local_kind;
+        }
+    }
+    let item_id: i32 = sema_find_item_by_name(source, ast, name_begin, name_end);
+    if item_id >= 0 {
+        return sema_item_binding_kind(ast.items[item_id]);
+    }
+    return SEMA_BINDING_UNKNOWN;
+}
+
+fn sema_identifier_is_writable(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr: AstExprNode) -> bool {
+    let binding: i32 = sema_find_identifier_binding(source, ast, fn_item, expr.begin, expr.end);
+    if binding == SEMA_BINDING_VAR {
+        return true;
+    }
+    if binding == SEMA_BINDING_PARAM || binding == SEMA_BINDING_LET ||
+        binding == SEMA_BINDING_CONST || binding == SEMA_BINDING_FN ||
+        binding == SEMA_BINDING_TYPE || binding == SEMA_BINDING_BAD {
+        return false;
+    }
+    return true;
+}
+
+fn sema_expr_is_writable_lvalue(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, expr_id: i32) -> bool {
+    if expr_id < 0 || expr_id >= ast.expr_count {
+        return false;
+    }
+    let expr: AstExprNode = ast.exprs[expr_id];
+    if expr.kind == AST_EXPR_IDENTIFIER {
+        return sema_identifier_is_writable(source, ast, fn_item, expr);
+    }
+    if expr.kind == AST_EXPR_UNARY && expr.op == AST_OP_DEREF {
+        let operand_type: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+        if !operand_type.ok {
+            return false;
+        }
+        if operand_type.kind == SEMA_EXPR_UNKNOWN {
+            return true;
+        }
+        if operand_type.kind != SEMA_EXPR_TYPE_ID {
+            return false;
+        }
+        return sema_type_is_mut_pointer(ast, operand_type.type_id);
+    }
+    if expr.kind == AST_EXPR_FIELD {
+        let object_type: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+        if !object_type.ok {
+            return false;
+        }
+        if object_type.kind == SEMA_EXPR_UNKNOWN {
+            return true;
+        }
+        if object_type.kind != SEMA_EXPR_TYPE_ID {
+            return false;
+        }
+        if sema_type_is_const_pointer(ast, object_type.type_id) {
+            return false;
+        }
+        if sema_type_is_mut_pointer(ast, object_type.type_id) {
+            return true;
+        }
+        return sema_expr_is_writable_lvalue(source, ast, fn_item, expr.left);
+    }
+    if expr.kind == AST_EXPR_INDEX {
+        let object_type: SemaExprType = sema_infer_expr_type(source, ast, fn_item, expr.left);
+        if !object_type.ok {
+            return false;
+        }
+        if object_type.kind == SEMA_EXPR_UNKNOWN {
+            return true;
+        }
+        if object_type.kind != SEMA_EXPR_TYPE_ID {
+            return false;
+        }
+        if sema_type_is_const_pointer(ast, object_type.type_id) {
+            return false;
+        }
+        if sema_type_is_mut_pointer(ast, object_type.type_id) {
+            return true;
+        }
+        if sema_type_is_array(ast, object_type.type_id) {
+            return sema_expr_is_writable_lvalue(source, ast, fn_item, expr.left);
+        }
+        return false;
+    }
+    return false;
+}
+
+fn sema_check_stmt_lvalues(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, stmt: AstStmtNode) -> bool {
+    if stmt.kind == AST_STMT_ASSIGN {
+        return sema_expr_is_writable_lvalue(source, ast, fn_item, stmt.expr_id);
+    }
+    return true;
+}
+
+fn sema_check_block_lvalues(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, block_id: i32) -> bool {
+    if block_id < 0 || block_id >= ast.block_count {
+        return false;
+    }
+    let block: AstBlockNode = ast.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        if stmt_id < 0 || stmt_id >= ast.stmt_count {
+            return false;
+        }
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if !sema_check_stmt_lvalues(source, ast, fn_item, stmt) {
+            return false;
+        }
+        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
+            if !sema_check_block_lvalues(source, ast, fn_item, stmt.then_block) {
+                return false;
+            }
+        }
+        if stmt.kind == AST_STMT_IF {
+            if !sema_check_block_lvalues(source, ast, fn_item, stmt.then_block) {
+                return false;
+            }
+            if stmt.else_block >= 0 {
+                if !sema_check_block_lvalues(source, ast, fn_item, stmt.else_block) {
+                    return false;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn sema_check_module_lvalues(source: *const u8, ast: *mut AstModule) -> bool {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN {
+            if !sema_check_block_lvalues(source, ast, item, item.body_block) {
+                return false;
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}

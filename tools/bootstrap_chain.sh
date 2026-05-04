@@ -99,6 +99,7 @@ grep -q 'aurex.selfhost.sema.names' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules
 grep -q 'aurex.selfhost.sema.calls' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.items' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.locals' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.lvalues' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.members' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.resolve' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.typing_types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -170,6 +171,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/calls.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/items.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/locals.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/lvalues.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/members.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/resolve.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_types.ax" \

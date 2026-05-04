@@ -29,6 +29,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/calls.ax \
 	src/aurex/selfhost/sema/items.ax \
 	src/aurex/selfhost/sema/locals.ax \
+	src/aurex/selfhost/sema/lvalues.ax \
 	src/aurex/selfhost/sema/members.ax \
 	src/aurex/selfhost/sema/resolve.ax \
 	src/aurex/selfhost/sema/typing_types.ax \
@@ -113,6 +114,7 @@ check: all
 	grep -q 'aurex.selfhost.sema.calls' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.items' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.locals' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.lvalues' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.members' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.resolve' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.typing_types' $(BUILD_DIR)/aurexc_stage1.modules

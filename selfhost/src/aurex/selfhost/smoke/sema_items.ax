@@ -4,6 +4,7 @@ import aurex.selfhost.parser.seed;
 import aurex.selfhost.sema.calls;
 import aurex.selfhost.sema.items;
 import aurex.selfhost.sema.locals;
+import aurex.selfhost.sema.lvalues;
 import aurex.selfhost.sema.members;
 import aurex.selfhost.sema.resolve;
 import aurex.selfhost.sema.typing;
@@ -397,6 +398,90 @@ fn check_binary_incompatible_equality() -> bool {
     return ok;
 }
 
+fn check_valid_lvalues() -> bool {
+    let source: *const u8 = c"module sema.lvalues.valid; struct Pair { value: i32; } fn inc(ptr: *mut i32) -> void { *ptr = *ptr + 1; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { var value: i32 = 1; var pair: Pair = Pair { value: 2 }; let pair_ptr: *mut Pair = &pair; value = 3; pair.value = value; pair_ptr.value = 4; inc(&value); return pair.value + value; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_assign_to_let() -> bool {
+    let source: *const u8 = c"module sema.lvalues.let_assign; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let value: i32 = 1; value = 2; return value; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_assign_to_param() -> bool {
+    let source: *const u8 = c"module sema.lvalues.param_assign; fn helper(value: i32) -> i32 { value = 2; return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_assign_to_const() -> bool {
+    let source: *const u8 = c"module sema.lvalues.const_assign; const VALUE: i32 = 1; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { VALUE = 2; return VALUE; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_assign_to_call() -> bool {
+    let source: *const u8 = c"module sema.lvalues.call_assign; fn helper() -> i32 { return 1; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { helper() = 2; return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_field_through_const_pointer() -> bool {
+    let source: *const u8 = c"module sema.lvalues.const_ptr_field; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = Pair { value: 1 }; let ptr: *const Pair = &pair; ptr.value = 2; return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_deref_const_pointer() -> bool {
+    let source: *const u8 = c"module sema.lvalues.const_ptr_deref; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let ptr: *const u8 = c\"abc\"; *ptr = cast(u8, 1); return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_lvalues(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if check_valid_items() &&
         check_duplicate_items() &&
@@ -427,7 +512,14 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_binary_bool_arithmetic() &&
         check_binary_int_logic() &&
         check_binary_struct_compare() &&
-        check_binary_incompatible_equality() {
+        check_binary_incompatible_equality() &&
+        check_valid_lvalues() &&
+        check_assign_to_let() &&
+        check_assign_to_param() &&
+        check_assign_to_const() &&
+        check_assign_to_call() &&
+        check_field_through_const_pointer() &&
+        check_deref_const_pointer() {
         puts(c"selfhost sema items ok");
         return 0;
     }

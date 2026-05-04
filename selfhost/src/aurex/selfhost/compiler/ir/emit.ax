@@ -10,6 +10,7 @@ import aurex.selfhost.parser.seed;
 import aurex.selfhost.sema.calls;
 import aurex.selfhost.sema.items;
 import aurex.selfhost.sema.locals;
+import aurex.selfhost.sema.lvalues;
 import aurex.selfhost.sema.members;
 import aurex.selfhost.sema.resolve;
 import aurex.selfhost.sema.typing;
@@ -268,6 +269,7 @@ fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
         !sema_check_module_resolution(source, &ast) ||
         !sema_check_module_types(source, &ast) ||
         !sema_check_module_calls(source, &ast) ||
+        !sema_check_module_lvalues(source, &ast) ||
         !sema_check_module_typing(source, &ast) {
         ast_free_module(ast);
         return false;

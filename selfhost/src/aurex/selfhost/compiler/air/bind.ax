@@ -1,0 +1,76 @@
+module aurex.selfhost.compiler.air.bind;
+
+import aurex.selfhost.compiler.air.model;
+import aurex.selfhost.sema.names;
+import aurex.selfhost.syntax.ast;
+
+fn air_find_param_name(source: *const u8, function: *mut AirFunction, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < function.param_count {
+        let param: AirParam = function.params[index];
+        if sema_range_equal(source, param.name_begin, param.name_end, name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn air_find_local_name(source: *const u8, function: *mut AirFunction, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < function.local_count {
+        let local: AirLocal = function.locals[index];
+        if sema_range_equal(source, local.name_begin, local.name_end, name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn air_find_local_stmt(function: *mut AirFunction, stmt_id: i32) -> i32 {
+    var index: i32 = 0;
+    while index < function.local_count {
+        if function.locals[index].ast_stmt_id == stmt_id {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn air_find_item_name(source: *const u8, ast: *mut AstModule, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if item.name_begin < item.name_end && sema_range_equal(source, item.name_begin, item.name_end, name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn air_bind_name_value(source: *const u8, ast: *mut AstModule, function: *mut AirFunction, value: *mut AirValue, expr: AstExprNode) -> void {
+    if expr.kind != AST_EXPR_IDENTIFIER {
+        return;
+    }
+    let param_id: i32 = air_find_param_name(source, function, expr.begin, expr.end);
+    if param_id >= 0 {
+        value.binding_kind = AIR_BIND_PARAM;
+        value.binding_id = param_id;
+        return;
+    }
+    let local_id: i32 = air_find_local_name(source, function, expr.begin, expr.end);
+    if local_id >= 0 {
+        value.binding_kind = AIR_BIND_LOCAL;
+        value.binding_id = local_id;
+        return;
+    }
+    let item_id: i32 = air_find_item_name(source, ast, expr.begin, expr.end);
+    if item_id >= 0 {
+        value.binding_kind = AIR_BIND_ITEM;
+        value.binding_id = item_id;
+    }
+}
+

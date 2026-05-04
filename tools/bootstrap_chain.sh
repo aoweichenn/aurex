@@ -98,6 +98,7 @@ test "$("${STAGE1_CORE_BIN}")" = "selfhost stage1 core ok"
 grep -q 'aurex.selfhost.compiler.driver' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.emit' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.model' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.bind' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.lower' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.text' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.verify' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -144,6 +145,10 @@ grep -q 'air_cfg v0' "${STAGE1_FLOW_TAC}"
 grep -q 'inst let' "${STAGE1_FLOW_TAC}"
 grep -q 'inst assign' "${STAGE1_FLOW_TAC}"
 grep -q 'target(\^air' "${STAGE1_FLOW_TAC}"
+grep -q 'bind(param' "${STAGE1_FLOW_TAC}"
+grep -q 'bind(local' "${STAGE1_FLOW_TAC}"
+grep -q 'bind(item' "${STAGE1_FLOW_TAC}"
+grep -q 'type(' "${STAGE1_FLOW_TAC}"
 grep -q 'edge while %t' "${STAGE1_FLOW_TAC}"
 grep -q 'edge loop_back \^entry' "${STAGE1_FLOW_TAC}"
 grep -q 'edge if %t' "${STAGE1_FLOW_TAC}"
@@ -161,6 +166,9 @@ grep -q 'struct Pair' "${STAGE1_EXPR_TAC}"
 grep -q '.value' "${STAGE1_EXPR_TAC}"
 grep -q 'index ' "${STAGE1_EXPR_TAC}"
 grep -q 'struct_literal' "${STAGE1_EXPR_TAC}"
+grep -q 'field(' "${STAGE1_EXPR_TAC}"
+grep -q 'target_type(' "${STAGE1_EXPR_TAC}"
+grep -q 'name(' "${STAGE1_EXPR_TAC}"
 grep -q '4]u8' "${STAGE1_EXPR_TAC}"
 
 "${STAGE1_BIN}" "${STAGE1_ITEMS}" "${STAGE1_ITEMS_TAC}"
@@ -201,6 +209,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/model.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/bind.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/lower.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/text.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/verify.ax" \

@@ -13,25 +13,38 @@ fn check_valid_air_function() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     let exit: i32 = air_add_block(&function, 1);
+    let param_id: i32 = air_add_param(&function, 0, 0, 5, 1);
     let left: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
     let right: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 1, -1));
     var condition_value: AirValue = air_make_value(AIR_VALUE_BINARY, 2, -1);
     condition_value.lhs = left;
     condition_value.rhs = right;
     let condition: i32 = air_add_value(&function, entry, condition_value);
-    let callee: i32 = air_add_value(&function, exit, air_make_value(AIR_VALUE_NAME, 3, -1));
+    var callee_value: AirValue = air_make_value(AIR_VALUE_NAME, 3, -1);
+    callee_value.binding_kind = AIR_BIND_PARAM;
+    callee_value.binding_id = param_id;
+    let callee: i32 = air_add_value(&function, exit, callee_value);
     let arg: i32 = air_add_value(&function, exit, air_make_value(AIR_VALUE_INTEGER, 4, -1));
     var call_value: AirValue = air_make_value(AIR_VALUE_CALL, 5, -1);
     call_value.lhs = callee;
     let result: i32 = air_add_value(&function, exit, call_value);
     air_add_value_arg(&function, result, arg);
-    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_LET, 0, left, -1, -1, -1, 0, 1));
-    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_ASSIGN, 1, left, right, -1, -1, 0, 0));
+    var let_inst: AirInstruction = air_make_instruction(AIR_INST_VAR, 0, left, -1, -1, -1, 0, 1);
+    let_inst.binding_kind = AIR_BIND_LOCAL;
+    let_inst.binding_id = 0;
+    air_add_instruction(&function, entry, let_inst);
+    var assign_inst: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 1, left, right, -1, -1, 0, 0);
+    assign_inst.binding_kind = AIR_BIND_LOCAL;
+    assign_inst.binding_id = 0;
+    air_add_instruction(&function, entry, assign_inst);
     air_add_instruction(&function, exit, air_make_instruction(AIR_INST_EXPR, 2, result, -1, -1, -1, 0, 0));
+    air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
     let ok: bool = air_set_terminator(&function, entry, air_branch_terminator(condition, exit, exit)) &&
         air_set_terminator(&function, exit, air_return_terminator(result)) &&
+        param_id >= 0 &&
         air_verify_function(&function);
     air_free_function(function);
     return ok;
@@ -43,6 +56,7 @@ fn check_missing_terminator_rejected() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     air_add_block(&function, 0);
     let ok: bool = !air_verify_function(&function);
     air_free_function(function);
@@ -55,6 +69,7 @@ fn check_bad_branch_target_rejected() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     let condition: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_TEMP, 0, -1));
     air_set_terminator(&function, entry, air_branch_terminator(condition, 99, entry));
@@ -69,6 +84,7 @@ fn check_bad_return_value_rejected() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     air_set_terminator(&function, entry, air_return_terminator(42));
     let ok: bool = !air_verify_function(&function);
@@ -82,6 +98,7 @@ fn check_bad_binary_operand_rejected() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     let left: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
     var binary: AirValue = air_make_value(AIR_VALUE_BINARY, 1, -1);
@@ -100,6 +117,7 @@ fn check_bad_call_arg_rejected() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     let callee: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
     var call_value: AirValue = air_make_value(AIR_VALUE_CALL, 1, -1);
@@ -112,12 +130,145 @@ fn check_bad_call_arg_rejected() -> bool {
     return ok;
 }
 
+fn check_bad_name_binding_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    var name: AirValue = air_make_value(AIR_VALUE_NAME, 0, -1);
+    name.binding_kind = AIR_BIND_LOCAL;
+    name.binding_id = 99;
+    let value: i32 = air_add_value(&function, entry, name);
+    air_set_terminator(&function, entry, air_return_terminator(value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_non_name_binding_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    var integer: AirValue = air_make_value(AIR_VALUE_INTEGER, 0, -1);
+    integer.binding_kind = AIR_BIND_ITEM;
+    integer.binding_id = 0;
+    let value: i32 = air_add_value(&function, entry, integer);
+    air_set_terminator(&function, entry, air_return_terminator(value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_let_binding_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let value: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    var instruction: AirInstruction = air_make_instruction(AIR_INST_LET, 0, value, -1, -1, 1, 0, 1);
+    instruction.binding_kind = AIR_BIND_LOCAL;
+    instruction.binding_id = 99;
+    air_add_instruction(&function, entry, instruction);
+    air_set_terminator(&function, entry, air_return_terminator(value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_let_kind_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let value: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
+    var instruction: AirInstruction = air_make_instruction(AIR_INST_LET, 0, value, -1, -1, 1, 0, 1);
+    instruction.binding_kind = AIR_BIND_LOCAL;
+    instruction.binding_id = 0;
+    air_add_instruction(&function, entry, instruction);
+    air_set_terminator(&function, entry, air_return_terminator(value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_assign_let_target_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let left: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
+    let right: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 1, -1));
+    air_add_local(&function, AIR_LOCAL_LET, 0, entry, 0, 1, 1);
+    var instruction: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 0, left, right, -1, -1, 0, 0);
+    instruction.binding_kind = AIR_BIND_LOCAL;
+    instruction.binding_id = 0;
+    air_add_instruction(&function, entry, instruction);
+    air_set_terminator(&function, entry, air_return_terminator(right));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_struct_arg_name_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let field_value: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    let literal: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_STRUCT_LITERAL, 1, -1));
+    air_add_value_arg(&function, literal, field_value);
+    air_set_terminator(&function, entry, air_return_terminator(literal));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_value_name_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    var field: AirValue = air_make_value(AIR_VALUE_FIELD, 1, -1);
+    field.lhs = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
+    field.name_begin = 4;
+    field.name_end = 4;
+    let value: i32 = air_add_value(&function, entry, field);
+    air_set_terminator(&function, entry, air_return_terminator(value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
 fn check_bad_instruction_value_rejected() -> bool {
     var function: AirFunction = air_make_function();
     if !function.ok {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     air_add_instruction(&function, entry, air_make_instruction(AIR_INST_EXPR, 0, 99, -1, -1, -1, 0, 0));
     air_set_terminator(&function, entry, air_return_terminator(-1));
@@ -132,8 +283,53 @@ fn check_bad_scope_target_rejected() -> bool {
         air_free_function(function);
         return false;
     }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     air_add_instruction(&function, entry, air_make_instruction(AIR_INST_SCOPE, 0, -1, -1, 99, -1, 0, 0));
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_missing_header_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    let entry: i32 = air_add_block(&function, 0);
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_param_value_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    air_add_param(&function, 0, 0, 5, 1);
+    function.params[0].value_id = 99;
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_local_block_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    air_add_local(&function, AIR_LOCAL_VAR, 0, 99, 0, 1, 1);
     air_set_terminator(&function, entry, air_return_terminator(-1));
     let ok: bool = !air_verify_function(&function);
     air_free_function(function);
@@ -147,8 +343,18 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_bad_return_value_rejected() &&
         check_bad_binary_operand_rejected() &&
         check_bad_call_arg_rejected() &&
+        check_bad_name_binding_rejected() &&
+        check_bad_non_name_binding_rejected() &&
+        check_bad_let_binding_rejected() &&
+        check_bad_let_kind_rejected() &&
+        check_bad_assign_let_target_rejected() &&
+        check_bad_struct_arg_name_rejected() &&
+        check_bad_value_name_rejected() &&
         check_bad_instruction_value_rejected() &&
-        check_bad_scope_target_rejected() {
+        check_bad_scope_target_rejected() &&
+        check_missing_header_rejected() &&
+        check_bad_param_value_rejected() &&
+        check_bad_local_block_rejected() {
         puts(c"selfhost air verifier ok");
         return 0;
     }

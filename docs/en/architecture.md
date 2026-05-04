@@ -126,14 +126,17 @@ The selfhost tree is split by component:
 - `lexer`: M0 lexer core and token dumping.
 - `syntax`: ID-backed AST data structures.
 - `parser`: cursor, types, expr, and seed modules.
-- `compiler/ir`: writer, names, types, expr, and emit modules.
+- `compiler/air`: model, binding, lowering, text snapshot, and verifier modules.
+- `compiler/ir`: legacy TAC snapshot writer, names, types, expr, cfg bridge, and emit modules.
 - `bin`: Stage1 CLI entry points.
 - `smoke` / `tool`: validation programs.
 
-Stage1 currently emits `aurex_tac v0` snapshots. It is not yet a full
-fixed-point compiler. The seed parser covers a module shape with one `extern c`
-block plus multiple `export c fn` items, and TAC snapshots emit expression
-temporaries scoped to the current function block.
+Stage1 currently emits `aurex_tac v0` snapshots with embedded `air_ir v0` and
+`air_cfg v0` comment snapshots for parsed function bodies. AIR is
+function-level and carries headers, linkage, params, locals, value DAGs,
+instructions, terminators, type ids, name ranges, struct-literal field args, and
+param/local/item bindings. It is still a structured snapshot, not the final
+backend handoff format or a fixed-point compiler.
 
 ## Verification Architecture
 

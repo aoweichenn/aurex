@@ -4,15 +4,17 @@ Version: 0.1.2
 
 ## Current Selfhost Stage
 
-The current selfhost track is at the “measurable Stage1 frontend slice plus TAC
-snapshot output” stage. It is not yet a complete compiler that can replace
-Stage0.
+The current selfhost track is at the “measurable Stage1 frontend slice plus
+TAC/AIR snapshot output” stage. It is not yet a complete compiler that can
+replace Stage0.
 
 - Stage0 is still the C++20 compiler and remains the production compiler.
 - selfhost contains M0 implementations of the lexer core, token dump tools,
-  parser seed, ID-backed AST, Stage1 CLI, and Stage1 TAC snapshot emitter.
+  parser seed, ID-backed AST, Stage1 CLI, Stage1 TAC snapshot emitter, and the
+  first AIR model/lowering/verifier slice.
 - Stage1 can read `.ax` files, parse the seed-covered syntax, and output
-  `aurex_tac v0` text snapshots.
+  `aurex_tac v0` text snapshots. Function bodies also embed `air_ir v0` and
+  `air_cfg v0` comment snapshots.
 - The bootstrap flow covers selfhost lexer golden comparison, parser smoke,
   Stage1 snapshot output, and selfhost bundle visibility.
 
@@ -36,11 +38,20 @@ M0 parser seed:
   expressions.
 - Basic operator precedence and call arguments.
 
-Stage1 TAC snapshot:
+Stage1 TAC/AIR snapshot:
 
 - Emits the `aurex_tac v0` header.
 - Emits extern functions, opaque records, and export function signatures.
 - Emits three-address-code expression temporaries.
+- AIR is split into model, binding, lowering, text, and verifier modules.
+- AIR function snapshots include the function header, linkage, parameter table,
+  local table, blocks, value DAG, instructions, and terminators.
+- AIR values carry result type ids, identifier/field/struct name ranges,
+  cast/type-op target type ids, and call/struct-literal arguments.
+- AIR name values can bind to params, locals, and items. Let/var/assign
+  instructions also carry local bindings.
+- The AIR verifier covers headers, params, locals, value references, value
+  arguments, bindings, instructions, and terminators.
 - Temporaries are scoped to the current function block, so module-wide
   expressions are not repeated in every function.
 - Modules outside parser seed coverage emit a deterministic
@@ -49,16 +60,19 @@ Stage1 TAC snapshot:
 
 ## Gaps Before Final M0 Self-Hosting
 
-- Parser coverage is incomplete: ordinary `fn`, `struct`, `enum`, `const`,
-  `let` / `var`, assignment, blocks, `if`, `while`, field access, index, casts,
-  struct literals, arrays, and other syntax are not fully covered.
-- Stage1 does not have complete sema: type resolution, symbol resolution,
-  scopes, duplicate definition checks, function signature checks, call argument
-  checks, return type checks, and ABI/mangling rules still need implementation.
-- Stage1 does not have a real TAC verifier. It currently focuses on snapshot
-  output rather than full executable IR validity.
-- Stage1 lowering is incomplete: locals/slots, CFG, branches, loops, phi,
-  record layout, and global constant lowering are still missing.
+- Parser coverage is not yet enough to compile the entire selfhost compiler.
+  The remaining work is mostly bundle edge cases and error recovery.
+- Stage1 sema is not persisted as a typed AST yet. AIR result types currently
+  come mostly from AST node fields, so the next step is a unified type/binding
+  annotation table.
+- Stage1 lowering does not yet produce a real backend handoff format. AIR is
+  currently a structured comment snapshot.
+- AIR still needs slots/alloca, record layout, global constant lowering,
+  complex lvalue descriptors, phi/SSA joins, and cross-module item/import
+  bindings.
+- Stage1 does not yet have a complete TAC/AIR/backend verifier loop. The AIR
+  verifier checks structure, but not type equivalence, call signatures, control
+  dominance, or reachability.
 - Stage1 has no LLVM handoff yet. It cannot pass its output to the existing LLVM
   backend to produce native code.
 - There is no fixed point yet. Stage1 cannot compile itself completely, and
@@ -74,18 +88,17 @@ Stage1 TAC snapshot:
    Add missing item, statement, expression, and type nodes. Each syntax addition
    should get parser smoke coverage and Stage1 snapshot assertions.
 
-3. Implement Stage1 minimal sema  
-   Start with a module item table, function table, local symbol table,
-   expression types, and return/call/assign type checks. Full recovery can come
-   later.
+3. Stabilize Stage1 typed AST / AIR type annotations  
+   Persist sema-inferred types, item bindings, and local bindings so AIR
+   lowering does not keep re-resolving through source ranges.
 
-4. Move Stage1 lowering from snapshots toward a real TAC subset  
-   Cover functions, blocks, values, terminators, locals, return, call,
-   binary/unary, and CFG for `if` and `while`.
+4. Move Stage1 AIR from snapshots toward a real backend handoff  
+   Cover functions, blocks, values, instructions, terminators, locals, return,
+   call, binary/unary, and CFG for `if` and `while`.
 
-5. Implement a Stage1 TAC verifier
-   First check temporary reference ranges, function parameter and return type
-   consistency, and call target/argument counts.
+5. Extend the Stage1 AIR verifier
+   Add type equivalence, function parameter/return consistency, call
+   target/argument checks, branch conditions, dominance, and block reachability.
 
 6. Design LLVM handoff  
    Prefer making Stage1 emit a TAC format that Stage0 can read, or add a Stage0
@@ -107,6 +120,6 @@ Stage1 TAC snapshot:
 
 ## Next Priority
 
-The next most useful step is parser/AST coverage for `ordinary fn + let/var +
-if/while`. This is the shortest path toward compiling selfhost itself and is a
-better next move than jumping directly to complete sema or LLVM handoff.
+The next most useful step is persisting sema results into typed AST/AIR
+annotations and adding AIR slots/lvalue descriptors. That is the shortest path
+from “readable snapshot” to “backend-consumable IR.”

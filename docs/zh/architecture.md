@@ -104,11 +104,12 @@ selfhost 目录按组件拆分：
 - `lexer`：M0 lexer core 和 token dump。
 - `syntax`：ID-backed AST 数据结构。
 - `parser`：cursor、types、expr、seed。
-- `compiler/ir`：writer、names、types、expr、emit。
+- `compiler/air`：model、binding、lowering、text snapshot、verifier。
+- `compiler/ir`：兼容 TAC snapshot 的 writer、names、types、expr、cfg bridge、emit。
 - `bin`：Stage1 CLI 入口。
 - `smoke` / `tool`：验证程序。
 
-当前 Stage1 输出 `aurex_tac v0` snapshot，不是完整 fixed-point 编译器。seed parser 已覆盖一个 `extern c` block 加多个 `export c fn` item 的模块形态；TAC snapshot 按当前函数 block 输出表达式临时值。
+当前 Stage1 输出 `aurex_tac v0` snapshot，并在已解析函数体内嵌入 `air_ir v0` / `air_cfg v0` 注释快照。AIR 已经是函数级结构，包含函数头、linkage、参数、局部、value DAG、instruction、terminator、类型 id、名称范围、struct literal 字段参数和 param/local/item 绑定。它仍是结构化快照，还不是最终 backend handoff，也不是完整 fixed-point 编译器。
 
 ## 验证架构
 

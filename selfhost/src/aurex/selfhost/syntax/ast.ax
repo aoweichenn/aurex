@@ -1,17 +1,17 @@
 module aurex.selfhost.syntax.ast;
 
-const AST_MAX_IMPORTS: i32 = 16;
-const AST_MAX_ITEMS: i32 = 32;
-const AST_MAX_TYPES: i32 = 64;
-const AST_MAX_PARAMS: i32 = 64;
-const AST_MAX_FIELDS: i32 = 64;
-const AST_MAX_ENUM_CASES: i32 = 64;
-const AST_MAX_BLOCKS: i32 = 32;
-const AST_MAX_STMTS: i32 = 64;
-const AST_MAX_STMT_REFS: i32 = 128;
-const AST_MAX_EXPRS: i32 = 64;
-const AST_MAX_EXPR_ARGS: i32 = 64;
-const AST_MAX_FIELD_INITS: i32 = 64;
+const AST_MAX_IMPORTS: i32 = 64;
+const AST_MAX_ITEMS: i32 = 256;
+const AST_MAX_TYPES: i32 = 2048;
+const AST_MAX_PARAMS: i32 = 1024;
+const AST_MAX_FIELDS: i32 = 1024;
+const AST_MAX_ENUM_CASES: i32 = 1024;
+const AST_MAX_BLOCKS: i32 = 1024;
+const AST_MAX_STMTS: i32 = 8192;
+const AST_MAX_STMT_REFS: i32 = 16384;
+const AST_MAX_EXPRS: i32 = 16384;
+const AST_MAX_EXPR_ARGS: i32 = 16384;
+const AST_MAX_FIELD_INITS: i32 = 4096;
 
 const AST_TYPE_INVALID: i32 = 0;
 const AST_TYPE_PRIMITIVE: i32 = 1;
@@ -55,6 +55,8 @@ const AST_STMT_ASSIGN: i32 = 5;
 const AST_STMT_BLOCK: i32 = 6;
 const AST_STMT_IF: i32 = 7;
 const AST_STMT_WHILE: i32 = 8;
+const AST_STMT_BREAK: i32 = 9;
+const AST_STMT_CONTINUE: i32 = 10;
 
 const AST_EXPR_INTEGER: i32 = 1;
 const AST_EXPR_IDENTIFIER: i32 = 2;
@@ -75,6 +77,7 @@ const AST_EXPR_SIZE_OF: i32 = 16;
 const AST_EXPR_ALIGN_OF: i32 = 17;
 const AST_EXPR_PTR_ADDR: i32 = 18;
 const AST_EXPR_PTR_FROM_ADDR: i32 = 19;
+const AST_EXPR_BYTE: i32 = 20;
 
 const AST_OP_NONE: i32 = 0;
 const AST_OP_ADD: i32 = 1;
@@ -238,9 +241,12 @@ struct AstModule {
     block_stmt_count: i32;
     if_stmt_count: i32;
     while_stmt_count: i32;
+    break_stmt_count: i32;
+    continue_stmt_count: i32;
     stmt_ref_count: i32;
     expr_count: i32;
     integer_expr_count: i32;
+    byte_expr_count: i32;
     identifier_expr_count: i32;
     string_expr_count: i32;
     c_string_expr_count: i32;
@@ -316,9 +322,12 @@ fn ast_make_module() -> AstModule {
         block_stmt_count: 0,
         if_stmt_count: 0,
         while_stmt_count: 0,
+        break_stmt_count: 0,
+        continue_stmt_count: 0,
         stmt_ref_count: 0,
         expr_count: 0,
         integer_expr_count: 0,
+        byte_expr_count: 0,
         identifier_expr_count: 0,
         string_expr_count: 0,
         c_string_expr_count: 0,
@@ -711,6 +720,18 @@ fn ast_add_while_stmt(ast: *mut AstModule, begin: i32, end: i32, condition_expr_
     return id;
 }
 
+fn ast_add_break_stmt(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_BREAK, begin, end, 0, 0, -1, -1, -1, -1, -1));
+    ast.break_stmt_count = ast.break_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_continue_stmt(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_CONTINUE, begin, end, 0, 0, -1, -1, -1, -1, -1));
+    ast.continue_stmt_count = ast.continue_stmt_count + 1;
+    return id;
+}
+
 fn ast_add_expr_node(ast: *mut AstModule, node: AstExprNode) -> i32 {
     let id: i32 = ast.expr_count;
     if id < AST_MAX_EXPRS && ast.exprs != null {
@@ -725,6 +746,12 @@ fn ast_add_expr_node(ast: *mut AstModule, node: AstExprNode) -> i32 {
 fn ast_add_integer_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
     let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_INTEGER, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.integer_expr_count = ast.integer_expr_count + 1;
+    return id;
+}
+
+fn ast_add_byte_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_BYTE, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
+    ast.byte_expr_count = ast.byte_expr_count + 1;
     return id;
 }
 

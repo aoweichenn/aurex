@@ -151,7 +151,7 @@ fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
         !sema_check_module_lvalues(source, &ast) ||
         !sema_check_module_typing(source, &ast) {
         ast_free_module(ast);
-        return false;
+        return emit_ir_pending_source_reason(file, source, c"sema_pending");
     }
 
     var index: i32 = 0;
@@ -242,7 +242,7 @@ fn emit_ir_pending_path(file: *mut OutputFile, source: *const u8, index: *mut i3
     return true;
 }
 
-fn emit_ir_pending_source(file: *mut OutputFile, source: *const u8) -> bool {
+fn emit_ir_pending_source_reason(file: *mut OutputFile, source: *const u8, reason: *const u8) -> bool {
     var index: i32 = 0;
     var current: TokenSpan = scan_token(source, &index);
     if current.kind != TK_KW_MODULE {
@@ -255,7 +255,9 @@ fn emit_ir_pending_source(file: *mut OutputFile, source: *const u8) -> bool {
         return false;
     }
     ir_pending_advance(source, &index, &current);
-    if !ir_write_text(file, c" lowering(ast_pending)\n") { return false; }
+    if !ir_write_text(file, c" lowering(") { return false; }
+    if !ir_write_text(file, reason) { return false; }
+    if !ir_write_text(file, c")\n") { return false; }
 
     while current.kind == TK_KW_IMPORT {
         ir_pending_advance(source, &index, &current);
@@ -268,6 +270,10 @@ fn emit_ir_pending_source(file: *mut OutputFile, source: *const u8) -> bool {
         if !ir_write_text(file, c"\n") { return false; }
     }
     return true;
+}
+
+fn emit_ir_pending_source(file: *mut OutputFile, source: *const u8) -> bool {
+    return emit_ir_pending_source_reason(file, source, c"ast_pending");
 }
 
 fn emit_ir_file(path: *const u8, source: *const u8) -> bool {

@@ -40,6 +40,7 @@ const AIR_VALUE_DEREF_ADDR: i32 = 22;
 const AIR_VALUE_STORE: i32 = 23;
 const AIR_VALUE_LOAD: i32 = 24;
 const AIR_VALUE_BLOCK_PARAM: i32 = 25;
+const AIR_VALUE_BYTE: i32 = 26;
 
 const AIR_TERM_NONE: i32 = 0;
 const AIR_TERM_JUMP: i32 = 1;

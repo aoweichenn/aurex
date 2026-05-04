@@ -6,6 +6,9 @@ import aurex.selfhost.syntax.ast;
 
 fn sema_check_stmt_typing(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, stmt: AstStmtNode) -> bool {
     if stmt.kind == AST_STMT_RETURN {
+        if stmt.expr_id < 0 {
+            return sema_expected_is_primitive(ast, fn_item.return_type, AST_PRIM_VOID);
+        }
         return sema_expr_matches_type(source, ast, fn_item, fn_item.return_type, stmt.expr_id);
     }
     if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {

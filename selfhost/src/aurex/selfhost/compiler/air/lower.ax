@@ -37,7 +37,9 @@ fn air_lower_stmt_is_control(stmt: AstStmtNode) -> bool {
     return stmt.kind == AST_STMT_RETURN ||
         stmt.kind == AST_STMT_BLOCK ||
         stmt.kind == AST_STMT_IF ||
-        stmt.kind == AST_STMT_WHILE;
+        stmt.kind == AST_STMT_WHILE ||
+        stmt.kind == AST_STMT_BREAK ||
+        stmt.kind == AST_STMT_CONTINUE;
 }
 
 fn air_lower_add_block_tree(function: *mut AirFunction, ast: *mut AstModule, block_id: i32) -> bool {
@@ -91,6 +93,10 @@ fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule,
     let stmt: AstStmtNode = ast.stmts[stmt_id];
     if stmt.kind == AST_STMT_RETURN {
         return segment_id;
+    }
+    if stmt.kind == AST_STMT_BREAK || stmt.kind == AST_STMT_CONTINUE {
+        function.ok = false;
+        return -1;
     }
 
     let continuation: i32 = air_lower_add_block_segments(function, ast, block_id, control_index + 1, fallthrough_target, fallthrough_kind, false);
@@ -280,8 +286,13 @@ fn air_lower_expr_tree(function: *mut AirFunction, source: *const u8, ast: *mut 
 }
 
 fn air_lower_stmt_exprs(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations, block_id: i32, stmt: AstStmtNode) -> bool {
-    if stmt.kind == AST_STMT_RETURN ||
-        stmt.kind == AST_STMT_EXPR ||
+    if stmt.kind == AST_STMT_RETURN {
+        if stmt.expr_id < 0 {
+            return true;
+        }
+        return air_lower_expr_tree(function, source, ast, annotations, block_id, stmt.expr_id, true);
+    }
+    if stmt.kind == AST_STMT_EXPR ||
         stmt.kind == AST_STMT_LET ||
         stmt.kind == AST_STMT_VAR ||
         stmt.kind == AST_STMT_IF ||
@@ -348,6 +359,7 @@ fn air_lower_set_value_type(value: *mut AirValue, annotations: *mut SemaExprAnno
 
 fn air_lower_kind_for_expr(kind: i32) -> i32 {
     if kind == AST_EXPR_INTEGER { return AIR_VALUE_INTEGER; }
+    if kind == AST_EXPR_BYTE { return AIR_VALUE_BYTE; }
     if kind == AST_EXPR_IDENTIFIER { return AIR_VALUE_NAME; }
     if kind == AST_EXPR_STRING { return AIR_VALUE_STRING; }
     if kind == AST_EXPR_C_STRING { return AIR_VALUE_C_STRING; }

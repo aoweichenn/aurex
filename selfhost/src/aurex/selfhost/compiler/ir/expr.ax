@@ -34,6 +34,7 @@ fn ir_write_op(file: *mut OutputFile, op: i32) -> bool {
 
 fn ir_expr_is_leaf(kind: i32) -> bool {
     return kind == AST_EXPR_INTEGER ||
+        kind == AST_EXPR_BYTE ||
         kind == AST_EXPR_IDENTIFIER ||
         kind == AST_EXPR_STRING ||
         kind == AST_EXPR_C_STRING ||
@@ -44,6 +45,10 @@ fn ir_expr_is_leaf(kind: i32) -> bool {
 fn ir_write_expr_leaf(file: *mut OutputFile, source: *const u8, expr: AstExprNode) -> bool {
     if expr.kind == AST_EXPR_INTEGER {
         return ir_write_text(file, c"literal ") &&
+            ir_write_range(file, source, expr.begin, expr.end);
+    }
+    if expr.kind == AST_EXPR_BYTE {
+        return ir_write_text(file, c"byte ") &&
             ir_write_range(file, source, expr.begin, expr.end);
     }
     if expr.kind == AST_EXPR_IDENTIFIER {

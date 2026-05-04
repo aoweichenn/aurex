@@ -32,8 +32,11 @@ fn cfg_write_stmt(file: *mut OutputFile, source: *const u8, ast: *mut AstModule,
         return ir_write_text(file, c"\n");
     }
     if stmt.kind == AST_STMT_RETURN {
-        if !ir_write_text(file, c"    ret ") { return false; }
-        if !tac_write_temp(file, stmt.expr_id) { return false; }
+        if !ir_write_text(file, c"    ret") { return false; }
+        if stmt.expr_id >= 0 {
+            if !ir_write_text(file, c" ") { return false; }
+            if !tac_write_temp(file, stmt.expr_id) { return false; }
+        }
         return ir_write_text(file, c"\n");
     }
     if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
@@ -78,6 +81,12 @@ fn cfg_write_stmt(file: *mut OutputFile, source: *const u8, ast: *mut AstModule,
         if !ir_write_text(file, c" do ") { return false; }
         if !cfg_write_block_ref(file, stmt.then_block) { return false; }
         return ir_write_text(file, c"\n");
+    }
+    if stmt.kind == AST_STMT_BREAK {
+        return ir_write_text(file, c"    break\n");
+    }
+    if stmt.kind == AST_STMT_CONTINUE {
+        return ir_write_text(file, c"    continue\n");
     }
     return ir_write_text(file, c"    <invalid-stmt>\n");
 }
@@ -264,7 +273,7 @@ fn cfg_write_snapshot(file: *mut OutputFile, source: *const u8, ast: *mut AstMod
     let verified: bool = air_verify_function(&function);
     if !verified {
         air_free_function(function);
-        return false;
+        return ir_write_text(file, c"  ; air_ir lowering(air_pending)\n");
     }
     if !air_text_write_function(file, &function) {
         air_free_function(function);

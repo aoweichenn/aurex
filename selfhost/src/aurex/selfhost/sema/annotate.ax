@@ -132,7 +132,13 @@ fn sema_annotate_expr(source: *const u8, ast: *mut AstModule, fn_item: AstItemNo
 }
 
 fn sema_annotate_stmt_exprs(source: *const u8, ast: *mut AstModule, fn_item: AstItemNode, annotations: *mut SemaExprAnnotations, stmt: AstStmtNode) -> bool {
-    if stmt.kind == AST_STMT_RETURN || stmt.kind == AST_STMT_EXPR ||
+    if stmt.kind == AST_STMT_RETURN {
+        if stmt.expr_id < 0 {
+            return true;
+        }
+        return sema_annotate_expr(source, ast, fn_item, annotations, stmt.expr_id);
+    }
+    if stmt.kind == AST_STMT_EXPR ||
         stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR ||
         stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE {
         if !sema_annotate_expr(source, ast, fn_item, annotations, stmt.expr_id) {
@@ -188,4 +194,3 @@ fn sema_annotate_function_exprs(source: *const u8, ast: *mut AstModule, fn_item:
     }
     return sema_annotate_block_exprs(source, ast, fn_item, annotations, fn_item.body_block);
 }
-

@@ -310,15 +310,19 @@ fn parse_return_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan
     if begin_token.kind != TK_KW_RETURN {
         return false;
     }
-    let expr: ExprResult = parse_expression_until(source, index, current, ast, TK_SEMICOLON, TK_EOF);
-    if !expr.ok {
-        return false;
+    var expr_id: i32 = -1;
+    if !parser_check(current, TK_SEMICOLON) {
+        let expr: ExprResult = parse_expression_until(source, index, current, ast, TK_SEMICOLON, TK_EOF);
+        if !expr.ok {
+            return false;
+        }
+        expr_id = expr.id;
     }
     let semi: TokenSpan = parser_advance(source, index, current);
     if semi.kind != TK_SEMICOLON {
         return false;
     }
-    ast_add_return_stmt(ast, begin_token.begin, semi.end, expr.id);
+    ast_add_return_stmt(ast, begin_token.begin, semi.end, expr_id);
     return true;
 }
 
@@ -507,6 +511,23 @@ fn parse_while_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan,
     return true;
 }
 
+fn parse_loop_control_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    let begin_token: TokenSpan = parser_advance(source, index, current);
+    if begin_token.kind != TK_KW_BREAK && begin_token.kind != TK_KW_CONTINUE {
+        return false;
+    }
+    let semi: TokenSpan = parser_advance(source, index, current);
+    if semi.kind != TK_SEMICOLON {
+        return false;
+    }
+    if begin_token.kind == TK_KW_BREAK {
+        ast_add_break_stmt(ast, begin_token.begin, semi.end);
+    } else {
+        ast_add_continue_stmt(ast, begin_token.begin, semi.end);
+    }
+    return true;
+}
+
 fn parse_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> StmtResult {
     let begin: i32 = current.begin;
     if parser_check(current, TK_KW_RETURN) {
@@ -524,7 +545,11 @@ fn parse_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: 
                     if parser_check(current, TK_KW_WHILE) {
                         if !parse_while_stmt(source, index, current, ast) { return make_bad_stmt_result(); }
                     } else {
-                        if !parse_assign_or_expr_stmt(source, index, current, ast) { return make_bad_stmt_result(); }
+                        if parser_check(current, TK_KW_BREAK) || parser_check(current, TK_KW_CONTINUE) {
+                            if !parse_loop_control_stmt(source, index, current, ast) { return make_bad_stmt_result(); }
+                        } else {
+                            if !parse_assign_or_expr_stmt(source, index, current, ast) { return make_bad_stmt_result(); }
+                        }
                     }
                 }
             }
@@ -612,7 +637,7 @@ fn parse_seed_ast(source: *const u8) -> AstModule {
             return ast;
         }
     }
-    if ast.export_fn_count == 0 && ast.fn_count == 0 {
+    if ast.item_count == 0 {
         return ast;
     }
     if !parser_expect(source, &index, &current, TK_EOF) {

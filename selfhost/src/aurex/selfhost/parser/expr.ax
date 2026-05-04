@@ -352,22 +352,26 @@ fn parse_atom(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: 
     if token.kind == TK_INTEGER {
         id = ast_add_integer_expr(ast, token.begin, token.end);
     } else {
-        if token.kind == TK_IDENTIFIER {
-            id = ast_add_identifier_expr(ast, token.begin, token.end);
+        if token.kind == TK_BYTE {
+            id = ast_add_byte_expr(ast, token.begin, token.end);
         } else {
-            if token.kind == TK_STRING {
-                id = ast_add_string_expr(ast, token.begin, token.end);
+            if token.kind == TK_IDENTIFIER {
+                id = ast_add_identifier_expr(ast, token.begin, token.end);
             } else {
-                if token.kind == TK_C_STRING {
-                    id = ast_add_c_string_expr(ast, token.begin, token.end);
+                if token.kind == TK_STRING {
+                    id = ast_add_string_expr(ast, token.begin, token.end);
                 } else {
-                    if token.kind == TK_KW_TRUE || token.kind == TK_KW_FALSE {
-                        id = ast_add_bool_expr(ast, token.begin, token.end);
+                    if token.kind == TK_C_STRING {
+                        id = ast_add_c_string_expr(ast, token.begin, token.end);
                     } else {
-                        if token.kind == TK_KW_NULL {
-                            id = ast_add_null_expr(ast, token.begin, token.end);
+                        if token.kind == TK_KW_TRUE || token.kind == TK_KW_FALSE {
+                            id = ast_add_bool_expr(ast, token.begin, token.end);
                         } else {
-                            return make_bad_expr_result();
+                            if token.kind == TK_KW_NULL {
+                                id = ast_add_null_expr(ast, token.begin, token.end);
+                            } else {
+                                return make_bad_expr_result();
+                            }
                         }
                     }
                 }

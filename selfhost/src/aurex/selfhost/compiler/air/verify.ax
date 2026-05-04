@@ -388,6 +388,7 @@ fn air_value_is_leaf(kind: i32) -> bool {
         kind == AIR_VALUE_LOCAL ||
         kind == AIR_VALUE_BLOCK_PARAM ||
         kind == AIR_VALUE_INTEGER ||
+        kind == AIR_VALUE_BYTE ||
         kind == AIR_VALUE_NAME ||
         kind == AIR_VALUE_STRING ||
         kind == AIR_VALUE_C_STRING ||

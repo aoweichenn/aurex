@@ -93,6 +93,7 @@ fn air_text_write_value_kind(file: *mut OutputFile, kind: i32) -> bool {
     if kind == AIR_VALUE_STORE { return ir_write_text(file, c"store"); }
     if kind == AIR_VALUE_LOAD { return ir_write_text(file, c"load"); }
     if kind == AIR_VALUE_BLOCK_PARAM { return ir_write_text(file, c"block_param"); }
+    if kind == AIR_VALUE_BYTE { return ir_write_text(file, c"byte"); }
     return ir_write_text(file, c"value?");
 }
 

@@ -202,6 +202,51 @@ fn validate_control_flow_seed() -> bool {
     return ok;
 }
 
+fn validate_edge_syntax_seed() -> bool {
+    let decl_source: *const u8 = c"module app.decl; extern c { opaque struct Native; fn puts(s: *const u8) -> i32 @name(\"puts\"); }";
+    let decl_ast: AstModule = parse_seed_ast(decl_source);
+    if !decl_ast.ok {
+        ast_free_module(decl_ast);
+        return false;
+    }
+    let decl_ok: bool = decl_ast.item_count == 3 &&
+        decl_ast.extern_block_count == 1 &&
+        decl_ast.opaque_struct_count == 1 &&
+        decl_ast.extern_fn_count == 1 &&
+        decl_ast.fn_count == 0 &&
+        decl_ast.export_fn_count == 0;
+    ast_free_module(decl_ast);
+    if !decl_ok {
+        return false;
+    }
+
+    let source: *const u8 = c"module app.edge; fn touch(flag: bool) -> void { if flag { return; } return; } fn loop(flag: bool) -> void { while flag { break; continue; } } fn main() -> u8 { return b'a'; }";
+    let ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let touch_fn: AstItemNode = ast.items[0];
+    let main_fn: AstItemNode = ast.items[2];
+    let touch_body: AstBlockNode = ast.blocks[touch_fn.body_block];
+    let void_return: AstStmtNode = ast.stmts[ast.stmt_refs[touch_body.first_stmt + 1]];
+    let main_body: AstBlockNode = ast.blocks[main_fn.body_block];
+    let byte_return: AstStmtNode = ast.stmts[ast.stmt_refs[main_body.first_stmt]];
+    let byte_expr: AstExprNode = ast.exprs[byte_return.expr_id];
+    let ok: bool = ast.item_count == 3 &&
+        ast.fn_count == 3 &&
+        ast.return_stmt_count == 3 &&
+        ast.break_stmt_count == 1 &&
+        ast.continue_stmt_count == 1 &&
+        ast.byte_expr_count == 1 &&
+        void_return.kind == AST_STMT_RETURN &&
+        void_return.expr_id < 0 &&
+        byte_return.kind == AST_STMT_RETURN &&
+        byte_expr.kind == AST_EXPR_BYTE;
+    ast_free_module(ast);
+    return ok;
+}
+
 fn main() -> i32 {
     let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn main() -> i32 { puts(c\"ok\"); return 1 + 2 * 3; }";
     let ast: AstModule = parse_seed_ast(source);
@@ -318,7 +363,8 @@ fn main() -> i32 {
         parse_seed_module(source) &&
         validate_complex_expr_seed() &&
         validate_multi_export_seed() &&
-        validate_control_flow_seed() {
+        validate_control_flow_seed() &&
+        validate_edge_syntax_seed() {
         ast_free_module(ast);
         puts(c"selfhost parser seed ok");
         return 0;

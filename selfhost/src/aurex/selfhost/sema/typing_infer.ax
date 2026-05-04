@@ -295,6 +295,7 @@ fn sema_infer_expr_type(source: *const u8, ast: *mut AstModule, fn_item: AstItem
     }
     let expr: AstExprNode = ast.exprs[expr_id];
     if expr.kind == AST_EXPR_INTEGER { return sema_integer_expr_type(); }
+    if expr.kind == AST_EXPR_BYTE { return sema_primitive_expr_type(AST_PRIM_U8); }
     if expr.kind == AST_EXPR_BOOL { return sema_primitive_expr_type(AST_PRIM_BOOL); }
     if expr.kind == AST_EXPR_NULL { return sema_null_expr_type(); }
     if expr.kind == AST_EXPR_C_STRING { return sema_c_string_expr_type(); }

@@ -111,7 +111,13 @@ fn sema_resolve_expr(source: *const u8, ast: *mut AstModule, items: *mut SemaIte
 }
 
 fn sema_resolve_stmt(source: *const u8, ast: *mut AstModule, items: *mut SemaItemTable, locals: *mut SemaLocalTable, stmt: AstStmtNode) -> bool {
-    if stmt.kind == AST_STMT_RETURN || stmt.kind == AST_STMT_EXPR {
+    if stmt.kind == AST_STMT_RETURN {
+        if stmt.expr_id < 0 {
+            return true;
+        }
+        return sema_resolve_expr(source, ast, items, locals, stmt.expr_id);
+    }
+    if stmt.kind == AST_STMT_EXPR {
         return sema_resolve_expr(source, ast, items, locals, stmt.expr_id);
     }
     if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {

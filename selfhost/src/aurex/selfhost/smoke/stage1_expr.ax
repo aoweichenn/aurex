@@ -1,0 +1,26 @@
+module aurex.selfhost.smoke.stage1_expr;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+fn helper(ptr: *mut u8) -> i32 {
+    let byte_size: usize = size_of(u8);
+    let byte_align: usize = align_of(u8);
+    let addr: usize = ptr_addr(ptr);
+    let again: *mut u8 = ptr_from_addr(*mut u8, addr);
+    let narrowed: u8 = cast(u8, 7);
+    let raw: *mut void = ptr_cast(*mut void, again);
+    let bits: u32 = bit_cast(u32, narrowed);
+    return cast(i32, byte_size) + cast(i32, byte_align) + cast(i32, bits);
+}
+
+fn fields(pair: Pair, buf: *mut [4]u8) -> i32 {
+    let made: Pair = Pair { value: 17 };
+    return pair.value + made.value + cast(i32, buf[0]);
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    puts(c"stage1 expr");
+    return 0;
+}

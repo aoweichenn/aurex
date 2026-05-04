@@ -11,6 +11,8 @@ PARSER_SMOKE_SRC := src/aurex/selfhost/smoke/parser_smoke.ax
 STAGE1_LANG_SRC := src/aurex/selfhost/smoke/stage1_lang.ax
 STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
 STAGE1_IR_SRC := src/aurex/selfhost/smoke/stage1_ir.ax
+STAGE1_FLOW_SRC := src/aurex/selfhost/smoke/stage1_flow.ax
+STAGE1_EXPR_SRC := src/aurex/selfhost/smoke/stage1_expr.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
 PROGRAMS := $(BUILD_DIR)/aurexc_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/stage1_ir $(BUILD_DIR)/aurexc_stage1
@@ -95,26 +97,45 @@ check: all
 	diff -u ../tests/golden/selfhost_lexer_dump.tokens $(BUILD_DIR)/lexer_dump.tokens
 	diff -u ../tests/golden/selfhost_lexer_file_hello.tokens $(BUILD_DIR)/lexer_file_hello.tokens
 	../tools/compare_selfhost_lexer.sh
-	$(BUILD_DIR)/aurexc_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.air
-	grep -q 'aurex_ir v0' $(BUILD_DIR)/hello.stage1.air
-	grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' $(BUILD_DIR)/hello.stage1.air
-	grep -q 'fn main(argc: i32, argv: \*mut \*mut u8)' $(BUILD_DIR)/hello.stage1.air
-	grep -q 'c_string c"hello from Aurex M0"' $(BUILD_DIR)/hello.stage1.air
-	grep -q 'ret %e' $(BUILD_DIR)/hello.stage1.air
-	$(BUILD_DIR)/aurexc_stage1 $(SEED_SRC) $(BUILD_DIR)/aurexc_seed.stage1.air
-	grep -q 'c_string c"Aurex M0 selfhost seed"' $(BUILD_DIR)/aurexc_seed.stage1.air
-	$(BUILD_DIR)/aurexc_stage1 $(PARSER_SMOKE_SRC) $(BUILD_DIR)/parser_smoke.stage1.air
-	grep -q '; selfhost_module aurex.selfhost.smoke.parser_smoke lowering(ast_pending)' $(BUILD_DIR)/parser_smoke.stage1.air
-	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_IR_SRC) $(BUILD_DIR)/stage1_ir.stage1.air
-	grep -q 'fn helper() @stage1_ir_helper linkage(export_c) abi(c) -> i32' $(BUILD_DIR)/stage1_ir.stage1.air
-	grep -q 'literal 40' $(BUILD_DIR)/stage1_ir.stage1.air
-	grep -q 'call %e' $(BUILD_DIR)/stage1_ir.stage1.air
-	grep -q 'add %e' $(BUILD_DIR)/stage1_ir.stage1.air
-	grep -q 'mul %e' $(BUILD_DIR)/stage1_ir.stage1.air
-	$(BUILD_DIR)/aurexc_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/aurexc_stage1.bundle.air
-	grep -q 'aurex_ir v0' $(BUILD_DIR)/aurexc_stage1.bundle.air
-	grep -q '; selfhost_module aurex.selfhost.compiler.driver lowering(ast_pending)' $(BUILD_DIR)/aurexc_stage1.bundle.air
-	grep -q '; selfhost_module aurex.selfhost.bin.aurexc_stage1 lowering(ast_pending)' $(BUILD_DIR)/aurexc_stage1.bundle.air
+	$(BUILD_DIR)/aurexc_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.tac
+	grep -q 'aurex_tac v0' $(BUILD_DIR)/hello.stage1.tac
+	grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' $(BUILD_DIR)/hello.stage1.tac
+	grep -q 'fn main(argc: i32, argv: \*mut \*mut u8)' $(BUILD_DIR)/hello.stage1.tac
+	grep -q 'c_string c"hello from Aurex M0"' $(BUILD_DIR)/hello.stage1.tac
+	grep -q 'ret %t' $(BUILD_DIR)/hello.stage1.tac
+	$(BUILD_DIR)/aurexc_stage1 $(SEED_SRC) $(BUILD_DIR)/aurexc_seed.stage1.tac
+	grep -q 'c_string c"Aurex M0 selfhost seed"' $(BUILD_DIR)/aurexc_seed.stage1.tac
+	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_FLOW_SRC) $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'fn helper(limit: i32)' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'linkage(internal)' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'let one:' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'var acc:' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'assign %t' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q '\^block4:' $(BUILD_DIR)/stage1_flow.stage1.tac
+	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_EXPR_SRC) $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'size_of <u8>' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'align_of <u8>' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'ptr_addr %t' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'ptr_from_addr <' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'cast <u8> %t' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'ptr_cast <' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'bit_cast <u32> %t' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'struct Pair' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q '.value' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'index ' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q '4]u8' $(BUILD_DIR)/stage1_expr.stage1.tac
+	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_IR_SRC) $(BUILD_DIR)/stage1_ir.stage1.tac
+	grep -q 'fn helper() @stage1_ir_helper linkage(export_c) abi(c) -> i32' $(BUILD_DIR)/stage1_ir.stage1.tac
+	grep -q 'literal 40' $(BUILD_DIR)/stage1_ir.stage1.tac
+	grep -q 'call %t' $(BUILD_DIR)/stage1_ir.stage1.tac
+	grep -q 'add %t' $(BUILD_DIR)/stage1_ir.stage1.tac
+	grep -q 'mul %t' $(BUILD_DIR)/stage1_ir.stage1.tac
+	$(BUILD_DIR)/aurexc_stage1 $(STAGE_COMPILER_SOURCES) $(BUILD_DIR)/aurexc_stage1.bundle.tac
+	grep -q 'aurex_tac v0' $(BUILD_DIR)/aurexc_stage1.bundle.tac
+	grep -q '; selfhost_module aurex.selfhost.compiler.driver lowering(ast_pending)' $(BUILD_DIR)/aurexc_stage1.bundle.tac
+	grep -q '; selfhost_module aurex.selfhost.bin.aurexc_stage1 lowering(ast_pending)' $(BUILD_DIR)/aurexc_stage1.bundle.tac
 
 clean:
 	rm -rf $(BUILD_DIR)

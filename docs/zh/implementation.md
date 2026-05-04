@@ -22,7 +22,7 @@ AST 设计：
 - item 记录所属 module，合并多个模块后仍能区分定义来源。
 - AST dump 用于结构回归，不承担语义展示职责。
 
-selfhost parser seed 当前支持 module/import、一个 `extern c` block、多个 `export c fn` item、函数参数/返回类型、表达式语句和 return 语句。每个 block 记录自己的 statement range 和 expression range，Stage1 IR 输出可按函数 block 限定表达式。
+selfhost parser seed 当前支持 module/import、一个 `extern c` block、多个 `export c fn` item、函数参数/返回类型、表达式语句和 return 语句。每个 block 记录自己的 statement range 和 expression range，Stage1 TAC 输出可按函数 block 限定表达式临时值。
 
 ## Module Loader
 

@@ -60,7 +60,7 @@ fn validate_complex_expr_seed() -> bool {
     }
     let export_fn: AstItemNode = ast.items[2];
     let body: AstBlockNode = ast.blocks[export_fn.body_block];
-    let return_stmt: AstStmtNode = ast.stmts[body.first_stmt];
+    let return_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[body.first_stmt]];
     let call_expr: AstExprNode = ast.exprs[return_stmt.expr_id];
     let arg0_ref: AstExprArg = ast.expr_args[call_expr.first_arg];
     let arg1_ref: AstExprArg = ast.expr_args[call_expr.first_arg + 1];
@@ -110,10 +110,10 @@ fn validate_multi_export_seed() -> bool {
     let main_fn: AstItemNode = ast.items[3];
     let helper_body: AstBlockNode = ast.blocks[helper_fn.body_block];
     let main_body: AstBlockNode = ast.blocks[main_fn.body_block];
-    let helper_return: AstStmtNode = ast.stmts[helper_body.first_stmt];
+    let helper_return: AstStmtNode = ast.stmts[ast.stmt_refs[helper_body.first_stmt]];
     let helper_value: AstExprNode = ast.exprs[helper_return.expr_id];
-    let main_expr_stmt: AstStmtNode = ast.stmts[main_body.first_stmt];
-    let main_return: AstStmtNode = ast.stmts[main_body.first_stmt + 1];
+    let main_expr_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[main_body.first_stmt]];
+    let main_return: AstStmtNode = ast.stmts[ast.stmt_refs[main_body.first_stmt + 1]];
     let puts_call: AstExprNode = ast.exprs[main_expr_stmt.expr_id];
     let helper_call: AstExprNode = ast.exprs[main_return.expr_id];
     let ok: bool = ast.item_count == 4 &&
@@ -154,6 +154,52 @@ fn validate_multi_export_seed() -> bool {
     return ok;
 }
 
+fn validate_control_flow_seed() -> bool {
+    let source: *const u8 = c"module app.flow; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn helper(limit: i32) -> i32 { let one: i32 = 1; var acc: i32 = 0; while acc < limit { acc = acc + one; } if acc == limit { return acc; } else { return 0; } } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { { let inner: i32 = helper(3); } return helper(2); }";
+    let ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let helper_fn: AstItemNode = ast.items[2];
+    let main_fn: AstItemNode = ast.items[3];
+    let helper_body: AstBlockNode = ast.blocks[helper_fn.body_block];
+    let while_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[helper_body.first_stmt + 2]];
+    let if_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[helper_body.first_stmt + 3]];
+    let while_body: AstBlockNode = ast.blocks[while_stmt.then_block];
+    let then_body: AstBlockNode = ast.blocks[if_stmt.then_block];
+    let else_body: AstBlockNode = ast.blocks[if_stmt.else_block];
+    let main_body: AstBlockNode = ast.blocks[main_fn.body_block];
+    let nested_block_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[main_body.first_stmt]];
+    let nested_block: AstBlockNode = ast.blocks[nested_block_stmt.then_block];
+    let ok: bool = ast.item_count == 4 &&
+        ast.extern_block_count == 1 &&
+        ast.extern_fn_count == 1 &&
+        ast.fn_count == 1 &&
+        ast.export_fn_count == 1 &&
+        ast.block_count == 6 &&
+        ast.let_stmt_count == 2 &&
+        ast.var_stmt_count == 1 &&
+        ast.assign_stmt_count == 1 &&
+        ast.block_stmt_count == 1 &&
+        ast.if_stmt_count == 1 &&
+        ast.while_stmt_count == 1 &&
+        ast.stmt_ref_count == 10 &&
+        helper_fn.kind == AST_ITEM_FN &&
+        range_matches_6(source, helper_fn.name_begin, helper_fn.name_end, b'h', b'e', b'l', b'p', b'e', b'r') &&
+        main_fn.kind == AST_ITEM_EXPORT_FN &&
+        helper_body.stmt_count == 4 &&
+        while_stmt.kind == AST_STMT_WHILE &&
+        while_body.stmt_count == 1 &&
+        if_stmt.kind == AST_STMT_IF &&
+        then_body.stmt_count == 1 &&
+        else_body.stmt_count == 1 &&
+        nested_block_stmt.kind == AST_STMT_BLOCK &&
+        nested_block.stmt_count == 1;
+    ast_free_module(ast);
+    return ok;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 @name(\"aurex_main\") { puts(c\"ok\"); return 1 + 2 * 3; }";
     let ast: AstModule = parse_seed_ast(source);
@@ -179,8 +225,8 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let export_argv_inner: AstTypeNode = ast.types[export_argv_pointee.pointee];
     let export_return_type: AstTypeNode = ast.types[export_fn.return_type];
     let body: AstBlockNode = ast.blocks[export_fn.body_block];
-    let expr_stmt: AstStmtNode = ast.stmts[body.first_stmt];
-    let return_stmt: AstStmtNode = ast.stmts[body.first_stmt + 1];
+    let expr_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[body.first_stmt]];
+    let return_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[body.first_stmt + 1]];
     let call_expr: AstExprNode = ast.exprs[expr_stmt.expr_id];
     let call_callee: AstExprNode = ast.exprs[call_expr.left];
     let call_arg_ref: AstExprArg = ast.expr_args[call_expr.first_arg];
@@ -283,7 +329,8 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         export_return_type.primitive == AST_PRIM_I32 &&
         parse_seed_module(source) &&
         validate_complex_expr_seed() &&
-        validate_multi_export_seed() {
+        validate_multi_export_seed() &&
+        validate_control_flow_seed() {
         ast_free_module(ast);
         puts(c"selfhost parser seed ok");
         return 0;

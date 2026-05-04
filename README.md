@@ -49,7 +49,7 @@ build/bin/aurexc --emit=llvm-ir examples/hello.ax
 `--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
 LLVM IR and prints the result. Native output runs Aurex IR -> LLVM IR -> clang.
 The old Stage0 C backend has been removed from the production build; the
-selfhost Stage1 path now emits Aurex IR snapshots instead of C. The historical
+selfhost Stage1 path now emits TAC snapshots instead of C. The historical
 standalone C translator has also been removed from the tree.
 
 The bundled std root is found through `--stdlib`, `AUREX_STDLIB`, build-tree
@@ -75,12 +75,12 @@ programs.
 
 Self-hosting is explicit in `selfhost/`, but 0.1.2 is not fully self-hosted
 yet. The current track contains reusable M0 lexer/parser pieces, an ID-backed
-AST seed, and a Stage1 compiler entry that emits `aurex_ir v0` snapshots.
+AST seed, and a Stage1 compiler entry that emits `aurex_tac v0` snapshots.
 
 The old selfhost C emitter has been removed from the active tree. Stage1 now
 uses `aurex/selfhost/compiler/ir/`, split into writer, name, type, expression,
 and emission modules. The seed parser now covers multiple `export c fn` items
-in one module, and Stage1 IR snapshots emit expression values per function
+in one module, and Stage1 emits three-address-code temporaries per function
 block. For syntax not yet covered by the parser seed, Stage1 records
 deterministic `selfhost_module ... lowering(ast_pending)` markers so the
 compiler bundle remains measurable without claiming full lowering.
@@ -90,11 +90,11 @@ tools/bootstrap_chain.sh
 make -C selfhost check
 ```
 
-Manual Stage1 IR run:
+Manual Stage1 TAC run:
 
 ```sh
 build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/bin/aurexc_stage1.ax -o build/selfhost/aurexc_stage1
-build/selfhost/aurexc_stage1 examples/hello.ax build/selfhost/hello.stage1.air
+build/selfhost/aurexc_stage1 examples/hello.ax build/selfhost/hello.stage1.tac
 ```
 
 ## Documentation

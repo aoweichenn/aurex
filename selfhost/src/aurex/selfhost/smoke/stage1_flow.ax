@@ -1,0 +1,26 @@
+module aurex.selfhost.smoke.stage1_flow;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+fn helper(limit: i32) -> i32 {
+    let one: i32 = 1;
+    var acc: i32 = 0;
+    while acc < limit {
+        acc = acc + one;
+    }
+    if acc == limit {
+        return acc;
+    } else {
+        return 0;
+    }
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    {
+        let inner: i32 = helper(3);
+    }
+    puts(c"stage1 flow");
+    return helper(2);
+}

@@ -56,5 +56,11 @@ fn ir_write_type(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, 
             ir_write_text(file, c".") &&
             ir_write_range(file, source, ty.name_begin, ty.name_end);
     }
+    if ty.kind == AST_TYPE_ARRAY {
+        return ir_write_text(file, c"[") &&
+            ir_write_range(file, source, ty.array_count_begin, ty.array_count_end) &&
+            ir_write_text(file, c"]") &&
+            ir_write_type(file, source, ast, ty.array_element);
+    }
     return ir_write_text(file, c"<invalid-type>");
 }

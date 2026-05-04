@@ -28,7 +28,7 @@ Included:
 Not included:
 
 - Complete Stage1 sema.
-- Stage1 IR verifier.
+- Stage1 TAC verifier.
 - Stage1 LLVM backend handoff.
 - Fixed-point self-host.
 - Complete cross-block SSA/mem2reg and production optimizer.

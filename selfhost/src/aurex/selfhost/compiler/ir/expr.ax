@@ -1,6 +1,7 @@
 module aurex.selfhost.compiler.ir.expr;
 
 import aurex.selfhost.compiler.io;
+import aurex.selfhost.compiler.ir.types;
 import aurex.selfhost.compiler.ir.writer;
 import aurex.selfhost.syntax.ast;
 
@@ -67,30 +68,37 @@ fn ir_write_expr_leaf(file: *mut OutputFile, source: *const u8, expr: AstExprNod
     return ir_write_text(file, c"expr?");
 }
 
-fn ir_write_expr_ref(file: *mut OutputFile, expr_id: i32) -> bool {
-    return ir_write_text(file, c"%e") &&
+fn tac_write_temp(file: *mut OutputFile, expr_id: i32) -> bool {
+    return ir_write_text(file, c"%t") &&
         ir_write_i32(file, expr_id);
 }
 
-fn ir_write_expr_value(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, expr: AstExprNode) -> bool {
+fn tac_write_operand(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, expr_id: i32) -> bool {
+    if expr_id < 0 || expr_id >= ast.expr_count {
+        return ir_write_text(file, c"<bad-expr>");
+    }
+    return tac_write_temp(file, expr_id);
+}
+
+fn tac_write_expr_value(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, expr: AstExprNode) -> bool {
     if ir_expr_is_leaf(expr.kind) {
         return ir_write_expr_leaf(file, source, expr);
     }
     if expr.kind == AST_EXPR_UNARY {
         return ir_write_op(file, expr.op) &&
             ir_write_text(file, c" ") &&
-            ir_write_expr_ref(file, expr.left);
+            tac_write_operand(file, source, ast, expr.left);
     }
     if expr.kind == AST_EXPR_BINARY {
         return ir_write_op(file, expr.op) &&
             ir_write_text(file, c" ") &&
-            ir_write_expr_ref(file, expr.left) &&
+            tac_write_operand(file, source, ast, expr.left) &&
             ir_write_text(file, c", ") &&
-            ir_write_expr_ref(file, expr.right);
+            tac_write_operand(file, source, ast, expr.right);
     }
     if expr.kind == AST_EXPR_CALL {
         if !ir_write_text(file, c"call ") { return false; }
-        if !ir_write_expr_ref(file, expr.left) { return false; }
+        if !tac_write_operand(file, source, ast, expr.left) { return false; }
         if !ir_write_text(file, c"(") { return false; }
         var arg_index: i32 = 0;
         while arg_index < expr.arg_count {
@@ -98,23 +106,76 @@ fn ir_write_expr_value(file: *mut OutputFile, source: *const u8, ast: *mut AstMo
                 if !ir_write_text(file, c", ") { return false; }
             }
             let arg: AstExprArg = ast.expr_args[expr.first_arg + arg_index];
-            if !ir_write_expr_ref(file, arg.expr_id) { return false; }
+            if !tac_write_operand(file, source, ast, arg.expr_id) { return false; }
             arg_index = arg_index + 1;
         }
         return ir_write_text(file, c")");
     }
+    if expr.kind == AST_EXPR_FIELD {
+        return ir_write_text(file, c"field ") &&
+            tac_write_operand(file, source, ast, expr.left) &&
+            ir_write_text(file, c", .") &&
+            ir_write_range(file, source, expr.name_begin, expr.name_end);
+    }
+    if expr.kind == AST_EXPR_INDEX {
+        return ir_write_text(file, c"index ") &&
+            tac_write_operand(file, source, ast, expr.left) &&
+            ir_write_text(file, c", ") &&
+            tac_write_operand(file, source, ast, expr.right);
+    }
+    if expr.kind == AST_EXPR_STRUCT_LITERAL {
+        if !ir_write_text(file, c"struct ") { return false; }
+        if !ir_write_range(file, source, expr.name_begin, expr.name_end) { return false; }
+        if !ir_write_text(file, c" { ") { return false; }
+        var field_index: i32 = 0;
+        while field_index < expr.field_count {
+            if field_index > 0 {
+                if !ir_write_text(file, c", ") { return false; }
+            }
+            let field: AstFieldInit = ast.field_inits[expr.first_field + field_index];
+            if !ir_write_range(file, source, field.name_begin, field.name_end) { return false; }
+            if !ir_write_text(file, c": ") { return false; }
+            if !tac_write_operand(file, source, ast, field.expr_id) { return false; }
+            field_index = field_index + 1;
+        }
+        return ir_write_text(file, c" }");
+    }
+    if expr.kind == AST_EXPR_CAST || expr.kind == AST_EXPR_PTR_CAST || expr.kind == AST_EXPR_BIT_CAST || expr.kind == AST_EXPR_PTR_FROM_ADDR {
+        if expr.kind == AST_EXPR_CAST { if !ir_write_text(file, c"cast ") { return false; } }
+        if expr.kind == AST_EXPR_PTR_CAST { if !ir_write_text(file, c"ptr_cast ") { return false; } }
+        if expr.kind == AST_EXPR_BIT_CAST { if !ir_write_text(file, c"bit_cast ") { return false; } }
+        if expr.kind == AST_EXPR_PTR_FROM_ADDR { if !ir_write_text(file, c"ptr_from_addr ") { return false; } }
+        if !ir_write_text(file, c"<") { return false; }
+        if !ir_write_type(file, source, ast, expr.type_id) { return false; }
+        if !ir_write_text(file, c"> ") { return false; }
+        return tac_write_operand(file, source, ast, expr.left);
+    }
+    if expr.kind == AST_EXPR_SIZE_OF || expr.kind == AST_EXPR_ALIGN_OF {
+        if expr.kind == AST_EXPR_SIZE_OF {
+            if !ir_write_text(file, c"size_of ") { return false; }
+        } else {
+            if !ir_write_text(file, c"align_of ") { return false; }
+        }
+        if !ir_write_text(file, c"<") { return false; }
+        if !ir_write_type(file, source, ast, expr.type_id) { return false; }
+        return ir_write_text(file, c">");
+    }
+    if expr.kind == AST_EXPR_PTR_ADDR {
+        return ir_write_text(file, c"ptr_addr ") &&
+            tac_write_operand(file, source, ast, expr.left);
+    }
     return ir_write_text(file, c"expr?");
 }
 
-fn ir_emit_expr_values(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, first_expr: i32, expr_count: i32) -> bool {
+fn tac_emit_expr_values(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, first_expr: i32, expr_count: i32) -> bool {
     var index: i32 = first_expr;
     let end: i32 = first_expr + expr_count;
     while index < end {
         let expr: AstExprNode = ast.exprs[index];
         if !ir_write_text(file, c"    ") { return false; }
-        if !ir_write_expr_ref(file, index) { return false; }
+        if !tac_write_temp(file, index) { return false; }
         if !ir_write_text(file, c" = ") { return false; }
-        if !ir_write_expr_value(file, source, ast, expr) { return false; }
+        if !tac_write_expr_value(file, source, ast, expr) { return false; }
         if !ir_write_text(file, c"\n") { return false; }
         index = index + 1;
     }

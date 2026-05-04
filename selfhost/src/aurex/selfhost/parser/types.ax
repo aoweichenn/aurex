@@ -40,6 +40,20 @@ fn make_signature_result(name_begin: i32, name_end: i32, first_param: i32, param
 }
 
 fn parse_type_atom(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> TypeResult {
+    if parser_match(source, index, current, TK_L_BRACKET) {
+        let count: TokenSpan = parser_advance(source, index, current);
+        if count.kind != TK_INTEGER {
+            return make_bad_type_result();
+        }
+        if !parser_expect(source, index, current, TK_R_BRACKET) {
+            return make_bad_type_result();
+        }
+        let element: TypeResult = parse_type(source, index, current, ast);
+        if !element.ok {
+            return make_bad_type_result();
+        }
+        return make_type_result(ast_add_array_type(ast, count.begin, count.end, element.id));
+    }
     if parser_match(source, index, current, TK_KW_VOID) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_VOID)); }
     if parser_match(source, index, current, TK_KW_BOOL) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_BOOL)); }
     if parser_match(source, index, current, TK_KW_I8) { return make_type_result(ast_add_primitive_type(ast, AST_PRIM_I8)); }

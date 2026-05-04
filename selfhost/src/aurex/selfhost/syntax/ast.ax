@@ -6,13 +6,16 @@ const AST_MAX_TYPES: i32 = 64;
 const AST_MAX_PARAMS: i32 = 64;
 const AST_MAX_BLOCKS: i32 = 32;
 const AST_MAX_STMTS: i32 = 64;
+const AST_MAX_STMT_REFS: i32 = 128;
 const AST_MAX_EXPRS: i32 = 64;
 const AST_MAX_EXPR_ARGS: i32 = 64;
+const AST_MAX_FIELD_INITS: i32 = 64;
 
 const AST_TYPE_INVALID: i32 = 0;
 const AST_TYPE_PRIMITIVE: i32 = 1;
 const AST_TYPE_NAMED: i32 = 2;
 const AST_TYPE_POINTER: i32 = 3;
+const AST_TYPE_ARRAY: i32 = 4;
 
 const AST_MUT_CONST: i32 = 0;
 const AST_MUT_MUT: i32 = 1;
@@ -37,9 +40,16 @@ const AST_ITEM_EXTERN_BLOCK: i32 = 1;
 const AST_ITEM_EXTERN_FN: i32 = 2;
 const AST_ITEM_OPAQUE_STRUCT: i32 = 3;
 const AST_ITEM_EXPORT_FN: i32 = 4;
+const AST_ITEM_FN: i32 = 5;
 
 const AST_STMT_RETURN: i32 = 1;
 const AST_STMT_EXPR: i32 = 2;
+const AST_STMT_LET: i32 = 3;
+const AST_STMT_VAR: i32 = 4;
+const AST_STMT_ASSIGN: i32 = 5;
+const AST_STMT_BLOCK: i32 = 6;
+const AST_STMT_IF: i32 = 7;
+const AST_STMT_WHILE: i32 = 8;
 
 const AST_EXPR_INTEGER: i32 = 1;
 const AST_EXPR_IDENTIFIER: i32 = 2;
@@ -50,6 +60,16 @@ const AST_EXPR_NULL: i32 = 6;
 const AST_EXPR_UNARY: i32 = 7;
 const AST_EXPR_BINARY: i32 = 8;
 const AST_EXPR_CALL: i32 = 9;
+const AST_EXPR_FIELD: i32 = 10;
+const AST_EXPR_INDEX: i32 = 11;
+const AST_EXPR_STRUCT_LITERAL: i32 = 12;
+const AST_EXPR_CAST: i32 = 13;
+const AST_EXPR_PTR_CAST: i32 = 14;
+const AST_EXPR_BIT_CAST: i32 = 15;
+const AST_EXPR_SIZE_OF: i32 = 16;
+const AST_EXPR_ALIGN_OF: i32 = 17;
+const AST_EXPR_PTR_ADDR: i32 = 18;
+const AST_EXPR_PTR_FROM_ADDR: i32 = 19;
 
 const AST_OP_NONE: i32 = 0;
 const AST_OP_ADD: i32 = 1;
@@ -86,6 +106,9 @@ struct AstTypeNode {
     primitive: i32;
     mutability: i32;
     pointee: i32;
+    array_count_begin: i32;
+    array_count_end: i32;
+    array_element: i32;
     name_begin: i32;
     name_end: i32;
 }
@@ -121,7 +144,13 @@ struct AstStmtNode {
     kind: i32;
     begin: i32;
     end: i32;
+    name_begin: i32;
+    name_end: i32;
+    type_id: i32;
     expr_id: i32;
+    rhs_expr_id: i32;
+    then_block: i32;
+    else_block: i32;
 }
 
 struct AstExprNode {
@@ -133,9 +162,20 @@ struct AstExprNode {
     right: i32;
     first_arg: i32;
     arg_count: i32;
+    type_id: i32;
+    name_begin: i32;
+    name_end: i32;
+    first_field: i32;
+    field_count: i32;
 }
 
 struct AstExprArg {
+    expr_id: i32;
+}
+
+struct AstFieldInit {
+    name_begin: i32;
+    name_end: i32;
     expr_id: i32;
 }
 
@@ -149,17 +189,26 @@ struct AstModule {
     extern_fn_count: i32;
     opaque_struct_count: i32;
     export_fn_count: i32;
+    fn_count: i32;
     param_count: i32;
     type_count: i32;
     primitive_type_count: i32;
     named_type_count: i32;
     pointer_type_count: i32;
+    array_type_count: i32;
     return_type_count: i32;
     abi_name_count: i32;
     block_count: i32;
     stmt_count: i32;
     return_stmt_count: i32;
     expr_stmt_count: i32;
+    let_stmt_count: i32;
+    var_stmt_count: i32;
+    assign_stmt_count: i32;
+    block_stmt_count: i32;
+    if_stmt_count: i32;
+    while_stmt_count: i32;
+    stmt_ref_count: i32;
     expr_count: i32;
     integer_expr_count: i32;
     identifier_expr_count: i32;
@@ -170,7 +219,18 @@ struct AstModule {
     unary_expr_count: i32;
     binary_expr_count: i32;
     call_expr_count: i32;
+    field_expr_count: i32;
+    index_expr_count: i32;
+    struct_literal_expr_count: i32;
+    cast_expr_count: i32;
+    ptr_cast_expr_count: i32;
+    bit_cast_expr_count: i32;
+    size_of_expr_count: i32;
+    align_of_expr_count: i32;
+    ptr_addr_expr_count: i32;
+    ptr_from_addr_expr_count: i32;
     expr_arg_count: i32;
+    field_init_count: i32;
     eof_end: i32;
     imports: *mut AstPath;
     items: *mut AstItemNode;
@@ -178,8 +238,10 @@ struct AstModule {
     params: *mut AstParamNode;
     blocks: *mut AstBlockNode;
     stmts: *mut AstStmtNode;
+    stmt_refs: *mut i32;
     exprs: *mut AstExprNode;
     expr_args: *mut AstExprArg;
+    field_inits: *mut AstFieldInit;
 }
 
 extern c {
@@ -198,17 +260,26 @@ fn ast_make_module() -> AstModule {
         extern_fn_count: 0,
         opaque_struct_count: 0,
         export_fn_count: 0,
+        fn_count: 0,
         param_count: 0,
         type_count: 0,
         primitive_type_count: 0,
         named_type_count: 0,
         pointer_type_count: 0,
+        array_type_count: 0,
         return_type_count: 0,
         abi_name_count: 0,
         block_count: 0,
         stmt_count: 0,
         return_stmt_count: 0,
         expr_stmt_count: 0,
+        let_stmt_count: 0,
+        var_stmt_count: 0,
+        assign_stmt_count: 0,
+        block_stmt_count: 0,
+        if_stmt_count: 0,
+        while_stmt_count: 0,
+        stmt_ref_count: 0,
         expr_count: 0,
         integer_expr_count: 0,
         identifier_expr_count: 0,
@@ -219,7 +290,18 @@ fn ast_make_module() -> AstModule {
         unary_expr_count: 0,
         binary_expr_count: 0,
         call_expr_count: 0,
+        field_expr_count: 0,
+        index_expr_count: 0,
+        struct_literal_expr_count: 0,
+        cast_expr_count: 0,
+        ptr_cast_expr_count: 0,
+        bit_cast_expr_count: 0,
+        size_of_expr_count: 0,
+        align_of_expr_count: 0,
+        ptr_addr_expr_count: 0,
+        ptr_from_addr_expr_count: 0,
         expr_arg_count: 0,
+        field_init_count: 0,
         eof_end: 0,
         imports: ptr_cast(*mut AstPath, malloc(size_of(AstPath) * cast(usize, AST_MAX_IMPORTS))),
         items: ptr_cast(*mut AstItemNode, malloc(size_of(AstItemNode) * cast(usize, AST_MAX_ITEMS))),
@@ -227,8 +309,10 @@ fn ast_make_module() -> AstModule {
         params: ptr_cast(*mut AstParamNode, malloc(size_of(AstParamNode) * cast(usize, AST_MAX_PARAMS))),
         blocks: ptr_cast(*mut AstBlockNode, malloc(size_of(AstBlockNode) * cast(usize, AST_MAX_BLOCKS))),
         stmts: ptr_cast(*mut AstStmtNode, malloc(size_of(AstStmtNode) * cast(usize, AST_MAX_STMTS))),
+        stmt_refs: ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_STMT_REFS))),
         exprs: ptr_cast(*mut AstExprNode, malloc(size_of(AstExprNode) * cast(usize, AST_MAX_EXPRS))),
-        expr_args: ptr_cast(*mut AstExprArg, malloc(size_of(AstExprArg) * cast(usize, AST_MAX_EXPR_ARGS)))
+        expr_args: ptr_cast(*mut AstExprArg, malloc(size_of(AstExprArg) * cast(usize, AST_MAX_EXPR_ARGS))),
+        field_inits: ptr_cast(*mut AstFieldInit, malloc(size_of(AstFieldInit) * cast(usize, AST_MAX_FIELD_INITS)))
     };
 }
 
@@ -239,8 +323,10 @@ fn ast_free_module(ast: AstModule) -> void {
     free(ptr_cast(*mut void, ast.params));
     free(ptr_cast(*mut void, ast.blocks));
     free(ptr_cast(*mut void, ast.stmts));
+    free(ptr_cast(*mut void, ast.stmt_refs));
     free(ptr_cast(*mut void, ast.exprs));
     free(ptr_cast(*mut void, ast.expr_args));
+    free(ptr_cast(*mut void, ast.field_inits));
 }
 
 fn ast_has_storage(ast: *mut AstModule) -> bool {
@@ -250,8 +336,10 @@ fn ast_has_storage(ast: *mut AstModule) -> bool {
         ast.params != null &&
         ast.blocks != null &&
         ast.stmts != null &&
+        ast.stmt_refs != null &&
         ast.exprs != null &&
-        ast.expr_args != null;
+        ast.expr_args != null &&
+        ast.field_inits != null;
 }
 
 fn ast_counts_within_capacity(ast: *mut AstModule) -> bool {
@@ -261,8 +349,10 @@ fn ast_counts_within_capacity(ast: *mut AstModule) -> bool {
         ast.param_count <= AST_MAX_PARAMS &&
         ast.block_count <= AST_MAX_BLOCKS &&
         ast.stmt_count <= AST_MAX_STMTS &&
+        ast.stmt_ref_count <= AST_MAX_STMT_REFS &&
         ast.expr_count <= AST_MAX_EXPRS &&
-        ast.expr_arg_count <= AST_MAX_EXPR_ARGS;
+        ast.expr_arg_count <= AST_MAX_EXPR_ARGS &&
+        ast.field_init_count <= AST_MAX_FIELD_INITS;
 }
 
 fn ast_mark_ok(ast: *mut AstModule, eof_end: i32) -> void {
@@ -276,15 +366,19 @@ fn ast_set_module_path(ast: *mut AstModule, begin: i32, end: i32) -> void {
 }
 
 fn ast_make_primitive_type_node(primitive: i32) -> AstTypeNode {
-    return AstTypeNode { kind: AST_TYPE_PRIMITIVE, primitive: primitive, mutability: AST_MUT_CONST, pointee: 0, name_begin: 0, name_end: 0 };
+    return AstTypeNode { kind: AST_TYPE_PRIMITIVE, primitive: primitive, mutability: AST_MUT_CONST, pointee: 0, array_count_begin: 0, array_count_end: 0, array_element: -1, name_begin: 0, name_end: 0 };
 }
 
 fn ast_make_named_type_node(begin: i32, end: i32) -> AstTypeNode {
-    return AstTypeNode { kind: AST_TYPE_NAMED, primitive: AST_PRIM_VOID, mutability: AST_MUT_CONST, pointee: 0, name_begin: begin, name_end: end };
+    return AstTypeNode { kind: AST_TYPE_NAMED, primitive: AST_PRIM_VOID, mutability: AST_MUT_CONST, pointee: 0, array_count_begin: 0, array_count_end: 0, array_element: -1, name_begin: begin, name_end: end };
 }
 
 fn ast_make_pointer_type_node(mutability: i32, pointee: i32) -> AstTypeNode {
-    return AstTypeNode { kind: AST_TYPE_POINTER, primitive: AST_PRIM_VOID, mutability: mutability, pointee: pointee, name_begin: 0, name_end: 0 };
+    return AstTypeNode { kind: AST_TYPE_POINTER, primitive: AST_PRIM_VOID, mutability: mutability, pointee: pointee, array_count_begin: 0, array_count_end: 0, array_element: -1, name_begin: 0, name_end: 0 };
+}
+
+fn ast_make_array_type_node(count_begin: i32, count_end: i32, element: i32) -> AstTypeNode {
+    return AstTypeNode { kind: AST_TYPE_ARRAY, primitive: AST_PRIM_VOID, mutability: AST_MUT_CONST, pointee: 0, array_count_begin: count_begin, array_count_end: count_end, array_element: element, name_begin: 0, name_end: 0 };
 }
 
 fn ast_make_item_node(kind: i32, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, abi_begin: i32, abi_end: i32, body_block: i32) -> AstItemNode {
@@ -305,12 +399,37 @@ fn ast_make_block_node(begin: i32, end: i32, first_stmt: i32, stmt_count: i32, f
     return AstBlockNode { begin: begin, end: end, first_stmt: first_stmt, stmt_count: stmt_count, first_expr: first_expr, expr_count: expr_count };
 }
 
-fn ast_make_stmt_node(kind: i32, begin: i32, end: i32, expr_id: i32) -> AstStmtNode {
-    return AstStmtNode { kind: kind, begin: begin, end: end, expr_id: expr_id };
+fn ast_make_stmt_node(kind: i32, begin: i32, end: i32, name_begin: i32, name_end: i32, type_id: i32, expr_id: i32, rhs_expr_id: i32, then_block: i32, else_block: i32) -> AstStmtNode {
+    return AstStmtNode {
+        kind: kind,
+        begin: begin,
+        end: end,
+        name_begin: name_begin,
+        name_end: name_end,
+        type_id: type_id,
+        expr_id: expr_id,
+        rhs_expr_id: rhs_expr_id,
+        then_block: then_block,
+        else_block: else_block
+    };
 }
 
-fn ast_make_expr_node(kind: i32, begin: i32, end: i32, op: i32, left: i32, right: i32, first_arg: i32, arg_count: i32) -> AstExprNode {
-    return AstExprNode { kind: kind, begin: begin, end: end, op: op, left: left, right: right, first_arg: first_arg, arg_count: arg_count };
+fn ast_make_expr_node(kind: i32, begin: i32, end: i32, op: i32, left: i32, right: i32, first_arg: i32, arg_count: i32, type_id: i32, name_begin: i32, name_end: i32, first_field: i32, field_count: i32) -> AstExprNode {
+    return AstExprNode {
+        kind: kind,
+        begin: begin,
+        end: end,
+        op: op,
+        left: left,
+        right: right,
+        first_arg: first_arg,
+        arg_count: arg_count,
+        type_id: type_id,
+        name_begin: name_begin,
+        name_end: name_end,
+        first_field: first_field,
+        field_count: field_count
+    };
 }
 
 fn ast_add_import_path(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
@@ -359,6 +478,12 @@ fn ast_add_export_fn(ast: *mut AstModule, name_begin: i32, name_end: i32, first_
     return id;
 }
 
+fn ast_add_fn(ast: *mut AstModule, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, body_block: i32) -> i32 {
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_FN, name_begin, name_end, first_param, param_count, return_type, 0, 0, body_block));
+    ast.fn_count = ast.fn_count + 1;
+    return id;
+}
+
 fn ast_add_param(ast: *mut AstModule, name_begin: i32, name_end: i32, type_id: i32) -> i32 {
     let id: i32 = ast.param_count;
     if id < AST_MAX_PARAMS && ast.params != null {
@@ -399,6 +524,12 @@ fn ast_add_pointer_type(ast: *mut AstModule, mutability: i32, pointee: i32) -> i
     return id;
 }
 
+fn ast_add_array_type(ast: *mut AstModule, count_begin: i32, count_end: i32, element: i32) -> i32 {
+    let id: i32 = ast_add_type_node(ast, ast_make_array_type_node(count_begin, count_end, element));
+    ast.array_type_count = ast.array_type_count + 1;
+    return id;
+}
+
 fn ast_add_return_type(ast: *mut AstModule) -> void {
     ast.return_type_count = ast.return_type_count + 1;
 }
@@ -418,6 +549,17 @@ fn ast_add_block(ast: *mut AstModule, begin: i32, end: i32, first_stmt: i32, stm
     return -1;
 }
 
+fn ast_add_stmt_ref(ast: *mut AstModule, stmt_id: i32) -> i32 {
+    let id: i32 = ast.stmt_ref_count;
+    if id < AST_MAX_STMT_REFS && ast.stmt_refs != null {
+        ast.stmt_refs[id] = stmt_id;
+        ast.stmt_ref_count = ast.stmt_ref_count + 1;
+        return id;
+    }
+    ast.stmt_ref_count = ast.stmt_ref_count + 1;
+    return -1;
+}
+
 fn ast_add_stmt_node(ast: *mut AstModule, node: AstStmtNode) -> i32 {
     let id: i32 = ast.stmt_count;
     if id < AST_MAX_STMTS && ast.stmts != null {
@@ -430,14 +572,50 @@ fn ast_add_stmt_node(ast: *mut AstModule, node: AstStmtNode) -> i32 {
 }
 
 fn ast_add_return_stmt(ast: *mut AstModule, begin: i32, end: i32, expr_id: i32) -> i32 {
-    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_RETURN, begin, end, expr_id));
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_RETURN, begin, end, 0, 0, -1, expr_id, -1, -1, -1));
     ast.return_stmt_count = ast.return_stmt_count + 1;
     return id;
 }
 
 fn ast_add_expr_stmt(ast: *mut AstModule, begin: i32, end: i32, expr_id: i32) -> i32 {
-    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_EXPR, begin, end, expr_id));
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_EXPR, begin, end, 0, 0, -1, expr_id, -1, -1, -1));
     ast.expr_stmt_count = ast.expr_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_let_stmt(ast: *mut AstModule, begin: i32, end: i32, name_begin: i32, name_end: i32, type_id: i32, expr_id: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_LET, begin, end, name_begin, name_end, type_id, expr_id, -1, -1, -1));
+    ast.let_stmt_count = ast.let_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_var_stmt(ast: *mut AstModule, begin: i32, end: i32, name_begin: i32, name_end: i32, type_id: i32, expr_id: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_VAR, begin, end, name_begin, name_end, type_id, expr_id, -1, -1, -1));
+    ast.var_stmt_count = ast.var_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_assign_stmt(ast: *mut AstModule, begin: i32, end: i32, target_expr_id: i32, value_expr_id: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_ASSIGN, begin, end, 0, 0, -1, target_expr_id, value_expr_id, -1, -1));
+    ast.assign_stmt_count = ast.assign_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_block_stmt(ast: *mut AstModule, begin: i32, end: i32, block_id: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_BLOCK, begin, end, 0, 0, -1, -1, -1, block_id, -1));
+    ast.block_stmt_count = ast.block_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_if_stmt(ast: *mut AstModule, begin: i32, end: i32, condition_expr_id: i32, then_block: i32, else_block: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_IF, begin, end, 0, 0, -1, condition_expr_id, -1, then_block, else_block));
+    ast.if_stmt_count = ast.if_stmt_count + 1;
+    return id;
+}
+
+fn ast_add_while_stmt(ast: *mut AstModule, begin: i32, end: i32, condition_expr_id: i32, body_block: i32) -> i32 {
+    let id: i32 = ast_add_stmt_node(ast, ast_make_stmt_node(AST_STMT_WHILE, begin, end, 0, 0, -1, condition_expr_id, -1, body_block, -1));
+    ast.while_stmt_count = ast.while_stmt_count + 1;
     return id;
 }
 
@@ -453,49 +631,49 @@ fn ast_add_expr_node(ast: *mut AstModule, node: AstExprNode) -> i32 {
 }
 
 fn ast_add_integer_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_INTEGER, begin, end, AST_OP_NONE, -1, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_INTEGER, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.integer_expr_count = ast.integer_expr_count + 1;
     return id;
 }
 
 fn ast_add_identifier_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_IDENTIFIER, begin, end, AST_OP_NONE, -1, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_IDENTIFIER, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.identifier_expr_count = ast.identifier_expr_count + 1;
     return id;
 }
 
 fn ast_add_string_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_STRING, begin, end, AST_OP_NONE, -1, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_STRING, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.string_expr_count = ast.string_expr_count + 1;
     return id;
 }
 
 fn ast_add_c_string_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_C_STRING, begin, end, AST_OP_NONE, -1, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_C_STRING, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.c_string_expr_count = ast.c_string_expr_count + 1;
     return id;
 }
 
 fn ast_add_bool_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_BOOL, begin, end, AST_OP_NONE, -1, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_BOOL, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.bool_expr_count = ast.bool_expr_count + 1;
     return id;
 }
 
 fn ast_add_null_expr(ast: *mut AstModule, begin: i32, end: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_NULL, begin, end, AST_OP_NONE, -1, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_NULL, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.null_expr_count = ast.null_expr_count + 1;
     return id;
 }
 
 fn ast_add_unary_expr(ast: *mut AstModule, begin: i32, end: i32, op: i32, operand: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_UNARY, begin, end, op, operand, -1, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_UNARY, begin, end, op, operand, -1, 0, 0, -1, 0, 0, 0, 0));
     ast.unary_expr_count = ast.unary_expr_count + 1;
     return id;
 }
 
 fn ast_add_binary_expr(ast: *mut AstModule, begin: i32, end: i32, op: i32, left: i32, right: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_BINARY, begin, end, op, left, right, 0, 0));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_BINARY, begin, end, op, left, right, 0, 0, -1, 0, 0, 0, 0));
     ast.binary_expr_count = ast.binary_expr_count + 1;
     return id;
 }
@@ -512,7 +690,58 @@ fn ast_add_expr_arg(ast: *mut AstModule, expr_id: i32) -> i32 {
 }
 
 fn ast_add_call_expr(ast: *mut AstModule, begin: i32, end: i32, callee: i32, first_arg: i32, arg_count: i32) -> i32 {
-    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_CALL, begin, end, AST_OP_NONE, callee, -1, first_arg, arg_count));
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_CALL, begin, end, AST_OP_NONE, callee, -1, first_arg, arg_count, -1, 0, 0, 0, 0));
     ast.call_expr_count = ast.call_expr_count + 1;
+    return id;
+}
+
+fn ast_add_field_init(ast: *mut AstModule, name_begin: i32, name_end: i32, expr_id: i32) -> i32 {
+    let id: i32 = ast.field_init_count;
+    if id < AST_MAX_FIELD_INITS && ast.field_inits != null {
+        ast.field_inits[id] = AstFieldInit { name_begin: name_begin, name_end: name_end, expr_id: expr_id };
+        ast.field_init_count = ast.field_init_count + 1;
+        return id;
+    }
+    ast.field_init_count = ast.field_init_count + 1;
+    return -1;
+}
+
+fn ast_add_field_expr(ast: *mut AstModule, begin: i32, end: i32, object: i32, name_begin: i32, name_end: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_FIELD, begin, end, AST_OP_NONE, object, -1, 0, 0, -1, name_begin, name_end, 0, 0));
+    ast.field_expr_count = ast.field_expr_count + 1;
+    return id;
+}
+
+fn ast_add_index_expr(ast: *mut AstModule, begin: i32, end: i32, object: i32, index_expr: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_INDEX, begin, end, AST_OP_NONE, object, index_expr, 0, 0, -1, 0, 0, 0, 0));
+    ast.index_expr_count = ast.index_expr_count + 1;
+    return id;
+}
+
+fn ast_add_struct_literal_expr(ast: *mut AstModule, begin: i32, end: i32, name_begin: i32, name_end: i32, first_field: i32, field_count: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_STRUCT_LITERAL, begin, end, AST_OP_NONE, -1, -1, 0, 0, -1, name_begin, name_end, first_field, field_count));
+    ast.struct_literal_expr_count = ast.struct_literal_expr_count + 1;
+    return id;
+}
+
+fn ast_add_cast_like_expr(ast: *mut AstModule, kind: i32, begin: i32, end: i32, type_id: i32, operand: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(kind, begin, end, AST_OP_NONE, operand, -1, 0, 0, type_id, 0, 0, 0, 0));
+    if kind == AST_EXPR_CAST { ast.cast_expr_count = ast.cast_expr_count + 1; }
+    if kind == AST_EXPR_PTR_CAST { ast.ptr_cast_expr_count = ast.ptr_cast_expr_count + 1; }
+    if kind == AST_EXPR_BIT_CAST { ast.bit_cast_expr_count = ast.bit_cast_expr_count + 1; }
+    if kind == AST_EXPR_PTR_FROM_ADDR { ast.ptr_from_addr_expr_count = ast.ptr_from_addr_expr_count + 1; }
+    return id;
+}
+
+fn ast_add_type_builtin_expr(ast: *mut AstModule, kind: i32, begin: i32, end: i32, type_id: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(kind, begin, end, AST_OP_NONE, -1, -1, 0, 0, type_id, 0, 0, 0, 0));
+    if kind == AST_EXPR_SIZE_OF { ast.size_of_expr_count = ast.size_of_expr_count + 1; }
+    if kind == AST_EXPR_ALIGN_OF { ast.align_of_expr_count = ast.align_of_expr_count + 1; }
+    return id;
+}
+
+fn ast_add_ptr_addr_expr(ast: *mut AstModule, begin: i32, end: i32, operand: i32) -> i32 {
+    let id: i32 = ast_add_expr_node(ast, ast_make_expr_node(AST_EXPR_PTR_ADDR, begin, end, AST_OP_NONE, operand, -1, 0, 0, -1, 0, 0, 0, 0));
+    ast.ptr_addr_expr_count = ast.ptr_addr_expr_count + 1;
     return id;
 }

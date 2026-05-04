@@ -34,8 +34,8 @@ AST design:
 The selfhost parser seed currently supports module/import declarations, one
 `extern c` block, multiple `export c fn` items, function parameters and return
 types, expression statements, and return statements. Each block records its own
-statement range and expression range, so Stage1 IR output can scope expression
-values to the current function block.
+statement range and expression range, so Stage1 TAC output can scope expression
+temporaries to the current function block.
 
 ## Module Loader
 

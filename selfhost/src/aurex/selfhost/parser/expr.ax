@@ -2,6 +2,7 @@ module aurex.selfhost.parser.expr;
 
 import aurex.selfhost.lexer.core;
 import aurex.selfhost.parser.cursor;
+import aurex.selfhost.parser.types;
 import aurex.selfhost.syntax.ast;
 
 const EXPR_OP_BINARY: i32 = 1;
@@ -286,6 +287,66 @@ fn expr_reduce_for_precedence(stack: *mut ExprStack, ast: *mut AstModule, preced
 }
 
 fn parse_atom(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> ExprResult {
+    if parser_check(current, TK_KW_CAST) || parser_check(current, TK_KW_PTR_CAST) || parser_check(current, TK_KW_BIT_CAST) || parser_check(current, TK_KW_PTR_FROM_ADDR) {
+        let begin_token: TokenSpan = parser_advance(source, index, current);
+        var kind: i32 = AST_EXPR_CAST;
+        if begin_token.kind == TK_KW_PTR_CAST { kind = AST_EXPR_PTR_CAST; }
+        if begin_token.kind == TK_KW_BIT_CAST { kind = AST_EXPR_BIT_CAST; }
+        if begin_token.kind == TK_KW_PTR_FROM_ADDR { kind = AST_EXPR_PTR_FROM_ADDR; }
+        if !parser_expect(source, index, current, TK_L_PAREN) {
+            return make_bad_expr_result();
+        }
+        let ty: TypeResult = parse_type(source, index, current, ast);
+        if !ty.ok {
+            return make_bad_expr_result();
+        }
+        if !parser_expect(source, index, current, TK_COMMA) {
+            return make_bad_expr_result();
+        }
+        let operand: ExprResult = parse_expression_until(source, index, current, ast, TK_R_PAREN, TK_EOF);
+        if !operand.ok {
+            return make_bad_expr_result();
+        }
+        let close: TokenSpan = parser_advance(source, index, current);
+        if close.kind != TK_R_PAREN {
+            return make_bad_expr_result();
+        }
+        return make_expr_result(ast_add_cast_like_expr(ast, kind, begin_token.begin, close.end, ty.id, operand.id));
+    }
+    if parser_check(current, TK_KW_SIZE_OF) || parser_check(current, TK_KW_ALIGN_OF) {
+        let begin_token: TokenSpan = parser_advance(source, index, current);
+        var kind: i32 = AST_EXPR_ALIGN_OF;
+        if begin_token.kind == TK_KW_SIZE_OF {
+            kind = AST_EXPR_SIZE_OF;
+        }
+        if !parser_expect(source, index, current, TK_L_PAREN) {
+            return make_bad_expr_result();
+        }
+        let ty: TypeResult = parse_type(source, index, current, ast);
+        if !ty.ok {
+            return make_bad_expr_result();
+        }
+        let close: TokenSpan = parser_advance(source, index, current);
+        if close.kind != TK_R_PAREN {
+            return make_bad_expr_result();
+        }
+        return make_expr_result(ast_add_type_builtin_expr(ast, kind, begin_token.begin, close.end, ty.id));
+    }
+    if parser_check(current, TK_KW_PTR_ADDR) {
+        let begin_token: TokenSpan = parser_advance(source, index, current);
+        if !parser_expect(source, index, current, TK_L_PAREN) {
+            return make_bad_expr_result();
+        }
+        let operand: ExprResult = parse_expression_until(source, index, current, ast, TK_R_PAREN, TK_EOF);
+        if !operand.ok {
+            return make_bad_expr_result();
+        }
+        let close: TokenSpan = parser_advance(source, index, current);
+        if close.kind != TK_R_PAREN {
+            return make_bad_expr_result();
+        }
+        return make_expr_result(ast_add_ptr_addr_expr(ast, begin_token.begin, close.end, operand.id));
+    }
     let token: TokenSpan = parser_advance(source, index, current);
     var id: i32 = -1;
     if token.kind == TK_INTEGER {
@@ -309,6 +370,84 @@ fn parse_atom(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: 
                             return make_bad_expr_result();
                         }
                     }
+                }
+            }
+        }
+    }
+    return make_expr_result(id);
+}
+
+fn parse_struct_literal_tail(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule, base: AstExprNode) -> ExprResult {
+    if !parser_expect(source, index, current, TK_L_BRACE) {
+        return make_bad_expr_result();
+    }
+    let first_field: i32 = ast.field_init_count;
+    var field_count: i32 = 0;
+    while !parser_check(current, TK_R_BRACE) && !parser_check(current, TK_EOF) {
+        let field: TokenSpan = parser_advance(source, index, current);
+        if field.kind != TK_IDENTIFIER {
+            return make_bad_expr_result();
+        }
+        if !parser_expect(source, index, current, TK_COLON) {
+            return make_bad_expr_result();
+        }
+        let value: ExprResult = parse_expression_until(source, index, current, ast, TK_COMMA, TK_R_BRACE);
+        if !value.ok {
+            return make_bad_expr_result();
+        }
+        ast_add_field_init(ast, field.begin, field.end, value.id);
+        field_count = field_count + 1;
+        if parser_check(current, TK_COMMA) {
+            parser_advance(source, index, current);
+        }
+    }
+    let close: TokenSpan = parser_advance(source, index, current);
+    if close.kind != TK_R_BRACE {
+        return make_bad_expr_result();
+    }
+    return make_expr_result(ast_add_struct_literal_expr(ast, base.begin, close.end, base.begin, base.end, first_field, field_count));
+}
+
+fn expr_apply_postfix(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule, value_id: i32, stop0: i32, stop1: i32) -> ExprResult {
+    var id: i32 = value_id;
+    var keep_going: bool = true;
+    while keep_going {
+        keep_going = false;
+        if parser_check(current, TK_DOT) {
+            parser_advance(source, index, current);
+            let field: TokenSpan = parser_advance(source, index, current);
+            if field.kind != TK_IDENTIFIER {
+                return make_bad_expr_result();
+            }
+            let object: AstExprNode = ast.exprs[id];
+            id = ast_add_field_expr(ast, object.begin, field.end, id, field.begin, field.end);
+            keep_going = true;
+        } else {
+            if parser_check(current, TK_L_BRACKET) {
+                parser_advance(source, index, current);
+                let index_expr: ExprResult = parse_expression_until(source, index, current, ast, TK_R_BRACKET, TK_EOF);
+                if !index_expr.ok {
+                    return make_bad_expr_result();
+                }
+                let close: TokenSpan = parser_advance(source, index, current);
+                if close.kind != TK_R_BRACKET {
+                    return make_bad_expr_result();
+                }
+                let object: AstExprNode = ast.exprs[id];
+                id = ast_add_index_expr(ast, object.begin, close.end, id, index_expr.id);
+                keep_going = true;
+            } else {
+                if parser_check(current, TK_L_BRACE) && !expression_stop(current, stop0, stop1) {
+                    let base: AstExprNode = ast.exprs[id];
+                    if base.kind != AST_EXPR_IDENTIFIER {
+                        return make_bad_expr_result();
+                    }
+                    let literal: ExprResult = parse_struct_literal_tail(source, index, current, ast, base);
+                    if !literal.ok {
+                        return make_bad_expr_result();
+                    }
+                    id = literal.id;
+                    keep_going = true;
                 }
             }
         }
@@ -413,6 +552,17 @@ fn parse_expression_until(source: *const u8, index: *mut i32, current: *mut Toke
                         free_expr_stack(stack);
                         return make_bad_expr_result();
                     }
+                    let call_id: i32 = stack.values[stack.value_count - 1];
+                    stack.value_count = stack.value_count - 1;
+                    let postfixed: ExprResult = expr_apply_postfix(source, index, current, ast, call_id, stop0, stop1);
+                    if !postfixed.ok {
+                        free_expr_stack(stack);
+                        return make_bad_expr_result();
+                    }
+                    if !expr_push_value(&stack, postfixed.id) {
+                        free_expr_stack(stack);
+                        return make_bad_expr_result();
+                    }
                     expecting_operand = false;
                 } else {
                     let unary_op: i32 = token_unary_op((*current).kind);
@@ -428,7 +578,12 @@ fn parse_expression_until(source: *const u8, index: *mut i32, current: *mut Toke
                             free_expr_stack(stack);
                             return make_bad_expr_result();
                         }
-                        if !expr_push_value(&stack, value.id) {
+                        let postfixed: ExprResult = expr_apply_postfix(source, index, current, ast, value.id, stop0, stop1);
+                        if !postfixed.ok {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        if !expr_push_value(&stack, postfixed.id) {
                             free_expr_stack(stack);
                             return make_bad_expr_result();
                         }
@@ -462,6 +617,17 @@ fn parse_expression_until(source: *const u8, index: *mut i32, current: *mut Toke
                     if parser_check(current, TK_R_PAREN) && stack.frame_count > 0 {
                         let close: TokenSpan = parser_advance(source, index, current);
                         if !expr_close_frame(&stack, ast, close) {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        let call_id: i32 = stack.values[stack.value_count - 1];
+                        stack.value_count = stack.value_count - 1;
+                        let postfixed: ExprResult = expr_apply_postfix(source, index, current, ast, call_id, stop0, stop1);
+                        if !postfixed.ok {
+                            free_expr_stack(stack);
+                            return make_bad_expr_result();
+                        }
+                        if !expr_push_value(&stack, postfixed.id) {
                             free_expr_stack(stack);
                             return make_bad_expr_result();
                         }

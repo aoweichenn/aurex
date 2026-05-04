@@ -24,7 +24,7 @@
 不包含：
 
 - 完整 Stage1 sema。
-- Stage1 IR verifier。
+- Stage1 TAC verifier。
 - Stage1 LLVM backend 接入。
 - fixed-point self-host。
 - 完整跨块 SSA/mem2reg 和生产级优化器。

@@ -4,10 +4,10 @@
 
 - `aurex/selfhost/bin/`: executable entry points, including `aurexc_stage1.ax`.
 - `aurex/selfhost/compiler/`: M0 compiler implementation slices.
-- `aurex/selfhost/compiler/ir/`: Stage1 Aurex IR output modules. `writer.ax`
+- `aurex/selfhost/compiler/ir/`: Stage1 TAC output modules. `writer.ax`
   owns output primitives, `names.ax` owns stable module/name spelling,
   `types.ax` owns type text, `expr.ax` owns expression value text, and `emit.ax`
-  connects parser AST to the IR snapshot format. Expression output is scoped to
+  connects parser AST to the TAC snapshot format. Expression output is scoped to
   the current function block.
 - `aurex/selfhost/lexer/`: reusable lexer core and token dump helpers.
 - `aurex/selfhost/syntax/`: syntax data modules, currently the ID-backed

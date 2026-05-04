@@ -130,10 +130,10 @@ The selfhost tree is split by component:
 - `bin`: Stage1 CLI entry points.
 - `smoke` / `tool`: validation programs.
 
-Stage1 currently emits Aurex IR snapshots. It is not yet a full fixed-point
-compiler. The seed parser covers a module shape with one `extern c` block plus
-multiple `export c fn` items, and IR snapshots emit expression values scoped to
-the current function block.
+Stage1 currently emits `aurex_tac v0` snapshots. It is not yet a full
+fixed-point compiler. The seed parser covers a module shape with one `extern c`
+block plus multiple `export c fn` items, and TAC snapshots emit expression
+temporaries scoped to the current function block.
 
 ## Verification Architecture
 

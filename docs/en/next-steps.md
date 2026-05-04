@@ -4,15 +4,15 @@ Version: 0.1.2
 
 ## Current Selfhost Stage
 
-The current selfhost track is at the “measurable Stage1 frontend slice plus AIR
+The current selfhost track is at the “measurable Stage1 frontend slice plus TAC
 snapshot output” stage. It is not yet a complete compiler that can replace
 Stage0.
 
 - Stage0 is still the C++20 compiler and remains the production compiler.
 - selfhost contains M0 implementations of the lexer core, token dump tools,
-  parser seed, ID-backed AST, Stage1 CLI, and Stage1 AIR snapshot emitter.
+  parser seed, ID-backed AST, Stage1 CLI, and Stage1 TAC snapshot emitter.
 - Stage1 can read `.ax` files, parse the seed-covered syntax, and output
-  `aurex_ir v0` text snapshots.
+  `aurex_tac v0` text snapshots.
 - The bootstrap flow covers selfhost lexer golden comparison, parser smoke,
   Stage1 snapshot output, and selfhost bundle visibility.
 
@@ -36,12 +36,12 @@ M0 parser seed:
   expressions.
 - Basic operator precedence and call arguments.
 
-Stage1 AIR snapshot:
+Stage1 TAC snapshot:
 
-- Emits the `aurex_ir v0` header.
+- Emits the `aurex_tac v0` header.
 - Emits extern functions, opaque records, and export function signatures.
-- Emits expression value snapshots.
-- Expression values are scoped to the current function block, so module-wide
+- Emits three-address-code expression temporaries.
+- Temporaries are scoped to the current function block, so module-wide
   expressions are not repeated in every function.
 - Modules outside parser seed coverage emit a deterministic
   `selfhost_module ... lowering(ast_pending)` placeholder, keeping the selfhost
@@ -55,7 +55,7 @@ Stage1 AIR snapshot:
 - Stage1 does not have complete sema: type resolution, symbol resolution,
   scopes, duplicate definition checks, function signature checks, call argument
   checks, return type checks, and ABI/mangling rules still need implementation.
-- Stage1 does not have a real IR verifier. It currently focuses on snapshot
+- Stage1 does not have a real TAC verifier. It currently focuses on snapshot
   output rather than full executable IR validity.
 - Stage1 lowering is incomplete: locals/slots, CFG, branches, loops, phi,
   record layout, and global constant lowering are still missing.
@@ -79,25 +79,25 @@ Stage1 AIR snapshot:
    expression types, and return/call/assign type checks. Full recovery can come
    later.
 
-4. Move Stage1 lowering from snapshots toward a real AIR subset  
+4. Move Stage1 lowering from snapshots toward a real TAC subset  
    Cover functions, blocks, values, terminators, locals, return, call,
    binary/unary, and CFG for `if` and `while`.
 
-5. Implement a Stage1 IR verifier  
-   First check block/value reference ranges, terminator presence, function
-   parameter and return type consistency, and call target/argument counts.
+5. Implement a Stage1 TAC verifier
+   First check temporary reference ranges, function parameter and return type
+   consistency, and call target/argument counts.
 
 6. Design LLVM handoff  
-   Prefer making Stage1 emit an AIR format that Stage0 can read, or add a Stage0
-   AIR reader first and feed Stage1 AIR into the existing LLVM backend.
+   Prefer making Stage1 emit a TAC format that Stage0 can read, or add a Stage0
+   TAC reader first and feed Stage1 TAC into the existing LLVM backend.
 
 7. Build the fixed-point bootstrap flow  
    Target flow:
 
    ```text
    Stage0(C++) builds Stage1(M0)
-   Stage1 compiles selfhost compiler sources to AIR
-   Stage0 AIR reader + LLVM backend builds Stage1'
+   Stage1 compiles selfhost compiler sources to TAC
+   Stage0 TAC reader + LLVM backend builds Stage1'
    Stage1' repeats compile
    compare stable outputs
    ```

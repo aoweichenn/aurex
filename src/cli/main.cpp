@@ -36,6 +36,7 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --stdlib path    use an explicit Aurex standard library root\n"
         << "  --std-backend b  std FFI support backend: host-c or none (default host-c)\n"
         << "  --no-stdlib      do not import or link the bundled Aurex standard library\n"
+        << "  --backend name   code generation backend: llvm or aurora (default llvm)\n"
         << "  -I path          add an import search path\n";
 }
 
@@ -137,6 +138,20 @@ int main(const int argc, char** argv) {
             }
         } else if (arg == "--no-stdlib") {
             invocation.use_standard_library = false;
+        } else if (arg == "--backend") {
+            if (i + 1 >= argc) {
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
+            const std::string_view backend(argv[++i]);
+            if (backend == "llvm") {
+                invocation.backend = aurex::driver::BackendKind::llvm;
+            } else if (backend == "aurora") {
+                invocation.backend = aurex::driver::BackendKind::aurora;
+            } else {
+                std::cerr << "invalid backend: " << backend << "\n";
+                return 2;
+            }
         } else if ((arg == "-O0" || arg == "-O1" || arg == "-O2" || arg == "-O3") && arg.size() == 3) {
             invocation.optimization_level = static_cast<aurex::ir::OptimizationLevel>(arg[2] - '0');
         } else if (arg.starts_with("-I") && arg.size() > 2) {

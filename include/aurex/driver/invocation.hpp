@@ -26,6 +26,11 @@ enum class StandardLibraryBackend {
     none,
 };
 
+enum class BackendKind {
+    llvm,
+    aurora,
+};
+
 struct CompilerInvocation {
     std::filesystem::path input_path;
     std::filesystem::path tool_path;
@@ -37,6 +42,7 @@ struct CompilerInvocation {
     std::vector<std::string> clang_args;
     ir::OptimizationLevel optimization_level = ir::OptimizationLevel::none;
     StandardLibraryBackend standard_library_backend = StandardLibraryBackend::host_c;
+    BackendKind backend = BackendKind::llvm;
     bool use_standard_library = true;
 };
 

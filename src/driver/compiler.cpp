@@ -14,6 +14,10 @@
 #include "aurex/sema/sema.hpp"
 #include "aurex/syntax/ast_dump.hpp"
 
+#ifdef AUREX_HAS_AURORA_BACKEND
+#include "aurex/backend/aurora_backend.hpp"
+#endif
+
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -153,6 +157,13 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
     }
 
     if (invocation.emit_kind == EmitKind::ir || invocation.emit_kind == EmitKind::llvm_ir) {
+        if (invocation.emit_kind == EmitKind::llvm_ir &&
+            invocation.backend == BackendKind::aurora) {
+            return base::Result<void>::fail({
+                base::ErrorCode::codegen_error,
+                "--emit=llvm-ir requires the LLVM backend; use --backend llvm"
+            });
+        }
         auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
@@ -185,6 +196,57 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
     if (invocation.emit_kind == EmitKind::assembly ||
         invocation.emit_kind == EmitKind::object ||
         invocation.emit_kind == EmitKind::executable) {
+#ifdef AUREX_HAS_AURORA_BACKEND
+        if (invocation.backend == BackendKind::aurora) {
+            if (invocation.emit_kind == EmitKind::executable) {
+                return base::Result<void>::fail({
+                    base::ErrorCode::codegen_error,
+                    "Aurora backend does not yet support executable output; use --emit=asm or --emit=obj"
+                });
+            }
+            if (invocation.output_path.empty()) {
+                return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
+            }
+            auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
+            if (!ir_result) {
+                return base::Result<void>::fail(ir_result.error());
+            }
+            auto pipeline_result = ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
+                invocation.optimization_level,
+                true,
+                true,
+                true,
+                true,
+            });
+            if (!pipeline_result) {
+                return pipeline_result;
+            }
+            backend::AuroraEmitRequest aurora_req;
+            aurora_req.module = &ir_result.value();
+            aurora_req.module_name = invocation.input_path.stem().string();
+            aurora_req.output_path = invocation.output_path.string();
+            aurora_req.opt_level = invocation.optimization_level;
+
+            if (invocation.emit_kind == EmitKind::assembly) {
+                auto aurora_result = backend::emit_aurora_asm(aurora_req);
+                if (!aurora_result) {
+                    return base::Result<void>::fail(aurora_result.error());
+                }
+                auto write_result = write_file(invocation.output_path, aurora_result.value().text);
+                if (!write_result) {
+                    return base::Result<void>::fail(write_result.error());
+                }
+                return base::Result<void>::ok();
+            } else {
+                auto aurora_result = backend::emit_aurora_obj(aurora_req);
+                if (!aurora_result) {
+                    return base::Result<void>::fail(aurora_result.error());
+                }
+                return base::Result<void>::ok();
+            }
+        }
+#endif
+
         if (invocation.output_path.empty()) {
             return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
         }

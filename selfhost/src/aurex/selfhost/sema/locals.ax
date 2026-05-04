@@ -1,0 +1,215 @@
+module aurex.selfhost.sema.locals;
+
+import aurex.selfhost.sema.names;
+import aurex.selfhost.syntax.ast;
+
+const SEMA_MAX_LOCAL_SYMBOLS: i32 = 128;
+
+const SEMA_LOCAL_PARAM: i32 = 1;
+const SEMA_LOCAL_LET: i32 = 2;
+const SEMA_LOCAL_VAR: i32 = 3;
+
+struct SemaLocalTable {
+    ok: bool;
+    symbol_count: i32;
+    duplicate_count: i32;
+    param_count: i32;
+    local_count: i32;
+    scope_count: i32;
+    name_begins: *mut i32;
+    name_ends: *mut i32;
+    scopes: *mut i32;
+    kinds: *mut i32;
+}
+
+extern c {
+    fn malloc(size: usize) -> *mut void @name("malloc");
+    fn free(ptr: *mut void) -> void @name("free");
+}
+
+fn sema_make_local_table() -> SemaLocalTable {
+    let name_begins: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, SEMA_MAX_LOCAL_SYMBOLS)));
+    let name_ends: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, SEMA_MAX_LOCAL_SYMBOLS)));
+    let scopes: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, SEMA_MAX_LOCAL_SYMBOLS)));
+    let kinds: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, SEMA_MAX_LOCAL_SYMBOLS)));
+    return SemaLocalTable {
+        ok: name_begins != null && name_ends != null && scopes != null && kinds != null,
+        symbol_count: 0,
+        duplicate_count: 0,
+        param_count: 0,
+        local_count: 0,
+        scope_count: 0,
+        name_begins: name_begins,
+        name_ends: name_ends,
+        scopes: scopes,
+        kinds: kinds
+    };
+}
+
+fn sema_free_local_table(table: SemaLocalTable) -> void {
+    free(ptr_cast(*mut void, table.name_begins));
+    free(ptr_cast(*mut void, table.name_ends));
+    free(ptr_cast(*mut void, table.scopes));
+    free(ptr_cast(*mut void, table.kinds));
+}
+
+fn sema_find_local(source: *const u8, table: *mut SemaLocalTable, name_begin: i32, name_end: i32, scope_id: i32) -> i32 {
+    var index: i32 = 0;
+    while index < table.symbol_count {
+        if table.scopes[index] == scope_id && sema_range_equal(source, table.name_begins[index], table.name_ends[index], name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_add_local_symbol(source: *const u8, table: *mut SemaLocalTable, name_begin: i32, name_end: i32, scope_id: i32, kind: i32) -> bool {
+    if name_begin >= name_end || scope_id < 0 {
+        table.ok = false;
+        return false;
+    }
+    if sema_find_any_local(source, table, name_begin, name_end) >= 0 {
+        table.duplicate_count = table.duplicate_count + 1;
+        table.ok = false;
+        return false;
+    }
+    if table.symbol_count >= SEMA_MAX_LOCAL_SYMBOLS {
+        table.ok = false;
+        return false;
+    }
+    table.name_begins[table.symbol_count] = name_begin;
+    table.name_ends[table.symbol_count] = name_end;
+    table.scopes[table.symbol_count] = scope_id;
+    table.kinds[table.symbol_count] = kind;
+    table.symbol_count = table.symbol_count + 1;
+    if kind == SEMA_LOCAL_PARAM {
+        table.param_count = table.param_count + 1;
+    } else {
+        table.local_count = table.local_count + 1;
+    }
+    return true;
+}
+
+fn sema_find_any_local(source: *const u8, table: *mut SemaLocalTable, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < table.symbol_count {
+        if sema_range_equal(source, table.name_begins[index], table.name_ends[index], name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_next_child_scope(table: *mut SemaLocalTable, next_scope: *mut i32) -> i32 {
+    let scope_id: i32 = *next_scope;
+    *next_scope = *next_scope + 1;
+    table.scope_count = table.scope_count + 1;
+    return scope_id;
+}
+
+fn sema_collect_param_locals(source: *const u8, ast: *mut AstModule, table: *mut SemaLocalTable, item: AstItemNode, scope_id: i32) -> bool {
+    var index: i32 = 0;
+    while index < item.param_count {
+        let param: AstParamNode = ast.params[item.first_param + index];
+        if !sema_add_local_symbol(source, table, param.name_begin, param.name_end, scope_id, SEMA_LOCAL_PARAM) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return table.ok;
+}
+
+fn sema_collect_block_locals(source: *const u8, ast: *mut AstModule, table: *mut SemaLocalTable, block_id: i32, scope_id: i32, next_scope: *mut i32) -> bool {
+    if block_id < 0 || block_id >= ast.block_count {
+        table.ok = false;
+        return false;
+    }
+    let block: AstBlockNode = ast.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        if stmt_id < 0 || stmt_id >= ast.stmt_count {
+            table.ok = false;
+            return false;
+        }
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if stmt.kind == AST_STMT_LET || stmt.kind == AST_STMT_VAR {
+            var kind: i32 = SEMA_LOCAL_LET;
+            if stmt.kind == AST_STMT_VAR {
+                kind = SEMA_LOCAL_VAR;
+            }
+            if !sema_add_local_symbol(source, table, stmt.name_begin, stmt.name_end, scope_id, kind) {
+                return false;
+            }
+        }
+        if stmt.kind == AST_STMT_BLOCK {
+            let child_scope: i32 = sema_next_child_scope(table, next_scope);
+            if !sema_collect_block_locals(source, ast, table, stmt.then_block, child_scope, next_scope) {
+                return false;
+            }
+        }
+        if stmt.kind == AST_STMT_IF {
+            let then_scope: i32 = sema_next_child_scope(table, next_scope);
+            if !sema_collect_block_locals(source, ast, table, stmt.then_block, then_scope, next_scope) {
+                return false;
+            }
+            if stmt.else_block >= 0 {
+                let else_scope: i32 = sema_next_child_scope(table, next_scope);
+                if !sema_collect_block_locals(source, ast, table, stmt.else_block, else_scope, next_scope) {
+                    return false;
+                }
+            }
+        }
+        if stmt.kind == AST_STMT_WHILE {
+            let body_scope: i32 = sema_next_child_scope(table, next_scope);
+            if !sema_collect_block_locals(source, ast, table, stmt.then_block, body_scope, next_scope) {
+                return false;
+            }
+        }
+        index = index + 1;
+    }
+    return table.ok;
+}
+
+fn sema_item_has_local_scope(item: AstItemNode) -> bool {
+    return item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN || item.kind == AST_ITEM_EXTERN_FN;
+}
+
+fn sema_item_has_body(item: AstItemNode) -> bool {
+    return item.kind == AST_ITEM_FN || item.kind == AST_ITEM_EXPORT_FN;
+}
+
+fn sema_collect_function_locals(source: *const u8, ast: *mut AstModule, table: *mut SemaLocalTable, item: AstItemNode) -> bool {
+    table.scope_count = 1;
+    var next_scope: i32 = 1;
+    if !sema_collect_param_locals(source, ast, table, item, 0) {
+        return false;
+    }
+    if sema_item_has_body(item) {
+        return sema_collect_block_locals(source, ast, table, item.body_block, 0, &next_scope);
+    }
+    return table.ok;
+}
+
+fn sema_check_module_locals(source: *const u8, ast: *mut AstModule) -> bool {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if sema_item_has_local_scope(item) {
+            var table: SemaLocalTable = sema_make_local_table();
+            if !table.ok {
+                sema_free_local_table(table);
+                return false;
+            }
+            let ok: bool = sema_collect_function_locals(source, ast, &table, item);
+            sema_free_local_table(table);
+            if !ok {
+                return false;
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}

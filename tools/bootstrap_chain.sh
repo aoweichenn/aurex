@@ -14,11 +14,13 @@ LEXER_RANGES="${ROOT}/selfhost/src/aurex/selfhost/smoke/lexer_ranges.ax"
 LEXER_DUMP="${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_dump.ax"
 LEXER_FILE="${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax"
 PARSER_SMOKE="${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax"
+SEMA_ITEMS="${ROOT}/selfhost/src/aurex/selfhost/smoke/sema_items.ax"
 STAGE1_LANG="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_lang.ax"
 STAGE1_CORE="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_core.ax"
 STAGE1_IR="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_ir.ax"
 STAGE1_FLOW="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_flow.ax"
 STAGE1_EXPR="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_expr.ax"
+STAGE1_ITEMS="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_items.ax"
 STAGE1="${ROOT}/selfhost/src/aurex/selfhost/bin/aurexc_stage1.ax"
 
 SEED_BIN="${SELFHOST_BUILD_DIR}/aurexc_seed"
@@ -27,6 +29,7 @@ LEXER_RANGES_BIN="${SELFHOST_BUILD_DIR}/lexer_ranges"
 LEXER_DUMP_BIN="${SELFHOST_BUILD_DIR}/lexer_dump"
 LEXER_FILE_BIN="${SELFHOST_BUILD_DIR}/lexer_file"
 PARSER_SMOKE_BIN="${SELFHOST_BUILD_DIR}/parser_smoke"
+SEMA_ITEMS_BIN="${SELFHOST_BUILD_DIR}/sema_items"
 STAGE1_LANG_BIN="${SELFHOST_BUILD_DIR}/stage1_lang"
 STAGE1_CORE_BIN="${SELFHOST_BUILD_DIR}/stage1_core"
 STAGE1_IR_BIN="${SELFHOST_BUILD_DIR}/stage1_ir"
@@ -38,6 +41,7 @@ STAGE1_PARSER_TAC="${SELFHOST_BUILD_DIR}/parser_smoke.stage1.tac"
 STAGE1_TAC_OUT="${SELFHOST_BUILD_DIR}/stage1_ir.stage1.tac"
 STAGE1_FLOW_TAC="${SELFHOST_BUILD_DIR}/stage1_flow.stage1.tac"
 STAGE1_EXPR_TAC="${SELFHOST_BUILD_DIR}/stage1_expr.stage1.tac"
+STAGE1_ITEMS_TAC="${SELFHOST_BUILD_DIR}/stage1_items.stage1.tac"
 STAGE1_COMPILER_TAC="${SELFHOST_BUILD_DIR}/aurexc_stage1.bundle.tac"
 
 cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
@@ -67,6 +71,10 @@ grep -q 'aurex.selfhost.syntax.ast' "${SELFHOST_BUILD_DIR}/parser_smoke.modules"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${PARSER_SMOKE}" -o "${PARSER_SMOKE_BIN}"
 test "$("${PARSER_SMOKE_BIN}")" = "selfhost parser seed ok"
 
+"${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${SEMA_ITEMS}"
+"${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${SEMA_ITEMS}" -o "${SEMA_ITEMS_BIN}"
+test "$("${SEMA_ITEMS_BIN}")" = "selfhost sema items ok"
+
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${STAGE1_LANG}"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${STAGE1_LANG}" -o "${STAGE1_LANG_BIN}"
 test "$("${STAGE1_LANG_BIN}")" = "selfhost stage1 lang ok"
@@ -87,6 +95,11 @@ grep -q 'aurex.selfhost.compiler.ir.expr' "${SELFHOST_BUILD_DIR}/aurexc_stage1.m
 grep -q 'aurex.selfhost.compiler.ir.types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.names' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.writer' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.names' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.items' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.locals' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.members' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.resolve' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${STAGE1}" -o "${STAGE1_BIN}"
 
 "${STAGE1_BIN}" "${ROOT}/examples/hello.ax" "${STAGE1_HELLO_TAC}"
@@ -122,6 +135,17 @@ grep -q '.value' "${STAGE1_EXPR_TAC}"
 grep -q 'index ' "${STAGE1_EXPR_TAC}"
 grep -q '4]u8' "${STAGE1_EXPR_TAC}"
 
+"${STAGE1_BIN}" "${STAGE1_ITEMS}" "${STAGE1_ITEMS_TAC}"
+grep -q 'record NativeFile' "${STAGE1_ITEMS_TAC}"
+grep -q 'opaque' "${STAGE1_ITEMS_TAC}"
+grep -q 'enum Stage1Tag: u16' "${STAGE1_ITEMS_TAC}"
+grep -q 'zero = 0' "${STAGE1_ITEMS_TAC}"
+grep -q 'record Pair' "${STAGE1_ITEMS_TAC}"
+grep -q 'value: i32' "${STAGE1_ITEMS_TAC}"
+grep -q 'tag: aurex.selfhost.smoke.stage1_items.Stage1Tag' "${STAGE1_ITEMS_TAC}"
+grep -q 'const DEFAULT_VALUE: i32 = %t' "${STAGE1_ITEMS_TAC}"
+grep -q 'fn read_pair(pair:' "${STAGE1_ITEMS_TAC}"
+
 "${STAGE1_BIN}" "${STAGE1_IR}" "${STAGE1_TAC_OUT}"
 grep -q 'fn helper() @stage1_ir_helper linkage(export_c) abi(c) -> i32' "${STAGE1_TAC_OUT}"
 grep -q 'literal 40' "${STAGE1_TAC_OUT}"
@@ -136,6 +160,11 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/parser/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/parser/expr.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/parser/seed.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/names.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/items.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/locals.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/members.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/resolve.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/writer.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/names.ax" \
@@ -147,7 +176,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${STAGE1_COMPILER_TAC}"
 grep -q 'aurex_tac v0' "${STAGE1_COMPILER_TAC}"
 grep -q '; selfhost_module aurex.selfhost.compiler.driver lowering(ast_pending)' "${STAGE1_COMPILER_TAC}"
-grep -q '; selfhost_module aurex.selfhost.bin.aurexc_stage1 lowering(ast_pending)' "${STAGE1_COMPILER_TAC}"
+grep -q 'm0_aurex_selfhost_bin_aurexc_stage1_main' "${STAGE1_COMPILER_TAC}"
 
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${LEXER_DUMP}"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${LEXER_DUMP}" -o "${LEXER_DUMP_BIN}"

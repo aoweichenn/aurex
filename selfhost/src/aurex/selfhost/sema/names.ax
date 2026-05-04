@@ -1,0 +1,15 @@
+module aurex.selfhost.sema.names;
+
+fn sema_range_equal(source: *const u8, a_begin: i32, a_end: i32, b_begin: i32, b_end: i32) -> bool {
+    if a_end - a_begin != b_end - b_begin {
+        return false;
+    }
+    var offset: i32 = 0;
+    while offset < a_end - a_begin {
+        if source[a_begin + offset] != source[b_begin + offset] {
+            return false;
+        }
+        offset = offset + 1;
+    }
+    return true;
+}

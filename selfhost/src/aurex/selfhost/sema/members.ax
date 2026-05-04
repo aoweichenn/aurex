@@ -1,0 +1,97 @@
+module aurex.selfhost.sema.members;
+
+import aurex.selfhost.sema.names;
+import aurex.selfhost.syntax.ast;
+
+fn sema_find_duplicate_field(source: *const u8, ast: *mut AstModule, first_field: i32, field_count: i32) -> bool {
+    var index: i32 = 0;
+    while index < field_count {
+        let field: AstFieldNode = ast.fields[first_field + index];
+        var other_index: i32 = index + 1;
+        while other_index < field_count {
+            let other: AstFieldNode = ast.fields[first_field + other_index];
+            if sema_range_equal(source, field.name_begin, field.name_end, other.name_begin, other.name_end) {
+                return true;
+            }
+            other_index = other_index + 1;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn sema_find_duplicate_enum_case(source: *const u8, ast: *mut AstModule, first_case: i32, case_count: i32) -> bool {
+    var index: i32 = 0;
+    while index < case_count {
+        let enum_case: AstEnumCaseNode = ast.enum_cases[first_case + index];
+        var other_index: i32 = index + 1;
+        while other_index < case_count {
+            let other: AstEnumCaseNode = ast.enum_cases[first_case + other_index];
+            if sema_range_equal(source, enum_case.name_begin, enum_case.name_end, other.name_begin, other.name_end) {
+                return true;
+            }
+            other_index = other_index + 1;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn sema_find_duplicate_field_init(source: *const u8, ast: *mut AstModule, first_field: i32, field_count: i32) -> bool {
+    var index: i32 = 0;
+    while index < field_count {
+        let field: AstFieldInit = ast.field_inits[first_field + index];
+        var other_index: i32 = index + 1;
+        while other_index < field_count {
+            let other: AstFieldInit = ast.field_inits[first_field + other_index];
+            if sema_range_equal(source, field.name_begin, field.name_end, other.name_begin, other.name_end) {
+                return true;
+            }
+            other_index = other_index + 1;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn sema_check_item_members(source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    if item.kind == AST_ITEM_STRUCT {
+        if sema_find_duplicate_field(source, ast, item.first_field, item.field_count) {
+            return false;
+        }
+    }
+    if item.kind == AST_ITEM_ENUM {
+        if sema_find_duplicate_enum_case(source, ast, item.first_enum_case, item.enum_case_count) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn sema_check_expr_members(source: *const u8, ast: *mut AstModule, expr: AstExprNode) -> bool {
+    if expr.kind == AST_EXPR_STRUCT_LITERAL {
+        if sema_find_duplicate_field_init(source, ast, expr.first_field, expr.field_count) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn sema_check_module_members(source: *const u8, ast: *mut AstModule) -> bool {
+    var item_index: i32 = 0;
+    while item_index < ast.item_count {
+        if !sema_check_item_members(source, ast, ast.items[item_index]) {
+            return false;
+        }
+        item_index = item_index + 1;
+    }
+
+    var expr_index: i32 = 0;
+    while expr_index < ast.expr_count {
+        if !sema_check_expr_members(source, ast, ast.exprs[expr_index]) {
+            return false;
+        }
+        expr_index = expr_index + 1;
+    }
+    return true;
+}

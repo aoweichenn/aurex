@@ -1,0 +1,212 @@
+module aurex.selfhost.smoke.sema_items;
+
+import aurex.selfhost.parser.seed;
+import aurex.selfhost.sema.items;
+import aurex.selfhost.sema.locals;
+import aurex.selfhost.sema.members;
+import aurex.selfhost.sema.resolve;
+import aurex.selfhost.syntax.ast;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+fn check_valid_items() -> bool {
+    let source: *const u8 = c"module sema.valid; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } opaque struct Native; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; } const ANSWER: i32 = 42; fn helper(pair: Pair) -> i32 { return pair.value + ANSWER; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(Pair { value: 1, tag: Tag_zero }); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    var table: SemaItemTable = sema_make_item_table();
+    if !table.ok {
+        sema_free_item_table(table);
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = sema_collect_module_items(source, &ast, &table) &&
+        table.symbol_count == 7 &&
+        table.type_count == 3 &&
+        table.value_count == 1 &&
+        table.function_count == 3 &&
+        table.duplicate_count == 0;
+    sema_free_item_table(table);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_items() -> bool {
+    let source: *const u8 = c"module sema.dupe; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } struct Pair { value: i32; } const Pair: i32 = 1; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    var table: SemaItemTable = sema_make_item_table();
+    if !table.ok {
+        sema_free_item_table(table);
+        ast_free_module(ast);
+        return false;
+    }
+    let collected: bool = sema_collect_module_items(source, &ast, &table);
+    let ok: bool = !collected &&
+        !table.ok &&
+        table.duplicate_count == 1 &&
+        table.symbol_count == 2;
+    sema_free_item_table(table);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_valid_locals() -> bool {
+    let source: *const u8 = c"module sema.locals.valid; fn helper(value: i32, limit: i32) -> i32 { let total: i32 = value; { let inner: i32 = limit; } if total < limit { let then_step: i32 = 1; } else { let else_step: i32 = 2; } while total < limit { let loop_step: i32 = 1; } return total; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1, 2); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = sema_check_module_locals(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_params() -> bool {
+    let source: *const u8 = c"module sema.locals.dupe_params; fn helper(value: i32, value: i32) -> i32 { return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1, 2); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_locals(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_local_with_param() -> bool {
+    let source: *const u8 = c"module sema.locals.dupe_param_local; fn helper(value: i32) -> i32 { let value: i32 = 1; return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_locals(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_locals() -> bool {
+    let source: *const u8 = c"module sema.locals.dupe_locals; fn helper() -> i32 { let value: i32 = 1; var value: i32 = 2; return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_locals(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_nested_locals() -> bool {
+    let source: *const u8 = c"module sema.locals.dupe_nested; fn helper() -> i32 { let value: i32 = 1; { let value: i32 = 2; } return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_locals(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_valid_members() -> bool {
+    let source: *const u8 = c"module sema.members.valid; struct Pair { value: i32; tag: i32; } enum Tag: u8 { zero = 0, one = 1, } fn helper() -> i32 { let pair: Pair = Pair { value: 1, tag: 2 }; return pair.value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = sema_check_module_members(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_struct_fields() -> bool {
+    let source: *const u8 = c"module sema.members.dupe_fields; struct Pair { value: i32; value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_members(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_enum_cases() -> bool {
+    let source: *const u8 = c"module sema.members.dupe_cases; enum Tag: u8 { zero = 0, zero = 1, } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_members(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_duplicate_field_inits() -> bool {
+    let source: *const u8 = c"module sema.members.dupe_inits; struct Pair { value: i32; tag: i32; } fn helper() -> i32 { let pair: Pair = Pair { value: 1, value: 2 }; return pair.value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_members(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_valid_resolution() -> bool {
+    let source: *const u8 = c"module sema.resolve.valid; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; } const ANSWER: i32 = 41; fn helper(pair: Pair) -> i32 { let local: i32 = ANSWER + pair.value; return local; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(Pair { value: 1, tag: Tag_zero }); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = sema_check_module_resolution(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_unresolved_identifier() -> bool {
+    let source: *const u8 = c"module sema.resolve.missing; fn helper() -> i32 { return missing_value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_resolution(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    if check_valid_items() &&
+        check_duplicate_items() &&
+        check_valid_locals() &&
+        check_duplicate_params() &&
+        check_duplicate_local_with_param() &&
+        check_duplicate_locals() &&
+        check_duplicate_nested_locals() &&
+        check_valid_members() &&
+        check_duplicate_struct_fields() &&
+        check_duplicate_enum_cases() &&
+        check_duplicate_field_inits() &&
+        check_valid_resolution() &&
+        check_unresolved_identifier() {
+        puts(c"selfhost sema items ok");
+        return 0;
+    }
+    puts(c"selfhost sema items failed");
+    return 1;
+}

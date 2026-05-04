@@ -193,6 +193,118 @@ fn parse_extern_block(source: *const u8, index: *mut i32, current: *mut TokenSpa
     return parser_expect(source, index, current, TK_R_BRACE);
 }
 
+fn parse_top_opaque_struct(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    return parse_extern_opaque_struct(source, index, current, ast);
+}
+
+fn parse_struct_item(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    if !parser_expect(source, index, current, TK_KW_STRUCT) {
+        return false;
+    }
+    let name: TokenSpan = parser_advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_L_BRACE) {
+        return false;
+    }
+    let first_field: i32 = ast.field_count;
+    while !parser_check(current, TK_R_BRACE) && !parser_check(current, TK_EOF) {
+        let field: TokenSpan = parser_advance(source, index, current);
+        if field.kind != TK_IDENTIFIER {
+            return false;
+        }
+        if !parser_expect(source, index, current, TK_COLON) {
+            return false;
+        }
+        let ty: TypeResult = parse_type(source, index, current, ast);
+        if !ty.ok {
+            return false;
+        }
+        if !parser_expect(source, index, current, TK_SEMICOLON) {
+            return false;
+        }
+        ast_add_field(ast, field.begin, field.end, ty.id);
+    }
+    if !parser_expect(source, index, current, TK_R_BRACE) {
+        return false;
+    }
+    ast_add_struct(ast, name.begin, name.end, first_field, ast.field_count - first_field);
+    return true;
+}
+
+fn parse_enum_item(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    if !parser_expect(source, index, current, TK_KW_ENUM) {
+        return false;
+    }
+    let name: TokenSpan = parser_advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_COLON) {
+        return false;
+    }
+    let base_type: TypeResult = parse_type(source, index, current, ast);
+    if !base_type.ok {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_L_BRACE) {
+        return false;
+    }
+    let first_case: i32 = ast.enum_case_count;
+    while !parser_check(current, TK_R_BRACE) && !parser_check(current, TK_EOF) {
+        let case_name: TokenSpan = parser_advance(source, index, current);
+        if case_name.kind != TK_IDENTIFIER {
+            return false;
+        }
+        if !parser_expect(source, index, current, TK_EQUAL) {
+            return false;
+        }
+        let value: TokenSpan = parser_advance(source, index, current);
+        if value.kind != TK_INTEGER {
+            return false;
+        }
+        if !parser_expect(source, index, current, TK_COMMA) {
+            return false;
+        }
+        ast_add_enum_case(ast, case_name.begin, case_name.end, value.begin, value.end);
+    }
+    if !parser_expect(source, index, current, TK_R_BRACE) {
+        return false;
+    }
+    ast_add_enum(ast, name.begin, name.end, base_type.id, first_case, ast.enum_case_count - first_case);
+    return true;
+}
+
+fn parse_const_item(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    if !parser_expect(source, index, current, TK_KW_CONST) {
+        return false;
+    }
+    let name: TokenSpan = parser_advance(source, index, current);
+    if name.kind != TK_IDENTIFIER {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_COLON) {
+        return false;
+    }
+    let ty: TypeResult = parse_type(source, index, current, ast);
+    if !ty.ok {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_EQUAL) {
+        return false;
+    }
+    let value: ExprResult = parse_expression_until(source, index, current, ast, TK_SEMICOLON, TK_EOF);
+    if !value.ok {
+        return false;
+    }
+    if !parser_expect(source, index, current, TK_SEMICOLON) {
+        return false;
+    }
+    ast_add_const(ast, name.begin, name.end, ty.id, value.id);
+    return true;
+}
+
 fn parse_return_stmt(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
     let begin_token: TokenSpan = parser_advance(source, index, current);
     if begin_token.kind != TK_KW_RETURN {
@@ -458,6 +570,31 @@ fn parse_plain_fn(source: *const u8, index: *mut i32, current: *mut TokenSpan, a
     return true;
 }
 
+fn parse_top_item(source: *const u8, index: *mut i32, current: *mut TokenSpan, ast: *mut AstModule) -> bool {
+    if parser_check(current, TK_KW_EXTERN) {
+        return parse_extern_block(source, index, current, ast);
+    }
+    if parser_check(current, TK_KW_OPAQUE) {
+        return parse_top_opaque_struct(source, index, current, ast);
+    }
+    if parser_check(current, TK_KW_STRUCT) {
+        return parse_struct_item(source, index, current, ast);
+    }
+    if parser_check(current, TK_KW_ENUM) {
+        return parse_enum_item(source, index, current, ast);
+    }
+    if parser_check(current, TK_KW_CONST) {
+        return parse_const_item(source, index, current, ast);
+    }
+    if parser_check(current, TK_KW_EXPORT) {
+        return parse_export_c_fn(source, index, current, ast);
+    }
+    if parser_check(current, TK_KW_FN) {
+        return parse_plain_fn(source, index, current, ast);
+    }
+    return false;
+}
+
 fn parse_seed_ast(source: *const u8) -> AstModule {
     var ast: AstModule = ast_make_module();
     var index: i32 = 0;
@@ -470,18 +607,9 @@ fn parse_seed_ast(source: *const u8) -> AstModule {
             return ast;
         }
     }
-    if !parse_extern_block(source, &index, &current, &ast) {
-        return ast;
-    }
-    while parser_check(&current, TK_KW_EXPORT) || parser_check(&current, TK_KW_FN) {
-        if parser_check(&current, TK_KW_EXPORT) {
-            if !parse_export_c_fn(source, &index, &current, &ast) {
-                return ast;
-            }
-        } else {
-            if !parse_plain_fn(source, &index, &current, &ast) {
-                return ast;
-            }
+    while !parser_check(&current, TK_EOF) {
+        if !parse_top_item(source, &index, &current, &ast) {
+            return ast;
         }
     }
     if ast.export_fn_count == 0 && ast.fn_count == 0 {

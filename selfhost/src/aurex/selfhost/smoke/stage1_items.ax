@@ -1,0 +1,28 @@
+module aurex.selfhost.smoke.stage1_items;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+opaque struct NativeFile;
+
+enum Stage1Tag: u16 {
+    zero = 0,
+    one = 1,
+}
+
+struct Pair {
+    value: i32;
+    tag: Stage1Tag;
+}
+
+const DEFAULT_VALUE: i32 = 17 + 6;
+
+fn read_pair(pair: Pair) -> i32 {
+    return pair.value + DEFAULT_VALUE;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    puts(c"stage1 items");
+    return 0;
+}

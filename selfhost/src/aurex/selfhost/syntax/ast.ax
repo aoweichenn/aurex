@@ -4,6 +4,8 @@ const AST_MAX_IMPORTS: i32 = 16;
 const AST_MAX_ITEMS: i32 = 32;
 const AST_MAX_TYPES: i32 = 64;
 const AST_MAX_PARAMS: i32 = 64;
+const AST_MAX_FIELDS: i32 = 64;
+const AST_MAX_ENUM_CASES: i32 = 64;
 const AST_MAX_BLOCKS: i32 = 32;
 const AST_MAX_STMTS: i32 = 64;
 const AST_MAX_STMT_REFS: i32 = 128;
@@ -41,6 +43,9 @@ const AST_ITEM_EXTERN_FN: i32 = 2;
 const AST_ITEM_OPAQUE_STRUCT: i32 = 3;
 const AST_ITEM_EXPORT_FN: i32 = 4;
 const AST_ITEM_FN: i32 = 5;
+const AST_ITEM_STRUCT: i32 = 6;
+const AST_ITEM_ENUM: i32 = 7;
+const AST_ITEM_CONST: i32 = 8;
 
 const AST_STMT_RETURN: i32 = 1;
 const AST_STMT_EXPR: i32 = 2;
@@ -119,6 +124,19 @@ struct AstParamNode {
     type_id: i32;
 }
 
+struct AstFieldNode {
+    name_begin: i32;
+    name_end: i32;
+    type_id: i32;
+}
+
+struct AstEnumCaseNode {
+    name_begin: i32;
+    name_end: i32;
+    value_begin: i32;
+    value_end: i32;
+}
+
 struct AstItemNode {
     kind: i32;
     name_begin: i32;
@@ -126,6 +144,13 @@ struct AstItemNode {
     first_param: i32;
     param_count: i32;
     return_type: i32;
+    first_field: i32;
+    field_count: i32;
+    enum_base_type: i32;
+    first_enum_case: i32;
+    enum_case_count: i32;
+    const_type: i32;
+    const_expr: i32;
     abi_begin: i32;
     abi_end: i32;
     body_block: i32;
@@ -190,7 +215,12 @@ struct AstModule {
     opaque_struct_count: i32;
     export_fn_count: i32;
     fn_count: i32;
+    struct_count: i32;
+    enum_count: i32;
+    const_count: i32;
     param_count: i32;
+    field_count: i32;
+    enum_case_count: i32;
     type_count: i32;
     primitive_type_count: i32;
     named_type_count: i32;
@@ -236,6 +266,8 @@ struct AstModule {
     items: *mut AstItemNode;
     types: *mut AstTypeNode;
     params: *mut AstParamNode;
+    fields: *mut AstFieldNode;
+    enum_cases: *mut AstEnumCaseNode;
     blocks: *mut AstBlockNode;
     stmts: *mut AstStmtNode;
     stmt_refs: *mut i32;
@@ -261,7 +293,12 @@ fn ast_make_module() -> AstModule {
         opaque_struct_count: 0,
         export_fn_count: 0,
         fn_count: 0,
+        struct_count: 0,
+        enum_count: 0,
+        const_count: 0,
         param_count: 0,
+        field_count: 0,
+        enum_case_count: 0,
         type_count: 0,
         primitive_type_count: 0,
         named_type_count: 0,
@@ -307,6 +344,8 @@ fn ast_make_module() -> AstModule {
         items: ptr_cast(*mut AstItemNode, malloc(size_of(AstItemNode) * cast(usize, AST_MAX_ITEMS))),
         types: ptr_cast(*mut AstTypeNode, malloc(size_of(AstTypeNode) * cast(usize, AST_MAX_TYPES))),
         params: ptr_cast(*mut AstParamNode, malloc(size_of(AstParamNode) * cast(usize, AST_MAX_PARAMS))),
+        fields: ptr_cast(*mut AstFieldNode, malloc(size_of(AstFieldNode) * cast(usize, AST_MAX_FIELDS))),
+        enum_cases: ptr_cast(*mut AstEnumCaseNode, malloc(size_of(AstEnumCaseNode) * cast(usize, AST_MAX_ENUM_CASES))),
         blocks: ptr_cast(*mut AstBlockNode, malloc(size_of(AstBlockNode) * cast(usize, AST_MAX_BLOCKS))),
         stmts: ptr_cast(*mut AstStmtNode, malloc(size_of(AstStmtNode) * cast(usize, AST_MAX_STMTS))),
         stmt_refs: ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AST_MAX_STMT_REFS))),
@@ -321,6 +360,8 @@ fn ast_free_module(ast: AstModule) -> void {
     free(ptr_cast(*mut void, ast.items));
     free(ptr_cast(*mut void, ast.types));
     free(ptr_cast(*mut void, ast.params));
+    free(ptr_cast(*mut void, ast.fields));
+    free(ptr_cast(*mut void, ast.enum_cases));
     free(ptr_cast(*mut void, ast.blocks));
     free(ptr_cast(*mut void, ast.stmts));
     free(ptr_cast(*mut void, ast.stmt_refs));
@@ -334,6 +375,8 @@ fn ast_has_storage(ast: *mut AstModule) -> bool {
         ast.items != null &&
         ast.types != null &&
         ast.params != null &&
+        ast.fields != null &&
+        ast.enum_cases != null &&
         ast.blocks != null &&
         ast.stmts != null &&
         ast.stmt_refs != null &&
@@ -347,6 +390,8 @@ fn ast_counts_within_capacity(ast: *mut AstModule) -> bool {
         ast.item_count <= AST_MAX_ITEMS &&
         ast.type_count <= AST_MAX_TYPES &&
         ast.param_count <= AST_MAX_PARAMS &&
+        ast.field_count <= AST_MAX_FIELDS &&
+        ast.enum_case_count <= AST_MAX_ENUM_CASES &&
         ast.block_count <= AST_MAX_BLOCKS &&
         ast.stmt_count <= AST_MAX_STMTS &&
         ast.stmt_ref_count <= AST_MAX_STMT_REFS &&
@@ -381,7 +426,7 @@ fn ast_make_array_type_node(count_begin: i32, count_end: i32, element: i32) -> A
     return AstTypeNode { kind: AST_TYPE_ARRAY, primitive: AST_PRIM_VOID, mutability: AST_MUT_CONST, pointee: 0, array_count_begin: count_begin, array_count_end: count_end, array_element: element, name_begin: 0, name_end: 0 };
 }
 
-fn ast_make_item_node(kind: i32, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, abi_begin: i32, abi_end: i32, body_block: i32) -> AstItemNode {
+fn ast_make_item_node(kind: i32, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, first_field: i32, field_count: i32, enum_base_type: i32, first_enum_case: i32, enum_case_count: i32, const_type: i32, const_expr: i32, abi_begin: i32, abi_end: i32, body_block: i32) -> AstItemNode {
     return AstItemNode {
         kind: kind,
         name_begin: name_begin,
@@ -389,6 +434,13 @@ fn ast_make_item_node(kind: i32, name_begin: i32, name_end: i32, first_param: i3
         first_param: first_param,
         param_count: param_count,
         return_type: return_type,
+        first_field: first_field,
+        field_count: field_count,
+        enum_base_type: enum_base_type,
+        first_enum_case: first_enum_case,
+        enum_case_count: enum_case_count,
+        const_type: const_type,
+        const_expr: const_expr,
         abi_begin: abi_begin,
         abi_end: abi_end,
         body_block: body_block
@@ -455,33 +507,73 @@ fn ast_add_item_node(ast: *mut AstModule, item: AstItemNode) -> i32 {
 }
 
 fn ast_add_extern_block(ast: *mut AstModule) -> i32 {
-    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_EXTERN_BLOCK, 0, 0, ast.param_count, 0, 0, 0, 0, -1));
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_EXTERN_BLOCK, 0, 0, ast.param_count, 0, 0, ast.field_count, 0, -1, ast.enum_case_count, 0, -1, -1, 0, 0, -1));
     ast.extern_block_count = ast.extern_block_count + 1;
     return id;
 }
 
 fn ast_add_extern_fn(ast: *mut AstModule, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, abi_begin: i32, abi_end: i32) -> i32 {
-    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_EXTERN_FN, name_begin, name_end, first_param, param_count, return_type, abi_begin, abi_end, -1));
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_EXTERN_FN, name_begin, name_end, first_param, param_count, return_type, ast.field_count, 0, -1, ast.enum_case_count, 0, -1, -1, abi_begin, abi_end, -1));
     ast.extern_fn_count = ast.extern_fn_count + 1;
     return id;
 }
 
 fn ast_add_opaque_struct(ast: *mut AstModule, name_begin: i32, name_end: i32) -> i32 {
-    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_OPAQUE_STRUCT, name_begin, name_end, ast.param_count, 0, 0, 0, 0, -1));
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_OPAQUE_STRUCT, name_begin, name_end, ast.param_count, 0, 0, ast.field_count, 0, -1, ast.enum_case_count, 0, -1, -1, 0, 0, -1));
     ast.opaque_struct_count = ast.opaque_struct_count + 1;
     return id;
 }
 
 fn ast_add_export_fn(ast: *mut AstModule, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, abi_begin: i32, abi_end: i32, body_block: i32) -> i32 {
-    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_EXPORT_FN, name_begin, name_end, first_param, param_count, return_type, abi_begin, abi_end, body_block));
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_EXPORT_FN, name_begin, name_end, first_param, param_count, return_type, ast.field_count, 0, -1, ast.enum_case_count, 0, -1, -1, abi_begin, abi_end, body_block));
     ast.export_fn_count = ast.export_fn_count + 1;
     return id;
 }
 
 fn ast_add_fn(ast: *mut AstModule, name_begin: i32, name_end: i32, first_param: i32, param_count: i32, return_type: i32, body_block: i32) -> i32 {
-    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_FN, name_begin, name_end, first_param, param_count, return_type, 0, 0, body_block));
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_FN, name_begin, name_end, first_param, param_count, return_type, ast.field_count, 0, -1, ast.enum_case_count, 0, -1, -1, 0, 0, body_block));
     ast.fn_count = ast.fn_count + 1;
     return id;
+}
+
+fn ast_add_struct(ast: *mut AstModule, name_begin: i32, name_end: i32, first_field: i32, field_count: i32) -> i32 {
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_STRUCT, name_begin, name_end, ast.param_count, 0, 0, first_field, field_count, -1, ast.enum_case_count, 0, -1, -1, 0, 0, -1));
+    ast.struct_count = ast.struct_count + 1;
+    return id;
+}
+
+fn ast_add_enum(ast: *mut AstModule, name_begin: i32, name_end: i32, base_type: i32, first_case: i32, case_count: i32) -> i32 {
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_ENUM, name_begin, name_end, ast.param_count, 0, 0, ast.field_count, 0, base_type, first_case, case_count, -1, -1, 0, 0, -1));
+    ast.enum_count = ast.enum_count + 1;
+    return id;
+}
+
+fn ast_add_const(ast: *mut AstModule, name_begin: i32, name_end: i32, type_id: i32, expr_id: i32) -> i32 {
+    let id: i32 = ast_add_item_node(ast, ast_make_item_node(AST_ITEM_CONST, name_begin, name_end, ast.param_count, 0, 0, ast.field_count, 0, -1, ast.enum_case_count, 0, type_id, expr_id, 0, 0, -1));
+    ast.const_count = ast.const_count + 1;
+    return id;
+}
+
+fn ast_add_field(ast: *mut AstModule, name_begin: i32, name_end: i32, type_id: i32) -> i32 {
+    let id: i32 = ast.field_count;
+    if id < AST_MAX_FIELDS && ast.fields != null {
+        ast.fields[id] = AstFieldNode { name_begin: name_begin, name_end: name_end, type_id: type_id };
+        ast.field_count = ast.field_count + 1;
+        return id;
+    }
+    ast.field_count = ast.field_count + 1;
+    return -1;
+}
+
+fn ast_add_enum_case(ast: *mut AstModule, name_begin: i32, name_end: i32, value_begin: i32, value_end: i32) -> i32 {
+    let id: i32 = ast.enum_case_count;
+    if id < AST_MAX_ENUM_CASES && ast.enum_cases != null {
+        ast.enum_cases[id] = AstEnumCaseNode { name_begin: name_begin, name_end: name_end, value_begin: value_begin, value_end: value_end };
+        ast.enum_case_count = ast.enum_case_count + 1;
+        return id;
+    }
+    ast.enum_case_count = ast.enum_case_count + 1;
+    return -1;
 }
 
 fn ast_add_param(ast: *mut AstModule, name_begin: i32, name_end: i32, type_id: i32) -> i32 {

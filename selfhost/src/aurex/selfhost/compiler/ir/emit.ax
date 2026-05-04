@@ -7,6 +7,10 @@ import aurex.selfhost.compiler.ir.types;
 import aurex.selfhost.compiler.ir.writer;
 import aurex.selfhost.lexer.core;
 import aurex.selfhost.parser.seed;
+import aurex.selfhost.sema.items;
+import aurex.selfhost.sema.locals;
+import aurex.selfhost.sema.members;
+import aurex.selfhost.sema.resolve;
 import aurex.selfhost.syntax.ast;
 
 fn ir_write_header(file: *mut OutputFile) -> bool {
@@ -37,12 +41,61 @@ fn ir_write_param_list(file: *mut OutputFile, source: *const u8, ast: *mut AstMo
     return true;
 }
 
-fn ir_write_record(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+fn ir_write_opaque_record(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
     return ir_write_text(file, c"record ") &&
         ir_write_range(file, source, item.name_begin, item.name_end) &&
         ir_write_text(file, c" @") &&
         ir_write_mangled_name(file, source, ast.module_begin, ast.module_end, item.name_begin, item.name_end) &&
         ir_write_text(file, c" opaque {\n}\n");
+}
+
+fn ir_write_record(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    if !ir_write_text(file, c"record ") { return false; }
+    if !ir_write_range(file, source, item.name_begin, item.name_end) { return false; }
+    if !ir_write_text(file, c" @") { return false; }
+    if !ir_write_mangled_name(file, source, ast.module_begin, ast.module_end, item.name_begin, item.name_end) { return false; }
+    if !ir_write_text(file, c" {\n") { return false; }
+    var index: i32 = 0;
+    while index < item.field_count {
+        let field: AstFieldNode = ast.fields[item.first_field + index];
+        if !ir_write_text(file, c"  ") { return false; }
+        if !ir_write_range(file, source, field.name_begin, field.name_end) { return false; }
+        if !ir_write_text(file, c": ") { return false; }
+        if !ir_write_type(file, source, ast, field.type_id) { return false; }
+        if !ir_write_text(file, c"\n") { return false; }
+        index = index + 1;
+    }
+    return ir_write_text(file, c"}\n");
+}
+
+fn ir_write_enum(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    if !ir_write_text(file, c"enum ") { return false; }
+    if !ir_write_range(file, source, item.name_begin, item.name_end) { return false; }
+    if !ir_write_text(file, c": ") { return false; }
+    if !ir_write_type(file, source, ast, item.enum_base_type) { return false; }
+    if !ir_write_text(file, c" {\n") { return false; }
+    var index: i32 = 0;
+    while index < item.enum_case_count {
+        let enum_case: AstEnumCaseNode = ast.enum_cases[item.first_enum_case + index];
+        if !ir_write_text(file, c"  ") { return false; }
+        if !ir_write_range(file, source, enum_case.name_begin, enum_case.name_end) { return false; }
+        if !ir_write_text(file, c" = ") { return false; }
+        if !ir_write_range(file, source, enum_case.value_begin, enum_case.value_end) { return false; }
+        if !ir_write_text(file, c"\n") { return false; }
+        index = index + 1;
+    }
+    return ir_write_text(file, c"}\n");
+}
+
+fn ir_write_const(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
+    if !ir_write_text(file, c"const ") { return false; }
+    if !ir_write_range(file, source, item.name_begin, item.name_end) { return false; }
+    if !ir_write_text(file, c": ") { return false; }
+    if !ir_write_type(file, source, ast, item.const_type) { return false; }
+    if !ir_write_text(file, c" = ") { return false; }
+    if !tac_write_temp(file, item.const_expr) { return false; }
+    if !ir_write_text(file, c"\n") { return false; }
+    return tac_emit_expr_values(file, source, ast, item.const_expr, 1);
 }
 
 fn ir_write_fn_signature(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode, linkage: *const u8) -> bool {
@@ -206,32 +259,60 @@ fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
         ast_free_module(ast);
         return emit_ir_pending_source(file, source);
     }
+    if !sema_check_module_items(source, &ast) ||
+        !sema_check_module_locals(source, &ast) ||
+        !sema_check_module_members(source, &ast) ||
+        !sema_check_module_resolution(source, &ast) {
+        ast_free_module(ast);
+        return false;
+    }
 
     var index: i32 = 0;
     while index < ast.item_count {
         let item: AstItemNode = ast.items[index];
         if item.kind == AST_ITEM_OPAQUE_STRUCT {
-            if !ir_write_record(file, source, &ast, item) {
+            if !ir_write_opaque_record(file, source, &ast, item) {
                 ast_free_module(ast);
                 return false;
             }
         } else {
-            if item.kind == AST_ITEM_EXTERN_FN {
-                if !ir_write_extern_fn(file, source, &ast, item) {
+            if item.kind == AST_ITEM_STRUCT {
+                if !ir_write_record(file, source, &ast, item) {
                     ast_free_module(ast);
                     return false;
                 }
             } else {
-                if item.kind == AST_ITEM_EXPORT_FN {
-                    if !ir_write_export_fn(file, source, &ast, item) {
+                if item.kind == AST_ITEM_ENUM {
+                    if !ir_write_enum(file, source, &ast, item) {
                         ast_free_module(ast);
                         return false;
                     }
                 } else {
-                    if item.kind == AST_ITEM_FN {
-                        if !ir_write_plain_fn(file, source, &ast, item) {
+                    if item.kind == AST_ITEM_CONST {
+                        if !ir_write_const(file, source, &ast, item) {
                             ast_free_module(ast);
                             return false;
+                        }
+                    } else {
+                        if item.kind == AST_ITEM_EXTERN_FN {
+                            if !ir_write_extern_fn(file, source, &ast, item) {
+                                ast_free_module(ast);
+                                return false;
+                            }
+                        } else {
+                            if item.kind == AST_ITEM_EXPORT_FN {
+                                if !ir_write_export_fn(file, source, &ast, item) {
+                                    ast_free_module(ast);
+                                    return false;
+                                }
+                            } else {
+                                if item.kind == AST_ITEM_FN {
+                                    if !ir_write_plain_fn(file, source, &ast, item) {
+                                        ast_free_module(ast);
+                                        return false;
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -4,6 +4,10 @@ extern c {
     fn puts(s: *const u8) -> i32 @name("puts");
 }
 
+struct Pair {
+    value: i32;
+}
+
 fn helper(ptr: *mut u8) -> i32 {
     let byte_size: usize = size_of(u8);
     let byte_align: usize = align_of(u8);

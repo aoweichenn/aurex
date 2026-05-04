@@ -128,19 +128,16 @@ void IrTranslator::translate_function(const ir::Function& src_fn, const base::u3
         }
     }
 
+    std::string fn_label = src_fn.name.empty() ? symbol : src_fn.name;
     for (base::u32 i = 0; i < static_cast<base::u32>(src_fn.blocks.size()); ++i) {
         const ir::BasicBlock& src_block = src_fn.blocks[i];
-        translate_block(i, src_block, dst_fn);
+        translate_block(i, src_block, dst_fn, fn_label);
     }
 }
 
-void IrTranslator::translate_block(const base::u32 block_idx, const ir::BasicBlock& src_block, aurora::Function* dst_fn) {
-    aurora::BasicBlock* dst_bb = nullptr;
-    if (block_idx == 0) {
-        dst_bb = dst_fn->getEntryBlock();
-    } else {
-        dst_bb = dst_fn->createBasicBlock(src_block.name);
-    }
+void IrTranslator::translate_block(const base::u32 block_idx, const ir::BasicBlock& src_block, aurora::Function* dst_fn, const std::string& fn_name) {
+    std::string label = fn_name + "_" + (src_block.name.empty() ? "entry" : src_block.name);
+    aurora::BasicBlock* dst_bb = dst_fn->createBasicBlock(label);
     block_map_[block_idx] = dst_bb;
 
     aurora::AIRBuilder builder(dst_bb);

@@ -51,7 +51,7 @@ public:
 
 private:
     void translate_function(const ir::Function& src_fn, base::u32 fn_idx);
-    void translate_block(base::u32 block_idx, const ir::BasicBlock& src_block, aurora::Function* dst_fn);
+    void translate_block(base::u32 block_idx, const ir::BasicBlock& src_block, aurora::Function* dst_fn, const std::string& fn_name);
     [[nodiscard]] unsigned translate_value(const ir::Value& value, aurora::AIRBuilder& builder);
     void translate_terminator(const ir::Terminator& terminator, aurora::AIRBuilder& builder);
     void translate_global_constant(const ir::GlobalConstant& constant, base::u32 idx);

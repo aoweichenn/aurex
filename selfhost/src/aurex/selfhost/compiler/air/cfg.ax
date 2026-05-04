@@ -1,6 +1,7 @@
 module aurex.selfhost.compiler.air.cfg;
 
 import aurex.selfhost.compiler.air.model;
+import aurex.selfhost.compiler.air.flow;
 import aurex.selfhost.syntax.ast;
 
 fn air_cfg_find_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
@@ -301,6 +302,9 @@ fn air_build_cfg_edges(function: *mut AirFunction, ast: *mut AstModule) -> bool 
             return false;
         }
         block_id = block_id + 1;
+    }
+    if !air_flow_attach_args(function) {
+        return false;
     }
     return air_cfg_apply_block_terminators(function);
 }

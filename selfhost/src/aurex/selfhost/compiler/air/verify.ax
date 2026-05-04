@@ -342,7 +342,6 @@ fn air_verify_block_params_for_block(function: *mut AirFunction, block_id: i32, 
         }
         let param: AirBlockParam = function.block_params[param_id];
         if param.block_id != block_id ||
-            param.type_id < 0 ||
             !air_block_param_name_range_valid(param) ||
             !air_valid_value(function, param.value_id) {
             return false;
@@ -351,8 +350,13 @@ fn air_verify_block_params_for_block(function: *mut AirFunction, block_id: i32, 
         if value.kind != AIR_VALUE_BLOCK_PARAM ||
             value.type_id != param.type_id ||
             value.name_begin != param.name_begin ||
-            value.name_end != param.name_end ||
-            !air_verify_value(function, value) {
+            value.name_end != param.name_end {
+            return false;
+        }
+        if param.type_id < 0 && value.sema_kind == AIR_SEMA_UNKNOWN {
+            return false;
+        }
+        if !air_verify_value(function, value) {
             return false;
         }
         index = index + 1;
@@ -801,7 +805,15 @@ fn air_edge_arg_type_matches_param(function: *mut AirFunction, edge: AirEdge, ar
     let block: AirBlock = function.blocks[edge.target];
     let param: AirBlockParam = function.block_params[block.first_param + arg_index];
     let value: AirValue = function.values[value_id];
-    return value.type_id < 0 || param.type_id < 0 || value.type_id == param.type_id;
+    if value.type_id >= 0 || param.type_id >= 0 {
+        return value.type_id == param.type_id;
+    }
+    let param_value: AirValue = function.values[param.value_id];
+    if value.sema_kind == AIR_SEMA_UNKNOWN || param_value.sema_kind == AIR_SEMA_UNKNOWN {
+        return false;
+    }
+    return value.sema_kind == param_value.sema_kind &&
+        value.sema_payload == param_value.sema_payload;
 }
 
 fn air_verify_edge_args(function: *mut AirFunction, edge: AirEdge) -> bool {

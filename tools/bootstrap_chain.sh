@@ -111,6 +111,7 @@ grep -q 'aurex.selfhost.compiler.air.model' "${SELFHOST_BUILD_DIR}/aurexc_stage1
 grep -q 'aurex.selfhost.compiler.air.bind' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.place' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.memory' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.flow' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.cfg' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.lower' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.text' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -174,11 +175,15 @@ grep -q 'type(' "${STAGE1_FLOW_TAC}"
 grep -q 'sema_type(type_id' "${STAGE1_FLOW_TAC}"
 grep -q 'sema_type(primitive' "${STAGE1_FLOW_TAC}"
 grep -q 'edge while_true \^air' "${STAGE1_FLOW_TAC}"
+grep -q 'edge while_true .* args(%v' "${STAGE1_FLOW_TAC}"
 grep -q 'edge while_false \^air0 -> \^air1' "${STAGE1_FLOW_TAC}"
 grep -q 'edge loop_back \^air' "${STAGE1_FLOW_TAC}"
 grep -q 'edge scope \^air0 -> \^air2' "${STAGE1_FLOW_TAC}"
 grep -q 'edge if_true \^air1 -> \^air' "${STAGE1_FLOW_TAC}"
+grep -q 'edge if_true .* args(%v' "${STAGE1_FLOW_TAC}"
 grep -q 'edge if_false \^air1 -> \^air' "${STAGE1_FLOW_TAC}"
+grep -q 'block_param %v' "${STAGE1_FLOW_TAC}"
+grep -q 'block_param %v.*sema_type(primitive' "${STAGE1_FLOW_TAC}"
 grep -q 'edge return \^air' "${STAGE1_FLOW_TAC}"
 grep -q 'stmts(3+1)' "${STAGE1_FLOW_TAC}"
 grep -q 'term branch %v' "${STAGE1_FLOW_TAC}"
@@ -265,6 +270,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/bind.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/place.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/memory.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/flow.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/cfg.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/lower.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/text.ax" \

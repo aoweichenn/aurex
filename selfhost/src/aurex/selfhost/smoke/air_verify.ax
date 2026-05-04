@@ -134,7 +134,7 @@ fn check_valid_block_param_edge_args() -> bool {
     air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     let join: i32 = air_add_block(&function, 1);
-    let input: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    let input: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, 1));
     let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
     let param_value: i32 = function.block_params[block_param].value_id;
     let edge_id: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
@@ -166,6 +166,41 @@ fn check_missing_edge_arg_rejected() -> bool {
     air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
     air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 0, join, -1, -1, param_value));
     let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_valid_join_block_param_edge_args() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let then_block: i32 = air_add_block(&function, 1);
+    let else_block: i32 = air_add_block(&function, 2);
+    let join: i32 = air_add_block(&function, 3);
+    let condition: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_BOOL, 0, 1));
+    let left: i32 = air_add_value(&function, then_block, air_make_value(AIR_VALUE_INTEGER, 1, 1));
+    let right: i32 = air_add_value(&function, else_block, air_make_value(AIR_VALUE_INTEGER, 2, 1));
+    let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
+    let param_value: i32 = function.block_params[block_param].value_id;
+    let then_edge: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, then_block, join, -1, -1));
+    let else_edge: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, else_block, join, -1, -1));
+    let ok: bool = block_param >= 0 &&
+        then_edge >= 0 &&
+        else_edge >= 0 &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_IF_TRUE, 0, entry, then_block, condition, -1)) >= 0 &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_IF_FALSE, 0, entry, else_block, condition, -1)) >= 0 &&
+        air_add_edge_arg(&function, then_edge, left) &&
+        air_add_edge_arg(&function, else_edge, right) &&
+        air_set_terminator(&function, entry, air_branch_terminator(condition, then_block, else_block)) &&
+        air_set_terminator(&function, then_block, air_jump_terminator(join)) &&
+        air_set_terminator(&function, else_block, air_jump_terminator(join)) &&
+        air_set_terminator(&function, join, air_return_terminator(param_value)) &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 1, join, -1, -1, param_value)) >= 0 &&
+        air_verify_function(&function);
     air_free_function(function);
     return ok;
 }
@@ -661,6 +696,7 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_bad_branch_edge_mismatch_rejected() &&
         check_valid_block_param_edge_args() &&
         check_missing_edge_arg_rejected() &&
+        check_valid_join_block_param_edge_args() &&
         check_bad_edge_arg_type_rejected() &&
         check_bad_edge_arg_scope_rejected() &&
         check_missing_terminator_rejected() &&

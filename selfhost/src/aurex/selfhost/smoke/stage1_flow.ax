@@ -17,6 +17,16 @@ fn helper(limit: i32) -> i32 {
     }
 }
 
+fn choose(limit: i32) -> i32 {
+    var value: i32 = 0;
+    if limit > 0 {
+        value = 1;
+    } else {
+        value = 2;
+    }
+    return value;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     {
         let inner: i32 = helper(3);

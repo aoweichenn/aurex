@@ -45,6 +45,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/compiler/air/bind.ax \
 	src/aurex/selfhost/compiler/air/place.ax \
 	src/aurex/selfhost/compiler/air/memory.ax \
+	src/aurex/selfhost/compiler/air/flow.ax \
 	src/aurex/selfhost/compiler/air/cfg.ax \
 	src/aurex/selfhost/compiler/air/lower.ax \
 	src/aurex/selfhost/compiler/air/text.ax \
@@ -133,6 +134,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.air.bind' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.place' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.memory' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.flow' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.cfg' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.lower' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.text' $(BUILD_DIR)/aurexc_stage1.modules
@@ -197,11 +199,15 @@ check: all
 	grep -q 'sema_type(type_id' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'sema_type(primitive' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while_true \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge while_true .* args(%v' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while_false \^air0 -> \^air1' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge loop_back \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge scope \^air0 -> \^air2' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge if_true \^air1 -> \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge if_true .* args(%v' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge if_false \^air1 -> \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'block_param %v' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'block_param %v.*sema_type(primitive' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge return \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'stmts(3+1)' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'term branch %v' $(BUILD_DIR)/stage1_flow.stage1.tac

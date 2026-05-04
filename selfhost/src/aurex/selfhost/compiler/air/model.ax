@@ -631,6 +631,22 @@ fn air_add_block_param(function: *mut AirFunction, block_id: i32, type_id: i32, 
     return param_id;
 }
 
+fn air_add_block_param_for_value(function: *mut AirFunction, block_id: i32, source_value_id: i32, name_begin: i32, name_end: i32) -> i32 {
+    if !function.ok || source_value_id < 0 || source_value_id >= function.value_count {
+        function.ok = false;
+        return -1;
+    }
+    let source_value: AirValue = function.values[source_value_id];
+    let param_id: i32 = air_add_block_param(function, block_id, source_value.type_id, name_begin, name_end);
+    if param_id < 0 {
+        return -1;
+    }
+    let param_value_id: i32 = function.block_params[param_id].value_id;
+    function.values[param_value_id].sema_kind = source_value.sema_kind;
+    function.values[param_value_id].sema_payload = source_value.sema_payload;
+    return param_id;
+}
+
 fn air_add_local(function: *mut AirFunction, kind: i32, ast_stmt_id: i32, scope_block: i32, name_begin: i32, name_end: i32, type_id: i32) -> i32 {
     if !function.ok || function.local_count >= AIR_MAX_LOCALS || name_begin >= name_end {
         function.ok = false;

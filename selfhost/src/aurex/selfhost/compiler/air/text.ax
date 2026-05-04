@@ -322,11 +322,23 @@ fn air_text_write_block_params(file: *mut OutputFile, function: *mut AirFunction
     var index: i32 = 0;
     while index < block.param_count {
         let param: AirBlockParam = function.block_params[block.first_param + index];
+        let value: AirValue = function.values[param.value_id];
         if !ir_write_text(file, c"  ;   block_param ") { return false; }
         if !air_text_write_value_ref(file, param.value_id) { return false; }
-        if !ir_write_text(file, c" type(") { return false; }
-        if !ir_write_i32(file, param.type_id) { return false; }
-        if !ir_write_text(file, c")") { return false; }
+        if param.type_id >= 0 {
+            if !ir_write_text(file, c" type(") { return false; }
+            if !ir_write_i32(file, param.type_id) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if value.sema_kind != AIR_SEMA_UNKNOWN {
+            if !ir_write_text(file, c" sema_type(") { return false; }
+            if !air_text_write_sema_kind(file, value.sema_kind) { return false; }
+            if value.sema_payload >= 0 {
+                if !ir_write_text(file, c" ") { return false; }
+                if !ir_write_i32(file, value.sema_payload) { return false; }
+            }
+            if !ir_write_text(file, c")") { return false; }
+        }
         if param.name_begin >= 0 {
             if !ir_write_text(file, c" name(") { return false; }
             if !ir_write_i32(file, param.name_begin) { return false; }

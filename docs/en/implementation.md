@@ -42,7 +42,7 @@ values to the current function block.
 The module loader merges the root file and imported files into one `AstModule`.
 It records loaded files and modules to avoid duplicate loading and uncontrolled
 recursive imports. Module declarations must match import paths; for example,
-`import std.text;` expects `module std.text;`.
+`import std.core.text;` expects `module std.core.text;`.
 
 ## Sema
 
@@ -124,7 +124,8 @@ cleans the temporary file.
 
 ## Standard Library
 
-`.ax` standard-library modules define language-level APIs. Temporary C FFI
+`.ax` standard-library modules define language-level APIs under responsibility
+directories: `std/core`, `std/fs`, `std/io`, and `std/sys`. Temporary C FFI
 declarations and host-c support live under `std/ffi/c/`, keeping C interop out
 of the higher-level std modules. Stable host symbols use the `aurex_std_v0_*`
 namespace.

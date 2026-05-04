@@ -48,8 +48,8 @@ standard-library and IR main path:
   libraries, and clang.
 - Native output requires a `clang` executable, or an alternate path through
   `--clang`.
-- When std is required, the std root must contain `text.ax`, `ffi/c/libc.ax`,
-  and `ffi/c/support/host_c.c`.
+- When std is required, the std root must contain `core/text.ax`,
+  `ffi/c/libc.ax`, and `ffi/c/support/host_c.c`.
 - The install layout should contain `bin/aurexc` and `share/aurex/std`.
 
 ## Non-Functional Requirements

@@ -1,12 +1,12 @@
 module std_bootstrap;
 
-import std.args;
-import std.file;
-import std.host;
-import std.io;
-import std.mem;
-import std.process;
-import std.text;
+import std.core.mem;
+import std.core.text;
+import std.fs.file;
+import std.io.console;
+import std.sys.args;
+import std.sys.host;
+import std.sys.process;
 
 fn check_args(argc: i32, argv: *mut *mut u8) -> bool {
     let parsed: Args = args(argc, argv);

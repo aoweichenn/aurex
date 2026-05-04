@@ -1,8 +1,8 @@
 module std_ffi;
 
-import std.io;
-import std.mem;
-import std.text;
+import std.core.mem;
+import std.core.text;
+import std.io.console;
 
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let source: *const u8 = c"abc";

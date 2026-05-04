@@ -77,7 +77,9 @@ root source
 
 The standard library has two parts:
 
-- language-level `.ax` modules such as `std.text`, `std.mem`, `std.file`, and `std.io`.
+- language-level `.ax` modules under responsibility directories such as
+  `std.core.text`, `std.core.mem`, `std.fs.file`, `std.io.console`, and
+  `std.sys.process`.
 - temporary C FFI declarations under `std/ffi/c/`.
 - backend support, currently `std/ffi/c/support/host_c.c` by default.
 

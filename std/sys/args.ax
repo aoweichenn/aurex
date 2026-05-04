@@ -1,4 +1,4 @@
-module std.args;
+module std.sys.args;
 
 struct Args {
     argc: i32;
@@ -23,3 +23,4 @@ fn arg(args_value: Args, index: i32) -> *const u8 {
     }
     return ptr_cast(*const u8, args_value.argv[index]);
 }
+

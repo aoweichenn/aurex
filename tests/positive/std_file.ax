@@ -1,7 +1,7 @@
 module std_file;
 
-import std.file;
-import std.text;
+import std.core.text;
+import std.fs.file;
 
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let path: *const u8 = c"/tmp/aurex_std_file_test.txt";

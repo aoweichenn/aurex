@@ -25,7 +25,7 @@
 6. 检查模块名与 import 路径匹配。
 7. 合并 AST，同时保留模块 ID 和模块路径。
 
-模块查找以导入者目录为第一优先级，然后追加 `-I` 和标准库 import root。标准库启用时，driver 会把 `std` 根的父目录加入 import path，使 `import std.text;` 解析到 `std/text.ax`。
+模块查找以导入者目录为第一优先级，然后追加 `-I` 和标准库 import root。标准库启用时，driver 会把 `std` 根的父目录加入 import path，使 `import std.core.text;` 解析到 `std/core/text.ax`。
 
 ## 语义流程
 
@@ -71,7 +71,7 @@ native 输出必须提供 `-o`。dump、check、IR 和 LLVM IR 模式直接写 s
 ## 标准库与 backend support 链接流程
 
 1. `--no-stdlib` 关闭标准库 import path 和 support 链接。
-2. 未关闭标准库时，模块加载阶段尝试加入标准库 import root。
+2. 未关闭标准库时，模块加载阶段尝试加入标准库 import root，例如 `std.core.text` 会解析到 `std/core/text.ax`。
 3. 只有 executable 输出会链接 std backend support。
 4. `--std-backend host-c` 链接 `std/ffi/c/support/host_c.c`。
 5. `--std-backend none` 不链接 support 源文件。
@@ -92,7 +92,7 @@ native 输出必须提供 `-o`。dump、check、IR 和 LLVM IR 模式直接写 s
    - `bin/../../share/aurex/std`
 5. 当前工作目录的 `std`
 
-候选目录必须同时包含 `text.ax`、`ffi/c/libc.ax` 和 `ffi/c/support/host_c.c`，才会被接受为标准库根。
+候选目录必须同时包含 `core/text.ax`、`ffi/c/libc.ax` 和 `ffi/c/support/host_c.c`，才会被接受为标准库根。
 
 ## 失败流程
 

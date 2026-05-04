@@ -1,7 +1,7 @@
-module std.file;
+module std.fs.file;
 
+import std.core.text;
 import std.ffi.c.libc;
-import std.text;
 
 struct ReadFileResult {
     ok: bool;
@@ -93,3 +93,4 @@ fn remove_file(path: *const u8) -> bool {
 fn rename_file(old_path: *const u8, new_path: *const u8) -> bool {
     return rename(old_path, new_path) == 0;
 }
+

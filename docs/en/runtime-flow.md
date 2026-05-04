@@ -28,7 +28,8 @@ Exit codes:
 
 Lookup uses the importer directory first, then `-I` paths and standard-library
 import roots. When std is enabled, the driver adds the parent directory of the
-std root to the import path, so `import std.text;` resolves to `std/text.ax`.
+std root to the import path, so `import std.core.text;` resolves to
+`std/core/text.ax`.
 
 ## Semantic Flow
 
@@ -78,7 +79,8 @@ or only return status and do not require `-o`.
 ## Standard-Library And Backend Support Link Flow
 
 1. `--no-stdlib` disables std import paths and support linking.
-2. When std is enabled, module loading tries to add the std import root.
+2. When std is enabled, module loading tries to add the std import root, so
+   imports such as `std.core.text` resolve to `std/core/text.ax`.
 3. Only executable output links std backend support.
 4. `--std-backend host-c` links `std/ffi/c/support/host_c.c`.
 5. `--std-backend none` links no support source file.
@@ -99,8 +101,8 @@ Lookup order:
    - `bin/../../share/aurex/std`
 5. Current working directory's `std`
 
-A candidate directory is accepted as a std root only if it contains `text.ax`,
-`ffi/c/libc.ax`, and `ffi/c/support/host_c.c`.
+A candidate directory is accepted as a std root only if it contains
+`core/text.ax`, `ffi/c/libc.ax`, and `ffi/c/support/host_c.c`.
 
 ## Failure Flow
 

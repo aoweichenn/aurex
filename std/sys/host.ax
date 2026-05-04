@@ -1,7 +1,7 @@
-module std.host;
+module std.sys.host;
 
+import std.core.text;
 import std.ffi.c.host_support;
-import std.text;
 
 struct HostReadFileResult {
     ok: bool;
@@ -92,3 +92,4 @@ fn write_output_i32(file: *mut void, value: i32) -> bool {
 fn close_output_handle(file: *mut void) -> bool {
     return host_output_close(ptr_cast(*mut OutputFile, file));
 }
+

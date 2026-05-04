@@ -1,4 +1,4 @@
-module std.io;
+module std.io.console;
 
 import std.ffi.c.libc;
 
@@ -29,3 +29,4 @@ fn flush_stdout() -> bool {
 fn flush_stderr() -> bool {
     return fflush(aurex_std_v0_stderr()) == 0;
 }
+

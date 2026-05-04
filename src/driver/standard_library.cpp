@@ -22,7 +22,7 @@ namespace {
 
 [[nodiscard]] bool is_standard_library_root(const std::filesystem::path& path) {
     std::error_code error;
-    return std::filesystem::exists(path / "text.ax", error) && !error &&
+    return std::filesystem::exists(path / "core" / "text.ax", error) && !error &&
            std::filesystem::exists(path / "ffi" / "c" / "libc.ax", error) && !error &&
            std::filesystem::exists(path / "ffi" / "c" / "support" / "host_c.c", error) && !error;
 }

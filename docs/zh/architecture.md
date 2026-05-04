@@ -65,7 +65,7 @@ root source
 
 标准库由两部分组成：
 
-- 语言层 `.ax` 模块：例如 `std.text`、`std.mem`、`std.file`、`std.io`。
+- 语言层 `.ax` 模块按职责目录组织：例如 `std.core.text`、`std.core.mem`、`std.fs.file`、`std.io.console`、`std.sys.process`。
 - 临时 C FFI 声明目录：`std/ffi/c/`。
 - backend support：当前默认是 `std/ffi/c/support/host_c.c`。
 

@@ -130,7 +130,7 @@ aurex_std_v0_output_close
 标准库根判定条件：
 
 ```text
-text.ax
+core/text.ax
 ffi/c/libc.ax
 ffi/c/support/host_c.c
 ```

@@ -1,4 +1,4 @@
-module std.process;
+module std.sys.process;
 
 import std.ffi.c.libc;
 
@@ -24,3 +24,4 @@ fn env_or(name: *const u8, fallback: *const u8) -> *const u8 {
     }
     return value;
 }
+

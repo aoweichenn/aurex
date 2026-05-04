@@ -36,7 +36,7 @@
 
 - 构建环境需要 CMake、C++20 编译器、LLVM 开发库和 clang。
 - native 输出需要 `clang` 可执行文件，或通过 `--clang` 指定替代路径。
-- 需要标准库时，`std` 根必须包含 `text.ax`、`ffi/c/libc.ax` 和 `ffi/c/support/host_c.c`。
+- 需要标准库时，`std` 根必须包含 `core/text.ax`、`ffi/c/libc.ax` 和 `ffi/c/support/host_c.c`。
 - 安装布局应包含 `bin/aurexc` 和 `share/aurex/std`。
 
 ## 非功能需求

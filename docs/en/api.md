@@ -133,7 +133,7 @@ aurex_std_v0_output_close
 Standard-library root requirements:
 
 ```text
-text.ax
+core/text.ax
 ffi/c/libc.ax
 ffi/c/support/host_c.c
 ```

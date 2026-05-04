@@ -1,4 +1,4 @@
-module std.text;
+module std.core.text;
 
 import std.ffi.c.libc;
 
@@ -132,3 +132,4 @@ fn c_string_starts_with(text: *const u8, prefix: *const u8) -> bool {
 fn c_parse_i32(text: *const u8) -> i32 {
     return atoi(text);
 }
+

@@ -17,6 +17,7 @@ fn check_valid_air_function() -> bool {
     let entry: i32 = air_add_block(&function, 0);
     let exit: i32 = air_add_block(&function, 1);
     let param_id: i32 = air_add_param(&function, 0, 0, 5, 1);
+    let local_id: i32 = air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
     let left: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
     let right: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 1, -1));
     var condition_value: AirValue = air_make_value(AIR_VALUE_BINARY, 2, -1);
@@ -34,17 +35,27 @@ fn check_valid_air_function() -> bool {
     air_add_value_arg(&function, result, arg);
     var let_inst: AirInstruction = air_make_instruction(AIR_INST_VAR, 0, left, -1, -1, -1, 0, 1);
     let_inst.binding_kind = AIR_BIND_LOCAL;
-    let_inst.binding_id = 0;
+    let_inst.binding_id = local_id;
+    let_inst.slot_id = function.locals[local_id].slot_id;
     air_add_instruction(&function, entry, let_inst);
+    var lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_BINDING, 0, 1);
+    lvalue.slot_id = function.locals[local_id].slot_id;
+    lvalue.binding_kind = AIR_BIND_LOCAL;
+    lvalue.binding_id = local_id;
+    lvalue.name_begin = 0;
+    lvalue.name_end = 1;
+    let lvalue_id: i32 = air_add_lvalue(&function, lvalue);
     var assign_inst: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 1, left, right, -1, -1, 0, 0);
     assign_inst.binding_kind = AIR_BIND_LOCAL;
-    assign_inst.binding_id = 0;
+    assign_inst.binding_id = local_id;
+    assign_inst.lvalue_id = lvalue_id;
     air_add_instruction(&function, entry, assign_inst);
     air_add_instruction(&function, exit, air_make_instruction(AIR_INST_EXPR, 2, result, -1, -1, -1, 0, 0));
-    air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
     let ok: bool = air_set_terminator(&function, entry, air_branch_terminator(condition, exit, exit)) &&
         air_set_terminator(&function, exit, air_return_terminator(result)) &&
         param_id >= 0 &&
+        local_id >= 0 &&
+        lvalue_id >= 0 &&
         air_verify_function(&function);
     air_free_function(function);
     return ok;
@@ -194,10 +205,11 @@ fn check_bad_let_kind_rejected() -> bool {
     air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
     let value: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
-    air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
+    let local_id: i32 = air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
     var instruction: AirInstruction = air_make_instruction(AIR_INST_LET, 0, value, -1, -1, 1, 0, 1);
     instruction.binding_kind = AIR_BIND_LOCAL;
-    instruction.binding_id = 0;
+    instruction.binding_id = local_id;
+    instruction.slot_id = function.locals[local_id].slot_id;
     air_add_instruction(&function, entry, instruction);
     air_set_terminator(&function, entry, air_return_terminator(value));
     let ok: bool = !air_verify_function(&function);
@@ -215,10 +227,18 @@ fn check_bad_assign_let_target_rejected() -> bool {
     let entry: i32 = air_add_block(&function, 0);
     let left: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
     let right: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 1, -1));
-    air_add_local(&function, AIR_LOCAL_LET, 0, entry, 0, 1, 1);
+    let local_id: i32 = air_add_local(&function, AIR_LOCAL_LET, 0, entry, 0, 1, 1);
+    var lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_BINDING, 0, 1);
+    lvalue.slot_id = function.locals[local_id].slot_id;
+    lvalue.binding_kind = AIR_BIND_LOCAL;
+    lvalue.binding_id = local_id;
+    lvalue.name_begin = 0;
+    lvalue.name_end = 1;
+    let lvalue_id: i32 = air_add_lvalue(&function, lvalue);
     var instruction: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 0, left, right, -1, -1, 0, 0);
     instruction.binding_kind = AIR_BIND_LOCAL;
-    instruction.binding_id = 0;
+    instruction.binding_id = local_id;
+    instruction.lvalue_id = lvalue_id;
     air_add_instruction(&function, entry, instruction);
     air_set_terminator(&function, entry, air_return_terminator(right));
     let ok: bool = !air_verify_function(&function);
@@ -336,6 +356,138 @@ fn check_bad_local_block_rejected() -> bool {
     return ok;
 }
 
+fn check_bad_param_slot_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    air_add_param(&function, 0, 0, 5, 1);
+    function.params[0].slot_id = 99;
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_slot_owner_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let local_id: i32 = air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
+    function.slots[function.locals[local_id].slot_id].owner_id = 99;
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_lvalue_base_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    var lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_FIELD, 0, 1);
+    lvalue.base_value = 99;
+    lvalue.name_begin = 0;
+    lvalue.name_end = 1;
+    air_add_lvalue(&function, lvalue);
+    air_set_terminator(&function, entry, air_return_terminator(-1));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_lvalue_index_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let base: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
+    var lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_INDEX, 0, 1);
+    lvalue.base_value = base;
+    lvalue.index_value = 99;
+    air_add_lvalue(&function, lvalue);
+    air_set_terminator(&function, entry, air_return_terminator(base));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_assign_missing_lvalue_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let left: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
+    let right: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 1, -1));
+    let local_id: i32 = air_add_local(&function, AIR_LOCAL_VAR, 0, entry, 0, 1, 1);
+    var instruction: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 0, left, right, -1, -1, 0, 0);
+    instruction.binding_kind = AIR_BIND_LOCAL;
+    instruction.binding_id = local_id;
+    air_add_instruction(&function, entry, instruction);
+    air_set_terminator(&function, entry, air_return_terminator(right));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_valid_complex_lvalues() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let base: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_NAME, 0, -1));
+    let index: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 1, -1));
+    let rhs: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 2, -1));
+    var field_lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_FIELD, 0, 1);
+    field_lvalue.base_value = base;
+    field_lvalue.name_begin = 0;
+    field_lvalue.name_end = 1;
+    let field_id: i32 = air_add_lvalue(&function, field_lvalue);
+    var index_lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_INDEX, 1, 1);
+    index_lvalue.base_value = base;
+    index_lvalue.index_value = index;
+    let index_id: i32 = air_add_lvalue(&function, index_lvalue);
+    var deref_lvalue: AirLValue = air_make_lvalue(AIR_LVALUE_DEREF, 2, 1);
+    deref_lvalue.base_value = base;
+    let deref_id: i32 = air_add_lvalue(&function, deref_lvalue);
+    var field_assign: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 0, base, rhs, -1, -1, 0, 0);
+    field_assign.lvalue_id = field_id;
+    air_add_instruction(&function, entry, field_assign);
+    var index_assign: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 1, base, rhs, -1, -1, 0, 0);
+    index_assign.lvalue_id = index_id;
+    air_add_instruction(&function, entry, index_assign);
+    var deref_assign: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, 2, base, rhs, -1, -1, 0, 0);
+    deref_assign.lvalue_id = deref_id;
+    air_add_instruction(&function, entry, deref_assign);
+    let ok: bool = field_id >= 0 &&
+        index_id >= 0 &&
+        deref_id >= 0 &&
+        air_set_terminator(&function, entry, air_return_terminator(rhs)) &&
+        air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if check_valid_air_function() &&
         check_missing_terminator_rejected() &&
@@ -354,7 +506,13 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_bad_scope_target_rejected() &&
         check_missing_header_rejected() &&
         check_bad_param_value_rejected() &&
-        check_bad_local_block_rejected() {
+        check_bad_local_block_rejected() &&
+        check_bad_param_slot_rejected() &&
+        check_bad_slot_owner_rejected() &&
+        check_bad_lvalue_base_rejected() &&
+        check_bad_lvalue_index_rejected() &&
+        check_bad_assign_missing_lvalue_rejected() &&
+        check_valid_complex_lvalues() {
         puts(c"selfhost air verifier ok");
         return 0;
     }

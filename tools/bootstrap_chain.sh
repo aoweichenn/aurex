@@ -21,6 +21,7 @@ STAGE1_CORE="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_core.ax"
 STAGE1_IR="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_ir.ax"
 STAGE1_FLOW="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_flow.ax"
 STAGE1_EXPR="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_expr.ax"
+STAGE1_PLACE="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_place.ax"
 STAGE1_ITEMS="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_items.ax"
 STAGE1="${ROOT}/selfhost/src/aurex/selfhost/bin/aurexc_stage1.ax"
 
@@ -43,6 +44,7 @@ STAGE1_PARSER_TAC="${SELFHOST_BUILD_DIR}/parser_smoke.stage1.tac"
 STAGE1_TAC_OUT="${SELFHOST_BUILD_DIR}/stage1_ir.stage1.tac"
 STAGE1_FLOW_TAC="${SELFHOST_BUILD_DIR}/stage1_flow.stage1.tac"
 STAGE1_EXPR_TAC="${SELFHOST_BUILD_DIR}/stage1_expr.stage1.tac"
+STAGE1_PLACE_TAC="${SELFHOST_BUILD_DIR}/stage1_place.stage1.tac"
 STAGE1_ITEMS_TAC="${SELFHOST_BUILD_DIR}/stage1_items.stage1.tac"
 STAGE1_COMPILER_TAC="${SELFHOST_BUILD_DIR}/aurexc_stage1.bundle.tac"
 
@@ -99,6 +101,7 @@ grep -q 'aurex.selfhost.compiler.driver' "${SELFHOST_BUILD_DIR}/aurexc_stage1.mo
 grep -q 'aurex.selfhost.compiler.ir.emit' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.model' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.bind' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.place' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.lower' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.text' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.air.verify' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -146,6 +149,9 @@ grep -q 'air_cfg v0' "${STAGE1_FLOW_TAC}"
 grep -q 'inst let' "${STAGE1_FLOW_TAC}"
 grep -q 'inst assign' "${STAGE1_FLOW_TAC}"
 grep -q 'target(\^air' "${STAGE1_FLOW_TAC}"
+grep -q 'slot @slot' "${STAGE1_FLOW_TAC}"
+grep -q 'lvalue @lv' "${STAGE1_FLOW_TAC}"
+grep -q 'lvalue(@lv' "${STAGE1_FLOW_TAC}"
 grep -q 'bind(param' "${STAGE1_FLOW_TAC}"
 grep -q 'bind(local' "${STAGE1_FLOW_TAC}"
 grep -q 'bind(item' "${STAGE1_FLOW_TAC}"
@@ -176,6 +182,14 @@ grep -q 'sema_type(integer)' "${STAGE1_EXPR_TAC}"
 grep -q 'sema_type(c_string)' "${STAGE1_EXPR_TAC}"
 grep -q 'sema_type(item' "${STAGE1_EXPR_TAC}"
 grep -q '4]u8' "${STAGE1_EXPR_TAC}"
+
+"${STAGE1_BIN}" "${STAGE1_PLACE}" "${STAGE1_PLACE_TAC}"
+grep -q 'assign %t' "${STAGE1_PLACE_TAC}"
+grep -q 'lvalue @lv.*binding' "${STAGE1_PLACE_TAC}"
+grep -q 'lvalue @lv.*field' "${STAGE1_PLACE_TAC}"
+grep -q 'lvalue @lv.*index' "${STAGE1_PLACE_TAC}"
+grep -q 'lvalue @lv.*deref' "${STAGE1_PLACE_TAC}"
+grep -q 'lvalue(@lv' "${STAGE1_PLACE_TAC}"
 
 "${STAGE1_BIN}" "${STAGE1_ITEMS}" "${STAGE1_ITEMS_TAC}"
 grep -q 'record NativeFile' "${STAGE1_ITEMS_TAC}"
@@ -217,6 +231,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/model.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/bind.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/place.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/lower.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/text.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/verify.ax" \

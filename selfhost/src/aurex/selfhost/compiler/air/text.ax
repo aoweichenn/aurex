@@ -14,6 +14,16 @@ fn air_text_write_value_ref(file: *mut OutputFile, value_id: i32) -> bool {
         ir_write_i32(file, value_id);
 }
 
+fn air_text_write_slot_ref(file: *mut OutputFile, slot_id: i32) -> bool {
+    return ir_write_text(file, c"@slot") &&
+        ir_write_i32(file, slot_id);
+}
+
+fn air_text_write_lvalue_ref(file: *mut OutputFile, lvalue_id: i32) -> bool {
+    return ir_write_text(file, c"@lv") &&
+        ir_write_i32(file, lvalue_id);
+}
+
 fn air_text_write_linkage(file: *mut OutputFile, linkage: i32) -> bool {
     if linkage == AIR_LINKAGE_EXPORT_C {
         return ir_write_text(file, c"export_c");
@@ -29,6 +39,20 @@ fn air_text_write_local_kind(file: *mut OutputFile, kind: i32) -> bool {
     if kind == AIR_LOCAL_LET { return ir_write_text(file, c"let"); }
     if kind == AIR_LOCAL_VAR { return ir_write_text(file, c"var"); }
     return ir_write_text(file, c"local?");
+}
+
+fn air_text_write_slot_kind(file: *mut OutputFile, kind: i32) -> bool {
+    if kind == AIR_SLOT_PARAM { return ir_write_text(file, c"param"); }
+    if kind == AIR_SLOT_LOCAL { return ir_write_text(file, c"local"); }
+    return ir_write_text(file, c"slot?");
+}
+
+fn air_text_write_lvalue_kind(file: *mut OutputFile, kind: i32) -> bool {
+    if kind == AIR_LVALUE_BINDING { return ir_write_text(file, c"binding"); }
+    if kind == AIR_LVALUE_FIELD { return ir_write_text(file, c"field"); }
+    if kind == AIR_LVALUE_INDEX { return ir_write_text(file, c"index"); }
+    if kind == AIR_LVALUE_DEREF { return ir_write_text(file, c"deref"); }
+    return ir_write_text(file, c"lvalue?");
 }
 
 fn air_text_write_value_kind(file: *mut OutputFile, kind: i32) -> bool {
@@ -192,6 +216,16 @@ fn air_text_write_instruction(file: *mut OutputFile, function: *mut AirFunction,
         if !air_text_write_block_ref(file, instruction.target) { return false; }
         if !ir_write_text(file, c")") { return false; }
     }
+    if instruction.slot_id >= 0 {
+        if !ir_write_text(file, c" slot(") { return false; }
+        if !air_text_write_slot_ref(file, instruction.slot_id) { return false; }
+        if !ir_write_text(file, c")") { return false; }
+    }
+    if instruction.lvalue_id >= 0 {
+        if !ir_write_text(file, c" lvalue(") { return false; }
+        if !air_text_write_lvalue_ref(file, instruction.lvalue_id) { return false; }
+        if !ir_write_text(file, c")") { return false; }
+    }
     if instruction.binding_kind != AIR_BIND_NONE {
         if !ir_write_text(file, c" bind(") { return false; }
         if !air_text_write_binding_kind(file, instruction.binding_kind) { return false; }
@@ -286,6 +320,8 @@ fn air_text_write_params(file: *mut OutputFile, function: *mut AirFunction) -> b
         if !ir_write_i32(file, param.type_id) { return false; }
         if !ir_write_text(file, c") value(") { return false; }
         if !air_text_write_value_ref(file, param.value_id) { return false; }
+        if !ir_write_text(file, c") slot(") { return false; }
+        if !air_text_write_slot_ref(file, param.slot_id) { return false; }
         if !ir_write_text(file, c")\n") { return false; }
         index = index + 1;
     }
@@ -310,7 +346,82 @@ fn air_text_write_locals(file: *mut OutputFile, function: *mut AirFunction) -> b
         if !ir_write_i32(file, local.name_end) { return false; }
         if !ir_write_text(file, c") type(") { return false; }
         if !ir_write_i32(file, local.type_id) { return false; }
+        if !ir_write_text(file, c") slot(") { return false; }
+        if !air_text_write_slot_ref(file, local.slot_id) { return false; }
         if !ir_write_text(file, c")\n") { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_text_write_slots(file: *mut OutputFile, function: *mut AirFunction) -> bool {
+    var index: i32 = 0;
+    while index < function.slot_count {
+        let slot: AirSlot = function.slots[index];
+        if !ir_write_text(file, c"  ; slot ") { return false; }
+        if !air_text_write_slot_ref(file, index) { return false; }
+        if !ir_write_text(file, c" ") { return false; }
+        if !air_text_write_slot_kind(file, slot.kind) { return false; }
+        if !ir_write_text(file, c" owner(") { return false; }
+        if !ir_write_i32(file, slot.owner_id) { return false; }
+        if !ir_write_text(file, c") name(") { return false; }
+        if !ir_write_i32(file, slot.name_begin) { return false; }
+        if !ir_write_text(file, c"..") { return false; }
+        if !ir_write_i32(file, slot.name_end) { return false; }
+        if !ir_write_text(file, c") type(") { return false; }
+        if !ir_write_i32(file, slot.type_id) { return false; }
+        if !ir_write_text(file, c")\n") { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_text_write_lvalues(file: *mut OutputFile, function: *mut AirFunction) -> bool {
+    var index: i32 = 0;
+    while index < function.lvalue_count {
+        let lvalue: AirLValue = function.lvalues[index];
+        if !ir_write_text(file, c"  ; lvalue ") { return false; }
+        if !air_text_write_lvalue_ref(file, index) { return false; }
+        if !ir_write_text(file, c" ") { return false; }
+        if !air_text_write_lvalue_kind(file, lvalue.kind) { return false; }
+        if !ir_write_text(file, c" ast(") { return false; }
+        if !ir_write_i32(file, lvalue.ast_expr_id) { return false; }
+        if !ir_write_text(file, c")") { return false; }
+        if lvalue.type_id >= 0 {
+            if !ir_write_text(file, c" type(") { return false; }
+            if !ir_write_i32(file, lvalue.type_id) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if lvalue.base_value >= 0 {
+            if !ir_write_text(file, c" base(") { return false; }
+            if !air_text_write_value_ref(file, lvalue.base_value) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if lvalue.index_value >= 0 {
+            if !ir_write_text(file, c" index(") { return false; }
+            if !air_text_write_value_ref(file, lvalue.index_value) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if lvalue.slot_id >= 0 {
+            if !ir_write_text(file, c" slot(") { return false; }
+            if !air_text_write_slot_ref(file, lvalue.slot_id) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if lvalue.name_begin >= 0 {
+            if !ir_write_text(file, c" name(") { return false; }
+            if !ir_write_i32(file, lvalue.name_begin) { return false; }
+            if !ir_write_text(file, c"..") { return false; }
+            if !ir_write_i32(file, lvalue.name_end) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if lvalue.binding_kind != AIR_BIND_NONE {
+            if !ir_write_text(file, c" bind(") { return false; }
+            if !air_text_write_binding_kind(file, lvalue.binding_kind) { return false; }
+            if !ir_write_text(file, c" ") { return false; }
+            if !ir_write_i32(file, lvalue.binding_id) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if !ir_write_text(file, c"\n") { return false; }
         index = index + 1;
     }
     return true;
@@ -323,6 +434,8 @@ fn air_text_write_function(file: *mut OutputFile, function: *mut AirFunction) ->
     if !air_text_write_header(file, function) { return false; }
     if !air_text_write_params(file, function) { return false; }
     if !air_text_write_locals(file, function) { return false; }
+    if !air_text_write_slots(file, function) { return false; }
+    if !air_text_write_lvalues(file, function) { return false; }
     var block_id: i32 = 0;
     while block_id < function.block_count {
         if !air_text_write_block(file, function, block_id) {

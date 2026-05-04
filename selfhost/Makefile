@@ -15,6 +15,7 @@ STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
 STAGE1_IR_SRC := src/aurex/selfhost/smoke/stage1_ir.ax
 STAGE1_FLOW_SRC := src/aurex/selfhost/smoke/stage1_flow.ax
 STAGE1_EXPR_SRC := src/aurex/selfhost/smoke/stage1_expr.ax
+STAGE1_PLACE_SRC := src/aurex/selfhost/smoke/stage1_place.ax
 STAGE1_ITEMS_SRC := src/aurex/selfhost/smoke/stage1_items.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
@@ -41,6 +42,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/types.ax \
 	src/aurex/selfhost/compiler/air/model.ax \
 	src/aurex/selfhost/compiler/air/bind.ax \
+	src/aurex/selfhost/compiler/air/place.ax \
 	src/aurex/selfhost/compiler/air/lower.ax \
 	src/aurex/selfhost/compiler/air/text.ax \
 	src/aurex/selfhost/compiler/air/verify.ax \
@@ -120,6 +122,7 @@ check: all
 	grep -q 'aurex.selfhost.compiler.ir.emit' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.model' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.bind' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.place' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.lower' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.text' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.air.verify' $(BUILD_DIR)/aurexc_stage1.modules
@@ -168,6 +171,9 @@ check: all
 	grep -q 'inst let' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'inst assign' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'target(\^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'slot @slot' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'lvalue @lv' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'lvalue(@lv' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'bind(param' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'bind(local' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'bind(item' $(BUILD_DIR)/stage1_flow.stage1.tac
@@ -197,6 +203,13 @@ check: all
 	grep -q 'sema_type(c_string)' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q 'sema_type(item' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q '4]u8' $(BUILD_DIR)/stage1_expr.stage1.tac
+	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_PLACE_SRC) $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'assign %t' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'lvalue @lv.*binding' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'lvalue @lv.*field' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'lvalue @lv.*index' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'lvalue @lv.*deref' $(BUILD_DIR)/stage1_place.stage1.tac
+	grep -q 'lvalue(@lv' $(BUILD_DIR)/stage1_place.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_ITEMS_SRC) $(BUILD_DIR)/stage1_items.stage1.tac
 	grep -q 'record NativeFile' $(BUILD_DIR)/stage1_items.stage1.tac
 	grep -q 'opaque' $(BUILD_DIR)/stage1_items.stage1.tac

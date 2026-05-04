@@ -14,6 +14,14 @@ fn air_valid_instruction(function: *mut AirFunction, instruction_id: i32) -> boo
     return instruction_id >= 0 && instruction_id < function.instruction_count;
 }
 
+fn air_valid_slot(function: *mut AirFunction, slot_id: i32) -> bool {
+    return slot_id >= 0 && slot_id < function.slot_count;
+}
+
+fn air_valid_lvalue(function: *mut AirFunction, lvalue_id: i32) -> bool {
+    return lvalue_id >= 0 && lvalue_id < function.lvalue_count;
+}
+
 fn air_valid_linkage(linkage: i32) -> bool {
     return linkage == AIR_LINKAGE_INTERNAL || linkage == AIR_LINKAGE_EXPORT_C;
 }
@@ -22,6 +30,18 @@ fn air_valid_local_kind(kind: i32) -> bool {
     return kind == AIR_LOCAL_PARAM ||
         kind == AIR_LOCAL_LET ||
         kind == AIR_LOCAL_VAR;
+}
+
+fn air_valid_slot_kind(kind: i32) -> bool {
+    return kind == AIR_SLOT_PARAM ||
+        kind == AIR_SLOT_LOCAL;
+}
+
+fn air_valid_lvalue_kind(kind: i32) -> bool {
+    return kind == AIR_LVALUE_BINDING ||
+        kind == AIR_LVALUE_FIELD ||
+        kind == AIR_LVALUE_INDEX ||
+        kind == AIR_LVALUE_DEREF;
 }
 
 fn air_valid_binding_ref(function: *mut AirFunction, binding_kind: i32, binding_id: i32, allow_none: bool) -> bool {
@@ -96,14 +116,158 @@ fn air_instruction_local_kind_valid(function: *mut AirFunction, instruction: Air
     return false;
 }
 
-fn air_assignment_binding_valid(function: *mut AirFunction, instruction: AirInstruction) -> bool {
-    if instruction.binding_kind == AIR_BIND_NONE {
-        return instruction.binding_id < 0;
+fn air_instruction_slot_local_kind_valid(function: *mut AirFunction, instruction: AirInstruction) -> bool {
+    if !air_valid_slot(function, instruction.slot_id) {
+        return false;
     }
-    if instruction.binding_kind == AIR_BIND_LOCAL {
-        return air_instruction_local_kind_valid(function, instruction);
+    let slot: AirSlot = function.slots[instruction.slot_id];
+    if slot.kind != AIR_SLOT_LOCAL ||
+        slot.owner_id < 0 ||
+        slot.owner_id >= function.local_count {
+        return false;
+    }
+    if instruction.binding_kind != AIR_BIND_LOCAL || instruction.binding_id != slot.owner_id {
+        return false;
+    }
+    let local: AirLocal = function.locals[slot.owner_id];
+    if local.slot_id != instruction.slot_id {
+        return false;
+    }
+    if instruction.kind == AIR_INST_LET {
+        return local.kind == AIR_LOCAL_LET;
+    }
+    if instruction.kind == AIR_INST_VAR {
+        return local.kind == AIR_LOCAL_VAR;
     }
     return false;
+}
+
+fn air_assignment_lvalue_valid(function: *mut AirFunction, instruction: AirInstruction) -> bool {
+    if !air_valid_lvalue(function, instruction.lvalue_id) {
+        return false;
+    }
+    let lvalue: AirLValue = function.lvalues[instruction.lvalue_id];
+    if lvalue.kind == AIR_LVALUE_BINDING {
+        if lvalue.binding_kind != AIR_BIND_LOCAL || instruction.binding_kind != AIR_BIND_LOCAL || instruction.binding_id != lvalue.binding_id {
+            return false;
+        }
+        if !air_valid_slot(function, lvalue.slot_id) {
+            return false;
+        }
+        let slot: AirSlot = function.slots[lvalue.slot_id];
+        if slot.kind != AIR_SLOT_LOCAL || slot.owner_id != lvalue.binding_id {
+            return false;
+        }
+        return air_instruction_local_kind_valid(function, instruction);
+    }
+    return instruction.binding_kind == AIR_BIND_NONE && instruction.binding_id < 0;
+}
+
+fn air_verify_slot(function: *mut AirFunction, slot: AirSlot, slot_id: i32) -> bool {
+    if !air_valid_slot_kind(slot.kind) ||
+        slot.owner_id < 0 ||
+        slot.type_id < 0 ||
+        slot.name_begin < 0 ||
+        slot.name_end <= slot.name_begin {
+        return false;
+    }
+    if slot.kind == AIR_SLOT_PARAM {
+        if slot.owner_id >= function.param_count {
+            return false;
+        }
+        let param: AirParam = function.params[slot.owner_id];
+        return param.slot_id == slot_id &&
+            param.type_id == slot.type_id &&
+            param.name_begin == slot.name_begin &&
+            param.name_end == slot.name_end;
+    }
+    if slot.kind == AIR_SLOT_LOCAL {
+        if slot.owner_id >= function.local_count {
+            return false;
+        }
+        let local: AirLocal = function.locals[slot.owner_id];
+        return local.slot_id == slot_id &&
+            local.type_id == slot.type_id &&
+            local.name_begin == slot.name_begin &&
+            local.name_end == slot.name_end;
+    }
+    return false;
+}
+
+fn air_verify_slots(function: *mut AirFunction) -> bool {
+    var index: i32 = 0;
+    while index < function.slot_count {
+        if !air_verify_slot(function, function.slots[index], index) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_lvalue_name_range_valid(lvalue: AirLValue) -> bool {
+    if lvalue.name_begin < 0 {
+        return lvalue.name_end < 0;
+    }
+    return lvalue.name_end > lvalue.name_begin;
+}
+
+fn air_verify_lvalue(function: *mut AirFunction, lvalue: AirLValue) -> bool {
+    if !air_valid_lvalue_kind(lvalue.kind) ||
+        !air_lvalue_name_range_valid(lvalue) ||
+        !air_valid_binding_ref(function, lvalue.binding_kind, lvalue.binding_id, true) {
+        return false;
+    }
+    if lvalue.kind == AIR_LVALUE_BINDING {
+        if lvalue.base_value >= 0 ||
+            lvalue.index_value >= 0 ||
+            !air_valid_slot(function, lvalue.slot_id) ||
+            lvalue.binding_kind == AIR_BIND_NONE ||
+            lvalue.binding_kind == AIR_BIND_ITEM {
+            return false;
+        }
+        let slot: AirSlot = function.slots[lvalue.slot_id];
+        if lvalue.binding_kind == AIR_BIND_PARAM {
+            return slot.kind == AIR_SLOT_PARAM && slot.owner_id == lvalue.binding_id;
+        }
+        if lvalue.binding_kind == AIR_BIND_LOCAL {
+            return slot.kind == AIR_SLOT_LOCAL && slot.owner_id == lvalue.binding_id;
+        }
+        return false;
+    }
+    if lvalue.kind == AIR_LVALUE_FIELD {
+        return air_valid_value(function, lvalue.base_value) &&
+            lvalue.index_value < 0 &&
+            lvalue.slot_id < 0 &&
+            lvalue.binding_kind == AIR_BIND_NONE &&
+            lvalue.name_begin >= 0;
+    }
+    if lvalue.kind == AIR_LVALUE_INDEX {
+        return air_valid_value(function, lvalue.base_value) &&
+            air_valid_value(function, lvalue.index_value) &&
+            lvalue.slot_id < 0 &&
+            lvalue.binding_kind == AIR_BIND_NONE &&
+            lvalue.name_begin < 0;
+    }
+    if lvalue.kind == AIR_LVALUE_DEREF {
+        return air_valid_value(function, lvalue.base_value) &&
+            lvalue.index_value < 0 &&
+            lvalue.slot_id < 0 &&
+            lvalue.binding_kind == AIR_BIND_NONE &&
+            lvalue.name_begin < 0;
+    }
+    return false;
+}
+
+fn air_verify_lvalues(function: *mut AirFunction) -> bool {
+    var index: i32 = 0;
+    while index < function.lvalue_count {
+        if !air_verify_lvalue(function, function.lvalues[index]) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
 }
 
 fn air_verify_header(function: *mut AirFunction) -> bool {
@@ -123,7 +287,8 @@ fn air_verify_params(function: *mut AirFunction) -> bool {
             param.name_end <= param.name_begin ||
             param.type_id < 0 ||
             !air_valid_value(function, param.value_id) ||
-            function.values[param.value_id].kind != AIR_VALUE_PARAM {
+            function.values[param.value_id].kind != AIR_VALUE_PARAM ||
+            !air_valid_slot(function, param.slot_id) {
             return false;
         }
         index = index + 1;
@@ -140,7 +305,8 @@ fn air_verify_locals(function: *mut AirFunction) -> bool {
             !air_valid_block(function, local.scope_block) ||
             local.name_begin < 0 ||
             local.name_end <= local.name_begin ||
-            local.type_id < 0 {
+            local.type_id < 0 ||
+            !air_valid_slot(function, local.slot_id) {
             return false;
         }
         index = index + 1;
@@ -265,6 +431,8 @@ fn air_verify_instruction(function: *mut AirFunction, instruction: AirInstructio
         return air_valid_value(function, instruction.lhs) &&
             instruction.rhs < 0 &&
             instruction.target < 0 &&
+            instruction.slot_id < 0 &&
+            instruction.lvalue_id < 0 &&
             instruction.binding_kind == AIR_BIND_NONE &&
             instruction.binding_id < 0;
     }
@@ -275,18 +443,23 @@ fn air_verify_instruction(function: *mut AirFunction, instruction: AirInstructio
             instruction.name_begin >= 0 &&
             instruction.name_end >= instruction.name_begin &&
             air_valid_binding_ref(function, instruction.binding_kind, instruction.binding_id, false) &&
-            air_instruction_local_kind_valid(function, instruction);
+            air_instruction_local_kind_valid(function, instruction) &&
+            air_instruction_slot_local_kind_valid(function, instruction) &&
+            instruction.lvalue_id < 0;
     }
     if instruction.kind == AIR_INST_ASSIGN {
         return air_valid_value(function, instruction.lhs) &&
             air_valid_value(function, instruction.rhs) &&
             instruction.target < 0 &&
-            air_assignment_binding_valid(function, instruction);
+            instruction.slot_id < 0 &&
+            air_assignment_lvalue_valid(function, instruction);
     }
     if instruction.kind == AIR_INST_SCOPE {
         return instruction.lhs < 0 &&
             instruction.rhs < 0 &&
             air_valid_block(function, instruction.target) &&
+            instruction.slot_id < 0 &&
+            instruction.lvalue_id < 0 &&
             instruction.binding_kind == AIR_BIND_NONE &&
             instruction.binding_id < 0;
     }
@@ -343,7 +516,9 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         function.instructions == null ||
         function.block_instructions == null ||
         function.params == null ||
-        function.locals == null {
+        function.locals == null ||
+        function.slots == null ||
+        function.lvalues == null {
         return false;
     }
     if function.block_count <= 0 || function.block_count > AIR_MAX_BLOCKS {
@@ -355,12 +530,16 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         function.instruction_count < 0 || function.instruction_count > AIR_MAX_INSTRUCTIONS ||
         function.block_instruction_count < 0 || function.block_instruction_count > AIR_MAX_BLOCK_INSTRUCTIONS ||
         function.param_count < 0 || function.param_count > AIR_MAX_PARAMS ||
-        function.local_count < 0 || function.local_count > AIR_MAX_LOCALS {
+        function.local_count < 0 || function.local_count > AIR_MAX_LOCALS ||
+        function.slot_count < 0 || function.slot_count > AIR_MAX_SLOTS ||
+        function.lvalue_count < 0 || function.lvalue_count > AIR_MAX_LVALUES {
         return false;
     }
     if !air_verify_header(function) ||
         !air_verify_params(function) ||
-        !air_verify_locals(function) {
+        !air_verify_locals(function) ||
+        !air_verify_slots(function) ||
+        !air_verify_lvalues(function) {
         return false;
     }
     if !air_valid_block(function, function.entry_block) {

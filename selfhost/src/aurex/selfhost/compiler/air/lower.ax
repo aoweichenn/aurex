@@ -2,6 +2,7 @@ module aurex.selfhost.compiler.air.lower;
 
 import aurex.selfhost.compiler.air.model;
 import aurex.selfhost.compiler.air.bind;
+import aurex.selfhost.compiler.air.place;
 import aurex.selfhost.sema.annotate;
 import aurex.selfhost.sema.typing_types;
 import aurex.selfhost.syntax.ast;
@@ -355,7 +356,13 @@ fn air_lower_add_stmt_instruction(function: *mut AirFunction, ast: *mut AstModul
         }
         var instruction: AirInstruction = air_make_instruction(kind, stmt_id, value, -1, -1, stmt.type_id, stmt.name_begin, stmt.name_end);
         instruction.binding_kind = AIR_BIND_LOCAL;
-        instruction.binding_id = air_find_local_stmt(function, stmt_id);
+        let local_id: i32 = air_find_local_stmt(function, stmt_id);
+        if local_id < 0 {
+            function.ok = false;
+            return false;
+        }
+        instruction.binding_id = local_id;
+        instruction.slot_id = function.locals[local_id].slot_id;
         return air_add_instruction(function, air_block_id, instruction) >= 0;
     }
     if stmt.kind == AST_STMT_ASSIGN {
@@ -366,9 +373,11 @@ fn air_lower_add_stmt_instruction(function: *mut AirFunction, ast: *mut AstModul
             return false;
         }
         var instruction: AirInstruction = air_make_instruction(AIR_INST_ASSIGN, stmt_id, lhs, rhs, -1, -1, 0, 0);
-        let lhs_value: AirValue = function.values[lhs];
-        instruction.binding_kind = lhs_value.binding_kind;
-        instruction.binding_id = lhs_value.binding_id;
+        instruction.lvalue_id = air_lvalue_for_value(function, lhs);
+        if instruction.lvalue_id < 0 || !air_lvalue_sets_direct_binding(function, &instruction, instruction.lvalue_id) {
+            function.ok = false;
+            return false;
+        }
         return air_add_instruction(function, air_block_id, instruction) >= 0;
     }
     if stmt.kind == AST_STMT_BLOCK {

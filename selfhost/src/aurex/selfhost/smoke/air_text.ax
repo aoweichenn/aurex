@@ -1,0 +1,72 @@
+module aurex.selfhost.smoke.air_text;
+
+import aurex.selfhost.compiler.air.model;
+import aurex.selfhost.compiler.air.verify;
+import aurex.selfhost.compiler.air.text;
+import aurex.selfhost.compiler.ir.writer;
+import aurex.selfhost.compiler.io;
+
+extern c {
+    fn puts(s: *const u8) -> i32 @name("puts");
+}
+
+fn build_block_param_function() -> AirFunction {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        return function;
+    }
+    if !air_set_function_header(&function, 0, 0, 4, 1, AIR_LINKAGE_INTERNAL) {
+        return function;
+    }
+    let entry: i32 = air_add_block(&function, 0);
+    let join: i32 = air_add_block(&function, 1);
+    let input: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, 1));
+    let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
+    if entry < 0 || join < 0 || input < 0 || block_param < 0 {
+        function.ok = false;
+        return function;
+    }
+    let param_value: i32 = function.block_params[block_param].value_id;
+    let edge_id: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
+    if edge_id < 0 || !air_add_edge_arg(&function, edge_id, input) {
+        function.ok = false;
+        return function;
+    }
+    if !air_set_terminator(&function, entry, air_jump_terminator(join)) ||
+        !air_set_terminator(&function, join, air_return_terminator(param_value)) ||
+        air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 0, join, -1, -1, param_value)) < 0 {
+        function.ok = false;
+        return function;
+    }
+    return function;
+}
+
+fn write_air_text(path: *const u8) -> bool {
+    var function: AirFunction = build_block_param_function();
+    if !air_verify_function(&function) {
+        air_free_function(function);
+        return false;
+    }
+    let file: *mut OutputFile = ir_open_output(path);
+    if file == null {
+        air_free_function(function);
+        return false;
+    }
+    let ok: bool = air_text_write_function(file, &function);
+    let close_ok: bool = ir_close_output(file);
+    air_free_function(function);
+    return ok && close_ok;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    if argc < 2 {
+        puts(c"usage: air_text <output>");
+        return 1;
+    }
+    if !write_air_text(ptr_cast(*const u8, argv[1])) {
+        puts(c"selfhost air text failed");
+        return 1;
+    }
+    puts(c"selfhost air text ok");
+    return 0;
+}

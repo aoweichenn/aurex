@@ -26,6 +26,10 @@ fn air_valid_edge(function: *mut AirFunction, edge_id: i32) -> bool {
     return edge_id >= 0 && edge_id < function.edge_count;
 }
 
+fn air_valid_block_param(function: *mut AirFunction, param_id: i32) -> bool {
+    return param_id >= 0 && param_id < function.block_param_count;
+}
+
 fn air_valid_linkage(linkage: i32) -> bool {
     return linkage == AIR_LINKAGE_INTERNAL || linkage == AIR_LINKAGE_EXPORT_C;
 }
@@ -315,6 +319,47 @@ fn air_verify_params(function: *mut AirFunction) -> bool {
     return true;
 }
 
+fn air_block_param_name_range_valid(param: AirBlockParam) -> bool {
+    if param.name_begin < 0 {
+        return param.name_end < 0;
+    }
+    return param.name_end > param.name_begin;
+}
+
+fn air_verify_block_params_for_block(function: *mut AirFunction, block_id: i32, block: AirBlock) -> bool {
+    if block.first_param < 0 || block.param_count < 0 ||
+        block.first_param + block.param_count > function.block_param_count {
+        return false;
+    }
+    if block.param_count == 0 {
+        return true;
+    }
+    var index: i32 = 0;
+    while index < block.param_count {
+        let param_id: i32 = block.first_param + index;
+        if !air_valid_block_param(function, param_id) {
+            return false;
+        }
+        let param: AirBlockParam = function.block_params[param_id];
+        if param.block_id != block_id ||
+            param.type_id < 0 ||
+            !air_block_param_name_range_valid(param) ||
+            !air_valid_value(function, param.value_id) {
+            return false;
+        }
+        let value: AirValue = function.values[param.value_id];
+        if value.kind != AIR_VALUE_BLOCK_PARAM ||
+            value.type_id != param.type_id ||
+            value.name_begin != param.name_begin ||
+            value.name_end != param.name_end ||
+            !air_verify_value(function, value) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
 fn air_verify_locals(function: *mut AirFunction) -> bool {
     var index: i32 = 0;
     while index < function.local_count {
@@ -337,6 +382,7 @@ fn air_value_is_leaf(kind: i32) -> bool {
     return kind == AIR_VALUE_TEMP ||
         kind == AIR_VALUE_PARAM ||
         kind == AIR_VALUE_LOCAL ||
+        kind == AIR_VALUE_BLOCK_PARAM ||
         kind == AIR_VALUE_INTEGER ||
         kind == AIR_VALUE_NAME ||
         kind == AIR_VALUE_STRING ||
@@ -589,13 +635,7 @@ fn air_verify_instruction(function: *mut AirFunction, instruction: AirInstructio
             function.values[instruction.effect_value].lvalue_id == instruction.lvalue_id;
     }
     if instruction.kind == AIR_INST_SCOPE {
-        return instruction.lhs < 0 &&
-            instruction.rhs < 0 &&
-            air_valid_block(function, instruction.target) &&
-            instruction.slot_id < 0 &&
-            instruction.lvalue_id < 0 &&
-            instruction.binding_kind == AIR_BIND_NONE &&
-            instruction.binding_id < 0;
+        return false;
     }
     return false;
 }
@@ -617,6 +657,23 @@ fn air_verify_block_instructions(function: *mut AirFunction, block: AirBlock) ->
         index = index + 1;
     }
     return true;
+}
+
+fn air_verify_block_segment(function: *mut AirFunction, block: AirBlock) -> bool {
+    if block.first_stmt < 0 {
+        return false;
+    }
+    if block.stmt_count < -1 {
+        return false;
+    }
+    if block.fallthrough_target >= 0 && !air_valid_block(function, block.fallthrough_target) {
+        return false;
+    }
+    if block.fallthrough_target < 0 {
+        return block.fallthrough_kind == AIR_EDGE_FALLTHROUGH;
+    }
+    return block.fallthrough_kind == AIR_EDGE_FALLTHROUGH ||
+        block.fallthrough_kind == AIR_EDGE_LOOP_BACK;
 }
 
 fn air_verify_terminator(function: *mut AirFunction, terminator: AirTerminator) -> bool {
@@ -655,13 +712,18 @@ fn air_verify_edge(function: *mut AirFunction, edge: AirEdge) -> bool {
     }
     if edge.kind == AIR_EDGE_FALLTHROUGH {
         return edge.ast_stmt_id < 0 &&
-            edge.target < 0 &&
+            (edge.target < 0 || air_valid_block(function, edge.target)) &&
             edge.condition < 0 &&
             edge.value < 0;
     }
-    if edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK {
+    if edge.kind == AIR_EDGE_SCOPE {
         return edge.ast_stmt_id >= 0 &&
             air_valid_block(function, edge.target) &&
+            edge.condition < 0 &&
+            edge.value < 0;
+    }
+    if edge.kind == AIR_EDGE_LOOP_BACK {
+        return air_valid_block(function, edge.target) &&
             edge.condition < 0 &&
             edge.value < 0;
     }
@@ -688,6 +750,96 @@ fn air_verify_edge(function: *mut AirFunction, edge: AirEdge) -> bool {
     return false;
 }
 
+fn air_value_is_function_param(function: *mut AirFunction, value_id: i32) -> bool {
+    var index: i32 = 0;
+    while index < function.param_count {
+        if function.params[index].value_id == value_id {
+            return true;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn air_value_is_block_param_for_block(function: *mut AirFunction, block_id: i32, value_id: i32) -> bool {
+    if !air_valid_block(function, block_id) {
+        return false;
+    }
+    let block: AirBlock = function.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.param_count {
+        if function.block_params[block.first_param + index].value_id == value_id {
+            return true;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn air_value_is_block_value(function: *mut AirFunction, block_id: i32, value_id: i32) -> bool {
+    if !air_valid_block(function, block_id) {
+        return false;
+    }
+    let block: AirBlock = function.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.value_count {
+        if function.block_values[block.first_value + index] == value_id {
+            return true;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn air_value_available_on_edge(function: *mut AirFunction, edge: AirEdge, value_id: i32) -> bool {
+    return air_value_is_function_param(function, value_id) ||
+        air_value_is_block_param_for_block(function, edge.source, value_id) ||
+        air_value_is_block_value(function, edge.source, value_id);
+}
+
+fn air_edge_arg_type_matches_param(function: *mut AirFunction, edge: AirEdge, arg_index: i32, value_id: i32) -> bool {
+    let block: AirBlock = function.blocks[edge.target];
+    let param: AirBlockParam = function.block_params[block.first_param + arg_index];
+    let value: AirValue = function.values[value_id];
+    return value.type_id < 0 || param.type_id < 0 || value.type_id == param.type_id;
+}
+
+fn air_verify_edge_args(function: *mut AirFunction, edge: AirEdge) -> bool {
+    if edge.arg_count < 0 || edge.first_arg < 0 {
+        return false;
+    }
+    if edge.target < 0 {
+        return edge.arg_count == 0;
+    }
+    if !air_valid_block(function, edge.target) {
+        return false;
+    }
+    if edge.arg_count != function.blocks[edge.target].param_count {
+        return false;
+    }
+    if edge.arg_count == 0 {
+        return true;
+    }
+    if edge.first_arg + edge.arg_count > function.edge_arg_count {
+        return false;
+    }
+    var index: i32 = 0;
+    while index < edge.arg_count {
+        let arg: AirEdgeArg = function.edge_args[edge.first_arg + index];
+        if !air_valid_value(function, arg.value_id) {
+            return false;
+        }
+        if !air_value_available_on_edge(function, edge, arg.value_id) {
+            return false;
+        }
+        if !air_edge_arg_type_matches_param(function, edge, index, arg.value_id) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
 fn air_verify_edges(function: *mut AirFunction) -> bool {
     var index: i32 = 0;
     while index < function.edge_count {
@@ -695,6 +847,9 @@ fn air_verify_edges(function: *mut AirFunction) -> bool {
             return false;
         }
         if !air_verify_edge(function, function.edges[index]) {
+            return false;
+        }
+        if !air_verify_edge_args(function, function.edges[index]) {
             return false;
         }
         index = index + 1;
@@ -770,7 +925,7 @@ fn air_verify_terminator_matches_edges(function: *mut AirFunction, block_id: i32
     }
     if terminator.kind == AIR_TERM_JUMP {
         let edge: AirEdge = air_verify_single_block_edge(function, block_id);
-        return (edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK) &&
+        return (edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK || edge.kind == AIR_EDGE_FALLTHROUGH) &&
             edge.target == terminator.target;
     }
     if terminator.kind == AIR_TERM_BRANCH {
@@ -792,10 +947,12 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         function.instructions == null ||
         function.block_instructions == null ||
         function.params == null ||
+        function.block_params == null ||
         function.locals == null ||
         function.slots == null ||
         function.lvalues == null ||
-        function.edges == null {
+        function.edges == null ||
+        function.edge_args == null {
         return false;
     }
     if function.block_count <= 0 || function.block_count > AIR_MAX_BLOCKS {
@@ -807,10 +964,12 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
         function.instruction_count < 0 || function.instruction_count > AIR_MAX_INSTRUCTIONS ||
         function.block_instruction_count < 0 || function.block_instruction_count > AIR_MAX_BLOCK_INSTRUCTIONS ||
         function.param_count < 0 || function.param_count > AIR_MAX_PARAMS ||
+        function.block_param_count < 0 || function.block_param_count > AIR_MAX_BLOCK_PARAMS ||
         function.local_count < 0 || function.local_count > AIR_MAX_LOCALS ||
         function.slot_count < 0 || function.slot_count > AIR_MAX_SLOTS ||
         function.lvalue_count < 0 || function.lvalue_count > AIR_MAX_LVALUES ||
-        function.edge_count < 0 || function.edge_count > AIR_MAX_EDGES {
+        function.edge_count < 0 || function.edge_count > AIR_MAX_EDGES ||
+        function.edge_arg_count < 0 || function.edge_arg_count > AIR_MAX_EDGE_ARGS {
         return false;
     }
     if !air_verify_header(function) ||
@@ -826,6 +985,12 @@ fn air_verify_function(function: *mut AirFunction) -> bool {
     var block_index: i32 = 0;
     while block_index < function.block_count {
         let block: AirBlock = function.blocks[block_index];
+        if !air_verify_block_segment(function, block) {
+            return false;
+        }
+        if !air_verify_block_params_for_block(function, block_index, block) {
+            return false;
+        }
         if !air_verify_block_values(function, block) {
             return false;
         }

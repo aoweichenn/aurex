@@ -92,6 +92,7 @@ fn air_text_write_value_kind(file: *mut OutputFile, kind: i32) -> bool {
     if kind == AIR_VALUE_DEREF_ADDR { return ir_write_text(file, c"deref_addr"); }
     if kind == AIR_VALUE_STORE { return ir_write_text(file, c"store"); }
     if kind == AIR_VALUE_LOAD { return ir_write_text(file, c"load"); }
+    if kind == AIR_VALUE_BLOCK_PARAM { return ir_write_text(file, c"block_param"); }
     return ir_write_text(file, c"value?");
 }
 
@@ -317,13 +318,46 @@ fn air_text_write_terminator(file: *mut OutputFile, function: *mut AirFunction, 
     return ir_write_text(file, c"none\n");
 }
 
+fn air_text_write_block_params(file: *mut OutputFile, function: *mut AirFunction, block: AirBlock) -> bool {
+    var index: i32 = 0;
+    while index < block.param_count {
+        let param: AirBlockParam = function.block_params[block.first_param + index];
+        if !ir_write_text(file, c"  ;   block_param ") { return false; }
+        if !air_text_write_value_ref(file, param.value_id) { return false; }
+        if !ir_write_text(file, c" type(") { return false; }
+        if !ir_write_i32(file, param.type_id) { return false; }
+        if !ir_write_text(file, c")") { return false; }
+        if param.name_begin >= 0 {
+            if !ir_write_text(file, c" name(") { return false; }
+            if !ir_write_i32(file, param.name_begin) { return false; }
+            if !ir_write_text(file, c"..") { return false; }
+            if !ir_write_i32(file, param.name_end) { return false; }
+            if !ir_write_text(file, c")") { return false; }
+        }
+        if !ir_write_text(file, c"\n") { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
 fn air_text_write_block(file: *mut OutputFile, function: *mut AirFunction, block_id: i32) -> bool {
     let block: AirBlock = function.blocks[block_id];
     if !ir_write_text(file, c"  ; ") { return false; }
     if !air_text_write_block_ref(file, block_id) { return false; }
     if !ir_write_text(file, c" ast(") { return false; }
     if !ir_write_i32(file, block.ast_block_id) { return false; }
+    if !ir_write_text(file, c") stmts(") { return false; }
+    if !ir_write_i32(file, block.first_stmt) { return false; }
+    if !ir_write_text(file, c"+") { return false; }
+    if !ir_write_i32(file, block.stmt_count) { return false; }
+    if block.fallthrough_target >= 0 {
+        if !ir_write_text(file, c") next(") { return false; }
+        if !air_text_write_edge_kind(file, block.fallthrough_kind) { return false; }
+        if !ir_write_text(file, c" ") { return false; }
+        if !air_text_write_block_ref(file, block.fallthrough_target) { return false; }
+    }
     if !ir_write_text(file, c"):\n") { return false; }
+    if !air_text_write_block_params(file, function, block) { return false; }
     var index: i32 = 0;
     while index < block.value_count {
         if !air_text_write_value(file, function, function.block_values[block.first_value + index]) {
@@ -488,6 +522,23 @@ fn air_text_write_edge_target(file: *mut OutputFile, edge: AirEdge) -> bool {
     return ir_write_text(file, c"fallthrough");
 }
 
+fn air_text_write_edge_args(file: *mut OutputFile, function: *mut AirFunction, edge: AirEdge) -> bool {
+    if edge.arg_count <= 0 {
+        return true;
+    }
+    if !ir_write_text(file, c" args(") { return false; }
+    var index: i32 = 0;
+    while index < edge.arg_count {
+        if index > 0 {
+            if !ir_write_text(file, c", ") { return false; }
+        }
+        let arg: AirEdgeArg = function.edge_args[edge.first_arg + index];
+        if !air_text_write_value_ref(file, arg.value_id) { return false; }
+        index = index + 1;
+    }
+    return ir_write_text(file, c")");
+}
+
 fn air_text_write_edges(file: *mut OutputFile, function: *mut AirFunction) -> bool {
     if !ir_write_text(file, c"  ; air_edges v0\n") {
         return false;
@@ -516,6 +567,7 @@ fn air_text_write_edges(file: *mut OutputFile, function: *mut AirFunction) -> bo
             if !air_text_write_value_ref(file, edge.value) { return false; }
             if !ir_write_text(file, c")") { return false; }
         }
+        if !air_text_write_edge_args(file, function, edge) { return false; }
         if !ir_write_text(file, c"\n") { return false; }
         index = index + 1;
     }

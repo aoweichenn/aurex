@@ -33,40 +33,102 @@ fn air_lower_add_params(function: *mut AirFunction, ast: *mut AstModule, item: A
     return true;
 }
 
+fn air_lower_stmt_is_control(stmt: AstStmtNode) -> bool {
+    return stmt.kind == AST_STMT_RETURN ||
+        stmt.kind == AST_STMT_BLOCK ||
+        stmt.kind == AST_STMT_IF ||
+        stmt.kind == AST_STMT_WHILE;
+}
+
 fn air_lower_add_block_tree(function: *mut AirFunction, ast: *mut AstModule, block_id: i32) -> bool {
+    return air_lower_add_block_segments(function, ast, block_id, 0, -1, AIR_EDGE_FALLTHROUGH, true) >= 0;
+}
+
+fn air_lower_add_block_segments(function: *mut AirFunction, ast: *mut AstModule, block_id: i32, start_stmt: i32, fallthrough_target: i32, fallthrough_kind: i32, require_block: bool) -> i32 {
     if block_id < 0 || block_id >= ast.block_count {
-        return false;
-    }
-    if air_add_block(function, block_id) < 0 {
-        return false;
+        function.ok = false;
+        return -1;
     }
     let block: AstBlockNode = ast.blocks[block_id];
-    var index: i32 = 0;
+    if start_stmt >= block.stmt_count {
+        if !require_block {
+            return fallthrough_target;
+        }
+        let empty_id: i32 = air_add_block_segment(function, block_id, start_stmt, 0);
+        if empty_id < 0 || !air_set_block_fallthrough(function, empty_id, fallthrough_target, fallthrough_kind) {
+            return -1;
+        }
+        return empty_id;
+    }
+    var control_index: i32 = -1;
+    var index: i32 = start_stmt;
     while index < block.stmt_count {
         let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
         if stmt_id < 0 || stmt_id >= ast.stmt_count {
-            return false;
+            function.ok = false;
+            return -1;
         }
         let stmt: AstStmtNode = ast.stmts[stmt_id];
-        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
-            if !air_lower_add_block_tree(function, ast, stmt.then_block) {
-                return false;
-            }
-        } else {
-            if stmt.kind == AST_STMT_IF {
-                if !air_lower_add_block_tree(function, ast, stmt.then_block) {
-                    return false;
-                }
-                if stmt.else_block >= 0 {
-                    if !air_lower_add_block_tree(function, ast, stmt.else_block) {
-                        return false;
-                    }
-                }
-            }
+        if air_lower_stmt_is_control(stmt) {
+            control_index = index;
+            break;
         }
         index = index + 1;
     }
-    return true;
+    if control_index < 0 {
+        let plain_id: i32 = air_add_block_segment(function, block_id, start_stmt, block.stmt_count - start_stmt);
+        if plain_id < 0 || !air_set_block_fallthrough(function, plain_id, fallthrough_target, fallthrough_kind) {
+            return -1;
+        }
+        return plain_id;
+    }
+
+    let segment_id: i32 = air_add_block_segment(function, block_id, start_stmt, control_index - start_stmt + 1);
+    if segment_id < 0 {
+        return -1;
+    }
+    let stmt_id: i32 = ast.stmt_refs[block.first_stmt + control_index];
+    let stmt: AstStmtNode = ast.stmts[stmt_id];
+    if stmt.kind == AST_STMT_RETURN {
+        return segment_id;
+    }
+
+    let continuation: i32 = air_lower_add_block_segments(function, ast, block_id, control_index + 1, fallthrough_target, fallthrough_kind, false);
+    if continuation < 0 && control_index + 1 < block.stmt_count {
+        return -1;
+    }
+    if !air_set_block_fallthrough(function, segment_id, continuation, AIR_EDGE_FALLTHROUGH) {
+        return -1;
+    }
+    if stmt.kind == AST_STMT_BLOCK {
+        let child: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, continuation, AIR_EDGE_FALLTHROUGH, true);
+        if child < 0 {
+            return -1;
+        }
+        return segment_id;
+    }
+    if stmt.kind == AST_STMT_IF {
+        let then_child: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, continuation, AIR_EDGE_FALLTHROUGH, true);
+        if then_child < 0 {
+            return -1;
+        }
+        if stmt.else_block >= 0 {
+            let else_child: i32 = air_lower_add_block_segments(function, ast, stmt.else_block, 0, continuation, AIR_EDGE_FALLTHROUGH, true);
+            if else_child < 0 {
+                return -1;
+            }
+        }
+        return segment_id;
+    }
+    if stmt.kind == AST_STMT_WHILE {
+        let body: i32 = air_lower_add_block_segments(function, ast, stmt.then_block, 0, segment_id, AIR_EDGE_LOOP_BACK, true);
+        if body < 0 {
+            return -1;
+        }
+        return segment_id;
+    }
+    function.ok = false;
+    return -1;
 }
 
 fn air_lower_collect_block_locals(function: *mut AirFunction, ast: *mut AstModule, air_block_id: i32, ast_block_id: i32) -> bool {
@@ -75,8 +137,10 @@ fn air_lower_collect_block_locals(function: *mut AirFunction, ast: *mut AstModul
         return false;
     }
     let block: AstBlockNode = ast.blocks[ast_block_id];
-    var index: i32 = 0;
-    while index < block.stmt_count {
+    let air_block: AirBlock = function.blocks[air_block_id];
+    var index: i32 = air_block.first_stmt;
+    let end_index: i32 = air_block.first_stmt + air_block.stmt_count;
+    while index < end_index {
         let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
         if stmt_id < 0 || stmt_id >= ast.stmt_count {
             function.ok = false;
@@ -92,25 +156,18 @@ fn air_lower_collect_block_locals(function: *mut AirFunction, ast: *mut AstModul
                 return false;
             }
         }
-        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
-            let child_block: i32 = air_lower_find_block(function, stmt.then_block);
-            if child_block < 0 || !air_lower_collect_block_locals(function, ast, child_block, stmt.then_block) {
-                return false;
-            }
-        }
-        if stmt.kind == AST_STMT_IF {
-            let then_block: i32 = air_lower_find_block(function, stmt.then_block);
-            if then_block < 0 || !air_lower_collect_block_locals(function, ast, then_block, stmt.then_block) {
-                return false;
-            }
-            if stmt.else_block >= 0 {
-                let else_block: i32 = air_lower_find_block(function, stmt.else_block);
-                if else_block < 0 || !air_lower_collect_block_locals(function, ast, else_block, stmt.else_block) {
-                    return false;
-                }
-            }
-        }
         index = index + 1;
+    }
+    return true;
+}
+
+fn air_lower_collect_all_locals(function: *mut AirFunction, ast: *mut AstModule) -> bool {
+    var block_id: i32 = 0;
+    while block_id < function.block_count {
+        if !air_lower_collect_block_locals(function, ast, block_id, function.blocks[block_id].ast_block_id) {
+            return false;
+        }
+        block_id = block_id + 1;
     }
     return true;
 }
@@ -413,8 +470,10 @@ fn air_lower_block_expr_values(function: *mut AirFunction, source: *const u8, as
     }
     function.blocks[air_block_id].first_value = function.block_value_count;
     let block: AstBlockNode = ast.blocks[ast_block_id];
-    var stmt_index: i32 = 0;
-    while stmt_index < block.stmt_count {
+    let air_block: AirBlock = function.blocks[air_block_id];
+    var stmt_index: i32 = air_block.first_stmt;
+    let end_index: i32 = air_block.first_stmt + air_block.stmt_count;
+    while stmt_index < end_index {
         let stmt_id: i32 = ast.stmt_refs[block.first_stmt + stmt_index];
         if stmt_id < 0 || stmt_id >= ast.stmt_count {
             return false;
@@ -488,12 +547,7 @@ fn air_lower_add_stmt_instruction(function: *mut AirFunction, ast: *mut AstModul
         return air_add_instruction(function, air_block_id, instruction) >= 0;
     }
     if stmt.kind == AST_STMT_BLOCK {
-        let target: i32 = air_lower_find_block(function, stmt.then_block);
-        if target < 0 {
-            function.ok = false;
-            return false;
-        }
-        return air_add_instruction(function, air_block_id, air_make_instruction(AIR_INST_SCOPE, stmt_id, -1, -1, target, -1, 0, 0)) >= 0;
+        return true;
     }
     return false;
 }
@@ -504,8 +558,10 @@ fn air_lower_block_instructions(function: *mut AirFunction, ast: *mut AstModule,
     }
     function.blocks[air_block_id].first_instruction = function.block_instruction_count;
     let block: AstBlockNode = ast.blocks[ast_block_id];
-    var stmt_index: i32 = 0;
-    while stmt_index < block.stmt_count {
+    let air_block: AirBlock = function.blocks[air_block_id];
+    var stmt_index: i32 = air_block.first_stmt;
+    let end_index: i32 = air_block.first_stmt + air_block.stmt_count;
+    while stmt_index < end_index {
         let stmt_id: i32 = ast.stmt_refs[block.first_stmt + stmt_index];
         if !air_lower_add_stmt_instruction(function, ast, air_block_id, stmt_id) {
             return false;
@@ -565,7 +621,7 @@ fn air_lower_function(source: *const u8, ast: *mut AstModule, item_id: i32) -> A
         function.ok = false;
         return function;
     }
-    if !air_lower_collect_block_locals(&function, ast, function.entry_block, item.body_block) {
+    if !air_lower_collect_all_locals(&function, ast) {
         sema_free_expr_annotations(annotations);
         function.ok = false;
         return function;

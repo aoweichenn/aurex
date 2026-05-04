@@ -6,7 +6,7 @@ import aurex.selfhost.syntax.ast;
 fn air_cfg_find_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
     var index: i32 = 0;
     while index < function.block_count {
-        if function.blocks[index].ast_block_id == ast_block_id {
+        if function.blocks[index].ast_block_id == ast_block_id && function.blocks[index].first_stmt == 0 {
             return index;
         }
         index = index + 1;
@@ -67,7 +67,7 @@ fn air_cfg_add_stmt_edges(function: *mut AirFunction, ast: *mut AstModule, air_b
     if stmt.kind == AST_STMT_IF {
         let condition: i32 = air_cfg_block_value_for_expr(function, air_block_id, stmt.expr_id);
         let then_target: i32 = air_cfg_find_block(function, stmt.then_block);
-        var else_target: i32 = -1;
+        var else_target: i32 = function.blocks[air_block_id].fallthrough_target;
         if stmt.else_block >= 0 {
             else_target = air_cfg_find_block(function, stmt.else_block);
         }
@@ -90,8 +90,11 @@ fn air_cfg_add_stmt_edges(function: *mut AirFunction, ast: *mut AstModule, air_b
         if !air_cfg_add_condition_edge(function, AIR_EDGE_WHILE_TRUE, stmt_id, air_block_id, body_target, condition) {
             return false;
         }
-        if !air_cfg_add_condition_edge(function, AIR_EDGE_WHILE_FALSE, stmt_id, air_block_id, -1, condition) {
+        if !air_cfg_add_condition_edge(function, AIR_EDGE_WHILE_FALSE, stmt_id, air_block_id, function.blocks[air_block_id].fallthrough_target, condition) {
             return false;
+        }
+        if function.blocks[body_target].fallthrough_target == air_block_id && function.blocks[body_target].fallthrough_kind == AIR_EDGE_LOOP_BACK {
+            return true;
         }
         return air_cfg_add_value_edge(function, AIR_EDGE_LOOP_BACK, stmt_id, body_target, air_block_id, -1);
     }
@@ -153,16 +156,26 @@ fn air_cfg_add_block_edges(function: *mut AirFunction, ast: *mut AstModule, air_
         return false;
     }
     let block: AstBlockNode = ast.blocks[ast_block_id];
-    var index: i32 = 0;
-    while index < block.stmt_count {
+    let air_block: AirBlock = function.blocks[air_block_id];
+    var saw_control: bool = false;
+    var index: i32 = air_block.first_stmt;
+    let end_index: i32 = air_block.first_stmt + air_block.stmt_count;
+    while index < end_index {
         let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
         if !air_cfg_add_stmt_edges(function, ast, air_block_id, stmt_id) {
             return false;
         }
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if stmt.kind == AST_STMT_RETURN ||
+            stmt.kind == AST_STMT_BLOCK ||
+            stmt.kind == AST_STMT_IF ||
+            stmt.kind == AST_STMT_WHILE {
+            saw_control = true;
+        }
         index = index + 1;
     }
-    if !air_cfg_block_has_trailing_return(ast, block) && !air_cfg_block_always_returns(ast, ast_block_id) {
-        return air_cfg_add_value_edge(function, AIR_EDGE_FALLTHROUGH, -1, air_block_id, -1, -1);
+    if !saw_control && !air_cfg_block_has_trailing_return(ast, block) && !air_cfg_block_always_returns(ast, ast_block_id) {
+        return air_cfg_add_value_edge(function, air_block.fallthrough_kind, -1, air_block_id, air_block.fallthrough_target, -1);
     }
     return true;
 }
@@ -191,6 +204,33 @@ fn air_cfg_single_edge_for_block(function: *mut AirFunction, block_id: i32) -> A
     return air_make_edge(AIR_EDGE_FALLTHROUGH, -1, block_id, -1, -1, -1);
 }
 
+fn air_cfg_find_edge_for_block(function: *mut AirFunction, block_id: i32, kind: i32) -> AirEdge {
+    var index: i32 = 0;
+    while index < function.edge_count {
+        let edge: AirEdge = function.edges[index];
+        if edge.source == block_id && edge.kind == kind {
+            return edge;
+        }
+        index = index + 1;
+    }
+    return air_make_edge(AIR_EDGE_FALLTHROUGH, -1, -1, -1, -1, -1);
+}
+
+fn air_cfg_try_set_branch_terminator(function: *mut AirFunction, block_id: i32, true_kind: i32, false_kind: i32) -> bool {
+    let true_edge: AirEdge = air_cfg_find_edge_for_block(function, block_id, true_kind);
+    let false_edge: AirEdge = air_cfg_find_edge_for_block(function, block_id, false_kind);
+    if true_edge.source != block_id || false_edge.source != block_id {
+        return false;
+    }
+    if true_edge.target < 0 || false_edge.target < 0 {
+        return false;
+    }
+    if true_edge.condition < 0 || true_edge.condition != false_edge.condition {
+        return false;
+    }
+    return air_set_terminator(function, block_id, air_branch_terminator(true_edge.condition, true_edge.target, false_edge.target));
+}
+
 fn air_cfg_apply_block_terminators(function: *mut AirFunction) -> bool {
     var block_id: i32 = 0;
     while block_id < function.block_count {
@@ -203,8 +243,14 @@ fn air_cfg_apply_block_terminators(function: *mut AirFunction) -> bool {
                 }
             } else {
                 if edge.kind == AIR_EDGE_FALLTHROUGH {
-                    if !air_set_terminator(function, block_id, air_fallthrough_terminator()) {
-                        return false;
+                    if edge.target >= 0 {
+                        if !air_set_terminator(function, block_id, air_jump_terminator(edge.target)) {
+                            return false;
+                        }
+                    } else {
+                        if !air_set_terminator(function, block_id, air_fallthrough_terminator()) {
+                            return false;
+                        }
                     }
                 } else {
                     if edge.kind == AIR_EDGE_SCOPE || edge.kind == AIR_EDGE_LOOP_BACK {
@@ -220,8 +266,18 @@ fn air_cfg_apply_block_terminators(function: *mut AirFunction) -> bool {
             }
         } else {
             if edge_count > 1 {
-                if !air_set_terminator(function, block_id, air_edges_terminator()) {
-                    return false;
+                if edge_count == 2 {
+                    if !air_cfg_try_set_branch_terminator(function, block_id, AIR_EDGE_IF_TRUE, AIR_EDGE_IF_FALSE) {
+                        if !air_cfg_try_set_branch_terminator(function, block_id, AIR_EDGE_WHILE_TRUE, AIR_EDGE_WHILE_FALSE) {
+                            if !air_set_terminator(function, block_id, air_edges_terminator()) {
+                                return false;
+                            }
+                        }
+                    }
+                } else {
+                    if !air_set_terminator(function, block_id, air_edges_terminator()) {
+                        return false;
+                    }
                 }
             } else {
                 if !air_set_terminator(function, block_id, air_fallthrough_terminator()) {

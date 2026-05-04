@@ -101,6 +101,122 @@ fn check_bad_edge_condition_rejected() -> bool {
     return ok;
 }
 
+fn check_bad_branch_edge_mismatch_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let then_block: i32 = air_add_block(&function, 1);
+    let else_block: i32 = air_add_block(&function, 2);
+    let condition: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_TEMP, 0, -1));
+    let value: i32 = air_add_value(&function, then_block, air_make_value(AIR_VALUE_INTEGER, 1, -1));
+    air_set_terminator(&function, entry, air_branch_terminator(condition, then_block, else_block));
+    air_set_terminator(&function, then_block, air_return_terminator(value));
+    air_set_terminator(&function, else_block, air_return_terminator(value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_IF_TRUE, 0, entry, else_block, condition, -1));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_IF_FALSE, 0, entry, then_block, condition, -1));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 1, then_block, -1, -1, value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 2, else_block, -1, -1, value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_valid_block_param_edge_args() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let join: i32 = air_add_block(&function, 1);
+    let input: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, -1));
+    let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
+    let param_value: i32 = function.block_params[block_param].value_id;
+    let edge_id: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
+    let ok: bool = block_param >= 0 &&
+        param_value >= 0 &&
+        edge_id >= 0 &&
+        air_add_edge_arg(&function, edge_id, input) &&
+        air_set_terminator(&function, entry, air_jump_terminator(join)) &&
+        air_set_terminator(&function, join, air_return_terminator(param_value)) &&
+        air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 0, join, -1, -1, param_value)) >= 0 &&
+        air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_missing_edge_arg_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let join: i32 = air_add_block(&function, 1);
+    let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
+    let param_value: i32 = function.block_params[block_param].value_id;
+    air_set_terminator(&function, entry, air_jump_terminator(join));
+    air_set_terminator(&function, join, air_return_terminator(param_value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 0, join, -1, -1, param_value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_edge_arg_type_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let join: i32 = air_add_block(&function, 1);
+    let input: i32 = air_add_value(&function, entry, air_make_value(AIR_VALUE_INTEGER, 0, 2));
+    let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
+    let param_value: i32 = function.block_params[block_param].value_id;
+    let edge_id: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
+    air_add_edge_arg(&function, edge_id, input);
+    air_set_terminator(&function, entry, air_jump_terminator(join));
+    air_set_terminator(&function, join, air_return_terminator(param_value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 0, join, -1, -1, param_value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
+fn check_bad_edge_arg_scope_rejected() -> bool {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        air_free_function(function);
+        return false;
+    }
+    air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
+    let entry: i32 = air_add_block(&function, 0);
+    let other: i32 = air_add_block(&function, 1);
+    let join: i32 = air_add_block(&function, 2);
+    let foreign: i32 = air_add_value(&function, other, air_make_value(AIR_VALUE_INTEGER, 0, 1));
+    let block_param: i32 = air_add_block_param(&function, join, 1, 4, 9);
+    let param_value: i32 = function.block_params[block_param].value_id;
+    let edge_id: i32 = air_add_edge(&function, air_make_edge(AIR_EDGE_FALLTHROUGH, -1, entry, join, -1, -1));
+    air_add_edge_arg(&function, edge_id, foreign);
+    air_set_terminator(&function, entry, air_jump_terminator(join));
+    air_set_terminator(&function, other, air_return_terminator(foreign));
+    air_set_terminator(&function, join, air_return_terminator(param_value));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 0, other, -1, -1, foreign));
+    air_add_edge(&function, air_make_edge(AIR_EDGE_RETURN, 1, join, -1, -1, param_value));
+    let ok: bool = !air_verify_function(&function);
+    air_free_function(function);
+    return ok;
+}
+
 fn check_missing_terminator_rejected() -> bool {
     var function: AirFunction = air_make_function();
     if !function.ok {
@@ -341,7 +457,7 @@ fn check_bad_instruction_value_rejected() -> bool {
     return ok;
 }
 
-fn check_bad_scope_target_rejected() -> bool {
+fn check_scope_instruction_rejected() -> bool {
     var function: AirFunction = air_make_function();
     if !function.ok {
         air_free_function(function);
@@ -349,7 +465,8 @@ fn check_bad_scope_target_rejected() -> bool {
     }
     air_set_function_header(&function, 0, 0, 4, 0, AIR_LINKAGE_INTERNAL);
     let entry: i32 = air_add_block(&function, 0);
-    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_SCOPE, 0, -1, -1, 99, -1, 0, 0));
+    let exit: i32 = air_add_block(&function, 1);
+    air_add_instruction(&function, entry, air_make_instruction(AIR_INST_SCOPE, 0, -1, -1, exit, -1, 0, 0));
     air_set_terminator(&function, entry, air_return_terminator(-1));
     let ok: bool = !air_verify_function(&function);
     air_free_function(function);
@@ -541,6 +658,11 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if check_valid_air_function() &&
         check_bad_edge_target_rejected() &&
         check_bad_edge_condition_rejected() &&
+        check_bad_branch_edge_mismatch_rejected() &&
+        check_valid_block_param_edge_args() &&
+        check_missing_edge_arg_rejected() &&
+        check_bad_edge_arg_type_rejected() &&
+        check_bad_edge_arg_scope_rejected() &&
         check_missing_terminator_rejected() &&
         check_bad_branch_target_rejected() &&
         check_bad_return_value_rejected() &&
@@ -554,7 +676,7 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_bad_struct_arg_name_rejected() &&
         check_bad_value_name_rejected() &&
         check_bad_instruction_value_rejected() &&
-        check_bad_scope_target_rejected() &&
+        check_scope_instruction_rejected() &&
         check_missing_header_rejected() &&
         check_bad_param_value_rejected() &&
         check_bad_local_block_rejected() &&

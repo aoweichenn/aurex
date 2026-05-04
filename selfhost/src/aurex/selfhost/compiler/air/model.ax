@@ -7,10 +7,12 @@ const AIR_MAX_VALUE_ARGS: i32 = 512;
 const AIR_MAX_INSTRUCTIONS: i32 = 256;
 const AIR_MAX_BLOCK_INSTRUCTIONS: i32 = 256;
 const AIR_MAX_PARAMS: i32 = 64;
+const AIR_MAX_BLOCK_PARAMS: i32 = 128;
 const AIR_MAX_LOCALS: i32 = 128;
 const AIR_MAX_SLOTS: i32 = 192;
 const AIR_MAX_LVALUES: i32 = 256;
 const AIR_MAX_EDGES: i32 = 512;
+const AIR_MAX_EDGE_ARGS: i32 = 512;
 
 const AIR_VALUE_NONE: i32 = 0;
 const AIR_VALUE_TEMP: i32 = 1;
@@ -37,6 +39,7 @@ const AIR_VALUE_INDEX_ADDR: i32 = 21;
 const AIR_VALUE_DEREF_ADDR: i32 = 22;
 const AIR_VALUE_STORE: i32 = 23;
 const AIR_VALUE_LOAD: i32 = 24;
+const AIR_VALUE_BLOCK_PARAM: i32 = 25;
 
 const AIR_TERM_NONE: i32 = 0;
 const AIR_TERM_JUMP: i32 = 1;
@@ -96,6 +99,14 @@ struct AirParam {
     type_id: i32;
     value_id: i32;
     slot_id: i32;
+}
+
+struct AirBlockParam {
+    block_id: i32;
+    value_id: i32;
+    type_id: i32;
+    name_begin: i32;
+    name_end: i32;
 }
 
 struct AirLocal {
@@ -189,6 +200,12 @@ struct AirEdge {
     target: i32;
     condition: i32;
     value: i32;
+    first_arg: i32;
+    arg_count: i32;
+}
+
+struct AirEdgeArg {
+    value_id: i32;
 }
 
 struct AirBlock {
@@ -197,6 +214,8 @@ struct AirBlock {
     stmt_count: i32;
     fallthrough_target: i32;
     fallthrough_kind: i32;
+    first_param: i32;
+    param_count: i32;
     first_value: i32;
     value_count: i32;
     first_instruction: i32;
@@ -213,10 +232,12 @@ struct AirFunction {
     instruction_count: i32;
     block_instruction_count: i32;
     param_count: i32;
+    block_param_count: i32;
     local_count: i32;
     slot_count: i32;
     lvalue_count: i32;
     edge_count: i32;
+    edge_arg_count: i32;
     ast_item_id: i32;
     name_begin: i32;
     name_end: i32;
@@ -230,10 +251,12 @@ struct AirFunction {
     instructions: *mut AirInstruction;
     block_instructions: *mut i32;
     params: *mut AirParam;
+    block_params: *mut AirBlockParam;
     locals: *mut AirLocal;
     slots: *mut AirSlot;
     lvalues: *mut AirLValue;
     edges: *mut AirEdge;
+    edge_args: *mut AirEdgeArg;
 }
 
 extern c {
@@ -283,7 +306,9 @@ fn air_make_edge(kind: i32, ast_stmt_id: i32, source: i32, target: i32, conditio
         source: source,
         target: target,
         condition: condition,
-        value: value
+        value: value,
+        first_arg: 0,
+        arg_count: 0
     };
 }
 
@@ -318,6 +343,16 @@ fn air_make_param(ast_param_id: i32, name_begin: i32, name_end: i32, type_id: i3
         type_id: type_id,
         value_id: value_id,
         slot_id: slot_id
+    };
+}
+
+fn air_make_block_param(block_id: i32, value_id: i32, type_id: i32, name_begin: i32, name_end: i32) -> AirBlockParam {
+    return AirBlockParam {
+        block_id: block_id,
+        value_id: value_id,
+        type_id: type_id,
+        name_begin: name_begin,
+        name_end: name_end
     };
 }
 
@@ -358,6 +393,12 @@ fn air_make_lvalue(kind: i32, ast_expr_id: i32, type_id: i32) -> AirLValue {
     };
 }
 
+fn air_make_edge_arg(value_id: i32) -> AirEdgeArg {
+    return AirEdgeArg {
+        value_id: value_id
+    };
+}
+
 fn air_make_value_arg(value_id: i32, name_begin: i32, name_end: i32) -> AirValueArg {
     return AirValueArg {
         value_id: value_id,
@@ -392,6 +433,8 @@ fn air_make_block(ast_block_id: i32, first_stmt: i32, stmt_count: i32, first_val
         stmt_count: stmt_count,
         fallthrough_target: -1,
         fallthrough_kind: AIR_EDGE_FALLTHROUGH,
+        first_param: 0,
+        param_count: 0,
         first_value: first_value,
         value_count: 0,
         first_instruction: first_instruction,
@@ -408,12 +451,14 @@ fn air_make_function() -> AirFunction {
     let instructions: *mut AirInstruction = ptr_cast(*mut AirInstruction, malloc(size_of(AirInstruction) * cast(usize, AIR_MAX_INSTRUCTIONS)));
     let block_instructions: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_BLOCK_INSTRUCTIONS)));
     let params: *mut AirParam = ptr_cast(*mut AirParam, malloc(size_of(AirParam) * cast(usize, AIR_MAX_PARAMS)));
+    let block_params: *mut AirBlockParam = ptr_cast(*mut AirBlockParam, malloc(size_of(AirBlockParam) * cast(usize, AIR_MAX_BLOCK_PARAMS)));
     let locals: *mut AirLocal = ptr_cast(*mut AirLocal, malloc(size_of(AirLocal) * cast(usize, AIR_MAX_LOCALS)));
     let slots: *mut AirSlot = ptr_cast(*mut AirSlot, malloc(size_of(AirSlot) * cast(usize, AIR_MAX_SLOTS)));
     let lvalues: *mut AirLValue = ptr_cast(*mut AirLValue, malloc(size_of(AirLValue) * cast(usize, AIR_MAX_LVALUES)));
     let edges: *mut AirEdge = ptr_cast(*mut AirEdge, malloc(size_of(AirEdge) * cast(usize, AIR_MAX_EDGES)));
+    let edge_args: *mut AirEdgeArg = ptr_cast(*mut AirEdgeArg, malloc(size_of(AirEdgeArg) * cast(usize, AIR_MAX_EDGE_ARGS)));
     return AirFunction {
-        ok: blocks != null && values != null && block_values != null && value_args != null && instructions != null && block_instructions != null && params != null && locals != null && slots != null && lvalues != null && edges != null,
+        ok: blocks != null && values != null && block_values != null && value_args != null && instructions != null && block_instructions != null && params != null && block_params != null && locals != null && slots != null && lvalues != null && edges != null && edge_args != null,
         block_count: 0,
         value_count: 0,
         block_value_count: 0,
@@ -421,10 +466,12 @@ fn air_make_function() -> AirFunction {
         instruction_count: 0,
         block_instruction_count: 0,
         param_count: 0,
+        block_param_count: 0,
         local_count: 0,
         slot_count: 0,
         lvalue_count: 0,
         edge_count: 0,
+        edge_arg_count: 0,
         ast_item_id: -1,
         name_begin: 0,
         name_end: 0,
@@ -438,10 +485,12 @@ fn air_make_function() -> AirFunction {
         instructions: instructions,
         block_instructions: block_instructions,
         params: params,
+        block_params: block_params,
         locals: locals,
         slots: slots,
         lvalues: lvalues,
-        edges: edges
+        edges: edges,
+        edge_args: edge_args
     };
 }
 
@@ -453,10 +502,12 @@ fn air_free_function(function: AirFunction) -> void {
     free(ptr_cast(*mut void, function.instructions));
     free(ptr_cast(*mut void, function.block_instructions));
     free(ptr_cast(*mut void, function.params));
+    free(ptr_cast(*mut void, function.block_params));
     free(ptr_cast(*mut void, function.locals));
     free(ptr_cast(*mut void, function.slots));
     free(ptr_cast(*mut void, function.lvalues));
     free(ptr_cast(*mut void, function.edges));
+    free(ptr_cast(*mut void, function.edge_args));
 }
 
 fn air_set_function_header(function: *mut AirFunction, ast_item_id: i32, name_begin: i32, name_end: i32, return_type: i32, linkage: i32) -> bool {
@@ -472,10 +523,6 @@ fn air_set_function_header(function: *mut AirFunction, ast_item_id: i32, name_be
     return true;
 }
 
-fn air_add_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
-    return air_add_block_segment(function, ast_block_id, 0, -1);
-}
-
 fn air_add_block_segment(function: *mut AirFunction, ast_block_id: i32, first_stmt: i32, stmt_count: i32) -> i32 {
     if !function.ok || function.block_count >= AIR_MAX_BLOCKS {
         function.ok = false;
@@ -488,6 +535,10 @@ fn air_add_block_segment(function: *mut AirFunction, ast_block_id: i32, first_st
         function.entry_block = id;
     }
     return id;
+}
+
+fn air_add_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
+    return air_add_block_segment(function, ast_block_id, 0, -1);
 }
 
 fn air_set_block_fallthrough(function: *mut AirFunction, block_id: i32, target: i32, kind: i32) -> bool {
@@ -546,6 +597,38 @@ fn air_add_param(function: *mut AirFunction, ast_param_id: i32, name_begin: i32,
     function.params[id] = air_make_param(ast_param_id, name_begin, name_end, type_id, value_id, slot_id);
     function.param_count = function.param_count + 1;
     return id;
+}
+
+fn air_add_block_param(function: *mut AirFunction, block_id: i32, type_id: i32, name_begin: i32, name_end: i32) -> i32 {
+    if !function.ok || block_id < 0 || block_id >= function.block_count ||
+        function.block_param_count >= AIR_MAX_BLOCK_PARAMS {
+        function.ok = false;
+        return -1;
+    }
+    if name_begin >= 0 && name_end <= name_begin {
+        function.ok = false;
+        return -1;
+    }
+    var value: AirValue = air_make_value(AIR_VALUE_BLOCK_PARAM, -1, type_id);
+    value.name_begin = name_begin;
+    value.name_end = name_end;
+    let value_id: i32 = air_add_detached_value(function, value);
+    if value_id < 0 {
+        return -1;
+    }
+    if function.blocks[block_id].param_count == 0 {
+        function.blocks[block_id].first_param = function.block_param_count;
+    } else {
+        if function.blocks[block_id].first_param + function.blocks[block_id].param_count != function.block_param_count {
+            function.ok = false;
+            return -1;
+        }
+    }
+    let param_id: i32 = function.block_param_count;
+    function.block_params[param_id] = air_make_block_param(block_id, value_id, type_id, name_begin, name_end);
+    function.block_param_count = function.block_param_count + 1;
+    function.blocks[block_id].param_count = function.blocks[block_id].param_count + 1;
+    return param_id;
 }
 
 fn air_add_local(function: *mut AirFunction, kind: i32, ast_stmt_id: i32, scope_block: i32, name_begin: i32, name_end: i32, type_id: i32) -> i32 {
@@ -615,6 +698,7 @@ fn air_set_terminator(function: *mut AirFunction, block_id: i32, terminator: Air
 
 fn air_clear_edges(function: *mut AirFunction) -> void {
     function.edge_count = 0;
+    function.edge_arg_count = 0;
 }
 
 fn air_add_edge(function: *mut AirFunction, edge: AirEdge) -> i32 {
@@ -626,6 +710,27 @@ fn air_add_edge(function: *mut AirFunction, edge: AirEdge) -> i32 {
     function.edges[edge_id] = edge;
     function.edge_count = function.edge_count + 1;
     return edge_id;
+}
+
+fn air_add_edge_arg(function: *mut AirFunction, edge_id: i32, value_id: i32) -> bool {
+    if !function.ok || edge_id < 0 || edge_id >= function.edge_count ||
+        value_id < 0 || value_id >= function.value_count ||
+        function.edge_arg_count >= AIR_MAX_EDGE_ARGS {
+        function.ok = false;
+        return false;
+    }
+    if function.edges[edge_id].arg_count == 0 {
+        function.edges[edge_id].first_arg = function.edge_arg_count;
+    } else {
+        if function.edges[edge_id].first_arg + function.edges[edge_id].arg_count != function.edge_arg_count {
+            function.ok = false;
+            return false;
+        }
+    }
+    function.edge_args[function.edge_arg_count] = air_make_edge_arg(value_id);
+    function.edge_arg_count = function.edge_arg_count + 1;
+    function.edges[edge_id].arg_count = function.edges[edge_id].arg_count + 1;
+    return true;
 }
 
 fn air_add_value_arg_named(function: *mut AirFunction, value_id: i32, arg_value_id: i32, name_begin: i32, name_end: i32) -> bool {

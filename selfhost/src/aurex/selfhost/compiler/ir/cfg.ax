@@ -21,6 +21,10 @@ fn cfg_write_source_block_ref(file: *mut OutputFile, block_id: i32, is_entry: bo
     return cfg_write_block_ref(file, block_id);
 }
 
+fn cfg_write_air_ref(file: *mut OutputFile, block_id: i32) -> bool {
+    return ir_write_text(file, c"^air") && ir_write_i32(file, block_id);
+}
+
 fn cfg_write_stmt(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, stmt: AstStmtNode) -> bool {
     if stmt.kind == AST_STMT_EXPR {
         if !ir_write_text(file, c"    expr ") { return false; }
@@ -142,14 +146,28 @@ fn cfg_write_air_edge_prefix(file: *mut OutputFile, function: *mut AirFunction, 
     if air_block_id < 0 || air_block_id >= function.block_count {
         return false;
     }
-    return cfg_write_edge_prefix(file, function.blocks[air_block_id].ast_block_id, air_block_id == function.entry_block);
+    if air_block_id == function.entry_block {
+        return cfg_write_edge_prefix(file, function.blocks[air_block_id].ast_block_id, true);
+    }
+    if function.blocks[air_block_id].first_stmt == 0 {
+        return cfg_write_edge_prefix(file, function.blocks[air_block_id].ast_block_id, false);
+    }
+    return ir_write_text(file, c"  ; cfg ") &&
+        cfg_write_air_ref(file, air_block_id) &&
+        ir_write_text(file, c" ");
 }
 
 fn cfg_write_air_block_ref(file: *mut OutputFile, function: *mut AirFunction, air_block_id: i32) -> bool {
     if air_block_id < 0 || air_block_id >= function.block_count {
         return ir_write_text(file, c"fallthrough");
     }
-    return cfg_write_source_block_ref(file, function.blocks[air_block_id].ast_block_id, air_block_id == function.entry_block);
+    if air_block_id == function.entry_block {
+        return cfg_write_source_block_ref(file, function.blocks[air_block_id].ast_block_id, true);
+    }
+    if function.blocks[air_block_id].first_stmt == 0 {
+        return cfg_write_source_block_ref(file, function.blocks[air_block_id].ast_block_id, false);
+    }
+    return cfg_write_air_ref(file, air_block_id);
 }
 
 fn cfg_write_air_temp(file: *mut OutputFile, function: *mut AirFunction, value_id: i32) -> bool {

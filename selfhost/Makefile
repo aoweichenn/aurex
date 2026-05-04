@@ -10,6 +10,7 @@ LEXER_RANGES_SRC := src/aurex/selfhost/smoke/lexer_ranges.ax
 PARSER_SMOKE_SRC := src/aurex/selfhost/smoke/parser_smoke.ax
 SEMA_ITEMS_SRC := src/aurex/selfhost/smoke/sema_items.ax
 AIR_VERIFY_SRC := src/aurex/selfhost/smoke/air_verify.ax
+AIR_TEXT_SRC := src/aurex/selfhost/smoke/air_text.ax
 STAGE1_LANG_SRC := src/aurex/selfhost/smoke/stage1_lang.ax
 STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
 STAGE1_IR_SRC := src/aurex/selfhost/smoke/stage1_ir.ax
@@ -19,7 +20,7 @@ STAGE1_PLACE_SRC := src/aurex/selfhost/smoke/stage1_place.ax
 STAGE1_ITEMS_SRC := src/aurex/selfhost/smoke/stage1_items.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
-PROGRAMS := $(BUILD_DIR)/aurexc_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/sema_items $(BUILD_DIR)/air_verify $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/stage1_ir $(BUILD_DIR)/aurexc_stage1
+PROGRAMS := $(BUILD_DIR)/aurexc_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/sema_items $(BUILD_DIR)/air_verify $(BUILD_DIR)/air_text $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/stage1_ir $(BUILD_DIR)/aurexc_stage1
 STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/lexer/core.ax \
 	src/aurex/selfhost/syntax/ast.ax \
@@ -84,6 +85,9 @@ $(BUILD_DIR)/sema_items: $(SEMA_ITEMS_SRC) $(MODULES) | $(BUILD_DIR)
 $(BUILD_DIR)/air_verify: $(AIR_VERIFY_SRC) $(MODULES) | $(BUILD_DIR)
 	$(AUREXC) $(IMPORT_FLAGS) $(AIR_VERIFY_SRC) -o $@
 
+$(BUILD_DIR)/air_text: $(AIR_TEXT_SRC) $(MODULES) | $(BUILD_DIR)
+	$(AUREXC) $(IMPORT_FLAGS) $(AIR_TEXT_SRC) -o $@
+
 $(BUILD_DIR)/stage1_lang: $(STAGE1_LANG_SRC) $(MODULES) | $(BUILD_DIR)
 	$(AUREXC) $(IMPORT_FLAGS) $(STAGE1_LANG_SRC) -o $@
 
@@ -106,6 +110,9 @@ check: all
 	$(BUILD_DIR)/parser_smoke
 	$(BUILD_DIR)/sema_items
 	$(BUILD_DIR)/air_verify
+	$(BUILD_DIR)/air_text $(BUILD_DIR)/air_text.air
+	grep -q 'block_param %v' $(BUILD_DIR)/air_text.air
+	grep -q 'edge fallthrough \^air0 -> \^air1 args(%v' $(BUILD_DIR)/air_text.air
 	$(BUILD_DIR)/stage1_lang
 	$(BUILD_DIR)/stage1_core
 	$(BUILD_DIR)/stage1_ir
@@ -175,7 +182,6 @@ check: all
 	grep -q 'air_cfg v0' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'inst let' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'inst assign' $(BUILD_DIR)/stage1_flow.stage1.tac
-	grep -q 'target(\^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'slot @slot' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'slot_addr' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'load' $(BUILD_DIR)/stage1_flow.stage1.tac
@@ -191,12 +197,18 @@ check: all
 	grep -q 'sema_type(type_id' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'sema_type(primitive' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while_true \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
-	grep -q 'edge while_false \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge while_false \^air0 -> \^air1' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge loop_back \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
-	grep -q 'edge if_true \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
-	grep -q 'edge if_false \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge scope \^air0 -> \^air2' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge if_true \^air1 -> \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'edge if_false \^air1 -> \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge return \^air' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'stmts(3+1)' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'term branch %v' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'term jump \^air0' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'false \^air1' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'cfg \^air1 edge if' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge loop_back \^entry' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'term ret %t' $(BUILD_DIR)/stage1_flow.stage1.tac

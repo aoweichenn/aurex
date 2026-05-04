@@ -30,6 +30,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/locals.ax \
 	src/aurex/selfhost/sema/members.ax \
 	src/aurex/selfhost/sema/resolve.ax \
+	src/aurex/selfhost/sema/types.ax \
 	src/aurex/selfhost/compiler/io.ax \
 	src/aurex/selfhost/compiler/ir/writer.ax \
 	src/aurex/selfhost/compiler/ir/names.ax \
@@ -108,6 +109,7 @@ check: all
 	grep -q 'aurex.selfhost.sema.locals' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.members' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.resolve' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.types' $(BUILD_DIR)/aurexc_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
 	$(BUILD_DIR)/lexer_file ../examples/hello.ax > $(BUILD_DIR)/lexer_file_hello.tokens
 	diff -u ../tests/golden/selfhost_lexer_dump.tokens $(BUILD_DIR)/lexer_dump.tokens

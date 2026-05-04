@@ -1,0 +1,106 @@
+module aurex.selfhost.sema.types;
+
+import aurex.selfhost.sema.names;
+import aurex.selfhost.syntax.ast;
+
+fn sema_type_item_kind(kind: i32) -> bool {
+    return kind == AST_ITEM_STRUCT || kind == AST_ITEM_ENUM || kind == AST_ITEM_OPAQUE_STRUCT;
+}
+
+fn sema_find_type_item(source: *const u8, ast: *mut AstModule, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if sema_type_item_kind(item.kind) && sema_range_equal(source, item.name_begin, item.name_end, name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_find_struct_item(source: *const u8, ast: *mut AstModule, name_begin: i32, name_end: i32) -> i32 {
+    var index: i32 = 0;
+    while index < ast.item_count {
+        let item: AstItemNode = ast.items[index];
+        if item.kind == AST_ITEM_STRUCT && sema_range_equal(source, item.name_begin, item.name_end, name_begin, name_end) {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn sema_struct_has_field(source: *const u8, ast: *mut AstModule, item: AstItemNode, name_begin: i32, name_end: i32) -> bool {
+    var index: i32 = 0;
+    while index < item.field_count {
+        let field: AstFieldNode = ast.fields[item.first_field + index];
+        if sema_range_equal(source, field.name_begin, field.name_end, name_begin, name_end) {
+            return true;
+        }
+        index = index + 1;
+    }
+    return false;
+}
+
+fn sema_check_type_node(source: *const u8, ast: *mut AstModule, type_id: i32) -> bool {
+    if type_id < 0 || type_id >= ast.type_count {
+        return false;
+    }
+    let ty: AstTypeNode = ast.types[type_id];
+    if ty.kind == AST_TYPE_PRIMITIVE {
+        return true;
+    }
+    if ty.kind == AST_TYPE_NAMED {
+        if sema_find_type_item(source, ast, ty.name_begin, ty.name_end) >= 0 {
+            return true;
+        }
+        return ast.import_count > 0;
+    }
+    if ty.kind == AST_TYPE_POINTER {
+        return sema_check_type_node(source, ast, ty.pointee);
+    }
+    if ty.kind == AST_TYPE_ARRAY {
+        return sema_check_type_node(source, ast, ty.array_element);
+    }
+    return false;
+}
+
+fn sema_check_struct_literal_type(source: *const u8, ast: *mut AstModule, expr: AstExprNode) -> bool {
+    let item_id: i32 = sema_find_struct_item(source, ast, expr.name_begin, expr.name_end);
+    if item_id < 0 {
+        return ast.import_count > 0;
+    }
+    let item: AstItemNode = ast.items[item_id];
+    var index: i32 = 0;
+    while index < expr.field_count {
+        let field: AstFieldInit = ast.field_inits[expr.first_field + index];
+        if !sema_struct_has_field(source, ast, item, field.name_begin, field.name_end) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn sema_check_module_types(source: *const u8, ast: *mut AstModule) -> bool {
+    var type_index: i32 = 0;
+    while type_index < ast.type_count {
+        if !sema_check_type_node(source, ast, type_index) {
+            return false;
+        }
+        type_index = type_index + 1;
+    }
+
+    var expr_index: i32 = 0;
+    while expr_index < ast.expr_count {
+        let expr: AstExprNode = ast.exprs[expr_index];
+        if expr.kind == AST_EXPR_STRUCT_LITERAL {
+            if !sema_check_struct_literal_type(source, ast, expr) {
+                return false;
+            }
+        }
+        expr_index = expr_index + 1;
+    }
+    return true;
+}

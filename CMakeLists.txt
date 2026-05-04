@@ -18,9 +18,24 @@ include(cmake/AurexIr.cmake)
 include(cmake/AurexBackendLLVM.cmake)
 include(cmake/AurexDriver.cmake)
 include(cmake/AurexTools.cmake)
+include(cmake/AurexTests.cmake)
 
 if(MSVC)
     target_compile_options(aurex_base PRIVATE /W4)
 else()
-    aurex_enable_warnings(aurex_base aurex_syntax aurex_lex aurex_parse aurex_sema aurex_ir aurex_backend_llvm aurex_driver aurexc)
+    set(AUREX_WARNING_TARGETS
+        aurex_base
+        aurex_syntax
+        aurex_lex
+        aurex_parse
+        aurex_sema
+        aurex_ir
+        aurex_backend_llvm
+        aurex_driver
+        aurexc
+    )
+    if(TARGET aurex_tests)
+        list(APPEND AUREX_WARNING_TARGETS aurex_tests)
+    endif()
+    aurex_enable_warnings(${AUREX_WARNING_TARGETS})
 endif()

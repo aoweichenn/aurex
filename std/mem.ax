@@ -8,6 +8,12 @@ struct Arena {
     used: usize;
 }
 
+struct BufferU8 {
+    data: *mut u8;
+    len: usize;
+    capacity: usize;
+}
+
 fn is_power_of_two(value: usize) -> bool {
     if value == cast(usize, 0) {
         return false;
@@ -58,6 +64,47 @@ fn fill_bytes(dst: *mut u8, value: u8, count: usize) -> *mut u8 {
 
 fn compare_bytes(left: *const u8, right: *const u8, count: usize) -> i32 {
     return memcmp(ptr_cast(*const void, left), ptr_cast(*const void, right), count);
+}
+
+fn buffer_create(capacity: usize) -> BufferU8 {
+    return BufferU8 { data: alloc_bytes(capacity), len: cast(usize, 0), capacity: capacity };
+}
+
+fn buffer_destroy(buffer: *mut BufferU8) -> void {
+    if buffer.data != null {
+        free_bytes(buffer.data);
+    }
+    buffer.data = null;
+    buffer.len = cast(usize, 0);
+    buffer.capacity = cast(usize, 0);
+}
+
+fn buffer_reserve(buffer: *mut BufferU8, capacity: usize) -> bool {
+    if capacity <= buffer.capacity {
+        return true;
+    }
+    let next: *mut u8 = resize_bytes(buffer.data, capacity);
+    if next == null {
+        return false;
+    }
+    buffer.data = next;
+    buffer.capacity = capacity;
+    return true;
+}
+
+fn buffer_push(buffer: *mut BufferU8, value: u8) -> bool {
+    if buffer.len == buffer.capacity {
+        var next_capacity: usize = buffer.capacity * cast(usize, 2);
+        if next_capacity == cast(usize, 0) {
+            next_capacity = cast(usize, 8);
+        }
+        if !buffer_reserve(buffer, next_capacity) {
+            return false;
+        }
+    }
+    buffer.data[buffer.len] = value;
+    buffer.len = buffer.len + cast(usize, 1);
+    return true;
 }
 
 fn arena_destroy(arena: *mut Arena) -> void {

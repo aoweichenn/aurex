@@ -21,6 +21,14 @@ typedef struct AurexStdWriteResult {
     int32_t written;
 } AurexStdWriteResult;
 
+FILE *aurex_std_v0_stdout(void) {
+    return stdout;
+}
+
+FILE *aurex_std_v0_stderr(void) {
+    return stderr;
+}
+
 AurexStdFileBuffer aurex_std_v0_read_file(const uint8_t *path) {
     AurexStdFileBuffer result = {NULL, 0};
     FILE *file = fopen((const char *)path, "rb");
@@ -129,4 +137,3 @@ bool aurex_std_v0_output_close(FILE *file) {
     }
     return fclose(file) == 0;
 }
-

@@ -49,6 +49,14 @@ fn read_entire_file(path: *const u8) -> ReadFileResult {
     return ReadFileResult { ok: true, data: data, len: len };
 }
 
+fn read_file_ok(result: ReadFileResult) -> bool {
+    return result.ok && result.data != null;
+}
+
+fn read_file_span(result: ReadFileResult) -> SpanU8 {
+    return SpanU8 { data: ptr_cast(*const u8, result.data), len: result.len };
+}
+
 fn free_file_buffer(result: ReadFileResult) -> void {
     if result.data != null {
         free(ptr_cast(*mut void, result.data));
@@ -63,4 +71,25 @@ fn write_entire_file(path: *const u8, bytes: SpanU8) -> WriteFileResult {
     let written: usize = fwrite(ptr_cast(*const void, bytes.data), 1, bytes.len, file);
     fclose(file);
     return WriteFileResult { ok: written == bytes.len, written: written };
+}
+
+fn write_text_file(path: *const u8, text: *const u8) -> WriteFileResult {
+    return write_entire_file(path, c_span(text));
+}
+
+fn file_exists(path: *const u8) -> bool {
+    let file: *mut CFile = fopen(path, c"rb");
+    if file == null {
+        return false;
+    }
+    fclose(file);
+    return true;
+}
+
+fn remove_file(path: *const u8) -> bool {
+    return remove(path) == 0;
+}
+
+fn rename_file(old_path: *const u8, new_path: *const u8) -> bool {
+    return rename(old_path, new_path) == 0;
 }

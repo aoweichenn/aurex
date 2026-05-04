@@ -1,0 +1,26 @@
+module std.process;
+
+import std.ffi.c.libc;
+
+const EXIT_SUCCESS: i32 = 0;
+const EXIT_FAILURE: i32 = 1;
+
+fn exit_process(code: i32) -> void {
+    exit(code);
+}
+
+fn abort_process() -> void {
+    abort();
+}
+
+fn env(name: *const u8) -> *const u8 {
+    return getenv(name);
+}
+
+fn env_or(name: *const u8, fallback: *const u8) -> *const u8 {
+    let value: *const u8 = getenv(name);
+    if value == null {
+        return fallback;
+    }
+    return value;
+}

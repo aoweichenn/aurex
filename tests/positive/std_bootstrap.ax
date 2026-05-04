@@ -1,0 +1,101 @@
+module std_bootstrap;
+
+import std.args;
+import std.file;
+import std.host;
+import std.io;
+import std.mem;
+import std.process;
+import std.text;
+
+fn check_args(argc: i32, argv: *mut *mut u8) -> bool {
+    let parsed: Args = args(argc, argv);
+    return arg_count(parsed) >= 1 && arg(parsed, 0) != null && arg(parsed, -1) == null;
+}
+
+fn check_buffer() -> bool {
+    var buffer: BufferU8 = buffer_create(cast(usize, 2));
+    if buffer.data == null {
+        return false;
+    }
+    if !buffer_push(&buffer, b'a') || !buffer_push(&buffer, b'b') || !buffer_push(&buffer, b'c') {
+        buffer_destroy(&buffer);
+        return false;
+    }
+    let ok: bool = buffer.len == cast(usize, 3) &&
+        compare_bytes(ptr_cast(*const u8, buffer.data), c"abc", cast(usize, 3)) == 0;
+    buffer_destroy(&buffer);
+    return ok;
+}
+
+fn check_text() -> bool {
+    let raw: SpanU8 = span_u8(c"  boot  ", cast(usize, 8));
+    let trimmed: SpanU8 = bytes_trim_ascii_space(raw);
+    return bytes_equal(trimmed, c_span(c"boot")) &&
+        bytes_starts_with(c_span(c"bootstrap"), c_span(c"boot")) &&
+        bytes_find_byte(c_span(c"abc"), b'b') == cast(usize, 1) &&
+        c_parse_i32(c"42") == 42;
+}
+
+fn check_host_file() -> bool {
+    let path: *const u8 = c"/tmp/aurex_std_bootstrap_host.txt";
+    if !write_text(path, c"host-ok") {
+        return false;
+    }
+    let result: HostReadFileResult = read_host_file(path);
+    if !result.ok {
+        return false;
+    }
+    let ok: bool = bytes_equal(host_file_span(result), c_span(c"host-ok"));
+    free_host_file(result);
+    remove_file(path);
+    return ok;
+}
+
+fn check_output_stream() -> bool {
+    let path: *const u8 = c"/tmp/aurex_std_bootstrap_stream.txt";
+    let file: *mut void = open_output_handle(path);
+    if file == null {
+        return false;
+    }
+    if !write_output_text(file, c"value=") || !write_output_i32(file, 7) || !write_output_text(file, c"\n") {
+        close_output_handle(file);
+        return false;
+    }
+    if !close_output_handle(file) {
+        return false;
+    }
+    let read_back: ReadFileResult = read_entire_file(path);
+    if !read_file_ok(read_back) {
+        return false;
+    }
+    let ok: bool = bytes_equal(read_file_span(read_back), c_span(c"value=7\n"));
+    free_file_buffer(read_back);
+    remove_file(path);
+    return ok;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    if !check_args(argc, argv) {
+        return 1;
+    }
+    if !check_buffer() {
+        return 2;
+    }
+    if !check_text() {
+        return 3;
+    }
+    if !check_host_file() {
+        return 4;
+    }
+    if !check_output_stream() {
+        return 5;
+    }
+    if env_or(c"AUREX_STD_BOOTSTRAP_TEST_UNSET", c"fallback") == null {
+        return 6;
+    }
+    if !print(c"") || !flush_stdout() {
+        return 7;
+    }
+    return EXIT_SUCCESS;
+}

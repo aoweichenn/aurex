@@ -20,6 +20,14 @@ fn mut_span_u8(data: *mut u8, len: usize) -> MutSpanU8 {
     return MutSpanU8 { data: data, len: len };
 }
 
+fn c_span(text: *const u8) -> SpanU8 {
+    return SpanU8 { data: text, len: strlen(text) };
+}
+
+fn span_is_empty(span: SpanU8) -> bool {
+    return span.len == cast(usize, 0);
+}
+
 fn is_ascii_space(ch: u8) -> bool {
     return ch == b' ' || ch == b'\n' || ch == b'\t' || ch == b'\r';
 }
@@ -72,6 +80,43 @@ fn bytes_equal(left: SpanU8, right: SpanU8) -> bool {
     return true;
 }
 
+fn bytes_starts_with(text: SpanU8, prefix: SpanU8) -> bool {
+    if prefix.len > text.len {
+        return false;
+    }
+    var index: usize = 0;
+    while index < prefix.len {
+        if text.data[index] != prefix.data[index] {
+            return false;
+        }
+        index = index + cast(usize, 1);
+    }
+    return true;
+}
+
+fn bytes_find_byte(text: SpanU8, needle: u8) -> usize {
+    var index: usize = 0;
+    while index < text.len {
+        if text.data[index] == needle {
+            return index;
+        }
+        index = index + cast(usize, 1);
+    }
+    return text.len;
+}
+
+fn bytes_trim_ascii_space(text: SpanU8) -> SpanU8 {
+    var begin: usize = 0;
+    var end: usize = text.len;
+    while begin < end && is_ascii_space(text.data[begin]) {
+        begin = begin + cast(usize, 1);
+    }
+    while end > begin && is_ascii_space(text.data[end - cast(usize, 1)]) {
+        end = end - cast(usize, 1);
+    }
+    return SpanU8 { data: ptr_from_addr(*const u8, ptr_addr(text.data) + begin), len: end - begin };
+}
+
 fn c_strlen(text: *const u8) -> usize {
     return strlen(text);
 }
@@ -82,4 +127,8 @@ fn c_string_equal(left: *const u8, right: *const u8) -> bool {
 
 fn c_string_starts_with(text: *const u8, prefix: *const u8) -> bool {
     return strncmp(text, prefix, strlen(prefix)) == 0;
+}
+
+fn c_parse_i32(text: *const u8) -> i32 {
+    return atoi(text);
 }

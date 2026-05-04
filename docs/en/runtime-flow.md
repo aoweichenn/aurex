@@ -80,7 +80,7 @@ or only return status and do not require `-o`.
 1. `--no-stdlib` disables std import paths and support linking.
 2. When std is enabled, module loading tries to add the std import root.
 3. Only executable output links std backend support.
-4. `--std-backend host-c` links `std/support/host_c.c`.
+4. `--std-backend host-c` links `std/ffi/c/support/host_c.c`.
 5. `--std-backend none` links no support source file.
 
 ## Installed Standard-Library Lookup
@@ -100,7 +100,7 @@ Lookup order:
 5. Current working directory's `std`
 
 A candidate directory is accepted as a std root only if it contains `text.ax`,
-`c.ax`, and `support/host_c.c`.
+`ffi/c/libc.ax`, and `ffi/c/support/host_c.c`.
 
 ## Failure Flow
 

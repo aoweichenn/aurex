@@ -1,6 +1,6 @@
 module std.mem;
 
-import std.c;
+import std.ffi.c.libc;
 
 struct Arena {
     base: *mut u8;
@@ -26,6 +26,38 @@ fn align_forward_addr(address: usize, alignment: usize) -> usize {
 fn arena_create(capacity: usize) -> Arena {
     let data: *mut u8 = ptr_cast(*mut u8, malloc(capacity));
     return Arena { base: data, capacity: capacity, used: cast(usize, 0) };
+}
+
+fn alloc_bytes(size: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, malloc(size));
+}
+
+fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, calloc(count, size));
+}
+
+fn resize_bytes(ptr: *mut u8, size: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, realloc(ptr_cast(*mut void, ptr), size));
+}
+
+fn free_bytes(ptr: *mut u8) -> void {
+    free(ptr_cast(*mut void, ptr));
+}
+
+fn copy_bytes(dst: *mut u8, src: *const u8, count: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, memcpy(ptr_cast(*mut void, dst), ptr_cast(*const void, src), count));
+}
+
+fn move_bytes(dst: *mut u8, src: *const u8, count: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, memmove(ptr_cast(*mut void, dst), ptr_cast(*const void, src), count));
+}
+
+fn fill_bytes(dst: *mut u8, value: u8, count: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, memset(ptr_cast(*mut void, dst), cast(i32, value), count));
+}
+
+fn compare_bytes(left: *const u8, right: *const u8, count: usize) -> i32 {
+    return memcmp(ptr_cast(*const void, left), ptr_cast(*const void, right), count);
 }
 
 fn arena_destroy(arena: *mut Arena) -> void {

@@ -111,7 +111,7 @@ base::Result<void> run_pass_pipeline(Module& module, const PassPipelineOptions& 
 默认 backend：
 
 ```text
-host-c -> std/support/host_c.c
+host-c -> std/ffi/c/support/host_c.c
 ```
 
 稳定 host support 符号：
@@ -131,8 +131,8 @@ aurex_std_v0_output_close
 
 ```text
 text.ax
-c.ax
-support/host_c.c
+ffi/c/libc.ax
+ffi/c/support/host_c.c
 ```
 
 ## Aurex 源码 ABI 接口

@@ -77,16 +77,17 @@ root source
 
 The standard library has two parts:
 
-- `.ax` modules such as `std.c`, `std.text`, `std.mem`, and `std.file`.
-- backend support, currently `std/support/host_c.c` by default.
+- language-level `.ax` modules such as `std.text`, `std.mem`, `std.file`, and `std.io`.
+- temporary C FFI declarations under `std/ffi/c/`.
+- backend support, currently `std/ffi/c/support/host_c.c` by default.
 
-Host support exports stable `aurex_std_v0_*` symbols. `std/native_support.c`
-is retained only as a compatibility entry for older paths.
+Host support exports stable `aurex_std_v0_*` symbols. C FFI is isolated under
+`std/ffi/c/` so a future backend engine can replace it without rewriting the
+language-level std API.
 
 ABI strategy:
 
 - New declarations should use `aurex_std_v0_*`.
-- Old `aurex_std_*` wrappers exist only for old Stage1/selfhost slices.
 - If host support needs a breaking change, introduce `aurex_std_v1_*` instead
   of reusing v0 names.
 
@@ -94,8 +95,8 @@ Backend support strategy:
 
 - `host-c` is the default backend for the current clang/native path.
 - `none` is available for outputs that do not need std support linking.
-- Future backends should be selected by the driver, not hardwired into `.ax`
-  std modules.
+- Future backends should be selected by the driver, not hardwired into
+  language-level `.ax` std modules.
 
 ## Install And Lookup Architecture
 

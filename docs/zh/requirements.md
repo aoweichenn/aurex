@@ -36,7 +36,7 @@
 
 - 构建环境需要 CMake、C++20 编译器、LLVM 开发库和 clang。
 - native 输出需要 `clang` 可执行文件，或通过 `--clang` 指定替代路径。
-- 需要标准库时，`std` 根必须包含 `text.ax`、`c.ax` 和 `support/host_c.c`。
+- 需要标准库时，`std` 根必须包含 `text.ax`、`ffi/c/libc.ax` 和 `ffi/c/support/host_c.c`。
 - 安装布局应包含 `bin/aurexc` 和 `share/aurex/std`。
 
 ## 非功能需求
@@ -59,7 +59,7 @@
 ## 风险与边界
 
 - IR pass pipeline 仍是保守实现，`O2`/`O3` 当前不会启用比 `O1` 更激进的额外 pass。
-- `std/native_support.c` 仍保留为兼容入口，新逻辑应使用可替换 backend support。
+- C FFI 是临时桥接层，并隔离在 `std/ffi/c/`；新的语言层 std 代码应依赖这个边界，而不是直接声明 host C。
 - Stage1 还没有完整 sema、IR verifier 和 LLVM backend handoff，不能作为生产编译器使用。
 - 标准库 ABI v0 的符号必须保持稳定；破坏性变更应引入新 namespace。
 

@@ -73,7 +73,7 @@ native 输出必须提供 `-o`。dump、check、IR 和 LLVM IR 模式直接写 s
 1. `--no-stdlib` 关闭标准库 import path 和 support 链接。
 2. 未关闭标准库时，模块加载阶段尝试加入标准库 import root。
 3. 只有 executable 输出会链接 std backend support。
-4. `--std-backend host-c` 链接 `std/support/host_c.c`。
+4. `--std-backend host-c` 链接 `std/ffi/c/support/host_c.c`。
 5. `--std-backend none` 不链接 support 源文件。
 
 ## 安装后标准库查找流程
@@ -92,7 +92,7 @@ native 输出必须提供 `-o`。dump、check、IR 和 LLVM IR 模式直接写 s
    - `bin/../../share/aurex/std`
 5. 当前工作目录的 `std`
 
-候选目录必须同时包含 `text.ax`、`c.ax` 和 `support/host_c.c`，才会被接受为标准库根。
+候选目录必须同时包含 `text.ax`、`ffi/c/libc.ax` 和 `ffi/c/support/host_c.c`，才会被接受为标准库根。
 
 ## 失败流程
 

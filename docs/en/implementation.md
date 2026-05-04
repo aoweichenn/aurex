@@ -124,13 +124,14 @@ cleans the temporary file.
 
 ## Standard Library
 
-`.ax` standard-library modules define language-level APIs. The host-c backend
-support provides host symbols needed by selfhost IO. Stable symbols use the
-`aurex_std_v0_*` namespace; old `aurex_std_*` wrappers remain for compatibility.
+`.ax` standard-library modules define language-level APIs. Temporary C FFI
+declarations and host-c support live under `std/ffi/c/`, keeping C interop out
+of the higher-level std modules. Stable host symbols use the `aurex_std_v0_*`
+namespace.
 
-`std/native_support.c` is a compatibility shim that includes the current default
-backend support. The new driver path selects `std/support/host_c.c` by backend,
-so future support backends can be added without changing `.ax` std APIs.
+The driver selects `std/ffi/c/support/host_c.c` for the `host-c` backend, so
+future support backends can replace the C bridge without changing `.ax` std
+APIs.
 
 ## Install Layout
 

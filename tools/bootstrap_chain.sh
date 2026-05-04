@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build"
 AUREXC="${BUILD_DIR}/bin/aurexc"
 SELFHOST_BUILD_DIR="${BUILD_DIR}/selfhost"
-BOOT_DIR="${BUILD_DIR}/bootstrap"
 TMP_DIR="${BUILD_DIR}/tmp"
 SELFHOST_IMPORT_FLAGS=(-I "${ROOT}/selfhost/src")
 
@@ -36,12 +35,10 @@ STAGE1_SEED_IR="${SELFHOST_BUILD_DIR}/aurexc_seed.stage1.air"
 STAGE1_PARSER_IR="${SELFHOST_BUILD_DIR}/parser_smoke.stage1.air"
 STAGE1_IR_OUT="${SELFHOST_BUILD_DIR}/stage1_ir.stage1.air"
 STAGE1_COMPILER_IR="${SELFHOST_BUILD_DIR}/aurexc_stage1.bundle.air"
-BOOT_C="${BOOT_DIR}/hello.bootstrap.c"
-BOOT_BIN="${BOOT_DIR}/hello.bootstrap"
 
 cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
 cmake --build "${BUILD_DIR}" -j >/dev/null
-mkdir -p "${SELFHOST_BUILD_DIR}" "${BOOT_DIR}" "${TMP_DIR}"
+mkdir -p "${SELFHOST_BUILD_DIR}" "${TMP_DIR}"
 
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${SEED}"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${SEED}" -o "${SEED_BIN}"
@@ -143,9 +140,4 @@ diff -u "${ROOT}/tests/golden/selfhost_lexer_file_hello.tokens" "${SELFHOST_BUIL
 "${ROOT}/tools/compare_selfhost_lexer.sh" >"${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 grep -q 'selfhost lexer matches Stage0 lexer for local corpus' "${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 
-make -C "${ROOT}/bootstrap" >/dev/null
-"${ROOT}/bootstrap/aurex_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
-cc "${BOOT_C}" -o "${BOOT_BIN}"
-test "$("${BOOT_BIN}")" = "hello from Aurex M0"
-
-echo "bootstrap chain passed: Stage0 aurexc + selfhost lexer/parser + Stage1 Aurex IR snapshots + standalone bootstrap seed"
+echo "bootstrap chain passed: Stage0 aurexc + selfhost lexer/parser + Stage1 Aurex IR snapshots"

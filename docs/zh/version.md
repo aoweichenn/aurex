@@ -32,8 +32,7 @@
 ## 兼容性策略
 
 - 标准库 host support 新符号使用 `aurex_std_v0_*`。
-- 旧 `aurex_std_*` wrapper 暂时保留。
-- `std/native_support.c` 保留为旧构建脚本兼容入口。
+- C FFI 声明和 host-c support 现在统一放在 `std/ffi/c/`。
 - 新文档入口统一为 `docs/zh/` 和 `docs/en/`。
 - 文档不再恢复 `docs/M0V0.1.x.md` 形式的逐小版本文件。
 

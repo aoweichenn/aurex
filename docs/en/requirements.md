@@ -48,8 +48,8 @@ standard-library and IR main path:
   libraries, and clang.
 - Native output requires a `clang` executable, or an alternate path through
   `--clang`.
-- When std is required, the std root must contain `text.ax`, `c.ax`, and
-  `support/host_c.c`.
+- When std is required, the std root must contain `text.ax`, `ffi/c/libc.ax`,
+  and `ffi/c/support/host_c.c`.
 - The install layout should contain `bin/aurexc` and `share/aurex/std`.
 
 ## Non-Functional Requirements
@@ -77,8 +77,8 @@ standard-library and IR main path:
 
 - The IR pass pipeline is still conservative. `O2` and `O3` currently do not
   enable extra passes beyond the `O1` set.
-- `std/native_support.c` is retained as a compatibility entry. New logic should
-  use replaceable backend support.
+- C FFI is temporary and isolated under `std/ffi/c/`; new language-level std
+  code should depend on that boundary instead of declaring host C directly.
 - Stage1 does not yet have complete sema, an IR verifier, or LLVM backend
   handoff, so it is not a production compiler.
 - Standard-library ABI v0 symbols must stay stable. Breaking host-support

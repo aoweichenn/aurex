@@ -114,7 +114,7 @@ Core APIs:
 Default backend:
 
 ```text
-host-c -> std/support/host_c.c
+host-c -> std/ffi/c/support/host_c.c
 ```
 
 Stable host support symbols:
@@ -134,8 +134,8 @@ Standard-library root requirements:
 
 ```text
 text.ax
-c.ax
-support/host_c.c
+ffi/c/libc.ax
+ffi/c/support/host_c.c
 ```
 
 ## Aurex Source ABI API

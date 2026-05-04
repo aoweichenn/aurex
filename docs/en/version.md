@@ -36,9 +36,7 @@ Not included:
 ## Compatibility Strategy
 
 - New std host support symbols use `aurex_std_v0_*`.
-- Old `aurex_std_*` wrappers are retained for now.
-- `std/native_support.c` remains as a compatibility entry for older build
-  scripts.
+- C FFI declarations and host-c support now live under `std/ffi/c/`.
 - New documentation entry points are `docs/zh/` and `docs/en/`.
 - Per-small-version files in the form `docs/M0V0.1.x.md` are not restored.
 

@@ -6,12 +6,11 @@ BUILD_DIR="${ROOT}/build"
 AUREXC="${BUILD_DIR}/bin/aurexc"
 TEST_DIR="${BUILD_DIR}/tests"
 TMP_DIR="${BUILD_DIR}/tmp"
-BOOT_DIR="${BUILD_DIR}/bootstrap"
 SELFHOST_IMPORT_FLAGS=(-I "${ROOT}/selfhost/src")
 
 cmake -S "${ROOT}" -B "${BUILD_DIR}" >/dev/null
 cmake --build "${BUILD_DIR}" -j >/dev/null
-mkdir -p "${TEST_DIR}" "${TMP_DIR}" "${BOOT_DIR}"
+mkdir -p "${TEST_DIR}" "${TMP_DIR}"
 
 test -f "${ROOT}/docs/README.md"
 test -f "${ROOT}/docs/zh/README.md"
@@ -46,7 +45,10 @@ obsolete_doc_paths=(
 for obsolete_doc_path in "${obsolete_doc_paths[@]}"; do
     test ! -e "${obsolete_doc_path}"
 done
-mapfile -t obsolete_version_docs < <(find "${ROOT}/docs" -maxdepth 1 -type f -name 'M0V0.1.*.md' -print)
+obsolete_version_docs=()
+while IFS= read -r obsolete_version_doc; do
+    obsolete_version_docs+=("${obsolete_version_doc}")
+done < <(find "${ROOT}/docs" -maxdepth 1 -type f -name 'M0V0.1.*.md' -print)
 if ((${#obsolete_version_docs[@]} != 0)); then
     printf 'unexpected per-small-version documentation files:\n' >&2
     printf '%s\n' "${obsolete_version_docs[@]}" >&2
@@ -196,14 +198,6 @@ for src in "${ROOT}"/tests/negative/*.ax; do
         exit 1
     fi
 done
-
-make -C "${ROOT}/bootstrap" >/dev/null
-BOOT_C="${BOOT_DIR}/hello.bootstrap.c"
-BOOT_BIN="${BOOT_DIR}/hello.bootstrap"
-"${ROOT}/bootstrap/aurex_bootstrap" "${ROOT}/examples/hello.ax" -o "${BOOT_C}"
-cc "${BOOT_C}" -o "${BOOT_BIN}"
-BOOT_OUT="$("${BOOT_BIN}")"
-test "${BOOT_OUT}" = "hello from Aurex M0"
 
 "${ROOT}/tools/bootstrap_chain.sh" >"${TMP_DIR}/aurex_bootstrap_chain.txt"
 grep -q 'bootstrap chain passed' "${TMP_DIR}/aurex_bootstrap_chain.txt"

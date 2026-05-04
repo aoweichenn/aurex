@@ -23,7 +23,6 @@ selfhost: build
 
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true
-	$(MAKE) -C bootstrap clean
 	$(MAKE) -C selfhost clean
 
 .PHONY: all configure build test bench bootstrap-chain selfhost clean

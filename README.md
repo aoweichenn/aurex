@@ -49,13 +49,16 @@ build/bin/aurexc --emit=llvm-ir examples/hello.ax
 `--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
 LLVM IR and prints the result. Native output runs Aurex IR -> LLVM IR -> clang.
 The old Stage0 C backend has been removed from the production build; the
-selfhost Stage1 path now emits Aurex IR snapshots instead of C.
+selfhost Stage1 path now emits Aurex IR snapshots instead of C. The historical
+standalone C translator has also been removed from the tree.
 
 The bundled std root is found through `--stdlib`, `AUREX_STDLIB`, build-tree
 defaults, and relocatable install layouts such as `share/aurex/std` next to the
 installed `bin/aurexc`. Executable output links the selected std support backend
 (`--std-backend host-c` by default), whose stable host-facing symbols are
-versioned as `aurex_std_v0_*`.
+versioned as `aurex_std_v0_*`. Temporary C FFI bindings live under
+`std/ffi/c/`; language-level std modules import that boundary instead of
+declaring host C directly.
 
 ## Quality Gates
 
@@ -65,22 +68,8 @@ tools/bench.py
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
-language samples, negative semantic samples, and the standalone bootstrap
-compiler.
-
-## Bootstrap
-
-The `bootstrap/` directory contains a single-file Stage0-mini compiler and a
-plain Makefile:
-
-```sh
-make -C bootstrap
-bootstrap/aurex_bootstrap examples/hello.ax -o bootstrap/hello.bootstrap.c
-```
-
-The standalone bootstrap compiler is intentionally small and heavily commented.
-It demonstrates the minimal translator path; the modular compiler is the
-authoritative implementation.
+language samples, negative semantic samples, std FFI checks, and selfhost smoke
+programs.
 
 ## Selfhost Track
 

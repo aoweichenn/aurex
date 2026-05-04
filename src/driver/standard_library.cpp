@@ -23,8 +23,8 @@ namespace {
 [[nodiscard]] bool is_standard_library_root(const std::filesystem::path& path) {
     std::error_code error;
     return std::filesystem::exists(path / "text.ax", error) && !error &&
-           std::filesystem::exists(path / "c.ax", error) && !error &&
-           std::filesystem::exists(path / "support" / "host_c.c", error) && !error;
+           std::filesystem::exists(path / "ffi" / "c" / "libc.ax", error) && !error &&
+           std::filesystem::exists(path / "ffi" / "c" / "support" / "host_c.c", error) && !error;
 }
 
 void append_candidate(std::vector<std::filesystem::path>& candidates, const std::filesystem::path& path) {
@@ -72,7 +72,7 @@ std::optional<StandardLibraryLayout> find_standard_library(const CompilerInvocat
         if (is_standard_library_root(root)) {
             return StandardLibraryLayout {
                 root,
-                root / "support" / "host_c.c",
+                root / "ffi" / "c" / "support" / "host_c.c",
             };
         }
     }

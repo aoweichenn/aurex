@@ -65,22 +65,22 @@ root source
 
 标准库由两部分组成：
 
-- `.ax` 模块：例如 `std.c`、`std.text`、`std.mem`、`std.file`。
-- backend support：当前默认是 `std/support/host_c.c`。
+- 语言层 `.ax` 模块：例如 `std.text`、`std.mem`、`std.file`、`std.io`。
+- 临时 C FFI 声明目录：`std/ffi/c/`。
+- backend support：当前默认是 `std/ffi/c/support/host_c.c`。
 
-host support 使用 `aurex_std_v0_*` 稳定符号。`std/native_support.c` 仅作为旧路径兼容入口。
+host support 使用 `aurex_std_v0_*` 稳定符号。C FFI 被隔离在 `std/ffi/c/`，后续后端引擎设计完成后可以替换这一层，而不重写语言层 std API。
 
 ABI 策略：
 
 - 新声明应使用 `aurex_std_v0_*`。
-- 旧 `aurex_std_*` wrapper 只用于兼容旧 Stage1/selfhost 片段。
 - 如果 host support 发生不兼容变更，应新增 `aurex_std_v1_*`，不复用 v0 名称。
 
 backend support 策略：
 
 - `host-c` 是默认 backend，适合当前 clang/native 链路。
 - `none` 可用于不需要 std support 链接的场景。
-- 后续 backend 应通过 driver 选择，不应把实现绑死到 `.ax` 标准库模块。
+- 后续 backend 应通过 driver 选择，不应把实现绑死到语言层 `.ax` 标准库模块。
 
 ## 安装与查找架构
 

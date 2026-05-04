@@ -34,7 +34,7 @@ void print_usage(std::ostream& out, const std::string_view argv0) {
         << "  --clang-arg arg  pass one raw argument to clang; repeat as needed\n"
         << "  --opt-level n    run Aurex IR passes at O0, O1, O2, or O3 (default O0)\n"
         << "  --stdlib path    use an explicit Aurex standard library root\n"
-        << "  --std-backend b  std support backend: host-c or none (default host-c)\n"
+        << "  --std-backend b  std FFI support backend: host-c or none (default host-c)\n"
         << "  --no-stdlib      do not import or link the bundled Aurex standard library\n"
         << "  -I path          add an import search path\n";
 }

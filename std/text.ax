@@ -1,5 +1,7 @@
 module std.text;
 
+import std.ffi.c.libc;
+
 struct SpanU8 {
     data: *const u8;
     len: usize;
@@ -30,6 +32,32 @@ fn is_ascii_alpha(ch: u8) -> bool {
     return (ch >= b'a' && ch <= b'z') || (ch >= b'A' && ch <= b'Z');
 }
 
+fn is_ascii_alnum(ch: u8) -> bool {
+    return is_ascii_alpha(ch) || is_ascii_digit(ch);
+}
+
+fn is_ascii_lower(ch: u8) -> bool {
+    return ch >= b'a' && ch <= b'z';
+}
+
+fn is_ascii_upper(ch: u8) -> bool {
+    return ch >= b'A' && ch <= b'Z';
+}
+
+fn ascii_to_lower(ch: u8) -> u8 {
+    if is_ascii_upper(ch) {
+        return ch + (b'a' - b'A');
+    }
+    return ch;
+}
+
+fn ascii_to_upper(ch: u8) -> u8 {
+    if is_ascii_lower(ch) {
+        return ch - (b'a' - b'A');
+    }
+    return ch;
+}
+
 fn bytes_equal(left: SpanU8, right: SpanU8) -> bool {
     if left.len != right.len {
         return false;
@@ -45,9 +73,13 @@ fn bytes_equal(left: SpanU8, right: SpanU8) -> bool {
 }
 
 fn c_strlen(text: *const u8) -> usize {
-    var len: usize = 0;
-    while text[len] != b'\0' {
-        len = len + cast(usize, 1);
-    }
-    return len;
+    return strlen(text);
+}
+
+fn c_string_equal(left: *const u8, right: *const u8) -> bool {
+    return strcmp(left, right) == 0;
+}
+
+fn c_string_starts_with(text: *const u8, prefix: *const u8) -> bool {
+    return strncmp(text, prefix, strlen(prefix)) == 0;
 }

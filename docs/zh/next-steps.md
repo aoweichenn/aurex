@@ -9,7 +9,7 @@
 - Stage0 仍是 C++20 编译器，是当前生产编译器。
 - selfhost 已包含 M0 编写的 lexer core、token dump、parser seed、ID-backed AST、Stage1 CLI 和 Stage1 AIR snapshot emitter。
 - Stage1 能读取 `.ax` 文件，解析 seed 覆盖范围内的语法，并输出 `aurex_ir v0` 文本快照。
-- bootstrap 链路覆盖 selfhost lexer golden 对比、parser smoke、Stage1 snapshot 输出、selfhost bundle 可见性和 standalone bootstrap seed。
+- bootstrap 链路覆盖 selfhost lexer golden 对比、parser smoke、Stage1 snapshot 输出和 selfhost bundle 可见性。
 
 ## 当前已具备能力
 

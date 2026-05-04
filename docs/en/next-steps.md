@@ -14,8 +14,7 @@ Stage0.
 - Stage1 can read `.ax` files, parse the seed-covered syntax, and output
   `aurex_ir v0` text snapshots.
 - The bootstrap flow covers selfhost lexer golden comparison, parser smoke,
-  Stage1 snapshot output, selfhost bundle visibility, and the standalone
-  bootstrap seed.
+  Stage1 snapshot output, and selfhost bundle visibility.
 
 ## Current Capabilities
 

@@ -1,6 +1,6 @@
 module std.file;
 
-import std.c;
+import std.ffi.c.libc;
 import std.text;
 
 struct ReadFileResult {

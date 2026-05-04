@@ -1,5 +1,5 @@
 module main_with_param;
 
-fn main(argc: i32) -> i32 {
-    return argc;
+fn main(count: i32) -> i32 {
+    return count;
 }

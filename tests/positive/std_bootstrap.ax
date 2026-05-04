@@ -75,7 +75,7 @@ fn check_output_stream() -> bool {
     return ok;
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if !check_args(argc, argv) {
         return 1;
     }

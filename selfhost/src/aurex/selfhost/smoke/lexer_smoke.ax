@@ -46,7 +46,7 @@ fn validate_sequence(source: *const u8) -> bool {
     return true;
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     let source: *const u8 = c"module hello; fn main() -> i32 { let s = c\"hi\"; return 0; }";
     if validate_sequence(source) {
         puts(c"selfhost lexer sequence ok");

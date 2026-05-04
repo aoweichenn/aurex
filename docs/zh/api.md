@@ -137,6 +137,17 @@ ffi/c/support/host_c.c
 
 ## Aurex 源码 ABI 接口
 
+程序入口是根模块中的普通函数：
+
+```m0
+fn main() -> i32 {
+    return 0;
+}
+```
+
+`fn main` 可以返回 `i32` 或 `void`，也可以选择接收
+`(argc: i32, argv: *mut *mut u8)` 参数。
+
 C ABI 通过 `extern c` 声明：
 
 ```m0
@@ -145,10 +156,10 @@ extern c {
 }
 ```
 
-导出 C ABI 函数：
+通过 `export c fn` 导出 C ABI 符号：
 
 ```m0
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
-    return 0;
+export c fn plugin_entry() -> i32 @name("plugin_entry") {
+    return 42;
 }
 ```

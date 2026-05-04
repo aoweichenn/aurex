@@ -20,7 +20,7 @@ fn places(buf: *mut u8) -> i32 {
     return value + pair.value + cast(i32, buf[0]);
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     puts(c"stage1 place");
     return 0;
 }

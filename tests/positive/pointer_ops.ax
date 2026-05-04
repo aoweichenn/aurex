@@ -4,7 +4,7 @@ fn increment(value: *mut i32) -> void {
     *value = *value + 1;
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     var value: i32 = 41;
     increment(&value);
     return value - 42;

@@ -48,6 +48,17 @@ namespace {
     return c_name;
 }
 
+[[nodiscard]] bool is_main_argv_type(const TypeTable& types, const TypeHandle type) noexcept {
+    if (!types.is_pointer(type)) {
+        return false;
+    }
+    const TypeHandle outer_pointee = types.get(type).pointee;
+    if (!types.is_pointer(outer_pointee)) {
+        return false;
+    }
+    return types.same(types.get(outer_pointee).pointee, types.builtin(BuiltinType::u8));
+}
+
 [[nodiscard]] base::u64 align_forward(const base::u64 offset, const base::u64 alignment) noexcept {
     if (alignment == 0) {
         return offset;
@@ -274,12 +285,21 @@ void SemanticAnalyzer::analyze_entry_points() {
     if (aurex_entry->c_name == "main") {
         report(aurex_entry->range, "ordinary fn main cannot use ABI name 'main'");
     }
-    if (!aurex_entry->param_types.empty()) {
-        report(aurex_entry->range, "ordinary fn main must not declare parameters");
-    }
     const TypeHandle i32_type = checked_.types.builtin(BuiltinType::i32);
-    if (!checked_.types.same(aurex_entry->return_type, i32_type)) {
-        report(aurex_entry->range, "ordinary fn main must return i32");
+    const TypeHandle void_type = checked_.types.builtin(BuiltinType::void_);
+    if (aurex_entry->param_types.empty()) {
+        // fn main() -> i32
+    } else if (aurex_entry->param_types.size() == 2) {
+        if (!checked_.types.same(aurex_entry->param_types[0], i32_type) ||
+            !is_main_argv_type(checked_.types, aurex_entry->param_types[1])) {
+            report(aurex_entry->range, "ordinary fn main parameters must be (argc: i32, argv: *mut *mut u8)");
+        }
+    } else {
+        report(aurex_entry->range, "ordinary fn main must use either no parameters or (argc: i32, argv: *mut *mut u8)");
+    }
+    if (!checked_.types.same(aurex_entry->return_type, i32_type) &&
+        !checked_.types.same(aurex_entry->return_type, void_type)) {
+        report(aurex_entry->range, "ordinary fn main must return i32 or void");
     }
 }
 

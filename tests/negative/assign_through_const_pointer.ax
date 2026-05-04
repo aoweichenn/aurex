@@ -1,6 +1,6 @@
 module assign_through_const_pointer;
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     let value: i32 = 1;
     let ptr: *const i32 = &value;
     *ptr = 2;

@@ -140,6 +140,17 @@ ffi/c/support/host_c.c
 
 ## Aurex Source ABI API
 
+Program entry is an ordinary root-module function:
+
+```m0
+fn main() -> i32 {
+    return 0;
+}
+```
+
+`fn main` may return `i32` or `void`, and may optionally accept
+`(argc: i32, argv: *mut *mut u8)`.
+
 C ABI is declared with `extern c`:
 
 ```m0
@@ -148,10 +159,10 @@ extern c {
 }
 ```
 
-C ABI export:
+C ABI symbols are exported with `export c fn`:
 
 ```m0
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
-    return 0;
+export c fn plugin_entry() -> i32 @name("plugin_entry") {
+    return 42;
 }
 ```

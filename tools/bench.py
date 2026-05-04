@@ -44,7 +44,7 @@ def make_source(function_count: int) -> str:
             f"}}\n"
         )
     functions.append(
-        "export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {\n"
+        "fn main() -> i32 {\n"
         "    puts(c\"bench\");\n"
         "    return bench_fn_0(0);\n"
         "}\n"

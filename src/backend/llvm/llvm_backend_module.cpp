@@ -162,13 +162,18 @@ void LlvmEmitter::declare_main_wrapper() {
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(context_, "entry", wrapper);
         builder_.SetInsertPoint(entry);
         std::vector<llvm::Value*> args;
-        if (!function.is_entry) {
+        if (!function.is_entry || function.signature_params.size() == 2) {
             auto arg_it = wrapper->arg_begin();
             args.push_back(&*arg_it++);
             args.push_back(&*arg_it);
         }
-        llvm::Value* result = builder_.CreateCall(functions_.at(i), args, "aurex.main.result");
-        builder_.CreateRet(result);
+        if (source_.types.is_void(function.return_type)) {
+            builder_.CreateCall(functions_.at(i), args);
+            builder_.CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context_), 0));
+        } else {
+            llvm::Value* result = builder_.CreateCall(functions_.at(i), args, "aurex.main.result");
+            builder_.CreateRet(result);
+        }
         break;
     }
 }

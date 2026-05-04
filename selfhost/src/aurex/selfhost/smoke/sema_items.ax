@@ -18,7 +18,7 @@ extern c {
 }
 
 fn check_valid_items() -> bool {
-    let source: *const u8 = c"module sema.valid; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } opaque struct Native; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; } const ANSWER: i32 = 42; fn helper(pair: Pair) -> i32 { return pair.value + ANSWER; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(Pair { value: 1, tag: Tag_zero }); }";
+    let source: *const u8 = c"module sema.valid; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } opaque struct Native; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; } const ANSWER: i32 = 42; fn helper(pair: Pair) -> i32 { return pair.value + ANSWER; } fn main() -> i32 { return helper(Pair { value: 1, tag: Tag_zero }); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -42,7 +42,7 @@ fn check_valid_items() -> bool {
 }
 
 fn check_duplicate_items() -> bool {
-    let source: *const u8 = c"module sema.dupe; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } struct Pair { value: i32; } const Pair: i32 = 1; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    let source: *const u8 = c"module sema.dupe; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } struct Pair { value: i32; } const Pair: i32 = 1; fn main() -> i32 { return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -65,7 +65,7 @@ fn check_duplicate_items() -> bool {
 }
 
 fn check_valid_locals() -> bool {
-    let source: *const u8 = c"module sema.locals.valid; fn helper(value: i32, limit: i32) -> i32 { let total: i32 = value; { let inner: i32 = limit; } if total < limit { let then_step: i32 = 1; } else { let else_step: i32 = 2; } while total < limit { let loop_step: i32 = 1; } return total; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1, 2); }";
+    let source: *const u8 = c"module sema.locals.valid; fn helper(value: i32, limit: i32) -> i32 { let total: i32 = value; { let inner: i32 = limit; } if total < limit { let then_step: i32 = 1; } else { let else_step: i32 = 2; } while total < limit { let loop_step: i32 = 1; } return total; } fn main() -> i32 { return helper(1, 2); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -77,7 +77,7 @@ fn check_valid_locals() -> bool {
 }
 
 fn check_duplicate_params() -> bool {
-    let source: *const u8 = c"module sema.locals.dupe_params; fn helper(value: i32, value: i32) -> i32 { return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1, 2); }";
+    let source: *const u8 = c"module sema.locals.dupe_params; fn helper(value: i32, value: i32) -> i32 { return value; } fn main() -> i32 { return helper(1, 2); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -89,7 +89,7 @@ fn check_duplicate_params() -> bool {
 }
 
 fn check_duplicate_local_with_param() -> bool {
-    let source: *const u8 = c"module sema.locals.dupe_param_local; fn helper(value: i32) -> i32 { let value: i32 = 1; return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1); }";
+    let source: *const u8 = c"module sema.locals.dupe_param_local; fn helper(value: i32) -> i32 { let value: i32 = 1; return value; } fn main() -> i32 { return helper(1); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -101,7 +101,7 @@ fn check_duplicate_local_with_param() -> bool {
 }
 
 fn check_duplicate_locals() -> bool {
-    let source: *const u8 = c"module sema.locals.dupe_locals; fn helper() -> i32 { let value: i32 = 1; var value: i32 = 2; return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.locals.dupe_locals; fn helper() -> i32 { let value: i32 = 1; var value: i32 = 2; return value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -113,7 +113,7 @@ fn check_duplicate_locals() -> bool {
 }
 
 fn check_duplicate_nested_locals() -> bool {
-    let source: *const u8 = c"module sema.locals.dupe_nested; fn helper() -> i32 { let value: i32 = 1; { let value: i32 = 2; } return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.locals.dupe_nested; fn helper() -> i32 { let value: i32 = 1; { let value: i32 = 2; } return value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -125,7 +125,7 @@ fn check_duplicate_nested_locals() -> bool {
 }
 
 fn check_valid_members() -> bool {
-    let source: *const u8 = c"module sema.members.valid; struct Pair { value: i32; tag: i32; } enum Tag: u8 { zero = 0, one = 1, } fn helper() -> i32 { let pair: Pair = Pair { value: 1, tag: 2 }; return pair.value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.members.valid; struct Pair { value: i32; tag: i32; } enum Tag: u8 { zero = 0, one = 1, } fn helper() -> i32 { let pair: Pair = Pair { value: 1, tag: 2 }; return pair.value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -137,7 +137,7 @@ fn check_valid_members() -> bool {
 }
 
 fn check_duplicate_struct_fields() -> bool {
-    let source: *const u8 = c"module sema.members.dupe_fields; struct Pair { value: i32; value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    let source: *const u8 = c"module sema.members.dupe_fields; struct Pair { value: i32; value: i32; } fn main() -> i32 { return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -149,7 +149,7 @@ fn check_duplicate_struct_fields() -> bool {
 }
 
 fn check_duplicate_enum_cases() -> bool {
-    let source: *const u8 = c"module sema.members.dupe_cases; enum Tag: u8 { zero = 0, zero = 1, } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return 0; }";
+    let source: *const u8 = c"module sema.members.dupe_cases; enum Tag: u8 { zero = 0, zero = 1, } fn main() -> i32 { return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -161,7 +161,7 @@ fn check_duplicate_enum_cases() -> bool {
 }
 
 fn check_duplicate_field_inits() -> bool {
-    let source: *const u8 = c"module sema.members.dupe_inits; struct Pair { value: i32; tag: i32; } fn helper() -> i32 { let pair: Pair = Pair { value: 1, value: 2 }; return pair.value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.members.dupe_inits; struct Pair { value: i32; tag: i32; } fn helper() -> i32 { let pair: Pair = Pair { value: 1, value: 2 }; return pair.value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -173,7 +173,7 @@ fn check_duplicate_field_inits() -> bool {
 }
 
 fn check_valid_resolution() -> bool {
-    let source: *const u8 = c"module sema.resolve.valid; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; } const ANSWER: i32 = 41; fn helper(pair: Pair) -> i32 { let local: i32 = ANSWER + pair.value; return local; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(Pair { value: 1, tag: Tag_zero }); }";
+    let source: *const u8 = c"module sema.resolve.valid; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; } const ANSWER: i32 = 41; fn helper(pair: Pair) -> i32 { let local: i32 = ANSWER + pair.value; return local; } fn main() -> i32 { return helper(Pair { value: 1, tag: Tag_zero }); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -185,7 +185,7 @@ fn check_valid_resolution() -> bool {
 }
 
 fn check_unresolved_identifier() -> bool {
-    let source: *const u8 = c"module sema.resolve.missing; fn helper() -> i32 { return missing_value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.resolve.missing; fn helper() -> i32 { return missing_value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -197,7 +197,7 @@ fn check_unresolved_identifier() -> bool {
 }
 
 fn check_valid_types() -> bool {
-    let source: *const u8 = c"module sema.types.valid; opaque struct Native; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; native: *mut Native; } fn helper() -> i32 { let pair: Pair = Pair { value: 1, tag: Tag_zero, native: null }; return pair.value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.types.valid; opaque struct Native; enum Tag: u8 { zero = 0, } struct Pair { value: i32; tag: Tag; native: *mut Native; } fn helper() -> i32 { let pair: Pair = Pair { value: 1, tag: Tag_zero, native: null }; return pair.value; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -209,7 +209,7 @@ fn check_valid_types() -> bool {
 }
 
 fn check_unknown_named_type() -> bool {
-    let source: *const u8 = c"module sema.types.missing; fn helper(value: Missing) -> i32 { return 0; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(null); }";
+    let source: *const u8 = c"module sema.types.missing; fn helper(value: Missing) -> i32 { return 0; } fn main() -> i32 { return helper(null); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -221,7 +221,7 @@ fn check_unknown_named_type() -> bool {
 }
 
 fn check_literal_requires_struct() -> bool {
-    let source: *const u8 = c"module sema.types.literal_kind; enum Tag: u8 { zero = 0, } fn helper() -> i32 { let tag: Tag = Tag { zero: 0 }; return 0; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.types.literal_kind; enum Tag: u8 { zero = 0, } fn helper() -> i32 { let tag: Tag = Tag { zero: 0 }; return 0; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -233,7 +233,7 @@ fn check_literal_requires_struct() -> bool {
 }
 
 fn check_literal_unknown_field() -> bool {
-    let source: *const u8 = c"module sema.types.literal_field; struct Pair { value: i32; } fn helper() -> i32 { let pair: Pair = Pair { missing: 1 }; return 0; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.types.literal_field; struct Pair { value: i32; } fn helper() -> i32 { let pair: Pair = Pair { missing: 1 }; return 0; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -245,7 +245,7 @@ fn check_literal_unknown_field() -> bool {
 }
 
 fn check_valid_calls() -> bool {
-    let source: *const u8 = c"module sema.calls.valid; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn add(left: i32, right: i32) -> i32 { return left + right; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { puts(c\"calls\"); return add(1, 2); }";
+    let source: *const u8 = c"module sema.calls.valid; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn add(left: i32, right: i32) -> i32 { return left + right; } fn main() -> i32 { puts(c\"calls\"); return add(1, 2); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -257,7 +257,7 @@ fn check_valid_calls() -> bool {
 }
 
 fn check_call_arity() -> bool {
-    let source: *const u8 = c"module sema.calls.arity; fn add(left: i32, right: i32) -> i32 { return left + right; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return add(1); }";
+    let source: *const u8 = c"module sema.calls.arity; fn add(left: i32, right: i32) -> i32 { return left + right; } fn main() -> i32 { return add(1); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -269,7 +269,7 @@ fn check_call_arity() -> bool {
 }
 
 fn check_call_const() -> bool {
-    let source: *const u8 = c"module sema.calls.const_call; const VALUE: i32 = 1; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return VALUE(); }";
+    let source: *const u8 = c"module sema.calls.const_call; const VALUE: i32 = 1; fn main() -> i32 { return VALUE(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -281,7 +281,7 @@ fn check_call_const() -> bool {
 }
 
 fn check_call_type() -> bool {
-    let source: *const u8 = c"module sema.calls.type_call; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return Pair(); }";
+    let source: *const u8 = c"module sema.calls.type_call; struct Pair { value: i32; } fn main() -> i32 { return Pair(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -293,7 +293,7 @@ fn check_call_type() -> bool {
 }
 
 fn check_valid_typing() -> bool {
-    let source: *const u8 = c"module sema.typing.valid; struct Pair { value: i32; } fn add(left: i32, right: i32) -> i32 { return left + right; } fn id_pair(pair: Pair) -> Pair { return pair; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = id_pair(Pair { value: 1 }); let result: i32 = add(pair.value, 2); if result == 3 { return result; } return 0; }";
+    let source: *const u8 = c"module sema.typing.valid; struct Pair { value: i32; } fn add(left: i32, right: i32) -> i32 { return left + right; } fn id_pair(pair: Pair) -> Pair { return pair; } fn main() -> i32 { let pair: Pair = id_pair(Pair { value: 1 }); let result: i32 = add(pair.value, 2); if result == 3 { return result; } return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -305,7 +305,7 @@ fn check_valid_typing() -> bool {
 }
 
 fn check_expr_annotations() -> bool {
-    let source: *const u8 = c"module sema.annotate.valid; struct Pair { value: i32; } fn add(left: i32, right: i32) -> i32 { return left + right; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = Pair { value: 1 }; let result: i32 = add(pair.value, 2); if result == 3 { return result; } return 0; }";
+    let source: *const u8 = c"module sema.annotate.valid; struct Pair { value: i32; } fn add(left: i32, right: i32) -> i32 { return left + right; } fn main() -> i32 { let pair: Pair = Pair { value: 1 }; let result: i32 = add(pair.value, 2); if result == 3 { return result; } return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -314,7 +314,7 @@ fn check_expr_annotations() -> bool {
     var item_id: i32 = -1;
     var item_index: i32 = 0;
     while item_index < ast.item_count {
-        if ast.items[item_index].kind == AST_ITEM_EXPORT_FN {
+        if ast.items[item_index].kind == AST_ITEM_FN {
             item_id = item_index;
         }
         item_index = item_index + 1;
@@ -370,7 +370,7 @@ fn check_expr_annotations() -> bool {
 }
 
 fn check_return_type_mismatch() -> bool {
-    let source: *const u8 = c"module sema.typing.return_mismatch; fn helper() -> i32 { return true; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
+    let source: *const u8 = c"module sema.typing.return_mismatch; fn helper() -> i32 { return true; } fn main() -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -382,7 +382,7 @@ fn check_return_type_mismatch() -> bool {
 }
 
 fn check_local_type_mismatch() -> bool {
-    let source: *const u8 = c"module sema.typing.local_mismatch; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let value: i32 = true; return 0; }";
+    let source: *const u8 = c"module sema.typing.local_mismatch; fn main() -> i32 { let value: i32 = true; return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -394,7 +394,7 @@ fn check_local_type_mismatch() -> bool {
 }
 
 fn check_call_arg_type_mismatch() -> bool {
-    let source: *const u8 = c"module sema.typing.call_arg_mismatch; fn add(left: i32, right: i32) -> i32 { return left + right; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return add(1, true); }";
+    let source: *const u8 = c"module sema.typing.call_arg_mismatch; fn add(left: i32, right: i32) -> i32 { return left + right; } fn main() -> i32 { return add(1, true); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -406,7 +406,7 @@ fn check_call_arg_type_mismatch() -> bool {
 }
 
 fn check_condition_type_mismatch() -> bool {
-    let source: *const u8 = c"module sema.typing.condition_mismatch; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { if 1 { return 1; } while 2 { return 2; } return 0; }";
+    let source: *const u8 = c"module sema.typing.condition_mismatch; fn main() -> i32 { if 1 { return 1; } while 2 { return 2; } return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -418,7 +418,7 @@ fn check_condition_type_mismatch() -> bool {
 }
 
 fn check_binary_bool_arithmetic() -> bool {
-    let source: *const u8 = c"module sema.typing.binary_bool_arith; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let value: i32 = true + 1; return value; }";
+    let source: *const u8 = c"module sema.typing.binary_bool_arith; fn main() -> i32 { let value: i32 = true + 1; return value; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -430,7 +430,7 @@ fn check_binary_bool_arithmetic() -> bool {
 }
 
 fn check_binary_int_logic() -> bool {
-    let source: *const u8 = c"module sema.typing.binary_int_logic; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { if 1 && 2 { return 1; } return 0; }";
+    let source: *const u8 = c"module sema.typing.binary_int_logic; fn main() -> i32 { if 1 && 2 { return 1; } return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -442,7 +442,7 @@ fn check_binary_int_logic() -> bool {
 }
 
 fn check_binary_struct_compare() -> bool {
-    let source: *const u8 = c"module sema.typing.binary_struct_compare; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let left: Pair = Pair { value: 1 }; let right: Pair = Pair { value: 2 }; if left < right { return 1; } return 0; }";
+    let source: *const u8 = c"module sema.typing.binary_struct_compare; struct Pair { value: i32; } fn main() -> i32 { let left: Pair = Pair { value: 1 }; let right: Pair = Pair { value: 2 }; if left < right { return 1; } return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -454,7 +454,7 @@ fn check_binary_struct_compare() -> bool {
 }
 
 fn check_binary_incompatible_equality() -> bool {
-    let source: *const u8 = c"module sema.typing.binary_bad_eq; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = Pair { value: 1 }; if pair == 1 { return 1; } return 0; }";
+    let source: *const u8 = c"module sema.typing.binary_bad_eq; struct Pair { value: i32; } fn main() -> i32 { let pair: Pair = Pair { value: 1 }; if pair == 1 { return 1; } return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -466,7 +466,7 @@ fn check_binary_incompatible_equality() -> bool {
 }
 
 fn check_valid_lvalues() -> bool {
-    let source: *const u8 = c"module sema.lvalues.valid; struct Pair { value: i32; } fn inc(ptr: *mut i32) -> void { *ptr = *ptr + 1; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { var value: i32 = 1; var pair: Pair = Pair { value: 2 }; let pair_ptr: *mut Pair = &pair; value = 3; pair.value = value; pair_ptr.value = 4; inc(&value); return pair.value + value; }";
+    let source: *const u8 = c"module sema.lvalues.valid; struct Pair { value: i32; } fn inc(ptr: *mut i32) -> void { *ptr = *ptr + 1; } fn main() -> i32 { var value: i32 = 1; var pair: Pair = Pair { value: 2 }; let pair_ptr: *mut Pair = &pair; value = 3; pair.value = value; pair_ptr.value = 4; inc(&value); return pair.value + value; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -478,7 +478,7 @@ fn check_valid_lvalues() -> bool {
 }
 
 fn check_assign_to_let() -> bool {
-    let source: *const u8 = c"module sema.lvalues.let_assign; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let value: i32 = 1; value = 2; return value; }";
+    let source: *const u8 = c"module sema.lvalues.let_assign; fn main() -> i32 { let value: i32 = 1; value = 2; return value; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -490,7 +490,7 @@ fn check_assign_to_let() -> bool {
 }
 
 fn check_assign_to_param() -> bool {
-    let source: *const u8 = c"module sema.lvalues.param_assign; fn helper(value: i32) -> i32 { value = 2; return value; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(1); }";
+    let source: *const u8 = c"module sema.lvalues.param_assign; fn helper(value: i32) -> i32 { value = 2; return value; } fn main() -> i32 { return helper(1); }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -502,7 +502,7 @@ fn check_assign_to_param() -> bool {
 }
 
 fn check_assign_to_const() -> bool {
-    let source: *const u8 = c"module sema.lvalues.const_assign; const VALUE: i32 = 1; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { VALUE = 2; return VALUE; }";
+    let source: *const u8 = c"module sema.lvalues.const_assign; const VALUE: i32 = 1; fn main() -> i32 { VALUE = 2; return VALUE; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -514,7 +514,7 @@ fn check_assign_to_const() -> bool {
 }
 
 fn check_assign_to_call() -> bool {
-    let source: *const u8 = c"module sema.lvalues.call_assign; fn helper() -> i32 { return 1; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { helper() = 2; return 0; }";
+    let source: *const u8 = c"module sema.lvalues.call_assign; fn helper() -> i32 { return 1; } fn main() -> i32 { helper() = 2; return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -526,7 +526,7 @@ fn check_assign_to_call() -> bool {
 }
 
 fn check_field_through_const_pointer() -> bool {
-    let source: *const u8 = c"module sema.lvalues.const_ptr_field; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = Pair { value: 1 }; let ptr: *const Pair = &pair; ptr.value = 2; return 0; }";
+    let source: *const u8 = c"module sema.lvalues.const_ptr_field; struct Pair { value: i32; } fn main() -> i32 { let pair: Pair = Pair { value: 1 }; let ptr: *const Pair = &pair; ptr.value = 2; return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -538,7 +538,7 @@ fn check_field_through_const_pointer() -> bool {
 }
 
 fn check_deref_const_pointer() -> bool {
-    let source: *const u8 = c"module sema.lvalues.const_ptr_deref; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let ptr: *const u8 = c\"abc\"; *ptr = cast(u8, 1); return 0; }";
+    let source: *const u8 = c"module sema.lvalues.const_ptr_deref; fn main() -> i32 { let ptr: *const u8 = c\"abc\"; *ptr = cast(u8, 1); return 0; }";
     var ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -549,7 +549,7 @@ fn check_deref_const_pointer() -> bool {
     return ok;
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     if check_valid_items() &&
         check_duplicate_items() &&
         check_valid_locals() &&

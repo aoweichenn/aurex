@@ -2,7 +2,7 @@ module std_text;
 
 import std.core.text;
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     let hello: *const u8 = c"hello";
     let same: SpanU8 = span_u8(hello, cast(usize, 5));
     let again: SpanU8 = span_u8(c"hello", cast(usize, 5));

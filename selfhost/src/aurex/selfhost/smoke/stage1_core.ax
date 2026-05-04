@@ -67,7 +67,7 @@ export c fn exported_value() -> i32 @name("m0_stage1_exported_value") {
     return 23;
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     var byte: u8 = b'a';
     var cell: Cell = Cell { tag: Stage1Tag_one };
     let native: *mut NativeFile = null;

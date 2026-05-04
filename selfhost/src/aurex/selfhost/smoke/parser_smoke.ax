@@ -52,14 +52,14 @@ fn range_matches_10(source: *const u8, begin: i32, end: i32, ch0: u8, ch1: u8, c
 }
 
 fn validate_complex_expr_seed() -> bool {
-    let source: *const u8 = c"module app.expr; extern c { fn foo(a: i32, b: i32) -> i32 @name(\"foo\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return foo((1 + 2), -3 * 4); }";
+    let source: *const u8 = c"module app.expr; extern c { fn foo(a: i32, b: i32) -> i32 @name(\"foo\"); } fn main() -> i32 { return foo((1 + 2), -3 * 4); }";
     let ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
         return false;
     }
-    let export_fn: AstItemNode = ast.items[2];
-    let body: AstBlockNode = ast.blocks[export_fn.body_block];
+    let main_fn: AstItemNode = ast.items[2];
+    let body: AstBlockNode = ast.blocks[main_fn.body_block];
     let return_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[body.first_stmt]];
     let call_expr: AstExprNode = ast.exprs[return_stmt.expr_id];
     let arg0_ref: AstExprArg = ast.expr_args[call_expr.first_arg];
@@ -70,9 +70,10 @@ fn validate_complex_expr_seed() -> bool {
     let ok: bool = ast.item_count == 3 &&
         ast.extern_block_count == 1 &&
         ast.extern_fn_count == 1 &&
-        ast.export_fn_count == 1 &&
-        ast.param_count == 4 &&
-        ast.pointer_type_count == 2 &&
+        ast.fn_count == 1 &&
+        ast.export_fn_count == 0 &&
+        ast.param_count == 2 &&
+        ast.pointer_type_count == 0 &&
         ast.return_type_count == 2 &&
         ast.block_count == 1 &&
         ast.stmt_count == 1 &&
@@ -100,7 +101,7 @@ fn validate_complex_expr_seed() -> bool {
 }
 
 fn validate_multi_export_seed() -> bool {
-    let source: *const u8 = c"module app.multi; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn helper() -> i32 @name(\"helper\") { return 7; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { puts(c\"multi\"); return helper(); }";
+    let source: *const u8 = c"module app.multi; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn helper() -> i32 @name(\"helper\") { return 7; } fn main() -> i32 { puts(c\"multi\"); return helper(); }";
     let ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -119,8 +120,9 @@ fn validate_multi_export_seed() -> bool {
     let ok: bool = ast.item_count == 4 &&
         ast.extern_block_count == 1 &&
         ast.extern_fn_count == 1 &&
-        ast.export_fn_count == 2 &&
-        ast.param_count == 3 &&
+        ast.fn_count == 1 &&
+        ast.export_fn_count == 1 &&
+        ast.param_count == 1 &&
         ast.return_type_count == 3 &&
         ast.block_count == 2 &&
         ast.stmt_count == 3 &&
@@ -134,8 +136,8 @@ fn validate_multi_export_seed() -> bool {
         helper_fn.kind == AST_ITEM_EXPORT_FN &&
         helper_fn.param_count == 0 &&
         range_matches_6(source, helper_fn.abi_begin, helper_fn.abi_end, b'h', b'e', b'l', b'p', b'e', b'r') &&
-        main_fn.kind == AST_ITEM_EXPORT_FN &&
-        main_fn.param_count == 2 &&
+        main_fn.kind == AST_ITEM_FN &&
+        main_fn.param_count == 0 &&
         helper_body.first_expr == 0 &&
         helper_body.expr_count == 1 &&
         helper_body.stmt_count == 1 &&
@@ -155,7 +157,7 @@ fn validate_multi_export_seed() -> bool {
 }
 
 fn validate_control_flow_seed() -> bool {
-    let source: *const u8 = c"module app.flow; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn helper(limit: i32) -> i32 { let one: i32 = 1; var acc: i32 = 0; while acc < limit { acc = acc + one; } if acc == limit { return acc; } else { return 0; } } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { { let inner: i32 = helper(3); } return helper(2); }";
+    let source: *const u8 = c"module app.flow; extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn helper(limit: i32) -> i32 { let one: i32 = 1; var acc: i32 = 0; while acc < limit { acc = acc + one; } if acc == limit { return acc; } else { return 0; } } fn main() -> i32 { { let inner: i32 = helper(3); } return helper(2); }";
     let ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -175,8 +177,8 @@ fn validate_control_flow_seed() -> bool {
     let ok: bool = ast.item_count == 4 &&
         ast.extern_block_count == 1 &&
         ast.extern_fn_count == 1 &&
-        ast.fn_count == 1 &&
-        ast.export_fn_count == 1 &&
+        ast.fn_count == 2 &&
+        ast.export_fn_count == 0 &&
         ast.block_count == 6 &&
         ast.let_stmt_count == 2 &&
         ast.var_stmt_count == 1 &&
@@ -187,7 +189,7 @@ fn validate_control_flow_seed() -> bool {
         ast.stmt_ref_count == 10 &&
         helper_fn.kind == AST_ITEM_FN &&
         range_matches_6(source, helper_fn.name_begin, helper_fn.name_end, b'h', b'e', b'l', b'p', b'e', b'r') &&
-        main_fn.kind == AST_ITEM_EXPORT_FN &&
+        main_fn.kind == AST_ITEM_FN &&
         helper_body.stmt_count == 4 &&
         while_stmt.kind == AST_STMT_WHILE &&
         while_body.stmt_count == 1 &&
@@ -200,8 +202,8 @@ fn validate_control_flow_seed() -> bool {
     return ok;
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
-    let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 @name(\"aurex_main\") { puts(c\"ok\"); return 1 + 2 * 3; }";
+fn main() -> i32 {
+    let source: *const u8 = c"module app.main; import lib.math; extern c { opaque struct File; fn puts(s: *const u8) -> i32 @name(\"puts\"); } fn main() -> i32 { puts(c\"ok\"); return 1 + 2 * 3; }";
     let ast: AstModule = parse_seed_ast(source);
     if !ast.ok {
         ast_free_module(ast);
@@ -214,15 +216,9 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let extern_fn: AstItemNode = ast.items[2];
     let export_fn: AstItemNode = ast.items[3];
     let extern_param: AstParamNode = ast.params[0];
-    let export_argc: AstParamNode = ast.params[1];
-    let export_argv: AstParamNode = ast.params[2];
     let extern_param_type: AstTypeNode = ast.types[extern_param.type_id];
     let extern_param_pointee: AstTypeNode = ast.types[extern_param_type.pointee];
     let extern_return_type: AstTypeNode = ast.types[extern_fn.return_type];
-    let export_argc_type: AstTypeNode = ast.types[export_argc.type_id];
-    let export_argv_type: AstTypeNode = ast.types[export_argv.type_id];
-    let export_argv_pointee: AstTypeNode = ast.types[export_argv_type.pointee];
-    let export_argv_inner: AstTypeNode = ast.types[export_argv_pointee.pointee];
     let export_return_type: AstTypeNode = ast.types[export_fn.return_type];
     let body: AstBlockNode = ast.blocks[export_fn.body_block];
     let expr_stmt: AstStmtNode = ast.stmts[ast.stmt_refs[body.first_stmt]];
@@ -244,11 +240,12 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         ast.extern_block_count == 1 &&
         ast.extern_fn_count == 1 &&
         ast.opaque_struct_count == 1 &&
-        ast.export_fn_count == 1 &&
-        ast.param_count == 3 &&
-        ast.pointer_type_count == 3 &&
+        ast.fn_count == 1 &&
+        ast.export_fn_count == 0 &&
+        ast.param_count == 1 &&
+        ast.pointer_type_count == 1 &&
         ast.return_type_count == 2 &&
-        ast.abi_name_count == 2 &&
+        ast.abi_name_count == 1 &&
         ast.block_count == 1 &&
         ast.stmt_count == 2 &&
         ast.return_stmt_count == 1 &&
@@ -279,11 +276,12 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         extern_param_pointee.primitive == AST_PRIM_U8 &&
         extern_return_type.kind == AST_TYPE_PRIMITIVE &&
         extern_return_type.primitive == AST_PRIM_I32 &&
-        export_fn.kind == AST_ITEM_EXPORT_FN &&
+        export_fn.kind == AST_ITEM_FN &&
         export_fn.first_param == 1 &&
-        export_fn.param_count == 2 &&
+        export_fn.param_count == 0 &&
         range_matches_4(source, export_fn.name_begin, export_fn.name_end, b'm', b'a', b'i', b'n') &&
-        range_matches_10(source, export_fn.abi_begin, export_fn.abi_end, b'a', b'u', b'r', b'e', b'x', b'_', b'm', b'a', b'i', b'n') &&
+        export_fn.abi_begin == 0 &&
+        export_fn.abi_end == 0 &&
         export_fn.body_block == 0 &&
         body.first_stmt == 0 &&
         body.stmt_count == 2 &&
@@ -315,16 +313,6 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         source[multiply_right.begin] == b'3' &&
         return_expr.end - return_expr.begin == 9 &&
         source[return_expr.begin] == b'1' &&
-        range_matches_4(source, export_argc.name_begin, export_argc.name_end, b'a', b'r', b'g', b'c') &&
-        export_argc_type.kind == AST_TYPE_PRIMITIVE &&
-        export_argc_type.primitive == AST_PRIM_I32 &&
-        range_matches_4(source, export_argv.name_begin, export_argv.name_end, b'a', b'r', b'g', b'v') &&
-        export_argv_type.kind == AST_TYPE_POINTER &&
-        export_argv_type.mutability == AST_MUT_MUT &&
-        export_argv_pointee.kind == AST_TYPE_POINTER &&
-        export_argv_pointee.mutability == AST_MUT_MUT &&
-        export_argv_inner.kind == AST_TYPE_PRIMITIVE &&
-        export_argv_inner.primitive == AST_PRIM_U8 &&
         export_return_type.kind == AST_TYPE_PRIMITIVE &&
         export_return_type.primitive == AST_PRIM_I32 &&
         parse_seed_module(source) &&

@@ -14,7 +14,7 @@ fn classify(value: i32) -> i32 {
     }
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     if classify(-4) == -1 && classify(0) == 0 && classify(9) == 1 {
         puts(c"else if ok");
         return 0;

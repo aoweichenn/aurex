@@ -4,7 +4,7 @@ import std.core.mem;
 import std.core.text;
 import std.io.console;
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     let source: *const u8 = c"abc";
     let copy: *mut u8 = alloc_zeroed_bytes(cast(usize, 4), cast(usize, 1));
     if copy == null {

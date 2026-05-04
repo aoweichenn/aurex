@@ -19,7 +19,7 @@ fn select_input_path(argc: i32, argv: *mut *mut u8) -> *const u8 {
     return c"examples/hello.ax";
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     let path: *const u8 = select_input_path(argc, argv);
     let buffer: FileBuffer = read_file(path);
     if buffer.data == null {

@@ -1,6 +1,6 @@
 module while_condition_bool;
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     while 1 {
         return 1;
     }

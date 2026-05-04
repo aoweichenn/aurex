@@ -1,5 +1,5 @@
 module return_type_mismatch;
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     return true;
 }

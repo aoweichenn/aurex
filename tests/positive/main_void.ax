@@ -1,4 +1,4 @@
-module main_void_return;
+module main_void;
 
 fn main() -> void {
     return;

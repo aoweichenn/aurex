@@ -1,0 +1,5 @@
+module main_bad_return;
+
+fn main() -> bool {
+    return true;
+}

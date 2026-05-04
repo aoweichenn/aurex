@@ -165,7 +165,7 @@ check: all
 	$(BUILD_DIR)/aurexc_stage1 ../examples/hello.ax $(BUILD_DIR)/hello.stage1.tac
 	grep -q 'aurex_tac v0' $(BUILD_DIR)/hello.stage1.tac
 	grep -q 'fn puts(s: \*const u8) @puts linkage(extern_c) abi(c) -> i32' $(BUILD_DIR)/hello.stage1.tac
-	grep -q 'fn main(argc: i32, argv: \*mut \*mut u8)' $(BUILD_DIR)/hello.stage1.tac
+	grep -q 'fn main() @m0_hello_main linkage(internal)' $(BUILD_DIR)/hello.stage1.tac
 	grep -q 'c_string c"hello from Aurex M0"' $(BUILD_DIR)/hello.stage1.tac
 	grep -q 'ret %t' $(BUILD_DIR)/hello.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(SEED_SRC) $(BUILD_DIR)/aurexc_seed.stage1.tac

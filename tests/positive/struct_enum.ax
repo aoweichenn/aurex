@@ -10,7 +10,7 @@ enum Tag: u16 {
     one = 1,
 }
 
-export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+fn main() -> i32 {
     let p: Pair = Pair { a: 1, b: 2 };
     return p.a + p.b;
 }

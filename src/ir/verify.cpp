@@ -145,11 +145,23 @@ private:
             if (function.call_conv != AbiCallConv::aurex) {
                 fail("entry function @" + function.symbol + " must use Aurex ABI");
             }
-            if (!function.signature_params.empty()) {
-                fail("entry function @" + function.symbol + " must not have parameters");
+            const bool no_params = function.signature_params.empty();
+            bool argc_argv_params = false;
+            if (function.signature_params.size() == 2 &&
+                module_.types.same(function.signature_params[0].type, module_.types.builtin(sema::BuiltinType::i32))) {
+                const sema::TypeHandle argv_type = function.signature_params[1].type;
+                if (module_.types.is_pointer(argv_type)) {
+                    const sema::TypeHandle outer_pointee = module_.types.get(argv_type).pointee;
+                    argc_argv_params = module_.types.is_pointer(outer_pointee) &&
+                        module_.types.same(module_.types.get(outer_pointee).pointee, module_.types.builtin(sema::BuiltinType::u8));
+                }
             }
-            if (!module_.types.same(function.return_type, module_.types.builtin(sema::BuiltinType::i32))) {
-                fail("entry function @" + function.symbol + " must return i32");
+            if (!no_params && !argc_argv_params) {
+                fail("entry function @" + function.symbol + " must use no parameters or argc/argv parameters");
+            }
+            if (!module_.types.same(function.return_type, module_.types.builtin(sema::BuiltinType::i32)) &&
+                !module_.types.same(function.return_type, module_.types.builtin(sema::BuiltinType::void_))) {
+                fail("entry function @" + function.symbol + " must return i32 or void");
             }
         }
         if (function.linkage != Linkage::extern_c && function.blocks.empty()) {

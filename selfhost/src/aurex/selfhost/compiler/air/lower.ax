@@ -2,6 +2,8 @@ module aurex.selfhost.compiler.air.lower;
 
 import aurex.selfhost.compiler.air.model;
 import aurex.selfhost.compiler.air.bind;
+import aurex.selfhost.sema.annotate;
+import aurex.selfhost.sema.typing_types;
 import aurex.selfhost.syntax.ast;
 
 fn air_lower_linkage_for_item(item: AstItemNode) -> i32 {
@@ -158,6 +160,35 @@ fn air_lower_set_value_name(value: *mut AirValue, expr: AstExprNode) -> void {
     }
 }
 
+fn air_lower_sema_kind(kind: i32) -> i32 {
+    if kind == SEMA_EXPR_TYPE_ID { return AIR_SEMA_TYPE_ID; }
+    if kind == SEMA_EXPR_PRIMITIVE { return AIR_SEMA_PRIMITIVE; }
+    if kind == SEMA_EXPR_INTEGER { return AIR_SEMA_INTEGER; }
+    if kind == SEMA_EXPR_NULL { return AIR_SEMA_NULL; }
+    if kind == SEMA_EXPR_ITEM { return AIR_SEMA_ITEM; }
+    if kind == SEMA_EXPR_C_STRING { return AIR_SEMA_C_STRING; }
+    return AIR_SEMA_UNKNOWN;
+}
+
+fn air_lower_set_value_type(value: *mut AirValue, annotations: *mut SemaExprAnnotations, ast_expr_id: i32) -> void {
+    if !sema_expr_annotation_has_type(annotations, ast_expr_id) {
+        return;
+    }
+    let ty: SemaExprType = sema_get_expr_annotation(annotations, ast_expr_id);
+    value.sema_kind = air_lower_sema_kind(ty.kind);
+    value.sema_payload = -1;
+    if ty.kind == SEMA_EXPR_TYPE_ID {
+        value.type_id = ty.type_id;
+        value.sema_payload = ty.type_id;
+    }
+    if ty.kind == SEMA_EXPR_PRIMITIVE {
+        value.sema_payload = ty.primitive;
+    }
+    if ty.kind == SEMA_EXPR_ITEM {
+        value.sema_payload = ty.item_id;
+    }
+}
+
 fn air_lower_kind_for_expr(kind: i32) -> i32 {
     if kind == AST_EXPR_INTEGER { return AIR_VALUE_INTEGER; }
     if kind == AST_EXPR_IDENTIFIER { return AIR_VALUE_NAME; }
@@ -181,7 +212,7 @@ fn air_lower_kind_for_expr(kind: i32) -> i32 {
     return AIR_VALUE_NONE;
 }
 
-fn air_lower_expr_value(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, block_id: i32, ast_expr_id: i32) -> i32 {
+fn air_lower_expr_value(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations, block_id: i32, ast_expr_id: i32) -> i32 {
     if ast_expr_id < 0 || ast_expr_id >= ast.expr_count {
         function.ok = false;
         return -1;
@@ -195,6 +226,7 @@ fn air_lower_expr_value(function: *mut AirFunction, source: *const u8, ast: *mut
     var value: AirValue = air_make_value(kind, ast_expr_id, expr.type_id);
     value.op = expr.op;
     air_lower_set_value_name(&value, expr);
+    air_lower_set_value_type(&value, annotations, ast_expr_id);
     air_bind_name_value(source, ast, function, &value, expr);
 
     if expr.kind == AST_EXPR_SIZE_OF || expr.kind == AST_EXPR_ALIGN_OF {
@@ -275,7 +307,7 @@ fn air_lower_expr_value(function: *mut AirFunction, source: *const u8, ast: *mut
     return value_id;
 }
 
-fn air_lower_block_expr_values(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, air_block_id: i32, ast_block_id: i32) -> bool {
+fn air_lower_block_expr_values(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations, air_block_id: i32, ast_block_id: i32) -> bool {
     if ast_block_id < 0 || ast_block_id >= ast.block_count {
         return false;
     }
@@ -287,7 +319,7 @@ fn air_lower_block_expr_values(function: *mut AirFunction, source: *const u8, as
         if expr_id < 0 || expr_id >= ast.expr_count {
             return false;
         }
-        if air_lower_expr_value(function, source, ast, air_block_id, expr_id) < 0 {
+        if air_lower_expr_value(function, source, ast, annotations, air_block_id, expr_id) < 0 {
             return false;
         }
         expr_index = expr_index + 1;
@@ -407,11 +439,11 @@ fn air_lower_set_block_terminator(function: *mut AirFunction, ast: *mut AstModul
     return air_set_terminator(function, air_block_id, air_fallthrough_terminator());
 }
 
-fn air_lower_populate_function(function: *mut AirFunction, source: *const u8, ast: *mut AstModule) -> bool {
+fn air_lower_populate_function(function: *mut AirFunction, source: *const u8, ast: *mut AstModule, annotations: *mut SemaExprAnnotations) -> bool {
     var index: i32 = 0;
     while index < function.block_count {
         let ast_block_id: i32 = function.blocks[index].ast_block_id;
-        if !air_lower_block_expr_values(function, source, ast, index, ast_block_id) {
+        if !air_lower_block_expr_values(function, source, ast, annotations, index, ast_block_id) {
             return false;
         }
         index = index + 1;
@@ -444,23 +476,39 @@ fn air_lower_function(source: *const u8, ast: *mut AstModule, item_id: i32) -> A
         return function;
     }
     let item: AstItemNode = ast.items[item_id];
+    var annotations: SemaExprAnnotations = sema_make_expr_annotations(ast);
+    if !annotations.ok {
+        sema_free_expr_annotations(annotations);
+        function.ok = false;
+        return function;
+    }
+    if !sema_annotate_function_exprs(source, ast, item, &annotations) {
+        sema_free_expr_annotations(annotations);
+        function.ok = false;
+        return function;
+    }
     if !air_set_function_header(&function, item_id, item.name_begin, item.name_end, item.return_type, air_lower_linkage_for_item(item)) {
+        sema_free_expr_annotations(annotations);
         return function;
     }
     if !air_lower_add_params(&function, ast, item) {
+        sema_free_expr_annotations(annotations);
         function.ok = false;
         return function;
     }
     if !air_lower_add_block_tree(&function, ast, item.body_block) {
+        sema_free_expr_annotations(annotations);
         function.ok = false;
         return function;
     }
     if !air_lower_collect_block_locals(&function, ast, function.entry_block, item.body_block) {
+        sema_free_expr_annotations(annotations);
         function.ok = false;
         return function;
     }
-    if !air_lower_populate_function(&function, source, ast) {
+    if !air_lower_populate_function(&function, source, ast, &annotations) {
         function.ok = false;
     }
+    sema_free_expr_annotations(annotations);
     return function;
 }

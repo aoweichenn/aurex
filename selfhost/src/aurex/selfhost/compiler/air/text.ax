@@ -53,6 +53,16 @@ fn air_text_write_value_kind(file: *mut OutputFile, kind: i32) -> bool {
     return ir_write_text(file, c"value?");
 }
 
+fn air_text_write_sema_kind(file: *mut OutputFile, kind: i32) -> bool {
+    if kind == AIR_SEMA_TYPE_ID { return ir_write_text(file, c"type_id"); }
+    if kind == AIR_SEMA_PRIMITIVE { return ir_write_text(file, c"primitive"); }
+    if kind == AIR_SEMA_INTEGER { return ir_write_text(file, c"integer"); }
+    if kind == AIR_SEMA_NULL { return ir_write_text(file, c"null"); }
+    if kind == AIR_SEMA_ITEM { return ir_write_text(file, c"item"); }
+    if kind == AIR_SEMA_C_STRING { return ir_write_text(file, c"c_string"); }
+    return ir_write_text(file, c"unknown");
+}
+
 fn air_text_write_value_args(file: *mut OutputFile, function: *mut AirFunction, value: AirValue) -> bool {
     if value.arg_count <= 0 {
         return true;
@@ -107,6 +117,15 @@ fn air_text_write_value(file: *mut OutputFile, function: *mut AirFunction, value
     if value.type_id >= 0 {
         if !ir_write_text(file, c" type(") { return false; }
         if !ir_write_i32(file, value.type_id) { return false; }
+        if !ir_write_text(file, c")") { return false; }
+    }
+    if value.sema_kind != AIR_SEMA_UNKNOWN {
+        if !ir_write_text(file, c" sema_type(") { return false; }
+        if !air_text_write_sema_kind(file, value.sema_kind) { return false; }
+        if value.sema_payload >= 0 {
+            if !ir_write_text(file, c" ") { return false; }
+            if !ir_write_i32(file, value.sema_payload) { return false; }
+        }
         if !ir_write_text(file, c")") { return false; }
     }
     if value.name_begin >= 0 {

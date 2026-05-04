@@ -46,10 +46,14 @@ Stage1 TAC/AIR snapshot:
 - AIR is split into model, binding, lowering, text, and verifier modules.
 - AIR function snapshots include the function header, linkage, parameter table,
   local table, blocks, value DAG, instructions, and terminators.
-- AIR values carry result type ids, identifier/field/struct name ranges,
-  cast/type-op target type ids, and call/struct-literal arguments.
+- AIR values carry result type ids, sema type categories,
+  identifier/field/struct name ranges, cast/type-op target type ids, and
+  call/struct-literal arguments.
 - AIR name values can bind to params, locals, and items. Let/var/assign
   instructions also carry local bindings.
+- Sema has a standalone expression annotation table keyed by expr id. It
+  persists inferred `type_id`, primitive, integer, null, item, and c-string
+  result categories, and AIR lowering reads type information from that table.
 - The AIR verifier covers headers, params, locals, value references, value
   arguments, bindings, instructions, and terminators.
 - Temporaries are scoped to the current function block, so module-wide
@@ -62,9 +66,9 @@ Stage1 TAC/AIR snapshot:
 
 - Parser coverage is not yet enough to compile the entire selfhost compiler.
   The remaining work is mostly bundle edge cases and error recovery.
-- Stage1 sema is not persisted as a typed AST yet. AIR result types currently
-  come mostly from AST node fields, so the next step is a unified type/binding
-  annotation table.
+- Stage1 typed AST is not finalized yet. Expression annotations exist, but item
+  bindings, local bindings, call signatures, record layout, and lvalue data are
+  not all persisted in one backend annotation layer.
 - Stage1 lowering does not yet produce a real backend handoff format. AIR is
   currently a structured comment snapshot.
 - AIR still needs slots/alloca, record layout, global constant lowering,
@@ -88,9 +92,10 @@ Stage1 TAC/AIR snapshot:
    Add missing item, statement, expression, and type nodes. Each syntax addition
    should get parser smoke coverage and Stage1 snapshot assertions.
 
-3. Stabilize Stage1 typed AST / AIR type annotations  
-   Persist sema-inferred types, item bindings, and local bindings so AIR
-   lowering does not keep re-resolving through source ranges.
+3. Stabilize Stage1 typed AST / AIR annotations  
+   Build on the expression type annotation table and persist item bindings,
+   local bindings, call signatures, and lvalue data so AIR lowering does not
+   keep re-resolving through source ranges.
 
 4. Move Stage1 AIR from snapshots toward a real backend handoff  
    Cover functions, blocks, values, instructions, terminators, locals, return,
@@ -120,6 +125,6 @@ Stage1 TAC/AIR snapshot:
 
 ## Next Priority
 
-The next most useful step is persisting sema results into typed AST/AIR
-annotations and adding AIR slots/lvalue descriptors. That is the shortest path
-from “readable snapshot” to “backend-consumable IR.”
+The next most useful step is adding AIR slots/lvalue descriptors and moving
+local-binding/lvalue information into the annotation layer. That is the shortest
+path from “readable snapshot” to “backend-consumable IR.”

@@ -36,6 +36,7 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/typing_types.ax \
 	src/aurex/selfhost/sema/typing_lookup.ax \
 	src/aurex/selfhost/sema/typing_infer.ax \
+	src/aurex/selfhost/sema/annotate.ax \
 	src/aurex/selfhost/sema/typing.ax \
 	src/aurex/selfhost/sema/types.ax \
 	src/aurex/selfhost/compiler/air/model.ax \
@@ -137,6 +138,7 @@ check: all
 	grep -q 'aurex.selfhost.sema.typing_types' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.typing_lookup' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.typing_infer' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.annotate' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.typing' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.types' $(BUILD_DIR)/aurexc_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens
@@ -170,6 +172,8 @@ check: all
 	grep -q 'bind(local' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'bind(item' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'type(' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'sema_type(type_id' $(BUILD_DIR)/stage1_flow.stage1.tac
+	grep -q 'sema_type(primitive' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge while %t' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge loop_back \^entry' $(BUILD_DIR)/stage1_flow.stage1.tac
 	grep -q 'edge if %t' $(BUILD_DIR)/stage1_flow.stage1.tac
@@ -189,6 +193,9 @@ check: all
 	grep -q 'field(' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q 'target_type(' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q 'name(' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'sema_type(integer)' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'sema_type(c_string)' $(BUILD_DIR)/stage1_expr.stage1.tac
+	grep -q 'sema_type(item' $(BUILD_DIR)/stage1_expr.stage1.tac
 	grep -q '4]u8' $(BUILD_DIR)/stage1_expr.stage1.tac
 	$(BUILD_DIR)/aurexc_stage1 $(STAGE1_ITEMS_SRC) $(BUILD_DIR)/stage1_items.stage1.tac
 	grep -q 'record NativeFile' $(BUILD_DIR)/stage1_items.stage1.tac

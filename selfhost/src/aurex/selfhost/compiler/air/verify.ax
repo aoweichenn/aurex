@@ -40,6 +40,35 @@ fn air_valid_binding_ref(function: *mut AirFunction, binding_kind: i32, binding_
     return false;
 }
 
+fn air_valid_sema_kind(kind: i32) -> bool {
+    return kind == AIR_SEMA_UNKNOWN ||
+        kind == AIR_SEMA_TYPE_ID ||
+        kind == AIR_SEMA_PRIMITIVE ||
+        kind == AIR_SEMA_INTEGER ||
+        kind == AIR_SEMA_NULL ||
+        kind == AIR_SEMA_ITEM ||
+        kind == AIR_SEMA_C_STRING;
+}
+
+fn air_verify_value_type(value: AirValue) -> bool {
+    if !air_valid_sema_kind(value.sema_kind) {
+        return false;
+    }
+    if value.sema_kind == AIR_SEMA_UNKNOWN ||
+        value.sema_kind == AIR_SEMA_INTEGER ||
+        value.sema_kind == AIR_SEMA_NULL ||
+        value.sema_kind == AIR_SEMA_C_STRING {
+        return value.sema_payload < 0;
+    }
+    if value.sema_kind == AIR_SEMA_TYPE_ID {
+        return value.sema_payload >= 0 && value.type_id == value.sema_payload;
+    }
+    if value.sema_kind == AIR_SEMA_PRIMITIVE || value.sema_kind == AIR_SEMA_ITEM {
+        return value.sema_payload >= 0;
+    }
+    return false;
+}
+
 fn air_verify_value_binding(function: *mut AirFunction, value: AirValue) -> bool {
     if value.kind != AIR_VALUE_NAME {
         return air_valid_binding_ref(function, value.binding_kind, value.binding_id, true) &&
@@ -171,6 +200,9 @@ fn air_value_name_range_valid(value: AirValue) -> bool {
 
 fn air_verify_value(function: *mut AirFunction, value: AirValue) -> bool {
     if !air_verify_value_binding(function, value) {
+        return false;
+    }
+    if !air_verify_value_type(value) {
         return false;
     }
     if !air_value_name_range_valid(value) {

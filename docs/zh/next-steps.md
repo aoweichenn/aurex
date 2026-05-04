@@ -37,8 +37,9 @@ Stage1 TAC/AIR snapshot：
 - 输出三地址码表达式临时值。
 - AIR 已拆分为 model、binding、lowering、text、verify 模块。
 - AIR 函数快照包含函数头、linkage、参数表、局部表、block、value DAG、instruction 和 terminator。
-- AIR value 已记录 result type、identifier/field/struct 名称范围、cast/type-op 目标类型、call/struct literal 参数。
+- AIR value 已记录 result type、sema type category、identifier/field/struct 名称范围、cast/type-op 目标类型、call/struct literal 参数。
 - AIR name value 已能绑定到 param/local/item；let/var/assign 指令也记录局部绑定。
+- sema 已有独立表达式注解表，能按 expr id 持久化 `type_id`、primitive、integer、null、item、c string 等推导结果，AIR lowering 通过注解表读取类型信息。
 - AIR verifier 已覆盖 header、params、locals、value 引用、value args、binding、instruction 和 terminator 合法性。
 - 临时值已按当前函数 block 限定，不再把全模块表达式重复输出到每个函数。
 - 对 parser seed 未覆盖的模块输出 `selfhost_module ... lowering(ast_pending)` 占位，保持 selfhost bundle 可度量。
@@ -46,7 +47,7 @@ Stage1 TAC/AIR snapshot：
 ## 距离 M0 最终自举的缺口
 
 - Parser 覆盖还没达到完整编译 selfhost 的程度，后续仍要补 module bundle 中的未覆盖语法边界和错误恢复。
-- Stage1 sema 还没持久化 typed AST：当前能做基础解析/类型/符号检查，但 AIR 的 result type 仍主要来自 AST 节点携带的类型字段，后面需要统一类型注解表。
+- Stage1 typed AST 还没最终定型：当前已有表达式注解表，但 item/local binding、call signature、record layout 等还没全部持久化成统一 backend annotation。
 - Stage1 lowering 还没有真实可执行 AIR 后端：当前 AIR 是结构化注释快照，不是 backend handoff 格式。
 - AIR 还缺 slots/alloca、record layout、global constant lowering、复杂 lvalue descriptor、phi/SSA 合流、跨模块 item/import 绑定。
 - Stage1 没有完整 TAC/AIR verifier 与 backend verifier 的闭环：目前 verifier 已覆盖 AIR 结构合法性，但还没校验类型等价、call signature、control-flow dominance。
@@ -61,8 +62,8 @@ Stage1 TAC/AIR snapshot：
 2. 稳定 AST 结构  
    给 item、stmt、expr、type 增加缺失节点。每增加一类语法，都补 parser smoke 和 Stage1 snapshot 断言。
 
-3. 稳定 Stage1 typed AST / AIR 类型注解  
-   把 sema 推导出的类型、item 绑定、local 绑定持久化，避免 AIR lowering 继续依赖源码范围反查。
+3. 稳定 Stage1 typed AST / AIR 注解  
+   在已有表达式类型注解表基础上，继续持久化 item 绑定、local 绑定、call signature 和 lvalue 信息，避免 AIR lowering 继续依赖源码范围反查。
 
 4. 让 Stage1 AIR 从 snapshot 走向真实 backend handoff  
    先覆盖 function、block、value、instruction、terminator、locals、return、call、binary/unary、`if` 和 `while` CFG。
@@ -88,4 +89,4 @@ Stage1 TAC/AIR snapshot：
 
 ## 下一步优先级
 
-下一步最值得做的是把 sema 结果持久化到 typed AST/AIR 注解表，并补 AIR slot/lvalue descriptor。这是从“可读快照”推进到“后端可消费 IR”的最短路径。
+下一步最值得做的是补 AIR slot/lvalue descriptor，并把 local binding/lvalue 信息也放进注解层。这是从“可读快照”推进到“后端可消费 IR”的最短路径。

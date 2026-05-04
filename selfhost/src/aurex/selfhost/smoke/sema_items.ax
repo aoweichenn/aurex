@@ -1,6 +1,7 @@
 module aurex.selfhost.smoke.sema_items;
 
 import aurex.selfhost.parser.seed;
+import aurex.selfhost.sema.annotate;
 import aurex.selfhost.sema.calls;
 import aurex.selfhost.sema.items;
 import aurex.selfhost.sema.locals;
@@ -8,6 +9,7 @@ import aurex.selfhost.sema.lvalues;
 import aurex.selfhost.sema.members;
 import aurex.selfhost.sema.resolve;
 import aurex.selfhost.sema.typing;
+import aurex.selfhost.sema.typing_types;
 import aurex.selfhost.sema.types;
 import aurex.selfhost.syntax.ast;
 
@@ -302,6 +304,71 @@ fn check_valid_typing() -> bool {
     return ok;
 }
 
+fn check_expr_annotations() -> bool {
+    let source: *const u8 = c"module sema.annotate.valid; struct Pair { value: i32; } fn add(left: i32, right: i32) -> i32 { return left + right; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = Pair { value: 1 }; let result: i32 = add(pair.value, 2); if result == 3 { return result; } return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    var item_id: i32 = -1;
+    var item_index: i32 = 0;
+    while item_index < ast.item_count {
+        if ast.items[item_index].kind == AST_ITEM_EXPORT_FN {
+            item_id = item_index;
+        }
+        item_index = item_index + 1;
+    }
+    if item_id < 0 {
+        ast_free_module(ast);
+        return false;
+    }
+    let item: AstItemNode = ast.items[item_id];
+    var annotations: SemaExprAnnotations = sema_make_expr_annotations(&ast);
+    if !annotations.ok {
+        sema_free_expr_annotations(annotations);
+        ast_free_module(ast);
+        return false;
+    }
+    let annotated: bool = sema_annotate_function_exprs(source, &ast, item, &annotations);
+    var saw_integer: bool = false;
+    var saw_bool: bool = false;
+    var saw_item: bool = false;
+    var saw_i32: bool = false;
+    var index: i32 = 0;
+    while index < ast.expr_count {
+        if sema_expr_annotation_has_type(&annotations, index) {
+            let ty: SemaExprType = sema_get_expr_annotation(&annotations, index);
+            if ty.kind == SEMA_EXPR_INTEGER {
+                saw_integer = true;
+            }
+            if ty.kind == SEMA_EXPR_PRIMITIVE && ty.primitive == AST_PRIM_BOOL {
+                saw_bool = true;
+            }
+            if ty.kind == SEMA_EXPR_ITEM {
+                saw_item = true;
+            }
+            if ty.kind == SEMA_EXPR_TYPE_ID && ty.type_id >= 0 {
+                let ast_type: AstTypeNode = ast.types[ty.type_id];
+                if ast_type.kind == AST_TYPE_PRIMITIVE && ast_type.primitive == AST_PRIM_I32 {
+                    saw_i32 = true;
+                }
+            }
+        }
+        index = index + 1;
+    }
+    let ok: bool = annotated &&
+        annotations.ok &&
+        annotations.annotated_count > 0 &&
+        saw_integer &&
+        saw_bool &&
+        saw_item &&
+        saw_i32;
+    sema_free_expr_annotations(annotations);
+    ast_free_module(ast);
+    return ok;
+}
+
 fn check_return_type_mismatch() -> bool {
     let source: *const u8 = c"module sema.typing.return_mismatch; fn helper() -> i32 { return true; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { return helper(); }";
     var ast: AstModule = parse_seed_ast(source);
@@ -505,6 +572,7 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_call_const() &&
         check_call_type() &&
         check_valid_typing() &&
+        check_expr_annotations() &&
         check_return_type_mismatch() &&
         check_local_type_mismatch() &&
         check_call_arg_type_mismatch() &&

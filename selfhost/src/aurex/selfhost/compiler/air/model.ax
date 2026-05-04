@@ -54,6 +54,14 @@ const AIR_BIND_PARAM: i32 = 1;
 const AIR_BIND_LOCAL: i32 = 2;
 const AIR_BIND_ITEM: i32 = 3;
 
+const AIR_SEMA_UNKNOWN: i32 = 0;
+const AIR_SEMA_TYPE_ID: i32 = 1;
+const AIR_SEMA_PRIMITIVE: i32 = 2;
+const AIR_SEMA_INTEGER: i32 = 3;
+const AIR_SEMA_NULL: i32 = 4;
+const AIR_SEMA_ITEM: i32 = 5;
+const AIR_SEMA_C_STRING: i32 = 6;
+
 struct AirParam {
     ast_param_id: i32;
     name_begin: i32;
@@ -81,6 +89,8 @@ struct AirValue {
     kind: i32;
     ast_expr_id: i32;
     type_id: i32;
+    sema_kind: i32;
+    sema_payload: i32;
     name_begin: i32;
     name_end: i32;
     op: i32;
@@ -190,6 +200,8 @@ fn air_make_value(kind: i32, ast_expr_id: i32, type_id: i32) -> AirValue {
         kind: kind,
         ast_expr_id: ast_expr_id,
         type_id: type_id,
+        sema_kind: AIR_SEMA_UNKNOWN,
+        sema_payload: -1,
         name_begin: -1,
         name_end: -1,
         op: 0,

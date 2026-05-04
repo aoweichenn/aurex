@@ -117,6 +117,7 @@ grep -q 'aurex.selfhost.sema.resolve' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modul
 grep -q 'aurex.selfhost.sema.typing_types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.typing_lookup' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.typing_infer' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.annotate' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.typing' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${STAGE1}" -o "${STAGE1_BIN}"
@@ -149,6 +150,8 @@ grep -q 'bind(param' "${STAGE1_FLOW_TAC}"
 grep -q 'bind(local' "${STAGE1_FLOW_TAC}"
 grep -q 'bind(item' "${STAGE1_FLOW_TAC}"
 grep -q 'type(' "${STAGE1_FLOW_TAC}"
+grep -q 'sema_type(type_id' "${STAGE1_FLOW_TAC}"
+grep -q 'sema_type(primitive' "${STAGE1_FLOW_TAC}"
 grep -q 'edge while %t' "${STAGE1_FLOW_TAC}"
 grep -q 'edge loop_back \^entry' "${STAGE1_FLOW_TAC}"
 grep -q 'edge if %t' "${STAGE1_FLOW_TAC}"
@@ -169,6 +172,9 @@ grep -q 'struct_literal' "${STAGE1_EXPR_TAC}"
 grep -q 'field(' "${STAGE1_EXPR_TAC}"
 grep -q 'target_type(' "${STAGE1_EXPR_TAC}"
 grep -q 'name(' "${STAGE1_EXPR_TAC}"
+grep -q 'sema_type(integer)' "${STAGE1_EXPR_TAC}"
+grep -q 'sema_type(c_string)' "${STAGE1_EXPR_TAC}"
+grep -q 'sema_type(item' "${STAGE1_EXPR_TAC}"
 grep -q '4]u8' "${STAGE1_EXPR_TAC}"
 
 "${STAGE1_BIN}" "${STAGE1_ITEMS}" "${STAGE1_ITEMS_TAC}"
@@ -206,6 +212,7 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_lookup.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_infer.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/annotate.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/model.ax" \

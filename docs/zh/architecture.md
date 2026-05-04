@@ -109,7 +109,7 @@ selfhost 目录按组件拆分：
 - `bin`：Stage1 CLI 入口。
 - `smoke` / `tool`：验证程序。
 
-当前 Stage1 输出 `aurex_tac v0` snapshot，并在已解析函数体内嵌入 `air_ir v0` / `air_cfg v0` 注释快照。AIR 已经是函数级结构，包含函数头、linkage、参数、局部、value DAG、instruction、terminator、类型 id、名称范围、struct literal 字段参数和 param/local/item 绑定。它仍是结构化快照，还不是最终 backend handoff，也不是完整 fixed-point 编译器。
+当前 Stage1 输出 `aurex_tac v0` snapshot，并在已解析函数体内嵌入 `air_ir v0` / `air_cfg v0` 注释快照。AIR 已经是函数级结构，包含函数头、linkage、参数、局部、value DAG、instruction、terminator、类型 id、sema type category、名称范围、struct literal 字段参数和 param/local/item 绑定。sema 也有独立表达式注解表，AIR lowering 通过 expr id 读取 result type 元数据。它仍是结构化快照，还不是最终 backend handoff，也不是完整 fixed-point 编译器。
 
 ## 验证架构
 

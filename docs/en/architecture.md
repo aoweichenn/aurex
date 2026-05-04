@@ -134,8 +134,10 @@ The selfhost tree is split by component:
 Stage1 currently emits `aurex_tac v0` snapshots with embedded `air_ir v0` and
 `air_cfg v0` comment snapshots for parsed function bodies. AIR is
 function-level and carries headers, linkage, params, locals, value DAGs,
-instructions, terminators, type ids, name ranges, struct-literal field args, and
-param/local/item bindings. It is still a structured snapshot, not the final
+instructions, terminators, type ids, sema type categories, name ranges,
+struct-literal field args, and param/local/item bindings. Sema also has a
+standalone expression annotation table keyed by expr id, which AIR lowering uses
+for result type metadata. AIR is still a structured snapshot, not the final
 backend handoff format or a fixed-point compiler.
 
 ## Verification Architecture

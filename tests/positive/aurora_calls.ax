@@ -1,0 +1,19 @@
+module aurora_calls;
+
+fn add_one(x: i32) -> i32 {
+    return x + 1;
+}
+
+fn multiply(a: i32, b: i32) -> i32 {
+    return a * b;
+}
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    var x: i32 = add_one(40);
+    var y: i32 = multiply(x, 2);
+    var z: i32 = y - 82;
+    if z == 0 {
+        return 0;
+    }
+    return 1;
+}

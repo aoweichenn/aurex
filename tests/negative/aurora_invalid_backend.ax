@@ -1,0 +1,5 @@
+module aurora_invalid_backend;
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    return 0;
+}

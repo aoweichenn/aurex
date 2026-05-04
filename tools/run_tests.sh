@@ -68,6 +68,7 @@ fi
 "${AUREXC}" --help | grep -q -- '--opt-level'
 "${AUREXC}" --help | grep -q -- '--stdlib'
 "${AUREXC}" --help | grep -q -- '--std-backend'
+"${AUREXC}" --help | grep -q -- '--backend'
 "${AUREXC}" --check "${ROOT}/examples/hello.ax"
 "${AUREXC}" --emit=check "${ROOT}/examples/hello.ax"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${ROOT}/selfhost/src/aurex/selfhost/bin/aurexc_seed.ax"
@@ -113,6 +114,53 @@ grep -q 'aurex.selfhost.parser.types' "${TMP_DIR}/aurex_selfhost_parser_modules.
 grep -q 'aurex.selfhost.lexer.core' "${TMP_DIR}/aurex_selfhost_parser_modules.txt"
 diff -u "${ROOT}/tests/golden/hello.tokens" "${TMP_DIR}/aurex_tokens.txt"
 
+# Aurora backend: CLI and emit verification
+"${AUREXC}" --backend aurora --check "${ROOT}/examples/hello.ax"
+"${AUREXC}" --backend aurora --emit=ir "${ROOT}/examples/hello.ax" >"${TMP_DIR}/aurora_ir_hello.txt"
+grep -q 'aurex_ir v0' "${TMP_DIR}/aurora_ir_hello.txt"
+
+"${AUREXC}" --backend aurora --emit=asm "${ROOT}/examples/hello.ax" -o "${TMP_DIR}/aurora_hello.s"
+test -s "${TMP_DIR}/aurora_hello.s"
+grep -q 'm0_hello_main' "${TMP_DIR}/aurora_hello.s"
+grep -q 'call' "${TMP_DIR}/aurora_hello.s"
+
+"${AUREXC}" --backend aurora --emit=obj "${ROOT}/examples/hello.ax" -o "${TMP_DIR}/aurora_hello.o"
+test -s "${TMP_DIR}/aurora_hello.o"
+
+"${AUREXC}" --backend llvm --emit=exe "${ROOT}/examples/hello.ax" -o "${TMP_DIR}/hello_llvm_regression"
+HELLO_LLVM_OUT="$("${TMP_DIR}/hello_llvm_regression")"
+test "${HELLO_LLVM_OUT}" = "hello from Aurex M0"
+
+# Aurora backend: positive tests emit-only (no exe run)
+AURORA_POSITIVE_TESTS="aurora_arith aurora_control_flow aurora_calls"
+for name in ${AURORA_POSITIVE_TESTS}; do
+    src="${ROOT}/tests/positive/${name}.ax"
+    "${AUREXC}" --backend aurora --check "${src}"
+    "${AUREXC}" --backend aurora --emit=asm "${src}" -o "${TMP_DIR}/${name}_aurora.s"
+    test -s "${TMP_DIR}/${name}_aurora.s"
+    "${AUREXC}" --backend aurora --emit=obj "${src}" -o "${TMP_DIR}/${name}_aurora.o"
+    test -s "${TMP_DIR}/${name}_aurora.o"
+done
+
+# Aurora backend: negative tests
+if "${AUREXC}" --backend invalid --check "${ROOT}/tests/negative/aurora_invalid_backend.ax" 2>/dev/null; then
+    echo "expected failure for --backend invalid" >&2
+    exit 1
+fi
+
+if "${AUREXC}" --backend aurora --dump-llvm-ir "${ROOT}/examples/hello.ax" >"${TMP_DIR}/aurora_llvm_err.txt" 2>"${TMP_DIR}/aurora_llvm_err2.txt"; then
+    echo "expected failure for --backend aurora --dump-llvm-ir" >&2
+    exit 1
+fi
+grep -qE 'not available|IR text' "${TMP_DIR}/aurora_llvm_err2.txt"
+
+# Ensure LLVM backend still works with all existing positive tests that produce executables
+for src in "${ROOT}"/tests/positive/aurora_*.ax; do
+    bin="${TEST_DIR}/$(basename "${src}" .ax).llvm"
+    "${AUREXC}" --backend llvm "${src}" -o "${bin}"
+    "${bin}" >/dev/null
+done
+
 "${AUREXC}" "${ROOT}/examples/hello.ax" -o "${TEST_DIR}/hello"
 HELLO_OUT="$("${TEST_DIR}/hello")"
 test "${HELLO_OUT}" = "hello from Aurex M0"
@@ -132,7 +180,7 @@ grep -q 'load i32, ptr @m0_const_enum_answer' "${TMP_DIR}/aurex_llvm_ir_const_en
 
 for src in "${ROOT}"/tests/positive/*.ax; do
     case "$(basename "${src}" .ax)" in
-        import_path|module_name_collision|std_text|std_mem|std_file)
+        import_path|module_name_collision|std_text|std_mem|std_file|aurora_*)
             continue
             ;;
     esac
@@ -206,4 +254,5 @@ grep -q 'golden tests passed' "${TMP_DIR}/aurex_golden.txt"
 "${ROOT}/tools/compare_selfhost_lexer.sh" >"${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 grep -q 'selfhost lexer matches Stage0 lexer for local corpus' "${TMP_DIR}/aurex_selfhost_lexer_compare.txt"
 
+"${ROOT}/tools/test_aurora.sh"
 echo "0.1.2 tests passed"

@@ -1,0 +1,14 @@
+module aurora_arith;
+
+export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
+    var x: i32 = 1 + 2;
+    var y: i32 = x * 3;
+    var z: i32 = y - 3;
+    var w: i32 = z / 2;
+    var r: i32 = w % 3;
+    var result: i32 = r + x - 5;
+    if result == -2 {
+        return 0;
+    }
+    return 1;
+}

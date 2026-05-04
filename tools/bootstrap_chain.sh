@@ -101,6 +101,9 @@ grep -q 'aurex.selfhost.sema.items' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules
 grep -q 'aurex.selfhost.sema.locals' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.members' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.resolve' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.typing_types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.typing_lookup' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.sema.typing_infer' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.typing' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.sema.types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${STAGE1}" -o "${STAGE1_BIN}"
@@ -169,6 +172,9 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/locals.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/members.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/resolve.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_types.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_lookup.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_infer.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/types.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \

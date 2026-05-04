@@ -349,6 +349,54 @@ fn check_condition_type_mismatch() -> bool {
     return ok;
 }
 
+fn check_binary_bool_arithmetic() -> bool {
+    let source: *const u8 = c"module sema.typing.binary_bool_arith; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let value: i32 = true + 1; return value; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_typing(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_binary_int_logic() -> bool {
+    let source: *const u8 = c"module sema.typing.binary_int_logic; export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { if 1 && 2 { return 1; } return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_typing(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_binary_struct_compare() -> bool {
+    let source: *const u8 = c"module sema.typing.binary_struct_compare; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let left: Pair = Pair { value: 1 }; let right: Pair = Pair { value: 2 }; if left < right { return 1; } return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_typing(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
+fn check_binary_incompatible_equality() -> bool {
+    let source: *const u8 = c"module sema.typing.binary_bad_eq; struct Pair { value: i32; } export c fn main(argc: i32, argv: *mut *mut u8) -> i32 { let pair: Pair = Pair { value: 1 }; if pair == 1 { return 1; } return 0; }";
+    var ast: AstModule = parse_seed_ast(source);
+    if !ast.ok {
+        ast_free_module(ast);
+        return false;
+    }
+    let ok: bool = !sema_check_module_typing(source, &ast);
+    ast_free_module(ast);
+    return ok;
+}
+
 export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
     if check_valid_items() &&
         check_duplicate_items() &&
@@ -375,7 +423,11 @@ export c fn main(argc: i32, argv: *mut *mut u8) -> i32 {
         check_return_type_mismatch() &&
         check_local_type_mismatch() &&
         check_call_arg_type_mismatch() &&
-        check_condition_type_mismatch() {
+        check_condition_type_mismatch() &&
+        check_binary_bool_arithmetic() &&
+        check_binary_int_logic() &&
+        check_binary_struct_compare() &&
+        check_binary_incompatible_equality() {
         puts(c"selfhost sema items ok");
         return 0;
     }

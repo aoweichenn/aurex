@@ -31,6 +31,9 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/locals.ax \
 	src/aurex/selfhost/sema/members.ax \
 	src/aurex/selfhost/sema/resolve.ax \
+	src/aurex/selfhost/sema/typing_types.ax \
+	src/aurex/selfhost/sema/typing_lookup.ax \
+	src/aurex/selfhost/sema/typing_infer.ax \
 	src/aurex/selfhost/sema/typing.ax \
 	src/aurex/selfhost/sema/types.ax \
 	src/aurex/selfhost/compiler/io.ax \
@@ -112,6 +115,9 @@ check: all
 	grep -q 'aurex.selfhost.sema.locals' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.members' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.resolve' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.typing_types' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.typing_lookup' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.sema.typing_infer' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.typing' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.sema.types' $(BUILD_DIR)/aurexc_stage1.modules
 	$(BUILD_DIR)/lexer_dump > $(BUILD_DIR)/lexer_dump.tokens

@@ -6,6 +6,8 @@ const AIR_MAX_BLOCK_VALUES: i32 = 256;
 const AIR_MAX_VALUE_ARGS: i32 = 512;
 const AIR_MAX_INSTRUCTIONS: i32 = 256;
 const AIR_MAX_BLOCK_INSTRUCTIONS: i32 = 256;
+const AIR_MAX_PARAMS: i32 = 64;
+const AIR_MAX_LOCALS: i32 = 128;
 
 const AIR_VALUE_NONE: i32 = 0;
 const AIR_VALUE_TEMP: i32 = 1;
@@ -40,15 +42,54 @@ const AIR_INST_VAR: i32 = 3;
 const AIR_INST_ASSIGN: i32 = 4;
 const AIR_INST_SCOPE: i32 = 5;
 
+const AIR_LINKAGE_INTERNAL: i32 = 1;
+const AIR_LINKAGE_EXPORT_C: i32 = 2;
+
+const AIR_LOCAL_PARAM: i32 = 1;
+const AIR_LOCAL_LET: i32 = 2;
+const AIR_LOCAL_VAR: i32 = 3;
+
+const AIR_BIND_NONE: i32 = 0;
+const AIR_BIND_PARAM: i32 = 1;
+const AIR_BIND_LOCAL: i32 = 2;
+const AIR_BIND_ITEM: i32 = 3;
+
+struct AirParam {
+    ast_param_id: i32;
+    name_begin: i32;
+    name_end: i32;
+    type_id: i32;
+    value_id: i32;
+}
+
+struct AirLocal {
+    kind: i32;
+    ast_stmt_id: i32;
+    scope_block: i32;
+    name_begin: i32;
+    name_end: i32;
+    type_id: i32;
+}
+
+struct AirValueArg {
+    value_id: i32;
+    name_begin: i32;
+    name_end: i32;
+}
+
 struct AirValue {
     kind: i32;
     ast_expr_id: i32;
     type_id: i32;
+    name_begin: i32;
+    name_end: i32;
     op: i32;
     lhs: i32;
     rhs: i32;
     first_arg: i32;
     arg_count: i32;
+    binding_kind: i32;
+    binding_id: i32;
 }
 
 struct AirInstruction {
@@ -60,6 +101,8 @@ struct AirInstruction {
     lhs: i32;
     rhs: i32;
     target: i32;
+    binding_kind: i32;
+    binding_id: i32;
 }
 
 struct AirTerminator {
@@ -88,13 +131,22 @@ struct AirFunction {
     value_arg_count: i32;
     instruction_count: i32;
     block_instruction_count: i32;
+    param_count: i32;
+    local_count: i32;
+    ast_item_id: i32;
+    name_begin: i32;
+    name_end: i32;
+    return_type: i32;
+    linkage: i32;
     entry_block: i32;
     blocks: *mut AirBlock;
     values: *mut AirValue;
     block_values: *mut i32;
-    value_args: *mut i32;
+    value_args: *mut AirValueArg;
     instructions: *mut AirInstruction;
     block_instructions: *mut i32;
+    params: *mut AirParam;
+    locals: *mut AirLocal;
 }
 
 extern c {
@@ -138,11 +190,44 @@ fn air_make_value(kind: i32, ast_expr_id: i32, type_id: i32) -> AirValue {
         kind: kind,
         ast_expr_id: ast_expr_id,
         type_id: type_id,
+        name_begin: -1,
+        name_end: -1,
         op: 0,
         lhs: -1,
         rhs: -1,
         first_arg: 0,
-        arg_count: 0
+        arg_count: 0,
+        binding_kind: AIR_BIND_NONE,
+        binding_id: -1
+    };
+}
+
+fn air_make_param(ast_param_id: i32, name_begin: i32, name_end: i32, type_id: i32, value_id: i32) -> AirParam {
+    return AirParam {
+        ast_param_id: ast_param_id,
+        name_begin: name_begin,
+        name_end: name_end,
+        type_id: type_id,
+        value_id: value_id
+    };
+}
+
+fn air_make_local(kind: i32, ast_stmt_id: i32, scope_block: i32, name_begin: i32, name_end: i32, type_id: i32) -> AirLocal {
+    return AirLocal {
+        kind: kind,
+        ast_stmt_id: ast_stmt_id,
+        scope_block: scope_block,
+        name_begin: name_begin,
+        name_end: name_end,
+        type_id: type_id
+    };
+}
+
+fn air_make_value_arg(value_id: i32, name_begin: i32, name_end: i32) -> AirValueArg {
+    return AirValueArg {
+        value_id: value_id,
+        name_begin: name_begin,
+        name_end: name_end
     };
 }
 
@@ -155,7 +240,9 @@ fn air_make_instruction(kind: i32, ast_stmt_id: i32, lhs: i32, rhs: i32, target:
         type_id: type_id,
         lhs: lhs,
         rhs: rhs,
-        target: target
+        target: target,
+        binding_kind: AIR_BIND_NONE,
+        binding_id: -1
     };
 }
 
@@ -174,24 +261,35 @@ fn air_make_function() -> AirFunction {
     let blocks: *mut AirBlock = ptr_cast(*mut AirBlock, malloc(size_of(AirBlock) * cast(usize, AIR_MAX_BLOCKS)));
     let values: *mut AirValue = ptr_cast(*mut AirValue, malloc(size_of(AirValue) * cast(usize, AIR_MAX_VALUES)));
     let block_values: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_BLOCK_VALUES)));
-    let value_args: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_VALUE_ARGS)));
+    let value_args: *mut AirValueArg = ptr_cast(*mut AirValueArg, malloc(size_of(AirValueArg) * cast(usize, AIR_MAX_VALUE_ARGS)));
     let instructions: *mut AirInstruction = ptr_cast(*mut AirInstruction, malloc(size_of(AirInstruction) * cast(usize, AIR_MAX_INSTRUCTIONS)));
     let block_instructions: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_BLOCK_INSTRUCTIONS)));
+    let params: *mut AirParam = ptr_cast(*mut AirParam, malloc(size_of(AirParam) * cast(usize, AIR_MAX_PARAMS)));
+    let locals: *mut AirLocal = ptr_cast(*mut AirLocal, malloc(size_of(AirLocal) * cast(usize, AIR_MAX_LOCALS)));
     return AirFunction {
-        ok: blocks != null && values != null && block_values != null && value_args != null && instructions != null && block_instructions != null,
+        ok: blocks != null && values != null && block_values != null && value_args != null && instructions != null && block_instructions != null && params != null && locals != null,
         block_count: 0,
         value_count: 0,
         block_value_count: 0,
         value_arg_count: 0,
         instruction_count: 0,
         block_instruction_count: 0,
+        param_count: 0,
+        local_count: 0,
+        ast_item_id: -1,
+        name_begin: 0,
+        name_end: 0,
+        return_type: -1,
+        linkage: AIR_LINKAGE_INTERNAL,
         entry_block: -1,
         blocks: blocks,
         values: values,
         block_values: block_values,
         value_args: value_args,
         instructions: instructions,
-        block_instructions: block_instructions
+        block_instructions: block_instructions,
+        params: params,
+        locals: locals
     };
 }
 
@@ -202,6 +300,21 @@ fn air_free_function(function: AirFunction) -> void {
     free(ptr_cast(*mut void, function.value_args));
     free(ptr_cast(*mut void, function.instructions));
     free(ptr_cast(*mut void, function.block_instructions));
+    free(ptr_cast(*mut void, function.params));
+    free(ptr_cast(*mut void, function.locals));
+}
+
+fn air_set_function_header(function: *mut AirFunction, ast_item_id: i32, name_begin: i32, name_end: i32, return_type: i32, linkage: i32) -> bool {
+    if !function.ok || name_begin >= name_end {
+        function.ok = false;
+        return false;
+    }
+    function.ast_item_id = ast_item_id;
+    function.name_begin = name_begin;
+    function.name_end = name_end;
+    function.return_type = return_type;
+    function.linkage = linkage;
+    return true;
 }
 
 fn air_add_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
@@ -236,6 +349,43 @@ fn air_add_value(function: *mut AirFunction, block_id: i32, value: AirValue) -> 
     return value_id;
 }
 
+fn air_add_detached_value(function: *mut AirFunction, value: AirValue) -> i32 {
+    if !function.ok || function.value_count >= AIR_MAX_VALUES {
+        function.ok = false;
+        return -1;
+    }
+    let value_id: i32 = function.value_count;
+    function.values[value_id] = value;
+    function.value_count = function.value_count + 1;
+    return value_id;
+}
+
+fn air_add_param(function: *mut AirFunction, ast_param_id: i32, name_begin: i32, name_end: i32, type_id: i32) -> i32 {
+    if !function.ok || function.param_count >= AIR_MAX_PARAMS || name_begin >= name_end {
+        function.ok = false;
+        return -1;
+    }
+    let value_id: i32 = air_add_detached_value(function, air_make_value(AIR_VALUE_PARAM, -1, type_id));
+    if value_id < 0 {
+        return -1;
+    }
+    let id: i32 = function.param_count;
+    function.params[id] = air_make_param(ast_param_id, name_begin, name_end, type_id, value_id);
+    function.param_count = function.param_count + 1;
+    return id;
+}
+
+fn air_add_local(function: *mut AirFunction, kind: i32, ast_stmt_id: i32, scope_block: i32, name_begin: i32, name_end: i32, type_id: i32) -> i32 {
+    if !function.ok || function.local_count >= AIR_MAX_LOCALS || name_begin >= name_end {
+        function.ok = false;
+        return -1;
+    }
+    let id: i32 = function.local_count;
+    function.locals[id] = air_make_local(kind, ast_stmt_id, scope_block, name_begin, name_end, type_id);
+    function.local_count = function.local_count + 1;
+    return id;
+}
+
 fn air_add_instruction(function: *mut AirFunction, block_id: i32, instruction: AirInstruction) -> i32 {
     if !function.ok || block_id < 0 || block_id >= function.block_count ||
         function.instruction_count >= AIR_MAX_INSTRUCTIONS ||
@@ -264,7 +414,7 @@ fn air_set_terminator(function: *mut AirFunction, block_id: i32, terminator: Air
     return true;
 }
 
-fn air_add_value_arg(function: *mut AirFunction, value_id: i32, arg_value_id: i32) -> bool {
+fn air_add_value_arg_named(function: *mut AirFunction, value_id: i32, arg_value_id: i32, name_begin: i32, name_end: i32) -> bool {
     if !function.ok || value_id < 0 || value_id >= function.value_count ||
         function.value_arg_count >= AIR_MAX_VALUE_ARGS {
         function.ok = false;
@@ -278,8 +428,12 @@ fn air_add_value_arg(function: *mut AirFunction, value_id: i32, arg_value_id: i3
             return false;
         }
     }
-    function.value_args[function.value_arg_count] = arg_value_id;
+    function.value_args[function.value_arg_count] = air_make_value_arg(arg_value_id, name_begin, name_end);
     function.value_arg_count = function.value_arg_count + 1;
     function.values[value_id].arg_count = function.values[value_id].arg_count + 1;
     return true;
+}
+
+fn air_add_value_arg(function: *mut AirFunction, value_id: i32, arg_value_id: i32) -> bool {
+    return air_add_value_arg_named(function, value_id, arg_value_id, -1, -1);
 }

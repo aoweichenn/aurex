@@ -121,19 +121,19 @@ fn ir_write_extern_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstMod
         ir_write_text(file, c" {\n}\n");
 }
 
-fn ir_write_body_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode, linkage: *const u8) -> bool {
+fn ir_write_body_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, item: AstItemNode, linkage: *const u8) -> bool {
     if !ir_write_fn_signature(file, source, ast, item, linkage) {
         return false;
     }
-    return cfg_write_function_body(file, source, ast, item.body_block);
+    return cfg_write_function_body(file, source, ast, item_id, item.body_block);
 }
 
-fn ir_write_export_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
-    return ir_write_body_fn(file, source, ast, item, c"export_c");
+fn ir_write_export_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, item: AstItemNode) -> bool {
+    return ir_write_body_fn(file, source, ast, item_id, item, c"export_c");
 }
 
-fn ir_write_plain_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item: AstItemNode) -> bool {
-    return ir_write_body_fn(file, source, ast, item, c"internal");
+fn ir_write_plain_fn(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, item: AstItemNode) -> bool {
+    return ir_write_body_fn(file, source, ast, item_id, item, c"internal");
 }
 
 fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
@@ -188,13 +188,13 @@ fn emit_ir_source(file: *mut OutputFile, source: *const u8) -> bool {
                             }
                         } else {
                             if item.kind == AST_ITEM_EXPORT_FN {
-                                if !ir_write_export_fn(file, source, &ast, item) {
+                                if !ir_write_export_fn(file, source, &ast, index, item) {
                                     ast_free_module(ast);
                                     return false;
                                 }
                             } else {
                                 if item.kind == AST_ITEM_FN {
-                                    if !ir_write_plain_fn(file, source, &ast, item) {
+                                    if !ir_write_plain_fn(file, source, &ast, index, item) {
                                         ast_free_module(ast);
                                         return false;
                                     }

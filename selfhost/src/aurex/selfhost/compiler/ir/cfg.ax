@@ -242,11 +242,11 @@ fn cfg_write_child_edges(file: *mut OutputFile, ast: *mut AstModule, block_id: i
     return true;
 }
 
-fn cfg_write_snapshot(file: *mut OutputFile, ast: *mut AstModule, body_block: i32) -> bool {
+fn cfg_write_snapshot(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, body_block: i32) -> bool {
     if body_block < 0 || body_block >= ast.block_count {
         return true;
     }
-    var function: AirFunction = air_lower_function(ast, body_block);
+    var function: AirFunction = air_lower_function(source, ast, item_id);
     let verified: bool = air_verify_function(&function);
     if !verified {
         air_free_function(function);
@@ -269,14 +269,14 @@ fn cfg_write_snapshot(file: *mut OutputFile, ast: *mut AstModule, body_block: i3
     return ok;
 }
 
-fn cfg_write_function_body(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, body_block: i32) -> bool {
+fn cfg_write_function_body(file: *mut OutputFile, source: *const u8, ast: *mut AstModule, item_id: i32, body_block: i32) -> bool {
     if !ir_write_text(file, c" {\n") {
         return false;
     }
     if body_block >= 0 && body_block < ast.block_count {
         if !cfg_write_block(file, source, ast, body_block, true) { return false; }
         if !cfg_write_child_blocks(file, source, ast, body_block) { return false; }
-        if !cfg_write_snapshot(file, ast, body_block) { return false; }
+        if !cfg_write_snapshot(file, source, ast, item_id, body_block) { return false; }
     }
     return ir_write_text(file, c"}\n");
 }

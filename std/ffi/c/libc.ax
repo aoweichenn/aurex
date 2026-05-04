@@ -1,0 +1,36 @@
+module std.ffi.c.libc;
+
+extern c {
+    opaque struct CFile;
+
+    fn malloc(size: usize) -> *mut void @name("malloc");
+    fn calloc(count: usize, size: usize) -> *mut void @name("calloc");
+    fn realloc(ptr: *mut void, size: usize) -> *mut void @name("realloc");
+    fn free(ptr: *mut void) -> void @name("free");
+
+    fn memcpy(dst: *mut void, src: *const void, count: usize) -> *mut void @name("memcpy");
+    fn memmove(dst: *mut void, src: *const void, count: usize) -> *mut void @name("memmove");
+    fn memset(dst: *mut void, value: i32, count: usize) -> *mut void @name("memset");
+    fn memcmp(left: *const void, right: *const void, count: usize) -> i32 @name("memcmp");
+
+    fn strlen(text: *const u8) -> usize @name("strlen");
+    fn strcmp(left: *const u8, right: *const u8) -> i32 @name("strcmp");
+    fn strncmp(left: *const u8, right: *const u8, count: usize) -> i32 @name("strncmp");
+
+    fn fopen(path: *const u8, mode: *const u8) -> *mut CFile @name("fopen");
+    fn fclose(file: *mut CFile) -> i32 @name("fclose");
+    fn fread(ptr: *mut void, size: usize, count: usize, file: *mut CFile) -> usize @name("fread");
+    fn fwrite(ptr: *const void, size: usize, count: usize, file: *mut CFile) -> usize @name("fwrite");
+    fn fseek(file: *mut CFile, offset: i64, origin: i32) -> i32 @name("fseek");
+    fn ftell(file: *mut CFile) -> i64 @name("ftell");
+    fn fflush(file: *mut CFile) -> i32 @name("fflush");
+
+    fn puts(s: *const u8) -> i32 @name("puts");
+    fn putchar(ch: i32) -> i32 @name("putchar");
+    fn exit(code: i32) -> void @name("exit");
+}
+
+const SEEK_SET: i32 = 0;
+const SEEK_CUR: i32 = 1;
+const SEEK_END: i32 = 2;
+

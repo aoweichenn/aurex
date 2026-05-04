@@ -1,0 +1,15 @@
+module std.io;
+
+import std.ffi.c.libc;
+
+fn print_line(text: *const u8) -> bool {
+    return puts(text) >= 0;
+}
+
+fn print_char(ch: u8) -> bool {
+    return putchar(cast(i32, ch)) >= 0;
+}
+
+fn flush_file(file: *mut CFile) -> bool {
+    return fflush(file) == 0;
+}

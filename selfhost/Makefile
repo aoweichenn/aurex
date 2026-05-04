@@ -9,6 +9,7 @@ LEXER_SMOKE_SRC := src/aurex/selfhost/smoke/lexer_smoke.ax
 LEXER_RANGES_SRC := src/aurex/selfhost/smoke/lexer_ranges.ax
 PARSER_SMOKE_SRC := src/aurex/selfhost/smoke/parser_smoke.ax
 SEMA_ITEMS_SRC := src/aurex/selfhost/smoke/sema_items.ax
+AIR_VERIFY_SRC := src/aurex/selfhost/smoke/air_verify.ax
 STAGE1_LANG_SRC := src/aurex/selfhost/smoke/stage1_lang.ax
 STAGE1_CORE_SRC := src/aurex/selfhost/smoke/stage1_core.ax
 STAGE1_IR_SRC := src/aurex/selfhost/smoke/stage1_ir.ax
@@ -17,7 +18,7 @@ STAGE1_EXPR_SRC := src/aurex/selfhost/smoke/stage1_expr.ax
 STAGE1_ITEMS_SRC := src/aurex/selfhost/smoke/stage1_items.ax
 LEXER_DUMP_SRC := src/aurex/selfhost/tool/lexer_dump.ax
 LEXER_FILE_SRC := src/aurex/selfhost/tool/lexer_file.ax
-PROGRAMS := $(BUILD_DIR)/aurexc_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/sema_items $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/stage1_ir $(BUILD_DIR)/aurexc_stage1
+PROGRAMS := $(BUILD_DIR)/aurexc_seed $(BUILD_DIR)/lexer_smoke $(BUILD_DIR)/lexer_ranges $(BUILD_DIR)/lexer_dump $(BUILD_DIR)/lexer_file $(BUILD_DIR)/parser_smoke $(BUILD_DIR)/sema_items $(BUILD_DIR)/air_verify $(BUILD_DIR)/stage1_lang $(BUILD_DIR)/stage1_core $(BUILD_DIR)/stage1_ir $(BUILD_DIR)/aurexc_stage1
 STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/lexer/core.ax \
 	src/aurex/selfhost/syntax/ast.ax \
@@ -37,6 +38,9 @@ STAGE_COMPILER_SOURCES := \
 	src/aurex/selfhost/sema/typing_infer.ax \
 	src/aurex/selfhost/sema/typing.ax \
 	src/aurex/selfhost/sema/types.ax \
+	src/aurex/selfhost/compiler/air/model.ax \
+	src/aurex/selfhost/compiler/air/lower.ax \
+	src/aurex/selfhost/compiler/air/verify.ax \
 	src/aurex/selfhost/compiler/io.ax \
 	src/aurex/selfhost/compiler/ir/writer.ax \
 	src/aurex/selfhost/compiler/ir/names.ax \
@@ -70,6 +74,9 @@ $(BUILD_DIR)/parser_smoke: $(PARSER_SMOKE_SRC) $(MODULES) | $(BUILD_DIR)
 $(BUILD_DIR)/sema_items: $(SEMA_ITEMS_SRC) $(MODULES) | $(BUILD_DIR)
 	$(AUREXC) $(IMPORT_FLAGS) $(SEMA_ITEMS_SRC) -o $@
 
+$(BUILD_DIR)/air_verify: $(AIR_VERIFY_SRC) $(MODULES) | $(BUILD_DIR)
+	$(AUREXC) $(IMPORT_FLAGS) $(AIR_VERIFY_SRC) -o $@
+
 $(BUILD_DIR)/stage1_lang: $(STAGE1_LANG_SRC) $(MODULES) | $(BUILD_DIR)
 	$(AUREXC) $(IMPORT_FLAGS) $(STAGE1_LANG_SRC) -o $@
 
@@ -91,6 +98,7 @@ check: all
 	$(BUILD_DIR)/lexer_ranges
 	$(BUILD_DIR)/parser_smoke
 	$(BUILD_DIR)/sema_items
+	$(BUILD_DIR)/air_verify
 	$(BUILD_DIR)/stage1_lang
 	$(BUILD_DIR)/stage1_core
 	$(BUILD_DIR)/stage1_ir
@@ -107,6 +115,9 @@ check: all
 	$(AUREXC) $(IMPORT_FLAGS) --dump-modules $(STAGE1_SRC) > $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.driver' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.emit' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.model' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.lower' $(BUILD_DIR)/aurexc_stage1.modules
+	grep -q 'aurex.selfhost.compiler.air.verify' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.expr' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.cfg' $(BUILD_DIR)/aurexc_stage1.modules
 	grep -q 'aurex.selfhost.compiler.ir.types' $(BUILD_DIR)/aurexc_stage1.modules

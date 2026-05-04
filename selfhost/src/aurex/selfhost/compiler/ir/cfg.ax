@@ -1,5 +1,8 @@
 module aurex.selfhost.compiler.ir.cfg;
 
+import aurex.selfhost.compiler.air.model;
+import aurex.selfhost.compiler.air.lower;
+import aurex.selfhost.compiler.air.verify;
 import aurex.selfhost.compiler.ir.expr;
 import aurex.selfhost.compiler.ir.types;
 import aurex.selfhost.compiler.ir.writer;
@@ -241,6 +244,12 @@ fn cfg_write_child_edges(file: *mut OutputFile, ast: *mut AstModule, block_id: i
 fn cfg_write_snapshot(file: *mut OutputFile, ast: *mut AstModule, body_block: i32) -> bool {
     if body_block < 0 || body_block >= ast.block_count {
         return true;
+    }
+    var function: AirFunction = air_lower_function(ast, body_block);
+    let verified: bool = air_verify_function(&function);
+    air_free_function(function);
+    if !verified {
+        return false;
     }
     if !ir_write_text(file, c"  ; air_cfg v0\n") {
         return false;

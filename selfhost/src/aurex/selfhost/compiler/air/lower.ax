@@ -1,0 +1,272 @@
+module aurex.selfhost.compiler.air.lower;
+
+import aurex.selfhost.compiler.air.model;
+import aurex.selfhost.syntax.ast;
+
+fn air_lower_add_block_tree(function: *mut AirFunction, ast: *mut AstModule, block_id: i32) -> bool {
+    if block_id < 0 || block_id >= ast.block_count {
+        return false;
+    }
+    if air_add_block(function, block_id) < 0 {
+        return false;
+    }
+    let block: AstBlockNode = ast.blocks[block_id];
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        if stmt_id < 0 || stmt_id >= ast.stmt_count {
+            return false;
+        }
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if stmt.kind == AST_STMT_BLOCK || stmt.kind == AST_STMT_WHILE {
+            if !air_lower_add_block_tree(function, ast, stmt.then_block) {
+                return false;
+            }
+        } else {
+            if stmt.kind == AST_STMT_IF {
+                if !air_lower_add_block_tree(function, ast, stmt.then_block) {
+                    return false;
+                }
+                if stmt.else_block >= 0 {
+                    if !air_lower_add_block_tree(function, ast, stmt.else_block) {
+                        return false;
+                    }
+                }
+            }
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_lower_find_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
+    var index: i32 = 0;
+    while index < function.block_count {
+        if function.blocks[index].ast_block_id == ast_block_id {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn air_lower_value_for_expr(function: *mut AirFunction, ast_expr_id: i32) -> i32 {
+    var index: i32 = 0;
+    while index < function.value_count {
+        let value: AirValue = function.values[index];
+        if value.ast_expr_id == ast_expr_id {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+fn air_lower_kind_for_expr(kind: i32) -> i32 {
+    if kind == AST_EXPR_INTEGER { return AIR_VALUE_INTEGER; }
+    if kind == AST_EXPR_IDENTIFIER { return AIR_VALUE_NAME; }
+    if kind == AST_EXPR_STRING { return AIR_VALUE_STRING; }
+    if kind == AST_EXPR_C_STRING { return AIR_VALUE_C_STRING; }
+    if kind == AST_EXPR_BOOL { return AIR_VALUE_BOOL; }
+    if kind == AST_EXPR_NULL { return AIR_VALUE_NULL; }
+    if kind == AST_EXPR_UNARY { return AIR_VALUE_UNARY; }
+    if kind == AST_EXPR_BINARY { return AIR_VALUE_BINARY; }
+    if kind == AST_EXPR_CALL { return AIR_VALUE_CALL; }
+    if kind == AST_EXPR_FIELD { return AIR_VALUE_FIELD; }
+    if kind == AST_EXPR_INDEX { return AIR_VALUE_INDEX; }
+    if kind == AST_EXPR_STRUCT_LITERAL { return AIR_VALUE_STRUCT_LITERAL; }
+    if kind == AST_EXPR_CAST || kind == AST_EXPR_PTR_CAST || kind == AST_EXPR_BIT_CAST || kind == AST_EXPR_PTR_FROM_ADDR {
+        return AIR_VALUE_CAST;
+    }
+    if kind == AST_EXPR_SIZE_OF || kind == AST_EXPR_ALIGN_OF {
+        return AIR_VALUE_TYPE_OP;
+    }
+    if kind == AST_EXPR_PTR_ADDR { return AIR_VALUE_PTR_ADDR; }
+    return AIR_VALUE_NONE;
+}
+
+fn air_lower_expr_value(function: *mut AirFunction, ast: *mut AstModule, block_id: i32, ast_expr_id: i32) -> i32 {
+    if ast_expr_id < 0 || ast_expr_id >= ast.expr_count {
+        function.ok = false;
+        return -1;
+    }
+    let expr: AstExprNode = ast.exprs[ast_expr_id];
+    let kind: i32 = air_lower_kind_for_expr(expr.kind);
+    if kind == AIR_VALUE_NONE {
+        function.ok = false;
+        return -1;
+    }
+    var value: AirValue = air_make_value(kind, ast_expr_id, expr.type_id);
+    value.op = expr.op;
+
+    if expr.kind == AST_EXPR_SIZE_OF || expr.kind == AST_EXPR_ALIGN_OF {
+        value.op = expr.kind;
+    } else {
+        if expr.kind == AST_EXPR_PTR_CAST || expr.kind == AST_EXPR_BIT_CAST || expr.kind == AST_EXPR_PTR_FROM_ADDR {
+            value.op = expr.kind;
+        }
+    }
+
+    if expr.kind == AST_EXPR_UNARY ||
+        expr.kind == AST_EXPR_CAST ||
+        expr.kind == AST_EXPR_PTR_CAST ||
+        expr.kind == AST_EXPR_BIT_CAST ||
+        expr.kind == AST_EXPR_PTR_FROM_ADDR ||
+        expr.kind == AST_EXPR_PTR_ADDR {
+        value.lhs = air_lower_value_for_expr(function, expr.left);
+        if value.lhs < 0 {
+            function.ok = false;
+            return -1;
+        }
+    } else {
+        if expr.kind == AST_EXPR_BINARY || expr.kind == AST_EXPR_INDEX {
+            value.lhs = air_lower_value_for_expr(function, expr.left);
+            value.rhs = air_lower_value_for_expr(function, expr.right);
+            if value.lhs < 0 || value.rhs < 0 {
+                function.ok = false;
+                return -1;
+            }
+        } else {
+            if expr.kind == AST_EXPR_CALL || expr.kind == AST_EXPR_FIELD {
+                value.lhs = air_lower_value_for_expr(function, expr.left);
+                if value.lhs < 0 {
+                    function.ok = false;
+                    return -1;
+                }
+            }
+        }
+    }
+
+    let value_id: i32 = air_add_value(function, block_id, value);
+    if value_id < 0 {
+        return -1;
+    }
+
+    if expr.kind == AST_EXPR_CALL {
+        var arg_index: i32 = 0;
+        while arg_index < expr.arg_count {
+            if expr.first_arg + arg_index < 0 || expr.first_arg + arg_index >= ast.expr_arg_count {
+                function.ok = false;
+                return -1;
+            }
+            let arg: AstExprArg = ast.expr_args[expr.first_arg + arg_index];
+            let arg_value: i32 = air_lower_value_for_expr(function, arg.expr_id);
+            if arg_value < 0 || !air_add_value_arg(function, value_id, arg_value) {
+                return -1;
+            }
+            arg_index = arg_index + 1;
+        }
+    } else {
+        if expr.kind == AST_EXPR_STRUCT_LITERAL {
+            var field_index: i32 = 0;
+            while field_index < expr.field_count {
+                if expr.first_field + field_index < 0 || expr.first_field + field_index >= ast.field_init_count {
+                    function.ok = false;
+                    return -1;
+                }
+                let field: AstFieldInit = ast.field_inits[expr.first_field + field_index];
+                let field_value: i32 = air_lower_value_for_expr(function, field.expr_id);
+                if field_value < 0 || !air_add_value_arg(function, value_id, field_value) {
+                    return -1;
+                }
+                field_index = field_index + 1;
+            }
+        }
+    }
+
+    return value_id;
+}
+
+fn air_lower_block_expr_values(function: *mut AirFunction, ast: *mut AstModule, air_block_id: i32, ast_block_id: i32) -> bool {
+    if ast_block_id < 0 || ast_block_id >= ast.block_count {
+        return false;
+    }
+    function.blocks[air_block_id].first_value = function.block_value_count;
+    let block: AstBlockNode = ast.blocks[ast_block_id];
+    var expr_index: i32 = 0;
+    while expr_index < block.expr_count {
+        let expr_id: i32 = block.first_expr + expr_index;
+        if expr_id < 0 || expr_id >= ast.expr_count {
+            return false;
+        }
+        if air_lower_expr_value(function, ast, air_block_id, expr_id) < 0 {
+            return false;
+        }
+        expr_index = expr_index + 1;
+    }
+    return true;
+}
+
+fn air_lower_first_control_stmt(ast: *mut AstModule, block: AstBlockNode) -> AstStmtNode {
+    var index: i32 = 0;
+    while index < block.stmt_count {
+        let stmt_id: i32 = ast.stmt_refs[block.first_stmt + index];
+        let stmt: AstStmtNode = ast.stmts[stmt_id];
+        if stmt.kind == AST_STMT_RETURN || stmt.kind == AST_STMT_IF || stmt.kind == AST_STMT_WHILE || stmt.kind == AST_STMT_BLOCK {
+            return stmt;
+        }
+        index = index + 1;
+    }
+    return ast_make_stmt_node(AST_STMT_EXPR, 0, 0, 0, 0, -1, -1, -1, -1, -1);
+}
+
+fn air_lower_set_block_terminator(function: *mut AirFunction, ast: *mut AstModule, air_block_id: i32, ast_block_id: i32) -> bool {
+    let block: AstBlockNode = ast.blocks[ast_block_id];
+    let stmt: AstStmtNode = air_lower_first_control_stmt(ast, block);
+    if stmt.kind == AST_STMT_RETURN {
+        return air_set_terminator(function, air_block_id, air_return_terminator(air_lower_value_for_expr(function, stmt.expr_id)));
+    }
+    if stmt.kind == AST_STMT_BLOCK {
+        return air_set_terminator(function, air_block_id, air_jump_terminator(air_lower_find_block(function, stmt.then_block)));
+    }
+    if stmt.kind == AST_STMT_IF {
+        let then_block: i32 = air_lower_find_block(function, stmt.then_block);
+        var else_block: i32 = air_lower_find_block(function, ast_block_id);
+        if stmt.else_block >= 0 {
+            else_block = air_lower_find_block(function, stmt.else_block);
+        }
+        return air_set_terminator(function, air_block_id, air_branch_terminator(air_lower_value_for_expr(function, stmt.expr_id), then_block, else_block));
+    }
+    if stmt.kind == AST_STMT_WHILE {
+        return air_set_terminator(function, air_block_id, air_branch_terminator(
+            air_lower_value_for_expr(function, stmt.expr_id),
+            air_lower_find_block(function, stmt.then_block),
+            air_block_id
+        ));
+    }
+    return air_set_terminator(function, air_block_id, air_return_terminator(-1));
+}
+
+fn air_lower_populate_function(function: *mut AirFunction, ast: *mut AstModule) -> bool {
+    var index: i32 = 0;
+    while index < function.block_count {
+        let ast_block_id: i32 = function.blocks[index].ast_block_id;
+        if !air_lower_block_expr_values(function, ast, index, ast_block_id) {
+            return false;
+        }
+        index = index + 1;
+    }
+    index = 0;
+    while index < function.block_count {
+        if !air_lower_set_block_terminator(function, ast, index, function.blocks[index].ast_block_id) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_lower_function(ast: *mut AstModule, body_block: i32) -> AirFunction {
+    var function: AirFunction = air_make_function();
+    if !function.ok {
+        return function;
+    }
+    if !air_lower_add_block_tree(&function, ast, body_block) {
+        function.ok = false;
+        return function;
+    }
+    if !air_lower_populate_function(&function, ast) {
+        function.ok = false;
+    }
+    return function;
+}

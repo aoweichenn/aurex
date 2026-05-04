@@ -1,0 +1,141 @@
+module aurex.selfhost.compiler.air.verify;
+
+import aurex.selfhost.compiler.air.model;
+
+fn air_valid_block(function: *mut AirFunction, block_id: i32) -> bool {
+    return block_id >= 0 && block_id < function.block_count;
+}
+
+fn air_valid_value(function: *mut AirFunction, value_id: i32) -> bool {
+    return value_id >= 0 && value_id < function.value_count;
+}
+
+fn air_value_is_leaf(kind: i32) -> bool {
+    return kind == AIR_VALUE_TEMP ||
+        kind == AIR_VALUE_PARAM ||
+        kind == AIR_VALUE_LOCAL ||
+        kind == AIR_VALUE_INTEGER ||
+        kind == AIR_VALUE_NAME ||
+        kind == AIR_VALUE_STRING ||
+        kind == AIR_VALUE_C_STRING ||
+        kind == AIR_VALUE_BOOL ||
+        kind == AIR_VALUE_NULL ||
+        kind == AIR_VALUE_TYPE_OP;
+}
+
+fn air_value_arg_range_valid(function: *mut AirFunction, value: AirValue) -> bool {
+    if value.arg_count < 0 || value.first_arg < 0 {
+        return false;
+    }
+    if value.arg_count == 0 {
+        return true;
+    }
+    if value.first_arg + value.arg_count > function.value_arg_count {
+        return false;
+    }
+    var index: i32 = 0;
+    while index < value.arg_count {
+        if !air_valid_value(function, function.value_args[value.first_arg + index]) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_verify_value(function: *mut AirFunction, value: AirValue) -> bool {
+    if air_value_is_leaf(value.kind) {
+        return value.lhs < 0 && value.rhs < 0 && value.arg_count == 0;
+    }
+    if value.kind == AIR_VALUE_UNARY ||
+        value.kind == AIR_VALUE_CAST ||
+        value.kind == AIR_VALUE_PTR_ADDR {
+        return air_valid_value(function, value.lhs) &&
+            value.rhs < 0 &&
+            value.arg_count == 0;
+    }
+    if value.kind == AIR_VALUE_BINARY ||
+        value.kind == AIR_VALUE_INDEX {
+        return air_valid_value(function, value.lhs) &&
+            air_valid_value(function, value.rhs) &&
+            value.arg_count == 0;
+    }
+    if value.kind == AIR_VALUE_FIELD {
+        return air_valid_value(function, value.lhs) &&
+            value.rhs < 0 &&
+            value.arg_count == 0;
+    }
+    if value.kind == AIR_VALUE_CALL {
+        return air_valid_value(function, value.lhs) &&
+            value.rhs < 0 &&
+            air_value_arg_range_valid(function, value);
+    }
+    if value.kind == AIR_VALUE_STRUCT_LITERAL {
+        return value.lhs < 0 &&
+            value.rhs < 0 &&
+            air_value_arg_range_valid(function, value);
+    }
+    return false;
+}
+
+fn air_verify_block_values(function: *mut AirFunction, block: AirBlock) -> bool {
+    if block.first_value < 0 || block.value_count < 0 || block.first_value + block.value_count > function.block_value_count {
+        return false;
+    }
+    var index: i32 = 0;
+    while index < block.value_count {
+        let value_id: i32 = function.block_values[block.first_value + index];
+        if !air_valid_value(function, value_id) {
+            return false;
+        }
+        if !air_verify_value(function, function.values[value_id]) {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+fn air_verify_terminator(function: *mut AirFunction, terminator: AirTerminator) -> bool {
+    if terminator.kind == AIR_TERM_JUMP {
+        return air_valid_block(function, terminator.target);
+    }
+    if terminator.kind == AIR_TERM_BRANCH {
+        return air_valid_value(function, terminator.condition) &&
+            air_valid_block(function, terminator.then_target) &&
+            air_valid_block(function, terminator.else_target);
+    }
+    if terminator.kind == AIR_TERM_RETURN {
+        return terminator.value < 0 || air_valid_value(function, terminator.value);
+    }
+    return false;
+}
+
+fn air_verify_function(function: *mut AirFunction) -> bool {
+    if !function.ok || function.blocks == null || function.values == null || function.block_values == null || function.value_args == null {
+        return false;
+    }
+    if function.block_count <= 0 || function.block_count > AIR_MAX_BLOCKS {
+        return false;
+    }
+    if function.value_count < 0 || function.value_count > AIR_MAX_VALUES ||
+        function.block_value_count < 0 || function.block_value_count > AIR_MAX_BLOCK_VALUES ||
+        function.value_arg_count < 0 || function.value_arg_count > AIR_MAX_VALUE_ARGS {
+        return false;
+    }
+    if !air_valid_block(function, function.entry_block) {
+        return false;
+    }
+    var block_index: i32 = 0;
+    while block_index < function.block_count {
+        let block: AirBlock = function.blocks[block_index];
+        if !air_verify_block_values(function, block) {
+            return false;
+        }
+        if !air_verify_terminator(function, block.terminator) {
+            return false;
+        }
+        block_index = block_index + 1;
+    }
+    return true;
+}

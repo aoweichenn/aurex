@@ -15,6 +15,7 @@ LEXER_DUMP="${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_dump.ax"
 LEXER_FILE="${ROOT}/selfhost/src/aurex/selfhost/tool/lexer_file.ax"
 PARSER_SMOKE="${ROOT}/selfhost/src/aurex/selfhost/smoke/parser_smoke.ax"
 SEMA_ITEMS="${ROOT}/selfhost/src/aurex/selfhost/smoke/sema_items.ax"
+AIR_VERIFY="${ROOT}/selfhost/src/aurex/selfhost/smoke/air_verify.ax"
 STAGE1_LANG="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_lang.ax"
 STAGE1_CORE="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_core.ax"
 STAGE1_IR="${ROOT}/selfhost/src/aurex/selfhost/smoke/stage1_ir.ax"
@@ -30,6 +31,7 @@ LEXER_DUMP_BIN="${SELFHOST_BUILD_DIR}/lexer_dump"
 LEXER_FILE_BIN="${SELFHOST_BUILD_DIR}/lexer_file"
 PARSER_SMOKE_BIN="${SELFHOST_BUILD_DIR}/parser_smoke"
 SEMA_ITEMS_BIN="${SELFHOST_BUILD_DIR}/sema_items"
+AIR_VERIFY_BIN="${SELFHOST_BUILD_DIR}/air_verify"
 STAGE1_LANG_BIN="${SELFHOST_BUILD_DIR}/stage1_lang"
 STAGE1_CORE_BIN="${SELFHOST_BUILD_DIR}/stage1_core"
 STAGE1_IR_BIN="${SELFHOST_BUILD_DIR}/stage1_ir"
@@ -75,6 +77,10 @@ test "$("${PARSER_SMOKE_BIN}")" = "selfhost parser seed ok"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${SEMA_ITEMS}" -o "${SEMA_ITEMS_BIN}"
 test "$("${SEMA_ITEMS_BIN}")" = "selfhost sema items ok"
 
+"${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${AIR_VERIFY}"
+"${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${AIR_VERIFY}" -o "${AIR_VERIFY_BIN}"
+test "$("${AIR_VERIFY_BIN}")" = "selfhost air verifier ok"
+
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --check "${STAGE1_LANG}"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" "${STAGE1_LANG}" -o "${STAGE1_LANG_BIN}"
 test "$("${STAGE1_LANG_BIN}")" = "selfhost stage1 lang ok"
@@ -91,6 +97,9 @@ test "$("${STAGE1_CORE_BIN}")" = "selfhost stage1 core ok"
 "${AUREXC}" "${SELFHOST_IMPORT_FLAGS[@]}" --dump-modules "${STAGE1}" >"${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.driver' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.emit' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.model' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.lower' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
+grep -q 'aurex.selfhost.compiler.air.verify' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.expr' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.cfg' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
 grep -q 'aurex.selfhost.compiler.ir.types' "${SELFHOST_BUILD_DIR}/aurexc_stage1.modules"
@@ -185,6 +194,9 @@ grep -q 'mul %t' "${STAGE1_TAC_OUT}"
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing_infer.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/typing.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/sema/types.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/model.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/lower.ax" \
+    "${ROOT}/selfhost/src/aurex/selfhost/compiler/air/verify.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/io.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/writer.ax" \
     "${ROOT}/selfhost/src/aurex/selfhost/compiler/ir/names.ax" \

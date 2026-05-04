@@ -1,0 +1,212 @@
+module aurex.selfhost.compiler.air.model;
+
+const AIR_MAX_BLOCKS: i32 = 64;
+const AIR_MAX_VALUES: i32 = 256;
+const AIR_MAX_BLOCK_VALUES: i32 = 256;
+const AIR_MAX_VALUE_ARGS: i32 = 512;
+
+const AIR_VALUE_NONE: i32 = 0;
+const AIR_VALUE_TEMP: i32 = 1;
+const AIR_VALUE_PARAM: i32 = 2;
+const AIR_VALUE_LOCAL: i32 = 3;
+const AIR_VALUE_INTEGER: i32 = 4;
+const AIR_VALUE_NAME: i32 = 5;
+const AIR_VALUE_STRING: i32 = 6;
+const AIR_VALUE_C_STRING: i32 = 7;
+const AIR_VALUE_BOOL: i32 = 8;
+const AIR_VALUE_NULL: i32 = 9;
+const AIR_VALUE_UNARY: i32 = 10;
+const AIR_VALUE_BINARY: i32 = 11;
+const AIR_VALUE_CALL: i32 = 12;
+const AIR_VALUE_FIELD: i32 = 13;
+const AIR_VALUE_INDEX: i32 = 14;
+const AIR_VALUE_STRUCT_LITERAL: i32 = 15;
+const AIR_VALUE_CAST: i32 = 16;
+const AIR_VALUE_TYPE_OP: i32 = 17;
+const AIR_VALUE_PTR_ADDR: i32 = 18;
+
+const AIR_TERM_NONE: i32 = 0;
+const AIR_TERM_JUMP: i32 = 1;
+const AIR_TERM_BRANCH: i32 = 2;
+const AIR_TERM_RETURN: i32 = 3;
+
+struct AirValue {
+    kind: i32;
+    ast_expr_id: i32;
+    type_id: i32;
+    op: i32;
+    lhs: i32;
+    rhs: i32;
+    first_arg: i32;
+    arg_count: i32;
+}
+
+struct AirTerminator {
+    kind: i32;
+    condition: i32;
+    value: i32;
+    target: i32;
+    then_target: i32;
+    else_target: i32;
+}
+
+struct AirBlock {
+    ast_block_id: i32;
+    first_value: i32;
+    value_count: i32;
+    terminator: AirTerminator;
+}
+
+struct AirFunction {
+    ok: bool;
+    block_count: i32;
+    value_count: i32;
+    block_value_count: i32;
+    value_arg_count: i32;
+    entry_block: i32;
+    blocks: *mut AirBlock;
+    values: *mut AirValue;
+    block_values: *mut i32;
+    value_args: *mut i32;
+}
+
+extern c {
+    fn malloc(size: usize) -> *mut void @name("malloc");
+    fn free(ptr: *mut void) -> void @name("free");
+}
+
+fn air_make_terminator(kind: i32, condition: i32, value: i32, target: i32, then_target: i32, else_target: i32) -> AirTerminator {
+    return AirTerminator {
+        kind: kind,
+        condition: condition,
+        value: value,
+        target: target,
+        then_target: then_target,
+        else_target: else_target
+    };
+}
+
+fn air_none_terminator() -> AirTerminator {
+    return air_make_terminator(AIR_TERM_NONE, -1, -1, -1, -1, -1);
+}
+
+fn air_jump_terminator(target: i32) -> AirTerminator {
+    return air_make_terminator(AIR_TERM_JUMP, -1, -1, target, -1, -1);
+}
+
+fn air_branch_terminator(condition: i32, then_target: i32, else_target: i32) -> AirTerminator {
+    return air_make_terminator(AIR_TERM_BRANCH, condition, -1, -1, then_target, else_target);
+}
+
+fn air_return_terminator(value: i32) -> AirTerminator {
+    return air_make_terminator(AIR_TERM_RETURN, -1, value, -1, -1, -1);
+}
+
+fn air_make_value(kind: i32, ast_expr_id: i32, type_id: i32) -> AirValue {
+    return AirValue {
+        kind: kind,
+        ast_expr_id: ast_expr_id,
+        type_id: type_id,
+        op: 0,
+        lhs: -1,
+        rhs: -1,
+        first_arg: 0,
+        arg_count: 0
+    };
+}
+
+fn air_make_block(ast_block_id: i32, first_value: i32) -> AirBlock {
+    return AirBlock {
+        ast_block_id: ast_block_id,
+        first_value: first_value,
+        value_count: 0,
+        terminator: air_none_terminator()
+    };
+}
+
+fn air_make_function() -> AirFunction {
+    let blocks: *mut AirBlock = ptr_cast(*mut AirBlock, malloc(size_of(AirBlock) * cast(usize, AIR_MAX_BLOCKS)));
+    let values: *mut AirValue = ptr_cast(*mut AirValue, malloc(size_of(AirValue) * cast(usize, AIR_MAX_VALUES)));
+    let block_values: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_BLOCK_VALUES)));
+    let value_args: *mut i32 = ptr_cast(*mut i32, malloc(size_of(i32) * cast(usize, AIR_MAX_VALUE_ARGS)));
+    return AirFunction {
+        ok: blocks != null && values != null && block_values != null && value_args != null,
+        block_count: 0,
+        value_count: 0,
+        block_value_count: 0,
+        value_arg_count: 0,
+        entry_block: -1,
+        blocks: blocks,
+        values: values,
+        block_values: block_values,
+        value_args: value_args
+    };
+}
+
+fn air_free_function(function: AirFunction) -> void {
+    free(ptr_cast(*mut void, function.blocks));
+    free(ptr_cast(*mut void, function.values));
+    free(ptr_cast(*mut void, function.block_values));
+    free(ptr_cast(*mut void, function.value_args));
+}
+
+fn air_add_block(function: *mut AirFunction, ast_block_id: i32) -> i32 {
+    if !function.ok || function.block_count >= AIR_MAX_BLOCKS {
+        function.ok = false;
+        return -1;
+    }
+    let id: i32 = function.block_count;
+    function.blocks[id] = air_make_block(ast_block_id, function.block_value_count);
+    function.block_count = function.block_count + 1;
+    if function.entry_block < 0 {
+        function.entry_block = id;
+    }
+    return id;
+}
+
+fn air_add_value(function: *mut AirFunction, block_id: i32, value: AirValue) -> i32 {
+    if !function.ok || block_id < 0 || block_id >= function.block_count ||
+        function.value_count >= AIR_MAX_VALUES || function.block_value_count >= AIR_MAX_BLOCK_VALUES {
+        function.ok = false;
+        return -1;
+    }
+    if function.blocks[block_id].value_count == 0 {
+        function.blocks[block_id].first_value = function.block_value_count;
+    }
+    let value_id: i32 = function.value_count;
+    function.values[value_id] = value;
+    function.value_count = function.value_count + 1;
+    function.block_values[function.block_value_count] = value_id;
+    function.block_value_count = function.block_value_count + 1;
+    function.blocks[block_id].value_count = function.blocks[block_id].value_count + 1;
+    return value_id;
+}
+
+fn air_set_terminator(function: *mut AirFunction, block_id: i32, terminator: AirTerminator) -> bool {
+    if !function.ok || block_id < 0 || block_id >= function.block_count {
+        function.ok = false;
+        return false;
+    }
+    function.blocks[block_id].terminator = terminator;
+    return true;
+}
+
+fn air_add_value_arg(function: *mut AirFunction, value_id: i32, arg_value_id: i32) -> bool {
+    if !function.ok || value_id < 0 || value_id >= function.value_count ||
+        function.value_arg_count >= AIR_MAX_VALUE_ARGS {
+        function.ok = false;
+        return false;
+    }
+    if function.values[value_id].arg_count == 0 {
+        function.values[value_id].first_arg = function.value_arg_count;
+    } else {
+        if function.values[value_id].first_arg + function.values[value_id].arg_count != function.value_arg_count {
+            function.ok = false;
+            return false;
+        }
+    }
+    function.value_args[function.value_arg_count] = arg_value_id;
+    function.value_arg_count = function.value_arg_count + 1;
+    function.values[value_id].arg_count = function.values[value_id].arg_count + 1;
+    return true;
+}

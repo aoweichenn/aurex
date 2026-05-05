@@ -32,7 +32,12 @@ public:
     );
 
 private:
-    [[nodiscard]] bool same_signature(const FunctionSignature& existing, TypeHandle return_type, const std::vector<TypeHandle>& param_types) const noexcept;
+    [[nodiscard]] bool same_signature(
+        const FunctionSignature& existing,
+        TypeHandle return_type,
+        const std::vector<TypeHandle>& param_types,
+        bool is_variadic
+    ) const noexcept;
     void merge_function(std::string key, FunctionSignature signature, bool is_prototype);
     void insert_function_value(const std::string& key, const FunctionSignature& signature);
     void refresh_function_value(const std::string& key, const FunctionSignature& signature);

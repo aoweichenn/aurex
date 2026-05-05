@@ -116,7 +116,7 @@ llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, cons
     for (const FunctionParam& param : function.signature_params) {
         params.push_back(llvm_type(param.type));
     }
-    llvm::FunctionType* function_type = llvm::FunctionType::get(llvm_type(function.return_type), params, false);
+    llvm::FunctionType* function_type = llvm::FunctionType::get(llvm_type(function.return_type), params, function.is_variadic);
 
     if (function.linkage == Linkage::extern_c) {
         if (const auto found = extern_functions_.find(function.symbol); found != extern_functions_.end()) {

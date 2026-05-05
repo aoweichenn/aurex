@@ -175,6 +175,7 @@ void Lowerer::lower_function_declarations() {
             ? AbiCallConv::c
             : AbiCallConv::aurex;
         function.is_entry = is_root_aurex_entry(ast_, index, item);
+        function.is_variadic = item.is_variadic;
         function.return_type = function_return_type(index, item);
         for (const syntax::ParamDecl& param : item.params) {
             function.signature_params.push_back(FunctionParam {

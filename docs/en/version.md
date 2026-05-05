@@ -22,7 +22,7 @@ Included:
 - Relocatable std lookup.
 - std host-c backend support and stable `aurex_std_v0_*` symbols.
 - Current language slices, including visibility, basic generics, sum types, pattern
-  matching, expressions, and controlled inference.
+  matching, expressions, controlled inference, and `extern c` variadics.
 - golden, positive, negative, and language-feature test flows.
 - Chinese and English topic-based documentation sets.
 

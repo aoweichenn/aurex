@@ -243,6 +243,9 @@ void SemanticAnalyzer::register_value_names() {
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
             TypeHandle method_owner_type = invalid_type_handle;
+            if (item.is_variadic && !item.is_extern_c) {
+                report(item.range, "variadic functions are only supported for extern c declarations");
+            }
             if (is_method) {
                 method_owner_type = resolve_type(item.impl_type);
                 if (is_valid(method_owner_type)) {
@@ -990,7 +993,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             if (!receiver_valid || signature->param_types.size() < receiver_count) {
                 return record_expr_type(expr_id, invalid_type_handle);
             }
-            if (expected_count != expr.args.size()) {
+            if (signature->is_variadic ? expr.args.size() < expected_count : expected_count != expr.args.size()) {
                 report(expr.range, "argument count mismatch in call to " + name);
             }
             const base::usize count = expr.args.size() < expected_count ? expr.args.size() : expected_count;
@@ -1004,6 +1007,16 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                     report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
                 }
             }
+            if (signature->is_variadic) {
+                for (base::usize i = count; i < expr.args.size(); ++i) {
+                    const TypeHandle actual = analyze_expr(expr.args[i]);
+                    if (!is_valid(actual)) {
+                        report(module_.exprs[expr.args[i].value].range, "variadic argument type cannot be inferred in call to " + name);
+                    } else if (is_copy_forbidden_value(actual)) {
+                        report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                    }
+                }
+            }
             return record_expr_type(expr_id, signature->return_type);
         }
         const FunctionSignature* signature = find_function_in_visible_modules(name, callee_range);
@@ -1014,7 +1027,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         if (expr.callee.value < checked_.expr_c_names.size()) {
             checked_.expr_c_names[expr.callee.value] = signature->c_name;
         }
-        if (signature->param_types.size() != expr.args.size()) {
+        if (signature->is_variadic ? expr.args.size() < signature->param_types.size() : signature->param_types.size() != expr.args.size()) {
             report(expr.range, "argument count mismatch in call to " + name);
         }
         const base::usize count = expr.args.size() < signature->param_types.size() ? expr.args.size() : signature->param_types.size();
@@ -1025,6 +1038,16 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
             if (is_copy_forbidden_value(signature->param_types[i])) {
                 report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+            }
+        }
+        if (signature->is_variadic) {
+            for (base::usize i = count; i < expr.args.size(); ++i) {
+                const TypeHandle actual = analyze_expr(expr.args[i]);
+                if (!is_valid(actual)) {
+                    report(module_.exprs[expr.args[i].value].range, "variadic argument type cannot be inferred in call to " + name);
+                } else if (is_copy_forbidden_value(actual)) {
+                    report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                }
             }
         }
         return record_expr_type(expr_id, signature->return_type);
@@ -2207,6 +2230,9 @@ std::string dump_checked_module(const CheckedModule& checked) {
         }
         if (fn.is_extern_c) {
             out << " extern_c";
+        }
+        if (fn.is_variadic) {
+            out << " variadic";
         }
         if (fn.is_export_c) {
             out << " export_c";

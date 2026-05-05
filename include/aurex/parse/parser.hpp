@@ -50,7 +50,7 @@ private:
     [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);
     [[nodiscard]] std::vector<std::string_view> parse_generic_param_list();
     [[nodiscard]] std::vector<syntax::TypeId> parse_type_arg_list();
-    [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list();
+    [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
     [[nodiscard]] syntax::TypeId parse_optional_return_type();
     void parse_optional_abi_name(syntax::ItemNode& item);
 

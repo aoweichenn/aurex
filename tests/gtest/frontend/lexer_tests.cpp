@@ -54,6 +54,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "  let f32_value: f32 = 9;\n"
         "  let f64_value: f64 = 10;\n"
         "  let try_token: i32 = 1?;\n"
+        "  extern c fn printf(format: *const u8, ...) -> i32;\n"
         "  if true && !false || flag { return; }\n"
         "  if i8_value != 0 && i16_value <= 2 && u16_value > 1 && u32_value >= 4 { return; }\n"
         "}\n";
@@ -105,6 +106,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "amp_amp",
         "pipe_pipe",
         "question",
+        "ellipsis",
     });
 
     DiagnosticSink invalid_diagnostics;

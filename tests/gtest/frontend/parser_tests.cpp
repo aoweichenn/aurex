@@ -21,6 +21,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "extern c {\n"
         "  opaque struct Handle;\n"
         "  fn puts(s: *const u8) -> i32 @name(\"puts\");\n"
+        "  fn printf(format: *const u8, ...) -> i32 @name(\"printf\");\n"
         "}\n"
         "struct Counter { value: i32; }\n"
         "impl Counter {\n"
@@ -69,6 +70,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_align_of",
         "kw_ptr_addr",
         "kw_ptr_from_addr",
+        "ellipsis",
         "byte_literal",
         "string_literal",
     });
@@ -77,6 +79,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     expect_contains_all(ast, {
         "pub import c.host",
         "opaque_struct Handle extern_c",
+        "fn printf extern_c variadic @name=printf",
         "impl for Counter",
         "fn inc for Counter",
         "fn exported export_c @name=exported",

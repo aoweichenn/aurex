@@ -71,6 +71,7 @@ enum class TokenKind {
     r_bracket,
     comma,
     dot,
+    ellipsis,
     semicolon,
     colon,
     arrow,

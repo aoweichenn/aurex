@@ -238,7 +238,13 @@ void Lexer::scan_token() {
         add_token(TokenKind::comma, begin, offset_);
         break;
     case '.':
-        add_token(TokenKind::dot, begin, offset_);
+        if (peek() == '.' && peek_next() == '.') {
+            advance();
+            advance();
+            add_token(TokenKind::ellipsis, begin, offset_);
+        } else {
+            add_token(TokenKind::dot, begin, offset_);
+        }
         break;
     case ';':
         add_token(TokenKind::semicolon, begin, offset_);

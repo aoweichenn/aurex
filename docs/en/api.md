@@ -156,8 +156,13 @@ C ABI is declared with `extern c`:
 ```m0
 extern c {
     fn puts(s: *const u8) -> i32 @name("puts");
+    fn printf(format: *const u8, ...) -> i32 @name("printf");
 }
 ```
+
+`...` is supported only on `extern c` declarations and must appear at the end of
+the parameter list. Variadic arguments use C ABI default promotions, for example
+`bool` / `u8` / `i16` to `i32` and `f32` to `f64`.
 
 C ABI symbols are exported with `export c fn`:
 

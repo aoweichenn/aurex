@@ -42,6 +42,38 @@ TEST_F(AurexIntegrationTest, FunctionPrototypes) {
     expect_contains(require_failure(aurexc() + " --check " + q(missing)).output, "function prototype has no definition");
 }
 
+TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
+    const fs::path source = positive_sample("functions", "variadic_extern_c.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains(ast, "fn snprintf extern_c variadic @name=snprintf");
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains(checked, "fn snprintf -> i32 extern_c variadic");
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) @snprintf linkage(extern_c) abi(c)",
+        "call snprintf",
+    });
+
+    const fs::path bin = test_bin_root() / "variadic_extern_c";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path non_extern = negative_sample("functions", "variadic_non_extern.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(non_extern)).output,
+        "variadic functions are only supported for extern c declarations"
+    );
+
+    const fs::path count = negative_sample("functions", "variadic_argument_count.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(count)).output, "argument count mismatch in call to printf");
+
+    const fs::path not_last = negative_sample("functions", "variadic_not_last.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(not_last)).output, "variadic marker must be last in parameter list");
+}
+
 TEST_F(AurexIntegrationTest, RecursiveFunctions) {
     const fs::path source = positive_sample("functions", "recursive_functions.ax");
 

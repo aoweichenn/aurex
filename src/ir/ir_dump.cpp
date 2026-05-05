@@ -229,6 +229,12 @@ std::string dump_module(const Module& module) {
             const FunctionParam& param = function.signature_params[i];
             out << param.name << ": " << module.types.display_name(param.type);
         }
+        if (function.is_variadic) {
+            if (!function.signature_params.empty()) {
+                out << ", ";
+            }
+            out << "...";
+        }
         out << ") @" << function.symbol
             << " linkage(" << linkage_name(function.linkage) << ")"
             << " abi(" << call_conv_name(function.call_conv) << ")";

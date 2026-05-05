@@ -333,12 +333,20 @@ private:
             return;
         }
         const Function& target = module_.functions[value.call_target.value];
-        if (value.args.size() != target.signature_params.size()) {
+        if (target.is_variadic ? value.args.size() < target.signature_params.size() : value.args.size() != target.signature_params.size()) {
             fail("call to @" + target.symbol + " has wrong argument count");
             return;
         }
-        for (base::usize i = 0; i < value.args.size(); ++i) {
+        for (base::usize i = 0; i < target.signature_params.size(); ++i) {
             verify_value_type(value.args[i], target.signature_params[i].type, "call argument");
+        }
+        for (base::usize i = target.signature_params.size(); i < value.args.size(); ++i) {
+            const Value* arg = get(value.args[i]);
+            if (arg == nullptr) {
+                fail("call argument out of range");
+                continue;
+            }
+            verify_type(arg->type, "variadic call argument");
         }
         if (!module_.types.same(value.type, target.return_type)) {
             fail("call to @" + target.symbol + " result type mismatch");
@@ -349,7 +357,7 @@ private:
         if (!module_.types.same(lhs.return_type, rhs.return_type)) {
             return false;
         }
-        if (lhs.signature_params.size() != rhs.signature_params.size()) {
+        if (lhs.is_variadic != rhs.is_variadic || lhs.signature_params.size() != rhs.signature_params.size()) {
             return false;
         }
         for (base::usize i = 0; i < lhs.signature_params.size(); ++i) {

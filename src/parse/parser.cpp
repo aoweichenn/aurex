@@ -646,8 +646,9 @@ syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_exter
     const syntax::Token& name = expect(TokenKind::identifier, "expected function name");
     expect(TokenKind::l_paren, "expected '(' after function name");
     std::vector<syntax::ParamDecl> params;
+    bool is_variadic = false;
     if (!check(TokenKind::r_paren)) {
-        params = parse_param_list();
+        params = parse_param_list(is_variadic);
     }
     expect(TokenKind::r_paren, "expected ')' after parameter list");
     const syntax::TypeId return_type = parse_optional_return_type();
@@ -659,6 +660,7 @@ syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_exter
     item.return_type = return_type;
     item.is_export_c = is_export_c;
     item.is_extern_c = is_extern_c;
+    item.is_variadic = is_variadic;
 
     parse_optional_abi_name(item);
 
@@ -677,9 +679,19 @@ syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_exter
     return module_.push_item(std::move(item));
 }
 
-std::vector<syntax::ParamDecl> Parser::parse_param_list() {
+std::vector<syntax::ParamDecl> Parser::parse_param_list(bool& is_variadic) {
     std::vector<syntax::ParamDecl> params;
     do {
+        if (match(TokenKind::ellipsis)) {
+            is_variadic = true;
+            if (!check(TokenKind::r_paren)) {
+                report_here("variadic marker must be last in parameter list");
+                while (!is_eof() && !check(TokenKind::r_paren)) {
+                    advance();
+                }
+            }
+            break;
+        }
         const syntax::Token& name = expect(TokenKind::identifier, "expected parameter name");
         expect(TokenKind::colon, "expected ':' after parameter name");
         const syntax::TypeId type = parse_type();

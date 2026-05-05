@@ -1,0 +1,41 @@
+module variadic_extern_c;
+
+import std.core.mem;
+import std.core.text;
+
+extern c {
+    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32 @name("snprintf");
+}
+
+fn main() -> i32 {
+    let buffer: *mut u8 = alloc_zeroed_bytes(cast(usize, 96), cast(usize, 1));
+    if buffer == null {
+        return 1;
+    }
+    let code: u8 = b'A';
+    let narrow: i16 = cast(i16, 7);
+    let enabled: bool = true;
+    let scale: f32 = cast(f32, 2);
+    let expected: *const u8 = c"value=7:ok small=65 narrow=7 flag=1 float=2.0";
+    let written: i32 = snprintf(
+        buffer,
+        cast(usize, 96),
+        c"value=%d:%s small=%d narrow=%d flag=%d float=%.1f",
+        7,
+        c"ok",
+        code,
+        narrow,
+        enabled,
+        scale
+    );
+    if written != cast(i32, c_strlen(expected)) {
+        free_bytes(buffer);
+        return 2;
+    }
+    if !c_string_equal(ptr_cast(*const u8, buffer), expected) {
+        free_bytes(buffer);
+        return 3;
+    }
+    free_bytes(buffer);
+    return 0;
+}

@@ -71,6 +71,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::r_bracket: return "r_bracket";
     case TokenKind::comma: return "comma";
     case TokenKind::dot: return "dot";
+    case TokenKind::ellipsis: return "ellipsis";
     case TokenKind::semicolon: return "semicolon";
     case TokenKind::colon: return "colon";
     case TokenKind::arrow: return "arrow";
@@ -450,6 +451,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (item.is_extern_c) {
         out << " extern_c";
+    }
+    if (item.is_variadic) {
+        out << " variadic";
     }
     if (item.is_prototype) {
         out << " prototype";

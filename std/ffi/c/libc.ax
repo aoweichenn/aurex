@@ -30,6 +30,7 @@ extern c {
     fn rename(old_path: *const u8, new_path: *const u8) -> i32 @name("rename");
 
     fn puts(s: *const u8) -> i32 @name("puts");
+    fn printf(format: *const u8, ...) -> i32 @name("printf");
     fn putchar(ch: i32) -> i32 @name("putchar");
     fn fputs(s: *const u8, file: *mut CFile) -> i32 @name("fputs");
     fn fputc(ch: i32, file: *mut CFile) -> i32 @name("fputc");

@@ -128,6 +128,7 @@ private:
     [[nodiscard]] std::string call_symbol(syntax::ExprId callee) const;
     [[nodiscard]] std::string value_symbol(syntax::ExprId expr_id, const syntax::ExprNode& expr) const;
     [[nodiscard]] sema::TypeHandle call_param_type(FunctionId function_id, base::usize index) const noexcept;
+    [[nodiscard]] sema::TypeHandle variadic_argument_type(sema::TypeHandle source_type) const noexcept;
     [[nodiscard]] sema::TypeHandle syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] sema::TypeHandle stmt_local_type(syntax::StmtId stmt) const noexcept;

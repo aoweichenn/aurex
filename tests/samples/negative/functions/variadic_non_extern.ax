@@ -1,0 +1,9 @@
+module variadic_non_extern;
+
+fn log(format: *const u8, ...) -> i32 {
+    return 0;
+}
+
+fn main() -> i32 {
+    return log(c"%d", 1);
+}

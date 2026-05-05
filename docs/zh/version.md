@@ -17,7 +17,8 @@
 - Aurex IR verifier 和 pass pipeline。
 - std 可重定位查找。
 - std host-c backend support 和 `aurex_std_v0_*` 稳定符号。
-- 当前语言切片，包括可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
+- 当前语言切片，包括可见性、泛型基础、sum type、pattern matching、表达式、受控推导和
+  `extern c` 变长参数。
 - golden、positive、negative 和语言特性测试链路。
 - 中英文主题文档集。
 

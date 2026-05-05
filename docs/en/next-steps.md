@@ -32,6 +32,8 @@ Current language slices:
 - Block / if expressions.
 - Controlled local and return type inference slices.
 - Function prototypes and recursive function checks.
+- `extern c` variadic declarations and calls, including C ABI default argument
+  promotions.
 - `impl` / method / associated-function MVP with explicit `self`, instance
   method calls, and `Type.function()` associated calls.
 - Standard `Result` / `Option` / `?` slice, usable for explicit error

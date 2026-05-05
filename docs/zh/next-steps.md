@@ -25,6 +25,7 @@ Stage0 主链路：
 - block / if 表达式。
 - local 和 return 类型推导的受控切片。
 - 函数原型与递归函数检查。
+- `extern c` 变长参数声明与调用，包含 C ABI 默认实参提升。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 method call 和 `Type.function()` 风格 associated call。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流。
 - 标准库容器/文本/路径基线已启动，包含泛型 `Vec<T>` 的 `VecU8` 专用 API、拥有型 `String` 和拥有型 `Path`。

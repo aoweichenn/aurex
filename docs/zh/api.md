@@ -153,8 +153,12 @@ C ABI 通过 `extern c` 声明：
 ```m0
 extern c {
     fn puts(s: *const u8) -> i32 @name("puts");
+    fn printf(format: *const u8, ...) -> i32 @name("printf");
 }
 ```
+
+`...` 只支持 `extern c` 函数声明，并且必须放在参数列表末尾。变长实参会按 C ABI
+规则做默认提升，例如 `bool` / `u8` / `i16` 提升到 `i32`，`f32` 提升到 `f64`。
 
 通过 `export c fn` 导出 C ABI 符号：
 

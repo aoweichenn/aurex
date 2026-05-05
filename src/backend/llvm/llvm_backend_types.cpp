@@ -101,6 +101,7 @@ bool LlvmEmitter::is_unsigned_integer(const sema::TypeHandle type) const noexcep
         return false;
     }
     switch (info.builtin) {
+    case sema::BuiltinType::bool_:
     case sema::BuiltinType::u8:
     case sema::BuiltinType::u16:
     case sema::BuiltinType::u32:

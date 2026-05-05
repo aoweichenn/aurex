@@ -50,6 +50,7 @@ void FunctionRegistry::register_function(
     signature.range = item.range;
     signature.is_extern_c = item.is_extern_c;
     signature.is_export_c = item.is_export_c;
+    signature.is_variadic = item.is_variadic;
     signature.has_prototype = is_prototype;
     signature.has_definition = !is_prototype && !item.is_extern_c;
     signature.is_method = syntax::is_valid(item.impl_type);
@@ -78,7 +79,7 @@ void FunctionRegistry::merge_function(
     }
 
     FunctionSignature& prior = existing->second;
-    if (!same_signature(prior, signature.return_type, signature.param_types)) {
+    if (!same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
         prior.has_conflict = true;
         report(signature.range, "function prototype and definition signatures do not match: " + signature.name);
         return;
@@ -122,9 +123,13 @@ void FunctionRegistry::merge_function(
 bool FunctionRegistry::same_signature(
     const FunctionSignature& existing,
     const TypeHandle return_type,
-    const std::vector<TypeHandle>& param_types
+    const std::vector<TypeHandle>& param_types,
+    const bool is_variadic
 ) const noexcept {
     if (!checked_.types.same(existing.return_type, return_type)) {
+        return false;
+    }
+    if (existing.is_variadic != is_variadic) {
         return false;
     }
     if (existing.param_types.size() != param_types.size()) {

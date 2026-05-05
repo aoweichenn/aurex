@@ -227,9 +227,17 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
             value.args.push_back(coerce_value(receiver, param_type));
             param_offset = 1;
         }
+        const bool variadic_call =
+            is_valid(target.function) &&
+            target.function.value < module_.functions.size() &&
+            module_.functions[target.function.value].is_variadic;
         for (base::usize i = 0; i < expr.args.size(); ++i) {
-            const sema::TypeHandle param_type = call_param_type(target.function, i + param_offset);
-            value.args.push_back(coerce_value(lower_expr(expr.args[i], param_type), param_type));
+            sema::TypeHandle param_type = call_param_type(target.function, i + param_offset);
+            ValueId arg = lower_expr(expr.args[i], param_type);
+            if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < module_.values.size()) {
+                param_type = variadic_argument_type(module_.values[arg.value].type);
+            }
+            value.args.push_back(coerce_value(arg, param_type));
         }
         return append_value(value);
     }
@@ -447,6 +455,28 @@ sema::TypeHandle Lowerer::call_param_type(const FunctionId function_id, const ba
     return function.signature_params[index].type;
 }
 
+sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_type) const noexcept {
+    if (!sema::is_valid(source_type)) {
+        return source_type;
+    }
+    const sema::TypeInfo& info = module_.types.get(source_type);
+    if (info.kind != sema::TypeKind::builtin) {
+        return source_type;
+    }
+    switch (info.builtin) {
+    case sema::BuiltinType::bool_:
+    case sema::BuiltinType::i8:
+    case sema::BuiltinType::u8:
+    case sema::BuiltinType::i16:
+    case sema::BuiltinType::u16:
+        return module_.types.builtin(sema::BuiltinType::i32);
+    case sema::BuiltinType::f32:
+        return module_.types.builtin(sema::BuiltinType::f64);
+    default:
+        return source_type;
+    }
+}
+
 sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept {
     if (!syntax::is_valid(type) || type.value >= checked_.syntax_type_handles.size()) {
         return sema::invalid_type_handle;
@@ -495,7 +525,15 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
     if (!sema::is_valid(target_type) || !sema::is_valid(source_type) || module_.types.same(source_type, target_type)) {
         return value_id;
     }
-    if (module_.types.is_integer(source_type) && module_.types.is_integer(target_type)) {
+    const bool source_numeric =
+        module_.types.is_integer(source_type) ||
+        module_.types.is_float(source_type) ||
+        module_.types.is_bool(source_type);
+    const bool target_numeric =
+        module_.types.is_integer(target_type) ||
+        module_.types.is_float(target_type) ||
+        module_.types.is_bool(target_type);
+    if (source_numeric && target_numeric) {
         Value value;
         value.kind = ValueKind::cast;
         value.type = target_type;

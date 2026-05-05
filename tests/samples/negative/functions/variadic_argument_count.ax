@@ -1,0 +1,9 @@
+module variadic_argument_count;
+
+extern c {
+    fn printf(format: *const u8, ...) -> i32 @name("printf");
+}
+
+fn main() -> i32 {
+    return printf();
+}

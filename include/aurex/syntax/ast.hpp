@@ -251,6 +251,7 @@ struct ItemNode {
     TypeId impl_type = invalid_type_id;
     bool is_export_c = false;
     bool is_extern_c = false;
+    bool is_variadic = false;
     bool is_prototype = false;
     std::string_view abi_name;
     std::vector<ItemId> extern_items;

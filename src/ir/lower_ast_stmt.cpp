@@ -1,0 +1,189 @@
+#include "lower_ast_internal.hpp"
+
+namespace aurex::ir::detail {
+
+void Lowerer::lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
+    if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
+        return;
+    }
+    current_function_ = &module_.functions[function_id.value];
+    locals_.clear();
+    loop_breaks_.clear();
+    loop_continues_.clear();
+    current_block_ = add_block(*current_function_, "entry");
+
+    for (const syntax::ParamDecl& param : item.params) {
+        Value param_value;
+        param_value.kind = ValueKind::param;
+        param_value.name = std::string(param.name);
+        param_value.type = syntax_type(param.type);
+        const ValueId param_id = append_value(param_value);
+        current_function_->param_values.push_back(param_id);
+
+        Value slot;
+        slot.kind = ValueKind::alloca;
+        slot.name = std::string(param.name);
+        slot.type = module_.types.pointer(sema::PointerMutability::mut, param_value.type);
+        const ValueId slot_id = append_value(slot);
+        locals_[std::string(param.name)] = LocalBinding {slot_id, false};
+        append_store(slot_id, param_id);
+    }
+
+    lower_block(item.body);
+    if (!has_terminator(current_block_)) {
+        Terminator term;
+        term.kind = TerminatorKind::return_;
+        set_terminator(current_block_, term);
+    }
+    current_function_ = nullptr;
+}
+
+void Lowerer::lower_block(const syntax::StmtId block_id) {
+    const auto previous_locals = locals_;
+    lower_block_contents(block_id);
+    locals_ = previous_locals;
+}
+
+void Lowerer::lower_block_contents(const syntax::StmtId block_id) {
+    if (!syntax::is_valid(block_id) || block_id.value >= ast_.stmts.size()) {
+        return;
+    }
+    const syntax::StmtNode& block = ast_.stmts[block_id.value];
+    if (block.kind != syntax::StmtKind::block) {
+        return;
+    }
+    for (const syntax::StmtId stmt : block.statements) {
+        if (has_terminator(current_block_)) {
+            break;
+        }
+        lower_stmt(stmt);
+    }
+}
+
+void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
+    if (!syntax::is_valid(stmt_id) || stmt_id.value >= ast_.stmts.size()) {
+        return;
+    }
+    const syntax::StmtNode& stmt = ast_.stmts[stmt_id.value];
+    switch (stmt.kind) {
+    case syntax::StmtKind::let:
+    case syntax::StmtKind::var: {
+        const sema::TypeHandle local_type = stmt_local_type(stmt_id);
+        Value slot;
+        slot.kind = ValueKind::alloca;
+        slot.name = std::string(stmt.name);
+        slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
+        const ValueId slot_id = append_value(slot);
+        locals_[std::string(stmt.name)] = LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var};
+        append_store(slot_id, lower_expr(stmt.init, local_type));
+        break;
+    }
+    case syntax::StmtKind::assign:
+        append_store(lower_place_addr(stmt.lhs), lower_expr(stmt.rhs, checked_expr_type(checked_, stmt.lhs)));
+        break;
+    case syntax::StmtKind::if_:
+        lower_if(stmt);
+        break;
+    case syntax::StmtKind::while_:
+        lower_while(stmt);
+        break;
+    case syntax::StmtKind::break_: {
+        Terminator term;
+        term.kind = TerminatorKind::branch;
+        term.target = loop_breaks_.empty() ? invalid_block_id : loop_breaks_.back();
+        set_terminator(current_block_, term);
+        break;
+    }
+    case syntax::StmtKind::continue_: {
+        Terminator term;
+        term.kind = TerminatorKind::branch;
+        term.target = loop_continues_.empty() ? invalid_block_id : loop_continues_.back();
+        set_terminator(current_block_, term);
+        break;
+    }
+    case syntax::StmtKind::return_: {
+        Terminator term;
+        term.kind = TerminatorKind::return_;
+        if (syntax::is_valid(stmt.return_value)) {
+            term.value = coerce_value(lower_expr(stmt.return_value, current_function_->return_type), current_function_->return_type);
+        }
+        set_terminator(current_block_, term);
+        break;
+    }
+    case syntax::StmtKind::expr:
+        static_cast<void>(lower_expr(stmt.init));
+        break;
+    case syntax::StmtKind::block:
+        lower_block(stmt_id);
+        break;
+    }
+}
+
+void Lowerer::lower_if(const syntax::StmtNode& stmt) {
+    const ValueId condition = lower_expr(stmt.condition);
+    const BlockId then_block = add_block(*current_function_, "if.then" + std::to_string(current_function_->blocks.size()));
+    const BlockId else_block = add_block(*current_function_, "if.else" + std::to_string(current_function_->blocks.size()));
+    BlockId join_block = invalid_block_id;
+    const auto ensure_join_block = [&]() -> BlockId {
+        if (!is_valid(join_block)) {
+            join_block = add_block(*current_function_, "if.join" + std::to_string(current_function_->blocks.size()));
+        }
+        return join_block;
+    };
+
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = then_block;
+    cond.else_target = else_block;
+    set_terminator(current_block_, cond);
+
+    current_block_ = then_block;
+    lower_block(stmt.then_block);
+    const bool then_open = !has_terminator(current_block_);
+    if (then_open) {
+        append_branch_if_open(ensure_join_block());
+    }
+
+    current_block_ = else_block;
+    if (syntax::is_valid(stmt.else_block)) {
+        lower_block(stmt.else_block);
+    }
+    if (syntax::is_valid(stmt.else_if)) {
+        lower_stmt(stmt.else_if);
+    }
+    const bool else_open = !has_terminator(current_block_);
+    if (else_open) {
+        append_branch_if_open(ensure_join_block());
+    }
+
+    current_block_ = is_valid(join_block) ? join_block : invalid_block_id;
+}
+
+void Lowerer::lower_while(const syntax::StmtNode& stmt) {
+    const BlockId condition_block = add_block(*current_function_, "while.cond" + std::to_string(current_function_->blocks.size()));
+
+    append_branch_if_open(condition_block);
+    current_block_ = condition_block;
+    const ValueId condition = lower_expr(stmt.condition);
+    const BlockId body_block = add_block(*current_function_, "while.body" + std::to_string(current_function_->blocks.size()));
+    const BlockId exit_block = add_block(*current_function_, "while.exit" + std::to_string(current_function_->blocks.size()));
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    set_terminator(current_block_, cond);
+
+    loop_breaks_.push_back(exit_block);
+    loop_continues_.push_back(condition_block);
+    current_block_ = body_block;
+    lower_block(stmt.body);
+    append_branch_if_open(condition_block);
+    loop_continues_.pop_back();
+    loop_breaks_.pop_back();
+
+    current_block_ = exit_block;
+}
+
+} // namespace aurex::ir::detail

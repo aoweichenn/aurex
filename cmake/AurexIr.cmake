@@ -3,6 +3,9 @@ add_library(aurex_ir
     src/ir/ir.cpp
     src/ir/ir_dump.cpp
     src/ir/lower_ast.cpp
+    src/ir/lower_ast_expr.cpp
+    src/ir/lower_ast_match.cpp
+    src/ir/lower_ast_stmt.cpp
     src/ir/pass_pipeline.cpp
     src/ir/verify.cpp
 )

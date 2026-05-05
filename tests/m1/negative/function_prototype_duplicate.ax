@@ -1,0 +1,12 @@
+module function_prototype_duplicate;
+
+fn value() -> i32;
+fn value() -> i32;
+
+fn value() -> i32 {
+    return 0;
+}
+
+fn main() -> i32 {
+    return value();
+}

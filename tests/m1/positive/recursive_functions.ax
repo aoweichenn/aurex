@@ -1,0 +1,32 @@
+module recursive_functions;
+
+fn countdown(value: i32) -> i32 {
+    if value == 0 {
+        return 0;
+    }
+    return countdown(value - 1);
+}
+
+fn even(value: i32) -> bool;
+fn odd(value: i32) -> bool;
+
+fn even(value: i32) -> bool {
+    if value == 0 {
+        return true;
+    }
+    return odd(value - 1);
+}
+
+fn odd(value: i32) -> bool {
+    if value == 0 {
+        return false;
+    }
+    return even(value - 1);
+}
+
+fn main() -> i32 {
+    if countdown(4) == 0 && even(6) && odd(5) {
+        return 0;
+    }
+    return 1;
+}

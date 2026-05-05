@@ -1,0 +1,21 @@
+module function_prototype;
+
+type Count = i32;
+
+fn add_one(value: Count) -> Count;
+fn choose(flag: bool, lhs: Count, rhs: Count) -> Count;
+
+fn main() -> i32 {
+    return choose(false, add_one(40), 42) - 42;
+}
+
+fn add_one(value: Count) -> Count {
+    return value + 1;
+}
+
+fn choose(flag: bool, lhs: Count, rhs: Count) -> Count {
+    if flag {
+        return lhs;
+    }
+    return rhs;
+}

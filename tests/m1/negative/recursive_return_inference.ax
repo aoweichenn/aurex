@@ -1,0 +1,12 @@
+module recursive_return_inference;
+
+fn countdown(value: i32) {
+    if value == 0 {
+        return 0;
+    }
+    return countdown(value - 1);
+}
+
+fn main() -> i32 {
+    return countdown(3);
+}

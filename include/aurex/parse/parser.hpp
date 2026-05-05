@@ -27,6 +27,7 @@ private:
     [[nodiscard]] const syntax::Token& previous() const noexcept;
     [[nodiscard]] bool check(syntax::TokenKind kind) const noexcept;
     [[nodiscard]] bool check_next(syntax::TokenKind kind) const noexcept;
+    [[nodiscard]] bool next_angle_list_is_type_scope() const noexcept;
     bool match(syntax::TokenKind kind) noexcept;
     const syntax::Token& advance() noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
@@ -43,6 +44,8 @@ private:
     [[nodiscard]] syntax::ItemId parse_extern_block();
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
     [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);
+    [[nodiscard]] std::vector<std::string_view> parse_generic_param_list();
+    [[nodiscard]] std::vector<syntax::TypeId> parse_type_arg_list();
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list();
     [[nodiscard]] syntax::TypeId parse_optional_return_type();
     void parse_optional_abi_name(syntax::ItemNode& item);

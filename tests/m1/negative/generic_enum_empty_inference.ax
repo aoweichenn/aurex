@@ -1,0 +1,11 @@
+module generic_enum_empty_inference;
+
+enum Option<T>: u8 {
+    none = 0,
+    some(T) = 1,
+}
+
+fn main() -> i32 {
+    let value = Option.none;
+    return 0;
+}

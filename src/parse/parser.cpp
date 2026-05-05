@@ -174,6 +174,33 @@ bool Parser::check_next(const TokenKind kind) const noexcept {
     return tokens_[next].kind == kind;
 }
 
+bool Parser::next_angle_list_is_type_scope() const noexcept {
+    if (!check(TokenKind::less)) {
+        return false;
+    }
+    base::usize index = current_ + 1;
+    int depth = 1;
+    while (index < tokens_.size()) {
+        const TokenKind kind = tokens_[index].kind;
+        if (kind == TokenKind::less) {
+            ++depth;
+        } else if (kind == TokenKind::greater) {
+            --depth;
+            if (depth == 0) {
+                const base::usize after = index + 1;
+                return after < tokens_.size() && tokens_[after].kind == TokenKind::dot;
+            }
+        } else if (kind == TokenKind::semicolon ||
+                   kind == TokenKind::l_brace ||
+                   kind == TokenKind::r_brace ||
+                   kind == TokenKind::fat_arrow) {
+            return false;
+        }
+        ++index;
+    }
+    return false;
+}
+
 bool Parser::match(const TokenKind kind) noexcept {
     if (!check(kind)) {
         return false;
@@ -379,6 +406,10 @@ syntax::ItemId Parser::parse_struct_decl() {
 syntax::ItemId Parser::parse_enum_decl() {
     const syntax::Token& begin = expect(TokenKind::kw_enum, "expected 'enum'");
     const syntax::Token& name = expect(TokenKind::identifier, "expected enum name");
+    std::vector<std::string_view> generic_params;
+    if (check(TokenKind::less)) {
+        generic_params = parse_generic_param_list();
+    }
     expect(TokenKind::colon, "expected ':' after enum name");
     const syntax::TypeId base_type = parse_type();
     expect(TokenKind::l_brace, "expected '{' after enum base type");
@@ -386,6 +417,7 @@ syntax::ItemId Parser::parse_enum_decl() {
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::enum_decl;
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
     item.enum_base_type = base_type;
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
@@ -413,6 +445,43 @@ syntax::ItemId Parser::parse_enum_decl() {
     item.range = merge(begin.range, end.range);
     panic_ = false;
     return module_.push_item(std::move(item));
+}
+
+std::vector<std::string_view> Parser::parse_generic_param_list() {
+    std::vector<std::string_view> params;
+    expect(TokenKind::less, "expected '<' before generic parameter list");
+    if (!check(TokenKind::greater)) {
+        do {
+            const syntax::Token& name = expect(TokenKind::identifier, "expected generic parameter name");
+            if (name.kind == TokenKind::identifier) {
+                params.push_back(name.text);
+            }
+            panic_ = false;
+            if (check(TokenKind::greater)) {
+                break;
+            }
+        } while (match(TokenKind::comma) && !check(TokenKind::greater));
+    }
+    expect(TokenKind::greater, "expected '>' after generic parameter list");
+    panic_ = false;
+    return params;
+}
+
+std::vector<syntax::TypeId> Parser::parse_type_arg_list() {
+    std::vector<syntax::TypeId> args;
+    expect(TokenKind::less, "expected '<' before type argument list");
+    if (!check(TokenKind::greater)) {
+        do {
+            args.push_back(parse_type());
+            panic_ = false;
+            if (check(TokenKind::greater)) {
+                break;
+            }
+        } while (match(TokenKind::comma) && !check(TokenKind::greater));
+    }
+    expect(TokenKind::greater, "expected '>' after type argument list");
+    panic_ = false;
+    return args;
 }
 
 syntax::ItemId Parser::parse_extern_block() {
@@ -551,6 +620,10 @@ syntax::TypeId Parser::parse_type() {
         type.kind = syntax::TypeKind::named;
         type.range = name.range;
         type.name = name.text;
+        if (check(TokenKind::less)) {
+            type.type_args = parse_type_arg_list();
+            type.range = merge(name.range, previous().range);
+        }
         return module_.push_type(type);
     }
     if (match(TokenKind::star)) {
@@ -1115,7 +1188,26 @@ syntax::ExprId Parser::parse_unary() {
 syntax::ExprId Parser::parse_postfix() {
     syntax::ExprId expr = parse_primary();
     while (true) {
-        if (match(TokenKind::dot)) {
+        if (next_angle_list_is_type_scope() && match(TokenKind::less)) {
+            if (!syntax::is_valid(expr) || expr.value >= module_.exprs.size()) {
+                continue;
+            }
+            syntax::ExprNode& node = module_.exprs[expr.value];
+            if (node.kind != syntax::ExprKind::name) {
+                report_at(previous(), "type arguments are only supported on named enum constructors in M1");
+            }
+            if (!check(TokenKind::greater)) {
+                do {
+                    node.type_args.push_back(parse_type());
+                    panic_ = false;
+                    if (check(TokenKind::greater)) {
+                        break;
+                    }
+                } while (match(TokenKind::comma) && !check(TokenKind::greater));
+            }
+            const syntax::Token& end = expect(TokenKind::greater, "expected '>' after type argument list");
+            node.range = merge(node.range, end.range);
+        } else if (match(TokenKind::dot)) {
             const syntax::Token& field = expect(TokenKind::identifier, "expected field name after '.'");
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::field;

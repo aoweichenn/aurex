@@ -134,6 +134,30 @@ void SemanticAnalyzer::register_type_names() {
             }
             continue;
         }
+        if (item.kind == syntax::ItemKind::enum_decl && !item.generic_params.empty()) {
+            GenericEnumTemplateInfo info;
+            info.name = std::string(item.name);
+            info.module = owner;
+            const auto* const begin = module_.items.data();
+            const base::usize item_index = static_cast<base::usize>(&item - begin);
+            info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
+            info.range = item.range;
+            for (std::string_view param : item.generic_params) {
+                const std::string param_name(param);
+                if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
+                    report(item.range, "duplicate generic parameter in enum " + std::string(item.name) + ": " + param_name);
+                }
+                info.params.push_back(param_name);
+            }
+            auto inserted = generic_enum_templates_.emplace(key, std::move(info));
+            if (!inserted.second) {
+                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            }
+            if (named_types_.contains(key) || checked_.type_aliases.contains(key)) {
+                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            }
+            continue;
+        }
         if (item.kind == syntax::ItemKind::struct_decl) {
             handle = checked_.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
@@ -253,6 +277,9 @@ void SemanticAnalyzer::register_value_names() {
                 report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
+            if (!item.generic_params.empty()) {
+                continue;
+            }
             const TypeHandle enum_type = resolve_type(item.enum_base_type);
             if (!checked_.types.is_integer(enum_type)) {
                 report(item.range, "enum base type must be an integer type");
@@ -549,8 +576,9 @@ void SemanticAnalyzer::analyze_stmt(
     case syntax::StmtKind::let:
     case syntax::StmtKind::var: {
         const bool has_declared_type = syntax::is_valid(stmt.declared_type);
-        const TypeHandle init = analyze_expr(stmt.init);
-        const TypeHandle local_type = has_declared_type ? resolve_type(stmt.declared_type) : init;
+        const TypeHandle declared_type = has_declared_type ? resolve_type(stmt.declared_type) : invalid_type_handle;
+        const TypeHandle init = analyze_expr(stmt.init, declared_type);
+        const TypeHandle local_type = has_declared_type ? declared_type : init;
         if (stmt_id.value < checked_.stmt_local_types.size()) {
             checked_.stmt_local_types[stmt_id.value] = local_type;
         }
@@ -582,7 +610,7 @@ void SemanticAnalyzer::analyze_stmt(
             report(module_.exprs[stmt.lhs.value].range, "left side of assignment must be writable");
         }
         const TypeHandle lhs = analyze_expr(stmt.lhs);
-        const TypeHandle rhs = analyze_expr(stmt.rhs);
+        const TypeHandle rhs = analyze_expr(stmt.rhs, lhs);
         if (!can_assign(lhs, rhs, stmt.rhs)) {
             report(stmt.range, "assignment type mismatch");
         }
@@ -617,7 +645,7 @@ void SemanticAnalyzer::analyze_stmt(
     }
     case syntax::StmtKind::return_: {
         const TypeHandle actual = syntax::is_valid(stmt.return_value)
-            ? analyze_expr(stmt.return_value)
+            ? analyze_expr(stmt.return_value, expected_return)
             : checked_.types.builtin(BuiltinType::void_);
         if (return_inference != nullptr) {
             record_inferred_return(stmt_id, actual, *return_inference);
@@ -727,6 +755,10 @@ void SemanticAnalyzer::ensure_function_return_known(
 }
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
+    return analyze_expr(expr_id, invalid_type_handle);
+}
+
+TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const TypeHandle expected_type) {
     if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
         return invalid_type_handle;
     }
@@ -762,8 +794,19 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             report(expr.range, "callee must be a function name");
             return record_expr_type(expr_id, invalid_type_handle);
         }
+        const bool generic_enum_constructor =
+            module_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
+            syntax::is_valid(module_.exprs[expr.callee.value].object) &&
+            module_.exprs[expr.callee.value].object.value < module_.exprs.size() &&
+            module_.exprs[module_.exprs[expr.callee.value].object.value].kind == syntax::ExprKind::name &&
+            find_generic_enum_template_in_visible_modules(
+                module_.exprs[module_.exprs[expr.callee.value].object.value].text,
+                module_.exprs[expr.callee.value].range,
+                false
+            ) != nullptr;
         if (module_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
-            find_enum_constructor(expr.callee, false) == nullptr) {
+            find_enum_constructor(expr.callee, false) == nullptr &&
+            !generic_enum_constructor) {
             report(expr.range, "callee must be a function name");
             return record_expr_type(expr_id, invalid_type_handle);
         }
@@ -781,6 +824,35 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             if (!expr.args.empty()) {
                 actual = analyze_expr(expr.args.front());
                 if (!can_assign(enum_case->payload_type, actual, expr.args.front())) {
+                    report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
+                }
+                if (is_copy_forbidden_value(enum_case->payload_type)) {
+                    report(module_.exprs[expr.args.front().value].range, "non-copyable array storage cannot be used as enum payload");
+                }
+            }
+            if (expr.callee.value < checked_.expr_c_names.size()) {
+                checked_.expr_c_names[expr.callee.value] = enum_case->c_name;
+            }
+            return record_expr_type(expr_id, enum_case->type);
+        }
+        if (generic_enum_constructor) {
+            std::vector<TypeHandle> arg_types;
+            arg_types.reserve(expr.args.size());
+            for (syntax::ExprId arg : expr.args) {
+                arg_types.push_back(analyze_expr(arg));
+            }
+            const EnumCaseInfo* enum_case = instantiate_generic_enum_constructor(expr.callee, arg_types, true);
+            if (enum_case == nullptr) {
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            if (!is_valid(enum_case->payload_type)) {
+                report(expr.range, "enum case constructor requires a payload case: " + enum_case->name);
+            }
+            if (expr.args.size() != 1) {
+                report(expr.range, "enum payload constructor requires exactly one argument: " + enum_case->name);
+            }
+            if (!arg_types.empty()) {
+                if (!can_assign(enum_case->payload_type, arg_types.front(), expr.args.front())) {
                     report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
                 }
                 if (is_copy_forbidden_value(enum_case->payload_type)) {
@@ -913,6 +985,27 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             expr.object.value < module_.exprs.size() &&
             module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
             const syntax::ExprNode& object = module_.exprs[expr.object.value];
+            if (find_generic_enum_template_in_visible_modules(object.text, expr.range, false) != nullptr) {
+                const EnumCaseInfo* enum_case = nullptr;
+                if (const GenericEnumInstanceInfo* expected_instance = generic_enum_instance(expected_type);
+                    expected_instance != nullptr && expected_instance->name == object.text) {
+                    enum_case = find_enum_case_by_type_and_case(expected_type, expr.field_name);
+                }
+                if (enum_case == nullptr) {
+                    enum_case = instantiate_generic_enum_constructor(expr_id, {}, true);
+                }
+                if (enum_case == nullptr) {
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+                if (is_valid(enum_case->payload_type)) {
+                    report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+                if (expr_id.value < checked_.expr_c_names.size()) {
+                    checked_.expr_c_names[expr_id.value] = enum_case->c_name;
+                }
+                return record_expr_type(expr_id, enum_case->type);
+            }
             if (const EnumCaseInfo* enum_case = find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
                 enum_case != nullptr) {
                 if (is_valid(enum_case->payload_type)) {
@@ -1341,11 +1434,21 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {
 }
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee) {
+    return resolve_type_with_substitution(type_id, nullptr, opaque_allowed_as_pointee);
+}
+
+TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
+    const syntax::TypeId type_id,
+    const GenericTypeSubstitution* const substitution,
+    const bool opaque_allowed_as_pointee
+) {
     if (!syntax::is_valid(type_id) || type_id.value >= module_.types.size()) {
         return invalid_type_handle;
     }
 
-    if (type_id.value < checked_.syntax_type_handles.size() && is_valid(checked_.syntax_type_handles[type_id.value])) {
+    if (substitution == nullptr &&
+        type_id.value < checked_.syntax_type_handles.size() &&
+        is_valid(checked_.syntax_type_handles[type_id.value])) {
         const TypeHandle cached = checked_.syntax_type_handles[type_id.value];
         if (checked_.types.get(cached).kind == TypeKind::opaque_struct && !opaque_allowed_as_pointee) {
             report(module_.types[type_id.value].range, "opaque struct can only be used as a pointer target");
@@ -1360,12 +1463,35 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
         resolved = checked_.types.builtin(map_builtin(type.primitive));
         break;
     case syntax::TypeKind::pointer:
-        resolved = checked_.types.pointer(map_mutability(type.pointer_mutability), resolve_type(type.pointee, true));
+        resolved = checked_.types.pointer(
+            map_mutability(type.pointer_mutability),
+            resolve_type_with_substitution(type.pointee, substitution, true)
+        );
         break;
     case syntax::TypeKind::array:
-        resolved = checked_.types.array(type.array_count, resolve_type(type.array_element));
+        resolved = checked_.types.array(type.array_count, resolve_type_with_substitution(type.array_element, substitution, false));
         break;
     case syntax::TypeKind::named: {
+        if (substitution != nullptr && type.type_args.empty()) {
+            if (const auto found = substitution->types.find(std::string(type.name)); found != substitution->types.end()) {
+                resolved = found->second;
+                break;
+            }
+        }
+        if (!type.type_args.empty()) {
+            if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range);
+                info != nullptr) {
+                resolved = instantiate_generic_enum_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                break;
+            }
+            report(type.range, "type arguments require a generic enum type: " + std::string(type.name));
+            break;
+        }
+        if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range, false);
+            info != nullptr) {
+            report(type.range, "generic enum type requires type arguments: " + info->name);
+            break;
+        }
         resolved = find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee);
         if (!is_valid(resolved)) {
             break;
@@ -1376,7 +1502,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
         break;
     }
     }
-    if (type_id.value < checked_.syntax_type_handles.size()) {
+    if (substitution == nullptr && type_id.value < checked_.syntax_type_handles.size()) {
         checked_.syntax_type_handles[type_id.value] = resolved;
     }
     return resolved;
@@ -1850,6 +1976,9 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
         return nullptr;
     }
     const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
+    if (find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false) != nullptr) {
+        return nullptr;
+    }
     return find_enum_case_by_scoped_name(enum_name.text, callee.field_name, callee.range, report_unknown);
 }
 
@@ -1959,6 +2088,20 @@ std::string dump_checked_module(const CheckedModule& checked) {
     }
 
     out << "  enum_cases " << checked.enum_cases.size() << "\n";
+    std::vector<std::string> enum_case_names;
+    enum_case_names.reserve(checked.enum_cases.size());
+    for (const auto& entry : checked.enum_cases) {
+        enum_case_names.push_back(entry.first);
+    }
+    std::sort(enum_case_names.begin(), enum_case_names.end());
+    for (const std::string& name : enum_case_names) {
+        const EnumCaseInfo& info = checked.enum_cases.at(name);
+        out << "    case " << info.name << " : " << checked.types.display_name(info.type);
+        if (is_valid(info.payload_type)) {
+            out << "(" << checked.types.display_name(info.payload_type) << ")";
+        }
+        out << " @c_name=" << info.c_name << "\n";
+    }
     return out.str();
 }
 

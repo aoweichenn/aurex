@@ -44,6 +44,7 @@ struct TypeNode {
     base::SourceRange range {};
     PrimitiveTypeKind primitive = PrimitiveTypeKind::void_;
     std::string_view name;
+    std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
     TypeId pointee = invalid_type_id;
     base::u64 array_count = 0;
@@ -161,6 +162,7 @@ struct ExprNode {
     std::vector<FieldInit> field_inits;
     TypeId cast_type = invalid_type_id;
     ExprId cast_expr = invalid_expr_id;
+    std::vector<TypeId> type_args;
 };
 
 enum class StmtKind {
@@ -226,6 +228,7 @@ struct ItemNode {
     ItemKind kind = ItemKind::fn_decl;
     base::SourceRange range {};
     std::string_view name;
+    std::vector<std::string_view> generic_params;
     TypeId const_type = invalid_type_id;
     ExprId const_value = invalid_expr_id;
     TypeId alias_type = invalid_type_id;

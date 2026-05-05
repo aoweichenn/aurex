@@ -174,6 +174,9 @@ private:
             if (item.kind != syntax::ItemKind::enum_decl) {
                 continue;
             }
+            if (!item.generic_params.empty()) {
+                continue;
+            }
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const sema::TypeHandle case_type = enum_case_type(enum_case_symbol(index, item, enum_case));
                 if (is_payload_enum(module_.types, case_type) || syntax::is_valid(enum_case.payload_type)) {
@@ -193,6 +196,28 @@ private:
                     true,
                 });
             }
+        }
+        for (const auto& entry : checked_.enum_cases) {
+            const sema::EnumCaseInfo& enum_case = entry.second;
+            if (is_payload_enum(module_.types, enum_case.type) || sema::is_valid(enum_case.payload_type)) {
+                continue;
+            }
+            if (constant_symbols_.contains(enum_case.c_name)) {
+                continue;
+            }
+            GlobalConstant constant;
+            constant.name = enum_case.name;
+            constant.symbol = enum_case.c_name;
+            constant.type = enum_case.type;
+            const GlobalConstantId id = add_global_constant(module_, std::move(constant));
+            constant_symbols_[module_.constants[id.value].symbol] = id;
+            pending_constants_.push_back(PendingConstant {
+                id,
+                syntax::invalid_expr_id,
+                module_.constants[id.value].type,
+                enum_case.value_text,
+                true,
+            });
         }
     }
 

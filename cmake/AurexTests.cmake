@@ -9,6 +9,7 @@ if(BUILD_TESTING)
         tests/m1/m1_control_flow_tests.cpp
         tests/m1/m1_enum_tests.cpp
         tests/m1/m1_expression_tests.cpp
+        tests/m1/m1_generic_tests.cpp
         tests/m1/m1_integration_tests.cpp
     )
     target_link_libraries(aurex_tests PRIVATE GTest::gtest_main)

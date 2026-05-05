@@ -3,6 +3,7 @@
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
 #include "aurex/sema/function.hpp"
+#include "aurex/sema/generic.hpp"
 #include "aurex/sema/symbol.hpp"
 #include "aurex/sema/type.hpp"
 #include "aurex/syntax/ast.hpp"
@@ -101,6 +102,7 @@ private:
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
+    [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
@@ -132,6 +134,7 @@ private:
     );
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
+    [[nodiscard]] TypeHandle resolve_type_with_substitution(syntax::TypeId type, const GenericTypeSubstitution* substitution, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const noexcept;
@@ -150,6 +153,32 @@ private:
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
+    [[nodiscard]] TypeHandle instantiate_generic_enum_from_syntax(
+        const GenericEnumTemplateInfo& info,
+        const std::vector<syntax::TypeId>& args,
+        base::SourceRange range,
+        bool opaque_allowed_as_pointee
+    );
+    [[nodiscard]] const EnumCaseInfo* instantiate_generic_enum_constructor(
+        syntax::ExprId callee,
+        const std::vector<TypeHandle>& arg_types,
+        bool report_unknown
+    );
+    [[nodiscard]] bool infer_generic_enum_args(
+        syntax::TypeId pattern_type,
+        TypeHandle actual,
+        const GenericEnumTemplateInfo& info,
+        std::vector<TypeHandle>& inferred,
+        base::SourceRange range
+    );
+    [[nodiscard]] const GenericEnumInstanceInfo* generic_enum_instance(TypeHandle type) const noexcept;
+    [[nodiscard]] std::string generic_instance_key(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_display_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_c_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_case_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, std::string_view case_name) const;
+    [[nodiscard]] std::string generic_case_c_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, std::string_view case_name) const;
     [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range, bool opaque_allowed_as_pointee);
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
@@ -170,6 +199,9 @@ private:
     CheckedModule checked_;
     SymbolTable symbols_;
     std::unordered_map<std::string, TypeHandle> named_types_;
+    std::unordered_map<std::string, GenericEnumTemplateInfo> generic_enum_templates_;
+    std::unordered_map<std::string, TypeHandle> generic_enum_instances_;
+    std::unordered_map<base::u32, GenericEnumInstanceInfo> generic_enum_instance_infos_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
     std::vector<std::string> resolving_type_aliases_;
     std::unordered_map<std::string, Symbol> global_values_;

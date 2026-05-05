@@ -139,6 +139,16 @@ std::string type_label(const AstModule& module, const TypeId id) {
         break;
     case TypeKind::named:
         out << type.name;
+        if (!type.type_args.empty()) {
+            out << "<";
+            for (base::usize i = 0; i < type.type_args.size(); ++i) {
+                if (i != 0) {
+                    out << ", ";
+                }
+                out << type_label(module, type.type_args[i]);
+            }
+            out << ">";
+        }
         break;
     case TypeKind::pointer:
         out << "*" << (type.pointer_mutability == PointerMutability::mut ? "mut " : "const ");
@@ -306,6 +316,16 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     out << "expr #" << id.value << " " << expr_kind_name(expr.kind);
     if (!expr.text.empty()) {
         out << " `" << expr.text << "`";
+        if (!expr.type_args.empty()) {
+            out << "<";
+            for (base::usize i = 0; i < expr.type_args.size(); ++i) {
+                if (i != 0) {
+                    out << ", ";
+                }
+                out << type_label(module, expr.type_args[i]);
+            }
+            out << ">";
+        }
     }
     if (!expr.field_name.empty()) {
         out << " ." << expr.field_name;
@@ -387,6 +407,16 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     out << "item #" << id.value << " " << item_kind_name(item.kind);
     if (!item.name.empty()) {
         out << " " << item.name;
+        if (!item.generic_params.empty()) {
+            out << "<";
+            for (base::usize i = 0; i < item.generic_params.size(); ++i) {
+                if (i != 0) {
+                    out << ", ";
+                }
+                out << item.generic_params[i];
+            }
+            out << ">";
+        }
     }
     if (item.is_export_c) {
         out << " export_c";

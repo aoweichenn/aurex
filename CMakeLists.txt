@@ -2,11 +2,21 @@ cmake_minimum_required(VERSION 3.24)
 
 project(aurex LANGUAGES C CXX)
 
+option(AUREX_ENABLE_COVERAGE "Build Aurex with LLVM source-based coverage instrumentation" OFF)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
+if(AUREX_ENABLE_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "AUREX_ENABLE_COVERAGE requires Clang/LLVM for llvm-cov instrumentation")
+    endif()
+    add_compile_options(-O0 -g -fprofile-instr-generate -fcoverage-mapping)
+    add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+endif()
 
 include(cmake/AurexWarnings.cmake)
 include(cmake/AurexBase.cmake)
@@ -39,3 +49,9 @@ else()
     endif()
     aurex_enable_warnings(${AUREX_WARNING_TARGETS})
 endif()
+
+add_custom_target(coverage
+    COMMAND "${CMAKE_SOURCE_DIR}/tools/check_coverage.sh"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    USES_TERMINAL
+)

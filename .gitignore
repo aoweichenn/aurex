@@ -1,4 +1,5 @@
 build/
+build-coverage/
 cmake-build-*/
 bootstrap/m0_bootstrap
 bootstrap/*.bootstrap

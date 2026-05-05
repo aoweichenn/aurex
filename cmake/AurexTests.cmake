@@ -6,13 +6,21 @@ if(BUILD_TESTING)
     add_executable(aurex_tests
         tests/support/test_support.cpp
         tests/aurex_integration_tests.cpp
+        tests/unit/core_unit_tests.cpp
         tests/m1/m1_control_flow_tests.cpp
         tests/m1/m1_enum_tests.cpp
         tests/m1/m1_expression_tests.cpp
         tests/m1/m1_generic_tests.cpp
         tests/m1/m1_integration_tests.cpp
     )
-    target_link_libraries(aurex_tests PRIVATE GTest::gtest_main)
+    target_link_libraries(aurex_tests PRIVATE
+        GTest::gtest_main
+        aurex_base
+        aurex_lex
+        aurex_ir
+        aurex_backend_llvm
+        aurex_driver
+    )
     target_include_directories(aurex_tests PRIVATE tests)
     target_compile_definitions(aurex_tests PRIVATE
         AUREX_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"

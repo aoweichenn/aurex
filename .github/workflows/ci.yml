@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  coverage:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: brew install llvm googletest
+      - name: Check coverage
+        env:
+          LLVM_COV: /opt/homebrew/opt/llvm/bin/llvm-cov
+          LLVM_PROFDATA: /opt/homebrew/opt/llvm/bin/llvm-profdata
+          CC: /opt/homebrew/opt/llvm/bin/clang
+          CXX: /opt/homebrew/opt/llvm/bin/clang++
+          AUREX_COVERAGE_LINE_THRESHOLD: "90"
+          AUREX_COVERAGE_FUNCTION_THRESHOLD: "90"
+          AUREX_COVERAGE_REGION_THRESHOLD: "90"
+        run: tools/check_coverage.sh

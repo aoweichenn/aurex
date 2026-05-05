@@ -1,0 +1,8 @@
+module block_expression_empty;
+
+fn main() -> i32 {
+    let value = {
+        let inner = 1;
+    };
+    return value;
+}

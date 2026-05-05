@@ -616,6 +616,63 @@ syntax::StmtId Parser::parse_block() {
     return module_.push_stmt(std::move(block));
 }
 
+syntax::ExprId Parser::parse_block_expr() {
+    const syntax::Token& begin = expect(TokenKind::l_brace, "expected block expression");
+    syntax::StmtNode block;
+    block.kind = syntax::StmtKind::block;
+    syntax::ExprId result = syntax::invalid_expr_id;
+
+    while (!is_eof() && !check(TokenKind::r_brace)) {
+        if (check(TokenKind::kw_let) || check(TokenKind::kw_var)) {
+            const syntax::StmtId stmt = parse_stmt();
+            if (syntax::is_valid(stmt)) {
+                block.statements.push_back(stmt);
+            } else {
+                synchronize();
+            }
+            panic_ = false;
+            continue;
+        }
+
+        const syntax::ExprId expr = parse_expr();
+        if (match(TokenKind::equal)) {
+            syntax::StmtNode stmt;
+            stmt.kind = syntax::StmtKind::assign;
+            stmt.lhs = expr;
+            stmt.rhs = parse_expr();
+            const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after assignment");
+            stmt.range = syntax::is_valid(expr) ? merge(module_.exprs[expr.value].range, end.range) : end.range;
+            block.statements.push_back(module_.push_stmt(std::move(stmt)));
+            panic_ = false;
+            continue;
+        }
+        if (match(TokenKind::semicolon)) {
+            syntax::StmtNode stmt;
+            stmt.kind = syntax::StmtKind::expr;
+            stmt.init = expr;
+            stmt.range = syntax::is_valid(expr) ? merge(module_.exprs[expr.value].range, previous().range) : previous().range;
+            block.statements.push_back(module_.push_stmt(std::move(stmt)));
+            panic_ = false;
+            continue;
+        }
+
+        result = expr;
+        break;
+    }
+
+    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after block expression");
+    block.range = merge(begin.range, end.range);
+    const syntax::StmtId block_id = module_.push_stmt(std::move(block));
+
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::block_expr;
+    expr.range = merge(begin.range, end.range);
+    expr.block = block_id;
+    expr.block_result = result;
+    panic_ = false;
+    return module_.push_expr(std::move(expr));
+}
+
 syntax::StmtId Parser::parse_stmt() {
     panic_ = false;
     if (check(TokenKind::kw_let)) {
@@ -648,6 +705,9 @@ syntax::StmtId Parser::parse_stmt() {
     }
     if (check(TokenKind::kw_return)) {
         return parse_return_stmt();
+    }
+    if (check(TokenKind::l_brace)) {
+        return parse_block();
     }
     return parse_expr_or_assign_stmt();
 }
@@ -765,17 +825,13 @@ syntax::ExprId Parser::parse_if_expr() {
     const syntax::ExprId condition = parse_expr();
     allow_struct_literal_ = previous_struct_literal_mode;
 
-    expect(TokenKind::l_brace, "expected '{' before if expression then branch");
-    const syntax::ExprId then_expr = parse_expr();
-    expect(TokenKind::r_brace, "expected '}' after if expression then branch");
+    const syntax::ExprId then_expr = parse_block_expr();
     expect(TokenKind::kw_else, "if expression requires else branch");
-    expect(TokenKind::l_brace, "expected '{' before if expression else branch");
-    const syntax::ExprId else_expr = parse_expr();
-    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after if expression else branch");
+    const syntax::ExprId else_expr = parse_block_expr();
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::if_expr;
-    expr.range = merge(begin.range, end.range);
+    expr.range = merge(begin.range, module_.exprs[else_expr.value].range);
     expr.condition = condition;
     expr.then_expr = then_expr;
     expr.else_expr = else_expr;
@@ -1040,6 +1096,9 @@ syntax::ExprId Parser::parse_primary() {
         const syntax::ExprId expr = parse_expr();
         expect(TokenKind::r_paren, "expected ')' after expression");
         return expr;
+    }
+    if (check(TokenKind::l_brace)) {
+        return parse_block_expr();
     }
     if (match(TokenKind::kw_cast)) {
         return parse_builtin_cast(syntax::ExprKind::cast);

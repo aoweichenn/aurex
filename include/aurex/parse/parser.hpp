@@ -51,6 +51,7 @@ private:
     [[nodiscard]] syntax::TypeId parse_primitive_type();
 
     [[nodiscard]] syntax::StmtId parse_block();
+    [[nodiscard]] syntax::ExprId parse_block_expr();
     [[nodiscard]] syntax::StmtId parse_stmt();
     [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
     [[nodiscard]] syntax::StmtId parse_if_stmt();

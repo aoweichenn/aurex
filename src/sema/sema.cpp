@@ -732,6 +732,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
     }
     case syntax::ExprKind::if_expr:
         return analyze_if_expr(expr_id, expr);
+    case syntax::ExprKind::block_expr:
+        return analyze_block_expr(expr_id, expr);
     case syntax::ExprKind::unary: {
         const TypeHandle operand = analyze_expr(expr.unary_operand);
         if (expr.unary_op == syntax::UnaryOp::logical_not && !checked_.types.is_bool(operand)) {
@@ -941,6 +943,35 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(const syntax::ExprId expr_id, const
         return record_expr_type(expr_id, invalid_type_handle);
     }
     return record_expr_type(expr_id, then_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_block_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+    if (in_const_initializer_) {
+        report(expr.range, "block expression cannot be used in const initializer");
+    }
+    if (!syntax::is_valid(expr.block_result)) {
+        report(expr.range, "block expression requires a final expression");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+
+    symbols_.push_scope();
+    if (syntax::is_valid(expr.block) && expr.block.value < module_.stmts.size()) {
+        const syntax::StmtNode& block = module_.stmts[expr.block.value];
+        for (syntax::StmtId child : block.statements) {
+            analyze_stmt(child, checked_.types.builtin(BuiltinType::void_), nullptr);
+        }
+    }
+    const TypeHandle result = analyze_expr(expr.block_result);
+    symbols_.pop_scope();
+
+    if (!is_valid(result)) {
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    if (checked_.types.is_void(result)) {
+        report(expr.range, "block expression result cannot be void");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    return record_expr_type(expr_id, result);
 }
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {

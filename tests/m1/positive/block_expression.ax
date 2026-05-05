@@ -1,0 +1,26 @@
+module block_expression;
+
+fn adjust(flag: bool, base: i32) {
+    return if flag {
+        let inner = base + 1;
+        inner
+    } else {
+        var total = base;
+        total = total + 2;
+        total
+    };
+}
+
+fn main() -> i32 {
+    let outer = 100;
+    let value = {
+        let inner = adjust(true, 39);
+        let extra = {
+            var total = 1;
+            total = total + 1;
+            total
+        };
+        inner + extra + outer - 100
+    };
+    return value - 42;
+}

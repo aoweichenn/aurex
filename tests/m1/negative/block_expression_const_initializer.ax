@@ -1,0 +1,10 @@
+module block_expression_const_initializer;
+
+const VALUE: i32 = {
+    let inner = 1;
+    inner
+};
+
+fn main() -> i32 {
+    return VALUE;
+}

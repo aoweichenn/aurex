@@ -1,0 +1,12 @@
+module block_expression_void;
+
+fn touch() -> void {
+    return;
+}
+
+fn main() -> i32 {
+    let value = {
+        touch()
+    };
+    return 0;
+}

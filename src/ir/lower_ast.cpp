@@ -285,6 +285,12 @@ private:
     }
 
     void lower_block(const syntax::StmtId block_id) {
+        const auto previous_locals = locals_;
+        lower_block_contents(block_id);
+        locals_ = previous_locals;
+    }
+
+    void lower_block_contents(const syntax::StmtId block_id) {
         if (!syntax::is_valid(block_id) || block_id.value >= ast_.stmts.size()) {
             return;
         }
@@ -494,6 +500,14 @@ private:
         return append_value(result);
     }
 
+    [[nodiscard]] ValueId lower_block_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+        const auto previous_locals = locals_;
+        lower_block_contents(expr.block);
+        const ValueId result = lower_expr(expr.block_result, expr_type(checked_, expr_id));
+        locals_ = previous_locals;
+        return result;
+    }
+
     [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id) {
         return lower_expr(expr_id, sema::invalid_type_handle);
     }
@@ -583,6 +597,8 @@ private:
         }
         case syntax::ExprKind::if_expr:
             return lower_if_expr(expr_id, expr);
+        case syntax::ExprKind::block_expr:
+            return lower_block_expr(expr_id, expr);
         case syntax::ExprKind::field:
         case syntax::ExprKind::index: {
             Value value;

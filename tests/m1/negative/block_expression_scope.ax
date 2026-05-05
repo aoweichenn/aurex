@@ -1,0 +1,9 @@
+module block_expression_scope;
+
+fn main() -> i32 {
+    let value = {
+        let inner = 1;
+        inner
+    };
+    return inner + value;
+}

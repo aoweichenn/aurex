@@ -1,0 +1,11 @@
+module match_guard_unknown_binding;
+
+enum Packet: u8 {
+    int(i32) = 1,
+}
+
+fn main() -> i32 {
+    return match Packet.int(1) {
+        .int(value) if missing > 0 => value,
+    };
+}

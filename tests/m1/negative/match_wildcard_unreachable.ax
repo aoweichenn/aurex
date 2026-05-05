@@ -1,0 +1,13 @@
+module match_wildcard_unreachable;
+
+enum Choice: u8 {
+    zero = 0,
+    one = 1,
+}
+
+fn main() -> i32 {
+    return match Choice.zero {
+        _ => 0,
+        .one => 1,
+    };
+}

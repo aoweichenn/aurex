@@ -279,7 +279,7 @@ private:
 
     [[nodiscard]] std::string enum_case_symbol(const std::string_view name) const noexcept {
         for (const auto& entry : checked_.enum_cases) {
-            if (entry.second.name == name) {
+            if (entry.second.name == name || entry.second.c_name == name) {
                 return entry.second.c_name;
             }
         }
@@ -293,6 +293,87 @@ private:
             }
         }
         return nullptr;
+    }
+
+    [[nodiscard]] const syntax::PatternNode* pattern_node(const syntax::PatternId id) const noexcept {
+        if (!syntax::is_valid(id) || id.value >= ast_.patterns.size()) {
+            return nullptr;
+        }
+        return &ast_.patterns[id.value];
+    }
+
+    [[nodiscard]] std::string pattern_case_symbol(const syntax::PatternId id) const {
+        if (syntax::is_valid(id) &&
+            id.value < checked_.pattern_c_names.size() &&
+            !checked_.pattern_c_names[id.value].empty()) {
+            return checked_.pattern_c_names[id.value];
+        }
+        const syntax::PatternNode* pattern = pattern_node(id);
+        return pattern == nullptr ? "<invalid>" : std::string(pattern->case_name);
+    }
+
+    [[nodiscard]] bool is_fallback_match_pattern(const syntax::PatternId id) const noexcept {
+        const syntax::PatternNode* pattern = pattern_node(id);
+        return pattern != nullptr && pattern->kind == syntax::PatternKind::wildcard;
+    }
+
+    [[nodiscard]] ValueId append_match_pattern_condition(
+        const syntax::PatternId id,
+        const ValueId matched_tag,
+        const sema::TypeHandle matched_type,
+        const bool payload_enum
+    ) {
+        const syntax::PatternNode* pattern = pattern_node(id);
+        if (pattern == nullptr) {
+            return invalid_value_id;
+        }
+        if (pattern->kind == syntax::PatternKind::or_pattern) {
+            ValueId condition = invalid_value_id;
+            for (syntax::PatternId alternative : pattern->alternatives) {
+                const ValueId alternative_condition = append_match_pattern_condition(alternative, matched_tag, matched_type, payload_enum);
+                if (!is_valid(condition)) {
+                    condition = alternative_condition;
+                    continue;
+                }
+                Value or_value;
+                or_value.kind = ValueKind::binary;
+                or_value.type = module_.types.builtin(sema::BuiltinType::bool_);
+                or_value.binary_op = BinaryOp::logical_or;
+                or_value.lhs = condition;
+                or_value.rhs = alternative_condition;
+                condition = append_value(or_value);
+            }
+            return condition;
+        }
+        if (pattern->kind == syntax::PatternKind::literal) {
+            Value literal;
+            literal.kind = (pattern->case_name == "true" || pattern->case_name == "false")
+                ? ValueKind::bool_literal
+                : ValueKind::integer_literal;
+            literal.type = matched_type;
+            literal.text = std::string(pattern->case_name);
+            const ValueId literal_id = append_value(literal);
+
+            Value cmp;
+            cmp.kind = ValueKind::binary;
+            cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
+            cmp.binary_op = BinaryOp::equal;
+            cmp.lhs = matched_tag;
+            cmp.rhs = literal_id;
+            return append_value(cmp);
+        }
+        const std::string case_symbol = pattern_case_symbol(id);
+        const ValueId case_id = payload_enum
+            ? append_enum_tag_literal(case_symbol, ir::enum_tag_type(module_.types, matched_type))
+            : append_enum_case_ref(case_symbol, matched_type);
+
+        Value cmp;
+        cmp.kind = ValueKind::binary;
+        cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
+        cmp.binary_op = BinaryOp::equal;
+        cmp.lhs = matched_tag;
+        cmp.rhs = case_id;
+        return append_value(cmp);
     }
 
     void lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
@@ -579,36 +660,43 @@ private:
 
         for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
             const syntax::MatchArm& arm = expr.match_arms[i];
+            const syntax::PatternNode* pattern = pattern_node(arm.pattern);
+            const bool fallback = is_fallback_match_pattern(arm.pattern);
             const BlockId arm_block = add_block(*current_function_, "match.arm" + std::to_string(current_function_->blocks.size()));
             BlockId next_test_block = invalid_block_id;
-            if (i + 1 == expr.match_arms.size()) {
+            const bool guarded = syntax::is_valid(arm.guard);
+            const bool implicit_fallback = !guarded && (fallback || i + 1 == expr.match_arms.size());
+            if (implicit_fallback) {
                 append_branch_if_open(arm_block);
             } else {
                 next_test_block = add_block(*current_function_, "match.next" + std::to_string(current_function_->blocks.size()));
-                const ValueId case_id = payload_enum
-                    ? append_enum_tag_literal(arm.case_name, ir::enum_tag_type(module_.types, matched_type))
-                    : append_enum_case_ref(arm.case_name, matched_type);
-
-                Value cmp;
-                cmp.kind = ValueKind::binary;
-                cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
-                cmp.binary_op = BinaryOp::equal;
-                cmp.lhs = matched_tag;
-                cmp.rhs = case_id;
-                const ValueId condition = append_value(cmp);
-
-                Terminator cond;
-                cond.kind = TerminatorKind::cond_branch;
-                cond.condition = condition;
-                cond.then_target = arm_block;
-                cond.else_target = next_test_block;
-                set_terminator(current_block_, cond);
+                if (fallback) {
+                    append_branch_if_open(arm_block);
+                } else {
+                    const ValueId condition = append_match_pattern_condition(arm.pattern, matched_tag, matched_type, payload_enum);
+                    Terminator cond;
+                    cond.kind = TerminatorKind::cond_branch;
+                    cond.condition = condition;
+                    cond.then_target = arm_block;
+                    cond.else_target = next_test_block;
+                    set_terminator(current_block_, cond);
+                }
             }
 
             current_block_ = arm_block;
             const auto previous_locals = locals_;
-            if (payload_enum && !arm.binding_name.empty()) {
-                bind_payload_arm(arm, matched_slot);
+            bind_match_payload(pattern, arm.pattern, payload_enum, matched_slot);
+            BlockId arm_body_block = arm_block;
+            if (guarded) {
+                arm_body_block = add_block(*current_function_, "match.guard.pass" + std::to_string(current_function_->blocks.size()));
+                const ValueId guard_condition = lower_expr(arm.guard);
+                Terminator guard;
+                guard.kind = TerminatorKind::cond_branch;
+                guard.condition = guard_condition;
+                guard.then_target = arm_body_block;
+                guard.else_target = next_test_block;
+                set_terminator(current_block_, guard);
+                current_block_ = arm_body_block;
             }
             const ValueId arm_value = lower_expr(arm.value, expr_type(checked_, expr_id));
             locals_ = previous_locals;
@@ -714,23 +802,36 @@ private:
         return append_value(value);
     }
 
-    void bind_payload_arm(const syntax::MatchArm& arm, const ValueId matched_slot) {
-        const sema::EnumCaseInfo* info = enum_case_info(arm.case_name);
-        if (info == nullptr || !sema::is_valid(info->payload_type)) {
+    void bind_payload_arm(const syntax::PatternNode& pattern, const sema::EnumCaseInfo& info, const ValueId matched_slot) {
+        if (!sema::is_valid(info.payload_type)) {
             return;
         }
         const ValueId storage_addr = enum_field_addr(matched_slot, std::string(enum_payload_field_name));
         Value cast;
         cast.kind = ValueKind::cast;
-        cast.type = module_.types.pointer(sema::PointerMutability::mut, info->payload_type);
+        cast.type = module_.types.pointer(sema::PointerMutability::mut, info.payload_type);
         cast.target_type = cast.type;
         cast.lhs = storage_addr;
         cast.cast_kind = CastKind::pointer;
         const ValueId payload_addr = append_value(cast);
-        const ValueId payload_value = append_load(payload_addr, info->payload_type, std::string(arm.binding_name));
-        const ValueId slot = append_temp_alloca(std::string(arm.binding_name), info->payload_type);
-        locals_[std::string(arm.binding_name)] = LocalBinding {slot, false};
+        const ValueId payload_value = append_load(payload_addr, info.payload_type, std::string(pattern.binding_name));
+        const ValueId slot = append_temp_alloca(std::string(pattern.binding_name), info.payload_type);
+        locals_[std::string(pattern.binding_name)] = LocalBinding {slot, false};
         append_store(slot, payload_value);
+    }
+
+    void bind_match_payload(
+        const syntax::PatternNode* pattern,
+        const syntax::PatternId pattern_id,
+        const bool payload_enum,
+        const ValueId matched_slot
+    ) {
+        if (!payload_enum || pattern == nullptr || pattern->binding_name.empty()) {
+            return;
+        }
+        if (const sema::EnumCaseInfo* info = enum_case_info(pattern_case_symbol(pattern_id)); info != nullptr) {
+            bind_payload_arm(*pattern, *info, matched_slot);
+        }
     }
 
     [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id) {
@@ -832,6 +933,13 @@ private:
         case syntax::ExprKind::match_expr:
             return lower_match_expr(expr_id, expr);
         case syntax::ExprKind::field:
+            if (const sema::EnumCaseInfo* enum_case = enum_case_info(value_symbol(expr_id, expr)); enum_case != nullptr) {
+                if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(module_.types, enum_case->type)) {
+                    return lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
+                }
+                return append_enum_case_ref(enum_case->c_name, enum_case->type);
+            }
+            [[fallthrough]];
         case syntax::ExprKind::index: {
             Value value;
             value.kind = ValueKind::load;
@@ -1012,6 +1120,9 @@ private:
             expr_id.value < checked_.expr_c_names.size() &&
             !checked_.expr_c_names[expr_id.value].empty()) {
             return checked_.expr_c_names[expr_id.value];
+        }
+        if (expr.kind == syntax::ExprKind::field) {
+            return std::string(expr.field_name);
         }
         return std::string(expr.text);
     }

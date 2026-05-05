@@ -1,0 +1,13 @@
+module match_enum_literal_pattern;
+
+enum Choice: u8 {
+    zero = 0,
+    one = 1,
+}
+
+fn main() -> i32 {
+    return match Choice.zero {
+        0 => 10,
+        _ => 20,
+    };
+}

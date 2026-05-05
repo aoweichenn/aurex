@@ -1,0 +1,10 @@
+module enum_scoped_constructor_missing_arg;
+
+enum Packet: u8 {
+    int(i32) = 1,
+}
+
+fn main() -> i32 {
+    let packet = Packet.int();
+    return 0;
+}

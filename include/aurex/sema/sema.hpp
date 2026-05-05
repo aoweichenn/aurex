@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace aurex::sema {
@@ -39,6 +40,8 @@ struct EnumCaseInfo {
     TypeHandle payload_type = invalid_type_handle;
     std::string value_text;
     base::SourceRange range {};
+    std::string enum_name;
+    std::string case_name;
 };
 
 struct TypeAliasInfo {
@@ -54,6 +57,8 @@ struct CheckedModule {
     TypeTable types;
     std::vector<TypeHandle> expr_types;
     std::vector<std::string> expr_c_names;
+    std::vector<std::string> pattern_c_names;
+    std::vector<std::unordered_set<std::string>> pattern_case_sets;
     std::vector<TypeHandle> syntax_type_handles;
     std::vector<TypeHandle> stmt_local_types;
     std::vector<std::string> item_c_names;
@@ -99,6 +104,32 @@ private:
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] const EnumCaseInfo* analyze_enum_case_pattern(
+        syntax::PatternId pattern,
+        TypeHandle matched,
+        std::vector<std::string>& covered,
+        bool& saw_wildcard
+    );
+    [[nodiscard]] const EnumCaseInfo* analyze_single_enum_case_pattern(
+        syntax::PatternId pattern,
+        TypeHandle matched,
+        std::vector<std::string>& covered,
+        bool& saw_wildcard
+    );
+    [[nodiscard]] const EnumCaseInfo* analyze_value_pattern(
+        syntax::PatternId pattern,
+        TypeHandle matched,
+        bool& covered_true,
+        bool& covered_false,
+        bool& saw_wildcard
+    );
+    [[nodiscard]] const EnumCaseInfo* analyze_single_value_pattern(
+        syntax::PatternId pattern,
+        TypeHandle matched,
+        bool& covered_true,
+        bool& covered_false,
+        bool& saw_wildcard
+    );
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
@@ -122,6 +153,14 @@ private:
     [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range, bool opaque_allowed_as_pointee);
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const noexcept;
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
+        std::string_view enum_name,
+        std::string_view case_name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
+    [[nodiscard]] const EnumCaseInfo* find_enum_constructor(syntax::ExprId callee, bool report_unknown);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
     void report(base::SourceRange range, std::string message);

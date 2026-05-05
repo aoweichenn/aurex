@@ -1,0 +1,13 @@
+module match_or_pattern_duplicate;
+
+enum Light: u8 {
+    red = 1,
+    green = 2,
+}
+
+fn main() -> i32 {
+    return match Light.red {
+        .red | .red => 1,
+        .green => 2,
+    };
+}

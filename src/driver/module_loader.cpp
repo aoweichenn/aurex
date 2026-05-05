@@ -92,6 +92,7 @@ void push_error(base::DiagnosticSink& diagnostics, base::SourceRange range, std:
 struct IdMap {
     std::vector<syntax::TypeId> types;
     std::vector<syntax::ExprId> exprs;
+    std::vector<syntax::PatternId> patterns;
     std::vector<syntax::StmtId> stmts;
     std::vector<syntax::ItemId> items;
 };
@@ -106,6 +107,10 @@ struct IdMap {
 
 [[nodiscard]] syntax::StmtId remap_stmt(const syntax::StmtId id, const IdMap& map) {
     return syntax::is_valid(id) && id.value < map.stmts.size() ? map.stmts[id.value] : syntax::invalid_stmt_id;
+}
+
+[[nodiscard]] syntax::PatternId remap_pattern(const syntax::PatternId id, const IdMap& map) {
+    return syntax::is_valid(id) && id.value < map.patterns.size() ? map.patterns[id.value] : syntax::invalid_pattern_id;
 }
 
 [[nodiscard]] syntax::ItemId remap_item(const syntax::ItemId id, const IdMap& map) {
@@ -125,6 +130,17 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
     for (syntax::ExprId& arg : node.args) {
         arg = remap_expr(arg, map);
     }
+    node.condition = remap_expr(node.condition, map);
+    node.then_expr = remap_expr(node.then_expr, map);
+    node.else_expr = remap_expr(node.else_expr, map);
+    node.block = remap_stmt(node.block, map);
+    node.block_result = remap_expr(node.block_result, map);
+    node.match_value = remap_expr(node.match_value, map);
+    for (syntax::MatchArm& arm : node.match_arms) {
+        arm.pattern = remap_pattern(arm.pattern, map);
+        arm.guard = remap_expr(arm.guard, map);
+        arm.value = remap_expr(arm.value, map);
+    }
     node.object = remap_expr(node.object, map);
     node.index = remap_expr(node.index, map);
     for (syntax::FieldInit& init : node.field_inits) {
@@ -132,6 +148,12 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
     }
     node.cast_type = remap_type(node.cast_type, map);
     node.cast_expr = remap_expr(node.cast_expr, map);
+}
+
+void remap_pattern_node(syntax::PatternNode& node, const IdMap& map) {
+    for (syntax::PatternId& alternative : node.alternatives) {
+        alternative = remap_pattern(alternative, map);
+    }
 }
 
 void remap_stmt_node(syntax::StmtNode& node, const IdMap& map) {
@@ -177,6 +199,7 @@ void append_module_into(
     IdMap map;
     map.types.reserve(source.types.size());
     map.exprs.reserve(source.exprs.size());
+    map.patterns.reserve(source.patterns.size());
     map.stmts.reserve(source.stmts.size());
     map.items.reserve(source.items.size());
 
@@ -187,6 +210,10 @@ void append_module_into(
     for (const syntax::ExprNode& node : source.exprs) {
         map.exprs.push_back(syntax::ExprId {static_cast<base::u32>(destination.exprs.size())});
         destination.exprs.push_back(node);
+    }
+    for (const syntax::PatternNode& node : source.patterns) {
+        map.patterns.push_back(syntax::PatternId {static_cast<base::u32>(destination.patterns.size())});
+        destination.patterns.push_back(node);
     }
     for (const syntax::StmtNode& node : source.stmts) {
         map.stmts.push_back(syntax::StmtId {static_cast<base::u32>(destination.stmts.size())});
@@ -208,6 +235,10 @@ void append_module_into(
     }
     for (base::usize i = expr_begin; i < destination.exprs.size(); ++i) {
         remap_expr_node(destination.exprs[i], map);
+    }
+    const base::usize pattern_begin = destination.patterns.size() - source.patterns.size();
+    for (base::usize i = pattern_begin; i < destination.patterns.size(); ++i) {
+        remap_pattern_node(destination.patterns[i], map);
     }
     for (base::usize i = stmt_begin; i < destination.stmts.size(); ++i) {
         remap_stmt_node(destination.stmts[i], map);

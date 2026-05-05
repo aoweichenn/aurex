@@ -1,0 +1,15 @@
+module match_scoped_wrong_enum;
+
+enum Left: u8 {
+    item = 1,
+}
+
+enum Right: u8 {
+    item = 2,
+}
+
+fn main() -> i32 {
+    return match Left.item {
+        Right.item => 1,
+    };
+}

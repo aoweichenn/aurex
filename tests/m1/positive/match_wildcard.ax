@@ -1,0 +1,23 @@
+module match_wildcard;
+
+enum Mode: u8 {
+    fast = 1,
+    slow = 2,
+}
+
+fn score(mode: Mode) -> i32 {
+    return match mode {
+        .fast => 10,
+        _ => 20,
+    };
+}
+
+fn main() -> i32 {
+    if score(Mode.fast) != 10 {
+        return 1;
+    }
+    if score(Mode.slow) != 20 {
+        return 2;
+    }
+    return 0;
+}

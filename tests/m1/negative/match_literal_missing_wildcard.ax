@@ -1,0 +1,7 @@
+module match_literal_missing_wildcard;
+
+fn main() -> i32 {
+    return match 1 {
+        1 => 10,
+    };
+}

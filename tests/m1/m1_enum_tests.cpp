@@ -38,7 +38,7 @@ TEST_F(AurexIntegrationTest, M1MatchExpression) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 
     const fs::path non_enum = source_root() / "tests" / "m1" / "negative" / "match_expression_non_enum.ax";
-    expect_contains(require_failure(aurexc() + " --check " + q(non_enum)).output, "match expression requires an enum value");
+    expect_contains(require_failure(aurexc() + " --check " + q(non_enum)).output, "match expression requires an enum, integer, or bool value");
 
     const fs::path missing = source_root() / "tests" / "m1" / "negative" / "match_expression_missing_case.ax";
     expect_contains(require_failure(aurexc() + " --check " + q(missing)).output, "match expression is not exhaustive");
@@ -57,8 +57,9 @@ TEST_F(AurexIntegrationTest, M1EnumPayloadAndMatchBinding) {
     expect_contains_all(ast, {
         "case int(i32) = 1",
         "case pair(Pair) = 2",
-        "match_arm Packet_int(value)",
-        "match_arm Packet_pair(pair)",
+        "match_arm .int(value)",
+        "match_arm .pair(pair)",
+        "match_arm .none",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
@@ -82,6 +83,9 @@ TEST_F(AurexIntegrationTest, M1EnumPayloadAndMatchBinding) {
     const fs::path missing_arg = source_root() / "tests" / "m1" / "negative" / "enum_payload_constructor_missing_arg.ax";
     expect_contains(require_failure(aurexc() + " --check " + q(missing_arg)).output, "enum payload constructor requires exactly one argument");
 
+    const fs::path scoped_missing_arg = source_root() / "tests" / "m1" / "negative" / "enum_scoped_constructor_missing_arg.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(scoped_missing_arg)).output, "enum payload constructor requires exactly one argument");
+
     const fs::path wrong_type = source_root() / "tests" / "m1" / "negative" / "enum_payload_constructor_wrong_type.ax";
     expect_contains(require_failure(aurexc() + " --check " + q(wrong_type)).output, "enum payload constructor argument type mismatch");
 
@@ -93,6 +97,123 @@ TEST_F(AurexIntegrationTest, M1EnumPayloadAndMatchBinding) {
 
     const fs::path array_storage = source_root() / "tests" / "m1" / "negative" / "enum_payload_array_storage.ax";
     expect_contains(require_failure(aurexc() + " --check " + q(array_storage)).output, "enum payload cannot contain array storage in M1");
+}
+
+TEST_F(AurexIntegrationTest, M1MatchWildcardAndScopedCases) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "match_wildcard.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "match_arm .fast",
+        "match_arm _",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "^match.arm",
+        "^match.join",
+        "phi [^match.arm",
+        "const_ref @m0_match_wildcard_Mode_fast",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_match_wildcard";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path unreachable = source_root() / "tests" / "m1" / "negative" / "match_wildcard_unreachable.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(unreachable)).output, "match arm is unreachable after wildcard pattern");
+
+    const fs::path wrong_enum = source_root() / "tests" / "m1" / "negative" / "match_scoped_wrong_enum.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(wrong_enum)).output, "match arm case does not belong to matched enum");
+}
+
+TEST_F(AurexIntegrationTest, M1MatchOrPattern) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "match_or_pattern.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains(ast, "match_arm .red | .green");
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "const_ref @m0_match_or_pattern_Light_red",
+        "const_ref @m0_match_or_pattern_Light_green",
+        "or %",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_match_or_pattern";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path payload_binding = source_root() / "tests" / "m1" / "negative" / "match_or_pattern_payload_binding.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(payload_binding)).output, "or-pattern alternatives cannot bind payloads in M1");
+
+    const fs::path duplicate = source_root() / "tests" / "m1" / "negative" / "match_or_pattern_duplicate.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate match arm for enum case");
+}
+
+TEST_F(AurexIntegrationTest, M1MatchLiteralPattern) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "match_literal_pattern.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "match_arm 0",
+        "match_arm 1 | 2",
+        "match_arm true",
+        "match_arm false",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "literal 0",
+        "literal 1",
+        "literal 2",
+        "or %",
+        "literal true",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_match_literal_pattern";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path missing_wildcard = source_root() / "tests" / "m1" / "negative" / "match_literal_missing_wildcard.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_wildcard)).output, "match expression over integer or bool requires a wildcard arm");
+
+    const fs::path type_mismatch = source_root() / "tests" / "m1" / "negative" / "match_literal_type_mismatch.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(type_mismatch)).output, "bool match pattern must be true or false");
+
+    const fs::path enum_literal = source_root() / "tests" / "m1" / "negative" / "match_enum_literal_pattern.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(enum_literal)).output, "enum match pattern must be an enum case or wildcard");
+}
+
+TEST_F(AurexIntegrationTest, M1MatchGuard) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "match_guard.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "match_arm .int(value)",
+        "guard",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "^match.guard.pass",
+        "gt %",
+        "field_addr",
+        "match.next",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_match_guard";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path non_bool = source_root() / "tests" / "m1" / "negative" / "match_guard_non_bool.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(non_bool)).output, "match guard must be bool");
+
+    const fs::path not_exhaustive = source_root() / "tests" / "m1" / "negative" / "match_guard_not_exhaustive.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(not_exhaustive)).output, "match expression is not exhaustive");
+
+    const fs::path unknown_binding = source_root() / "tests" / "m1" / "negative" / "match_guard_unknown_binding.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(unknown_binding)).output, "unknown name: missing");
 }
 
 TEST_F(AurexIntegrationTest, M1LayoutAlignment) {

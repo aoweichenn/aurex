@@ -1,0 +1,35 @@
+module match_literal_pattern;
+
+fn score(value: i32) -> i32 {
+    return match value {
+        0 => 10,
+        1 | 2 => 20,
+        _ => 30,
+    };
+}
+
+fn flag_score(flag: bool) -> i32 {
+    return match flag {
+        true => 1,
+        false => 0,
+    };
+}
+
+fn main() -> i32 {
+    if score(0) != 10 {
+        return 1;
+    }
+    if score(2) != 20 {
+        return 2;
+    }
+    if score(9) != 30 {
+        return 3;
+    }
+    if flag_score(true) != 1 {
+        return 4;
+    }
+    if flag_score(false) != 0 {
+        return 5;
+    }
+    return 0;
+}

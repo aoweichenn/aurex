@@ -860,28 +860,26 @@ syntax::ExprId Parser::parse_match_expr() {
     expr.match_value = value;
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
-        const syntax::Token& case_name = expect(TokenKind::identifier, "expected match case name");
-        std::string_view binding_name;
-        if (match(TokenKind::l_paren)) {
-            const syntax::Token& binding = expect(TokenKind::identifier, "expected payload binding name");
-            if (binding.kind == TokenKind::identifier) {
-                binding_name = binding.text;
-            }
-            expect(TokenKind::r_paren, "expected ')' after payload binding");
+        const syntax::PatternId pattern = parse_pattern();
+        syntax::ExprId guard = syntax::invalid_expr_id;
+        if (match(TokenKind::kw_if)) {
+            guard = parse_expr();
         }
         expect(TokenKind::fat_arrow, "expected '=>' after match case");
         const syntax::ExprId arm_value = parse_expr();
-        base::SourceRange arm_range = syntax::is_valid(arm_value)
-            ? merge(case_name.range, module_.exprs[arm_value.value].range)
-            : case_name.range;
-        if (case_name.kind == TokenKind::identifier) {
-            expr.match_arms.push_back(syntax::MatchArm {
-                case_name.text,
-                binding_name,
-                arm_value,
-                arm_range,
-            });
+        base::SourceRange pattern_range = {};
+        if (syntax::is_valid(pattern) && pattern.value < module_.patterns.size()) {
+            pattern_range = module_.patterns[pattern.value].range;
         }
+        base::SourceRange arm_range = syntax::is_valid(arm_value)
+            ? merge(pattern_range, module_.exprs[arm_value.value].range)
+            : pattern_range;
+        expr.match_arms.push_back(syntax::MatchArm {
+            pattern,
+            guard,
+            arm_value,
+            arm_range,
+        });
         if (check(TokenKind::r_brace)) {
             break;
         }
@@ -893,6 +891,92 @@ syntax::ExprId Parser::parse_match_expr() {
     expr.range = merge(begin.range, end.range);
     panic_ = false;
     return module_.push_expr(std::move(expr));
+}
+
+syntax::PatternId Parser::parse_pattern() {
+    const syntax::PatternId first = parse_pattern_atom();
+    if (!match(TokenKind::pipe)) {
+        return first;
+    }
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::or_pattern;
+    pattern.alternatives.push_back(first);
+    base::SourceRange range = syntax::is_valid(first) && first.value < module_.patterns.size()
+        ? module_.patterns[first.value].range
+        : previous().range;
+    do {
+        const syntax::PatternId alternative = parse_pattern_atom();
+        pattern.alternatives.push_back(alternative);
+        if (syntax::is_valid(alternative) && alternative.value < module_.patterns.size()) {
+            range = merge(range, module_.patterns[alternative.value].range);
+        }
+    } while (match(TokenKind::pipe));
+    pattern.range = range;
+    return module_.push_pattern(pattern);
+}
+
+syntax::PatternId Parser::parse_pattern_atom() {
+    if (match(TokenKind::identifier)) {
+        const syntax::Token& first = previous();
+        if (first.text == "_") {
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::wildcard;
+            pattern.range = first.range;
+            return module_.push_pattern(pattern);
+        }
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::enum_case;
+        pattern.case_name = first.text;
+        pattern.range = first.range;
+        if (match(TokenKind::dot)) {
+            const syntax::Token& case_name = expect(TokenKind::identifier, "expected enum case name after '.'");
+            pattern.enum_name = first.text;
+            pattern.case_name = case_name.text;
+            pattern.scoped = true;
+            pattern.range = merge(first.range, case_name.range);
+        }
+        if (match(TokenKind::l_paren)) {
+            const syntax::Token& binding = expect(TokenKind::identifier, "expected payload binding name");
+            if (binding.kind == TokenKind::identifier) {
+                pattern.binding_name = binding.text;
+            }
+            const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after payload binding");
+            pattern.range = merge(pattern.range, end.range);
+        }
+        return module_.push_pattern(pattern);
+    }
+    if (match(TokenKind::integer_literal) || match(TokenKind::kw_true) || match(TokenKind::kw_false)) {
+        const syntax::Token& token = previous();
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::literal;
+        pattern.case_name = token.text;
+        pattern.range = token.range;
+        return module_.push_pattern(pattern);
+    }
+    if (match(TokenKind::dot)) {
+        const syntax::Token& dot = previous();
+        const syntax::Token& case_name = expect(TokenKind::identifier, "expected enum case name after '.'");
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::enum_case;
+        pattern.case_name = case_name.text;
+        pattern.scoped = true;
+        pattern.range = merge(dot.range, case_name.range);
+        if (match(TokenKind::l_paren)) {
+            const syntax::Token& binding = expect(TokenKind::identifier, "expected payload binding name");
+            if (binding.kind == TokenKind::identifier) {
+                pattern.binding_name = binding.text;
+            }
+            const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after payload binding");
+            pattern.range = merge(pattern.range, end.range);
+        }
+        return module_.push_pattern(pattern);
+    }
+    report_here("expected match pattern");
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::wildcard;
+    pattern.range = peek().range;
+    advance();
+    return module_.push_pattern(pattern);
 }
 
 syntax::ExprId Parser::parse_logical_or() {

@@ -1,0 +1,12 @@
+module match_or_pattern_payload_binding;
+
+enum Packet: u8 {
+    int(i32) = 1,
+    other(i32) = 2,
+}
+
+fn main() -> i32 {
+    return match Packet.int(1) {
+        .int(value) | .other(value) => value,
+    };
+}

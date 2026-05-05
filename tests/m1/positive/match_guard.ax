@@ -1,0 +1,27 @@
+module match_guard;
+
+enum Packet: u8 {
+    int(i32) = 1,
+    none = 2,
+}
+
+fn score(packet: Packet) -> i32 {
+    return match packet {
+        .int(value) if value > 10 => value,
+        .int(value) => value + 1,
+        .none => 0,
+    };
+}
+
+fn main() -> i32 {
+    if score(Packet.int(20)) != 20 {
+        return 1;
+    }
+    if score(Packet.int(4)) != 5 {
+        return 2;
+    }
+    if score(Packet.none) != 0 {
+        return 3;
+    }
+    return 0;
+}

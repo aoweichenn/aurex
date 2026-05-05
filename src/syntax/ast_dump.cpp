@@ -151,6 +151,41 @@ std::string type_label(const AstModule& module, const TypeId id) {
     return out.str();
 }
 
+std::string pattern_label(const AstModule& module, const PatternId id) {
+    if (!is_valid(id) || id.value >= module.patterns.size()) {
+        return "<invalid-pattern>";
+    }
+    const PatternNode& pattern = module.patterns[id.value];
+    if (pattern.kind == PatternKind::wildcard) {
+        return "_";
+    }
+    if (pattern.kind == PatternKind::literal) {
+        return std::string(pattern.case_name);
+    }
+    if (pattern.kind == PatternKind::or_pattern) {
+        std::string label;
+        for (base::usize i = 0; i < pattern.alternatives.size(); ++i) {
+            if (i != 0) {
+                label += " | ";
+            }
+            label += pattern_label(module, pattern.alternatives[i]);
+        }
+        return label;
+    }
+    std::string label;
+    if (pattern.scoped) {
+        if (!pattern.enum_name.empty()) {
+            label += std::string(pattern.enum_name);
+        }
+        label += ".";
+    }
+    label += std::string(pattern.case_name);
+    if (!pattern.binding_name.empty()) {
+        label += "(" + std::string(pattern.binding_name) + ")";
+    }
+    return label;
+}
+
 std::string_view item_kind_name(const ItemKind kind) {
     switch (kind) {
     case ItemKind::const_decl: return "const";
@@ -317,11 +352,12 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     for (const MatchArm& arm : expr.match_arms) {
         indent(out, depth + 1);
-        out << "match_arm " << arm.case_name;
-        if (!arm.binding_name.empty()) {
-            out << "(" << arm.binding_name << ")";
+        out << "match_arm " << pattern_label(module, arm.pattern) << "\n";
+        if (is_valid(arm.guard)) {
+            indent(out, depth + 2);
+            out << "guard\n";
+            dump_expr(out, module, arm.guard, depth + 3);
         }
-        out << "\n";
         dump_expr(out, module, arm.value, depth + 2);
     }
     if (is_valid(expr.object)) {

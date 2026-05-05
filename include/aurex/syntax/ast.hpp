@@ -106,6 +106,23 @@ enum class BinaryOp {
     logical_or,
 };
 
+enum class PatternKind {
+    wildcard,
+    enum_case,
+    literal,
+    or_pattern,
+};
+
+struct PatternNode {
+    PatternKind kind = PatternKind::wildcard;
+    base::SourceRange range {};
+    std::string_view enum_name;
+    std::string_view case_name;
+    std::string_view binding_name;
+    std::vector<PatternId> alternatives;
+    bool scoped = false;
+};
+
 struct FieldInit {
     std::string_view name;
     ExprId value = invalid_expr_id;
@@ -113,8 +130,8 @@ struct FieldInit {
 };
 
 struct MatchArm {
-    std::string_view case_name;
-    std::string_view binding_name;
+    PatternId pattern = invalid_pattern_id;
+    ExprId guard = invalid_expr_id;
     ExprId value = invalid_expr_id;
     base::SourceRange range {};
 };
@@ -244,6 +261,7 @@ struct AstModule {
     std::vector<ModuleInfo> modules;
     std::vector<TypeNode> types;
     std::vector<ExprNode> exprs;
+    std::vector<PatternNode> patterns;
     std::vector<StmtNode> stmts;
     std::vector<ItemNode> items;
     std::vector<ModuleId> item_modules;
@@ -251,6 +269,7 @@ struct AstModule {
     AstModule() {
         types.reserve(base::config::initial_ast_node_capacity);
         exprs.reserve(base::config::initial_ast_node_capacity);
+        patterns.reserve(base::config::initial_ast_node_capacity);
         stmts.reserve(base::config::initial_ast_node_capacity);
         items.reserve(base::config::initial_ast_node_capacity);
     }
@@ -264,6 +283,12 @@ struct AstModule {
     [[nodiscard]] ExprId push_expr(ExprNode node) {
         const ExprId id {static_cast<base::u32>(exprs.size())};
         exprs.push_back(std::move(node));
+        return id;
+    }
+
+    [[nodiscard]] PatternId push_pattern(PatternNode node) {
+        const PatternId id {static_cast<base::u32>(patterns.size())};
+        patterns.push_back(std::move(node));
         return id;
     }
 

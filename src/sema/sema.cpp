@@ -86,6 +86,8 @@ SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::Diagno
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     checked_.expr_types.assign(module_.exprs.size(), invalid_type_handle);
     checked_.expr_c_names.assign(module_.exprs.size(), {});
+    checked_.pattern_c_names.assign(module_.patterns.size(), {});
+    checked_.pattern_case_sets.assign(module_.patterns.size(), {});
     checked_.syntax_type_handles.assign(module_.types.size(), invalid_type_handle);
     checked_.stmt_local_types.assign(module_.stmts.size(), invalid_type_handle);
     checked_.item_c_names.assign(module_.items.size(), {});
@@ -293,6 +295,8 @@ void SemanticAnalyzer::register_value_names() {
                     payload_type,
                     std::string(enum_case.value_text),
                     enum_case.range,
+                    std::string(item.name),
+                    std::string(enum_case.name),
                 });
                 if (!has_payload) {
                     const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
@@ -752,18 +756,26 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         return record_expr_type(expr_id, symbol->type);
     }
     case syntax::ExprKind::call: {
-        if (!syntax::is_valid(expr.callee) || module_.exprs[expr.callee.value].kind != syntax::ExprKind::name) {
+        if (!syntax::is_valid(expr.callee) ||
+            (module_.exprs[expr.callee.value].kind != syntax::ExprKind::name &&
+             module_.exprs[expr.callee.value].kind != syntax::ExprKind::field)) {
             report(expr.range, "callee must be a function name");
             return record_expr_type(expr_id, invalid_type_handle);
         }
-        const std::string name(module_.exprs[expr.callee.value].text);
-        const base::SourceRange callee_range = module_.exprs[expr.callee.value].range;
-        if (const EnumCaseInfo* enum_case = find_enum_case_in_visible_modules(name, callee_range, false); enum_case != nullptr) {
+        if (module_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
+            find_enum_constructor(expr.callee, false) == nullptr) {
+            report(expr.range, "callee must be a function name");
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
+        const syntax::ExprNode& callee = module_.exprs[expr.callee.value];
+        const std::string name(callee.text);
+        const base::SourceRange callee_range = callee.range;
+        if (const EnumCaseInfo* enum_case = find_enum_constructor(expr.callee, false); enum_case != nullptr) {
             if (!is_valid(enum_case->payload_type)) {
-                report(expr.range, "enum case constructor requires a payload case: " + name);
+                report(expr.range, "enum case constructor requires a payload case: " + enum_case->name);
             }
             if (expr.args.size() != 1) {
-                report(expr.range, "enum payload constructor requires exactly one argument: " + name);
+                report(expr.range, "enum payload constructor requires exactly one argument: " + enum_case->name);
             }
             TypeHandle actual = invalid_type_handle;
             if (!expr.args.empty()) {
@@ -897,6 +909,22 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         }
     }
     case syntax::ExprKind::field: {
+        if (syntax::is_valid(expr.object) &&
+            expr.object.value < module_.exprs.size() &&
+            module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
+            const syntax::ExprNode& object = module_.exprs[expr.object.value];
+            if (const EnumCaseInfo* enum_case = find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
+                enum_case != nullptr) {
+                if (is_valid(enum_case->payload_type)) {
+                    report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+                if (expr_id.value < checked_.expr_c_names.size()) {
+                    checked_.expr_c_names[expr_id.value] = enum_case->c_name;
+                }
+                return record_expr_type(expr_id, enum_case->type);
+            }
+        }
         TypeHandle object = analyze_expr(expr.object);
         if (checked_.types.is_pointer(object)) {
             object = checked_.types.get(object).pointee;
@@ -1056,8 +1084,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
         report(expr.range, "match expression cannot be used in const initializer");
     }
     const TypeHandle matched = analyze_expr(expr.match_value);
-    if (!is_valid(matched) || checked_.types.get(matched).kind != TypeKind::enum_) {
-        report(expr.range, "match expression requires an enum value");
+    const bool enum_match = is_valid(matched) && checked_.types.get(matched).kind == TypeKind::enum_;
+    const bool literal_match = is_valid(matched) && (checked_.types.is_integer(matched) || checked_.types.is_bool(matched));
+    if (!enum_match && !literal_match) {
+        report(expr.range, "match expression requires an enum, integer, or bool value");
         return record_expr_type(expr_id, invalid_type_handle);
     }
     if (expr.match_arms.empty()) {
@@ -1067,39 +1097,61 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
 
     std::vector<std::string> covered;
     TypeHandle result = invalid_type_handle;
+    bool saw_wildcard = false;
+    bool covered_true = false;
+    bool covered_false = false;
     for (const syntax::MatchArm& arm : expr.match_arms) {
-        const EnumCaseInfo* case_info = find_enum_case_in_visible_modules(arm.case_name, arm.range);
-        if (case_info == nullptr) {
-            continue;
-        }
-        if (!checked_.types.same(case_info->type, matched)) {
-            report(arm.range, "match arm case does not belong to matched enum");
-        }
-        if (std::find(covered.begin(), covered.end(), case_info->c_name) != covered.end()) {
-            report(arm.range, "duplicate match arm for enum case: " + std::string(arm.case_name));
-        } else {
-            covered.push_back(case_info->c_name);
-        }
-
+        const bool guarded = syntax::is_valid(arm.guard);
+        const syntax::PatternNode* pattern = syntax::is_valid(arm.pattern) && arm.pattern.value < module_.patterns.size()
+            ? &module_.patterns[arm.pattern.value]
+            : nullptr;
+        std::vector<std::string> arm_covered;
+        std::vector<std::string>& coverage_target = guarded ? arm_covered : covered;
+        bool arm_covered_true = false;
+        bool arm_covered_false = false;
+        bool arm_saw_wildcard = false;
+        const EnumCaseInfo* case_info = enum_match
+            ? analyze_enum_case_pattern(arm.pattern, matched, coverage_target, saw_wildcard)
+            : analyze_value_pattern(
+                arm.pattern,
+                matched,
+                guarded ? arm_covered_true : covered_true,
+                guarded ? arm_covered_false : covered_false,
+                guarded ? arm_saw_wildcard : saw_wildcard
+            );
         TypeHandle arm_type = invalid_type_handle;
-        if (!arm.binding_name.empty()) {
-            if (!is_valid(case_info->payload_type)) {
+        if (pattern != nullptr && !pattern->binding_name.empty()) {
+            if (case_info == nullptr) {
+                arm_type = analyze_expr(arm.value);
+            } else if (!is_valid(case_info->payload_type)) {
                 report(arm.range, "match arm payload binding requires a payload enum case");
             } else {
                 symbols_.push_scope();
                 static_cast<void>(symbols_.insert(Symbol {
                     SymbolKind::local,
-                    std::string(arm.binding_name),
+                    std::string(pattern->binding_name),
                     {},
                     syntax::invalid_module_id,
                     case_info->payload_type,
                     arm.range,
                     false,
                 }, diagnostics_));
+                if (guarded) {
+                    const TypeHandle guard_type = analyze_expr(arm.guard);
+                    if (!checked_.types.is_bool(guard_type)) {
+                        report(module_.exprs[arm.guard.value].range, "match guard must be bool");
+                    }
+                }
                 arm_type = analyze_expr(arm.value);
                 symbols_.pop_scope();
             }
         } else {
+            if (guarded) {
+                const TypeHandle guard_type = analyze_expr(arm.guard);
+                if (!checked_.types.is_bool(guard_type)) {
+                    report(module_.exprs[arm.guard.value].range, "match guard must be bool");
+                }
+            }
             arm_type = analyze_expr(arm.value);
         }
         if (!is_valid(result)) {
@@ -1109,20 +1161,179 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
         }
     }
 
-    for (const auto& entry : checked_.enum_cases) {
-        const EnumCaseInfo& case_info = entry.second;
-        if (!checked_.types.same(case_info.type, matched)) {
-            continue;
+    if (enum_match) {
+        for (const auto& entry : checked_.enum_cases) {
+            const EnumCaseInfo& case_info = entry.second;
+            if (!checked_.types.same(case_info.type, matched)) {
+                continue;
+            }
+            if (!saw_wildcard && std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
+                report(expr.range, "match expression is not exhaustive for enum case: " + case_info.name);
+            }
         }
-        if (std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
-            report(expr.range, "match expression is not exhaustive for enum case: " + case_info.name);
-        }
+    } else if (!saw_wildcard && (!checked_.types.is_bool(matched) || !covered_true || !covered_false)) {
+        report(expr.range, "match expression over integer or bool requires a wildcard arm");
     }
     if (is_valid(result) && checked_.types.is_void(result)) {
         report(expr.range, "match expression result cannot be void");
         return record_expr_type(expr_id, invalid_type_handle);
     }
     return record_expr_type(expr_id, result);
+}
+
+const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
+    const syntax::PatternId pattern_id,
+    const TypeHandle matched,
+    std::vector<std::string>& covered,
+    bool& saw_wildcard
+) {
+    if (!syntax::is_valid(pattern_id) || pattern_id.value >= module_.patterns.size()) {
+        return nullptr;
+    }
+    const syntax::PatternNode& pattern = module_.patterns[pattern_id.value];
+    if (pattern.kind == syntax::PatternKind::or_pattern) {
+        const EnumCaseInfo* first_case = nullptr;
+        for (syntax::PatternId alternative : pattern.alternatives) {
+            const syntax::PatternNode* alternative_pattern = syntax::is_valid(alternative) && alternative.value < module_.patterns.size()
+                ? &module_.patterns[alternative.value]
+                : nullptr;
+            if (alternative_pattern != nullptr && !alternative_pattern->binding_name.empty()) {
+                report(alternative_pattern->range, "or-pattern alternatives cannot bind payloads in M1");
+            }
+            const EnumCaseInfo* case_info = analyze_enum_case_pattern(alternative, matched, covered, saw_wildcard);
+            if (first_case == nullptr) {
+                first_case = case_info;
+            }
+            if (syntax::is_valid(pattern_id) &&
+                pattern_id.value < checked_.pattern_case_sets.size() &&
+                syntax::is_valid(alternative) &&
+                alternative.value < checked_.pattern_case_sets.size()) {
+                checked_.pattern_case_sets[pattern_id.value].insert(
+                    checked_.pattern_case_sets[alternative.value].begin(),
+                    checked_.pattern_case_sets[alternative.value].end()
+                );
+            }
+        }
+        return first_case;
+    }
+    return analyze_single_enum_case_pattern(pattern_id, matched, covered, saw_wildcard);
+}
+
+const EnumCaseInfo* SemanticAnalyzer::analyze_single_enum_case_pattern(
+    const syntax::PatternId pattern_id,
+    const TypeHandle matched,
+    std::vector<std::string>& covered,
+    bool& saw_wildcard
+) {
+    if (!syntax::is_valid(pattern_id) || pattern_id.value >= module_.patterns.size()) {
+        return nullptr;
+    }
+    const syntax::PatternNode& pattern = module_.patterns[pattern_id.value];
+    if (saw_wildcard) {
+        report(pattern.range, "match arm is unreachable after wildcard pattern");
+    }
+    if (pattern.kind == syntax::PatternKind::wildcard) {
+        saw_wildcard = true;
+        return nullptr;
+    }
+    if (pattern.kind == syntax::PatternKind::literal) {
+        report(pattern.range, "enum match pattern must be an enum case or wildcard");
+        return nullptr;
+    }
+
+    const EnumCaseInfo* case_info = nullptr;
+    if (pattern.scoped) {
+        if (!pattern.enum_name.empty()) {
+            case_info = find_enum_case_by_scoped_name(pattern.enum_name, pattern.case_name, pattern.range);
+        } else {
+            case_info = find_enum_case_by_type_and_case(matched, pattern.case_name);
+            if (case_info == nullptr) {
+                report(pattern.range, "unknown enum case for matched enum: " + std::string(pattern.case_name));
+            }
+        }
+    } else {
+        case_info = find_enum_case_in_visible_modules(pattern.case_name, pattern.range);
+    }
+    if (case_info == nullptr) {
+        return nullptr;
+    }
+    if (!checked_.types.same(case_info->type, matched)) {
+        report(pattern.range, "match arm case does not belong to matched enum");
+    }
+    if (std::find(covered.begin(), covered.end(), case_info->c_name) != covered.end()) {
+        report(pattern.range, "duplicate match arm for enum case: " + case_info->name);
+    } else {
+        covered.push_back(case_info->c_name);
+    }
+    if (pattern_id.value < checked_.pattern_c_names.size()) {
+        checked_.pattern_c_names[pattern_id.value] = case_info->c_name;
+    }
+    if (pattern_id.value < checked_.pattern_case_sets.size()) {
+        checked_.pattern_case_sets[pattern_id.value].insert(case_info->c_name);
+    }
+    return case_info;
+}
+
+const EnumCaseInfo* SemanticAnalyzer::analyze_value_pattern(
+    const syntax::PatternId pattern_id,
+    const TypeHandle matched,
+    bool& covered_true,
+    bool& covered_false,
+    bool& saw_wildcard
+) {
+    if (!syntax::is_valid(pattern_id) || pattern_id.value >= module_.patterns.size()) {
+        return nullptr;
+    }
+    const syntax::PatternNode& pattern = module_.patterns[pattern_id.value];
+    if (pattern.kind == syntax::PatternKind::or_pattern) {
+        for (syntax::PatternId alternative : pattern.alternatives) {
+            static_cast<void>(analyze_value_pattern(alternative, matched, covered_true, covered_false, saw_wildcard));
+        }
+        return nullptr;
+    }
+    return analyze_single_value_pattern(pattern_id, matched, covered_true, covered_false, saw_wildcard);
+}
+
+const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
+    const syntax::PatternId pattern_id,
+    const TypeHandle matched,
+    bool& covered_true,
+    bool& covered_false,
+    bool& saw_wildcard
+) {
+    if (!syntax::is_valid(pattern_id) || pattern_id.value >= module_.patterns.size()) {
+        return nullptr;
+    }
+    const syntax::PatternNode& pattern = module_.patterns[pattern_id.value];
+    if (saw_wildcard) {
+        report(pattern.range, "match arm is unreachable after wildcard pattern");
+    }
+    if (pattern.kind == syntax::PatternKind::wildcard) {
+        saw_wildcard = true;
+        return nullptr;
+    }
+    if (pattern.kind != syntax::PatternKind::literal) {
+        report(pattern.range, "match pattern for integer or bool value must be a literal or wildcard");
+        return nullptr;
+    }
+    if (checked_.types.is_bool(matched)) {
+        if (pattern.case_name != "true" && pattern.case_name != "false") {
+            report(pattern.range, "bool match pattern must be true or false");
+        } else if (pattern.case_name == "true") {
+            covered_true = true;
+        } else {
+            covered_false = true;
+        }
+        return nullptr;
+    }
+    if (checked_.types.is_integer(matched)) {
+        if (pattern.case_name == "true" || pattern.case_name == "false") {
+            report(pattern.range, "integer match pattern must be an integer literal");
+        }
+        return nullptr;
+    }
+    report(pattern.range, "unsupported literal match pattern");
+    return nullptr;
 }
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {
@@ -1570,6 +1781,76 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
         report(range, "unknown enum case: " + std::string(name));
     }
     return imported_result;
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
+    const TypeHandle enum_type,
+    const std::string_view case_name
+) const noexcept {
+    for (const auto& entry : checked_.enum_cases) {
+        const EnumCaseInfo& candidate = entry.second;
+        if (checked_.types.same(candidate.type, enum_type) && candidate.case_name == case_name) {
+            return &candidate;
+        }
+    }
+    return nullptr;
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
+    const std::string_view enum_name,
+    const std::string_view case_name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    if (!report_unknown &&
+        named_types_.find(module_key(current_module_, enum_name)) == named_types_.end() &&
+        checked_.type_aliases.find(module_key(current_module_, enum_name)) == checked_.type_aliases.end()) {
+        bool imported_type = false;
+        if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
+            for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+                if (named_types_.find(module_key(module, enum_name)) != named_types_.end() ||
+                    checked_.type_aliases.find(module_key(module, enum_name)) != checked_.type_aliases.end()) {
+                    imported_type = true;
+                    break;
+                }
+            }
+        }
+        if (!imported_type) {
+            return nullptr;
+        }
+    }
+    const TypeHandle enum_type = find_type_in_visible_modules(enum_name, range, false);
+    if (!is_valid(enum_type) || checked_.types.get(enum_type).kind != TypeKind::enum_) {
+        if (is_valid(enum_type)) {
+            report(range, "enum case scope must name an enum type");
+        }
+        return nullptr;
+    }
+    if (const EnumCaseInfo* result = find_enum_case_by_type_and_case(enum_type, case_name); result != nullptr) {
+        return result;
+    }
+    if (report_unknown) {
+        report(range, "unknown enum case: " + std::string(enum_name) + "." + std::string(case_name));
+    }
+    return nullptr;
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId callee_id, const bool report_unknown) {
+    if (!syntax::is_valid(callee_id) || callee_id.value >= module_.exprs.size()) {
+        return nullptr;
+    }
+    const syntax::ExprNode& callee = module_.exprs[callee_id.value];
+    if (callee.kind == syntax::ExprKind::name) {
+        return find_enum_case_in_visible_modules(callee.text, callee.range, report_unknown);
+    }
+    if (callee.kind != syntax::ExprKind::field ||
+        !syntax::is_valid(callee.object) ||
+        callee.object.value >= module_.exprs.size() ||
+        module_.exprs[callee.object.value].kind != syntax::ExprKind::name) {
+        return nullptr;
+    }
+    const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
+    return find_enum_case_by_scoped_name(enum_name.text, callee.field_name, callee.range, report_unknown);
 }
 
 const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const base::SourceRange range) {

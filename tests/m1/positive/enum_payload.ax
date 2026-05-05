@@ -13,21 +13,21 @@ enum Packet: u8 {
 
 fn score(packet: Packet) -> i32 {
     return match packet {
-        Packet_int(value) => value,
-        Packet_pair(pair) => pair.left + pair.right,
-        Packet_none => 0,
+        .int(value) => value,
+        .pair(pair) => pair.left + pair.right,
+        .none => 0,
     };
 }
 
 fn main() -> i32 {
     let pair = Pair { left: 20, right: 22 };
-    if score(Packet_int(41)) != 41 {
+    if score(Packet.int(41)) != 41 {
         return 1;
     }
-    if score(Packet_pair(pair)) != 42 {
+    if score(Packet.pair(pair)) != 42 {
         return 2;
     }
-    if score(Packet_none) != 0 {
+    if score(Packet.none) != 0 {
         return 3;
     }
     return 0;

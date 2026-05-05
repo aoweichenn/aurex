@@ -1,0 +1,8 @@
+module match_literal_type_mismatch;
+
+fn main() -> i32 {
+    return match true {
+        1 => 10,
+        _ => 20,
+    };
+}

@@ -1,0 +1,27 @@
+module match_or_pattern;
+
+enum Light: u8 {
+    red = 1,
+    yellow = 2,
+    green = 3,
+}
+
+fn score(light: Light) -> i32 {
+    return match light {
+        .red | .green => 10,
+        .yellow => 20,
+    };
+}
+
+fn main() -> i32 {
+    if score(Light.red) != 10 {
+        return 1;
+    }
+    if score(Light.green) != 10 {
+        return 2;
+    }
+    if score(Light.yellow) != 20 {
+        return 3;
+    }
+    return 0;
+}

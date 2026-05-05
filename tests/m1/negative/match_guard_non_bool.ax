@@ -1,0 +1,11 @@
+module match_guard_non_bool;
+
+enum Choice: u8 {
+    one = 1,
+}
+
+fn main() -> i32 {
+    return match Choice.one {
+        .one if 1 => 1,
+    };
+}

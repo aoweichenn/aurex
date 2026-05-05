@@ -27,6 +27,7 @@ Stage0 主链路：
 - 函数原型与递归函数检查。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 method call 和 `Type.function()` 风格 associated call。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流。
+- 标准库容器/文本/路径基线已启动，包含泛型 `Vec<T>` 的 `VecU8` 专用 API、拥有型 `String` 和拥有型 `Path`。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 - examples 已经包含 CLI、文件 IO、内存/arena、std 模块、泛型结果类型、可见性和 re-export facade 的系统级小案例。
 
@@ -94,7 +95,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    已完成。方法基础上已经有标准错误传播的 `?` 切片，可用于 `Result` 和 `Option` 的早返回。下一步继续扩展标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这类代码更自然。
 
 3. `Vec` / `String` / `Path`  
-   支撑自举前端和构建工具的真实数据结构。完成后新增 token buffer 和 source list examples。
+   已启动。当前已有 `Vec<T>` 结构、`VecU8` 专用操作、拥有型 `String` 和拥有型 `Path`，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。下一步继续扩展到 token buffer、source list 和更通用的 path/build graph 场景。
 
 4. generic function / trait / `where`  
    让容器、算法和 build graph 不再靠单类型特化。完成后补 typed graph 和 map-like examples。

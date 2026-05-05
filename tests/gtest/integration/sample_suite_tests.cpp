@@ -70,4 +70,30 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
     }
 }
 
+TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline) {
+    const fs::path source = positive_sample("std", "std_collections_path.ax");
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "type VecU8 = std.core.vec.Vec<u8>",
+        "fn method std.core.vec.Vec<u8>.push -> bool",
+        "fn method std.core.string.String.from_c -> std.core.result.Result<std.core.string.String, i32>",
+        "fn method std.fs.path.Path.join_c -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn run -> std.core.result.Result<i32, i32>",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "record std.core.vec.Vec<u8>",
+        "record String",
+        "record Path",
+        "try.ok",
+        "try.err",
+    });
+
+    const fs::path bin = test_bin_root() / "std_collections_path_explicit";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 } // namespace aurex::test

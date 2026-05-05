@@ -1,0 +1,158 @@
+module std.core.vec;
+
+import std.core.mem;
+import std.core.result;
+import std.core.text;
+
+pub struct Vec<T> {
+    data: *mut T;
+    len: usize;
+    capacity: usize;
+}
+
+pub type VecU8 = Vec<u8>;
+
+pub fn vec_u8_new() -> VecU8 {
+    return VecU8 { data: null, len: cast(usize, 0), capacity: cast(usize, 0) };
+}
+
+pub fn vec_u8_with_capacity(capacity: usize) -> Result<VecU8, i32> {
+    var vec: VecU8 = vec_u8_new();
+    if !vec_u8_reserve(&vec, capacity) {
+        return Result.err(1);
+    }
+    return Result.ok(vec);
+}
+
+pub fn vec_u8_destroy(vec: *mut VecU8) -> void {
+    if vec.data != null {
+        free_bytes(vec.data);
+    }
+    vec.data = null;
+    vec.len = cast(usize, 0);
+    vec.capacity = cast(usize, 0);
+}
+
+pub fn vec_u8_len(vec: *const VecU8) -> usize {
+    return vec.len;
+}
+
+pub fn vec_u8_is_empty(vec: *const VecU8) -> bool {
+    return vec.len == cast(usize, 0);
+}
+
+pub fn vec_u8_as_span(vec: *const VecU8) -> SpanU8 {
+    return SpanU8 { data: ptr_cast(*const u8, vec.data), len: vec.len };
+}
+
+pub fn vec_u8_as_mut_span(vec: *mut VecU8) -> MutSpanU8 {
+    return MutSpanU8 { data: vec.data, len: vec.len };
+}
+
+pub fn vec_u8_reserve(vec: *mut VecU8, capacity: usize) -> bool {
+    if capacity <= vec.capacity {
+        return true;
+    }
+    let next: *mut u8 = resize_bytes(vec.data, capacity);
+    if next == null {
+        return false;
+    }
+    vec.data = next;
+    vec.capacity = capacity;
+    return true;
+}
+
+pub fn vec_u8_push(vec: *mut VecU8, value: u8) -> bool {
+    if vec.len == vec.capacity {
+        var next_capacity: usize = vec.capacity * cast(usize, 2);
+        if next_capacity == cast(usize, 0) {
+            next_capacity = cast(usize, 8);
+        }
+        if !vec_u8_reserve(vec, next_capacity) {
+            return false;
+        }
+    }
+    vec.data[vec.len] = value;
+    vec.len = vec.len + cast(usize, 1);
+    return true;
+}
+
+pub fn vec_u8_extend(vec: *mut VecU8, bytes: SpanU8) -> bool {
+    if bytes.len == cast(usize, 0) {
+        return true;
+    }
+    let required: usize = vec.len + bytes.len;
+    if !vec_u8_reserve(vec, required) {
+        return false;
+    }
+    let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(vec.data) + vec.len);
+    copy_bytes(dst, bytes.data, bytes.len);
+    vec.len = required;
+    return true;
+}
+
+pub fn vec_u8_pop(vec: *mut VecU8) -> Option<u8> {
+    if vec.len == cast(usize, 0) {
+        return Option.none;
+    }
+    vec.len = vec.len - cast(usize, 1);
+    return Option.some(vec.data[vec.len]);
+}
+
+pub fn vec_u8_clear(vec: *mut VecU8) -> void {
+    vec.len = cast(usize, 0);
+}
+
+pub fn vec_u8_from_span(bytes: SpanU8) -> Result<VecU8, i32> {
+    var vec: VecU8 = vec_u8_new();
+    if !vec_u8_extend(&vec, bytes) {
+        return Result.err(1);
+    }
+    return Result.ok(vec);
+}
+
+impl VecU8 {
+    pub fn new() -> VecU8 {
+        return vec_u8_new();
+    }
+
+    pub fn with_capacity(capacity: usize) -> Result<VecU8, i32> {
+        return vec_u8_with_capacity(capacity);
+    }
+
+    pub fn destroy(self: *mut VecU8) -> void {
+        vec_u8_destroy(self);
+    }
+
+    pub fn len(self: *const VecU8) -> usize {
+        return vec_u8_len(self);
+    }
+
+    pub fn is_empty(self: *const VecU8) -> bool {
+        return vec_u8_is_empty(self);
+    }
+
+    pub fn as_span(self: *const VecU8) -> SpanU8 {
+        return vec_u8_as_span(self);
+    }
+
+    pub fn reserve(self: *mut VecU8, capacity: usize) -> bool {
+        return vec_u8_reserve(self, capacity);
+    }
+
+    pub fn push(self: *mut VecU8, value: u8) -> bool {
+        return vec_u8_push(self, value);
+    }
+
+    pub fn extend(self: *mut VecU8, bytes: SpanU8) -> bool {
+        return vec_u8_extend(self, bytes);
+    }
+
+    pub fn pop(self: *mut VecU8) -> Option<u8> {
+        return vec_u8_pop(self);
+    }
+
+    pub fn clear(self: *mut VecU8) -> void {
+        vec_u8_clear(self);
+    }
+}

@@ -1,0 +1,76 @@
+module std_collections_path;
+
+import std.core.result;
+import std.core.string;
+import std.core.text;
+import std.core.vec;
+import std.fs.path;
+
+fn check_vec() -> bool {
+    var bytes: VecU8 = VecU8.new();
+    if !bytes.push(b'a') || !bytes.extend(c_span(c"bc")) {
+        bytes.destroy();
+        return false;
+    }
+    let popped: Option<u8> = bytes.pop();
+    let last: u8 = match popped {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let ok: bool = last == b'c' &&
+        bytes.len() == cast(usize, 2) &&
+        bytes_equal(bytes.as_span(), c_span(c"ab"));
+    bytes.destroy();
+    return ok;
+}
+
+fn check_string() -> Result<bool, i32> {
+    var text: String = String.from_c(c"ab")?;
+    if !text.push(b'c') || !text.append_c(c"d") {
+        text.destroy();
+        return Result.err(2);
+    }
+    let ok: bool = text.len() == cast(usize, 4) &&
+        text.equals_span(c_span(c"abcd")) &&
+        text.ends_with_byte(b'd') &&
+        c_string_equal(text.c_str(), c"abcd");
+    text.destroy();
+    return Result.ok(ok);
+}
+
+fn make_path() -> Result<Path, i32> {
+    var root: Path = Path.from_c(c"/tmp")?;
+    var joined: Path = root.join_c(c"aurex/std.txt")?;
+    root.destroy();
+    return Result.ok(joined);
+}
+
+fn check_path() -> Result<bool, i32> {
+    var path: Path = make_path()?;
+    let ok: bool = bytes_equal(path.file_name(), c_span(c"std.txt")) &&
+        c_string_starts_with(path.as_c(), c"/tmp/aurex");
+    path.destroy();
+    return Result.ok(ok);
+}
+
+fn run() -> Result<i32, i32> {
+    if !check_vec() {
+        return Result.err(1);
+    }
+    let string_ok: bool = check_string()?;
+    if !string_ok {
+        return Result.err(3);
+    }
+    let path_ok: bool = check_path()?;
+    if !path_ok {
+        return Result.err(4);
+    }
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

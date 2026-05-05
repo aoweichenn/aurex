@@ -1,0 +1,90 @@
+module std.fs.path;
+
+import std.core.result;
+import std.core.string;
+import std.core.text;
+
+pub struct Path {
+    text: String;
+}
+
+pub fn path_from_c(text: *const u8) -> Result<Path, i32> {
+    let owned: String = String.from_c(text)?;
+    return Result.ok(Path { text: owned });
+}
+
+pub fn path_destroy(path: *mut Path) -> void {
+    path.text.destroy();
+}
+
+pub fn path_as_c(path: *const Path) -> *const u8 {
+    return path.text.c_str();
+}
+
+pub fn path_as_span(path: *const Path) -> SpanU8 {
+    return path.text.as_span();
+}
+
+pub fn path_file_name(path: *const Path) -> SpanU8 {
+    let span: SpanU8 = path_as_span(path);
+    var index: usize = span.len;
+    while index > cast(usize, 0) {
+        let previous: usize = index - cast(usize, 1);
+        if span.data[previous] == b'/' {
+            return SpanU8 {
+                data: ptr_from_addr(*const u8, ptr_addr(span.data) + index),
+                len: span.len - index,
+            };
+        }
+        index = previous;
+    }
+    return span;
+}
+
+pub fn path_join_c(base: *const Path, child: *const u8) -> Result<Path, i32> {
+    if child == null {
+        return Result.err(1);
+    }
+    if child[0] == b'/' {
+        return path_from_c(child);
+    }
+
+    var joined: String = String.from_c(base.text.c_str())?;
+    if !joined.is_empty() && !joined.ends_with_byte(b'/') {
+        if !joined.push(b'/') {
+            joined.destroy();
+            return Result.err(1);
+        }
+    }
+    if !joined.append_c(child) {
+        joined.destroy();
+        return Result.err(1);
+    }
+    return Result.ok(Path { text: joined });
+}
+
+impl Path {
+    pub fn from_c(text: *const u8) -> Result<Path, i32> {
+        return path_from_c(text);
+    }
+
+    pub fn destroy(self: *mut Path) -> void {
+        path_destroy(self);
+    }
+
+    pub fn as_c(self: *const Path) -> *const u8 {
+        return path_as_c(self);
+    }
+
+    pub fn as_span(self: *const Path) -> SpanU8 {
+        return path_as_span(self);
+    }
+
+    pub fn file_name(self: *const Path) -> SpanU8 {
+        return path_file_name(self);
+    }
+
+    pub fn join_c(self: *const Path, child: *const u8) -> Result<Path, i32> {
+        return path_join_c(self, child);
+    }
+}

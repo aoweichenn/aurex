@@ -37,7 +37,6 @@ base
 - `src/driver`：模块加载、标准库查找、native toolchain 调用。
 - `src/cli`：命令行解析。
 - `std`：Aurex 标准库模块和 backend support。
-- `selfhost`：M0 编写的自举切片。
 
 ## 关键数据边界
 
@@ -97,24 +96,12 @@ backend support 策略：
 
 `DiagnosticSink` 收集带 source range 的错误。driver 在 lex/parse/sema 失败时打印文件、行列、错误级别、消息和源码 caret。后端与 IO 错误通过 `base::Result` 返回。
 
-## 自举架构
+## 未来自举架构
 
-selfhost 目录按组件拆分：
-
-- `lexer`：M0 lexer core 和 token dump。
-- `syntax`：ID-backed AST 数据结构。
-- `parser`：cursor、types、expr、seed。
-- `compiler/air`：model、binding、lowering、text snapshot、verifier。
-- `compiler/ir`：兼容 TAC snapshot 的 writer、names、types、expr、cfg bridge、emit。
-- `bin`：Stage1 CLI 入口。
-- `smoke` / `tool`：验证程序。
-
-当前 Stage1 输出 `aurex_tac v0` snapshot，并在已解析函数体内嵌入 `air_ir v0` / `air_cfg v0` 注释快照。AIR 已经是函数级结构，包含函数头、linkage、参数、局部、value DAG、instruction、terminator、类型 id、sema type category、名称范围、struct literal 字段参数和 param/local/item 绑定。sema 也有独立表达式注解表，AIR lowering 通过 expr id 读取 result type 元数据。它仍是结构化快照，还不是最终 backend handoff，也不是完整 fixed-point 编译器。
+旧自举实验目录已经移出 active tree。M3 前的架构重点是把 Stage0 的模块隔离、显式可见性、泛型、sum type、pattern matching、Aurex IR 和 LLVM lowering 做稳。新的自举实现应在这些特性稳定后重新设计，先输出可验证的 AIR/IR 级结构，再考虑后端 handoff。
 
 ## 验证架构
 
-- `tools/run_tests.sh`：主质量门，覆盖构建、CLI、IR、LLVM、native、std、selfhost 和文档布局。
+- `tools/run_tests.sh`：主质量门，覆盖构建、CLI、IR、LLVM、native、std、M1 语言特性和文档布局。
 - `tools/check_golden.sh`：golden 输出对比。
-- `tools/bootstrap_chain.sh`：selfhost 路线 smoke。
-- `tools/compare_selfhost_lexer.sh`：Stage0/Stage1 lexer 行为对比。
 - `tools/bench.py`：轻量性能 smoke。

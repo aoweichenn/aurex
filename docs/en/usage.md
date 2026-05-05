@@ -117,8 +117,6 @@ AUREX_STDLIB=/path/to/std build/bin/aurexc tests/positive/std_text.ax -o build/t
 ```sh
 tools/run_tests.sh
 tools/check_golden.sh
-tools/bootstrap_chain.sh
-tools/compare_selfhost_lexer.sh
 tools/bench.py
 ```
 

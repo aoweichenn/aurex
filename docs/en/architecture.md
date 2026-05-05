@@ -45,7 +45,6 @@ nodes.
 - `src/driver`: module loading, std lookup, and native toolchain invocation.
 - `src/cli`: command-line parsing.
 - `std`: Aurex standard-library modules and backend support.
-- `selfhost`: M0 bootstrap slices.
 
 ## Key Data Boundaries
 
@@ -119,32 +118,17 @@ directory. This supports build-tree, install-tree, and local-development usage.
 the driver prints file, line, column, severity, message, and a source caret.
 Backend and IO failures are returned through `base::Result`.
 
-## Self-Hosting Architecture
+## Future Bootstrap Architecture
 
-The selfhost tree is split by component:
-
-- `lexer`: M0 lexer core and token dumping.
-- `syntax`: ID-backed AST data structures.
-- `parser`: cursor, types, expr, and seed modules.
-- `compiler/air`: model, binding, lowering, text snapshot, and verifier modules.
-- `compiler/ir`: legacy TAC snapshot writer, names, types, expr, cfg bridge, and emit modules.
-- `bin`: Stage1 CLI entry points.
-- `smoke` / `tool`: validation programs.
-
-Stage1 currently emits `aurex_tac v0` snapshots with embedded `air_ir v0` and
-`air_cfg v0` comment snapshots for parsed function bodies. AIR is
-function-level and carries headers, linkage, params, locals, value DAGs,
-instructions, terminators, type ids, sema type categories, name ranges,
-struct-literal field args, and param/local/item bindings. Sema also has a
-standalone expression annotation table keyed by expr id, which AIR lowering uses
-for result type metadata. AIR is still a structured snapshot, not the final
-backend handoff format or a fixed-point compiler.
+The old bootstrap experiment has been removed from the active tree. Before M3,
+the architecture focus is stabilizing Stage0 module isolation, explicit
+visibility, generics, sum types, pattern matching, Aurex IR, and LLVM lowering.
+A new bootstrap implementation should be designed after those features settle,
+with a first target of verifiable AIR/IR-level output before backend handoff.
 
 ## Verification Architecture
 
 - `tools/run_tests.sh`: main quality gate for build, CLI, IR, LLVM, native, std,
-  selfhost, and documentation layout.
+  M1 language features, and documentation layout.
 - `tools/check_golden.sh`: golden output comparison.
-- `tools/bootstrap_chain.sh`: selfhost smoke path.
-- `tools/compare_selfhost_lexer.sh`: Stage0/Stage1 lexer behavior comparison.
 - `tools/bench.py`: lightweight performance smoke benchmark.

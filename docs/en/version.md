@@ -21,16 +21,15 @@ Included:
 - Aurex IR verifier and pass pipeline.
 - Relocatable std lookup.
 - std host-c backend support and stable `aurex_std_v0_*` symbols.
-- selfhost lexer/parser/IR-emitter slices.
-- bootstrap, golden, positive, and negative test flows.
+- M1 language slices, including visibility, basic generics, sum types, pattern
+  matching, expressions, and controlled inference.
+- golden, positive, negative, and M1 test flows.
 - Chinese and English topic-based documentation sets.
 
 Not included:
 
-- Complete Stage1 sema.
-- Stage1 TAC verifier.
-- Stage1 LLVM backend handoff.
 - Fixed-point self-host.
+- Old bootstrap experiment code.
 - Complete cross-block SSA/mem2reg and production optimizer.
 
 ## Compatibility Strategy
@@ -52,7 +51,7 @@ Not included:
 
 - M0 syntax and semantic details.
 - Number and strength of IR passes.
-- Stage1 selfhost coverage.
+- New bootstrap coverage after M3.
 - std backend support backend types.
 - LLVM lowering internals.
 
@@ -61,6 +60,7 @@ Not included:
 - Complete IR constant folding.
 - Cross-block mem2reg and phi insertion.
 - Fuller ABI attributes and target configuration.
-- Stage1 sema and IR verifier.
-- Stage1 output handoff into the existing LLVM backend.
+- Complete M1 module isolation, visibility, generic constraints, and pattern
+  matching coverage.
+- Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

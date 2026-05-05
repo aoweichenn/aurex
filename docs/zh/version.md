@@ -17,16 +17,14 @@
 - Aurex IR verifier 和 pass pipeline。
 - std 可重定位查找。
 - std host-c backend support 和 `aurex_std_v0_*` 稳定符号。
-- selfhost lexer/parser/IR emitter 切片。
-- bootstrap、golden、positive、negative 测试链路。
+- M1 语言切片，包括可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
+- golden、positive、negative、M1 测试链路。
 - 中英文主题文档集。
 
 不包含：
 
-- 完整 Stage1 sema。
-- Stage1 TAC verifier。
-- Stage1 LLVM backend 接入。
 - fixed-point self-host。
+- 旧自举实验代码。
 - 完整跨块 SSA/mem2reg 和生产级优化器。
 
 ## 兼容性策略
@@ -48,7 +46,7 @@
 
 - M0 语法和语义细节。
 - IR pass 的数量和优化强度。
-- Stage1 selfhost 覆盖范围。
+- M3 之后的新自举覆盖范围。
 - std backend support 的 backend 类型。
 - LLVM lowering 的内部实现。
 
@@ -57,6 +55,6 @@
 - 完整 IR constant folding。
 - 跨块 mem2reg 和 phi 插入。
 - 更完整 ABI 属性和目标配置。
-- Stage1 sema 和 IR verifier。
-- Stage1 产物接入现有 LLVM 后端。
+- M1 模块隔离、可见性、泛型约束和 pattern matching 完整性。
+- M3 之后以新语言特性重新设计自举链路。
 - fixed-point self-host 验证。

@@ -2,130 +2,84 @@
 
 Version: 0.1.2
 
-## Current Selfhost Stage
+## Current Stage
 
-The current selfhost track is at the “measurable Stage1 frontend slice plus
-TAC/AIR snapshot output” stage. It is not yet a complete compiler that can
-replace Stage0.
-
-- Stage0 is still the C++20 compiler and remains the production compiler.
-- selfhost contains M0 implementations of the lexer core, token dump tools,
-  parser seed, ID-backed AST, Stage1 CLI, Stage1 TAC snapshot emitter, and the
-  first AIR model/lowering/verifier slice.
-- Stage1 can read `.ax` files, parse the seed-covered syntax, and output
-  `aurex_tac v0` text snapshots. Function bodies also embed `air_ir v0` and
-  `air_cfg v0` comment snapshots.
-- The bootstrap flow covers selfhost lexer golden comparison, parser smoke,
-  Stage1 snapshot output, and selfhost bundle visibility.
+The old selfhost bootstrap track has been removed from the active tree. Current
+work focuses on the C++ Stage0 compiler, Aurex IR, and the LLVM backend, with
+M1 language work aimed at stronger expressiveness, module isolation, and backend
+contracts. A new bootstrap implementation is expected around M3, rewritten in
+Aurex with the newer language features instead of preserving the old Stage1
+seed constraints.
 
 ## Current Capabilities
 
-M0 lexer:
+Stage0 main path:
 
-- Tokenizes the local corpus.
-- Prints token kinds for comparison against Stage0.
-- Passes range, smoke, and golden tests.
+- Handwritten lexer and recursive-descent parser.
+- Module declarations, import search paths, and standard-library lookup.
+- Semantic analysis, type tables, symbols, ABI names, and basic diagnostics.
+- Aurex typed CFG/SSA-like IR, IR verifier, and a conservative pass pipeline.
+- LLVM IR lowering plus clang output for assembly, objects, and executables.
+- Build-tree and install-tree std lookup with host-c backend support.
 
-M0 parser seed:
+M1 language slices:
 
-- `module` / `import`.
-- One `extern c` block.
-- `opaque struct` and extern function signatures.
-- Multiple `export c fn` items.
-- Function parameters, return types, primitive/named/pointer types.
-- Expression statements and `return`.
-- Integer, identifier, string, c string, bool, null, unary/binary/call
-  expressions.
-- Basic operator precedence and call arguments.
+- Structs, enums, type aliases, and opaque types.
+- Basic generic struct / enum instantiation.
+- `match` expressions, literal patterns, wildcard, or-patterns, and guards.
+- Block / if expressions.
+- Controlled local and return type inference slices.
+- Function prototypes and recursive function checks.
+- `pub` / `priv` visibility keywords, cross-module private item filtering, and
+  private field access checks.
 
-Stage1 TAC/AIR snapshot:
+## Key M1 Gaps
 
-- Emits the `aurex_tac v0` header.
-- Emits extern functions, opaque records, and export function signatures.
-- Emits three-address-code expression temporaries.
-- AIR is split into model, binding, lowering, text, and verifier modules.
-- AIR function snapshots include the function header, linkage, parameter table,
-  local table, blocks, value DAG, instructions, and terminators.
-- AIR values carry result type ids, sema type categories,
-  identifier/field/struct name ranges, cast/type-op target type ids, and
-  call/struct-literal arguments.
-- AIR name values can bind to params, locals, and items. Let/var/assign
-  instructions also carry local bindings.
-- Sema has a standalone expression annotation table keyed by expr id. It
-  persists inferred `type_id`, primitive, integer, null, item, and c-string
-  result categories, and AIR lowering reads type information from that table.
-- The AIR verifier covers headers, params, locals, value references, value
-  arguments, bindings, instructions, and terminators.
-- Temporaries are scoped to the current function block, so module-wide
-  expressions are not repeated in every function.
-- Bundle fallback is split by phase: parser gaps use `ast_pending`, sema gaps
-  use named sema phase markers, and AIR snapshot gaps use `air_lower_pending`
-  or `air_verify_pending`. The current selfhost compiler bundle has no
-  parser/sema placeholders; remaining placeholders are AIR gaps.
+- Visibility should extend to finer API boundaries, including constructors,
+  enum payloads, type-alias propagation, and re-export rules.
+- Module isolation still needs explicit package/crate boundaries, import
+  aliases, selective imports, better cycle diagnostics, and a stable public
+  surface dump.
+- Generics still need constraints, where-like predicates, trait/interface
+  design, monomorphization caching, and explainable diagnostics.
+- Pattern matching needs stronger exhaustiveness, binding consistency, enum
+  layout interaction, and lowering verification.
+- AIR should continue to mature as the Stage0 internal backend contract:
+  slot/lvalue descriptors, record/enum layout, phi/SSA joins, dominance, call
+  signatures, and cross-module item bindings should all be verifiable.
+- The LLVM backend must keep up with new frontend features so language work
+  does not stop at check/dump coverage.
 
-## Gaps Before Final M0 Self-Hosting
+## Priority
 
-- Parser and Stage1 sema now cover the current selfhost compiler bundle. The
-  remaining parser work is mostly edge cases, diagnostics, and error recovery.
-- Stage1 typed AST is not finalized yet. Expression annotations exist, but item
-  bindings, local bindings, call signatures, record layout, and lvalue data are
-  not all persisted in one backend annotation layer.
-- Stage1 lowering does not yet produce a real backend handoff format. AIR is
-  currently a structured comment snapshot.
-- AIR still needs full loop-control lowering, slots/alloca, record layout,
-  global constant lowering, complex lvalue descriptors, phi/SSA joins, and
-  cross-module item/import bindings.
-- Stage1 does not yet have a complete TAC/AIR/backend verifier loop. The AIR
-  verifier checks structure, but not type equivalence, call signatures, control
-  dominance, or reachability.
-- Stage1 has no LLVM handoff yet. It cannot pass its output to the existing LLVM
-  backend to produce native code.
-- There is no fixed point yet. Stage1 cannot compile itself completely, and
-  `Stage0 -> Stage1 -> Stage1'` convergence has not been proven.
+1. Finish the M1 module visibility and isolation baseline  
+   `pub` / `priv` has landed. Next steps are re-export rules, import aliases,
+   selective imports, and public API dumps. The module system is the foundation
+   for future self-hosting, packages, and large-codebase maintainability.
 
-## Implementation Plan
+2. Push sum types and pattern matching to an industrial baseline  
+   Prioritize exhaustiveness, unreachable arms, payload bindings, guard
+   constraints, and consistency between enum layout and LLVM lowering.
 
-1. Extend parser coverage to the minimum syntax needed by the selfhost compiler  
-   Prioritize syntax actually used by current selfhost sources: ordinary `fn`,
-   `let` / `var`, blocks, `if`, `while`, assignment, and calls.
+3. Move generics from basic instantiation to a constrained model  
+   Design the smallest viable trait/interface or capability predicate first,
+   then extend generic functions, method-like resolution, and monomorphization
+   caching.
 
-2. Stabilize AST structure  
-   Add missing item, statement, expression, and type nodes. Each syntax addition
-   should get parser smoke coverage and Stage1 snapshot assertions.
+4. Stabilize the AIR/IR backend contract  
+   AIR should first mature as a verifiable Stage0 design target, while LLVM
+   remains the production backend. Future bootstrap work only needs to reach AIR
+   initially; it does not need to own a backend immediately.
 
-3. Stabilize Stage1 typed AST / AIR annotations  
-   Build on the expression type annotation table and persist item bindings,
-   local bindings, call signatures, and lvalue data so AIR lowering does not
-   keep re-resolving through source ranges.
+5. Improve diagnostics and public-surface tooling  
+   Module boundaries, generic constraints, match coverage, and visibility errors
+   need stable, testable diagnostics before they can be considered usable in
+   larger codebases.
 
-4. Move Stage1 AIR from snapshots toward a real backend handoff  
-   Cover functions, blocks, values, instructions, terminators, locals, return,
-   call, binary/unary, and CFG for `if` and `while`.
+## Future Bootstrap Strategy
 
-5. Extend the Stage1 AIR verifier
-   Add type equivalence, function parameter/return consistency, call
-   target/argument checks, branch conditions, dominance, and block reachability.
-
-6. Design LLVM handoff  
-   Prefer making Stage1 emit a TAC format that Stage0 can read, or add a Stage0
-   TAC reader first and feed Stage1 TAC into the existing LLVM backend.
-
-7. Build the fixed-point bootstrap flow  
-   Target flow:
-
-   ```text
-   Stage0(C++) builds Stage1(M0)
-   Stage1 compiles selfhost compiler sources to TAC
-   Stage0 TAC reader + LLVM backend builds Stage1'
-   Stage1' repeats compile
-   compare stable outputs
-   ```
-
-   Compare structured IR/golden first, then native behavior, and only then aim
-   for bit-for-bit stability.
-
-## Next Priority
-
-The next most useful step is adding AIR slots/lvalue descriptors and moving
-local-binding/lvalue information into the annotation layer. That is the shortest
-path from “readable snapshot” to “backend-consumable IR.”
+Do not maintain the old selfhost track before M3. The new bootstrap should be
+rewritten against the then-current Aurex feature set: module isolation, explicit
+visibility, generics/constraints, sum types, pattern matching, and AIR output.
+The first bootstrap target is AIR generation; backend handoff can be designed
+after that. LLVM remains the production backend for current language features.

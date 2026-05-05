@@ -5,8 +5,7 @@ Version: 0.1.2
 ## Lexer
 
 The lexer takes source text and source id, then returns a token array. Tokens
-carry kind, text slice, and source range. The selfhost lexer uses `TokenSpan`
-with kind, begin, and end for comparison with Stage0 lexer output.
+carry kind, text slice, and source range.
 
 Implementation notes:
 
@@ -20,8 +19,7 @@ Implementation notes:
 
 The Stage0 parser is handwritten recursive descent. It consumes a token span and
 produces AST. AST nodes are stored in ID-addressed pools to avoid node copies
-and pointer lifetime issues. The selfhost parser seed is split into cursor,
-type, expr, and seed modules; expression parsing uses explicit stacks.
+and pointer lifetime issues.
 
 AST design:
 
@@ -30,12 +28,6 @@ AST design:
 - Items record their owning module, so merged modules still preserve definition
   origin.
 - AST dump is for structural regression; it is not a semantic report.
-
-The selfhost parser seed currently supports module/import declarations, one
-`extern c` block, multiple `export c fn` items, function parameters and return
-types, expression statements, and return statements. Each block records its own
-statement range and expression range, so Stage1 TAC output can scope expression
-temporaries to the current function block.
 
 ## Module Loader
 
@@ -145,4 +137,4 @@ inside the same prefix.
 
 The main test script builds the project, checks documentation layout, verifies
 CLI help, runs positive and negative samples, checks IR/LLVM output, tests std
-backend behavior, validates installed std lookup, and compiles selfhost slices.
+backend behavior, validates installed std lookup, and checks M1 language slices.

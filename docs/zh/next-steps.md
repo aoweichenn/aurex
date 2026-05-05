@@ -2,91 +2,57 @@
 
 版本：0.1.2
 
-## 自举当前阶段
+## 当前阶段
 
-当前 selfhost 自举处在“可度量的 Stage1 前端切片 + TAC/AIR snapshot 输出”阶段，还不是能替代 Stage0 的完整自举编译器。
-
-- Stage0 仍是 C++20 编译器，是当前生产编译器。
-- selfhost 已包含 M0 编写的 lexer core、token dump、parser seed、ID-backed AST、Stage1 CLI、Stage1 TAC snapshot emitter 和初版 AIR model/lowering/verifier。
-- Stage1 能读取 `.ax` 文件，解析 seed 覆盖范围内的语法，并输出 `aurex_tac v0` 文本快照；函数体内还嵌入 `air_ir v0` / `air_cfg v0` 注释快照。
-- bootstrap 链路覆盖 selfhost lexer golden 对比、parser smoke、Stage1 snapshot 输出和 selfhost bundle 可见性。
+旧 selfhost 自举路线已经从 active tree 删除。当前项目重心是继续推进 C++ Stage0、Aurex IR 和 LLVM 后端，让 M1 语言核心具备足够强的表达力、模块隔离能力和后端契约。新的自举实现预计在 M3 用带有新特性的 Aurex 重新编写，不再维护旧 Stage1 种子代码。
 
 ## 当前已具备能力
 
-M0 lexer：
+Stage0 主链路：
 
-- token 化本地语料。
-- 输出 token kind，用于和 Stage0 对比。
-- 通过 ranges、smoke 和 golden 测试。
+- 手写 lexer 和递归下降 parser。
+- 模块声明、import 搜索路径和标准库查找。
+- 语义分析、类型表、符号表、ABI 名称和基础诊断。
+- Aurex typed CFG/SSA-like IR、IR verifier 和保守 pass pipeline。
+- LLVM IR lowering，并通过 clang 输出 assembly、object 和 executable。
+- build-tree 与 install-tree 下的 std 查找和 host-c backend support。
 
-M0 parser seed：
+M1 语言切片：
 
-- `module` / `import`。
-- 一个 `extern c` block。
-- `opaque struct` 和 extern function signature。
-- 多个 `export c fn`。
-- 函数参数、返回类型、primitive/named/pointer type。
-- 表达式语句和 `return`。
-- integer、identifier、string、c string、bool、null、unary/binary/call 表达式。
-- 基本运算符优先级和调用参数。
+- 结构体、枚举、类型别名和 opaque 类型。
+- 泛型 struct / enum 的基础实例化。
+- `match` 表达式、literal pattern、wildcard、or-pattern 和 guard。
+- block / if 表达式。
+- local 和 return 类型推导的受控切片。
+- 函数原型与递归函数检查。
+- `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 
-Stage1 TAC/AIR snapshot：
+## M1 关键缺口
 
-- 输出 `aurex_tac v0` header。
-- 输出 extern function、opaque record、export function signature。
-- 输出三地址码表达式临时值。
-- AIR 已拆分为 model、binding、lowering、text、verify 模块。
-- AIR 函数快照包含函数头、linkage、参数表、局部表、block、value DAG、instruction 和 terminator。
-- AIR value 已记录 result type、sema type category、identifier/field/struct 名称范围、cast/type-op 目标类型、call/struct literal 参数。
-- AIR name value 已能绑定到 param/local/item；let/var/assign 指令也记录局部绑定。
-- sema 已有独立表达式注解表，能按 expr id 持久化 `type_id`、primitive、integer、null、item、c string 等推导结果，AIR lowering 通过注解表读取类型信息。
-- AIR verifier 已覆盖 header、params、locals、value 引用、value args、binding、instruction 和 terminator 合法性。
-- 临时值已按当前函数 block 限定，不再把全模块表达式重复输出到每个函数。
-- bundle fallback 已按阶段拆分：parser 缺口输出 `ast_pending`，sema 缺口输出具名 sema 阶段标记，AIR 快照缺口输出 `air_lower_pending` 或 `air_verify_pending`。当前 selfhost compiler bundle 已无 parser/sema 占位，剩余占位都在 AIR。
+- 可见性还应继续扩展到更细粒度的 API 边界，例如构造器、枚举 payload、type alias 传播和 re-export 规则。
+- 模块隔离还缺显式 package/crate 边界、导入别名、选择性导入、循环依赖诊断优化和稳定 public surface dump。
+- 泛型仍缺约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
+- pattern matching 还需要更完整的 exhaustiveness、绑定一致性、enum layout 交互和 lowering 验证。
+- AIR 仍需要作为 Stage0 内部后端契约继续强化：slot/lvalue descriptor、record/enum layout、phi/SSA 合流、dominance、call signature 和跨模块 item binding 都应可验证。
+- LLVM 后端需要继续跟进新特性的 lowering，避免语言前端特性只停留在 check/dump 层。
 
-## 距离 M0 最终自举的缺口
+## 优先级
 
-- Parser 和 Stage1 sema 已覆盖当前 selfhost compiler bundle；后续 parser 工作主要是边界语法、诊断和错误恢复。
-- Stage1 typed AST 还没最终定型：当前已有表达式注解表，但 item/local binding、call signature、record layout 等还没全部持久化成统一 backend annotation。
-- Stage1 lowering 还没有真实可执行 AIR 后端：当前 AIR 是结构化注释快照，不是 backend handoff 格式。
-- AIR 还缺完整 loop-control lowering、slots/alloca、record layout、global constant lowering、复杂 lvalue descriptor、phi/SSA 合流、跨模块 item/import 绑定。
-- Stage1 没有完整 TAC/AIR verifier 与 backend verifier 的闭环：目前 verifier 已覆盖 AIR 结构合法性，但还没校验类型等价、call signature、control-flow dominance。
-- Stage1 没有 LLVM handoff：还不能把 Stage1 产物交给现有 LLVM backend 编译成 native。
-- 还没有 fixed-point：Stage1 不能完整编译自己，也不能证明 `Stage0 -> Stage1 -> Stage1'` 收敛。
+1. 完成模块可见性与隔离的 M1 基线  
+   `pub` / `priv` 已落地，下一步应补 re-export、导入别名、选择性导入和 public API dump。模块系统是后续自举、包管理和大型项目可维护性的前提。
 
-## 实现计划
+2. 强化 sum type / pattern matching 到工业可用边界  
+   重点是 exhaustiveness、unreachable arm、payload binding、guard 约束和 enum layout 与 LLVM lowering 的一致性。
 
-1. 扩展 parser 到 selfhost 编译器所需最小语法  
-   优先覆盖当前 selfhost 源码真实使用的语法：普通 `fn`、`let` / `var`、block、`if`、`while`、赋值和 call。
+3. 把泛型从基础实例化推进到可约束模型  
+   先设计最小 trait/interface 或 capability predicate，再推进 generic function、method-like resolution 和单态化缓存。
 
-2. 稳定 AST 结构  
-   给 item、stmt、expr、type 增加缺失节点。每增加一类语法，都补 parser smoke 和 Stage1 snapshot 断言。
+4. 稳定 AIR/IR 后端契约  
+   AIR 先作为 Stage0 内部设计目标推进到可验证形态，LLVM 继续作为当前生产后端。自举只要求未来能输出 AIR 级别的结构，不急于自举后端。
 
-3. 稳定 Stage1 typed AST / AIR 注解  
-   在已有表达式类型注解表基础上，继续持久化 item 绑定、local 绑定、call signature 和 lvalue 信息，避免 AIR lowering 继续依赖源码范围反查。
+5. 改善诊断与 public surface tooling  
+   给模块边界、泛型约束、match 覆盖和可见性错误提供稳定、可测试的错误信息。大型语言特性没有诊断就无法进入工程可用状态。
 
-4. 让 Stage1 AIR 从 snapshot 走向真实 backend handoff  
-   先覆盖 function、block、value、instruction、terminator、locals、return、call、binary/unary、`if` 和 `while` CFG。
+## 后续自举策略
 
-5. 扩展 Stage1 AIR verifier
-   继续检查类型等价、function 参数和返回类型一致、call 目标/参数数量、branch condition、dominance 和 block reachability。
-
-6. 设计 LLVM handoff  
-   优先让 Stage1 输出 Stage0 backend 能读取的 TAC 格式，或先在 Stage0 增加 TAC reader，把 Stage1 TAC 喂给现有 LLVM backend。
-
-7. 建立 fixed-point bootstrap 链路  
-   目标链路：
-
-   ```text
-   Stage0(C++) builds Stage1(M0)
-   Stage1 compiles selfhost compiler sources to TAC
-   Stage0 TAC reader + LLVM backend builds Stage1'
-   Stage1' repeats compile
-   compare stable outputs
-   ```
-
-   先比较结构化 IR/golden，再比较 native 行为，最后再追求 bit-for-bit。
-
-## 下一步优先级
-
-下一步最值得做的是补 AIR slot/lvalue descriptor，并把 local binding/lvalue 信息也放进注解层。这是从“可读快照”推进到“后端可消费 IR”的最短路径。
+M3 前不维护旧 selfhost。新的自举实现应基于届时稳定下来的 Aurex 特性重新写，包括模块隔离、显式可见性、泛型/约束、sum type、pattern matching 和 AIR 输出。阶段目标先做到能生成 AIR，再设计后端 handoff；LLVM 仍作为生产后端继续承载新特性。

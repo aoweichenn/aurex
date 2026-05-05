@@ -6,17 +6,17 @@
 
 - 编译器开发者：需要清晰的前端、IR、后端和 driver 边界。
 - 语言设计者：需要可验证的语义规则和 ABI 行为。
-- 自举推进者：需要可逐步迁移到 M0 的组件切片。
+- 自举推进者：需要先稳定 Stage0、IR 和语言特性，再在后续阶段重写自举链路。
 - 工具链集成者：需要稳定 CLI、安装布局和标准库查找逻辑。
 
 ## 范围定义
 
-0.1.2 的范围是 Stage0 可用、Stage1 可度量、标准库和 IR 主链路可维护：
+0.1.2 的范围是 Stage0 可用、标准库和 IR 主链路可维护，并继续推进 M1 语言特性：
 
 - Stage0 必须能完成 `.ax` 到 native 输出的主路径。
 - Stage0 必须能暴露 tokens、AST、checked summary、Aurex IR 和 LLVM IR。
 - 标准库必须能在 build tree 和 install tree 下被定位。
-- selfhost 不要求 fixed point，但必须保留可编译、可运行、可对比的阶段性切片。
+- 旧自举实验不再是当前验收目标；新的自举将在 M3 以新语言特性重新设计。
 
 ## 功能需求
 
@@ -30,7 +30,7 @@
 8. LLVM 后端：把 Aurex IR lowering 到 LLVM IR。
 9. 本机输出：通过 clang 生成 assembly、object 或 executable。
 10. 标准库：默认加载 `std`，并在 executable 输出中链接所选 backend support。
-11. 自举：Stage0 能编译 selfhost smoke 和 Stage1 切片。
+11. M1 特性：Stage0 能检查并降低模块可见性、泛型、sum type、pattern matching、表达式和推导切片。
 
 ## 运行需求
 
@@ -52,7 +52,6 @@
 ## 约束
 
 - 当前生产后端以 LLVM 为主。
-- Stage1 暂不要求 fixed point。
 - M0 语言保持小核心：无类型推导、无泛型、无重载、无隐式类型转换。
 - 标准库 backend support 当前默认实现是 host-c。
 
@@ -60,7 +59,7 @@
 
 - IR pass pipeline 仍是保守实现，`O2`/`O3` 当前不会启用比 `O1` 更激进的额外 pass。
 - C FFI 是临时桥接层，并隔离在 `std/ffi/c/`；新的语言层 std 代码应依赖这个边界，而不是直接声明 host C。
-- Stage1 还没有完整 sema、IR verifier 和 LLVM backend handoff，不能作为生产编译器使用。
+- 新自举在 M3 前不是 active deliverable；当前所有生产能力都必须由 C++ Stage0 和 LLVM 后端承载。
 - 标准库 ABI v0 的符号必须保持稳定；破坏性变更应引入新 namespace。
 
 ## 验收标准
@@ -69,5 +68,5 @@
 - 正向样例能编译并运行。
 - 反向样例能稳定报错。
 - 安装后的 `bin/aurexc` 能找到安装前缀下的 `share/aurex/std`。
-- selfhost lexer/parser/Stage1 smoke 能被 Stage0 编译和验证。
+- M1 正向和负向样例覆盖当前已实现语言特性。
 - 文档入口只保留 `docs/zh/`、`docs/en/` 和 `docs/README.md`，不再恢复逐小版本文档。

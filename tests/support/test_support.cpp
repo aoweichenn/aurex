@@ -66,10 +66,6 @@ fs::path test_bin_root() {
     return test_run_root() / "tests";
 }
 
-fs::path selfhost_bin_root() {
-    return test_run_root() / "selfhost";
-}
-
 fs::path tmp_root() {
     return test_run_root() / "tmp";
 }
@@ -171,18 +167,6 @@ void expect_not_contains(const std::string_view text, const std::string_view nee
     EXPECT_EQ(text.find(needle), std::string_view::npos) << "unexpected: " << needle;
 }
 
-int count_lines_starting_with(const std::string_view text, const std::string_view prefix) {
-    std::istringstream input {std::string(text)};
-    std::string line;
-    int count = 0;
-    while (std::getline(input, line)) {
-        if (line.rfind(prefix, 0) == 0) {
-            ++count;
-        }
-    }
-    return count;
-}
-
 std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view extension) {
     std::vector<fs::path> files;
     for (const fs::directory_entry& entry : fs::directory_iterator(dir)) {
@@ -202,105 +186,8 @@ std::string aurexc() {
     return q(aurexc_path());
 }
 
-std::string selfhost_import_flags() {
-    return "-I " + q(source_root() / "selfhost" / "src");
-}
-
 std::string tests_import_flags() {
     return "-I " + q(source_root() / "tests" / "imports");
-}
-
-fs::path compile_selfhost_program(const std::string_view name, const fs::path& source) {
-    fs::create_directories(selfhost_bin_root());
-    const fs::path output = selfhost_bin_root() / std::string(name);
-    require_success(aurexc() + " " + selfhost_import_flags() + " " + q(source) + " -o " + q(output));
-    return output;
-}
-
-fs::path compile_stage1() {
-    return compile_selfhost_program(
-        "aurexc_stage1",
-        source_root() / "selfhost" / "src" / "aurex" / "selfhost" / "bin" / "aurexc_stage1.ax"
-    );
-}
-
-fs::path run_stage1(const fs::path& stage1_bin, const fs::path& source, const std::string_view out_name) {
-    fs::create_directories(selfhost_bin_root());
-    const fs::path output = selfhost_bin_root() / std::string(out_name);
-    require_success(q(stage1_bin) + " " + q(source) + " " + q(output));
-    return output;
-}
-
-std::vector<std::string> lines(const std::string& text) {
-    std::vector<std::string> result;
-    std::istringstream input(text);
-    std::string line;
-    while (std::getline(input, line)) {
-        if (!line.empty()) {
-            result.push_back(line);
-        }
-    }
-    return result;
-}
-
-std::vector<std::string> stage0_token_kinds(const fs::path& source) {
-    const CommandResult result = require_success(aurexc() + " --dump-tokens " + q(source));
-    std::vector<std::string> kinds;
-    std::istringstream input(result.output);
-    std::string line;
-    while (std::getline(input, line)) {
-        std::istringstream fields(line);
-        std::string range;
-        std::string kind;
-        fields >> range >> kind;
-        if (!kind.empty()) {
-            kinds.push_back(kind);
-        }
-    }
-    return kinds;
-}
-
-std::vector<fs::path> stage_compiler_sources() {
-    const fs::path base = source_root() / "selfhost" / "src" / "aurex" / "selfhost";
-    return {
-        base / "lexer" / "core.ax",
-        base / "syntax" / "ast.ax",
-        base / "parser" / "cursor.ax",
-        base / "parser" / "types.ax",
-        base / "parser" / "expr.ax",
-        base / "parser" / "seed.ax",
-        base / "sema" / "names.ax",
-        base / "sema" / "calls.ax",
-        base / "sema" / "items.ax",
-        base / "sema" / "locals.ax",
-        base / "sema" / "lvalues.ax",
-        base / "sema" / "members.ax",
-        base / "sema" / "resolve.ax",
-        base / "sema" / "typing_types.ax",
-        base / "sema" / "typing_lookup.ax",
-        base / "sema" / "typing_infer.ax",
-        base / "sema" / "annotate.ax",
-        base / "sema" / "typing.ax",
-        base / "sema" / "types.ax",
-        base / "compiler" / "air" / "model.ax",
-        base / "compiler" / "air" / "bind.ax",
-        base / "compiler" / "air" / "place.ax",
-        base / "compiler" / "air" / "memory.ax",
-        base / "compiler" / "air" / "flow.ax",
-        base / "compiler" / "air" / "cfg.ax",
-        base / "compiler" / "air" / "lower.ax",
-        base / "compiler" / "air" / "text.ax",
-        base / "compiler" / "air" / "verify.ax",
-        base / "compiler" / "io.ax",
-        base / "compiler" / "ir" / "writer.ax",
-        base / "compiler" / "ir" / "names.ax",
-        base / "compiler" / "ir" / "types.ax",
-        base / "compiler" / "ir" / "expr.ax",
-        base / "compiler" / "ir" / "cfg.ax",
-        base / "compiler" / "ir" / "emit.ax",
-        base / "compiler" / "driver.ax",
-        base / "bin" / "aurexc_stage1.ax",
-    };
 }
 
 void AurexIntegrationTest::SetUpTestSuite() {
@@ -312,7 +199,6 @@ void AurexIntegrationTest::SetUpTestSuite() {
 void AurexIntegrationTest::SetUp() {
     current_test_run_root = make_test_run_root();
     fs::create_directories(test_bin_root());
-    fs::create_directories(selfhost_bin_root());
     fs::create_directories(tmp_root());
 }
 

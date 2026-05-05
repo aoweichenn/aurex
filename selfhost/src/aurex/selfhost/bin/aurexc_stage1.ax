@@ -1,7 +1,0 @@
-module aurex.selfhost.bin.aurexc_stage1;
-
-import aurex.selfhost.compiler.driver;
-
-fn main(argc: i32, argv: *mut *mut u8) -> i32 {
-    return run_stage1(argc, argv);
-}

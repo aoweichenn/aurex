@@ -49,8 +49,8 @@ build/bin/aurexc --emit=llvm-ir examples/hello.ax
 `--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
 LLVM IR and prints the result. Native output runs Aurex IR -> LLVM IR -> clang.
 The old Stage0 C backend has been removed from the production build; the
-selfhost Stage1 path now emits TAC snapshots instead of C. The historical
-standalone C translator has also been removed from the tree.
+historical standalone C translator and the old bootstrap tree have also been
+removed from the active tree.
 
 The bundled std root is found through `--stdlib`, `AUREX_STDLIB`, build-tree
 defaults, and relocatable install layouts such as `share/aurex/std` next to the
@@ -68,38 +68,16 @@ tools/bench.py
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
-language samples, negative semantic samples, std FFI checks, and selfhost smoke
-programs.
+language samples, negative semantic samples, M1 language features, std FFI
+checks, LLVM lowering, native execution, and install-tree std lookup.
 
-## Selfhost Track
+## Bootstrap Status
 
-Self-hosting is explicit in `selfhost/`, but 0.1.2 is not fully self-hosted
-yet. The current track contains reusable M0 lexer/parser pieces, an ID-backed
-AST seed, and a Stage1 compiler entry that emits `aurex_tac v0` snapshots with
-embedded AIR comment snapshots.
-
-The old selfhost C emitter has been removed from the active tree. Stage1 now
-uses `aurex/selfhost/compiler/air/` for structured function-level AIR and
-`aurex/selfhost/compiler/ir/` for the compatibility TAC snapshot bridge. AIR is
-split into model, binding, lowering, text, and verifier modules. The seed parser
-now covers multiple `export c fn` items in one module, and Stage1 emits
-three-address-code temporaries per function block. Stage1 records deterministic
-pending markers (`ast_pending`, named sema phase markers, and AIR
-lowering/verify markers) so the compiler bundle remains measurable without
-claiming full lowering. The current selfhost compiler bundle parses and passes
-Stage1 sema; remaining placeholders are AIR snapshot gaps.
-
-```sh
-tools/bootstrap_chain.sh
-make -C selfhost check
-```
-
-Manual Stage1 TAC run:
-
-```sh
-build/bin/aurexc -I selfhost/src selfhost/src/aurex/selfhost/bin/aurexc_stage1.ax -o build/selfhost/aurexc_stage1
-build/selfhost/aurexc_stage1 examples/hello.ax build/selfhost/hello.stage1.tac
-```
+The previous M0-written bootstrap experiment has been removed. Active work is
+on the C++ Stage0 compiler, Aurex IR, and the LLVM backend. A new bootstrap
+track is expected around M3, after the language has enough module isolation,
+visibility, generics, sum types, pattern matching, inference, and AIR contracts
+to make the rewrite representative instead of carrying old seed constraints.
 
 ## Documentation
 

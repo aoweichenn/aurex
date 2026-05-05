@@ -129,6 +129,6 @@ with a first target of verifiable AIR/IR-level output before backend handoff.
 ## Verification Architecture
 
 - `tools/run_tests.sh`: main quality gate for build, CLI, IR, LLVM, native, std,
-  M1 language features, and documentation layout.
+  current language features, and documentation layout.
 - `tools/check_golden.sh`: golden output comparison.
 - `tools/bench.py`: lightweight performance smoke benchmark.

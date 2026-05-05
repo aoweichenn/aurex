@@ -1,0 +1,22 @@
+module generic_enum_large_payload;
+
+struct Big {
+    left: u64;
+    right: u64;
+}
+
+enum Slot<T>: u8 {
+    empty = 0,
+    full(T) = 1,
+}
+
+fn main() -> i32 {
+    let value: Slot<Big> = Slot.full(Big {
+        left: cast(u64, 1),
+        right: cast(u64, 2),
+    });
+    return match value {
+        .empty => 1,
+        .full(payload) => if payload.right == cast(u64, 2) { 0 } else { 2 },
+    };
+}

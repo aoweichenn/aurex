@@ -31,10 +31,14 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         Module module;
         const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
         const TypeHandle u8 = builtin(module, BuiltinType::u8);
+        const TypeHandle i8 = builtin(module, BuiltinType::i8);
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle u32 = builtin(module, BuiltinType::u32);
         const TypeHandle i64 = builtin(module, BuiltinType::i64);
+        const TypeHandle u64 = builtin(module, BuiltinType::u64);
+        const TypeHandle f32 = builtin(module, BuiltinType::f32);
         const TypeHandle f64 = builtin(module, BuiltinType::f64);
+        const TypeHandle usize = builtin(module, BuiltinType::usize);
         const TypeHandle str_type = builtin(module, BuiltinType::str);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         const TypeHandle array_i32 = module.types.array(2, i32);
@@ -79,6 +83,53 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         const ValueId cast_id = add_value(module, cast);
         [[maybe_unused]] const GlobalConstantId wide_constant =
             add_global_constant(module, GlobalConstant {"wide", "unit_wide", i64, cast_id});
+
+        auto add_cast_constant = [&](
+                                     const std::string& name,
+                                     const std::string& symbol,
+                                     const TypeHandle target_type,
+                                     const ValueId operand,
+                                     const CastKind cast_kind = CastKind::numeric
+                                 ) {
+            Value value;
+            value.kind = ValueKind::cast;
+            value.type = target_type;
+            value.target_type = target_type;
+            value.cast_kind = cast_kind;
+            value.lhs = operand;
+            return add_global_constant(module, GlobalConstant {name, symbol, target_type, add_value(module, value)});
+        };
+        [[maybe_unused]] const GlobalConstantId same_constant =
+            add_cast_constant("same_i32", "unit_same_i32", i32, add_value(module, integer_value(i32, "5")));
+        [[maybe_unused]] const GlobalConstantId trunc_constant =
+            add_cast_constant("trunc_i8", "unit_trunc_i8", i8, add_value(module, integer_value(i64, "257")));
+        [[maybe_unused]] const GlobalConstantId zext_constant =
+            add_cast_constant("zext_u64", "unit_zext_u64", u64, add_value(module, integer_value(u32, "9")));
+        [[maybe_unused]] const GlobalConstantId unsigned_float_constant =
+            add_cast_constant("u32_to_f64", "unit_u32_to_f64", f64, add_value(module, integer_value(u32, "11")));
+        const GlobalConstantId f32_constant =
+            add_cast_constant("i32_to_f32", "unit_i32_to_f32", f32, add_value(module, integer_value(i32, "13")));
+        Value f32_ref;
+        f32_ref.kind = ValueKind::constant_ref;
+        f32_ref.type = f32;
+        f32_ref.constant = f32_constant;
+        [[maybe_unused]] const GlobalConstantId f32_to_f64_constant =
+            add_cast_constant("f32_to_f64", "unit_f32_to_f64", f64, add_value(module, f32_ref));
+        const GlobalConstantId f64_constant =
+            add_cast_constant("i32_to_f64", "unit_i32_to_f64", f64, add_value(module, integer_value(i32, "17")));
+        Value f64_ref;
+        f64_ref.kind = ValueKind::constant_ref;
+        f64_ref.type = f64;
+        f64_ref.constant = f64_constant;
+        [[maybe_unused]] const GlobalConstantId f64_to_u32_constant =
+            add_cast_constant("f64_to_u32", "unit_f64_to_u32", u32, add_value(module, f64_ref));
+        [[maybe_unused]] const GlobalConstantId f64_to_f32_constant =
+            add_cast_constant("f64_to_f32", "unit_f64_to_f32", f32, add_value(module, f64_ref));
+        [[maybe_unused]] const GlobalConstantId bitcast_constant =
+            add_cast_constant("u32_to_f32_bits", "unit_u32_to_f32_bits", f32, add_value(module, integer_value(u32, "0")), CastKind::bitcast);
+        [[maybe_unused]] const GlobalConstantId ptr_from_addr_constant =
+            add_cast_constant("ptr_from_addr", "unit_ptr_from_addr", ptr_i32, add_value(module, integer_value(usize, "4096")), CastKind::ptr_from_addr);
+
         Value aggregate;
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = pair_type;
@@ -136,8 +187,10 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         std::vector<ValueId> values;
         for (const BinaryOp op : {
                  BinaryOp::div,
+                 BinaryOp::mod,
                  BinaryOp::shl,
                  BinaryOp::shr,
+                 BinaryOp::bit_and,
                  BinaryOp::bit_xor,
                  BinaryOp::bit_or,
              }) {
@@ -149,7 +202,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             binary.rhs = rhs;
             values.push_back(builder.add(binary));
         }
-        for (const BinaryOp op : {BinaryOp::mod, BinaryOp::shr}) {
+        for (const BinaryOp op : {BinaryOp::div, BinaryOp::mod, BinaryOp::shr}) {
             Value binary;
             binary.kind = ValueKind::binary;
             binary.type = u32;
@@ -211,10 +264,22 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             "@unit_pair",
             "@unit_size",
             "@unit_align",
+            "@unit_same_i32",
+            "@unit_trunc_i8",
+            "@unit_zext_u64",
+            "@unit_u32_to_f64",
+            "@unit_f32_to_f64",
+            "@unit_f64_to_u32",
+            "@unit_f64_to_f32",
+            "@unit_u32_to_f32_bits",
+            "@unit_ptr_from_addr",
             "%unit_Pair = type",
+            "and",
             "xor",
             "shl",
             "lshr",
+            "srem",
+            "udiv",
             "urem",
             "getelementptr",
             "str.data",

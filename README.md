@@ -27,6 +27,14 @@ Stage0 now resolves imports:
 build/bin/aurexc -I tests/samples/imports tests/samples/positive/modules/import_path.ax -o build/tests/import_path
 ```
 
+Feature-rich examples live under `examples/system`, with reusable modules under
+`examples/libs`:
+
+```sh
+build/bin/aurexc -I examples/libs examples/system/memory_probe/main.ax -o build/tests/memory_probe
+build/tests/memory_probe
+```
+
 Stage0 can also produce assembly and object files through clang:
 
 ```sh
@@ -68,7 +76,7 @@ tools/bench.py
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
-language samples, negative semantic samples, M1 language features, std FFI
+language samples, negative semantic samples, current language features, std FFI
 checks, LLVM lowering, native execution, and install-tree std lookup.
 
 ## Bootstrap Status

@@ -137,4 +137,5 @@ inside the same prefix.
 
 The main test script builds the project, checks documentation layout, verifies
 CLI help, runs positive and negative samples, checks IR/LLVM output, tests std
-backend behavior, validates installed std lookup, and checks M1 language slices.
+backend behavior, validates installed std lookup, and checks current language
+slices.

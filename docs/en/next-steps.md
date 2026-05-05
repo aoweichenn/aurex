@@ -6,7 +6,7 @@ Version: 0.1.2
 
 The old selfhost bootstrap track has been removed from the active tree. Current
 work focuses on the C++ Stage0 compiler, Aurex IR, and the LLVM backend, with
-M1 language work aimed at stronger expressiveness, module isolation, and backend
+language work aimed at stronger expressiveness, module isolation, and backend
 contracts. A new bootstrap implementation is expected around M3, rewritten in
 Aurex with the newer language features instead of preserving the old Stage1
 seed constraints.
@@ -22,7 +22,7 @@ Stage0 main path:
 - LLVM IR lowering plus clang output for assembly, objects, and executables.
 - Build-tree and install-tree std lookup with host-c backend support.
 
-M1 language slices:
+Current language slices:
 
 - Structs, enums, type aliases, and opaque types.
 - Basic generic struct / enum instantiation.
@@ -33,7 +33,7 @@ M1 language slices:
 - `pub` / `priv` visibility keywords, cross-module private item filtering, and
   private field access checks.
 
-## Key M1 Gaps
+## Key Language Gaps
 
 - Visibility should extend to finer API boundaries, including constructors,
   enum payloads, type-alias propagation, and re-export rules.
@@ -52,7 +52,7 @@ M1 language slices:
 
 ## Priority
 
-1. Finish the M1 module visibility and isolation baseline  
+1. Finish the module visibility and isolation baseline  
    `pub` / `priv` has landed. Next steps are re-export rules, import aliases,
    selective imports, and public API dumps. The module system is the foundation
    for future self-hosting, packages, and large-codebase maintainability.

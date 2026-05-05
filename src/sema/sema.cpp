@@ -341,7 +341,7 @@ void SemanticAnalyzer::register_value_names() {
                     payload_size = std::max(payload_size, case_size);
                     payload_align = std::max(payload_align, case_align);
                     if (checked_.types.contains_array(payload_type)) {
-                        report(enum_case.range, "enum payload cannot contain array storage in M1");
+                        report(enum_case.range, "enum payload cannot contain array storage");
                     }
                 }
                 checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {

@@ -1,0 +1,82 @@
+module system.memory_probe.main;
+
+import common.prelude;
+import std.core.mem;
+import std.core.text;
+import std.io.console;
+import std.sys.process;
+
+fn inferred_delta() {
+    let counter = counter_i32(9, default_limit);
+    return counter_delta(counter);
+}
+
+fn check_arena() -> Outcome<i32> {
+    var arena = arena_create(cast(usize, 64));
+    let first = arena_alloc(&arena, cast(usize, 4), cast(usize, 8));
+    if first == null {
+        arena_destroy(&arena);
+        return Outcome<i32>.err(1);
+    }
+
+    let mirror = ptr_from_addr(*mut u8, ptr_addr(first));
+    *mirror = b'A';
+    first[1] = b'X';
+    first[2] = b'0';
+    first[3] = b'\0';
+
+    let ok = compare_bytes(ptr_cast(*const u8, first), c"AX0", cast(usize, 3)) == 0 &&
+        ptr_addr(first) % cast(usize, 8) == cast(usize, 0);
+    arena_destroy(&arena);
+    if ok {
+        return Outcome<i32>.ok(0);
+    }
+    return Outcome<i32>.err(2);
+}
+
+fn check_buffer() -> Health {
+    var buffer = buffer_create(cast(usize, 1));
+    if buffer.data == null {
+        return Health.failed;
+    }
+    if !append_health_prefix(&buffer, Health.ok) {
+        buffer_destroy(&buffer);
+        return Health.failed;
+    }
+    let ok = buffer.len == cast(usize, 2) &&
+        compare_bytes(ptr_cast(*const u8, buffer.data), c"OK", cast(usize, 2)) == 0;
+    buffer_destroy(&buffer);
+    if ok {
+        return Health.ok;
+    }
+    return Health.degraded;
+}
+
+fn main() -> i32 {
+    let layout_score = {
+        let page_size = packet_page_size();
+        let page_align = packet_page_align();
+        if page_size == cast(usize, 8) && page_align == cast(usize, 1) { 0 } else { 10 }
+    };
+    if layout_score != 0 {
+        return layout_score;
+    }
+
+    let arena_result = check_arena();
+    if !outcome_is_ok_i32(arena_result) {
+        return outcome_code_i32(arena_result);
+    }
+    if !is_healthy(check_buffer()) {
+        return 3;
+    }
+    if inferred_delta() != 1 {
+        return 4;
+    }
+    if countdown(3) != 0 || !is_even(6) || !is_odd(5) {
+        return 5;
+    }
+    if !print_line(c"memory probe ok") {
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}

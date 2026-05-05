@@ -125,7 +125,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
                 ? &module_.patterns[alternative.value]
                 : nullptr;
             if (alternative_pattern != nullptr && !alternative_pattern->binding_name.empty()) {
-                report(alternative_pattern->range, "or-pattern alternatives cannot bind payloads in M1");
+                report(alternative_pattern->range, "or-pattern alternatives cannot bind payloads");
             }
             const EnumCaseInfo* case_info = analyze_enum_case_pattern(alternative, matched, covered, saw_wildcard);
             if (first_case == nullptr) {

@@ -13,12 +13,15 @@ if(BUILD_TESTING)
         tests/gtest/driver/cli_driver_tests.cpp
         tests/gtest/driver/install_and_import_tests.cpp
         tests/gtest/driver/native_toolchain_tests.cpp
+        tests/gtest/driver/standard_library_tests.cpp
         tests/gtest/frontend/ast_dump_tests.cpp
         tests/gtest/frontend/lexer_tests.cpp
         tests/gtest/frontend/parser_tests.cpp
         tests/gtest/integration/documentation_tests.cpp
+        tests/gtest/integration/examples_tests.cpp
         tests/gtest/integration/native_execution_tests.cpp
         tests/gtest/integration/sample_suite_tests.cpp
+        tests/gtest/ir/ir_dump_tests.cpp
         tests/gtest/ir/ir_verifier_edge_tests.cpp
         tests/gtest/ir/ir_verifier_structural_tests.cpp
         tests/gtest/ir/pass_pipeline_tests.cpp

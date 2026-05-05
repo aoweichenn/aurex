@@ -1,0 +1,10 @@
+module match_literal_guard;
+
+fn main() -> i32 {
+    let flag: bool = true;
+    return match flag {
+        true if flag => 0,
+        false => 1,
+        _ => 2,
+    };
+}

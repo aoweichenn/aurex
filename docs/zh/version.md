@@ -17,8 +17,8 @@
 - Aurex IR verifier 和 pass pipeline。
 - std 可重定位查找。
 - std host-c backend support 和 `aurex_std_v0_*` 稳定符号。
-- M1 语言切片，包括可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
-- golden、positive、negative、M1 测试链路。
+- 当前语言切片，包括可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
+- golden、positive、negative 和语言特性测试链路。
 - 中英文主题文档集。
 
 不包含：
@@ -55,6 +55,6 @@
 - 完整 IR constant folding。
 - 跨块 mem2reg 和 phi 插入。
 - 更完整 ABI 属性和目标配置。
-- M1 模块隔离、可见性、泛型约束和 pattern matching 完整性。
+- 模块隔离、可见性、泛型约束和 pattern matching 完整性。
 - M3 之后以新语言特性重新设计自举链路。
 - fixed-point self-host 验证。

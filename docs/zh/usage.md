@@ -29,6 +29,13 @@ build/tests/hello
 hello from Aurex M0
 ```
 
+系统级示例使用共享 example 模块：
+
+```sh
+build/bin/aurexc -I examples/libs examples/system/file_journal/main.ax -o build/tests/file_journal
+build/tests/file_journal
+```
+
 ## 查看中间产物
 
 ```sh

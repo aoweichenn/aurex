@@ -1,0 +1,14 @@
+module generic_enum_small_payload;
+
+enum SmallSlot<T>: u8 {
+    empty = 0,
+    full(T) = 1,
+}
+
+fn main() -> i32 {
+    let value: SmallSlot<u16> = SmallSlot.full(cast(u16, 7));
+    return match value {
+        .empty => 1,
+        .full(payload) => if payload == cast(u16, 7) { 0 } else { 2 },
+    };
+}

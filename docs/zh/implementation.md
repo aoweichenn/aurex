@@ -99,4 +99,4 @@ CMake 安装规则把 `aurexc` 安装到 `bin`，把 `std` 目录安装到 `shar
 
 ## Test Implementation
 
-主测试脚本会构建工程、检查文档布局、验证 CLI help、运行正向/反向样例、检查 M1 语言切片、检查 IR/LLVM 输出、测试 std backend，并验证安装后标准库查找。
+主测试脚本会构建工程、检查文档布局、验证 CLI help、运行正向/反向样例、检查当前语言切片、检查 IR/LLVM 输出、测试 std backend，并验证安装后标准库查找。

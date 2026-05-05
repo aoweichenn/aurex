@@ -1,0 +1,9 @@
+module match_integer_bool_literal_pattern;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    return match value {
+        true => 1,
+        _ => 0,
+    };
+}

@@ -1,0 +1,32 @@
+module common.status;
+
+pub enum Health: u8 {
+    ok = 0,
+    degraded = 1,
+    failed = 2,
+}
+
+priv const degraded_limit: i32 = 2;
+
+pub fn classify_errors(errors: i32) -> Health {
+    return match errors {
+        0 => Health.ok,
+        1 | 2 => Health.degraded,
+        _ => Health.failed,
+    };
+}
+
+pub fn health_code(state: Health) -> i32 {
+    return match state {
+        .ok => 0,
+        .degraded => 1,
+        .failed => degraded_limit + 1,
+    };
+}
+
+pub fn is_healthy(state: Health) -> bool {
+    return match state {
+        .ok => true,
+        _ => false,
+    };
+}

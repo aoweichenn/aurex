@@ -1,0 +1,9 @@
+module match_literal_unreachable_after_wildcard;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    return match value {
+        _ => 0,
+        1 => 1,
+    };
+}

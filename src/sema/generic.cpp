@@ -306,7 +306,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             payload_size = std::max(payload_size, case_size);
             payload_align = std::max(payload_align, case_align);
             if (checked_.types.contains_array(payload_type)) {
-                report(enum_case.range, "enum payload cannot contain array storage in M1");
+                report(enum_case.range, "enum payload cannot contain array storage");
             }
         }
         const std::string case_c_name = generic_case_c_name(info, args, enum_case.name);

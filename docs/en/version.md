@@ -21,9 +21,9 @@ Included:
 - Aurex IR verifier and pass pipeline.
 - Relocatable std lookup.
 - std host-c backend support and stable `aurex_std_v0_*` symbols.
-- M1 language slices, including visibility, basic generics, sum types, pattern
+- Current language slices, including visibility, basic generics, sum types, pattern
   matching, expressions, and controlled inference.
-- golden, positive, negative, and M1 test flows.
+- golden, positive, negative, and language-feature test flows.
 - Chinese and English topic-based documentation sets.
 
 Not included:
@@ -60,7 +60,7 @@ Not included:
 - Complete IR constant folding.
 - Cross-block mem2reg and phi insertion.
 - Fuller ABI attributes and target configuration.
-- Complete M1 module isolation, visibility, generic constraints, and pattern
+- Complete module isolation, visibility, generic constraints, and pattern
   matching coverage.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

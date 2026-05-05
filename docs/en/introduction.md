@@ -6,7 +6,8 @@ Version: 0.1.2
 
 Aurex is a systems-language compiler project with a future self-hosting goal.
 The current phase focuses on stabilizing the C++ Stage0 compiler, IR contract,
-LLVM backend, standard-library lookup, ABI boundaries, and M1 language features.
+LLVM backend, standard-library lookup, ABI boundaries, and current language
+features.
 
 The current production compiler is implemented in C++20. The default compile
 path is:
@@ -33,7 +34,8 @@ source -> lexer -> parser -> sema -> Aurex IR -> LLVM IR -> clang
 - `include/aurex`: public C++ headers for stage interfaces and data structures.
 - `src`: Stage0 C++20 compiler implementation.
 - `std`: Aurex standard-library sources and backend support.
-- `examples`: minimal runnable examples.
+- `examples`: runnable examples, including shared modules and small system
+  projects.
 - `tests`: positive, negative, golden, and import-path tests.
 - `tools`: test, golden comparison, and benchmark scripts.
 - `cmake`: build, install, and toolchain configuration.
@@ -48,7 +50,7 @@ source -> lexer -> parser -> sema -> Aurex IR -> LLVM IR -> clang
 - IR verifier plus conservative local mem2reg and CFG cleanup pass pipeline.
 - LLVM IR lowering and clang native output.
 - `std` modules and host-c backend support.
-- M1 language slices, including explicit visibility, basic generics, sum types,
+- Current language slices, including explicit visibility, basic generics, sum types,
   pattern matching, expressions, and controlled inference.
 
 ## Use Cases

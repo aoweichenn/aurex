@@ -11,7 +11,7 @@
 
 ## 范围定义
 
-0.1.2 的范围是 Stage0 可用、标准库和 IR 主链路可维护，并继续推进 M1 语言特性：
+0.1.2 的范围是 Stage0 可用、标准库和 IR 主链路可维护，并继续推进语言特性：
 
 - Stage0 必须能完成 `.ax` 到 native 输出的主路径。
 - Stage0 必须能暴露 tokens、AST、checked summary、Aurex IR 和 LLVM IR。
@@ -30,7 +30,7 @@
 8. LLVM 后端：把 Aurex IR lowering 到 LLVM IR。
 9. 本机输出：通过 clang 生成 assembly、object 或 executable。
 10. 标准库：默认加载 `std`，并在 executable 输出中链接所选 backend support。
-11. M1 特性：Stage0 能检查并降低模块可见性、泛型、sum type、pattern matching、表达式和推导切片。
+11. 语言特性：Stage0 能检查并降低模块可见性、泛型、sum type、pattern matching、表达式和推导切片。
 
 ## 运行需求
 
@@ -68,5 +68,5 @@
 - 正向样例能编译并运行。
 - 反向样例能稳定报错。
 - 安装后的 `bin/aurexc` 能找到安装前缀下的 `share/aurex/std`。
-- M1 正向和负向样例覆盖当前已实现语言特性。
+- 正向和负向样例覆盖当前已实现语言特性。
 - 文档入口只保留 `docs/zh/`、`docs/en/` 和 `docs/README.md`，不再恢复逐小版本文档。

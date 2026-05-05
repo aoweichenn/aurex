@@ -1,0 +1,18 @@
+module generic_struct_multi_arg_pointer;
+
+struct Pair<T, U> {
+    left: T;
+    right: U;
+}
+
+fn main() -> i32 {
+    var value: i32 = 3;
+    let pair: Pair<*mut i32, bool> = Pair<*mut i32, bool> {
+        left: &value,
+        right: true,
+    };
+    if !pair.right {
+        return 1;
+    }
+    return *pair.left - 3;
+}

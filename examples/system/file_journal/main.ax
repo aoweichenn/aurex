@@ -1,0 +1,76 @@
+module system.file_journal.main;
+
+import common.prelude;
+import std.core.text;
+import std.fs.file;
+import std.io.console;
+import std.sys.process;
+
+struct JournalEntry {
+    id: i32;
+    state: Health;
+    message: *const u8;
+}
+
+fn entry_bytes(entry: JournalEntry) -> SpanU8 {
+    return match entry.state {
+        .ok if entry.id > 0 => c_span(entry.message),
+        .ok => c_span(c"journal ok\n"),
+        .degraded => c_span(c"journal degraded\n"),
+        .failed => c_span(c"journal failed\n"),
+    };
+}
+
+fn write_entry(path: *const u8, entry: JournalEntry) -> Outcome<i32> {
+    let result = write_entire_file(path, entry_bytes(entry));
+    if result.ok {
+        return Outcome<i32>.ok(cast(i32, result.written));
+    }
+    return Outcome<i32>.err(10);
+}
+
+fn verify_entry(path: *const u8) -> bool {
+    let read_back = read_entire_file(path);
+    if !read_file_ok(read_back) {
+        return false;
+    }
+    let ok = bytes_starts_with(read_file_span(read_back), c_span(c"journal"));
+    free_file_buffer(read_back);
+    return ok;
+}
+
+fn main() -> i32 {
+    let path = c"/tmp/aurex_example_journal.txt";
+    let renamed = c"/tmp/aurex_example_journal.done";
+    remove_file(path);
+    remove_file(renamed);
+
+    let entry = JournalEntry {
+        id: 7,
+        state: classify_errors(0),
+        message: c"journal ok\n",
+    };
+    let written = write_entry(path, entry);
+    let write_code = match written {
+        .ok(count) if count > 0 => 0,
+        .ok(count) => 20 + count,
+        .err(code) => code,
+    };
+    if write_code != 0 {
+        return write_code;
+    }
+    if !verify_entry(path) {
+        remove_file(path);
+        return 2;
+    }
+    if !rename_file(path, renamed) || !file_exists(renamed) {
+        remove_file(path);
+        remove_file(renamed);
+        return 3;
+    }
+    remove_file(renamed);
+    if !print_line(c"file journal ok") {
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}

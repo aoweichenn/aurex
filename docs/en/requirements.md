@@ -15,7 +15,7 @@ Version: 0.1.2
 ## Scope
 
 The 0.1.2 scope is a usable Stage0, maintainable standard-library and IR main
-path, and continued M1 language work:
+path, and continued language work:
 
 - Stage0 must complete the `.ax` to native-output path.
 - Stage0 must expose tokens, AST, checked summary, Aurex IR, and LLVM IR.
@@ -41,7 +41,7 @@ path, and continued M1 language work:
 9. Native output: invoke clang to produce assembly, object files, or executables.
 10. Standard library: load `std` by default and link the selected backend support
     for executable output.
-11. M1 features: Stage0 can check and lower module visibility, generics, sum
+11. Language features: Stage0 can check and lower module visibility, generics, sum
     types, pattern matching, expression forms, and inference slices.
 
 ## Runtime Requirements
@@ -91,7 +91,7 @@ path, and continued M1 language work:
 - Positive examples compile and run.
 - Negative examples fail deterministically.
 - Installed `bin/aurexc` can find `share/aurex/std` in the same prefix.
-- M1 positive and negative samples cover the currently implemented language
+- Positive and negative samples cover the currently implemented language
   features.
 - Documentation entry points remain `docs/zh/`, `docs/en/`, and
   `docs/README.md`; per-small-version files are not restored.

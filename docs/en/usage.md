@@ -29,6 +29,13 @@ Expected output:
 hello from Aurex M0
 ```
 
+System-level examples use the shared example modules:
+
+```sh
+build/bin/aurexc -I examples/libs examples/system/file_journal/main.ax -o build/tests/file_journal
+build/tests/file_journal
+```
+
 ## Inspect Intermediate Output
 
 ```sh

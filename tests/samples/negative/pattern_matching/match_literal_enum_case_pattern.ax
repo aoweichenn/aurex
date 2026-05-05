@@ -1,0 +1,13 @@
+module match_literal_enum_case_pattern;
+
+enum Choice: u8 {
+    one = 1,
+}
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    return match value {
+        .one => 1,
+        _ => 0,
+    };
+}

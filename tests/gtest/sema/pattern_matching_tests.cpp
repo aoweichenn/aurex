@@ -96,7 +96,7 @@ TEST_F(AurexIntegrationTest, EnumPayloadAndMatchBinding) {
     expect_contains(require_failure(aurexc() + " --check " + q(unknown_binding)).output, "unknown name: missing");
 
     const fs::path array_storage = negative_sample("pattern_matching", "enum_payload_array_storage.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(array_storage)).output, "enum payload cannot contain array storage in M1");
+    expect_contains(require_failure(aurexc() + " --check " + q(array_storage)).output, "enum payload cannot contain array storage");
 }
 
 TEST_F(AurexIntegrationTest, MatchWildcardAndScopedCases) {
@@ -145,7 +145,7 @@ TEST_F(AurexIntegrationTest, MatchOrPattern) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 
     const fs::path payload_binding = negative_sample("pattern_matching", "match_or_pattern_payload_binding.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(payload_binding)).output, "or-pattern alternatives cannot bind payloads in M1");
+    expect_contains(require_failure(aurexc() + " --check " + q(payload_binding)).output, "or-pattern alternatives cannot bind payloads");
 
     const fs::path duplicate = negative_sample("pattern_matching", "match_or_pattern_duplicate.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate match arm for enum case");

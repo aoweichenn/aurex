@@ -102,6 +102,6 @@ backend support 策略：
 
 ## 验证架构
 
-- `tools/run_tests.sh`：主质量门，覆盖构建、CLI、IR、LLVM、native、std、M1 语言特性和文档布局。
+- `tools/run_tests.sh`：主质量门，覆盖构建、CLI、IR、LLVM、native、std、当前语言特性和文档布局。
 - `tools/check_golden.sh`：golden 输出对比。
 - `tools/bench.py`：轻量性能 smoke。

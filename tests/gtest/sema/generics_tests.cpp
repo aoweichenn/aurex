@@ -112,6 +112,46 @@ TEST_F(AurexIntegrationTest, GenericStructPair) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
+    const fs::path struct_source = positive_sample("generics", "generic_struct_array_field.ax");
+
+    const std::string struct_checked = require_success(aurexc() + " --emit=checked " + q(struct_source)).output;
+    expect_contains_all(struct_checked, {
+        "structs 1",
+        "struct generic_struct_array_field.Holder<[2]i32> fields=1",
+    });
+
+    const std::string struct_ir = require_success(aurexc() + " --emit=ir " + q(struct_source)).output;
+    expect_contains_all(struct_ir, {
+        "record generic_struct_array_field.Holder<[2]i32>",
+        ".value: [2]i32",
+        "fn touch(value: *mut generic_struct_array_field.Holder<[2]i32>)",
+    });
+
+    const fs::path struct_bin = test_bin_root() / "generic_struct_array_field";
+    require_success(aurexc() + " " + q(struct_source) + " -o " + q(struct_bin));
+    EXPECT_EQ(require_success(q(struct_bin)).output, "");
+
+    const fs::path enum_source = positive_sample("generics", "generic_enum_small_payload.ax");
+
+    const std::string enum_checked = require_success(aurexc() + " --emit=checked " + q(enum_source)).output;
+    expect_contains_all(enum_checked, {
+        "enum_cases 2",
+        "case SmallSlot<u16>_full : generic_enum_small_payload.SmallSlot<u16>(u16)",
+    });
+
+    const std::string enum_ir = require_success(aurexc() + " --emit=ir " + q(enum_source)).output;
+    expect_contains_all(enum_ir, {
+        "record generic_enum_small_payload.SmallSlot<u16>",
+        ".payload: u16",
+        "ptr_cast",
+    });
+
+    const fs::path enum_bin = test_bin_root() / "generic_enum_small_payload";
+    require_success(aurexc() + " " + q(enum_source) + " -o " + q(enum_bin));
+    EXPECT_EQ(require_success(q(enum_bin)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, GenericStructDiagnostics) {
     const fs::path arity = negative_sample("generics", "generic_struct_type_arity.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(arity)).output, "generic struct type requires type arguments: Pair");

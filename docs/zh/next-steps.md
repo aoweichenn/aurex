@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-旧 selfhost 自举路线已经从 active tree 删除。当前项目重心是继续推进 C++ Stage0、Aurex IR 和 LLVM 后端，让 M1 语言核心具备足够强的表达力、模块隔离能力和后端契约。新的自举实现预计在 M3 用带有新特性的 Aurex 重新编写，不再维护旧 Stage1 种子代码。
+旧 selfhost 自举路线已经从 active tree 删除。当前项目重心是继续推进 C++ Stage0、Aurex IR 和 LLVM 后端，让语言核心具备足够强的表达力、模块隔离能力和后端契约。新的自举实现预计在 M3 用带有新特性的 Aurex 重新编写，不再维护旧 Stage1 种子代码。
 
 ## 当前已具备能力
 
@@ -17,7 +17,7 @@ Stage0 主链路：
 - LLVM IR lowering，并通过 clang 输出 assembly、object 和 executable。
 - build-tree 与 install-tree 下的 std 查找和 host-c backend support。
 
-M1 语言切片：
+当前语言切片：
 
 - 结构体、枚举、类型别名和 opaque 类型。
 - 泛型 struct / enum 的基础实例化。
@@ -27,7 +27,7 @@ M1 语言切片：
 - 函数原型与递归函数检查。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 
-## M1 关键缺口
+## 关键语言缺口
 
 - 可见性还应继续扩展到更细粒度的 API 边界，例如构造器、枚举 payload、type alias 传播和 re-export 规则。
 - 模块隔离还缺显式 package/crate 边界、导入别名、选择性导入、循环依赖诊断优化和稳定 public surface dump。
@@ -38,7 +38,7 @@ M1 语言切片：
 
 ## 优先级
 
-1. 完成模块可见性与隔离的 M1 基线  
+1. 完成模块可见性与隔离基线  
    `pub` / `priv` 已落地，下一步应补 re-export、导入别名、选择性导入和 public API dump。模块系统是后续自举、包管理和大型项目可维护性的前提。
 
 2. 强化 sum type / pattern matching 到工业可用边界  

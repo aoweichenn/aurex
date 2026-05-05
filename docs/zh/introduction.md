@@ -4,7 +4,7 @@
 
 ## 项目定位
 
-Aurex 是一个面向自举路线的系统语言编译器项目。当前阶段的重点是先把 C++ Stage0、IR 契约、LLVM 后端、标准库查找、ABI 边界和 M1 语言特性做稳。
+Aurex 是一个面向自举路线的系统语言编译器项目。当前阶段的重点是先把 C++ Stage0、IR 契约、LLVM 后端、标准库查找、ABI 边界和当前语言特性做稳。
 
 当前生产编译器由 C++20 实现，默认编译路径是：
 
@@ -25,7 +25,7 @@ source -> lexer -> parser -> sema -> Aurex IR -> LLVM IR -> clang
 - `include/aurex`：公共 C++ 头文件，定义阶段间接口和数据结构。
 - `src`：Stage0 C++20 编译器实现。
 - `std`：Aurex 标准库源码和 backend support。
-- `examples`：最小可运行样例。
+- `examples`：可运行样例，包括共享模块和系统级小项目。
 - `tests`：正向、反向、golden 和导入路径测试。
 - `tools`：测试、golden 对比和 benchmark 脚本。
 - `cmake`：构建、安装和工具链配置。
@@ -39,7 +39,7 @@ source -> lexer -> parser -> sema -> Aurex IR -> LLVM IR -> clang
 - IR verifier、保守的局部 mem2reg 和 CFG cleanup pass pipeline。
 - LLVM IR lowering 和 clang 本机输出。
 - `std` 模块和 host-c backend support。
-- M1 语言切片，包括显式可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
+- 当前语言切片，包括显式可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
 
 ## 使用场景
 

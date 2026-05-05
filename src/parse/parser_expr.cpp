@@ -533,7 +533,7 @@ syntax::ExprId Parser::parse_postfix() {
             }
             syntax::ExprNode& node = module_.exprs[expr.value];
             if (node.kind != syntax::ExprKind::name) {
-                report_at(previous(), "type arguments are only supported on named enum constructors in M1");
+                report_at(previous(), "type arguments are only supported on named enum constructors");
             }
             if (!check(TokenKind::greater)) {
                 do {
@@ -616,7 +616,7 @@ syntax::ExprId Parser::parse_primary() {
             return module_.push_expr(std::move(node));
         }
         if (!struct_type_args.empty()) {
-            report_at(name, "type arguments in expressions are only supported on struct literals or scoped enum constructors in M1");
+            report_at(name, "type arguments in expressions are only supported on struct literals or scoped enum constructors");
         }
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::name;

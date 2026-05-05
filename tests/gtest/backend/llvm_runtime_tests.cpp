@@ -261,6 +261,19 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     struct_equal.lhs = pair_a_id;
     struct_equal.rhs = pair_b_id;
     add_and_keep(struct_equal);
+    Value struct_not_equal = struct_equal;
+    struct_not_equal.binary_op = BinaryOp::not_equal;
+    add_and_keep(struct_not_equal);
+
+    for (const BinaryOp op : {BinaryOp::logical_and, BinaryOp::logical_or}) {
+        Value logical;
+        logical.kind = ValueKind::binary;
+        logical.type = bool_type;
+        logical.binary_op = op;
+        logical.lhs = op_flag;
+        logical.rhs = op_flag;
+        add_and_keep(logical);
+    }
 
     for (const auto [kind, result_type, operand] : {
              std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i64, op_lhs},

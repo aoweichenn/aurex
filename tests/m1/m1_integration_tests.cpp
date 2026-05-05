@@ -58,6 +58,67 @@ TEST_F(AurexIntegrationTest, M1TypeAliasPrototype) {
     expect_contains(require_failure(aurexc() + " --check " + q(opaque_value)).output, "opaque struct can only be used as a pointer target");
 }
 
+TEST_F(AurexIntegrationTest, M1VisibilityPrototype) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "visibility_import.ax";
+    const std::string import_flags = "-I " + q(source_root() / "tests" / "m1" / "imports");
+
+    const fs::path library = source_root() / "tests" / "m1" / "imports" / "m1lib" / "visibility.ax";
+    const std::string tokens = require_success(aurexc() + " --dump-tokens " + q(library)).output;
+    expect_contains_all(tokens, {
+        "kw_pub `pub`",
+        "kw_priv `priv`",
+    });
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(library)).output;
+    expect_contains_all(ast, {
+        "item #0 const answer",
+        "item #1 priv const hidden_answer",
+        "item #4 struct PublicBox",
+        "field value : i32",
+        "field priv secret : i32",
+    });
+
+    const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "fn exported -> i32",
+        "fn priv add_secret -> i32",
+        "struct PublicBox",
+        "type PublicInt = i32",
+        "type priv HiddenInt = i32",
+    });
+
+    const std::string ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn make_box(value: i32)",
+        "call m0_m1lib_visibility_exported",
+        "call m0_m1lib_visibility_make_box",
+        ".value: i32",
+        ".secret: i32",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_visibility_import";
+    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path private_function = source_root() / "tests" / "m1" / "negative" / "private_function_import.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_function)).output, "unknown function: add_secret");
+
+    const fs::path private_const = source_root() / "tests" / "m1" / "negative" / "private_const_import.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_const)).output, "unknown name: hidden_answer");
+
+    const fs::path private_type = source_root() / "tests" / "m1" / "negative" / "private_type_import.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_type)).output, "unknown type: HiddenInt");
+
+    const fs::path private_field = source_root() / "tests" / "m1" / "negative" / "private_field_access.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_field)).output, "field is private: secret");
+
+    const fs::path private_struct = source_root() / "tests" / "m1" / "negative" / "private_struct_import.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_struct)).output, "unknown type: HiddenBox");
+
+    const fs::path private_enum = source_root() / "tests" / "m1" / "negative" / "private_enum_import.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice_yes");
+}
+
 TEST_F(AurexIntegrationTest, M1LocalTypeInferencePrototype) {
     const fs::path source = source_root() / "tests" / "m1" / "positive" / "local_inference.ax";
 

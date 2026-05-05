@@ -50,6 +50,7 @@ void FunctionRegistry::register_function(
     signature.is_export_c = item.is_export_c;
     signature.has_prototype = is_prototype;
     signature.has_definition = !is_prototype && !item.is_extern_c;
+    signature.visibility = item.visibility;
     signature.prototype_item = is_prototype ? item_id : syntax::invalid_item_id;
     signature.definition_item = signature.has_definition ? item_id : syntax::invalid_item_id;
 
@@ -95,6 +96,7 @@ void FunctionRegistry::merge_function(
             return;
         }
         prior.has_prototype = true;
+        prior.visibility = signature.visibility;
         prior.prototype_item = signature.prototype_item;
         prior.range = signature.range;
         refresh_function_value(key, prior);
@@ -106,6 +108,7 @@ void FunctionRegistry::merge_function(
         return;
     }
     prior.has_definition = true;
+    prior.visibility = signature.visibility;
     prior.definition_item = signature.definition_item;
     prior.range = signature.range;
     refresh_function_value(key, prior);
@@ -140,6 +143,7 @@ void FunctionRegistry::insert_function_value(const std::string& key, const Funct
         signature.return_type,
         signature.range,
         false,
+        signature.visibility,
     });
     if (!value_inserted.second) {
         report(signature.range, "duplicate value definition in module: " + signature.name);

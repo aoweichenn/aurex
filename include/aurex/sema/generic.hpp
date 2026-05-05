@@ -1,8 +1,9 @@
 #pragma once
 
-#include "aurex/sema/type.hpp"
-#include "aurex/syntax/ast_ids.hpp"
 #include "aurex/base/source.hpp"
+#include "aurex/sema/type.hpp"
+#include "aurex/syntax/ast.hpp"
+#include "aurex/syntax/ast_ids.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -16,6 +17,7 @@ struct GenericEnumTemplateInfo {
     syntax::ItemId item = syntax::invalid_item_id;
     std::vector<std::string> params;
     base::SourceRange range {};
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct GenericStructTemplateInfo {
@@ -24,6 +26,7 @@ struct GenericStructTemplateInfo {
     syntax::ItemId item = syntax::invalid_item_id;
     std::vector<std::string> params;
     base::SourceRange range {};
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct GenericTypeSubstitution {

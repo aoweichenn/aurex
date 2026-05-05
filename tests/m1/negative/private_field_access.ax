@@ -1,0 +1,11 @@
+module private_field_access;
+
+import m1lib.visibility;
+
+fn main() -> i32 {
+    let box = PublicBox {
+        value: 1,
+        secret: 2,
+    };
+    return box.secret;
+}

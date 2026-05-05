@@ -61,6 +61,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
                     case_info->payload_type,
                     arm.range,
                     false,
+                    syntax::Visibility::private_,
                 }, diagnostics_));
                 if (guarded) {
                     const TypeHandle guard_type = analyze_expr(arm.guard);

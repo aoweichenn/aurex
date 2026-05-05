@@ -1,0 +1,8 @@
+module private_enum_import;
+
+import m1lib.visibility;
+
+fn main() -> i32 {
+    let choice = HiddenChoice_yes;
+    return 0;
+}

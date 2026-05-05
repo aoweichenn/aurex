@@ -22,6 +22,7 @@ struct StructFieldInfo {
     syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle type = invalid_type_handle;
     base::SourceRange range {};
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct StructInfo {
@@ -31,6 +32,7 @@ struct StructInfo {
     TypeHandle type = invalid_type_handle;
     std::vector<StructFieldInfo> fields;
     bool is_opaque = false;
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct EnumCaseInfo {
@@ -43,6 +45,7 @@ struct EnumCaseInfo {
     base::SourceRange range {};
     std::string enum_name;
     std::string case_name;
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct TypeAliasInfo {
@@ -50,6 +53,7 @@ struct TypeAliasInfo {
     syntax::ModuleId module = syntax::invalid_module_id;
     syntax::TypeId target = syntax::invalid_type_id;
     base::SourceRange range {};
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct CheckedModule {
@@ -153,6 +157,7 @@ private:
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] bool can_access(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
@@ -212,6 +217,7 @@ private:
     CheckedModule checked_;
     SymbolTable symbols_;
     std::unordered_map<std::string, TypeHandle> named_types_;
+    std::unordered_map<std::string, syntax::Visibility> type_visibilities_;
     std::unordered_map<std::string, GenericEnumTemplateInfo> generic_enum_templates_;
     std::unordered_map<std::string, TypeHandle> generic_enum_instances_;
     std::unordered_map<base::u32, GenericEnumInstanceInfo> generic_enum_instance_infos_;

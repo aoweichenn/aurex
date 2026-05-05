@@ -1,0 +1,7 @@
+module private_function_import;
+
+import m1lib.visibility;
+
+fn main() -> i32 {
+    return add_secret(1);
+}

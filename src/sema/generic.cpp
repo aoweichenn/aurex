@@ -52,6 +52,9 @@ const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_v
             if (found == generic_enum_templates_.end()) {
                 continue;
             }
+            if (!can_access(module, found->second.visibility)) {
+                continue;
+            }
             if (imported_result != nullptr) {
                 report(range, "ambiguous generic enum '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
                 return nullptr;
@@ -81,6 +84,9 @@ const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_
         for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
             const auto found = generic_struct_templates_.find(module_key(module, name));
             if (found == generic_struct_templates_.end()) {
+                continue;
+            }
+            if (!can_access(module, found->second.visibility)) {
                 continue;
             }
             if (imported_result != nullptr) {
@@ -312,6 +318,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             enum_case.range,
             info.name,
             std::string(enum_case.name),
+            info.visibility,
         });
     }
     if (is_valid(payload_storage)) {
@@ -404,6 +411,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
             syntax::invalid_module_id,
             field_type,
             field.range,
+            field.visibility,
         });
         if (checked_.types.contains_array(field_type)) {
             contains_array = true;

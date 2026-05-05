@@ -16,6 +16,8 @@ enum class TokenKind {
     byte_literal,
     kw_module,
     kw_import,
+    kw_pub,
+    kw_priv,
     kw_extern,
     kw_export,
     kw_c,

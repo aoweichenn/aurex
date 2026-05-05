@@ -16,6 +16,8 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::byte_literal: return "byte_literal";
     case TokenKind::kw_module: return "kw_module";
     case TokenKind::kw_import: return "kw_import";
+    case TokenKind::kw_pub: return "kw_pub";
+    case TokenKind::kw_priv: return "kw_priv";
     case TokenKind::kw_extern: return "kw_extern";
     case TokenKind::kw_export: return "kw_export";
     case TokenKind::kw_c: return "kw_c";
@@ -207,6 +209,12 @@ std::string_view item_kind_name(const ItemKind kind) {
     case ItemKind::extern_block: return "extern_block";
     }
     return "unknown";
+}
+
+void dump_private_visibility(std::ostringstream& out, const Visibility visibility) {
+    if (visibility == Visibility::private_) {
+        out << "priv ";
+    }
 }
 
 std::string_view stmt_kind_name(const StmtKind kind) {
@@ -414,7 +422,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     const ItemNode& item = module.items[id.value];
     indent(out, depth);
-    out << "item #" << id.value << " " << item_kind_name(item.kind);
+    out << "item #" << id.value << " ";
+    dump_private_visibility(out, item.visibility);
+    out << item_kind_name(item.kind);
     if (!item.name.empty()) {
         out << " " << item.name;
         if (!item.generic_params.empty()) {
@@ -443,7 +453,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     out << "\n";
     for (const FieldDecl& field : item.fields) {
         indent(out, depth + 1);
-        out << "field " << field.name << " : " << type_label(module, field.type) << "\n";
+        out << "field ";
+        dump_private_visibility(out, field.visibility);
+        out << field.name << " : " << type_label(module, field.type) << "\n";
     }
     for (const EnumCaseDecl& enum_case : item.enum_cases) {
         indent(out, depth + 1);

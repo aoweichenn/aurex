@@ -2,6 +2,7 @@
 
 #include "aurex/base/source.hpp"
 #include "aurex/sema/type.hpp"
+#include "aurex/syntax/ast.hpp"
 #include "aurex/syntax/ast_ids.hpp"
 
 #include <string>
@@ -21,6 +22,7 @@ struct FunctionSignature {
     bool has_prototype = false;
     bool has_definition = false;
     bool has_conflict = false;
+    syntax::Visibility visibility = syntax::Visibility::public_;
     syntax::ItemId prototype_item = syntax::invalid_item_id;
     syntax::ItemId definition_item = syntax::invalid_item_id;
 };

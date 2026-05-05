@@ -3,6 +3,7 @@
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
 #include "aurex/sema/type.hpp"
+#include "aurex/syntax/ast.hpp"
 #include "aurex/syntax/ast_ids.hpp"
 
 #include <limits>
@@ -41,6 +42,7 @@ struct Symbol {
     TypeHandle type = invalid_type_handle;
     base::SourceRange range {};
     bool is_mutable = false;
+    syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 class SymbolTable final {

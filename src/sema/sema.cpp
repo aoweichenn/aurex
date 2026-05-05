@@ -125,6 +125,7 @@ void SemanticAnalyzer::register_type_names() {
             alias.module = owner;
             alias.target = item.alias_type;
             alias.range = item.range;
+            alias.visibility = item.visibility;
             auto alias_inserted = checked_.type_aliases.emplace(key, std::move(alias));
             if (!alias_inserted.second) {
                 report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
@@ -142,6 +143,7 @@ void SemanticAnalyzer::register_type_names() {
             const base::usize item_index = static_cast<base::usize>(&item - begin);
             info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
             info.range = item.range;
+            info.visibility = item.visibility;
             for (std::string_view param : item.generic_params) {
                 const std::string param_name(param);
                 if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
@@ -166,6 +168,7 @@ void SemanticAnalyzer::register_type_names() {
             const base::usize item_index = static_cast<base::usize>(&item - begin);
             info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
             info.range = item.range;
+            info.visibility = item.visibility;
             for (std::string_view param : item.generic_params) {
                 const std::string param_name(param);
                 if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
@@ -203,6 +206,7 @@ void SemanticAnalyzer::register_type_names() {
             report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
             continue;
         }
+        type_visibilities_[key] = item.visibility;
         if (checked_.type_aliases.contains(key)) {
             report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
             continue;
@@ -215,6 +219,7 @@ void SemanticAnalyzer::register_type_names() {
             info.module = owner;
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
+            info.visibility = item.visibility;
             auto struct_inserted = checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
                 report(item.range, "duplicate struct definition in module " + module_name(owner) + ": " + std::string(item.name));
@@ -296,6 +301,7 @@ void SemanticAnalyzer::register_value_names() {
                 type,
                 item.range,
                 false,
+                item.visibility,
             });
             if (!inserted.second) {
                 report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
@@ -348,6 +354,7 @@ void SemanticAnalyzer::register_value_names() {
                     enum_case.range,
                     std::string(item.name),
                     std::string(enum_case.name),
+                    item.visibility,
                 });
                 if (!has_payload) {
                     const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
@@ -358,6 +365,7 @@ void SemanticAnalyzer::register_value_names() {
                         named_enum_type,
                         enum_case.range,
                         false,
+                        item.visibility,
                     });
                     if (!value_inserted.second) {
                         report(enum_case.range, "duplicate value definition in module " + module_name(current_module_) + ": " + full_name);
@@ -468,6 +476,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
                     syntax::invalid_module_id,
                     field_type,
                     field.range,
+                    field.visibility,
                 });
             }
             if (checked_.types.contains_array(field_type)) {
@@ -558,6 +567,7 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
             resolve_type(param.type),
             param.range,
             false,
+            syntax::Visibility::private_,
         }, diagnostics_));
     }
     analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
@@ -629,6 +639,7 @@ void SemanticAnalyzer::analyze_stmt(
             local_type,
             stmt.range,
             stmt.kind == syntax::StmtKind::var,
+            syntax::Visibility::private_,
         }, diagnostics_));
         break;
     }
@@ -1056,6 +1067,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         }
         for (const StructFieldInfo& field : info->fields) {
             if (field.name == expr.field_name) {
+                if (!can_access(info->module, field.visibility)) {
+                    report(expr.range, "field is private: " + std::string(expr.field_name));
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
                 return record_expr_type(expr_id, field.type);
             }
         }
@@ -1117,6 +1132,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
             if (field_info == nullptr) {
                 report(init.range, "unknown field in struct literal: " + std::string(init.name));
+                continue;
+            }
+            if (!can_access(info->module, field_info->visibility)) {
+                report(init.range, "field is private: " + std::string(init.name));
                 continue;
             }
             const TypeHandle actual = analyze_expr(init.value);
@@ -1611,6 +1630,10 @@ std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const st
     return std::to_string(module.value) + ":" + std::string(name);
 }
 
+bool SemanticAnalyzer::can_access(const syntax::ModuleId owner, const syntax::Visibility visibility) const noexcept {
+    return owner.value == current_module_.value || visibility == syntax::Visibility::public_;
+}
+
 TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     const std::string_view name,
     const base::SourceRange range,
@@ -1630,10 +1653,17 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
             const auto found = named_types_.find(module_key(module, name));
             TypeHandle candidate = invalid_type_handle;
             if (found != named_types_.end()) {
+                const auto visibility = type_visibilities_.find(module_key(module, name));
+                if (visibility != type_visibilities_.end() && !can_access(module, visibility->second)) {
+                    continue;
+                }
                 candidate = found->second;
             } else {
                 const auto alias_found = checked_.type_aliases.find(module_key(module, name));
                 if (alias_found == checked_.type_aliases.end()) {
+                    continue;
+                }
+                if (!can_access(module, alias_found->second.visibility)) {
                     continue;
                 }
                 candidate = resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
@@ -1665,6 +1695,9 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(cons
             if (found == checked_.functions.end()) {
                 continue;
             }
+            if (!can_access(module, found->second.visibility)) {
+                continue;
+            }
             if (imported_result != nullptr) {
                 report(range, "ambiguous function name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
                 return nullptr;
@@ -1694,6 +1727,9 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
         for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
             const auto found = checked_.enum_cases.find(module_key(module, name));
             if (found == checked_.enum_cases.end()) {
+                continue;
+            }
+            if (!can_access(module, found->second.visibility)) {
                 continue;
             }
             if (imported_result != nullptr) {
@@ -1735,8 +1771,15 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
         bool imported_type = false;
         if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
             for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
-                if (named_types_.find(module_key(module, enum_name)) != named_types_.end() ||
-                    checked_.type_aliases.find(module_key(module, enum_name)) != checked_.type_aliases.end()) {
+                const auto named = named_types_.find(module_key(module, enum_name));
+                const auto alias = checked_.type_aliases.find(module_key(module, enum_name));
+                bool accessible_named = false;
+                if (named != named_types_.end()) {
+                    const auto visibility = type_visibilities_.find(module_key(module, enum_name));
+                    accessible_named = visibility == type_visibilities_.end() || can_access(module, visibility->second);
+                }
+                const bool accessible_alias = alias != checked_.type_aliases.end() && can_access(module, alias->second.visibility);
+                if (accessible_named || accessible_alias) {
                     imported_type = true;
                     break;
                 }
@@ -1800,6 +1843,9 @@ const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const b
             if (found == global_values_.end()) {
                 continue;
             }
+            if (!can_access(module, found->second.visibility)) {
+                continue;
+            }
             if (imported_result != nullptr) {
                 report(range, "ambiguous name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
                 return nullptr;
@@ -1843,7 +1889,11 @@ std::string dump_checked_module(const CheckedModule& checked) {
     out << "  functions " << function_names.size() << "\n";
     for (const std::string& name : function_names) {
         const FunctionSignature& fn = checked.functions.at(name);
-        out << "    fn " << fn.name << " -> " << checked.types.display_name(fn.return_type);
+        out << "    fn ";
+        if (fn.visibility == syntax::Visibility::private_) {
+            out << "priv ";
+        }
+        out << fn.name << " -> " << checked.types.display_name(fn.return_type);
         if (fn.c_name != fn.name) {
             out << " @c_name=" << fn.c_name;
         }
@@ -1865,7 +1915,11 @@ std::string dump_checked_module(const CheckedModule& checked) {
     out << "  structs " << struct_names.size() << "\n";
     for (const std::string& name : struct_names) {
         const StructInfo& info = checked.structs.at(name);
-        out << "    struct " << info.name;
+        out << "    struct ";
+        if (info.visibility == syntax::Visibility::private_) {
+            out << "priv ";
+        }
+        out << info.name;
         if (info.is_opaque) {
             out << " opaque";
         }
@@ -1885,7 +1939,11 @@ std::string dump_checked_module(const CheckedModule& checked) {
         if (alias.target.value < checked.syntax_type_handles.size()) {
             resolved = checked.syntax_type_handles[alias.target.value];
         }
-        out << "    type " << alias.name << " = " << checked.types.display_name(resolved) << "\n";
+        out << "    type ";
+        if (alias.visibility == syntax::Visibility::private_) {
+            out << "priv ";
+        }
+        out << alias.name << " = " << checked.types.display_name(resolved) << "\n";
     }
 
     out << "  enum_cases " << checked.enum_cases.size() << "\n";

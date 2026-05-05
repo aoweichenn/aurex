@@ -32,6 +32,11 @@ enum class PointerMutability {
     const_,
 };
 
+enum class Visibility {
+    public_,
+    private_,
+};
+
 enum class TypeKind {
     primitive,
     named,
@@ -206,6 +211,7 @@ struct FieldDecl {
     std::string_view name;
     TypeId type = invalid_type_id;
     base::SourceRange range {};
+    Visibility visibility = Visibility::public_;
 };
 
 struct EnumCaseDecl {
@@ -229,6 +235,7 @@ struct ItemNode {
     ItemKind kind = ItemKind::fn_decl;
     base::SourceRange range {};
     std::string_view name;
+    Visibility visibility = Visibility::public_;
     std::vector<std::string_view> generic_params;
     TypeId const_type = invalid_type_id;
     ExprId const_value = invalid_expr_id;

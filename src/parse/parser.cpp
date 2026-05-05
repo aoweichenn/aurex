@@ -245,6 +245,8 @@ void Parser::synchronize() {
         case TokenKind::kw_opaque:
         case TokenKind::kw_const:
         case TokenKind::kw_type:
+        case TokenKind::kw_pub:
+        case TokenKind::kw_priv:
         case TokenKind::kw_extern:
         case TokenKind::kw_export:
         case TokenKind::kw_let:
@@ -299,27 +301,64 @@ syntax::ModulePath Parser::parse_path() {
     return path;
 }
 
+syntax::Visibility Parser::parse_visibility() {
+    if (match(TokenKind::kw_pub)) {
+        return syntax::Visibility::public_;
+    }
+    if (match(TokenKind::kw_priv)) {
+        return syntax::Visibility::private_;
+    }
+    return syntax::Visibility::public_;
+}
+
 syntax::ItemId Parser::parse_item() {
     panic_ = false;
+    const syntax::Visibility visibility = parse_visibility();
     if (check(TokenKind::kw_const)) {
-        return parse_const_decl();
+        const syntax::ItemId id = parse_const_decl();
+        if (syntax::is_valid(id)) {
+            module_.items[id.value].visibility = visibility;
+        }
+        return id;
     }
     if (check(TokenKind::kw_type)) {
-        return parse_type_alias_decl();
+        const syntax::ItemId id = parse_type_alias_decl();
+        if (syntax::is_valid(id)) {
+            module_.items[id.value].visibility = visibility;
+        }
+        return id;
     }
     if (check(TokenKind::kw_struct)) {
-        return parse_struct_decl();
+        const syntax::ItemId id = parse_struct_decl();
+        if (syntax::is_valid(id)) {
+            module_.items[id.value].visibility = visibility;
+        }
+        return id;
     }
     if (check(TokenKind::kw_enum)) {
-        return parse_enum_decl();
+        const syntax::ItemId id = parse_enum_decl();
+        if (syntax::is_valid(id)) {
+            module_.items[id.value].visibility = visibility;
+        }
+        return id;
     }
     if (check(TokenKind::kw_opaque)) {
-        return parse_opaque_struct_decl();
+        const syntax::ItemId id = parse_opaque_struct_decl();
+        if (syntax::is_valid(id)) {
+            module_.items[id.value].visibility = visibility;
+        }
+        return id;
     }
     if (check(TokenKind::kw_extern)) {
+        if (visibility == syntax::Visibility::private_) {
+            report_here("extern block cannot be private");
+        }
         return parse_extern_block();
     }
     if (check(TokenKind::kw_export)) {
+        if (visibility == syntax::Visibility::private_) {
+            report_here("exported C function cannot be private");
+        }
         const syntax::Token& begin = advance();
         expect(TokenKind::kw_c, "expected 'c' after 'export'");
         if (!check(TokenKind::kw_fn)) {
@@ -329,11 +368,16 @@ syntax::ItemId Parser::parse_item() {
         syntax::ItemId id = parse_fn_decl(true, false);
         if (syntax::is_valid(id)) {
             module_.items[id.value].range.begin = begin.range.begin;
+            module_.items[id.value].visibility = syntax::Visibility::public_;
         }
         return id;
     }
     if (check(TokenKind::kw_fn)) {
-        return parse_fn_decl(false, false);
+        const syntax::ItemId id = parse_fn_decl(false, false);
+        if (syntax::is_valid(id)) {
+            module_.items[id.value].visibility = visibility;
+        }
+        return id;
     }
 
     report_here("expected item declaration");
@@ -390,6 +434,7 @@ syntax::ItemId Parser::parse_struct_decl() {
     item.generic_params = std::move(generic_params);
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
+        const syntax::Visibility field_visibility = parse_visibility();
         const syntax::Token& field_name = expect(TokenKind::identifier, "expected field name");
         expect(TokenKind::colon, "expected ':' after field name");
         const syntax::TypeId field_type = parse_type();
@@ -399,6 +444,7 @@ syntax::ItemId Parser::parse_struct_decl() {
                 field_name.text,
                 field_type,
                 merge(field_name.range, end.range),
+                field_visibility,
             });
         }
         panic_ = false;

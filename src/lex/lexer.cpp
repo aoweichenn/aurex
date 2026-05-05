@@ -41,6 +41,8 @@ namespace {
     static constexpr auto entries = std::to_array<Entry>({
         Entry {"module", TokenKind::kw_module},
         Entry {"import", TokenKind::kw_import},
+        Entry {"pub", TokenKind::kw_pub},
+        Entry {"priv", TokenKind::kw_priv},
         Entry {"extern", TokenKind::kw_extern},
         Entry {"export", TokenKind::kw_export},
         Entry {"c", TokenKind::kw_c},

@@ -752,7 +752,34 @@ syntax::StmtId Parser::parse_expr_or_assign_stmt() {
 }
 
 syntax::ExprId Parser::parse_expr() {
+    if (check(TokenKind::kw_if)) {
+        return parse_if_expr();
+    }
     return parse_logical_or();
+}
+
+syntax::ExprId Parser::parse_if_expr() {
+    const syntax::Token& begin = expect(TokenKind::kw_if, "expected 'if'");
+    const bool previous_struct_literal_mode = allow_struct_literal_;
+    allow_struct_literal_ = false;
+    const syntax::ExprId condition = parse_expr();
+    allow_struct_literal_ = previous_struct_literal_mode;
+
+    expect(TokenKind::l_brace, "expected '{' before if expression then branch");
+    const syntax::ExprId then_expr = parse_expr();
+    expect(TokenKind::r_brace, "expected '}' after if expression then branch");
+    expect(TokenKind::kw_else, "if expression requires else branch");
+    expect(TokenKind::l_brace, "expected '{' before if expression else branch");
+    const syntax::ExprId else_expr = parse_expr();
+    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after if expression else branch");
+
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::if_expr;
+    expr.range = merge(begin.range, end.range);
+    expr.condition = condition;
+    expr.then_expr = then_expr;
+    expr.else_expr = else_expr;
+    return module_.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::parse_logical_or() {

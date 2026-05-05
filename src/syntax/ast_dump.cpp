@@ -191,6 +191,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::unary: return "unary";
     case ExprKind::binary: return "binary";
     case ExprKind::call: return "call";
+    case ExprKind::if_expr: return "if_expr";
     case ExprKind::field: return "field";
     case ExprKind::index: return "index";
     case ExprKind::struct_literal: return "struct_literal";
@@ -291,6 +292,15 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     for (ExprId arg : expr.args) {
         dump_expr(out, module, arg, depth + 1);
+    }
+    if (is_valid(expr.condition)) {
+        dump_expr(out, module, expr.condition, depth + 1);
+    }
+    if (is_valid(expr.then_expr)) {
+        dump_expr(out, module, expr.then_expr, depth + 1);
+    }
+    if (is_valid(expr.else_expr)) {
+        dump_expr(out, module, expr.else_expr, depth + 1);
     }
     if (is_valid(expr.object)) {
         dump_expr(out, module, expr.object, depth + 1);

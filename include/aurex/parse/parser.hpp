@@ -59,6 +59,7 @@ private:
     [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt();
 
     [[nodiscard]] syntax::ExprId parse_expr();
+    [[nodiscard]] syntax::ExprId parse_if_expr();
     [[nodiscard]] syntax::ExprId parse_logical_or();
     [[nodiscard]] syntax::ExprId parse_logical_and();
     [[nodiscard]] syntax::ExprId parse_bit_or();

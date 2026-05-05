@@ -1,0 +1,5 @@
+module if_expression_type_mismatch;
+
+fn main() -> i32 {
+    return if true { 1 } else { false };
+}

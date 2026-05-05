@@ -1,0 +1,7 @@
+module if_expression_const_initializer;
+
+const VALUE: i32 = if true { 1 } else { 0 };
+
+fn main() -> i32 {
+    return VALUE;
+}

@@ -48,18 +48,14 @@ TEST_F(AurexIntegrationTest, M1TypeAliasPrototype) {
     require_success(aurexc() + " -I " + q(source_root() / "tests" / "m1" / "imports") + " " + q(imported) + " -o " + q(imported_bin));
     EXPECT_EQ(require_success(q(imported_bin)).output, "");
 
-    for (const fs::path& src : sorted_files(source_root() / "tests" / "m1" / "negative", ".ax")) {
-        const CommandResult result = require_failure(aurexc() + " --check " + q(src));
-        if (stem(src) == "type_alias_cycle") {
-            expect_contains(result.output, "cyclic type alias");
-        }
-        if (stem(src) == "type_alias_duplicate") {
-            expect_contains(result.output, "duplicate type definition");
-        }
-        if (stem(src) == "type_alias_opaque_value") {
-            expect_contains(result.output, "opaque struct can only be used as a pointer target");
-        }
-    }
+    const fs::path cycle = source_root() / "tests" / "m1" / "negative" / "type_alias_cycle.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(cycle)).output, "cyclic type alias");
+
+    const fs::path duplicate = source_root() / "tests" / "m1" / "negative" / "type_alias_duplicate.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate type definition");
+
+    const fs::path opaque_value = source_root() / "tests" / "m1" / "negative" / "type_alias_opaque_value.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(opaque_value)).output, "opaque struct can only be used as a pointer target");
 }
 
 TEST_F(AurexIntegrationTest, M1LocalTypeInferencePrototype) {

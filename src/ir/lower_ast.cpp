@@ -459,6 +459,41 @@ private:
         return append_value(result);
     }
 
+    [[nodiscard]] ValueId lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+        if (current_function_ == nullptr || !is_valid(current_block_)) {
+            return invalid_value_id;
+        }
+        const ValueId condition = lower_expr(expr.condition);
+        const BlockId then_block = add_block(*current_function_, "if.expr.then" + std::to_string(current_function_->blocks.size()));
+        const BlockId else_block = add_block(*current_function_, "if.expr.else" + std::to_string(current_function_->blocks.size()));
+        const BlockId join_block = add_block(*current_function_, "if.expr.join" + std::to_string(current_function_->blocks.size()));
+
+        Terminator cond;
+        cond.kind = TerminatorKind::cond_branch;
+        cond.condition = condition;
+        cond.then_target = then_block;
+        cond.else_target = else_block;
+        set_terminator(current_block_, cond);
+
+        current_block_ = then_block;
+        const ValueId then_value = lower_expr(expr.then_expr, expr_type(checked_, expr_id));
+        const BlockId then_tail_block = current_block_;
+        append_branch_if_open(join_block);
+
+        current_block_ = else_block;
+        const ValueId else_value = lower_expr(expr.else_expr, expr_type(checked_, expr_id));
+        const BlockId else_tail_block = current_block_;
+        append_branch_if_open(join_block);
+
+        current_block_ = join_block;
+        Value result;
+        result.kind = ValueKind::phi;
+        result.type = expr_type(checked_, expr_id);
+        result.incoming.push_back(PhiInput {then_tail_block, then_value});
+        result.incoming.push_back(PhiInput {else_tail_block, else_value});
+        return append_value(result);
+    }
+
     [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id) {
         return lower_expr(expr_id, sema::invalid_type_handle);
     }
@@ -546,6 +581,8 @@ private:
             }
             return append_value(value);
         }
+        case syntax::ExprKind::if_expr:
+            return lower_if_expr(expr_id, expr);
         case syntax::ExprKind::field:
         case syntax::ExprKind::index: {
             Value value;

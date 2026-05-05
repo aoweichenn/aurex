@@ -1,0 +1,5 @@
+module if_expression_missing_else;
+
+fn main() -> i32 {
+    return if true { 1 };
+}

@@ -384,7 +384,10 @@ void SemanticAnalyzer::analyze_const_decls() {
         }
         current_module_ = item_module(item);
         const TypeHandle declared = resolve_type(item.const_type);
+        const bool previous_const_initializer = in_const_initializer_;
+        in_const_initializer_ = true;
         const TypeHandle actual = analyze_expr(item.const_value);
+        in_const_initializer_ = previous_const_initializer;
         if (!is_valid_storage_type(declared)) {
             report(item.range, "const type is not valid storage");
         }
@@ -727,6 +730,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         }
         return record_expr_type(expr_id, signature->return_type);
     }
+    case syntax::ExprKind::if_expr:
+        return analyze_if_expr(expr_id, expr);
     case syntax::ExprKind::unary: {
         const TypeHandle operand = analyze_expr(expr.unary_operand);
         if (expr.unary_op == syntax::UnaryOp::logical_not && !checked_.types.is_bool(operand)) {
@@ -914,6 +919,28 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         return record_expr_type(expr_id, invalid_type_handle);
     }
     return record_expr_type(expr_id, invalid_type_handle);
+}
+
+TypeHandle SemanticAnalyzer::analyze_if_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+    if (in_const_initializer_) {
+        report(expr.range, "if expression cannot be used in const initializer");
+    }
+    const TypeHandle condition = analyze_expr(expr.condition);
+    if (!checked_.types.is_bool(condition)) {
+        report(module_.exprs[expr.condition.value].range, "if expression condition must be bool");
+    }
+
+    const TypeHandle then_type = analyze_expr(expr.then_expr);
+    const TypeHandle else_type = analyze_expr(expr.else_expr);
+    if (!checked_.types.same(then_type, else_type)) {
+        report(expr.range, "if expression branches must have the same type");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    if (is_valid(then_type) && checked_.types.is_void(then_type)) {
+        report(expr.range, "if expression branches cannot be void");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    return record_expr_type(expr_id, then_type);
 }
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {

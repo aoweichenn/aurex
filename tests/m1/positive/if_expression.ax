@@ -1,0 +1,19 @@
+module if_expression;
+
+fn pick(flag: bool, lhs: i32, rhs: i32) {
+    return if flag { lhs } else { rhs };
+}
+
+fn normalize(value: i32) -> i32 {
+    return if value < 0 { -value } else { value };
+}
+
+fn main() -> i32 {
+    let value = if false { 1 } else { 42 };
+    let nested = if pick(true, value, 0) == 42 {
+        normalize(-42)
+    } else {
+        0
+    };
+    return nested - 42;
+}

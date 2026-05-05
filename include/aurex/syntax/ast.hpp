@@ -62,6 +62,7 @@ enum class ExprKind {
     unary,
     binary,
     call,
+    if_expr,
     field,
     index,
     struct_literal,
@@ -120,6 +121,9 @@ struct ExprNode {
     ExprId binary_rhs = invalid_expr_id;
     ExprId callee = invalid_expr_id;
     std::vector<ExprId> args;
+    ExprId condition = invalid_expr_id;
+    ExprId then_expr = invalid_expr_id;
+    ExprId else_expr = invalid_expr_id;
     ExprId object = invalid_expr_id;
     std::string_view field_name;
     ExprId index = invalid_expr_id;

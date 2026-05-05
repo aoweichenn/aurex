@@ -6,6 +6,7 @@ if(BUILD_TESTING)
     add_executable(aurex_tests
         tests/support/test_support.cpp
         tests/aurex_integration_tests.cpp
+        tests/m1/m1_control_flow_tests.cpp
         tests/m1/m1_integration_tests.cpp
     )
     target_link_libraries(aurex_tests PRIVATE GTest::gtest_main)

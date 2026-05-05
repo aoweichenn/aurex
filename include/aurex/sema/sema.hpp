@@ -94,6 +94,7 @@ private:
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
+    [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
@@ -132,6 +133,7 @@ private:
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
     int loop_depth_ = 0;
+    bool in_const_initializer_ = false;
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);

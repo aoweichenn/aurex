@@ -1,0 +1,9 @@
+module generic_variadic_unsupported;
+
+fn log<T>(value: T, ...) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

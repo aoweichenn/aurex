@@ -1,0 +1,9 @@
+module ambiguous_generic_function;
+
+import samplelib.generic_a;
+import samplelib.generic_b;
+
+fn main() -> i32 {
+    let value = pick(1);
+    return value;
+}

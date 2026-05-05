@@ -1094,12 +1094,22 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
             return record_expr_type(expr_id, signature->return_type);
         }
-        const GenericFunctionTemplateInfo* generic_function = callee.kind == syntax::ExprKind::name
-            ? find_generic_function_template_in_visible_modules(name, callee_range, false)
-            : nullptr;
-        const FunctionSignature* signature = callee.type_args.empty()
-            ? find_function_in_visible_modules(name, callee_range, generic_function == nullptr)
-            : nullptr;
+        const FunctionSignature* signature = nullptr;
+        const GenericFunctionTemplateInfo* generic_function = nullptr;
+        if (callee.type_args.empty()) {
+            signature = find_function_in_visible_modules(name, callee_range, false);
+            if (signature == nullptr && callee.kind == syntax::ExprKind::name) {
+                const auto diagnostics_before_generic_lookup = diagnostics_.diagnostics().size();
+                generic_function = find_generic_function_template_in_visible_modules(name, callee_range, false);
+                const bool generic_lookup_reported =
+                    diagnostics_.diagnostics().size() != diagnostics_before_generic_lookup;
+                if (generic_function == nullptr && !generic_lookup_reported) {
+                    signature = find_function_in_visible_modules(name, callee_range, true);
+                }
+            }
+        } else if (callee.kind == syntax::ExprKind::name) {
+            generic_function = find_generic_function_template_in_visible_modules(name, callee_range, false);
+        }
         if (signature == nullptr && callee.kind == syntax::ExprKind::name && (!callee.type_args.empty() || generic_function != nullptr)) {
             if (generic_function == nullptr) {
                 if (find_function_in_visible_modules(name, callee_range, false) != nullptr) {

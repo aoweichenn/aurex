@@ -1,0 +1,8 @@
+module private_generic_function_import;
+
+import samplelib.generic_private;
+
+fn main() -> i32 {
+    let value = hidden_id(1);
+    return value;
+}

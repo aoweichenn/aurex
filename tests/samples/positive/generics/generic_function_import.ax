@@ -1,0 +1,7 @@
+module generic_function_import;
+
+import samplelib.generic_a;
+
+fn main() -> i32 {
+    return pick(42) - 42;
+}

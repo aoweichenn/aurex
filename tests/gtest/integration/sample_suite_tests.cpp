@@ -8,6 +8,7 @@ namespace aurex::test {
 TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
     const std::set<std::string> skip_regular = {
         "import_path",
+        "generic_function_import",
         "math",
         "module_name_collision",
         "reexport_import",

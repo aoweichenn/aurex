@@ -8,3 +8,7 @@ priv enum Secret<T>: u8 {
     some(T) = 1,
     none = 2,
 }
+
+priv fn hidden_id<T>(value: T) -> T {
+    return value;
+}

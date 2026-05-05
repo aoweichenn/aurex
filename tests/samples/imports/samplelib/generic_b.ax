@@ -8,3 +8,7 @@ pub enum Choice<T>: u8 {
     some(T) = 1,
     none = 2,
 }
+
+pub fn pick<T>(value: T) -> T {
+    return value;
+}

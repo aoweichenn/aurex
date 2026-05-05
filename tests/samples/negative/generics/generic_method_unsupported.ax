@@ -1,0 +1,15 @@
+module generic_method_unsupported;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn id<T>(value: T) -> T {
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

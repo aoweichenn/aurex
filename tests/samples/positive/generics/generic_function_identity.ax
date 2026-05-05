@@ -5,6 +5,11 @@ struct Pair<T> {
     right: T;
 }
 
+enum Option<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}
+
 fn identity<T>(value: T) -> T {
     return value;
 }
@@ -20,6 +25,25 @@ fn make_pair<T>(left: T, right: T) -> Pair<T> {
     };
 }
 
+fn ptr_identity<T>(value: *mut T) -> T {
+    return *value;
+}
+
+fn array_ptr<T>() -> *mut [2]T {
+    return null;
+}
+
+fn unwrap_or<T>(value: Option<T>, fallback: T) -> T {
+    return match value {
+        .some(x) => x,
+        .none => fallback,
+    };
+}
+
+fn first<T, U>(left: T, right: U) -> T {
+    return left;
+}
+
 fn main() -> i32 {
     let explicit = identity<i32>(20);
     let inferred = identity(21);
@@ -29,5 +53,13 @@ fn main() -> i32 {
     }
     let pair = make_pair(3, 4);
     let expected: Pair<i32> = make_pair(5, 6);
-    return explicit + inferred + pair.left + pair.right + expected.left + expected.right - 59;
+    var source: i32 = 8;
+    let from_ptr = ptr_identity(&source);
+    let array_expected: *mut [2]i32 = array_ptr();
+    if ptr_addr(array_expected) != cast(usize, 0) {
+        return 2;
+    }
+    let from_option = unwrap_or(Option.some(7), 0);
+    let multi = first<i32, bool>(1, false);
+    return explicit + inferred + pair.left + pair.right + expected.left + expected.right + from_ptr + from_option + multi - 75;
 }

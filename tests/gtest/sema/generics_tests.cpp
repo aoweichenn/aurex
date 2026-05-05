@@ -149,18 +149,26 @@ TEST_F(AurexIntegrationTest, GenericFunctionIdentity) {
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
         "fn identity<T>",
+        "fn first<T, U>",
+        "enum Option<T>",
         "name `identity`<i32>",
         "name `identity`<T>",
+        "name `first`<i32, bool>",
         "struct_literal Pair",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "generic_functions 4",
+        "generic_functions 8",
         "fn generic_function_identity.identity<i32> -> i32",
         "fn generic_function_identity.identity<bool> -> bool",
         "fn generic_function_identity.twice<bool> -> bool",
         "fn generic_function_identity.make_pair<i32> -> generic_function_identity.Pair<i32>",
+        "fn generic_function_identity.ptr_identity<i32> -> i32",
+        "fn generic_function_identity.array_ptr<i32> -> *mut [2]i32",
+        "fn generic_function_identity.unwrap_or<i32> -> i32",
+        "fn generic_function_identity.first<i32, bool> -> i32",
+        "case Option<i32>_some : generic_function_identity.Option<i32>(i32)",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
@@ -169,12 +177,41 @@ TEST_F(AurexIntegrationTest, GenericFunctionIdentity) {
         "fn generic_function_identity.identity<bool>(value: bool)",
         "fn generic_function_identity.twice<bool>(value: bool)",
         "fn generic_function_identity.make_pair<i32>(left: i32, right: i32)",
+        "fn generic_function_identity.ptr_identity<i32>(value: *mut i32)",
+        "fn generic_function_identity.array_ptr<i32>()",
+        "fn generic_function_identity.unwrap_or<i32>(value: generic_function_identity.Option<i32>, fallback: i32)",
+        "fn generic_function_identity.first<i32, bool>(left: i32, right: bool)",
         "call m0_generic_function_identity_identity__i32",
         "call m0_generic_function_identity_identity__bool",
+        "call m0_generic_function_identity_ptr_identity__i32",
+        "call m0_generic_function_identity_array_ptr__i32",
+        "call m0_generic_function_identity_unwrap_or__i32",
+        "call m0_generic_function_identity_first__i32__bool",
     });
 
     const fs::path bin = test_bin_root() / "generic_function_identity";
     require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, GenericFunctionImport) {
+    const std::string import_flags = sample_import_flags();
+    const fs::path source = positive_sample("generics", "generic_function_import.ax");
+
+    const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "generic_functions 1",
+        "fn samplelib.generic_a.pick<i32> -> i32",
+    });
+
+    const std::string ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn samplelib.generic_a.pick<i32>(value: i32)",
+        "call m0_samplelib_generic_a_pick__i32",
+    });
+
+    const fs::path bin = test_bin_root() / "generic_function_import";
+    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
@@ -244,6 +281,24 @@ TEST_F(AurexIntegrationTest, GenericFunctionDiagnostics) {
 
     const fs::path missing_return = negative_sample("generics", "generic_function_missing_return_type.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing_return)).output, "generic function return type must be explicit: identity");
+
+    const fs::path unknown = negative_sample("generics", "unknown_generic_function.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(unknown)).output, "unknown generic function: missing");
+
+    const fs::path plain_type_args = negative_sample("generics", "generic_function_type_args_on_plain.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(plain_type_args)).output, "type arguments require a generic function: plain");
+
+    const fs::path generic_method = negative_sample("generics", "generic_method_unsupported.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_method)).output, "generic methods are not supported yet");
+
+    const fs::path generic_extern = negative_sample("generics", "generic_extern_unsupported.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_extern)).output, "generic extern c functions are not supported");
+
+    const fs::path generic_prototype = negative_sample("generics", "generic_prototype_unsupported.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_prototype)).output, "generic function prototypes are not supported");
+
+    const fs::path generic_variadic = negative_sample("generics", "generic_variadic_unsupported.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_variadic)).output, "generic variadic functions are not supported");
 }
 
 TEST_F(AurexIntegrationTest, GenericImportVisibilityAndAmbiguityDiagnostics) {
@@ -271,6 +326,18 @@ TEST_F(AurexIntegrationTest, GenericImportVisibilityAndAmbiguityDiagnostics) {
     expect_contains(
         require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output,
         "unknown generic enum: Secret"
+    );
+
+    const fs::path ambiguous_function = negative_sample("generics", "ambiguous_generic_function.ax");
+    const std::string ambiguous_function_output =
+        require_failure(aurexc() + " " + import_flags + " --check " + q(ambiguous_function)).output;
+    expect_contains(ambiguous_function_output, "ambiguous generic function 'pick'");
+    expect_not_contains(ambiguous_function_output, "unknown function: pick");
+
+    const fs::path private_function = negative_sample("generics", "private_generic_function_import.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_function)).output,
+        "unknown function: hidden_id"
     );
 }
 

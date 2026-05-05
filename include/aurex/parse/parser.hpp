@@ -37,6 +37,7 @@ private:
     void report_at(const syntax::Token& token, std::string message);
 
     [[nodiscard]] syntax::ModulePath parse_path();
+    [[nodiscard]] syntax::ImportDecl parse_import_decl();
     [[nodiscard]] syntax::Visibility parse_visibility();
     [[nodiscard]] syntax::ItemId parse_item();
     [[nodiscard]] syntax::ItemId parse_const_decl();

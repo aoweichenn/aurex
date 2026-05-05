@@ -1,0 +1,26 @@
+module m1lib.reexport_inner;
+
+pub const base: i32 = 40;
+priv const hidden_base: i32 = 99;
+
+pub type Count = i32;
+priv type SecretCount = i32;
+
+pub struct Pair<T> {
+    pub left: T;
+    pub right: T;
+}
+
+pub enum Mode: u8 {
+    ready = 1,
+    waiting = 2,
+}
+
+priv enum SecretMode: u8 {
+    hidden = 1,
+}
+
+pub fn add_base(value: Count) -> Count {
+    return value + base;
+}
+

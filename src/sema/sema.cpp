@@ -1596,12 +1596,37 @@ std::vector<syntax::ModuleId> SemanticAnalyzer::visible_modules(const syntax::Mo
     if (module.value >= module_.modules.size()) {
         return result;
     }
-    for (syntax::ModuleId import : module_.modules[module.value].imports) {
-        if (syntax::is_valid(import)) {
-            result.push_back(import);
+    std::unordered_set<base::u32> seen;
+    seen.insert(module.value);
+    for (const syntax::ResolvedImport& import : module_.modules[module.value].imports) {
+        if (!syntax::is_valid(import.module)) {
+            continue;
         }
+        if (seen.insert(import.module.value).second) {
+            result.push_back(import.module);
+        }
+        append_public_reexports(import.module, result, seen);
     }
     return result;
+}
+
+void SemanticAnalyzer::append_public_reexports(
+    const syntax::ModuleId module,
+    std::vector<syntax::ModuleId>& result,
+    std::unordered_set<base::u32>& seen
+) const {
+    if (!syntax::is_valid(module) || module.value >= module_.modules.size()) {
+        return;
+    }
+    for (const syntax::ResolvedImport& import : module_.modules[module.value].imports) {
+        if (import.visibility != syntax::Visibility::public_ || !syntax::is_valid(import.module)) {
+            continue;
+        }
+        if (seen.insert(import.module.value).second) {
+            result.push_back(import.module);
+            append_public_reexports(import.module, result, seen);
+        }
+    }
 }
 
 std::string SemanticAnalyzer::module_name(const syntax::ModuleId module) const {
@@ -1648,8 +1673,10 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
 
     TypeHandle imported_result = invalid_type_handle;
     syntax::ModuleId result_module = syntax::invalid_module_id;
-    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
             const auto found = named_types_.find(module_key(module, name));
             TypeHandle candidate = invalid_type_handle;
             if (found != named_types_.end()) {
@@ -1674,7 +1701,6 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
             }
             imported_result = candidate;
             result_module = module;
-        }
     }
     if (!is_valid(imported_result)) {
         report(range, "unknown type: " + std::string(name));
@@ -1689,8 +1715,10 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(cons
 
     const FunctionSignature* imported_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
-    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
             const auto found = checked_.functions.find(module_key(module, name));
             if (found == checked_.functions.end()) {
                 continue;
@@ -1704,7 +1732,6 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(cons
             }
             imported_result = &found->second;
             result_module = module;
-        }
     }
     if (imported_result == nullptr) {
         report(range, "unknown function: " + std::string(name));
@@ -1723,8 +1750,10 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
 
     const EnumCaseInfo* imported_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
-    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
             const auto found = checked_.enum_cases.find(module_key(module, name));
             if (found == checked_.enum_cases.end()) {
                 continue;
@@ -1738,7 +1767,6 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
             }
             imported_result = &found->second;
             result_module = module;
-        }
     }
     if (imported_result == nullptr && report_unknown) {
         report(range, "unknown enum case: " + std::string(name));
@@ -1769,8 +1797,11 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
         named_types_.find(module_key(current_module_, enum_name)) == named_types_.end() &&
         checked_.type_aliases.find(module_key(current_module_, enum_name)) == checked_.type_aliases.end()) {
         bool imported_type = false;
-        if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-            for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+        {
+            for (syntax::ModuleId module : visible_modules(current_module_)) {
+                if (module.value == current_module_.value) {
+                    continue;
+                }
                 const auto named = named_types_.find(module_key(module, enum_name));
                 const auto alias = checked_.type_aliases.find(module_key(module, enum_name));
                 bool accessible_named = false;
@@ -1837,8 +1868,10 @@ const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const b
 
     const Symbol* imported_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
-    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
             const auto found = global_values_.find(module_key(module, name));
             if (found == global_values_.end()) {
                 continue;
@@ -1852,7 +1885,6 @@ const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const b
             }
             imported_result = &found->second;
             result_module = module;
-        }
     }
     if (imported_result == nullptr) {
         report(range, "unknown name: " + std::string(name));

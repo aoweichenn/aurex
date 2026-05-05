@@ -46,8 +46,10 @@ const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_v
 
     const GenericEnumTemplateInfo* imported_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
-    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
             const auto found = generic_enum_templates_.find(module_key(module, name));
             if (found == generic_enum_templates_.end()) {
                 continue;
@@ -61,7 +63,6 @@ const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_v
             }
             imported_result = &found->second;
             result_module = module;
-        }
     }
     if (imported_result == nullptr && report_unknown) {
         report(range, "unknown generic enum: " + std::string(name));
@@ -80,8 +81,10 @@ const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_
 
     const GenericStructTemplateInfo* imported_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
-    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
-        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
             const auto found = generic_struct_templates_.find(module_key(module, name));
             if (found == generic_struct_templates_.end()) {
                 continue;
@@ -95,7 +98,6 @@ const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_
             }
             imported_result = &found->second;
             result_module = module;
-        }
     }
     if (imported_result == nullptr && report_unknown) {
         report(range, "unknown generic struct: " + std::string(name));

@@ -370,28 +370,28 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         combined.module_path = module.module_path;
     }
 
-    const std::vector<syntax::ModulePath> imports = module.imports;
-    std::vector<syntax::ModuleId> direct_imports;
+    const std::vector<syntax::ImportDecl> imports = module.imports;
+    std::vector<syntax::ResolvedImport> direct_imports;
     direct_imports.reserve(imports.size());
-    for (const syntax::ModulePath& import : imports) {
-        const auto import_file = find_import_file(import, canonical.parent_path(), import_paths_);
+    for (const syntax::ImportDecl& import : imports) {
+        const auto import_file = find_import_file(import.path, canonical.parent_path(), import_paths_);
         if (!import_file) {
-            const std::vector<std::filesystem::path> candidates = import_candidates(import, canonical.parent_path(), import_paths_);
+            const std::vector<std::filesystem::path> candidates = import_candidates(import.path, canonical.parent_path(), import_paths_);
             push_error(
                 diagnostics_,
-                import.range,
-                "failed to resolve import: " + syntax::module_path_to_string(import) +
+                import.path.range,
+                "failed to resolve import: " + syntax::module_path_to_string(import.path) +
                     " (searched: " + format_import_candidates(candidates) + ")"
             );
             loading_files_.erase(key);
             return base::Result<syntax::ModuleId>::fail({base::ErrorCode::io_error, "module loading failed"});
         }
-        auto import_result = load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import);
+        auto import_result = load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import.path);
         if (!import_result) {
             loading_files_.erase(key);
             return import_result;
         }
-        direct_imports.push_back(import_result.value());
+        direct_imports.push_back(syntax::ResolvedImport {import_result.value(), import.visibility});
     }
     if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
         combined.modules[module_id.value].imports = std::move(direct_imports);

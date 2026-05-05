@@ -258,9 +258,20 @@ struct ModulePath {
     base::SourceRange range {};
 };
 
+struct ImportDecl {
+    ModulePath path;
+    Visibility visibility = Visibility::private_;
+    bool explicit_visibility = false;
+};
+
+struct ResolvedImport {
+    ModuleId module = invalid_module_id;
+    Visibility visibility = Visibility::private_;
+};
+
 struct ModuleInfo {
     ModulePath path;
-    std::vector<ModuleId> imports;
+    std::vector<ResolvedImport> imports;
 };
 
 struct AstModule {
@@ -268,7 +279,7 @@ struct AstModule {
     // IDs. This keeps nodes compact, avoids virtual dispatch, and lets later
     // compiler stages attach side tables without changing syntax nodes.
     ModulePath module_path;
-    std::vector<ModulePath> imports;
+    std::vector<ImportDecl> imports;
     std::vector<ModuleInfo> modules;
     std::vector<TypeNode> types;
     std::vector<ExprNode> exprs;

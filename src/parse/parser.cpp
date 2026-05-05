@@ -100,9 +100,9 @@ base::Result<syntax::AstModule> Parser::parse_module() {
         expect(TokenKind::semicolon, "expected ';' after module declaration");
     }
 
-    while (match(TokenKind::kw_import)) {
-        module_.imports.push_back(parse_path());
-        expect(TokenKind::semicolon, "expected ';' after import declaration");
+    while (check(TokenKind::kw_import) ||
+           ((check(TokenKind::kw_pub) || check(TokenKind::kw_priv)) && check_next(TokenKind::kw_import))) {
+        module_.imports.push_back(parse_import_decl());
     }
 
     while (!is_eof()) {
@@ -254,6 +254,7 @@ void Parser::synchronize() {
         case TokenKind::kw_if:
         case TokenKind::kw_while:
         case TokenKind::kw_return:
+        case TokenKind::kw_import:
             return;
         default:
             advance();
@@ -299,6 +300,22 @@ syntax::ModulePath Parser::parse_path() {
     path.range = range;
     panic_ = false;
     return path;
+}
+
+syntax::ImportDecl Parser::parse_import_decl() {
+    syntax::ImportDecl import;
+    if (match(TokenKind::kw_pub)) {
+        import.visibility = syntax::Visibility::public_;
+        import.explicit_visibility = true;
+    } else if (match(TokenKind::kw_priv)) {
+        import.visibility = syntax::Visibility::private_;
+        import.explicit_visibility = true;
+    }
+    expect(TokenKind::kw_import, "expected 'import'");
+    import.path = parse_path();
+    expect(TokenKind::semicolon, "expected ';' after import declaration");
+    panic_ = false;
+    return import;
 }
 
 syntax::Visibility Parser::parse_visibility() {

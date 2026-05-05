@@ -119,6 +119,66 @@ TEST_F(AurexIntegrationTest, M1VisibilityPrototype) {
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice_yes");
 }
 
+TEST_F(AurexIntegrationTest, M1PublicImportReexport) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "reexport_import.ax";
+    const std::string import_flags = "-I " + q(source_root() / "tests" / "m1" / "imports");
+    const fs::path facade = source_root() / "tests" / "m1" / "imports" / "m1lib" / "reexport_facade.ax";
+    const fs::path private_facade = source_root() / "tests" / "m1" / "imports" / "m1lib" / "private_facade.ax";
+
+    const std::string tokens = require_success(aurexc() + " --dump-tokens " + q(facade)).output;
+    expect_contains_all(tokens, {
+        "kw_pub `pub`",
+        "kw_import `import`",
+    });
+
+    const std::string ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(facade)).output;
+    expect_contains(ast, "pub import m1lib.reexport_inner");
+    const std::string private_ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(private_facade)).output;
+    expect_contains(private_ast, "priv import m1lib.reexport_inner");
+
+    const std::string modules = require_success(aurexc() + " " + import_flags + " --dump-modules " + q(source)).output;
+    expect_contains_all(modules, {
+        "m1lib.reexport_facade",
+        "m1lib.reexport_inner",
+        "reexport_import",
+    });
+
+    const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "fn add_two -> i32",
+        "fn add_base -> i32",
+        "struct m1lib.reexport_inner.Pair<i32> fields=2",
+        "type Count = i32",
+        "case Mode_ready : m1lib.reexport_inner.Mode",
+    });
+    expect_contains(checked, "type priv SecretCount = i32");
+
+    const std::string ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "call m0_m1lib_reexport_facade_add_two",
+        "call m0_m1lib_reexport_inner_add_base",
+        "record m1lib.reexport_inner.Pair<i32>",
+        "const base @m0_m1lib_reexport_inner_base",
+        "const_ref @m0_m1lib_reexport_inner_base",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_reexport_import";
+    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path private_import = source_root() / "tests" / "m1" / "negative" / "private_reexport_import.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_import)).output, "unknown type: Count");
+
+    const fs::path private_const = source_root() / "tests" / "m1" / "negative" / "private_reexport_const.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_const)).output, "unknown name: hidden_base");
+
+    const fs::path private_type = source_root() / "tests" / "m1" / "negative" / "private_reexport_type.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_type)).output, "unknown type: SecretCount");
+
+    const fs::path private_enum = source_root() / "tests" / "m1" / "negative" / "private_reexport_enum.ax";
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: SecretMode_hidden");
+}
+
 TEST_F(AurexIntegrationTest, M1LocalTypeInferencePrototype) {
     const fs::path source = source_root() / "tests" / "m1" / "positive" / "local_inference.ax";
 

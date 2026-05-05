@@ -525,10 +525,15 @@ std::string dump_ast(const AstModule& module) {
         out << (i == 0 ? " " : ".") << module.module_path.parts[i];
     }
     out << "\n";
-    for (const ModulePath& import : module.imports) {
+    for (const ImportDecl& import : module.imports) {
+        if (import.visibility == Visibility::public_) {
+            out << "pub ";
+        } else if (import.explicit_visibility) {
+            out << "priv ";
+        }
         out << "import";
-        for (base::usize i = 0; i < import.parts.size(); ++i) {
-            out << (i == 0 ? " " : ".") << import.parts[i];
+        for (base::usize i = 0; i < import.path.parts.size(); ++i) {
+            out << (i == 0 ? " " : ".") << import.path.parts[i];
         }
         out << "\n";
     }

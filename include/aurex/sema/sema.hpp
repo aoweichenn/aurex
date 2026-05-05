@@ -153,6 +153,7 @@ private:
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] std::vector<syntax::ModuleId> visible_modules(syntax::ModuleId module) const;
+    void append_public_reexports(syntax::ModuleId module, std::vector<syntax::ModuleId>& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;

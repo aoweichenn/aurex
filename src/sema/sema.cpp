@@ -557,6 +557,7 @@ void SemanticAnalyzer::analyze_const_decls() {
 
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     const syntax::ModuleId previous_module = current_module_;
+    const TypeHandle previous_function_return_type = current_function_return_type_;
     const int previous_loop_depth = loop_depth_;
     const SymbolTable previous_symbols = symbols_;
     current_module_ = item_module(function);
@@ -596,6 +597,7 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     if (infer_return_type) {
         expected_return = invalid_type_handle;
     }
+    current_function_return_type_ = expected_return;
 
     symbols_.push_scope();
     for (const syntax::ParamDecl& param : function.params) {
@@ -617,6 +619,7 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     }
     state = FunctionBodyState::analyzed;
     current_module_ = previous_module;
+    current_function_return_type_ = previous_function_return_type;
     loop_depth_ = previous_loop_depth;
     symbols_ = previous_symbols;
 }
@@ -1026,6 +1029,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         }
         return record_expr_type(expr_id, signature->return_type);
     }
+    case syntax::ExprKind::try_expr:
+        return analyze_try_expr(expr_id, expr);
     case syntax::ExprKind::if_expr:
         return analyze_if_expr(expr_id, expr);
     case syntax::ExprKind::block_expr:
@@ -1285,6 +1290,73 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     case syntax::ExprKind::invalid:
         return record_expr_type(expr_id, invalid_type_handle);
     }
+    return record_expr_type(expr_id, invalid_type_handle);
+}
+
+TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+    if (in_const_initializer_) {
+        report(expr.range, "try expression cannot be used in const initializer");
+    }
+
+    const TypeHandle source_type = analyze_expr(expr.unary_operand);
+    const GenericEnumInstanceInfo* const source_instance = generic_enum_instance(source_type);
+    if (source_instance == nullptr) {
+        report(expr.range, "try expression requires Result<T, E> or Option<T>");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+
+    if (source_instance->name == "Result" && source_instance->args.size() == 2) {
+        const EnumCaseInfo* const ok_case = find_enum_case_by_type_and_case(source_type, "ok");
+        const EnumCaseInfo* const err_case = find_enum_case_by_type_and_case(source_type, "err");
+        if (ok_case == nullptr || err_case == nullptr || !is_valid(ok_case->payload_type) || !is_valid(err_case->payload_type)) {
+            report(expr.range, "try expression Result type must define ok(T) and err(E) cases");
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
+
+        const GenericEnumInstanceInfo* const return_instance = generic_enum_instance(current_function_return_type_);
+        if (return_instance == nullptr ||
+            return_instance->name != "Result" ||
+            return_instance->module.value != source_instance->module.value ||
+            return_instance->args.size() != 2) {
+            report(expr.range, "try expression on Result<T, E> requires enclosing function to return Result<U, E>");
+            return record_expr_type(expr_id, ok_case->payload_type);
+        }
+        if (!checked_.types.same(return_instance->args[1], source_instance->args[1])) {
+            report(expr.range, "try expression Result error type must match enclosing Result error type");
+        }
+        const EnumCaseInfo* const return_err_case = find_enum_case_by_type_and_case(current_function_return_type_, "err");
+        if (return_err_case == nullptr || !is_valid(return_err_case->payload_type)) {
+            report(expr.range, "enclosing Result return type must define err(E)");
+        } else if (!checked_.types.same(return_err_case->payload_type, err_case->payload_type)) {
+            report(expr.range, "try expression Result error payload type must match enclosing Result error payload type");
+        }
+        return record_expr_type(expr_id, ok_case->payload_type);
+    }
+
+    if (source_instance->name == "Option" && source_instance->args.size() == 1) {
+        const EnumCaseInfo* const some_case = find_enum_case_by_type_and_case(source_type, "some");
+        const EnumCaseInfo* const none_case = find_enum_case_by_type_and_case(source_type, "none");
+        if (some_case == nullptr || none_case == nullptr || !is_valid(some_case->payload_type) || is_valid(none_case->payload_type)) {
+            report(expr.range, "try expression Option type must define some(T) and none cases");
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
+
+        const GenericEnumInstanceInfo* const return_instance = generic_enum_instance(current_function_return_type_);
+        if (return_instance == nullptr ||
+            return_instance->name != "Option" ||
+            return_instance->module.value != source_instance->module.value ||
+            return_instance->args.size() != 1) {
+            report(expr.range, "try expression on Option<T> requires enclosing function to return Option<U>");
+            return record_expr_type(expr_id, some_case->payload_type);
+        }
+        const EnumCaseInfo* const return_none_case = find_enum_case_by_type_and_case(current_function_return_type_, "none");
+        if (return_none_case == nullptr || is_valid(return_none_case->payload_type)) {
+            report(expr.range, "enclosing Option return type must define none");
+        }
+        return record_expr_type(expr_id, some_case->payload_type);
+    }
+
+    report(expr.range, "try expression requires Result<T, E> or Option<T>");
     return record_expr_type(expr_id, invalid_type_handle);
 }
 

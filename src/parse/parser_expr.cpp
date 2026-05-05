@@ -578,6 +578,15 @@ syntax::ExprId Parser::parse_postfix() {
             const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after argument list");
             node.range = merge(module_.exprs[expr.value].range, end.range);
             expr = module_.push_expr(std::move(node));
+        } else if (match(TokenKind::question)) {
+            const syntax::Token& question = previous();
+            syntax::ExprNode node;
+            node.kind = syntax::ExprKind::try_expr;
+            node.unary_operand = expr;
+            node.range = syntax::is_valid(expr) && expr.value < module_.exprs.size()
+                ? merge(module_.exprs[expr.value].range, question.range)
+                : question.range;
+            expr = module_.push_expr(std::move(node));
         } else {
             break;
         }

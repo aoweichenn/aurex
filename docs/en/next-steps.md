@@ -34,6 +34,8 @@ Current language slices:
 - Function prototypes and recursive function checks.
 - `impl` / method / associated-function MVP with explicit `self`, instance
   method calls, and `Type.function()` associated calls.
+- Standard `Result` / `Option` / `?` slice, usable for explicit error
+  propagation and early-return control flow.
 - `pub` / `priv` visibility keywords, cross-module private item filtering, and
   private field access checks.
 - Examples now include system-level CLI, file IO, memory/arena, std-module,
@@ -153,9 +155,10 @@ manual status helpers.
    functions to methods.
 
 2. `Result` / `Option` / `?`  
-   Next. Design std APIs on top of methods so code like
-   `File.read_all(path)?` and `Parser.next()?` works. Then rewrite file and CLI
-   examples.
+   Completed. The method foundation now has a standard error-propagation slice
+   for `Result` and `Option`, including `?` early returns. Next, keep growing
+   the std APIs so code like `File.read_all(path)?` and `Parser.next()?`
+   becomes natural.
 
 3. `Vec` / `String` / `Path`  
    Add the real data structures needed by the self-hosting frontend and build

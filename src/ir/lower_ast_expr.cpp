@@ -233,6 +233,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         }
         return append_value(value);
     }
+    case syntax::ExprKind::try_expr:
+        return lower_try_expr(expr_id, expr);
     case syntax::ExprKind::if_expr:
         return lower_if_expr(expr_id, expr);
     case syntax::ExprKind::block_expr:

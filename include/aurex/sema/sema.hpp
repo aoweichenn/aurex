@@ -107,6 +107,7 @@ private:
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
@@ -246,6 +247,7 @@ private:
     std::unordered_map<std::string, syntax::ItemId> function_definition_items_;
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
+    TypeHandle current_function_return_type_ = invalid_type_handle;
     int loop_depth_ = 0;
     bool in_const_initializer_ = false;
 };

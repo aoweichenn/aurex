@@ -26,6 +26,7 @@ Stage0 主链路：
 - local 和 return 类型推导的受控切片。
 - 函数原型与递归函数检查。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 method call 和 `Type.function()` 风格 associated call。
+- 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 - examples 已经包含 CLI、文件 IO、内存/arena、std 模块、泛型结果类型、可见性和 re-export facade 的系统级小案例。
 
@@ -90,7 +91,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    已完成。Parser 接受 `impl Type { ... }`，sema 把 method 注册到类型关联作用域，call resolver 支持 `value.method(args)` 和 `Type.function(args)`，测试覆盖 parse、sema、IR lowering、negative diagnostics，并把 examples 中一部分 helper 改成 method。
 
 2. `Result` / `Option` / `?`  
-   下一步。在 method 基础上设计标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这种代码成立。完成后改写文件和 CLI examples。
+   已完成。方法基础上已经有标准错误传播的 `?` 切片，可用于 `Result` 和 `Option` 的早返回。下一步继续扩展标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这类代码更自然。
 
 3. `Vec` / `String` / `Path`  
    支撑自举前端和构建工具的真实数据结构。完成后新增 token buffer 和 source list examples。

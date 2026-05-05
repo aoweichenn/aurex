@@ -308,6 +308,9 @@ void Lexer::scan_token() {
     case '@':
         add_token(TokenKind::at, begin, offset_);
         break;
+    case '?':
+        add_token(TokenKind::question, begin, offset_);
+        break;
     default:
         report(begin, offset_, "invalid character");
         if (options_.emit_invalid_tokens) {

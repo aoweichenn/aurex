@@ -86,10 +86,17 @@ private:
     [[nodiscard]] ValueId lower_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
 
     [[nodiscard]] ValueId append_enum_case_ref(std::string_view case_name, sema::TypeHandle enum_type);
     [[nodiscard]] ValueId append_enum_tag_literal(std::string_view case_name, sema::TypeHandle tag_type);
     [[nodiscard]] ValueId lower_enum_constructor(const sema::EnumCaseInfo& enum_case, syntax::ExprId payload_expr);
+    [[nodiscard]] ValueId append_enum_constructor(const sema::EnumCaseInfo& enum_case, ValueId payload_value);
+    [[nodiscard]] ValueId append_enum_payload_load(ValueId enum_slot, sema::TypeHandle payload_type, const std::string& name);
+    [[nodiscard]] const sema::EnumCaseInfo* enum_case_by_type_and_case(
+        sema::TypeHandle enum_type,
+        std::string_view case_name
+    ) const noexcept;
 
     [[nodiscard]] ValueId append_temp_alloca(const std::string& name, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_load(

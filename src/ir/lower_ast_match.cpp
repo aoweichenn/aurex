@@ -30,6 +30,19 @@ const sema::EnumCaseInfo* Lowerer::enum_case_info(const std::string_view name) c
     return nullptr;
 }
 
+const sema::EnumCaseInfo* Lowerer::enum_case_by_type_and_case(
+    const sema::TypeHandle enum_type,
+    const std::string_view case_name
+) const noexcept {
+    for (const auto& entry : checked_.enum_cases) {
+        const sema::EnumCaseInfo& candidate = entry.second;
+        if (module_.types.same(candidate.type, enum_type) && candidate.case_name == case_name) {
+            return &candidate;
+        }
+    }
+    return nullptr;
+}
+
 const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) const noexcept {
     if (!syntax::is_valid(id) || id.value >= ast_.patterns.size()) {
         return nullptr;
@@ -193,6 +206,74 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
     return append_value(result);
 }
 
+ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+    if (current_function_ == nullptr || !is_valid(current_block_)) {
+        return invalid_value_id;
+    }
+
+    const sema::TypeHandle source_type = checked_expr_type(checked_, expr.unary_operand);
+    const sema::TypeHandle result_type = checked_expr_type(checked_, expr_id);
+    const sema::TypeHandle return_type = current_function_->return_type;
+
+    const sema::EnumCaseInfo* success_case = enum_case_by_type_and_case(source_type, "ok");
+    const sema::EnumCaseInfo* failure_case = enum_case_by_type_and_case(source_type, "err");
+    const sema::EnumCaseInfo* return_failure_case = enum_case_by_type_and_case(return_type, "err");
+    if (success_case == nullptr || failure_case == nullptr || return_failure_case == nullptr) {
+        success_case = enum_case_by_type_and_case(source_type, "some");
+        failure_case = enum_case_by_type_and_case(source_type, "none");
+        return_failure_case = enum_case_by_type_and_case(return_type, "none");
+    }
+    if (success_case == nullptr || failure_case == nullptr || return_failure_case == nullptr) {
+        return invalid_value_id;
+    }
+
+    const ValueId source_value = lower_expr(expr.unary_operand);
+    const ValueId source_slot = append_temp_alloca("try.value", source_type);
+    append_store(source_slot, source_value);
+
+    const sema::TypeHandle tag_type = enum_tag_type(module_.types, source_type);
+    const ValueId tag = append_load(enum_field_addr(source_slot, std::string(enum_tag_field_name)), tag_type, "try.tag");
+    const ValueId success_tag = append_enum_tag_literal(success_case->c_name, tag_type);
+
+    Value condition;
+    condition.kind = ValueKind::binary;
+    condition.type = module_.types.builtin(sema::BuiltinType::bool_);
+    condition.binary_op = BinaryOp::equal;
+    condition.lhs = tag;
+    condition.rhs = success_tag;
+    const ValueId condition_id = append_value(condition);
+
+    const BlockId success_block = add_block(*current_function_, "try.ok" + std::to_string(current_function_->blocks.size()));
+    const BlockId failure_block = add_block(*current_function_, "try.err" + std::to_string(current_function_->blocks.size()));
+    const BlockId continue_block = add_block(*current_function_, "try.join" + std::to_string(current_function_->blocks.size()));
+
+    Terminator branch;
+    branch.kind = TerminatorKind::cond_branch;
+    branch.condition = condition_id;
+    branch.then_target = success_block;
+    branch.else_target = failure_block;
+    set_terminator(current_block_, branch);
+
+    current_block_ = failure_block;
+    ValueId return_payload = invalid_value_id;
+    if (sema::is_valid(failure_case->payload_type)) {
+        return_payload = append_enum_payload_load(source_slot, failure_case->payload_type, "try.err");
+    }
+    ValueId return_value = append_enum_constructor(*return_failure_case, return_payload);
+    return_value = coerce_value(return_value, return_type);
+    Terminator ret;
+    ret.kind = TerminatorKind::return_;
+    ret.value = return_value;
+    set_terminator(current_block_, ret);
+
+    current_block_ = success_block;
+    const ValueId success_value = append_enum_payload_load(source_slot, result_type, "try.ok");
+    append_branch_if_open(continue_block);
+
+    current_block_ = continue_block;
+    return success_value;
+}
+
 ValueId Lowerer::append_enum_case_ref(const std::string_view case_name, const sema::TypeHandle enum_type) {
     Value case_value;
     case_value.kind = ValueKind::constant_ref;
@@ -213,6 +294,13 @@ ValueId Lowerer::append_enum_tag_literal(const std::string_view case_name, const
 }
 
 ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, const syntax::ExprId payload_expr) {
+    const ValueId payload_value = syntax::is_valid(payload_expr)
+        ? lower_expr(payload_expr, enum_case.payload_type)
+        : invalid_value_id;
+    return append_enum_constructor(enum_case, payload_value);
+}
+
+ValueId Lowerer::append_enum_constructor(const sema::EnumCaseInfo& enum_case, const ValueId payload_value) {
     Value tag;
     tag.kind = ValueKind::integer_literal;
     tag.type = enum_tag_type(module_.types, enum_case.type);
@@ -220,7 +308,7 @@ ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, con
     const ValueId tag_id = append_value(tag);
 
     Value payload;
-    if (syntax::is_valid(payload_expr)) {
+    if (is_valid(payload_value)) {
         payload.kind = ValueKind::undef;
         payload.type = enum_payload_storage_type(module_.types, enum_case.type);
         const ValueId storage_undef = append_value(payload);
@@ -234,7 +322,7 @@ ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, con
         cast.lhs = storage_slot;
         cast.cast_kind = CastKind::pointer;
         const ValueId payload_addr = append_value(cast);
-        append_store(payload_addr, lower_expr(payload_expr, enum_case.payload_type));
+        append_store(payload_addr, coerce_value(payload_value, enum_case.payload_type));
 
         payload.kind = ValueKind::load;
         payload.type = enum_payload_storage_type(module_.types, enum_case.type);
@@ -251,6 +339,22 @@ ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, con
     result.fields.push_back(FieldValue {std::string(enum_tag_field_name), tag_id});
     result.fields.push_back(FieldValue {std::string(enum_payload_field_name), payload_id});
     return append_value(result);
+}
+
+ValueId Lowerer::append_enum_payload_load(
+    const ValueId enum_slot,
+    const sema::TypeHandle payload_type,
+    const std::string& name
+) {
+    const ValueId storage_addr = enum_field_addr(enum_slot, std::string(enum_payload_field_name));
+    Value cast;
+    cast.kind = ValueKind::cast;
+    cast.type = module_.types.pointer(sema::PointerMutability::mut, payload_type);
+    cast.target_type = cast.type;
+    cast.lhs = storage_addr;
+    cast.cast_kind = CastKind::pointer;
+    const ValueId payload_addr = append_value(cast);
+    return append_load(payload_addr, payload_type, name);
 }
 
 ValueId Lowerer::append_temp_alloca(const std::string& name, const sema::TypeHandle value_type) {

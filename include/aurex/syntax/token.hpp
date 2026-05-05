@@ -96,6 +96,7 @@ enum class TokenKind {
     greater_greater,
     amp_amp,
     pipe_pipe,
+    question,
     at,
 };
 

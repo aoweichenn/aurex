@@ -68,6 +68,7 @@ enum class ExprKind {
     unary,
     binary,
     call,
+    try_expr,
     if_expr,
     block_expr,
     match_expr,

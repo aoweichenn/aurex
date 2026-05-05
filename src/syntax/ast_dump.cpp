@@ -96,6 +96,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::greater_greater: return "greater_greater";
     case TokenKind::amp_amp: return "amp_amp";
     case TokenKind::pipe_pipe: return "pipe_pipe";
+    case TokenKind::question: return "question";
     case TokenKind::at: return "at";
     }
     return "unknown";
@@ -248,6 +249,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::unary: return "unary";
     case ExprKind::binary: return "binary";
     case ExprKind::call: return "call";
+    case ExprKind::try_expr: return "try_expr";
     case ExprKind::if_expr: return "if_expr";
     case ExprKind::block_expr: return "block_expr";
     case ExprKind::match_expr: return "match_expr";

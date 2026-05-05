@@ -140,6 +140,72 @@ const GenericFunctionTemplateInfo* SemanticAnalyzer::find_generic_function_templ
     return imported_result;
 }
 
+const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    const auto found = generic_enum_templates_.find(module_key(module, name));
+    if (found == generic_enum_templates_.end()) {
+        if (report_unknown) {
+            report(range, "unknown generic enum in module " + module_name(module) + ": " + std::string(name));
+        }
+        return nullptr;
+    }
+    if (!can_access(module, found->second.visibility)) {
+        if (report_unknown) {
+            report(range, "generic enum is private: " + module_name(module) + "." + std::string(name));
+        }
+        return nullptr;
+    }
+    return &found->second;
+}
+
+const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    const auto found = generic_struct_templates_.find(module_key(module, name));
+    if (found == generic_struct_templates_.end()) {
+        if (report_unknown) {
+            report(range, "unknown generic struct in module " + module_name(module) + ": " + std::string(name));
+        }
+        return nullptr;
+    }
+    if (!can_access(module, found->second.visibility)) {
+        if (report_unknown) {
+            report(range, "generic struct is private: " + module_name(module) + "." + std::string(name));
+        }
+        return nullptr;
+    }
+    return &found->second;
+}
+
+const GenericFunctionTemplateInfo* SemanticAnalyzer::find_generic_function_template_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    const auto found = generic_function_templates_.find(module_key(module, name));
+    if (found == generic_function_templates_.end()) {
+        if (report_unknown) {
+            report(range, "unknown generic function in module " + module_name(module) + ": " + std::string(name));
+        }
+        return nullptr;
+    }
+    if (!can_access(module, found->second.visibility)) {
+        if (report_unknown) {
+            report(range, "generic function is private: " + module_name(module) + "." + std::string(name));
+        }
+        return nullptr;
+    }
+    return &found->second;
+}
+
 std::string SemanticAnalyzer::generic_instance_key(
     const GenericEnumTemplateInfo& info,
     const std::vector<TypeHandle>& args

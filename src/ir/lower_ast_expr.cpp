@@ -319,7 +319,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
 
 ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
     const std::string name(expr.text);
-    const auto local = locals_.find(name);
+    const auto local = expr.scope_name.empty() ? locals_.find(name) : locals_.end();
     if (local != locals_.end()) {
         Value value;
         value.kind = ValueKind::load;
@@ -359,7 +359,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
         return {};
     }
     const syntax::ExprNode& expr = ast_.exprs[expr_id.value];
-    if (expr.kind == syntax::ExprKind::name) {
+    if (expr.kind == syntax::ExprKind::name && expr.scope_name.empty()) {
         const auto found = locals_.find(std::string(expr.text));
         if (found == locals_.end()) {
             return {};

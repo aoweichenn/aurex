@@ -161,6 +161,7 @@ private:
     [[nodiscard]] bool is_copy_forbidden_value(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
+    [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] std::vector<syntax::ModuleId> visible_modules(syntax::ModuleId module) const;
     void append_public_reexports(syntax::ModuleId module, std::vector<syntax::ModuleId>& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
@@ -181,6 +182,9 @@ private:
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const GenericFunctionTemplateInfo* find_generic_function_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const GenericFunctionTemplateInfo* find_generic_function_template_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
     [[nodiscard]] TypeHandle instantiate_generic_enum_from_syntax(
         const GenericEnumTemplateInfo& info,
@@ -258,7 +262,15 @@ private:
         bool opaque_allowed_as_pointee,
         bool report_unknown = true
     );
+    [[nodiscard]] TypeHandle find_type_in_module(
+        syntax::ModuleId module,
+        std::string_view name,
+        base::SourceRange range,
+        bool opaque_allowed_as_pointee,
+        bool report_unknown = true
+    );
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const FunctionSignature* find_function_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const noexcept;
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
@@ -269,6 +281,7 @@ private:
     );
     [[nodiscard]] const EnumCaseInfo* find_enum_constructor(syntax::ExprId callee, bool report_unknown);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
+    [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
     void report(base::SourceRange range, std::string message);
 

@@ -16,6 +16,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::byte_literal: return "byte_literal";
     case TokenKind::kw_module: return "kw_module";
     case TokenKind::kw_import: return "kw_import";
+    case TokenKind::kw_as: return "kw_as";
     case TokenKind::kw_pub: return "kw_pub";
     case TokenKind::kw_priv: return "kw_priv";
     case TokenKind::kw_extern: return "kw_extern";
@@ -75,6 +76,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::ellipsis: return "ellipsis";
     case TokenKind::semicolon: return "semicolon";
     case TokenKind::colon: return "colon";
+    case TokenKind::colon_colon: return "colon_colon";
     case TokenKind::arrow: return "arrow";
     case TokenKind::fat_arrow: return "fat_arrow";
     case TokenKind::plus: return "plus";
@@ -144,6 +146,9 @@ std::string type_label(const AstModule& module, const TypeId id) {
         out << primitive_name(type.primitive);
         break;
     case TypeKind::named:
+        if (!type.scope_name.empty()) {
+            out << type.scope_name << "::";
+        }
         out << type.name;
         if (!type.type_args.empty()) {
             out << "<";
@@ -330,7 +335,11 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     indent(out, depth);
     out << "expr #" << id.value << " " << expr_kind_name(expr.kind);
     if (!expr.text.empty()) {
-        out << " `" << expr.text << "`";
+        out << " `";
+        if (!expr.scope_name.empty()) {
+            out << expr.scope_name << "::";
+        }
+        out << expr.text << "`";
         if (!expr.type_args.empty()) {
             out << "<";
             for (base::usize i = 0; i < expr.type_args.size(); ++i) {
@@ -346,7 +355,11 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         out << " ." << expr.field_name;
     }
     if (!expr.struct_name.empty()) {
-        out << " " << expr.struct_name;
+        out << " ";
+        if (!expr.scope_name.empty()) {
+            out << expr.scope_name << "::";
+        }
+        out << expr.struct_name;
         if (!expr.struct_type_args.empty()) {
             out << "<";
             for (base::usize i = 0; i < expr.struct_type_args.size(); ++i) {
@@ -555,6 +568,9 @@ std::string dump_ast(const AstModule& module) {
         out << "import";
         for (base::usize i = 0; i < import.path.parts.size(); ++i) {
             out << (i == 0 ? " " : ".") << import.path.parts[i];
+        }
+        if (!import.alias.empty()) {
+            out << " as " << import.alias;
         }
         out << "\n";
     }

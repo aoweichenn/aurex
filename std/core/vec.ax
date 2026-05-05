@@ -12,48 +12,49 @@ pub struct Vec<T> {
 
 pub type VecU8 = Vec<u8>;
 
-pub fn vec_u8_new() -> VecU8 {
-    return VecU8 { data: null, len: cast(usize, 0), capacity: cast(usize, 0) };
+pub fn new<T>() -> Vec<T> {
+    return Vec<T> { data: null, len: cast(usize, 0), capacity: cast(usize, 0) };
 }
 
-pub fn vec_u8_with_capacity(capacity: usize) -> Result<VecU8, i32> {
-    var vec: VecU8 = vec_u8_new();
-    if !vec_u8_reserve(&vec, capacity) {
+pub fn with_capacity<T>(capacity: usize) -> Result<Vec<T>, i32> {
+    var vec: Vec<T> = new<T>();
+    if !reserve<T>(&vec, capacity) {
         return Result.err(1);
     }
     return Result.ok(vec);
 }
 
-pub fn vec_u8_destroy(vec: *mut VecU8) -> void {
+pub fn destroy<T>(vec: *mut Vec<T>) -> void {
     if vec.data != null {
-        free_bytes(vec.data);
+        free_bytes(ptr_cast(*mut u8, vec.data));
     }
     vec.data = null;
     vec.len = cast(usize, 0);
     vec.capacity = cast(usize, 0);
 }
 
-pub fn vec_u8_len(vec: *const VecU8) -> usize {
+pub fn len<T>(vec: *const Vec<T>) -> usize {
     return vec.len;
 }
 
-pub fn vec_u8_is_empty(vec: *const VecU8) -> bool {
+pub fn is_empty<T>(vec: *const Vec<T>) -> bool {
     return vec.len == cast(usize, 0);
 }
 
-pub fn vec_u8_as_span(vec: *const VecU8) -> SpanU8 {
-    return SpanU8 { data: ptr_cast(*const u8, vec.data), len: vec.len };
+pub fn as_span<T>(vec: *const Vec<T>) -> Span<T> {
+    return Span<T> { data: ptr_cast(*const T, vec.data), len: vec.len };
 }
 
-pub fn vec_u8_as_mut_span(vec: *mut VecU8) -> MutSpanU8 {
-    return MutSpanU8 { data: vec.data, len: vec.len };
+pub fn as_mut_span<T>(vec: *mut Vec<T>) -> MutSpan<T> {
+    return MutSpan<T> { data: vec.data, len: vec.len };
 }
 
-pub fn vec_u8_reserve(vec: *mut VecU8, capacity: usize) -> bool {
+pub fn reserve<T>(vec: *mut Vec<T>, capacity: usize) -> bool {
     if capacity <= vec.capacity {
         return true;
     }
-    let next: *mut u8 = resize_bytes(vec.data, capacity);
+    let bytes: usize = capacity * size_of(T);
+    let next: *mut T = ptr_cast(*mut T, resize_bytes(ptr_cast(*mut u8, vec.data), bytes));
     if next == null {
         return false;
     }
@@ -62,13 +63,13 @@ pub fn vec_u8_reserve(vec: *mut VecU8, capacity: usize) -> bool {
     return true;
 }
 
-pub fn vec_u8_push(vec: *mut VecU8, value: u8) -> bool {
+pub fn push<T>(vec: *mut Vec<T>, value: T) -> bool {
     if vec.len == vec.capacity {
         var next_capacity: usize = vec.capacity * cast(usize, 2);
         if next_capacity == cast(usize, 0) {
             next_capacity = cast(usize, 8);
         }
-        if !vec_u8_reserve(vec, next_capacity) {
+        if !reserve<T>(vec, next_capacity) {
             return false;
         }
     }
@@ -77,21 +78,21 @@ pub fn vec_u8_push(vec: *mut VecU8, value: u8) -> bool {
     return true;
 }
 
-pub fn vec_u8_extend(vec: *mut VecU8, bytes: SpanU8) -> bool {
-    if bytes.len == cast(usize, 0) {
+pub fn extend<T>(vec: *mut Vec<T>, items: Span<T>) -> bool {
+    if items.len == cast(usize, 0) {
         return true;
     }
-    let required: usize = vec.len + bytes.len;
-    if !vec_u8_reserve(vec, required) {
+    let required: usize = vec.len + items.len;
+    if !reserve<T>(vec, required) {
         return false;
     }
-    let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(vec.data) + vec.len);
-    copy_bytes(dst, bytes.data, bytes.len);
+    let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(vec.data) + (vec.len * size_of(T)));
+    copy_bytes(dst, ptr_cast(*const u8, items.data), items.len * size_of(T));
     vec.len = required;
     return true;
 }
 
-pub fn vec_u8_pop(vec: *mut VecU8) -> Option<u8> {
+pub fn pop<T>(vec: *mut Vec<T>) -> Option<T> {
     if vec.len == cast(usize, 0) {
         return Option.none;
     }
@@ -99,16 +100,68 @@ pub fn vec_u8_pop(vec: *mut VecU8) -> Option<u8> {
     return Option.some(vec.data[vec.len]);
 }
 
-pub fn vec_u8_clear(vec: *mut VecU8) -> void {
+pub fn clear<T>(vec: *mut Vec<T>) -> void {
     vec.len = cast(usize, 0);
 }
 
-pub fn vec_u8_from_span(bytes: SpanU8) -> Result<VecU8, i32> {
-    var vec: VecU8 = vec_u8_new();
-    if !vec_u8_extend(&vec, bytes) {
+pub fn from_span<T>(items: Span<T>) -> Result<Vec<T>, i32> {
+    var vec: Vec<T> = new<T>();
+    if !extend<T>(&vec, items) {
         return Result.err(1);
     }
     return Result.ok(vec);
+}
+
+pub fn vec_u8_new() -> VecU8 {
+    return new<u8>();
+}
+
+pub fn vec_u8_with_capacity(capacity: usize) -> Result<VecU8, i32> {
+    return with_capacity<u8>(capacity);
+}
+
+pub fn vec_u8_destroy(vec: *mut VecU8) -> void {
+    destroy<u8>(vec);
+}
+
+pub fn vec_u8_len(vec: *const VecU8) -> usize {
+    return len<u8>(vec);
+}
+
+pub fn vec_u8_is_empty(vec: *const VecU8) -> bool {
+    return is_empty<u8>(vec);
+}
+
+pub fn vec_u8_as_span(vec: *const VecU8) -> SpanU8 {
+    return as_span<u8>(vec);
+}
+
+pub fn vec_u8_as_mut_span(vec: *mut VecU8) -> MutSpanU8 {
+    return as_mut_span<u8>(vec);
+}
+
+pub fn vec_u8_reserve(vec: *mut VecU8, capacity: usize) -> bool {
+    return reserve<u8>(vec, capacity);
+}
+
+pub fn vec_u8_push(vec: *mut VecU8, value: u8) -> bool {
+    return push<u8>(vec, value);
+}
+
+pub fn vec_u8_extend(vec: *mut VecU8, bytes: SpanU8) -> bool {
+    return extend<u8>(vec, bytes);
+}
+
+pub fn vec_u8_pop(vec: *mut VecU8) -> Option<u8> {
+    return pop<u8>(vec);
+}
+
+pub fn vec_u8_clear(vec: *mut VecU8) -> void {
+    clear<u8>(vec);
+}
+
+pub fn vec_u8_from_span(bytes: SpanU8) -> Result<VecU8, i32> {
+    return from_span<u8>(bytes);
 }
 
 impl VecU8 {

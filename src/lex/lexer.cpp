@@ -41,6 +41,7 @@ namespace {
     static constexpr auto entries = std::to_array<Entry>({
         Entry {"module", TokenKind::kw_module},
         Entry {"import", TokenKind::kw_import},
+        Entry {"as", TokenKind::kw_as},
         Entry {"pub", TokenKind::kw_pub},
         Entry {"priv", TokenKind::kw_priv},
         Entry {"extern", TokenKind::kw_extern},
@@ -251,7 +252,7 @@ void Lexer::scan_token() {
         add_token(TokenKind::semicolon, begin, offset_);
         break;
     case ':':
-        add_token(TokenKind::colon, begin, offset_);
+        add_token(match(':') ? TokenKind::colon_colon : TokenKind::colon, begin, offset_);
         break;
     case '+':
         add_token(TokenKind::plus, begin, offset_);

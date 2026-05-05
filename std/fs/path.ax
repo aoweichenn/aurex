@@ -8,25 +8,25 @@ pub struct Path {
     text: String;
 }
 
-pub fn path_from_c(text: *const u8) -> Result<Path, i32> {
+pub fn from_c(text: *const u8) -> Result<Path, i32> {
     let owned: String = String.from_c(text)?;
     return Result.ok(Path { text: owned });
 }
 
-pub fn path_destroy(path: *mut Path) -> void {
+pub fn destroy(path: *mut Path) -> void {
     path.text.destroy();
 }
 
-pub fn path_as_c(path: *const Path) -> *const u8 {
+pub fn as_c(path: *const Path) -> *const u8 {
     return path.text.c_str();
 }
 
-pub fn path_as_span(path: *const Path) -> SpanU8 {
+pub fn as_span(path: *const Path) -> SpanU8 {
     return path.text.as_span();
 }
 
-pub fn path_file_name(path: *const Path) -> SpanU8 {
-    let span: SpanU8 = path_as_span(path);
+pub fn file_name(path: *const Path) -> SpanU8 {
+    let span: SpanU8 = as_span(path);
     var index: usize = span.len;
     while index > cast(usize, 0) {
         let previous: usize = index - cast(usize, 1);
@@ -41,12 +41,12 @@ pub fn path_file_name(path: *const Path) -> SpanU8 {
     return span;
 }
 
-pub fn path_join_c(base: *const Path, child: *const u8) -> Result<Path, i32> {
+pub fn join_c(base: *const Path, child: *const u8) -> Result<Path, i32> {
     if child == null {
         return Result.err(1);
     }
     if child[0] == b'/' {
-        return path_from_c(child);
+        return from_c(child);
     }
 
     var joined: String = String.from_c(base.text.c_str())?;
@@ -63,28 +63,52 @@ pub fn path_join_c(base: *const Path, child: *const u8) -> Result<Path, i32> {
     return Result.ok(Path { text: joined });
 }
 
+pub fn path_from_c(text: *const u8) -> Result<Path, i32> {
+    return from_c(text);
+}
+
+pub fn path_destroy(path: *mut Path) -> void {
+    destroy(path);
+}
+
+pub fn path_as_c(path: *const Path) -> *const u8 {
+    return as_c(path);
+}
+
+pub fn path_as_span(path: *const Path) -> SpanU8 {
+    return as_span(path);
+}
+
+pub fn path_file_name(path: *const Path) -> SpanU8 {
+    return file_name(path);
+}
+
+pub fn path_join_c(base: *const Path, child: *const u8) -> Result<Path, i32> {
+    return join_c(base, child);
+}
+
 impl Path {
     pub fn from_c(text: *const u8) -> Result<Path, i32> {
-        return path_from_c(text);
+        return from_c(text);
     }
 
     pub fn destroy(self: *mut Path) -> void {
-        path_destroy(self);
+        destroy(self);
     }
 
     pub fn as_c(self: *const Path) -> *const u8 {
-        return path_as_c(self);
+        return as_c(self);
     }
 
     pub fn as_span(self: *const Path) -> SpanU8 {
-        return path_as_span(self);
+        return as_span(self);
     }
 
     pub fn file_name(self: *const Path) -> SpanU8 {
-        return path_file_name(self);
+        return file_name(self);
     }
 
     pub fn join_c(self: *const Path, child: *const u8) -> Result<Path, i32> {
-        return path_join_c(self, child);
+        return join_c(self, child);
     }
 }

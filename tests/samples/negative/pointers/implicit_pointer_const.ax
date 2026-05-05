@@ -1,11 +1,12 @@
 module implicit_pointer_const;
 
-fn accept(ptr: *const i32) -> i32 {
+fn accept_mut(ptr: *mut i32) -> i32 {
+    *ptr = 2;
     return *ptr;
 }
 
 fn main() -> i32 {
     var value: i32 = 1;
-    let ptr: *mut i32 = &value;
-    return accept(ptr);
+    let ptr: *const i32 = &value;
+    return accept_mut(ptr);
 }

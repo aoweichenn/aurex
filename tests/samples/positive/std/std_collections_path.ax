@@ -1,59 +1,59 @@
 module std_collections_path;
 
-import std.core.result;
-import std.core.string;
-import std.core.text;
-import std.core.vec;
-import std.fs.path;
+import std.core.result as result;
+import std.core.string as string;
+import std.core.text as text;
+import std.core.vec as vec;
+import std.fs.path as path;
 
 fn check_vec() -> bool {
-    var bytes: VecU8 = VecU8.new();
-    if !bytes.push(b'a') || !bytes.extend(c_span(c"bc")) {
-        bytes.destroy();
+    var bytes: vec::Vec<u8> = vec::new<u8>();
+    if !vec::push<u8>(&bytes, b'a') || !vec::extend<u8>(&bytes, text::c_span(c"bc")) {
+        vec::destroy<u8>(&bytes);
         return false;
     }
-    let popped: Option<u8> = bytes.pop();
+    let popped: result::Option<u8> = vec::pop<u8>(&bytes);
     let last: u8 = match popped {
         .some(value) => value,
         .none => b'?',
     };
     let ok: bool = last == b'c' &&
-        bytes.len() == cast(usize, 2) &&
-        bytes_equal(bytes.as_span(), c_span(c"ab"));
-    bytes.destroy();
+        vec::len<u8>(&bytes) == cast(usize, 2) &&
+        text::bytes_equal(vec::as_span<u8>(&bytes), text::c_span(c"ab"));
+    vec::destroy<u8>(&bytes);
     return ok;
 }
 
-fn check_string() -> Result<bool, i32> {
-    var text: String = String.from_c(c"ab")?;
-    if !text.push(b'c') || !text.append_c(c"d") {
-        text.destroy();
+fn check_string() -> result::Result<bool, i32> {
+    var s: string::String = string::from_c(c"ab")?;
+    if !string::push(&s, b'c') || !string::append_c(&s, c"d") {
+        string::destroy(&s);
         return Result.err(2);
     }
-    let ok: bool = text.len() == cast(usize, 4) &&
-        text.equals_span(c_span(c"abcd")) &&
-        text.ends_with_byte(b'd') &&
-        c_string_equal(text.c_str(), c"abcd");
-    text.destroy();
+    let ok: bool = string::len(&s) == cast(usize, 4) &&
+        string::equals_span(&s, text::c_span(c"abcd")) &&
+        string::ends_with_byte(&s, b'd') &&
+        text::c_string_equal(string::c_str(&s), c"abcd");
+    string::destroy(&s);
     return Result.ok(ok);
 }
 
-fn make_path() -> Result<Path, i32> {
-    var root: Path = Path.from_c(c"/tmp")?;
-    var joined: Path = root.join_c(c"aurex/std.txt")?;
-    root.destroy();
+fn make_path() -> result::Result<path::Path, i32> {
+    var root: path::Path = path::from_c(c"/tmp")?;
+    var joined: path::Path = path::join_c(&root, c"aurex/std.txt")?;
+    path::destroy(&root);
     return Result.ok(joined);
 }
 
-fn check_path() -> Result<bool, i32> {
-    var path: Path = make_path()?;
-    let ok: bool = bytes_equal(path.file_name(), c_span(c"std.txt")) &&
-        c_string_starts_with(path.as_c(), c"/tmp/aurex");
-    path.destroy();
+fn check_path() -> result::Result<bool, i32> {
+    var p: path::Path = make_path()?;
+    let ok: bool = text::bytes_equal(path::file_name(&p), text::c_span(c"std.txt")) &&
+        text::c_string_starts_with(path::as_c(&p), c"/tmp/aurex");
+    path::destroy(&p);
     return Result.ok(ok);
 }
 
-fn run() -> Result<i32, i32> {
+fn run() -> result::Result<i32, i32> {
     if !check_vec() {
         return Result.err(1);
     }

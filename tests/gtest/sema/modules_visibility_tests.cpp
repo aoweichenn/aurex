@@ -47,6 +47,12 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     const fs::path private_function = negative_sample("visibility", "private_function_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_function)).output, "unknown function: add_secret");
 
+    const fs::path private_qualified_function = negative_sample("visibility", "private_qualified_function.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_qualified_function)).output,
+        "function is private: samplelib.visibility.add_secret"
+    );
+
     const fs::path private_const = negative_sample("visibility", "private_const_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_const)).output, "unknown name: hidden_answer");
 
@@ -61,6 +67,36 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
 
     const fs::path private_enum = negative_sample("visibility", "private_enum_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice_yes");
+
+    const fs::path unknown_alias = negative_sample("modules", "unknown_import_alias.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(unknown_alias)).output, "unknown import alias: missing");
+
+    const fs::path alias_source = positive_sample("modules", "import_alias_qualified_call.ax");
+    const std::string alias_tokens = require_success(aurexc() + " " + import_flags + " --dump-tokens " + q(alias_source)).output;
+    expect_contains_all(alias_tokens, {
+        "kw_as `as`",
+        "colon_colon `::`",
+    });
+
+    const std::string alias_ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(alias_source)).output;
+    expect_contains_all(alias_ast, {
+        "import samplelib.visibility as vis",
+        "let answer : vis::PublicInt",
+        "name `vis::answer`",
+        "let boxed : vis::PublicBox",
+        "name `vis::make_box`",
+    });
+
+    const std::string alias_ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(alias_source)).output;
+    expect_contains_all(alias_ir, {
+        "const_ref @m0_samplelib_visibility_answer",
+        "call m0_samplelib_visibility_make_box",
+        "call m0_samplelib_visibility_exported",
+    });
+
+    const fs::path alias_bin = test_bin_root() / "import_alias_qualified_call";
+    require_success(aurexc() + " " + import_flags + " " + q(alias_source) + " -o " + q(alias_bin));
+    EXPECT_EQ(require_success(q(alias_bin)).output, "");
 }
 
 TEST_F(AurexIntegrationTest, PublicImportReexport) {

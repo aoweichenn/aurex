@@ -1,0 +1,5 @@
+module unknown_import_alias;
+
+fn main() -> i32 {
+    return missing::value();
+}

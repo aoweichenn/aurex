@@ -48,6 +48,8 @@ struct TypeNode {
     TypeKind kind = TypeKind::named;
     base::SourceRange range {};
     PrimitiveTypeKind primitive = PrimitiveTypeKind::void_;
+    std::string_view scope_name;
+    base::SourceRange scope_range {};
     std::string_view name;
     std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
@@ -146,6 +148,8 @@ struct MatchArm {
 struct ExprNode {
     ExprKind kind = ExprKind::invalid;
     base::SourceRange range {};
+    std::string_view scope_name;
+    base::SourceRange scope_range {};
     std::string_view text;
     UnaryOp unary_op = UnaryOp::logical_not;
     ExprId unary_operand = invalid_expr_id;
@@ -266,12 +270,16 @@ struct ModulePath {
 
 struct ImportDecl {
     ModulePath path;
+    std::string_view alias;
+    base::SourceRange alias_range {};
     Visibility visibility = Visibility::private_;
     bool explicit_visibility = false;
 };
 
 struct ResolvedImport {
     ModuleId module = invalid_module_id;
+    std::string_view alias;
+    base::SourceRange alias_range {};
     Visibility visibility = Visibility::private_;
 };
 

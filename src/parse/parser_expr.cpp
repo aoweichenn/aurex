@@ -1,5 +1,6 @@
 #include "aurex/parse/parser.hpp"
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::parse {
@@ -612,7 +613,15 @@ syntax::ExprId Parser::parse_postfix() {
 
 syntax::ExprId Parser::parse_primary() {
     if (match(TokenKind::identifier)) {
-        const syntax::Token& name = previous();
+        const syntax::Token& first = previous();
+        const syntax::Token* name = &first;
+        std::string_view scope_name;
+        base::SourceRange scope_range {};
+        if (match(TokenKind::colon_colon)) {
+            scope_name = first.text;
+            scope_range = first.range;
+            name = &expect(TokenKind::identifier, "expected item name after '::'");
+        }
         std::vector<syntax::TypeId> struct_type_args;
         if (allow_struct_literal_ && next_angle_list_is_struct_literal()) {
             struct_type_args = parse_type_arg_list();
@@ -621,9 +630,11 @@ syntax::ExprId Parser::parse_primary() {
             advance();
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::struct_literal;
-            node.struct_name = name.text;
+            node.scope_name = scope_name;
+            node.scope_range = scope_range;
+            node.struct_name = name->text;
             node.struct_type_args = std::move(struct_type_args);
-            node.range = name.range;
+            node.range = scope_name.empty() ? name->range : merge(scope_range, name->range);
             if (!check(TokenKind::r_brace)) {
                 do {
                     const syntax::Token& field = expect(TokenKind::identifier, "expected field name in struct literal");
@@ -636,16 +647,18 @@ syntax::ExprId Parser::parse_primary() {
                 } while (match(TokenKind::comma) && !check(TokenKind::r_brace));
             }
             const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after struct literal");
-            node.range = merge(name.range, end.range);
+            node.range = merge(node.range, end.range);
             return module_.push_expr(std::move(node));
         }
         if (!struct_type_args.empty()) {
-            report_at(name, "type arguments in expressions are only supported on struct literals, function calls, or scoped enum constructors");
+            report_at(*name, "type arguments in expressions are only supported on struct literals, function calls, or scoped enum constructors");
         }
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::name;
-        expr.range = name.range;
-        expr.text = name.text;
+        expr.scope_name = scope_name;
+        expr.scope_range = scope_range;
+        expr.range = scope_name.empty() ? name->range : merge(scope_range, name->range);
+        expr.text = name->text;
         return module_.push_expr(expr);
     }
     if (match(TokenKind::integer_literal)) {

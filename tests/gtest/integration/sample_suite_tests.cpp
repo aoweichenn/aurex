@@ -7,6 +7,7 @@ namespace aurex::test {
 
 TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
     const std::set<std::string> skip_regular = {
+        "import_alias_qualified_call",
         "import_path",
         "generic_function_import",
         "math",
@@ -21,6 +22,7 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
     const std::set<std::string> run_regular = {
         "condition_regression",
         "pointer_ops",
+        "mut_to_const_pointer",
         "address_of_let",
         "pointer_field_write",
         "eval_order_call_stmt",
@@ -77,6 +79,11 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "type VecU8 = std.core.vec.Vec<u8>",
+        "fn std.core.vec.new<u8> -> std.core.vec.Vec<u8>",
+        "fn std.core.vec.push<u8> -> bool",
+        "fn std.core.vec.as_span<u8> -> std.core.text.Span<u8>",
+        "fn from_c -> std.core.result.Result<std.core.string.String, i32>",
+        "fn join_c -> std.core.result.Result<std.fs.path.Path, i32>",
         "fn method std.core.vec.Vec<u8>.push -> bool",
         "fn method std.core.string.String.from_c -> std.core.result.Result<std.core.string.String, i32>",
         "fn method std.fs.path.Path.join_c -> std.core.result.Result<std.fs.path.Path, i32>",
@@ -88,6 +95,9 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "record std.core.vec.Vec<u8>",
         "record String",
         "record Path",
+        "call m0_std_core_vec_push__u8",
+        "call m0_std_core_string_from_c",
+        "call m0_std_fs_path_join_c",
         "try.ok",
         "try.err",
     });

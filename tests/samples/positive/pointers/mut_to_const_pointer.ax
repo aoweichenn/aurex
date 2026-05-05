@@ -1,0 +1,11 @@
+module mut_to_const_pointer;
+
+fn accept(ptr: *const i32) -> i32 {
+    return *ptr;
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let ptr: *mut i32 = &value;
+    return accept(ptr) - 1;
+}

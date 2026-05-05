@@ -316,6 +316,13 @@ syntax::ImportDecl Parser::parse_import_decl() {
     }
     expect(TokenKind::kw_import, "expected 'import'");
     import.path = parse_path();
+    if (match(TokenKind::kw_as)) {
+        const syntax::Token& alias = expect(TokenKind::identifier, "expected import alias after 'as'");
+        if (alias.kind == TokenKind::identifier) {
+            import.alias = alias.text;
+            import.alias_range = alias.range;
+        }
+    }
     expect(TokenKind::semicolon, "expected ';' after import declaration");
     panic_ = false;
     return import;
@@ -748,9 +755,16 @@ syntax::TypeId Parser::parse_type() {
         type.kind = syntax::TypeKind::named;
         type.range = name.range;
         type.name = name.text;
+        if (match(TokenKind::colon_colon)) {
+            const syntax::Token& scoped_name = expect(TokenKind::identifier, "expected type name after '::'");
+            type.scope_name = name.text;
+            type.scope_range = name.range;
+            type.name = scoped_name.text;
+            type.range = merge(name.range, scoped_name.range);
+        }
         if (check(TokenKind::less)) {
             type.type_args = parse_type_arg_list();
-            type.range = merge(name.range, previous().range);
+            type.range = merge(type.range, previous().range);
         }
         return module_.push_type(type);
     }

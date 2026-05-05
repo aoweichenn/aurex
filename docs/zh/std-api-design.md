@@ -1,0 +1,112 @@
+# 标准库 API 与命名空间设计
+
+本文记录 M1 阶段标准库公开 API 的命名、模块限定和兼容迁移规则。目标不是复制某一种语言，而是采用已经在工业界验证过的组合：Rust 的短类型词汇和 `snake_case` 习惯、Zig 的显式命名空间纪律、C++ 的容器分类、Swift API Design Guidelines 对调用点可读性的要求。
+
+## 设计目标
+
+- 调用点短：模块名承担上下文，不在函数名里重复类型前缀。
+- 类型稳定：容器和视图使用可长期演进的短类型名，如 `Vec<T>`、`Span<T>`、`MutSpan<T>`、`String`、`Path`。
+- 语义清晰：`new`、`with_capacity`、`from_*` 表示构造；`as_*` 表示借用视图；未来 `into_*` 表示消耗式转换。
+- 兼容可控：旧的 `vec_u8_push`、`string_from_c`、`path_join_c` 等长名保留为包装层，但新文档和新样例优先使用短 API。
+- 错误模型可演进：M1 允许底层内存 API 返回 `bool`，面向用户的构造和转换优先返回 `Result<T, E>`；后续应逐步把可恢复错误迁到 `Result`。
+
+## 命名规则
+
+类型使用 `UpperCamelCase`：
+
+- `Vec<T>`：可增长连续存储容器。
+- `Span<T>`：只读连续视图。
+- `MutSpan<T>`：可写连续视图。
+- `String`：拥有的 UTF-8/字节字符串。
+- `Path`：拥有的文件路径值。
+- `Option<T>`、`Result<T, E>`：基础代数数据类型。
+
+函数和方法使用 `snake_case`：
+
+- 构造：`new`、`with_capacity`、`from_c`、`from_span`。
+- 容量和长度：`len`、`is_empty`、`reserve`、`clear`。
+- 变更：`push`、`extend`、`pop`、`append_span`、`append_c`。
+- 视图：`as_span`、`as_mut_span`、`as_c`、`c_str`。
+- 查询：`bytes_equal`、`starts_with`、`file_name`。
+
+避免把类型名重复编码进函数名。新代码应写 `vec::push(&items, value)`，而不是继续扩展 `vec_u8_push` 这类前缀函数。
+
+## 命名空间语法
+
+M1 引入显式 import 别名和模块限定：
+
+```aurex
+import std.core.text as text;
+import std.core.vec as vec;
+
+fn main() -> i32 {
+    var bytes: vec::Vec<u8> = vec::new<u8>();
+    if !vec::push<u8>(&bytes, b'a') {
+        return 1;
+    }
+    let view: text::Span<u8> = vec::as_span<u8>(&bytes);
+    return cast(i32, view.len);
+}
+```
+
+语法规则：
+
+- `import a.b.c as c;` 绑定当前模块的直接导入别名。
+- `alias::name` 查找该直接导入模块中的公开类型、函数、泛型函数或全局常量。
+- `::` 用于模块/命名空间限定；`.` 继续用于值字段和方法调用。
+- 未限定 import 仍按旧规则工作，用于兼容旧样例和旧代码。
+- 别名只绑定直接 import，不自动绑定 public re-export；这能避免 re-export 链造成难以解释的名称来源。
+
+后续关联项语法会继续沿用这条边界：`module::item` 是命名空间限定，`value.method()` 是值方法调用；是否增加 `Type::associated_item` 会在 enum 构造器和 impl 关联函数统一设计后再落地。
+
+## M1 标准库形态
+
+新的推荐调用方式如下：
+
+```aurex
+import std.core.result as result;
+import std.core.string as string;
+import std.core.text as text;
+import std.core.vec as vec;
+import std.fs.path as path;
+```
+
+`std.core.vec`：
+
+- 类型：`vec::Vec<T>`、兼容别名 `vec::VecU8`。
+- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::len<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
+- 兼容 API：`vec::vec_u8_new`、`vec::vec_u8_push` 等保留，但不作为新文档的主路径。
+
+`std.core.string`：
+
+- 类型：`string::String`。
+- 新 API：`string::new`、`string::from_c`、`string::destroy`、`string::len`、`string::is_empty`、`string::reserve`、`string::push`、`string::append_span`、`string::append_c`、`string::as_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。
+- 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
+
+`std.fs.path`：
+
+- 类型：`path::Path`。
+- 新 API：`path::from_c`、`path::destroy`、`path::as_c`、`path::as_span`、`path::file_name`、`path::join_c`。
+- 兼容 API：`path::path_from_c`、`path::path_join_c` 等保留。
+
+`std.core.text`：
+
+- 类型：`text::Span<T>`、`text::MutSpan<T>`、兼容别名 `text::SpanU8`、`text::MutSpanU8`。
+- API：`text::span<T>`、`text::mut_span<T>`、`text::c_span`、`text::bytes_equal`、`text::bytes_starts_with`、`text::bytes_find_byte`、`text::bytes_trim_ascii_space`、ASCII 分类和大小写转换函数。
+
+## 迁移策略
+
+1. 新样例和文档使用 `import ... as ...` 与 `alias::item`。
+2. 旧长名函数保留为包装层，保证已有 M1 样例继续编译。
+3. 新功能优先加到短 API；旧长名只在必要时补兼容包装。
+4. 当覆盖率和迁移样例稳定后，再考虑给旧长名加弃用诊断。
+5. 标准库模块内部可以逐步切到别名导入，但不在同一个变更里做大规模机械迁移。
+
+## 参考来源
+
+- Rust API Guidelines, Naming: https://rust-lang.github.io/api-guidelines/naming.html
+- Rust `std::vec` and slices: https://doc.rust-lang.org/std/vec/index.html, https://doc.rust-lang.org/std/primitive.slice.html
+- Rust collections overview: https://doc.rust-lang.org/std/collections/index.html
+- Zig language reference: https://ziglang.org/documentation/master/
+- C++ containers draft: https://eel.is/c++draft/containers.general
+- Swift API Design Guidelines: https://www.swift.org/documentation/api-design-guidelines/

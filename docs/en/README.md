@@ -11,6 +11,7 @@ notes.
 - [Architecture Design](architecture.md)
 - [Runtime Flow](runtime-flow.md)
 - [API Reference](api.md)
+- [Standard Library API And Namespace Design](std-api-design.md)
 - [Design And Implementation](implementation.md)
 - [Usage Guide](usage.md)
 - [Version Document](version.md)

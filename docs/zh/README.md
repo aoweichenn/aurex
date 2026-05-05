@@ -9,6 +9,7 @@
 - [架构设计文档](architecture.md)
 - [运行流程文档](runtime-flow.md)
 - [API 接口文档](api.md)
+- [标准库 API 与命名空间设计](std-api-design.md)
 - [设计实现文档](implementation.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)

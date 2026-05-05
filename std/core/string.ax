@@ -9,23 +9,23 @@ pub struct String {
     bytes: VecU8;
 }
 
-pub fn string_new() -> String {
+pub fn new() -> String {
     return String { bytes: vec_u8_new() };
 }
 
-pub fn string_destroy(string: *mut String) -> void {
+pub fn destroy(string: *mut String) -> void {
     string.bytes.destroy();
 }
 
-pub fn string_len(string: *const String) -> usize {
+pub fn len(string: *const String) -> usize {
     return string.bytes.len;
 }
 
-pub fn string_is_empty(string: *const String) -> bool {
+pub fn is_empty(string: *const String) -> bool {
     return string.bytes.len == cast(usize, 0);
 }
 
-pub fn string_reserve(string: *mut String, capacity: usize) -> bool {
+pub fn reserve(string: *mut String, capacity: usize) -> bool {
     let required: usize = capacity + cast(usize, 1);
     if !string.bytes.reserve(required) {
         return false;
@@ -36,9 +36,9 @@ pub fn string_reserve(string: *mut String, capacity: usize) -> bool {
     return true;
 }
 
-pub fn string_push_byte(string: *mut String, value: u8) -> bool {
+pub fn push(string: *mut String, value: u8) -> bool {
     let next_len: usize = string.bytes.len + cast(usize, 1);
-    if !string_reserve(string, next_len) {
+    if !reserve(string, next_len) {
         return false;
     }
     string.bytes.data[string.bytes.len] = value;
@@ -47,12 +47,12 @@ pub fn string_push_byte(string: *mut String, value: u8) -> bool {
     return true;
 }
 
-pub fn string_append_span(string: *mut String, bytes: SpanU8) -> bool {
+pub fn append_span(string: *mut String, bytes: SpanU8) -> bool {
     if bytes.len == cast(usize, 0) {
         return true;
     }
     let next_len: usize = string.bytes.len + bytes.len;
-    if !string_reserve(string, next_len) {
+    if !reserve(string, next_len) {
         return false;
     }
     let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(string.bytes.data) + string.bytes.len);
@@ -62,45 +62,97 @@ pub fn string_append_span(string: *mut String, bytes: SpanU8) -> bool {
     return true;
 }
 
-pub fn string_append_c(string: *mut String, text: *const u8) -> bool {
+pub fn append_c(string: *mut String, text: *const u8) -> bool {
     if text == null {
         return false;
     }
-    return string_append_span(string, c_span(text));
+    return append_span(string, c_span(text));
 }
 
-pub fn string_from_c(text: *const u8) -> Result<String, i32> {
+pub fn from_c(text: *const u8) -> Result<String, i32> {
     if text == null {
         return Result.err(1);
     }
-    var string: String = string_new();
-    if !string_append_c(&string, text) {
-        string_destroy(&string);
+    var string: String = new();
+    if !append_c(&string, text) {
+        destroy(&string);
         return Result.err(1);
     }
     return Result.ok(string);
 }
 
-pub fn string_as_span(string: *const String) -> SpanU8 {
+pub fn as_span(string: *const String) -> SpanU8 {
     return SpanU8 { data: ptr_cast(*const u8, string.bytes.data), len: string.bytes.len };
 }
 
-pub fn string_c_str(string: *const String) -> *const u8 {
+pub fn c_str(string: *const String) -> *const u8 {
     if string.bytes.data == null {
         return c"";
     }
     return ptr_cast(*const u8, string.bytes.data);
 }
 
-pub fn string_equals_span(string: *const String, bytes: SpanU8) -> bool {
-    return bytes_equal(string_as_span(string), bytes);
+pub fn equals_span(string: *const String, bytes: SpanU8) -> bool {
+    return bytes_equal(as_span(string), bytes);
 }
 
-pub fn string_ends_with_byte(string: *const String, value: u8) -> bool {
+pub fn ends_with_byte(string: *const String, value: u8) -> bool {
     if string.bytes.len == cast(usize, 0) {
         return false;
     }
     return string.bytes.data[string.bytes.len - cast(usize, 1)] == value;
+}
+
+pub fn string_new() -> String {
+    return new();
+}
+
+pub fn string_destroy(string: *mut String) -> void {
+    destroy(string);
+}
+
+pub fn string_len(string: *const String) -> usize {
+    return len(string);
+}
+
+pub fn string_is_empty(string: *const String) -> bool {
+    return is_empty(string);
+}
+
+pub fn string_reserve(string: *mut String, capacity: usize) -> bool {
+    return reserve(string, capacity);
+}
+
+pub fn string_push_byte(string: *mut String, value: u8) -> bool {
+    return push(string, value);
+}
+
+pub fn string_append_span(string: *mut String, bytes: SpanU8) -> bool {
+    return append_span(string, bytes);
+}
+
+pub fn string_append_c(string: *mut String, text: *const u8) -> bool {
+    return append_c(string, text);
+}
+
+pub fn string_from_c(text: *const u8) -> Result<String, i32> {
+    return from_c(text);
+}
+
+pub fn string_as_span(string: *const String) -> SpanU8 {
+    return as_span(string);
+}
+
+pub fn string_c_str(string: *const String) -> *const u8 {
+    return c_str(string);
+}
+
+pub fn string_equals_span(string: *const String, bytes: SpanU8) -> bool {
+    return equals_span(string, bytes);
+}
+
+pub fn string_ends_with_byte(string: *const String, value: u8) -> bool {
+    return ends_with_byte(string, value);
 }
 
 impl String {

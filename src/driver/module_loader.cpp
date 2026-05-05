@@ -395,7 +395,12 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
             loading_files_.erase(key);
             return import_result;
         }
-        direct_imports.push_back(syntax::ResolvedImport {import_result.value(), import.visibility});
+        direct_imports.push_back(syntax::ResolvedImport {
+            import_result.value(),
+            import.alias,
+            import.alias_range,
+            import.visibility,
+        });
     }
     if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
         combined.modules[module_id.value].imports = std::move(direct_imports);

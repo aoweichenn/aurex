@@ -33,6 +33,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     constexpr std::string_view source =
         "// line comment\n"
         "module lex.unit; /* block comment */\n"
+        "import std.core.text as text;\n"
         "const hex: i32 = 0x2A;\n"
         "const bin: i32 = 0b1010;\n"
         "const dec: i32 = 1_000;\n"
@@ -53,6 +54,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "  let usize_value: usize = 8;\n"
         "  let f32_value: f32 = 9;\n"
         "  let f64_value: f64 = 10;\n"
+        "  let span_value: text::SpanU8 = text::span_u8(c\"hi\", cast(usize, 2));\n"
         "  let try_token: i32 = 1?;\n"
         "  extern c fn printf(format: *const u8, ...) -> i32;\n"
         "  defer printf(c\"cleanup\");\n"
@@ -79,6 +81,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     expect_contains_all(token_dump, {
         "kw_true",
         "kw_false",
+        "kw_as",
         "kw_void",
         "kw_bool",
         "kw_i8",
@@ -108,6 +111,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "amp_amp",
         "pipe_pipe",
         "question",
+        "colon_colon",
         "ellipsis",
     });
 

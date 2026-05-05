@@ -286,9 +286,6 @@ void SemanticAnalyzer::register_value_names() {
                 }
                 continue;
             }
-            if (generic_function_templates_.contains(key)) {
-                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
-            }
             TypeHandle method_owner_type = invalid_type_handle;
             if (item.is_variadic && !item.is_extern_c) {
                 report(item.range, "variadic functions are only supported for extern c declarations");
@@ -305,6 +302,9 @@ void SemanticAnalyzer::register_value_names() {
                 }
                 key = method_key(current_module_, method_owner_type, item.name);
                 c_name = method_c_symbol_name(method_owner_type, item.name);
+            }
+            if (generic_function_templates_.contains(key)) {
+                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
             TypeHandle return_type = invalid_type_handle;
@@ -939,7 +939,16 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     case syntax::ExprKind::byte_literal:
         return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::u8));
     case syntax::ExprKind::name: {
-        const Symbol* symbol = find_symbol(expr.text, expr.range);
+        const Symbol* symbol = nullptr;
+        if (!expr.scope_name.empty()) {
+            const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range);
+            if (!syntax::is_valid(module)) {
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            symbol = find_symbol_in_module(module, expr.text, expr.range);
+        } else {
+            symbol = find_symbol(expr.text, expr.range);
+        }
         if (symbol == nullptr) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
@@ -960,6 +969,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             syntax::is_valid(module_.exprs[expr.callee.value].object) &&
             module_.exprs[expr.callee.value].object.value < module_.exprs.size() &&
             module_.exprs[module_.exprs[expr.callee.value].object.value].kind == syntax::ExprKind::name &&
+            module_.exprs[module_.exprs[expr.callee.value].object.value].scope_name.empty() &&
             find_generic_enum_template_in_visible_modules(
                 module_.exprs[module_.exprs[expr.callee.value].object.value].text,
                 module_.exprs[expr.callee.value].range,
@@ -1030,16 +1040,18 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 callee.object.value < module_.exprs.size() &&
                 module_.exprs[callee.object.value].kind == syntax::ExprKind::name) {
                 const syntax::ExprNode& object = module_.exprs[callee.object.value];
-                const TypeHandle associated_owner =
-                    find_type_in_visible_modules(object.text, object.range, false, false);
-                if (is_valid(associated_owner)) {
-                    signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
-                    if (signature == nullptr) {
-                        return record_expr_type(expr_id, invalid_type_handle);
-                    }
-                    if (signature->has_self_param) {
-                        report(callee.range, "method requires a receiver: " + checked_.types.display_name(associated_owner) + "." + name);
-                        receiver_valid = false;
+                if (object.scope_name.empty()) {
+                    const TypeHandle associated_owner =
+                        find_type_in_visible_modules(object.text, object.range, false, false);
+                    if (is_valid(associated_owner)) {
+                        signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
+                        if (signature == nullptr) {
+                            return record_expr_type(expr_id, invalid_type_handle);
+                        }
+                        if (signature->has_self_param) {
+                            report(callee.range, "method requires a receiver: " + checked_.types.display_name(associated_owner) + "." + name);
+                            receiver_valid = false;
+                        }
                     }
                 }
             }
@@ -1096,9 +1108,27 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         }
         const FunctionSignature* signature = nullptr;
         const GenericFunctionTemplateInfo* generic_function = nullptr;
+        const bool qualified_callee = callee.kind == syntax::ExprKind::name && !callee.scope_name.empty();
+        syntax::ModuleId callee_module = syntax::invalid_module_id;
+        if (qualified_callee) {
+            callee_module = resolve_import_alias(callee.scope_name, callee.scope_range);
+            if (!syntax::is_valid(callee_module)) {
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+        }
         if (callee.type_args.empty()) {
-            signature = find_function_in_visible_modules(name, callee_range, false);
-            if (signature == nullptr && callee.kind == syntax::ExprKind::name) {
+            if (qualified_callee) {
+                signature = find_function_in_module(callee_module, name, callee_range, false);
+                if (signature == nullptr) {
+                    generic_function = find_generic_function_template_in_module(callee_module, name, callee_range, false);
+                    if (generic_function == nullptr) {
+                        signature = find_function_in_module(callee_module, name, callee_range, true);
+                    }
+                }
+            } else {
+                signature = find_function_in_visible_modules(name, callee_range, false);
+            }
+            if (signature == nullptr && callee.kind == syntax::ExprKind::name && !qualified_callee) {
                 const auto diagnostics_before_generic_lookup = diagnostics_.diagnostics().size();
                 generic_function = find_generic_function_template_in_visible_modules(name, callee_range, false);
                 const bool generic_lookup_reported =
@@ -1108,14 +1138,24 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 }
             }
         } else if (callee.kind == syntax::ExprKind::name) {
-            generic_function = find_generic_function_template_in_visible_modules(name, callee_range, false);
+            generic_function = qualified_callee
+                ? find_generic_function_template_in_module(callee_module, name, callee_range, false)
+                : find_generic_function_template_in_visible_modules(name, callee_range, false);
         }
         if (signature == nullptr && callee.kind == syntax::ExprKind::name && (!callee.type_args.empty() || generic_function != nullptr)) {
             if (generic_function == nullptr) {
-                if (find_function_in_visible_modules(name, callee_range, false) != nullptr) {
-                    report(callee_range, "type arguments require a generic function: " + name);
+                if (qualified_callee) {
+                    if (find_function_in_module(callee_module, name, callee_range, false) != nullptr) {
+                        report(callee_range, "type arguments require a generic function: " + std::string(callee.scope_name) + "::" + name);
+                    } else {
+                        static_cast<void>(find_generic_function_template_in_module(callee_module, name, callee_range, true));
+                    }
                 } else {
-                    static_cast<void>(find_generic_function_template_in_visible_modules(name, callee_range, true));
+                    if (find_function_in_visible_modules(name, callee_range, false) != nullptr) {
+                        report(callee_range, "type arguments require a generic function: " + name);
+                    } else {
+                        static_cast<void>(find_generic_function_template_in_visible_modules(name, callee_range, true));
+                    }
                 }
                 return record_expr_type(expr_id, invalid_type_handle);
             }
@@ -1304,7 +1344,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             expr.object.value < module_.exprs.size() &&
             module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
             const syntax::ExprNode& object = module_.exprs[expr.object.value];
-            if (find_generic_enum_template_in_visible_modules(object.text, expr.range, false) != nullptr) {
+            if (object.scope_name.empty() &&
+                find_generic_enum_template_in_visible_modules(object.text, expr.range, false) != nullptr) {
                 const EnumCaseInfo* enum_case = nullptr;
                 if (const GenericEnumInstanceInfo* expected_instance = generic_enum_instance(expected_type);
                     expected_instance != nullptr && expected_instance->name == object.text) {
@@ -1325,16 +1366,18 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 }
                 return record_expr_type(expr_id, enum_case->type);
             }
-            if (const EnumCaseInfo* enum_case = find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
-                enum_case != nullptr) {
-                if (is_valid(enum_case->payload_type)) {
-                    report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                    return record_expr_type(expr_id, invalid_type_handle);
+            if (object.scope_name.empty()) {
+                if (const EnumCaseInfo* enum_case = find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
+                    enum_case != nullptr) {
+                    if (is_valid(enum_case->payload_type)) {
+                        report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                        return record_expr_type(expr_id, invalid_type_handle);
+                    }
+                    if (expr_id.value < checked_.expr_c_names.size()) {
+                        checked_.expr_c_names[expr_id.value] = enum_case->c_name;
+                    }
+                    return record_expr_type(expr_id, enum_case->type);
                 }
-                if (expr_id.value < checked_.expr_c_names.size()) {
-                    checked_.expr_c_names[expr_id.value] = enum_case->c_name;
-                }
-                return record_expr_type(expr_id, enum_case->type);
             }
         }
         TypeHandle object = analyze_expr(expr.object);
@@ -1633,13 +1676,63 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
         resolved = checked_.types.array(type.array_count, resolve_type_with_substitution(type.array_element, substitution, false));
         break;
     case syntax::TypeKind::named: {
-        if (substitution != nullptr && type.type_args.empty()) {
+        const bool qualified = !type.scope_name.empty();
+        syntax::ModuleId scope_module = syntax::invalid_module_id;
+        if (qualified) {
+            scope_module = resolve_import_alias(type.scope_name, type.scope_range);
+            if (!syntax::is_valid(scope_module)) {
+                break;
+            }
+        }
+
+        if (substitution != nullptr && type.type_args.empty() && !qualified) {
             if (const auto found = substitution->types.find(std::string(type.name)); found != substitution->types.end()) {
                 resolved = found->second;
                 break;
             }
         }
         if (!type.type_args.empty()) {
+            if (qualified) {
+                if (const GenericStructTemplateInfo* info =
+                        find_generic_struct_template_in_module(scope_module, type.name, type.range, false);
+                    info != nullptr) {
+                    if (substitution == nullptr) {
+                        resolved = instantiate_generic_struct_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                    } else {
+                        if (type.type_args.size() != info->params.size()) {
+                            report(type.range, "generic struct type argument count mismatch for " + info->name);
+                            break;
+                        }
+                        std::vector<TypeHandle> resolved_args;
+                        resolved_args.reserve(type.type_args.size());
+                        for (syntax::TypeId arg : type.type_args) {
+                            resolved_args.push_back(resolve_type_with_substitution(arg, substitution, opaque_allowed_as_pointee));
+                        }
+                        resolved = instantiate_generic_struct(*info, resolved_args, type.range);
+                    }
+                    break;
+                }
+                if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_module(scope_module, type.name, type.range, false);
+                    info != nullptr) {
+                    if (substitution == nullptr) {
+                        resolved = instantiate_generic_enum_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                    } else {
+                        if (type.type_args.size() != info->params.size()) {
+                            report(type.range, "generic enum type argument count mismatch for " + info->name);
+                            break;
+                        }
+                        std::vector<TypeHandle> resolved_args;
+                        resolved_args.reserve(type.type_args.size());
+                        for (syntax::TypeId arg : type.type_args) {
+                            resolved_args.push_back(resolve_type_with_substitution(arg, substitution, opaque_allowed_as_pointee));
+                        }
+                        resolved = instantiate_generic_enum(*info, resolved_args, type.range);
+                    }
+                    break;
+                }
+                report(type.range, "type arguments require a generic type: " + std::string(type.scope_name) + "::" + std::string(type.name));
+                break;
+            }
             if (const GenericStructTemplateInfo* info =
                     find_generic_struct_template_in_visible_modules(type.name, type.range, false);
                 info != nullptr) {
@@ -1678,6 +1771,23 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                 break;
             }
             report(type.range, "type arguments require a generic type: " + std::string(type.name));
+            break;
+        }
+        if (qualified) {
+            if (const GenericStructTemplateInfo* info = find_generic_struct_template_in_module(scope_module, type.name, type.range, false);
+                info != nullptr) {
+                report(type.range, "generic struct type requires type arguments: " + std::string(type.scope_name) + "::" + info->name);
+                break;
+            }
+            if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_module(scope_module, type.name, type.range, false);
+                info != nullptr) {
+                report(type.range, "generic enum type requires type arguments: " + std::string(type.scope_name) + "::" + info->name);
+                break;
+            }
+            resolved = find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee);
+            if (is_valid(resolved) && checked_.types.get(resolved).kind == TypeKind::opaque_struct && !opaque_allowed_as_pointee) {
+                report(type.range, "opaque struct can only be used as a pointer target");
+            }
             break;
         }
         if (const GenericStructTemplateInfo* info = find_generic_struct_template_in_visible_modules(type.name, type.range, false);
@@ -1732,6 +1842,14 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
     }
     if (checked_.types.is_integer(dst) && checked_.types.is_integer(src) && is_integer_literal(value)) {
         return true;
+    }
+    if (checked_.types.is_pointer(dst) && checked_.types.is_pointer(src)) {
+        const TypeInfo& dst_info = checked_.types.get(dst);
+        const TypeInfo& src_info = checked_.types.get(src);
+        if (dst_info.pointer_mutability == PointerMutability::const_ &&
+            checked_.types.same(dst_info.pointee, src_info.pointee)) {
+            return true;
+        }
     }
     return checked_.types.same(dst, src);
 }
@@ -1888,6 +2006,10 @@ bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id) {
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::name:
+        if (!expr.scope_name.empty()) {
+            const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range, false);
+            return syntax::is_valid(module) && find_symbol_in_module(module, expr.text, expr.range, false) != nullptr;
+        }
         return find_symbol(expr.text, expr.range) != nullptr;
     case syntax::ExprKind::field:
     case syntax::ExprKind::index:
@@ -1906,7 +2028,13 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::name: {
-        const Symbol* symbol = find_symbol(expr.text, expr.range);
+        const Symbol* symbol = nullptr;
+        if (!expr.scope_name.empty()) {
+            const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range, false);
+            symbol = syntax::is_valid(module) ? find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
+        } else {
+            symbol = find_symbol(expr.text, expr.range);
+        }
         return symbol != nullptr && symbol->is_mutable;
     }
     case syntax::ExprKind::field: {
@@ -1963,6 +2091,36 @@ syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) con
         return syntax::invalid_module_id;
     }
     return module_.item_modules[index];
+}
+
+syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
+    const std::string_view alias,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    if (!syntax::is_valid(current_module_) || current_module_.value >= module_.modules.size()) {
+        if (report_unknown) {
+            report(range, "unknown import alias: " + std::string(alias));
+        }
+        return syntax::invalid_module_id;
+    }
+    syntax::ModuleId resolved = syntax::invalid_module_id;
+    for (const syntax::ResolvedImport& import : module_.modules[current_module_.value].imports) {
+        if (import.alias != alias) {
+            continue;
+        }
+        if (syntax::is_valid(resolved)) {
+            if (report_unknown) {
+                report(range, "ambiguous import alias: " + std::string(alias));
+            }
+            return syntax::invalid_module_id;
+        }
+        resolved = import.module;
+    }
+    if (!syntax::is_valid(resolved) && report_unknown) {
+        report(range, "unknown import alias: " + std::string(alias));
+    }
+    return resolved;
 }
 
 std::vector<syntax::ModuleId> SemanticAnalyzer::visible_modules(const syntax::ModuleId module) const {
@@ -2186,6 +2344,47 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     return imported_result;
 }
 
+TypeHandle SemanticAnalyzer::find_type_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool opaque_allowed_as_pointee,
+    const bool report_unknown
+) {
+    if (!syntax::is_valid(module)) {
+        if (report_unknown) {
+            report(range, "unknown type: " + std::string(name));
+        }
+        return invalid_type_handle;
+    }
+
+    const std::string key = module_key(module, name);
+    if (const auto found = named_types_.find(key); found != named_types_.end()) {
+        const auto visibility = type_visibilities_.find(key);
+        if (visibility != type_visibilities_.end() && !can_access(module, visibility->second)) {
+            if (report_unknown) {
+                report(range, "type is private: " + module_name(module) + "." + std::string(name));
+            }
+            return invalid_type_handle;
+        }
+        return found->second;
+    }
+    if (const auto alias_found = checked_.type_aliases.find(key); alias_found != checked_.type_aliases.end()) {
+        if (!can_access(module, alias_found->second.visibility)) {
+            if (report_unknown) {
+                report(range, "type is private: " + module_name(module) + "." + std::string(name));
+            }
+            return invalid_type_handle;
+        }
+        return resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
+    }
+
+    if (report_unknown) {
+        report(range, "unknown type in module " + module_name(module) + ": " + std::string(name));
+    }
+    return invalid_type_handle;
+}
+
 const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
     const std::string_view name,
     const base::SourceRange range,
@@ -2219,6 +2418,28 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
         report(range, "unknown function: " + std::string(name));
     }
     return imported_result;
+}
+
+const FunctionSignature* SemanticAnalyzer::find_function_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    const auto found = checked_.functions.find(module_key(module, name));
+    if (found == checked_.functions.end()) {
+        if (report_unknown) {
+            report(range, "unknown function in module " + module_name(module) + ": " + std::string(name));
+        }
+        return nullptr;
+    }
+    if (!can_access(module, found->second.visibility)) {
+        if (report_unknown) {
+            report(range, "function is private: " + module_name(module) + "." + std::string(name));
+        }
+        return nullptr;
+    }
+    return &found->second;
 }
 
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
@@ -2324,6 +2545,9 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
     }
     const syntax::ExprNode& callee = module_.exprs[callee_id.value];
     if (callee.kind == syntax::ExprKind::name) {
+        if (!callee.scope_name.empty()) {
+            return nullptr;
+        }
         return find_enum_case_in_visible_modules(callee.text, callee.range, report_unknown);
     }
     if (callee.kind != syntax::ExprKind::field ||
@@ -2372,6 +2596,28 @@ const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const b
         report(range, "unknown name: " + std::string(name));
     }
     return imported_result;
+}
+
+const Symbol* SemanticAnalyzer::find_symbol_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    const auto found = global_values_.find(module_key(module, name));
+    if (found == global_values_.end()) {
+        if (report_unknown) {
+            report(range, "unknown name in module " + module_name(module) + ": " + std::string(name));
+        }
+        return nullptr;
+    }
+    if (!can_access(module, found->second.visibility)) {
+        if (report_unknown) {
+            report(range, "name is private: " + module_name(module) + "." + std::string(name));
+        }
+        return nullptr;
+    }
+    return &found->second;
 }
 
 TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const TypeHandle type) noexcept {

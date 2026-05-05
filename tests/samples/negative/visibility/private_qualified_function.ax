@@ -1,0 +1,7 @@
+module private_qualified_function;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    return vis::add_secret(1);
+}

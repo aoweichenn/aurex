@@ -36,6 +36,7 @@ struct EnumCaseInfo {
     std::string c_name;
     syntax::ModuleId module = syntax::invalid_module_id;
     TypeHandle type = invalid_type_handle;
+    TypeHandle payload_type = invalid_type_handle;
     std::string value_text;
     base::SourceRange range {};
 };
@@ -120,7 +121,7 @@ private:
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range, bool opaque_allowed_as_pointee);
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
-    [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range);
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
     void report(base::SourceRange range, std::string message);

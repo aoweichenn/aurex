@@ -114,6 +114,7 @@ struct FieldInit {
 
 struct MatchArm {
     std::string_view case_name;
+    std::string_view binding_name;
     ExprId value = invalid_expr_id;
     base::SourceRange range {};
 };
@@ -189,6 +190,7 @@ struct FieldDecl {
 
 struct EnumCaseDecl {
     std::string_view name;
+    TypeId payload_type = invalid_type_id;
     std::string_view value_text;
     base::SourceRange range {};
 };

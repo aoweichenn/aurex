@@ -1,0 +1,11 @@
+module enum_payload_unknown_binding;
+
+enum Packet: u8 {
+    int(i32) = 1,
+}
+
+fn main() -> i32 {
+    return match Packet_int(1) {
+        Packet_int(value) => missing,
+    };
+}

@@ -69,6 +69,7 @@ enum class ValueKind {
     string_literal,
     c_string_literal,
     byte_literal,
+    undef,
     constant_ref,
     alloca,
     load,

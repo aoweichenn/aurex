@@ -317,7 +317,11 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     for (const MatchArm& arm : expr.match_arms) {
         indent(out, depth + 1);
-        out << "match_arm " << arm.case_name << "\n";
+        out << "match_arm " << arm.case_name;
+        if (!arm.binding_name.empty()) {
+            out << "(" << arm.binding_name << ")";
+        }
+        out << "\n";
         dump_expr(out, module, arm.value, depth + 2);
     }
     if (is_valid(expr.object)) {
@@ -367,7 +371,11 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     for (const EnumCaseDecl& enum_case : item.enum_cases) {
         indent(out, depth + 1);
-        out << "case " << enum_case.name << " = " << enum_case.value_text << "\n";
+        out << "case " << enum_case.name;
+        if (is_valid(enum_case.payload_type)) {
+            out << "(" << type_label(module, enum_case.payload_type) << ")";
+        }
+        out << " = " << enum_case.value_text << "\n";
     }
     for (const ParamDecl& param : item.params) {
         indent(out, depth + 1);

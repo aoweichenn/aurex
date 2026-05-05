@@ -19,6 +19,7 @@ llvm::Value* LlvmEmitter::emit_value(const ValueId id) {
     case ValueKind::integer_literal:
     case ValueKind::bool_literal:
     case ValueKind::byte_literal:
+    case ValueKind::undef:
     case ValueKind::null_literal:
     case ValueKind::string_literal:
     case ValueKind::c_string_literal:
@@ -51,6 +52,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         return llvm::ConstantInt::get(llvm_type(value.type), value.text == "true" ? 1 : 0, false);
     case ValueKind::byte_literal:
         return llvm::ConstantInt::get(llvm_type(value.type), parse_byte_literal(value.text), false);
+    case ValueKind::undef:
+        return llvm::UndefValue::get(llvm_type(value.type));
     case ValueKind::null_literal:
         return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(llvm_type(value.type)));
     case ValueKind::string_literal:
@@ -107,6 +110,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
         return llvm::ConstantInt::get(llvm_type(value.type), value.text == "true" ? 1 : 0, false);
     case ValueKind::byte_literal:
         return llvm::ConstantInt::get(llvm_type(value.type), parse_byte_literal(value.text), false);
+    case ValueKind::undef:
+        return llvm::UndefValue::get(llvm_type(value.type));
     case ValueKind::null_literal:
         return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(llvm_type(value.type)));
     case ValueKind::string_literal:
@@ -251,8 +256,16 @@ llvm::Value* LlvmEmitter::emit_binary(const Value& value) {
     case BinaryOp::less_equal: return is_float ? builder_.CreateFCmpOLE(lhs, rhs) : (is_unsigned ? builder_.CreateICmpULE(lhs, rhs) : builder_.CreateICmpSLE(lhs, rhs));
     case BinaryOp::greater: return is_float ? builder_.CreateFCmpOGT(lhs, rhs) : (is_unsigned ? builder_.CreateICmpUGT(lhs, rhs) : builder_.CreateICmpSGT(lhs, rhs));
     case BinaryOp::greater_equal: return is_float ? builder_.CreateFCmpOGE(lhs, rhs) : (is_unsigned ? builder_.CreateICmpUGE(lhs, rhs) : builder_.CreateICmpSGE(lhs, rhs));
-    case BinaryOp::equal: return is_float ? builder_.CreateFCmpOEQ(lhs, rhs) : builder_.CreateICmpEQ(lhs, rhs);
-    case BinaryOp::not_equal: return is_float ? builder_.CreateFCmpONE(lhs, rhs) : builder_.CreateICmpNE(lhs, rhs);
+    case BinaryOp::equal:
+        if (lhs->getType()->isStructTy()) {
+            return llvm::UndefValue::get(llvm_type(value.type));
+        }
+        return is_float ? builder_.CreateFCmpOEQ(lhs, rhs) : builder_.CreateICmpEQ(lhs, rhs);
+    case BinaryOp::not_equal:
+        if (lhs->getType()->isStructTy()) {
+            return llvm::UndefValue::get(llvm_type(value.type));
+        }
+        return is_float ? builder_.CreateFCmpONE(lhs, rhs) : builder_.CreateICmpNE(lhs, rhs);
     case BinaryOp::bit_and:
     case BinaryOp::logical_and: return builder_.CreateAnd(lhs, rhs);
     case BinaryOp::bit_xor: return builder_.CreateXor(lhs, rhs);

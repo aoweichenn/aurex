@@ -149,6 +149,18 @@ void TypeTable::set_enum_underlying(const TypeHandle handle, const TypeHandle un
     types_[handle.value].enum_underlying = underlying;
 }
 
+void TypeTable::set_enum_payload_layout(
+    const TypeHandle handle,
+    const TypeHandle storage,
+    const base::u64 payload_size,
+    const base::u64 payload_align
+) noexcept {
+    assert(handle.value < types_.size());
+    types_[handle.value].enum_payload_storage = storage;
+    types_[handle.value].enum_payload_size = payload_size;
+    types_[handle.value].enum_payload_align = payload_align;
+}
+
 bool TypeTable::same(const TypeHandle lhs, const TypeHandle rhs) const noexcept {
     return lhs.value == rhs.value;
 }

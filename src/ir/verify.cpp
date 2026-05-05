@@ -64,6 +64,7 @@ private:
         case ValueKind::integer_literal:
         case ValueKind::bool_literal:
         case ValueKind::byte_literal:
+        case ValueKind::undef:
         case ValueKind::null_literal:
         case ValueKind::string_literal:
         case ValueKind::c_string_literal:
@@ -258,6 +259,7 @@ private:
         case ValueKind::string_literal:
         case ValueKind::c_string_literal:
         case ValueKind::byte_literal:
+        case ValueKind::undef:
         case ValueKind::alloca:
         case ValueKind::size_of:
         case ValueKind::align_of:

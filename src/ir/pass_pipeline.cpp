@@ -174,6 +174,7 @@ struct FunctionUseInfo {
             case ValueKind::string_literal:
             case ValueKind::c_string_literal:
             case ValueKind::byte_literal:
+            case ValueKind::undef:
             case ValueKind::constant_ref:
             case ValueKind::alloca:
             case ValueKind::size_of:

@@ -390,12 +390,18 @@ syntax::ItemId Parser::parse_enum_decl() {
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
         const syntax::Token& case_name = expect(TokenKind::identifier, "expected enum case name");
+        syntax::TypeId payload_type = syntax::invalid_type_id;
+        if (match(TokenKind::l_paren)) {
+            payload_type = parse_type();
+            expect(TokenKind::r_paren, "expected ')' after enum case payload type");
+        }
         expect(TokenKind::equal, "expected '=' after enum case name");
         const syntax::Token& value = expect(TokenKind::integer_literal, "expected integer literal enum value");
         const syntax::Token& comma = expect(TokenKind::comma, "expected ',' after enum case");
         if (case_name.kind == TokenKind::identifier) {
             item.enum_cases.push_back(syntax::EnumCaseDecl {
                 case_name.text,
+                payload_type,
                 value.text,
                 merge(case_name.range, comma.range),
             });
@@ -855,6 +861,14 @@ syntax::ExprId Parser::parse_match_expr() {
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
         const syntax::Token& case_name = expect(TokenKind::identifier, "expected match case name");
+        std::string_view binding_name;
+        if (match(TokenKind::l_paren)) {
+            const syntax::Token& binding = expect(TokenKind::identifier, "expected payload binding name");
+            if (binding.kind == TokenKind::identifier) {
+                binding_name = binding.text;
+            }
+            expect(TokenKind::r_paren, "expected ')' after payload binding");
+        }
         expect(TokenKind::fat_arrow, "expected '=>' after match case");
         const syntax::ExprId arm_value = parse_expr();
         base::SourceRange arm_range = syntax::is_valid(arm_value)
@@ -863,6 +877,7 @@ syntax::ExprId Parser::parse_match_expr() {
         if (case_name.kind == TokenKind::identifier) {
             expr.match_arms.push_back(syntax::MatchArm {
                 case_name.text,
+                binding_name,
                 arm_value,
                 arm_range,
             });

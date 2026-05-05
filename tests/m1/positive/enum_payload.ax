@@ -1,0 +1,34 @@
+module enum_payload;
+
+struct Pair {
+    left: i32;
+    right: i32;
+}
+
+enum Packet: u8 {
+    int(i32) = 1,
+    pair(Pair) = 2,
+    none = 3,
+}
+
+fn score(packet: Packet) -> i32 {
+    return match packet {
+        Packet_int(value) => value,
+        Packet_pair(pair) => pair.left + pair.right,
+        Packet_none => 0,
+    };
+}
+
+fn main() -> i32 {
+    let pair = Pair { left: 20, right: 22 };
+    if score(Packet_int(41)) != 41 {
+        return 1;
+    }
+    if score(Packet_pair(pair)) != 42 {
+        return 2;
+    }
+    if score(Packet_none) != 0 {
+        return 3;
+    }
+    return 0;
+}

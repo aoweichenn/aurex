@@ -95,6 +95,9 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     case ValueKind::byte_literal:
         out << "literal " << value.text;
         break;
+    case ValueKind::undef:
+        out << "undef";
+        break;
     case ValueKind::constant_ref: {
         const GlobalConstant* constant = find_global_constant(module, value.constant);
         out << "const_ref @" << (constant == nullptr ? value.name : constant->symbol);

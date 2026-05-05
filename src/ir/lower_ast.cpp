@@ -1,5 +1,8 @@
 #include "aurex/ir/lower_ast.hpp"
 
+#include "aurex/ir/enum_layout.hpp"
+
+#include <algorithm>
 #include <unordered_map>
 #include <utility>
 
@@ -131,6 +134,22 @@ private:
             }
             module_.records.push_back(std::move(record));
         }
+        std::vector<sema::TypeHandle> lowered_enums;
+        for (const auto& entry : checked_.enum_cases) {
+            const sema::EnumCaseInfo& enum_case = entry.second;
+            if (std::find_if(
+                    lowered_enums.begin(),
+                    lowered_enums.end(),
+                    [&](const sema::TypeHandle type) { return module_.types.same(type, enum_case.type); }
+                ) != lowered_enums.end()) {
+                continue;
+            }
+            if (!is_payload_enum(module_.types, enum_case.type)) {
+                continue;
+            }
+            module_.records.push_back(make_payload_enum_record(module_.types, enum_case.type));
+            lowered_enums.push_back(enum_case.type);
+        }
     }
 
     void declare_global_constants() {
@@ -156,10 +175,14 @@ private:
                 continue;
             }
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
+                const sema::TypeHandle case_type = enum_case_type(enum_case_symbol(index, item, enum_case));
+                if (is_payload_enum(module_.types, case_type) || syntax::is_valid(enum_case.payload_type)) {
+                    continue;
+                }
                 GlobalConstant constant;
                 constant.name = std::string(item.name) + "_" + std::string(enum_case.name);
                 constant.symbol = enum_case_symbol(index, item, enum_case);
-                constant.type = enum_case_type(constant.symbol);
+                constant.type = case_type;
                 const GlobalConstantId id = add_global_constant(module_, std::move(constant));
                 constant_symbols_[module_.constants[id.value].symbol] = id;
                 pending_constants_.push_back(PendingConstant {
@@ -261,6 +284,15 @@ private:
             }
         }
         return std::string(name);
+    }
+
+    [[nodiscard]] const sema::EnumCaseInfo* enum_case_info(const std::string_view name) const noexcept {
+        for (const auto& entry : checked_.enum_cases) {
+            if (entry.second.name == name || entry.second.c_name == name) {
+                return &entry.second;
+            }
+        }
+        return nullptr;
     }
 
     void lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
@@ -527,7 +559,20 @@ private:
         if (current_function_ == nullptr || !is_valid(current_block_) || expr.match_arms.empty()) {
             return invalid_value_id;
         }
+        const sema::TypeHandle matched_type = expr_type(checked_, expr.match_value);
+        const bool payload_enum = is_payload_enum(module_.types, matched_type);
         const ValueId matched = lower_expr(expr.match_value);
+        ValueId matched_slot = invalid_value_id;
+        ValueId matched_tag = matched;
+        if (payload_enum) {
+            matched_slot = append_temp_alloca("match.value", matched_type);
+            append_store(matched_slot, matched);
+            matched_tag = append_load(
+                enum_field_addr(matched_slot, std::string(enum_tag_field_name)),
+                ir::enum_tag_type(module_.types, matched_type),
+                "match.tag"
+            );
+        }
         const BlockId join_block = add_block(*current_function_, "match.join" + std::to_string(current_function_->blocks.size()));
         std::vector<PhiInput> incoming;
         incoming.reserve(expr.match_arms.size());
@@ -540,19 +585,15 @@ private:
                 append_branch_if_open(arm_block);
             } else {
                 next_test_block = add_block(*current_function_, "match.next" + std::to_string(current_function_->blocks.size()));
-
-                Value case_value;
-                case_value.kind = ValueKind::constant_ref;
-                case_value.type = expr_type(checked_, expr.match_value);
-                case_value.name = enum_case_symbol(arm.case_name);
-                case_value.constant = enum_case_constant(arm.case_name);
-                const ValueId case_id = append_value(case_value);
+                const ValueId case_id = payload_enum
+                    ? append_enum_tag_literal(arm.case_name, ir::enum_tag_type(module_.types, matched_type))
+                    : append_enum_case_ref(arm.case_name, matched_type);
 
                 Value cmp;
                 cmp.kind = ValueKind::binary;
                 cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
                 cmp.binary_op = BinaryOp::equal;
-                cmp.lhs = matched;
+                cmp.lhs = matched_tag;
                 cmp.rhs = case_id;
                 const ValueId condition = append_value(cmp);
 
@@ -565,7 +606,12 @@ private:
             }
 
             current_block_ = arm_block;
+            const auto previous_locals = locals_;
+            if (payload_enum && !arm.binding_name.empty()) {
+                bind_payload_arm(arm, matched_slot);
+            }
             const ValueId arm_value = lower_expr(arm.value, expr_type(checked_, expr_id));
+            locals_ = previous_locals;
             incoming.push_back(PhiInput {current_block_, arm_value});
             append_branch_if_open(join_block);
             if (is_valid(next_test_block)) {
@@ -579,6 +625,112 @@ private:
         result.type = expr_type(checked_, expr_id);
         result.incoming = std::move(incoming);
         return append_value(result);
+    }
+
+    [[nodiscard]] ValueId append_enum_case_ref(const std::string_view case_name, const sema::TypeHandle enum_type) {
+        Value case_value;
+        case_value.kind = ValueKind::constant_ref;
+        case_value.type = enum_type;
+        case_value.name = enum_case_symbol(case_name);
+        case_value.constant = enum_case_constant(case_name);
+        return append_value(case_value);
+    }
+
+    [[nodiscard]] ValueId append_enum_tag_literal(const std::string_view case_name, const sema::TypeHandle tag_type) {
+        Value value;
+        value.kind = ValueKind::integer_literal;
+        value.type = tag_type;
+        if (const sema::EnumCaseInfo* info = enum_case_info(case_name); info != nullptr) {
+            value.text = info->value_text;
+        }
+        return append_value(value);
+    }
+
+    [[nodiscard]] ValueId lower_enum_constructor(const sema::EnumCaseInfo& enum_case, const syntax::ExprId payload_expr) {
+        Value tag;
+        tag.kind = ValueKind::integer_literal;
+        tag.type = ir::enum_tag_type(module_.types, enum_case.type);
+        tag.text = enum_case.value_text;
+        const ValueId tag_id = append_value(tag);
+
+        Value payload;
+        if (syntax::is_valid(payload_expr)) {
+            payload.kind = ValueKind::undef;
+            payload.type = enum_payload_storage_type(module_.types, enum_case.type);
+            const ValueId storage_undef = append_value(payload);
+            const ValueId storage_slot = append_temp_alloca("enum.payload.storage", payload.type);
+            append_store(storage_slot, storage_undef);
+
+            Value cast;
+            cast.kind = ValueKind::cast;
+            cast.type = module_.types.pointer(sema::PointerMutability::mut, enum_case.payload_type);
+            cast.target_type = cast.type;
+            cast.lhs = storage_slot;
+            cast.cast_kind = CastKind::pointer;
+            const ValueId payload_addr = append_value(cast);
+            append_store(payload_addr, lower_expr(payload_expr, enum_case.payload_type));
+
+            payload.kind = ValueKind::load;
+            payload.type = enum_payload_storage_type(module_.types, enum_case.type);
+            payload.object = storage_slot;
+        } else {
+            payload.kind = ValueKind::undef;
+            payload.type = enum_payload_storage_type(module_.types, enum_case.type);
+        }
+        const ValueId payload_id = append_value(payload);
+
+        Value result;
+        result.kind = ValueKind::aggregate;
+        result.type = enum_case.type;
+        result.fields.push_back(FieldValue {std::string(enum_tag_field_name), tag_id});
+        result.fields.push_back(FieldValue {std::string(enum_payload_field_name), payload_id});
+        return append_value(result);
+    }
+
+    [[nodiscard]] ValueId append_temp_alloca(const std::string& name, const sema::TypeHandle value_type) {
+        Value slot;
+        slot.kind = ValueKind::alloca;
+        slot.name = name;
+        slot.type = module_.types.pointer(sema::PointerMutability::mut, value_type);
+        return append_value(slot);
+    }
+
+    [[nodiscard]] ValueId append_load(const ValueId address, const sema::TypeHandle value_type, const std::string& name = {}) {
+        Value value;
+        value.kind = ValueKind::load;
+        value.name = name;
+        value.type = value_type;
+        value.object = address;
+        return append_value(value);
+    }
+
+    [[nodiscard]] ValueId enum_field_addr(const ValueId object, const std::string& field_name) {
+        const sema::TypeHandle enum_type = local_load_type(object);
+        Value value;
+        value.kind = ValueKind::field_addr;
+        value.name = field_name;
+        value.object = object;
+        value.type = module_.types.pointer(sema::PointerMutability::mut, aggregate_field_type(enum_type, field_name));
+        return append_value(value);
+    }
+
+    void bind_payload_arm(const syntax::MatchArm& arm, const ValueId matched_slot) {
+        const sema::EnumCaseInfo* info = enum_case_info(arm.case_name);
+        if (info == nullptr || !sema::is_valid(info->payload_type)) {
+            return;
+        }
+        const ValueId storage_addr = enum_field_addr(matched_slot, std::string(enum_payload_field_name));
+        Value cast;
+        cast.kind = ValueKind::cast;
+        cast.type = module_.types.pointer(sema::PointerMutability::mut, info->payload_type);
+        cast.target_type = cast.type;
+        cast.lhs = storage_addr;
+        cast.cast_kind = CastKind::pointer;
+        const ValueId payload_addr = append_value(cast);
+        const ValueId payload_value = append_load(payload_addr, info->payload_type, std::string(arm.binding_name));
+        const ValueId slot = append_temp_alloca(std::string(arm.binding_name), info->payload_type);
+        locals_[std::string(arm.binding_name)] = LocalBinding {slot, false};
+        append_store(slot, payload_value);
     }
 
     [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id) {
@@ -656,6 +808,11 @@ private:
             return append_value(value);
         }
         case syntax::ExprKind::call: {
+            const std::string symbol = call_symbol(expr.callee);
+            if (const sema::EnumCaseInfo* enum_case = enum_case_info(symbol);
+                enum_case != nullptr && sema::is_valid(enum_case->payload_type)) {
+                return lower_enum_constructor(*enum_case, expr.args.empty() ? syntax::invalid_expr_id : expr.args.front());
+            }
             Value value;
             value.kind = ValueKind::call;
             value.type = expr_type(checked_, expr_id);
@@ -741,6 +898,12 @@ private:
             return append_value(value);
         }
         const std::string symbol = value_symbol(expr_id, expr);
+        if (const sema::EnumCaseInfo* enum_case = enum_case_info(symbol);
+            enum_case != nullptr &&
+            !sema::is_valid(enum_case->payload_type) &&
+            is_payload_enum(module_.types, enum_case->type)) {
+            return lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
+        }
         if (const auto constant = constant_symbols_.find(symbol); constant != constant_symbols_.end()) {
             Value value;
             value.kind = ValueKind::constant_ref;

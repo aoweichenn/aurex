@@ -14,6 +14,12 @@ enum Tag: u16 {
     one = 1,
 }
 
+enum Payload: u8 {
+    small(u8) = 1,
+    wide(u64) = 2,
+    empty = 3,
+}
+
 fn main() -> i32 {
     if size_of(Padded) != cast(usize, 16) {
         return 1;
@@ -32,6 +38,12 @@ fn main() -> i32 {
     }
     if align_of(Tag) != cast(usize, 2) {
         return 6;
+    }
+    if size_of(Payload) != cast(usize, 16) {
+        return 7;
+    }
+    if align_of(Payload) != cast(usize, 8) {
+        return 8;
     }
     return 0;
 }

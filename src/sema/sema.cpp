@@ -61,6 +61,23 @@ namespace {
     return (offset + mask) & ~mask;
 }
 
+[[nodiscard]] TypeHandle payload_storage_type(TypeTable& types, const base::u64 size, const base::u64 alignment) {
+    TypeHandle unit = types.builtin(BuiltinType::u8);
+    base::u64 unit_size = 1;
+    if (alignment >= alignof(std::uint64_t)) {
+        unit = types.builtin(BuiltinType::u64);
+        unit_size = sizeof(std::uint64_t);
+    } else if (alignment >= alignof(std::uint32_t)) {
+        unit = types.builtin(BuiltinType::u32);
+        unit_size = sizeof(std::uint32_t);
+    } else if (alignment >= alignof(std::uint16_t)) {
+        unit = types.builtin(BuiltinType::u16);
+        unit_size = sizeof(std::uint16_t);
+    }
+    const base::u64 count = std::max<base::u64>(1, (size + unit_size - 1) / unit_size);
+    return count == 1 ? unit : types.array(count, unit);
+}
+
 } // namespace
 
 SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::DiagnosticSink& diagnostics) noexcept
@@ -243,29 +260,62 @@ void SemanticAnalyzer::register_value_names() {
             if (is_valid(named_enum_type)) {
                 checked_.types.set_enum_underlying(named_enum_type, enum_type);
             }
+            TypeHandle payload_storage = invalid_type_handle;
+            base::u64 payload_size = 0;
+            base::u64 payload_align = 1;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
                 const std::string enum_case_key = module_key(current_module_, full_name);
+                const bool has_payload = syntax::is_valid(enum_case.payload_type);
+                const TypeHandle payload_type = has_payload ? resolve_type(enum_case.payload_type) : invalid_type_handle;
+                if (has_payload) {
+                    if (!is_valid_storage_type(payload_type)) {
+                        report(enum_case.range, "enum payload type is not valid storage");
+                    }
+                    const base::u64 case_size = abi_size(payload_type);
+                    const base::u64 case_align = abi_align(payload_type);
+                    if (!is_valid(payload_storage) ||
+                        case_size > payload_size ||
+                        (case_size == payload_size && case_align > payload_align)) {
+            payload_storage = payload_type;
+                    }
+                    payload_size = std::max(payload_size, case_size);
+                    payload_align = std::max(payload_align, case_align);
+                    if (checked_.types.contains_array(payload_type)) {
+                        report(enum_case.range, "enum payload cannot contain array storage in M1");
+                    }
+                }
                 checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
                     full_name,
                     c_symbol_name(current_module_, full_name),
                     current_module_,
                     named_enum_type,
+                    payload_type,
                     std::string(enum_case.value_text),
                     enum_case.range,
                 });
-                const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
-                    SymbolKind::enum_case,
-                    full_name,
-                    c_symbol_name(current_module_, full_name),
-                    current_module_,
-                    named_enum_type,
-                    enum_case.range,
-                    false,
-                });
-                if (!value_inserted.second) {
-                    report(enum_case.range, "duplicate value definition in module " + module_name(current_module_) + ": " + full_name);
+                if (!has_payload) {
+                    const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
+                        SymbolKind::enum_case,
+                        full_name,
+                        c_symbol_name(current_module_, full_name),
+                        current_module_,
+                        named_enum_type,
+                        enum_case.range,
+                        false,
+                    });
+                    if (!value_inserted.second) {
+                        report(enum_case.range, "duplicate value definition in module " + module_name(current_module_) + ": " + full_name);
+                    }
                 }
+            }
+            if (is_valid(named_enum_type) && is_valid(payload_storage)) {
+                checked_.types.set_enum_payload_layout(
+                    named_enum_type,
+                    payload_storage_type(checked_.types, payload_size, payload_align),
+                    payload_size,
+                    payload_align
+                );
             }
         }
     }
@@ -707,7 +757,30 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
         const std::string name(module_.exprs[expr.callee.value].text);
-        const FunctionSignature* signature = find_function_in_visible_modules(name, module_.exprs[expr.callee.value].range);
+        const base::SourceRange callee_range = module_.exprs[expr.callee.value].range;
+        if (const EnumCaseInfo* enum_case = find_enum_case_in_visible_modules(name, callee_range, false); enum_case != nullptr) {
+            if (!is_valid(enum_case->payload_type)) {
+                report(expr.range, "enum case constructor requires a payload case: " + name);
+            }
+            if (expr.args.size() != 1) {
+                report(expr.range, "enum payload constructor requires exactly one argument: " + name);
+            }
+            TypeHandle actual = invalid_type_handle;
+            if (!expr.args.empty()) {
+                actual = analyze_expr(expr.args.front());
+                if (!can_assign(enum_case->payload_type, actual, expr.args.front())) {
+                    report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
+                }
+                if (is_copy_forbidden_value(enum_case->payload_type)) {
+                    report(module_.exprs[expr.args.front().value].range, "non-copyable array storage cannot be used as enum payload");
+                }
+            }
+            if (expr.callee.value < checked_.expr_c_names.size()) {
+                checked_.expr_c_names[expr.callee.value] = enum_case->c_name;
+            }
+            return record_expr_type(expr_id, enum_case->type);
+        }
+        const FunctionSignature* signature = find_function_in_visible_modules(name, callee_range);
         if (signature == nullptr) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
@@ -792,7 +865,9 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
                 checked_.types.is_integer(lhs) ||
                 checked_.types.is_float(lhs) ||
                 checked_.types.is_pointer(lhs) ||
-                (is_valid(lhs) && checked_.types.get(lhs).kind == TypeKind::enum_);
+                (is_valid(lhs) &&
+                 checked_.types.get(lhs).kind == TypeKind::enum_ &&
+                 !is_valid(checked_.types.get(lhs).enum_payload_storage));
             if (!scalar && !is_null_pointer_comparison) {
                 report(expr.range, "equality operator requires scalar operands");
             }
@@ -1006,7 +1081,27 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
             covered.push_back(case_info->c_name);
         }
 
-        const TypeHandle arm_type = analyze_expr(arm.value);
+        TypeHandle arm_type = invalid_type_handle;
+        if (!arm.binding_name.empty()) {
+            if (!is_valid(case_info->payload_type)) {
+                report(arm.range, "match arm payload binding requires a payload enum case");
+            } else {
+                symbols_.push_scope();
+                static_cast<void>(symbols_.insert(Symbol {
+                    SymbolKind::local,
+                    std::string(arm.binding_name),
+                    {},
+                    syntax::invalid_module_id,
+                    case_info->payload_type,
+                    arm.range,
+                    false,
+                }, diagnostics_));
+                arm_type = analyze_expr(arm.value);
+                symbols_.pop_scope();
+            }
+        } else {
+            arm_type = analyze_expr(arm.value);
+        }
         if (!is_valid(result)) {
             result = arm_type;
         } else if (!checked_.types.same(result, arm_type)) {
@@ -1157,8 +1252,16 @@ base::u64 SemanticAnalyzer::abi_size(const TypeHandle type) const noexcept {
         return sizeof(void*);
     case TypeKind::array:
         return info.array_count * abi_size(info.array_element);
-    case TypeKind::enum_:
-        return abi_size(info.enum_underlying);
+    case TypeKind::enum_: {
+        if (!is_valid(info.enum_payload_storage)) {
+            return abi_size(info.enum_underlying);
+        }
+        const base::u64 tag_align = abi_align(info.enum_underlying);
+        const base::u64 storage_align = info.enum_payload_align;
+        const base::u64 max_align = std::max(tag_align, storage_align);
+        const base::u64 storage_offset = align_forward(abi_size(info.enum_underlying), storage_align);
+        return align_forward(storage_offset + abi_size(info.enum_payload_storage), max_align);
+    }
     case TypeKind::struct_: {
         const StructInfo* struct_info = find_struct(type);
         if (struct_info == nullptr) {
@@ -1210,7 +1313,10 @@ base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const noexcept {
     case TypeKind::array:
         return abi_align(info.array_element);
     case TypeKind::enum_:
-        return abi_align(info.enum_underlying);
+        if (!is_valid(info.enum_payload_storage)) {
+            return abi_align(info.enum_underlying);
+        }
+        return std::max(abi_align(info.enum_underlying), info.enum_payload_align);
     case TypeKind::struct_: {
         const StructInfo* struct_info = find_struct(type);
         if (struct_info == nullptr) {
@@ -1435,7 +1541,11 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(cons
     return imported_result;
 }
 
-const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(const std::string_view name, const base::SourceRange range) {
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
     if (const auto found = checked_.enum_cases.find(module_key(current_module_, name)); found != checked_.enum_cases.end()) {
         return &found->second;
     }
@@ -1456,7 +1566,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(const st
             result_module = module;
         }
     }
-    if (imported_result == nullptr) {
+    if (imported_result == nullptr && report_unknown) {
         report(range, "unknown enum case: " + std::string(name));
     }
     return imported_result;

@@ -1,0 +1,13 @@
+module enum_payload_array_storage;
+
+struct Bytes {
+    data: [4]u8;
+}
+
+enum Packet: u8 {
+    bytes(Bytes) = 1,
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -59,6 +59,9 @@ struct TypeInfo {
     base::u64 array_count = 0;
     TypeHandle array_element = invalid_type_handle;
     TypeHandle enum_underlying = invalid_type_handle;
+    TypeHandle enum_payload_storage = invalid_type_handle;
+    base::u64 enum_payload_size = 0;
+    base::u64 enum_payload_align = 1;
     std::string name;
     std::string c_name;
     bool contains_array = false;
@@ -78,6 +81,7 @@ public:
 
     void set_record_properties(TypeHandle handle, bool contains_array, bool is_copyable) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
+    void set_enum_payload_layout(TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
 
     [[nodiscard]] bool same(TypeHandle lhs, TypeHandle rhs) const noexcept;
     [[nodiscard]] bool is_integer(TypeHandle type) const noexcept;

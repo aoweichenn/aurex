@@ -66,6 +66,9 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
     case sema::TypeKind::opaque_struct:
         return records_.at(type.value);
     case sema::TypeKind::enum_:
+        if (sema::is_valid(info.enum_payload_storage)) {
+            return records_.at(type.value);
+        }
         return llvm_type(info.enum_underlying);
     }
     return llvm::Type::getVoidTy(context_);

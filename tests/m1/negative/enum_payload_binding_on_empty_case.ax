@@ -1,0 +1,13 @@
+module enum_payload_binding_on_empty_case;
+
+enum Packet: u8 {
+    int(i32) = 1,
+    none = 2,
+}
+
+fn main() -> i32 {
+    return match Packet_none {
+        Packet_int(value) => value,
+        Packet_none(value) => value,
+    };
+}

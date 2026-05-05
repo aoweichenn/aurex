@@ -50,6 +50,51 @@ TEST_F(AurexIntegrationTest, M1MatchExpression) {
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "match expression arms must have the same type");
 }
 
+TEST_F(AurexIntegrationTest, M1EnumPayloadAndMatchBinding) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "enum_payload.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "case int(i32) = 1",
+        "case pair(Pair) = 2",
+        "match_arm Packet_int(value)",
+        "match_arm Packet_pair(pair)",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains(checked, "enum_cases 3");
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "record enum_payload.Packet",
+        ".tag: u8",
+        ".payload:",
+        "field_addr",
+        "enum.payload.storage",
+        "field_addr %4.tag",
+        "aggregate {.tag",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_enum_payload";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path missing_arg = source_root() / "tests" / "m1" / "negative" / "enum_payload_constructor_missing_arg.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_arg)).output, "enum payload constructor requires exactly one argument");
+
+    const fs::path wrong_type = source_root() / "tests" / "m1" / "negative" / "enum_payload_constructor_wrong_type.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(wrong_type)).output, "enum payload constructor argument type mismatch");
+
+    const fs::path empty_binding = source_root() / "tests" / "m1" / "negative" / "enum_payload_binding_on_empty_case.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(empty_binding)).output, "match arm payload binding requires a payload enum case");
+
+    const fs::path unknown_binding = source_root() / "tests" / "m1" / "negative" / "enum_payload_unknown_binding.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(unknown_binding)).output, "unknown name: missing");
+
+    const fs::path array_storage = source_root() / "tests" / "m1" / "negative" / "enum_payload_array_storage.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(array_storage)).output, "enum payload cannot contain array storage in M1");
+}
+
 TEST_F(AurexIntegrationTest, M1LayoutAlignment) {
     const fs::path source = source_root() / "tests" / "m1" / "positive" / "layout_alignment.ax";
 
@@ -59,6 +104,8 @@ TEST_F(AurexIntegrationTest, M1LayoutAlignment) {
         "align_of layout_alignment.Padded",
         "size_of layout_alignment.Tag",
         "align_of layout_alignment.Tag",
+        "size_of layout_alignment.Payload",
+        "align_of layout_alignment.Payload",
     });
 
     const fs::path bin = test_bin_root() / "m1_layout_alignment";

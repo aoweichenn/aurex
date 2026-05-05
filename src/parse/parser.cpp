@@ -215,6 +215,7 @@ void Parser::synchronize() {
         case TokenKind::kw_enum:
         case TokenKind::kw_opaque:
         case TokenKind::kw_const:
+        case TokenKind::kw_type:
         case TokenKind::kw_extern:
         case TokenKind::kw_export:
         case TokenKind::kw_let:
@@ -274,6 +275,9 @@ syntax::ItemId Parser::parse_item() {
     if (check(TokenKind::kw_const)) {
         return parse_const_decl();
     }
+    if (check(TokenKind::kw_type)) {
+        return parse_type_alias_decl();
+    }
     if (check(TokenKind::kw_struct)) {
         return parse_struct_decl();
     }
@@ -322,6 +326,22 @@ syntax::ItemId Parser::parse_const_decl() {
     item.name = name.text;
     item.const_type = type;
     item.const_value = value;
+    panic_ = false;
+    return module_.push_item(std::move(item));
+}
+
+syntax::ItemId Parser::parse_type_alias_decl() {
+    const syntax::Token& begin = expect(TokenKind::kw_type, "expected 'type'");
+    const syntax::Token& name = expect(TokenKind::identifier, "expected type alias name");
+    expect(TokenKind::equal, "expected '=' in type alias declaration");
+    const syntax::TypeId target = parse_type();
+    const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after type alias declaration");
+
+    syntax::ItemNode item;
+    item.kind = syntax::ItemKind::type_alias;
+    item.range = merge(begin.range, end.range);
+    item.name = name.text;
+    item.alias_type = target;
     panic_ = false;
     return module_.push_item(std::move(item));
 }

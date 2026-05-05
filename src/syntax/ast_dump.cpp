@@ -24,6 +24,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_opaque: return "kw_opaque";
     case TokenKind::kw_enum: return "kw_enum";
     case TokenKind::kw_const: return "kw_const";
+    case TokenKind::kw_type: return "kw_type";
     case TokenKind::kw_let: return "kw_let";
     case TokenKind::kw_var: return "kw_var";
     case TokenKind::kw_if: return "kw_if";
@@ -151,6 +152,7 @@ std::string type_label(const AstModule& module, const TypeId id) {
 std::string_view item_kind_name(const ItemKind kind) {
     switch (kind) {
     case ItemKind::const_decl: return "const";
+    case ItemKind::type_alias: return "type_alias";
     case ItemKind::struct_decl: return "struct";
     case ItemKind::enum_decl: return "enum";
     case ItemKind::opaque_struct_decl: return "opaque_struct";
@@ -346,6 +348,10 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (is_valid(item.const_value)) {
         dump_expr(out, module, item.const_value, depth + 1);
+    }
+    if (is_valid(item.alias_type)) {
+        indent(out, depth + 1);
+        out << "alias " << type_label(module, item.alias_type) << "\n";
     }
     if (is_valid(item.body)) {
         dump_stmt(out, module, item.body, depth + 1);

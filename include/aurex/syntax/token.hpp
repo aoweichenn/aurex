@@ -24,6 +24,7 @@ enum class TokenKind {
     kw_opaque,
     kw_enum,
     kw_const,
+    kw_type,
     kw_let,
     kw_var,
     kw_if,

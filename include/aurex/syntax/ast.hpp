@@ -179,6 +179,7 @@ struct EnumCaseDecl {
 
 enum class ItemKind {
     const_decl,
+    type_alias,
     struct_decl,
     enum_decl,
     opaque_struct_decl,
@@ -192,6 +193,7 @@ struct ItemNode {
     std::string_view name;
     TypeId const_type = invalid_type_id;
     ExprId const_value = invalid_expr_id;
+    TypeId alias_type = invalid_type_id;
     std::vector<FieldDecl> fields;
     TypeId enum_base_type = invalid_type_id;
     std::vector<EnumCaseDecl> enum_cases;

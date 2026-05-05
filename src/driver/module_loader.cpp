@@ -153,6 +153,7 @@ void remap_stmt_node(syntax::StmtNode& node, const IdMap& map) {
 void remap_item_node(syntax::ItemNode& node, const IdMap& map) {
     node.const_type = remap_type(node.const_type, map);
     node.const_value = remap_expr(node.const_value, map);
+    node.alias_type = remap_type(node.alias_type, map);
     for (syntax::FieldDecl& field : node.fields) {
         field.type = remap_type(field.type, map);
     }

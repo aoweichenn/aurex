@@ -37,6 +37,7 @@ private:
     [[nodiscard]] syntax::ModulePath parse_path();
     [[nodiscard]] syntax::ItemId parse_item();
     [[nodiscard]] syntax::ItemId parse_const_decl();
+    [[nodiscard]] syntax::ItemId parse_type_alias_decl();
     [[nodiscard]] syntax::ItemId parse_struct_decl();
     [[nodiscard]] syntax::ItemId parse_enum_decl();
     [[nodiscard]] syntax::ItemId parse_extern_block();

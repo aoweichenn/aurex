@@ -1,0 +1,9 @@
+module type_alias_cycle;
+
+type A = B;
+type B = A;
+
+fn main() -> i32 {
+    let value: A = 0;
+    return value;
+}

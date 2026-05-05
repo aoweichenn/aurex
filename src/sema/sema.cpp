@@ -78,6 +78,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     checked_.syntax_type_handles.assign(module_.types.size(), invalid_type_handle);
     checked_.item_c_names.assign(module_.items.size(), {});
     register_type_names();
+    resolve_type_alias_decls();
     analyze_struct_properties();
     register_value_names();
     analyze_entry_points();
@@ -102,6 +103,21 @@ void SemanticAnalyzer::register_type_names() {
         const std::string qualified = qualified_name(owner, item.name);
         const std::string c_name = c_symbol_name(owner, item.name);
         TypeHandle handle = invalid_type_handle;
+        if (item.kind == syntax::ItemKind::type_alias) {
+            TypeAliasInfo alias;
+            alias.name = std::string(item.name);
+            alias.module = owner;
+            alias.target = item.alias_type;
+            alias.range = item.range;
+            auto alias_inserted = checked_.type_aliases.emplace(key, std::move(alias));
+            if (!alias_inserted.second) {
+                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            }
+            if (named_types_.contains(key)) {
+                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            }
+            continue;
+        }
         if (item.kind == syntax::ItemKind::struct_decl) {
             handle = checked_.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
@@ -123,6 +139,10 @@ void SemanticAnalyzer::register_type_names() {
             report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
             continue;
         }
+        if (checked_.type_aliases.contains(key)) {
+            report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            continue;
+        }
 
         if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::opaque_struct_decl) {
             StructInfo info;
@@ -136,6 +156,12 @@ void SemanticAnalyzer::register_type_names() {
                 report(item.range, "duplicate struct definition in module " + module_name(owner) + ": " + std::string(item.name));
             }
         }
+    }
+}
+
+void SemanticAnalyzer::resolve_type_alias_decls() {
+    for (const auto& entry : checked_.type_aliases) {
+        static_cast<void>(resolve_type_alias(entry.second, false));
     }
 }
 
@@ -671,7 +697,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         return record_expr_type(expr_id, invalid_type_handle);
     }
     case syntax::ExprKind::struct_literal: {
-        const TypeHandle struct_type = find_type_in_visible_modules(expr.struct_name, expr.range);
+        const TypeHandle struct_type = find_type_in_visible_modules(expr.struct_name, expr.range, false);
         if (!is_valid(struct_type)) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
@@ -751,7 +777,11 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
     }
 
     if (type_id.value < checked_.syntax_type_handles.size() && is_valid(checked_.syntax_type_handles[type_id.value])) {
-        return checked_.syntax_type_handles[type_id.value];
+        const TypeHandle cached = checked_.syntax_type_handles[type_id.value];
+        if (checked_.types.get(cached).kind == TypeKind::opaque_struct && !opaque_allowed_as_pointee) {
+            report(module_.types[type_id.value].range, "opaque struct can only be used as a pointer target");
+        }
+        return cached;
     }
 
     const syntax::TypeNode& type = module_.types[type_id.value];
@@ -767,7 +797,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
         resolved = checked_.types.array(type.array_count, resolve_type(type.array_element));
         break;
     case syntax::TypeKind::named: {
-        resolved = find_type_in_visible_modules(type.name, type.range);
+        resolved = find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee);
         if (!is_valid(resolved)) {
             break;
         }
@@ -780,6 +810,26 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
     if (type_id.value < checked_.syntax_type_handles.size()) {
         checked_.syntax_type_handles[type_id.value] = resolved;
     }
+    return resolved;
+}
+
+TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee) {
+    const std::string key = module_key(alias.module, alias.name);
+    if (const auto found = resolved_type_aliases_.find(key); found != resolved_type_aliases_.end()) {
+        return found->second;
+    }
+    if (std::find(resolving_type_aliases_.begin(), resolving_type_aliases_.end(), key) != resolving_type_aliases_.end()) {
+        report(alias.range, "cyclic type alias: " + alias.name);
+        resolved_type_aliases_[key] = invalid_type_handle;
+        return invalid_type_handle;
+    }
+    resolving_type_aliases_.push_back(key);
+    const syntax::ModuleId previous_module = current_module_;
+    current_module_ = alias.module;
+    const TypeHandle resolved = resolve_type(alias.target, opaque_allowed_as_pointee);
+    current_module_ = previous_module;
+    resolving_type_aliases_.pop_back();
+    resolved_type_aliases_[key] = resolved;
     return resolved;
 }
 
@@ -1054,9 +1104,16 @@ std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const st
     return std::to_string(module.value) + ":" + std::string(name);
 }
 
-TypeHandle SemanticAnalyzer::find_type_in_visible_modules(const std::string_view name, const base::SourceRange range) {
+TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool opaque_allowed_as_pointee
+) {
     if (const auto found = named_types_.find(module_key(current_module_, name)); found != named_types_.end()) {
         return found->second;
+    }
+    if (const auto found = checked_.type_aliases.find(module_key(current_module_, name)); found != checked_.type_aliases.end()) {
+        return resolve_type_alias(found->second, opaque_allowed_as_pointee);
     }
 
     TypeHandle imported_result = invalid_type_handle;
@@ -1064,14 +1121,21 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(const std::string_view
     if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
         for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
             const auto found = named_types_.find(module_key(module, name));
-            if (found == named_types_.end()) {
-                continue;
+            TypeHandle candidate = invalid_type_handle;
+            if (found != named_types_.end()) {
+                candidate = found->second;
+            } else {
+                const auto alias_found = checked_.type_aliases.find(module_key(module, name));
+                if (alias_found == checked_.type_aliases.end()) {
+                    continue;
+                }
+                candidate = resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
             }
             if (is_valid(imported_result)) {
                 report(range, "ambiguous type name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
                 return invalid_type_handle;
             }
-            imported_result = found->second;
+            imported_result = candidate;
             result_module = module;
         }
     }
@@ -1195,6 +1259,22 @@ std::string dump_checked_module(const CheckedModule& checked) {
             out << " opaque";
         }
         out << " fields=" << info.fields.size() << "\n";
+    }
+
+    std::vector<std::string> alias_names;
+    alias_names.reserve(checked.type_aliases.size());
+    for (const auto& entry : checked.type_aliases) {
+        alias_names.push_back(entry.first);
+    }
+    std::sort(alias_names.begin(), alias_names.end());
+    out << "  type_aliases " << alias_names.size() << "\n";
+    for (const std::string& name : alias_names) {
+        const TypeAliasInfo& alias = checked.type_aliases.at(name);
+        TypeHandle resolved = invalid_type_handle;
+        if (alias.target.value < checked.syntax_type_handles.size()) {
+            resolved = checked.syntax_type_handles[alias.target.value];
+        }
+        out << "    type " << alias.name << " = " << checked.types.display_name(resolved) << "\n";
     }
 
     out << "  enum_cases " << checked.enum_cases.size() << "\n";

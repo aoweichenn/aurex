@@ -1,0 +1,12 @@
+module type_alias_opaque_value;
+
+extern c {
+    opaque struct Native;
+}
+
+type NativeAlias = Native;
+
+fn main() -> i32 {
+    let value: NativeAlias = 0;
+    return 0;
+}

@@ -49,6 +49,7 @@ namespace {
         Entry {"opaque", TokenKind::kw_opaque},
         Entry {"enum", TokenKind::kw_enum},
         Entry {"const", TokenKind::kw_const},
+        Entry {"type", TokenKind::kw_type},
         Entry {"let", TokenKind::kw_let},
         Entry {"var", TokenKind::kw_var},
         Entry {"if", TokenKind::kw_if},

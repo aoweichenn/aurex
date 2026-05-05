@@ -49,6 +49,13 @@ struct EnumCaseInfo {
     base::SourceRange range {};
 };
 
+struct TypeAliasInfo {
+    std::string name;
+    syntax::ModuleId module = syntax::invalid_module_id;
+    syntax::TypeId target = syntax::invalid_type_id;
+    base::SourceRange range {};
+};
+
 struct CheckedModule {
     // CheckedModule is the bridge between syntax and codegen. It is deliberately
     // side-table based so AST nodes remain parse-only data.
@@ -60,6 +67,7 @@ struct CheckedModule {
     std::unordered_map<std::string, FunctionSignature> functions;
     std::unordered_map<std::string, StructInfo> structs;
     std::unordered_map<std::string, EnumCaseInfo> enum_cases;
+    std::unordered_map<std::string, TypeAliasInfo> type_aliases;
 };
 
 class SemanticAnalyzer final {
@@ -72,6 +80,7 @@ private:
     void register_type_names();
     void register_value_names();
     void analyze_entry_points();
+    void resolve_type_alias_decls();
     void analyze_struct_properties();
     void analyze_const_decls();
     void analyze_function_body(const syntax::ItemNode& function);
@@ -80,6 +89,7 @@ private:
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
+    [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const noexcept;
@@ -97,7 +107,7 @@ private:
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
-    [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range);
+    [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range, bool opaque_allowed_as_pointee);
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
@@ -108,6 +118,8 @@ private:
     CheckedModule checked_;
     SymbolTable symbols_;
     std::unordered_map<std::string, TypeHandle> named_types_;
+    std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
+    std::vector<std::string> resolving_type_aliases_;
     std::unordered_map<std::string, Symbol> global_values_;
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
     int loop_depth_ = 0;

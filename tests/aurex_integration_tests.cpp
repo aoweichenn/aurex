@@ -468,6 +468,66 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
     }
 }
 
+TEST_F(AurexIntegrationTest, M1TypeAliasPrototype) {
+    const fs::path alias = source_root() / "tests" / "m1" / "positive" / "type_alias.ax";
+    const std::string alias_tokens = require_success(aurexc() + " --dump-tokens " + q(alias)).output;
+    expect_contains(alias_tokens, "kw_type `type`");
+
+    const std::string alias_ast = require_success(aurexc() + " --emit=ast " + q(alias)).output;
+    expect_contains_all(alias_ast, {
+        "item #0 type_alias Count",
+        "alias i32",
+        "item #1 type_alias CountPtr",
+        "alias *mut Count",
+        "item #2 type_alias Bytes4",
+        "alias [4]u8",
+        "item #3 type_alias PacketAlias",
+        "alias Packet",
+    });
+
+    const std::string alias_checked = require_success(aurexc() + " --emit=checked " + q(alias)).output;
+    expect_contains_all(alias_checked, {
+        "type_aliases 4",
+        "type Count = i32",
+        "type CountPtr = *mut i32",
+        "type Bytes4 = [4]u8",
+        "type PacketAlias = type_alias.Packet",
+    });
+
+    const std::string alias_ir = require_success(aurexc() + " --emit=ir " + q(alias)).output;
+    expect_contains_all(alias_ir, {
+        "fn read_count(value: *mut i32)",
+        "fn main()",
+        "record Packet @m0_type_alias_Packet",
+        ".len: i32",
+    });
+
+    const std::string alias_llvm = require_success(aurexc() + " --emit=llvm-ir " + q(alias)).output;
+    expect_contains(alias_llvm, "%m0_type_alias_Packet = type { i32 }");
+
+    const fs::path alias_bin = test_bin_root() / "m1_type_alias";
+    require_success(aurexc() + " " + q(alias) + " -o " + q(alias_bin));
+    EXPECT_EQ(require_success(q(alias_bin)).output, "");
+
+    const fs::path imported = source_root() / "tests" / "m1" / "positive" / "type_alias_import.ax";
+    const fs::path imported_bin = test_bin_root() / "m1_type_alias_import";
+    require_success(aurexc() + " -I " + q(source_root() / "tests" / "m1" / "imports") + " " + q(imported) + " -o " + q(imported_bin));
+    EXPECT_EQ(require_success(q(imported_bin)).output, "");
+
+    for (const fs::path& src : sorted_files(source_root() / "tests" / "m1" / "negative", ".ax")) {
+        const CommandResult result = require_failure(aurexc() + " --check " + q(src));
+        if (stem(src) == "type_alias_cycle") {
+            expect_contains(result.output, "cyclic type alias");
+        }
+        if (stem(src) == "type_alias_duplicate") {
+            expect_contains(result.output, "duplicate type definition");
+        }
+        if (stem(src) == "type_alias_opaque_value") {
+            expect_contains(result.output, "opaque struct can only be used as a pointer target");
+        }
+    }
+}
+
 TEST_F(AurexIntegrationTest, InstallAndImportPaths) {
     const fs::path install_root = work_root() / "install";
     require_success(q(std::string_view(AUREX_TEST_CMAKE_COMMAND)) + " --install " + q(build_root()) + " --prefix " + q(install_root));

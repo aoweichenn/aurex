@@ -202,6 +202,7 @@ struct ItemNode {
     StmtId body = invalid_stmt_id;
     bool is_export_c = false;
     bool is_extern_c = false;
+    bool is_prototype = false;
     std::string_view abi_name;
     std::vector<ItemId> extern_items;
 };

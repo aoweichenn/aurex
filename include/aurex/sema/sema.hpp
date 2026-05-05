@@ -2,6 +2,7 @@
 
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
+#include "aurex/sema/function.hpp"
 #include "aurex/sema/symbol.hpp"
 #include "aurex/sema/type.hpp"
 #include "aurex/syntax/ast.hpp"
@@ -11,17 +12,6 @@
 #include <vector>
 
 namespace aurex::sema {
-
-struct FunctionSignature {
-    std::string name;
-    std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle return_type = invalid_type_handle;
-    std::vector<TypeHandle> param_types;
-    base::SourceRange range {};
-    bool is_extern_c = false;
-    bool is_export_c = false;
-};
 
 struct StructFieldInfo {
     std::string name;
@@ -63,6 +53,7 @@ struct CheckedModule {
     std::vector<TypeHandle> expr_types;
     std::vector<std::string> expr_c_names;
     std::vector<TypeHandle> syntax_type_handles;
+    std::vector<TypeHandle> stmt_local_types;
     std::vector<std::string> item_c_names;
     std::unordered_map<std::string, FunctionSignature> functions;
     std::unordered_map<std::string, StructInfo> structs;
@@ -77,15 +68,31 @@ public:
     [[nodiscard]] base::Result<CheckedModule> analyze();
 
 private:
+    enum class FunctionBodyState {
+        not_started,
+        analyzing,
+        analyzed,
+    };
+
+    struct ReturnTypeInference {
+        TypeHandle inferred_type = invalid_type_handle;
+        std::vector<syntax::StmtId> returns;
+    };
+
     void register_type_names();
     void register_value_names();
+    void validate_function_prototypes();
     void analyze_entry_points();
     void resolve_type_alias_decls();
     void analyze_struct_properties();
     void analyze_const_decls();
     void analyze_function_body(const syntax::ItemNode& function);
-    void analyze_block(syntax::StmtId block, TypeHandle expected_return);
-    void analyze_stmt(syntax::StmtId stmt, TypeHandle expected_return);
+    void analyze_block(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
+    void analyze_stmt(syntax::StmtId stmt, TypeHandle expected_return, ReturnTypeInference* return_inference);
+    void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
+    void finalize_inferred_return(const syntax::ItemNode& function, const std::string& key, ReturnTypeInference& inference);
+    void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
+    void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
@@ -121,6 +128,8 @@ private:
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
     std::vector<std::string> resolving_type_aliases_;
     std::unordered_map<std::string, Symbol> global_values_;
+    std::unordered_map<std::string, syntax::ItemId> function_definition_items_;
+    std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
     int loop_depth_ = 0;
 };

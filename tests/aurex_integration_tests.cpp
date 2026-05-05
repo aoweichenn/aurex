@@ -136,6 +136,10 @@ void expect_contains_all(const std::string_view text, const std::vector<std::str
     }
 }
 
+void expect_not_contains(const std::string_view text, const std::string_view needle) {
+    EXPECT_EQ(text.find(needle), std::string_view::npos) << "unexpected: " << needle;
+}
+
 int count_lines_starting_with(const std::string_view text, const std::string_view prefix) {
     std::istringstream input {std::string(text)};
     std::string line;
@@ -526,6 +530,129 @@ TEST_F(AurexIntegrationTest, M1TypeAliasPrototype) {
             expect_contains(result.output, "opaque struct can only be used as a pointer target");
         }
     }
+}
+
+TEST_F(AurexIntegrationTest, M1LocalTypeInferencePrototype) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "local_inference.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "var value\n",
+        "let ptr\n",
+        "let pair\n",
+        "let aliased : CountPtr",
+    });
+    expect_not_contains(ast, "var value :");
+    expect_not_contains(ast, "let ptr :");
+    expect_not_contains(ast, "let pair :");
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn make_count()",
+        ": *mut i32 = alloca value",
+        ": *mut *mut i32 = alloca ptr",
+        ": *mut local_inference.Pair = alloca pair",
+        ": *mut *mut i32 = alloca aliased",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_local_inference";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path null_source = source_root() / "tests" / "m1" / "negative" / "local_inference_null.ax";
+    const CommandResult null_result = require_failure(aurexc() + " --check " + q(null_source));
+    expect_contains(null_result.output, "local variable type cannot be inferred");
+}
+
+TEST_F(AurexIntegrationTest, M1FunctionReturnInferencePrototype) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "return_inference.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "item #2 fn make_count\n",
+        "item #3 fn make_pair\n",
+        "item #4 fn touch\n",
+        "item #5 fn choose\n",
+    });
+    expect_not_contains(ast, "fn make_count\n    return");
+    expect_not_contains(ast, "fn make_pair\n    return");
+    expect_not_contains(ast, "fn touch\n    return");
+    expect_not_contains(ast, "fn choose\n    return");
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "fn make_count -> i32",
+        "fn make_pair -> return_inference.Pair",
+        "fn touch -> void",
+        "fn choose -> i32",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn make_count()",
+        "-> i32",
+        "fn make_pair(value: i32)",
+        "-> return_inference.Pair",
+        "fn touch(value: *mut i32)",
+        "-> void",
+        "fn choose(flag: bool, value: i32)",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_return_inference";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path mismatch = source_root() / "tests" / "m1" / "negative" / "return_inference_mismatch.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "inferred function return types do not match");
+
+    const fs::path null_source = source_root() / "tests" / "m1" / "negative" / "return_inference_null.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(null_source)).output, "function return type cannot be inferred");
+
+    const fs::path recursive = source_root() / "tests" / "m1" / "negative" / "return_inference_recursive.ax";
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(recursive)).output,
+        "cannot infer recursive function return type without an explicit return type"
+    );
+}
+
+TEST_F(AurexIntegrationTest, M1FunctionPrototypePrototype) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "function_prototype.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "item #1 fn add_one prototype",
+        "item #2 fn choose prototype",
+        "item #4 fn add_one",
+        "item #5 fn choose",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "fn add_one -> i32",
+        "fn choose -> i32",
+        "fn main -> i32",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn main()",
+        "call m0_function_prototype_choose",
+        "fn add_one(value: i32)",
+        "fn choose(flag: bool, lhs: i32, rhs: i32)",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_function_prototype";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path mismatch = source_root() / "tests" / "m1" / "negative" / "function_prototype_mismatch.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "function prototype and definition signatures do not match");
+
+    const fs::path duplicate = source_root() / "tests" / "m1" / "negative" / "function_prototype_duplicate.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate function prototype");
+
+    const fs::path missing = source_root() / "tests" / "m1" / "negative" / "function_prototype_missing_definition.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(missing)).output, "function prototype has no definition");
 }
 
 TEST_F(AurexIntegrationTest, InstallAndImportPaths) {

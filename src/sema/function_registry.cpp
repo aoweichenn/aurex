@@ -1,0 +1,168 @@
+#include "aurex/sema/function_registry.hpp"
+
+#include "aurex/base/abi.hpp"
+#include "aurex/sema/sema.hpp"
+#include "aurex/sema/symbol.hpp"
+
+#include <utility>
+
+namespace aurex::sema {
+
+namespace {
+
+[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name) {
+    if (!item.abi_name.empty()) {
+        return std::string(item.abi_name);
+    }
+    return c_name;
+}
+
+} // namespace
+
+FunctionRegistry::FunctionRegistry(
+    CheckedModule& checked,
+    std::unordered_map<std::string, Symbol>& global_values,
+    base::DiagnosticSink& diagnostics
+) noexcept
+    : checked_(checked),
+      global_values_(global_values),
+      diagnostics_(diagnostics) {}
+
+void FunctionRegistry::register_function(
+    const syntax::ItemNode& item,
+    const syntax::ModuleId owner,
+    std::string key,
+    const std::string c_name,
+    const TypeHandle return_type,
+    std::vector<TypeHandle> param_types,
+    const syntax::ItemId item_id
+) {
+    const bool is_prototype = item.is_prototype;
+
+    FunctionSignature signature;
+    signature.name = std::string(item.name);
+    signature.c_name = abi_or_c_name(item, c_name);
+    signature.module = owner;
+    signature.return_type = return_type;
+    signature.param_types = std::move(param_types);
+    signature.range = item.range;
+    signature.is_extern_c = item.is_extern_c;
+    signature.is_export_c = item.is_export_c;
+    signature.has_prototype = is_prototype;
+    signature.has_definition = !is_prototype && !item.is_extern_c;
+    signature.prototype_item = is_prototype ? item_id : syntax::invalid_item_id;
+    signature.definition_item = signature.has_definition ? item_id : syntax::invalid_item_id;
+
+    if (syntax::is_valid(item_id) && item_id.value < checked_.item_c_names.size()) {
+        checked_.item_c_names[item_id.value] = signature.c_name;
+    }
+
+    merge_function(std::move(key), std::move(signature), is_prototype);
+}
+
+void FunctionRegistry::merge_function(
+    std::string key,
+    FunctionSignature signature,
+    const bool is_prototype
+) {
+    const auto existing = checked_.functions.find(key);
+    if (existing == checked_.functions.end()) {
+        auto inserted = checked_.functions.emplace(std::move(key), std::move(signature));
+        insert_function_value(inserted.first->first, inserted.first->second);
+        return;
+    }
+
+    FunctionSignature& prior = existing->second;
+    if (!same_signature(prior, signature.return_type, signature.param_types)) {
+        prior.has_conflict = true;
+        report(signature.range, "function prototype and definition signatures do not match: " + signature.name);
+        return;
+    }
+    if (prior.is_extern_c || signature.is_extern_c || prior.is_export_c != signature.is_export_c || prior.c_name != signature.c_name) {
+        prior.has_conflict = true;
+        report(signature.range, "function declaration conflicts with existing function: " + signature.name);
+        return;
+    }
+    if (is_prototype) {
+        if (prior.has_prototype) {
+            prior.has_conflict = true;
+            report(signature.range, "duplicate function prototype: " + signature.name);
+            return;
+        }
+        if (prior.has_definition) {
+            prior.has_conflict = true;
+            report(signature.range, "function prototype must appear before definition: " + signature.name);
+            return;
+        }
+        prior.has_prototype = true;
+        prior.prototype_item = signature.prototype_item;
+        prior.range = signature.range;
+        refresh_function_value(key, prior);
+        return;
+    }
+    if (prior.has_definition) {
+        prior.has_conflict = true;
+        report(signature.range, "duplicate function definition: " + signature.name);
+        return;
+    }
+    prior.has_definition = true;
+    prior.definition_item = signature.definition_item;
+    prior.range = signature.range;
+    refresh_function_value(key, prior);
+}
+
+
+bool FunctionRegistry::same_signature(
+    const FunctionSignature& existing,
+    const TypeHandle return_type,
+    const std::vector<TypeHandle>& param_types
+) const noexcept {
+    if (!checked_.types.same(existing.return_type, return_type)) {
+        return false;
+    }
+    if (existing.param_types.size() != param_types.size()) {
+        return false;
+    }
+    for (base::usize i = 0; i < param_types.size(); ++i) {
+        if (!checked_.types.same(existing.param_types[i], param_types[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void FunctionRegistry::insert_function_value(const std::string& key, const FunctionSignature& signature) {
+    const auto value_inserted = global_values_.emplace(key, Symbol {
+        SymbolKind::function,
+        signature.name,
+        signature.c_name,
+        signature.module,
+        signature.return_type,
+        signature.range,
+        false,
+    });
+    if (!value_inserted.second) {
+        report(signature.range, "duplicate value definition in module: " + signature.name);
+    }
+}
+
+void FunctionRegistry::refresh_function_value(const std::string& key, const FunctionSignature& signature) {
+    const auto found = global_values_.find(key);
+    if (found == global_values_.end()) {
+        insert_function_value(key, signature);
+        return;
+    }
+    found->second.c_name = signature.c_name;
+    found->second.type = signature.return_type;
+    found->second.range = signature.range;
+}
+
+void FunctionRegistry::report(base::SourceRange range, std::string message) {
+    diagnostics_.push(base::Diagnostic {
+        base::Severity::error,
+        range,
+        std::move(message),
+    });
+}
+
+} // namespace aurex::sema

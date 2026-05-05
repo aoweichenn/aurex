@@ -1,0 +1,34 @@
+module return_inference;
+
+type Count = i32;
+
+struct Pair {
+    value: Count;
+}
+
+fn make_count() {
+    return 40;
+}
+
+fn make_pair(value: Count) {
+    return Pair { value: value + 2 };
+}
+
+fn touch(value: *mut Count) {
+    *value = *value + 1;
+    return;
+}
+
+fn choose(flag: bool, value: Count) {
+    if flag {
+        return value;
+    }
+    return make_count();
+}
+
+fn main() -> i32 {
+    var value = choose(false, 1);
+    touch(&value);
+    let pair = make_pair(value);
+    return pair.value - 43;
+}

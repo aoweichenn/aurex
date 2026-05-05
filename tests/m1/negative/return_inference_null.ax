@@ -1,0 +1,10 @@
+module return_inference_null;
+
+fn make_ptr() {
+    return null;
+}
+
+fn main() -> i32 {
+    let value = make_ptr();
+    return 0;
+}

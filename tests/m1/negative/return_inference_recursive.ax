@@ -1,0 +1,9 @@
+module return_inference_recursive;
+
+fn loop_value() {
+    return loop_value();
+}
+
+fn main() -> i32 {
+    return loop_value();
+}

@@ -176,7 +176,7 @@ private:
     void lower_function_declarations() {
         for (base::u32 index = 0; index < ast_.items.size(); ++index) {
             const syntax::ItemNode& item = ast_.items[index];
-            if (item.kind != syntax::ItemKind::fn_decl) {
+            if (item.kind != syntax::ItemKind::fn_decl || item.is_prototype) {
                 continue;
             }
             Function function;
@@ -187,7 +187,7 @@ private:
                 ? AbiCallConv::c
                 : AbiCallConv::aurex;
             function.is_entry = is_root_aurex_entry(ast_, index, item);
-            function.return_type = syntax_type(item.return_type);
+            function.return_type = function_return_type(index, item);
             for (const syntax::ParamDecl& param : item.params) {
                 function.signature_params.push_back(FunctionParam {
                     std::string(param.name),
@@ -308,14 +308,14 @@ private:
         switch (stmt.kind) {
         case syntax::StmtKind::let:
         case syntax::StmtKind::var: {
-            const sema::TypeHandle declared_type = syntax_type(stmt.declared_type);
+            const sema::TypeHandle local_type = stmt_local_type(stmt_id);
             Value slot;
             slot.kind = ValueKind::alloca;
             slot.name = std::string(stmt.name);
-            slot.type = module_.types.pointer(sema::PointerMutability::mut, declared_type);
+            slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
             const ValueId slot_id = append_value(slot);
             locals_[std::string(stmt.name)] = LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var};
-            append_store(slot_id, lower_expr(stmt.init, declared_type));
+            append_store(slot_id, lower_expr(stmt.init, local_type));
             break;
         }
         case syntax::StmtKind::assign:
@@ -741,6 +741,23 @@ private:
             return sema::invalid_type_handle;
         }
         return checked_.syntax_type_handles[type.value];
+    }
+
+    [[nodiscard]] sema::TypeHandle function_return_type(const base::u32 index, const syntax::ItemNode& item) const noexcept {
+        const std::string symbol = item_symbol(index, item);
+        for (const auto& entry : checked_.functions) {
+            if (entry.second.c_name == symbol) {
+                return entry.second.return_type;
+            }
+        }
+        return syntax_type(item.return_type);
+    }
+
+    [[nodiscard]] sema::TypeHandle stmt_local_type(const syntax::StmtId stmt) const noexcept {
+        if (!syntax::is_valid(stmt) || stmt.value >= checked_.stmt_local_types.size()) {
+            return sema::invalid_type_handle;
+        }
+        return checked_.stmt_local_types[stmt.value];
     }
 
     [[nodiscard]] sema::TypeHandle aggregate_field_type(

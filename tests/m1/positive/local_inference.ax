@@ -1,0 +1,20 @@
+module local_inference;
+
+type Count = i32;
+type CountPtr = *mut Count;
+
+struct Pair {
+    value: Count;
+}
+
+fn make_count() -> Count {
+    return 40;
+}
+
+fn main() -> i32 {
+    var value = make_count();
+    let ptr = &value;
+    let pair = Pair { value: *ptr + 2 };
+    let aliased: CountPtr = ptr;
+    return pair.value + *aliased - 82;
+}

@@ -481,6 +481,9 @@ syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_exter
     if (is_extern_c) {
         const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after extern function declaration");
         item.range = merge(begin.range, end.range);
+    } else if (match(TokenKind::semicolon)) {
+        item.is_prototype = true;
+        item.range = merge(begin.range, previous().range);
     } else {
         item.body = parse_block();
         item.range = syntax::is_valid(item.body) ? merge(begin.range, module_.stmts[item.body.value].range) : begin.range;
@@ -509,11 +512,7 @@ std::vector<syntax::ParamDecl> Parser::parse_param_list() {
 
 syntax::TypeId Parser::parse_optional_return_type() {
     if (!match(TokenKind::arrow)) {
-        syntax::TypeNode type;
-        type.kind = syntax::TypeKind::primitive;
-        type.primitive = syntax::PrimitiveTypeKind::void_;
-        type.range = peek().range;
-        return module_.push_type(type);
+        return syntax::invalid_type_id;
     }
     return parse_type();
 }
@@ -656,8 +655,10 @@ syntax::StmtId Parser::parse_stmt() {
 syntax::StmtId Parser::parse_let_or_var_stmt(const syntax::StmtKind kind) {
     const syntax::Token& begin = advance();
     const syntax::Token& name = expect(TokenKind::identifier, "expected local name");
-    expect(TokenKind::colon, "expected ':' after local name");
-    const syntax::TypeId type = parse_type();
+    syntax::TypeId type = syntax::invalid_type_id;
+    if (match(TokenKind::colon)) {
+        type = parse_type();
+    }
     expect(TokenKind::equal, "expected initializer");
     const syntax::ExprId init = parse_expr();
     const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after local declaration");

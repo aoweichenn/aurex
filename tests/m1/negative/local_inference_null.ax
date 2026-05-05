@@ -1,0 +1,6 @@
+module local_inference_null;
+
+fn main() -> i32 {
+    let value = null;
+    return 0;
+}

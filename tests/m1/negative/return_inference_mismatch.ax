@@ -1,0 +1,12 @@
+module return_inference_mismatch;
+
+fn choose(flag: bool) {
+    if flag {
+        return 1;
+    }
+    return true;
+}
+
+fn main() -> i32 {
+    return choose(false);
+}

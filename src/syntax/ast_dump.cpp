@@ -326,6 +326,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (item.is_extern_c) {
         out << " extern_c";
     }
+    if (item.is_prototype) {
+        out << " prototype";
+    }
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;
     }

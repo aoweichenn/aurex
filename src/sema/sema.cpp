@@ -1,5 +1,6 @@
 #include "aurex/sema/sema.hpp"
 
+#include "aurex/sema/function_registry.hpp"
 #include "aurex/syntax/module.hpp"
 
 #include <algorithm>
@@ -41,13 +42,6 @@ namespace {
     return item.kind == syntax::ItemKind::fn_decl;
 }
 
-[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name) {
-    if (!item.abi_name.empty()) {
-        return std::string(item.abi_name);
-    }
-    return c_name;
-}
-
 [[nodiscard]] bool is_main_argv_type(const TypeTable& types, const TypeHandle type) noexcept {
     if (!types.is_pointer(type)) {
         return false;
@@ -76,19 +70,22 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     checked_.expr_types.assign(module_.exprs.size(), invalid_type_handle);
     checked_.expr_c_names.assign(module_.exprs.size(), {});
     checked_.syntax_type_handles.assign(module_.types.size(), invalid_type_handle);
+    checked_.stmt_local_types.assign(module_.stmts.size(), invalid_type_handle);
     checked_.item_c_names.assign(module_.items.size(), {});
     register_type_names();
     resolve_type_alias_decls();
     analyze_struct_properties();
     register_value_names();
-    analyze_entry_points();
-    analyze_const_decls();
+    validate_function_prototypes();
 
     for (const syntax::ItemNode& item : module_.items) {
-        if (is_function_item(item) && !item.is_extern_c && syntax::is_valid(item.body)) {
+        if (is_function_item(item) && !item.is_extern_c && !item.is_prototype && syntax::is_valid(item.body)) {
             analyze_function_body(item);
         }
     }
+
+    analyze_entry_points();
+    analyze_const_decls();
 
     if (diagnostics_.has_error()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, "semantic analysis failed"});
@@ -166,19 +163,26 @@ void SemanticAnalyzer::resolve_type_alias_decls() {
 }
 
 void SemanticAnalyzer::register_value_names() {
+    FunctionRegistry functions(checked_, global_values_, diagnostics_);
     for (const syntax::ItemNode& item : module_.items) {
         current_module_ = item_module(item);
         const std::string key = module_key(current_module_, item.name);
         const std::string c_name = c_symbol_name(current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
-            FunctionSignature signature;
-            signature.name = std::string(item.name);
-            signature.c_name = abi_or_c_name(item, c_name);
-            signature.module = current_module_;
-            signature.return_type = resolve_type(item.return_type);
-            signature.range = item.range;
-            signature.is_extern_c = item.is_extern_c;
-            signature.is_export_c = item.is_export_c;
+            const bool has_explicit_return = syntax::is_valid(item.return_type);
+            TypeHandle return_type = invalid_type_handle;
+            if (has_explicit_return) {
+                return_type = resolve_type(item.return_type);
+            } else if (item.is_extern_c || item.is_export_c) {
+                report(item.range, "C ABI function return type must be explicit");
+                return_type = checked_.types.builtin(BuiltinType::void_);
+            } else if (item.is_prototype) {
+                report(item.range, "function prototype return type must be explicit");
+                return_type = checked_.types.builtin(BuiltinType::void_);
+            } else {
+                return_type = invalid_type_handle;
+            }
+            std::vector<TypeHandle> param_types;
             for (const syntax::ParamDecl& param : item.params) {
                 TypeHandle param_type = resolve_type(param.type);
                 if (!is_valid_storage_type(param_type)) {
@@ -190,35 +194,26 @@ void SemanticAnalyzer::register_value_names() {
                 if (checked_.types.contains_array(param_type)) {
                     report(param.range, "struct containing array cannot be passed by value");
                 }
-                signature.param_types.push_back(param_type);
+                param_types.push_back(param_type);
             }
-            if (checked_.types.is_array(signature.return_type)) {
-                report(item.range, "array type cannot be used as a function return type");
-            }
-            if (checked_.types.contains_array(signature.return_type)) {
-                report(item.range, "struct containing array cannot be returned by value");
+            if (has_explicit_return && is_valid(return_type)) {
+                validate_function_return_type(item, return_type);
             }
             const auto* const begin = module_.items.data();
             const base::usize item_index = static_cast<base::usize>(&item - begin);
-            if (item_index < checked_.item_c_names.size()) {
-                checked_.item_c_names[item_index] = signature.c_name;
-            }
-            auto inserted = checked_.functions.emplace(key, std::move(signature));
-            if (!inserted.second) {
-                report(item.range, "function overloading is not allowed in module " + module_name(current_module_) + ": " + std::string(item.name));
-            }
-            const auto value_inserted = global_values_.emplace(key, Symbol {
-                SymbolKind::function,
-                std::string(item.name),
-                inserted.first->second.c_name,
+            functions.register_function(
+                item,
                 current_module_,
-                inserted.first->second.return_type,
-                item.range,
-                false,
-            });
-            if (!value_inserted.second) {
-                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
+                key,
+                c_name,
+                return_type,
+                std::move(param_types),
+                syntax::ItemId {static_cast<base::u32>(item_index)}
+            );
+            if (!item.is_prototype && !item.is_extern_c) {
+                function_definition_items_[key] = syntax::ItemId {static_cast<base::u32>(item_index)};
             }
+            function_body_states_[key] = FunctionBodyState::not_started;
         } else if (item.kind == syntax::ItemKind::const_decl) {
             TypeHandle type = resolve_type(item.const_type);
             const auto* const begin = module_.items.data();
@@ -275,6 +270,21 @@ void SemanticAnalyzer::register_value_names() {
         }
     }
     current_module_ = syntax::invalid_module_id;
+}
+
+void SemanticAnalyzer::validate_function_prototypes() {
+    for (const auto& entry : checked_.functions) {
+        const FunctionSignature& signature = entry.second;
+        if (signature.is_extern_c) {
+            continue;
+        }
+        if (signature.has_conflict) {
+            continue;
+        }
+        if (signature.has_prototype && !signature.has_definition) {
+            report(signature.range, "function prototype has no definition: " + signature.name);
+        }
+    }
 }
 
 void SemanticAnalyzer::analyze_entry_points() {
@@ -386,11 +396,46 @@ void SemanticAnalyzer::analyze_const_decls() {
 }
 
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
+    const syntax::ModuleId previous_module = current_module_;
+    const int previous_loop_depth = loop_depth_;
+    const SymbolTable previous_symbols = symbols_;
     current_module_ = item_module(function);
-    const auto found = checked_.functions.find(module_key(current_module_, function.name));
-    const TypeHandle expected_return = found == checked_.functions.end()
-        ? checked_.types.builtin(BuiltinType::void_)
-        : found->second.return_type;
+    const std::string key = module_key(current_module_, function.name);
+    const auto found = checked_.functions.find(key);
+    if (found == checked_.functions.end()) {
+        current_module_ = previous_module;
+        loop_depth_ = previous_loop_depth;
+        symbols_ = previous_symbols;
+        return;
+    }
+    if (found->second.has_conflict) {
+        current_module_ = previous_module;
+        loop_depth_ = previous_loop_depth;
+        symbols_ = previous_symbols;
+        return;
+    }
+    FunctionBodyState& state = function_body_states_[key];
+    if (state == FunctionBodyState::analyzing) {
+        report(function.range, "cannot infer recursive function return type without an explicit return type");
+        current_module_ = previous_module;
+        loop_depth_ = previous_loop_depth;
+        symbols_ = previous_symbols;
+        return;
+    }
+    if (state == FunctionBodyState::analyzed) {
+        current_module_ = previous_module;
+        loop_depth_ = previous_loop_depth;
+        symbols_ = previous_symbols;
+        return;
+    }
+    state = FunctionBodyState::analyzing;
+    loop_depth_ = 0;
+    const bool infer_return_type = !syntax::is_valid(function.return_type);
+    ReturnTypeInference return_inference;
+    TypeHandle expected_return = found->second.return_type;
+    if (infer_return_type) {
+        expected_return = invalid_type_handle;
+    }
 
     symbols_.push_scope();
     for (const syntax::ParamDecl& param : function.params) {
@@ -404,12 +449,22 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
             false,
         }, diagnostics_));
     }
-    analyze_block(function.body, expected_return);
+    analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
     symbols_.pop_scope();
-    current_module_ = syntax::invalid_module_id;
+    if (infer_return_type) {
+        finalize_inferred_return(function, key, return_inference);
+    }
+    state = FunctionBodyState::analyzed;
+    current_module_ = previous_module;
+    loop_depth_ = previous_loop_depth;
+    symbols_ = previous_symbols;
 }
 
-void SemanticAnalyzer::analyze_block(const syntax::StmtId block, const TypeHandle expected_return) {
+void SemanticAnalyzer::analyze_block(
+    const syntax::StmtId block,
+    const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference
+) {
     if (!syntax::is_valid(block) || block.value >= module_.stmts.size()) {
         return;
     }
@@ -419,12 +474,16 @@ void SemanticAnalyzer::analyze_block(const syntax::StmtId block, const TypeHandl
         return;
     }
     for (syntax::StmtId child : stmt.statements) {
-        analyze_stmt(child, expected_return);
+        analyze_stmt(child, expected_return, return_inference);
     }
     symbols_.pop_scope();
 }
 
-void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHandle expected_return) {
+void SemanticAnalyzer::analyze_stmt(
+    const syntax::StmtId stmt_id,
+    const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference
+) {
     if (!syntax::is_valid(stmt_id) || stmt_id.value >= module_.stmts.size()) {
         return;
     }
@@ -432,15 +491,22 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
     switch (stmt.kind) {
     case syntax::StmtKind::let:
     case syntax::StmtKind::var: {
-        const TypeHandle declared = resolve_type(stmt.declared_type);
+        const bool has_declared_type = syntax::is_valid(stmt.declared_type);
         const TypeHandle init = analyze_expr(stmt.init);
-        if (!is_valid_storage_type(declared)) {
+        const TypeHandle local_type = has_declared_type ? resolve_type(stmt.declared_type) : init;
+        if (stmt_id.value < checked_.stmt_local_types.size()) {
+            checked_.stmt_local_types[stmt_id.value] = local_type;
+        }
+        if (!has_declared_type && !is_valid(local_type)) {
+            report(stmt.range, "local variable type cannot be inferred");
+        }
+        if (is_valid(local_type) && !is_valid_storage_type(local_type)) {
             report(stmt.range, "local variable type is not valid storage");
         }
-        if (!can_assign(declared, init, stmt.init)) {
+        if (has_declared_type && !can_assign(local_type, init, stmt.init)) {
             report(stmt.range, "initializer type does not match declared type");
         }
-        if (!checked_.types.is_copyable(declared)) {
+        if (is_valid(local_type) && !checked_.types.is_copyable(local_type)) {
             report(stmt.range, "non-copyable storage type cannot be implicitly copied");
         }
         static_cast<void>(symbols_.insert(Symbol {
@@ -448,7 +514,7 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
             std::string(stmt.name),
             {},
             syntax::invalid_module_id,
-            declared,
+            local_type,
             stmt.range,
             stmt.kind == syntax::StmtKind::var,
         }, diagnostics_));
@@ -473,12 +539,12 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         if (!checked_.types.is_bool(condition)) {
             report(module_.exprs[stmt.condition.value].range, "if condition must be bool");
         }
-        analyze_block(stmt.then_block, expected_return);
+        analyze_block(stmt.then_block, expected_return, return_inference);
         if (syntax::is_valid(stmt.else_block)) {
-            analyze_block(stmt.else_block, expected_return);
+            analyze_block(stmt.else_block, expected_return, return_inference);
         }
         if (syntax::is_valid(stmt.else_if)) {
-            analyze_stmt(stmt.else_if, expected_return);
+            analyze_stmt(stmt.else_if, expected_return, return_inference);
         }
         break;
     }
@@ -488,7 +554,7 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
             report(module_.exprs[stmt.condition.value].range, "while condition must be bool");
         }
         ++loop_depth_;
-        analyze_block(stmt.body, expected_return);
+        analyze_block(stmt.body, expected_return, return_inference);
         --loop_depth_;
         break;
     }
@@ -496,7 +562,9 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         const TypeHandle actual = syntax::is_valid(stmt.return_value)
             ? analyze_expr(stmt.return_value)
             : checked_.types.builtin(BuiltinType::void_);
-        if (!can_assign(expected_return, actual, stmt.return_value)) {
+        if (return_inference != nullptr) {
+            record_inferred_return(stmt_id, actual, *return_inference);
+        } else if (!can_assign(expected_return, actual, stmt.return_value)) {
             report(stmt.range, "return type mismatch");
         }
         break;
@@ -510,7 +578,7 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         static_cast<void>(analyze_expr(stmt.init));
         break;
     case syntax::StmtKind::block:
-        analyze_block(stmt_id, expected_return);
+        analyze_block(stmt_id, expected_return, return_inference);
         break;
     case syntax::StmtKind::break_:
     case syntax::StmtKind::continue_:
@@ -519,6 +587,86 @@ void SemanticAnalyzer::analyze_stmt(const syntax::StmtId stmt_id, const TypeHand
         }
         break;
     }
+}
+
+void SemanticAnalyzer::record_inferred_return(
+    const syntax::StmtId stmt_id,
+    const TypeHandle actual,
+    ReturnTypeInference& inference
+) {
+    inference.returns.push_back(stmt_id);
+    if (!is_valid(actual)) {
+        if (syntax::is_valid(stmt_id) && stmt_id.value < module_.stmts.size()) {
+            const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
+            report(stmt.range, "function return type cannot be inferred");
+        }
+        return;
+    }
+    if (!is_valid(inference.inferred_type)) {
+        inference.inferred_type = actual;
+        return;
+    }
+    if (!checked_.types.same(inference.inferred_type, actual)) {
+        if (syntax::is_valid(stmt_id) && stmt_id.value < module_.stmts.size()) {
+            const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
+            report(stmt.range, "inferred function return types do not match");
+        }
+    }
+}
+
+void SemanticAnalyzer::finalize_inferred_return(
+    const syntax::ItemNode& function,
+    const std::string& key,
+    ReturnTypeInference& inference
+) {
+    TypeHandle return_type = inference.inferred_type;
+    if (inference.returns.empty()) {
+        return_type = checked_.types.builtin(BuiltinType::void_);
+    }
+    if (!is_valid(return_type)) {
+        return_type = checked_.types.builtin(BuiltinType::void_);
+    }
+    validate_function_return_type(function, return_type);
+    if (const auto found = checked_.functions.find(key); found != checked_.functions.end()) {
+        found->second.return_type = return_type;
+    }
+    if (const auto global = global_values_.find(key); global != global_values_.end()) {
+        global->second.type = return_type;
+    }
+}
+
+void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) {
+    if (checked_.types.is_array(return_type)) {
+        report(function.range, "array type cannot be used as a function return type");
+    }
+    if (checked_.types.contains_array(return_type)) {
+        report(function.range, "struct containing array cannot be returned by value");
+    }
+}
+
+void SemanticAnalyzer::ensure_function_return_known(
+    const FunctionSignature& signature,
+    const base::SourceRange use_range
+) {
+    if (is_valid(signature.return_type) || signature.is_extern_c) {
+        return;
+    }
+    const std::string key = module_key(signature.module, signature.name);
+    const FunctionBodyState state = function_body_states_.contains(key)
+        ? function_body_states_.at(key)
+        : FunctionBodyState::not_started;
+    if (state == FunctionBodyState::analyzing) {
+        report(use_range, "cannot infer recursive function return type without an explicit return type");
+        return;
+    }
+    const auto item_found = function_definition_items_.find(key);
+    if (item_found == function_definition_items_.end() ||
+        !syntax::is_valid(item_found->second) ||
+        item_found->second.value >= module_.items.size()) {
+        report(use_range, "function return type cannot be inferred");
+        return;
+    }
+    analyze_function_body(module_.items[item_found->second.value]);
 }
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
@@ -560,6 +708,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         if (signature == nullptr) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
+        ensure_function_return_known(*signature, module_.exprs[expr.callee.value].range);
         if (expr.callee.value < checked_.expr_c_names.size()) {
             checked_.expr_c_names[expr.callee.value] = signature->c_name;
         }

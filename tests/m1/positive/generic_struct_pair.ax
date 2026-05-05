@@ -1,0 +1,32 @@
+module generic_struct_pair;
+
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+fn swap(pair: Pair<i32>) -> Pair<i32> {
+    return Pair<i32> {
+        left: pair.right,
+        right: pair.left,
+    };
+}
+
+fn sum(pair: Pair<i32>) -> i32 {
+    return pair.left + pair.right;
+}
+
+fn main() -> i32 {
+    let pair: Pair<i32> = Pair<i32> {
+        left: 4,
+        right: 9,
+    };
+    let swapped: Pair<i32> = swap(pair);
+    if swapped.left != 9 {
+        return 1;
+    }
+    if swapped.right != 4 {
+        return 2;
+    }
+    return sum(swapped) - 13;
+}

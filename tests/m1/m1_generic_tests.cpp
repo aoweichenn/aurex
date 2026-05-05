@@ -82,4 +82,48 @@ TEST_F(AurexIntegrationTest, M1GenericEnumDiagnostics) {
     expect_contains(require_failure(aurexc() + " --check " + q(partial_inference)).output, "generic enum constructor requires explicit type arguments for Result");
 }
 
+TEST_F(AurexIntegrationTest, M1GenericStructPair) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "generic_struct_pair.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "struct Pair<T>",
+        "struct_literal Pair<i32>",
+        "field left",
+        "field right",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "structs 1",
+        "struct generic_struct_pair.Pair<i32> fields=2",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "record generic_struct_pair.Pair<i32>",
+        "@m0_generic_struct_pair_Pair__i32",
+        ".left: i32",
+        ".right: i32",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_generic_struct_pair";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, M1GenericStructDiagnostics) {
+    const fs::path arity = source_root() / "tests" / "m1" / "negative" / "generic_struct_type_arity.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(arity)).output, "generic struct type requires type arguments: Pair");
+
+    const fs::path unknown_type = source_root() / "tests" / "m1" / "negative" / "generic_struct_unknown_type_arg.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(unknown_type)).output, "unknown type: Missing");
+
+    const fs::path missing_args = source_root() / "tests" / "m1" / "negative" / "generic_struct_literal_missing_args.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_args)).output, "generic struct literal requires explicit type arguments: Pair");
+
+    const fs::path mismatch = source_root() / "tests" / "m1" / "negative" / "generic_struct_field_mismatch.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "struct literal field type mismatch");
+}
+
 } // namespace aurex::test

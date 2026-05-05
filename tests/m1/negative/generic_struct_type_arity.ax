@@ -1,0 +1,14 @@
+module generic_struct_type_arity;
+
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+fn main() -> i32 {
+    let pair: Pair = Pair<i32> {
+        left: 1,
+        right: 2,
+    };
+    return pair.left;
+}

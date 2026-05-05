@@ -146,6 +146,9 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
     }
     node.object = remap_expr(node.object, map);
     node.index = remap_expr(node.index, map);
+    for (syntax::TypeId& arg : node.struct_type_args) {
+        arg = remap_type(arg, map);
+    }
     for (syntax::FieldInit& init : node.field_inits) {
         init.value = remap_expr(init.value, map);
     }

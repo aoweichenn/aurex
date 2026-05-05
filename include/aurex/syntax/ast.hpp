@@ -159,6 +159,7 @@ struct ExprNode {
     std::string_view field_name;
     ExprId index = invalid_expr_id;
     std::string_view struct_name;
+    std::vector<TypeId> struct_type_args;
     std::vector<FieldInit> field_inits;
     TypeId cast_type = invalid_type_id;
     ExprId cast_expr = invalid_expr_id;

@@ -66,6 +66,37 @@ const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_v
     return imported_result;
 }
 
+const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_in_visible_modules(
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    if (const auto found = generic_struct_templates_.find(module_key(current_module_, name)); found != generic_struct_templates_.end()) {
+        return &found->second;
+    }
+
+    const GenericStructTemplateInfo* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
+        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+            const auto found = generic_struct_templates_.find(module_key(module, name));
+            if (found == generic_struct_templates_.end()) {
+                continue;
+            }
+            if (imported_result != nullptr) {
+                report(range, "ambiguous generic struct '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return nullptr;
+            }
+            imported_result = &found->second;
+            result_module = module;
+        }
+    }
+    if (imported_result == nullptr && report_unknown) {
+        report(range, "unknown generic struct: " + std::string(name));
+    }
+    return imported_result;
+}
+
 std::string SemanticAnalyzer::generic_instance_key(
     const GenericEnumTemplateInfo& info,
     const std::vector<TypeHandle>& args
@@ -98,6 +129,51 @@ std::string SemanticAnalyzer::generic_display_name(
 
 std::string SemanticAnalyzer::generic_c_name(
     const GenericEnumTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string suffix = info.name;
+    for (TypeHandle arg : args) {
+        suffix += "__";
+        for (const char ch : checked_.types.c_name(arg)) {
+            const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+            suffix += alnum ? ch : '_';
+        }
+    }
+    return c_symbol_name(info.module, suffix);
+}
+
+std::string SemanticAnalyzer::generic_instance_key(
+    const GenericStructTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string key = module_key(info.module, info.name) + "<";
+    for (base::usize i = 0; i < args.size(); ++i) {
+        if (i != 0) {
+            key += ",";
+        }
+        key += checked_.types.display_name(args[i]);
+    }
+    key += ">";
+    return key;
+}
+
+std::string SemanticAnalyzer::generic_display_name(
+    const GenericStructTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string name = qualified_name(info.module, info.name) + "<";
+    for (base::usize i = 0; i < args.size(); ++i) {
+        if (i != 0) {
+            name += ", ";
+        }
+        name += checked_.types.display_name(args[i]);
+    }
+    name += ">";
+    return name;
+}
+
+std::string SemanticAnalyzer::generic_c_name(
+    const GenericStructTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
     std::string suffix = info.name;
@@ -250,6 +326,99 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     return enum_type;
 }
 
+TypeHandle SemanticAnalyzer::instantiate_generic_struct_from_syntax(
+    const GenericStructTemplateInfo& info,
+    const std::vector<syntax::TypeId>& args,
+    const base::SourceRange range,
+    const bool opaque_allowed_as_pointee
+) {
+    if (args.size() != info.params.size()) {
+        report(range, "generic struct type argument count mismatch for " + info.name);
+        return invalid_type_handle;
+    }
+    std::vector<TypeHandle> resolved_args;
+    resolved_args.reserve(args.size());
+    for (syntax::TypeId arg : args) {
+        resolved_args.push_back(resolve_type(arg, opaque_allowed_as_pointee));
+    }
+    return instantiate_generic_struct(info, resolved_args, range);
+}
+
+TypeHandle SemanticAnalyzer::instantiate_generic_struct(
+    const GenericStructTemplateInfo& info,
+    const std::vector<TypeHandle>& args,
+    const base::SourceRange range
+) {
+    if (args.size() != info.params.size()) {
+        report(range, "generic struct type argument count mismatch for " + info.name);
+        return invalid_type_handle;
+    }
+    for (TypeHandle arg : args) {
+        if (!is_valid(arg)) {
+            return invalid_type_handle;
+        }
+    }
+    const std::string instance_key = generic_instance_key(info, args);
+    if (const auto found = generic_struct_instances_.find(instance_key); found != generic_struct_instances_.end()) {
+        return found->second;
+    }
+
+    const syntax::ItemNode* item = item_from_id(module_, info.item);
+    if (item == nullptr) {
+        report(range, "invalid generic struct template: " + info.name);
+        return invalid_type_handle;
+    }
+
+    TypeHandle struct_type = checked_.types.named_struct(generic_display_name(info, args), generic_c_name(info, args), false);
+    generic_struct_instances_[instance_key] = struct_type;
+    generic_struct_instance_infos_[struct_type.value] = GenericStructInstanceInfo {
+        info.name,
+        info.module,
+        args,
+    };
+
+    StructInfo instance_info;
+    instance_info.name = generic_display_name(info, args);
+    instance_info.c_name = generic_c_name(info, args);
+    instance_info.module = info.module;
+    instance_info.type = struct_type;
+    instance_info.is_opaque = false;
+
+    GenericTypeSubstitution substitution;
+    for (base::usize i = 0; i < info.params.size(); ++i) {
+        substitution.types.emplace(info.params[i], args[i]);
+    }
+
+    const syntax::ModuleId previous_module = current_module_;
+    current_module_ = info.module;
+    bool contains_array = false;
+    bool copyable = true;
+    for (const syntax::FieldDecl& field : item->fields) {
+        const TypeHandle field_type = resolve_type_with_substitution(field.type, &substitution, false);
+        if (!is_valid_storage_type(field_type)) {
+            report(field.range, "field type is not valid storage");
+        }
+        instance_info.fields.push_back(StructFieldInfo {
+            std::string(field.name),
+            {},
+            syntax::invalid_module_id,
+            field_type,
+            field.range,
+        });
+        if (checked_.types.contains_array(field_type)) {
+            contains_array = true;
+        }
+        if (!checked_.types.is_copyable(field_type)) {
+            copyable = false;
+        }
+    }
+    checked_.types.set_record_properties(struct_type, contains_array, copyable && !contains_array);
+    current_module_ = previous_module;
+
+    checked_.structs.emplace(module_key(info.module, instance_info.c_name), std::move(instance_info));
+    return struct_type;
+}
+
 bool SemanticAnalyzer::infer_generic_enum_args(
     const syntax::TypeId pattern_type_id,
     const TypeHandle actual,
@@ -289,6 +458,14 @@ const GenericEnumInstanceInfo* SemanticAnalyzer::generic_enum_instance(const Typ
     }
     const auto found = generic_enum_instance_infos_.find(type.value);
     return found == generic_enum_instance_infos_.end() ? nullptr : &found->second;
+}
+
+const GenericStructInstanceInfo* SemanticAnalyzer::generic_struct_instance(const TypeHandle type) const noexcept {
+    if (!is_valid(type)) {
+        return nullptr;
+    }
+    const auto found = generic_struct_instance_infos_.find(type.value);
+    return found == generic_struct_instance_infos_.end() ? nullptr : &found->second;
 }
 
 const EnumCaseInfo* SemanticAnalyzer::instantiate_generic_enum_constructor(

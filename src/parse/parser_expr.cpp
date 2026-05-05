@@ -589,11 +589,16 @@ syntax::ExprId Parser::parse_postfix() {
 syntax::ExprId Parser::parse_primary() {
     if (match(TokenKind::identifier)) {
         const syntax::Token& name = previous();
+        std::vector<syntax::TypeId> struct_type_args;
+        if (allow_struct_literal_ && next_angle_list_is_struct_literal()) {
+            struct_type_args = parse_type_arg_list();
+        }
         if (allow_struct_literal_ && check(TokenKind::l_brace)) {
             advance();
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::struct_literal;
             node.struct_name = name.text;
+            node.struct_type_args = std::move(struct_type_args);
             node.range = name.range;
             if (!check(TokenKind::r_brace)) {
                 do {
@@ -609,6 +614,9 @@ syntax::ExprId Parser::parse_primary() {
             const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after struct literal");
             node.range = merge(name.range, end.range);
             return module_.push_expr(std::move(node));
+        }
+        if (!struct_type_args.empty()) {
+            report_at(name, "type arguments in expressions are only supported on struct literals or scoped enum constructors in M1");
         }
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::name;

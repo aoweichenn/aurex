@@ -154,9 +154,17 @@ private:
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
     [[nodiscard]] TypeHandle instantiate_generic_enum_from_syntax(
         const GenericEnumTemplateInfo& info,
+        const std::vector<syntax::TypeId>& args,
+        base::SourceRange range,
+        bool opaque_allowed_as_pointee
+    );
+    [[nodiscard]] TypeHandle instantiate_generic_struct(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
+    [[nodiscard]] TypeHandle instantiate_generic_struct_from_syntax(
+        const GenericStructTemplateInfo& info,
         const std::vector<syntax::TypeId>& args,
         base::SourceRange range,
         bool opaque_allowed_as_pointee
@@ -175,11 +183,15 @@ private:
         base::SourceRange range
     );
     [[nodiscard]] const GenericEnumInstanceInfo* generic_enum_instance(TypeHandle type) const noexcept;
+    [[nodiscard]] const GenericStructInstanceInfo* generic_struct_instance(TypeHandle type) const noexcept;
     [[nodiscard]] std::string generic_instance_key(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_display_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_c_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_case_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, std::string_view case_name) const;
     [[nodiscard]] std::string generic_case_c_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, std::string_view case_name) const;
+    [[nodiscard]] std::string generic_instance_key(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_display_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_c_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range, bool opaque_allowed_as_pointee);
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
@@ -203,6 +215,9 @@ private:
     std::unordered_map<std::string, GenericEnumTemplateInfo> generic_enum_templates_;
     std::unordered_map<std::string, TypeHandle> generic_enum_instances_;
     std::unordered_map<base::u32, GenericEnumInstanceInfo> generic_enum_instance_infos_;
+    std::unordered_map<std::string, GenericStructTemplateInfo> generic_struct_templates_;
+    std::unordered_map<std::string, TypeHandle> generic_struct_instances_;
+    std::unordered_map<base::u32, GenericStructInstanceInfo> generic_struct_instance_infos_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
     std::vector<std::string> resolving_type_aliases_;
     std::unordered_map<std::string, Symbol> global_values_;

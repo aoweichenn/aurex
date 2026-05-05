@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 
+#include <unistd.h>
 #include <sys/wait.h>
 
 namespace aurex::test {
@@ -23,16 +25,53 @@ fs::path work_root() {
     return build_root() / "gtest";
 }
 
+namespace {
+
+std::atomic<std::uint64_t> test_run_counter {0};
+fs::path current_test_run_root;
+
+std::string sanitize_test_name(const std::string_view name) {
+    std::string result;
+    result.reserve(name.size());
+    for (const char ch : name) {
+        const bool ok = (ch >= 'a' && ch <= 'z') ||
+                        (ch >= 'A' && ch <= 'Z') ||
+                        (ch >= '0' && ch <= '9');
+        result += ok ? ch : '_';
+    }
+    return result;
+}
+
+fs::path make_test_run_root() {
+    const ::testing::TestInfo* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::string test_name = "suite";
+    if (info != nullptr) {
+        test_name = std::string(info->test_suite_name()) + "_" + std::string(info->name());
+    }
+    const auto pid = static_cast<unsigned long long>(::getpid());
+    const auto seq = static_cast<unsigned long long>(test_run_counter.fetch_add(1, std::memory_order_relaxed));
+    return work_root() / (sanitize_test_name(test_name) + "_" + std::to_string(pid) + "_" + std::to_string(seq));
+}
+
+} // namespace
+
+fs::path test_run_root() {
+    if (current_test_run_root.empty()) {
+        current_test_run_root = make_test_run_root();
+    }
+    return current_test_run_root;
+}
+
 fs::path test_bin_root() {
-    return work_root() / "tests";
+    return test_run_root() / "tests";
 }
 
 fs::path selfhost_bin_root() {
-    return work_root() / "selfhost";
+    return test_run_root() / "selfhost";
 }
 
 fs::path tmp_root() {
-    return work_root() / "tmp";
+    return test_run_root() / "tmp";
 }
 
 fs::path aurexc_path() {
@@ -265,12 +304,16 @@ std::vector<fs::path> stage_compiler_sources() {
 }
 
 void AurexIntegrationTest::SetUpTestSuite() {
-    fs::create_directories(test_bin_root());
-    fs::create_directories(selfhost_bin_root());
-    fs::create_directories(tmp_root());
     if (!fs::exists(aurexc_path())) {
         throw std::runtime_error("missing aurexc binary: " + aurexc_path().string());
     }
+}
+
+void AurexIntegrationTest::SetUp() {
+    current_test_run_root = make_test_run_root();
+    fs::create_directories(test_bin_root());
+    fs::create_directories(selfhost_bin_root());
+    fs::create_directories(tmp_root());
 }
 
 } // namespace aurex::test

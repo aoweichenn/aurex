@@ -177,6 +177,32 @@ bool Parser::next_angle_list_is_type_scope() const noexcept {
     return false;
 }
 
+bool Parser::next_angle_list_is_struct_literal() const noexcept {
+    if (!check(TokenKind::less)) {
+        return false;
+    }
+    base::usize index = current_ + 1;
+    int depth = 1;
+    while (index < tokens_.size()) {
+        const TokenKind kind = tokens_[index].kind;
+        if (kind == TokenKind::less) {
+            ++depth;
+        } else if (kind == TokenKind::greater) {
+            --depth;
+            if (depth == 0) {
+                const base::usize after = index + 1;
+                return after < tokens_.size() && tokens_[after].kind == TokenKind::l_brace;
+            }
+        } else if (kind == TokenKind::semicolon ||
+                   kind == TokenKind::r_brace ||
+                   kind == TokenKind::fat_arrow) {
+            return false;
+        }
+        ++index;
+    }
+    return false;
+}
+
 bool Parser::match(const TokenKind kind) noexcept {
     if (!check(kind)) {
         return false;
@@ -352,11 +378,16 @@ syntax::ItemId Parser::parse_type_alias_decl() {
 syntax::ItemId Parser::parse_struct_decl() {
     const syntax::Token& begin = expect(TokenKind::kw_struct, "expected 'struct'");
     const syntax::Token& name = expect(TokenKind::identifier, "expected struct name");
+    std::vector<std::string_view> generic_params;
+    if (check(TokenKind::less)) {
+        generic_params = parse_generic_param_list();
+    }
     expect(TokenKind::l_brace, "expected '{' after struct name");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::struct_decl;
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
         const syntax::Token& field_name = expect(TokenKind::identifier, "expected field name");

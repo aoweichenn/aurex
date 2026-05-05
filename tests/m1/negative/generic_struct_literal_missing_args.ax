@@ -1,0 +1,14 @@
+module generic_struct_literal_missing_args;
+
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+fn main() -> i32 {
+    let pair = Pair {
+        left: 1,
+        right: 2,
+    };
+    return 0;
+}

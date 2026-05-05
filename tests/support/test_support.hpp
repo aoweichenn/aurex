@@ -22,6 +22,7 @@ fs::path work_root();
 fs::path test_bin_root();
 fs::path selfhost_bin_root();
 fs::path tmp_root();
+fs::path test_run_root();
 fs::path aurexc_path();
 
 std::string shell_quote(std::string_view value);
@@ -53,6 +54,7 @@ std::vector<fs::path> stage_compiler_sources();
 class AurexIntegrationTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite();
+    void SetUp() override;
 };
 
 } // namespace aurex::test

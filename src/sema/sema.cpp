@@ -134,6 +134,30 @@ void SemanticAnalyzer::register_type_names() {
             }
             continue;
         }
+        if (item.kind == syntax::ItemKind::struct_decl && !item.generic_params.empty()) {
+            GenericStructTemplateInfo info;
+            info.name = std::string(item.name);
+            info.module = owner;
+            const auto* const begin = module_.items.data();
+            const base::usize item_index = static_cast<base::usize>(&item - begin);
+            info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
+            info.range = item.range;
+            for (std::string_view param : item.generic_params) {
+                const std::string param_name(param);
+                if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
+                    report(item.range, "duplicate generic parameter in struct " + std::string(item.name) + ": " + param_name);
+                }
+                info.params.push_back(param_name);
+            }
+            auto inserted = generic_struct_templates_.emplace(key, std::move(info));
+            if (!inserted.second) {
+                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            }
+            if (named_types_.contains(key) || checked_.type_aliases.contains(key)) {
+                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            }
+            continue;
+        }
         if (item.kind == syntax::ItemKind::enum_decl && !item.generic_params.empty()) {
             GenericEnumTemplateInfo info;
             info.name = std::string(item.name);
@@ -423,6 +447,9 @@ void SemanticAnalyzer::analyze_entry_points() {
 void SemanticAnalyzer::analyze_struct_properties() {
     for (const syntax::ItemNode& item : module_.items) {
         if (item.kind != syntax::ItemKind::struct_decl) {
+            continue;
+        }
+        if (!item.generic_params.empty()) {
             continue;
         }
         current_module_ = item_module(item);
@@ -1051,7 +1078,27 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         return record_expr_type(expr_id, invalid_type_handle);
     }
     case syntax::ExprKind::struct_literal: {
-        const TypeHandle struct_type = find_type_in_visible_modules(expr.struct_name, expr.range, false);
+        TypeHandle struct_type = invalid_type_handle;
+        if (!expr.struct_type_args.empty()) {
+            if (const GenericStructTemplateInfo* template_info =
+                    find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range);
+                template_info != nullptr) {
+                struct_type = instantiate_generic_struct_from_syntax(
+                    *template_info,
+                    expr.struct_type_args,
+                    expr.range,
+                    false
+                );
+            }
+        } else {
+            if (const GenericStructTemplateInfo* template_info =
+                    find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
+                template_info != nullptr) {
+                report(expr.range, "generic struct literal requires explicit type arguments: " + template_info->name);
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            struct_type = find_type_in_visible_modules(expr.struct_name, expr.range, false);
+        }
         if (!is_valid(struct_type)) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
@@ -1222,12 +1269,23 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
             }
         }
         if (!type.type_args.empty()) {
+            if (const GenericStructTemplateInfo* info =
+                    find_generic_struct_template_in_visible_modules(type.name, type.range, false);
+                info != nullptr) {
+                resolved = instantiate_generic_struct_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                break;
+            }
             if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range);
                 info != nullptr) {
                 resolved = instantiate_generic_enum_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
                 break;
             }
-            report(type.range, "type arguments require a generic enum type: " + std::string(type.name));
+            report(type.range, "type arguments require a generic type: " + std::string(type.name));
+            break;
+        }
+        if (const GenericStructTemplateInfo* info = find_generic_struct_template_in_visible_modules(type.name, type.range, false);
+            info != nullptr) {
+            report(type.range, "generic struct type requires type arguments: " + info->name);
             break;
         }
         if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range, false);

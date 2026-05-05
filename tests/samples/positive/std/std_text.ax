@@ -19,5 +19,15 @@ fn main() -> i32 {
     if !is_ascii_digit(b'7') || !is_ascii_alpha(b'A') || !is_ascii_space(b'\n') {
         return 4;
     }
+    var number: i32 = 41;
+    let one: Span<i32> = span(ptr_cast(*const i32, &number), cast(usize, 1));
+    if one.len != cast(usize, 1) || one.data[0] != 41 {
+        return 5;
+    }
+    let writable: MutSpan<i32> = mut_span(&number, cast(usize, 1));
+    writable.data[0] = 42;
+    if number != 42 {
+        return 6;
+    }
     return 0;
 }

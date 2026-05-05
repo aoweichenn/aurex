@@ -43,8 +43,9 @@ Current language slices:
   method calls, and `Type.function()` associated calls.
 - Standard `Result` / `Option` / `?` slice, usable for explicit error
   propagation and early-return control flow.
-- Standard-library container/text/path baseline started, including `VecU8` APIs
-  on generic `Vec<T>`, an owned `String`, and an owned `Path`.
+- Standard-library container/text/path baseline started, including generic
+  `Span<T>` / `MutSpan<T>`, `VecU8` APIs on generic `Vec<T>`, an owned
+  `String`, and an owned `Path`.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses.
@@ -68,9 +69,9 @@ Current language slices:
   propagation, and a composable diagnostic model.
 - Resource management still needs a minimal move/noncopyable model and unified
   handling for files, processes, arenas, and other resources.
-- The standard library still needs `Span<T>`, `String`, `Vec<T>`, `Map<K, V>`,
-  `Path`, directory walking, file metadata, subprocess support, and OS features
-  required by incremental builds.
+- The standard library still needs broader `Vec<T>`, `Map<K, V>`, directory
+  walking, file metadata, subprocess support, and OS features required by
+  incremental builds.
 - Aurex needs a compatibility class/object model for programmers coming from
   traditional OOP code: encapsulation, inheritance, and dynamic polymorphism.
   This should be a migration-friendly layer, not a replacement for the
@@ -173,14 +174,14 @@ manual status helpers.
    the std APIs so code like `File.read_all(path)?` and `Parser.next()?`
    becomes natural.
 
-3. `Vec` / `String` / `Path`  
-   Started. The tree now has a `Vec<T>` shape with `VecU8` operations, an owned
-   `String`, and an owned `Path`, covered by a std integration sample combining
-   method APIs, `Result` / `Option`, and `?`. The old `BufferU8` use has moved
-   to `VecU8`, and `std.fs.file` / `std.sys.host` file IO now exposes M1-style
-   APIs such as `Result<FileBytes, i32>` and `Result<usize, i32>`. Next, grow
-   this into token-buffer, source-list, and more general path/build-graph
-   scenarios.
+3. `Span` / `Vec` / `String` / `Path`
+   Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with
+   `VecU8` operations, an owned `String`, and an owned `Path`, covered by std
+   integration samples combining method APIs, `Result` / `Option`, and `?`.
+   The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
+   `std.sys.host` file IO now exposes M1-style APIs such as
+   `Result<FileBytes, i32>` and `Result<usize, i32>`. Next, grow this into
+   token-buffer, source-list, and more general path/build-graph scenarios.
 
 4. Generic constraints / traits / `where`
    Generic function MVP has landed. Next add the smallest trait/interface or

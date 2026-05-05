@@ -97,4 +97,35 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, StdTextSampleExposesGenericSpanBaseline) {
+    const fs::path source = positive_sample("std", "std_text.ax");
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "generic_functions 4",
+        "fn std.core.text.span<u8> -> std.core.text.Span<u8>",
+        "fn std.core.text.mut_span<u8> -> std.core.text.MutSpan<u8>",
+        "fn std.core.text.span<i32> -> std.core.text.Span<i32>",
+        "fn std.core.text.mut_span<i32> -> std.core.text.MutSpan<i32>",
+        "struct std.core.text.Span<i32> fields=2",
+        "struct std.core.text.MutSpan<i32> fields=2",
+        "type SpanU8 = std.core.text.Span<u8>",
+        "type MutSpanU8 = std.core.text.MutSpan<u8>",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "record std.core.text.Span<i32>",
+        "record std.core.text.MutSpan<i32>",
+        "fn std.core.text.span<i32>(data: *const i32, len: usize)",
+        "fn std.core.text.mut_span<i32>(data: *mut i32, len: usize)",
+        "call m0_std_core_text_span__i32",
+        "call m0_std_core_text_mut_span__i32",
+    });
+
+    const fs::path bin = test_bin_root() / "std_text_generic_span";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 } // namespace aurex::test

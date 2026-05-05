@@ -31,7 +31,7 @@ Stage0 主链路：
 - 作用域级 `defer` 语句，按反序在正常离开、`return`、`break` / `continue` 路径执行清理调用。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 method call 和 `Type.function()` 风格 associated call。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流。
-- 标准库容器/文本/路径基线已启动，包含泛型 `Vec<T>` 的 `VecU8` 专用 API、拥有型 `String` 和拥有型 `Path`。
+- 标准库容器/文本/路径基线已启动，包含泛型 `Span<T>` / `MutSpan<T>`、泛型 `Vec<T>` 的 `VecU8` 专用 API、拥有型 `String` 和拥有型 `Path`。
 - 标准库文件/host 文件读写已迁移到 `Result` 风格的拥有型 buffer API，旧的 `BufferU8` 与手写文件 result 结构已从 in-tree 用法移除。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 - examples 已经包含 CLI、文件 IO、内存/arena、std 模块、泛型结果类型、可见性和 re-export facade 的系统级小案例。
@@ -44,7 +44,7 @@ Stage0 主链路：
 - 泛型仍缺约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
 - 错误处理还缺标准 `Result<T, E>` / `Option<T>`、`?` 传播和可组合诊断模型。
 - 资源管理仍缺最小 move/noncopyable 语义和文件、进程、arena 等资源的统一用法。
-- 标准库还缺 `Span<T>`、`String`、`Vec<T>`、`Map<K, V>`、`Path`、目录遍历、文件 metadata、subprocess 和 incremental build 需要的 OS 能力。
+- 标准库还缺更完整的 `Vec<T>`、`Map<K, V>`、目录遍历、文件 metadata、subprocess 和 incremental build 需要的 OS 能力。
 - 需要一个兼容传统 OOP 思维的 class/object model：封装、继承和动态多态，但它应作为迁移友好层，不替代 struct/enum/trait/generic 的核心设计。
 - pattern matching 还需要更完整的 exhaustiveness、绑定一致性、enum layout 交互和 lowering 验证。
 - AIR 仍需要作为 Stage0 内部后端契约继续强化：slot/lvalue descriptor、record/enum layout、phi/SSA 合流、dominance、call signature 和跨模块 item binding 都应可验证。
@@ -99,8 +99,8 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
 2. `Result` / `Option` / `?`  
    已完成。方法基础上已经有标准错误传播的 `?` 切片，可用于 `Result` 和 `Option` 的早返回。下一步继续扩展标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这类代码更自然。
 
-3. `Vec` / `String` / `Path`  
-   已启动。当前已有 `Vec<T>` 结构、`VecU8` 专用操作、拥有型 `String` 和拥有型 `Path`，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。旧 `BufferU8` 已迁到 `VecU8`，`std.fs.file` / `std.sys.host` 的文件读写入口也已改为 `Result<FileBytes, i32>`、`Result<usize, i32>` 等 M1 风格 API。下一步继续扩展到 token buffer、source list 和更通用的 path/build graph 场景。
+3. `Span` / `Vec` / `String` / `Path`
+   已启动。当前已有 `Span<T>` / `MutSpan<T>`、`Vec<T>` 结构、`VecU8` 专用操作、拥有型 `String` 和拥有型 `Path`，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。旧 `BufferU8` 已迁到 `VecU8`，`std.fs.file` / `std.sys.host` 的文件读写入口也已改为 `Result<FileBytes, i32>`、`Result<usize, i32>` 等 M1 风格 API。下一步继续扩展到 token buffer、source list 和更通用的 path/build graph 场景。
 
 4. generic constraints / trait / `where`
    generic function MVP 已落地。下一步补最小 trait/interface 或 capability predicate，再推进约束、method-like resolution 和单态化缓存。完成后补 typed graph 和 map-like examples。

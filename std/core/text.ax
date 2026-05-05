@@ -2,22 +2,39 @@ module std.core.text;
 
 import std.ffi.c.libc;
 
-struct SpanU8 {
-    data: *const u8;
+struct Span<T> {
+    data: *const T;
     len: usize;
 }
 
-struct MutSpanU8 {
-    data: *mut u8;
+struct MutSpan<T> {
+    data: *mut T;
     len: usize;
+}
+
+type SpanU8 = Span<u8>;
+type MutSpanU8 = MutSpan<u8>;
+
+fn span<T>(data: *const T, len: usize) -> Span<T> {
+    return Span {
+        data: data,
+        len: len,
+    };
+}
+
+fn mut_span<T>(data: *mut T, len: usize) -> MutSpan<T> {
+    return MutSpan {
+        data: data,
+        len: len,
+    };
 }
 
 fn span_u8(data: *const u8, len: usize) -> SpanU8 {
-    return SpanU8 { data: data, len: len };
+    return span<u8>(data, len);
 }
 
 fn mut_span_u8(data: *mut u8, len: usize) -> MutSpanU8 {
-    return MutSpanU8 { data: data, len: len };
+    return mut_span<u8>(data, len);
 }
 
 fn c_span(text: *const u8) -> SpanU8 {
@@ -132,4 +149,3 @@ fn c_string_starts_with(text: *const u8, prefix: *const u8) -> bool {
 fn c_parse_i32(text: *const u8) -> i32 {
     return atoi(text);
 }
-

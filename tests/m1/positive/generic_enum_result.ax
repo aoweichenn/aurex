@@ -1,0 +1,20 @@
+module generic_enum_result;
+
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
+
+fn unwrap_or(value: Result<i32, bool>, fallback: i32) -> i32 {
+    return match value {
+        .ok(x) => x,
+        .err(flag) => if flag { fallback } else { 0 },
+    };
+}
+
+fn main() -> i32 {
+    let ok: Result<i32, bool> = Result.ok(40);
+    let err: Result<i32, bool> = Result.err(true);
+    let explicit = Result<i32, bool>.ok(2);
+    return unwrap_or(ok, 0) + unwrap_or(err, 1) + unwrap_or(explicit, 0) - 43;
+}

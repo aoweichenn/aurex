@@ -164,6 +164,7 @@ private:
     [[nodiscard]] const EnumCaseInfo* instantiate_generic_enum_constructor(
         syntax::ExprId callee,
         const std::vector<TypeHandle>& arg_types,
+        TypeHandle expected_type,
         bool report_unknown
     );
     [[nodiscard]] bool infer_generic_enum_args(

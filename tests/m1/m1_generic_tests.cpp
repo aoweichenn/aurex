@@ -34,6 +34,37 @@ TEST_F(AurexIntegrationTest, M1GenericEnumOption) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, M1GenericEnumResultExpectedType) {
+    const fs::path source = source_root() / "tests" / "m1" / "positive" / "generic_enum_result.ax";
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "enum Result<T, E>",
+        "Result<i32, bool>",
+        "match_arm .ok(x)",
+        "match_arm .err(flag)",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "enum_cases 2",
+        "case Result<i32, bool>_ok : generic_enum_result.Result<i32, bool>(i32)",
+        "case Result<i32, bool>_err : generic_enum_result.Result<i32, bool>(bool)",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "record generic_enum_result.Result<i32, bool>",
+        "@m0_generic_enum_result_Result__i32__bool",
+        "aggregate {.tag",
+        "ptr_cast",
+    });
+
+    const fs::path bin = test_bin_root() / "m1_generic_enum_result";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, M1GenericEnumDiagnostics) {
     const fs::path arity = source_root() / "tests" / "m1" / "negative" / "generic_enum_type_arity.ax";
     expect_contains(require_failure(aurexc() + " --check " + q(arity)).output, "generic enum type requires type arguments: Option");
@@ -46,6 +77,9 @@ TEST_F(AurexIntegrationTest, M1GenericEnumDiagnostics) {
 
     const fs::path empty_inference = source_root() / "tests" / "m1" / "negative" / "generic_enum_empty_inference.ax";
     expect_contains(require_failure(aurexc() + " --check " + q(empty_inference)).output, "generic enum constructor requires explicit type arguments for Option");
+
+    const fs::path partial_inference = source_root() / "tests" / "m1" / "negative" / "generic_enum_result_partial_inference.ax";
+    expect_contains(require_failure(aurexc() + " --check " + q(partial_inference)).output, "generic enum constructor requires explicit type arguments for Result");
 }
 
 } // namespace aurex::test

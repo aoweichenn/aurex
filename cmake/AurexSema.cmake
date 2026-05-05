@@ -3,6 +3,7 @@ add_library(aurex_sema
     src/sema/symbol.cpp
     src/sema/function_registry.cpp
     src/sema/generic.cpp
+    src/sema/match.cpp
     src/sema/sema.cpp
 )
 target_link_libraries(aurex_sema PUBLIC aurex_base aurex_syntax)

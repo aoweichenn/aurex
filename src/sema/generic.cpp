@@ -294,6 +294,7 @@ const GenericEnumInstanceInfo* SemanticAnalyzer::generic_enum_instance(const Typ
 const EnumCaseInfo* SemanticAnalyzer::instantiate_generic_enum_constructor(
     const syntax::ExprId callee_id,
     const std::vector<TypeHandle>& arg_types,
+    const TypeHandle expected_type,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(callee_id) || callee_id.value >= module_.exprs.size()) {
@@ -340,6 +341,13 @@ const EnumCaseInfo* SemanticAnalyzer::instantiate_generic_enum_constructor(
         }
     } else {
         type_args.assign(info->params.size(), invalid_type_handle);
+        if (const GenericEnumInstanceInfo* expected = generic_enum_instance(expected_type);
+            expected != nullptr &&
+            expected->name == info->name &&
+            expected->module.value == info->module.value &&
+            expected->args.size() == info->params.size()) {
+            type_args = expected->args;
+        }
         if (syntax::is_valid(case_decl->payload_type) && arg_types.size() == 1) {
             static_cast<void>(infer_generic_enum_args(case_decl->payload_type, arg_types.front(), *info, type_args, callee.range));
         }

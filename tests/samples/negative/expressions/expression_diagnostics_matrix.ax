@@ -1,0 +1,50 @@
+module expression_diagnostics_matrix;
+
+struct Pair {
+    left: i32;
+    right: i32;
+}
+
+enum Payload: u8 {
+    item(Pair) = 1,
+    none = 2,
+}
+
+fn touch() -> void {
+    return;
+}
+
+fn takes(value: i32, pair: Pair) -> i32 {
+    return value;
+}
+
+fn main() -> i32 {
+    {
+        let scoped: i32 = 1;
+    }
+    let pair = Pair { left: 1, right: 2 };
+    let other = Pair { left: 3, right: 4 };
+    var x: i32 = 0;
+    x = true;
+    let bad_logic = !1;
+    let bad_neg = -pair;
+    let bad_deref = *1;
+    let bad_addr = &(1 + 2);
+    let bad_equal = pair == other;
+    let bad_int = true & false;
+    let bad_compare = pair < other;
+    takes();
+    takes(true, pair);
+    let bad_call = (1 + 2)();
+    let bad_field = pair.missing;
+    let bad_index_value = x[0];
+    let bad_index_type = (&x)[true];
+    let bad_struct = Pair { left: 1, missing: 2 };
+    let bad_empty_payload = Payload.none(1);
+    let bad_payload_field = Payload.item;
+    let bad_payload_arity = Payload.item(1, 2);
+    let addr_bad = ptr_addr(1);
+    let from_bad = ptr_from_addr(i32, true);
+    let bad_if_void = if true { touch() } else { touch() };
+    return 0;
+}

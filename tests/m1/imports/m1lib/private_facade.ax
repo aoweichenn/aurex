@@ -1,8 +1,0 @@
-module m1lib.private_facade;
-
-priv import m1lib.reexport_inner;
-
-pub fn local_use() -> Count {
-    return add_base(1);
-}
-

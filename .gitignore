@@ -1,6 +1,8 @@
 build/
 build-coverage/
 cmake-build-*/
+*.profraw
+*.profdata
 bootstrap/m0_bootstrap
 bootstrap/*.bootstrap
 bootstrap/*.bootstrap.c

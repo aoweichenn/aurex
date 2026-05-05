@@ -1,0 +1,7 @@
+module const_type_mismatch;
+
+const bad: i32 = true;
+
+fn main() -> i32 {
+    return bad;
+}

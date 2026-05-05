@@ -1,0 +1,12 @@
+module ambiguous_generic_enum;
+
+import samplelib.generic_a;
+import samplelib.generic_b;
+
+fn main() -> i32 {
+    let value: Choice<i32> = Choice.some(1);
+    return match value {
+        .some(x) => x,
+        .none => 0,
+    };
+}

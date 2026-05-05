@@ -1,9 +1,0 @@
-module type_alias_import;
-
-import m1lib.aliases;
-
-fn main() -> i32 {
-    var value: ImportedInt = 40;
-    let ptr: ImportedIntPtr = &value;
-    return *ptr - 40;
-}

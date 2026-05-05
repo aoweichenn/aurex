@@ -34,7 +34,7 @@ hello from Aurex M0
 ```sh
 build/bin/aurexc --emit=tokens examples/hello.ax
 build/bin/aurexc --emit=ast examples/hello.ax
-build/bin/aurexc --emit=modules tests/positive/module_math.ax
+build/bin/aurexc --emit=modules tests/samples/positive/modules/module_math.ax
 build/bin/aurexc --emit=checked examples/hello.ax
 build/bin/aurexc --emit=ir examples/hello.ax
 build/bin/aurexc --emit=llvm-ir examples/hello.ax
@@ -82,13 +82,13 @@ build/bin/aurexc --emit=ir -O O1 examples/hello.ax
 手动 import path：
 
 ```sh
-build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
+build/bin/aurexc -I tests/samples/imports tests/samples/positive/modules/import_path.ax -o build/tests/import_path
 ```
 
 指定标准库：
 
 ```sh
-build/bin/aurexc --stdlib /path/to/std tests/positive/std_text.ax -o build/tests/std_text
+build/bin/aurexc --stdlib /path/to/std tests/samples/positive/std/std_text.ax -o build/tests/std_text
 ```
 
 关闭标准库：
@@ -100,14 +100,14 @@ build/bin/aurexc --no-stdlib examples/hello.ax -o build/tests/hello
 选择 std backend：
 
 ```sh
-build/bin/aurexc --std-backend host-c tests/positive/std_text.ax -o build/tests/std_text
+build/bin/aurexc --std-backend host-c tests/samples/positive/std/std_text.ax -o build/tests/std_text
 build/bin/aurexc --std-backend none examples/hello.ax -o build/tests/hello
 ```
 
 通过环境变量指定标准库：
 
 ```sh
-AUREX_STDLIB=/path/to/std build/bin/aurexc tests/positive/std_text.ax -o build/tests/std_text
+AUREX_STDLIB=/path/to/std build/bin/aurexc tests/samples/positive/std/std_text.ax -o build/tests/std_text
 ```
 
 `--stdlib` 的优先级高于 `AUREX_STDLIB`。
@@ -124,7 +124,7 @@ tools/bench.py
 
 ```sh
 cmake --install build --prefix build/install
-build/install/bin/aurexc tests/positive/std_text.ax -o build/tests/std_text.installed
+build/install/bin/aurexc tests/samples/positive/std/std_text.ax -o build/tests/std_text.installed
 ```
 
 安装后标准库位于：

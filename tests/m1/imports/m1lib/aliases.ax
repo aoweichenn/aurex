@@ -1,4 +1,0 @@
-module m1lib.aliases;
-
-type ImportedInt = i32;
-type ImportedIntPtr = *mut ImportedInt;

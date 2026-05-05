@@ -1,0 +1,58 @@
+module primitive_matrix;
+
+extern c {
+    fn observe_scalars(
+        a: i8,
+        b: i16,
+        scalar_c: isize,
+        d: f32,
+        e: f64,
+        s: str
+    ) -> void @name("observe_scalars");
+}
+
+struct Small {
+    value: u16;
+}
+
+enum Code: u16 {
+    hex = 0x2A,
+    bin = 0b1010,
+    dec = 1_000,
+}
+
+enum Packet: u8 {
+    small(Small) = 1,
+    none = 2,
+}
+
+fn score(packet: Packet) -> i32 {
+    return match packet {
+        .small(value) => cast(i32, value.value),
+        .none => 0,
+    };
+}
+
+fn main() -> i32 {
+    let text: str = "hi";
+    let a: i8 = cast(i8, 1);
+    let b: i16 = cast(i16, 2);
+    let scalar_c: isize = cast(isize, 3);
+    let d: f32 = cast(f32, 4);
+    let e: f64 = cast(f64, 5);
+    let p: *const u8 = null;
+    let f32_bits: f32 = bit_cast(f32, cast(u32, 0));
+    let f64_bits: f64 = bit_cast(f64, cast(u64, 0));
+    let pointer_bits: usize = ptr_addr(p);
+    let small = Small { value: cast(u16, 42) };
+    if size_of(str) == cast(usize, 0) || align_of(Packet) == cast(usize, 0) {
+        return 3;
+    }
+    if score(Packet.small(small)) != 42 {
+        return 1;
+    }
+    if score(Packet.none) != 0 {
+        return 2;
+    }
+    return cast(i32, a) + cast(i32, b) + cast(i32, scalar_c) - 6;
+}

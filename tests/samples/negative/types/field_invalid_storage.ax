@@ -1,0 +1,9 @@
+module field_invalid_storage;
+
+struct Bad {
+    value: void;
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,9 +1,0 @@
-module private_reexport_enum;
-
-import m1lib.reexport_facade;
-
-fn main() -> i32 {
-    let value = SecretMode_hidden;
-    return 0;
-}
-

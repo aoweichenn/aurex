@@ -24,7 +24,7 @@ hello from Aurex M0
 Stage0 now resolves imports:
 
 ```sh
-build/bin/aurexc -I tests/imports tests/positive/import_path.ax -o build/tests/import_path
+build/bin/aurexc -I tests/samples/imports tests/samples/positive/modules/import_path.ax -o build/tests/import_path
 ```
 
 Stage0 can also produce assembly and object files through clang:

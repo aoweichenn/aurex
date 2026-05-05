@@ -1,0 +1,5 @@
+module c_abi_inferred_return;
+
+export c fn exported() @name("aurex_bad_export") {
+    return;
+}

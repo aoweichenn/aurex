@@ -1,0 +1,10 @@
+module enum_base_non_integer;
+
+enum Flag: bool {
+    no = 0,
+    yes = 1,
+}
+
+fn main() -> i32 {
+    return 0;
+}

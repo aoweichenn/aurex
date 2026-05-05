@@ -74,6 +74,34 @@ fs::path aurexc_path() {
     return build_root() / "bin" / "aurexc";
 }
 
+fs::path samples_root() {
+    return source_root() / "tests" / "samples";
+}
+
+fs::path positive_samples_root() {
+    return samples_root() / "positive";
+}
+
+fs::path negative_samples_root() {
+    return samples_root() / "negative";
+}
+
+fs::path imports_root() {
+    return samples_root() / "imports";
+}
+
+fs::path golden_root() {
+    return samples_root() / "golden";
+}
+
+fs::path positive_sample(const std::string_view area, const std::string_view filename) {
+    return positive_samples_root() / std::string(area) / std::string(filename);
+}
+
+fs::path negative_sample(const std::string_view area, const std::string_view filename) {
+    return negative_samples_root() / std::string(area) / std::string(filename);
+}
+
 std::string shell_quote(const std::string_view value) {
     std::string quoted = "'";
     for (const char ch : value) {
@@ -169,7 +197,7 @@ void expect_not_contains(const std::string_view text, const std::string_view nee
 
 std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view extension) {
     std::vector<fs::path> files;
-    for (const fs::directory_entry& entry : fs::directory_iterator(dir)) {
+    for (const fs::directory_entry& entry : fs::recursive_directory_iterator(dir)) {
         if (entry.is_regular_file() && entry.path().extension() == extension) {
             files.push_back(entry.path());
         }
@@ -186,8 +214,12 @@ std::string aurexc() {
     return q(aurexc_path());
 }
 
+std::string sample_import_flags() {
+    return "-I " + q(imports_root());
+}
+
 std::string tests_import_flags() {
-    return "-I " + q(source_root() / "tests" / "imports");
+    return sample_import_flags();
 }
 
 void AurexIntegrationTest::SetUpTestSuite() {

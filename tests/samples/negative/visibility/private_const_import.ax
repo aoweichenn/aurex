@@ -1,0 +1,7 @@
+module private_const_import;
+
+import samplelib.visibility;
+
+fn main() -> i32 {
+    return hidden_answer;
+}

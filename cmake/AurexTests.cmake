@@ -5,13 +5,32 @@ if(BUILD_TESTING)
 
     add_executable(aurex_tests
         tests/support/test_support.cpp
-        tests/aurex_integration_tests.cpp
-        tests/unit/core_unit_tests.cpp
-        tests/m1/m1_control_flow_tests.cpp
-        tests/m1/m1_enum_tests.cpp
-        tests/m1/m1_expression_tests.cpp
-        tests/m1/m1_generic_tests.cpp
-        tests/m1/m1_integration_tests.cpp
+        tests/gtest/backend/llvm_constants_tests.cpp
+        tests/gtest/backend/llvm_runtime_tests.cpp
+        tests/gtest/backend/llvm_utility_tests.cpp
+        tests/gtest/base/base_tests.cpp
+        tests/gtest/driver/cli_argument_tests.cpp
+        tests/gtest/driver/cli_driver_tests.cpp
+        tests/gtest/driver/install_and_import_tests.cpp
+        tests/gtest/driver/native_toolchain_tests.cpp
+        tests/gtest/frontend/ast_dump_tests.cpp
+        tests/gtest/frontend/lexer_tests.cpp
+        tests/gtest/frontend/parser_tests.cpp
+        tests/gtest/integration/documentation_tests.cpp
+        tests/gtest/integration/native_execution_tests.cpp
+        tests/gtest/integration/sample_suite_tests.cpp
+        tests/gtest/ir/ir_verifier_edge_tests.cpp
+        tests/gtest/ir/ir_verifier_structural_tests.cpp
+        tests/gtest/ir/pass_pipeline_tests.cpp
+        tests/gtest/ir/type_table_tests.cpp
+        tests/gtest/sema/block_expression_tests.cpp
+        tests/gtest/sema/functions_tests.cpp
+        tests/gtest/sema/generics_tests.cpp
+        tests/gtest/sema/if_expression_tests.cpp
+        tests/gtest/sema/inference_tests.cpp
+        tests/gtest/sema/modules_visibility_tests.cpp
+        tests/gtest/sema/pattern_matching_tests.cpp
+        tests/gtest/sema/type_alias_tests.cpp
     )
     target_link_libraries(aurex_tests PRIVATE
         GTest::gtest_main

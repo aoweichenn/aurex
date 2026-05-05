@@ -1,9 +1,0 @@
-module private_reexport_import;
-
-import m1lib.private_facade;
-
-fn main() -> i32 {
-    let value: Count = local_use();
-    return value;
-}
-

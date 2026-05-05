@@ -12,6 +12,6 @@ mkdir -p "${GOLDEN_DIR}"
 
 TMP_TOKENS="${GOLDEN_DIR}/hello.tokens"
 "${AUREXC}" --dump-tokens "${ROOT}/examples/hello.ax" >"${TMP_TOKENS}"
-diff -u "${ROOT}/tests/golden/hello.tokens" "${TMP_TOKENS}"
+diff -u "${ROOT}/tests/samples/golden/hello.tokens" "${TMP_TOKENS}"
 
 echo "golden tests passed"

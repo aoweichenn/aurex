@@ -1,0 +1,10 @@
+module private_struct_import;
+
+import samplelib.visibility;
+
+fn main() -> i32 {
+    let box = HiddenBox {
+        value: 1,
+    };
+    return box.value;
+}

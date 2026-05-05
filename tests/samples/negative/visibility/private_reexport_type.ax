@@ -1,0 +1,9 @@
+module private_reexport_type;
+
+import samplelib.reexport_facade;
+
+fn main() -> i32 {
+    let value: SecretCount = 1;
+    return value;
+}
+

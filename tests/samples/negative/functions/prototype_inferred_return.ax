@@ -1,0 +1,7 @@
+module prototype_inferred_return;
+
+fn value();
+
+fn main() -> i32 {
+    return 0;
+}

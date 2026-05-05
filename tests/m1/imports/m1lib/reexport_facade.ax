@@ -1,8 +1,0 @@
-module m1lib.reexport_facade;
-
-pub import m1lib.reexport_inner;
-
-pub fn add_two(value: Count) -> Count {
-    return add_base(value) + 2;
-}
-

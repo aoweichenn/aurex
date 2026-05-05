@@ -1,8 +1,0 @@
-module private_reexport_const;
-
-import m1lib.reexport_facade;
-
-fn main() -> i32 {
-    return hidden_base;
-}
-

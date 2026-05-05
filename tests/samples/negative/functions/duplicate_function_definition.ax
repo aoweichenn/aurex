@@ -1,0 +1,13 @@
+module duplicate_function_definition;
+
+fn value() -> i32 {
+    return 1;
+}
+
+fn value() -> i32 {
+    return 2;
+}
+
+fn main() -> i32 {
+    return value();
+}

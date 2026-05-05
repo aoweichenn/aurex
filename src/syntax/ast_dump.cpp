@@ -25,6 +25,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_enum: return "kw_enum";
     case TokenKind::kw_const: return "kw_const";
     case TokenKind::kw_type: return "kw_type";
+    case TokenKind::kw_match: return "kw_match";
     case TokenKind::kw_let: return "kw_let";
     case TokenKind::kw_var: return "kw_var";
     case TokenKind::kw_if: return "kw_if";
@@ -70,6 +71,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::semicolon: return "semicolon";
     case TokenKind::colon: return "colon";
     case TokenKind::arrow: return "arrow";
+    case TokenKind::fat_arrow: return "fat_arrow";
     case TokenKind::plus: return "plus";
     case TokenKind::minus: return "minus";
     case TokenKind::star: return "star";
@@ -193,6 +195,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::call: return "call";
     case ExprKind::if_expr: return "if_expr";
     case ExprKind::block_expr: return "block_expr";
+    case ExprKind::match_expr: return "match_expr";
     case ExprKind::field: return "field";
     case ExprKind::index: return "index";
     case ExprKind::struct_literal: return "struct_literal";
@@ -308,6 +311,14 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     if (is_valid(expr.block_result)) {
         dump_expr(out, module, expr.block_result, depth + 1);
+    }
+    if (is_valid(expr.match_value)) {
+        dump_expr(out, module, expr.match_value, depth + 1);
+    }
+    for (const MatchArm& arm : expr.match_arms) {
+        indent(out, depth + 1);
+        out << "match_arm " << arm.case_name << "\n";
+        dump_expr(out, module, arm.value, depth + 2);
     }
     if (is_valid(expr.object)) {
         dump_expr(out, module, expr.object, depth + 1);

@@ -734,6 +734,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
         return analyze_if_expr(expr_id, expr);
     case syntax::ExprKind::block_expr:
         return analyze_block_expr(expr_id, expr);
+    case syntax::ExprKind::match_expr:
+        return analyze_match_expr(expr_id, expr);
     case syntax::ExprKind::unary: {
         const TypeHandle operand = analyze_expr(expr.unary_operand);
         if (expr.unary_op == syntax::UnaryOp::logical_not && !checked_.types.is_bool(operand)) {
@@ -969,6 +971,60 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(const syntax::ExprId expr_id, co
     }
     if (checked_.types.is_void(result)) {
         report(expr.range, "block expression result cannot be void");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    return record_expr_type(expr_id, result);
+}
+
+TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+    if (in_const_initializer_) {
+        report(expr.range, "match expression cannot be used in const initializer");
+    }
+    const TypeHandle matched = analyze_expr(expr.match_value);
+    if (!is_valid(matched) || checked_.types.get(matched).kind != TypeKind::enum_) {
+        report(expr.range, "match expression requires an enum value");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    if (expr.match_arms.empty()) {
+        report(expr.range, "match expression requires at least one arm");
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+
+    std::vector<std::string> covered;
+    TypeHandle result = invalid_type_handle;
+    for (const syntax::MatchArm& arm : expr.match_arms) {
+        const EnumCaseInfo* case_info = find_enum_case_in_visible_modules(arm.case_name, arm.range);
+        if (case_info == nullptr) {
+            continue;
+        }
+        if (!checked_.types.same(case_info->type, matched)) {
+            report(arm.range, "match arm case does not belong to matched enum");
+        }
+        if (std::find(covered.begin(), covered.end(), case_info->c_name) != covered.end()) {
+            report(arm.range, "duplicate match arm for enum case: " + std::string(arm.case_name));
+        } else {
+            covered.push_back(case_info->c_name);
+        }
+
+        const TypeHandle arm_type = analyze_expr(arm.value);
+        if (!is_valid(result)) {
+            result = arm_type;
+        } else if (!checked_.types.same(result, arm_type)) {
+            report(arm.range, "match expression arms must have the same type");
+        }
+    }
+
+    for (const auto& entry : checked_.enum_cases) {
+        const EnumCaseInfo& case_info = entry.second;
+        if (!checked_.types.same(case_info.type, matched)) {
+            continue;
+        }
+        if (std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
+            report(expr.range, "match expression is not exhaustive for enum case: " + case_info.name);
+        }
+    }
+    if (is_valid(result) && checked_.types.is_void(result)) {
+        report(expr.range, "match expression result cannot be void");
         return record_expr_type(expr_id, invalid_type_handle);
     }
     return record_expr_type(expr_id, result);
@@ -1375,6 +1431,33 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(cons
     }
     if (imported_result == nullptr) {
         report(range, "unknown function: " + std::string(name));
+    }
+    return imported_result;
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(const std::string_view name, const base::SourceRange range) {
+    if (const auto found = checked_.enum_cases.find(module_key(current_module_, name)); found != checked_.enum_cases.end()) {
+        return &found->second;
+    }
+
+    const EnumCaseInfo* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    if (syntax::is_valid(current_module_) && current_module_.value < module_.modules.size()) {
+        for (syntax::ModuleId module : module_.modules[current_module_.value].imports) {
+            const auto found = checked_.enum_cases.find(module_key(module, name));
+            if (found == checked_.enum_cases.end()) {
+                continue;
+            }
+            if (imported_result != nullptr) {
+                report(range, "ambiguous enum case '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return nullptr;
+            }
+            imported_result = &found->second;
+            result_module = module;
+        }
+    }
+    if (imported_result == nullptr) {
+        report(range, "unknown enum case: " + std::string(name));
     }
     return imported_result;
 }

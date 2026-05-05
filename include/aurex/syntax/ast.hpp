@@ -64,6 +64,7 @@ enum class ExprKind {
     call,
     if_expr,
     block_expr,
+    match_expr,
     field,
     index,
     struct_literal,
@@ -111,6 +112,12 @@ struct FieldInit {
     base::SourceRange range {};
 };
 
+struct MatchArm {
+    std::string_view case_name;
+    ExprId value = invalid_expr_id;
+    base::SourceRange range {};
+};
+
 struct ExprNode {
     ExprKind kind = ExprKind::invalid;
     base::SourceRange range {};
@@ -127,6 +134,8 @@ struct ExprNode {
     ExprId else_expr = invalid_expr_id;
     StmtId block = invalid_stmt_id;
     ExprId block_result = invalid_expr_id;
+    ExprId match_value = invalid_expr_id;
+    std::vector<MatchArm> match_arms;
     ExprId object = invalid_expr_id;
     std::string_view field_name;
     ExprId index = invalid_expr_id;

@@ -1,0 +1,7 @@
+module match_expression_non_enum;
+
+fn main() -> i32 {
+    return match 1 {
+        Missing_zero => 0,
+    };
+}

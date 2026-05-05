@@ -1,0 +1,20 @@
+module match_expression;
+
+enum Choice: u8 {
+    zero = 0,
+    one = 1,
+}
+
+fn score(choice: Choice) {
+    return match choice {
+        Choice_zero => {
+            let value = 39;
+            value + 1
+        },
+        Choice_one => 41,
+    };
+}
+
+fn main() -> i32 {
+    return score(Choice_zero) - 40;
+}

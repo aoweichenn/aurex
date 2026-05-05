@@ -7,6 +7,7 @@ if(BUILD_TESTING)
         tests/support/test_support.cpp
         tests/aurex_integration_tests.cpp
         tests/m1/m1_control_flow_tests.cpp
+        tests/m1/m1_enum_tests.cpp
         tests/m1/m1_expression_tests.cpp
         tests/m1/m1_integration_tests.cpp
     )

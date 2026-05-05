@@ -50,6 +50,7 @@ namespace {
         Entry {"enum", TokenKind::kw_enum},
         Entry {"const", TokenKind::kw_const},
         Entry {"type", TokenKind::kw_type},
+        Entry {"match", TokenKind::kw_match},
         Entry {"let", TokenKind::kw_let},
         Entry {"var", TokenKind::kw_var},
         Entry {"if", TokenKind::kw_if},
@@ -275,7 +276,13 @@ void Lexer::scan_token() {
         add_token(match('=') ? TokenKind::bang_equal : TokenKind::bang, begin, offset_);
         break;
     case '=':
-        add_token(match('=') ? TokenKind::equal_equal : TokenKind::equal, begin, offset_);
+        if (match('=')) {
+            add_token(TokenKind::equal_equal, begin, offset_);
+        } else if (match('>')) {
+            add_token(TokenKind::fat_arrow, begin, offset_);
+        } else {
+            add_token(TokenKind::equal, begin, offset_);
+        }
         break;
     case '<':
         if (match('=')) {

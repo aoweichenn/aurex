@@ -61,6 +61,7 @@ private:
 
     [[nodiscard]] syntax::ExprId parse_expr();
     [[nodiscard]] syntax::ExprId parse_if_expr();
+    [[nodiscard]] syntax::ExprId parse_match_expr();
     [[nodiscard]] syntax::ExprId parse_logical_or();
     [[nodiscard]] syntax::ExprId parse_logical_and();
     [[nodiscard]] syntax::ExprId parse_bit_or();

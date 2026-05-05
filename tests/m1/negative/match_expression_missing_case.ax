@@ -1,0 +1,12 @@
+module match_expression_missing_case;
+
+enum Choice: u8 {
+    zero = 0,
+    one = 1,
+}
+
+fn main() -> i32 {
+    return match Choice_zero {
+        Choice_zero => 0,
+    };
+}

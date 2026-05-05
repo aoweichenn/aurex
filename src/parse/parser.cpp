@@ -815,6 +815,9 @@ syntax::ExprId Parser::parse_expr() {
     if (check(TokenKind::kw_if)) {
         return parse_if_expr();
     }
+    if (check(TokenKind::kw_match)) {
+        return parse_match_expr();
+    }
     return parse_logical_or();
 }
 
@@ -835,6 +838,45 @@ syntax::ExprId Parser::parse_if_expr() {
     expr.condition = condition;
     expr.then_expr = then_expr;
     expr.else_expr = else_expr;
+    return module_.push_expr(std::move(expr));
+}
+
+syntax::ExprId Parser::parse_match_expr() {
+    const syntax::Token& begin = expect(TokenKind::kw_match, "expected 'match'");
+    const bool previous_struct_literal_mode = allow_struct_literal_;
+    allow_struct_literal_ = false;
+    const syntax::ExprId value = parse_expr();
+    allow_struct_literal_ = previous_struct_literal_mode;
+    expect(TokenKind::l_brace, "expected '{' after match value");
+
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::match_expr;
+    expr.match_value = value;
+
+    while (!is_eof() && !check(TokenKind::r_brace)) {
+        const syntax::Token& case_name = expect(TokenKind::identifier, "expected match case name");
+        expect(TokenKind::fat_arrow, "expected '=>' after match case");
+        const syntax::ExprId arm_value = parse_expr();
+        base::SourceRange arm_range = syntax::is_valid(arm_value)
+            ? merge(case_name.range, module_.exprs[arm_value.value].range)
+            : case_name.range;
+        if (case_name.kind == TokenKind::identifier) {
+            expr.match_arms.push_back(syntax::MatchArm {
+                case_name.text,
+                arm_value,
+                arm_range,
+            });
+        }
+        if (check(TokenKind::r_brace)) {
+            break;
+        }
+        expect(TokenKind::comma, "expected ',' after match arm");
+        panic_ = false;
+    }
+
+    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after match expression");
+    expr.range = merge(begin.range, end.range);
+    panic_ = false;
     return module_.push_expr(std::move(expr));
 }
 

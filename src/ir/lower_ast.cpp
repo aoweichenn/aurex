@@ -248,6 +248,21 @@ private:
         return sema::invalid_type_handle;
     }
 
+    [[nodiscard]] GlobalConstantId enum_case_constant(const std::string_view name) const noexcept {
+        const std::string symbol = enum_case_symbol(name);
+        const auto found = constant_symbols_.find(symbol);
+        return found == constant_symbols_.end() ? invalid_global_constant_id : found->second;
+    }
+
+    [[nodiscard]] std::string enum_case_symbol(const std::string_view name) const noexcept {
+        for (const auto& entry : checked_.enum_cases) {
+            if (entry.second.name == name) {
+                return entry.second.c_name;
+            }
+        }
+        return std::string(name);
+    }
+
     void lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
         if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
             return;
@@ -508,6 +523,64 @@ private:
         return result;
     }
 
+    [[nodiscard]] ValueId lower_match_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+        if (current_function_ == nullptr || !is_valid(current_block_) || expr.match_arms.empty()) {
+            return invalid_value_id;
+        }
+        const ValueId matched = lower_expr(expr.match_value);
+        const BlockId join_block = add_block(*current_function_, "match.join" + std::to_string(current_function_->blocks.size()));
+        std::vector<PhiInput> incoming;
+        incoming.reserve(expr.match_arms.size());
+
+        for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
+            const syntax::MatchArm& arm = expr.match_arms[i];
+            const BlockId arm_block = add_block(*current_function_, "match.arm" + std::to_string(current_function_->blocks.size()));
+            BlockId next_test_block = invalid_block_id;
+            if (i + 1 == expr.match_arms.size()) {
+                append_branch_if_open(arm_block);
+            } else {
+                next_test_block = add_block(*current_function_, "match.next" + std::to_string(current_function_->blocks.size()));
+
+                Value case_value;
+                case_value.kind = ValueKind::constant_ref;
+                case_value.type = expr_type(checked_, expr.match_value);
+                case_value.name = enum_case_symbol(arm.case_name);
+                case_value.constant = enum_case_constant(arm.case_name);
+                const ValueId case_id = append_value(case_value);
+
+                Value cmp;
+                cmp.kind = ValueKind::binary;
+                cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
+                cmp.binary_op = BinaryOp::equal;
+                cmp.lhs = matched;
+                cmp.rhs = case_id;
+                const ValueId condition = append_value(cmp);
+
+                Terminator cond;
+                cond.kind = TerminatorKind::cond_branch;
+                cond.condition = condition;
+                cond.then_target = arm_block;
+                cond.else_target = next_test_block;
+                set_terminator(current_block_, cond);
+            }
+
+            current_block_ = arm_block;
+            const ValueId arm_value = lower_expr(arm.value, expr_type(checked_, expr_id));
+            incoming.push_back(PhiInput {current_block_, arm_value});
+            append_branch_if_open(join_block);
+            if (is_valid(next_test_block)) {
+                current_block_ = next_test_block;
+            }
+        }
+
+        current_block_ = join_block;
+        Value result;
+        result.kind = ValueKind::phi;
+        result.type = expr_type(checked_, expr_id);
+        result.incoming = std::move(incoming);
+        return append_value(result);
+    }
+
     [[nodiscard]] ValueId lower_expr(const syntax::ExprId expr_id) {
         return lower_expr(expr_id, sema::invalid_type_handle);
     }
@@ -599,6 +672,8 @@ private:
             return lower_if_expr(expr_id, expr);
         case syntax::ExprKind::block_expr:
             return lower_block_expr(expr_id, expr);
+        case syntax::ExprKind::match_expr:
+            return lower_match_expr(expr_id, expr);
         case syntax::ExprKind::field:
         case syntax::ExprKind::index: {
             Value value;

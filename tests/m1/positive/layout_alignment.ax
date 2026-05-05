@@ -1,0 +1,37 @@
+module layout_alignment;
+
+struct Padded {
+    tag: u8;
+    value: u64;
+}
+
+struct PackedBytes {
+    data: [3]u8;
+}
+
+enum Tag: u16 {
+    zero = 0,
+    one = 1,
+}
+
+fn main() -> i32 {
+    if size_of(Padded) != cast(usize, 16) {
+        return 1;
+    }
+    if align_of(Padded) != cast(usize, 8) {
+        return 2;
+    }
+    if size_of(PackedBytes) != cast(usize, 3) {
+        return 3;
+    }
+    if align_of(PackedBytes) != cast(usize, 1) {
+        return 4;
+    }
+    if size_of(Tag) != cast(usize, 2) {
+        return 5;
+    }
+    if align_of(Tag) != cast(usize, 2) {
+        return 6;
+    }
+    return 0;
+}

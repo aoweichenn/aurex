@@ -1,83 +1,139 @@
 module std.fs.file;
 
+import std.core.mem;
+import std.core.result;
+import std.core.string;
 import std.core.text;
 import std.ffi.c.libc;
 
-struct ReadFileResult {
-    ok: bool;
-    data: *mut u8;
-    len: usize;
+pub struct FileBytes {
+    priv data: *mut u8;
+    priv len: usize;
 }
 
-struct WriteFileResult {
-    ok: bool;
-    written: usize;
+pub fn file_bytes_len(bytes: *const FileBytes) -> usize {
+    return bytes.len;
 }
 
-fn read_entire_file(path: *const u8) -> ReadFileResult {
+pub fn file_bytes_is_empty(bytes: *const FileBytes) -> bool {
+    return bytes.len == cast(usize, 0);
+}
+
+pub fn file_bytes_as_span(bytes: *const FileBytes) -> SpanU8 {
+    return SpanU8 { data: ptr_cast(*const u8, bytes.data), len: bytes.len };
+}
+
+pub fn file_bytes_c_data(bytes: *const FileBytes) -> *const u8 {
+    if bytes.data == null {
+        return c"";
+    }
+    return ptr_cast(*const u8, bytes.data);
+}
+
+pub fn file_bytes_destroy(bytes: *mut FileBytes) -> void {
+    if bytes.data != null {
+        free_bytes(bytes.data);
+    }
+    bytes.data = null;
+    bytes.len = cast(usize, 0);
+}
+
+pub fn read_bytes(path: *const u8) -> Result<FileBytes, i32> {
+    if path == null {
+        return Result.err(1);
+    }
     let file: *mut CFile = fopen(path, c"rb");
     if file == null {
-        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+        return Result.err(1);
     }
     if fseek(file, 0, SEEK_END) != 0 {
         fclose(file);
-        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+        return Result.err(1);
     }
     let end_pos: i64 = ftell(file);
     if end_pos < cast(i64, 0) {
         fclose(file);
-        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+        return Result.err(1);
     }
     if fseek(file, 0, SEEK_SET) != 0 {
         fclose(file);
-        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+        return Result.err(1);
     }
 
     let len: usize = cast(usize, end_pos);
-    let data: *mut u8 = ptr_cast(*mut u8, malloc(len + cast(usize, 1)));
+    let data: *mut u8 = alloc_bytes(len + cast(usize, 1));
     if data == null {
         fclose(file);
-        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+        return Result.err(1);
     }
     let read_count: usize = fread(ptr_cast(*mut void, data), 1, len, file);
     fclose(file);
     if read_count != len {
-        free(ptr_cast(*mut void, data));
-        return ReadFileResult { ok: false, data: null, len: cast(usize, 0) };
+        free_bytes(data);
+        return Result.err(1);
     }
     data[len] = b'\0';
-    return ReadFileResult { ok: true, data: data, len: len };
+    return Result.ok(FileBytes { data: data, len: len });
 }
 
-fn read_file_ok(result: ReadFileResult) -> bool {
-    return result.ok && result.data != null;
-}
-
-fn read_file_span(result: ReadFileResult) -> SpanU8 {
-    return SpanU8 { data: ptr_cast(*const u8, result.data), len: result.len };
-}
-
-fn free_file_buffer(result: ReadFileResult) -> void {
-    if result.data != null {
-        free(ptr_cast(*mut void, result.data));
+pub fn read_text(path: *const u8) -> Result<String, i32> {
+    var bytes: FileBytes = read_bytes(path)?;
+    var text: String = String.new();
+    if !text.append_span(bytes.as_span()) {
+        bytes.destroy();
+        text.destroy();
+        return Result.err(1);
     }
+    bytes.destroy();
+    return Result.ok(text);
 }
 
-fn write_entire_file(path: *const u8, bytes: SpanU8) -> WriteFileResult {
+pub fn write_bytes(path: *const u8, bytes: SpanU8) -> Result<usize, i32> {
+    if path == null {
+        return Result.err(1);
+    }
     let file: *mut CFile = fopen(path, c"wb");
     if file == null {
-        return WriteFileResult { ok: false, written: cast(usize, 0) };
+        return Result.err(1);
     }
     let written: usize = fwrite(ptr_cast(*const void, bytes.data), 1, bytes.len, file);
-    fclose(file);
-    return WriteFileResult { ok: written == bytes.len, written: written };
+    let close_result: i32 = fclose(file);
+    if written != bytes.len || close_result != 0 {
+        return Result.err(1);
+    }
+    return Result.ok(written);
 }
 
-fn write_text_file(path: *const u8, text: *const u8) -> WriteFileResult {
-    return write_entire_file(path, c_span(text));
+pub fn write_text(path: *const u8, text: *const u8) -> Result<usize, i32> {
+    if text == null {
+        return Result.err(1);
+    }
+    return write_bytes(path, c_span(text));
 }
 
-fn file_exists(path: *const u8) -> bool {
+impl FileBytes {
+    pub fn len(self: *const FileBytes) -> usize {
+        return file_bytes_len(self);
+    }
+
+    pub fn is_empty(self: *const FileBytes) -> bool {
+        return file_bytes_is_empty(self);
+    }
+
+    pub fn as_span(self: *const FileBytes) -> SpanU8 {
+        return file_bytes_as_span(self);
+    }
+
+    pub fn c_data(self: *const FileBytes) -> *const u8 {
+        return file_bytes_c_data(self);
+    }
+
+    pub fn destroy(self: *mut FileBytes) -> void {
+        file_bytes_destroy(self);
+    }
+}
+
+pub fn file_exists(path: *const u8) -> bool {
     let file: *mut CFile = fopen(path, c"rb");
     if file == null {
         return false;
@@ -86,11 +142,10 @@ fn file_exists(path: *const u8) -> bool {
     return true;
 }
 
-fn remove_file(path: *const u8) -> bool {
+pub fn remove_file(path: *const u8) -> bool {
     return remove(path) == 0;
 }
 
-fn rename_file(old_path: *const u8, new_path: *const u8) -> bool {
+pub fn rename_file(old_path: *const u8, new_path: *const u8) -> bool {
     return rename(old_path, new_path) == 0;
 }
-

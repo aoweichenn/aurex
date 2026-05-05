@@ -1,24 +1,44 @@
 module std_file;
 
+import std.core.result;
+import std.core.string;
 import std.core.text;
 import std.fs.file;
 
-fn main() -> i32 {
+fn run() -> Result<i32, i32> {
     let path: *const u8 = c"/tmp/aurex_std_file_test.txt";
     let bytes: SpanU8 = span_u8(c"stdlib-ok", cast(usize, 9));
-    let write_result: WriteFileResult = write_entire_file(path, bytes);
-    if !write_result.ok {
-        return 1;
+    let written: usize = write_bytes(path, bytes)?;
+    if written != bytes.len {
+        return Result.ok(1);
     }
-    let read_result: ReadFileResult = read_entire_file(path);
-    if !read_result.ok {
-        return 2;
-    }
-    let read_span: SpanU8 = span_u8(ptr_cast(*const u8, read_result.data), read_result.len);
+    var read_result: FileBytes = read_bytes(path)?;
+    let read_span: SpanU8 = read_result.as_span();
     if !bytes_equal(bytes, read_span) {
-        free_file_buffer(read_result);
-        return 3;
+        read_result.destroy();
+        return Result.ok(3);
     }
-    free_file_buffer(read_result);
-    return 0;
+    read_result.destroy();
+    remove_file(path);
+    let text_path: *const u8 = c"/tmp/aurex_std_file_text_test.txt";
+    let text_written: usize = write_text(text_path, c"stdlib-text")?;
+    if text_written != c_strlen(c"stdlib-text") {
+        remove_file(text_path);
+        return Result.ok(4);
+    }
+    var text: String = read_text(text_path)?;
+    let text_ok: bool = text.equals_span(c_span(c"stdlib-text"));
+    text.destroy();
+    remove_file(text_path);
+    if !text_ok {
+        return Result.ok(5);
+    }
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
 }

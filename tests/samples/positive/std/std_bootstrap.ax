@@ -1,7 +1,8 @@
 module std_bootstrap;
 
-import std.core.mem;
+import std.core.result;
 import std.core.text;
+import std.core.vec;
 import std.fs.file;
 import std.io.console;
 import std.sys.args;
@@ -14,17 +15,17 @@ fn check_args(argc: i32, argv: *mut *mut u8) -> bool {
 }
 
 fn check_buffer() -> bool {
-    var buffer: BufferU8 = buffer_create(cast(usize, 2));
-    if buffer.data == null {
+    var buffer: VecU8 = VecU8.new();
+    if !buffer.reserve(cast(usize, 2)) {
         return false;
     }
-    if !buffer_push(&buffer, b'a') || !buffer_push(&buffer, b'b') || !buffer_push(&buffer, b'c') {
-        buffer_destroy(&buffer);
+    if !buffer.push(b'a') || !buffer.push(b'b') || !buffer.push(b'c') {
+        buffer.destroy();
         return false;
     }
-    let ok: bool = buffer.len == cast(usize, 3) &&
-        compare_bytes(ptr_cast(*const u8, buffer.data), c"abc", cast(usize, 3)) == 0;
-    buffer_destroy(&buffer);
+    let ok: bool = buffer.len() == cast(usize, 3) &&
+        bytes_equal(buffer.as_span(), c_span(c"abc"));
+    buffer.destroy();
     return ok;
 }
 
@@ -37,42 +38,51 @@ fn check_text() -> bool {
         c_parse_i32(c"42") == 42;
 }
 
-fn check_host_file() -> bool {
+fn check_host_file_result() -> Result<bool, i32> {
     let path: *const u8 = c"/tmp/aurex_std_bootstrap_host.txt";
-    if !write_text(path, c"host-ok") {
-        return false;
+    let written: usize = write_host_text(path, c"host-ok")?;
+    if written != c_strlen(c"host-ok") {
+        return Result.ok(false);
     }
-    let result: HostReadFileResult = read_host_file(path);
-    if !result.ok {
-        return false;
-    }
-    let ok: bool = bytes_equal(host_file_span(result), c_span(c"host-ok"));
-    free_host_file(result);
+    var result: HostFileBytes = read_host_bytes(path)?;
+    let ok: bool = bytes_equal(result.as_span(), c_span(c"host-ok"));
+    result.destroy();
     remove_file(path);
-    return ok;
+    return Result.ok(ok);
 }
 
-fn check_output_stream() -> bool {
+fn check_host_file() -> bool {
+    return match check_host_file_result() {
+        .ok(ok) => ok,
+        .err(_) => false,
+    };
+}
+
+fn check_output_stream_result() -> Result<bool, i32> {
     let path: *const u8 = c"/tmp/aurex_std_bootstrap_stream.txt";
     let file: *mut void = open_output_handle(path);
     if file == null {
-        return false;
+        return Result.ok(false);
     }
     if !write_output_text(file, c"value=") || !write_output_i32(file, 7) || !write_output_text(file, c"\n") {
         close_output_handle(file);
-        return false;
+        return Result.ok(false);
     }
     if !close_output_handle(file) {
-        return false;
+        return Result.ok(false);
     }
-    let read_back: ReadFileResult = read_entire_file(path);
-    if !read_file_ok(read_back) {
-        return false;
-    }
-    let ok: bool = bytes_equal(read_file_span(read_back), c_span(c"value=7\n"));
-    free_file_buffer(read_back);
+    var read_back: FileBytes = read_bytes(path)?;
+    let ok: bool = bytes_equal(read_back.as_span(), c_span(c"value=7\n"));
+    read_back.destroy();
     remove_file(path);
-    return ok;
+    return Result.ok(ok);
+}
+
+fn check_output_stream() -> bool {
+    return match check_output_stream_result() {
+        .ok(ok) => ok,
+        .err(_) => false,
+    };
 }
 
 fn main(argc: i32, argv: *mut *mut u8) -> i32 {

@@ -1,72 +1,64 @@
 module std.sys.host;
 
+import std.core.result;
 import std.core.text;
 import std.ffi.c.host_support;
 
-struct HostReadFileResult {
-    ok: bool;
-    data: *mut u8;
-    len: usize;
+pub struct HostFileBytes {
+    priv data: *mut u8;
+    priv len: usize;
 }
 
-fn read_file(path: *const u8) -> HostFileBuffer {
-    return host_read_file(path);
-}
-
-fn free_file(buffer: HostFileBuffer) -> void {
-    host_free_file(buffer);
-}
-
-fn file_buffer_ok(buffer: HostFileBuffer) -> bool {
-    return buffer.data != null;
-}
-
-fn file_buffer_span(buffer: HostFileBuffer) -> SpanU8 {
-    return SpanU8 { data: ptr_cast(*const u8, buffer.data), len: cast(usize, buffer.len) };
-}
-
-fn read_host_file(path: *const u8) -> HostReadFileResult {
-    let buffer: HostFileBuffer = host_read_file(path);
-    return HostReadFileResult { ok: buffer.data != null, data: buffer.data, len: cast(usize, buffer.len) };
-}
-
-fn host_file_span(result: HostReadFileResult) -> SpanU8 {
-    return SpanU8 { data: ptr_cast(*const u8, result.data), len: result.len };
-}
-
-fn free_host_file(result: HostReadFileResult) -> void {
-    if result.data != null {
-        host_free_file(HostFileBuffer { data: result.data, len: cast(i32, result.len) });
+pub fn read_host_bytes(path: *const u8) -> Result<HostFileBytes, i32> {
+    if path == null {
+        return Result.err(1);
     }
+    let buffer: HostFileBuffer = host_read_file(path);
+    if buffer.data == null {
+        return Result.err(1);
+    }
+    return Result.ok(HostFileBytes { data: buffer.data, len: cast(usize, buffer.len) });
 }
 
-fn write_text(path: *const u8, text: *const u8) -> bool {
-    let result: HostWriteResult = host_write_text(path, text);
-    return result.ok;
+pub fn host_file_bytes_len(bytes: *const HostFileBytes) -> usize {
+    return bytes.len;
 }
 
-fn open_output(path: *const u8) -> *mut OutputFile {
-    return host_output_open(path);
+pub fn host_file_bytes_as_span(bytes: *const HostFileBytes) -> SpanU8 {
+    return SpanU8 { data: ptr_cast(*const u8, bytes.data), len: bytes.len };
 }
 
-fn output_write_text(file: *mut OutputFile, text: *const u8) -> bool {
-    return host_output_write_text(file, text);
+pub fn host_file_bytes_destroy(bytes: *mut HostFileBytes) -> void {
+    if bytes.data != null {
+        host_free_file(HostFileBuffer { data: bytes.data, len: cast(i32, bytes.len) });
+    }
+    bytes.data = null;
+    bytes.len = cast(usize, 0);
 }
 
-fn output_write_span(file: *mut OutputFile, span: SpanU8) -> bool {
-    return host_output_write_source_range(file, span.data, 0, cast(i32, span.len));
+pub fn write_host_text(path: *const u8, text: *const u8) -> Result<usize, i32> {
+    if path == null || text == null {
+        return Result.err(1);
+    }
+    let result: HostWriteStatus = host_write_text(path, text);
+    if !result.ok {
+        return Result.err(1);
+    }
+    return Result.ok(c_strlen(text));
 }
 
-fn output_write_source_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool {
-    return host_output_write_source_range(file, source, begin, end);
-}
+impl HostFileBytes {
+    pub fn len(self: *const HostFileBytes) -> usize {
+        return host_file_bytes_len(self);
+    }
 
-fn output_write_i32(file: *mut OutputFile, value: i32) -> bool {
-    return host_output_write_i32(file, value);
-}
+    pub fn as_span(self: *const HostFileBytes) -> SpanU8 {
+        return host_file_bytes_as_span(self);
+    }
 
-fn close_output(file: *mut OutputFile) -> bool {
-    return host_output_close(file);
+    pub fn destroy(self: *mut HostFileBytes) -> void {
+        host_file_bytes_destroy(self);
+    }
 }
 
 fn open_output_handle(path: *const u8) -> *mut void {
@@ -92,4 +84,3 @@ fn write_output_i32(file: *mut void, value: i32) -> bool {
 fn close_output_handle(file: *mut void) -> bool {
     return host_output_close(ptr_cast(*mut OutputFile, file));
 }
-

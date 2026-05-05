@@ -38,6 +38,9 @@ Current language slices:
   propagation and early-return control flow.
 - Standard-library container/text/path baseline started, including `VecU8` APIs
   on generic `Vec<T>`, an owned `String`, and an owned `Path`.
+- Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
+  the old `BufferU8` and handwritten file-result structures removed from
+  in-tree uses.
 - `pub` / `priv` visibility keywords, cross-module private item filtering, and
   private field access checks.
 - Examples now include system-level CLI, file IO, memory/arena, std-module,
@@ -165,8 +168,11 @@ manual status helpers.
 3. `Vec` / `String` / `Path`  
    Started. The tree now has a `Vec<T>` shape with `VecU8` operations, an owned
    `String`, and an owned `Path`, covered by a std integration sample combining
-   method APIs, `Result` / `Option`, and `?`. Next, grow this into token-buffer,
-   source-list, and more general path/build-graph scenarios.
+   method APIs, `Result` / `Option`, and `?`. The old `BufferU8` use has moved
+   to `VecU8`, and `std.fs.file` / `std.sys.host` file IO now exposes M1-style
+   APIs such as `Result<FileBytes, i32>` and `Result<usize, i32>`. Next, grow
+   this into token-buffer, source-list, and more general path/build-graph
+   scenarios.
 
 4. Generic functions / traits / `where`  
    Remove single-type specialization pressure from containers, algorithms, and

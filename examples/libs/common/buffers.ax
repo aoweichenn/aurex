@@ -1,7 +1,7 @@
 module common.buffers;
 
 import common.status;
-import std.core.mem;
+import std.core.vec;
 
 pub struct PacketPage {
     pub bytes: [8]u8;
@@ -15,9 +15,9 @@ pub fn packet_page_align() -> usize {
     return align_of(PacketPage);
 }
 
-pub fn append_health_prefix(buffer: *mut BufferU8, state: Health) -> bool {
+pub fn append_health_prefix(buffer: *mut VecU8, state: Health) -> bool {
     return match state {
-        .ok => buffer_push(buffer, b'O') && buffer_push(buffer, b'K'),
-        .degraded | .failed => buffer_push(buffer, b'!'),
+        .ok => buffer.push(b'O') && buffer.push(b'K'),
+        .degraded | .failed => buffer.push(b'!'),
     };
 }

@@ -3,6 +3,7 @@ module system.memory_probe.main;
 import common.prelude;
 import std.core.mem;
 import std.core.text;
+import std.core.vec;
 import std.io.console;
 import std.sys.process;
 
@@ -35,17 +36,14 @@ fn check_arena() -> Outcome<i32> {
 }
 
 fn check_buffer() -> Health {
-    var buffer = buffer_create(cast(usize, 1));
-    if buffer.data == null {
-        return Health.failed;
-    }
+    var buffer: VecU8 = VecU8.new();
     if !append_health_prefix(&buffer, Health.ok) {
-        buffer_destroy(&buffer);
+        buffer.destroy();
         return Health.failed;
     }
-    let ok = buffer.len == cast(usize, 2) &&
-        compare_bytes(ptr_cast(*const u8, buffer.data), c"OK", cast(usize, 2)) == 0;
-    buffer_destroy(&buffer);
+    let ok = buffer.len() == cast(usize, 2) &&
+        bytes_equal(buffer.as_span(), c_span(c"OK"));
+    buffer.destroy();
     if ok {
         return Health.ok;
     }

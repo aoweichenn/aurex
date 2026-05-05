@@ -1,6 +1,7 @@
 module system.file_journal.main;
 
 import common.prelude;
+import std.core.result;
 import std.core.text;
 import std.fs.file;
 import std.io.console;
@@ -22,21 +23,24 @@ fn entry_bytes(entry: JournalEntry) -> SpanU8 {
 }
 
 fn write_entry(path: *const u8, entry: JournalEntry) -> Outcome<i32> {
-    let result = write_entire_file(path, entry_bytes(entry));
-    if result.ok {
-        return Outcome<i32>.ok(cast(i32, result.written));
-    }
-    return Outcome<i32>.err(10);
+    return match write_bytes(path, entry_bytes(entry)) {
+        .ok(written) => Outcome<i32>.ok(cast(i32, written)),
+        .err(_) => Outcome<i32>.err(10),
+    };
+}
+
+fn verify_entry_result(path: *const u8) -> Result<bool, i32> {
+    var read_back: FileBytes = read_bytes(path)?;
+    let ok = bytes_starts_with(read_back.as_span(), c_span(c"journal"));
+    read_back.destroy();
+    return Result.ok(ok);
 }
 
 fn verify_entry(path: *const u8) -> bool {
-    let read_back = read_entire_file(path);
-    if !read_file_ok(read_back) {
-        return false;
-    }
-    let ok = bytes_starts_with(read_file_span(read_back), c_span(c"journal"));
-    free_file_buffer(read_back);
-    return ok;
+    return match verify_entry_result(path) {
+        .ok(ok) => ok,
+        .err(_) => false,
+    };
 }
 
 fn main() -> i32 {

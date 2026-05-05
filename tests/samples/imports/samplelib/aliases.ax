@@ -1,0 +1,4 @@
+module samplelib.aliases;
+
+type ImportedInt = i32;
+type ImportedIntPtr = *mut ImportedInt;

@@ -1,0 +1,40 @@
+module samplelib.visibility;
+
+pub const answer: i32 = 41;
+priv const hidden_answer: i32 = 99;
+
+pub type PublicInt = i32;
+priv type HiddenInt = i32;
+
+pub struct PublicBox {
+    pub value: i32;
+    priv secret: i32;
+}
+
+priv struct HiddenBox {
+    pub value: i32;
+}
+
+pub enum PublicChoice: u8 {
+    yes = 1,
+    no = 2,
+}
+
+priv enum HiddenChoice: u8 {
+    yes = 1,
+}
+
+pub fn exported(value: i32) -> i32 {
+    return add_secret(value);
+}
+
+pub fn make_box(value: i32) -> PublicBox {
+    return PublicBox {
+        value: value,
+        secret: hidden_answer,
+    };
+}
+
+priv fn add_secret(value: i32) -> i32 {
+    return value + answer;
+}

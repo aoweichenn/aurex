@@ -1,0 +1,8 @@
+module samplelib.private_facade;
+
+priv import samplelib.reexport_inner;
+
+pub fn local_use() -> Count {
+    return add_base(1);
+}
+

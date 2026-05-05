@@ -1,0 +1,10 @@
+module samplelib.generic_a;
+
+pub struct Box<T> {
+    value: T;
+}
+
+pub enum Choice<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}

@@ -1,0 +1,10 @@
+module samplelib.generic_private;
+
+priv struct Hidden<T> {
+    value: T;
+}
+
+priv enum Secret<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}

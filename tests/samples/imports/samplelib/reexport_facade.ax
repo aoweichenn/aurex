@@ -1,0 +1,8 @@
+module samplelib.reexport_facade;
+
+pub import samplelib.reexport_inner;
+
+pub fn add_two(value: Count) -> Count {
+    return add_base(value) + 2;
+}
+

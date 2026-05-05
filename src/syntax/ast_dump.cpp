@@ -27,6 +27,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_enum: return "kw_enum";
     case TokenKind::kw_const: return "kw_const";
     case TokenKind::kw_type: return "kw_type";
+    case TokenKind::kw_impl: return "kw_impl";
     case TokenKind::kw_match: return "kw_match";
     case TokenKind::kw_let: return "kw_let";
     case TokenKind::kw_var: return "kw_var";
@@ -207,6 +208,7 @@ std::string_view item_kind_name(const ItemKind kind) {
     case ItemKind::opaque_struct_decl: return "opaque_struct";
     case ItemKind::fn_decl: return "fn";
     case ItemKind::extern_block: return "extern_block";
+    case ItemKind::impl_block: return "impl";
     }
     return "unknown";
 }
@@ -438,6 +440,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
             out << ">";
         }
     }
+    if (is_valid(item.impl_type)) {
+        out << " for " << type_label(module, item.impl_type);
+    }
     if (item.is_export_c) {
         out << " export_c";
     }
@@ -486,17 +491,25 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     for (ItemId extern_item : item.extern_items) {
         dump_item(out, module, extern_item, depth + 1);
     }
+    for (ItemId impl_item : item.impl_items) {
+        dump_item(out, module, impl_item, depth + 1);
+    }
 }
 
-[[nodiscard]] std::unordered_set<base::u32> collect_nested_extern_items(const AstModule& module) {
+[[nodiscard]] std::unordered_set<base::u32> collect_nested_items(const AstModule& module) {
     std::unordered_set<base::u32> nested;
     for (const ItemNode& item : module.items) {
-        if (item.kind != ItemKind::extern_block) {
-            continue;
-        }
-        for (ItemId id : item.extern_items) {
-            if (is_valid(id)) {
-                nested.insert(id.value);
+        if (item.kind == ItemKind::extern_block) {
+            for (ItemId id : item.extern_items) {
+                if (is_valid(id)) {
+                    nested.insert(id.value);
+                }
+            }
+        } else if (item.kind == ItemKind::impl_block) {
+            for (ItemId id : item.impl_items) {
+                if (is_valid(id)) {
+                    nested.insert(id.value);
+                }
             }
         }
     }
@@ -537,7 +550,7 @@ std::string dump_ast(const AstModule& module) {
         }
         out << "\n";
     }
-    const std::unordered_set<base::u32> nested = collect_nested_extern_items(module);
+    const std::unordered_set<base::u32> nested = collect_nested_items(module);
     for (base::u32 i = 0; i < module.items.size(); ++i) {
         if (nested.contains(i)) {
             continue;

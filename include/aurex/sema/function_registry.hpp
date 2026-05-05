@@ -25,6 +25,7 @@ public:
         syntax::ModuleId owner,
         std::string key,
         std::string c_name,
+        TypeHandle method_owner_type,
         TypeHandle return_type,
         std::vector<TypeHandle> param_types,
         syntax::ItemId item_id

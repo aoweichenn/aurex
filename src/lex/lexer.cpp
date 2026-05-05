@@ -52,6 +52,7 @@ namespace {
         Entry {"enum", TokenKind::kw_enum},
         Entry {"const", TokenKind::kw_const},
         Entry {"type", TokenKind::kw_type},
+        Entry {"impl", TokenKind::kw_impl},
         Entry {"match", TokenKind::kw_match},
         Entry {"let", TokenKind::kw_let},
         Entry {"var", TokenKind::kw_var},

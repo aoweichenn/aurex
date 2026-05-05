@@ -39,6 +39,8 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "const s: str = \"hi\\\\n\";\n"
         "const c: *const u8 = c\"hi\\n\";\n"
         "const b: u8 = b'\\n';\n"
+        "struct LexerProbe { value: i32; }\n"
+        "impl LexerProbe { fn value(self: *const LexerProbe) -> i32 { return self.value; } }\n"
         "fn ops(a: i32, b: i32) -> i32 { return ((a / b) % 3) ^ (a << 1) >> 1 | ~b; }\n"
         "fn flags(flag: bool) -> void {\n"
         "  let i8_value: i8 = 1;\n"
@@ -86,6 +88,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "kw_usize",
         "kw_f32",
         "kw_f64",
+        "kw_impl",
         "slash",
         "percent",
         "pipe",

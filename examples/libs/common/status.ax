@@ -30,3 +30,17 @@ pub fn is_healthy(state: Health) -> bool {
         _ => false,
     };
 }
+
+impl Health {
+    pub fn code(self: Health) -> i32 {
+        return health_code(self);
+    }
+
+    pub fn healthy(self: Health) -> bool {
+        return is_healthy(self);
+    }
+
+    pub fn from_errors(errors: i32) -> Health {
+        return classify_errors(errors);
+    }
+}

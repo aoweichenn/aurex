@@ -33,6 +33,7 @@ void FunctionRegistry::register_function(
     const syntax::ModuleId owner,
     std::string key,
     const std::string c_name,
+    const TypeHandle method_owner_type,
     const TypeHandle return_type,
     std::vector<TypeHandle> param_types,
     const syntax::ItemId item_id
@@ -43,6 +44,7 @@ void FunctionRegistry::register_function(
     signature.name = std::string(item.name);
     signature.c_name = abi_or_c_name(item, c_name);
     signature.module = owner;
+    signature.method_owner_type = method_owner_type;
     signature.return_type = return_type;
     signature.param_types = std::move(param_types);
     signature.range = item.range;
@@ -50,6 +52,8 @@ void FunctionRegistry::register_function(
     signature.is_export_c = item.is_export_c;
     signature.has_prototype = is_prototype;
     signature.has_definition = !is_prototype && !item.is_extern_c;
+    signature.is_method = syntax::is_valid(item.impl_type);
+    signature.has_self_param = signature.is_method && !item.params.empty() && item.params.front().name == "self";
     signature.visibility = item.visibility;
     signature.prototype_item = is_prototype ? item_id : syntax::invalid_item_id;
     signature.definition_item = signature.has_definition ? item_id : syntax::invalid_item_id;

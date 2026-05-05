@@ -158,7 +158,17 @@ private:
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string function_key(const syntax::ItemNode& function) const;
+    [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
+    [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] bool can_access(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
+    [[nodiscard]] bool method_receiver_matches(const FunctionSignature& signature, TypeHandle receiver_type, syntax::ExprId receiver);
+    [[nodiscard]] const FunctionSignature* find_method_in_visible_modules(
+        TypeHandle owner_type,
+        std::string_view name,
+        base::SourceRange range,
+        bool require_self
+    );
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
@@ -198,7 +208,12 @@ private:
     [[nodiscard]] std::string generic_instance_key(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_display_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_c_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] TypeHandle find_type_in_visible_modules(std::string_view name, base::SourceRange range, bool opaque_allowed_as_pointee);
+    [[nodiscard]] TypeHandle find_type_in_visible_modules(
+        std::string_view name,
+        base::SourceRange range,
+        bool opaque_allowed_as_pointee,
+        bool report_unknown = true
+    );
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const noexcept;

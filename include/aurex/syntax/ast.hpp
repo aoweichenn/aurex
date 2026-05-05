@@ -229,6 +229,7 @@ enum class ItemKind {
     opaque_struct_decl,
     fn_decl,
     extern_block,
+    impl_block,
 };
 
 struct ItemNode {
@@ -246,11 +247,13 @@ struct ItemNode {
     std::vector<ParamDecl> params;
     TypeId return_type = invalid_type_id;
     StmtId body = invalid_stmt_id;
+    TypeId impl_type = invalid_type_id;
     bool is_export_c = false;
     bool is_extern_c = false;
     bool is_prototype = false;
     std::string_view abi_name;
     std::vector<ItemId> extern_items;
+    std::vector<ItemId> impl_items;
 };
 
 struct ModulePath {

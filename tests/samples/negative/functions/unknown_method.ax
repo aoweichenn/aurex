@@ -1,0 +1,10 @@
+module unknown_method;
+
+struct Counter {
+    value: i32;
+}
+
+fn main() -> i32 {
+    let counter = Counter { value: 1 };
+    return counter.missing();
+}

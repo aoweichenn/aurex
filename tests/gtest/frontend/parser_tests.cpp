@@ -22,6 +22,13 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  opaque struct Handle;\n"
         "  fn puts(s: *const u8) -> i32 @name(\"puts\");\n"
         "}\n"
+        "struct Counter { value: i32; }\n"
+        "impl Counter {\n"
+        "  pub fn inc(self: *mut Counter) -> i32 {\n"
+        "    self.value = self.value + 1;\n"
+        "    return self.value;\n"
+        "  }\n"
+        "}\n"
         "export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name(\"exported\") {\n"
         "  var i: i32 = 0;\n"
         "  while i < argc {\n"
@@ -51,6 +58,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     const std::string token_dump = syntax::dump_tokens(tokens.value());
     expect_contains_all(token_dump, {
         "kw_export",
+        "kw_impl",
         "kw_opaque",
         "kw_while",
         "kw_break",
@@ -69,6 +77,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     expect_contains_all(ast, {
         "pub import c.host",
         "opaque_struct Handle extern_c",
+        "impl for Counter",
+        "fn inc for Counter",
         "fn exported export_c @name=exported",
         "stmt #",
         "while",

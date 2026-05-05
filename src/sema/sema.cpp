@@ -238,9 +238,24 @@ void SemanticAnalyzer::register_value_names() {
     FunctionRegistry functions(checked_, global_values_, diagnostics_);
     for (const syntax::ItemNode& item : module_.items) {
         current_module_ = item_module(item);
-        const std::string key = module_key(current_module_, item.name);
-        const std::string c_name = c_symbol_name(current_module_, item.name);
+        std::string key = module_key(current_module_, item.name);
+        std::string c_name = c_symbol_name(current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
+            const bool is_method = syntax::is_valid(item.impl_type);
+            TypeHandle method_owner_type = invalid_type_handle;
+            if (is_method) {
+                method_owner_type = resolve_type(item.impl_type);
+                if (is_valid(method_owner_type)) {
+                    const TypeKind owner_kind = checked_.types.get(method_owner_type).kind;
+                    if (owner_kind != TypeKind::struct_ &&
+                        owner_kind != TypeKind::enum_ &&
+                        owner_kind != TypeKind::opaque_struct) {
+                        report(item.range, "impl target must be a named type");
+                    }
+                }
+                key = method_key(current_module_, method_owner_type, item.name);
+                c_name = method_c_symbol_name(method_owner_type, item.name);
+            }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
             TypeHandle return_type = invalid_type_handle;
             if (has_explicit_return) {
@@ -268,6 +283,27 @@ void SemanticAnalyzer::register_value_names() {
                 }
                 param_types.push_back(param_type);
             }
+            if (is_method) {
+                bool saw_self = false;
+                for (base::usize i = 0; i < item.params.size(); ++i) {
+                    if (item.params[i].name != "self") {
+                        continue;
+                    }
+                    if (i != 0) {
+                        report(item.params[i].range, "method self parameter must be first");
+                    }
+                    saw_self = true;
+                }
+                if (saw_self && !param_types.empty() && is_valid(method_owner_type)) {
+                    TypeHandle self_type = param_types.front();
+                    if (checked_.types.is_pointer(self_type)) {
+                        self_type = checked_.types.get(self_type).pointee;
+                    }
+                    if (!checked_.types.same(self_type, method_owner_type)) {
+                        report(item.params.front().range, "method self parameter must use the impl type or a pointer to it");
+                    }
+                }
+            }
             if (has_explicit_return && is_valid(return_type)) {
                 validate_function_return_type(item, return_type);
             }
@@ -278,6 +314,7 @@ void SemanticAnalyzer::register_value_names() {
                 current_module_,
                 key,
                 c_name,
+                method_owner_type,
                 return_type,
                 std::move(param_types),
                 syntax::ItemId {static_cast<base::u32>(item_index)}
@@ -410,6 +447,9 @@ void SemanticAnalyzer::analyze_entry_points() {
         if (function.module.value != root_module.value) {
             continue;
         }
+        if (function.is_method) {
+            continue;
+        }
         if (function.is_extern_c) {
             continue;
         }
@@ -520,7 +560,7 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     const int previous_loop_depth = loop_depth_;
     const SymbolTable previous_symbols = symbols_;
     current_module_ = item_module(function);
-    const std::string key = module_key(current_module_, function.name);
+    const std::string key = function_key(function);
     const auto found = checked_.functions.find(key);
     if (found == checked_.functions.end()) {
         current_module_ = previous_module;
@@ -774,7 +814,9 @@ void SemanticAnalyzer::ensure_function_return_known(
     if (is_valid(signature.return_type) || signature.is_extern_c) {
         return;
     }
-    const std::string key = module_key(signature.module, signature.name);
+    const std::string key = signature.is_method
+        ? method_key(signature.module, signature.method_owner_type, signature.name)
+        : module_key(signature.module, signature.name);
     const FunctionBodyState state = function_body_states_.contains(key)
         ? function_body_states_.at(key)
         : FunctionBodyState::not_started;
@@ -842,14 +884,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 module_.exprs[expr.callee.value].range,
                 false
             ) != nullptr;
-        if (module_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
-            find_enum_constructor(expr.callee, false) == nullptr &&
-            !generic_enum_constructor) {
-            report(expr.range, "callee must be a function name");
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
         const syntax::ExprNode& callee = module_.exprs[expr.callee.value];
-        const std::string name(callee.text);
+        const std::string name = callee.kind == syntax::ExprKind::field
+            ? std::string(callee.field_name)
+            : std::string(callee.text);
         const base::SourceRange callee_range = callee.range;
         if (const EnumCaseInfo* enum_case = find_enum_constructor(expr.callee, false); enum_case != nullptr) {
             if (!is_valid(enum_case->payload_type)) {
@@ -901,6 +939,69 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 checked_.expr_c_names[expr.callee.value] = enum_case->c_name;
             }
             return record_expr_type(expr_id, enum_case->type);
+        }
+        if (callee.kind == syntax::ExprKind::field) {
+            const FunctionSignature* signature = nullptr;
+            TypeHandle receiver_type = invalid_type_handle;
+            bool has_receiver = false;
+            bool receiver_valid = true;
+            if (syntax::is_valid(callee.object) &&
+                callee.object.value < module_.exprs.size() &&
+                module_.exprs[callee.object.value].kind == syntax::ExprKind::name) {
+                const syntax::ExprNode& object = module_.exprs[callee.object.value];
+                const TypeHandle associated_owner =
+                    find_type_in_visible_modules(object.text, object.range, false, false);
+                if (is_valid(associated_owner)) {
+                    signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
+                    if (signature == nullptr) {
+                        return record_expr_type(expr_id, invalid_type_handle);
+                    }
+                    if (signature->has_self_param) {
+                        report(callee.range, "method requires a receiver: " + checked_.types.display_name(associated_owner) + "." + name);
+                        receiver_valid = false;
+                    }
+                }
+            }
+            if (signature == nullptr) {
+                has_receiver = true;
+                receiver_type = analyze_expr(callee.object);
+                TypeHandle owner_type = receiver_type;
+                if (checked_.types.is_pointer(owner_type)) {
+                    owner_type = checked_.types.get(owner_type).pointee;
+                }
+                signature = find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true);
+                if (signature == nullptr) {
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+                receiver_valid = method_receiver_matches(*signature, receiver_type, callee.object);
+            }
+            ensure_function_return_known(*signature, callee.range);
+            if (expr.callee.value < checked_.expr_c_names.size()) {
+                checked_.expr_c_names[expr.callee.value] = signature->c_name;
+            }
+            const base::usize receiver_count = has_receiver ? 1 : 0;
+            const base::usize expected_count =
+                signature->param_types.size() >= receiver_count
+                    ? signature->param_types.size() - receiver_count
+                    : 0;
+            if (!receiver_valid || signature->param_types.size() < receiver_count) {
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            if (expected_count != expr.args.size()) {
+                report(expr.range, "argument count mismatch in call to " + name);
+            }
+            const base::usize count = expr.args.size() < expected_count ? expr.args.size() : expected_count;
+            for (base::usize i = 0; i < count; ++i) {
+                const TypeHandle expected = signature->param_types[i + receiver_count];
+                const TypeHandle actual = analyze_expr(expr.args[i]);
+                if (!can_assign(expected, actual, expr.args[i])) {
+                    report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
+                }
+                if (is_copy_forbidden_value(expected)) {
+                    report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                }
+            }
+            return record_expr_type(expr_id, signature->return_type);
         }
         const FunctionSignature* signature = find_function_in_visible_modules(name, callee_range);
         if (signature == nullptr) {
@@ -1655,14 +1756,114 @@ std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const st
     return std::to_string(module.value) + ":" + std::string(name);
 }
 
+std::string SemanticAnalyzer::function_key(const syntax::ItemNode& function) const {
+    const syntax::ModuleId module = item_module(function);
+    if (!syntax::is_valid(function.impl_type)) {
+        return module_key(module, function.name);
+    }
+    const TypeHandle owner_type =
+        function.impl_type.value < checked_.syntax_type_handles.size()
+            ? checked_.syntax_type_handles[function.impl_type.value]
+            : invalid_type_handle;
+    return method_key(module, owner_type, function.name);
+}
+
+std::string SemanticAnalyzer::method_key(
+    const syntax::ModuleId module,
+    const TypeHandle owner_type,
+    const std::string_view name
+) const {
+    return module_key(module, checked_.types.display_name(owner_type) + "." + std::string(name));
+}
+
+std::string SemanticAnalyzer::method_c_symbol_name(
+    const TypeHandle owner_type,
+    const std::string_view name
+) const {
+    return checked_.types.c_name(owner_type) + "_" + std::string(name);
+}
+
 bool SemanticAnalyzer::can_access(const syntax::ModuleId owner, const syntax::Visibility visibility) const noexcept {
     return owner.value == current_module_.value || visibility == syntax::Visibility::public_;
+}
+
+bool SemanticAnalyzer::method_receiver_matches(
+    const FunctionSignature& signature,
+    const TypeHandle receiver_type,
+    const syntax::ExprId receiver
+) {
+    if (!signature.has_self_param || signature.param_types.empty()) {
+        return false;
+    }
+    const TypeHandle self_type = signature.param_types.front();
+    if (checked_.types.same(self_type, receiver_type)) {
+        if (is_copy_forbidden_value(self_type)) {
+            report(module_.exprs[receiver.value].range, "non-copyable array storage cannot be passed by value");
+            return false;
+        }
+        return true;
+    }
+    if (!checked_.types.is_pointer(self_type)) {
+        return false;
+    }
+    const TypeHandle pointee = checked_.types.get(self_type).pointee;
+    if (checked_.types.is_pointer(receiver_type)) {
+        return checked_.types.same(self_type, receiver_type);
+    }
+    if (!checked_.types.same(pointee, receiver_type)) {
+        return false;
+    }
+    if (!is_place_expr(receiver)) {
+        report(module_.exprs[receiver.value].range, "method receiver must be a place expression");
+        return false;
+    }
+    if (checked_.types.get(self_type).pointer_mutability == PointerMutability::mut &&
+        !is_writable_place(receiver)) {
+        report(module_.exprs[receiver.value].range, "mutable method receiver requires writable storage");
+        return false;
+    }
+    return true;
+}
+
+const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
+    const TypeHandle owner_type,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool require_self
+) {
+    const FunctionSignature* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        const auto found = checked_.functions.find(method_key(module, owner_type, name));
+        if (found == checked_.functions.end()) {
+            continue;
+        }
+        const FunctionSignature& signature = found->second;
+        if (!signature.is_method || (require_self && !signature.has_self_param)) {
+            continue;
+        }
+        if (!can_access(module, signature.visibility)) {
+            continue;
+        }
+        if (imported_result != nullptr) {
+            report(range, "ambiguous method '" + checked_.types.display_name(owner_type) + "." + std::string(name) +
+                "' from modules " + module_name(result_module) + " and " + module_name(module));
+            return nullptr;
+        }
+        imported_result = &signature;
+        result_module = module;
+    }
+    if (imported_result == nullptr) {
+        report(range, "unknown method: " + checked_.types.display_name(owner_type) + "." + std::string(name));
+    }
+    return imported_result;
 }
 
 TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     const std::string_view name,
     const base::SourceRange range,
-    const bool opaque_allowed_as_pointee
+    const bool opaque_allowed_as_pointee,
+    const bool report_unknown
 ) {
     if (const auto found = named_types_.find(module_key(current_module_, name)); found != named_types_.end()) {
         return found->second;
@@ -1702,7 +1903,7 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
             imported_result = candidate;
             result_module = module;
     }
-    if (!is_valid(imported_result)) {
+    if (!is_valid(imported_result) && report_unknown) {
         report(range, "unknown type: " + std::string(name));
     }
     return imported_result;
@@ -1822,7 +2023,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     }
     const TypeHandle enum_type = find_type_in_visible_modules(enum_name, range, false);
     if (!is_valid(enum_type) || checked_.types.get(enum_type).kind != TypeKind::enum_) {
-        if (is_valid(enum_type)) {
+        if (is_valid(enum_type) && report_unknown) {
             report(range, "enum case scope must name an enum type");
         }
         return nullptr;
@@ -1924,6 +2125,9 @@ std::string dump_checked_module(const CheckedModule& checked) {
         out << "    fn ";
         if (fn.visibility == syntax::Visibility::private_) {
             out << "priv ";
+        }
+        if (fn.is_method) {
+            out << "method " << checked.types.display_name(fn.method_owner_type) << ".";
         }
         out << fn.name << " -> " << checked.types.display_name(fn.return_type);
         if (fn.c_name != fn.name) {

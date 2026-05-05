@@ -1,0 +1,15 @@
+module method_self_type;
+
+struct Counter {
+    value: i32;
+}
+
+impl Counter {
+    fn bad(self: i32) -> i32 {
+        return self;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

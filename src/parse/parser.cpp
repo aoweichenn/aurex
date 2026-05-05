@@ -242,6 +242,7 @@ void Parser::synchronize() {
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
         case TokenKind::kw_enum:
+        case TokenKind::kw_impl:
         case TokenKind::kw_opaque:
         case TokenKind::kw_const:
         case TokenKind::kw_type:
@@ -358,6 +359,12 @@ syntax::ItemId Parser::parse_item() {
             module_.items[id.value].visibility = visibility;
         }
         return id;
+    }
+    if (check(TokenKind::kw_impl)) {
+        if (visibility == syntax::Visibility::private_) {
+            report_here("impl block cannot be private");
+        }
+        return parse_impl_block();
     }
     if (check(TokenKind::kw_opaque)) {
         const syntax::ItemId id = parse_opaque_struct_decl();
@@ -535,6 +542,38 @@ std::vector<std::string_view> Parser::parse_generic_param_list() {
     expect(TokenKind::greater, "expected '>' after generic parameter list");
     panic_ = false;
     return params;
+}
+
+syntax::ItemId Parser::parse_impl_block() {
+    const syntax::Token& begin = expect(TokenKind::kw_impl, "expected 'impl'");
+    const syntax::TypeId impl_type = parse_type();
+    expect(TokenKind::l_brace, "expected '{' after impl type");
+
+    syntax::ItemNode block;
+    block.kind = syntax::ItemKind::impl_block;
+    block.impl_type = impl_type;
+
+    while (!is_eof() && !check(TokenKind::r_brace)) {
+        const syntax::Visibility visibility = parse_visibility();
+        if (!check(TokenKind::kw_fn)) {
+            report_here("expected function declaration in impl block");
+            synchronize();
+            panic_ = false;
+            continue;
+        }
+        const syntax::ItemId method = parse_fn_decl(false, false);
+        if (syntax::is_valid(method)) {
+            module_.items[method.value].visibility = visibility;
+            module_.items[method.value].impl_type = impl_type;
+            block.impl_items.push_back(method);
+        }
+        panic_ = false;
+    }
+
+    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after impl block");
+    block.range = merge(begin.range, end.range);
+    panic_ = false;
+    return module_.push_item(std::move(block));
 }
 
 std::vector<syntax::TypeId> Parser::parse_type_arg_list() {

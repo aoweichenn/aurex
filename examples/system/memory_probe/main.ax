@@ -66,7 +66,7 @@ fn main() -> i32 {
     if !outcome_is_ok_i32(arena_result) {
         return outcome_code_i32(arena_result);
     }
-    if !is_healthy(check_buffer()) {
+    if !check_buffer().healthy() {
         return 3;
     }
     if inferred_delta() != 1 {

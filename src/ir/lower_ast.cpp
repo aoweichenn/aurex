@@ -26,6 +26,7 @@ namespace {
 ) noexcept {
     return item.kind == syntax::ItemKind::fn_decl &&
            item.name == "main" &&
+           !syntax::is_valid(item.impl_type) &&
            !item.is_extern_c &&
            !item.is_export_c &&
            index < ast.item_modules.size() &&

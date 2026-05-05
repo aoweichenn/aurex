@@ -44,6 +44,7 @@ private:
     [[nodiscard]] syntax::ItemId parse_type_alias_decl();
     [[nodiscard]] syntax::ItemId parse_struct_decl();
     [[nodiscard]] syntax::ItemId parse_enum_decl();
+    [[nodiscard]] syntax::ItemId parse_impl_block();
     [[nodiscard]] syntax::ItemId parse_extern_block();
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
     [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);

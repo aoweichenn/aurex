@@ -1,0 +1,28 @@
+module method_calls;
+
+struct Counter {
+    value: i32;
+}
+
+impl Counter {
+    pub fn new(value: i32) -> Counter {
+        return Counter { value: value };
+    }
+
+    pub fn add(self: *mut Counter, delta: i32) -> i32 {
+        self.value = self.value + delta;
+        return self.value;
+    }
+
+    pub fn read(self: *const Counter) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    var counter = Counter.new(39);
+    if counter.add(3) != 42 {
+        return 1;
+    }
+    return counter.read() - 42;
+}

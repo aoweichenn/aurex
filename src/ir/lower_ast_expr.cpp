@@ -206,8 +206,29 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         const CallTarget target = call_target(expr.callee);
         value.name = target.symbol;
         value.call_target = target.function;
+        base::usize param_offset = 0;
+        if (syntax::is_valid(expr.callee) &&
+            expr.callee.value < ast_.exprs.size() &&
+            ast_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
+            is_valid(target.function) &&
+            target.function.value < module_.functions.size() &&
+            module_.functions[target.function.value].signature_params.size() == expr.args.size() + 1) {
+            const syntax::ExprNode& callee = ast_.exprs[expr.callee.value];
+            const sema::TypeHandle receiver_type = checked_expr_type(checked_, callee.object);
+            const sema::TypeHandle param_type = call_param_type(target.function, 0);
+            ValueId receiver = invalid_value_id;
+            if (sema::is_valid(param_type) &&
+                module_.types.is_pointer(param_type) &&
+                (!sema::is_valid(receiver_type) || !module_.types.is_pointer(receiver_type))) {
+                receiver = lower_place_addr(callee.object);
+            } else {
+                receiver = lower_expr(callee.object, param_type);
+            }
+            value.args.push_back(coerce_value(receiver, param_type));
+            param_offset = 1;
+        }
         for (base::usize i = 0; i < expr.args.size(); ++i) {
-            const sema::TypeHandle param_type = call_param_type(target.function, i);
+            const sema::TypeHandle param_type = call_param_type(target.function, i + param_offset);
             value.args.push_back(coerce_value(lower_expr(expr.args[i], param_type), param_type));
         }
         return append_value(value);

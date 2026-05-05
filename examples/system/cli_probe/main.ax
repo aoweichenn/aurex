@@ -27,7 +27,7 @@ fn main(argc: i32, argv: *mut *mut u8) -> i32 {
 
     let state = select_status(arg_count(parsed));
     let probe = if env_ready() {
-        Outcome<i32>.ok(health_code(state))
+        Outcome<i32>.ok(state.code())
     } else {
         Outcome<i32>.err(2)
     };

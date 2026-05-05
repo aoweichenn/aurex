@@ -58,6 +58,8 @@ TEST_F(AurexIntegrationTest, SystemExamplesExposeCurrentFeatureSet) {
         "fn write_entry -> common.result.Outcome<i32>",
         "struct JournalEntry fields=3",
         "type Count = i32",
+        "fn method common.status.Health.code -> i32",
+        "fn method common.status.Health.healthy -> bool",
         "case Outcome<i32>_ok",
         "case Health_degraded",
     });

@@ -39,19 +39,30 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     : ast_(ast), checked_(checked) {
     module_.types = checked_.types;
     item_functions_.assign(ast_.items.size(), invalid_function_id);
+    generic_function_instance_functions_.assign(checked_.generic_function_instances.size(), invalid_function_id);
 }
 
 Module Lowerer::lower() {
     lower_record_layouts();
     declare_global_constants();
     lower_function_declarations();
+    lower_generic_function_declarations();
     lower_global_constant_initializers();
     for (base::u32 index = 0; index < ast_.items.size(); ++index) {
         const syntax::ItemNode& item = ast_.items[index];
-        if (item.kind != syntax::ItemKind::fn_decl || item.is_extern_c || !syntax::is_valid(item.body)) {
+        if (item.kind != syntax::ItemKind::fn_decl || !item.generic_params.empty() || item.is_extern_c || !syntax::is_valid(item.body)) {
             continue;
         }
         lower_function_body(item_functions_[index], item);
+    }
+    for (base::u32 index = 0; index < checked_.generic_function_instances.size(); ++index) {
+        const sema::GenericFunctionInstanceInfo& instance = checked_.generic_function_instances[index];
+        if (!syntax::is_valid(instance.item) || instance.item.value >= ast_.items.size()) {
+            continue;
+        }
+        current_generic_function_instance_ = &instance;
+        lower_function_body(generic_function_instance_functions_[index], ast_.items[instance.item.value]);
+        current_generic_function_instance_ = nullptr;
     }
     return std::move(module_);
 }
@@ -164,7 +175,7 @@ void Lowerer::declare_global_constants() {
 void Lowerer::lower_function_declarations() {
     for (base::u32 index = 0; index < ast_.items.size(); ++index) {
         const syntax::ItemNode& item = ast_.items[index];
-        if (item.kind != syntax::ItemKind::fn_decl || item.is_prototype) {
+        if (item.kind != syntax::ItemKind::fn_decl || !item.generic_params.empty() || item.is_prototype) {
             continue;
         }
         Function function;
@@ -185,6 +196,33 @@ void Lowerer::lower_function_declarations() {
         }
         const FunctionId function_id {static_cast<base::u32>(module_.functions.size())};
         item_functions_[index] = function_id;
+        function_symbols_[function.symbol] = function_id;
+        module_.functions.push_back(std::move(function));
+    }
+}
+
+void Lowerer::lower_generic_function_declarations() {
+    for (base::u32 index = 0; index < checked_.generic_function_instances.size(); ++index) {
+        const sema::GenericFunctionInstanceInfo& instance = checked_.generic_function_instances[index];
+        if (!syntax::is_valid(instance.item) || instance.item.value >= ast_.items.size()) {
+            continue;
+        }
+        const syntax::ItemNode& item = ast_.items[instance.item.value];
+        Function function;
+        function.name = instance.name;
+        function.symbol = instance.c_name;
+        function.linkage = Linkage::internal;
+        function.call_conv = AbiCallConv::aurex;
+        function.return_type = instance.return_type;
+        for (base::usize i = 0; i < instance.param_types.size(); ++i) {
+            const std::string name = i < item.params.size() ? std::string(item.params[i].name) : "arg" + std::to_string(i);
+            function.signature_params.push_back(FunctionParam {
+                name,
+                instance.param_types[i],
+            });
+        }
+        const FunctionId function_id {static_cast<base::u32>(module_.functions.size())};
+        generic_function_instance_functions_[index] = function_id;
         function_symbols_[function.symbol] = function_id;
         module_.functions.push_back(std::move(function));
     }

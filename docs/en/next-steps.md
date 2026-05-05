@@ -27,13 +27,18 @@ Stage0 main path:
 Current language slices:
 
 - Structs, enums, type aliases, and opaque types.
-- Basic generic struct / enum instantiation.
+- Basic generic struct / enum instantiation, including nested generic type-arg
+  substitution and expected-type / field-value inference for struct literals.
 - `match` expressions, literal patterns, wildcard, or-patterns, and guards.
 - Block / if expressions.
 - Controlled local and return type inference slices.
 - Function prototypes and recursive function checks.
+- Generic function MVP with explicit `<T>`, call-site type arguments, and
+  basic inference from arguments / expected return type.
 - `extern c` variadic declarations and calls, including C ABI default argument
   promotions.
+- Scope-level `defer` statements, run in reverse order on normal exits,
+  `return`, and `break` / `continue` paths.
 - `impl` / method / associated-function MVP with explicit `self`, instance
   method calls, and `Type.function()` associated calls.
 - Standard `Result` / `Option` / `?` slice, usable for explicit error
@@ -57,12 +62,12 @@ Current language slices:
   surface dump.
 - The call model has an `impl` / method MVP, but still needs generic impls,
   trait/class reuse, method public-surface tooling, and stronger diagnostics.
-- Generics still need generic functions, constraints, where-like predicates,
-  trait/interface design, monomorphization caching, and explainable diagnostics.
+- Generics still need constraints, where-like predicates, trait/interface
+  design, monomorphization caching, and explainable diagnostics.
 - Error handling still needs standard `Result<T, E>` / `Option<T>`, `?`
   propagation, and a composable diagnostic model.
-- Resource management still needs `defer`, a minimal move/noncopyable model, and
-  unified handling for files, processes, arenas, and other resources.
+- Resource management still needs a minimal move/noncopyable model and unified
+  handling for files, processes, arenas, and other resources.
 - The standard library still needs `Span<T>`, `String`, `Vec<T>`, `Map<K, V>`,
   `Path`, directory walking, file metadata, subprocess support, and OS features
   required by incremental builds.
@@ -115,9 +120,9 @@ covered by integration tests:
    maps, and command argv builders.
 
 4. Move generics from basic instantiation to a constrained model  
-   Add generic functions, minimal `where`, traits/interfaces, trait impls, and
-   static dispatch. M1 does not need trait objects, but it must support
-   containers, algorithms, and typed build graphs.
+   Generic function MVP has landed. Next add minimal `where`,
+   traits/interfaces, trait impls, and static dispatch. M1 does not need trait
+   objects, but it must support containers, algorithms, and typed build graphs.
 
 5. Add the compatibility class/object model  
    Provide an OOP-friendly layer with encapsulation, inheritance, and dynamic
@@ -128,9 +133,10 @@ covered by integration tests:
    composition.
 
 6. Establish resource management and OS engineering support  
-   Support `defer`, minimal noncopyable resource rules, directory walking, file
-   metadata, subprocesses, cwd/env handling, temporary files, and path
-   normalization. Without this slice, the build tool remains a toy.
+   The `defer` MVP has landed. Follow-up work should add minimal noncopyable
+   resource rules, directory walking, file metadata, subprocesses, cwd/env
+   handling, temporary files, and path normalization. Without this slice, the
+   build tool remains a toy.
 
 7. Push sum types and pattern matching to an industrial baseline  
    Prioritize exhaustiveness, unreachable arms, payload bindings, guard
@@ -176,9 +182,10 @@ manual status helpers.
    this into token-buffer, source-list, and more general path/build-graph
    scenarios.
 
-4. Generic functions / traits / `where`  
-   Remove single-type specialization pressure from containers, algorithms, and
-   build graphs. Then add typed graph and map-like examples.
+4. Generic constraints / traits / `where`
+   Generic function MVP has landed. Next add the smallest trait/interface or
+   capability predicate, then constraints, method-like resolution, and
+   monomorphization caching. Then add typed graph and map-like examples.
 
 5. Class/object model MVP  
    Implement classes after methods and traits are stable so member resolution,
@@ -186,8 +193,12 @@ manual status helpers.
    an OOP-style plugin or task-runner example.
 
 6. `defer` / noncopyable / OS support  
-   Make files, processes, arenas, and temporary directories compose safely. Then
-   start the `axbuild` example.
+   Started. `defer call();` now runs in reverse order when the current lexical
+   scope exits, including normal exits, `return`, and `break` / `continue`
+   lowering. Next, add noncopyable resource rules, directory walking, file
+   metadata, subprocesses, cwd/env, and temporary-directory support so files,
+   processes, arenas, and temporary directories compose safely. Then start the
+   `axbuild` example.
 
 7. Self-hosting frontend and typed build-tool acceptance  
    Add both system examples to integration tests and keep coverage above 90%.
@@ -204,9 +215,9 @@ manual status helpers.
    constraints, and consistency between enum layout and LLVM lowering.
 
 3. Move generics from basic instantiation to a constrained model  
-   Design the smallest viable trait/interface or capability predicate first,
-   then extend generic functions, method-like resolution, and monomorphization
-   caching.
+   Generic function MVP has landed. Next design the smallest viable
+   trait/interface or capability predicate, then extend constraints,
+   method-like resolution, and monomorphization caching.
 
 4. Stabilize the AIR/IR backend contract  
    AIR should first mature as a verifiable Stage0 design target, while LLVM

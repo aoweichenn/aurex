@@ -61,6 +61,7 @@ namespace {
         Entry {"while", TokenKind::kw_while},
         Entry {"break", TokenKind::kw_break},
         Entry {"continue", TokenKind::kw_continue},
+        Entry {"defer", TokenKind::kw_defer},
         Entry {"return", TokenKind::kw_return},
         Entry {"true", TokenKind::kw_true},
         Entry {"false", TokenKind::kw_false},

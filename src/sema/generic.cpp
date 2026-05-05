@@ -105,6 +105,41 @@ const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_
     return imported_result;
 }
 
+const GenericFunctionTemplateInfo* SemanticAnalyzer::find_generic_function_template_in_visible_modules(
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    if (const auto found = generic_function_templates_.find(module_key(current_module_, name)); found != generic_function_templates_.end()) {
+        return &found->second;
+    }
+
+    const GenericFunctionTemplateInfo* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        if (module.value == current_module_.value) {
+            continue;
+        }
+            const auto found = generic_function_templates_.find(module_key(module, name));
+            if (found == generic_function_templates_.end()) {
+                continue;
+            }
+            if (!can_access(module, found->second.visibility)) {
+                continue;
+            }
+            if (imported_result != nullptr) {
+                report(range, "ambiguous generic function '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return nullptr;
+            }
+            imported_result = &found->second;
+            result_module = module;
+    }
+    if (imported_result == nullptr && report_unknown) {
+        report(range, "unknown generic function: " + std::string(name));
+    }
+    return imported_result;
+}
+
 std::string SemanticAnalyzer::generic_instance_key(
     const GenericEnumTemplateInfo& info,
     const std::vector<TypeHandle>& args
@@ -182,6 +217,51 @@ std::string SemanticAnalyzer::generic_display_name(
 
 std::string SemanticAnalyzer::generic_c_name(
     const GenericStructTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string suffix = info.name;
+    for (TypeHandle arg : args) {
+        suffix += "__";
+        for (const char ch : checked_.types.c_name(arg)) {
+            const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+            suffix += alnum ? ch : '_';
+        }
+    }
+    return c_symbol_name(info.module, suffix);
+}
+
+std::string SemanticAnalyzer::generic_instance_key(
+    const GenericFunctionTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string key = module_key(info.module, info.name) + "<";
+    for (base::usize i = 0; i < args.size(); ++i) {
+        if (i != 0) {
+            key += ",";
+        }
+        key += checked_.types.display_name(args[i]);
+    }
+    key += ">";
+    return key;
+}
+
+std::string SemanticAnalyzer::generic_display_name(
+    const GenericFunctionTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string name = qualified_name(info.module, info.name) + "<";
+    for (base::usize i = 0; i < args.size(); ++i) {
+        if (i != 0) {
+            name += ", ";
+        }
+        name += checked_.types.display_name(args[i]);
+    }
+    name += ">";
+    return name;
+}
+
+std::string SemanticAnalyzer::generic_c_name(
+    const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
     std::string suffix = info.name;
@@ -436,30 +516,389 @@ bool SemanticAnalyzer::infer_generic_enum_args(
     std::vector<TypeHandle>& inferred,
     const base::SourceRange range
 ) {
+    return infer_generic_args_from_type_pattern(
+        pattern_type_id,
+        actual,
+        info.params,
+        inferred,
+        range,
+        "generic enum constructor",
+        info.module
+    );
+}
+
+bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
+    const syntax::TypeId pattern_type_id,
+    const TypeHandle actual,
+    const std::vector<std::string>& params,
+    std::vector<TypeHandle>& inferred,
+    const base::SourceRange range,
+    const std::string_view context,
+    const syntax::ModuleId pattern_module
+) {
     if (!syntax::is_valid(pattern_type_id) || pattern_type_id.value >= module_.types.size()) {
         return false;
     }
+    if (!is_valid(actual)) {
+        return false;
+    }
+
+    const syntax::ModuleId previous_module = current_module_;
+    current_module_ = pattern_module;
+
     const syntax::TypeNode& pattern = module_.types[pattern_type_id.value];
+    bool result = false;
     if (pattern.kind == syntax::TypeKind::named && pattern.type_args.empty()) {
-        const auto found = std::find(info.params.begin(), info.params.end(), std::string(pattern.name));
-        if (found != info.params.end()) {
-            const base::usize index = static_cast<base::usize>(std::distance(info.params.begin(), found));
+        const auto found = std::find(params.begin(), params.end(), std::string(pattern.name));
+        if (found != params.end()) {
+            const base::usize index = static_cast<base::usize>(std::distance(params.begin(), found));
             if (index >= inferred.size()) {
-                return false;
-            }
-            if (!is_valid(inferred[index])) {
+                result = false;
+            } else if (!is_valid(inferred[index])) {
                 inferred[index] = actual;
-                return true;
+                result = true;
+            } else if (!checked_.types.same(inferred[index], actual)) {
+                report(range, std::string(context) + " type inference conflict for " + params[index]);
+                result = false;
+            } else {
+                result = true;
             }
-            if (!checked_.types.same(inferred[index], actual)) {
-                report(range, "generic enum constructor type inference conflict for " + info.params[index]);
-                return false;
-            }
-            return true;
+            current_module_ = previous_module;
+            return result;
         }
     }
-    const TypeHandle expected = resolve_type(pattern_type_id);
-    return can_assign(expected, actual, syntax::invalid_expr_id);
+
+    switch (pattern.kind) {
+    case syntax::TypeKind::primitive: {
+        const TypeHandle expected = resolve_type(pattern_type_id);
+        result = can_assign(expected, actual, syntax::invalid_expr_id);
+        break;
+    }
+    case syntax::TypeKind::pointer: {
+        if (!checked_.types.is_pointer(actual)) {
+            result = false;
+            break;
+        }
+        const TypeInfo& actual_info = checked_.types.get(actual);
+        const PointerMutability expected_mutability = pattern.pointer_mutability == syntax::PointerMutability::mut
+            ? PointerMutability::mut
+            : PointerMutability::const_;
+        if (actual_info.pointer_mutability != expected_mutability) {
+            result = false;
+            break;
+        }
+        result = infer_generic_args_from_type_pattern(
+            pattern.pointee,
+            actual_info.pointee,
+            params,
+            inferred,
+            range,
+            context,
+            pattern_module
+        );
+        break;
+    }
+    case syntax::TypeKind::array: {
+        if (!checked_.types.is_array(actual)) {
+            result = false;
+            break;
+        }
+        const TypeInfo& actual_info = checked_.types.get(actual);
+        if (actual_info.array_count != pattern.array_count) {
+            result = false;
+            break;
+        }
+        result = infer_generic_args_from_type_pattern(
+            pattern.array_element,
+            actual_info.array_element,
+            params,
+            inferred,
+            range,
+            context,
+            pattern_module
+        );
+        break;
+    }
+    case syntax::TypeKind::named: {
+        if (!pattern.type_args.empty()) {
+            if (const GenericStructTemplateInfo* template_info =
+                    find_generic_struct_template_in_visible_modules(pattern.name, pattern.range, false);
+                template_info != nullptr) {
+                const GenericStructInstanceInfo* instance = generic_struct_instance(actual);
+                if (instance == nullptr ||
+                    instance->name != template_info->name ||
+                    instance->module.value != template_info->module.value ||
+                    instance->args.size() != pattern.type_args.size()) {
+                    result = false;
+                    break;
+                }
+                result = true;
+                for (base::usize i = 0; i < pattern.type_args.size(); ++i) {
+                    if (!infer_generic_args_from_type_pattern(
+                            pattern.type_args[i],
+                            instance->args[i],
+                            params,
+                            inferred,
+                            range,
+                            context,
+                            pattern_module
+                        )) {
+                        result = false;
+                    }
+                }
+                break;
+            }
+            if (const GenericEnumTemplateInfo* template_info =
+                    find_generic_enum_template_in_visible_modules(pattern.name, pattern.range, false);
+                template_info != nullptr) {
+                const GenericEnumInstanceInfo* instance = generic_enum_instance(actual);
+                if (instance == nullptr ||
+                    instance->name != template_info->name ||
+                    instance->module.value != template_info->module.value ||
+                    instance->args.size() != pattern.type_args.size()) {
+                    result = false;
+                    break;
+                }
+                result = true;
+                for (base::usize i = 0; i < pattern.type_args.size(); ++i) {
+                    if (!infer_generic_args_from_type_pattern(
+                            pattern.type_args[i],
+                            instance->args[i],
+                            params,
+                            inferred,
+                            range,
+                            context,
+                            pattern_module
+                        )) {
+                        result = false;
+                    }
+                }
+                break;
+            }
+        }
+
+        const TypeHandle expected = resolve_type(pattern_type_id);
+        result = can_assign(expected, actual, syntax::invalid_expr_id);
+        break;
+    }
+    }
+
+    current_module_ = previous_module;
+    return result;
+}
+
+TypeHandle SemanticAnalyzer::infer_generic_struct_literal_type(
+    const GenericStructTemplateInfo& info,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    if (const GenericStructInstanceInfo* expected = generic_struct_instance(expected_type);
+        expected != nullptr &&
+        expected->name == info.name &&
+        expected->module.value == info.module.value &&
+        expected->args.size() == info.params.size()) {
+        return expected_type;
+    }
+
+    const syntax::ItemNode* item = item_from_id(module_, info.item);
+    if (item == nullptr) {
+        report(expr.range, "invalid generic struct template: " + info.name);
+        return invalid_type_handle;
+    }
+
+    std::vector<TypeHandle> type_args(info.params.size(), invalid_type_handle);
+    for (const syntax::FieldInit& init : expr.field_inits) {
+        const syntax::FieldDecl* field_decl = nullptr;
+        for (const syntax::FieldDecl& candidate : item->fields) {
+            if (candidate.name == init.name) {
+                field_decl = &candidate;
+                break;
+            }
+        }
+        if (field_decl == nullptr) {
+            continue;
+        }
+
+        const TypeHandle actual = analyze_expr(init.value);
+        static_cast<void>(infer_generic_args_from_type_pattern(
+            field_decl->type,
+            actual,
+            info.params,
+            type_args,
+            init.range,
+            "generic struct literal",
+            info.module
+        ));
+    }
+
+    for (TypeHandle arg : type_args) {
+        if (!is_valid(arg)) {
+            return invalid_type_handle;
+        }
+    }
+    return instantiate_generic_struct(info, type_args, expr.range);
+}
+
+const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_function_from_syntax(
+    const GenericFunctionTemplateInfo& info,
+    const std::vector<syntax::TypeId>& args,
+    const base::SourceRange range
+) {
+    if (args.size() != info.params.size()) {
+        report(range, "generic function type argument count mismatch for " + info.name);
+        return nullptr;
+    }
+    std::vector<TypeHandle> resolved_args;
+    resolved_args.reserve(args.size());
+    for (syntax::TypeId arg : args) {
+        resolved_args.push_back(resolve_type(arg));
+    }
+    return instantiate_generic_function(info, resolved_args, range);
+}
+
+const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_function(
+    const GenericFunctionTemplateInfo& info,
+    const std::vector<TypeHandle>& args,
+    const base::SourceRange range
+) {
+    if (args.size() != info.params.size()) {
+        report(range, "generic function type argument count mismatch for " + info.name);
+        return nullptr;
+    }
+    for (TypeHandle arg : args) {
+        if (!is_valid(arg)) {
+            return nullptr;
+        }
+    }
+
+    const std::string instance_key = generic_instance_key(info, args);
+    if (const auto found = generic_function_instances_.find(instance_key); found != generic_function_instances_.end()) {
+        return &checked_.generic_function_instances[found->second];
+    }
+
+    const syntax::ItemNode* item = item_from_id(module_, info.item);
+    if (item == nullptr) {
+        report(range, "invalid generic function template: " + info.name);
+        return nullptr;
+    }
+    if (!syntax::is_valid(item->return_type)) {
+        report(item->range, "generic function return type must be explicit: " + info.name);
+        return nullptr;
+    }
+
+    GenericTypeSubstitution substitution;
+    for (base::usize i = 0; i < info.params.size(); ++i) {
+        substitution.types.emplace(info.params[i], args[i]);
+    }
+
+    const syntax::ModuleId previous_module = current_module_;
+    const GenericTypeSubstitution* const previous_substitution = current_type_substitution_;
+    current_module_ = info.module;
+    current_type_substitution_ = &substitution;
+
+    const TypeHandle return_type = resolve_type(item->return_type);
+    std::vector<TypeHandle> param_types;
+    param_types.reserve(item->params.size());
+    for (const syntax::ParamDecl& param : item->params) {
+        TypeHandle param_type = resolve_type(param.type);
+        if (!is_valid_storage_type(param_type)) {
+            report(param.range, "function parameter type is not valid storage");
+        }
+        if (checked_.types.is_array(param_type)) {
+            report(param.range, "array type cannot be used as a function parameter");
+        }
+        if (checked_.types.contains_array(param_type)) {
+            report(param.range, "struct containing array cannot be passed by value");
+        }
+        param_types.push_back(param_type);
+    }
+    if (is_valid(return_type)) {
+        validate_function_return_type(*item, return_type);
+    }
+
+    current_type_substitution_ = previous_substitution;
+    current_module_ = previous_module;
+
+    if (!is_valid(return_type)) {
+        return nullptr;
+    }
+
+    FunctionSignature signature;
+    signature.name = info.name;
+    signature.c_name = generic_c_name(info, args);
+    signature.module = info.module;
+    signature.return_type = return_type;
+    signature.param_types = param_types;
+    signature.range = item->range;
+    signature.has_definition = true;
+    signature.visibility = info.visibility;
+    signature.definition_item = info.item;
+
+    const base::u32 instance_index = static_cast<base::u32>(checked_.generic_function_instances.size());
+    GenericFunctionInstanceInfo instance;
+    instance.name = generic_display_name(info, args);
+    instance.c_name = signature.c_name;
+    instance.module = info.module;
+    instance.item = info.item;
+    instance.args = args;
+    instance.return_type = return_type;
+    instance.param_types = param_types;
+    checked_.generic_function_instances.push_back(std::move(instance));
+    generic_function_instances_[instance_key] = instance_index;
+
+    FunctionBodyState& state = generic_function_body_states_[instance_key];
+    analyze_function_body_with_signature(*item, instance_key, signature, state, &substitution);
+
+    GenericFunctionInstanceInfo& stored = checked_.generic_function_instances[instance_index];
+    stored.syntax_type_handles = checked_.syntax_type_handles;
+    stored.expr_types = checked_.expr_types;
+    stored.expr_c_names = checked_.expr_c_names;
+    stored.pattern_c_names = checked_.pattern_c_names;
+    stored.pattern_case_sets = checked_.pattern_case_sets;
+    stored.stmt_local_types = checked_.stmt_local_types;
+    return &stored;
+}
+
+bool SemanticAnalyzer::infer_generic_function_args(
+    const GenericFunctionTemplateInfo& info,
+    const std::vector<TypeHandle>& arg_types,
+    const TypeHandle expected_type,
+    std::vector<TypeHandle>& inferred,
+    const base::SourceRange range
+) {
+    const syntax::ItemNode* item = item_from_id(module_, info.item);
+    if (item == nullptr) {
+        return false;
+    }
+    bool ok = true;
+    if (syntax::is_valid(item->return_type) && is_valid(expected_type)) {
+        if (!infer_generic_args_from_type_pattern(
+                item->return_type,
+                expected_type,
+                info.params,
+                inferred,
+                range,
+                "generic function",
+                info.module
+            )) {
+            ok = false;
+        }
+    }
+    const base::usize count = arg_types.size() < item->params.size() ? arg_types.size() : item->params.size();
+    for (base::usize i = 0; i < count; ++i) {
+        if (!infer_generic_args_from_type_pattern(
+                item->params[i].type,
+                arg_types[i],
+                info.params,
+                inferred,
+                range,
+                "generic function",
+                info.module
+            )) {
+            ok = false;
+        }
+    }
+    return ok;
 }
 
 const GenericEnumInstanceInfo* SemanticAnalyzer::generic_enum_instance(const TypeHandle type) const noexcept {

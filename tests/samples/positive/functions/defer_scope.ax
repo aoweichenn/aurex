@@ -1,0 +1,63 @@
+module defer_scope;
+
+import std.core.mem;
+import std.core.text;
+
+fn push(log: *mut u8, index: *mut usize, value: u8) -> void {
+    log[*index] = value;
+    *index = *index + cast(usize, 1);
+}
+
+fn normal_scope(log: *mut u8, index: *mut usize) -> void {
+    defer push(log, index, b'A');
+    {
+        defer push(log, index, b'B');
+        push(log, index, b'C');
+    }
+    push(log, index, b'D');
+}
+
+fn early_return(log: *mut u8, index: *mut usize) -> i32 {
+    defer push(log, index, b'E');
+    {
+        defer push(log, index, b'F');
+        return 7;
+    }
+}
+
+fn loop_paths(log: *mut u8, index: *mut usize) -> void {
+    var i: i32 = 0;
+    while i < 3 {
+        defer push(log, index, b'L');
+        if i == 0 {
+            i = i + 1;
+            continue;
+        }
+        if i == 1 {
+            i = i + 1;
+            break;
+        }
+        i = i + 1;
+    }
+    push(log, index, b'Z');
+}
+
+fn main() -> i32 {
+    let log: *mut u8 = alloc_zeroed_bytes(cast(usize, 32), cast(usize, 1));
+    if log == null {
+        return 1;
+    }
+    defer free_bytes(log);
+
+    var index: usize = 0;
+    normal_scope(log, &index);
+    if early_return(log, &index) != 7 {
+        return 2;
+    }
+    loop_paths(log, &index);
+
+    if !c_string_equal(ptr_cast(*const u8, log), c"CBDAFELLZ") {
+        return 3;
+    }
+    return 0;
+}

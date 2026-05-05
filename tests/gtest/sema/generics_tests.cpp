@@ -112,6 +112,72 @@ TEST_F(AurexIntegrationTest, GenericStructPair) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, GenericStructLiteralInference) {
+    const fs::path source = positive_sample("generics", "generic_struct_literal_inference.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "struct Pair<T>",
+        "struct PairBox<T>",
+        "struct_literal Pair",
+        "struct_literal PairBox",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "structs 2",
+        "struct generic_struct_literal_inference.Pair<i32> fields=2",
+        "struct generic_struct_literal_inference.PairBox<i32> fields=1",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "record generic_struct_literal_inference.Pair<i32>",
+        "record generic_struct_literal_inference.PairBox<i32>",
+        "@m0_generic_struct_literal_inference_Pair__i32",
+        "@m0_generic_struct_literal_inference_PairBox__i32",
+    });
+
+    const fs::path bin = test_bin_root() / "generic_struct_literal_inference";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, GenericFunctionIdentity) {
+    const fs::path source = positive_sample("generics", "generic_function_identity.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "fn identity<T>",
+        "name `identity`<i32>",
+        "name `identity`<T>",
+        "struct_literal Pair",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "generic_functions 4",
+        "fn generic_function_identity.identity<i32> -> i32",
+        "fn generic_function_identity.identity<bool> -> bool",
+        "fn generic_function_identity.twice<bool> -> bool",
+        "fn generic_function_identity.make_pair<i32> -> generic_function_identity.Pair<i32>",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn generic_function_identity.identity<i32>(value: i32)",
+        "fn generic_function_identity.identity<bool>(value: bool)",
+        "fn generic_function_identity.twice<bool>(value: bool)",
+        "fn generic_function_identity.make_pair<i32>(left: i32, right: i32)",
+        "call m0_generic_function_identity_identity__i32",
+        "call m0_generic_function_identity_identity__bool",
+    });
+
+    const fs::path bin = test_bin_root() / "generic_function_identity";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
     const fs::path struct_source = positive_sample("generics", "generic_struct_array_field.ax");
 
@@ -160,10 +226,24 @@ TEST_F(AurexIntegrationTest, GenericStructDiagnostics) {
     expect_contains(require_failure(aurexc() + " --check " + q(unknown_type)).output, "unknown type: Missing");
 
     const fs::path missing_args = negative_sample("generics", "generic_struct_literal_missing_args.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(missing_args)).output, "generic struct literal requires explicit type arguments: Pair");
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_args)).output, "generic struct literal requires explicit type arguments: Tagged");
 
     const fs::path mismatch = negative_sample("generics", "generic_struct_field_mismatch.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "struct literal field type mismatch");
+}
+
+TEST_F(AurexIntegrationTest, GenericFunctionDiagnostics) {
+    const fs::path arity = negative_sample("generics", "generic_function_type_arity.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(arity)).output, "generic function type argument count mismatch for identity");
+
+    const fs::path inference = negative_sample("generics", "generic_function_inference_failure.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(inference)).output, "generic function requires explicit type arguments: zero");
+
+    const fs::path duplicate = negative_sample("generics", "generic_function_duplicate_params.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate generic parameter in function bad: T");
+
+    const fs::path missing_return = negative_sample("generics", "generic_function_missing_return_type.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_return)).output, "generic function return type must be explicit: identity");
 }
 
 TEST_F(AurexIntegrationTest, GenericImportVisibilityAndAmbiguityDiagnostics) {

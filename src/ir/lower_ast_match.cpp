@@ -51,6 +51,12 @@ const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) con
 }
 
 std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
+    if (current_generic_function_instance_ != nullptr &&
+        syntax::is_valid(id) &&
+        id.value < current_generic_function_instance_->pattern_c_names.size() &&
+        !current_generic_function_instance_->pattern_c_names[id.value].empty()) {
+        return current_generic_function_instance_->pattern_c_names[id.value];
+    }
     if (syntax::is_valid(id) &&
         id.value < checked_.pattern_c_names.size() &&
         !checked_.pattern_c_names[id.value].empty()) {
@@ -130,7 +136,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
         return invalid_value_id;
     }
 
-    const sema::TypeHandle matched_type = checked_expr_type(checked_, expr.match_value);
+    const sema::TypeHandle matched_type = expr_type(expr.match_value);
     const bool payload_enum = is_payload_enum(module_.types, matched_type);
     const ValueId matched = lower_expr(expr.match_value);
     ValueId matched_slot = invalid_value_id;
@@ -189,7 +195,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
             set_terminator(current_block_, guard);
             current_block_ = arm_body_block;
         }
-        const ValueId arm_value = lower_expr(arm.value, checked_expr_type(checked_, expr_id));
+        const ValueId arm_value = lower_expr(arm.value, expr_type(expr_id));
         locals_ = previous_locals;
         incoming.push_back(PhiInput {current_block_, arm_value});
         append_branch_if_open(join_block);
@@ -201,7 +207,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
     current_block_ = join_block;
     Value result;
     result.kind = ValueKind::phi;
-    result.type = checked_expr_type(checked_, expr_id);
+    result.type = expr_type(expr_id);
     result.incoming = std::move(incoming);
     return append_value(result);
 }
@@ -211,8 +217,8 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::Expr
         return invalid_value_id;
     }
 
-    const sema::TypeHandle source_type = checked_expr_type(checked_, expr.unary_operand);
-    const sema::TypeHandle result_type = checked_expr_type(checked_, expr_id);
+    const sema::TypeHandle source_type = expr_type(expr.unary_operand);
+    const sema::TypeHandle result_type = expr_type(expr_id);
     const sema::TypeHandle return_type = current_function_->return_type;
 
     const sema::EnumCaseInfo* success_case = enum_case_by_type_and_case(source_type, "ok");

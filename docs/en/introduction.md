@@ -50,8 +50,9 @@ source -> lexer -> parser -> sema -> Aurex IR -> LLVM IR -> clang
 - IR verifier plus conservative local mem2reg and CFG cleanup pass pipeline.
 - LLVM IR lowering and clang native output.
 - `std` modules and host-c backend support.
-- Current language slices, including explicit visibility, basic generics, sum types,
-  pattern matching, expressions, and controlled inference.
+- Current language slices, including explicit visibility, basic generics, generic
+  function MVP, sum types, pattern matching, expressions, controlled inference,
+  `extern c` variadics, and scope-level `defer`.
 
 ## Use Cases
 

@@ -21,8 +21,9 @@ Included:
 - Aurex IR verifier and pass pipeline.
 - Relocatable std lookup.
 - std host-c backend support and stable `aurex_std_v0_*` symbols.
-- Current language slices, including visibility, basic generics, sum types, pattern
-  matching, expressions, controlled inference, and `extern c` variadics.
+- Current language slices, including visibility, basic generics, generic function
+  MVP, sum types, pattern matching, expressions, controlled inference,
+  `extern c` variadics, and scope-level `defer`.
 - golden, positive, negative, and language-feature test flows.
 - Chinese and English topic-based documentation sets.
 

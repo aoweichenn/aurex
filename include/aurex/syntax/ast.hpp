@@ -180,6 +180,7 @@ enum class StmtKind {
     while_,
     break_,
     continue_,
+    defer,
     return_,
     expr,
     block,

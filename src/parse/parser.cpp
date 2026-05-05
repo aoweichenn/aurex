@@ -164,7 +164,8 @@ bool Parser::next_angle_list_is_type_scope() const noexcept {
             --depth;
             if (depth == 0) {
                 const base::usize after = index + 1;
-                return after < tokens_.size() && tokens_[after].kind == TokenKind::dot;
+                return after < tokens_.size() &&
+                       (tokens_[after].kind == TokenKind::dot || tokens_[after].kind == TokenKind::l_paren);
             }
         } else if (kind == TokenKind::semicolon ||
                    kind == TokenKind::l_brace ||
@@ -254,6 +255,7 @@ void Parser::synchronize() {
         case TokenKind::kw_var:
         case TokenKind::kw_if:
         case TokenKind::kw_while:
+        case TokenKind::kw_defer:
         case TokenKind::kw_return:
         case TokenKind::kw_import:
             return;
@@ -644,6 +646,10 @@ syntax::ItemId Parser::parse_opaque_struct_decl() {
 syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
     const syntax::Token& begin = expect(TokenKind::kw_fn, "expected 'fn'");
     const syntax::Token& name = expect(TokenKind::identifier, "expected function name");
+    std::vector<std::string_view> generic_params;
+    if (check(TokenKind::less)) {
+        generic_params = parse_generic_param_list();
+    }
     expect(TokenKind::l_paren, "expected '(' after function name");
     std::vector<syntax::ParamDecl> params;
     bool is_variadic = false;
@@ -656,6 +662,7 @@ syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_exter
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::fn_decl;
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
     item.params = std::move(params);
     item.return_type = return_type;
     item.is_export_c = is_export_c;

@@ -1,0 +1,41 @@
+module generic_struct_literal_inference;
+
+struct Pair<T> {
+    left: T;
+    right: T;
+}
+
+struct PairBox<T> {
+    pair: Pair<T>;
+}
+
+fn make_pair() -> Pair<i32> {
+    return Pair {
+        left: 3,
+        right: 4,
+    };
+}
+
+fn take_pair(pair: Pair<i32>) -> i32 {
+    return pair.left + pair.right;
+}
+
+fn main() -> i32 {
+    let inferred = Pair {
+        left: 4,
+        right: 9,
+    };
+    let expected: Pair<i32> = Pair {
+        left: 2,
+        right: 5,
+    };
+    let returned = make_pair();
+    let from_arg = take_pair(Pair {
+        left: 1,
+        right: 2,
+    });
+    let boxed = PairBox {
+        pair: inferred,
+    };
+    return boxed.pair.left + expected.right + returned.left + from_arg - 15;
+}

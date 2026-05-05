@@ -63,6 +63,7 @@ private:
     [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
     [[nodiscard]] syntax::StmtId parse_if_stmt();
     [[nodiscard]] syntax::StmtId parse_while_stmt();
+    [[nodiscard]] syntax::StmtId parse_defer_stmt();
     [[nodiscard]] syntax::StmtId parse_return_stmt();
     [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt();
 

@@ -36,6 +36,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_while: return "kw_while";
     case TokenKind::kw_break: return "kw_break";
     case TokenKind::kw_continue: return "kw_continue";
+    case TokenKind::kw_defer: return "kw_defer";
     case TokenKind::kw_return: return "kw_return";
     case TokenKind::kw_true: return "kw_true";
     case TokenKind::kw_false: return "kw_false";
@@ -230,6 +231,7 @@ std::string_view stmt_kind_name(const StmtKind kind) {
     case StmtKind::while_: return "while";
     case StmtKind::break_: return "break";
     case StmtKind::continue_: return "continue";
+    case StmtKind::defer: return "defer";
     case StmtKind::return_: return "return";
     case StmtKind::expr: return "expr";
     case StmtKind::block: return "block";

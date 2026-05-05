@@ -71,6 +71,7 @@ struct CheckedModule {
     std::unordered_map<std::string, StructInfo> structs;
     std::unordered_map<std::string, EnumCaseInfo> enum_cases;
     std::unordered_map<std::string, TypeAliasInfo> type_aliases;
+    std::vector<GenericFunctionInstanceInfo> generic_function_instances;
 };
 
 class SemanticAnalyzer final {
@@ -99,6 +100,13 @@ private:
     void analyze_struct_properties();
     void analyze_const_decls();
     void analyze_function_body(const syntax::ItemNode& function);
+    void analyze_function_body_with_signature(
+        const syntax::ItemNode& function,
+        const std::string& key,
+        const FunctionSignature& signature,
+        FunctionBodyState& state,
+        const GenericTypeSubstitution* substitution
+    );
     void analyze_block(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void analyze_stmt(syntax::StmtId stmt, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
@@ -172,6 +180,7 @@ private:
     );
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const GenericFunctionTemplateInfo* find_generic_function_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
     [[nodiscard]] TypeHandle instantiate_generic_enum_from_syntax(
         const GenericEnumTemplateInfo& info,
@@ -199,6 +208,37 @@ private:
         std::vector<TypeHandle>& inferred,
         base::SourceRange range
     );
+    [[nodiscard]] bool infer_generic_args_from_type_pattern(
+        syntax::TypeId pattern_type,
+        TypeHandle actual,
+        const std::vector<std::string>& params,
+        std::vector<TypeHandle>& inferred,
+        base::SourceRange range,
+        std::string_view context,
+        syntax::ModuleId pattern_module
+    );
+    [[nodiscard]] TypeHandle infer_generic_struct_literal_type(
+        const GenericStructTemplateInfo& info,
+        const syntax::ExprNode& expr,
+        TypeHandle expected_type
+    );
+    [[nodiscard]] const GenericFunctionInstanceInfo* instantiate_generic_function_from_syntax(
+        const GenericFunctionTemplateInfo& info,
+        const std::vector<syntax::TypeId>& args,
+        base::SourceRange range
+    );
+    [[nodiscard]] const GenericFunctionInstanceInfo* instantiate_generic_function(
+        const GenericFunctionTemplateInfo& info,
+        const std::vector<TypeHandle>& args,
+        base::SourceRange range
+    );
+    [[nodiscard]] bool infer_generic_function_args(
+        const GenericFunctionTemplateInfo& info,
+        const std::vector<TypeHandle>& arg_types,
+        TypeHandle expected_type,
+        std::vector<TypeHandle>& inferred,
+        base::SourceRange range
+    );
     [[nodiscard]] const GenericEnumInstanceInfo* generic_enum_instance(TypeHandle type) const noexcept;
     [[nodiscard]] const GenericStructInstanceInfo* generic_struct_instance(TypeHandle type) const noexcept;
     [[nodiscard]] std::string generic_instance_key(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
@@ -209,13 +249,16 @@ private:
     [[nodiscard]] std::string generic_instance_key(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_display_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_c_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_instance_key(const GenericFunctionTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_display_name(const GenericFunctionTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_c_name(const GenericFunctionTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] TypeHandle find_type_in_visible_modules(
         std::string_view name,
         base::SourceRange range,
         bool opaque_allowed_as_pointee,
         bool report_unknown = true
     );
-    [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range);
+    [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const noexcept;
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
@@ -241,6 +284,9 @@ private:
     std::unordered_map<std::string, GenericStructTemplateInfo> generic_struct_templates_;
     std::unordered_map<std::string, TypeHandle> generic_struct_instances_;
     std::unordered_map<base::u32, GenericStructInstanceInfo> generic_struct_instance_infos_;
+    std::unordered_map<std::string, GenericFunctionTemplateInfo> generic_function_templates_;
+    std::unordered_map<std::string, base::u32> generic_function_instances_;
+    std::unordered_map<std::string, FunctionBodyState> generic_function_body_states_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
     std::vector<std::string> resolving_type_aliases_;
     std::unordered_map<std::string, Symbol> global_values_;
@@ -248,6 +294,7 @@ private:
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
     TypeHandle current_function_return_type_ = invalid_type_handle;
+    const GenericTypeSubstitution* current_type_substitution_ = nullptr;
     int loop_depth_ = 0;
     bool in_const_initializer_ = false;
 };

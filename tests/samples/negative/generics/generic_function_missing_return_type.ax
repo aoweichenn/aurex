@@ -1,0 +1,9 @@
+module generic_function_missing_return_type;
+
+fn identity<T>(value: T) {
+    return value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

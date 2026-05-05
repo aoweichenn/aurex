@@ -41,7 +41,7 @@ syntax::ExprId Parser::parse_block_expr() {
     syntax::ExprId result = syntax::invalid_expr_id;
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
-        if (check(TokenKind::kw_let) || check(TokenKind::kw_var)) {
+        if (check(TokenKind::kw_let) || check(TokenKind::kw_var) || check(TokenKind::kw_defer)) {
             const syntax::StmtId stmt = parse_stmt();
             if (syntax::is_valid(stmt)) {
                 block.statements.push_back(stmt);
@@ -104,6 +104,9 @@ syntax::StmtId Parser::parse_stmt() {
     }
     if (check(TokenKind::kw_while)) {
         return parse_while_stmt();
+    }
+    if (check(TokenKind::kw_defer)) {
+        return parse_defer_stmt();
     }
     if (match(TokenKind::kw_break)) {
         const syntax::Token& begin = previous();
@@ -196,6 +199,18 @@ syntax::StmtId Parser::parse_while_stmt() {
     stmt.range = merge(begin.range, module_.stmts[body.value].range);
     stmt.condition = condition;
     stmt.body = body;
+    return module_.push_stmt(std::move(stmt));
+}
+
+syntax::StmtId Parser::parse_defer_stmt() {
+    const syntax::Token& begin = expect(TokenKind::kw_defer, "expected 'defer'");
+    const syntax::ExprId value = parse_expr();
+    const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after defer statement");
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::defer;
+    stmt.range = merge(begin.range, end.range);
+    stmt.init = value;
     return module_.push_stmt(std::move(stmt));
 }
 
@@ -533,7 +548,7 @@ syntax::ExprId Parser::parse_postfix() {
             }
             syntax::ExprNode& node = module_.exprs[expr.value];
             if (node.kind != syntax::ExprKind::name) {
-                report_at(previous(), "type arguments are only supported on named enum constructors");
+                report_at(previous(), "type arguments are only supported on named function calls or enum constructors");
             }
             if (!check(TokenKind::greater)) {
                 do {
@@ -625,7 +640,7 @@ syntax::ExprId Parser::parse_primary() {
             return module_.push_expr(std::move(node));
         }
         if (!struct_type_args.empty()) {
-            report_at(name, "type arguments in expressions are only supported on struct literals or scoped enum constructors");
+            report_at(name, "type arguments in expressions are only supported on struct literals, function calls, or scoped enum constructors");
         }
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::name;

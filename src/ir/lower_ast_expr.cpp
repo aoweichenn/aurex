@@ -70,7 +70,7 @@ ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const sy
     current_block_ = exit_block;
     Value result;
     result.kind = ValueKind::phi;
-    result.type = checked_expr_type(checked_, expr_id);
+    result.type = expr_type(expr_id);
     result.incoming.push_back(PhiInput {lhs_block, lhs});
     result.incoming.push_back(PhiInput {rhs_tail_block, rhs});
     return append_value(result);
@@ -93,19 +93,19 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
     set_terminator(current_block_, cond);
 
     current_block_ = then_block;
-    const ValueId then_value = lower_expr(expr.then_expr, checked_expr_type(checked_, expr_id));
+    const ValueId then_value = lower_expr(expr.then_expr, expr_type(expr_id));
     const BlockId then_tail_block = current_block_;
     append_branch_if_open(join_block);
 
     current_block_ = else_block;
-    const ValueId else_value = lower_expr(expr.else_expr, checked_expr_type(checked_, expr_id));
+    const ValueId else_value = lower_expr(expr.else_expr, expr_type(expr_id));
     const BlockId else_tail_block = current_block_;
     append_branch_if_open(join_block);
 
     current_block_ = join_block;
     Value result;
     result.kind = ValueKind::phi;
-    result.type = checked_expr_type(checked_, expr_id);
+    result.type = expr_type(expr_id);
     result.incoming.push_back(PhiInput {then_tail_block, then_value});
     result.incoming.push_back(PhiInput {else_tail_block, else_value});
     return append_value(result);
@@ -113,8 +113,14 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
 
 ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
     const auto previous_locals = locals_;
+    const base::usize scope_depth = defer_scopes_.size();
+    defer_scopes_.push_back({});
     lower_block_contents(expr.block);
-    const ValueId result = lower_expr(expr.block_result, checked_expr_type(checked_, expr_id));
+    const ValueId result = lower_expr(expr.block_result, expr_type(expr_id));
+    if (!has_terminator(current_block_)) {
+        emit_deferred_scopes(scope_depth);
+    }
+    defer_scopes_.resize(scope_depth);
     locals_ = previous_locals;
     return result;
 }
@@ -136,21 +142,21 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         value.kind = expr.kind == syntax::ExprKind::byte_literal
             ? ValueKind::byte_literal
             : (expr.kind == syntax::ExprKind::bool_literal ? ValueKind::bool_literal : ValueKind::integer_literal);
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         value.text = std::string(expr.text);
         return append_value(value);
     }
     case syntax::ExprKind::null_literal: {
         Value value;
         value.kind = ValueKind::null_literal;
-        value.type = sema::is_valid(expected_type) ? expected_type : checked_expr_type(checked_, expr_id);
+        value.type = sema::is_valid(expected_type) ? expected_type : expr_type(expr_id);
         return append_value(value);
     }
     case syntax::ExprKind::string_literal:
     case syntax::ExprKind::c_string_literal: {
         Value value;
         value.kind = expr.kind == syntax::ExprKind::string_literal ? ValueKind::string_literal : ValueKind::c_string_literal;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         value.text = std::string(expr.text);
         return append_value(value);
     }
@@ -158,18 +164,18 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return lower_name(expr_id, expr);
     case syntax::ExprKind::unary: {
         if (expr.unary_op == syntax::UnaryOp::address_of) {
-            return coerce_value(lower_place_addr(expr.unary_operand), checked_expr_type(checked_, expr_id));
+            return coerce_value(lower_place_addr(expr.unary_operand), expr_type(expr_id));
         }
         if (expr.unary_op == syntax::UnaryOp::dereference) {
             Value value;
             value.kind = ValueKind::load;
-            value.type = checked_expr_type(checked_, expr_id);
+            value.type = expr_type(expr_id);
             value.object = lower_expr(expr.unary_operand);
             return append_value(value);
         }
         Value value;
         value.kind = ValueKind::unary;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         value.unary_op = map_unary(expr.unary_op);
         value.lhs = lower_expr(expr.unary_operand);
         return append_value(value);
@@ -180,10 +186,10 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         }
         Value value;
         value.kind = ValueKind::binary;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         value.binary_op = map_binary(expr.binary_op);
-        const sema::TypeHandle lhs_type = checked_expr_type(checked_, expr.binary_lhs);
-        const sema::TypeHandle rhs_type = checked_expr_type(checked_, expr.binary_rhs);
+        const sema::TypeHandle lhs_type = expr_type(expr.binary_lhs);
+        const sema::TypeHandle rhs_type = expr_type(expr.binary_rhs);
         const sema::TypeHandle lhs_expected = !sema::is_valid(lhs_type) && module_.types.is_pointer(rhs_type)
             ? rhs_type
             : sema::invalid_type_handle;
@@ -202,7 +208,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         }
         Value value;
         value.kind = ValueKind::call;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         const CallTarget target = call_target(expr.callee);
         value.name = target.symbol;
         value.call_target = target.function;
@@ -214,7 +220,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
             target.function.value < module_.functions.size() &&
             module_.functions[target.function.value].signature_params.size() == expr.args.size() + 1) {
             const syntax::ExprNode& callee = ast_.exprs[expr.callee.value];
-            const sema::TypeHandle receiver_type = checked_expr_type(checked_, callee.object);
+            const sema::TypeHandle receiver_type = expr_type(callee.object);
             const sema::TypeHandle param_type = call_param_type(target.function, 0);
             ValueId receiver = invalid_value_id;
             if (sema::is_valid(param_type) &&
@@ -260,14 +266,14 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::index: {
         Value value;
         value.kind = ValueKind::load;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         value.object = lower_place_address(expr_id).address;
         return append_value(value);
     }
     case syntax::ExprKind::struct_literal: {
         Value value;
         value.kind = ValueKind::aggregate;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         for (const syntax::FieldInit& init : expr.field_inits) {
             value.fields.push_back(FieldValue {
                 std::string(init.name),
@@ -283,9 +289,9 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::ptr_from_addr: {
         Value value;
         value.kind = ValueKind::cast;
-        value.type = checked_expr_type(checked_, expr_id);
-        value.target_type = checked_expr_type(checked_, expr_id);
-        value.lhs = lower_expr(expr.cast_expr, checked_expr_type(checked_, expr.cast_expr));
+        value.type = expr_type(expr_id);
+        value.target_type = expr_type(expr_id);
+        value.lhs = lower_expr(expr.cast_expr, expr_type(expr.cast_expr));
         if (expr.kind == syntax::ExprKind::ptr_cast) {
             value.cast_kind = CastKind::pointer;
         } else if (expr.kind == syntax::ExprKind::bit_cast) {
@@ -301,7 +307,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::align_of: {
         Value value;
         value.kind = expr.kind == syntax::ExprKind::size_of ? ValueKind::size_of : ValueKind::align_of;
-        value.type = checked_expr_type(checked_, expr_id);
+        value.type = expr_type(expr_id);
         value.target_type = syntax_type(expr.cast_type);
         return append_value(value);
     }
@@ -370,7 +376,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
             : sema::PointerMutability::const_;
         Value value;
         value.kind = ValueKind::field_addr;
-        value.type = module_.types.pointer(mutability, checked_expr_type(checked_, expr_id));
+        value.type = module_.types.pointer(mutability, expr_type(expr_id));
         value.name = std::string(expr.field_name);
         value.object = object.address;
         return PlaceAddress {append_value(value), object.is_mutable};
@@ -382,7 +388,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
             : sema::PointerMutability::const_;
         Value value;
         value.kind = ValueKind::index_addr;
-        value.type = module_.types.pointer(mutability, checked_expr_type(checked_, expr_id));
+        value.type = module_.types.pointer(mutability, expr_type(expr_id));
         value.object = object.address;
         value.index = lower_expr(expr.index);
         return PlaceAddress {append_value(value), object.is_mutable};
@@ -391,7 +397,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
 }
 
 PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id) {
-    const sema::TypeHandle type = checked_expr_type(checked_, expr_id);
+    const sema::TypeHandle type = expr_type(expr_id);
     if (sema::is_valid(type) && module_.types.is_pointer(type)) {
         return PlaceAddress {lower_expr(expr_id), module_.types.get(type).pointer_mutability == sema::PointerMutability::mut};
     }
@@ -405,7 +411,7 @@ bool Lowerer::is_local_slot_type(const sema::TypeHandle type) const noexcept {
 }
 
 bool Lowerer::pointee_is_mutable(const syntax::ExprId expr_id) const noexcept {
-    const sema::TypeHandle type = checked_expr_type(checked_, expr_id);
+    const sema::TypeHandle type = expr_type(expr_id);
     return sema::is_valid(type) &&
            module_.types.is_pointer(type) &&
            module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
@@ -421,6 +427,12 @@ CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
 }
 
 std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
+    if (current_generic_function_instance_ != nullptr &&
+        syntax::is_valid(callee) &&
+        callee.value < current_generic_function_instance_->expr_c_names.size() &&
+        !current_generic_function_instance_->expr_c_names[callee.value].empty()) {
+        return current_generic_function_instance_->expr_c_names[callee.value];
+    }
     if (syntax::is_valid(callee) &&
         callee.value < checked_.expr_c_names.size() &&
         !checked_.expr_c_names[callee.value].empty()) {
@@ -433,6 +445,12 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
 }
 
 std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const syntax::ExprNode& expr) const {
+    if (current_generic_function_instance_ != nullptr &&
+        syntax::is_valid(expr_id) &&
+        expr_id.value < current_generic_function_instance_->expr_c_names.size() &&
+        !current_generic_function_instance_->expr_c_names[expr_id.value].empty()) {
+        return current_generic_function_instance_->expr_c_names[expr_id.value];
+    }
     if (syntax::is_valid(expr_id) &&
         expr_id.value < checked_.expr_c_names.size() &&
         !checked_.expr_c_names[expr_id.value].empty()) {
@@ -477,7 +495,26 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
     }
 }
 
+sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
+    if (current_generic_function_instance_ != nullptr &&
+        syntax::is_valid(expr) &&
+        expr.value < current_generic_function_instance_->expr_types.size() &&
+        sema::is_valid(current_generic_function_instance_->expr_types[expr.value])) {
+        return current_generic_function_instance_->expr_types[expr.value];
+    }
+    if (!syntax::is_valid(expr) || expr.value >= checked_.expr_types.size()) {
+        return sema::invalid_type_handle;
+    }
+    return checked_.expr_types[expr.value];
+}
+
 sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept {
+    if (current_generic_function_instance_ != nullptr &&
+        syntax::is_valid(type) &&
+        type.value < current_generic_function_instance_->syntax_type_handles.size() &&
+        sema::is_valid(current_generic_function_instance_->syntax_type_handles[type.value])) {
+        return current_generic_function_instance_->syntax_type_handles[type.value];
+    }
     if (!syntax::is_valid(type) || type.value >= checked_.syntax_type_handles.size()) {
         return sema::invalid_type_handle;
     }
@@ -485,6 +522,12 @@ sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept 
 }
 
 sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexcept {
+    if (current_generic_function_instance_ != nullptr &&
+        syntax::is_valid(stmt) &&
+        stmt.value < current_generic_function_instance_->stmt_local_types.size() &&
+        sema::is_valid(current_generic_function_instance_->stmt_local_types[stmt.value])) {
+        return current_generic_function_instance_->stmt_local_types[stmt.value];
+    }
     if (!syntax::is_valid(stmt) || stmt.value >= checked_.stmt_local_types.size()) {
         return sema::invalid_type_handle;
     }

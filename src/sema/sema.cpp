@@ -98,7 +98,11 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     validate_function_prototypes();
 
     for (const syntax::ItemNode& item : module_.items) {
-        if (is_function_item(item) && !item.is_extern_c && !item.is_prototype && syntax::is_valid(item.body)) {
+        if (is_function_item(item) &&
+            item.generic_params.empty() &&
+            !item.is_extern_c &&
+            !item.is_prototype &&
+            syntax::is_valid(item.body)) {
             analyze_function_body(item);
         }
     }
@@ -242,6 +246,49 @@ void SemanticAnalyzer::register_value_names() {
         std::string c_name = c_symbol_name(current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
+            if (!item.generic_params.empty()) {
+                if (item.is_extern_c) {
+                    report(item.range, "generic extern c functions are not supported");
+                }
+                if (item.is_export_c) {
+                    report(item.range, "generic export c functions are not supported");
+                }
+                if (item.is_prototype) {
+                    report(item.range, "generic function prototypes are not supported");
+                }
+                if (item.is_variadic) {
+                    report(item.range, "generic variadic functions are not supported");
+                }
+                if (is_method) {
+                    report(item.range, "generic methods are not supported yet");
+                }
+                if (!syntax::is_valid(item.return_type)) {
+                    report(item.range, "generic function return type must be explicit: " + std::string(item.name));
+                }
+                GenericFunctionTemplateInfo info;
+                info.name = std::string(item.name);
+                info.module = current_module_;
+                const auto* const begin = module_.items.data();
+                const base::usize item_index = static_cast<base::usize>(&item - begin);
+                info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
+                info.range = item.range;
+                info.visibility = item.visibility;
+                for (std::string_view param : item.generic_params) {
+                    const std::string param_name(param);
+                    if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
+                        report(item.range, "duplicate generic parameter in function " + std::string(item.name) + ": " + param_name);
+                    }
+                    info.params.push_back(param_name);
+                }
+                const auto inserted = generic_function_templates_.emplace(key, std::move(info));
+                if (!inserted.second || global_values_.contains(key)) {
+                    report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
+                }
+                continue;
+            }
+            if (generic_function_templates_.contains(key)) {
+                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
+            }
             TypeHandle method_owner_type = invalid_type_handle;
             if (item.is_variadic && !item.is_extern_c) {
                 report(item.range, "variadic functions are only supported for extern c declarations");
@@ -559,35 +606,49 @@ void SemanticAnalyzer::analyze_const_decls() {
 }
 
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
-    const syntax::ModuleId previous_module = current_module_;
-    const TypeHandle previous_function_return_type = current_function_return_type_;
-    const int previous_loop_depth = loop_depth_;
-    const SymbolTable previous_symbols = symbols_;
-    current_module_ = item_module(function);
     const std::string key = function_key(function);
     const auto found = checked_.functions.find(key);
     if (found == checked_.functions.end()) {
+        return;
+    }
+    analyze_function_body_with_signature(function, key, found->second, function_body_states_[key], nullptr);
+}
+
+void SemanticAnalyzer::analyze_function_body_with_signature(
+    const syntax::ItemNode& function,
+    const std::string& key,
+    const FunctionSignature& signature,
+    FunctionBodyState& state,
+    const GenericTypeSubstitution* const substitution
+) {
+    const syntax::ModuleId previous_module = current_module_;
+    const TypeHandle previous_function_return_type = current_function_return_type_;
+    const GenericTypeSubstitution* const previous_type_substitution = current_type_substitution_;
+    const int previous_loop_depth = loop_depth_;
+    const SymbolTable previous_symbols = symbols_;
+    current_module_ = signature.module;
+    current_type_substitution_ = substitution;
+    symbols_ = SymbolTable {};
+    if (signature.has_conflict) {
         current_module_ = previous_module;
+        current_type_substitution_ = previous_type_substitution;
         loop_depth_ = previous_loop_depth;
         symbols_ = previous_symbols;
         return;
     }
-    if (found->second.has_conflict) {
-        current_module_ = previous_module;
-        loop_depth_ = previous_loop_depth;
-        symbols_ = previous_symbols;
-        return;
-    }
-    FunctionBodyState& state = function_body_states_[key];
     if (state == FunctionBodyState::analyzing) {
-        report(function.range, "cannot infer recursive function return type without an explicit return type");
+        if (!is_valid(signature.return_type)) {
+            report(function.range, "cannot infer recursive function return type without an explicit return type");
+        }
         current_module_ = previous_module;
+        current_type_substitution_ = previous_type_substitution;
         loop_depth_ = previous_loop_depth;
         symbols_ = previous_symbols;
         return;
     }
     if (state == FunctionBodyState::analyzed) {
         current_module_ = previous_module;
+        current_type_substitution_ = previous_type_substitution;
         loop_depth_ = previous_loop_depth;
         symbols_ = previous_symbols;
         return;
@@ -596,20 +657,24 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     loop_depth_ = 0;
     const bool infer_return_type = !syntax::is_valid(function.return_type);
     ReturnTypeInference return_inference;
-    TypeHandle expected_return = found->second.return_type;
+    TypeHandle expected_return = signature.return_type;
     if (infer_return_type) {
         expected_return = invalid_type_handle;
     }
     current_function_return_type_ = expected_return;
 
     symbols_.push_scope();
-    for (const syntax::ParamDecl& param : function.params) {
+    for (base::usize i = 0; i < function.params.size(); ++i) {
+        const syntax::ParamDecl& param = function.params[i];
+        const TypeHandle param_type = i < signature.param_types.size()
+            ? signature.param_types[i]
+            : resolve_type(param.type);
         static_cast<void>(symbols_.insert(Symbol {
             SymbolKind::parameter,
             std::string(param.name),
             {},
             syntax::invalid_module_id,
-            resolve_type(param.type),
+            param_type,
             param.range,
             false,
             syntax::Visibility::private_,
@@ -623,6 +688,7 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     state = FunctionBodyState::analyzed;
     current_module_ = previous_module;
     current_function_return_type_ = previous_function_return_type;
+    current_type_substitution_ = previous_type_substitution;
     loop_depth_ = previous_loop_depth;
     symbols_ = previous_symbols;
 }
@@ -754,6 +820,15 @@ void SemanticAnalyzer::analyze_stmt(
         if (loop_depth_ == 0) {
             report(stmt.range, "break and continue are only valid inside while loops");
         }
+        break;
+    case syntax::StmtKind::defer:
+        if (!syntax::is_valid(stmt.init) ||
+            stmt.init.value >= module_.exprs.size() ||
+            module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
+            report(stmt.range, "defer statement must be a function call");
+            break;
+        }
+        static_cast<void>(analyze_expr(stmt.init));
         break;
     }
 }
@@ -904,7 +979,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
             TypeHandle actual = invalid_type_handle;
             if (!expr.args.empty()) {
-                actual = analyze_expr(expr.args.front());
+                actual = analyze_expr(expr.args.front(), enum_case->payload_type);
                 if (!can_assign(enum_case->payload_type, actual, expr.args.front())) {
                     report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
                 }
@@ -999,7 +1074,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             const base::usize count = expr.args.size() < expected_count ? expr.args.size() : expected_count;
             for (base::usize i = 0; i < count; ++i) {
                 const TypeHandle expected = signature->param_types[i + receiver_count];
-                const TypeHandle actual = analyze_expr(expr.args[i]);
+                const TypeHandle actual = analyze_expr(expr.args[i], expected);
                 if (!can_assign(expected, actual, expr.args[i])) {
                     report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
                 }
@@ -1019,8 +1094,75 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
             return record_expr_type(expr_id, signature->return_type);
         }
-        const FunctionSignature* signature = find_function_in_visible_modules(name, callee_range);
+        const GenericFunctionTemplateInfo* generic_function = callee.kind == syntax::ExprKind::name
+            ? find_generic_function_template_in_visible_modules(name, callee_range, false)
+            : nullptr;
+        const FunctionSignature* signature = callee.type_args.empty()
+            ? find_function_in_visible_modules(name, callee_range, generic_function == nullptr)
+            : nullptr;
+        if (signature == nullptr && callee.kind == syntax::ExprKind::name && (!callee.type_args.empty() || generic_function != nullptr)) {
+            if (generic_function == nullptr) {
+                if (find_function_in_visible_modules(name, callee_range, false) != nullptr) {
+                    report(callee_range, "type arguments require a generic function: " + name);
+                } else {
+                    static_cast<void>(find_generic_function_template_in_visible_modules(name, callee_range, true));
+                }
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+
+            GenericFunctionInstanceInfo instance;
+            if (!callee.type_args.empty()) {
+                const GenericFunctionInstanceInfo* instantiated =
+                    instantiate_generic_function_from_syntax(*generic_function, callee.type_args, callee_range);
+                if (instantiated == nullptr) {
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+                instance = *instantiated;
+            } else {
+                std::vector<TypeHandle> arg_types;
+                arg_types.reserve(expr.args.size());
+                for (syntax::ExprId arg : expr.args) {
+                    arg_types.push_back(analyze_expr(arg));
+                }
+                std::vector<TypeHandle> inferred(generic_function->params.size(), invalid_type_handle);
+                static_cast<void>(infer_generic_function_args(*generic_function, arg_types, expected_type, inferred, callee_range));
+                for (TypeHandle arg : inferred) {
+                    if (!is_valid(arg)) {
+                        report(callee_range, "generic function requires explicit type arguments: " + generic_function->name);
+                        return record_expr_type(expr_id, invalid_type_handle);
+                    }
+                }
+                const GenericFunctionInstanceInfo* instantiated =
+                    instantiate_generic_function(*generic_function, inferred, callee_range);
+                if (instantiated == nullptr) {
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+                instance = *instantiated;
+            }
+
+            if (expr.callee.value < checked_.expr_c_names.size()) {
+                checked_.expr_c_names[expr.callee.value] = instance.c_name;
+            }
+            if (instance.param_types.size() != expr.args.size()) {
+                report(expr.range, "argument count mismatch in call to " + name);
+            }
+            const base::usize count = expr.args.size() < instance.param_types.size() ? expr.args.size() : instance.param_types.size();
+            for (base::usize i = 0; i < count; ++i) {
+                const TypeHandle actual = analyze_expr(expr.args[i], instance.param_types[i]);
+                if (!can_assign(instance.param_types[i], actual, expr.args[i])) {
+                    report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
+                }
+                if (is_copy_forbidden_value(instance.param_types[i])) {
+                    report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                }
+            }
+            return record_expr_type(expr_id, instance.return_type);
+        }
         if (signature == nullptr) {
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
+        if (!callee.type_args.empty()) {
+            report(callee_range, "type arguments require a generic function: " + name);
             return record_expr_type(expr_id, invalid_type_handle);
         }
         ensure_function_return_known(*signature, module_.exprs[expr.callee.value].range);
@@ -1032,7 +1174,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         }
         const base::usize count = expr.args.size() < signature->param_types.size() ? expr.args.size() : signature->param_types.size();
         for (base::usize i = 0; i < count; ++i) {
-            const TypeHandle actual = analyze_expr(expr.args[i]);
+            const TypeHandle actual = analyze_expr(expr.args[i], signature->param_types[i]);
             if (!can_assign(signature->param_types[i], actual, expr.args[i])) {
                 report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
             }
@@ -1238,10 +1380,14 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             if (const GenericStructTemplateInfo* template_info =
                     find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
                 template_info != nullptr) {
-                report(expr.range, "generic struct literal requires explicit type arguments: " + template_info->name);
-                return record_expr_type(expr_id, invalid_type_handle);
+                struct_type = infer_generic_struct_literal_type(*template_info, expr, expected_type);
+                if (!is_valid(struct_type)) {
+                    report(expr.range, "generic struct literal requires explicit type arguments: " + template_info->name);
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
+            } else {
+                struct_type = find_type_in_visible_modules(expr.struct_name, expr.range, false);
             }
-            struct_type = find_type_in_visible_modules(expr.struct_name, expr.range, false);
         }
         if (!is_valid(struct_type)) {
             return record_expr_type(expr_id, invalid_type_handle);
@@ -1267,7 +1413,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 report(init.range, "field is private: " + std::string(init.name));
                 continue;
             }
-            const TypeHandle actual = analyze_expr(init.value);
+            const TypeHandle actual = analyze_expr(init.value, field_info->type);
             if (!can_assign(field_info->type, actual, init.value)) {
                 report(init.range, "struct literal field type mismatch");
             }
@@ -1439,7 +1585,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {
 }
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee) {
-    return resolve_type_with_substitution(type_id, nullptr, opaque_allowed_as_pointee);
+    return resolve_type_with_substitution(type_id, current_type_substitution_, opaque_allowed_as_pointee);
 }
 
 TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
@@ -1487,12 +1633,38 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
             if (const GenericStructTemplateInfo* info =
                     find_generic_struct_template_in_visible_modules(type.name, type.range, false);
                 info != nullptr) {
-                resolved = instantiate_generic_struct_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                if (substitution == nullptr) {
+                    resolved = instantiate_generic_struct_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                } else {
+                    if (type.type_args.size() != info->params.size()) {
+                        report(type.range, "generic struct type argument count mismatch for " + info->name);
+                        break;
+                    }
+                    std::vector<TypeHandle> resolved_args;
+                    resolved_args.reserve(type.type_args.size());
+                    for (syntax::TypeId arg : type.type_args) {
+                        resolved_args.push_back(resolve_type_with_substitution(arg, substitution, opaque_allowed_as_pointee));
+                    }
+                    resolved = instantiate_generic_struct(*info, resolved_args, type.range);
+                }
                 break;
             }
             if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range);
                 info != nullptr) {
-                resolved = instantiate_generic_enum_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                if (substitution == nullptr) {
+                    resolved = instantiate_generic_enum_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);
+                } else {
+                    if (type.type_args.size() != info->params.size()) {
+                        report(type.range, "generic enum type argument count mismatch for " + info->name);
+                        break;
+                    }
+                    std::vector<TypeHandle> resolved_args;
+                    resolved_args.reserve(type.type_args.size());
+                    for (syntax::TypeId arg : type.type_args) {
+                        resolved_args.push_back(resolve_type_with_substitution(arg, substitution, opaque_allowed_as_pointee));
+                    }
+                    resolved = instantiate_generic_enum(*info, resolved_args, type.range);
+                }
                 break;
             }
             report(type.range, "type arguments require a generic type: " + std::string(type.name));
@@ -1518,7 +1690,7 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
         break;
     }
     }
-    if (substitution == nullptr && type_id.value < checked_.syntax_type_handles.size()) {
+    if (type_id.value < checked_.syntax_type_handles.size()) {
         checked_.syntax_type_handles[type_id.value] = resolved;
     }
     return resolved;
@@ -2004,7 +2176,11 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     return imported_result;
 }
 
-const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(const std::string_view name, const base::SourceRange range) {
+const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
     if (const auto found = checked_.functions.find(module_key(current_module_, name)); found != checked_.functions.end()) {
         return &found->second;
     }
@@ -2029,7 +2205,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(cons
             imported_result = &found->second;
             result_module = module;
     }
-    if (imported_result == nullptr) {
+    if (imported_result == nullptr && report_unknown) {
         report(range, "unknown function: " + std::string(name));
     }
     return imported_result;
@@ -2236,6 +2412,15 @@ std::string dump_checked_module(const CheckedModule& checked) {
         }
         if (fn.is_export_c) {
             out << " export_c";
+        }
+        out << "\n";
+    }
+
+    out << "  generic_functions " << checked.generic_function_instances.size() << "\n";
+    for (const GenericFunctionInstanceInfo& fn : checked.generic_function_instances) {
+        out << "    fn " << fn.name << " -> " << checked.types.display_name(fn.return_type);
+        if (!fn.c_name.empty()) {
+            out << " @c_name=" << fn.c_name;
         }
         out << "\n";
     }

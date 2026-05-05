@@ -74,6 +74,28 @@ TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
     expect_contains(require_failure(aurexc() + " --check " + q(not_last)).output, "variadic marker must be last in parameter list");
 }
 
+TEST_F(AurexIntegrationTest, DeferScopes) {
+    const fs::path source = positive_sample("functions", "defer_scope.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains(ast, "defer");
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn normal_scope(log: *mut u8, index: *mut usize)",
+        "fn early_return(log: *mut u8, index: *mut usize)",
+        "fn loop_paths(log: *mut u8, index: *mut usize)",
+        "call m0_defer_scope_push",
+    });
+
+    const fs::path bin = test_bin_root() / "defer_scope";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+
+    const fs::path non_call = negative_sample("functions", "defer_non_call.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(non_call)).output, "defer statement must be a function call");
+}
+
 TEST_F(AurexIntegrationTest, RecursiveFunctions) {
     const fs::path source = positive_sample("functions", "recursive_functions.ax");
 

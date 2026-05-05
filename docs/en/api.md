@@ -151,6 +151,20 @@ fn main() -> i32 {
 `fn main` may return `i32` or `void`, and may optionally accept
 `(argc: i32, argv: *mut *mut u8)`.
 
+Scope cleanup can use `defer`:
+
+```m0
+fn use_buffer(buffer: *mut u8) -> i32 {
+    defer free_bytes(buffer);
+    return 0;
+}
+```
+
+`defer` currently accepts function-call statements. Cleanup calls run in reverse
+order when the current lexical scope exits, including normal exits, `return`,
+`break`, and `continue` paths. Return statements evaluate the return expression
+before running cleanup.
+
 C ABI is declared with `extern c`:
 
 ```m0

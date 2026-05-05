@@ -36,6 +36,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "    i = i + 1;\n"
         "    if i == 1 { continue; } else { break; }\n"
         "  }\n"
+        "  defer puts(c\"cleanup\");\n"
         "  let p: *mut i32 = ptr_from_addr(*mut i32, ptr_addr(argv));\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
@@ -64,6 +65,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_while",
         "kw_break",
         "kw_continue",
+        "kw_defer",
         "kw_null",
         "kw_ptr_cast",
         "kw_bit_cast",
@@ -87,6 +89,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "while",
         "break",
         "continue",
+        "defer",
         "expr #",
         "null_literal",
         "string_literal",

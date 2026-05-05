@@ -39,7 +39,8 @@ source -> lexer -> parser -> sema -> Aurex IR -> LLVM IR -> clang
 - IR verifier、保守的局部 mem2reg 和 CFG cleanup pass pipeline。
 - LLVM IR lowering 和 clang 本机输出。
 - `std` 模块和 host-c backend support。
-- 当前语言切片，包括显式可见性、泛型基础、sum type、pattern matching、表达式和受控推导。
+- 当前语言切片，包括显式可见性、泛型基础、generic function MVP、sum type、pattern matching、
+  表达式、受控推导、`extern c` 变长参数和作用域级 `defer`。
 
 ## 使用场景
 

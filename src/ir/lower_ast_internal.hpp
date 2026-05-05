@@ -34,6 +34,12 @@ struct LocalBinding {
     bool is_mutable = false;
 };
 
+struct LoopContext {
+    BlockId break_target = invalid_block_id;
+    BlockId continue_target = invalid_block_id;
+    base::usize defer_depth = 0;
+};
+
 struct PendingConstant {
     GlobalConstantId id = invalid_global_constant_id;
     syntax::ExprId initializer = syntax::invalid_expr_id;
@@ -52,6 +58,7 @@ private:
     void lower_record_layouts();
     void declare_global_constants();
     void lower_function_declarations();
+    void lower_generic_function_declarations();
     void lower_global_constant_initializers();
 
     [[nodiscard]] std::string item_symbol(base::u32 index, const syntax::ItemNode& item) const;
@@ -117,6 +124,7 @@ private:
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const syntax::ExprNode& expr);
 
+    void emit_deferred_scopes(base::usize keep_depth);
     [[nodiscard]] ValueId lower_place_addr(syntax::ExprId expr_id);
     [[nodiscard]] PlaceAddress lower_place_address(syntax::ExprId expr_id);
     [[nodiscard]] PlaceAddress lower_object_place_or_value(syntax::ExprId expr_id);
@@ -129,6 +137,7 @@ private:
     [[nodiscard]] std::string value_symbol(syntax::ExprId expr_id, const syntax::ExprNode& expr) const;
     [[nodiscard]] sema::TypeHandle call_param_type(FunctionId function_id, base::usize index) const noexcept;
     [[nodiscard]] sema::TypeHandle variadic_argument_type(sema::TypeHandle source_type) const noexcept;
+    [[nodiscard]] sema::TypeHandle expr_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] sema::TypeHandle syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] sema::TypeHandle stmt_local_type(syntax::StmtId stmt) const noexcept;
@@ -149,14 +158,16 @@ private:
     const sema::CheckedModule& checked_;
     Module module_;
     Function* current_function_ = nullptr;
+    const sema::GenericFunctionInstanceInfo* current_generic_function_instance_ = nullptr;
     BlockId current_block_ = invalid_block_id;
     std::unordered_map<std::string, LocalBinding> locals_;
     std::unordered_map<std::string, FunctionId> function_symbols_;
     std::unordered_map<std::string, GlobalConstantId> constant_symbols_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
-    std::vector<BlockId> loop_breaks_;
-    std::vector<BlockId> loop_continues_;
+    std::vector<FunctionId> generic_function_instance_functions_;
+    std::vector<LoopContext> loop_contexts_;
+    std::vector<std::vector<syntax::ExprId>> defer_scopes_;
 };
 
 } // namespace aurex::ir::detail

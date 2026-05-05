@@ -8,15 +8,19 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
     }
     current_function_ = &module_.functions[function_id.value];
     locals_.clear();
-    loop_breaks_.clear();
-    loop_continues_.clear();
+    loop_contexts_.clear();
+    defer_scopes_.clear();
     current_block_ = add_block(*current_function_, "entry");
 
-    for (const syntax::ParamDecl& param : item.params) {
+    for (base::usize i = 0; i < item.params.size(); ++i) {
+        const syntax::ParamDecl& param = item.params[i];
+        const sema::TypeHandle param_type = current_function_ != nullptr && i < current_function_->signature_params.size()
+            ? current_function_->signature_params[i].type
+            : syntax_type(param.type);
         Value param_value;
         param_value.kind = ValueKind::param;
         param_value.name = std::string(param.name);
-        param_value.type = syntax_type(param.type);
+        param_value.type = param_type;
         const ValueId param_id = append_value(param_value);
         current_function_->param_values.push_back(param_id);
 
@@ -40,7 +44,13 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
 
 void Lowerer::lower_block(const syntax::StmtId block_id) {
     const auto previous_locals = locals_;
+    const base::usize scope_depth = defer_scopes_.size();
+    defer_scopes_.push_back({});
     lower_block_contents(block_id);
+    if (!has_terminator(current_block_)) {
+        emit_deferred_scopes(scope_depth);
+    }
+    defer_scopes_.resize(scope_depth);
     locals_ = previous_locals;
 }
 
@@ -79,7 +89,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         break;
     }
     case syntax::StmtKind::assign:
-        append_store(lower_place_addr(stmt.lhs), lower_expr(stmt.rhs, checked_expr_type(checked_, stmt.lhs)));
+        append_store(lower_place_addr(stmt.lhs), lower_expr(stmt.rhs, expr_type(stmt.lhs)));
         break;
     case syntax::StmtKind::if_:
         lower_if(stmt);
@@ -88,25 +98,37 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         lower_while(stmt);
         break;
     case syntax::StmtKind::break_: {
+        if (!loop_contexts_.empty()) {
+            emit_deferred_scopes(loop_contexts_.back().defer_depth);
+        }
         Terminator term;
         term.kind = TerminatorKind::branch;
-        term.target = loop_breaks_.empty() ? invalid_block_id : loop_breaks_.back();
+        term.target = loop_contexts_.empty() ? invalid_block_id : loop_contexts_.back().break_target;
         set_terminator(current_block_, term);
         break;
     }
     case syntax::StmtKind::continue_: {
+        if (!loop_contexts_.empty()) {
+            emit_deferred_scopes(loop_contexts_.back().defer_depth);
+        }
         Terminator term;
         term.kind = TerminatorKind::branch;
-        term.target = loop_continues_.empty() ? invalid_block_id : loop_continues_.back();
+        term.target = loop_contexts_.empty() ? invalid_block_id : loop_contexts_.back().continue_target;
         set_terminator(current_block_, term);
         break;
     }
+    case syntax::StmtKind::defer:
+        if (!defer_scopes_.empty()) {
+            defer_scopes_.back().push_back(stmt.init);
+        }
+        break;
     case syntax::StmtKind::return_: {
         Terminator term;
         term.kind = TerminatorKind::return_;
         if (syntax::is_valid(stmt.return_value)) {
             term.value = coerce_value(lower_expr(stmt.return_value, current_function_->return_type), current_function_->return_type);
         }
+        emit_deferred_scopes(0);
         set_terminator(current_block_, term);
         break;
     }
@@ -175,15 +197,24 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
     cond.else_target = exit_block;
     set_terminator(current_block_, cond);
 
-    loop_breaks_.push_back(exit_block);
-    loop_continues_.push_back(condition_block);
+    loop_contexts_.push_back(LoopContext {exit_block, condition_block, defer_scopes_.size()});
     current_block_ = body_block;
     lower_block(stmt.body);
     append_branch_if_open(condition_block);
-    loop_continues_.pop_back();
-    loop_breaks_.pop_back();
+    loop_contexts_.pop_back();
 
     current_block_ = exit_block;
+}
+
+void Lowerer::emit_deferred_scopes(const base::usize keep_depth) {
+    base::usize depth = defer_scopes_.size();
+    while (depth > keep_depth) {
+        const std::vector<syntax::ExprId>& scope = defer_scopes_[depth - 1];
+        for (base::usize i = scope.size(); i > 0; --i) {
+            static_cast<void>(lower_expr(scope[i - 1]));
+        }
+        --depth;
+    }
 }
 
 } // namespace aurex::ir::detail

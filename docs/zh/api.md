@@ -148,6 +148,18 @@ fn main() -> i32 {
 `fn main` 可以返回 `i32` 或 `void`，也可以选择接收
 `(argc: i32, argv: *mut *mut u8)` 参数。
 
+作用域清理可以使用 `defer`：
+
+```m0
+fn use_buffer(buffer: *mut u8) -> i32 {
+    defer free_bytes(buffer);
+    return 0;
+}
+```
+
+`defer` 当前接受函数调用语句。清理调用在当前词法作用域退出时按反序执行，并覆盖正常
+离开、`return`、`break` 和 `continue` 路径。返回语句会先求值返回表达式，再执行清理。
+
 C ABI 通过 `extern c` 声明：
 
 ```m0

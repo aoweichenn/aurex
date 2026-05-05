@@ -20,12 +20,15 @@ Stage0 主链路：
 当前语言切片：
 
 - 结构体、枚举、类型别名和 opaque 类型。
-- 泛型 struct / enum 的基础实例化。
+- 泛型 struct / enum 的基础实例化，包含嵌套泛型类型实参 substitution 和
+  struct literal 的期望类型/字段值推断。
 - `match` 表达式、literal pattern、wildcard、or-pattern 和 guard。
 - block / if 表达式。
 - local 和 return 类型推导的受控切片。
 - 函数原型与递归函数检查。
+- generic function MVP：支持显式 `<T>`、调用时类型实参，以及基于实参/期望返回类型的基础推断。
 - `extern c` 变长参数声明与调用，包含 C ABI 默认实参提升。
+- 作用域级 `defer` 语句，按反序在正常离开、`return`、`break` / `continue` 路径执行清理调用。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 method call 和 `Type.function()` 风格 associated call。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流。
 - 标准库容器/文本/路径基线已启动，包含泛型 `Vec<T>` 的 `VecU8` 专用 API、拥有型 `String` 和拥有型 `Path`。
@@ -38,9 +41,9 @@ Stage0 主链路：
 - 可见性还应继续扩展到更细粒度的 API 边界，例如构造器、枚举 payload、type alias 传播和 re-export 规则。
 - 模块隔离还缺显式 package/crate 边界、导入别名、选择性导入、循环依赖诊断优化和稳定 public surface dump。
 - 调用模型已有 `impl` / method MVP，但还缺 generic impl、trait/class 复用、method public surface tooling 和更完整的诊断。
-- 泛型仍缺 generic function、约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
+- 泛型仍缺约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
 - 错误处理还缺标准 `Result<T, E>` / `Option<T>`、`?` 传播和可组合诊断模型。
-- 资源管理还缺 `defer`、最小 move/noncopyable 语义和文件、进程、arena 等资源的统一用法。
+- 资源管理仍缺最小 move/noncopyable 语义和文件、进程、arena 等资源的统一用法。
 - 标准库还缺 `Span<T>`、`String`、`Vec<T>`、`Map<K, V>`、`Path`、目录遍历、文件 metadata、subprocess 和 incremental build 需要的 OS 能力。
 - 需要一个兼容传统 OOP 思维的 class/object model：封装、继承和动态多态，但它应作为迁移友好层，不替代 struct/enum/trait/generic 的核心设计。
 - pattern matching 还需要更完整的 exhaustiveness、绑定一致性、enum layout 交互和 lowering 验证。
@@ -69,13 +72,13 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    compiler frontend 需要 token buffer、AST list、symbol table 和 source span；构建工具需要 path list、target graph、dependency map 和 command argv。标准容器应成为 M1 的核心交付物。
 
 4. 把泛型从基础实例化推进到可约束模型  
-   增加 generic function、最小 `where`、trait/interface、trait impl 和静态分派。M1 不需要 trait object，但需要支撑容器、算法和 typed build graph。
+   generic function MVP 已落地。下一步增加最小 `where`、trait/interface、trait impl 和静态分派。M1 不需要 trait object，但需要支撑容器、算法和 typed build graph。
 
 5. 加入兼容性 class/object model  
    提供面向传统 OOP 使用者的封装、继承和动态多态层。M1 建议先做单继承、显式 `virtual`、`override`、`abstract`、`final`、`pub` / `priv` / `protected` 可见性，以及通过 base pointer/reference 的 vtable dispatch。多继承不进入 M1；需要多态组合时优先使用 trait/interface，class 主要服务迁移和老代码建模。
 
 6. 建立资源管理和 OS 工程能力  
-   支持 `defer`、最小 noncopyable 资源规则、目录遍历、文件 metadata、subprocess、cwd/env、临时文件和路径规范化。没有这一步，构建工具只能是玩具。
+   `defer` MVP 已落地，后续继续支持最小 noncopyable 资源规则、目录遍历、文件 metadata、subprocess、cwd/env、临时文件和路径规范化。没有这一步，构建工具只能是玩具。
 
 7. 强化 sum type / pattern matching 到工业可用边界  
    重点是 exhaustiveness、unreachable arm、payload binding、guard 约束和 enum layout 与 LLVM lowering 的一致性。自举前端会大量依赖 token/AST match。
@@ -99,14 +102,14 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
 3. `Vec` / `String` / `Path`  
    已启动。当前已有 `Vec<T>` 结构、`VecU8` 专用操作、拥有型 `String` 和拥有型 `Path`，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。旧 `BufferU8` 已迁到 `VecU8`，`std.fs.file` / `std.sys.host` 的文件读写入口也已改为 `Result<FileBytes, i32>`、`Result<usize, i32>` 等 M1 风格 API。下一步继续扩展到 token buffer、source list 和更通用的 path/build graph 场景。
 
-4. generic function / trait / `where`  
-   让容器、算法和 build graph 不再靠单类型特化。完成后补 typed graph 和 map-like examples。
+4. generic constraints / trait / `where`
+   generic function MVP 已落地。下一步补最小 trait/interface 或 capability predicate，再推进约束、method-like resolution 和单态化缓存。完成后补 typed graph 和 map-like examples。
 
 5. class/object model MVP  
    在 method 和 trait 基础稳定后实现 class，这样 class 的成员解析、visibility、vtable lowering 可以复用已有调用模型。完成后增加一个 OOP 风格插件/任务 runner example。
 
 6. `defer` / noncopyable / OS 能力  
-   让文件、进程、arena、临时目录能安全组合。完成后开始写 `axbuild` 样例。
+   已启动。当前 `defer call();` 会在当前词法作用域退出时反序执行，并覆盖正常退出、`return`、`break` / `continue` lowering。下一步补 noncopyable 资源规则、目录遍历、文件 metadata、subprocess、cwd/env 和临时目录能力，让文件、进程、arena、临时目录能安全组合。完成后开始写 `axbuild` 样例。
 
 7. 自举前端和 typed 构建工具验收  
    两个系统级样例进入 integration tests，并继续要求覆盖率保持 90% 以上。
@@ -120,7 +123,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    重点是 exhaustiveness、unreachable arm、payload binding、guard 约束和 enum layout 与 LLVM lowering 的一致性。
 
 3. 把泛型从基础实例化推进到可约束模型  
-   先设计最小 trait/interface 或 capability predicate，再推进 generic function、method-like resolution 和单态化缓存。
+   generic function MVP 已完成，下一步设计最小 trait/interface 或 capability predicate，再推进约束、method-like resolution 和单态化缓存。
 
 4. 稳定 AIR/IR 后端契约  
    AIR 先作为 Stage0 内部设计目标推进到可验证形态，LLVM 继续作为当前生产后端。自举只要求未来能输出 AIR 级别的结构，不急于自举后端。

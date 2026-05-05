@@ -1,0 +1,15 @@
+module try_result_return_mismatch;
+
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
+
+fn parse() -> Result<i32, i32> {
+    return Result.ok(1);
+}
+
+fn main() -> i32 {
+    let value: i32 = parse()?;
+    return value;
+}

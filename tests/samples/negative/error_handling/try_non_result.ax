@@ -1,0 +1,6 @@
+module try_non_result;
+
+fn main() -> i32 {
+    let value: i32 = 1?;
+    return value;
+}

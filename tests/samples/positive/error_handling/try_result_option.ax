@@ -1,0 +1,50 @@
+module try_result_option;
+
+import std.core.result;
+
+fn parse_digit(value: i32) -> Result<i32, i32> {
+    if value < 0 {
+        return Result.err(7);
+    }
+    return Result.ok(value + 1);
+}
+
+fn add_one_result(value: i32) -> Result<i32, i32> {
+    let parsed: i32 = parse_digit(value)?;
+    return Result.ok(parsed + 1);
+}
+
+fn maybe_even(value: i32) -> Option<i32> {
+    if (value % 2) == 0 {
+        return Option.some(value);
+    }
+    return Option.none;
+}
+
+fn unwrap_even(value: i32) -> Option<i32> {
+    let even: i32 = maybe_even(value)?;
+    return Option.some(even + 2);
+}
+
+fn main() -> i32 {
+    let ok_value: i32 = match add_one_result(4) {
+        .ok(value) => value,
+        .err(code) => code,
+    };
+    let err_value: i32 = match add_one_result(-1) {
+        .ok(value) => value,
+        .err(code) => code,
+    };
+    let some_value: i32 = match unwrap_even(4) {
+        .some(value) => value,
+        .none => 0,
+    };
+    let none_value: i32 = match unwrap_even(3) {
+        .some(value) => value,
+        .none => 0,
+    };
+    if ok_value == 6 && err_value == 7 && some_value == 6 && none_value == 0 {
+        return 0;
+    }
+    return 1;
+}

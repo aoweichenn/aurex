@@ -1,6 +1,8 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__clang__)
@@ -130,6 +132,20 @@ using syntax::TypeId;
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::integer_literal;
     expr.text = "1";
+    return module.push_expr(expr);
+}
+
+[[nodiscard]] ExprId push_integer_text(syntax::AstModule& module, const std::string_view text) {
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::integer_literal;
+    expr.text = text;
+    return module.push_expr(expr);
+}
+
+[[nodiscard]] ExprId push_bool(syntax::AstModule& module, const std::string_view text) {
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::bool_literal;
+    expr.text = text;
     return module.push_expr(expr);
 }
 
@@ -648,6 +664,398 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceAndGenericPatternEdges) {
 
     static_cast<void>(bool_type_id);
     static_cast<void>(bool_type);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib", "one"}),
+    };
+    module.modules[0].imports = {resolved_import(module_id(1), "one")};
+
+    const TypeId u8_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::u8));
+    const TypeId i32_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const ExprId hex_expr = push_integer_text(module, "0x2A");
+    const ExprId lower_hex_expr = push_integer_text(module, "0xa");
+    const ExprId upper_hex_expr = push_integer_text(module, "0X2A");
+    const ExprId bin_expr = push_integer_text(module, "0b1010");
+    const ExprId upper_bin_expr = push_integer_text(module, "0B1010");
+    const ExprId invalid_digit_expr = push_integer_text(module, "0b2");
+    const ExprId invalid_char_expr = push_integer_text(module, "12g");
+    const ExprId empty_expr = push_integer_text(module, "");
+    const ExprId overflow_expr = push_integer_text(module, "18446744073709551616");
+    const ExprId signed_overflow_expr = push_integer_text(module, "9223372036854775808");
+
+    syntax::TypeNode scoped_missing_alias_type = named_node("Missing");
+    scoped_missing_alias_type.scope_name = "missing";
+    const TypeId scoped_missing_alias_type_id = module.push_type(scoped_missing_alias_type);
+    syntax::TypeNode scoped_choice_missing_args_type = named_node("Choice");
+    scoped_choice_missing_args_type.scope_name = "one";
+    const TypeId scoped_choice_missing_args_type_id = module.push_type(scoped_choice_missing_args_type);
+    syntax::TypeNode invalid_primitive_type;
+    invalid_primitive_type.kind = syntax::TypeKind::primitive;
+    invalid_primitive_type.primitive = static_cast<syntax::PrimitiveTypeKind>(99);
+    const TypeId invalid_primitive_type_id = module.push_type(invalid_primitive_type);
+    syntax::TypeNode scoped_opaque_type = named_node("ScopedOpaque");
+    scoped_opaque_type.scope_name = "one";
+    const TypeId scoped_opaque_type_id = module.push_type(scoped_opaque_type);
+    syntax::TypeNode scoped_bad_box_type = named_node("BadBox");
+    scoped_bad_box_type.scope_name = "one";
+    scoped_bad_box_type.type_args = {i32_type_id};
+    const TypeId scoped_bad_box_type_id = module.push_type(scoped_bad_box_type);
+    syntax::TypeNode scoped_bad_enum_type = named_node("BadEnum");
+    scoped_bad_enum_type.scope_name = "one";
+    scoped_bad_enum_type.type_args = {i32_type_id};
+    const TypeId scoped_bad_enum_type_id = module.push_type(scoped_bad_enum_type);
+    syntax::TypeNode unqualified_bad_box_type = named_node("LocalBadBox");
+    unqualified_bad_box_type.type_args = {i32_type_id};
+    const TypeId unqualified_bad_box_type_id = module.push_type(unqualified_bad_box_type);
+    syntax::TypeNode unqualified_bad_enum_type = named_node("LocalBadEnum");
+    unqualified_bad_enum_type.type_args = {i32_type_id};
+    const TypeId unqualified_bad_enum_type_id = module.push_type(unqualified_bad_enum_type);
+
+    syntax::ItemNode enum_item;
+    enum_item.kind = syntax::ItemKind::enum_decl;
+    enum_item.name = "Choice";
+    enum_item.generic_params = {"T"};
+    enum_item.enum_base_type = u8_type_id;
+    enum_item.enum_cases = {
+        syntax::EnumCaseDecl {"none", syntax::invalid_type_id, "1", {}},
+    };
+    const syntax::ItemId enum_item_id = module.push_item(enum_item);
+    module.item_modules[enum_item_id.value] = module_id(1);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), invalid_type_handle);
+    analyzer.checked_.expr_c_names.assign(module.exprs.size(), {});
+    analyzer.checked_.pattern_c_names.assign(3, {});
+    analyzer.checked_.pattern_case_sets.assign(3, {});
+    analyzer.checked_.syntax_type_handles.assign(module.types.size(), invalid_type_handle);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle u8 = types.builtin(BuiltinType::u8);
+    const TypeHandle u16 = types.builtin(BuiltinType::u16);
+    const TypeHandle u32 = types.builtin(BuiltinType::u32);
+    const TypeHandle u64 = types.builtin(BuiltinType::u64);
+    const TypeHandle i8 = types.builtin(BuiltinType::i8);
+    const TypeHandle i16 = types.builtin(BuiltinType::i16);
+    const TypeHandle i64 = types.builtin(BuiltinType::i64);
+    const TypeHandle isize = types.builtin(BuiltinType::isize);
+    const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
+    const TypeHandle scoped_opaque = types.opaque_struct("one.ScopedOpaque", "one_ScopedOpaque");
+
+    EXPECT_TRUE(analyzer.can_assign(u8, u8, hex_expr));
+    EXPECT_TRUE(analyzer.can_assign(u8, u8, lower_hex_expr));
+    EXPECT_TRUE(analyzer.can_assign(u16, u16, upper_hex_expr));
+    EXPECT_TRUE(analyzer.can_assign(u32, u32, bin_expr));
+    EXPECT_TRUE(analyzer.can_assign(u64, u64, upper_bin_expr));
+    EXPECT_TRUE(analyzer.can_assign(i8, i8, hex_expr));
+    EXPECT_TRUE(analyzer.can_assign(i16, i16, bin_expr));
+    EXPECT_TRUE(analyzer.can_assign(isize, isize, bin_expr));
+    EXPECT_FALSE(analyzer.can_assign(u8, u8, invalid_digit_expr));
+    EXPECT_FALSE(analyzer.can_assign(u8, u8, invalid_char_expr));
+    EXPECT_FALSE(analyzer.can_assign(u8, u8, empty_expr));
+    EXPECT_FALSE(analyzer.can_assign(u64, u64, overflow_expr));
+    EXPECT_FALSE(analyzer.can_assign(i64, i64, signed_overflow_expr));
+    EXPECT_FALSE(analyzer.can_assign(bool_type, u8, hex_expr));
+    EXPECT_TRUE(types.is_str(types.builtin(BuiltinType::str)));
+
+    const TypeHandle zero_align_enum = types.named_enum("ZeroAlign", "ZeroAlign");
+    types.set_enum_underlying(zero_align_enum, u8);
+    types.set_enum_payload_layout(zero_align_enum, u8, 1, 0);
+    EXPECT_GE(analyzer.abi_size(zero_align_enum), 1U);
+
+    analyzer.record_pattern_c_name(syntax::invalid_pattern_id, "ignored");
+    analyzer.record_pattern_c_name(syntax::PatternId {0}, {});
+    analyzer.record_pattern_case_name(syntax::invalid_pattern_id, "ignored");
+    analyzer.record_pattern_case_name(syntax::PatternId {0}, {});
+    analyzer.merge_pattern_case_names(syntax::invalid_pattern_id, syntax::PatternId {0});
+
+    std::unordered_map<base::u32, std::unordered_set<std::string>> generic_case_sets;
+    generic_case_sets[1].insert("from_generic");
+    analyzer.current_generic_pattern_case_sets_ = &generic_case_sets;
+    analyzer.merge_pattern_case_names(syntax::PatternId {0}, syntax::PatternId {1});
+    EXPECT_TRUE(generic_case_sets[0].contains("from_generic"));
+    analyzer.current_generic_pattern_case_sets_->erase(1);
+    analyzer.checked_.pattern_case_sets[1].insert("from_checked");
+    analyzer.merge_pattern_case_names(syntax::PatternId {2}, syntax::PatternId {1});
+    EXPECT_TRUE(generic_case_sets[2].contains("from_checked"));
+    analyzer.current_generic_pattern_case_sets_ = nullptr;
+
+    syntax::ExprNode unqualified_missing_generic;
+    unqualified_missing_generic.kind = syntax::ExprKind::name;
+    unqualified_missing_generic.text = "Missing";
+    unqualified_missing_generic.type_args = {i32_type_id};
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(unqualified_missing_generic, false)));
+
+    syntax::ExprNode missing_alias_generic = unqualified_missing_generic;
+    missing_alias_generic.scope_name = "missing";
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(missing_alias_generic, false)));
+
+    GenericEnumTemplateInfo enum_info;
+    enum_info.name = "Choice";
+    enum_info.module = module_id(1);
+    enum_info.params = {"T"};
+    enum_info.item = enum_item_id;
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(1), "Choice"), enum_info);
+    GenericStructTemplateInfo bad_box_info;
+    bad_box_info.name = "BadBox";
+    bad_box_info.module = module_id(1);
+    bad_box_info.params = {"T", "E"};
+    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(1), "BadBox"), bad_box_info);
+    GenericEnumTemplateInfo bad_enum_info;
+    bad_enum_info.name = "BadEnum";
+    bad_enum_info.module = module_id(1);
+    bad_enum_info.params = {"T", "E"};
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(1), "BadEnum"), bad_enum_info);
+    GenericStructTemplateInfo local_bad_box_info = bad_box_info;
+    local_bad_box_info.name = "LocalBadBox";
+    local_bad_box_info.module = module_id(0);
+    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(0), "LocalBadBox"), local_bad_box_info);
+    GenericEnumTemplateInfo local_bad_enum_info = bad_enum_info;
+    local_bad_enum_info.name = "LocalBadEnum";
+    local_bad_enum_info.module = module_id(0);
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(0), "LocalBadEnum"), local_bad_enum_info);
+    analyzer.named_types_.emplace(analyzer.module_key(module_id(1), "ScopedOpaque"), scoped_opaque);
+
+    syntax::ExprNode scoped_enum = unqualified_missing_generic;
+    scoped_enum.text = "Choice";
+    scoped_enum.scope_name = "one";
+    const TypeHandle choice_i32 = analyzer.resolve_associated_type_owner(scoped_enum, false);
+    EXPECT_TRUE(is_valid(choice_i32));
+
+    syntax::ExprNode scoped_missing_generic = unqualified_missing_generic;
+    scoped_missing_generic.text = "MissingScoped";
+    scoped_missing_generic.scope_name = "one";
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(scoped_missing_generic, false)));
+
+    sema::GenericTypeSubstitution substitution;
+    std::unordered_map<base::u32, TypeHandle> generic_type_cache;
+    const TypeHandle opaque = types.opaque_struct("Opaque", "Opaque");
+    generic_type_cache[i32_type_id.value] = opaque;
+    analyzer.current_generic_syntax_type_handles_ = &generic_type_cache;
+    EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type_with_substitution(i32_type_id, &substitution, false), opaque));
+    analyzer.current_generic_syntax_type_handles_ = nullptr;
+    EXPECT_TRUE(types.is_void(analyzer.resolve_type(invalid_primitive_type_id)));
+    EXPECT_TRUE(types.same(analyzer.resolve_type(scoped_opaque_type_id), scoped_opaque));
+    EXPECT_FALSE(is_valid(analyzer.resolve_type(scoped_missing_alias_type_id)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_type(scoped_choice_missing_args_type_id)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(scoped_bad_box_type_id, &substitution, false)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(scoped_bad_enum_type_id, &substitution, false)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(unqualified_bad_box_type_id, &substitution, false)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(unqualified_bad_enum_type_id, &substitution, false)));
+
+    const TypeHandle record_type = types.named_struct("Record", "Record", false);
+    const TypeHandle array_record = types.named_struct("ArrayRecord", "ArrayRecord", true);
+    types.set_record_properties(array_record, true, false);
+    analyzer.named_types_.emplace(analyzer.module_key(module_id(0), "Record"), record_type);
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(0), "array_value"),
+        symbol(SymbolKind::local, "array_value", module_id(0), array_record, false)
+    );
+
+    FunctionSignature static_method = function_signature("needs", module_id(0), bool_type);
+    static_method.is_method = true;
+    static_method.method_owner_type = record_type;
+    analyzer.checked_.functions.emplace(analyzer.method_key(module_id(0), record_type, "needs"), static_method);
+    FunctionSignature needs_arg = function_signature("needs_arg", module_id(0), bool_type);
+    needs_arg.is_method = true;
+    needs_arg.method_owner_type = record_type;
+    needs_arg.param_types = {u8};
+    analyzer.checked_.functions.emplace(analyzer.method_key(module_id(0), record_type, "needs_arg"), needs_arg);
+    FunctionSignature takes_array = function_signature("takes_array", module_id(0), bool_type);
+    takes_array.is_method = true;
+    takes_array.method_owner_type = record_type;
+    takes_array.param_types = {array_record};
+    analyzer.checked_.functions.emplace(analyzer.method_key(module_id(0), record_type, "takes_array"), takes_array);
+
+    const ExprId record_name = push_name(module, "Record");
+    syntax::ExprNode type_arg_field;
+    type_arg_field.kind = syntax::ExprKind::field;
+    type_arg_field.object = record_name;
+    type_arg_field.field_name = "needs";
+    type_arg_field.type_args = {i32_type_id};
+    const ExprId type_arg_field_id = module.push_expr(type_arg_field);
+    syntax::ExprNode type_arg_call;
+    type_arg_call.kind = syntax::ExprKind::call;
+    type_arg_call.callee = type_arg_field_id;
+    const ExprId type_arg_call_id = module.push_expr(type_arg_call);
+
+    syntax::ExprNode missing_arg_field = type_arg_field;
+    missing_arg_field.field_name = "needs_arg";
+    missing_arg_field.type_args = {};
+    const ExprId missing_arg_field_id = module.push_expr(missing_arg_field);
+    syntax::ExprNode missing_arg_call = type_arg_call;
+    missing_arg_call.callee = missing_arg_field_id;
+    const ExprId missing_arg_call_id = module.push_expr(missing_arg_call);
+
+    const ExprId array_value = push_name(module, "array_value");
+    syntax::ExprNode array_arg_field = missing_arg_field;
+    array_arg_field.field_name = "takes_array";
+    const ExprId array_arg_field_id = module.push_expr(array_arg_field);
+    syntax::ExprNode array_arg_call = type_arg_call;
+    array_arg_call.callee = array_arg_field_id;
+    array_arg_call.args = {array_value};
+    const ExprId array_arg_call_id = module.push_expr(array_arg_call);
+
+    const ExprId choice_name = push_name(module, "Choice");
+    syntax::ExprNode none_field;
+    none_field.kind = syntax::ExprKind::field;
+    none_field.object = choice_name;
+    none_field.field_name = "none";
+    const ExprId none_field_id = module.push_expr(none_field);
+    syntax::ExprNode none_call;
+    none_call.kind = syntax::ExprKind::call;
+    none_call.callee = none_field_id;
+    const ExprId none_call_id = module.push_expr(none_call);
+
+    analyzer.checked_.expr_types.resize(module.exprs.size(), invalid_type_handle);
+    analyzer.checked_.expr_c_names.resize(module.exprs.size());
+    static_cast<void>(analyzer.analyze_call_expr(type_arg_call_id, module.exprs[type_arg_call_id.value], invalid_type_handle));
+    static_cast<void>(analyzer.analyze_call_expr(missing_arg_call_id, module.exprs[missing_arg_call_id.value], invalid_type_handle));
+    static_cast<void>(analyzer.analyze_call_expr(array_arg_call_id, module.exprs[array_arg_call_id.value], invalid_type_handle));
+    static_cast<void>(analyzer.analyze_call_expr(none_call_id, module.exprs[none_call_id.value], choice_i32));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId choice_value = push_name(module, "choice");
+    const ExprId int_guard = push_integer(module);
+    const ExprId bool_result = push_bool(module, "true");
+    const ExprId bool_subject = push_bool(module, "false");
+    const ExprId int_result = push_integer(module);
+    const ExprId void_value = push_name(module, "void_value");
+
+    syntax::PatternNode payload_pattern;
+    payload_pattern.kind = syntax::PatternKind::enum_case;
+    payload_pattern.scoped = true;
+    payload_pattern.case_name = "some";
+    payload_pattern.binding_name = "payload";
+    const syntax::PatternId payload_pattern_id = module.push_pattern(payload_pattern);
+
+    syntax::PatternNode true_binding_pattern;
+    true_binding_pattern.kind = syntax::PatternKind::literal;
+    true_binding_pattern.case_name = "true";
+    true_binding_pattern.binding_name = "flag";
+    const syntax::PatternId true_binding_pattern_id = module.push_pattern(true_binding_pattern);
+
+    syntax::PatternNode wildcard_pattern;
+    wildcard_pattern.kind = syntax::PatternKind::wildcard;
+    const syntax::PatternId wildcard_pattern_id = module.push_pattern(wildcard_pattern);
+
+    syntax::PatternNode missing_scoped_pattern;
+    missing_scoped_pattern.kind = syntax::PatternKind::enum_case;
+    missing_scoped_pattern.scoped = true;
+    missing_scoped_pattern.case_name = "missing";
+    const syntax::PatternId missing_scoped_pattern_id = module.push_pattern(missing_scoped_pattern);
+
+    syntax::PatternNode unsupported_literal_pattern;
+    unsupported_literal_pattern.kind = syntax::PatternKind::literal;
+    unsupported_literal_pattern.case_name = "1";
+    const syntax::PatternId unsupported_literal_pattern_id = module.push_pattern(unsupported_literal_pattern);
+
+    syntax::ExprNode enum_match;
+    enum_match.kind = syntax::ExprKind::match_expr;
+    enum_match.match_value = choice_value;
+    enum_match.match_arms = {
+        syntax::MatchArm {payload_pattern_id, int_guard, bool_result, {}},
+    };
+    const ExprId enum_match_id = module.push_expr(enum_match);
+
+    syntax::ExprNode binding_value_match;
+    binding_value_match.kind = syntax::ExprKind::match_expr;
+    binding_value_match.match_value = bool_subject;
+    binding_value_match.match_arms = {
+        syntax::MatchArm {true_binding_pattern_id, syntax::invalid_expr_id, int_result, {}},
+        syntax::MatchArm {wildcard_pattern_id, syntax::invalid_expr_id, int_result, {}},
+    };
+    const ExprId binding_value_match_id = module.push_expr(binding_value_match);
+
+    syntax::ExprNode void_match;
+    void_match.kind = syntax::ExprKind::match_expr;
+    void_match.match_value = bool_subject;
+    void_match.match_arms = {
+        syntax::MatchArm {wildcard_pattern_id, syntax::invalid_expr_id, void_value, {}},
+    };
+    const ExprId void_match_id = module.push_expr(void_match);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), invalid_type_handle);
+    analyzer.checked_.expr_c_names.assign(module.exprs.size(), {});
+    analyzer.checked_.pattern_c_names.assign(module.patterns.size(), {});
+    analyzer.checked_.pattern_case_sets.assign(module.patterns.size(), {});
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle void_type = types.builtin(BuiltinType::void_);
+    const TypeHandle u8 = types.builtin(BuiltinType::u8);
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle choice_type = types.named_enum("Choice", "Choice");
+    const TypeHandle record_type = types.named_struct("Record", "Record", false);
+    types.set_enum_underlying(choice_type, u8);
+
+    EnumCaseInfo some_case;
+    some_case.name = "some";
+    some_case.c_name = "Choice_some";
+    some_case.module = module_id(0);
+    some_case.type = choice_type;
+    some_case.payload_type = i32;
+    some_case.enum_name = "Choice";
+    some_case.case_name = "some";
+    analyzer.checked_.enum_cases.emplace(analyzer.module_key(module_id(0), "some"), some_case);
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(0), "choice"),
+        symbol(SymbolKind::local, "choice", module_id(0), choice_type)
+    );
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(0), "void_value"),
+        symbol(SymbolKind::local, "void_value", module_id(0), void_type)
+    );
+
+    EXPECT_TRUE(types.is_bool(analyzer.analyze_match_expr(enum_match_id, module.exprs[enum_match_id.value], invalid_type_handle)));
+    EXPECT_TRUE(types.is_integer(analyzer.analyze_match_expr(
+        binding_value_match_id,
+        module.exprs[binding_value_match_id.value],
+        invalid_type_handle
+    )));
+    EXPECT_FALSE(is_valid(analyzer.analyze_match_expr(void_match_id, module.exprs[void_match_id.value], invalid_type_handle)));
+
+    std::vector<std::string> covered;
+    bool saw_wildcard = false;
+    EXPECT_EQ(analyzer.analyze_enum_case_pattern(syntax::invalid_pattern_id, choice_type, covered, saw_wildcard), nullptr);
+    EXPECT_EQ(analyzer.analyze_single_enum_case_pattern(syntax::invalid_pattern_id, choice_type, covered, saw_wildcard), nullptr);
+    EXPECT_EQ(analyzer.analyze_single_enum_case_pattern(missing_scoped_pattern_id, choice_type, covered, saw_wildcard), nullptr);
+
+    bool covered_true = false;
+    bool covered_false = false;
+    bool value_saw_wildcard = false;
+    EXPECT_EQ(analyzer.analyze_value_pattern(
+        syntax::invalid_pattern_id,
+        types.builtin(BuiltinType::bool_),
+        covered_true,
+        covered_false,
+        value_saw_wildcard
+    ), nullptr);
+    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+        syntax::invalid_pattern_id,
+        types.builtin(BuiltinType::bool_),
+        covered_true,
+        covered_false,
+        value_saw_wildcard
+    ), nullptr);
+    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+        unsupported_literal_pattern_id,
+        record_type,
+        covered_true,
+        covered_false,
+        value_saw_wildcard
+    ), nullptr);
 }
 
 } // namespace aurex::test

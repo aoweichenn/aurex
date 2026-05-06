@@ -29,8 +29,8 @@ Stage0 主链路：
 - generic function MVP：支持显式 `<T>`、调用时类型实参，以及基于实参/期望返回类型的基础推断。
 - `extern c` 变长参数声明与调用，包含 C ABI 默认实参提升。
 - 作用域级 `defer` 语句，按反序在正常离开、`return`、`break` / `continue` 路径执行清理调用。
-- `impl` / method / associated function MVP，支持显式 `self`、实例 `value.method()`、公开字段 `value.field`、`Type.function()` 风格 associated call，以及 `impl<T> Type<T>` 泛型实例方法；跨模块 private field / private method 访问已有稳定诊断。
-- 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流。
+- `impl` / method / associated function MVP，支持显式 `self`、实例 `value.method()`、公开字段 `value.field`、`Type.function()` 风格 associated call、`impl<T> Type<T>` 泛型实例方法，以及 `fn method<U>` 方法级泛型参数；跨模块 private field / private method 访问已有稳定诊断。
+- 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流；`Option<T>` / `Result<T, E>` 已有基础 method API，包含使用方法级泛型的 `Option<T>.ok_or<E>`。
 - 标准库容器/文本/路径基线已启动，包含泛型 `Span<T>` / `MutSpan<T>`、泛型 `Vec<T>` 的容量、追加、插入/删除、随机访问和泛型 method API、拥有型 `String` 的字节级编辑 API，以及拥有型 `Path` 的查询与 join API。
 - 标准库文件/host 文件读写已迁移到 `Result` 风格的拥有型 buffer API，旧的 `BufferU8` 与手写文件 result 结构已从 in-tree 用法移除。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
@@ -40,7 +40,7 @@ Stage0 主链路：
 
 - 可见性还应继续扩展到更细粒度的 API 边界，例如构造器、枚举 payload、type alias 传播和 re-export 规则。
 - 模块隔离还缺显式 package/crate 边界、导入别名、选择性导入、循环依赖诊断优化和稳定 public surface dump。
-- 调用模型已有 `impl` / method MVP、泛型 impl 实例方法和跨模块成员可见性诊断，但还缺 method-specific generic 参数、trait/class 复用、method public surface tooling 和 overload/trait 场景下更完整的诊断。
+- 调用模型已有 `impl` / method MVP、泛型 impl 实例方法、方法级泛型参数和跨模块成员可见性诊断，但还缺 trait/class 复用、method public surface tooling 和 overload/trait 场景下更完整的诊断。
 - 泛型仍缺约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
 - 错误处理已有标准 `Result<T, E>` / `Option<T>` 与 `?` 传播切片，但还缺更完整的 std API 迁移和可组合诊断模型。
 - 资源管理仍缺最小 move/noncopyable 语义和文件、进程、arena 等资源的统一用法。
@@ -63,7 +63,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
 ## M1 优先级
 
 1. 完成 method / associated function / `impl` 调用模型  
-   MVP 已落地：支持显式 `self` 参数、method call lowering、associated function、公开字段访问、`impl<T> Type<T>` 泛型实例方法和跨模块 method visibility 诊断。后续应补 method-specific generic 参数、method public surface dump、overload/trait 诊断，并继续把 examples 从 C 风格 helper 迁移到 method API。
+   MVP 已落地：支持显式 `self` 参数、method call lowering、associated function、公开字段访问、`impl<T> Type<T>` 泛型实例方法、方法级泛型参数和跨模块 method visibility 诊断。后续应补 method public surface dump、overload/trait 诊断，并继续把 examples 从 C 风格 helper 迁移到 method API。
 
 2. 建立标准 `Result` / `Option` / `?` 错误处理模型  
    自举和构建工具都需要大量可组合错误路径。M1 应提供标准泛型结果类型、错误传播、稳定诊断和 examples 改写，而不是继续依赖手写状态码 helper。
@@ -94,16 +94,16 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
 当前 `impl` / method MVP 已完成。下次继续实现时，建议从标准 `Result` / `Option` / `?` 切片开始，让文件、CLI、parser、build graph 这类代码能自然传播错误，而不是继续写手动状态码 helper。
 
 1. `impl` / method MVP  
-   已完成。Parser 接受 `impl Type { ... }` 和 `impl<T> Type<T> { ... }`，sema 把 method 注册到类型关联作用域，call resolver 支持 `value.field`、`value.method(args)` 和 `Type.function(args)`，跨模块访问遵守 `pub` / `priv`，测试覆盖 parse、sema、IR lowering、negative diagnostics，并把 examples 中一部分 helper 改成 method。
+   已完成。Parser 接受 `impl Type { ... }`、`impl<T> Type<T> { ... }` 和 `method<U>` 方法级泛型参数，sema 把 method 注册到类型关联作用域，call resolver 支持 `value.field`、`value.method(args)`、`value.method<U>(args)` 和 `Type.function(args)`，跨模块访问遵守 `pub` / `priv`，测试覆盖 parse、sema、IR lowering、negative diagnostics，并把 examples 中一部分 helper 改成 method。
 
 2. `Result` / `Option` / `?`  
-   已完成。方法基础上已经有标准错误传播的 `?` 切片，可用于 `Result` 和 `Option` 的早返回。下一步继续扩展标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这类代码更自然。
+   已完成。方法基础上已经有标准错误传播的 `?` 切片，可用于 `Result` 和 `Option` 的早返回；`Option<T>` / `Result<T, E>` 也有 `is_some`、`is_ok`、`unwrap_or`、`ok_or<E>` 等基础方法。下一步继续扩展标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这类代码更自然。
 
 3. `Span` / `Vec` / `String` / `Path`
    已启动。当前已有 `Span<T>` / `MutSpan<T>`、`Vec<T>` 结构、容量、追加、插入/删除、随机访问、`Vec<T>` 泛型 method API、拥有型 `String` 的追加/插入/删除/截断/清空和 mutable span API，以及拥有型 `Path` 的绝对路径判断、parent、file name、file stem、extension、span/c-string join 和 with-extension，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。旧 `BufferU8` 已迁到 `VecU8`，`std.fs.file` / `std.sys.host` 的文件读写入口也已改为 `Result<FileBytes, i32>`、`Result<usize, i32>` 等 M1 风格 API。下一步继续扩展到 token buffer、source list 和更通用的 path/build graph 场景。
 
 4. generic constraints / trait / `where`
-   generic function 和 generic impl method MVP 已落地。下一步补最小 trait/interface 或 capability predicate，再推进约束、method-like resolution 和单态化缓存。完成后补 typed graph 和 map-like examples。
+   generic function、generic impl method 和 method-specific generic 参数已落地。下一步补最小 trait/interface 或 capability predicate，再推进约束、method-like resolution 和单态化缓存。完成后补 typed graph 和 map-like examples。
 
 5. class/object model MVP  
    在 method 和 trait 基础稳定后实现 class，这样 class 的成员解析、visibility、vtable lowering 可以复用已有调用模型。完成后增加一个 OOP 风格插件/任务 runner example。

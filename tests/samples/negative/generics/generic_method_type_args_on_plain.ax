@@ -1,0 +1,16 @@
+module generic_method_type_args_on_plain;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn read(self: *const Box) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    var box: Box = Box { value: 1 };
+    return box.read<i32>();
+}

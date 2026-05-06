@@ -185,6 +185,9 @@ private:
         std::string_view name,
         base::SourceRange range,
         bool require_self,
+        const std::vector<TypeHandle>* arg_types,
+        TypeHandle expected_type,
+        const std::vector<syntax::TypeId>* explicit_type_args,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);

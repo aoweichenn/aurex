@@ -8,6 +8,15 @@ struct Other<T> {
     value: T;
 }
 
+struct Pair<T, U> {
+    left: T;
+    right: U;
+}
+
+struct Plain {
+    marker: i32;
+}
+
 enum Choice<T>: u8 {
     some(T) = 1,
     none = 0,
@@ -27,6 +36,18 @@ impl<T> Box<T> {
         self.value = value;
         return old;
     }
+
+    fn pair_with<U>(self: *const Box<T>, right: U) -> Pair<T, U> {
+        return Pair<T, U> { left: self.value, right: right };
+    }
+
+    fn passthrough<U>(self: *const Box<T>, value: U) -> U {
+        return value;
+    }
+
+    fn make_pair<U>(left: T, right: U) -> Pair<T, U> {
+        return Pair<T, U> { left: left, right: right };
+    }
 }
 
 impl<T> Other<T> {
@@ -38,6 +59,12 @@ impl<T> Other<T> {
 impl<T> Choice<T> {
     fn wrap(value: T) -> Choice<T> {
         return Choice.some(value);
+    }
+}
+
+impl Plain {
+    fn identity<U>(value: U) -> U {
+        return value;
     }
 }
 
@@ -60,6 +87,32 @@ fn main() -> i32 {
     }
     if box.replace(9) != 7 {
         return 2;
+    }
+    let inferred_pair: Pair<i32, bool> = box.pair_with(true);
+    if inferred_pair.left != 9 {
+        return 5;
+    }
+    if !inferred_pair.right {
+        return 6;
+    }
+    let explicit_value: u64 = box.passthrough<u64>(cast(u64, 44));
+    if explicit_value != cast(u64, 44) {
+        return 7;
+    }
+    let associated_pair: Pair<i32, u8> = Box<i32>.make_pair<u8>(3, cast(u8, 4));
+    if associated_pair.left != 3 {
+        return 8;
+    }
+    if associated_pair.right != cast(u8, 4) {
+        return 9;
+    }
+    let inferred_identity: i32 = Plain.identity(10);
+    if inferred_identity != 10 {
+        return 10;
+    }
+    let explicit_identity: u16 = Plain.identity<u16>(cast(u16, 12));
+    if explicit_identity != cast(u16, 12) {
+        return 11;
     }
     return box.read() - 9;
 }

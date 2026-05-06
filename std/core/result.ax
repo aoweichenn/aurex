@@ -9,3 +9,50 @@ pub enum Result<T, E>: u8 {
     ok(T) = 1,
     err(E) = 2,
 }
+
+impl<T> Option<T> {
+    pub fn is_some(self: Option<T>) -> bool {
+        return match self {
+            .some(value) => true,
+            .none => false,
+        };
+    }
+
+    pub fn is_none(self: Option<T>) -> bool {
+        return !self.is_some();
+    }
+
+    pub fn unwrap_or(self: Option<T>, fallback: T) -> T {
+        return match self {
+            .some(value) => value,
+            .none => fallback,
+        };
+    }
+
+    pub fn ok_or<E>(self: Option<T>, err: E) -> Result<T, E> {
+        return match self {
+            .some(value) => Result<T, E>.ok(value),
+            .none => Result<T, E>.err(err),
+        };
+    }
+}
+
+impl<T, E> Result<T, E> {
+    pub fn is_ok(self: Result<T, E>) -> bool {
+        return match self {
+            .ok(value) => true,
+            .err(err) => false,
+        };
+    }
+
+    pub fn is_err(self: Result<T, E>) -> bool {
+        return !self.is_ok();
+    }
+
+    pub fn unwrap_or(self: Result<T, E>, fallback: T) -> T {
+        return match self {
+            .ok(value) => value,
+            .err(err) => fallback,
+        };
+    }
+}

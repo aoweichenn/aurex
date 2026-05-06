@@ -63,6 +63,7 @@ fn main() -> i32 {
 - `value.field` 访问结构体公开字段；跨模块访问会遵守 `pub` / `priv`。
 - `value.method(args)` 调用 `impl Type` 中带显式 `self` 参数的公开实例方法；跨模块 private method 会给出专门诊断，而不是退化成未知方法。
 - `impl<T> Type<T>` 可为泛型类型声明实例方法，接收者类型会驱动类型实参推断，例如 `items.push(value)` 会实例化 `Vec<T>.push`。
+- 方法也可以声明自己的泛型参数，例如 `value.ok_or<E>(err)` 或 `box.pair_with(value)`；impl 目标先推导 `T`，方法实参或显式 `<E>` 再推导方法级参数。
 - `Type.function(args)` 保留给当前已落地的关联函数调用模型。
 
 后续关联项语法会继续沿用这条边界：`module::item` 是命名空间限定，`value.method()` 是值方法调用；是否增加 `Type::associated_item` 会在 enum 构造器和 impl 关联函数统一设计后再落地。
@@ -102,6 +103,12 @@ import std.fs.path as path;
 
 - 类型：`text::Span<T>`、`text::MutSpan<T>`、兼容别名 `text::SpanU8`、`text::MutSpanU8`。
 - API：`text::span<T>`、`text::mut_span<T>`、`text::c_span`、`text::bytes_equal`、`text::bytes_starts_with`、`text::bytes_find_byte`、`text::bytes_trim_ascii_space`、ASCII 分类和大小写转换函数。
+
+`std.core.result`：
+
+- 类型：`result::Option<T>`、`result::Result<T, E>`。
+- Method API：`Option<T>.is_some`、`is_none`、`unwrap_or`、`ok_or<E>`，以及 `Result<T, E>.is_ok`、`is_err`、`unwrap_or`。
+- `Option<T>.ok_or<E>` 是当前标准库里第一个公开使用方法级泛型参数的 API，用来验证 `impl<T>` 参数和方法自身参数可以在同一次调用里组合推导。
 
 ## 迁移策略
 

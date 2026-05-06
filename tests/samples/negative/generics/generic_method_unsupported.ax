@@ -5,11 +5,12 @@ struct Box {
 }
 
 impl Box {
-    fn id<T>(value: T) -> T {
-        return value;
+    fn id<T>() -> T {
+        return cast(T, 0);
     }
 }
 
 fn main() -> i32 {
+    Box.id();
     return 0;
 }

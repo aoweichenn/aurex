@@ -1,0 +1,16 @@
+module generic_method_type_arg_count;
+
+struct Box<T> {
+    value: T;
+}
+
+impl<T> Box<T> {
+    fn passthrough<U>(self: *const Box<T>, value: U) -> U {
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    var box: Box<i32> = Box { value: 1 };
+    return box.passthrough<i32, bool>(2);
+}

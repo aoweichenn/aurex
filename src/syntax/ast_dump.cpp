@@ -353,6 +353,16 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     if (!expr.field_name.empty()) {
         out << " ." << expr.field_name;
+        if (!expr.type_args.empty()) {
+            out << "<";
+            for (base::usize i = 0; i < expr.type_args.size(); ++i) {
+                if (i != 0) {
+                    out << ", ";
+                }
+                out << type_label(module, expr.type_args[i]);
+            }
+            out << ">";
+        }
     }
     if (!expr.struct_name.empty()) {
         out << " ";

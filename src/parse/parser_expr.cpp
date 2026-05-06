@@ -548,8 +548,8 @@ syntax::ExprId Parser::parse_postfix() {
                 continue;
             }
             syntax::ExprNode& node = module_.exprs[expr.value];
-            if (node.kind != syntax::ExprKind::name) {
-                report_at(previous(), "type arguments are only supported on named function calls or enum constructors");
+            if (node.kind != syntax::ExprKind::name && node.kind != syntax::ExprKind::field) {
+                report_at(previous(), "type arguments are only supported on named function calls, methods, or enum constructors");
             }
             if (!check(TokenKind::greater)) {
                 do {

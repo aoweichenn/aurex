@@ -151,6 +151,29 @@ fn check_vec_generic_methods() -> bool {
     return ok;
 }
 
+fn check_result_option_methods() -> bool {
+    let some: result::Option<i32> = Option.some(7);
+    let none: result::Option<i32> = Option.none;
+    let ok_from_some: result::Result<i32, u8> = some.ok_or<u8>(cast(u8, 1));
+    let err_from_none: result::Result<i32, u8> = none.ok_or<u8>(cast(u8, 2));
+    let ok_value: i32 = ok_from_some.unwrap_or(0);
+    let err_value: i32 = err_from_none.unwrap_or(9);
+    let direct_ok: result::Result<i32, u8> = Result.ok(12);
+    let direct_err: result::Result<i32, u8> = Result.err(cast(u8, 4));
+    return some.is_some() &&
+        !some.is_none() &&
+        none.is_none() &&
+        some.unwrap_or(0) == 7 &&
+        none.unwrap_or(5) == 5 &&
+        ok_from_some.is_ok() &&
+        !ok_from_some.is_err() &&
+        err_from_none.is_err() &&
+        ok_value == 7 &&
+        err_value == 9 &&
+        direct_ok.unwrap_or(0) == 12 &&
+        direct_err.unwrap_or(6) == 6;
+}
+
 fn check_string() -> result::Result<bool, i32> {
     var s: string::String = string::from_c(c"ab")?;
     if !string::push(&s, b'c') ||
@@ -274,17 +297,20 @@ fn run() -> result::Result<i32, i32> {
     if !check_vec_generic_methods() {
         return Result.err(3);
     }
+    if !check_result_option_methods() {
+        return Result.err(4);
+    }
     let string_ok: bool = check_string()?;
     if !string_ok {
-        return Result.err(4);
+        return Result.err(5);
     }
     let string_methods_ok: bool = check_string_methods()?;
     if !string_methods_ok {
-        return Result.err(5);
+        return Result.err(6);
     }
     let path_ok: bool = check_path()?;
     if !path_ok {
-        return Result.err(6);
+        return Result.err(7);
     }
     return Result.ok(0);
 }

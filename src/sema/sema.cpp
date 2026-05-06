@@ -259,9 +259,6 @@ void SemanticAnalyzer::register_value_names() {
                 if (item.is_variadic) {
                     report(item.range, "generic variadic functions are not supported");
                 }
-                if (is_method && item.generic_params.size() > item.impl_generic_param_count) {
-                    report(item.range, "method-specific generic parameters are not supported yet");
-                }
                 if (!syntax::is_valid(item.return_type)) {
                     report(item.range, "generic function return type must be explicit: " + std::string(item.name));
                 }
@@ -1070,6 +1067,18 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             TypeHandle receiver_type = invalid_type_handle;
             bool has_receiver = false;
             bool receiver_valid = true;
+            std::vector<TypeHandle> call_arg_types;
+            bool call_arg_types_ready = false;
+            const auto collect_call_arg_types = [&]() -> const std::vector<TypeHandle>& {
+                if (!call_arg_types_ready) {
+                    call_arg_types.reserve(expr.args.size());
+                    for (syntax::ExprId arg : expr.args) {
+                        call_arg_types.push_back(analyze_expr(arg));
+                    }
+                    call_arg_types_ready = true;
+                }
+                return call_arg_types;
+            };
             if (syntax::is_valid(callee.object) &&
                 callee.object.value < module_.exprs.size() &&
                 module_.exprs[callee.object.value].kind == syntax::ExprKind::name) {
@@ -1099,11 +1108,47 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                     }
                     if (is_valid(associated_owner)) {
                         signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
+                        if (signature != nullptr && !callee.type_args.empty()) {
+                            report(callee.range, "type arguments require a generic method: " + checked_.types.display_name(associated_owner) + "." + name);
+                            return record_expr_type(expr_id, invalid_type_handle);
+                        }
                         if (signature == nullptr) {
+                            const std::vector<TypeHandle>& method_arg_types = collect_call_arg_types();
                             if (const GenericFunctionInstanceInfo* instance =
-                                    find_generic_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
+                                    find_generic_method_in_visible_modules(
+                                        associated_owner,
+                                        callee.field_name,
+                                        callee.range,
+                                        false,
+                                        &method_arg_types,
+                                        expected_type,
+                                        &callee.type_args,
+                                        false
+                                    );
                                 instance != nullptr) {
                                 use_generic_instance(*instance);
+                            }
+                        }
+                        if (signature == nullptr) {
+                            const std::vector<TypeHandle>& method_arg_types = collect_call_arg_types();
+                            const auto diagnostics_before_generic_lookup = diagnostics_.diagnostics().size();
+                            if (const GenericFunctionInstanceInfo* instance =
+                                    find_generic_method_in_visible_modules(
+                                        associated_owner,
+                                        callee.field_name,
+                                        callee.range,
+                                        false,
+                                        &method_arg_types,
+                                        expected_type,
+                                        &callee.type_args,
+                                        true
+                                    );
+                                instance != nullptr) {
+                                use_generic_instance(*instance);
+                            }
+                            if (signature == nullptr &&
+                                diagnostics_.diagnostics().size() != diagnostics_before_generic_lookup) {
+                                return record_expr_type(expr_id, invalid_type_handle);
                             }
                         }
                         if (signature == nullptr) {
@@ -1125,11 +1170,55 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                     owner_type = checked_.types.get(owner_type).pointee;
                 }
                 signature = find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
+                if (signature != nullptr && !callee.type_args.empty()) {
+                    report(callee.range, "type arguments require a generic method: " + checked_.types.display_name(owner_type) + "." + name);
+                    return record_expr_type(expr_id, invalid_type_handle);
+                }
                 if (signature == nullptr) {
+                    std::vector<TypeHandle> method_arg_types;
+                    method_arg_types.reserve(expr.args.size() + 1);
+                    method_arg_types.push_back(receiver_type);
+                    const std::vector<TypeHandle>& plain_arg_types = collect_call_arg_types();
+                    method_arg_types.insert(method_arg_types.end(), plain_arg_types.begin(), plain_arg_types.end());
                     if (const GenericFunctionInstanceInfo* instance =
-                            find_generic_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
+                            find_generic_method_in_visible_modules(
+                                owner_type,
+                                callee.field_name,
+                                callee.range,
+                                true,
+                                &method_arg_types,
+                                expected_type,
+                                &callee.type_args,
+                                false
+                            );
                         instance != nullptr) {
                         use_generic_instance(*instance);
+                    }
+                }
+                if (signature == nullptr) {
+                    std::vector<TypeHandle> method_arg_types;
+                    method_arg_types.reserve(expr.args.size() + 1);
+                    method_arg_types.push_back(receiver_type);
+                    const std::vector<TypeHandle>& plain_arg_types = collect_call_arg_types();
+                    method_arg_types.insert(method_arg_types.end(), plain_arg_types.begin(), plain_arg_types.end());
+                    const auto diagnostics_before_generic_lookup = diagnostics_.diagnostics().size();
+                    if (const GenericFunctionInstanceInfo* instance =
+                            find_generic_method_in_visible_modules(
+                                owner_type,
+                                callee.field_name,
+                                callee.range,
+                                true,
+                                &method_arg_types,
+                                expected_type,
+                                &callee.type_args,
+                                true
+                            );
+                        instance != nullptr) {
+                        use_generic_instance(*instance);
+                    }
+                    if (signature == nullptr &&
+                        diagnostics_.diagnostics().size() != diagnostics_before_generic_lookup) {
+                        return record_expr_type(expr_id, invalid_type_handle);
                     }
                 }
                 if (signature == nullptr) {

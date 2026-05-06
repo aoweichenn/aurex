@@ -224,23 +224,40 @@ TEST_F(AurexIntegrationTest, GenericImplMethods) {
         "fn make<T> for Box<T>",
         "fn read<T> for Box<T>",
         "fn replace<T> for Box<T>",
+        "fn pair_with<T, U> for Box<T>",
+        "fn passthrough<T, U> for Box<T>",
+        "fn make_pair<T, U> for Box<T>",
         "fn wrap<T> for Choice<T>",
+        "fn identity<U> for Plain",
         "name `Box`<i32>",
         "field .make",
         "name `Choice`<i32>",
         "field .wrap",
         "field .read",
         "field .replace",
+        "field .pair_with",
+        "field .passthrough<u64>",
+        "field .make_pair<u8>",
+        "field .identity",
+        "field .identity<u16>",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "generic_functions 4",
+        "generic_functions 9",
         "fn method generic_impl_methods.Box<i32>.make -> generic_impl_methods.Box<i32>",
         "fn method generic_impl_methods.Box<i32>.read -> i32",
         "fn method generic_impl_methods.Box<i32>.replace -> i32",
+        "fn method generic_impl_methods.Box<i32>.pair_with<bool> -> generic_impl_methods.Pair<i32, bool>",
+        "fn method generic_impl_methods.Box<i32>.passthrough<u64> -> u64",
+        "fn method generic_impl_methods.Box<i32>.make_pair<u8> -> generic_impl_methods.Pair<i32, u8>",
         "fn method generic_impl_methods.Choice<i32>.wrap -> generic_impl_methods.Choice<i32>",
+        "fn method generic_impl_methods.Plain.identity<i32> -> i32",
+        "fn method generic_impl_methods.Plain.identity<u16> -> u16",
         "struct generic_impl_methods.Box<i32> fields=1",
+        "struct Plain fields=1",
+        "struct generic_impl_methods.Pair<i32, bool> fields=2",
+        "struct generic_impl_methods.Pair<i32, u8> fields=2",
         "case Choice<i32>_some : generic_impl_methods.Choice<i32>(i32)",
     });
 
@@ -249,11 +266,21 @@ TEST_F(AurexIntegrationTest, GenericImplMethods) {
         "fn generic_impl_methods.Box<i32>.make(value: i32)",
         "fn generic_impl_methods.Box<i32>.read(self: *const generic_impl_methods.Box<i32>)",
         "fn generic_impl_methods.Box<i32>.replace(self: *mut generic_impl_methods.Box<i32>, value: i32)",
+        "fn generic_impl_methods.Box<i32>.pair_with<bool>(self: *const generic_impl_methods.Box<i32>, right: bool)",
+        "fn generic_impl_methods.Box<i32>.passthrough<u64>(self: *const generic_impl_methods.Box<i32>, value: u64)",
+        "fn generic_impl_methods.Box<i32>.make_pair<u8>(left: i32, right: u8)",
         "fn generic_impl_methods.Choice<i32>.wrap(value: i32)",
+        "fn generic_impl_methods.Plain.identity<i32>(value: i32)",
+        "fn generic_impl_methods.Plain.identity<u16>(value: u16)",
         "call m0_generic_impl_methods_Box__i32_make",
         "call m0_generic_impl_methods_Box__i32_read",
         "call m0_generic_impl_methods_Box__i32_replace",
+        "call m0_generic_impl_methods_Box__i32_pair_with__bool",
+        "call m0_generic_impl_methods_Box__i32_passthrough__u64",
+        "call m0_generic_impl_methods_Box__i32_make_pair__u8",
         "call m0_generic_impl_methods_Choice__i32_wrap",
+        "call m0_generic_impl_methods_Plain_identity__i32",
+        "call m0_generic_impl_methods_Plain_identity__u16",
     });
 
     const fs::path bin = test_bin_root() / "generic_impl_methods";
@@ -360,7 +387,25 @@ TEST_F(AurexIntegrationTest, GenericFunctionDiagnostics) {
     expect_contains(require_failure(aurexc() + " --check " + q(plain_type_args)).output, "type arguments require a generic function: plain");
 
     const fs::path generic_method = negative_sample("generics", "generic_method_unsupported.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(generic_method)).output, "method-specific generic parameters are not supported yet");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_method)).output, "generic method requires explicit type arguments: id");
+
+    const fs::path generic_method_arity = negative_sample("generics", "generic_method_type_arg_count.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_method_arity)).output,
+        "generic method type argument count mismatch for passthrough"
+    );
+
+    const fs::path plain_method_type_args = negative_sample("generics", "generic_method_type_args_on_plain.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(plain_method_type_args)).output,
+        "type arguments require a generic method"
+    );
+
+    const fs::path generic_method_conflict = negative_sample("generics", "generic_method_inference_conflict.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_method_conflict)).output,
+        "generic method type inference conflict for T"
+    );
 
     const fs::path generic_impl_self_type = negative_sample("generics", "generic_impl_method_self_type.ax");
     expect_contains(

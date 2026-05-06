@@ -68,6 +68,9 @@ Member-access rules:
 - `impl<T> Type<T>` can declare instance methods for generic types. The
   receiver type drives type-argument inference, so `items.push(value)`
   instantiates `Vec<T>.push`.
+- Methods may also declare their own generic parameters, such as
+  `value.ok_or<E>(err)` or `box.pair_with(value)`. The impl target infers `T`
+  first, then call arguments or explicit `<E>` infer method-level parameters.
 - `Type.function(args)` remains the current associated-function call model.
 
 Future associated-item syntax should preserve this boundary: `module::item` is namespace qualification and `value.method()` is value method dispatch. `Type::associated_item` should land only after enum constructors and impl associated functions share one design.
@@ -107,6 +110,12 @@ import std.fs.path as path;
 
 - Types: `text::Span<T>`, `text::MutSpan<T>`, and compatibility aliases `text::SpanU8`, `text::MutSpanU8`.
 - API: `text::span<T>`, `text::mut_span<T>`, `text::c_span`, `text::bytes_equal`, `text::bytes_starts_with`, `text::bytes_find_byte`, `text::bytes_trim_ascii_space`, and ASCII classification/case helpers.
+
+`std.core.result`:
+
+- Types: `result::Option<T>` and `result::Result<T, E>`.
+- Method API: `Option<T>.is_some`, `is_none`, `unwrap_or`, `ok_or<E>`, plus `Result<T, E>.is_ok`, `is_err`, and `unwrap_or`.
+- `Option<T>.ok_or<E>` is the first public standard-library API that uses method-level generic parameters, proving that impl parameters and method-specific parameters can be inferred together at one call site.
 
 ## Migration Policy
 

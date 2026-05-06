@@ -211,18 +211,22 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
     const std::string_view name,
     const base::SourceRange range,
     const bool require_self,
+    const std::vector<TypeHandle>* const arg_types,
+    const TypeHandle expected_type,
+    const std::vector<syntax::TypeId>* const explicit_type_args,
     const bool report_unknown
 ) {
     const GenericFunctionInstanceInfo* imported_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
     bool inaccessible_result = false;
+    bool uninferred_method_params = false;
+    bool type_arg_count_mismatch = false;
 
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         for (const GenericFunctionTemplateInfo& info : generic_method_templates_) {
             if (info.module.value != module.value ||
                 info.name != name ||
-                !info.is_method ||
-                info.params.size() != info.impl_generic_param_count) {
+                !info.is_method) {
                 continue;
             }
             const syntax::ItemNode* item = item_from_id(module_, info.item);
@@ -246,14 +250,40 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
                 )) {
                 continue;
             }
+
+            const bool has_explicit_type_args = explicit_type_args != nullptr && !explicit_type_args->empty();
+            const base::usize method_param_count = info.params.size() >= info.impl_generic_param_count
+                ? info.params.size() - info.impl_generic_param_count
+                : 0;
+            if (has_explicit_type_args) {
+                if (explicit_type_args->size() != method_param_count) {
+                    type_arg_count_mismatch = true;
+                    continue;
+                }
+                for (base::usize i = 0; i < explicit_type_args->size(); ++i) {
+                    const TypeHandle arg = resolve_type((*explicit_type_args)[i]);
+                    inferred[info.impl_generic_param_count + i] = arg;
+                }
+            } else if (arg_types != nullptr || is_valid(expected_type)) {
+                const std::vector<TypeHandle> no_args;
+                const std::vector<TypeHandle>& provided_args = arg_types != nullptr ? *arg_types : no_args;
+                static_cast<void>(infer_generic_function_args(info, provided_args, expected_type, inferred, range));
+            }
+
             bool complete = true;
-            for (TypeHandle arg : inferred) {
-                if (!is_valid(arg)) {
+            bool missing_method_param = false;
+            for (base::usize i = 0; i < inferred.size(); ++i) {
+                if (!is_valid(inferred[i])) {
+                    if (i >= info.impl_generic_param_count) {
+                        missing_method_param = true;
+                    }
                     complete = false;
-                    break;
                 }
             }
             if (!complete) {
+                if (missing_method_param) {
+                    uninferred_method_params = true;
+                }
                 continue;
             }
             if (!can_access(module, info.visibility)) {
@@ -271,11 +301,18 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
     }
 
     if (imported_result == nullptr && report_unknown) {
+        if (type_arg_count_mismatch) {
+            report(range, "generic method type argument count mismatch for " + std::string(name));
+            return nullptr;
+        }
+        if (uninferred_method_params) {
+            report(range, "generic method requires explicit type arguments: " + std::string(name));
+            return nullptr;
+        }
         if (inaccessible_result) {
             report(range, "method is private: " + checked_.types.display_name(owner_type) + "." + std::string(name));
             return nullptr;
         }
-        report(range, "unknown method: " + checked_.types.display_name(owner_type) + "." + std::string(name));
     }
     return imported_result;
 }
@@ -994,11 +1031,36 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
         return nullptr;
     }
 
-    FunctionSignature signature;
-    signature.name = info.name;
-    signature.c_name = info.is_method
+    std::string c_name = info.is_method
         ? method_c_symbol_name(method_owner_type, info.name)
         : generic_c_name(info, args);
+    if (info.is_method) {
+        for (base::usize i = info.impl_generic_param_count; i < args.size(); ++i) {
+            c_name += "__";
+            for (const char ch : checked_.types.c_name(args[i])) {
+                const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+                c_name += alnum ? ch : '_';
+            }
+        }
+    }
+
+    std::string instance_name = info.is_method
+        ? checked_.types.display_name(method_owner_type) + "." + info.name
+        : generic_display_name(info, args);
+    if (info.is_method && args.size() > info.impl_generic_param_count) {
+        instance_name += "<";
+        for (base::usize i = info.impl_generic_param_count; i < args.size(); ++i) {
+            if (i != info.impl_generic_param_count) {
+                instance_name += ", ";
+            }
+            instance_name += checked_.types.display_name(args[i]);
+        }
+        instance_name += ">";
+    }
+
+    FunctionSignature signature;
+    signature.name = info.name;
+    signature.c_name = c_name;
     signature.module = info.module;
     signature.method_owner_type = method_owner_type;
     signature.return_type = return_type;
@@ -1012,9 +1074,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
 
     const base::u32 instance_index = static_cast<base::u32>(checked_.generic_function_instances.size());
     GenericFunctionInstanceInfo instance;
-    instance.name = info.is_method
-        ? checked_.types.display_name(method_owner_type) + "." + info.name
-        : generic_display_name(info, args);
+    instance.name = std::move(instance_name);
     instance.c_name = signature.c_name;
     instance.module = info.module;
     instance.item = info.item;
@@ -1052,6 +1112,7 @@ bool SemanticAnalyzer::infer_generic_function_args(
     if (item == nullptr) {
         return false;
     }
+    const std::string_view context = info.is_method ? "generic method" : "generic function";
     bool ok = true;
     if (syntax::is_valid(item->return_type) && is_valid(expected_type)) {
         if (!infer_generic_args_from_type_pattern(
@@ -1060,7 +1121,7 @@ bool SemanticAnalyzer::infer_generic_function_args(
                 info.params,
                 inferred,
                 range,
-                "generic function",
+                context,
                 info.module
             )) {
             ok = false;
@@ -1074,7 +1135,7 @@ bool SemanticAnalyzer::infer_generic_function_args(
                 info.params,
                 inferred,
                 range,
-                "generic function",
+                context,
                 info.module
             )) {
             ok = false;

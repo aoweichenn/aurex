@@ -40,12 +40,14 @@ Current language slices:
 - Scope-level `defer` statements, run in reverse order on normal exits,
   `return`, and `break` / `continue` paths.
 - `impl` / method / associated-function MVP with explicit `self`,
-  `value.method()` instance calls, public `value.field` access, and
-  `Type.function()` associated calls, plus `impl<T> Type<T>` generic instance
-  methods. Cross-module private-field and private-method access now have
-  stable diagnostics.
+  `value.method()` instance calls, public `value.field` access,
+  `Type.function()` associated calls, `impl<T> Type<T>` generic instance
+  methods, and `fn method<U>` method-level generic parameters. Cross-module
+  private-field and private-method access now have stable diagnostics.
 - Standard `Result` / `Option` / `?` slice, usable for explicit error
-  propagation and early-return control flow.
+  propagation and early-return control flow. `Option<T>` / `Result<T, E>` now
+  also have baseline method APIs, including method-level generic
+  `Option<T>.ok_or<E>`.
 - Standard-library container/text/path baseline started, including generic
   `Span<T>` / `MutSpan<T>`, capacity, append, insert/remove, and random-access
   APIs on `Vec<T>`, generic `Vec<T>` method APIs, byte-level editing APIs on owned
@@ -66,8 +68,8 @@ Current language slices:
   aliases, selective imports, better cycle diagnostics, and a stable public
   surface dump.
 - The call model has an `impl` / method MVP, generic impl instance methods,
-  and cross-module member-visibility diagnostics, but still needs
-  method-specific generic parameters, trait/class reuse, method public-surface
+  method-level generic parameters, and cross-module member-visibility
+  diagnostics, but still needs trait/class reuse, method public-surface
   tooling, and stronger diagnostics for overload/trait cases.
 - Generics still need constraints, where-like predicates, trait/interface
   design, monomorphization caching, and explainable diagnostics.
@@ -113,10 +115,10 @@ covered by integration tests:
 1. Finish the method / associated-function / `impl` call model  
    The MVP has landed: explicit `self` parameters, method-call lowering,
    associated functions, public field access, `impl<T> Type<T>` generic
-   instance methods, and cross-module method visibility diagnostics are
-   supported. Follow-up work should add method-specific generic parameters,
-   method public-surface dumps, overload/trait diagnostics, and
-   continued example migration from C-style helpers to method APIs.
+   instance methods, method-level generic parameters, and cross-module method
+   visibility diagnostics are supported. Follow-up work should add method
+   public-surface dumps, overload/trait diagnostics, and continued example
+   migration from C-style helpers to method APIs.
 
 2. Establish standard `Result` / `Option` / `?` error handling  
    The frontend and build tool both need many composable error paths. M1 should
@@ -170,18 +172,20 @@ build-graph code can propagate errors naturally instead of continuing to use
 manual status helpers.
 
 1. `impl` / method MVP  
-   Completed. The parser accepts `impl Type { ... }` and
-   `impl<T> Type<T> { ... }`, sema registers methods into a type-associated
-   scope, and call resolution accepts `value.field`, `value.method(args)`, and
-   `Type.function(args)`. Cross-module member access obeys `pub` / `priv`.
-   Tests cover parse, sema, IR lowering, negative diagnostics, and a small
-   example migration from helper functions to methods.
+   Completed. The parser accepts `impl Type { ... }`,
+   `impl<T> Type<T> { ... }`, and `method<U>` method-level generic
+   parameters. Sema registers methods into a type-associated scope, and call
+   resolution accepts `value.field`, `value.method(args)`,
+   `value.method<U>(args)`, and `Type.function(args)`. Cross-module member
+   access obeys `pub` / `priv`. Tests cover parse, sema, IR lowering, negative
+   diagnostics, and a small example migration from helper functions to methods.
 
 2. `Result` / `Option` / `?`  
    Completed. The method foundation now has a standard error-propagation slice
-   for `Result` and `Option`, including `?` early returns. Next, keep growing
-   the std APIs so code like `File.read_all(path)?` and `Parser.next()?`
-   becomes natural.
+   for `Result` and `Option`, including `?` early returns. `Option<T>` /
+   `Result<T, E>` also expose baseline methods such as `is_some`, `is_ok`,
+   `unwrap_or`, and `ok_or<E>`. Next, keep growing the std APIs so code like
+   `File.read_all(path)?` and `Parser.next()?` becomes natural.
 
 3. `Span` / `Vec` / `String` / `Path`
    Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with
@@ -196,10 +200,10 @@ manual status helpers.
    token-buffer, source-list, and more general path/build-graph scenarios.
 
 4. Generic constraints / traits / `where`
-   Generic function and generic impl method MVPs have landed. Next add the
-   smallest trait/interface or capability predicate, then constraints,
-   method-like resolution, and monomorphization caching. Then add typed graph
-   and map-like examples.
+   Generic function, generic impl method, and method-specific generic
+   parameters have landed. Next add the smallest trait/interface or capability
+   predicate, then constraints, method-like resolution, and monomorphization
+   caching. Then add typed graph and map-like examples.
 
 5. Class/object model MVP  
    Implement classes after methods and traits are stable so member resolution,

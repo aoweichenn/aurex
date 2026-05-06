@@ -172,6 +172,12 @@ private:
     [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] bool can_access(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
+    void record_stmt_local_type(syntax::StmtId stmt, TypeHandle type) noexcept;
+    void record_expr_c_name(syntax::ExprId expr, std::string_view c_name);
+    void record_pattern_c_name(syntax::PatternId pattern, std::string_view c_name);
+    void record_pattern_case_name(syntax::PatternId pattern, std::string_view c_name);
+    void merge_pattern_case_names(syntax::PatternId pattern, syntax::PatternId alternative);
+    void record_syntax_type_handle(syntax::TypeId type, TypeHandle resolved) noexcept;
     [[nodiscard]] bool method_receiver_matches(const FunctionSignature& signature, TypeHandle receiver_type, syntax::ExprId receiver);
     [[nodiscard]] const FunctionSignature* find_method_in_visible_modules(
         TypeHandle owner_type,
@@ -310,6 +316,7 @@ private:
     std::unordered_map<base::u32, GenericStructInstanceInfo> generic_struct_instance_infos_;
     std::unordered_map<std::string, GenericFunctionTemplateInfo> generic_function_templates_;
     std::vector<GenericFunctionTemplateInfo> generic_method_templates_;
+    std::unordered_multimap<std::string, base::u32> generic_method_template_indices_;
     std::unordered_map<std::string, base::u32> generic_function_instances_;
     std::unordered_map<std::string, FunctionBodyState> generic_function_body_states_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
@@ -320,6 +327,12 @@ private:
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
     TypeHandle current_function_return_type_ = invalid_type_handle;
     const GenericTypeSubstitution* current_type_substitution_ = nullptr;
+    std::unordered_map<base::u32, TypeHandle>* current_generic_syntax_type_handles_ = nullptr;
+    std::unordered_map<base::u32, TypeHandle>* current_generic_expr_types_ = nullptr;
+    std::unordered_map<base::u32, std::string>* current_generic_expr_c_names_ = nullptr;
+    std::unordered_map<base::u32, std::string>* current_generic_pattern_c_names_ = nullptr;
+    std::unordered_map<base::u32, std::unordered_set<std::string>>* current_generic_pattern_case_sets_ = nullptr;
+    std::unordered_map<base::u32, TypeHandle>* current_generic_stmt_local_types_ = nullptr;
     int loop_depth_ = 0;
     bool in_const_initializer_ = false;
 };

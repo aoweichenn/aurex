@@ -145,7 +145,7 @@ llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, cons
 void LlvmEmitter::declare_main_wrapper() {
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
         const Function& function = source_.functions[i];
-        if (!function.is_entry && (function.linkage != Linkage::export_c || function.name != "main")) {
+        if (!function.is_entry) {
             continue;
         }
         llvm::FunctionType* main_type = llvm::FunctionType::get(
@@ -162,7 +162,7 @@ void LlvmEmitter::declare_main_wrapper() {
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(context_, "entry", wrapper);
         builder_.SetInsertPoint(entry);
         std::vector<llvm::Value*> args;
-        if (!function.is_entry || function.signature_params.size() == 2) {
+        if (function.signature_params.size() == 2) {
             auto arg_it = wrapper->arg_begin();
             args.push_back(&*arg_it++);
             args.push_back(&*arg_it);

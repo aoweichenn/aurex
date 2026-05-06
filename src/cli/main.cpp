@@ -145,6 +145,11 @@ int main(const int argc, char** argv) {
             print_usage(std::cerr, argv[0]);
             return 2;
         } else {
+            if (!invocation.input_path.empty()) {
+                std::cerr << "multiple input files are not supported\n";
+                print_usage(std::cerr, argv[0]);
+                return 2;
+            }
             invocation.input_path = arg;
         }
     }

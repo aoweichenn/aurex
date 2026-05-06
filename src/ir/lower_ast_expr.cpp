@@ -427,11 +427,11 @@ CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
 }
 
 std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
-    if (current_generic_function_instance_ != nullptr &&
-        syntax::is_valid(callee) &&
-        callee.value < current_generic_function_instance_->expr_c_names.size() &&
-        !current_generic_function_instance_->expr_c_names[callee.value].empty()) {
-        return current_generic_function_instance_->expr_c_names[callee.value];
+    if (current_generic_function_instance_ != nullptr && syntax::is_valid(callee)) {
+        if (const auto found = current_generic_function_instance_->expr_c_names.find(callee.value);
+            found != current_generic_function_instance_->expr_c_names.end()) {
+            return found->second;
+        }
     }
     if (syntax::is_valid(callee) &&
         callee.value < checked_.expr_c_names.size() &&
@@ -445,11 +445,11 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
 }
 
 std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const syntax::ExprNode& expr) const {
-    if (current_generic_function_instance_ != nullptr &&
-        syntax::is_valid(expr_id) &&
-        expr_id.value < current_generic_function_instance_->expr_c_names.size() &&
-        !current_generic_function_instance_->expr_c_names[expr_id.value].empty()) {
-        return current_generic_function_instance_->expr_c_names[expr_id.value];
+    if (current_generic_function_instance_ != nullptr && syntax::is_valid(expr_id)) {
+        if (const auto found = current_generic_function_instance_->expr_c_names.find(expr_id.value);
+            found != current_generic_function_instance_->expr_c_names.end()) {
+            return found->second;
+        }
     }
     if (syntax::is_valid(expr_id) &&
         expr_id.value < checked_.expr_c_names.size() &&
@@ -496,11 +496,11 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
 }
 
 sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
-    if (current_generic_function_instance_ != nullptr &&
-        syntax::is_valid(expr) &&
-        expr.value < current_generic_function_instance_->expr_types.size() &&
-        sema::is_valid(current_generic_function_instance_->expr_types[expr.value])) {
-        return current_generic_function_instance_->expr_types[expr.value];
+    if (current_generic_function_instance_ != nullptr && syntax::is_valid(expr)) {
+        if (const auto found = current_generic_function_instance_->expr_types.find(expr.value);
+            found != current_generic_function_instance_->expr_types.end()) {
+            return found->second;
+        }
     }
     if (!syntax::is_valid(expr) || expr.value >= checked_.expr_types.size()) {
         return sema::invalid_type_handle;
@@ -509,11 +509,11 @@ sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
 }
 
 sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept {
-    if (current_generic_function_instance_ != nullptr &&
-        syntax::is_valid(type) &&
-        type.value < current_generic_function_instance_->syntax_type_handles.size() &&
-        sema::is_valid(current_generic_function_instance_->syntax_type_handles[type.value])) {
-        return current_generic_function_instance_->syntax_type_handles[type.value];
+    if (current_generic_function_instance_ != nullptr && syntax::is_valid(type)) {
+        if (const auto found = current_generic_function_instance_->syntax_type_handles.find(type.value);
+            found != current_generic_function_instance_->syntax_type_handles.end()) {
+            return found->second;
+        }
     }
     if (!syntax::is_valid(type) || type.value >= checked_.syntax_type_handles.size()) {
         return sema::invalid_type_handle;
@@ -522,11 +522,11 @@ sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept 
 }
 
 sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexcept {
-    if (current_generic_function_instance_ != nullptr &&
-        syntax::is_valid(stmt) &&
-        stmt.value < current_generic_function_instance_->stmt_local_types.size() &&
-        sema::is_valid(current_generic_function_instance_->stmt_local_types[stmt.value])) {
-        return current_generic_function_instance_->stmt_local_types[stmt.value];
+    if (current_generic_function_instance_ != nullptr && syntax::is_valid(stmt)) {
+        if (const auto found = current_generic_function_instance_->stmt_local_types.find(stmt.value);
+            found != current_generic_function_instance_->stmt_local_types.end()) {
+            return found->second;
+        }
     }
     if (!syntax::is_valid(stmt) || stmt.value >= checked_.stmt_local_types.size()) {
         return sema::invalid_type_handle;

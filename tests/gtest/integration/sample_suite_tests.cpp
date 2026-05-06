@@ -4,9 +4,10 @@
 #include <string>
 
 namespace aurex::test {
+namespace {
 
-TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
-    const std::set<std::string> skip_regular = {
+const std::set<std::string>& skip_regular_samples() {
+    static const std::set<std::string> value = {
         "import_alias_qualified_call",
         "import_path",
         "generic_function_import",
@@ -20,7 +21,11 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
         "type_alias_import",
         "visibility_import",
     };
-    const std::set<std::string> run_regular = {
+    return value;
+}
+
+const std::set<std::string>& run_regular_samples() {
+    static const std::set<std::string> value = {
         "condition_regression",
         "pointer_ops",
         "mut_to_const_pointer",
@@ -32,36 +37,45 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
         "eval_order_condition",
         "builtins",
     };
+    return value;
+}
+
+void compile_positive_samples_and_run_subset() {
     for (const fs::path& src : sorted_files(positive_samples_root(), ".ax")) {
         const std::string name = stem(src);
-        if (skip_regular.contains(name)) {
+        if (name.rfind("std_", 0) == 0) {
+            continue;
+        }
+        if (skip_regular_samples().contains(name)) {
             continue;
         }
         const fs::path bin = test_bin_root() / name;
         require_success(aurexc() + " " + q(src) + " -o " + q(bin));
-        if (run_regular.contains(name)) {
+        if (run_regular_samples().contains(name)) {
             require_success(q(bin));
         }
     }
+}
 
-    for (const fs::path& src : sorted_files(positive_samples_root(), ".ax")) {
-        const std::string name = stem(src);
-        if (name.rfind("std_", 0) != 0) {
-            continue;
-        }
-        const fs::path bin = test_bin_root() / name;
-        const fs::path direct = test_bin_root() / (name + ".direct");
-        require_success(aurexc() + " " + q(src) + " -o " + q(bin));
-        require_success(q(bin));
-        require_success(aurexc() + " --emit=exe " + q(src) + " -o " + q(direct));
-        require_success(q(direct));
-    }
+void compile_and_run_std_positive_sample(const std::string_view filename) {
+    const fs::path src = positive_sample("std", filename);
+    const std::string name = src.stem().string();
+    const fs::path bin = test_bin_root() / name;
+    const fs::path direct = test_bin_root() / (name + ".direct");
+    require_success(aurexc() + " " + q(src) + " -o " + q(bin));
+    require_success(q(bin));
+    require_success(aurexc() + " --emit=exe " + q(src) + " -o " + q(direct));
+    require_success(q(direct));
+}
 
+void verify_const_enum_lowering() {
     const std::string const_enum =
         require_success(aurexc() + " --emit=llvm-ir " + q(positive_sample("types", "const_enum.ax"))).output;
     expect_contains(const_enum, "@m0_const_enum_answer = internal unnamed_addr constant i32 42");
     expect_contains(const_enum, "load i32, ptr @m0_const_enum_answer");
+}
 
+void verify_negative_sample_diagnostics() {
     for (const fs::path& src : sorted_files(negative_samples_root(), ".ax")) {
         std::string command = aurexc() + " --check " + q(src);
         if (stem(src) == "module_name_mismatch" || stem(src) == "cyclic_import" || stem(src) == "ambiguous_import_name") {
@@ -72,6 +86,41 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
             expect_contains(result.output, "ambiguous function name");
         }
     }
+}
+
+} // namespace
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveSamples) {
+    compile_positive_samples_and_run_subset();
+    verify_const_enum_lowering();
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_NegativeSamples) {
+    verify_negative_sample_diagnostics();
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_bootstrap) {
+    compile_and_run_std_positive_sample("std_bootstrap.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_collections_path) {
+    compile_and_run_std_positive_sample("std_collections_path.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_ffi) {
+    compile_and_run_std_positive_sample("std_ffi.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_file) {
+    compile_and_run_std_positive_sample("std_file.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_mem) {
+    compile_and_run_std_positive_sample("std_mem.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_text) {
+    compile_and_run_std_positive_sample("std_text.ax");
 }
 
 TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline) {

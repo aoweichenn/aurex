@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace aurex::sema {
@@ -222,8 +223,10 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
     bool uninferred_method_params = false;
     bool type_arg_count_mismatch = false;
 
+    const auto candidates = generic_method_template_indices_.equal_range(std::string(name));
     for (syntax::ModuleId module : visible_modules(current_module_)) {
-        for (const GenericFunctionTemplateInfo& info : generic_method_templates_) {
+        for (auto it = candidates.first; it != candidates.second; ++it) {
+            const GenericFunctionTemplateInfo& info = generic_method_templates_[it->second];
             if (info.module.value != module.value ||
                 info.name != name ||
                 !info.is_method) {
@@ -544,7 +547,12 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     TypeHandle payload_storage = invalid_type_handle;
     base::u64 payload_size = 0;
     base::u64 payload_align = 1;
+    std::unordered_set<std::string> seen_cases;
     for (const syntax::EnumCaseDecl& enum_case : item->enum_cases) {
+        if (!seen_cases.insert(std::string(enum_case.name)).second) {
+            report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
+            continue;
+        }
         const bool has_payload = syntax::is_valid(enum_case.payload_type);
         const TypeHandle payload_type = has_payload
             ? resolve_type_with_substitution(enum_case.payload_type, &substitution, false)
@@ -567,7 +575,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             }
         }
         const std::string case_c_name = generic_case_c_name(info, args, enum_case.name);
-        checked_.enum_cases.emplace(module_key(info.module, case_c_name), EnumCaseInfo {
+        const auto inserted = checked_.enum_cases.emplace(module_key(info.module, case_c_name), EnumCaseInfo {
             generic_case_name(info, args, enum_case.name),
             case_c_name,
             info.module,
@@ -579,6 +587,9 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             std::string(enum_case.name),
             info.visibility,
         });
+        if (!inserted.second) {
+            report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
+        }
     }
     if (is_valid(payload_storage)) {
         checked_.types.set_enum_payload_layout(
@@ -659,7 +670,12 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     current_module_ = info.module;
     bool contains_array = false;
     bool copyable = true;
+    std::unordered_set<std::string> seen_fields;
     for (const syntax::FieldDecl& field : item->fields) {
+        if (!seen_fields.insert(std::string(field.name)).second) {
+            report(field.range, "duplicate struct field: " + std::string(field.name));
+            continue;
+        }
         const TypeHandle field_type = resolve_type_with_substitution(field.type, &substitution, false);
         if (!is_valid_storage_type(field_type)) {
             report(field.range, "field type is not valid storage");
@@ -1088,16 +1104,41 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
     checked_.generic_function_instances.push_back(std::move(instance));
     generic_function_instances_[instance_key] = instance_index;
 
+    std::unordered_map<base::u32, TypeHandle> syntax_type_handles;
+    std::unordered_map<base::u32, TypeHandle> expr_types;
+    std::unordered_map<base::u32, std::string> expr_c_names;
+    std::unordered_map<base::u32, std::string> pattern_c_names;
+    std::unordered_map<base::u32, std::unordered_set<std::string>> pattern_case_sets;
+    std::unordered_map<base::u32, TypeHandle> stmt_local_types;
+    auto* const previous_syntax_type_handles = current_generic_syntax_type_handles_;
+    auto* const previous_expr_types = current_generic_expr_types_;
+    auto* const previous_expr_c_names = current_generic_expr_c_names_;
+    auto* const previous_pattern_c_names = current_generic_pattern_c_names_;
+    auto* const previous_pattern_case_sets = current_generic_pattern_case_sets_;
+    auto* const previous_stmt_local_types = current_generic_stmt_local_types_;
+    current_generic_syntax_type_handles_ = &syntax_type_handles;
+    current_generic_expr_types_ = &expr_types;
+    current_generic_expr_c_names_ = &expr_c_names;
+    current_generic_pattern_c_names_ = &pattern_c_names;
+    current_generic_pattern_case_sets_ = &pattern_case_sets;
+    current_generic_stmt_local_types_ = &stmt_local_types;
+
     FunctionBodyState& state = generic_function_body_states_[instance_key];
     analyze_function_body_with_signature(*item, instance_key, signature, state, &substitution);
+    current_generic_syntax_type_handles_ = previous_syntax_type_handles;
+    current_generic_expr_types_ = previous_expr_types;
+    current_generic_expr_c_names_ = previous_expr_c_names;
+    current_generic_pattern_c_names_ = previous_pattern_c_names;
+    current_generic_pattern_case_sets_ = previous_pattern_case_sets;
+    current_generic_stmt_local_types_ = previous_stmt_local_types;
 
     GenericFunctionInstanceInfo& stored = checked_.generic_function_instances[instance_index];
-    stored.syntax_type_handles = checked_.syntax_type_handles;
-    stored.expr_types = checked_.expr_types;
-    stored.expr_c_names = checked_.expr_c_names;
-    stored.pattern_c_names = checked_.pattern_c_names;
-    stored.pattern_case_sets = checked_.pattern_case_sets;
-    stored.stmt_local_types = checked_.stmt_local_types;
+    stored.syntax_type_handles = std::move(syntax_type_handles);
+    stored.expr_types = std::move(expr_types);
+    stored.expr_c_names = std::move(expr_c_names);
+    stored.pattern_c_names = std::move(pattern_c_names);
+    stored.pattern_case_sets = std::move(pattern_case_sets);
+    stored.stmt_local_types = std::move(stmt_local_types);
     return &stored;
 }
 

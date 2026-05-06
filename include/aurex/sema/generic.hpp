@@ -70,12 +70,12 @@ struct GenericFunctionInstanceInfo {
     syntax::Visibility visibility = syntax::Visibility::public_;
     bool is_method = false;
     bool has_self_param = false;
-    std::vector<TypeHandle> syntax_type_handles;
-    std::vector<TypeHandle> expr_types;
-    std::vector<std::string> expr_c_names;
-    std::vector<std::string> pattern_c_names;
-    std::vector<std::unordered_set<std::string>> pattern_case_sets;
-    std::vector<TypeHandle> stmt_local_types;
+    std::unordered_map<base::u32, TypeHandle> syntax_type_handles;
+    std::unordered_map<base::u32, TypeHandle> expr_types;
+    std::unordered_map<base::u32, std::string> expr_c_names;
+    std::unordered_map<base::u32, std::string> pattern_c_names;
+    std::unordered_map<base::u32, std::unordered_set<std::string>> pattern_case_sets;
+    std::unordered_map<base::u32, TypeHandle> stmt_local_types;
 };
 
 } // namespace aurex::sema

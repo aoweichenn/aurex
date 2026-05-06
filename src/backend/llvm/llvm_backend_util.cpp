@@ -6,17 +6,25 @@ namespace aurex::backend {
 
 bool parse_u64(const std::string& text, std::uint64_t& out) noexcept {
     int base = 10;
-    const char* begin = text.data();
-    const char* end = text.data() + text.size();
     if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
         base = 16;
-        begin += 2;
     } else if (text.size() > 2 && text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) {
         base = 2;
-        begin += 2;
     }
+    std::string digits;
+    digits.reserve(text.size());
+    for (std::size_t i = base == 10 ? 0U : 2U; i < text.size(); ++i) {
+        if (text[i] != '_') {
+            digits.push_back(text[i]);
+        }
+    }
+    if (digits.empty()) {
+        return false;
+    }
+    const char* begin = digits.data();
+    const char* end = digits.data() + digits.size();
     const auto result = std::from_chars(begin, end, out, base);
-    return result.ec == std::errc {};
+    return result.ec == std::errc {} && result.ptr == end;
 }
 
 std::string decode_string_literal(const std::string& literal, const bool has_c_prefix) {

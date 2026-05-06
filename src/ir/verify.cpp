@@ -152,8 +152,11 @@ private:
                 module_.types.same(function.signature_params[0].type, module_.types.builtin(sema::BuiltinType::i32))) {
                 const sema::TypeHandle argv_type = function.signature_params[1].type;
                 if (module_.types.is_pointer(argv_type)) {
-                    const sema::TypeHandle outer_pointee = module_.types.get(argv_type).pointee;
-                    argc_argv_params = module_.types.is_pointer(outer_pointee) &&
+                    const sema::TypeInfo& outer = module_.types.get(argv_type);
+                    const sema::TypeHandle outer_pointee = outer.pointee;
+                    argc_argv_params = outer.pointer_mutability == sema::PointerMutability::mut &&
+                        module_.types.is_pointer(outer_pointee) &&
+                        module_.types.get(outer_pointee).pointer_mutability == sema::PointerMutability::mut &&
                         module_.types.same(module_.types.get(outer_pointee).pointee, module_.types.builtin(sema::BuiltinType::u8));
                 }
             }

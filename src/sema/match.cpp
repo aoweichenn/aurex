@@ -131,15 +131,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
             if (first_case == nullptr) {
                 first_case = case_info;
             }
-            if (syntax::is_valid(pattern_id) &&
-                pattern_id.value < checked_.pattern_case_sets.size() &&
-                syntax::is_valid(alternative) &&
-                alternative.value < checked_.pattern_case_sets.size()) {
-                checked_.pattern_case_sets[pattern_id.value].insert(
-                    checked_.pattern_case_sets[alternative.value].begin(),
-                    checked_.pattern_case_sets[alternative.value].end()
-                );
-            }
+            merge_pattern_case_names(pattern_id, alternative);
         }
         return first_case;
     }
@@ -192,12 +184,8 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_enum_case_pattern(
     } else {
         covered.push_back(case_info->c_name);
     }
-    if (pattern_id.value < checked_.pattern_c_names.size()) {
-        checked_.pattern_c_names[pattern_id.value] = case_info->c_name;
-    }
-    if (pattern_id.value < checked_.pattern_case_sets.size()) {
-        checked_.pattern_case_sets[pattern_id.value].insert(case_info->c_name);
-    }
+    record_pattern_c_name(pattern_id, case_info->c_name);
+    record_pattern_case_name(pattern_id, case_info->c_name);
     return case_info;
 }
 

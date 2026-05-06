@@ -20,6 +20,7 @@ if(BUILD_TESTING)
         tests/gtest/integration/documentation_tests.cpp
         tests/gtest/integration/examples_tests.cpp
         tests/gtest/integration/native_execution_tests.cpp
+        tests/gtest/integration/regression_tests.cpp
         tests/gtest/integration/sample_suite_tests.cpp
         tests/gtest/ir/ir_dump_tests.cpp
         tests/gtest/ir/ir_verifier_edge_tests.cpp
@@ -56,8 +57,57 @@ if(BUILD_TESTING)
         BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
     )
 
-    add_test(NAME aurex_tests COMMAND aurex_tests --gtest_color=auto)
+    add_test(
+        NAME aurex_tests
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=-AurexIntegrationTest.SampleSuite_*
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_positive
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_PositiveSamples
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_negative
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_NegativeSamples
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_std_bootstrap
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_bootstrap
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_std_collections_path
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_collections_path
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_std_ffi
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_ffi
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_std_file
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_file
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_std_mem
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_mem
+    )
+    add_test(
+        NAME aurex_tests_sample_suite_std_text
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_text
+    )
     set_tests_properties(aurex_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
+    set_tests_properties(
+        aurex_tests_sample_suite_positive
+        aurex_tests_sample_suite_negative
+        aurex_tests_sample_suite_std_bootstrap
+        aurex_tests_sample_suite_std_collections_path
+        aurex_tests_sample_suite_std_ffi
+        aurex_tests_sample_suite_std_file
+        aurex_tests_sample_suite_std_mem
+        aurex_tests_sample_suite_std_text
+        PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        LABELS "slow;sample-suite"
+        TIMEOUT 300
     )
 endif()

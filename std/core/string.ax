@@ -69,6 +69,51 @@ pub fn append_c(string: *mut String, text: *const u8) -> bool {
     return append_span(string, c_span(text));
 }
 
+pub fn insert(string: *mut String, index: usize, value: u8) -> bool {
+    if index > string.bytes.len {
+        return false;
+    }
+    let next_len: usize = string.bytes.len + cast(usize, 1);
+    if !reserve(string, next_len) {
+        return false;
+    }
+    if !string.bytes.insert(index, value) {
+        return false;
+    }
+    string.bytes.data[string.bytes.len] = b'\0';
+    return true;
+}
+
+pub fn pop(string: *mut String) -> Option<u8> {
+    let value: Option<u8> = string.bytes.pop();
+    if string.bytes.data != null {
+        string.bytes.data[string.bytes.len] = b'\0';
+    }
+    return value;
+}
+
+pub fn remove(string: *mut String, index: usize) -> Option<u8> {
+    let value: Option<u8> = string.bytes.remove(index);
+    if string.bytes.data != null {
+        string.bytes.data[string.bytes.len] = b'\0';
+    }
+    return value;
+}
+
+pub fn truncate(string: *mut String, len: usize) -> void {
+    string.bytes.truncate(len);
+    if string.bytes.data != null {
+        string.bytes.data[string.bytes.len] = b'\0';
+    }
+}
+
+pub fn clear(string: *mut String) -> void {
+    string.bytes.clear();
+    if string.bytes.data != null {
+        string.bytes.data[cast(usize, 0)] = b'\0';
+    }
+}
+
 pub fn from_c(text: *const u8) -> Result<String, i32> {
     if text == null {
         return Result.err(1);
@@ -83,6 +128,10 @@ pub fn from_c(text: *const u8) -> Result<String, i32> {
 
 pub fn as_span(string: *const String) -> SpanU8 {
     return SpanU8 { data: ptr_cast(*const u8, string.bytes.data), len: string.bytes.len };
+}
+
+pub fn as_mut_span(string: *mut String) -> MutSpanU8 {
+    return string.bytes.as_mut_span();
 }
 
 pub fn c_str(string: *const String) -> *const u8 {
@@ -192,8 +241,32 @@ impl String {
         return string_append_c(self, text);
     }
 
+    pub fn insert(self: *mut String, index: usize, value: u8) -> bool {
+        return insert(self, index, value);
+    }
+
+    pub fn pop(self: *mut String) -> Option<u8> {
+        return pop(self);
+    }
+
+    pub fn remove(self: *mut String, index: usize) -> Option<u8> {
+        return remove(self, index);
+    }
+
+    pub fn truncate(self: *mut String, len: usize) -> void {
+        truncate(self, len);
+    }
+
+    pub fn clear(self: *mut String) -> void {
+        clear(self);
+    }
+
     pub fn as_span(self: *const String) -> SpanU8 {
         return string_as_span(self);
+    }
+
+    pub fn as_mut_span(self: *mut String) -> MutSpanU8 {
+        return as_mut_span(self);
     }
 
     pub fn c_str(self: *const String) -> *const u8 {

@@ -4,7 +4,7 @@ import std.core.mem;
 import std.core.result;
 import std.core.string;
 import std.core.text;
-import std.ffi.c.libc;
+import std.ffi.c.libc as libc;
 
 pub struct FileBytes {
     priv data: *mut u8;
@@ -42,32 +42,32 @@ pub fn read_bytes(path: *const u8) -> Result<FileBytes, i32> {
     if path == null {
         return Result.err(1);
     }
-    let file: *mut CFile = fopen(path, c"rb");
+    let file: *mut libc::CFile = libc::fopen(path, c"rb");
     if file == null {
         return Result.err(1);
     }
-    if fseek(file, 0, SEEK_END) != 0 {
-        fclose(file);
+    if libc::fseek(file, 0, libc::SEEK_END) != 0 {
+        libc::fclose(file);
         return Result.err(1);
     }
-    let end_pos: i64 = ftell(file);
+    let end_pos: i64 = libc::ftell(file);
     if end_pos < cast(i64, 0) {
-        fclose(file);
+        libc::fclose(file);
         return Result.err(1);
     }
-    if fseek(file, 0, SEEK_SET) != 0 {
-        fclose(file);
+    if libc::fseek(file, 0, libc::SEEK_SET) != 0 {
+        libc::fclose(file);
         return Result.err(1);
     }
 
     let len: usize = cast(usize, end_pos);
     let data: *mut u8 = alloc_bytes(len + cast(usize, 1));
     if data == null {
-        fclose(file);
+        libc::fclose(file);
         return Result.err(1);
     }
-    let read_count: usize = fread(ptr_cast(*mut void, data), 1, len, file);
-    fclose(file);
+    let read_count: usize = libc::fread(ptr_cast(*mut void, data), 1, len, file);
+    libc::fclose(file);
     if read_count != len {
         free_bytes(data);
         return Result.err(1);
@@ -92,12 +92,12 @@ pub fn write_bytes(path: *const u8, bytes: SpanU8) -> Result<usize, i32> {
     if path == null {
         return Result.err(1);
     }
-    let file: *mut CFile = fopen(path, c"wb");
+    let file: *mut libc::CFile = libc::fopen(path, c"wb");
     if file == null {
         return Result.err(1);
     }
-    let written: usize = fwrite(ptr_cast(*const void, bytes.data), 1, bytes.len, file);
-    let close_result: i32 = fclose(file);
+    let written: usize = libc::fwrite(ptr_cast(*const void, bytes.data), 1, bytes.len, file);
+    let close_result: i32 = libc::fclose(file);
     if written != bytes.len || close_result != 0 {
         return Result.err(1);
     }
@@ -134,18 +134,18 @@ impl FileBytes {
 }
 
 pub fn file_exists(path: *const u8) -> bool {
-    let file: *mut CFile = fopen(path, c"rb");
+    let file: *mut libc::CFile = libc::fopen(path, c"rb");
     if file == null {
         return false;
     }
-    fclose(file);
+    libc::fclose(file);
     return true;
 }
 
 pub fn remove_file(path: *const u8) -> bool {
-    return remove(path) == 0;
+    return libc::remove(path) == 0;
 }
 
 pub fn rename_file(old_path: *const u8, new_path: *const u8) -> bool {
-    return rename(old_path, new_path) == 0;
+    return libc::rename(old_path, new_path) == 0;
 }

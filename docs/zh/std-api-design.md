@@ -24,8 +24,9 @@
 函数和方法使用 `snake_case`：
 
 - 构造：`new`、`with_capacity`、`from_c`、`from_span`。
-- 容量和长度：`len`、`is_empty`、`reserve`、`clear`。
-- 变更：`push`、`extend`、`pop`、`append_span`、`append_c`。
+- 容量和长度：`len`、`capacity`、`is_empty`、`reserve`、`clear`。
+- 变更：`push`、`extend`、`insert`、`remove`、`swap_remove`、`pop`、`truncate`、`append_span`、`append_c`。
+- 随机访问：`get`、`set`、`first`、`last`。
 - 视图：`as_span`、`as_mut_span`、`as_c`、`c_str`。
 - 查询：`bytes_equal`、`starts_with`、`file_name`。
 
@@ -74,19 +75,19 @@ import std.fs.path as path;
 `std.core.vec`：
 
 - 类型：`vec::Vec<T>`、兼容别名 `vec::VecU8`。
-- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::len<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
+- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::len<T>`、`vec::capacity<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::insert<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::remove<T>`、`vec::swap_remove<T>`、`vec::get<T>`、`vec::set<T>`、`vec::first<T>`、`vec::last<T>`、`vec::truncate<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
 - 兼容 API：`vec::vec_u8_new`、`vec::vec_u8_push` 等保留，但不作为新文档的主路径。
 
 `std.core.string`：
 
 - 类型：`string::String`。
-- 新 API：`string::new`、`string::from_c`、`string::destroy`、`string::len`、`string::is_empty`、`string::reserve`、`string::push`、`string::append_span`、`string::append_c`、`string::as_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。
+- 新 API：`string::new`、`string::from_c`、`string::destroy`、`string::len`、`string::is_empty`、`string::reserve`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::as_mut_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。
 - 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
 
 `std.fs.path`：
 
 - 类型：`path::Path`。
-- 新 API：`path::from_c`、`path::destroy`、`path::as_c`、`path::as_span`、`path::file_name`、`path::join_c`。
+- 新 API：`path::from_c`、`path::from_span`、`path::destroy`、`path::as_c`、`path::as_span`、`path::is_absolute`、`path::parent`、`path::file_name`、`path::file_stem`、`path::extension`、`path::join_c`、`path::join_span`、`path::with_extension`。
 - 兼容 API：`path::path_from_c`、`path::path_join_c` 等保留。
 
 `std.core.text`：

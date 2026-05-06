@@ -44,8 +44,9 @@ Current language slices:
 - Standard `Result` / `Option` / `?` slice, usable for explicit error
   propagation and early-return control flow.
 - Standard-library container/text/path baseline started, including generic
-  `Span<T>` / `MutSpan<T>`, `VecU8` APIs on generic `Vec<T>`, an owned
-  `String`, and an owned `Path`.
+  `Span<T>` / `MutSpan<T>`, capacity, append, insert/remove, and random-access
+  APIs on `Vec<T>`, `VecU8` method APIs, byte-level editing APIs on owned
+  `String`, and query/join APIs on owned `Path`.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses.
@@ -176,7 +177,10 @@ manual status helpers.
 
 3. `Span` / `Vec` / `String` / `Path`
    Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with
-   `VecU8` operations, an owned `String`, and an owned `Path`, covered by std
+   capacity, append, insert/remove, random-access, and `VecU8` method
+   operations, owned `String` append/insert/remove/truncate/clear and mutable
+   span APIs, and owned `Path` absolute-path, parent, file-name, file-stem,
+   extension, span/c-string join, and with-extension APIs, covered by std
    integration samples combining method APIs, `Result` / `Option`, and `?`.
    The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
    `std.sys.host` file IO now exposes M1-style APIs such as

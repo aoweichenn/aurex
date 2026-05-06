@@ -24,8 +24,9 @@ Types use `UpperCamelCase`:
 Functions and methods use `snake_case`:
 
 - Construction: `new`, `with_capacity`, `from_c`, `from_span`.
-- Capacity and length: `len`, `is_empty`, `reserve`, `clear`.
-- Mutation: `push`, `extend`, `pop`, `append_span`, `append_c`.
+- Capacity and length: `len`, `capacity`, `is_empty`, `reserve`, `clear`.
+- Mutation: `push`, `extend`, `insert`, `remove`, `swap_remove`, `pop`, `truncate`, `append_span`, `append_c`.
+- Random access: `get`, `set`, `first`, `last`.
 - Views: `as_span`, `as_mut_span`, `as_c`, `c_str`.
 - Queries: `bytes_equal`, `starts_with`, `file_name`.
 
@@ -74,19 +75,19 @@ import std.fs.path as path;
 `std.core.vec`:
 
 - Types: `vec::Vec<T>` and compatibility alias `vec::VecU8`.
-- New API: `vec::new<T>`, `vec::with_capacity<T>`, `vec::destroy<T>`, `vec::len<T>`, `vec::is_empty<T>`, `vec::reserve<T>`, `vec::push<T>`, `vec::extend<T>`, `vec::pop<T>`, `vec::clear<T>`, `vec::as_span<T>`, `vec::as_mut_span<T>`, `vec::from_span<T>`.
+- New API: `vec::new<T>`, `vec::with_capacity<T>`, `vec::destroy<T>`, `vec::len<T>`, `vec::capacity<T>`, `vec::is_empty<T>`, `vec::reserve<T>`, `vec::push<T>`, `vec::insert<T>`, `vec::extend<T>`, `vec::pop<T>`, `vec::remove<T>`, `vec::swap_remove<T>`, `vec::get<T>`, `vec::set<T>`, `vec::first<T>`, `vec::last<T>`, `vec::truncate<T>`, `vec::clear<T>`, `vec::as_span<T>`, `vec::as_mut_span<T>`, `vec::from_span<T>`.
 - Compatibility API: `vec::vec_u8_new`, `vec::vec_u8_push`, and the other `vec_u8_*` names remain available but are not the primary documentation path.
 
 `std.core.string`:
 
 - Type: `string::String`.
-- New API: `string::new`, `string::from_c`, `string::destroy`, `string::len`, `string::is_empty`, `string::reserve`, `string::push`, `string::append_span`, `string::append_c`, `string::as_span`, `string::c_str`, `string::equals_span`, `string::ends_with_byte`.
+- New API: `string::new`, `string::from_c`, `string::destroy`, `string::len`, `string::is_empty`, `string::reserve`, `string::push`, `string::insert`, `string::append_span`, `string::append_c`, `string::pop`, `string::remove`, `string::truncate`, `string::clear`, `string::as_span`, `string::as_mut_span`, `string::c_str`, `string::equals_span`, `string::ends_with_byte`.
 - Compatibility API: `string::string_new`, `string::string_from_c`, and related wrappers remain available.
 
 `std.fs.path`:
 
 - Type: `path::Path`.
-- New API: `path::from_c`, `path::destroy`, `path::as_c`, `path::as_span`, `path::file_name`, `path::join_c`.
+- New API: `path::from_c`, `path::from_span`, `path::destroy`, `path::as_c`, `path::as_span`, `path::is_absolute`, `path::parent`, `path::file_name`, `path::file_stem`, `path::extension`, `path::join_c`, `path::join_span`, `path::with_extension`.
 - Compatibility API: `path::path_from_c`, `path::path_join_c`, and related wrappers remain available.
 
 `std.core.text`:

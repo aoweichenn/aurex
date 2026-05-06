@@ -12,29 +12,166 @@ fn check_vec() -> bool {
         vec::destroy<u8>(&bytes);
         return false;
     }
+    if !vec::set<u8>(&bytes, cast(usize, 1), b'B') {
+        vec::destroy<u8>(&bytes);
+        return false;
+    }
+    if !vec::insert<u8>(&bytes, cast(usize, 1), b'b') {
+        vec::destroy<u8>(&bytes);
+        return false;
+    }
+    let removed: u8 = match vec::remove<u8>(&bytes, cast(usize, 2)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let swapped: u8 = match vec::swap_remove<u8>(&bytes, cast(usize, 1)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let first: u8 = match vec::first<u8>(&bytes) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let middle: u8 = match vec::get<u8>(&bytes, cast(usize, 1)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let last_before_pop: u8 = match vec::last<u8>(&bytes) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let missing_ok: bool = match vec::get<u8>(&bytes, cast(usize, 99)) {
+        .some(value) => false,
+        .none => true,
+    };
     let popped: result::Option<u8> = vec::pop<u8>(&bytes);
     let last: u8 = match popped {
         .some(value) => value,
         .none => b'?',
     };
-    let ok: bool = last == b'c' &&
-        vec::len<u8>(&bytes) == cast(usize, 2) &&
-        text::bytes_equal(vec::as_span<u8>(&bytes), text::c_span(c"ab"));
+    if !vec::push<u8>(&bytes, b'd') || !vec::push<u8>(&bytes, b'e') {
+        vec::destroy<u8>(&bytes);
+        return false;
+    }
+    vec::truncate<u8>(&bytes, cast(usize, 1));
+    let ok: bool = first == b'a' &&
+        middle == b'c' &&
+        removed == b'B' &&
+        swapped == b'b' &&
+        last_before_pop == b'c' &&
+        last == b'c' &&
+        missing_ok &&
+        vec::len<u8>(&bytes) == cast(usize, 1) &&
+        vec::capacity<u8>(&bytes) >= vec::len<u8>(&bytes) &&
+        text::bytes_equal(vec::as_span<u8>(&bytes), text::c_span(c"a"));
     vec::destroy<u8>(&bytes);
+    return ok;
+}
+
+fn check_vec_methods() -> bool {
+    var bytes: vec::VecU8 = vec::new<u8>();
+    if !bytes.push(b'x') ||
+        !bytes.push(b'y') ||
+        !bytes.insert(cast(usize, 1), b'w') ||
+        !bytes.set(cast(usize, 1), b'z') {
+        bytes.destroy();
+        return false;
+    }
+    let first: u8 = match bytes.first() {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let second: u8 = match bytes.get(cast(usize, 1)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let last: u8 = match bytes.last() {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let removed: u8 = match bytes.remove(cast(usize, 1)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let swapped: u8 = match bytes.swap_remove(cast(usize, 0)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let remaining: u8 = match bytes.last() {
+        .some(value) => value,
+        .none => b'?',
+    };
+    bytes.truncate(cast(usize, 0));
+    let ok: bool = first == b'x' &&
+        second == b'z' &&
+        last == b'y' &&
+        removed == b'z' &&
+        swapped == b'x' &&
+        remaining == b'y' &&
+        bytes.is_empty() &&
+        bytes.capacity() >= bytes.len();
+    bytes.destroy();
     return ok;
 }
 
 fn check_string() -> result::Result<bool, i32> {
     var s: string::String = string::from_c(c"ab")?;
-    if !string::push(&s, b'c') || !string::append_c(&s, c"d") {
+    if !string::push(&s, b'c') ||
+        !string::append_c(&s, c"d") ||
+        !string::insert(&s, cast(usize, 1), b'X') {
         string::destroy(&s);
         return Result.err(2);
     }
-    let ok: bool = string::len(&s) == cast(usize, 4) &&
-        string::equals_span(&s, text::c_span(c"abcd")) &&
-        string::ends_with_byte(&s, b'd') &&
-        text::c_string_equal(string::c_str(&s), c"abcd");
+    let removed: u8 = match string::remove(&s, cast(usize, 2)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let popped: u8 = match string::pop(&s) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    string::truncate(&s, cast(usize, 2));
+    let bytes: text::MutSpanU8 = string::as_mut_span(&s);
+    bytes.data[cast(usize, 1)] = b'Y';
+    let edited_ok: bool = removed == b'b' &&
+        popped == b'd' &&
+        string::len(&s) == cast(usize, 2) &&
+        string::equals_span(&s, text::c_span(c"aY")) &&
+        string::ends_with_byte(&s, b'Y') &&
+        text::c_string_equal(string::c_str(&s), c"aY");
+    string::clear(&s);
+    let ok: bool = edited_ok &&
+        string::is_empty(&s) &&
+        text::c_string_equal(string::c_str(&s), c"");
     string::destroy(&s);
+    return Result.ok(ok);
+}
+
+fn check_string_methods() -> result::Result<bool, i32> {
+    var s: string::String = string::from_c(c"xy")?;
+    if !s.insert(cast(usize, 1), b'z') || !s.push(b'!') {
+        s.destroy();
+        return Result.err(5);
+    }
+    let removed: u8 = match s.remove(cast(usize, 2)) {
+        .some(value) => value,
+        .none => b'?',
+    };
+    let popped: u8 = match s.pop() {
+        .some(value) => value,
+        .none => b'?',
+    };
+    s.truncate(cast(usize, 1));
+    let ok_before_clear: bool = removed == b'y' &&
+        popped == b'!' &&
+        s.len() == cast(usize, 1) &&
+        s.equals_span(text::c_span(c"x")) &&
+        text::c_string_equal(s.c_str(), c"x");
+    s.clear();
+    let ok: bool = ok_before_clear &&
+        s.is_empty() &&
+        text::c_string_equal(s.c_str(), c"");
+    s.destroy();
     return Result.ok(ok);
 }
 
@@ -47,8 +184,45 @@ fn make_path() -> result::Result<path::Path, i32> {
 
 fn check_path() -> result::Result<bool, i32> {
     var p: path::Path = make_path()?;
-    let ok: bool = text::bytes_equal(path::file_name(&p), text::c_span(c"std.txt")) &&
-        text::c_string_starts_with(path::as_c(&p), c"/tmp/aurex");
+    let parent: text::SpanU8 = match path::parent(&p) {
+        .some(value) => value,
+        .none => text::c_span(c""),
+    };
+    let extension: text::SpanU8 = match path::extension(&p) {
+        .some(value) => value,
+        .none => text::c_span(c""),
+    };
+    var joined: path::Path = path::join_span(&p, text::c_span(c"child.ax"))?;
+    var absolute: path::Path = p.join_span(text::c_span(c"/var/tmp/out.o"))?;
+    var renamed: path::Path = path::with_extension(&p, text::c_span(c"ax"))?;
+    var object: path::Path = absolute.with_extension(text::c_span(c"obj"))?;
+    let method_parent: text::SpanU8 = match absolute.parent() {
+        .some(value) => value,
+        .none => text::c_span(c""),
+    };
+    let method_extension: text::SpanU8 = match absolute.extension() {
+        .some(value) => value,
+        .none => text::c_span(c""),
+    };
+    let ok: bool = path::is_absolute(&p) &&
+        p.is_absolute() &&
+        text::bytes_equal(path::file_name(&p), text::c_span(c"std.txt")) &&
+        text::bytes_equal(parent, text::c_span(c"/tmp/aurex")) &&
+        text::bytes_equal(extension, text::c_span(c"txt")) &&
+        text::bytes_equal(path::file_stem(&p), text::c_span(c"std")) &&
+        text::bytes_equal(path::file_name(&joined), text::c_span(c"child.ax")) &&
+        text::bytes_equal(absolute.file_name(), text::c_span(c"out.o")) &&
+        text::bytes_equal(absolute.file_stem(), text::c_span(c"out")) &&
+        text::bytes_equal(method_parent, text::c_span(c"/var/tmp")) &&
+        text::bytes_equal(method_extension, text::c_span(c"o")) &&
+        text::c_string_starts_with(path::as_c(&p), c"/tmp/aurex") &&
+        text::c_string_equal(absolute.as_c(), c"/var/tmp/out.o") &&
+        text::c_string_equal(renamed.as_c(), c"/tmp/aurex/std.ax") &&
+        text::c_string_equal(object.as_c(), c"/var/tmp/out.obj");
+    joined.destroy();
+    absolute.destroy();
+    renamed.destroy();
+    object.destroy();
     path::destroy(&p);
     return Result.ok(ok);
 }
@@ -57,13 +231,20 @@ fn run() -> result::Result<i32, i32> {
     if !check_vec() {
         return Result.err(1);
     }
+    if !check_vec_methods() {
+        return Result.err(2);
+    }
     let string_ok: bool = check_string()?;
     if !string_ok {
         return Result.err(3);
     }
+    let string_methods_ok: bool = check_string_methods()?;
+    if !string_methods_ok {
+        return Result.err(4);
+    }
     let path_ok: bool = check_path()?;
     if !path_ok {
-        return Result.err(4);
+        return Result.err(5);
     }
     return Result.ok(0);
 }

@@ -37,6 +37,10 @@ pub fn len<T>(vec: *const Vec<T>) -> usize {
     return vec.len;
 }
 
+pub fn capacity<T>(vec: *const Vec<T>) -> usize {
+    return vec.capacity;
+}
+
 pub fn is_empty<T>(vec: *const Vec<T>) -> bool {
     return vec.len == cast(usize, 0);
 }
@@ -78,6 +82,29 @@ pub fn push<T>(vec: *mut Vec<T>, value: T) -> bool {
     return true;
 }
 
+pub fn insert<T>(vec: *mut Vec<T>, index: usize, value: T) -> bool {
+    if index > vec.len {
+        return false;
+    }
+    if vec.len == vec.capacity {
+        var next_capacity: usize = vec.capacity * cast(usize, 2);
+        if next_capacity == cast(usize, 0) {
+            next_capacity = cast(usize, 8);
+        }
+        if !reserve<T>(vec, next_capacity) {
+            return false;
+        }
+    }
+    if index < vec.len {
+        let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(vec.data) + ((index + cast(usize, 1)) * size_of(T)));
+        let src: *const u8 = ptr_from_addr(*const u8, ptr_addr(vec.data) + (index * size_of(T)));
+        move_bytes(dst, src, (vec.len - index) * size_of(T));
+    }
+    vec.data[index] = value;
+    vec.len = vec.len + cast(usize, 1);
+    return true;
+}
+
 pub fn extend<T>(vec: *mut Vec<T>, items: Span<T>) -> bool {
     if items.len == cast(usize, 0) {
         return true;
@@ -100,8 +127,70 @@ pub fn pop<T>(vec: *mut Vec<T>) -> Option<T> {
     return Option.some(vec.data[vec.len]);
 }
 
+pub fn remove<T>(vec: *mut Vec<T>, index: usize) -> Option<T> {
+    if index >= vec.len {
+        return Option.none;
+    }
+    let removed: T = vec.data[index];
+    let next: usize = index + cast(usize, 1);
+    if next < vec.len {
+        let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(vec.data) + (index * size_of(T)));
+        let src: *const u8 = ptr_from_addr(*const u8, ptr_addr(vec.data) + (next * size_of(T)));
+        move_bytes(dst, src, (vec.len - next) * size_of(T));
+    }
+    vec.len = vec.len - cast(usize, 1);
+    return Option.some(removed);
+}
+
+pub fn swap_remove<T>(vec: *mut Vec<T>, index: usize) -> Option<T> {
+    if index >= vec.len {
+        return Option.none;
+    }
+    let removed: T = vec.data[index];
+    vec.len = vec.len - cast(usize, 1);
+    if index != vec.len {
+        vec.data[index] = vec.data[vec.len];
+    }
+    return Option.some(removed);
+}
+
+pub fn get<T>(vec: *const Vec<T>, index: usize) -> Option<T> {
+    if index >= vec.len {
+        return Option.none;
+    }
+    return Option.some(vec.data[index]);
+}
+
+pub fn set<T>(vec: *mut Vec<T>, index: usize, value: T) -> bool {
+    if index >= vec.len {
+        return false;
+    }
+    vec.data[index] = value;
+    return true;
+}
+
+pub fn first<T>(vec: *const Vec<T>) -> Option<T> {
+    if vec.len == cast(usize, 0) {
+        return Option.none;
+    }
+    return Option.some(vec.data[cast(usize, 0)]);
+}
+
+pub fn last<T>(vec: *const Vec<T>) -> Option<T> {
+    if vec.len == cast(usize, 0) {
+        return Option.none;
+    }
+    return Option.some(vec.data[vec.len - cast(usize, 1)]);
+}
+
 pub fn clear<T>(vec: *mut Vec<T>) -> void {
     vec.len = cast(usize, 0);
+}
+
+pub fn truncate<T>(vec: *mut Vec<T>, len: usize) -> void {
+    if len < vec.len {
+        vec.len = len;
+    }
 }
 
 pub fn from_span<T>(items: Span<T>) -> Result<Vec<T>, i32> {
@@ -181,12 +270,20 @@ impl VecU8 {
         return vec_u8_len(self);
     }
 
+    pub fn capacity(self: *const VecU8) -> usize {
+        return capacity<u8>(self);
+    }
+
     pub fn is_empty(self: *const VecU8) -> bool {
         return vec_u8_is_empty(self);
     }
 
     pub fn as_span(self: *const VecU8) -> SpanU8 {
         return vec_u8_as_span(self);
+    }
+
+    pub fn as_mut_span(self: *mut VecU8) -> MutSpanU8 {
+        return as_mut_span<u8>(self);
     }
 
     pub fn reserve(self: *mut VecU8, capacity: usize) -> bool {
@@ -197,6 +294,10 @@ impl VecU8 {
         return vec_u8_push(self, value);
     }
 
+    pub fn insert(self: *mut VecU8, index: usize, value: u8) -> bool {
+        return insert<u8>(self, index, value);
+    }
+
     pub fn extend(self: *mut VecU8, bytes: SpanU8) -> bool {
         return vec_u8_extend(self, bytes);
     }
@@ -205,7 +306,35 @@ impl VecU8 {
         return vec_u8_pop(self);
     }
 
+    pub fn remove(self: *mut VecU8, index: usize) -> Option<u8> {
+        return remove<u8>(self, index);
+    }
+
+    pub fn swap_remove(self: *mut VecU8, index: usize) -> Option<u8> {
+        return swap_remove<u8>(self, index);
+    }
+
+    pub fn get(self: *const VecU8, index: usize) -> Option<u8> {
+        return get<u8>(self, index);
+    }
+
+    pub fn set(self: *mut VecU8, index: usize, value: u8) -> bool {
+        return set<u8>(self, index, value);
+    }
+
+    pub fn first(self: *const VecU8) -> Option<u8> {
+        return first<u8>(self);
+    }
+
+    pub fn last(self: *const VecU8) -> Option<u8> {
+        return last<u8>(self);
+    }
+
     pub fn clear(self: *mut VecU8) -> void {
         vec_u8_clear(self);
+    }
+
+    pub fn truncate(self: *mut VecU8, len: usize) -> void {
+        truncate<u8>(self, len);
     }
 }

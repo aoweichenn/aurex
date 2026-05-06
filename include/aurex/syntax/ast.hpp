@@ -244,6 +244,7 @@ struct ItemNode {
     std::string_view name;
     Visibility visibility = Visibility::public_;
     std::vector<std::string_view> generic_params;
+    base::usize impl_generic_param_count = 0;
     TypeId const_type = invalid_type_id;
     ExprId const_value = invalid_expr_id;
     TypeId alias_type = invalid_type_id;

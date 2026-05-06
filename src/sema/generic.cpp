@@ -206,6 +206,80 @@ const GenericFunctionTemplateInfo* SemanticAnalyzer::find_generic_function_templ
     return &found->second;
 }
 
+const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visible_modules(
+    const TypeHandle owner_type,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool require_self,
+    const bool report_unknown
+) {
+    const GenericFunctionInstanceInfo* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::invalid_module_id;
+    bool inaccessible_result = false;
+
+    for (syntax::ModuleId module : visible_modules(current_module_)) {
+        for (const GenericFunctionTemplateInfo& info : generic_method_templates_) {
+            if (info.module.value != module.value ||
+                info.name != name ||
+                !info.is_method ||
+                info.params.size() != info.impl_generic_param_count) {
+                continue;
+            }
+            const syntax::ItemNode* item = item_from_id(module_, info.item);
+            if (item == nullptr) {
+                continue;
+            }
+            const bool has_self_param = !item->params.empty() && item->params.front().name == "self";
+            if (require_self && !has_self_param) {
+                continue;
+            }
+
+            std::vector<TypeHandle> inferred(info.params.size(), invalid_type_handle);
+            if (!infer_generic_args_from_type_pattern(
+                    info.impl_type,
+                    owner_type,
+                    info.params,
+                    inferred,
+                    range,
+                    "generic method",
+                    info.module
+                )) {
+                continue;
+            }
+            bool complete = true;
+            for (TypeHandle arg : inferred) {
+                if (!is_valid(arg)) {
+                    complete = false;
+                    break;
+                }
+            }
+            if (!complete) {
+                continue;
+            }
+            if (!can_access(module, info.visibility)) {
+                inaccessible_result = true;
+                continue;
+            }
+            if (imported_result != nullptr) {
+                report(range, "ambiguous method '" + checked_.types.display_name(owner_type) + "." + std::string(name) +
+                    "' from modules " + module_name(result_module) + " and " + module_name(module));
+                return nullptr;
+            }
+            imported_result = instantiate_generic_function(info, inferred, range);
+            result_module = module;
+        }
+    }
+
+    if (imported_result == nullptr && report_unknown) {
+        if (inaccessible_result) {
+            report(range, "method is private: " + checked_.types.display_name(owner_type) + "." + std::string(name));
+            return nullptr;
+        }
+        report(range, "unknown method: " + checked_.types.display_name(owner_type) + "." + std::string(name));
+    }
+    return imported_result;
+}
+
 std::string SemanticAnalyzer::generic_instance_key(
     const GenericEnumTemplateInfo& info,
     const std::vector<TypeHandle>& args
@@ -300,7 +374,7 @@ std::string SemanticAnalyzer::generic_instance_key(
     const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string key = module_key(info.module, info.name) + "<";
+    std::string key = module_key(info.module, std::to_string(info.item.value) + ":" + info.name) + "<";
     for (base::usize i = 0; i < args.size(); ++i) {
         if (i != 0) {
             key += ",";
@@ -878,6 +952,37 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
         }
         param_types.push_back(param_type);
     }
+    TypeHandle method_owner_type = invalid_type_handle;
+    bool has_self_param = false;
+    if (info.is_method) {
+        method_owner_type = resolve_type(item->impl_type);
+        if (is_valid(method_owner_type)) {
+            const TypeKind owner_kind = checked_.types.get(method_owner_type).kind;
+            if (owner_kind != TypeKind::struct_ &&
+                owner_kind != TypeKind::enum_ &&
+                owner_kind != TypeKind::opaque_struct) {
+                report(item->range, "impl target must be a named type");
+            }
+        }
+        for (base::usize i = 0; i < item->params.size(); ++i) {
+            if (item->params[i].name != "self") {
+                continue;
+            }
+            if (i != 0) {
+                report(item->params[i].range, "method self parameter must be first");
+            }
+            has_self_param = true;
+        }
+        if (has_self_param && !param_types.empty() && is_valid(method_owner_type)) {
+            TypeHandle self_type = param_types.front();
+            if (checked_.types.is_pointer(self_type)) {
+                self_type = checked_.types.get(self_type).pointee;
+            }
+            if (!checked_.types.same(self_type, method_owner_type)) {
+                report(item->params.front().range, "method self parameter must use the impl type or a pointer to it");
+            }
+        }
+    }
     if (is_valid(return_type)) {
         validate_function_return_type(*item, return_type);
     }
@@ -885,30 +990,41 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
     current_type_substitution_ = previous_substitution;
     current_module_ = previous_module;
 
-    if (!is_valid(return_type)) {
+    if (!is_valid(return_type) || (info.is_method && !is_valid(method_owner_type))) {
         return nullptr;
     }
 
     FunctionSignature signature;
     signature.name = info.name;
-    signature.c_name = generic_c_name(info, args);
+    signature.c_name = info.is_method
+        ? method_c_symbol_name(method_owner_type, info.name)
+        : generic_c_name(info, args);
     signature.module = info.module;
+    signature.method_owner_type = method_owner_type;
     signature.return_type = return_type;
     signature.param_types = param_types;
     signature.range = item->range;
     signature.has_definition = true;
     signature.visibility = info.visibility;
     signature.definition_item = info.item;
+    signature.is_method = info.is_method;
+    signature.has_self_param = has_self_param;
 
     const base::u32 instance_index = static_cast<base::u32>(checked_.generic_function_instances.size());
     GenericFunctionInstanceInfo instance;
-    instance.name = generic_display_name(info, args);
+    instance.name = info.is_method
+        ? checked_.types.display_name(method_owner_type) + "." + info.name
+        : generic_display_name(info, args);
     instance.c_name = signature.c_name;
     instance.module = info.module;
     instance.item = info.item;
+    instance.method_owner_type = method_owner_type;
     instance.args = args;
     instance.return_type = return_type;
     instance.param_types = param_types;
+    instance.visibility = info.visibility;
+    instance.is_method = info.is_method;
+    instance.has_self_param = has_self_param;
     checked_.generic_function_instances.push_back(std::move(instance));
     generic_function_instances_[instance_key] = instance_index;
 

@@ -215,6 +215,52 @@ TEST_F(AurexIntegrationTest, GenericFunctionImport) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, GenericImplMethods) {
+    const fs::path source = positive_sample("generics", "generic_impl_methods.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "impl<T> for Box<T>",
+        "fn make<T> for Box<T>",
+        "fn read<T> for Box<T>",
+        "fn replace<T> for Box<T>",
+        "fn wrap<T> for Choice<T>",
+        "name `Box`<i32>",
+        "field .make",
+        "name `Choice`<i32>",
+        "field .wrap",
+        "field .read",
+        "field .replace",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "generic_functions 4",
+        "fn method generic_impl_methods.Box<i32>.make -> generic_impl_methods.Box<i32>",
+        "fn method generic_impl_methods.Box<i32>.read -> i32",
+        "fn method generic_impl_methods.Box<i32>.replace -> i32",
+        "fn method generic_impl_methods.Choice<i32>.wrap -> generic_impl_methods.Choice<i32>",
+        "struct generic_impl_methods.Box<i32> fields=1",
+        "case Choice<i32>_some : generic_impl_methods.Choice<i32>(i32)",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn generic_impl_methods.Box<i32>.make(value: i32)",
+        "fn generic_impl_methods.Box<i32>.read(self: *const generic_impl_methods.Box<i32>)",
+        "fn generic_impl_methods.Box<i32>.replace(self: *mut generic_impl_methods.Box<i32>, value: i32)",
+        "fn generic_impl_methods.Choice<i32>.wrap(value: i32)",
+        "call m0_generic_impl_methods_Box__i32_make",
+        "call m0_generic_impl_methods_Box__i32_read",
+        "call m0_generic_impl_methods_Box__i32_replace",
+        "call m0_generic_impl_methods_Choice__i32_wrap",
+    });
+
+    const fs::path bin = test_bin_root() / "generic_impl_methods";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, QualifiedGenericSubstitutionImport) {
     const std::string import_flags = sample_import_flags();
     const fs::path source = positive_sample("generics", "qualified_generic_substitution.ax");
@@ -314,7 +360,34 @@ TEST_F(AurexIntegrationTest, GenericFunctionDiagnostics) {
     expect_contains(require_failure(aurexc() + " --check " + q(plain_type_args)).output, "type arguments require a generic function: plain");
 
     const fs::path generic_method = negative_sample("generics", "generic_method_unsupported.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(generic_method)).output, "generic methods are not supported yet");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_method)).output, "method-specific generic parameters are not supported yet");
+
+    const fs::path generic_impl_self_type = negative_sample("generics", "generic_impl_method_self_type.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_impl_self_type)).output,
+        "method self parameter must use the impl type or a pointer to it"
+    );
+
+    const fs::path generic_impl_target = negative_sample("generics", "generic_impl_target_param.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_impl_target)).output, "impl target must be a named type");
+
+    const fs::path generic_impl_uninferred = negative_sample("generics", "generic_impl_method_uninferred_param.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_impl_uninferred)).output,
+        "unknown method: generic_impl_method_uninferred_param.Box<i32>.hidden"
+    );
+
+    const fs::path generic_impl_no_self = negative_sample("generics", "generic_impl_method_no_self_receiver.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_impl_no_self)).output,
+        "unknown method: generic_impl_method_no_self_receiver.Box<i32>.make"
+    );
+
+    const fs::path generic_impl_associated_unknown = negative_sample("generics", "generic_impl_associated_unknown.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_impl_associated_unknown)).output,
+        "unknown method: generic_impl_associated_unknown.Box<i32>.missing"
+    );
 
     const fs::path generic_extern = negative_sample("generics", "generic_extern_unsupported.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_extern)).output, "generic extern c functions are not supported");

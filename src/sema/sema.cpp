@@ -259,8 +259,8 @@ void SemanticAnalyzer::register_value_names() {
                 if (item.is_variadic) {
                     report(item.range, "generic variadic functions are not supported");
                 }
-                if (is_method) {
-                    report(item.range, "generic methods are not supported yet");
+                if (is_method && item.generic_params.size() > item.impl_generic_param_count) {
+                    report(item.range, "method-specific generic parameters are not supported yet");
                 }
                 if (!syntax::is_valid(item.return_type)) {
                     report(item.range, "generic function return type must be explicit: " + std::string(item.name));
@@ -271,14 +271,21 @@ void SemanticAnalyzer::register_value_names() {
                 const auto* const begin = module_.items.data();
                 const base::usize item_index = static_cast<base::usize>(&item - begin);
                 info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
+                info.impl_type = item.impl_type;
                 info.range = item.range;
                 info.visibility = item.visibility;
+                info.is_method = is_method;
+                info.impl_generic_param_count = item.impl_generic_param_count;
                 for (std::string_view param : item.generic_params) {
                     const std::string param_name(param);
                     if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
                         report(item.range, "duplicate generic parameter in function " + std::string(item.name) + ": " + param_name);
                     }
                     info.params.push_back(param_name);
+                }
+                if (is_method) {
+                    generic_method_templates_.push_back(std::move(info));
+                    continue;
                 }
                 const auto inserted = generic_function_templates_.emplace(key, std::move(info));
                 if (!inserted.second || global_values_.contains(key)) {
@@ -966,22 +973,32 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             report(expr.range, "callee must be a function name");
             return record_expr_type(expr_id, invalid_type_handle);
         }
-        const bool generic_enum_constructor =
-            module_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
-            syntax::is_valid(module_.exprs[expr.callee.value].object) &&
-            module_.exprs[expr.callee.value].object.value < module_.exprs.size() &&
-            module_.exprs[module_.exprs[expr.callee.value].object.value].kind == syntax::ExprKind::name &&
-            module_.exprs[module_.exprs[expr.callee.value].object.value].scope_name.empty() &&
-            find_generic_enum_template_in_visible_modules(
-                module_.exprs[module_.exprs[expr.callee.value].object.value].text,
-                module_.exprs[expr.callee.value].range,
-                false
-            ) != nullptr;
         const syntax::ExprNode& callee = module_.exprs[expr.callee.value];
         const std::string name = callee.kind == syntax::ExprKind::field
             ? std::string(callee.field_name)
             : std::string(callee.text);
         const base::SourceRange callee_range = callee.range;
+        bool generic_enum_constructor = false;
+        if (callee.kind == syntax::ExprKind::field &&
+            syntax::is_valid(callee.object) &&
+            callee.object.value < module_.exprs.size() &&
+            module_.exprs[callee.object.value].kind == syntax::ExprKind::name &&
+            module_.exprs[callee.object.value].scope_name.empty()) {
+            const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
+            if (const GenericEnumTemplateInfo* enum_template =
+                    find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
+                enum_template != nullptr &&
+                syntax::is_valid(enum_template->item) &&
+                enum_template->item.value < module_.items.size()) {
+                const syntax::ItemNode& enum_item = module_.items[enum_template->item.value];
+                for (const syntax::EnumCaseDecl& enum_case : enum_item.enum_cases) {
+                    if (enum_case.name == callee.field_name) {
+                        generic_enum_constructor = true;
+                        break;
+                    }
+                }
+            }
+        }
         if (const EnumCaseInfo* enum_case = find_enum_constructor(expr.callee, false); enum_case != nullptr) {
             if (!is_valid(enum_case->payload_type)) {
                 report(expr.range, "enum case constructor requires a payload case: " + enum_case->name);
@@ -1035,6 +1052,21 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         }
         if (callee.kind == syntax::ExprKind::field) {
             const FunctionSignature* signature = nullptr;
+            FunctionSignature generic_signature;
+            const auto use_generic_instance = [&](const GenericFunctionInstanceInfo& instance) {
+                generic_signature.name = std::string(name);
+                generic_signature.c_name = instance.c_name;
+                generic_signature.module = instance.module;
+                generic_signature.method_owner_type = instance.method_owner_type;
+                generic_signature.return_type = instance.return_type;
+                generic_signature.param_types = instance.param_types;
+                generic_signature.range = callee.range;
+                generic_signature.has_definition = true;
+                generic_signature.visibility = instance.visibility;
+                generic_signature.is_method = instance.is_method;
+                generic_signature.has_self_param = instance.has_self_param;
+                signature = &generic_signature;
+            };
             TypeHandle receiver_type = invalid_type_handle;
             bool has_receiver = false;
             bool receiver_valid = true;
@@ -1043,11 +1075,39 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 module_.exprs[callee.object.value].kind == syntax::ExprKind::name) {
                 const syntax::ExprNode& object = module_.exprs[callee.object.value];
                 if (object.scope_name.empty()) {
-                    const TypeHandle associated_owner =
-                        find_type_in_visible_modules(object.text, object.range, false, false);
+                    TypeHandle associated_owner = invalid_type_handle;
+                    if (object.type_args.empty()) {
+                        associated_owner = find_type_in_visible_modules(object.text, object.range, false, false);
+                    } else if (const GenericStructTemplateInfo* struct_template =
+                            find_generic_struct_template_in_visible_modules(object.text, object.range, false);
+                        struct_template != nullptr) {
+                        associated_owner = instantiate_generic_struct_from_syntax(
+                            *struct_template,
+                            object.type_args,
+                            object.range,
+                            false
+                        );
+                    } else if (const GenericEnumTemplateInfo* enum_template =
+                            find_generic_enum_template_in_visible_modules(object.text, object.range, false);
+                        enum_template != nullptr) {
+                        associated_owner = instantiate_generic_enum_from_syntax(
+                            *enum_template,
+                            object.type_args,
+                            object.range,
+                            false
+                        );
+                    }
                     if (is_valid(associated_owner)) {
-                        signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
+                        signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
                         if (signature == nullptr) {
+                            if (const GenericFunctionInstanceInfo* instance =
+                                    find_generic_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
+                                instance != nullptr) {
+                                use_generic_instance(*instance);
+                            }
+                        }
+                        if (signature == nullptr) {
+                            signature = find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
                             return record_expr_type(expr_id, invalid_type_handle);
                         }
                         if (signature->has_self_param) {
@@ -1064,8 +1124,16 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 if (checked_.types.is_pointer(owner_type)) {
                     owner_type = checked_.types.get(owner_type).pointee;
                 }
-                signature = find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true);
+                signature = find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
                 if (signature == nullptr) {
+                    if (const GenericFunctionInstanceInfo* instance =
+                            find_generic_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
+                        instance != nullptr) {
+                        use_generic_instance(*instance);
+                    }
+                }
+                if (signature == nullptr) {
+                    signature = find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true);
                     return record_expr_type(expr_id, invalid_type_handle);
                 }
                 receiver_valid = method_receiver_matches(*signature, receiver_type, callee.object);
@@ -2266,7 +2334,8 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
     const TypeHandle owner_type,
     const std::string_view name,
     const base::SourceRange range,
-    const bool require_self
+    const bool require_self,
+    const bool report_unknown
 ) {
     const FunctionSignature* imported_result = nullptr;
     const FunctionSignature* inaccessible_result = nullptr;
@@ -2294,7 +2363,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
         imported_result = &signature;
         result_module = module;
     }
-    if (imported_result == nullptr) {
+    if (imported_result == nullptr && report_unknown) {
         if (inaccessible_result != nullptr) {
             report(range, "method is private: " + checked_.types.display_name(owner_type) + "." + std::string(name));
             return nullptr;
@@ -2684,7 +2753,14 @@ std::string dump_checked_module(const CheckedModule& checked) {
 
     out << "  generic_functions " << checked.generic_function_instances.size() << "\n";
     for (const GenericFunctionInstanceInfo& fn : checked.generic_function_instances) {
-        out << "    fn " << fn.name << " -> " << checked.types.display_name(fn.return_type);
+        out << "    fn ";
+        if (fn.visibility == syntax::Visibility::private_) {
+            out << "priv ";
+        }
+        if (fn.is_method) {
+            out << "method " << checked.types.display_name(fn.method_owner_type) << ".";
+        }
+        out << (fn.is_method ? fn.name.substr(fn.name.rfind('.') + 1) : fn.name) << " -> " << checked.types.display_name(fn.return_type);
         if (!fn.c_name.empty()) {
             out << " @c_name=" << fn.c_name;
         }

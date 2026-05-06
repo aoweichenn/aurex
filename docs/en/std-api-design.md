@@ -65,6 +65,9 @@ Member-access rules:
 - `value.method(args)` calls public instance methods from `impl Type` when
   they have an explicit `self` parameter. Cross-module private methods report
   a dedicated diagnostic instead of degrading to an unknown-method error.
+- `impl<T> Type<T>` can declare instance methods for generic types. The
+  receiver type drives type-argument inference, so `items.push(value)`
+  instantiates `Vec<T>.push`.
 - `Type.function(args)` remains the current associated-function call model.
 
 Future associated-item syntax should preserve this boundary: `module::item` is namespace qualification and `value.method()` is value method dispatch. `Type::associated_item` should land only after enum constructors and impl associated functions share one design.
@@ -85,6 +88,7 @@ import std.fs.path as path;
 
 - Types: `vec::Vec<T>` and compatibility alias `vec::VecU8`.
 - New API: `vec::new<T>`, `vec::with_capacity<T>`, `vec::destroy<T>`, `vec::len<T>`, `vec::capacity<T>`, `vec::is_empty<T>`, `vec::reserve<T>`, `vec::push<T>`, `vec::insert<T>`, `vec::extend<T>`, `vec::pop<T>`, `vec::remove<T>`, `vec::swap_remove<T>`, `vec::get<T>`, `vec::set<T>`, `vec::first<T>`, `vec::last<T>`, `vec::truncate<T>`, `vec::clear<T>`, `vec::as_span<T>`, `vec::as_mut_span<T>`, `vec::from_span<T>`.
+- Method API: `Vec<T>.destroy`, `len`, `capacity`, `is_empty`, `as_span`, `as_mut_span`, `reserve`, `push`, `insert`, `extend`, `pop`, `remove`, `swap_remove`, `get`, `set`, `first`, `last`, `clear`, `truncate`.
 - Compatibility API: `vec::vec_u8_new`, `vec::vec_u8_push`, and the other `vec_u8_*` names remain available but are not the primary documentation path.
 
 `std.core.string`:

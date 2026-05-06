@@ -114,6 +114,43 @@ fn check_vec_methods() -> bool {
     return ok;
 }
 
+fn check_vec_generic_methods() -> bool {
+    var nums: vec::Vec<i32> = vec::new<i32>();
+    if !nums.push(10) || !nums.push(20) || !nums.insert(cast(usize, 1), 15) {
+        nums.destroy();
+        return false;
+    }
+    if !nums.set(cast(usize, 2), 25) {
+        nums.destroy();
+        return false;
+    }
+    let first: i32 = match nums.first() {
+        .some(value) => value,
+        .none => -1,
+    };
+    let middle: i32 = match nums.get(cast(usize, 1)) {
+        .some(value) => value,
+        .none => -1,
+    };
+    let removed: i32 = match nums.remove(cast(usize, 2)) {
+        .some(value) => value,
+        .none => -1,
+    };
+    let last: i32 = match nums.last() {
+        .some(value) => value,
+        .none => -1,
+    };
+    nums.truncate(cast(usize, 1));
+    let ok: bool = first == 10 &&
+        middle == 15 &&
+        removed == 25 &&
+        last == 15 &&
+        nums.len() == cast(usize, 1) &&
+        nums.capacity() >= nums.len();
+    nums.destroy();
+    return ok;
+}
+
 fn check_string() -> result::Result<bool, i32> {
     var s: string::String = string::from_c(c"ab")?;
     if !string::push(&s, b'c') ||
@@ -234,17 +271,20 @@ fn run() -> result::Result<i32, i32> {
     if !check_vec_methods() {
         return Result.err(2);
     }
+    if !check_vec_generic_methods() {
+        return Result.err(3);
+    }
     let string_ok: bool = check_string()?;
     if !string_ok {
-        return Result.err(3);
+        return Result.err(4);
     }
     let string_methods_ok: bool = check_string_methods()?;
     if !string_methods_ok {
-        return Result.err(4);
+        return Result.err(5);
     }
     let path_ok: bool = check_path()?;
     if !path_ok {
-        return Result.err(5);
+        return Result.err(6);
     }
     return Result.ok(0);
 }

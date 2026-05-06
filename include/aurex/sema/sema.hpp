@@ -177,7 +177,15 @@ private:
         TypeHandle owner_type,
         std::string_view name,
         base::SourceRange range,
-        bool require_self
+        bool require_self,
+        bool report_unknown = true
+    );
+    [[nodiscard]] const GenericFunctionInstanceInfo* find_generic_method_in_visible_modules(
+        TypeHandle owner_type,
+        std::string_view name,
+        base::SourceRange range,
+        bool require_self,
+        bool report_unknown = true
     );
     [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
@@ -298,6 +306,7 @@ private:
     std::unordered_map<std::string, TypeHandle> generic_struct_instances_;
     std::unordered_map<base::u32, GenericStructInstanceInfo> generic_struct_instance_infos_;
     std::unordered_map<std::string, GenericFunctionTemplateInfo> generic_function_templates_;
+    std::vector<GenericFunctionTemplateInfo> generic_method_templates_;
     std::unordered_map<std::string, base::u32> generic_function_instances_;
     std::unordered_map<std::string, FunctionBodyState> generic_function_body_states_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;

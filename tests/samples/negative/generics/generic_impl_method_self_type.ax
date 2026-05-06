@@ -1,0 +1,20 @@
+module generic_impl_method_self_type;
+
+struct Box<T> {
+    value: T;
+}
+
+struct Other<T> {
+    value: T;
+}
+
+impl<T> Box<T> {
+    fn bad(self: *const Other<T>) -> T {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    var box: Box<i32> = Box { value: 1 };
+    return box.bad();
+}

@@ -1,0 +1,16 @@
+module generic_impl_method_uninferred_param;
+
+struct Box<T> {
+    value: T;
+}
+
+impl<T, U> Box<T> {
+    fn hidden(self: *const Box<T>) -> T {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    var box: Box<i32> = Box { value: 1 };
+    return box.hidden();
+}

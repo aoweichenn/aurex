@@ -1,0 +1,12 @@
+module generic_impl_target_param;
+
+impl<T> T {
+    fn value(self: *const T) -> T {
+        return *self;
+    }
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    return value.value();
+}

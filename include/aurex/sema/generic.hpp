@@ -34,9 +34,12 @@ struct GenericFunctionTemplateInfo {
     std::string name;
     syntax::ModuleId module = syntax::invalid_module_id;
     syntax::ItemId item = syntax::invalid_item_id;
+    syntax::TypeId impl_type = syntax::invalid_type_id;
     std::vector<std::string> params;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
+    bool is_method = false;
+    base::usize impl_generic_param_count = 0;
 };
 
 struct GenericTypeSubstitution {
@@ -60,9 +63,13 @@ struct GenericFunctionInstanceInfo {
     std::string c_name;
     syntax::ModuleId module = syntax::invalid_module_id;
     syntax::ItemId item = syntax::invalid_item_id;
+    TypeHandle method_owner_type = invalid_type_handle;
     std::vector<TypeHandle> args;
     TypeHandle return_type = invalid_type_handle;
     std::vector<TypeHandle> param_types;
+    syntax::Visibility visibility = syntax::Visibility::public_;
+    bool is_method = false;
+    bool has_self_param = false;
     std::vector<TypeHandle> syntax_type_handles;
     std::vector<TypeHandle> expr_types;
     std::vector<std::string> expr_c_names;

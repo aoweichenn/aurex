@@ -457,6 +457,15 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
             }
             out << ">";
         }
+    } else if (item.kind == ItemKind::impl_block && !item.generic_params.empty()) {
+        out << "<";
+        for (base::usize i = 0; i < item.generic_params.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << item.generic_params[i];
+        }
+        out << ">";
     }
     if (is_valid(item.impl_type)) {
         out << " for " << type_label(module, item.impl_type);

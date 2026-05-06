@@ -1,0 +1,65 @@
+module generic_impl_methods;
+
+struct Box<T> {
+    value: T;
+}
+
+struct Other<T> {
+    value: T;
+}
+
+enum Choice<T>: u8 {
+    some(T) = 1,
+    none = 0,
+}
+
+impl<T> Box<T> {
+    fn make(value: T) -> Box<T> {
+        return Box { value: value };
+    }
+
+    fn read(self: *const Box<T>) -> T {
+        return self.value;
+    }
+
+    fn replace(self: *mut Box<T>, value: T) -> T {
+        let old: T = self.value;
+        self.value = value;
+        return old;
+    }
+}
+
+impl<T> Other<T> {
+    fn read(self: *const Other<T>) -> T {
+        return self.value;
+    }
+}
+
+impl<T> Choice<T> {
+    fn wrap(value: T) -> Choice<T> {
+        return Choice.some(value);
+    }
+}
+
+fn main() -> i32 {
+    let made: Box<i32> = Box<i32>.make(11);
+    if made.read() != 11 {
+        return 3;
+    }
+    let choice: Choice<i32> = Choice<i32>.wrap(5);
+    let choice_value: i32 = match choice {
+        .some(value) => value,
+        .none => 0,
+    };
+    if choice_value != 5 {
+        return 4;
+    }
+    var box: Box<i32> = Box { value: 7 };
+    if box.read() != 7 {
+        return 1;
+    }
+    if box.replace(9) != 7 {
+        return 2;
+    }
+    return box.read() - 9;
+}

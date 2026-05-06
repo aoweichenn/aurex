@@ -62,6 +62,7 @@ fn main() -> i32 {
 
 - `value.field` 访问结构体公开字段；跨模块访问会遵守 `pub` / `priv`。
 - `value.method(args)` 调用 `impl Type` 中带显式 `self` 参数的公开实例方法；跨模块 private method 会给出专门诊断，而不是退化成未知方法。
+- `impl<T> Type<T>` 可为泛型类型声明实例方法，接收者类型会驱动类型实参推断，例如 `items.push(value)` 会实例化 `Vec<T>.push`。
 - `Type.function(args)` 保留给当前已落地的关联函数调用模型。
 
 后续关联项语法会继续沿用这条边界：`module::item` 是命名空间限定，`value.method()` 是值方法调用；是否增加 `Type::associated_item` 会在 enum 构造器和 impl 关联函数统一设计后再落地。
@@ -82,6 +83,7 @@ import std.fs.path as path;
 
 - 类型：`vec::Vec<T>`、兼容别名 `vec::VecU8`。
 - 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::len<T>`、`vec::capacity<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::insert<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::remove<T>`、`vec::swap_remove<T>`、`vec::get<T>`、`vec::set<T>`、`vec::first<T>`、`vec::last<T>`、`vec::truncate<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
+- Method API：`Vec<T>.destroy`、`len`、`capacity`、`is_empty`、`as_span`、`as_mut_span`、`reserve`、`push`、`insert`、`extend`、`pop`、`remove`、`swap_remove`、`get`、`set`、`first`、`last`、`clear`、`truncate`。
 - 兼容 API：`vec::vec_u8_new`、`vec::vec_u8_push` 等保留，但不作为新文档的主路径。
 
 `std.core.string`：

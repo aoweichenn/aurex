@@ -5,7 +5,11 @@
 
 namespace aurex::sema {
 
-TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+TypeHandle SemanticAnalyzer::analyze_match_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
     if (in_const_initializer_) {
         report(expr.range, "match expression cannot be used in const initializer");
     }
@@ -48,7 +52,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
         TypeHandle arm_type = invalid_type_handle;
         if (pattern != nullptr && !pattern->binding_name.empty()) {
             if (case_info == nullptr) {
-                arm_type = analyze_expr(arm.value);
+                const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
+                arm_type = analyze_expr(arm.value, arm_expected);
             } else if (!is_valid(case_info->payload_type)) {
                 report(arm.range, "match arm payload binding requires a payload enum case");
             } else {
@@ -69,7 +74,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
                         report(module_.exprs[arm.guard.value].range, "match guard must be bool");
                     }
                 }
-                arm_type = analyze_expr(arm.value);
+                const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
+                arm_type = analyze_expr(arm.value, arm_expected);
                 symbols_.pop_scope();
             }
         } else {
@@ -79,7 +85,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(const syntax::ExprId expr_id, co
                     report(module_.exprs[arm.guard.value].range, "match guard must be bool");
                 }
             }
-            arm_type = analyze_expr(arm.value);
+            const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
+            arm_type = analyze_expr(arm.value, arm_expected);
         }
         if (!is_valid(result)) {
             result = arm_type;

@@ -551,16 +551,16 @@ syntax::ExprId Parser::parse_postfix() {
             if (node.kind != syntax::ExprKind::name && node.kind != syntax::ExprKind::field) {
                 report_at(previous(), "type arguments are only supported on named function calls, methods, or enum constructors");
             }
-            if (!check(TokenKind::greater)) {
+            if (!check_type_arg_list_end()) {
                 do {
                     node.type_args.push_back(parse_type());
                     panic_ = false;
-                    if (check(TokenKind::greater)) {
+                    if (check_type_arg_list_end()) {
                         break;
                     }
-                } while (match(TokenKind::comma) && !check(TokenKind::greater));
+                } while (match(TokenKind::comma) && !check_type_arg_list_end());
             }
-            const syntax::Token& end = expect(TokenKind::greater, "expected '>' after type argument list");
+            const syntax::Token& end = expect_type_arg_list_end("expected '>' after type argument list");
             node.range = merge(node.range, end.range);
         } else if (match(TokenKind::dot)) {
             const syntax::Token& field = expect(TokenKind::identifier, "expected field name after '.'");

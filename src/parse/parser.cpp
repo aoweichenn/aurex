@@ -125,6 +125,9 @@ bool Parser::is_eof() const noexcept {
 }
 
 const syntax::Token& Parser::peek() const noexcept {
+    if (pending_split_greater_tail_) {
+        return split_greater_tail_;
+    }
     if (current_ >= tokens_.size()) {
         return tokens_.back();
     }
@@ -132,6 +135,9 @@ const syntax::Token& Parser::peek() const noexcept {
 }
 
 const syntax::Token& Parser::previous() const noexcept {
+    if (previous_was_split_greater_) {
+        return last_split_greater_;
+    }
     if (current_ == 0) {
         return tokens_.front();
     }
@@ -143,11 +149,18 @@ bool Parser::check(const TokenKind kind) const noexcept {
 }
 
 bool Parser::check_next(const TokenKind kind) const noexcept {
-    const base::usize next = current_ + 1;
+    const base::usize next = current_ + (pending_split_greater_tail_ ? 0 : 1);
     if (next >= tokens_.size()) {
         return false;
     }
     return tokens_[next].kind == kind;
+}
+
+bool Parser::check_type_arg_list_end() const noexcept {
+    return check(TokenKind::greater) ||
+           (!pending_split_greater_tail_ &&
+            current_ < tokens_.size() &&
+            tokens_[current_].kind == TokenKind::greater_greater);
 }
 
 bool Parser::next_angle_list_is_type_scope() const noexcept {
@@ -166,6 +179,15 @@ bool Parser::next_angle_list_is_type_scope() const noexcept {
                 const base::usize after = index + 1;
                 return after < tokens_.size() &&
                        (tokens_[after].kind == TokenKind::dot || tokens_[after].kind == TokenKind::l_paren);
+            }
+        } else if (kind == TokenKind::greater_greater) {
+            for (int i = 0; i < 2; ++i) {
+                --depth;
+                if (depth == 0) {
+                    const base::usize after = index + 1;
+                    return after < tokens_.size() &&
+                           (tokens_[after].kind == TokenKind::dot || tokens_[after].kind == TokenKind::l_paren);
+                }
             }
         } else if (kind == TokenKind::semicolon ||
                    kind == TokenKind::l_brace ||
@@ -194,6 +216,14 @@ bool Parser::next_angle_list_is_struct_literal() const noexcept {
                 const base::usize after = index + 1;
                 return after < tokens_.size() && tokens_[after].kind == TokenKind::l_brace;
             }
+        } else if (kind == TokenKind::greater_greater) {
+            for (int i = 0; i < 2; ++i) {
+                --depth;
+                if (depth == 0) {
+                    const base::usize after = index + 1;
+                    return after < tokens_.size() && tokens_[after].kind == TokenKind::l_brace;
+                }
+            }
         } else if (kind == TokenKind::semicolon ||
                    kind == TokenKind::r_brace ||
                    kind == TokenKind::fat_arrow) {
@@ -213,6 +243,13 @@ bool Parser::match(const TokenKind kind) noexcept {
 }
 
 const syntax::Token& Parser::advance() noexcept {
+    if (pending_split_greater_tail_) {
+        pending_split_greater_tail_ = false;
+        previous_was_split_greater_ = true;
+        last_split_greater_ = split_greater_tail_;
+        return last_split_greater_;
+    }
+    previous_was_split_greater_ = false;
     if (!is_eof()) {
         ++current_;
     }
@@ -222,6 +259,32 @@ const syntax::Token& Parser::advance() noexcept {
 const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
     if (check(kind)) {
         return advance();
+    }
+    report_here(std::move(message));
+    static const syntax::Token fallback {};
+    return fallback;
+}
+
+const syntax::Token& Parser::expect_type_arg_list_end(std::string message) {
+    if (check(TokenKind::greater)) {
+        return advance();
+    }
+    if (!pending_split_greater_tail_ &&
+        current_ < tokens_.size() &&
+        tokens_[current_].kind == TokenKind::greater_greater) {
+        const syntax::Token token = tokens_[current_];
+        last_split_greater_ = token;
+        last_split_greater_.kind = TokenKind::greater;
+        last_split_greater_.range.end = last_split_greater_.range.begin + 1;
+        split_greater_tail_ = token;
+        split_greater_tail_.kind = TokenKind::greater;
+        split_greater_tail_.range.begin = split_greater_tail_.range.end > split_greater_tail_.range.begin
+            ? split_greater_tail_.range.end - 1
+            : split_greater_tail_.range.begin;
+        ++current_;
+        pending_split_greater_tail_ = true;
+        previous_was_split_greater_ = true;
+        return last_split_greater_;
     }
     report_here(std::move(message));
     static const syntax::Token fallback {};
@@ -601,16 +664,16 @@ syntax::ItemId Parser::parse_impl_block() {
 std::vector<syntax::TypeId> Parser::parse_type_arg_list() {
     std::vector<syntax::TypeId> args;
     expect(TokenKind::less, "expected '<' before type argument list");
-    if (!check(TokenKind::greater)) {
+    if (!check_type_arg_list_end()) {
         do {
             args.push_back(parse_type());
             panic_ = false;
-            if (check(TokenKind::greater)) {
+            if (check_type_arg_list_end()) {
                 break;
             }
-        } while (match(TokenKind::comma) && !check(TokenKind::greater));
+        } while (match(TokenKind::comma) && !check_type_arg_list_end());
     }
-    expect(TokenKind::greater, "expected '>' after type argument list");
+    expect_type_arg_list_end("expected '>' after type argument list");
     panic_ = false;
     return args;
 }

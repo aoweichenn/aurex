@@ -128,6 +128,49 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
     expect_contains(llvm_ir, "ret i32 1000");
 }
 
+TEST_F(AurexIntegrationTest, GenericEnumConstructorMatchArmRegressions) {
+    const fs::path source = write_source_file(
+        tmp_root() / "generic_enum_match_arm.ax",
+        "module generic_enum_match_arm;\n"
+        "enum Option<T>: u8 { some(T) = 1, none = 2, }\n"
+        "fn copy(input: Option<i32>) -> Option<i32> {\n"
+        "  return match input {\n"
+        "    .some(value) => Option.some(value),\n"
+        "    .none => Option.none,\n"
+        "  };\n"
+        "}\n"
+        "fn copy_none_first(input: Option<i32>) -> Option<i32> {\n"
+        "  return match input {\n"
+        "    .none => Option.none,\n"
+        "    .some(value) => Option.some(value),\n"
+        "  };\n"
+        "}\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    require_success(aurexc() + " --check " + q(source));
+}
+
+TEST_F(AurexIntegrationTest, QualifiedGenericStaticMethodRegressions) {
+    static_cast<void>(write_source_file(
+        tmp_root() / "box.ax",
+        "module box;\n"
+        "pub struct Box<T> { value: T; }\n"
+        "impl<T> Box<T> {\n"
+        "  pub fn new(value: T) -> Box<T> { return Box<T> { value: value }; }\n"
+        "}\n"
+    ));
+    const fs::path source = write_source_file(
+        tmp_root() / "qualified_generic_static_method.ax",
+        "module qualified_generic_static_method;\n"
+        "import box as box;\n"
+        "fn main() -> i32 {\n"
+        "  let value: box::Box<i32> = box::Box<i32>.new(7);\n"
+        "  return value.value;\n"
+        "}\n"
+    );
+    require_success(aurexc() + " --check " + q(source));
+}
+
 TEST_F(AurexIntegrationTest, MainAndCliRegressions) {
     const fs::path const_argv = write_source_file(
         tmp_root() / "const_argv.ax",

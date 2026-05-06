@@ -167,8 +167,10 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "struct Wrap<T> { value: T; }\n"
             "enum Result<T, E>: u8 { ok(T) = 1, err(E) = 2, }\n"
             "fn main() -> i32 {\n"
-            "  let nested: Wrap<Wrap<i32> > = Wrap<Wrap<i32> > { value: Wrap<i32> { value: 1 } };\n"
-            "  let ok = Result<Wrap<i32>, bool>.err(false)?;\n"
+            "  let nested: Wrap<Wrap<i32>> = Wrap<Wrap<i32>> { value: Wrap<i32> { value: 1 } };\n"
+            "  let triple: Wrap<Wrap<Wrap<i32>>> = Wrap<Wrap<Wrap<i32>>> { value: Wrap<Wrap<i32>> { value: Wrap<i32> { value: 2 } } };\n"
+            "  let ok = Result<Wrap<Wrap<i32>>, bool>.err(false)?;\n"
+            "  let shifted: i32 = 8 >> 1;\n"
             "  return 0;\n"
             "}\n";
         lex::Lexer lexer({5}, source, diagnostics);
@@ -199,8 +201,10 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "alias [10]u8",
             "alias [1000]u8",
             "struct_literal Wrap<Wrap<i32>>",
-            "name `Result`<Wrap<i32>, bool>",
+            "struct_literal Wrap<Wrap<Wrap<i32>>>",
+            "name `Result`<Wrap<Wrap<i32>>, bool>",
             "try_expr",
+            "binary",
         });
     }
 }

@@ -2,6 +2,7 @@
 
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
+#include "aurex/sema/checked_module.hpp"
 #include "aurex/sema/function.hpp"
 #include "aurex/sema/generic.hpp"
 #include "aurex/sema/symbol.hpp"
@@ -15,64 +16,6 @@
 #include <vector>
 
 namespace aurex::sema {
-
-struct StructFieldInfo {
-    std::string name;
-    std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
-    base::SourceRange range {};
-    syntax::Visibility visibility = syntax::Visibility::public_;
-};
-
-struct StructInfo {
-    std::string name;
-    std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
-    std::vector<StructFieldInfo> fields;
-    bool is_opaque = false;
-    syntax::Visibility visibility = syntax::Visibility::public_;
-};
-
-struct EnumCaseInfo {
-    std::string name;
-    std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
-    TypeHandle payload_type = invalid_type_handle;
-    std::string value_text;
-    base::SourceRange range {};
-    std::string enum_name;
-    std::string case_name;
-    syntax::Visibility visibility = syntax::Visibility::public_;
-};
-
-struct TypeAliasInfo {
-    std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    syntax::TypeId target = syntax::invalid_type_id;
-    base::SourceRange range {};
-    syntax::Visibility visibility = syntax::Visibility::public_;
-};
-
-struct CheckedModule {
-    // CheckedModule is the bridge between syntax and codegen. It is deliberately
-    // side-table based so AST nodes remain parse-only data.
-    TypeTable types;
-    std::vector<TypeHandle> expr_types;
-    std::vector<std::string> expr_c_names;
-    std::vector<std::string> pattern_c_names;
-    std::vector<std::unordered_set<std::string>> pattern_case_sets;
-    std::vector<TypeHandle> syntax_type_handles;
-    std::vector<TypeHandle> stmt_local_types;
-    std::vector<std::string> item_c_names;
-    std::unordered_map<std::string, FunctionSignature> functions;
-    std::unordered_map<std::string, StructInfo> structs;
-    std::unordered_map<std::string, EnumCaseInfo> enum_cases;
-    std::unordered_map<std::string, TypeAliasInfo> type_aliases;
-    std::vector<GenericFunctionInstanceInfo> generic_function_instances;
-};
 
 class SemanticAnalyzer final {
 public:
@@ -115,10 +58,11 @@ private:
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] const EnumCaseInfo* analyze_enum_case_pattern(
         syntax::PatternId pattern,
         TypeHandle matched,
@@ -160,6 +104,7 @@ private:
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
     [[nodiscard]] bool is_copy_forbidden_value(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
+    [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;
@@ -338,7 +283,5 @@ private:
     int loop_depth_ = 0;
     bool in_const_initializer_ = false;
 };
-
-[[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);
 
 } // namespace aurex::sema

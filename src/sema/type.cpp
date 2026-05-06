@@ -1,6 +1,7 @@
 #include "aurex/sema/type.hpp"
 
 #include <cassert>
+#include <cstddef>
 #include <utility>
 
 namespace aurex::sema {
@@ -74,13 +75,9 @@ TypeHandle TypeTable::builtin(BuiltinType type) const noexcept {
 }
 
 TypeHandle TypeTable::pointer(const PointerMutability mutability, const TypeHandle pointee) {
-    for (base::u32 i = 0; i < types_.size(); ++i) {
-        const TypeInfo& info = types_[i];
-        if (info.kind == TypeKind::pointer &&
-            info.pointer_mutability == mutability &&
-            same(info.pointee, pointee)) {
-            return TypeHandle {i};
-        }
+    const PointerKey key {pointee.value, mutability};
+    if (const auto found = pointer_types_.find(key); found != pointer_types_.end()) {
+        return found->second;
     }
 
     TypeInfo info;
@@ -88,17 +85,15 @@ TypeHandle TypeTable::pointer(const PointerMutability mutability, const TypeHand
     info.pointer_mutability = mutability;
     info.pointee = pointee;
     info.is_copyable = true;
-    return push(std::move(info));
+    const TypeHandle handle = push(std::move(info));
+    pointer_types_.emplace(key, handle);
+    return handle;
 }
 
 TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element) {
-    for (base::u32 i = 0; i < types_.size(); ++i) {
-        const TypeInfo& info = types_[i];
-        if (info.kind == TypeKind::array &&
-            info.array_count == count &&
-            same(info.array_element, element)) {
-            return TypeHandle {i};
-        }
+    const ArrayKey key {count, element.value};
+    if (const auto found = array_types_.find(key); found != array_types_.end()) {
+        return found->second;
     }
 
     TypeInfo info;
@@ -107,7 +102,9 @@ TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element) {
     info.array_element = element;
     info.contains_array = true;
     info.is_copyable = false;
-    return push(std::move(info));
+    const TypeHandle handle = push(std::move(info));
+    array_types_.emplace(key, handle);
+    return handle;
 }
 
 TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const bool contains_array) {
@@ -258,6 +255,16 @@ TypeHandle TypeTable::push(TypeInfo info) {
     const TypeHandle handle {static_cast<base::u32>(types_.size())};
     types_.push_back(std::move(info));
     return handle;
+}
+
+std::size_t TypeTable::PointerKeyHash::operator()(const PointerKey& key) const noexcept {
+    return (static_cast<std::size_t>(key.pointee) << 1) ^
+           static_cast<std::size_t>(key.mutability == PointerMutability::mut ? 1U : 0U);
+}
+
+std::size_t TypeTable::ArrayKeyHash::operator()(const ArrayKey& key) const noexcept {
+    return static_cast<std::size_t>(key.element) ^
+           (static_cast<std::size_t>(key.count) * static_cast<std::size_t>(1099511628211ULL));
 }
 
 } // namespace aurex::sema

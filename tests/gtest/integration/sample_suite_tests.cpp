@@ -103,10 +103,6 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_bootstrap) {
     compile_and_run_std_positive_sample("std_bootstrap.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_Std_std_collections_path) {
-    compile_and_run_std_positive_sample("std_collections_path.ax");
-}
-
 TEST_F(AurexIntegrationTest, SampleSuite_Std_std_ffi) {
     compile_and_run_std_positive_sample("std_ffi.ax");
 }

@@ -59,7 +59,7 @@ if(BUILD_TESTING)
 
     add_test(
         NAME aurex_tests
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=-AurexIntegrationTest.SampleSuite_*
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=-AurexIntegrationTest.SampleSuite_*:AurexIntegrationTest.StdCollectionsPathSampleExposesM1ContainerBaseline
     )
     add_test(
         NAME aurex_tests_sample_suite_positive
@@ -72,10 +72,6 @@ if(BUILD_TESTING)
     add_test(
         NAME aurex_tests_sample_suite_std_bootstrap
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_bootstrap
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_collections_path
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_collections_path
     )
     add_test(
         NAME aurex_tests_sample_suite_std_ffi
@@ -93,6 +89,10 @@ if(BUILD_TESTING)
         NAME aurex_tests_sample_suite_std_text
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_text
     )
+    add_test(
+        NAME aurex_tests_std_collections_path_baseline
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.StdCollectionsPathSampleExposesM1ContainerBaseline
+    )
     set_tests_properties(aurex_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     )
@@ -100,7 +100,6 @@ if(BUILD_TESTING)
         aurex_tests_sample_suite_positive
         aurex_tests_sample_suite_negative
         aurex_tests_sample_suite_std_bootstrap
-        aurex_tests_sample_suite_std_collections_path
         aurex_tests_sample_suite_std_ffi
         aurex_tests_sample_suite_std_file
         aurex_tests_sample_suite_std_mem
@@ -108,6 +107,13 @@ if(BUILD_TESTING)
         PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         LABELS "slow;sample-suite"
+        TIMEOUT 300
+    )
+    set_tests_properties(
+        aurex_tests_std_collections_path_baseline
+        PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        LABELS "slow;std-baseline"
         TIMEOUT 300
     )
 endif()

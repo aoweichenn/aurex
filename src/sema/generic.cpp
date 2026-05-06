@@ -329,7 +329,7 @@ std::string SemanticAnalyzer::generic_instance_key(
         if (i != 0) {
             key += ",";
         }
-        key += checked_.types.display_name(args[i]);
+        key += std::to_string(args[i].value);
     }
     key += ">";
     return key;
@@ -374,7 +374,7 @@ std::string SemanticAnalyzer::generic_instance_key(
         if (i != 0) {
             key += ",";
         }
-        key += checked_.types.display_name(args[i]);
+        key += std::to_string(args[i].value);
     }
     key += ">";
     return key;
@@ -419,7 +419,7 @@ std::string SemanticAnalyzer::generic_instance_key(
         if (i != 0) {
             key += ",";
         }
-        key += checked_.types.display_name(args[i]);
+        key += std::to_string(args[i].value);
     }
     key += ">";
     return key;
@@ -698,7 +698,10 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     checked_.types.set_record_properties(struct_type, contains_array, copyable && !contains_array);
     current_module_ = previous_module;
 
-    checked_.structs.emplace(module_key(info.module, instance_info.c_name), std::move(instance_info));
+    const auto inserted = checked_.structs.emplace(module_key(info.module, instance_info.c_name), std::move(instance_info));
+    if (inserted.second) {
+        struct_infos_by_type_[struct_type.value] = &inserted.first->second;
+    }
     return struct_type;
 }
 

@@ -334,6 +334,8 @@ void SemanticAnalyzer::register_type_names() {
             auto struct_inserted = checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
                 report(item.range, "duplicate struct definition in module " + module_name(owner) + ": " + std::string(item.name));
+            } else {
+                struct_infos_by_type_[handle.value] = &struct_inserted.first->second;
             }
         }
     }
@@ -1924,6 +1926,18 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
         return invalid_type_handle;
     }
 
+    if (substitution != nullptr &&
+        current_generic_syntax_type_handles_ != nullptr) {
+        if (const auto found = current_generic_syntax_type_handles_->find(type_id.value);
+            found != current_generic_syntax_type_handles_->end() &&
+            is_valid(found->second)) {
+            if (checked_.types.get(found->second).kind == TypeKind::opaque_struct && !opaque_allowed_as_pointee) {
+                report(module_.types[type_id.value].range, "opaque struct can only be used as a pointer target");
+            }
+            return found->second;
+        }
+    }
+
     if (substitution == nullptr &&
         type_id.value < checked_.syntax_type_handles.size() &&
         is_valid(checked_.syntax_type_handles[type_id.value])) {
@@ -2346,10 +2360,8 @@ const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noe
     if (!is_valid(type)) {
         return nullptr;
     }
-    for (const auto& entry : checked_.structs) {
-        if (checked_.types.same(entry.second.type, type)) {
-            return &entry.second;
-        }
+    if (const auto found = struct_infos_by_type_.find(type.value); found != struct_infos_by_type_.end()) {
+        return found->second;
     }
     return nullptr;
 }
@@ -2397,14 +2409,19 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
     return resolved;
 }
 
-std::vector<syntax::ModuleId> SemanticAnalyzer::visible_modules(const syntax::ModuleId module) const {
-    std::vector<syntax::ModuleId> result;
+const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syntax::ModuleId module) const {
+    static const std::vector<syntax::ModuleId> empty;
     if (!syntax::is_valid(module)) {
-        return result;
+        return empty;
     }
+    if (const auto found = visible_modules_cache_.find(module.value); found != visible_modules_cache_.end()) {
+        return found->second;
+    }
+    std::vector<syntax::ModuleId> result;
     result.push_back(module);
     if (module.value >= module_.modules.size()) {
-        return result;
+        auto inserted = visible_modules_cache_.emplace(module.value, std::move(result));
+        return inserted.first->second;
     }
     std::unordered_set<base::u32> seen;
     seen.insert(module.value);
@@ -2417,7 +2434,8 @@ std::vector<syntax::ModuleId> SemanticAnalyzer::visible_modules(const syntax::Mo
         }
         append_public_reexports(import.module, result, seen);
     }
-    return result;
+    auto inserted = visible_modules_cache_.emplace(module.value, std::move(result));
+    return inserted.first->second;
 }
 
 void SemanticAnalyzer::append_public_reexports(
@@ -2482,7 +2500,7 @@ std::string SemanticAnalyzer::method_key(
     const TypeHandle owner_type,
     const std::string_view name
 ) const {
-    return module_key(module, checked_.types.display_name(owner_type) + "." + std::string(name));
+    return module_key(module, "#" + std::to_string(owner_type.value) + "." + std::string(name));
 }
 
 std::string SemanticAnalyzer::method_c_symbol_name(
@@ -2904,7 +2922,9 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
 }
 
 void SemanticAnalyzer::record_stmt_local_type(const syntax::StmtId stmt, const TypeHandle type) noexcept {
-    if (syntax::is_valid(stmt) && stmt.value < checked_.stmt_local_types.size()) {
+    if (current_generic_stmt_local_types_ == nullptr &&
+        syntax::is_valid(stmt) &&
+        stmt.value < checked_.stmt_local_types.size()) {
         checked_.stmt_local_types[stmt.value] = type;
     }
     if (current_generic_stmt_local_types_ != nullptr && syntax::is_valid(stmt)) {
@@ -2916,7 +2936,7 @@ void SemanticAnalyzer::record_expr_c_name(const syntax::ExprId expr, const std::
     if (!syntax::is_valid(expr) || c_name.empty()) {
         return;
     }
-    if (expr.value < checked_.expr_c_names.size()) {
+    if (current_generic_expr_c_names_ == nullptr && expr.value < checked_.expr_c_names.size()) {
         checked_.expr_c_names[expr.value] = std::string(c_name);
     }
     if (current_generic_expr_c_names_ != nullptr) {
@@ -2928,7 +2948,7 @@ void SemanticAnalyzer::record_pattern_c_name(const syntax::PatternId pattern, co
     if (!syntax::is_valid(pattern) || c_name.empty()) {
         return;
     }
-    if (pattern.value < checked_.pattern_c_names.size()) {
+    if (current_generic_pattern_c_names_ == nullptr && pattern.value < checked_.pattern_c_names.size()) {
         checked_.pattern_c_names[pattern.value] = std::string(c_name);
     }
     if (current_generic_pattern_c_names_ != nullptr) {
@@ -2940,7 +2960,7 @@ void SemanticAnalyzer::record_pattern_case_name(const syntax::PatternId pattern,
     if (!syntax::is_valid(pattern) || c_name.empty()) {
         return;
     }
-    if (pattern.value < checked_.pattern_case_sets.size()) {
+    if (current_generic_pattern_case_sets_ == nullptr && pattern.value < checked_.pattern_case_sets.size()) {
         checked_.pattern_case_sets[pattern.value].insert(std::string(c_name));
     }
     if (current_generic_pattern_case_sets_ != nullptr) {
@@ -2952,7 +2972,8 @@ void SemanticAnalyzer::merge_pattern_case_names(const syntax::PatternId pattern,
     if (!syntax::is_valid(pattern) || !syntax::is_valid(alternative)) {
         return;
     }
-    if (pattern.value < checked_.pattern_case_sets.size() &&
+    if (current_generic_pattern_case_sets_ == nullptr &&
+        pattern.value < checked_.pattern_case_sets.size() &&
         alternative.value < checked_.pattern_case_sets.size()) {
         checked_.pattern_case_sets[pattern.value].insert(
             checked_.pattern_case_sets[alternative.value].begin(),
@@ -2974,7 +2995,9 @@ void SemanticAnalyzer::merge_pattern_case_names(const syntax::PatternId pattern,
 }
 
 void SemanticAnalyzer::record_syntax_type_handle(const syntax::TypeId type, const TypeHandle resolved) noexcept {
-    if (syntax::is_valid(type) && type.value < checked_.syntax_type_handles.size()) {
+    if (current_generic_syntax_type_handles_ == nullptr &&
+        syntax::is_valid(type) &&
+        type.value < checked_.syntax_type_handles.size()) {
         checked_.syntax_type_handles[type.value] = resolved;
     }
     if (current_generic_syntax_type_handles_ != nullptr && syntax::is_valid(type)) {
@@ -2983,7 +3006,9 @@ void SemanticAnalyzer::record_syntax_type_handle(const syntax::TypeId type, cons
 }
 
 TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const TypeHandle type) noexcept {
-    if (syntax::is_valid(expr) && expr.value < checked_.expr_types.size()) {
+    if (current_generic_expr_types_ == nullptr &&
+        syntax::is_valid(expr) &&
+        expr.value < checked_.expr_types.size()) {
         checked_.expr_types[expr.value] = type;
     }
     if (current_generic_expr_types_ != nullptr && syntax::is_valid(expr)) {

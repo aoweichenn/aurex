@@ -4,6 +4,7 @@
 
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aurex::sema {
@@ -98,9 +99,37 @@ public:
     [[nodiscard]] const TypeInfo& get(TypeHandle handle) const noexcept;
 
 private:
+    struct PointerKey {
+        base::u32 pointee = TypeHandle::invalid_value;
+        PointerMutability mutability = PointerMutability::const_;
+
+        [[nodiscard]] bool operator==(const PointerKey& other) const noexcept {
+            return pointee == other.pointee && mutability == other.mutability;
+        }
+    };
+
+    struct ArrayKey {
+        base::u64 count = 0;
+        base::u32 element = TypeHandle::invalid_value;
+
+        [[nodiscard]] bool operator==(const ArrayKey& other) const noexcept {
+            return count == other.count && element == other.element;
+        }
+    };
+
+    struct PointerKeyHash {
+        [[nodiscard]] std::size_t operator()(const PointerKey& key) const noexcept;
+    };
+
+    struct ArrayKeyHash {
+        [[nodiscard]] std::size_t operator()(const ArrayKey& key) const noexcept;
+    };
+
     [[nodiscard]] TypeHandle push(TypeInfo info);
 
     std::vector<TypeInfo> types_;
+    std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
+    std::unordered_map<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
 };
 
 } // namespace aurex::sema

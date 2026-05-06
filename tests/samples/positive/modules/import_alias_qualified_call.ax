@@ -4,12 +4,18 @@ import samplelib.visibility as vis;
 
 fn main() -> i32 {
     let answer: vis::PublicInt = vis::answer;
-    let boxed: vis::PublicBox = vis::make_box(answer);
+    var boxed: vis::PublicBox = vis::make_box(answer);
     if boxed.value != 41 {
         return 1;
     }
-    if vis::exported(1) != 42 {
+    if boxed.read() != 41 {
         return 2;
+    }
+    if boxed.bump(1) != 42 {
+        return 3;
+    }
+    if vis::exported(1) != 42 {
+        return 4;
     }
     return 0;
 }

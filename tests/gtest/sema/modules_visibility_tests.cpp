@@ -26,6 +26,9 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     expect_contains_all(checked, {
         "fn exported -> i32",
         "fn priv add_secret -> i32",
+        "fn method samplelib.visibility.PublicBox.bump -> i32",
+        "fn method samplelib.visibility.PublicBox.read -> i32",
+        "fn priv method samplelib.visibility.PublicBox.secret_value -> i32",
         "struct PublicBox",
         "type PublicInt = i32",
         "type priv HiddenInt = i32",
@@ -36,6 +39,8 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
         "fn make_box(value: i32)",
         "call m0_samplelib_visibility_exported",
         "call m0_samplelib_visibility_make_box",
+        "call m0_samplelib_visibility_PublicBox_read",
+        "call m0_samplelib_visibility_PublicBox_bump",
         ".value: i32",
         ".secret: i32",
     });
@@ -67,6 +72,12 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
 
     const fs::path private_field = negative_sample("visibility", "private_field_access.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_field)).output, "field is private: secret");
+
+    const fs::path private_method = negative_sample("visibility", "private_method_access.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_method)).output,
+        "method is private: samplelib.visibility.PublicBox.secret_value"
+    );
 
     const fs::path private_struct = negative_sample("visibility", "private_struct_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_struct)).output, "unknown type: HiddenBox");
@@ -106,6 +117,7 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     expect_contains_all(alias_tokens, {
         "kw_as `as`",
         "colon_colon `::`",
+        "dot `.`",
     });
 
     const std::string alias_ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(alias_source)).output;
@@ -113,14 +125,19 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
         "import samplelib.visibility as vis",
         "let answer : vis::PublicInt",
         "name `vis::answer`",
-        "let boxed : vis::PublicBox",
+        "var boxed : vis::PublicBox",
         "name `vis::make_box`",
+        "field .value",
+        "field .read",
+        "field .bump",
     });
 
     const std::string alias_ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(alias_source)).output;
     expect_contains_all(alias_ir, {
         "const_ref @m0_samplelib_visibility_answer",
         "call m0_samplelib_visibility_make_box",
+        "call m0_samplelib_visibility_PublicBox_read",
+        "call m0_samplelib_visibility_PublicBox_bump",
         "call m0_samplelib_visibility_exported",
     });
 

@@ -35,6 +35,21 @@ pub fn make_box(value: i32) -> PublicBox {
     };
 }
 
+impl PublicBox {
+    pub fn read(self: *const PublicBox) -> i32 {
+        return self.value;
+    }
+
+    pub fn bump(self: *mut PublicBox, delta: i32) -> i32 {
+        self.value = self.value + delta;
+        return self.value;
+    }
+
+    priv fn secret_value(self: *const PublicBox) -> i32 {
+        return self.secret;
+    }
+}
+
 priv fn add_secret(value: i32) -> i32 {
     return value + answer;
 }

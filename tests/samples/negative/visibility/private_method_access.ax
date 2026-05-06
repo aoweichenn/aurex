@@ -1,0 +1,8 @@
+module private_method_access;
+
+import samplelib.visibility;
+
+fn main() -> i32 {
+    let box = make_box(1);
+    return box.secret_value();
+}

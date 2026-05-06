@@ -799,7 +799,9 @@ void SemanticAnalyzer::analyze_stmt(
             : checked_.types.builtin(BuiltinType::void_);
         if (return_inference != nullptr) {
             record_inferred_return(stmt_id, actual, *return_inference);
-        } else if (!can_assign(expected_return, actual, stmt.return_value)) {
+        } else if (is_valid(actual) &&
+            is_valid(expected_return) &&
+            !can_assign(expected_return, actual, stmt.return_value)) {
             report(stmt.range, "return type mismatch");
         }
         break;
@@ -2267,6 +2269,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
     const bool require_self
 ) {
     const FunctionSignature* imported_result = nullptr;
+    const FunctionSignature* inaccessible_result = nullptr;
     syntax::ModuleId result_module = syntax::invalid_module_id;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         const auto found = checked_.functions.find(method_key(module, owner_type, name));
@@ -2278,6 +2281,9 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
             continue;
         }
         if (!can_access(module, signature.visibility)) {
+            if (inaccessible_result == nullptr) {
+                inaccessible_result = &signature;
+            }
             continue;
         }
         if (imported_result != nullptr) {
@@ -2289,6 +2295,10 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
         result_module = module;
     }
     if (imported_result == nullptr) {
+        if (inaccessible_result != nullptr) {
+            report(range, "method is private: " + checked_.types.display_name(owner_type) + "." + std::string(name));
+            return nullptr;
+        }
         report(range, "unknown method: " + checked_.types.display_name(owner_type) + "." + std::string(name));
     }
     return imported_result;

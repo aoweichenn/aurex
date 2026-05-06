@@ -58,6 +58,12 @@ fn main() -> i32 {
 - 未限定 import 仍按旧规则工作，用于兼容旧样例和旧代码。
 - 别名只绑定直接 import，不自动绑定 public re-export；这能避免 re-export 链造成难以解释的名称来源。
 
+成员访问规则：
+
+- `value.field` 访问结构体公开字段；跨模块访问会遵守 `pub` / `priv`。
+- `value.method(args)` 调用 `impl Type` 中带显式 `self` 参数的公开实例方法；跨模块 private method 会给出专门诊断，而不是退化成未知方法。
+- `Type.function(args)` 保留给当前已落地的关联函数调用模型。
+
 后续关联项语法会继续沿用这条边界：`module::item` 是命名空间限定，`value.method()` 是值方法调用；是否增加 `Type::associated_item` 会在 enum 构造器和 impl 关联函数统一设计后再落地。
 
 ## M1 标准库形态

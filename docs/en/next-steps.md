@@ -39,8 +39,10 @@ Current language slices:
   promotions.
 - Scope-level `defer` statements, run in reverse order on normal exits,
   `return`, and `break` / `continue` paths.
-- `impl` / method / associated-function MVP with explicit `self`, instance
-  method calls, and `Type.function()` associated calls.
+- `impl` / method / associated-function MVP with explicit `self`,
+  `value.method()` instance calls, public `value.field` access, and
+  `Type.function()` associated calls. Cross-module private-field and
+  private-method access now have stable diagnostics.
 - Standard `Result` / `Option` / `?` slice, usable for explicit error
   propagation and early-return control flow.
 - Standard-library container/text/path baseline started, including generic
@@ -62,12 +64,14 @@ Current language slices:
 - Module isolation still needs explicit package/crate boundaries, import
   aliases, selective imports, better cycle diagnostics, and a stable public
   surface dump.
-- The call model has an `impl` / method MVP, but still needs generic impls,
-  trait/class reuse, method public-surface tooling, and stronger diagnostics.
+- The call model has an `impl` / method MVP and cross-module member-visibility
+  diagnostics, but still needs generic impls, trait/class reuse, method
+  public-surface tooling, and stronger diagnostics for overload/trait cases.
 - Generics still need constraints, where-like predicates, trait/interface
   design, monomorphization caching, and explainable diagnostics.
-- Error handling still needs standard `Result<T, E>` / `Option<T>`, `?`
-  propagation, and a composable diagnostic model.
+- Error handling has the standard `Result<T, E>` / `Option<T>` and `?`
+  propagation slice, but still needs broader std API migration and a
+  composable diagnostic model.
 - Resource management still needs a minimal move/noncopyable model and unified
   handling for files, processes, arenas, and other resources.
 - The standard library still needs broader `Vec<T>`, `Map<K, V>`, directory
@@ -106,10 +110,10 @@ covered by integration tests:
 
 1. Finish the method / associated-function / `impl` call model  
    The MVP has landed: explicit `self` parameters, method-call lowering,
-   associated functions, and basic method visibility are supported. Follow-up
-   work should add generic impls, method public-surface dumps, cross-module
-   method diagnostics, and continued example migration from C-style helpers to
-   method APIs.
+   associated functions, public field access, and cross-module method
+   visibility diagnostics are supported. Follow-up work should add generic
+   impls, method public-surface dumps, overload/trait diagnostics, and
+   continued example migration from C-style helpers to method APIs.
 
 2. Establish standard `Result` / `Option` / `?` error handling  
    The frontend and build tool both need many composable error paths. M1 should
@@ -164,10 +168,10 @@ manual status helpers.
 
 1. `impl` / method MVP  
    Completed. The parser accepts `impl Type { ... }`, sema registers methods
-   into a type-associated scope, and call resolution accepts
-   `value.method(args)` and `Type.function(args)`. Tests cover parse, sema, IR
-   lowering, negative diagnostics, and a small example migration from helper
-   functions to methods.
+   into a type-associated scope, and call resolution accepts `value.field`,
+   `value.method(args)`, and `Type.function(args)`. Cross-module member access
+   obeys `pub` / `priv`. Tests cover parse, sema, IR lowering, negative
+   diagnostics, and a small example migration from helper functions to methods.
 
 2. `Result` / `Option` / `?`  
    Completed. The method foundation now has a standard error-propagation slice

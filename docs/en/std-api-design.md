@@ -58,6 +58,15 @@ Rules:
 - Unqualified imports still work as the compatibility path for existing examples and code.
 - Aliases bind only direct imports, not public re-export chains. That keeps name origins predictable.
 
+Member-access rules:
+
+- `value.field` accesses public struct fields, with `pub` / `priv` enforced
+  across module boundaries.
+- `value.method(args)` calls public instance methods from `impl Type` when
+  they have an explicit `self` parameter. Cross-module private methods report
+  a dedicated diagnostic instead of degrading to an unknown-method error.
+- `Type.function(args)` remains the current associated-function call model.
+
 Future associated-item syntax should preserve this boundary: `module::item` is namespace qualification and `value.method()` is value method dispatch. `Type::associated_item` should land only after enum constructors and impl associated functions share one design.
 
 ## M1 Standard Library Shape

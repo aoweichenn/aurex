@@ -136,4 +136,108 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
     }
 }
 
+TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors) {
+    Module module;
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+    const TypeHandle pair_type = module.types.named_struct("unit.Pair", "unit_Pair", false);
+    module.records.push_back(RecordLayout {
+        pair_type,
+        "unit.Pair",
+        "unit_Pair",
+        false,
+        {RecordField {"left", i32}, RecordField {"right", i32}},
+    });
+
+    Value constant_value = integer_value(i32, "1");
+    const GlobalConstantId constant =
+        add_global_constant(module, GlobalConstant {"answer", "unit_answer", i32, add_value(module, constant_value)});
+    Value bool_ref;
+    bool_ref.kind = ValueKind::constant_ref;
+    bool_ref.type = bool_type;
+    bool_ref.constant = constant;
+    [[maybe_unused]] const ValueId bool_ref_id = add_value(module, bool_ref);
+
+    Function variadic = make_function(module, "variadic", i32, Linkage::extern_c, AbiCallConv::c);
+    variadic.symbol = "unit_variadic";
+    variadic.is_variadic = true;
+    variadic.signature_params.push_back(FunctionParam {"fixed", i32});
+    module.functions.push_back(variadic);
+    const FunctionId variadic_id {0};
+
+    Function function = make_function(module, "bad_shapes", i32);
+    FunctionBuilder builder {module, function};
+    const ValueId one = builder.add(integer_value(i32, "1"));
+    Value call;
+    call.kind = ValueKind::call;
+    call.type = i32;
+    call.call_target = variadic_id;
+    call.args = {one, ValueId {999}};
+    const ValueId call_id = builder.add(call);
+
+    Value constant_ref = bool_ref;
+    const ValueId bad_constant_ref = builder.add(constant_ref);
+
+    Value aggregate_non_record;
+    aggregate_non_record.kind = ValueKind::aggregate;
+    aggregate_non_record.type = i32;
+    aggregate_non_record.fields = {{"value", one}};
+    const ValueId aggregate_non_record_id = builder.add(aggregate_non_record);
+
+    Value aggregate_unknown;
+    aggregate_unknown.kind = ValueKind::aggregate;
+    aggregate_unknown.type = pair_type;
+    aggregate_unknown.fields = {{"missing", one}};
+    const ValueId aggregate_unknown_id = builder.add(aggregate_unknown);
+
+    Value load;
+    load.kind = ValueKind::load;
+    load.type = i32;
+    load.object = ValueId {1000};
+    const ValueId bad_load = builder.add(load);
+
+    Value store;
+    store.kind = ValueKind::store;
+    store.type = builtin(module, BuiltinType::void_);
+    store.object = one;
+    store.lhs = ValueId {1001};
+    const ValueId bad_store = builder.add(store);
+
+    Value field;
+    field.kind = ValueKind::field_addr;
+    field.type = ptr_i32;
+    field.object = one;
+    field.name = "missing";
+    const ValueId bad_field = builder.add(field);
+
+    const BlockId entry = builder.block("entry");
+    function.blocks[entry.value].values = {
+        call_id,
+        bad_constant_ref,
+        aggregate_non_record_id,
+        aggregate_unknown_id,
+        bad_load,
+        bad_store,
+        bad_field,
+        one,
+    };
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    function.blocks[entry.value].terminator.value = one;
+    module.functions.push_back(function);
+
+    const auto verify = ir::verify_module(module);
+    ASSERT_FALSE(verify);
+    expect_contains_all(verify.error().message, {
+        "call argument out of range",
+        "constant reference type mismatch",
+        "aggregate result is not a record",
+        "unknown aggregate field missing",
+        "load object value id is invalid",
+        "store target is not a pointer",
+        "store source value id is invalid",
+        "unknown field 'missing'",
+    });
+}
+
 } // namespace aurex::test

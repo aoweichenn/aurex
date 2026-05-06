@@ -53,6 +53,18 @@ TEST_F(AurexIntegrationTest, TryExpressionDiagnostics) {
         require_failure(aurexc() + " --check " + q(error_mismatch)).output,
         "try expression Result error type must match enclosing Result error type"
     );
+
+    const fs::path malformed_result = negative_sample("error_handling", "try_result_malformed.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(malformed_result)).output,
+        "try expression Result type must define ok(T) and err(E) cases"
+    );
+
+    const fs::path malformed_option = negative_sample("error_handling", "try_option_malformed.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(malformed_option)).output,
+        "try expression Option type must define some(T) and none cases"
+    );
 }
 
 } // namespace aurex::test

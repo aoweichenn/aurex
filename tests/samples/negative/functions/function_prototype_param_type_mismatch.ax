@@ -1,0 +1,14 @@
+module function_prototype_param_type_mismatch;
+
+fn value(input: i32) -> i32;
+
+fn value(input: bool) -> i32 {
+    if input {
+        return 1;
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    return value(true);
+}

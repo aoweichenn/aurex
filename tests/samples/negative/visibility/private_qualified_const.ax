@@ -1,0 +1,7 @@
+module private_qualified_const;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    return vis::hidden_answer;
+}

@@ -1,0 +1,11 @@
+module function_prototype_after_definition;
+
+fn value() -> i32 {
+    return 0;
+}
+
+fn value() -> i32;
+
+fn main() -> i32 {
+    return value();
+}

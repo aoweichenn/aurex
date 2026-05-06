@@ -40,6 +40,36 @@ TEST_F(AurexIntegrationTest, FunctionPrototypes) {
 
     const fs::path missing = negative_sample("functions", "function_prototype_missing_definition.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing)).output, "function prototype has no definition");
+
+    const fs::path after_definition = negative_sample("functions", "function_prototype_after_definition.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(after_definition)).output,
+        "function prototype must appear before definition"
+    );
+
+    const fs::path extern_conflict = negative_sample("functions", "function_extern_definition_conflict.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(extern_conflict)).output,
+        "function declaration conflicts with existing function"
+    );
+
+    const fs::path param_count = negative_sample("functions", "function_prototype_param_count_mismatch.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(param_count)).output,
+        "function prototype and definition signatures do not match"
+    );
+
+    const fs::path param_type = negative_sample("functions", "function_prototype_param_type_mismatch.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(param_type)).output,
+        "function prototype and definition signatures do not match"
+    );
+
+    const fs::path variadic = negative_sample("functions", "function_prototype_variadic_mismatch.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(variadic)).output,
+        "function prototype and definition signatures do not match"
+    );
 }
 
 TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
@@ -170,6 +200,15 @@ TEST_F(AurexIntegrationTest, MethodsAndAssociatedFunctions) {
 
     const fs::path receiver_required = negative_sample("functions", "associated_receiver_required.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(receiver_required)).output, "method requires a receiver");
+
+    const fs::path impl_target = negative_sample("functions", "impl_target_not_named.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(impl_target)).output, "impl target must be a named type");
+
+    const fs::path self_not_first = negative_sample("functions", "method_self_not_first.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(self_not_first)).output, "method self parameter must be first");
+
+    const fs::path receiver_not_place = negative_sample("functions", "method_receiver_not_place.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(receiver_not_place)).output, "method receiver must be a place expression");
 }
 
 } // namespace aurex::test

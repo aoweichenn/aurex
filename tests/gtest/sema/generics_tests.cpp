@@ -215,6 +215,31 @@ TEST_F(AurexIntegrationTest, GenericFunctionImport) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, QualifiedGenericSubstitutionImport) {
+    const std::string import_flags = sample_import_flags();
+    const fs::path source = positive_sample("generics", "qualified_generic_substitution.ax");
+
+    const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "fn qualified_generic_substitution.wrap_box<i32> -> samplelib.generic_a.Box<i32>",
+        "fn qualified_generic_substitution.wrap_choice<i32> -> samplelib.generic_a.Choice<i32>",
+        "struct samplelib.generic_a.Box<i32> fields=1",
+        "case Choice<i32>_some : samplelib.generic_a.Choice<i32>(i32)",
+    });
+
+    const std::string ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn qualified_generic_substitution.wrap_box<i32>(value: i32)",
+        "fn qualified_generic_substitution.wrap_choice<i32>(value: i32)",
+        "record samplelib.generic_a.Box<i32>",
+        "record samplelib.generic_a.Choice<i32>",
+    });
+
+    const fs::path bin = test_bin_root() / "qualified_generic_substitution";
+    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
     const fs::path struct_source = positive_sample("generics", "generic_struct_array_field.ax");
 
@@ -299,6 +324,51 @@ TEST_F(AurexIntegrationTest, GenericFunctionDiagnostics) {
 
     const fs::path generic_variadic = negative_sample("generics", "generic_variadic_unsupported.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_variadic)).output, "generic variadic functions are not supported");
+
+    const fs::path generic_export = negative_sample("generics", "generic_export_c_unsupported.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(generic_export)).output, "generic export c functions are not supported");
+
+    const fs::path inference_conflict = negative_sample("generics", "generic_function_inference_conflict.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(inference_conflict)).output, "generic function type inference conflict for T");
+
+    const fs::path struct_inference_conflict = negative_sample("generics", "generic_struct_literal_inference_conflict.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(struct_inference_conflict)).output,
+        "generic struct literal type inference conflict for T"
+    );
+
+    const fs::path struct_invalid_storage = negative_sample("generics", "generic_struct_invalid_storage.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(struct_invalid_storage)).output, "field type is not valid storage");
+
+    const fs::path enum_invalid_storage = negative_sample("generics", "generic_enum_invalid_payload_storage.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(enum_invalid_storage)).output, "enum payload type is not valid storage");
+
+    const fs::path array_param = negative_sample("generics", "generic_function_array_param_storage.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(array_param)).output, "array type cannot be used as a function parameter");
+
+    const fs::path array_struct_param = negative_sample("generics", "generic_function_array_struct_param_storage.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(array_struct_param)).output,
+        "struct containing array cannot be passed by value"
+    );
+
+    const fs::path enum_arity = negative_sample("generics", "generic_enum_type_arg_count_mismatch.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(enum_arity)).output, "generic enum type argument count mismatch");
+
+    const fs::path struct_arity = negative_sample("generics", "generic_struct_type_arg_count_mismatch.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(struct_arity)).output, "generic struct type argument count mismatch");
+
+    const fs::path enum_base = negative_sample("generics", "generic_enum_base_non_integer.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(enum_base)).output, "enum base type must be an integer type");
+
+    const fs::path enum_array_payload = negative_sample("generics", "generic_enum_array_payload_storage.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(enum_array_payload)).output, "enum payload cannot contain array storage");
+
+    const fs::path inference_shapes = negative_sample("generics", "generic_function_inference_shape_mismatch.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(inference_shapes)).output,
+        "generic function requires explicit type arguments"
+    );
 }
 
 TEST_F(AurexIntegrationTest, GenericImportVisibilityAndAmbiguityDiagnostics) {
@@ -338,6 +408,48 @@ TEST_F(AurexIntegrationTest, GenericImportVisibilityAndAmbiguityDiagnostics) {
     expect_contains(
         require_failure(aurexc() + " " + import_flags + " --check " + q(private_function)).output,
         "unknown function: hidden_id"
+    );
+
+    const fs::path qualified_struct_missing_args = negative_sample("generics", "qualified_generic_struct_missing_args.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_struct_missing_args)).output,
+        "generic struct type requires type arguments: ga::Box"
+    );
+
+    const fs::path qualified_plain_type_args = negative_sample("generics", "qualified_plain_type_args.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_plain_type_args)).output,
+        "type arguments require a generic type: vis::PublicInt"
+    );
+
+    const fs::path qualified_private_function = negative_sample("generics", "qualified_private_generic_function.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_private_function)).output,
+        "generic function is private: samplelib.generic_private.hidden_id"
+    );
+
+    const fs::path qualified_function_arity = negative_sample("generics", "qualified_generic_function_arity.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_function_arity)).output,
+        "generic function type argument count mismatch for pick"
+    );
+
+    const fs::path qualified_plain_function = negative_sample("generics", "qualified_plain_function_type_args.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_plain_function)).output,
+        "type arguments require a generic function: vis::exported"
+    );
+
+    const fs::path qualified_private_struct = negative_sample("generics", "qualified_private_generic_struct.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_private_struct)).output,
+        "type arguments require a generic type: gp::Hidden"
+    );
+
+    const fs::path qualified_private_enum = negative_sample("generics", "qualified_private_generic_enum.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(qualified_private_enum)).output,
+        "type arguments require a generic type: gp::Secret"
     );
 }
 

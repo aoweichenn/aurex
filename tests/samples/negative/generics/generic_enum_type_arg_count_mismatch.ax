@@ -1,0 +1,11 @@
+module generic_enum_type_arg_count_mismatch;
+
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
+
+fn main() -> i32 {
+    let value: Result<i32> = Result.ok(1);
+    return 0;
+}

@@ -1,0 +1,15 @@
+module try_result_malformed;
+
+enum Result<T, E>: u8 {
+    okay(T) = 1,
+    err(E) = 2,
+}
+
+fn parse() -> Result<i32, i32> {
+    return Result.okay(1);
+}
+
+fn main() -> Result<i32, i32> {
+    let value: i32 = parse()?;
+    return Result.okay(value);
+}

@@ -1,0 +1,26 @@
+module layout_primitive_matrix;
+
+fn main() -> i32 {
+    if size_of(i8) != cast(usize, 1) || align_of(i8) != cast(usize, 1) {
+        return 1;
+    }
+    if size_of(i16) != cast(usize, 2) || align_of(i16) != cast(usize, 2) {
+        return 2;
+    }
+    if size_of(i64) != cast(usize, 8) || align_of(i64) != cast(usize, 8) {
+        return 3;
+    }
+    if size_of(isize) != size_of(usize) || align_of(isize) != align_of(usize) {
+        return 4;
+    }
+    if size_of(f32) != cast(usize, 4) || align_of(f32) != cast(usize, 4) {
+        return 5;
+    }
+    if size_of(f64) != cast(usize, 8) || align_of(f64) != cast(usize, 8) {
+        return 6;
+    }
+    if size_of(str) != cast(usize, 16) || align_of(str) != cast(usize, 8) {
+        return 7;
+    }
+    return 0;
+}

@@ -1,0 +1,11 @@
+module function_prototype_param_count_mismatch;
+
+fn value(left: i32) -> i32;
+
+fn value(left: i32, right: i32) -> i32 {
+    return left + right;
+}
+
+fn main() -> i32 {
+    return value(1, 2);
+}

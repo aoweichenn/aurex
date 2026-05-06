@@ -1,0 +1,8 @@
+module private_qualified_type;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    let value: vis::HiddenInt = 1;
+    return value;
+}

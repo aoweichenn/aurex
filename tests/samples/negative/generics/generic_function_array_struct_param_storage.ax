@@ -1,0 +1,14 @@
+module generic_function_array_struct_param_storage;
+
+struct Holder<T> {
+    data: [2]T;
+}
+
+fn bad<T>(value: Holder<T>) -> i32 {
+    return 0;
+}
+
+fn main() -> i32 {
+    var value: *mut Holder<i32> = null;
+    return bad<i32>(*value);
+}

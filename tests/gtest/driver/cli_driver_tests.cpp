@@ -1,5 +1,7 @@
+#include "aurex/driver/compiler.hpp"
 #include "support/test_support.hpp"
 
+#include <fstream>
 #include <string>
 
 namespace aurex::test {
@@ -55,6 +57,52 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
         require_success(aurexc() + " --emit=ir " + q(positive_sample("pointers", "pointer_field_write.ax"))).output;
     expect_contains(pointer_field, "field_addr ");
     expect_contains(pointer_field, ".value");
+}
+
+TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
+    {
+        const fs::path invalid = tmp_root() / "invalid_tokens.ax";
+        std::ofstream out(invalid);
+        out << "module invalid_tokens;\nfn main() -> i32 { return \"unterminated; }\n";
+        out.close();
+
+        driver::CompilerInvocation invocation;
+        invocation.input_path = invalid;
+        invocation.emit_kind = driver::EmitKind::tokens;
+        driver::Compiler compiler;
+        testing::internal::CaptureStderr();
+        const auto result = compiler.run(invocation);
+        static_cast<void>(testing::internal::GetCapturedStderr());
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::lex_error);
+    }
+
+    {
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = static_cast<driver::EmitKind>(999);
+        invocation.use_standard_library = false;
+        driver::Compiler compiler;
+        const auto result = compiler.run(invocation);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
+        expect_contains(result.error().message, "unsupported emission mode");
+    }
+
+    {
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = driver::EmitKind::object;
+        invocation.output_path = tmp_root() / "bad_clang.o";
+        invocation.clang_path = "/definitely/not/a/real/clang";
+        invocation.use_standard_library = false;
+        driver::Compiler compiler;
+        const auto result = compiler.run(invocation);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
+        expect_contains(result.error().message, "exit code 127");
+    }
+
 }
 
 } // namespace aurex::test

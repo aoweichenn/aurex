@@ -6,11 +6,32 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aurex::test {
 namespace {
 
 using base::DiagnosticSink;
+
+void expect_parse_error(const std::string_view source, const std::string_view message) {
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({6}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        if (diagnostic.message.find(message) != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found) << "missing diagnostic: " << message;
+}
 
 } // namespace
 
@@ -139,6 +160,7 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "type F32Alias = f32;\n"
             "type F64Alias = f64;\n"
             "type HexBytes = [0x2A]u8;\n"
+            "type LowerHexBytes = [0x2a]u8;\n"
             "type BinBytes = [0b1010]u8;\n"
             "type DecBytes = [1_000]u8;\n"
             "enum Code: u16 { hex = 0x2A, bin = 0b1010, dec = 1_000, }\n"
@@ -173,6 +195,7 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "alias f32",
             "alias f64",
             "alias [42]u8",
+            "alias [42]u8",
             "alias [10]u8",
             "alias [1000]u8",
             "struct_literal Wrap<Wrap<i32>>",
@@ -180,6 +203,61 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "try_expr",
         });
     }
+}
+
+TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches) {
+    expect_parse_error(
+        "module parser.private_impl;\n"
+        "struct Box {}\n"
+        "priv impl Box { fn value(self: Box) -> i32 { return 1; } }\n",
+        "impl block cannot be private"
+    );
+    expect_parse_error(
+        "module parser.private_extern;\n"
+        "priv extern c { fn puts(s: *const u8) -> i32; }\n",
+        "extern block cannot be private"
+    );
+    expect_parse_error(
+        "module parser.private_export;\n"
+        "priv export c fn main() -> i32 { return 0; }\n",
+        "exported C function cannot be private"
+    );
+    expect_parse_error(
+        "module parser.bad_export;\n"
+        "export c;\n",
+        "expected function declaration after 'export c'"
+    );
+    expect_parse_error(
+        "module parser.bad_abi;\n"
+        "fn f() -> i32 @wrong(\"x\") { return 0; }\n",
+        "expected ABI attribute 'name'"
+    );
+    expect_parse_error(
+        "module parser.bad_pointer;\n"
+        "type Bad = *i32;\n",
+        "expected 'mut' or 'const' after '*'"
+    );
+    expect_parse_error(
+        "module parser.bad_extern_item;\n"
+        "extern c { const answer: i32 = 1; }\n",
+        "expected extern item"
+    );
+    expect_parse_error(
+        "module parser.bad_impl_item;\n"
+        "struct Box {}\n"
+        "impl Box { const answer: i32 = 1; }\n",
+        "expected function declaration in impl block"
+    );
+    expect_parse_error(
+        "module parser.bad_type;\n"
+        "fn f(value: ) -> i32 { return 0; }\n",
+        "expected type"
+    );
+    expect_parse_error(
+        "module parser.bad_import;\n"
+        "import c.;\n",
+        "expected identifier after '.'"
+    );
 }
 
 } // namespace aurex::test

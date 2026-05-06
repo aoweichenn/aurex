@@ -1,0 +1,8 @@
+module unknown_qualified_type;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    let value: vis::Missing = 1;
+    return value;
+}

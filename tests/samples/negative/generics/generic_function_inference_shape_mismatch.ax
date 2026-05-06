@@ -1,0 +1,48 @@
+module generic_function_inference_shape_mismatch;
+
+struct Box<T> {
+    value: T;
+}
+
+struct Other<T> {
+    value: T;
+}
+
+enum Option<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}
+
+enum Choice<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}
+
+fn from_mut_ptr<T>(value: *mut T) -> T {
+    return *value;
+}
+
+fn from_array_ptr<T>(value: *mut [2]T) -> T {
+    return (*value)[0];
+}
+
+fn from_box<T>(value: Box<T>) -> T {
+    return value.value;
+}
+
+fn from_option<T>(value: Option<T>) -> T {
+    return match value {
+        .some(inner) => inner,
+        .none => 0,
+    };
+}
+
+fn main() -> i32 {
+    let plain = from_mut_ptr(1);
+    let array: *mut [3]i32 = null;
+    let from_array = from_array_ptr(array);
+    let other = Other { value: 2 };
+    let boxed = from_box(other);
+    let choice: Choice<i32> = Choice.some(3);
+    return plain + from_array + boxed + from_option(choice);
+}

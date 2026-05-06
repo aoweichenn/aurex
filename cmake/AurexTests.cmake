@@ -24,6 +24,7 @@ if(BUILD_TESTING)
         tests/gtest/ir/ir_dump_tests.cpp
         tests/gtest/ir/ir_verifier_edge_tests.cpp
         tests/gtest/ir/ir_verifier_structural_tests.cpp
+        tests/gtest/ir/lower_ast_whitebox_tests.cpp
         tests/gtest/ir/pass_pipeline_tests.cpp
         tests/gtest/ir/type_table_tests.cpp
         tests/gtest/sema/block_expression_tests.cpp
@@ -34,6 +35,7 @@ if(BUILD_TESTING)
         tests/gtest/sema/inference_tests.cpp
         tests/gtest/sema/modules_visibility_tests.cpp
         tests/gtest/sema/pattern_matching_tests.cpp
+        tests/gtest/sema/sema_whitebox_tests.cpp
         tests/gtest/sema/type_alias_tests.cpp
     )
     target_link_libraries(aurex_tests PRIVATE

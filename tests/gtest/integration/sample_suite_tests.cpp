@@ -12,6 +12,7 @@ TEST_F(AurexIntegrationTest, PositiveAndNegativeSamples) {
         "generic_function_import",
         "math",
         "module_name_collision",
+        "qualified_generic_substitution",
         "reexport_import",
         "std_text",
         "std_mem",

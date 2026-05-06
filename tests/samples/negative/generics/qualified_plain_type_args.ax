@@ -1,0 +1,8 @@
+module qualified_plain_type_args;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    let value: vis::PublicInt<i32> = 1;
+    return value;
+}

@@ -1,0 +1,10 @@
+module qualified_private_generic_struct;
+
+import samplelib.generic_private as gp;
+
+fn main() -> i32 {
+    let value: gp::Hidden<i32> = gp::Hidden {
+        value: 1,
+    };
+    return 0;
+}

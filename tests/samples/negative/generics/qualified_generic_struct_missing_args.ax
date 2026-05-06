@@ -1,0 +1,8 @@
+module qualified_generic_struct_missing_args;
+
+import samplelib.generic_a as ga;
+
+fn main() -> i32 {
+    let value: ga::Box = ga::Box<i32> { value: 1 };
+    return value.value;
+}

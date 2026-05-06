@@ -1,0 +1,15 @@
+module method_self_not_first;
+
+struct Counter {
+    value: i32;
+}
+
+impl Counter {
+    fn bad(value: i32, self: *mut Counter) -> i32 {
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

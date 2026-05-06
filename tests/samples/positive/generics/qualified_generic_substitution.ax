@@ -1,0 +1,24 @@
+module qualified_generic_substitution;
+
+import samplelib.generic_a as ga;
+import samplelib.generic_a;
+
+fn wrap_box<T>(value: T) -> ga::Box<T> {
+    return ga::Box {
+        value: value,
+    };
+}
+
+fn wrap_choice<T>(value: T) -> ga::Choice<T> {
+    return Choice.some(value);
+}
+
+fn main() -> i32 {
+    let boxed = wrap_box(41);
+    let choice: ga::Choice<i32> = wrap_choice(1);
+    let matched = match choice {
+        .some(value) => value,
+        .none => 0,
+    };
+    return boxed.value + matched - 42;
+}

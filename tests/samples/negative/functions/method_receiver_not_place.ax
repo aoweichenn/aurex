@@ -1,0 +1,20 @@
+module method_receiver_not_place;
+
+struct Counter {
+    value: i32;
+}
+
+impl Counter {
+    fn new(value: i32) -> Counter {
+        return Counter { value: value };
+    }
+
+    fn add(self: *mut Counter, delta: i32) -> i32 {
+        self.value = self.value + delta;
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    return Counter.new(1).add(2);
+}

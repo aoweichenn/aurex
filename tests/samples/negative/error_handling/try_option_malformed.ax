@@ -1,0 +1,15 @@
+module try_option_malformed;
+
+enum Option<T>: u8 {
+    some(T) = 1,
+    none(T) = 2,
+}
+
+fn maybe() -> Option<i32> {
+    return Option.some(1);
+}
+
+fn main() -> Option<i32> {
+    let value: i32 = maybe()?;
+    return Option.some(value);
+}

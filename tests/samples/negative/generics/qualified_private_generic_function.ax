@@ -1,0 +1,7 @@
+module qualified_private_generic_function;
+
+import samplelib.generic_private as gp;
+
+fn main() -> i32 {
+    return gp::hidden_id<i32>(1);
+}

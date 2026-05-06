@@ -1,0 +1,16 @@
+module operator_matrix;
+
+fn main() -> i32 {
+    var a: i32 = 42;
+    var b: i32 = 5;
+    let div_value: i32 = a / b;
+    let shift_left: i32 = b << 1;
+    let shift_right: i32 = a >> 1;
+    let xor_value: i32 = a ^ b;
+    let or_value: i32 = a | b;
+    let mod_value: i32 = a % b;
+    if ((div_value == 8) && (shift_left == 10)) || (shift_right == 21) {
+        return (xor_value | or_value) + mod_value;
+    }
+    return 1;
+}

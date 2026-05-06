@@ -1,0 +1,10 @@
+module generic_struct_invalid_storage;
+
+struct Bad<T> {
+    value: void;
+}
+
+fn main() -> i32 {
+    let value: *mut Bad<i32> = null;
+    return 0;
+}

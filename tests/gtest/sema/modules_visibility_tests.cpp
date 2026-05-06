@@ -59,6 +59,12 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     const fs::path private_type = negative_sample("visibility", "private_type_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_type)).output, "unknown type: HiddenInt");
 
+    const fs::path private_qualified_type = negative_sample("visibility", "private_qualified_type.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_qualified_type)).output,
+        "type is private: samplelib.visibility.HiddenInt"
+    );
+
     const fs::path private_field = negative_sample("visibility", "private_field_access.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_field)).output, "field is private: secret");
 
@@ -68,8 +74,32 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     const fs::path private_enum = negative_sample("visibility", "private_enum_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice_yes");
 
+    const fs::path private_qualified_const = negative_sample("visibility", "private_qualified_const.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_qualified_const)).output,
+        "name is private: samplelib.visibility.hidden_answer"
+    );
+
     const fs::path unknown_alias = negative_sample("modules", "unknown_import_alias.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(unknown_alias)).output, "unknown import alias: missing");
+
+    const fs::path ambiguous_alias = negative_sample("modules", "ambiguous_import_alias.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(ambiguous_alias)).output,
+        "ambiguous import alias: lib"
+    );
+
+    const fs::path unknown_qualified_function = negative_sample("modules", "unknown_qualified_function.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(unknown_qualified_function)).output,
+        "unknown function in module samplelib.visibility: missing"
+    );
+
+    const fs::path unknown_qualified_type = negative_sample("modules", "unknown_qualified_type.ax");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(unknown_qualified_type)).output,
+        "unknown type in module samplelib.visibility: Missing"
+    );
 
     const fs::path alias_source = positive_sample("modules", "import_alias_qualified_call.ax");
     const std::string alias_tokens = require_success(aurexc() + " " + import_flags + " --dump-tokens " + q(alias_source)).output;

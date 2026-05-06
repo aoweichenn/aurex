@@ -1,6 +1,7 @@
 module std_collections_path;
 
 import std.core.result as result;
+import std.core.map as map;
 import std.core.string as string;
 import std.core.text as text;
 import std.core.vec as vec;
@@ -174,6 +175,52 @@ fn check_result_option_methods() -> bool {
         direct_err.unwrap_or(6) == 6;
 }
 
+fn check_map() -> bool {
+    var counts: map::Map<u8, i32> = map::new<u8, i32>();
+    if !map::insert<u8, i32>(&counts, b'a', 1) ||
+        !map::insert<u8, i32>(&counts, b'b', 2) ||
+        !map::insert<u8, i32>(&counts, b'a', 3) {
+        map::destroy<u8, i32>(&counts);
+        return false;
+    }
+    let a_value: i32 = map::get<u8, i32>(&counts, b'a').unwrap_or(0);
+    let b_value: i32 = map::get<u8, i32>(&counts, b'b').unwrap_or(0);
+    let missing_ok: bool = map::get<u8, i32>(&counts, b'z').is_none();
+    let removed: i32 = map::remove<u8, i32>(&counts, b'a').unwrap_or(0);
+    let ok: bool = a_value == 3 &&
+        b_value == 2 &&
+        missing_ok &&
+        removed == 3 &&
+        !map::contains<u8, i32>(&counts, b'a') &&
+        map::len<u8, i32>(&counts) == cast(usize, 1);
+    map::destroy<u8, i32>(&counts);
+    return ok;
+}
+
+fn check_map_methods() -> result::Result<bool, i32> {
+    var scores: map::Map<u8, i32> = map::Map<u8, i32>.with_capacity(2)?;
+    if !scores.insert(b'x', 10) ||
+        !scores.insert(b'y', 20) ||
+        !scores.set(b'y', 25) {
+        scores.destroy();
+        return Result.ok(false);
+    }
+    let x_value: i32 = scores.get(b'x').unwrap_or(0);
+    let y_value: i32 = scores.get(b'y').unwrap_or(0);
+    let missing_ok: bool = scores.find_index(b'z').is_none();
+    let removed: i32 = scores.remove(b'x').unwrap_or(0);
+    scores.clear();
+    let ok: bool = x_value == 10 &&
+        y_value == 25 &&
+        missing_ok &&
+        removed == 10 &&
+        !scores.contains(b'x') &&
+        scores.is_empty() &&
+        scores.capacity() >= cast(usize, 2);
+    scores.destroy();
+    return Result.ok(ok);
+}
+
 fn check_string() -> result::Result<bool, i32> {
     var s: string::String = string::from_c(c"ab")?;
     if !string::push(&s, b'c') ||
@@ -300,17 +347,24 @@ fn run() -> result::Result<i32, i32> {
     if !check_result_option_methods() {
         return Result.err(4);
     }
+    if !check_map() {
+        return Result.err(5);
+    }
+    let map_methods_ok: bool = check_map_methods()?;
+    if !map_methods_ok {
+        return Result.err(6);
+    }
     let string_ok: bool = check_string()?;
     if !string_ok {
-        return Result.err(5);
+        return Result.err(7);
     }
     let string_methods_ok: bool = check_string_methods()?;
     if !string_methods_ok {
-        return Result.err(6);
+        return Result.err(8);
     }
     let path_ok: bool = check_path()?;
     if !path_ok {
-        return Result.err(7);
+        return Result.err(9);
     }
     return Result.ok(0);
 }

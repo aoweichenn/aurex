@@ -1,0 +1,172 @@
+module std.core.map;
+
+import std.core.result as result;
+import std.core.vec as vec;
+
+pub struct Entry<K, V> {
+    key: K;
+    value: V;
+}
+
+pub struct Map<K, V> {
+    entries: vec::Vec<Entry<K, V>>;
+}
+
+pub fn new<K, V>() -> Map<K, V> {
+    return Map<K, V> { entries: vec::new<Entry<K, V>>() };
+}
+
+pub fn with_capacity<K, V>(capacity: usize) -> result::Result<Map<K, V>, i32> {
+    var map: Map<K, V> = new<K, V>();
+    if !reserve<K, V>(&map, capacity) {
+        return Result.err(1);
+    }
+    return Result.ok(map);
+}
+
+pub fn destroy<K, V>(map: *mut Map<K, V>) -> void {
+    map.entries.destroy();
+}
+
+pub fn len<K, V>(map: *const Map<K, V>) -> usize {
+    return map.entries.len();
+}
+
+pub fn capacity<K, V>(map: *const Map<K, V>) -> usize {
+    return map.entries.capacity();
+}
+
+pub fn is_empty<K, V>(map: *const Map<K, V>) -> bool {
+    return map.entries.is_empty();
+}
+
+pub fn reserve<K, V>(map: *mut Map<K, V>, capacity: usize) -> bool {
+    return map.entries.reserve(capacity);
+}
+
+pub fn clear<K, V>(map: *mut Map<K, V>) -> void {
+    map.entries.clear();
+}
+
+pub fn find_index<K, V>(map: *const Map<K, V>, key: K) -> result::Option<usize> {
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if map.entries.data[index].key == key {
+            return Option.some(index);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Option.none;
+}
+
+pub fn contains<K, V>(map: *const Map<K, V>, key: K) -> bool {
+    return find_index<K, V>(map, key).is_some();
+}
+
+pub fn insert<K, V>(map: *mut Map<K, V>, key: K, value: V) -> bool {
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if map.entries.data[index].key == key {
+            map.entries.data[index].value = value;
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return map.entries.push(Entry<K, V> { key: key, value: value });
+}
+
+pub fn set<K, V>(map: *mut Map<K, V>, key: K, value: V) -> bool {
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if map.entries.data[index].key == key {
+            map.entries.data[index].value = value;
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return false;
+}
+
+pub fn get<K, V>(map: *const Map<K, V>, key: K) -> result::Option<V> {
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if map.entries.data[index].key == key {
+            return Option.some(map.entries.data[index].value);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Option.none;
+}
+
+pub fn remove<K, V>(map: *mut Map<K, V>, key: K) -> result::Option<V> {
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if map.entries.data[index].key == key {
+            let removed: result::Option<Entry<K, V>> = map.entries.remove(index);
+            return match removed {
+                .some(entry) => Option.some(entry.value),
+                .none => Option.none,
+            };
+        }
+        index = index + cast(usize, 1);
+    }
+    return Option.none;
+}
+
+impl<K, V> Map<K, V> {
+    pub fn new() -> Map<K, V> {
+        return new<K, V>();
+    }
+
+    pub fn with_capacity(capacity: usize) -> result::Result<Map<K, V>, i32> {
+        return with_capacity<K, V>(capacity);
+    }
+
+    pub fn destroy(self: *mut Map<K, V>) -> void {
+        destroy<K, V>(self);
+    }
+
+    pub fn len(self: *const Map<K, V>) -> usize {
+        return len<K, V>(self);
+    }
+
+    pub fn capacity(self: *const Map<K, V>) -> usize {
+        return capacity<K, V>(self);
+    }
+
+    pub fn is_empty(self: *const Map<K, V>) -> bool {
+        return is_empty<K, V>(self);
+    }
+
+    pub fn reserve(self: *mut Map<K, V>, capacity: usize) -> bool {
+        return reserve<K, V>(self, capacity);
+    }
+
+    pub fn clear(self: *mut Map<K, V>) -> void {
+        clear<K, V>(self);
+    }
+
+    pub fn find_index(self: *const Map<K, V>, key: K) -> result::Option<usize> {
+        return find_index<K, V>(self, key);
+    }
+
+    pub fn contains(self: *const Map<K, V>, key: K) -> bool {
+        return contains<K, V>(self, key);
+    }
+
+    pub fn insert(self: *mut Map<K, V>, key: K, value: V) -> bool {
+        return insert<K, V>(self, key, value);
+    }
+
+    pub fn set(self: *mut Map<K, V>, key: K, value: V) -> bool {
+        return set<K, V>(self, key, value);
+    }
+
+    pub fn get(self: *const Map<K, V>, key: K) -> result::Option<V> {
+        return get<K, V>(self, key);
+    }
+
+    pub fn remove(self: *mut Map<K, V>, key: K) -> result::Option<V> {
+        return remove<K, V>(self, key);
+    }
+}

@@ -85,6 +85,9 @@ enum class ValueKind {
     cast,
     size_of,
     align_of,
+    str_data,
+    str_byte_len,
+    str_from_bytes_unchecked,
 };
 
 enum class UnaryOp {

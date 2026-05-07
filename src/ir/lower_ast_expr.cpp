@@ -315,6 +315,24 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         value.target_type = syntax_type(expr.cast_type);
         return append_value(value);
     }
+    case syntax::ExprKind::str_data:
+    case syntax::ExprKind::str_byte_len: {
+        Value value;
+        value.kind = expr.kind == syntax::ExprKind::str_data ? ValueKind::str_data : ValueKind::str_byte_len;
+        value.type = expr_type(expr_id);
+        value.object = lower_expr(expr.cast_expr, expr_type(expr.cast_expr));
+        return append_value(value);
+    }
+    case syntax::ExprKind::str_from_bytes_unchecked: {
+        Value value;
+        value.kind = ValueKind::str_from_bytes_unchecked;
+        value.type = expr_type(expr_id);
+        if (expr.args.size() == 2) {
+            value.args.push_back(lower_expr(expr.args[0], expr_type(expr.args[0])));
+            value.args.push_back(lower_expr(expr.args[1], expr_type(expr.args[1])));
+        }
+        return append_value(value);
+    }
     case syntax::ExprKind::invalid:
         return invalid_value_id;
     }

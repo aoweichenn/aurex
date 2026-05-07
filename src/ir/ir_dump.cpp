@@ -172,6 +172,22 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     case ValueKind::align_of:
         out << "align_of " << module.types.display_name(value.target_type);
         break;
+    case ValueKind::str_data:
+        out << "str_data " << value_ref(value.object);
+        break;
+    case ValueKind::str_byte_len:
+        out << "str_byte_len " << value_ref(value.object);
+        break;
+    case ValueKind::str_from_bytes_unchecked:
+        out << "str_from_bytes_unchecked(";
+        for (base::usize i = 0; i < value.args.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << value_ref(value.args[i]);
+        }
+        out << ")";
+        break;
     }
     out << "\n";
 }

@@ -135,6 +135,15 @@ struct IntegerLiteralExpr {
     return value == min_magnitude;
 }
 
+[[nodiscard]] bool is_const_u8_pointer(const TypeTable& types, const TypeHandle type) noexcept {
+    if (!types.is_pointer(type)) {
+        return false;
+    }
+    const TypeInfo& pointer = types.get(type);
+    return pointer.pointer_mutability == PointerMutability::const_ &&
+           types.same(pointer.pointee, types.builtin(BuiltinType::u8));
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
@@ -626,6 +635,38 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             report(module_.exprs[expr.cast_expr.value].range, "ptr_from_addr address must be an integer");
         }
         return record_expr_type(expr_id, target);
+    }
+    case syntax::ExprKind::str_data: {
+        const TypeHandle value = analyze_expr(expr.cast_expr);
+        if (!checked_.types.is_str(value)) {
+            report(expr.range, "str_data requires a str value");
+        }
+        return record_expr_type(
+            expr_id,
+            checked_.types.pointer(PointerMutability::const_, checked_.types.builtin(BuiltinType::u8))
+        );
+    }
+    case syntax::ExprKind::str_byte_len: {
+        const TypeHandle value = analyze_expr(expr.cast_expr);
+        if (!checked_.types.is_str(value)) {
+            report(expr.range, "str_byte_len requires a str value");
+        }
+        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
+    }
+    case syntax::ExprKind::str_from_bytes_unchecked: {
+        if (expr.args.size() != 2) {
+            report(expr.range, "str_from_bytes_unchecked requires data and length arguments");
+            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::str));
+        }
+        const TypeHandle data = analyze_expr(expr.args[0]);
+        const TypeHandle len = analyze_expr(expr.args[1], checked_.types.builtin(BuiltinType::usize));
+        if (!is_const_u8_pointer(checked_.types, data)) {
+            report(module_.exprs[expr.args[0].value].range, "str_from_bytes_unchecked data must be *const u8");
+        }
+        if (!checked_.types.is_integer(len)) {
+            report(module_.exprs[expr.args[1].value].range, "str_from_bytes_unchecked length must be an integer");
+        }
+        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::str));
     }
     case syntax::ExprKind::invalid:
         return record_expr_type(expr_id, invalid_type_handle);

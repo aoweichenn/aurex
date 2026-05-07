@@ -91,6 +91,9 @@ namespace {
         Entry {"align_of", TokenKind::kw_align_of},
         Entry {"ptr_addr", TokenKind::kw_ptr_addr},
         Entry {"ptr_from_addr", TokenKind::kw_ptr_from_addr},
+        Entry {"str_data", TokenKind::kw_str_data},
+        Entry {"str_byte_len", TokenKind::kw_str_byte_len},
+        Entry {"str_from_bytes_unchecked", TokenKind::kw_str_from_bytes_unchecked},
     });
 
     for (const Entry& entry : entries) {

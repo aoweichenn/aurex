@@ -111,6 +111,10 @@ if(BUILD_TESTING)
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_text
     )
     add_test(
+        NAME aurex_tests_sample_suite_std_str
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_str
+    )
+    add_test(
         NAME aurex_tests_std_collections_path_baseline
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.StdCollectionsPathSampleExposesM1ContainerBaseline
     )
@@ -137,6 +141,7 @@ if(BUILD_TESTING)
         aurex_tests_sample_suite_std_ffi
         aurex_tests_sample_suite_std_file
         aurex_tests_sample_suite_std_mem
+        aurex_tests_sample_suite_std_str
         aurex_tests_sample_suite_std_text
         PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"

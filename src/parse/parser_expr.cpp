@@ -757,6 +757,34 @@ syntax::ExprId Parser::parse_primary() {
         expr.cast_expr = value;
         return module_.push_expr(std::move(expr));
     }
+    if (match(TokenKind::kw_str_data) || match(TokenKind::kw_str_byte_len)) {
+        const syntax::Token& begin = previous();
+        const syntax::ExprKind kind = begin.kind == TokenKind::kw_str_data
+            ? syntax::ExprKind::str_data
+            : syntax::ExprKind::str_byte_len;
+        expect(TokenKind::l_paren, "expected '(' after str builtin");
+        const syntax::ExprId value = parse_expr();
+        const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after str builtin argument");
+        syntax::ExprNode expr;
+        expr.kind = kind;
+        expr.range = merge(begin.range, end.range);
+        expr.cast_expr = value;
+        return module_.push_expr(std::move(expr));
+    }
+    if (match(TokenKind::kw_str_from_bytes_unchecked)) {
+        const syntax::Token& begin = previous();
+        expect(TokenKind::l_paren, "expected '(' after str_from_bytes_unchecked");
+        const syntax::ExprId data = parse_expr();
+        expect(TokenKind::comma, "expected ',' after str_from_bytes_unchecked data");
+        const syntax::ExprId len = parse_expr();
+        const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after str_from_bytes_unchecked length");
+        syntax::ExprNode expr;
+        expr.kind = syntax::ExprKind::str_from_bytes_unchecked;
+        expr.range = merge(begin.range, end.range);
+        expr.args.push_back(data);
+        expr.args.push_back(len);
+        return module_.push_expr(std::move(expr));
+    }
 
     report_here("expected expression");
     return make_invalid_expr();

@@ -74,6 +74,7 @@ fn main() -> i32 {
 
 ```aurex
 import std.core.result as result;
+import std.core.str as strings;
 import std.core.string as string;
 import std.core.text as text;
 import std.core.vec as vec;
@@ -92,6 +93,12 @@ import std.fs.path as path;
 - 类型：`string::String`。
 - 新 API：`string::new`、`string::from_c`、`string::destroy`、`string::len`、`string::is_empty`、`string::reserve`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::as_mut_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。
 - 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
+
+`std.core.str`：
+
+- 类型：内建 borrowed UTF-8 文本切片 `str`。
+- API：`strings::byte_len`、`strings::is_empty`、`strings::as_bytes`、`strings::equals`、`strings::starts_with`、`strings::ends_with`、`strings::is_boundary`、`strings::slice_bytes_checked`、`strings::is_valid_utf8`、`strings::from_utf8`。
+- 约束：`strings::as_bytes` 只返回只读 `SpanU8`；构造 `str` 必须通过 UTF-8 validation 或已验证边界的切片。低层 `str_from_bytes_unchecked` 是编译器/标准库支撑点，不是普通业务 API。
 
 `std.fs.path`：
 

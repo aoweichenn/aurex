@@ -1,0 +1,135 @@
+module std.core.str;
+
+import std.core.result;
+import std.core.text;
+
+pub fn byte_len(text: str) -> usize {
+    return str_byte_len(text);
+}
+
+pub fn is_empty(text: str) -> bool {
+    return byte_len(text) == cast(usize, 0);
+}
+
+pub fn as_bytes(text: str) -> SpanU8 {
+    return SpanU8 { data: str_data(text), len: str_byte_len(text) };
+}
+
+pub fn equals(left: str, right: str) -> bool {
+    let left_bytes: SpanU8 = as_bytes(left);
+    let right_bytes: SpanU8 = as_bytes(right);
+    return bytes_equal(left_bytes, right_bytes);
+}
+
+pub fn starts_with(text: str, prefix: str) -> bool {
+    return bytes_starts_with(as_bytes(text), as_bytes(prefix));
+}
+
+pub fn ends_with(text: str, suffix: str) -> bool {
+    let text_bytes: SpanU8 = as_bytes(text);
+    let suffix_bytes: SpanU8 = as_bytes(suffix);
+    if suffix_bytes.len > text_bytes.len {
+        return false;
+    }
+    let begin: usize = text_bytes.len - suffix_bytes.len;
+    let tail: SpanU8 = SpanU8 {
+        data: ptr_from_addr(*const u8, ptr_addr(text_bytes.data) + begin),
+        len: suffix_bytes.len,
+    };
+    return bytes_equal(tail, suffix_bytes);
+}
+
+pub fn is_boundary(text: str, index: usize) -> bool {
+    let len: usize = byte_len(text);
+    if index > len {
+        return false;
+    }
+    if index == cast(usize, 0) || index == len {
+        return true;
+    }
+    let bytes: SpanU8 = as_bytes(text);
+    return (bytes.data[index] & cast(u8, 0xC0)) != cast(u8, 0x80);
+}
+
+pub fn slice_bytes_checked(text: str, begin: usize, end: usize) -> Result<str, i32> {
+    let len: usize = byte_len(text);
+    if begin > end || end > len {
+        return Result.err(1);
+    }
+    if !is_boundary(text, begin) || !is_boundary(text, end) {
+        return Result.err(2);
+    }
+    let data: *const u8 = ptr_from_addr(*const u8, ptr_addr(str_data(text)) + begin);
+    return Result.ok(str_from_bytes_unchecked(data, end - begin));
+}
+
+fn is_continuation(byte: u8) -> bool {
+    return (byte & cast(u8, 0xC0)) == cast(u8, 0x80);
+}
+
+pub fn is_valid_utf8(bytes: SpanU8) -> bool {
+    if bytes.len > cast(usize, 0) && bytes.data == null {
+        return false;
+    }
+
+    var index: usize = 0;
+    while index < bytes.len {
+        let first: u8 = bytes.data[index];
+        if first <= cast(u8, 0x7F) {
+            index = index + cast(usize, 1);
+            continue;
+        }
+
+        var width: usize = cast(usize, 0);
+        var value: u32 = 0;
+        var minimum: u32 = 0;
+        if (first & cast(u8, 0xE0)) == cast(u8, 0xC0) {
+            width = cast(usize, 2);
+            value = cast(u32, first & cast(u8, 0x1F));
+            minimum = 0x80;
+        } else if (first & cast(u8, 0xF0)) == cast(u8, 0xE0) {
+            width = cast(usize, 3);
+            value = cast(u32, first & cast(u8, 0x0F));
+            minimum = 0x800;
+        } else if (first & cast(u8, 0xF8)) == cast(u8, 0xF0) {
+            width = cast(usize, 4);
+            value = cast(u32, first & cast(u8, 0x07));
+            minimum = 0x10000;
+        } else {
+            return false;
+        }
+
+        if index + width > bytes.len {
+            return false;
+        }
+
+        var offset: usize = cast(usize, 1);
+        while offset < width {
+            let next: u8 = bytes.data[index + offset];
+            if !is_continuation(next) {
+                return false;
+            }
+            value = (value << 6) | cast(u32, next & cast(u8, 0x3F));
+            offset = offset + cast(usize, 1);
+        }
+
+        if value < minimum {
+            return false;
+        }
+        if value > 0x10FFFF {
+            return false;
+        }
+        if value >= 0xD800 && value <= 0xDFFF {
+            return false;
+        }
+        index = index + width;
+    }
+    return true;
+}
+
+pub fn from_utf8(bytes: SpanU8) -> Result<str, i32> {
+    if !is_valid_utf8(bytes) {
+        return Result.err(1);
+    }
+    return Result.ok(str_from_bytes_unchecked(bytes.data, bytes.len));
+}

@@ -34,7 +34,7 @@ using syntax::TokenKind;
 }
 
 [[nodiscard]] bool is_path_segment_token(const TokenKind kind) noexcept {
-    return kind == TokenKind::identifier || kind == TokenKind::kw_c;
+    return kind == TokenKind::identifier || kind == TokenKind::kw_c || kind == TokenKind::kw_str;
 }
 
 [[nodiscard]] syntax::PrimitiveTypeKind primitive_from_token(const TokenKind kind) noexcept {

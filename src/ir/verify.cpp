@@ -309,6 +309,15 @@ private:
         case ValueKind::align_of:
             verify_size_or_align(*value);
             break;
+        case ValueKind::str_data:
+            verify_str_data(*value);
+            break;
+        case ValueKind::str_byte_len:
+            verify_str_byte_len(*value);
+            break;
+        case ValueKind::str_from_bytes_unchecked:
+            verify_str_from_bytes_unchecked(*value);
+            break;
         case ValueKind::constant_ref:
             verify_constant_ref(*value);
             break;
@@ -632,6 +641,38 @@ private:
         }
         verify_type(value.target_type, op + " target");
         verify_storage_type(value.target_type, op + " target");
+    }
+
+    void verify_str_data(const Value& value) {
+        verify_type(value.type, "str_data result");
+        if (!is_const_u8_pointer(value.type)) {
+            fail("str_data result must be *const u8");
+        }
+        verify_value_type(value.object, module_.types.builtin(sema::BuiltinType::str), "str_data operand");
+    }
+
+    void verify_str_byte_len(const Value& value) {
+        verify_type(value.type, "str_byte_len result");
+        if (!module_.types.same(value.type, module_.types.builtin(sema::BuiltinType::usize))) {
+            fail("str_byte_len result must be usize");
+        }
+        verify_value_type(value.object, module_.types.builtin(sema::BuiltinType::str), "str_byte_len operand");
+    }
+
+    void verify_str_from_bytes_unchecked(const Value& value) {
+        verify_type(value.type, "str_from_bytes_unchecked result");
+        if (!module_.types.is_str(value.type)) {
+            fail("str_from_bytes_unchecked result must be str");
+        }
+        if (value.args.size() != 2) {
+            fail("str_from_bytes_unchecked requires data and length arguments");
+            return;
+        }
+        verify_value_id(value.args[0], "str_from_bytes_unchecked data");
+        if (const Value* data = get(value.args[0]); data != nullptr && !is_const_u8_pointer(data->type)) {
+            fail("str_from_bytes_unchecked data must be *const u8");
+        }
+        verify_value_type(value.args[1], module_.types.builtin(sema::BuiltinType::usize), "str_from_bytes_unchecked length");
     }
 
     void verify_constant_ref(const Value& value) {

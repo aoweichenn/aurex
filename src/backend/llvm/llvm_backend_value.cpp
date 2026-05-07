@@ -36,6 +36,9 @@ llvm::Value* LlvmEmitter::emit_value(const ValueId id) {
     case ValueKind::cast:
     case ValueKind::size_of:
     case ValueKind::align_of:
+    case ValueKind::str_data:
+    case ValueKind::str_byte_len:
+    case ValueKind::str_from_bytes_unchecked:
         return emit_runtime_value(value);
     }
     return llvm::UndefValue::get(llvm_type(value.type));
@@ -86,6 +89,18 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         return emit_size_of(value.target_type);
     case ValueKind::align_of:
         return emit_align_of(value.target_type);
+    case ValueKind::str_data:
+        return builder_.CreateExtractValue(get(value.object), {0}, "str.data");
+    case ValueKind::str_byte_len:
+        return builder_.CreateExtractValue(get(value.object), {1}, "str.len");
+    case ValueKind::str_from_bytes_unchecked: {
+        llvm::Value* result = llvm::UndefValue::get(llvm_type(value.type));
+        if (value.args.size() == 2) {
+            result = builder_.CreateInsertValue(result, get(value.args[0]), {0});
+            result = builder_.CreateInsertValue(result, get(value.args[1]), {1});
+        }
+        return result;
+    }
     }
     return llvm::UndefValue::get(llvm_type(value.type));
 }

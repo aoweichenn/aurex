@@ -84,6 +84,9 @@ enum class ExprKind {
     align_of,
     ptr_addr,
     ptr_from_addr,
+    str_data,
+    str_byte_len,
+    str_from_bytes_unchecked,
 };
 
 enum class UnaryOp {

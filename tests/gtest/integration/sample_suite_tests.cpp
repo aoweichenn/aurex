@@ -152,6 +152,34 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_text) {
     compile_and_run_std_positive_sample("std_text.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_str) {
+    const fs::path source = positive_sample("std", "std_str.ax");
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
+    expect_contains_all(checked, {
+        "fn byte_len -> usize @c_name=m0_std_core_str_byte_len",
+        "fn as_bytes -> std.core.text.Span<u8>",
+        "fn equals -> bool @c_name=m0_std_core_str_equals",
+        "fn from_utf8 -> std.core.result.Result<str, i32>",
+        "fn slice_bytes_checked -> std.core.result.Result<str, i32>",
+        "fn method std.core.result.Result<str, i32>.unwrap_or -> str",
+    });
+
+    const std::string ir = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::ir)
+    ).output;
+    expect_contains_all(ir, {
+        "record std.core.result.Result<str, i32>",
+        "str_data",
+        "str_byte_len",
+        "str_from_bytes_unchecked",
+        "fn from_utf8",
+    });
+
+    compile_and_run_std_positive_sample("std_str.ax");
+}
+
 TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline) {
     const fs::path source = positive_sample("std", "std_collections_path.ax");
 

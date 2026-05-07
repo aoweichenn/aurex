@@ -263,7 +263,7 @@ FFI 层应有单独类型：
 
 状态：已落地基线。
 
-- 普通字符串字面量解码后验证 UTF-8。
+- 已完成：普通字符串字面量解码后验证 UTF-8。
 - invalid escape 改为诊断，不再静默接受。
 - 新增 `\u{...}` Unicode scalar escape。
 - 明确普通 `str` 字面量不产生 trailing NUL。
@@ -279,7 +279,7 @@ FFI 层应有单独类型：
 
 ### Phase 2：`std.core.str` 基础 API
 
-新增 `std.core.str` 或同等模块：
+状态：已落地基线。
 
 - `byte_len`
 - `is_empty`
@@ -290,7 +290,14 @@ FFI 层应有单独类型：
 - `ends_with`
 - `equals`
 - `from_utf8`
-- `from_utf8_unchecked`，需明确 unsafe 约束或暂不暴露。
+
+落地文件：
+
+- `std/core/str.ax`：提供 `byte_len`、`is_empty`、`as_bytes`、`equals`、`starts_with`、`ends_with`、`is_boundary`、`slice_bytes_checked`、`is_valid_utf8`、`from_utf8`。
+- `src/parse/parser_expr.cpp` / `src/sema/sema_expr.cpp` / `src/ir/lower_ast_expr.cpp` / `src/backend/llvm/llvm_backend_value.cpp`：提供低层 `str_data`、`str_byte_len`、`str_from_bytes_unchecked` 编译器内建，支撑标准库实现。
+- `tests/samples/positive/std/std_str.ax` 和 `AurexIntegrationTest.SampleSuite_Std_std_str`：覆盖 checked surface、IR surface 和 native runtime。
+
+注意：`str_from_bytes_unchecked` 当前是为了在缺少 unsafe 语义前支撑标准库 checked API 的低层内建。普通代码应使用 `std.core.str.from_utf8` 或 `slice_bytes_checked`，不要直接构造可能违反 UTF-8 不变量的 `str`。
 
 ### Phase 3：重构 `String`
 
@@ -341,7 +348,7 @@ FFI 层应有单独类型：
 - `"a\0b"` 是合法 `str`，`byte_len()` 为 3，不能被 C API 截断。
 - 非 ASCII 文本如 `"ƒ"` 的 `byte_len()` 为 2，`scalar_count()` 为 1。
 - 已完成：invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
-- `slice_bytes_checked("ƒ", 0, 1)` 失败，`slice_bytes_checked("ƒ", 0, 2)` 成功。
+- 已完成：`slice_bytes_checked("ƒ", 0, 1)` 失败，`slice_bytes_checked("ƒ", 0, 2)` 成功。
 - `String.from_utf8` 接受合法 UTF-8，拒绝非法 bytes。
 - `CString.from_str("a\0b")` 拒绝内部 NUL。
 - 标准库文件/进程/path API 的公开层不再要求业务代码传 `c"..."`。

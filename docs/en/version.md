@@ -31,8 +31,9 @@ Included:
   pipes drained for stdout and stderr.
 - `std.fs.file::FileMetadata` metadata / mtime baseline through host-c `stat`
   support.
-- `std.fs.dir` directory source-discovery baseline through host-c
-  `opendir` / `readdir` / `stat` support for counting regular files by suffix.
+- `std.fs.dir` directory-create / source-discovery baseline through host-c
+  `mkdir`, `opendir` / `readdir` / `stat` support for counting regular files by
+  suffix, with single-level and recursive count entry points.
 - M1 axbuild target-graph validation / topological-build baseline, including
   dependency bounds, cycle / invalid-dependency status, and topological target
   build order.
@@ -88,10 +89,11 @@ Not included:
   matching coverage.
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
-- Grow M1 axbuild from source/stamp mtime, source-discovery, target-name lookup,
+- Grow M1 axbuild from source/stamp mtime, directory creation, single-level and
+  recursive source-discovery, target-name lookup,
   target-graph smoke checks, stdout/stderr capture, cwd/env, and structured
   graph diagnostics/messages/names/cycle paths into full directory entries,
-  recursive walking, dependency-value diagnostics, and structured output
+  recursive path lists / iterators, dependency-value diagnostics, and structured output
   reporting.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

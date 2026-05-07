@@ -132,6 +132,21 @@ bool aurex_std_v0_file_metadata(const uint8_t *path, AurexStdFileMetadata *outpu
     return true;
 }
 
+bool aurex_std_v0_directory_create(const uint8_t *path) {
+    if (path == NULL || path[0] == 0) {
+        return false;
+    }
+    if (mkdir((const char *)path, 0777) == 0) {
+        return true;
+    }
+    if (errno != EEXIST) {
+        return false;
+    }
+
+    struct stat info;
+    return stat((const char *)path, &info) == 0 && S_ISDIR(info.st_mode);
+}
+
 static bool aurex_std_host_c_has_suffix(const char *name, const char *suffix) {
     const size_t name_len = strlen(name);
     const size_t suffix_len = strlen(suffix);
@@ -176,6 +191,65 @@ static char *aurex_std_host_c_join_dir_entry(const char *dir_path, const char *e
 static bool aurex_std_host_c_is_regular_file(const char *path) {
     struct stat info;
     return stat(path, &info) == 0 && S_ISREG(info.st_mode);
+}
+
+static bool aurex_std_host_c_count_files_with_suffix_recursive_impl(
+    const char *path,
+    const char *suffix,
+    int32_t *count
+) {
+    DIR *directory = opendir(path);
+    if (directory == NULL) {
+        return false;
+    }
+
+    bool ok = true;
+    while (true) {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (entry == NULL) {
+            ok = errno == 0;
+            break;
+        }
+        if (aurex_std_host_c_is_dot_entry(entry->d_name)) {
+            continue;
+        }
+
+        char *entry_path = aurex_std_host_c_join_dir_entry(path, entry->d_name);
+        if (entry_path == NULL) {
+            ok = false;
+            break;
+        }
+
+        struct stat info;
+        if (lstat(entry_path, &info) != 0) {
+            free(entry_path);
+            ok = false;
+            break;
+        }
+
+        if (S_ISDIR(info.st_mode)) {
+            ok = aurex_std_host_c_count_files_with_suffix_recursive_impl(entry_path, suffix, count);
+            free(entry_path);
+            if (!ok) {
+                break;
+            }
+            continue;
+        }
+
+        if (S_ISREG(info.st_mode) && aurex_std_host_c_has_suffix(entry->d_name, suffix)) {
+            if (*count == INT32_MAX) {
+                free(entry_path);
+                ok = false;
+                break;
+            }
+            ++(*count);
+        }
+        free(entry_path);
+    }
+
+    const bool close_ok = closedir(directory) == 0;
+    return ok && close_ok;
 }
 
 bool aurex_std_v0_directory_count_files_with_suffix(
@@ -226,6 +300,23 @@ bool aurex_std_v0_directory_count_files_with_suffix(
 
     const bool close_ok = closedir(directory) == 0;
     if (!ok || !close_ok) {
+        return false;
+    }
+    *output = count;
+    return true;
+}
+
+bool aurex_std_v0_directory_count_files_with_suffix_recursive(
+    const uint8_t *path,
+    const uint8_t *suffix,
+    int32_t *output
+) {
+    if (path == NULL || suffix == NULL || output == NULL) {
+        return false;
+    }
+    *output = 0;
+    int32_t count = 0;
+    if (!aurex_std_host_c_count_files_with_suffix_recursive_impl((const char *)path, (const char *)suffix, &count)) {
         return false;
     }
     *output = count;

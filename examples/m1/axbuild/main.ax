@@ -789,9 +789,17 @@ fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
 }
 
 fn prepare_project_sources() -> result::Result<bool, i32> {
+    if !directory::create_directory(c"/tmp/aurex_m1_axbuild_recursive_sources") {
+        return Result.err(35);
+    }
+    if !directory::create_directory(c"/tmp/aurex_m1_axbuild_recursive_sources/nested") {
+        return Result.err(36);
+    }
+
     let core_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax", c"fn core { return }")?;
     let main_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax", c"fn main { return }")?;
-    return Result.ok(core_written > cast(usize, 0) && main_written > cast(usize, 0));
+    let nested_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax", c"fn generated { return }")?;
+    return Result.ok(core_written > cast(usize, 0) && main_written > cast(usize, 0) && nested_written > cast(usize, 0));
 }
 
 fn cleanup_project_sources() -> bool {
@@ -801,7 +809,16 @@ fn cleanup_project_sources() -> bool {
     let main_cleaned: bool =
         !file::file_exists(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
         file::remove_file(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax");
-    return core_cleaned && main_cleaned;
+    let nested_file_cleaned: bool =
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax");
+    let nested_dir_cleaned: bool =
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_recursive_sources/nested") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_recursive_sources/nested");
+    let root_dir_cleaned: bool =
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_recursive_sources") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_recursive_sources");
+    return core_cleaned && main_cleaned && nested_file_cleaned && nested_dir_cleaned && root_dir_cleaned;
 }
 
 fn project_build_order_matches(project: *const Project, app_id: usize) -> result::Result<bool, i32> {
@@ -994,6 +1011,12 @@ fn validate_cwd_env_capture() -> result::Result<bool, i32> {
     };
 }
 
+fn validate_recursive_source_discovery() -> result::Result<bool, i32> {
+    let count: i32 = directory::count_files_with_suffix_recursive(c"/tmp/aurex_m1_axbuild_recursive_sources", c".aurex_m1_source.ax")?;
+    let has_source: bool = directory::has_file_with_suffix_recursive(c"/tmp/aurex_m1_axbuild_recursive_sources", c".aurex_m1_source.ax")?;
+    return Result.ok(count == 1 && has_source);
+}
+
 fn run_build_tool() -> result::Result<i32, i32> {
     cleanup_project_sources();
     let prepared: bool = prepare_project_sources()?;
@@ -1001,6 +1024,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
     project.clean();
     let app_id: usize = configure_project(&project)?;
     let discovery_ok: bool = project_sources_match_directory(&project, c"/tmp", c".aurex_m1_source.ax")?;
+    let recursive_discovery_ok: bool = validate_recursive_source_discovery()?;
     let core_lookup_ok: bool = project_target_index_matches(&project, c"core", cast(usize, 0))?;
     let app_lookup_ok: bool = project_target_index_matches(&project, c"app", app_id)?;
     let graph_ok: bool = project.graph_status() == GraphStatus.ok;
@@ -1024,6 +1048,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
 
     if prepared &&
         discovery_ok &&
+        recursive_discovery_ok &&
         core_lookup_ok &&
         app_lookup_ok &&
         graph_ok &&

@@ -6,7 +6,9 @@ extern c {
     fn host_read_file(path: *const u8) -> HostFileBuffer @name("aurex_std_v0_read_file");
     fn host_free_file(buffer: HostFileBuffer) -> void @name("aurex_std_v0_free_file");
     fn host_file_metadata(path: *const u8, output: *mut HostFileMetadata) -> bool @name("aurex_std_v0_file_metadata");
+    fn host_directory_create(path: *const u8) -> bool @name("aurex_std_v0_directory_create");
     fn host_directory_count_files_with_suffix(path: *const u8, suffix: *const u8, output: *mut i32) -> bool @name("aurex_std_v0_directory_count_files_with_suffix");
+    fn host_directory_count_files_with_suffix_recursive(path: *const u8, suffix: *const u8, output: *mut i32) -> bool @name("aurex_std_v0_directory_count_files_with_suffix_recursive");
     fn host_write_text(path: *const u8, data: *const u8) -> HostWriteStatus @name("aurex_std_v0_write_text");
     fn host_output_open(path: *const u8) -> *mut OutputFile @name("aurex_std_v0_output_open");
     fn host_output_write_text(file: *mut OutputFile, text: *const u8) -> bool @name("aurex_std_v0_output_write_text");

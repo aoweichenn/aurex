@@ -15,7 +15,8 @@ must prove these programs can be written cleanly in Aurex.
 
 Latest Chinese progress report: [M1 progress report 2026-05-07](../zh/m1-progress-2026-05-07.md).
 It records the current subprocess / stdout/stderr-capture / cwd / env baseline, file metadata /
-mtime baseline, directory source-discovery baseline, target-graph validation /
+mtime baseline, directory-create / single-level source-discovery / recursive
+source-discovery baseline, target-graph validation /
 topological-build baseline, target-name lookup baseline, target-graph diagnostic
 / message / name / cycle-path / cycle-path-name baseline, test direct-process
 runner, M1 examples, integration-test coverage, and test-time baseline.
@@ -63,7 +64,8 @@ Current language slices:
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
   exists/is_file/is_dir/size/modified_time_ns baseline, and `std.fs.dir`
-  provides a source-discovery baseline for counting regular files by suffix.
+  provides directory creation plus single-level and recursive source-discovery
+  baselines for counting regular files by suffix.
 - Standard process support has started. `std.sys.process::Command` provides
   typed argv, `arg()`, `cwd()`, `env()`, `run()`, `run_capture()`, and
   `destroy()`, backed by host-c `fork` / `execvp` / `waitpid`, with a
@@ -77,8 +79,8 @@ Current language slices:
   covers source manager, diagnostics, lexer, token stream, parser subset, and
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
   typed dependencies/sources/includes/custom commands, subprocess stdout/stderr
-  capture, cwd/env, source/stamp mtime incremental checks, directory source-discovery
-  counts, target-name lookup, duplicate-target detection, target-graph
+  capture, cwd/env, source/stamp mtime incremental checks, directory creation,
+  single-level and recursive source-discovery counts, target-name lookup, duplicate-target detection, target-graph
   validation, topological build order, structured graph diagnostics/messages/
   names/cycle index paths/cycle name paths, build, clean, run, and test flows.
   Both are covered by checked/IR/native integration tests.
@@ -101,8 +103,8 @@ Current language slices:
   composable diagnostic model.
 - Resource management still needs a minimal move/noncopyable model and unified
   handling for files, processes, arenas, and other resources.
-- The standard library still needs broader `Vec<T>`, `Map<K, V>`, recursive
-  directory walking, file metadata, subprocess support, and OS features required by
+- The standard library still needs broader `Vec<T>`, `Map<K, V>`, full
+  directory entries, recursive path iterators, file metadata, subprocess support, and OS features required by
   incremental builds.
 - Aurex needs a compatibility class/object model for programmers coming from
   traditional OOP code: encapsulation, inheritance, and dynamic polymorphism.
@@ -135,11 +137,12 @@ covered by integration tests:
    subprocess, incremental checks, build, clean, run, and test. Build
    definitions should be typed Aurex APIs, not shell-string concatenation. A
    minimal runnable example, stdout/stderr-capture baseline, cwd/env baseline,
-   source/stamp mtime incremental checks, directory source-discovery counts, target-name lookup,
+   source/stamp mtime incremental checks, directory creation, single-level and
+   recursive source-discovery counts, target-name lookup,
    duplicate-target detection, target-graph validation, topological build
    order, and structured graph diagnostics/messages/names/cycle index paths/
    cycle name paths now exist; follow-up work should add full directory
-   entries, recursive walking, and richer user-facing reports with dependency
+   entries, recursive path lists / iterators, and richer user-facing reports with dependency
    values.
 
 ## M1 Priority
@@ -177,7 +180,7 @@ covered by integration tests:
 
 6. Establish resource management and OS engineering support  
    The `defer` MVP has landed. Follow-up work should add minimal noncopyable
-   resource rules, directory walking, file metadata, subprocesses, cwd/env
+   resource rules, full directory entries, recursive path iterators, file metadata, subprocesses, cwd/env
    handling, temporary files, and path normalization. Without this slice, the
    build tool remains a toy.
 
@@ -247,9 +250,10 @@ manual status helpers.
    scope exits, including normal exits, `return`, and `break` / `continue`
    lowering. A subprocess / stdout/stderr-capture / cwd / env baseline is now
    available through `std.sys.process::Command` and host-c support, and a file metadata / mtime
-   baseline is available through `std.fs.file::FileMetadata`. A directory
-   source-discovery count baseline is available through `std.fs.dir`. Next, add
-   noncopyable resource rules, full directory entries, recursive walking,
+   baseline is available through `std.fs.file::FileMetadata`. Directory-create
+   and source-discovery count baselines are available through `std.fs.dir`,
+   including single-level and recursive suffix counts. Next, add
+   noncopyable resource rules, full directory entries, recursive path iterators,
    stdin/stdout/stderr pipes, and temporary-directory support so files, processes,
    arenas, and temporary directories compose safely.
 

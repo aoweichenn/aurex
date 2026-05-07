@@ -1,0 +1,6 @@
+module signed_division_overflow;
+
+fn main() -> i32 {
+    let value: i32 = -2147483648 / -1;
+    return value;
+}

@@ -1,0 +1,34 @@
+module cast_bool_nonzero;
+
+const CONST_FROM_INT: bool = cast(bool, 2);
+const CONST_FROM_ZERO: bool = cast(bool, 0);
+
+fn main() -> i32 {
+    let runtime_from_int: bool = cast(bool, 2);
+    let runtime_from_negative: bool = cast(bool, -1);
+    let runtime_from_zero: bool = cast(bool, 0);
+    let runtime_from_float: bool = cast(bool, cast(f64, 2));
+    let runtime_from_float_zero: bool = cast(bool, cast(f64, 0));
+    if !CONST_FROM_INT {
+        return 1;
+    }
+    if CONST_FROM_ZERO {
+        return 2;
+    }
+    if !runtime_from_int {
+        return 3;
+    }
+    if !runtime_from_negative {
+        return 4;
+    }
+    if runtime_from_zero {
+        return 5;
+    }
+    if !runtime_from_float {
+        return 6;
+    }
+    if runtime_from_float_zero {
+        return 7;
+    }
+    return 0;
+}

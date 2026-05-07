@@ -1,0 +1,13 @@
+module float_nan_comparison;
+
+fn main() -> i32 {
+    let zero: f64 = cast(f64, 0);
+    let nan: f64 = zero / zero;
+    if nan == nan {
+        return 1;
+    }
+    if !(nan != nan) {
+        return 2;
+    }
+    return 0;
+}

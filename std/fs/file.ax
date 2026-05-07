@@ -152,14 +152,9 @@ pub fn read_bytes(path: *const u8) -> Result<FileBytes, i32> {
 
 pub fn read_text(path: *const u8) -> Result<String, i32> {
     var bytes: FileBytes = read_bytes(path)?;
-    var text: String = String.new();
-    if !text.append_span(bytes.as_span()) {
-        bytes.destroy();
-        text.destroy();
-        return Result.err(1);
-    }
+    let text_result: Result<String, i32> = String.from_utf8(bytes.as_span());
     bytes.destroy();
-    return Result.ok(text);
+    return text_result;
 }
 
 pub fn write_bytes(path: *const u8, bytes: SpanU8) -> Result<usize, i32> {

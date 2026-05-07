@@ -1,8 +1,8 @@
 # Aurex 字符串基础类型设计草案
 
-版本：0.1.3 设计草案  
-日期：2026-05-08  
-状态：设计冻结前草案；Phase 1 字面量诊断基线已在 2026-05-08 落地。
+版本：0.1.4 设计草案
+日期：2026-05-08
+状态：设计冻结前草案；Phase 1、Phase 2 已落地，Phase 3 `String` UTF-8 surface 已启动。
 
 本文目标是把 Aurex 的字符串基础类型设计清楚，再继续改标准库和 M1 样例。这里的“基础类型”指和 `int`、`usize`、`bool` 同一层级的语言内建类型，而不是 C 的 `char*` 包装，也不是某个需要 allocator 的拥有型容器。
 
@@ -41,7 +41,7 @@ builtin str = {
 - 语义分析中普通字符串字面量类型是 `str`，`c"..."` 类型是 `*const u8`。
 - LLVM 后端把 `str` 降低为 `{ ptr, usize }`，普通字符串字面量降低为全局字节数据加长度。
 - 测试已经锁住 `size_of(str) == 16`、`align_of(str) == 8` 这一 64-bit ABI 事实。
-- `std.core.string.String` 目前是 `VecU8` 包装，维护尾随 `\0`，提供 `from_c`、`append_c`、`c_str`，并且是字节级 `push/insert/remove/truncate`。
+- `std.core.string.String` 仍以 `VecU8` 存储并维护尾随 `\0` 作为兼容层，但已经新增 `from_str`、`from_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`byte_len`、`equals(str)`、`starts_with(str)`、`ends_with(str)` 等 UTF-8/`str` surface；旧字节级 `push/insert/remove/truncate/append_span/from_c` 已开始收口到 UTF-8 边界检查。
 - `std.core.text` 目前主要是 `SpanU8`、ASCII helper、`c_strlen`、`strcmp` 这类 C/bytes 工具。
 - `std.fs.path`、`std.fs.file`、`std.fs.dir` 和 M1 样例仍大量使用 `*const u8` / `c"..."`。
 
@@ -301,11 +301,14 @@ FFI 层应有单独类型：
 
 ### Phase 3：重构 `String`
 
-- `String` 改为拥有 UTF-8，不再公开“任意 byte string”语义。
-- 添加 `from_str`、`from_utf8`、`as_str`、`append(str)`。
-- 旧 `from_c` 改名或包装为 `from_c_utf8`。
-- 字节级 mutation 迁到 `Bytes` 或标注为兼容层。
-- 更新 `std_collections_path.ax` 等测试，确保新 API 覆盖正常文本路径。
+状态：已落地第一批兼容重构。
+
+- 已完成：`String` 新增 `from_str`、`from_utf8`、`from_c_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`byte_len`。
+- 已完成：新增 `equals(str)`、`starts_with(str)`、`ends_with(str)`，让拥有型字符串可以直接对接 borrowed `str` API。
+- 已完成：旧 `from_c` 改为 `from_c_utf8` 包装，`read_text` 改为通过 `String.from_utf8` 验证文件内容。
+- 已完成：旧 `push(u8)` 仅接受 ASCII byte，`insert(index, u8)` 要求 UTF-8 边界和 ASCII byte，`remove/pop/truncate` 避免切断多字节 scalar；`append_span` / `append_c` 现在要求输入是合法 UTF-8。
+- 已完成：新增 `tests/samples/positive/std/std_string.ax` 和 `SampleSuite_Std_std_string`，覆盖 `String.from_str`、`from_utf8`、`as_str`、checked view、invalid UTF-8 拒绝、旧 byte API 的 UTF-8 边界保护和 C 兼容入口。
+- 未完成：`as_mut_span` 仍然是兼容风险点，后续应迁到 `Bytes` 或 unsafe/受控 API；真正的 `Path` 也还没有从 `String` 中拆出平台 bytes 语义。
 
 ### Phase 4：隔离 C FFI
 

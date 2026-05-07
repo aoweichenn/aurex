@@ -17,17 +17,17 @@
 - `Vec<T>`：可增长连续存储容器。
 - `Span<T>`：只读连续视图。
 - `MutSpan<T>`：可写连续视图。
-- `String`：拥有的 UTF-8/字节字符串。
+- `String`：拥有的 UTF-8 字符串；原始 bytes 后续应收敛到 `Vec<u8>` / `Bytes`。
 - `Path`：拥有的文件路径值。
 - `Option<T>`、`Result<T, E>`：基础代数数据类型。
 
 函数和方法使用 `snake_case`：
 
-- 构造：`new`、`with_capacity`、`from_c`、`from_span`。
-- 容量和长度：`len`、`capacity`、`is_empty`、`reserve`、`clear`。
-- 变更：`push`、`extend`、`insert`、`remove`、`swap_remove`、`pop`、`truncate`、`append_span`、`append_c`。
+- 构造：`new`、`with_capacity`、`from_str`、`from_utf8`、`from_c_utf8`、`from_c`、`from_span`。
+- 容量和长度：`len`、`byte_len`、`capacity`、`is_empty`、`reserve`、`clear`。
+- 变更：`push`、`extend`、`insert`、`remove`、`swap_remove`、`pop`、`truncate`、`append`、`append_span`、`append_c`。
 - 随机访问：`get`、`set`、`first`、`last`。
-- 视图：`as_span`、`as_mut_span`、`as_c`、`c_str`。
+- 视图：`as_str`、`as_str_checked`、`as_bytes`、`as_span`、`as_mut_span`、`as_c`、`c_str`。
 - 查询：`bytes_equal`、`starts_with`、`file_name`。
 
 避免把类型名重复编码进函数名。新代码应写 `vec::push(&items, value)`，而不是继续扩展 `vec_u8_push` 这类前缀函数。
@@ -91,7 +91,8 @@ import std.fs.path as path;
 `std.core.string`：
 
 - 类型：`string::String`。
-- 新 API：`string::new`、`string::from_c`、`string::destroy`、`string::len`、`string::is_empty`、`string::reserve`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::as_mut_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。
+- 新 API：`string::new`、`string::from_str`、`string::from_utf8`、`string::from_c_utf8`、`string::destroy`、`string::len`、`string::byte_len`、`string::is_empty`、`string::reserve`、`string::append`、`string::as_str`、`string::as_str_checked`、`string::as_bytes`、`string::is_valid_utf8`、`string::equals`、`string::starts_with`、`string::ends_with`。
+- 兼容/过渡 API：`string::from_c`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::as_mut_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。这些 API 当前会尽量维护 UTF-8 不变量；`as_mut_span` 仍是后续迁到 `Bytes` 或 unsafe 边界的风险点。
 - 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
 
 `std.core.str`：

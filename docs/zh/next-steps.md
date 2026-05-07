@@ -8,7 +8,7 @@
 
 本阶段最新进度见：[M1 进度报告 2026-05-07](m1-progress-2026-05-07.md)。该报告记录了当前已落地的 subprocess / stdout/stderr capture / cwd / env baseline、file metadata / mtime baseline、directory create / directory entries / recursive directory entries / single-level source discovery / recursive source discovery baseline、Map / CStringUsizeMap baseline、target graph validation / topological build baseline、target name lookup cache baseline、target graph diagnostic/message/name/cycle-path/cycle-path-name baseline、测试 direct process runner、M1 frontend 样例、M1 typed build-tool 样例、集成测试覆盖和测试耗时基线。
 
-基础字符串类型设计先行见：[字符串基础类型设计草案](string-primitive-design.md)。当前已落地 Phase 1 字面量诊断基线和 Phase 2 `std.core.str` 基础 API：普通字符串字面量验证 UTF-8、非法 escape 变成 lexer 诊断、支持 `\u{...}` Unicode scalar escape、拒绝 `c"..."` 内部 NUL，并提供 `byte_len`、`as_bytes`、`is_boundary`、`slice_bytes_checked`、`from_utf8` 等 borrowed `str` API。后续 `String` / `Path` / FFI / M1 样例继续推进时，应以该文档里的 `str` = 借用 UTF-8 文本切片、`String` = 拥有 UTF-8 buffer、`Bytes` / `Span<u8>` = 原始字节、`CStr` / `CString` = C FFI 边界这四层分工为准。
+基础字符串类型设计先行见：[字符串基础类型设计草案](string-primitive-design.md)。当前已落地 Phase 1 字面量诊断基线、Phase 2 `std.core.str` 基础 API 和 Phase 3 `String` UTF-8 surface 第一批：普通字符串字面量验证 UTF-8、非法 escape 变成 lexer 诊断、支持 `\u{...}` Unicode scalar escape、拒绝 `c"..."` 内部 NUL，提供 `byte_len`、`as_bytes`、`is_boundary`、`slice_bytes_checked`、`from_utf8` 等 borrowed `str` API，并让 `std.core.string.String` 支持 `from_str`、`from_utf8`、`as_str`、`append(str)`、checked UTF-8 construction 和旧 byte API 的边界保护。后续 `Path` / FFI / M1 样例继续推进时，应以该文档里的 `str` = 借用 UTF-8 文本切片、`String` = 拥有 UTF-8 buffer、`Bytes` / `Span<u8>` = 原始字节、`CStr` / `CString` = C FFI 边界这四层分工为准。
 
 ## 当前已具备能力
 
@@ -35,7 +35,7 @@ Stage0 主链路：
 - 作用域级 `defer` 语句，按反序在正常离开、`return`、`break` / `continue` 路径执行清理调用。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 `value.method()`、公开字段 `value.field`、`Type.function()` 风格 associated call、`impl<T> Type<T>` 泛型实例方法，以及 `fn method<U>` 方法级泛型参数；跨模块 private field / private method 访问已有稳定诊断。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流；`Option<T>` / `Result<T, E>` 已有基础 method API，包含使用方法级泛型的 `Option<T>.ok_or<E>`。
-- 标准库容器/文本/路径基线已启动，包含 borrowed UTF-8 `str` 基础 API、泛型 `Span<T>` / `MutSpan<T>`、泛型 `Vec<T>` 的容量、追加、插入/删除、随机访问和泛型 method API、Vec-backed 泛型 `Map<K, V>`、borrowed C string -> usize 的 `CStringUsizeMap`、拥有型 `String` 的字节级编辑 API，以及拥有型 `Path` 的查询与 join API。
+- 标准库容器/文本/路径基线已启动，包含 borrowed UTF-8 `str` 基础 API、拥有型 UTF-8 `String` 的 `from_str/from_utf8/as_str/append(str)` surface、泛型 `Span<T>` / `MutSpan<T>`、泛型 `Vec<T>` 的容量、追加、插入/删除、随机访问和泛型 method API、Vec-backed 泛型 `Map<K, V>`、borrowed C string -> usize 的 `CStringUsizeMap`、`String` 兼容 byte API 的 UTF-8 边界保护，以及拥有型 `Path` 的查询与 join API。
 - 标准库文件/host 文件读写已迁移到 `Result` 风格的拥有型 buffer API，旧的 `BufferU8` 与手写文件 result 结构已从 in-tree 用法移除；`std.fs.file::FileMetadata` 已提供 exists/is_file/is_dir/size/modified_time_ns baseline，`std.fs.dir` 已提供目录创建、拥有型单层/递归目录项读取，以及按后缀统计普通文件的单层/递归 source discovery baseline。
 - 标准库进程能力已启动，`std.sys.process::Command` 提供 typed argv、`arg()`、`cwd()`、`env()`、`run()`、`run_capture()` 和 `destroy()`，底层通过 host-c support 的 `fork` / `execvp` / `waitpid` 运行子进程，并已有 stdout/stderr capture、cwd 和 env baseline；当前还没有 stdin/stdout/stderr pipe 和 timeout API。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
@@ -107,7 +107,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    已完成。方法基础上已经有标准错误传播的 `?` 切片，可用于 `Result` 和 `Option` 的早返回；`Option<T>` / `Result<T, E>` 也有 `is_some`、`is_ok`、`unwrap_or`、`ok_or<E>` 等基础方法。下一步继续扩展标准库 API，让 `File.read_all(path)?`、`Parser.next()?` 这类代码更自然。
 
 3. `Span` / `Vec` / `Map` / `String` / `Path`
-   已启动。当前已有 `Span<T>` / `MutSpan<T>`、`Vec<T>` 结构、容量、追加、插入/删除、随机访问、`Vec<T>` 泛型 method API、Vec-backed 泛型 `Map<K, V>`、borrowed C string -> usize 的 `CStringUsizeMap`、拥有型 `String` 的追加/插入/删除/截断/清空和 mutable span API，以及拥有型 `Path` 的绝对路径判断、parent、file name、file stem、extension、span/c-string join 和 with-extension，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。旧 `BufferU8` 已迁到 `VecU8`，`std.fs.file` / `std.sys.host` 的文件读写入口也已改为 `Result<FileBytes, i32>`、`Result<usize, i32>` 等 M1 风格 API；`examples/m1/axbuild` 已用 `CStringUsizeMap` 维护 target name -> id lookup cache。下一步继续扩展到 token buffer、source list、owned string-key map、hash/bucketed map 和更通用的 path/build graph 场景。
+   已启动。当前已有 `Span<T>` / `MutSpan<T>`、`Vec<T>` 结构、容量、追加、插入/删除、随机访问、`Vec<T>` 泛型 method API、Vec-backed 泛型 `Map<K, V>`、borrowed C string -> usize 的 `CStringUsizeMap`、borrowed `str` 基础 API、拥有型 UTF-8 `String` 的 `from_str/from_utf8/as_str/append(str)` surface、`String` 兼容 byte API 的 UTF-8 边界保护，以及拥有型 `Path` 的绝对路径判断、parent、file name、file stem、extension、span/c-string join 和 with-extension，并用 std 集成样例覆盖 method API、`Result` / `Option` 和 `?` 组合。旧 `BufferU8` 已迁到 `VecU8`，`std.fs.file::read_text` 现在通过 `String.from_utf8` 验证文件内容，`std.fs.file` / `std.sys.host` 的文件读写入口也已改为 `Result<FileBytes, i32>`、`Result<usize, i32>` 等 M1 风格 API；`examples/m1/axbuild` 已用 `CStringUsizeMap` 维护 target name -> id lookup cache。下一步继续扩展到 token buffer、source list、owned string-key map、hash/bucketed map、更通用的 path/build graph 场景，并把 `Path` 从普通 `String` 语义中拆出来。
 
 4. generic constraints / trait / `where`
    generic function、generic impl method 和 method-specific generic 参数已落地。下一步补最小 trait/interface 或 capability predicate，再推进约束、method-like resolution 和单态化缓存。完成后补 typed graph 和 map-like examples。

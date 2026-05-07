@@ -26,8 +26,9 @@ Included:
   `extern c` variadics, and scope-level `defer`.
 - M1 acceptance-example baseline, including `examples/m1/frontend` and
   `examples/m1/axbuild`.
-- `std.sys.process::Command` subprocess / stdout-capture baseline through
-  host-c `fork` / `execvp` / `waitpid` support.
+- `std.sys.process::Command` subprocess / stdout/stderr-capture baseline
+  through host-c `fork` / `execvp` / `waitpid` support, with separate pipes
+  drained for stdout and stderr.
 - `std.fs.file::FileMetadata` metadata / mtime baseline through host-c `stat`
   support.
 - `std.fs.dir` directory source-discovery baseline through host-c
@@ -52,7 +53,7 @@ Not included:
 - Complete cross-block SSA/mem2reg and production optimizer.
 - Complete M1 self-hosting frontend.
 - Complete M1 typed build tool.
-- Complete OS/process/cwd/env/stderr-capture/pipe/timeout standard library.
+- Complete OS/process/cwd/env/pipe/timeout standard library.
 
 ## Compatibility Strategy
 
@@ -88,8 +89,8 @@ Not included:
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
 - Grow M1 axbuild from source/stamp mtime, source-discovery, target-name lookup,
-  target-graph smoke checks, and structured graph diagnostics/messages/names/
-  cycle paths into full directory entries, recursive walking, cwd/env, stderr
-  capture, dependency-value diagnostics, and structured output reporting.
+  target-graph smoke checks, stdout/stderr capture, and structured graph
+  diagnostics/messages/names/cycle paths into full directory entries, recursive
+  walking, cwd/env, dependency-value diagnostics, and structured output reporting.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

@@ -40,4 +40,6 @@ struct HostProcessOutput {
     status: i32;
     stdout_data: *mut u8;
     stdout_len: i32;
+    stderr_data: *mut u8;
+    stderr_len: i32;
 }

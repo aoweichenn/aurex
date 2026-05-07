@@ -2,6 +2,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -32,6 +33,8 @@ typedef struct AurexStdProcessOutput {
     int32_t status;
     uint8_t *stdout_data;
     int32_t stdout_len;
+    uint8_t *stderr_data;
+    int32_t stderr_len;
 } AurexStdProcessOutput;
 
 typedef struct AurexStdFileMetadata {
@@ -359,7 +362,7 @@ int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, i
     return status;
 }
 
-static bool aurex_std_host_c_append_stdout(
+static bool aurex_std_host_c_append_capture(
     uint8_t **data,
     size_t *len,
     size_t *capacity,
@@ -397,12 +400,27 @@ static bool aurex_std_host_c_append_stdout(
     return true;
 }
 
-static AurexStdProcessOutput aurex_std_host_c_process_output(int32_t status, uint8_t *stdout_data, int32_t stdout_len) {
+static AurexStdProcessOutput aurex_std_host_c_process_output(
+    int32_t status,
+    uint8_t *stdout_data,
+    int32_t stdout_len,
+    uint8_t *stderr_data,
+    int32_t stderr_len
+) {
     AurexStdProcessOutput result;
     result.status = status;
     result.stdout_data = stdout_data;
     result.stdout_len = stdout_len;
+    result.stderr_data = stderr_data;
+    result.stderr_len = stderr_len;
     return result;
+}
+
+static void aurex_std_host_c_close_fd(int *fd) {
+    if (*fd >= 0) {
+        close(*fd);
+        *fd = -1;
+    }
 }
 
 bool aurex_std_v0_run_process_capture(
@@ -414,9 +432,9 @@ bool aurex_std_v0_run_process_capture(
     if (output == NULL) {
         return false;
     }
-    *output = aurex_std_host_c_process_output(126, NULL, 0);
+    *output = aurex_std_host_c_process_output(126, NULL, 0, NULL, 0);
     if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
-        *output = aurex_std_host_c_process_output(127, NULL, 0);
+        *output = aurex_std_host_c_process_output(127, NULL, 0, NULL, 0);
         return true;
     }
 
@@ -430,59 +448,114 @@ bool aurex_std_v0_run_process_capture(
         free(argv);
         return true;
     }
-
-    const pid_t child = fork();
-    if (child < 0) {
+    int stderr_pipe[2];
+    if (pipe(stderr_pipe) < 0) {
         close(stdout_pipe[0]);
         close(stdout_pipe[1]);
         free(argv);
         return true;
     }
 
+    const pid_t child = fork();
+    if (child < 0) {
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        close(stderr_pipe[0]);
+        close(stderr_pipe[1]);
+        free(argv);
+        return true;
+    }
+
     if (child == 0) {
         close(stdout_pipe[0]);
+        close(stderr_pipe[0]);
         if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
             _exit(126);
         }
+        if (dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
+            _exit(126);
+        }
         close(stdout_pipe[1]);
+        close(stderr_pipe[1]);
         execvp(argv[0], argv);
         _exit(errno == ENOENT ? 127 : 126);
     }
 
     close(stdout_pipe[1]);
-    uint8_t *data = NULL;
-    size_t len = 0;
-    size_t capacity = 0;
+    close(stderr_pipe[1]);
+    int stdout_fd = stdout_pipe[0];
+    int stderr_fd = stderr_pipe[0];
+    uint8_t *stdout_data = NULL;
+    size_t stdout_len = 0;
+    size_t stdout_capacity = 0;
+    uint8_t *stderr_data = NULL;
+    size_t stderr_len = 0;
+    size_t stderr_capacity = 0;
     uint8_t buffer[4096];
     bool capture_ok = true;
-    while (true) {
-        const ssize_t count = read(stdout_pipe[0], buffer, sizeof(buffer));
-        if (count > 0) {
-            if (!aurex_std_host_c_append_stdout(&data, &len, &capacity, buffer, (size_t)count)) {
-                capture_ok = false;
-                break;
+    int active = 2;
+    while (active > 0) {
+        struct pollfd fds[2];
+        fds[0].fd = stdout_fd;
+        fds[0].events = stdout_fd >= 0 ? POLLIN : 0;
+        fds[0].revents = 0;
+        fds[1].fd = stderr_fd;
+        fds[1].events = stderr_fd >= 0 ? POLLIN : 0;
+        fds[1].revents = 0;
+
+        const int ready = poll(fds, 2, -1);
+        if (ready < 0) {
+            if (errno == EINTR) {
+                continue;
             }
-            continue;
-        }
-        if (count == 0) {
+            capture_ok = false;
             break;
         }
-        if (errno == EINTR) {
-            continue;
+
+        for (int i = 0; i < 2; ++i) {
+            if (fds[i].fd < 0 || fds[i].revents == 0) {
+                continue;
+            }
+            uint8_t **data = i == 0 ? &stdout_data : &stderr_data;
+            size_t *len = i == 0 ? &stdout_len : &stderr_len;
+            size_t *capacity = i == 0 ? &stdout_capacity : &stderr_capacity;
+            int *fd = i == 0 ? &stdout_fd : &stderr_fd;
+
+            const ssize_t count = read(*fd, buffer, sizeof(buffer));
+            if (count > 0) {
+                if (!aurex_std_host_c_append_capture(data, len, capacity, buffer, (size_t)count)) {
+                    capture_ok = false;
+                    break;
+                }
+                continue;
+            }
+            if (count == 0) {
+                aurex_std_host_c_close_fd(fd);
+                --active;
+                continue;
+            }
+            if (errno == EINTR) {
+                continue;
+            }
+            capture_ok = false;
+            break;
         }
-        capture_ok = false;
-        break;
+        if (!capture_ok) {
+            break;
+        }
     }
-    close(stdout_pipe[0]);
+    aurex_std_host_c_close_fd(&stdout_fd);
+    aurex_std_host_c_close_fd(&stderr_fd);
 
     const int32_t status = aurex_std_host_c_wait_for_child(child);
     free(argv);
-    if (!capture_ok || len > (size_t)INT32_MAX) {
-        free(data);
+    if (!capture_ok || stdout_len > (size_t)INT32_MAX || stderr_len > (size_t)INT32_MAX) {
+        free(stdout_data);
+        free(stderr_data);
         return true;
     }
 
-    *output = aurex_std_host_c_process_output(status, data, (int32_t)len);
+    *output = aurex_std_host_c_process_output(status, stdout_data, (int32_t)stdout_len, stderr_data, (int32_t)stderr_len);
     return true;
 }
 

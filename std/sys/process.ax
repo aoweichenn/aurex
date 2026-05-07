@@ -18,6 +18,8 @@ pub struct ProcessOutput {
     priv status: i32;
     priv stdout_data: *mut u8;
     priv stdout_len: usize;
+    priv stderr_data: *mut u8;
+    priv stderr_len: usize;
 }
 
 pub fn process_output_exit_status(output: *const ProcessOutput) -> i32 {
@@ -38,13 +40,32 @@ pub fn process_output_stdout_c_data(output: *const ProcessOutput) -> *const u8 {
     return ptr_cast(*const u8, output.stdout_data);
 }
 
+pub fn process_output_stderr(output: *const ProcessOutput) -> text::SpanU8 {
+    return text::SpanU8 {
+        data: ptr_cast(*const u8, output.stderr_data),
+        len: output.stderr_len,
+    };
+}
+
+pub fn process_output_stderr_c_data(output: *const ProcessOutput) -> *const u8 {
+    if output.stderr_data == null {
+        return c"";
+    }
+    return ptr_cast(*const u8, output.stderr_data);
+}
+
 pub fn process_output_destroy(output: *mut ProcessOutput) -> void {
     if output.stdout_data != null {
         host_free_process_output_data(output.stdout_data);
     }
+    if output.stderr_data != null {
+        host_free_process_output_data(output.stderr_data);
+    }
     output.status = 0;
     output.stdout_data = null;
     output.stdout_len = cast(usize, 0);
+    output.stderr_data = null;
+    output.stderr_len = cast(usize, 0);
 }
 
 pub fn command(program: *const u8) -> Command {
@@ -86,6 +107,8 @@ pub fn command_run_capture(command_value: *mut Command) -> Result<ProcessOutput,
         status: 0,
         stdout_data: null,
         stdout_len: 0,
+        stderr_data: null,
+        stderr_len: 0,
     };
     if !host_run_process_capture(
         command_value.program,
@@ -95,14 +118,17 @@ pub fn command_run_capture(command_value: *mut Command) -> Result<ProcessOutput,
     ) {
         return Result.err(1);
     }
-    if host_output.stdout_len < 0 {
+    if host_output.stdout_len < 0 || host_output.stderr_len < 0 {
         host_free_process_output_data(host_output.stdout_data);
+        host_free_process_output_data(host_output.stderr_data);
         return Result.err(1);
     }
     return Result.ok(ProcessOutput {
         status: host_output.status,
         stdout_data: host_output.stdout_data,
         stdout_len: cast(usize, host_output.stdout_len),
+        stderr_data: host_output.stderr_data,
+        stderr_len: cast(usize, host_output.stderr_len),
     });
 }
 
@@ -117,6 +143,14 @@ impl ProcessOutput {
 
     pub fn stdout_c_data(self: *const ProcessOutput) -> *const u8 {
         return process_output_stdout_c_data(self);
+    }
+
+    pub fn stderr(self: *const ProcessOutput) -> text::SpanU8 {
+        return process_output_stderr(self);
+    }
+
+    pub fn stderr_c_data(self: *const ProcessOutput) -> *const u8 {
+        return process_output_stderr_c_data(self);
     }
 
     pub fn destroy(self: *mut ProcessOutput) -> void {

@@ -14,7 +14,7 @@ CMake. A full replacement of the C++ Stage0 compiler can happen later, but M1
 must prove these programs can be written cleanly in Aurex.
 
 Latest Chinese progress report: [M1 progress report 2026-05-07](../zh/m1-progress-2026-05-07.md).
-It records the current subprocess / stdout-capture baseline, file metadata /
+It records the current subprocess / stdout/stderr-capture baseline, file metadata /
 mtime baseline, directory source-discovery baseline, target-graph validation /
 topological-build baseline, target-name lookup baseline, target-graph diagnostic
 / message / name / cycle-path / cycle-path-name baseline, test direct-process
@@ -66,9 +66,8 @@ Current language slices:
   provides a source-discovery baseline for counting regular files by suffix.
 - Standard process support has started. `std.sys.process::Command` provides
   typed argv, `arg()`, `run()`, `run_capture()`, and `destroy()`, backed by
-  host-c `fork` / `execvp` / `waitpid`, with a stdout-capture baseline.
-  cwd/env/stderr capture, stdin/stdout/stderr pipes, and timeout APIs are still
-  missing.
+  host-c `fork` / `execvp` / `waitpid`, with a stdout/stderr-capture baseline.
+  cwd/env, stdin/stdout/stderr pipes, and timeout APIs are still missing.
 - `pub` / `priv` visibility keywords, cross-module private item filtering, and
   private field access checks.
 - Examples now include system-level CLI, file IO, memory/arena, std-module,
@@ -76,7 +75,7 @@ Current language slices:
 - M1 acceptance skeletons are now in the active tree: `examples/m1/frontend`
   covers source manager, diagnostics, lexer, token stream, parser subset, and
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
-  typed dependencies/sources/includes/custom commands, subprocess stdout
+  typed dependencies/sources/includes/custom commands, subprocess stdout/stderr
   capture, source/stamp mtime incremental checks, directory source-discovery
   counts, target-name lookup, duplicate-target detection, target-graph
   validation, topological build order, structured graph diagnostics/messages/
@@ -134,13 +133,13 @@ covered by integration tests:
    executable, source list, include path, dependency, custom command,
    subprocess, incremental checks, build, clean, run, and test. Build
    definitions should be typed Aurex APIs, not shell-string concatenation. A
-   minimal runnable example, stdout-capture baseline, source/stamp mtime
+   minimal runnable example, stdout/stderr-capture baseline, source/stamp mtime
    incremental checks, directory source-discovery counts, target-name lookup,
    duplicate-target detection, target-graph validation, topological build
    order, and structured graph diagnostics/messages/names/cycle index paths/
    cycle name paths now exist; follow-up work should add full directory
-   entries, recursive walking, stderr capture, cwd/env, and richer user-facing
-   reports with dependency values.
+   entries, recursive walking, cwd/env, and richer user-facing reports with
+   dependency values.
 
 ## M1 Priority
 
@@ -245,13 +244,13 @@ manual status helpers.
 6. `defer` / noncopyable / OS support  
    Started. `defer call();` now runs in reverse order when the current lexical
    scope exits, including normal exits, `return`, and `break` / `continue`
-   lowering. A subprocess / stdout-capture baseline is now available through
+   lowering. A subprocess / stdout/stderr-capture baseline is now available through
    `std.sys.process::Command` and host-c support, and a file metadata / mtime
    baseline is available through `std.fs.file::FileMetadata`. A directory
    source-discovery count baseline is available through `std.fs.dir`. Next, add
    noncopyable resource rules, full directory entries, recursive walking,
-   cwd/env, stderr capture, stdin/stdout/stderr pipes, and temporary-directory
-   support so files, processes, arenas, and temporary directories compose safely.
+   cwd/env, stdin/stdout/stderr pipes, and temporary-directory support so files,
+   processes, arenas, and temporary directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  
    Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the

@@ -143,7 +143,10 @@ fn custom_command_run(command: *const CustomCommand) -> result::Result<i32, i32>
         .ok(captured_output) => {
             var output: process::ProcessOutput = captured_output;
             let status: i32 = output.exit_status();
-            let captured: bool = output.stdout().len > cast(usize, 0) || status != 0;
+            let captured: bool =
+                output.stdout().len > cast(usize, 0) ||
+                output.stderr().len > cast(usize, 0) ||
+                status != 0;
             output.destroy();
             if !captured {
                 Result.err(12)
@@ -940,6 +943,30 @@ fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
     return Result.ok(invalid_ok && diagnostic_ok);
 }
 
+fn validate_stderr_capture() -> result::Result<bool, i32> {
+    var command: process::Command = process::command(c"/bin/sh");
+    if !command.arg(c"-c") || !command.arg(c"printf axbuild-stderr >&2") {
+        command.destroy();
+        return Result.err(33);
+    }
+
+    let output_result: result::Result<process::ProcessOutput, i32> = command.run_capture();
+    command.destroy();
+    return match output_result {
+        .ok(captured_output) => {
+            var output: process::ProcessOutput = captured_output;
+            let ok: bool =
+                output.exit_status() == 0 &&
+                output.stdout().len == cast(usize, 0) &&
+                output.stderr().len == text::c_strlen(c"axbuild-stderr") &&
+                text::c_string_equal(output.stderr_c_data(), c"axbuild-stderr");
+            output.destroy();
+            Result.ok(ok)
+        },
+        .err(code) => Result.err(code),
+    };
+}
+
 fn run_build_tool() -> result::Result<i32, i32> {
     cleanup_project_sources();
     let prepared: bool = prepare_project_sources()?;
@@ -956,6 +983,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
     let duplicate_detected: bool = validate_duplicate_target_detection()?;
     let cycle_detected: bool = validate_cycle_detection()?;
     let invalid_dependency_detected: bool = validate_invalid_dependency_detection()?;
+    let stderr_capture_ok: bool = validate_stderr_capture()?;
     let initial_dirty: bool = project.needs_build();
     let built: bool = project.build()?;
     let incremental_clean: bool = !project.needs_build();
@@ -977,6 +1005,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
         duplicate_detected &&
         cycle_detected &&
         invalid_dependency_detected &&
+        stderr_capture_ok &&
         initial_dirty &&
         built &&
         incremental_clean &&

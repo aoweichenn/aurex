@@ -15,8 +15,9 @@ flat list of snippets.
   lexer, token stream, parser subset, and AST/IR summary checks.
 - `m1/axbuild`: M1 acceptance typed build-tool slice with project/target models,
   dependency lists, custom commands, subprocess stdout capture, source/stamp
-  mtime incremental checks, directory source-discovery counts, build, clean,
-  run, and test flows.
+  mtime incremental checks, directory source-discovery counts, target-name
+  lookup, duplicate-target detection, target-graph validation, topological build
+  order, build, clean, run, and test flows.
 
 Build a system example with the shared example modules on the import path:
 

@@ -13,6 +13,17 @@ enum TargetKind: u8 {
     executable = 2,
 }
 
+enum GraphStatus: u8 {
+    ok = 1,
+    invalid_dependency = 2,
+    cycle = 3,
+    duplicate_target = 4,
+}
+
+const VISIT_UNVISITED: u8 = 0;
+const VISIT_VISITING: u8 = 1;
+const VISIT_DONE: u8 = 2;
+
 struct CustomCommand {
     program: *const u8;
     args: vec::Vec<*const u8>;
@@ -167,6 +178,26 @@ fn project_add_target(project: *mut Project, target: Target) -> result::Result<u
     return Result.ok(id);
 }
 
+fn project_find_target(project: *const Project, name: *const u8) -> result::Result<usize, i32> {
+    if name == null {
+        return Result.err(40);
+    }
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        let target: Target = project.targets.data[index];
+        if target.name != null && text::c_string_equal(target.name, name) {
+            return Result.ok(index);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Result.err(41);
+}
+
+fn project_target_index_matches(project: *const Project, name: *const u8, expected: usize) -> result::Result<bool, i32> {
+    let index: usize = project_find_target(project, name)?;
+    return Result.ok(index == expected);
+}
+
 fn source_newer_than_stamp(path: *const u8, stamp_time: i64) -> bool {
     return match file::metadata(path) {
         .ok(source_metadata) => {
@@ -210,6 +241,144 @@ fn project_sources_match_directory(project: *const Project, path: *const u8, suf
     return Result.ok(discovered == project_source_count(project));
 }
 
+fn project_target_names_unique(project: *const Project) -> bool {
+    var left_index: usize = cast(usize, 0);
+    while left_index < project.targets.len {
+        let left: Target = project.targets.data[left_index];
+        if left.name == null {
+            return false;
+        }
+        var right_index: usize = left_index + cast(usize, 1);
+        while right_index < project.targets.len {
+            let right: Target = project.targets.data[right_index];
+            if right.name == null || text::c_string_equal(left.name, right.name) {
+                return false;
+            }
+            right_index = right_index + cast(usize, 1);
+        }
+        left_index = left_index + cast(usize, 1);
+    }
+    return true;
+}
+
+fn project_dependencies_in_bounds(project: *const Project) -> bool {
+    var target_index: usize = cast(usize, 0);
+    while target_index < project.targets.len {
+        let target: Target = project.targets.data[target_index];
+        var dependency_index: usize = cast(usize, 0);
+        while dependency_index < target.dependencies.len {
+            if target.dependencies.data[dependency_index] >= project.targets.len {
+                return false;
+            }
+            dependency_index = dependency_index + cast(usize, 1);
+        }
+        target_index = target_index + cast(usize, 1);
+    }
+    return true;
+}
+
+fn project_new_visit_state(project: *const Project) -> result::Result<vec::Vec<u8>, i32> {
+    var states: vec::Vec<u8> = vec::new<u8>();
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        if !states.push(VISIT_UNVISITED) {
+            states.destroy();
+            return Result.err(1);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Result.ok(states);
+}
+
+fn project_visit_target(
+    project: *const Project,
+    index: usize,
+    states: *mut vec::Vec<u8>,
+    order: *mut vec::Vec<usize>
+) -> result::Result<bool, i32> {
+    if index >= project.targets.len {
+        return Result.err(20);
+    }
+    if states.data[index] == VISIT_DONE {
+        return Result.ok(true);
+    }
+    if states.data[index] == VISIT_VISITING {
+        return Result.ok(false);
+    }
+
+    states.data[index] = VISIT_VISITING;
+    let target: Target = project.targets.data[index];
+    var dependency_index: usize = cast(usize, 0);
+    while dependency_index < target.dependencies.len {
+        let dependency: usize = target.dependencies.data[dependency_index];
+        if dependency >= project.targets.len {
+            return Result.err(20);
+        }
+        let visited_result: result::Result<bool, i32> = project_visit_target(project, dependency, states, order);
+        let visit_code: i32 = match visited_result {
+            .ok(value) if value => 0,
+            .ok(_) => 21,
+            .err(code) => code,
+        };
+        if visit_code == 21 {
+            return Result.ok(false);
+        }
+        if visit_code != 0 {
+            return Result.err(visit_code);
+        }
+        dependency_index = dependency_index + cast(usize, 1);
+    }
+
+    states.data[index] = VISIT_DONE;
+    if !order.push(index) {
+        return Result.err(1);
+    }
+    return Result.ok(true);
+}
+
+fn project_build_order(project: *const Project) -> result::Result<vec::Vec<usize>, i32> {
+    if !project_target_names_unique(project) {
+        return Result.err(23);
+    }
+    if !project_dependencies_in_bounds(project) {
+        return Result.err(20);
+    }
+
+    var states: vec::Vec<u8> = project_new_visit_state(project)?;
+    var order: vec::Vec<usize> = vec::new<usize>();
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        let visit_result: result::Result<bool, i32> = project_visit_target(project, index, &states, &order);
+        let visit_code: i32 = match visit_result {
+            .ok(value) if value => 0,
+            .ok(_) => 21,
+            .err(code) => code,
+        };
+        if visit_code != 0 {
+            states.destroy();
+            order.destroy();
+            return Result.err(visit_code);
+        }
+        index = index + cast(usize, 1);
+    }
+    states.destroy();
+    return Result.ok(order);
+}
+
+fn project_graph_status(project: *const Project) -> GraphStatus {
+    let order_result: result::Result<vec::Vec<usize>, i32> = project_build_order(project);
+    return match order_result {
+        .ok(order_value) => {
+            var order: vec::Vec<usize> = order_value;
+            order.destroy();
+            GraphStatus.ok
+        },
+        .err(code) if code == 20 => GraphStatus.invalid_dependency,
+        .err(code) if code == 23 => GraphStatus.duplicate_target,
+        .err(_) => GraphStatus.cycle,
+    };
+}
+
 fn project_needs_build(project: *const Project) -> bool {
     return match file::metadata(project.stamp_path) {
         .ok(stamp_metadata) => {
@@ -235,14 +404,25 @@ fn project_build(project: *mut Project) -> result::Result<bool, i32> {
     if !project_needs_build(project) {
         return Result.ok(true);
     }
+    var order: vec::Vec<usize> = project_build_order(project)?;
     var index: usize = cast(usize, 0);
-    while index < project.targets.len {
-        let ok: bool = project_build_target(project, index)?;
-        if !ok {
-            return Result.ok(false);
+    while index < order.len {
+        let build_result: result::Result<bool, i32> = project_build_target(project, order.data[index]);
+        let build_code: i32 = match build_result {
+            .ok(value) if value => 0,
+            .ok(_) => 22,
+            .err(code) => code,
+        };
+        if build_code != 0 {
+            order.destroy();
+            if build_code == 22 {
+                return Result.ok(false);
+            }
+            return Result.err(build_code);
         }
         index = index + cast(usize, 1);
     }
+    order.destroy();
     let written: usize = file::write_text(project.stamp_path, c"built")?;
     return Result.ok(written == text::c_strlen(c"built"));
 }
@@ -280,12 +460,24 @@ impl Project {
         return project_add_target(self, target);
     }
 
+    pub fn find_target(self: *const Project, name: *const u8) -> result::Result<usize, i32> {
+        return project_find_target(self, name);
+    }
+
     pub fn needs_build(self: *const Project) -> bool {
         return project_needs_build(self);
     }
 
     pub fn build(self: *mut Project) -> result::Result<bool, i32> {
         return project_build(self);
+    }
+
+    pub fn build_order(self: *const Project) -> result::Result<vec::Vec<usize>, i32> {
+        return project_build_order(self);
+    }
+
+    pub fn graph_status(self: *const Project) -> GraphStatus {
+        return project_graph_status(self);
     }
 
     pub fn clean(self: *mut Project) -> bool {
@@ -311,11 +503,15 @@ fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
         return Result.err(10);
     }
     let core_id: usize = project.add_target(core)?;
+    let core_lookup: usize = project.find_target(c"core")?;
+    if core_lookup != core_id {
+        return Result.err(13);
+    }
 
     var app: Target = target_new(c"app", TargetKind.executable);
     if !app.source(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
         !app.include_path(c"include") ||
-        !app.dependency(core_id) ||
+        !app.dependency(core_lookup) ||
         !app.command.arg(c"build-app") {
         return Result.err(11);
     }
@@ -338,6 +534,85 @@ fn cleanup_project_sources() -> bool {
     return core_cleaned && main_cleaned;
 }
 
+fn project_build_order_matches(project: *const Project, app_id: usize) -> result::Result<bool, i32> {
+    var order: vec::Vec<usize> = project.build_order()?;
+    let ok: bool =
+        order.len == cast(usize, 2) &&
+        order.data[cast(usize, 0)] == cast(usize, 0) &&
+        order.data[cast(usize, 1)] == app_id;
+    order.destroy();
+    return Result.ok(ok);
+}
+
+fn validate_missing_target_lookup() -> result::Result<bool, i32> {
+    var project: Project = project_new(c"missing", c"/tmp/aurex_m1_axbuild_missing_stamp");
+
+    var target: Target = target_new(c"known", TargetKind.library);
+    let known_id: usize = project.add_target(target)?;
+    let lookup_result: result::Result<usize, i32> = project.find_target(c"missing");
+    let missing_ok: bool = match lookup_result {
+        .ok(_) => false,
+        .err(code) => code == 41,
+    };
+    project.destroy();
+    return Result.ok(known_id == cast(usize, 0) && missing_ok);
+}
+
+fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
+    var project: Project = project_new(c"duplicate", c"/tmp/aurex_m1_axbuild_duplicate_stamp");
+
+    var first: Target = target_new(c"dup", TargetKind.library);
+    let first_id: usize = project.add_target(first)?;
+
+    var second: Target = target_new(c"dup", TargetKind.executable);
+    let second_id: usize = project.add_target(second)?;
+
+    let duplicate_ok: bool =
+        first_id == cast(usize, 0) &&
+        second_id == cast(usize, 1) &&
+        project.graph_status() == GraphStatus.duplicate_target;
+    project.destroy();
+    return Result.ok(duplicate_ok);
+}
+
+fn validate_cycle_detection() -> result::Result<bool, i32> {
+    var project: Project = project_new(c"cycle", c"/tmp/aurex_m1_axbuild_cycle_stamp");
+
+    var first: Target = target_new(c"first", TargetKind.library);
+    if !first.dependency(cast(usize, 1)) {
+        first.destroy();
+        project.destroy();
+        return Result.err(30);
+    }
+    let first_id: usize = project.add_target(first)?;
+
+    var second: Target = target_new(c"second", TargetKind.library);
+    if !second.dependency(first_id) {
+        second.destroy();
+        project.destroy();
+        return Result.err(31);
+    }
+    let second_id: usize = project.add_target(second)?;
+    let cycle_ok: bool = second_id == cast(usize, 1) && project.graph_status() == GraphStatus.cycle;
+    project.destroy();
+    return Result.ok(cycle_ok);
+}
+
+fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
+    var project: Project = project_new(c"invalid", c"/tmp/aurex_m1_axbuild_invalid_stamp");
+
+    var target: Target = target_new(c"target", TargetKind.library);
+    if !target.dependency(cast(usize, 99)) {
+        target.destroy();
+        project.destroy();
+        return Result.err(32);
+    }
+    let target_id: usize = project.add_target(target)?;
+    let invalid_ok: bool = target_id == cast(usize, 0) && project.graph_status() == GraphStatus.invalid_dependency;
+    project.destroy();
+    return Result.ok(invalid_ok);
+}
+
 fn run_build_tool() -> result::Result<i32, i32> {
     cleanup_project_sources();
     let prepared: bool = prepare_project_sources()?;
@@ -345,6 +620,14 @@ fn run_build_tool() -> result::Result<i32, i32> {
     project.clean();
     let app_id: usize = configure_project(&project)?;
     let discovery_ok: bool = project_sources_match_directory(&project, c"/tmp", c".aurex_m1_source.ax")?;
+    let core_lookup_ok: bool = project_target_index_matches(&project, c"core", cast(usize, 0))?;
+    let app_lookup_ok: bool = project_target_index_matches(&project, c"app", app_id)?;
+    let graph_ok: bool = project.graph_status() == GraphStatus.ok;
+    let order_ok: bool = project_build_order_matches(&project, app_id)?;
+    let missing_lookup_ok: bool = validate_missing_target_lookup()?;
+    let duplicate_detected: bool = validate_duplicate_target_detection()?;
+    let cycle_detected: bool = validate_cycle_detection()?;
+    let invalid_dependency_detected: bool = validate_invalid_dependency_detection()?;
     let initial_dirty: bool = project.needs_build();
     let built: bool = project.build()?;
     let incremental_clean: bool = !project.needs_build();
@@ -355,7 +638,24 @@ fn run_build_tool() -> result::Result<i32, i32> {
     project.destroy();
     let sources_cleaned: bool = cleanup_project_sources();
 
-    if prepared && discovery_ok && initial_dirty && built && incremental_clean && rebuilt && run_ok && test_ok && cleaned && sources_cleaned {
+    if prepared &&
+        discovery_ok &&
+        core_lookup_ok &&
+        app_lookup_ok &&
+        graph_ok &&
+        order_ok &&
+        missing_lookup_ok &&
+        duplicate_detected &&
+        cycle_detected &&
+        invalid_dependency_detected &&
+        initial_dirty &&
+        built &&
+        incremental_clean &&
+        rebuilt &&
+        run_ok &&
+        test_ok &&
+        cleaned &&
+        sources_cleaned {
         return Result.ok(0);
     }
     return Result.ok(1);

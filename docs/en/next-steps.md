@@ -73,8 +73,9 @@ Current language slices:
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
   typed dependencies/sources/includes/custom commands, subprocess stdout
   capture, source/stamp mtime incremental checks, directory source-discovery
-  counts, build, clean, run, and test flows. Both are covered by checked/IR/native
-  integration tests.
+  counts, target-name lookup, duplicate-target detection, target-graph
+  validation, topological build order, build, clean, run, and test flows. Both
+  are covered by checked/IR/native integration tests.
 
 ## Key Language Gaps
 
@@ -128,9 +129,11 @@ covered by integration tests:
    subprocess, incremental checks, build, clean, run, and test. Build
    definitions should be typed Aurex APIs, not shell-string concatenation. A
    minimal runnable example, stdout-capture baseline, source/stamp mtime
-   incremental checks, and directory source-discovery counts now exist; follow-up
-   work should add full directory entries, recursive walking, stderr capture,
-   cwd/env, target-graph cycle diagnostics, and richer error reporting.
+   incremental checks, directory source-discovery counts, target-name lookup,
+   duplicate-target detection, target-graph validation, and topological build
+   order now exist; follow-up work should add full directory entries, recursive
+   walking, stderr capture, cwd/env, cycle-path diagnostics, and richer error
+   reporting.
 
 ## M1 Priority
 

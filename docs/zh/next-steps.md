@@ -6,7 +6,7 @@
 
 旧 selfhost 自举路线已经从 active tree 删除。当前项目重心是继续推进 C++ Stage0、Aurex IR 和 LLVM 后端，让语言核心具备足够强的表达力、模块隔离能力和后端契约。M1 的目标不再只是补语言特性，而是让 Aurex 能优雅编写两个真实系统级程序：一个自举前端样例，以及一个类似 CMake 的 typed 构建工具样例。完整替换 C++ Stage0 可以放到后续阶段，但 M1 必须证明这些程序已经能用 Aurex 自然表达。
 
-本阶段最新进度见：[M1 进度报告 2026-05-07](m1-progress-2026-05-07.md)。该报告记录了当前已落地的 subprocess / stdout capture baseline、file metadata / mtime baseline、directory source discovery baseline、M1 frontend 样例、M1 typed build-tool 样例、集成测试覆盖和测试耗时基线。
+本阶段最新进度见：[M1 进度报告 2026-05-07](m1-progress-2026-05-07.md)。该报告记录了当前已落地的 subprocess / stdout capture baseline、file metadata / mtime baseline、directory source discovery baseline、target graph validation / topological build baseline、target name lookup baseline、M1 frontend 样例、M1 typed build-tool 样例、集成测试覆盖和测试耗时基线。
 
 ## 当前已具备能力
 
@@ -38,7 +38,7 @@ Stage0 主链路：
 - 标准库进程能力已启动，`std.sys.process::Command` 提供 typed argv、`arg()`、`run()`、`run_capture()` 和 `destroy()`，底层通过 host-c support 的 `fork` / `execvp` / `waitpid` 运行子进程，并已有 stdout capture baseline；当前还没有 cwd、env、stderr capture、stdin/stdout/stderr pipe 和 timeout API。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 - examples 已经包含 CLI、文件 IO、内存/arena、std 模块、泛型结果类型、可见性和 re-export facade 的系统级小案例。
-- M1 验收样例骨架已进入 active tree：`examples/m1/frontend` 覆盖 source manager、diagnostic、lexer、token stream、parser subset 与 AST/IR summary；`examples/m1/axbuild` 覆盖 project/target、typed dependency/source/include/custom command、subprocess stdout capture、source/stamp mtime incremental check、directory source discovery count、build/clean/run/test 流程。两者已纳入 integration tests 的 checked/IR/native smoke 覆盖。
+- M1 验收样例骨架已进入 active tree：`examples/m1/frontend` 覆盖 source manager、diagnostic、lexer、token stream、parser subset 与 AST/IR summary；`examples/m1/axbuild` 覆盖 project/target、typed dependency/source/include/custom command、subprocess stdout capture、source/stamp mtime incremental check、directory source discovery count、target name lookup、duplicate target detection、target graph validation、topological build order、build/clean/run/test 流程。两者已纳入 integration tests 的 checked/IR/native smoke 覆盖。
 
 ## 关键语言缺口
 
@@ -62,7 +62,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    用 Aurex 写一个小型 compiler frontend，包括 source manager、lexer、token stream、parser 子集、AST/IR dump 和 diagnostic。它不要求替换 C++ Stage0，但必须证明 Aurex 可以自然编写编译器核心代码。当前已有最小可运行样例，后续还应补 source span 更完整的 diagnostic、AST 节点层级、导入解析和更接近真实前端的错误恢复。
 
 2. typed 构建工具样例  
-   用 Aurex 写一个类似 CMake 的小构建工具，包括 project、target、library、executable、source list、include path、dependency、custom command、subprocess、incremental check、build、clean、run 和 test。构建描述应是 typed Aurex API，而不是 shell 字符串拼接。当前已有最小可运行样例、stdout capture baseline、source/stamp mtime incremental check 和 directory source discovery count，后续还应补完整目录项列表、递归遍历、stderr capture、cwd/env、target graph cycle diagnostics 和错误报告。
+   用 Aurex 写一个类似 CMake 的小构建工具，包括 project、target、library、executable、source list、include path、dependency、custom command、subprocess、incremental check、build、clean、run 和 test。构建描述应是 typed Aurex API，而不是 shell 字符串拼接。当前已有最小可运行样例、stdout capture baseline、source/stamp mtime incremental check、directory source discovery count、target name lookup、duplicate target detection、target graph validation 和 topological build order，后续还应补完整目录项列表、递归遍历、stderr capture、cwd/env、cycle path diagnostics 和错误报告。
 
 ## M1 优先级
 

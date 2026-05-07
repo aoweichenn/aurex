@@ -32,6 +32,11 @@ Included:
   support.
 - `std.fs.dir` directory source-discovery baseline through host-c
   `opendir` / `readdir` / `stat` support for counting regular files by suffix.
+- M1 axbuild target-graph validation / topological-build baseline, including
+  dependency bounds, cycle / invalid-dependency status, and topological target
+  build order.
+- M1 axbuild target-name lookup baseline, including name -> id lookup,
+  missing-lookup checks, and duplicate-target-name status.
 - golden, positive, negative, and language-feature test flows.
 - checked/IR/native integration-test coverage for the M1 examples.
 - Chinese and English topic-based documentation sets.
@@ -78,8 +83,9 @@ Not included:
   matching coverage.
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
-- Grow M1 axbuild from source/stamp mtime and source-discovery smoke checks into
-  a real target graph, full directory entries, recursive walking, cwd/env,
-  stderr capture, and structured output reporting.
+- Grow M1 axbuild from source/stamp mtime, source-discovery, target-name lookup,
+  and target-graph smoke checks into full directory entries, recursive walking,
+  cycle-path diagnostics, cwd/env, stderr capture, and structured output
+  reporting.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

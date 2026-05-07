@@ -57,7 +57,8 @@ Current language slices:
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
-  exists/is_file/is_dir/size/modified_time_ns baseline.
+  exists/is_file/is_dir/size/modified_time_ns baseline, and `std.fs.dir`
+  provides a source-discovery baseline for counting regular files by suffix.
 - Standard process support has started. `std.sys.process::Command` provides
   typed argv, `arg()`, `run()`, `run_capture()`, and `destroy()`, backed by
   host-c `fork` / `execvp` / `waitpid`, with a stdout-capture baseline.
@@ -71,8 +72,9 @@ Current language slices:
   covers source manager, diagnostics, lexer, token stream, parser subset, and
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
   typed dependencies/sources/includes/custom commands, subprocess stdout
-  capture, source/stamp mtime incremental checks, build, clean, run, and test
-  flows. Both are covered by checked/IR/native integration tests.
+  capture, source/stamp mtime incremental checks, directory source-discovery
+  counts, build, clean, run, and test flows. Both are covered by checked/IR/native
+  integration tests.
 
 ## Key Language Gaps
 
@@ -92,8 +94,8 @@ Current language slices:
   composable diagnostic model.
 - Resource management still needs a minimal move/noncopyable model and unified
   handling for files, processes, arenas, and other resources.
-- The standard library still needs broader `Vec<T>`, `Map<K, V>`, directory
-  walking, file metadata, subprocess support, and OS features required by
+- The standard library still needs broader `Vec<T>`, `Map<K, V>`, recursive
+  directory walking, file metadata, subprocess support, and OS features required by
   incremental builds.
 - Aurex needs a compatibility class/object model for programmers coming from
   traditional OOP code: encapsulation, inheritance, and dynamic polymorphism.
@@ -125,10 +127,10 @@ covered by integration tests:
    executable, source list, include path, dependency, custom command,
    subprocess, incremental checks, build, clean, run, and test. Build
    definitions should be typed Aurex APIs, not shell-string concatenation. A
-   minimal runnable example, stdout-capture baseline, and source/stamp mtime
-   incremental checks now exist; follow-up work should add directory walking,
-   stderr capture, cwd/env, target-graph cycle diagnostics, and richer error
-   reporting.
+   minimal runnable example, stdout-capture baseline, source/stamp mtime
+   incremental checks, and directory source-discovery counts now exist; follow-up
+   work should add full directory entries, recursive walking, stderr capture,
+   cwd/env, target-graph cycle diagnostics, and richer error reporting.
 
 ## M1 Priority
 
@@ -235,10 +237,11 @@ manual status helpers.
    scope exits, including normal exits, `return`, and `break` / `continue`
    lowering. A subprocess / stdout-capture baseline is now available through
    `std.sys.process::Command` and host-c support, and a file metadata / mtime
-   baseline is available through `std.fs.file::FileMetadata`. Next, add
-   noncopyable resource rules, directory walking, cwd/env, stderr capture,
-   stdin/stdout/stderr pipes, and temporary-directory support so files,
-   processes, arenas, and temporary directories compose safely.
+   baseline is available through `std.fs.file::FileMetadata`. A directory
+   source-discovery count baseline is available through `std.fs.dir`. Next, add
+   noncopyable resource rules, full directory entries, recursive walking,
+   cwd/env, stderr capture, stdin/stdout/stderr pipes, and temporary-directory
+   support so files, processes, arenas, and temporary directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  
    Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the

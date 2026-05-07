@@ -22,6 +22,7 @@
 - M1 验收样例 baseline，包括 `examples/m1/frontend` 和 `examples/m1/axbuild`。
 - `std.sys.process::Command` subprocess / stdout capture baseline，通过 host-c support 调用 `fork` / `execvp` / `waitpid`。
 - `std.fs.file::FileMetadata` metadata / mtime baseline，通过 host-c support 调用 `stat`。
+- `std.fs.dir` directory source discovery baseline，通过 host-c support 调用 `opendir` / `readdir` / `stat` 按后缀统计普通文件。
 - golden、positive、negative 和语言特性测试链路。
 - M1 样例的 checked/IR/native integration test 覆盖。
 - 中英文主题文档集。
@@ -66,6 +67,6 @@
 - 更完整 ABI 属性和目标配置。
 - 模块隔离、可见性、泛型约束和 pattern matching 完整性。
 - M1 frontend 从 summary parser 推进到真实 AST、diagnostic、name resolution 和 type checking。
-- M1 axbuild 从 source/stamp mtime smoke 推进到真实 target graph、目录遍历、cwd/env、stderr capture 和结构化输出报告。
+- M1 axbuild 从 source/stamp mtime 与 source discovery smoke 推进到真实 target graph、完整目录项列表、递归遍历、cwd/env、stderr capture 和结构化输出报告。
 - M3 之后以新语言特性重新设计自举链路。
 - fixed-point self-host 验证。

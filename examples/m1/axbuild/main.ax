@@ -3,6 +3,7 @@ module m1.axbuild.main;
 import std.core.result as result;
 import std.core.text as text;
 import std.core.vec as vec;
+import std.fs.dir as directory;
 import std.fs.file as file;
 import std.io.console as console;
 import std.sys.process as process;
@@ -193,6 +194,22 @@ fn project_sources_newer_than(project: *const Project, stamp_time: i64) -> bool 
     return false;
 }
 
+fn project_source_count(project: *const Project) -> i32 {
+    var count: i32 = 0;
+    var target_index: usize = cast(usize, 0);
+    while target_index < project.targets.len {
+        let target: Target = project.targets.data[target_index];
+        count = count + cast(i32, target.sources.len);
+        target_index = target_index + cast(usize, 1);
+    }
+    return count;
+}
+
+fn project_sources_match_directory(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
+    let discovered: i32 = directory::count_files_with_suffix(path, suffix)?;
+    return Result.ok(discovered == project_source_count(project));
+}
+
 fn project_needs_build(project: *const Project) -> bool {
     return match file::metadata(project.stamp_path) {
         .ok(stamp_metadata) => {
@@ -290,13 +307,13 @@ impl Project {
 
 fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
     var core: Target = target_new(c"core", TargetKind.library);
-    if !core.source(c"/tmp/aurex_m1_axbuild_core.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
+    if !core.source(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
         return Result.err(10);
     }
     let core_id: usize = project.add_target(core)?;
 
     var app: Target = target_new(c"app", TargetKind.executable);
-    if !app.source(c"/tmp/aurex_m1_axbuild_main.ax") ||
+    if !app.source(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
         !app.include_path(c"include") ||
         !app.dependency(core_id) ||
         !app.command.arg(c"build-app") {
@@ -306,18 +323,18 @@ fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
 }
 
 fn prepare_project_sources() -> result::Result<bool, i32> {
-    let core_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_core.ax", c"fn core { return }")?;
-    let main_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_main.ax", c"fn main { return }")?;
+    let core_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax", c"fn core { return }")?;
+    let main_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax", c"fn main { return }")?;
     return Result.ok(core_written > cast(usize, 0) && main_written > cast(usize, 0));
 }
 
 fn cleanup_project_sources() -> bool {
     let core_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_core.ax") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_core.ax");
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax");
     let main_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_main.ax") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_main.ax");
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax");
     return core_cleaned && main_cleaned;
 }
 
@@ -327,6 +344,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
     var project: Project = project_new(c"demo", c"/tmp/aurex_m1_axbuild_stamp");
     project.clean();
     let app_id: usize = configure_project(&project)?;
+    let discovery_ok: bool = project_sources_match_directory(&project, c"/tmp", c".aurex_m1_source.ax")?;
     let initial_dirty: bool = project.needs_build();
     let built: bool = project.build()?;
     let incremental_clean: bool = !project.needs_build();
@@ -337,7 +355,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
     project.destroy();
     let sources_cleaned: bool = cleanup_project_sources();
 
-    if prepared && initial_dirty && built && incremental_clean && rebuilt && run_ok && test_ok && cleaned && sources_cleaned {
+    if prepared && discovery_ok && initial_dirty && built && incremental_clean && rebuilt && run_ok && test_ok && cleaned && sources_cleaned {
         return Result.ok(0);
     }
     return Result.ok(1);

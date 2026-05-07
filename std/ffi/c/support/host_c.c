@@ -1,9 +1,12 @@
 #include <stdbool.h>
+#include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -123,6 +126,106 @@ bool aurex_std_v0_file_metadata(const uint8_t *path, AurexStdFileMetadata *outpu
     output->is_dir = S_ISDIR(info.st_mode) ? 1 : 0;
     output->size = info.st_size < 0 ? 0 : (int64_t)info.st_size;
     output->modified_ns = aurex_std_host_c_modified_ns(&info);
+    return true;
+}
+
+static bool aurex_std_host_c_has_suffix(const char *name, const char *suffix) {
+    const size_t name_len = strlen(name);
+    const size_t suffix_len = strlen(suffix);
+    if (suffix_len == 0) {
+        return true;
+    }
+    if (name_len < suffix_len) {
+        return false;
+    }
+    return memcmp(name + name_len - suffix_len, suffix, suffix_len) == 0;
+}
+
+static bool aurex_std_host_c_is_dot_entry(const char *name) {
+    return strcmp(name, ".") == 0 || strcmp(name, "..") == 0;
+}
+
+static char *aurex_std_host_c_join_dir_entry(const char *dir_path, const char *entry_name) {
+    const size_t dir_len = strlen(dir_path);
+    const size_t entry_len = strlen(entry_name);
+    const bool needs_separator = dir_len > 0 && dir_path[dir_len - 1] != '/';
+    const size_t separator_len = needs_separator ? 1 : 0;
+    const size_t total_len = dir_len + separator_len + entry_len;
+    if (total_len < dir_len || total_len < entry_len || total_len == (size_t)-1) {
+        return NULL;
+    }
+
+    char *joined = (char *)malloc(total_len + 1);
+    if (joined == NULL) {
+        return NULL;
+    }
+    memcpy(joined, dir_path, dir_len);
+    size_t offset = dir_len;
+    if (needs_separator) {
+        joined[offset] = '/';
+        ++offset;
+    }
+    memcpy(joined + offset, entry_name, entry_len);
+    joined[total_len] = 0;
+    return joined;
+}
+
+static bool aurex_std_host_c_is_regular_file(const char *path) {
+    struct stat info;
+    return stat(path, &info) == 0 && S_ISREG(info.st_mode);
+}
+
+bool aurex_std_v0_directory_count_files_with_suffix(
+    const uint8_t *path,
+    const uint8_t *suffix,
+    int32_t *output
+) {
+    if (path == NULL || suffix == NULL || output == NULL) {
+        return false;
+    }
+    *output = 0;
+
+    DIR *directory = opendir((const char *)path);
+    if (directory == NULL) {
+        return false;
+    }
+
+    int32_t count = 0;
+    bool ok = true;
+    while (true) {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (entry == NULL) {
+            ok = errno == 0;
+            break;
+        }
+        if (aurex_std_host_c_is_dot_entry(entry->d_name) ||
+            !aurex_std_host_c_has_suffix(entry->d_name, (const char *)suffix)) {
+            continue;
+        }
+
+        char *entry_path = aurex_std_host_c_join_dir_entry((const char *)path, entry->d_name);
+        if (entry_path == NULL) {
+            ok = false;
+            break;
+        }
+        const bool is_regular_file = aurex_std_host_c_is_regular_file(entry_path);
+        free(entry_path);
+        if (!is_regular_file) {
+            continue;
+        }
+        if (count == INT32_MAX) {
+            ok = false;
+            break;
+        }
+        ++count;
+    }
+
+    const bool close_ok = closedir(directory) == 0;
+    if (!ok || !close_ok) {
+        return false;
+    }
+    *output = count;
     return true;
 }
 

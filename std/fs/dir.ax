@@ -1,0 +1,20 @@
+module std.fs.dir;
+
+import std.core.result;
+import std.ffi.c.host_support;
+
+pub fn count_files_with_suffix(path: *const u8, suffix: *const u8) -> Result<i32, i32> {
+    if path == null || suffix == null {
+        return Result.err(1);
+    }
+    var count: i32 = 0;
+    if !host_directory_count_files_with_suffix(path, suffix, &count) {
+        return Result.err(1);
+    }
+    return Result.ok(count);
+}
+
+pub fn has_file_with_suffix(path: *const u8, suffix: *const u8) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix(path, suffix)?;
+    return Result.ok(count > 0);
+}

@@ -1,0 +1,9 @@
+module method_collision.right;
+
+import method_collision.types as t;
+
+impl t::Box {
+  pub fn read(self: *const t::Box) -> i32 {
+    return self.value + 1;
+  }
+}

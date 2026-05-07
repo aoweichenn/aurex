@@ -173,7 +173,17 @@ bool SemanticAnalyzer::method_receiver_matches(
     }
     const TypeHandle pointee = checked_.types.get(self_type).pointee;
     if (checked_.types.is_pointer(receiver_type)) {
-        return checked_.types.same(self_type, receiver_type);
+        const TypeInfo& self_info = checked_.types.get(self_type);
+        const TypeInfo& receiver_info = checked_.types.get(receiver_type);
+        if (!checked_.types.same(self_info.pointee, receiver_info.pointee)) {
+            return false;
+        }
+        if (self_info.pointer_mutability == PointerMutability::mut &&
+            receiver_info.pointer_mutability != PointerMutability::mut) {
+            report(module_.exprs[receiver.value].range, "mutable method receiver requires mutable pointer");
+            return false;
+        }
+        return true;
     }
     if (!checked_.types.same(pointee, receiver_type)) {
         return false;
@@ -496,7 +506,35 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
         return nullptr;
     }
     const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
-    if (find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false) != nullptr) {
+    const GenericEnumTemplateInfo* generic_template = nullptr;
+    if (enum_name.scope_name.empty()) {
+        generic_template = find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
+    } else {
+        const syntax::ModuleId scope_module = resolve_import_alias(enum_name.scope_name, enum_name.scope_range, false);
+        if (syntax::is_valid(scope_module)) {
+            generic_template = find_generic_enum_template_in_module(scope_module, enum_name.text, callee.range, false);
+        }
+    }
+    if (generic_template != nullptr) {
+        return nullptr;
+    }
+    if (!enum_name.scope_name.empty() || !enum_name.type_args.empty()) {
+        const TypeHandle enum_type = resolve_associated_type_owner(enum_name, report_unknown);
+        if (!is_valid(enum_type)) {
+            return nullptr;
+        }
+        if (checked_.types.get(enum_type).kind != TypeKind::enum_) {
+            if (report_unknown) {
+                report(callee.range, "enum case scope must name an enum type");
+            }
+            return nullptr;
+        }
+        if (const EnumCaseInfo* result = find_enum_case_by_type_and_case(enum_type, callee.field_name); result != nullptr) {
+            return result;
+        }
+        if (report_unknown) {
+            report(callee.range, "unknown enum case: " + std::string(enum_name.text) + "." + std::string(callee.field_name));
+        }
         return nullptr;
     }
     return find_enum_case_by_scoped_name(enum_name.text, callee.field_name, callee.range, report_unknown);

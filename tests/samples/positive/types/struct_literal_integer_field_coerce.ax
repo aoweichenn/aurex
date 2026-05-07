@@ -1,0 +1,10 @@
+module struct_literal_integer_field_coerce;
+
+struct S {
+  value: u8;
+}
+
+fn main() -> i32 {
+  let s: S = S { value: 1 };
+  return cast(i32, s.value);
+}

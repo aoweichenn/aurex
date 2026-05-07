@@ -1,0 +1,13 @@
+module mutually_recursive_struct_value;
+
+struct Left {
+  right: Right;
+}
+
+struct Right {
+  left: Left;
+}
+
+fn main() -> i32 {
+  return 0;
+}

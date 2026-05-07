@@ -67,12 +67,18 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
     if (callee.kind == syntax::ExprKind::field &&
         syntax::is_valid(callee.object) &&
         callee.object.value < module_.exprs.size() &&
-        module_.exprs[callee.object.value].kind == syntax::ExprKind::name &&
-        module_.exprs[callee.object.value].scope_name.empty()) {
+        module_.exprs[callee.object.value].kind == syntax::ExprKind::name) {
         const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
-        if (const GenericEnumTemplateInfo* enum_template =
-                find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
-            enum_template != nullptr &&
+        const GenericEnumTemplateInfo* enum_template = nullptr;
+        if (enum_name.scope_name.empty()) {
+            enum_template = find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
+        } else {
+            const syntax::ModuleId scope_module = resolve_import_alias(enum_name.scope_name, enum_name.scope_range, false);
+            if (syntax::is_valid(scope_module)) {
+                enum_template = find_generic_enum_template_in_module(scope_module, enum_name.text, callee.range, false);
+            }
+        }
+        if (enum_template != nullptr &&
             syntax::is_valid(enum_template->item) &&
             enum_template->item.value < module_.items.size()) {
             const syntax::ItemNode& enum_item = module_.items[enum_template->item.value];

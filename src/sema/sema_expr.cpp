@@ -42,6 +42,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         if (symbol == nullptr) {
             return record_expr_type(expr_id, invalid_type_handle);
         }
+        if (symbol->kind == SymbolKind::function) {
+            report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
         record_expr_c_name(expr_id, symbol->c_name);
         return record_expr_type(expr_id, symbol->type);
     }
@@ -60,9 +64,12 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         if (expr.unary_op == syntax::UnaryOp::logical_not && !checked_.types.is_bool(operand)) {
             report(expr.range, "logical not requires bool operand");
         }
-        if ((expr.unary_op == syntax::UnaryOp::numeric_negate || expr.unary_op == syntax::UnaryOp::bitwise_not) &&
+        if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
             !checked_.types.is_integer(operand) && !checked_.types.is_float(operand)) {
             report(expr.range, "numeric unary operator requires numeric operand");
+        }
+        if (expr.unary_op == syntax::UnaryOp::bitwise_not && !checked_.types.is_integer(operand)) {
+            report(expr.range, "bitwise not requires integer operand");
         }
         if (expr.unary_op == syntax::UnaryOp::dereference) {
             if (!checked_.types.is_pointer(operand)) {
@@ -180,6 +187,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
         }
         TypeHandle object = analyze_expr(expr.object);
+        if (is_valid(object) && !checked_.types.is_pointer(object) && !is_place_expr(expr.object)) {
+            report(expr.range, "field access requires addressable storage or a pointer receiver");
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
         if (checked_.types.is_pointer(object)) {
             object = checked_.types.get(object).pointee;
         }
@@ -217,28 +228,54 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     }
     case syntax::ExprKind::struct_literal: {
         TypeHandle struct_type = invalid_type_handle;
+        const bool qualified = !expr.scope_name.empty();
+        syntax::ModuleId scope_module = syntax::invalid_module_id;
+        if (qualified) {
+            scope_module = resolve_import_alias(expr.scope_name, expr.scope_range);
+            if (!syntax::is_valid(scope_module)) {
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+        }
         if (!expr.struct_type_args.empty()) {
-            if (const GenericStructTemplateInfo* template_info =
-                    find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range);
-                template_info != nullptr) {
+            const GenericStructTemplateInfo* template_info = qualified
+                ? find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
+                : find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
+            if (template_info != nullptr) {
                 struct_type = instantiate_generic_struct_from_syntax(
                     *template_info,
                     expr.struct_type_args,
                     expr.range,
                     false
                 );
+            } else {
+                report(
+                    expr.range,
+                    "type arguments require a generic struct: " +
+                        (qualified
+                            ? std::string(expr.scope_name) + "::" + std::string(expr.struct_name)
+                            : std::string(expr.struct_name))
+                );
             }
         } else {
-            if (const GenericStructTemplateInfo* template_info =
-                    find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
-                template_info != nullptr) {
+            const GenericStructTemplateInfo* template_info = qualified
+                ? find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
+                : find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
+            if (template_info != nullptr) {
                 struct_type = infer_generic_struct_literal_type(*template_info, expr, expected_type);
                 if (!is_valid(struct_type)) {
-                    report(expr.range, "generic struct literal requires explicit type arguments: " + template_info->name);
+                    report(
+                        expr.range,
+                        "generic struct literal requires explicit type arguments: " +
+                            (qualified
+                                ? std::string(expr.scope_name) + "::" + template_info->name
+                                : template_info->name)
+                    );
                     return record_expr_type(expr_id, invalid_type_handle);
                 }
             } else {
-                struct_type = find_type_in_visible_modules(expr.struct_name, expr.range, false);
+                struct_type = qualified
+                    ? find_type_in_module(scope_module, expr.struct_name, expr.range, false)
+                    : find_type_in_visible_modules(expr.struct_name, expr.range, false);
             }
         }
         if (!is_valid(struct_type)) {

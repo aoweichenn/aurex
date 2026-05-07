@@ -1,0 +1,14 @@
+module struct_enum_payload_cycle;
+
+struct Boxed {
+  value: Wrapped;
+}
+
+enum Wrapped: u8 {
+  empty = 0,
+  boxed(Boxed) = 1,
+}
+
+fn main() -> i32 {
+  return 0;
+}

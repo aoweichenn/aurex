@@ -38,6 +38,8 @@ private:
     void register_type_names();
     void register_value_names();
     void validate_function_prototypes();
+    void validate_abi_symbols();
+    void validate_type_layouts();
     void analyze_entry_points();
     void resolve_type_alias_decls();
     void analyze_struct_properties();
@@ -52,6 +54,8 @@ private:
     );
     void analyze_block(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void analyze_stmt(syntax::StmtId stmt, TypeHandle expected_return, ReturnTypeInference* return_inference);
+    [[nodiscard]] bool block_guarantees_return(syntax::StmtId block) const noexcept;
+    [[nodiscard]] bool stmt_guarantees_return(syntax::StmtId stmt) const noexcept;
     void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
     void finalize_inferred_return(const syntax::ItemNode& function, const std::string& key, ReturnTypeInference& inference);
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
@@ -99,6 +103,7 @@ private:
     [[nodiscard]] bool parse_integer_literal_text(std::string_view text, base::u64& value) const noexcept;
     [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] TypeHandle analyze_integer_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
+    [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, std::unordered_set<std::string>& dependencies);
     [[nodiscard]] base::u64 abi_size(TypeHandle type) const noexcept;
     [[nodiscard]] base::u64 abi_align(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_integer_literal(syntax::ExprId expr) const noexcept;

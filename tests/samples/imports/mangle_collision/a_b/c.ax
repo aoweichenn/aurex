@@ -1,0 +1,5 @@
+module mangle_collision.a_b.c;
+
+pub fn f() -> i32 {
+  return 2;
+}

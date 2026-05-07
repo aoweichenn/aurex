@@ -1,0 +1,8 @@
+module const_initializer_cycle;
+
+const A: i32 = B;
+const B: i32 = A;
+
+fn main() -> i32 {
+  return A;
+}

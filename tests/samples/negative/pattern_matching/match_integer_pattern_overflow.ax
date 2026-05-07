@@ -1,0 +1,9 @@
+module match_integer_pattern_overflow;
+
+fn main() -> i32 {
+  let value: u8 = 0;
+  return match value {
+    256 => 1,
+    _ => 2,
+  };
+}

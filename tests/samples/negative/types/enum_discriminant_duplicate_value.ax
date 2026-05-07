@@ -1,0 +1,10 @@
+module enum_discriminant_duplicate_value;
+
+enum Choice: u8 {
+  a = 0,
+  b = 0,
+}
+
+fn main() -> i32 {
+  return 0;
+}

@@ -1231,7 +1231,15 @@ const EnumCaseInfo* SemanticAnalyzer::instantiate_generic_enum_constructor(
         return nullptr;
     }
     const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
-    const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
+    const GenericEnumTemplateInfo* info = nullptr;
+    if (enum_name.scope_name.empty()) {
+        info = find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
+    } else {
+        const syntax::ModuleId scope_module = resolve_import_alias(enum_name.scope_name, enum_name.scope_range, false);
+        if (syntax::is_valid(scope_module)) {
+            info = find_generic_enum_template_in_module(scope_module, enum_name.text, callee.range, false);
+        }
+    }
     if (info == nullptr) {
         return nullptr;
     }

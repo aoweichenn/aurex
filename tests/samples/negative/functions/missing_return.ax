@@ -1,0 +1,9 @@
+module missing_return;
+
+fn value() -> i32 {
+  let answer: i32 = 42;
+}
+
+fn main() -> i32 {
+  return value();
+}

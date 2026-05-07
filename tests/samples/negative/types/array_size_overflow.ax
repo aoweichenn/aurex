@@ -1,0 +1,9 @@
+module array_size_overflow;
+
+struct S {
+  data: [9223372036854775808]u16;
+}
+
+fn main() -> i32 {
+  return cast(i32, size_of(S));
+}

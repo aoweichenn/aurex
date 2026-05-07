@@ -78,7 +78,12 @@ void verify_const_enum_lowering() {
 void verify_negative_sample_diagnostics() {
     for (const fs::path& src : sorted_files(negative_samples_root(), ".ax")) {
         std::string command = aurexc() + " --check " + q(src);
-        if (stem(src) == "module_name_mismatch" || stem(src) == "cyclic_import" || stem(src) == "ambiguous_import_name") {
+        if (stem(src) == "module_name_mismatch" ||
+            stem(src) == "cyclic_import" ||
+            stem(src) == "ambiguous_import_name" ||
+            stem(src) == "module_mangle_abi_collision" ||
+            stem(src) == "const_mangle_abi_collision" ||
+            stem(src) == "method_abi_collision") {
             command = aurexc() + " " + tests_import_flags() + " --check " + q(src);
         }
         const CommandResult result = require_failure(command);

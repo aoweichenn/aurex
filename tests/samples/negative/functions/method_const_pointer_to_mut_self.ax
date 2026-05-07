@@ -1,0 +1,18 @@
+module method_const_pointer_to_mut_self;
+
+struct Counter {
+  value: i32;
+}
+
+impl Counter {
+  fn add(self: *mut Counter, delta: i32) -> i32 {
+    self.value = self.value + delta;
+    return self.value;
+  }
+}
+
+fn main() -> i32 {
+  let counter = Counter { value: 1 };
+  let pointer: *const Counter = &counter;
+  return pointer.add(1);
+}

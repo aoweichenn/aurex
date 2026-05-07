@@ -1,0 +1,11 @@
+module u64_literal_initializer;
+
+const GLOBAL: u64 = 4294967296;
+
+fn main() -> i32 {
+  let local: u64 = 4294967296;
+  if local == GLOBAL {
+    return 0;
+  }
+  return 1;
+}

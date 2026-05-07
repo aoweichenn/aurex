@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace aurex::sema {
 
@@ -139,7 +141,68 @@ namespace {
         return offset;
     }
     const base::u64 mask = alignment - 1;
+    if (offset > std::numeric_limits<base::u64>::max() - mask) {
+        return std::numeric_limits<base::u64>::max();
+    }
     return (offset + mask) & ~mask;
+}
+
+[[nodiscard]] bool checked_add_u64(const base::u64 lhs, const base::u64 rhs, base::u64& result) noexcept {
+    if (lhs > std::numeric_limits<base::u64>::max() - rhs) {
+        result = std::numeric_limits<base::u64>::max();
+        return false;
+    }
+    result = lhs + rhs;
+    return true;
+}
+
+[[nodiscard]] bool checked_mul_u64(const base::u64 lhs, const base::u64 rhs, base::u64& result) noexcept {
+    if (lhs != 0 && rhs > std::numeric_limits<base::u64>::max() / lhs) {
+        result = std::numeric_limits<base::u64>::max();
+        return false;
+    }
+    result = lhs * rhs;
+    return true;
+}
+
+[[nodiscard]] bool checked_align_forward(
+    const base::u64 offset,
+    const base::u64 alignment,
+    base::u64& result
+) noexcept {
+    if (alignment == 0) {
+        result = offset;
+        return true;
+    }
+    const base::u64 mask = alignment - 1;
+    if (offset > std::numeric_limits<base::u64>::max() - mask) {
+        result = std::numeric_limits<base::u64>::max();
+        return false;
+    }
+    result = (offset + mask) & ~mask;
+    return true;
+}
+
+[[nodiscard]] base::u64 add_saturating(const base::u64 lhs, const base::u64 rhs) noexcept {
+    base::u64 result = 0;
+    static_cast<void>(checked_add_u64(lhs, rhs, result));
+    return result;
+}
+
+[[nodiscard]] base::u64 mul_saturating(const base::u64 lhs, const base::u64 rhs) noexcept {
+    base::u64 result = 0;
+    static_cast<void>(checked_mul_u64(lhs, rhs, result));
+    return result;
+}
+
+[[nodiscard]] bool is_builtin_scalar_bitcast_type(const TypeTable& types, const TypeHandle type) noexcept {
+    if (!is_valid(type)) {
+        return false;
+    }
+    const TypeInfo& info = types.get(type);
+    return info.kind == TypeKind::builtin &&
+           info.builtin != BuiltinType::void_ &&
+           info.builtin != BuiltinType::str;
 }
 
 } // namespace
@@ -395,6 +458,170 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const noexce
     return element_size == 0 || info.array_count <= std::numeric_limits<base::u64>::max() / element_size;
 }
 
+void SemanticAnalyzer::validate_type_layouts() {
+    struct LayoutResult {
+        base::u64 size = 0;
+        base::u64 align = 1;
+        bool ok = false;
+    };
+
+    std::unordered_map<base::u32, base::u8> states;
+    std::unordered_map<base::u32, LayoutResult> results;
+
+    const auto compute = [&](const auto& self, const TypeHandle type, const base::SourceRange range) -> LayoutResult {
+        if (!is_valid(type)) {
+            return {};
+        }
+
+        const TypeInfo& info = checked_.types.get(type);
+        switch (info.kind) {
+        case TypeKind::builtin:
+            if (info.builtin == BuiltinType::void_) {
+                return {};
+            }
+            return LayoutResult {abi_size(type), abi_align(type), true};
+        case TypeKind::pointer:
+            return LayoutResult {abi_size(type), abi_align(type), true};
+        case TypeKind::opaque_struct:
+            return {};
+        case TypeKind::array: {
+            const LayoutResult element = self(self, info.array_element, range);
+            if (!element.ok) {
+                return LayoutResult {0, std::max<base::u64>(1, element.align), false};
+            }
+            base::u64 size = 0;
+            if (!checked_mul_u64(info.array_count, element.size, size)) {
+                report(range, "array storage size overflows ABI size");
+                return LayoutResult {size, element.align, false};
+            }
+            return LayoutResult {size, element.align, true};
+        }
+        case TypeKind::struct_:
+        case TypeKind::enum_:
+            break;
+        }
+
+        if (const auto cached = results.find(type.value); cached != results.end()) {
+            return cached->second;
+        }
+
+        if (states[type.value] == 1) {
+            report(range, "recursive value type is not valid storage: " + checked_.types.display_name(type));
+            return {};
+        }
+        states[type.value] = 1;
+
+        LayoutResult result;
+        result.ok = true;
+        if (info.kind == TypeKind::struct_) {
+            const StructInfo* struct_info = find_struct(type);
+            if (struct_info == nullptr || struct_info->is_opaque) {
+                result.ok = false;
+            } else {
+                base::u64 offset = 0;
+                base::u64 max_align = 1;
+                for (const StructFieldInfo& field : struct_info->fields) {
+                    const LayoutResult field_layout = self(self, field.type, field.range);
+                    if (!field_layout.ok) {
+                        result.ok = false;
+                        continue;
+                    }
+                    max_align = std::max(max_align, field_layout.align);
+                    base::u64 aligned_offset = 0;
+                    if (!checked_align_forward(offset, field_layout.align, aligned_offset)) {
+                        report(field.range, "struct storage size overflows ABI size");
+                        result.ok = false;
+                    }
+                    base::u64 next_offset = 0;
+                    if (!checked_add_u64(aligned_offset, field_layout.size, next_offset)) {
+                        report(field.range, "struct storage size overflows ABI size");
+                        result.ok = false;
+                    }
+                    offset = next_offset;
+                }
+                base::u64 size = 0;
+                if (!checked_align_forward(offset, max_align, size)) {
+                    report(range, "struct storage size overflows ABI size");
+                    result.ok = false;
+                }
+                result.size = size;
+                result.align = max_align;
+            }
+        } else {
+            result.size = is_valid(info.enum_underlying) ? abi_size(info.enum_underlying) : 0;
+            result.align = is_valid(info.enum_underlying) ? abi_align(info.enum_underlying) : 1;
+            base::u64 payload_size = 0;
+            base::u64 payload_align = 1;
+            bool has_payload = false;
+            for (const auto& entry : checked_.enum_cases) {
+                const EnumCaseInfo& enum_case = entry.second;
+                if (!checked_.types.same(enum_case.type, type) || !is_valid(enum_case.payload_type)) {
+                    continue;
+                }
+                has_payload = true;
+                const LayoutResult payload = self(self, enum_case.payload_type, enum_case.range);
+                if (!payload.ok) {
+                    result.ok = false;
+                    continue;
+                }
+                if (payload.size > payload_size ||
+                    (payload.size == payload_size && payload.align > payload_align)) {
+                    payload_size = payload.size;
+                    payload_align = payload.align;
+                }
+            }
+            if (has_payload) {
+                const base::u64 max_align = std::max(result.align, payload_align);
+                base::u64 storage_offset = 0;
+                if (!checked_align_forward(result.size, payload_align, storage_offset)) {
+                    report(range, "enum storage size overflows ABI size");
+                    result.ok = false;
+                }
+                base::u64 total = 0;
+                if (!checked_add_u64(storage_offset, payload_size, total)) {
+                    report(range, "enum storage size overflows ABI size");
+                    result.ok = false;
+                }
+                base::u64 size = 0;
+                if (!checked_align_forward(total, max_align, size)) {
+                    report(range, "enum storage size overflows ABI size");
+                    result.ok = false;
+                }
+                result.size = size;
+                result.align = max_align;
+            }
+        }
+
+        states[type.value] = 2;
+        results[type.value] = result;
+        return result;
+    };
+
+    for (const auto& entry : checked_.structs) {
+        const StructInfo& info = entry.second;
+        if (!info.is_opaque) {
+            const base::SourceRange range = info.fields.empty() ? base::SourceRange {} : info.fields.front().range;
+            static_cast<void>(compute(compute, info.type, range));
+        }
+    }
+
+    std::unordered_set<base::u32> seen_enums;
+    for (const auto& entry : named_types_) {
+        const TypeHandle type = entry.second;
+        if (is_valid(type) &&
+            checked_.types.get(type).kind == TypeKind::enum_ &&
+            seen_enums.insert(type.value).second) {
+            static_cast<void>(compute(compute, type, {}));
+        }
+    }
+    for (const auto& entry : checked_.enum_cases) {
+        const TypeHandle type = entry.second.type;
+        if (is_valid(type) && seen_enums.insert(type.value).second) {
+            static_cast<void>(compute(compute, type, entry.second.range));
+        }
+    }
+}
+
 bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept {
     return parse_u64_literal_checked(text, value);
 }
@@ -433,120 +660,165 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
         return checked_.types.is_pointer(dst) && checked_.types.is_pointer(src);
     }
     if (kind == syntax::ExprKind::bit_cast) {
-        return checked_.types.is_copyable(dst) && checked_.types.is_copyable(src) && abi_size(dst) == abi_size(src);
+        if (!checked_.types.is_copyable(dst) || !checked_.types.is_copyable(src) || abi_size(dst) != abi_size(src)) {
+            return false;
+        }
+        if (is_builtin_scalar_bitcast_type(checked_.types, dst) &&
+            is_builtin_scalar_bitcast_type(checked_.types, src)) {
+            return true;
+        }
+        return checked_.types.is_pointer(dst) && checked_.types.is_pointer(src);
     }
     return false;
 }
 
 base::u64 SemanticAnalyzer::abi_size(const TypeHandle type) const noexcept {
-    if (!is_valid(type)) {
-        return 0;
-    }
-    const TypeInfo& info = checked_.types.get(type);
-    switch (info.kind) {
-    case TypeKind::builtin:
-        switch (info.builtin) {
-        case BuiltinType::void_: return 0;
-        case BuiltinType::bool_: return sizeof(bool);
-        case BuiltinType::i8:
-        case BuiltinType::u8: return sizeof(std::uint8_t);
-        case BuiltinType::i16:
-        case BuiltinType::u16: return sizeof(std::uint16_t);
-        case BuiltinType::i32:
-        case BuiltinType::u32: return sizeof(std::uint32_t);
-        case BuiltinType::i64:
-        case BuiltinType::u64: return sizeof(std::uint64_t);
-        case BuiltinType::isize: return sizeof(std::ptrdiff_t);
-        case BuiltinType::usize: return sizeof(std::size_t);
-        case BuiltinType::f32: return sizeof(float);
-        case BuiltinType::f64: return sizeof(double);
-        case BuiltinType::str: return sizeof(void*) + sizeof(std::size_t);
-        }
-        return 0;
-    case TypeKind::pointer:
-        return sizeof(void*);
-    case TypeKind::array:
-        return info.array_count * abi_size(info.array_element);
-    case TypeKind::enum_: {
-        if (!is_valid(info.enum_payload_storage)) {
-            return abi_size(info.enum_underlying);
-        }
-        const base::u64 tag_align = abi_align(info.enum_underlying);
-        const base::u64 storage_align = info.enum_payload_align;
-        const base::u64 max_align = std::max(tag_align, storage_align);
-        const base::u64 storage_offset = align_forward(abi_size(info.enum_underlying), storage_align);
-        return align_forward(storage_offset + abi_size(info.enum_payload_storage), max_align);
-    }
-    case TypeKind::struct_: {
-        const StructInfo* struct_info = find_struct(type);
-        if (struct_info == nullptr) {
+    std::unordered_set<base::u32> visiting;
+    const auto compute = [&](const auto& self, const TypeHandle current) -> base::u64 {
+        if (!is_valid(current)) {
             return 0;
         }
-        base::u64 offset = 0;
-        base::u64 max_align = 1;
-        for (const StructFieldInfo& field : struct_info->fields) {
-            const base::u64 field_align = abi_align(field.type);
-            max_align = std::max(max_align, field_align);
-            offset = align_forward(offset, field_align);
-            offset += abi_size(field.type);
+        const TypeInfo& info = checked_.types.get(current);
+        switch (info.kind) {
+        case TypeKind::builtin:
+            switch (info.builtin) {
+            case BuiltinType::void_: return 0;
+            case BuiltinType::bool_: return sizeof(bool);
+            case BuiltinType::i8:
+            case BuiltinType::u8: return sizeof(std::uint8_t);
+            case BuiltinType::i16:
+            case BuiltinType::u16: return sizeof(std::uint16_t);
+            case BuiltinType::i32:
+            case BuiltinType::u32: return sizeof(std::uint32_t);
+            case BuiltinType::i64:
+            case BuiltinType::u64: return sizeof(std::uint64_t);
+            case BuiltinType::isize: return sizeof(std::ptrdiff_t);
+            case BuiltinType::usize: return sizeof(std::size_t);
+            case BuiltinType::f32: return sizeof(float);
+            case BuiltinType::f64: return sizeof(double);
+            case BuiltinType::str: return sizeof(void*) + sizeof(std::size_t);
+            }
+            return 0;
+        case TypeKind::pointer:
+            return sizeof(void*);
+        case TypeKind::array:
+            return mul_saturating(info.array_count, self(self, info.array_element));
+        case TypeKind::enum_: {
+            if (!visiting.insert(current.value).second) {
+                return 0;
+            }
+            if (!is_valid(info.enum_payload_storage)) {
+                const base::u64 result = self(self, info.enum_underlying);
+                visiting.erase(current.value);
+                return result;
+            }
+            const base::u64 tag_align = abi_align(info.enum_underlying);
+            const base::u64 storage_align = info.enum_payload_align;
+            const base::u64 max_align = std::max(tag_align, storage_align);
+            const base::u64 storage_offset = align_forward(self(self, info.enum_underlying), storage_align);
+            const base::u64 result = align_forward(
+                add_saturating(storage_offset, self(self, info.enum_payload_storage)),
+                max_align
+            );
+            visiting.erase(current.value);
+            return result;
         }
-        return align_forward(offset, max_align);
-    }
-    case TypeKind::opaque_struct:
+        case TypeKind::struct_: {
+            if (!visiting.insert(current.value).second) {
+                return 0;
+            }
+            const StructInfo* struct_info = find_struct(current);
+            if (struct_info == nullptr) {
+                visiting.erase(current.value);
+                return 0;
+            }
+            base::u64 offset = 0;
+            base::u64 max_align = 1;
+            for (const StructFieldInfo& field : struct_info->fields) {
+                const base::u64 field_align = abi_align(field.type);
+                max_align = std::max(max_align, field_align);
+                offset = align_forward(offset, field_align);
+                offset = add_saturating(offset, self(self, field.type));
+            }
+            const base::u64 result = align_forward(offset, max_align);
+            visiting.erase(current.value);
+            return result;
+        }
+        case TypeKind::opaque_struct:
+            return 0;
+        }
         return 0;
-    }
-    return 0;
+    };
+    return compute(compute, type);
 }
 
 base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const noexcept {
-    if (!is_valid(type)) {
-        return 1;
-    }
-    const TypeInfo& info = checked_.types.get(type);
-    switch (info.kind) {
-    case TypeKind::builtin:
-        switch (info.builtin) {
-        case BuiltinType::void_: return 1;
-        case BuiltinType::bool_: return alignof(bool);
-        case BuiltinType::i8:
-        case BuiltinType::u8: return alignof(std::uint8_t);
-        case BuiltinType::i16:
-        case BuiltinType::u16: return alignof(std::uint16_t);
-        case BuiltinType::i32:
-        case BuiltinType::u32: return alignof(std::uint32_t);
-        case BuiltinType::i64:
-        case BuiltinType::u64: return alignof(std::uint64_t);
-        case BuiltinType::isize: return alignof(std::ptrdiff_t);
-        case BuiltinType::usize: return alignof(std::size_t);
-        case BuiltinType::f32: return alignof(float);
-        case BuiltinType::f64: return alignof(double);
-        case BuiltinType::str: return alignof(void*);
-        }
-        return 1;
-    case TypeKind::pointer:
-        return alignof(void*);
-    case TypeKind::array:
-        return abi_align(info.array_element);
-    case TypeKind::enum_:
-        if (!is_valid(info.enum_payload_storage)) {
-            return abi_align(info.enum_underlying);
-        }
-        return std::max(abi_align(info.enum_underlying), info.enum_payload_align);
-    case TypeKind::struct_: {
-        const StructInfo* struct_info = find_struct(type);
-        if (struct_info == nullptr) {
+    std::unordered_set<base::u32> visiting;
+    const auto compute = [&](const auto& self, const TypeHandle current) -> base::u64 {
+        if (!is_valid(current)) {
             return 1;
         }
-        base::u64 max_align = 1;
-        for (const StructFieldInfo& field : struct_info->fields) {
-            max_align = std::max(max_align, abi_align(field.type));
+        const TypeInfo& info = checked_.types.get(current);
+        switch (info.kind) {
+        case TypeKind::builtin:
+            switch (info.builtin) {
+            case BuiltinType::void_: return 1;
+            case BuiltinType::bool_: return alignof(bool);
+            case BuiltinType::i8:
+            case BuiltinType::u8: return alignof(std::uint8_t);
+            case BuiltinType::i16:
+            case BuiltinType::u16: return alignof(std::uint16_t);
+            case BuiltinType::i32:
+            case BuiltinType::u32: return alignof(std::uint32_t);
+            case BuiltinType::i64:
+            case BuiltinType::u64: return alignof(std::uint64_t);
+            case BuiltinType::isize: return alignof(std::ptrdiff_t);
+            case BuiltinType::usize: return alignof(std::size_t);
+            case BuiltinType::f32: return alignof(float);
+            case BuiltinType::f64: return alignof(double);
+            case BuiltinType::str: return alignof(void*);
+            }
+            return 1;
+        case TypeKind::pointer:
+            return alignof(void*);
+        case TypeKind::array:
+            return self(self, info.array_element);
+        case TypeKind::enum_:
+            if (!visiting.insert(current.value).second) {
+                return 1;
+            }
+            if (!is_valid(info.enum_payload_storage)) {
+                const base::u64 result = self(self, info.enum_underlying);
+                visiting.erase(current.value);
+                return result;
+            }
+            {
+                const base::u64 result = std::max(self(self, info.enum_underlying), info.enum_payload_align);
+                visiting.erase(current.value);
+                return result;
+            }
+        case TypeKind::struct_: {
+            if (!visiting.insert(current.value).second) {
+                return 1;
+            }
+            const StructInfo* struct_info = find_struct(current);
+            if (struct_info == nullptr) {
+                visiting.erase(current.value);
+                return 1;
+            }
+            base::u64 max_align = 1;
+            for (const StructFieldInfo& field : struct_info->fields) {
+                max_align = std::max(max_align, self(self, field.type));
+            }
+            visiting.erase(current.value);
+            return max_align;
         }
-        return max_align;
-    }
-    case TypeKind::opaque_struct:
+        case TypeKind::opaque_struct:
+            return 1;
+        }
         return 1;
-    }
-    return 1;
+    };
+    return compute(compute, type);
 }
 
 bool SemanticAnalyzer::is_integer_literal(const syntax::ExprId expr_id) const noexcept {
@@ -567,12 +839,16 @@ bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id) {
     }
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
     switch (expr.kind) {
-    case syntax::ExprKind::name:
+    case syntax::ExprKind::name: {
+        const Symbol* symbol = nullptr;
         if (!expr.scope_name.empty()) {
             const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range, false);
-            return syntax::is_valid(module) && find_symbol_in_module(module, expr.text, expr.range, false) != nullptr;
+            symbol = syntax::is_valid(module) ? find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
+        } else {
+            symbol = find_symbol(expr.text, expr.range);
         }
-        return find_symbol(expr.text, expr.range) != nullptr;
+        return symbol != nullptr && (symbol->kind == SymbolKind::local || symbol->kind == SymbolKind::parameter);
+    }
     case syntax::ExprKind::field:
     case syntax::ExprKind::index:
         return is_place_expr(expr.object);

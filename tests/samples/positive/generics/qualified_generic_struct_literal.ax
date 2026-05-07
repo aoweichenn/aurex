@@ -1,0 +1,12 @@
+module qualified_generic_struct_literal;
+
+import qualified_literal.remote as remote;
+
+struct Pair<T> {
+  other: T;
+}
+
+fn main() -> i32 {
+  let pair: remote::Pair<i32> = remote::Pair { value: 42 };
+  return pair.value - 42;
+}

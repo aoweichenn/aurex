@@ -1,0 +1,20 @@
+module qualified_generic_enum_constructor;
+
+import qualified_literal.remote as remote;
+
+enum Result<T, E>: u8 {
+  local(T) = 1,
+  other(E) = 2,
+}
+
+fn make() -> remote::Result<i32, i32> {
+  return remote::Result<i32, i32>.err(5);
+}
+
+fn main() -> i32 {
+  let result: remote::Result<i32, i32> = make();
+  return match result {
+    .ok(value) => value,
+    .err(code) => code - 5,
+  };
+}

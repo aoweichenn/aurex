@@ -1,0 +1,5 @@
+module method_collision.types;
+
+pub struct Box {
+  value: i32;
+}

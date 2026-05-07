@@ -1,0 +1,11 @@
+module const_initializer_function_call;
+
+fn value() -> i32 {
+  return 7;
+}
+
+const VALUE: i32 = value();
+
+fn main() -> i32 {
+  return VALUE;
+}

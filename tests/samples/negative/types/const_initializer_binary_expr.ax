@@ -1,0 +1,7 @@
+module const_initializer_binary_expr;
+
+const VALUE: i32 = 1 + 2;
+
+fn main() -> i32 {
+  return VALUE;
+}

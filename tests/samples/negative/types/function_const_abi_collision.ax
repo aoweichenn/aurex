@@ -1,0 +1,11 @@
+module function_const_abi_collision;
+
+const VALUE: i32 = 41;
+
+fn collide() -> i32 @name("m0_function_const_abi_collision_VALUE") {
+  return 1;
+}
+
+fn main() -> i32 {
+  return VALUE + collide();
+}

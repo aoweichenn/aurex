@@ -1,0 +1,13 @@
+module explicit_abi_duplicate;
+
+fn first() -> i32 @name("same_symbol") {
+  return 1;
+}
+
+fn second() -> i32 @name("same_symbol") {
+  return 2;
+}
+
+fn main() -> i32 {
+  return first() + second();
+}

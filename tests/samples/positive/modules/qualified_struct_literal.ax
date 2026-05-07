@@ -1,0 +1,15 @@
+module qualified_struct_literal;
+
+import qualified_literal.remote as remote;
+
+struct Box {
+  value: i32;
+}
+
+fn main() -> i32 {
+  let boxed: remote::Box = remote::Box { value: true };
+  if boxed.value {
+    return 0;
+  }
+  return 1;
+}

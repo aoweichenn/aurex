@@ -1,0 +1,10 @@
+module extern_abi_signature_mismatch;
+
+extern c {
+  fn first(value: i32) -> i32 @name("same_extern_symbol");
+  fn second(value: *const u8) -> i32 @name("same_extern_symbol");
+}
+
+fn main() -> i32 {
+  return first(1) + second(c"x");
+}

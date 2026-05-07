@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace aurex::sema {
@@ -44,6 +46,22 @@ namespace {
     const base::u64 count = std::max<base::u64>(1, (size + unit_size - 1) / unit_size);
     return count == 1 ? unit : types.array(count, unit);
 }
+
+struct AbiFunctionInfo {
+    std::string name;
+    TypeHandle return_type = invalid_type_handle;
+    std::vector<TypeHandle> param_types;
+    base::SourceRange range {};
+    bool is_extern_c = false;
+    bool is_variadic = false;
+};
+
+struct AbiSymbolInfo {
+    std::string name;
+    base::SourceRange range {};
+    bool is_function = false;
+    AbiFunctionInfo function;
+};
 
 } // namespace
 
@@ -446,6 +464,93 @@ void SemanticAnalyzer::validate_function_prototypes() {
     }
 }
 
+void SemanticAnalyzer::validate_abi_symbols() {
+    std::unordered_map<std::string, AbiSymbolInfo> symbols;
+
+    const auto same_function_type = [&](const AbiFunctionInfo& lhs, const AbiFunctionInfo& rhs) {
+        if (!checked_.types.same(lhs.return_type, rhs.return_type) ||
+            lhs.is_variadic != rhs.is_variadic ||
+            lhs.param_types.size() != rhs.param_types.size()) {
+            return false;
+        }
+        for (base::usize i = 0; i < lhs.param_types.size(); ++i) {
+            if (!checked_.types.same(lhs.param_types[i], rhs.param_types[i])) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const auto insert_function = [&](const std::string& symbol, AbiFunctionInfo function) {
+        if (symbol.empty()) {
+            return;
+        }
+        const auto found = symbols.find(symbol);
+        if (found == symbols.end()) {
+            AbiSymbolInfo info;
+            info.name = function.name;
+            info.range = function.range;
+            info.is_function = true;
+            info.function = std::move(function);
+            symbols.emplace(symbol, std::move(info));
+            return;
+        }
+
+        const AbiSymbolInfo& prior = found->second;
+        if (prior.is_function &&
+            prior.function.is_extern_c &&
+            function.is_extern_c &&
+            !same_function_type(prior.function, function)) {
+            report(function.range, "extern C ABI symbol redeclared with incompatible signature: " + symbol);
+            return;
+        }
+        report(function.range, "duplicate ABI symbol: " + symbol);
+    };
+
+    for (const auto& entry : checked_.functions) {
+        const FunctionSignature& signature = entry.second;
+        if (signature.has_conflict) {
+            continue;
+        }
+        insert_function(signature.c_name, AbiFunctionInfo {
+            signature.name,
+            signature.return_type,
+            signature.param_types,
+            signature.range,
+            signature.is_extern_c,
+            signature.is_variadic,
+        });
+    }
+
+    for (const GenericFunctionInstanceInfo& instance : checked_.generic_function_instances) {
+        insert_function(instance.c_name, AbiFunctionInfo {
+            instance.name,
+            instance.return_type,
+            instance.param_types,
+            instance.item.value < module_.items.size() ? module_.items[instance.item.value].range : base::SourceRange {},
+            false,
+            false,
+        });
+    }
+
+    for (const auto& entry : global_values_) {
+        const Symbol& symbol = entry.second;
+        if (symbol.kind == SymbolKind::function || symbol.c_name.empty()) {
+            continue;
+        }
+        const auto found = symbols.find(symbol.c_name);
+        if (found == symbols.end()) {
+            AbiSymbolInfo info;
+            info.name = symbol.name;
+            info.range = symbol.range;
+            info.is_function = false;
+            symbols.emplace(symbol.c_name, std::move(info));
+            continue;
+        }
+        report(symbol.range, "duplicate ABI symbol: " + symbol.c_name);
+    }
+}
+
 void SemanticAnalyzer::analyze_entry_points() {
     const syntax::ModuleId root_module {0};
     const FunctionSignature* aurex_entry = nullptr;
@@ -552,16 +657,32 @@ void SemanticAnalyzer::analyze_struct_properties() {
 }
 
 void SemanticAnalyzer::analyze_const_decls() {
+    std::unordered_map<std::string, std::vector<std::string>> dependencies_by_const;
+    std::unordered_map<std::string, base::SourceRange> const_ranges;
+    std::unordered_map<std::string, std::string> const_names;
+
     for (const syntax::ItemNode& item : module_.items) {
         if (item.kind != syntax::ItemKind::const_decl) {
             continue;
         }
         current_module_ = item_module(item);
+        const std::string const_key = module_key(current_module_, item.name);
+        const_ranges[const_key] = item.range;
+        const_names[const_key] = qualified_name(current_module_, item.name);
         const TypeHandle declared = resolve_type(item.const_type);
         const bool previous_const_initializer = in_const_initializer_;
         in_const_initializer_ = true;
         const TypeHandle actual = analyze_expr(item.const_value, declared);
         in_const_initializer_ = previous_const_initializer;
+        std::unordered_set<std::string> dependencies;
+        if (!is_const_evaluable_expr(item.const_value, dependencies)) {
+            const base::SourceRange range =
+                syntax::is_valid(item.const_value) && item.const_value.value < module_.exprs.size()
+                    ? module_.exprs[item.const_value.value].range
+                    : item.range;
+            report(range, "const initializer is not compile-time constant");
+        }
+        dependencies_by_const[const_key] = std::vector<std::string>(dependencies.begin(), dependencies.end());
         if (!is_valid_storage_type(declared)) {
             report(item.range, "const type is not valid storage");
         }
@@ -569,7 +690,117 @@ void SemanticAnalyzer::analyze_const_decls() {
             report(item.range, "const initializer type does not match declared type");
         }
     }
+
+    std::unordered_map<std::string, base::u8> states;
+    const auto visit = [&](const auto& self, const std::string& key) -> void {
+        const base::u8 state = states[key];
+        if (state == 2) {
+            return;
+        }
+        if (state == 1) {
+            const auto range = const_ranges.find(key);
+            report(
+                range == const_ranges.end() ? base::SourceRange {} : range->second,
+                "cyclic const initializer: " + (const_names.contains(key) ? const_names[key] : key)
+            );
+            states[key] = 2;
+            return;
+        }
+        states[key] = 1;
+        if (const auto found = dependencies_by_const.find(key); found != dependencies_by_const.end()) {
+            for (const std::string& dependency : found->second) {
+                if (dependencies_by_const.contains(dependency)) {
+                    self(self, dependency);
+                }
+            }
+        }
+        states[key] = 2;
+    };
+    for (const auto& entry : dependencies_by_const) {
+        visit(visit, entry.first);
+    }
     current_module_ = syntax::invalid_module_id;
+}
+
+bool SemanticAnalyzer::is_const_evaluable_expr(
+    const syntax::ExprId expr_id,
+    std::unordered_set<std::string>& dependencies
+) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return false;
+    }
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    switch (expr.kind) {
+    case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::bool_literal:
+    case syntax::ExprKind::null_literal:
+    case syntax::ExprKind::string_literal:
+    case syntax::ExprKind::c_string_literal:
+    case syntax::ExprKind::byte_literal:
+    case syntax::ExprKind::size_of:
+    case syntax::ExprKind::align_of:
+        return true;
+    case syntax::ExprKind::name: {
+        const Symbol* symbol = nullptr;
+        if (!expr.scope_name.empty()) {
+            const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range, false);
+            symbol = syntax::is_valid(module) ? find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
+        } else {
+            if (const Symbol* local = symbols_.find(expr.text); local != nullptr) {
+                symbol = local;
+            } else if (const auto found = global_values_.find(module_key(current_module_, expr.text)); found != global_values_.end()) {
+                symbol = &found->second;
+            } else {
+                for (syntax::ModuleId module : visible_modules(current_module_)) {
+                    if (module.value == current_module_.value) {
+                        continue;
+                    }
+                    const auto imported = global_values_.find(module_key(module, expr.text));
+                    if (imported != global_values_.end() && can_access(module, imported->second.visibility)) {
+                        symbol = &imported->second;
+                        break;
+                    }
+                }
+            }
+        }
+        if (symbol == nullptr) {
+            return false;
+        }
+        if (symbol->kind == SymbolKind::enum_case) {
+            return true;
+        }
+        if (symbol->kind != SymbolKind::const_) {
+            return false;
+        }
+        dependencies.insert(module_key(symbol->module, symbol->name));
+        return true;
+    }
+    case syntax::ExprKind::field: {
+        if (expr_id.value < checked_.expr_c_names.size() && !checked_.expr_c_names[expr_id.value].empty()) {
+            for (const auto& entry : checked_.enum_cases) {
+                if (entry.second.c_name == checked_.expr_c_names[expr_id.value]) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    case syntax::ExprKind::struct_literal: {
+        bool ok = true;
+        for (const syntax::FieldInit& init : expr.field_inits) {
+            ok = is_const_evaluable_expr(init.value, dependencies) && ok;
+        }
+        return ok;
+    }
+    case syntax::ExprKind::cast:
+    case syntax::ExprKind::ptr_cast:
+    case syntax::ExprKind::bit_cast:
+    case syntax::ExprKind::ptr_addr:
+    case syntax::ExprKind::ptr_from_addr:
+        return is_const_evaluable_expr(expr.cast_expr, dependencies);
+    default:
+        return false;
+    }
 }
 
 } // namespace aurex::sema

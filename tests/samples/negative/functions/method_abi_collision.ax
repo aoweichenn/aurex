@@ -1,0 +1,10 @@
+module method_abi_collision;
+
+import method_collision.types as t;
+import method_collision.left;
+import method_collision.right;
+
+fn main() -> i32 {
+  let box: t::Box = t::Box { value: 1 };
+  return box.value;
+}

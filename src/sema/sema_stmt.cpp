@@ -81,6 +81,15 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     symbols_.pop_scope();
     if (infer_return_type) {
         finalize_inferred_return(function, key, return_inference);
+        if (is_valid(return_inference.inferred_type) &&
+            !checked_.types.is_void(return_inference.inferred_type) &&
+            !block_guarantees_return(function.body)) {
+            report(function.range, "not all control paths return a value");
+        }
+    } else if (is_valid(expected_return) &&
+        !checked_.types.is_void(expected_return) &&
+        !block_guarantees_return(function.body)) {
+        report(function.range, "not all control paths return a value");
     }
     state = FunctionBodyState::analyzed;
     current_module_ = previous_module;
@@ -98,11 +107,11 @@ void SemanticAnalyzer::analyze_block(
     if (!syntax::is_valid(block) || block.value >= module_.stmts.size()) {
         return;
     }
-    symbols_.push_scope();
     const syntax::StmtNode& stmt = module_.stmts[block.value];
     if (stmt.kind != syntax::StmtKind::block) {
         return;
     }
+    symbols_.push_scope();
     for (syntax::StmtId child : stmt.statements) {
         analyze_stmt(child, expected_return, return_inference);
     }
@@ -227,6 +236,49 @@ void SemanticAnalyzer::analyze_stmt(
         }
         static_cast<void>(analyze_expr(stmt.init));
         break;
+    }
+}
+
+bool SemanticAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const noexcept {
+    if (!syntax::is_valid(block_id) || block_id.value >= module_.stmts.size()) {
+        return false;
+    }
+    const syntax::StmtNode& block = module_.stmts[block_id.value];
+    if (block.kind != syntax::StmtKind::block) {
+        return stmt_guarantees_return(block_id);
+    }
+    for (const syntax::StmtId child : block.statements) {
+        if (stmt_guarantees_return(child)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const noexcept {
+    if (!syntax::is_valid(stmt_id) || stmt_id.value >= module_.stmts.size()) {
+        return false;
+    }
+    const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
+    switch (stmt.kind) {
+    case syntax::StmtKind::return_:
+        return true;
+    case syntax::StmtKind::block:
+        return block_guarantees_return(stmt_id);
+    case syntax::StmtKind::if_: {
+        if (!block_guarantees_return(stmt.then_block)) {
+            return false;
+        }
+        if (syntax::is_valid(stmt.else_block)) {
+            return block_guarantees_return(stmt.else_block);
+        }
+        if (syntax::is_valid(stmt.else_if)) {
+            return stmt_guarantees_return(stmt.else_if);
+        }
+        return false;
+    }
+    default:
+        return false;
     }
 }
 

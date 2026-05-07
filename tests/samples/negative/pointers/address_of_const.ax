@@ -1,0 +1,8 @@
+module address_of_const;
+
+const VALUE: i32 = 7;
+
+fn main() -> i32 {
+  let pointer: *const i32 = &VALUE;
+  return *pointer;
+}

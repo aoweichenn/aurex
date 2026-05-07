@@ -270,6 +270,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::Expr
     Terminator ret;
     ret.kind = TerminatorKind::return_;
     ret.value = return_value;
+    emit_deferred_scopes(0);
     set_terminator(current_block_, ret);
 
     current_block_ = success_block;

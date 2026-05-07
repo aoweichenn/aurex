@@ -1,0 +1,13 @@
+module rvalue_struct_field_access;
+
+struct S {
+  value: i32;
+}
+
+fn make() -> S {
+  return S { value: 7 };
+}
+
+fn main() -> i32 {
+  return make().value;
+}

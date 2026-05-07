@@ -1,0 +1,7 @@
+module const_initializer_self_reference;
+
+const A: i32 = A;
+
+fn main() -> i32 {
+  return A;
+}

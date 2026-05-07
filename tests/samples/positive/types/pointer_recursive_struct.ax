@@ -1,0 +1,11 @@
+module pointer_recursive_struct;
+
+struct Node {
+  value: i32;
+  next: *const Node;
+}
+
+fn main() -> i32 {
+  let node: Node = Node { value: 7, next: null };
+  return node.value;
+}

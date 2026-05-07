@@ -1,0 +1,14 @@
+module qualified_literal.remote;
+
+pub struct Box {
+  value: bool;
+}
+
+pub struct Pair<T> {
+  value: T;
+}
+
+pub enum Result<T, E>: u8 {
+  ok(T) = 1,
+  err(E) = 2,
+}

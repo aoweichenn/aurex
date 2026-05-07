@@ -1,0 +1,11 @@
+module inferred_missing_return_branch;
+
+fn choose(flag: bool) {
+  if flag {
+    return 1;
+  }
+}
+
+fn main() -> i32 {
+  return choose(true);
+}

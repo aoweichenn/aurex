@@ -1,0 +1,10 @@
+module recursive_enum_payload;
+
+enum Loop: u8 {
+  done = 0,
+  more(Loop) = 1,
+}
+
+fn main() -> i32 {
+  return 0;
+}

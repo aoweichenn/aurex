@@ -1,0 +1,6 @@
+module inferred_i32_literal_overflow;
+
+fn main() -> i32 {
+  let value = 2147483648;
+  return value;
+}

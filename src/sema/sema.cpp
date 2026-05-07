@@ -41,6 +41,8 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
 
     analyze_entry_points();
     analyze_const_decls();
+    validate_type_layouts();
+    validate_abi_symbols();
 
     if (diagnostics_.has_error()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, "semantic analysis failed"});

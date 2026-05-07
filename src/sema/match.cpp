@@ -41,7 +41,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         bool arm_covered_false = false;
         bool arm_saw_wildcard = false;
         const EnumCaseInfo* case_info = enum_match
-            ? analyze_enum_case_pattern(arm.pattern, matched, coverage_target, saw_wildcard)
+            ? analyze_enum_case_pattern(arm.pattern, matched, coverage_target, guarded ? arm_saw_wildcard : saw_wildcard)
             : analyze_value_pattern(
                 arm.pattern,
                 matched,

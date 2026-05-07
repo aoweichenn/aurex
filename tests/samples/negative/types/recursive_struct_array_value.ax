@@ -1,0 +1,9 @@
+module recursive_struct_array_value;
+
+struct Node {
+  next: [1]Node;
+}
+
+fn main() -> i32 {
+  return 0;
+}

@@ -13,19 +13,21 @@ GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const 
 }
 
 std::string Lowerer::enum_case_symbol(const std::string_view name) const noexcept {
-    for (const auto& entry : checked_.enum_cases) {
-        if (entry.second.name == name || entry.second.c_name == name) {
-            return entry.second.c_name;
-        }
+    if (const auto found = enum_cases_by_name_.find(name); found != enum_cases_by_name_.end()) {
+        return found->second->c_name;
+    }
+    if (const auto found = enum_cases_by_c_name_.find(name); found != enum_cases_by_c_name_.end()) {
+        return found->second->c_name;
     }
     return std::string(name);
 }
 
 const sema::EnumCaseInfo* Lowerer::enum_case_info(const std::string_view name) const noexcept {
-    for (const auto& entry : checked_.enum_cases) {
-        if (entry.second.name == name || entry.second.c_name == name) {
-            return &entry.second;
-        }
+    if (const auto found = enum_cases_by_name_.find(name); found != enum_cases_by_name_.end()) {
+        return found->second;
+    }
+    if (const auto found = enum_cases_by_c_name_.find(name); found != enum_cases_by_c_name_.end()) {
+        return found->second;
     }
     return nullptr;
 }
@@ -34,11 +36,9 @@ const sema::EnumCaseInfo* Lowerer::enum_case_by_type_and_case(
     const sema::TypeHandle enum_type,
     const std::string_view case_name
 ) const noexcept {
-    for (const auto& entry : checked_.enum_cases) {
-        const sema::EnumCaseInfo& candidate = entry.second;
-        if (module_.types.same(candidate.type, enum_type) && candidate.case_name == case_name) {
-            return &candidate;
-        }
+    const auto found = enum_cases_by_type_and_case_.find(EnumCaseTypeKey {enum_type.value, case_name});
+    if (found != enum_cases_by_type_and_case_.end()) {
+        return found->second;
     }
     return nullptr;
 }

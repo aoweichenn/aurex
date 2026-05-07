@@ -11,6 +11,10 @@ namespace {
 #define AUREX_BUILTIN_STDLIB_ROOT ""
 #endif
 
+#ifndef AUREX_BUILTIN_HOST_C_SUPPORT_LIBRARY
+#define AUREX_BUILTIN_HOST_C_SUPPORT_LIBRARY ""
+#endif
+
 [[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path) {
     std::error_code error;
     std::filesystem::path canonical = std::filesystem::weakly_canonical(path, error);
@@ -25,6 +29,22 @@ namespace {
     return std::filesystem::exists(path / "core" / "text.ax", error) && !error &&
            std::filesystem::exists(path / "ffi" / "c" / "libc.ax", error) && !error &&
            std::filesystem::exists(path / "ffi" / "c" / "support" / "host_c.c", error) && !error;
+}
+
+[[nodiscard]] std::filesystem::path built_in_host_c_support_library(const std::filesystem::path& root) {
+    std::filesystem::path library = AUREX_BUILTIN_HOST_C_SUPPORT_LIBRARY;
+    if (library.empty()) {
+        return {};
+    }
+
+    std::error_code error;
+    const std::filesystem::path built_in_root = canonical_or_absolute(AUREX_BUILTIN_STDLIB_ROOT);
+    if (root != built_in_root) {
+        return {};
+    }
+
+    library = canonical_or_absolute(library);
+    return std::filesystem::exists(library, error) && !error ? library : std::filesystem::path {};
 }
 
 void append_candidate(std::vector<std::filesystem::path>& candidates, const std::filesystem::path& path) {
@@ -73,6 +93,7 @@ std::optional<StandardLibraryLayout> find_standard_library(const CompilerInvocat
             return StandardLibraryLayout {
                 root,
                 root / "ffi" / "c" / "support" / "host_c.c",
+                built_in_host_c_support_library(root),
             };
         }
     }
@@ -97,6 +118,9 @@ std::vector<std::filesystem::path> standard_library_support_sources(
 ) {
     switch (backend) {
     case StandardLibraryBackend::host_c:
+        if (!layout.host_c_support_library.empty()) {
+            return {layout.host_c_support_library};
+        }
         return {layout.host_c_support_source};
     case StandardLibraryBackend::none:
         return {};

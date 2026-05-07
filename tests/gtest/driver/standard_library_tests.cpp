@@ -50,6 +50,7 @@ TEST(CoreUnit, StandardLibraryHelpersCoverBackendNamesAndDisabledStdlib) {
     const driver::StandardLibraryLayout layout {
         source_root() / "std",
         source_root() / "std" / "ffi" / "c" / "support" / "host_c.c",
+        {},
     };
     const std::vector<fs::path> host_sources =
         driver::standard_library_support_sources(layout, driver::StandardLibraryBackend::host_c);

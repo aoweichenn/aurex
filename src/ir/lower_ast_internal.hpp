@@ -2,6 +2,7 @@
 
 #include "aurex/ir/lower_ast.hpp"
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -48,6 +49,23 @@ struct PendingConstant {
     bool is_literal = false;
 };
 
+struct EnumCaseTypeKey {
+    base::u32 type = sema::TypeHandle::invalid_value;
+    std::string_view case_name;
+
+    [[nodiscard]] bool operator==(const EnumCaseTypeKey& other) const noexcept {
+        return type == other.type && case_name == other.case_name;
+    }
+};
+
+struct EnumCaseTypeKeyHash {
+    [[nodiscard]] std::size_t operator()(const EnumCaseTypeKey& key) const noexcept {
+        const std::size_t type_hash = std::hash<base::u32> {}(key.type);
+        const std::size_t name_hash = std::hash<std::string_view> {}(key.case_name);
+        return type_hash ^ (name_hash + 0x9e3779b9U + (type_hash << 6U) + (type_hash >> 2U));
+    }
+};
+
 class Lowerer final {
 public:
     Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked);
@@ -60,6 +78,7 @@ private:
     void lower_function_declarations();
     void lower_generic_function_declarations();
     void lower_global_constant_initializers();
+    void index_enum_cases();
 
     [[nodiscard]] std::string item_symbol(base::u32 index, const syntax::ItemNode& item) const;
     [[nodiscard]] std::string enum_case_symbol(
@@ -163,6 +182,9 @@ private:
     std::unordered_map<std::string, LocalBinding> locals_;
     std::unordered_map<std::string, FunctionId> function_symbols_;
     std::unordered_map<std::string, GlobalConstantId> constant_symbols_;
+    std::unordered_map<std::string_view, const sema::EnumCaseInfo*> enum_cases_by_name_;
+    std::unordered_map<std::string_view, const sema::EnumCaseInfo*> enum_cases_by_c_name_;
+    std::unordered_map<EnumCaseTypeKey, const sema::EnumCaseInfo*, EnumCaseTypeKeyHash> enum_cases_by_type_and_case_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
     std::vector<FunctionId> generic_function_instance_functions_;

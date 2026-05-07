@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace aurex::ir {
@@ -227,14 +228,19 @@ private:
             fail("function has an empty ABI symbol");
             return;
         }
-        for (base::u32 i = 0; i < module_.functions.size(); ++i) {
-            if (i == function_id.value) {
-                continue;
-            }
-            const Function& other = module_.functions[i];
-            if (other.symbol != function.symbol) {
-                continue;
-            }
+        const auto existing = function_symbols_.find(function.symbol);
+        if (existing == function_symbols_.end()) {
+            function_symbols_.emplace(function.symbol, function_id);
+            return;
+        }
+
+        const FunctionId other_id = existing->second;
+        if (!is_valid(other_id) || other_id.value >= module_.functions.size() || other_id.value == function_id.value) {
+            return;
+        }
+
+        const Function& other = module_.functions[other_id.value];
+        if (other.symbol == function.symbol) {
             if (function.linkage != Linkage::extern_c || other.linkage != Linkage::extern_c) {
                 fail("duplicate non-extern function ABI symbol @" + function.symbol);
                 return;
@@ -836,6 +842,7 @@ private:
 
     const Module& module_;
     std::vector<std::string> errors_;
+    std::unordered_map<std::string, FunctionId> function_symbols_;
 };
 
 } // namespace

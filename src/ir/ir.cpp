@@ -35,6 +35,12 @@ const RecordLayout* find_record(const Module& module, const sema::TypeHandle typ
     if (!sema::is_valid(type)) {
         return nullptr;
     }
+    if (const auto found = module.record_indices.find(type.value);
+        found != module.record_indices.end() &&
+        found->second < module.records.size() &&
+        module.types.same(module.records[found->second].type, type)) {
+        return &module.records[found->second];
+    }
     for (const RecordLayout& record : module.records) {
         if (module.types.same(record.type, type)) {
             return &record;

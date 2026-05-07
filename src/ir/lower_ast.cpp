@@ -2,7 +2,7 @@
 
 #include "aurex/ir/enum_layout.hpp"
 
-#include <algorithm>
+#include <unordered_set>
 #include <utility>
 
 namespace aurex::ir::detail {
@@ -40,6 +40,7 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     module_.types = checked_.types;
     item_functions_.assign(ast_.items.size(), invalid_function_id);
     generic_function_instance_functions_.assign(checked_.generic_function_instances.size(), invalid_function_id);
+    index_enum_cases();
 }
 
 Module Lowerer::lower() {
@@ -81,24 +82,38 @@ void Lowerer::lower_record_layouts() {
                 field.type,
             });
         }
+        if (sema::is_valid(record.type)) {
+            module_.record_indices[record.type.value] = static_cast<base::u32>(module_.records.size());
+        }
         module_.records.push_back(std::move(record));
     }
 
-    std::vector<sema::TypeHandle> lowered_enums;
+    std::unordered_set<base::u32> lowered_enum_types;
     for (const auto& entry : checked_.enum_cases) {
         const sema::EnumCaseInfo& enum_case = entry.second;
-        if (std::find_if(
-                lowered_enums.begin(),
-                lowered_enums.end(),
-                [&](const sema::TypeHandle type) { return module_.types.same(type, enum_case.type); }
-            ) != lowered_enums.end()) {
+        if (sema::is_valid(enum_case.type) && !lowered_enum_types.insert(enum_case.type.value).second) {
             continue;
         }
         if (!is_payload_enum(module_.types, enum_case.type)) {
             continue;
         }
-        module_.records.push_back(make_payload_enum_record(module_.types, enum_case.type));
-        lowered_enums.push_back(enum_case.type);
+        RecordLayout record = make_payload_enum_record(module_.types, enum_case.type);
+        if (sema::is_valid(record.type)) {
+            module_.record_indices[record.type.value] = static_cast<base::u32>(module_.records.size());
+        }
+        module_.records.push_back(std::move(record));
+    }
+}
+
+void Lowerer::index_enum_cases() {
+    enum_cases_by_name_.reserve(checked_.enum_cases.size());
+    enum_cases_by_c_name_.reserve(checked_.enum_cases.size());
+    enum_cases_by_type_and_case_.reserve(checked_.enum_cases.size());
+    for (const auto& entry : checked_.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        enum_cases_by_name_.emplace(std::string_view(info.name), &info);
+        enum_cases_by_c_name_.emplace(std::string_view(info.c_name), &info);
+        enum_cases_by_type_and_case_.emplace(EnumCaseTypeKey {info.type.value, info.case_name}, &info);
     }
 }
 

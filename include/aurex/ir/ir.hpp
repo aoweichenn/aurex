@@ -5,6 +5,7 @@
 
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aurex::ir {
@@ -219,6 +220,7 @@ struct Module {
     std::vector<RecordLayout> records;
     std::vector<Value> values;
     std::vector<Function> functions;
+    std::unordered_map<base::u32, base::u32> record_indices;
 };
 
 [[nodiscard]] ValueId add_value(Module& module, Value value);

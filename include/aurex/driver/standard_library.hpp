@@ -12,6 +12,7 @@ namespace aurex::driver {
 struct StandardLibraryLayout {
     std::filesystem::path root;
     std::filesystem::path host_c_support_source;
+    std::filesystem::path host_c_support_library;
 };
 
 [[nodiscard]] std::string_view standard_library_backend_name(StandardLibraryBackend backend) noexcept;

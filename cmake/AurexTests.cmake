@@ -57,9 +57,30 @@ if(BUILD_TESTING)
         BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
     )
 
-    add_test(
-        NAME aurex_tests
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=-AurexIntegrationTest.SampleSuite_*:AurexIntegrationTest.StdCollectionsPathSampleExposesM1ContainerBaseline
+    function(aurex_add_gtest name filter)
+        add_test(
+            NAME "${name}"
+            COMMAND aurex_tests --gtest_color=auto "--gtest_filter=${filter}"
+        )
+    endfunction()
+
+    aurex_add_gtest(aurex_tests_core_unit
+        "CoreUnit.*"
+    )
+    aurex_add_gtest(aurex_tests_driver_and_regressions
+        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.SystemExamples*:AurexIntegrationTest.ExamplesDocumentationAndLibrariesArePresent:AurexIntegrationTest.NativeHelloOutputs:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.GenericEnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedGenericStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.StdTextSampleExposesGenericSpanBaseline"
+    )
+    aurex_add_gtest(aurex_tests_functions
+        "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
+    )
+    aurex_add_gtest(aurex_tests_generics
+        "AurexIntegrationTest.GenericEnumOption:AurexIntegrationTest.GenericEnumResultExpectedType:AurexIntegrationTest.GenericEnumDiagnostics:AurexIntegrationTest.GenericStructPair:AurexIntegrationTest.GenericStructLiteralInference:AurexIntegrationTest.GenericFunctionIdentity:AurexIntegrationTest.GenericFunctionImport:AurexIntegrationTest.GenericImplMethods:AurexIntegrationTest.QualifiedGenericSubstitutionImport:AurexIntegrationTest.QualifiedGenericInferenceUsesAliasScope:AurexIntegrationTest.GenericStructArrayFieldAndSmallPayloadEnum:AurexIntegrationTest.GenericStructDiagnostics:AurexIntegrationTest.GenericFunctionDiagnostics:AurexIntegrationTest.GenericImportVisibilityAndAmbiguityDiagnostics"
+    )
+    aurex_add_gtest(aurex_tests_control_and_modules
+        "AurexIntegrationTest.IfExpression:AurexIntegrationTest.LocalTypeInference:AurexIntegrationTest.FunctionReturnInference:AurexIntegrationTest.ModuleVisibility:AurexIntegrationTest.PublicImportReexport"
+    )
+    aurex_add_gtest(aurex_tests_pattern_and_types
+        "AurexIntegrationTest.MatchExpression:AurexIntegrationTest.EnumPayloadAndMatchBinding:AurexIntegrationTest.MatchWildcardAndScopedCases:AurexIntegrationTest.MatchOrPattern:AurexIntegrationTest.MatchLiteralPattern:AurexIntegrationTest.MatchGuard:AurexIntegrationTest.LayoutAlignment:AurexIntegrationTest.TypeAlias"
     )
     add_test(
         NAME aurex_tests_sample_suite_positive
@@ -93,7 +114,14 @@ if(BUILD_TESTING)
         NAME aurex_tests_std_collections_path_baseline
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.StdCollectionsPathSampleExposesM1ContainerBaseline
     )
-    set_tests_properties(aurex_tests PROPERTIES
+    set_tests_properties(
+        aurex_tests_core_unit
+        aurex_tests_driver_and_regressions
+        aurex_tests_functions
+        aurex_tests_generics
+        aurex_tests_control_and_modules
+        aurex_tests_pattern_and_types
+        PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     )
     set_tests_properties(

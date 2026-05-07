@@ -1,0 +1,117 @@
+module std_string;
+
+import std.core.result as result;
+import std.core.str as strings;
+import std.core.string as string;
+import std.core.text as text;
+import std.core.vec as vec;
+
+fn check_owned_str_roundtrip() -> result::Result<bool, i32> {
+    var s: string::String = string::String.from_str("aur\u{03A9}")?;
+    if !s.append("ex") {
+        s.destroy();
+        return Result.err(1);
+    }
+    let view: str = s.as_str();
+    let bytes: text::SpanU8 = s.as_bytes();
+    let checked_view: str = s.as_str_checked().unwrap_or("bad");
+    let ok: bool = s.byte_len() == cast(usize, 7) &&
+        string::byte_len(&s) == cast(usize, 7) &&
+        bytes.len == cast(usize, 7) &&
+        strings::equals(view, "aur\u{03A9}ex") &&
+        strings::equals(checked_view, "aur\u{03A9}ex") &&
+        s.equals("aur\u{03A9}ex") &&
+        s.starts_with("aur") &&
+        s.ends_with("\u{03A9}ex");
+    s.destroy();
+    return Result.ok(ok);
+}
+
+fn check_utf8_validation() -> result::Result<bool, i32> {
+    var invalid: vec::VecU8 = vec::new<u8>();
+    if !invalid.push(cast(u8, 0xC3)) || !invalid.push(b'(') {
+        invalid.destroy();
+        return Result.err(2);
+    }
+
+    var s: string::String = string::String.from_str("ok")?;
+    let before_len: usize = s.byte_len();
+    let from_invalid_rejected: bool = string::String.from_utf8(invalid.as_span()).is_err();
+    let append_invalid_rejected: bool = !s.append_span(invalid.as_span()) &&
+        s.byte_len() == before_len &&
+        s.equals("ok");
+    invalid.destroy();
+    s.destroy();
+    return Result.ok(from_invalid_rejected && append_invalid_rejected);
+}
+
+fn check_compat_byte_api_keeps_utf8_boundary() -> result::Result<bool, i32> {
+    var s: string::String = string::String.from_str("\u{03A9}")?;
+    let insert_middle_rejected: bool = !s.insert(cast(usize, 1), b'X');
+    let push_non_ascii_rejected: bool = !s.push(cast(u8, 0xC3));
+    let pop_scalar_rejected: bool = s.pop().is_none();
+    let remove_scalar_rejected: bool = s.remove(cast(usize, 0)).is_none();
+    s.truncate(cast(usize, 1));
+    let truncate_middle_rejected: bool = s.byte_len() == cast(usize, 2) && s.equals("\u{03A9}");
+    s.truncate(cast(usize, 0));
+    let truncate_boundary_ok: bool = s.is_empty();
+    s.destroy();
+    return Result.ok(insert_middle_rejected &&
+        push_non_ascii_rejected &&
+        pop_scalar_rejected &&
+        remove_scalar_rejected &&
+        truncate_middle_rejected &&
+        truncate_boundary_ok);
+}
+
+fn check_c_compat_surface() -> result::Result<bool, i32> {
+    var s: string::String = string::String.from_c_utf8(c"c-api")?;
+    let ok: bool = s.equals("c-api") &&
+        string::equals(&s, "c-api") &&
+        text::c_string_equal(s.c_str(), c"c-api");
+    s.destroy();
+    return Result.ok(ok);
+}
+
+fn check_self_append_alias() -> result::Result<bool, i32> {
+    var s: string::String = string::String.from_str("ab")?;
+    let view: str = s.as_str();
+    if !s.append(view) {
+        s.destroy();
+        return Result.err(5);
+    }
+    let ok: bool = s.equals("abab") && s.byte_len() == cast(usize, 4);
+    s.destroy();
+    return Result.ok(ok);
+}
+
+fn run() -> result::Result<i32, i32> {
+    let roundtrip_ok: bool = check_owned_str_roundtrip()?;
+    if !roundtrip_ok {
+        return Result.err(1);
+    }
+    let validation_ok: bool = check_utf8_validation()?;
+    if !validation_ok {
+        return Result.err(2);
+    }
+    let boundary_ok: bool = check_compat_byte_api_keeps_utf8_boundary()?;
+    if !boundary_ok {
+        return Result.err(3);
+    }
+    let c_compat_ok: bool = check_c_compat_surface()?;
+    if !c_compat_ok {
+        return Result.err(4);
+    }
+    let alias_ok: bool = check_self_append_alias()?;
+    if !alias_ok {
+        return Result.err(5);
+    }
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

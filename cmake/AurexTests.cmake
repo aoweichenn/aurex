@@ -126,6 +126,13 @@ if(BUILD_TESTING)
     )
     set_tests_properties(
         aurex_tests_sample_suite_positive
+        PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        LABELS "slow;sample-suite"
+        TIMEOUT 300
+        RUN_SERIAL TRUE
+    )
+    set_tests_properties(
         aurex_tests_sample_suite_negative
         aurex_tests_sample_suite_std_bootstrap
         aurex_tests_sample_suite_std_ffi

@@ -125,13 +125,21 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     }
 
     if (enum_match) {
-        for (const auto& entry : checked_.enum_cases) {
-            const EnumCaseInfo& case_info = entry.second;
-            if (!checked_.types.same(case_info.type, matched)) {
-                continue;
-            }
+        const auto check_case = [&](const EnumCaseInfo& case_info) {
             if (!saw_wildcard && std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
                 report(expr.range, "match expression is not exhaustive for enum case: " + case_info.name);
+            }
+        };
+        if (const std::vector<const EnumCaseInfo*>* cases = find_enum_cases_by_type(matched); cases != nullptr) {
+            for (const EnumCaseInfo* case_info : *cases) {
+                check_case(*case_info);
+            }
+        } else {
+            for (const auto& entry : checked_.enum_cases) {
+                const EnumCaseInfo& case_info = entry.second;
+                if (checked_.types.same(case_info.type, matched)) {
+                    check_case(case_info);
+                }
             }
         }
     } else if (!saw_wildcard && (!checked_.types.is_bool(matched) || !covered_true || !covered_false)) {

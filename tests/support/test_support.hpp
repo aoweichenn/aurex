@@ -1,5 +1,7 @@
 #pragma once
 
+#include "aurex/driver/invocation.hpp"
+
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -37,6 +39,9 @@ std::string q(std::string_view value);
 CommandResult run_command(const std::string& command);
 CommandResult require_success(const std::string& command);
 CommandResult require_failure(const std::string& command);
+CommandResult run_compiler(const driver::CompilerInvocation& invocation);
+CommandResult require_compiler_success(const driver::CompilerInvocation& invocation);
+CommandResult require_compiler_failure(const driver::CompilerInvocation& invocation);
 std::string read_text(const fs::path& path);
 
 void expect_contains(std::string_view text, std::string_view needle);

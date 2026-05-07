@@ -243,7 +243,8 @@ private:
     [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const FunctionSignature* find_function_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const noexcept;
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const;
+    [[nodiscard]] const std::vector<const EnumCaseInfo*>* find_enum_cases_by_type(TypeHandle enum_type) const noexcept;
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
         std::string_view enum_name,
         std::string_view case_name,
@@ -254,6 +255,7 @@ private:
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
+    void index_enum_case(const EnumCaseInfo& info);
     void report(base::SourceRange range, std::string message);
 
     const syntax::AstModule& module_;
@@ -279,6 +281,8 @@ private:
     std::unordered_map<std::string, syntax::ItemId> function_definition_items_;
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
+    std::unordered_map<std::string, const EnumCaseInfo*> enum_cases_by_type_and_case_;
+    std::unordered_map<base::u32, std::vector<const EnumCaseInfo*>> enum_cases_by_type_;
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;
     syntax::ModuleId current_module_ = syntax::invalid_module_id;
     TypeHandle current_function_return_type_ = invalid_type_handle;

@@ -446,6 +446,7 @@ void SemanticAnalyzer::register_value_names() {
                     report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
                     continue;
                 }
+                index_enum_case(case_inserted.first->second);
                 if (!has_payload) {
                     const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
                         SymbolKind::enum_case,

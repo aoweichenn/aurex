@@ -1,10 +1,15 @@
 #include "support/test_support.hpp"
 
+#include "aurex/driver/compiler.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 
@@ -135,6 +140,112 @@ namespace {
     return status;
 }
 
+class CompilerOutputCapture final {
+public:
+    CompilerOutputCapture() {
+        std::string path_template =
+            (fs::temp_directory_path() / "aurex_compiler_capture_XXXXXX").string();
+        capture_fd_ = ::mkstemp(path_template.data());
+        if (capture_fd_ < 0) {
+            throw std::runtime_error("failed to create compiler output capture file: " + std::string(std::strerror(errno)));
+        }
+        capture_path_ = path_template;
+
+        stdout_fd_ = ::dup(STDOUT_FILENO);
+        stderr_fd_ = ::dup(STDERR_FILENO);
+        if (stdout_fd_ < 0 || stderr_fd_ < 0) {
+            close_open_files();
+            throw std::runtime_error("failed to duplicate compiler output file descriptors");
+        }
+
+        std::cout.flush();
+        std::cerr.flush();
+        std::fflush(stdout);
+        std::fflush(stderr);
+        if (::dup2(capture_fd_, STDOUT_FILENO) < 0 || ::dup2(capture_fd_, STDERR_FILENO) < 0) {
+            restore_file_descriptors();
+            close_open_files();
+            throw std::runtime_error("failed to redirect compiler output file descriptors");
+        }
+
+        original_cout_ = std::cout.rdbuf(cxx_output_.rdbuf());
+        original_cerr_ = std::cerr.rdbuf(cxx_output_.rdbuf());
+        active_ = true;
+    }
+
+    CompilerOutputCapture(const CompilerOutputCapture&) = delete;
+    CompilerOutputCapture& operator=(const CompilerOutputCapture&) = delete;
+
+    ~CompilerOutputCapture() {
+        restore();
+        close_open_files();
+    }
+
+    [[nodiscard]] std::string finish() {
+        restore();
+        std::string output = cxx_output_.str();
+        if (capture_fd_ >= 0) {
+            static_cast<void>(::lseek(capture_fd_, 0, SEEK_SET));
+            std::array<char, 4096> buffer {};
+            ssize_t count = 0;
+            while ((count = ::read(capture_fd_, buffer.data(), buffer.size())) > 0) {
+                output.append(buffer.data(), static_cast<std::size_t>(count));
+            }
+        }
+        return output;
+    }
+
+private:
+    void restore() {
+        if (!active_) {
+            return;
+        }
+        std::cout.flush();
+        std::cerr.flush();
+        std::cout.rdbuf(original_cout_);
+        std::cerr.rdbuf(original_cerr_);
+        std::fflush(stdout);
+        std::fflush(stderr);
+        restore_file_descriptors();
+        active_ = false;
+    }
+
+    void restore_file_descriptors() {
+        if (stdout_fd_ >= 0) {
+            static_cast<void>(::dup2(stdout_fd_, STDOUT_FILENO));
+            ::close(stdout_fd_);
+            stdout_fd_ = -1;
+        }
+        if (stderr_fd_ >= 0) {
+            static_cast<void>(::dup2(stderr_fd_, STDERR_FILENO));
+            ::close(stderr_fd_);
+            stderr_fd_ = -1;
+        }
+    }
+
+    void close_open_files() {
+        restore_file_descriptors();
+        if (capture_fd_ >= 0) {
+            ::close(capture_fd_);
+            capture_fd_ = -1;
+        }
+        if (!capture_path_.empty()) {
+            std::error_code error;
+            fs::remove(capture_path_, error);
+            capture_path_.clear();
+        }
+    }
+
+    std::ostringstream cxx_output_;
+    std::streambuf* original_cout_ = nullptr;
+    std::streambuf* original_cerr_ = nullptr;
+    int capture_fd_ = -1;
+    int stdout_fd_ = -1;
+    int stderr_fd_ = -1;
+    fs::path capture_path_;
+    bool active_ = false;
+};
+
 } // namespace
 
 CommandResult run_command(const std::string& command) {
@@ -152,6 +263,16 @@ CommandResult run_command(const std::string& command) {
     return CommandResult {decode_status(status), output};
 }
 
+CommandResult run_compiler(const driver::CompilerInvocation& invocation) {
+    CompilerOutputCapture output;
+    driver::Compiler compiler;
+    auto result = compiler.run(invocation);
+    if (!result) {
+        std::cerr << "aurexc: " << result.error().message << "\n";
+    }
+    return CommandResult {result ? 0 : 1, output.finish()};
+}
+
 CommandResult require_success(const std::string& command) {
     CommandResult result = run_command(command);
     if (result.exit_code != 0) {
@@ -163,10 +284,29 @@ CommandResult require_success(const std::string& command) {
     return result;
 }
 
+CommandResult require_compiler_success(const driver::CompilerInvocation& invocation) {
+    CommandResult result = run_compiler(invocation);
+    if (result.exit_code != 0) {
+        throw std::runtime_error(
+            "compiler invocation failed with exit code " + std::to_string(result.exit_code) + "\n" +
+            invocation.input_path.string() + "\n" + result.output
+        );
+    }
+    return result;
+}
+
 CommandResult require_failure(const std::string& command) {
     CommandResult result = run_command(command);
     if (result.exit_code == 0) {
         throw std::runtime_error("command unexpectedly succeeded\n" + command + "\n" + result.output);
+    }
+    return result;
+}
+
+CommandResult require_compiler_failure(const driver::CompilerInvocation& invocation) {
+    CommandResult result = run_compiler(invocation);
+    if (result.exit_code == 0) {
+        throw std::runtime_error("compiler invocation unexpectedly succeeded\n" + invocation.input_path.string() + "\n" + result.output);
     }
     return result;
 }

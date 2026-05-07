@@ -130,7 +130,6 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         LABELS "slow;sample-suite"
         TIMEOUT 300
-        RUN_SERIAL TRUE
     )
     set_tests_properties(
         aurex_tests_sample_suite_negative

@@ -6,6 +6,9 @@
 #include "aurex/driver/standard_library.hpp"
 #include "aurex/syntax/module.hpp"
 
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -20,6 +23,21 @@ namespace {
     if (!input) {
         return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to open input file"});
     }
+
+    std::string text;
+    std::error_code error;
+    const std::uintmax_t size = std::filesystem::file_size(path, error);
+    if (!error) {
+        text.resize(static_cast<std::size_t>(size));
+        if (!text.empty()) {
+            input.read(text.data(), static_cast<std::streamsize>(text.size()));
+            if (!input) {
+                return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to read input file"});
+            }
+        }
+        return base::Result<std::string>::ok(std::move(text));
+    }
+
     std::ostringstream buffer;
     buffer << input.rdbuf();
     return base::Result<std::string>::ok(buffer.str());
@@ -48,16 +66,18 @@ void push_error(base::DiagnosticSink& diagnostics, base::SourceRange range, std:
     const std::vector<std::filesystem::path>& import_paths
 ) {
     const std::filesystem::path relative = syntax::module_path_to_relative_file(path);
-    std::vector<std::filesystem::path> roots;
-    roots.push_back(importer_dir);
-    for (const std::filesystem::path& import_path : import_paths) {
-        roots.push_back(import_path);
-    }
-
-    for (const std::filesystem::path& root : roots) {
-        const std::filesystem::path candidate = root / relative;
+    const auto exists = [](const std::filesystem::path& candidate) {
         std::error_code error;
-        if (std::filesystem::exists(candidate, error) && !error) {
+        return std::filesystem::exists(candidate, error) && !error;
+    };
+
+    const std::filesystem::path importer_candidate = importer_dir / relative;
+    if (exists(importer_candidate)) {
+        return importer_candidate;
+    }
+    for (const std::filesystem::path& import_path : import_paths) {
+        const std::filesystem::path candidate = import_path / relative;
+        if (exists(candidate)) {
             return candidate;
         }
     }
@@ -71,6 +91,7 @@ void push_error(base::DiagnosticSink& diagnostics, base::SourceRange range, std:
 ) {
     const std::filesystem::path relative = syntax::module_path_to_relative_file(path);
     std::vector<std::filesystem::path> candidates;
+    candidates.reserve(import_paths.size() + 1);
     candidates.push_back(importer_dir / relative);
     for (const std::filesystem::path& import_path : import_paths) {
         candidates.push_back(import_path / relative);

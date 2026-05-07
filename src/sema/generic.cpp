@@ -599,6 +599,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
         });
         if (!inserted.second) {
             report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
+        } else {
+            index_enum_case(inserted.first->second);
         }
     }
     if (is_valid(payload_storage)) {

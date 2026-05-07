@@ -1,7 +1,11 @@
 #include "aurex/driver/standard_library.hpp"
 
 #include <cstdlib>
+#include <mutex>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace aurex::driver {
 
@@ -76,6 +80,21 @@ void append_candidate(std::vector<std::filesystem::path>& candidates, const std:
     return candidates;
 }
 
+[[nodiscard]] std::string standard_library_cache_key(const CompilerInvocation& invocation) {
+    std::string key;
+    key += invocation.standard_library_path.string();
+    key.push_back('\n');
+    if (const char* env = std::getenv("AUREX_STDLIB"); env != nullptr) {
+        key += env;
+    }
+    key.push_back('\n');
+    key += invocation.tool_path.string();
+    key.push_back('\n');
+    std::error_code error;
+    key += std::filesystem::current_path(error).string();
+    return key;
+}
+
 } // namespace
 
 std::string_view standard_library_backend_name(const StandardLibraryBackend backend) noexcept {
@@ -87,16 +106,27 @@ std::string_view standard_library_backend_name(const StandardLibraryBackend back
 }
 
 std::optional<StandardLibraryLayout> find_standard_library(const CompilerInvocation& invocation) {
+    static std::unordered_map<std::string, std::optional<StandardLibraryLayout>> cache;
+    static std::mutex cache_mutex;
+    const std::string cache_key = standard_library_cache_key(invocation);
+    std::lock_guard lock(cache_mutex);
+    if (const auto found = cache.find(cache_key); found != cache.end()) {
+        return found->second;
+    }
+
     for (const std::filesystem::path& candidate : standard_library_candidates(invocation)) {
         const std::filesystem::path root = canonical_or_absolute(candidate);
         if (is_standard_library_root(root)) {
-            return StandardLibraryLayout {
+            StandardLibraryLayout layout {
                 root,
                 root / "ffi" / "c" / "support" / "host_c.c",
                 built_in_host_c_support_library(root),
             };
+            cache.emplace(cache_key, layout);
+            return layout;
         }
     }
+    cache.emplace(cache_key, std::nullopt);
     return std::nullopt;
 }
 

@@ -41,6 +41,27 @@ const std::set<std::string>& run_regular_samples() {
     return value;
 }
 
+driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::EmitKind emit_kind) {
+    driver::CompilerInvocation invocation;
+    invocation.tool_path = aurexc_path();
+    invocation.input_path = src;
+    invocation.emit_kind = emit_kind;
+    return invocation;
+}
+
+void add_sample_import_path(driver::CompilerInvocation& invocation) {
+    invocation.import_paths.push_back(imports_root());
+}
+
+void compile_sample_executable(const fs::path& src, const fs::path& output, const bool use_sample_imports) {
+    driver::CompilerInvocation invocation = sample_invocation(src, driver::EmitKind::executable);
+    invocation.output_path = output;
+    if (use_sample_imports) {
+        add_sample_import_path(invocation);
+    }
+    require_compiler_success(invocation);
+}
+
 void compile_positive_samples_and_run_subset() {
     for (const fs::path& src : sorted_files(positive_samples_root(), ".ax")) {
         const std::string name = stem(src);
@@ -51,7 +72,7 @@ void compile_positive_samples_and_run_subset() {
             continue;
         }
         const fs::path bin = test_bin_root() / name;
-        require_success(aurexc() + " " + tests_import_flags() + " " + q(src) + " -o " + q(bin));
+        compile_sample_executable(src, bin, true);
         if (run_regular_samples().contains(name)) {
             require_success(q(bin));
         }
@@ -63,31 +84,32 @@ void compile_and_run_std_positive_sample(const std::string_view filename) {
     const std::string name = src.stem().string();
     const fs::path bin = test_bin_root() / name;
     const fs::path direct = test_bin_root() / (name + ".direct");
-    require_success(aurexc() + " " + q(src) + " -o " + q(bin));
+    compile_sample_executable(src, bin, false);
     require_success(q(bin));
-    require_success(aurexc() + " --emit=exe " + q(src) + " -o " + q(direct));
+    compile_sample_executable(src, direct, false);
     require_success(q(direct));
 }
 
 void verify_const_enum_lowering() {
-    const std::string const_enum =
-        require_success(aurexc() + " --emit=llvm-ir " + q(positive_sample("types", "const_enum.ax"))).output;
+    const std::string const_enum = require_compiler_success(
+        sample_invocation(positive_sample("types", "const_enum.ax"), driver::EmitKind::llvm_ir)
+    ).output;
     expect_contains(const_enum, "@m0_const_enum_answer = internal unnamed_addr constant i32 42");
     expect_contains(const_enum, "load i32, ptr @m0_const_enum_answer");
 }
 
 void verify_negative_sample_diagnostics() {
     for (const fs::path& src : sorted_files(negative_samples_root(), ".ax")) {
-        std::string command = aurexc() + " --check " + q(src);
+        driver::CompilerInvocation invocation = sample_invocation(src, driver::EmitKind::check);
         if (stem(src) == "module_name_mismatch" ||
             stem(src) == "cyclic_import" ||
             stem(src) == "ambiguous_import_name" ||
             stem(src) == "module_mangle_abi_collision" ||
             stem(src) == "const_mangle_abi_collision" ||
             stem(src) == "method_abi_collision") {
-            command = aurexc() + " " + tests_import_flags() + " --check " + q(src);
+            add_sample_import_path(invocation);
         }
-        const CommandResult result = require_failure(command);
+        const CommandResult result = require_compiler_failure(invocation);
         if (stem(src) == "ambiguous_import_name") {
             expect_contains(result.output, "ambiguous function name");
         }
@@ -128,7 +150,9 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_text) {
 TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline) {
     const fs::path source = positive_sample("std", "std_collections_path.ax");
 
-    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
     expect_contains_all(checked, {
         "type VecU8 = std.core.vec.Vec<u8>",
         "fn std.core.vec.new<u8> -> std.core.vec.Vec<u8>",
@@ -195,7 +219,9 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "fn run -> std.core.result.Result<i32, i32>",
     });
 
-    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    const std::string ir = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::ir)
+    ).output;
     expect_contains_all(ir, {
         "record std.core.vec.Vec<u8>",
         "record String",
@@ -254,14 +280,16 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
     });
 
     const fs::path bin = test_bin_root() / "std_collections_path_explicit";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    compile_sample_executable(source, bin, false);
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
 TEST_F(AurexIntegrationTest, StdTextSampleExposesGenericSpanBaseline) {
     const fs::path source = positive_sample("std", "std_text.ax");
 
-    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
     expect_contains_all(checked, {
         "generic_functions 4",
         "fn std.core.text.span<u8> -> std.core.text.Span<u8>",
@@ -274,7 +302,9 @@ TEST_F(AurexIntegrationTest, StdTextSampleExposesGenericSpanBaseline) {
         "type MutSpanU8 = std.core.text.MutSpan<u8>",
     });
 
-    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    const std::string ir = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::ir)
+    ).output;
     expect_contains_all(ir, {
         "record std.core.text.Span<i32>",
         "record std.core.text.MutSpan<i32>",
@@ -285,7 +315,7 @@ TEST_F(AurexIntegrationTest, StdTextSampleExposesGenericSpanBaseline) {
     });
 
     const fs::path bin = test_bin_root() / "std_text_generic_span";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    compile_sample_executable(source, bin, false);
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 

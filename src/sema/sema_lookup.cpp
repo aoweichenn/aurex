@@ -4,6 +4,21 @@
 
 namespace aurex::sema {
 
+namespace {
+
+[[nodiscard]] std::string enum_case_lookup_key(
+    const TypeHandle enum_type,
+    const std::string_view case_name
+) {
+    std::string key = std::to_string(enum_type.value);
+    key.reserve(key.size() + 1 + case_name.size());
+    key.push_back(':');
+    key += case_name;
+    return key;
+}
+
+} // namespace
+
 syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) const noexcept {
     const auto* const begin = module_.items.data();
     const auto* const end = begin + module_.items.size();
@@ -118,7 +133,11 @@ std::string SemanticAnalyzer::c_symbol_name(const syntax::ModuleId module, const
 }
 
 std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const std::string_view name) const {
-    return std::to_string(module.value) + ":" + std::string(name);
+    std::string key = std::to_string(module.value);
+    key.reserve(key.size() + 1 + name.size());
+    key.push_back(':');
+    key += name;
+    return key;
 }
 
 std::string SemanticAnalyzer::function_key(const syntax::ItemNode& function) const {
@@ -138,7 +157,11 @@ std::string SemanticAnalyzer::method_key(
     const TypeHandle owner_type,
     const std::string_view name
 ) const {
-    return module_key(module, "#" + std::to_string(owner_type.value) + "." + std::string(name));
+    std::string method_name = "#";
+    method_name += std::to_string(owner_type.value);
+    method_name.push_back('.');
+    method_name += name;
+    return module_key(module, method_name);
 }
 
 std::string SemanticAnalyzer::method_c_symbol_name(
@@ -431,7 +454,14 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
     const TypeHandle enum_type,
     const std::string_view case_name
-) const noexcept {
+) const {
+    if (is_valid(enum_type)) {
+        if (const auto found = enum_cases_by_type_and_case_.find(enum_case_lookup_key(enum_type, case_name));
+            found != enum_cases_by_type_and_case_.end()) {
+            return found->second;
+        }
+    }
+
     for (const auto& entry : checked_.enum_cases) {
         const EnumCaseInfo& candidate = entry.second;
         if (checked_.types.same(candidate.type, enum_type) && candidate.case_name == case_name) {
@@ -439,6 +469,24 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
         }
     }
     return nullptr;
+}
+
+const std::vector<const EnumCaseInfo*>* SemanticAnalyzer::find_enum_cases_by_type(
+    const TypeHandle enum_type
+) const noexcept {
+    if (!is_valid(enum_type)) {
+        return nullptr;
+    }
+    const auto found = enum_cases_by_type_.find(enum_type.value);
+    return found == enum_cases_by_type_.end() ? nullptr : &found->second;
+}
+
+void SemanticAnalyzer::index_enum_case(const EnumCaseInfo& info) {
+    if (!is_valid(info.type)) {
+        return;
+    }
+    enum_cases_by_type_and_case_.emplace(enum_case_lookup_key(info.type, info.case_name), &info);
+    enum_cases_by_type_[info.type.value].push_back(&info);
 }
 
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(

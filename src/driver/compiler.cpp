@@ -15,6 +15,9 @@
 #include "aurex/syntax/ast_dump.hpp"
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -29,6 +32,21 @@ namespace {
     if (!input) {
         return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to open input file"});
     }
+
+    std::string text;
+    std::error_code error;
+    const std::uintmax_t size = std::filesystem::file_size(path, error);
+    if (!error) {
+        text.resize(static_cast<std::size_t>(size));
+        if (!text.empty()) {
+            input.read(text.data(), static_cast<std::streamsize>(text.size()));
+            if (!input) {
+                return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to read input file"});
+            }
+        }
+        return base::Result<std::string>::ok(std::move(text));
+    }
+
     std::ostringstream buffer;
     buffer << input.rdbuf();
     return base::Result<std::string>::ok(buffer.str());

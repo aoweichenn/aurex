@@ -15,6 +15,8 @@ extern c {
     fn host_output_close(file: *mut OutputFile) -> bool @name("aurex_std_v0_output_close");
     fn host_run_process(program: *const u8, args: *mut *const u8, arg_count: i32) -> i32 @name("aurex_std_v0_run_process");
     fn host_run_process_capture(program: *const u8, args: *mut *const u8, arg_count: i32, output: *mut HostProcessOutput) -> bool @name("aurex_std_v0_run_process_capture");
+    fn host_run_process_with_options(program: *const u8, args: *mut *const u8, arg_count: i32, cwd: *const u8, env: *mut *const u8, env_count: i32) -> i32 @name("aurex_std_v0_run_process_with_options");
+    fn host_run_process_capture_with_options(program: *const u8, args: *mut *const u8, arg_count: i32, cwd: *const u8, env: *mut *const u8, env_count: i32, output: *mut HostProcessOutput) -> bool @name("aurex_std_v0_run_process_capture_with_options");
     fn host_free_process_output_data(data: *mut u8) -> void @name("aurex_std_v0_free_process_output_data");
 }
 

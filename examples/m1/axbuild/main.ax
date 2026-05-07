@@ -967,6 +967,33 @@ fn validate_stderr_capture() -> result::Result<bool, i32> {
     };
 }
 
+fn validate_cwd_env_capture() -> result::Result<bool, i32> {
+    var command: process::Command = process::command(c"/bin/sh");
+    if !command.cwd(c"/private/tmp") ||
+        !command.env(c"AUREX_M1_AXBUILD_ENV=env-ok") ||
+        !command.arg(c"-c") ||
+        !command.arg(c"pwd; printf $AUREX_M1_AXBUILD_ENV") {
+        command.destroy();
+        return Result.err(34);
+    }
+
+    let output_result: result::Result<process::ProcessOutput, i32> = command.run_capture();
+    command.destroy();
+    return match output_result {
+        .ok(captured_output) => {
+            var output: process::ProcessOutput = captured_output;
+            let ok: bool =
+                output.exit_status() == 0 &&
+                output.stderr().len == cast(usize, 0) &&
+                output.stdout().len == text::c_strlen(c"/private/tmp\nenv-ok") &&
+                text::c_string_equal(output.stdout_c_data(), c"/private/tmp\nenv-ok");
+            output.destroy();
+            Result.ok(ok)
+        },
+        .err(code) => Result.err(code),
+    };
+}
+
 fn run_build_tool() -> result::Result<i32, i32> {
     cleanup_project_sources();
     let prepared: bool = prepare_project_sources()?;
@@ -984,6 +1011,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
     let cycle_detected: bool = validate_cycle_detection()?;
     let invalid_dependency_detected: bool = validate_invalid_dependency_detection()?;
     let stderr_capture_ok: bool = validate_stderr_capture()?;
+    let cwd_env_capture_ok: bool = validate_cwd_env_capture()?;
     let initial_dirty: bool = project.needs_build();
     let built: bool = project.build()?;
     let incremental_clean: bool = !project.needs_build();
@@ -1006,6 +1034,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
         cycle_detected &&
         invalid_dependency_detected &&
         stderr_capture_ok &&
+        cwd_env_capture_ok &&
         initial_dirty &&
         built &&
         incremental_clean &&

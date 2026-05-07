@@ -14,11 +14,11 @@ flat list of snippets.
 - `m1/frontend`: M1 acceptance frontend slice with a source manager, diagnostics,
   lexer, token stream, parser subset, and AST/IR summary checks.
 - `m1/axbuild`: M1 acceptance typed build-tool slice with project/target models,
-  dependency lists, custom commands, subprocess stdout/stderr capture, source/stamp
-  mtime incremental checks, directory source-discovery counts, target-name
-  lookup, duplicate-target detection, target-graph validation, topological build
-  order, structured graph diagnostics/messages/names/cycle index paths/cycle
-  name paths, build, clean, run, and test flows.
+  dependency lists, custom commands, subprocess stdout/stderr capture, cwd/env
+  options, source/stamp mtime incremental checks, directory source-discovery
+  counts, target-name lookup, duplicate-target detection, target-graph
+  validation, topological build order, structured graph diagnostics/messages/
+  names/cycle index paths/cycle name paths, build, clean, run, and test flows.
 
 Build a system example with the shared example modules on the import path:
 

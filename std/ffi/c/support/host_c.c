@@ -336,8 +336,46 @@ static int32_t aurex_std_host_c_wait_for_child(pid_t child) {
     return aurex_std_host_c_decode_process_status(status);
 }
 
-int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, int32_t arg_count) {
-    if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
+static bool aurex_std_host_c_options_valid(
+    const uint8_t *program,
+    const uint8_t **args,
+    int32_t arg_count,
+    const uint8_t **env,
+    int32_t env_count
+) {
+    if (program == NULL || arg_count < 0 || env_count < 0) {
+        return false;
+    }
+    if ((arg_count > 0 && args == NULL) || (env_count > 0 && env == NULL)) {
+        return false;
+    }
+    return true;
+}
+
+static bool aurex_std_host_c_apply_options(const uint8_t *cwd, const uint8_t **env, int32_t env_count) {
+    if (cwd != NULL && cwd[0] != 0 && chdir((const char *)cwd) != 0) {
+        return false;
+    }
+    for (int32_t i = 0; i < env_count; ++i) {
+        if (env[i] == NULL || strchr((const char *)env[i], '=') == NULL) {
+            return false;
+        }
+        if (putenv((char *)env[i]) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int32_t aurex_std_v0_run_process_with_options(
+    const uint8_t *program,
+    const uint8_t **args,
+    int32_t arg_count,
+    const uint8_t *cwd,
+    const uint8_t **env,
+    int32_t env_count
+) {
+    if (!aurex_std_host_c_options_valid(program, args, arg_count, env, env_count)) {
         return 127;
     }
 
@@ -353,6 +391,9 @@ int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, i
     }
 
     if (child == 0) {
+        if (!aurex_std_host_c_apply_options(cwd, env, env_count)) {
+            _exit(126);
+        }
         execvp(argv[0], argv);
         _exit(errno == ENOENT ? 127 : 126);
     }
@@ -360,6 +401,10 @@ int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, i
     const int32_t status = aurex_std_host_c_wait_for_child(child);
     free(argv);
     return status;
+}
+
+int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, int32_t arg_count) {
+    return aurex_std_v0_run_process_with_options(program, args, arg_count, NULL, NULL, 0);
 }
 
 static bool aurex_std_host_c_append_capture(
@@ -423,17 +468,20 @@ static void aurex_std_host_c_close_fd(int *fd) {
     }
 }
 
-bool aurex_std_v0_run_process_capture(
+bool aurex_std_v0_run_process_capture_with_options(
     const uint8_t *program,
     const uint8_t **args,
     int32_t arg_count,
+    const uint8_t *cwd,
+    const uint8_t **env,
+    int32_t env_count,
     AurexStdProcessOutput *output
 ) {
     if (output == NULL) {
         return false;
     }
     *output = aurex_std_host_c_process_output(126, NULL, 0, NULL, 0);
-    if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
+    if (!aurex_std_host_c_options_valid(program, args, arg_count, env, env_count)) {
         *output = aurex_std_host_c_process_output(127, NULL, 0, NULL, 0);
         return true;
     }
@@ -477,6 +525,9 @@ bool aurex_std_v0_run_process_capture(
         }
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
+        if (!aurex_std_host_c_apply_options(cwd, env, env_count)) {
+            _exit(126);
+        }
         execvp(argv[0], argv);
         _exit(errno == ENOENT ? 127 : 126);
     }
@@ -557,6 +608,15 @@ bool aurex_std_v0_run_process_capture(
 
     *output = aurex_std_host_c_process_output(status, stdout_data, (int32_t)stdout_len, stderr_data, (int32_t)stderr_len);
     return true;
+}
+
+bool aurex_std_v0_run_process_capture(
+    const uint8_t *program,
+    const uint8_t **args,
+    int32_t arg_count,
+    AurexStdProcessOutput *output
+) {
+    return aurex_std_v0_run_process_capture_with_options(program, args, arg_count, NULL, NULL, 0, output);
 }
 
 void aurex_std_v0_free_process_output_data(uint8_t *data) {

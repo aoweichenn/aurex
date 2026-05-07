@@ -12,6 +12,8 @@ const EXIT_FAILURE: i32 = 1;
 pub struct Command {
     program: *const u8;
     args: vec::Vec<*const u8>;
+    cwd_path: *const u8;
+    env_vars: vec::Vec<*const u8>;
 }
 
 pub struct ProcessOutput {
@@ -72,12 +74,16 @@ pub fn command(program: *const u8) -> Command {
     return Command {
         program: program,
         args: vec::new<*const u8>(),
+        cwd_path: null,
+        env_vars: vec::new<*const u8>(),
     };
 }
 
 pub fn command_destroy(command_value: *mut Command) -> void {
     command_value.args.destroy();
+    command_value.env_vars.destroy();
     command_value.program = null;
+    command_value.cwd_path = null;
 }
 
 pub fn command_arg(command_value: *mut Command, arg: *const u8) -> bool {
@@ -87,14 +93,32 @@ pub fn command_arg(command_value: *mut Command, arg: *const u8) -> bool {
     return command_value.args.push(arg);
 }
 
+pub fn command_cwd(command_value: *mut Command, path: *const u8) -> bool {
+    if command_value.program == null || path == null {
+        return false;
+    }
+    command_value.cwd_path = path;
+    return true;
+}
+
+pub fn command_env(command_value: *mut Command, assignment: *const u8) -> bool {
+    if command_value.program == null || assignment == null {
+        return false;
+    }
+    return command_value.env_vars.push(assignment);
+}
+
 pub fn command_run(command_value: *mut Command) -> Result<i32, i32> {
     if command_value.program == null {
         return Result.err(1);
     }
-    let status: i32 = host_run_process(
+    let status: i32 = host_run_process_with_options(
         command_value.program,
         command_value.args.data,
-        cast(i32, command_value.args.len)
+        cast(i32, command_value.args.len),
+        command_value.cwd_path,
+        command_value.env_vars.data,
+        cast(i32, command_value.env_vars.len)
     );
     return Result.ok(status);
 }
@@ -110,10 +134,13 @@ pub fn command_run_capture(command_value: *mut Command) -> Result<ProcessOutput,
         stderr_data: null,
         stderr_len: 0,
     };
-    if !host_run_process_capture(
+    if !host_run_process_capture_with_options(
         command_value.program,
         command_value.args.data,
         cast(i32, command_value.args.len),
+        command_value.cwd_path,
+        command_value.env_vars.data,
+        cast(i32, command_value.env_vars.len),
         &host_output
     ) {
         return Result.err(1);
@@ -165,6 +192,14 @@ impl Command {
 
     pub fn arg(self: *mut Command, value: *const u8) -> bool {
         return command_arg(self, value);
+    }
+
+    pub fn cwd(self: *mut Command, path: *const u8) -> bool {
+        return command_cwd(self, path);
+    }
+
+    pub fn env(self: *mut Command, assignment: *const u8) -> bool {
+        return command_env(self, assignment);
     }
 
     pub fn run(self: *mut Command) -> Result<i32, i32> {

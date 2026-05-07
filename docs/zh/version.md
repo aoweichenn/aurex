@@ -20,7 +20,8 @@
 - 当前语言切片，包括可见性、泛型基础、generic function MVP、sum type、pattern matching、
   表达式、受控推导、`extern c` 变长参数和作用域级 `defer`。
 - M1 验收样例 baseline，包括 `examples/m1/frontend` 和 `examples/m1/axbuild`。
-- `std.sys.process::Command` subprocess baseline，通过 host-c support 调用 `fork` / `execvp` / `waitpid`。
+- `std.sys.process::Command` subprocess / stdout capture baseline，通过 host-c support 调用 `fork` / `execvp` / `waitpid`。
+- `std.fs.file::FileMetadata` metadata / mtime baseline，通过 host-c support 调用 `stat`。
 - golden、positive、negative 和语言特性测试链路。
 - M1 样例的 checked/IR/native integration test 覆盖。
 - 中英文主题文档集。
@@ -32,7 +33,7 @@
 - 完整跨块 SSA/mem2reg 和生产级优化器。
 - 完整 M1 自举前端。
 - 完整 M1 typed build tool。
-- 完整 OS/process/cwd/env/stdout capture 标准库。
+- 完整 OS/process/cwd/env/stderr capture/pipe/timeout 标准库。
 
 ## 兼容性策略
 
@@ -65,6 +66,6 @@
 - 更完整 ABI 属性和目标配置。
 - 模块隔离、可见性、泛型约束和 pattern matching 完整性。
 - M1 frontend 从 summary parser 推进到真实 AST、diagnostic、name resolution 和 type checking。
-- M1 axbuild 从 stamp smoke 推进到真实 target graph、metadata、cwd/env 和输出捕获。
+- M1 axbuild 从 source/stamp mtime smoke 推进到真实 target graph、目录遍历、cwd/env、stderr capture 和结构化输出报告。
 - M3 之后以新语言特性重新设计自举链路。
 - fixed-point self-host 验证。

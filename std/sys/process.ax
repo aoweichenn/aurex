@@ -1,6 +1,7 @@
 module std.sys.process;
 
 import std.core.result;
+import std.core.text as text;
 import std.core.vec as vec;
 import std.ffi.c.host_support;
 import std.ffi.c.libc;
@@ -11,6 +12,39 @@ const EXIT_FAILURE: i32 = 1;
 pub struct Command {
     program: *const u8;
     args: vec::Vec<*const u8>;
+}
+
+pub struct ProcessOutput {
+    priv status: i32;
+    priv stdout_data: *mut u8;
+    priv stdout_len: usize;
+}
+
+pub fn process_output_exit_status(output: *const ProcessOutput) -> i32 {
+    return output.status;
+}
+
+pub fn process_output_stdout(output: *const ProcessOutput) -> text::SpanU8 {
+    return text::SpanU8 {
+        data: ptr_cast(*const u8, output.stdout_data),
+        len: output.stdout_len,
+    };
+}
+
+pub fn process_output_stdout_c_data(output: *const ProcessOutput) -> *const u8 {
+    if output.stdout_data == null {
+        return c"";
+    }
+    return ptr_cast(*const u8, output.stdout_data);
+}
+
+pub fn process_output_destroy(output: *mut ProcessOutput) -> void {
+    if output.stdout_data != null {
+        host_free_process_output_data(output.stdout_data);
+    }
+    output.status = 0;
+    output.stdout_data = null;
+    output.stdout_len = cast(usize, 0);
 }
 
 pub fn command(program: *const u8) -> Command {
@@ -44,6 +78,52 @@ pub fn command_run(command_value: *mut Command) -> Result<i32, i32> {
     return Result.ok(status);
 }
 
+pub fn command_run_capture(command_value: *mut Command) -> Result<ProcessOutput, i32> {
+    if command_value.program == null {
+        return Result.err(1);
+    }
+    var host_output: HostProcessOutput = HostProcessOutput {
+        status: 0,
+        stdout_data: null,
+        stdout_len: 0,
+    };
+    if !host_run_process_capture(
+        command_value.program,
+        command_value.args.data,
+        cast(i32, command_value.args.len),
+        &host_output
+    ) {
+        return Result.err(1);
+    }
+    if host_output.stdout_len < 0 {
+        host_free_process_output_data(host_output.stdout_data);
+        return Result.err(1);
+    }
+    return Result.ok(ProcessOutput {
+        status: host_output.status,
+        stdout_data: host_output.stdout_data,
+        stdout_len: cast(usize, host_output.stdout_len),
+    });
+}
+
+impl ProcessOutput {
+    pub fn exit_status(self: *const ProcessOutput) -> i32 {
+        return process_output_exit_status(self);
+    }
+
+    pub fn stdout(self: *const ProcessOutput) -> text::SpanU8 {
+        return process_output_stdout(self);
+    }
+
+    pub fn stdout_c_data(self: *const ProcessOutput) -> *const u8 {
+        return process_output_stdout_c_data(self);
+    }
+
+    pub fn destroy(self: *mut ProcessOutput) -> void {
+        process_output_destroy(self);
+    }
+}
+
 impl Command {
     pub fn destroy(self: *mut Command) -> void {
         command_destroy(self);
@@ -55,6 +135,10 @@ impl Command {
 
     pub fn run(self: *mut Command) -> Result<i32, i32> {
         return command_run(self);
+    }
+
+    pub fn run_capture(self: *mut Command) -> Result<ProcessOutput, i32> {
+        return command_run_capture(self);
     }
 }
 

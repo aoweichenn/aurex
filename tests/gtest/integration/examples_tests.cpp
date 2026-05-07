@@ -129,17 +129,35 @@ TEST_F(AurexIntegrationTest, M1ExamplesExposeAcceptanceFeatureSet) {
         "struct Project fields=3",
         "struct Target fields=6",
         "struct CustomCommand fields=2",
+        "struct ProcessOutput fields=3",
+        "struct FileMetadata fields=5",
         "fn project_build -> std.core.result.Result<bool, i32>",
+        "fn project_sources_newer_than -> bool",
+        "fn source_newer_than_stamp -> bool",
         "fn method std.sys.process.Command.run -> std.core.result.Result<i32, i32>",
+        "fn method std.sys.process.Command.run_capture -> std.core.result.Result<std.sys.process.ProcessOutput, i32>",
+        "fn method std.sys.process.ProcessOutput.stdout -> std.core.text.Span<u8>",
+        "fn method std.fs.file.FileMetadata.modified_time_ns -> i64",
+        "fn metadata -> std.core.result.Result<std.fs.file.FileMetadata, i32>",
+        "fn host_file_metadata -> bool @c_name=aurex_std_v0_file_metadata extern_c",
         "fn host_run_process -> i32 @c_name=aurex_std_v0_run_process extern_c",
+        "fn host_run_process_capture -> bool @c_name=aurex_std_v0_run_process_capture extern_c",
+        "fn host_free_process_output_data -> void @c_name=aurex_std_v0_free_process_output_data extern_c",
         "case TargetKind_executable",
     });
 
     const std::string axbuild_ir = require_success(aurexc() + " --emit=ir " + q(axbuild)).output;
     expect_contains_all(axbuild_ir, {
-        "fn host_run_process(program: *const u8",
-        "call aurex_std_v0_run_process",
-        "call m0_std_sys_process_Command_run",
+        "call aurex_std_v0_file_metadata",
+        "fn host_run_process_capture(program: *const u8",
+        "call aurex_std_v0_run_process_capture",
+        "call aurex_std_v0_free_process_output_data",
+        "call m0_std_fs_file_FileMetadata_modified_time_ns",
+        "call m0_m1_axbuild_main_project_sources_newer_than",
+        "call m0_m1_axbuild_main_source_newer_than_stamp",
+        "call m0_std_sys_process_Command_run_capture",
+        "call m0_std_sys_process_ProcessOutput_stdout",
+        "call m0_std_sys_process_ProcessOutput_destroy",
         "call m0_m1_axbuild_main_CustomCommand_run",
     });
 }

@@ -26,8 +26,10 @@ Included:
   `extern c` variadics, and scope-level `defer`.
 - M1 acceptance-example baseline, including `examples/m1/frontend` and
   `examples/m1/axbuild`.
-- `std.sys.process::Command` subprocess baseline through host-c
-  `fork` / `execvp` / `waitpid` support.
+- `std.sys.process::Command` subprocess / stdout-capture baseline through
+  host-c `fork` / `execvp` / `waitpid` support.
+- `std.fs.file::FileMetadata` metadata / mtime baseline through host-c `stat`
+  support.
 - golden, positive, negative, and language-feature test flows.
 - checked/IR/native integration-test coverage for the M1 examples.
 - Chinese and English topic-based documentation sets.
@@ -39,7 +41,7 @@ Not included:
 - Complete cross-block SSA/mem2reg and production optimizer.
 - Complete M1 self-hosting frontend.
 - Complete M1 typed build tool.
-- Complete OS/process/cwd/env/stdout-capture standard library.
+- Complete OS/process/cwd/env/stderr-capture/pipe/timeout standard library.
 
 ## Compatibility Strategy
 
@@ -74,7 +76,7 @@ Not included:
   matching coverage.
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
-- Grow M1 axbuild from stamp smoke checks into a real target graph, metadata,
-  cwd/env, and output capture.
+- Grow M1 axbuild from source/stamp mtime smoke checks into a real target graph,
+  directory walking, cwd/env, stderr capture, and structured output reporting.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

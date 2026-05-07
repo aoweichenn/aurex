@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -23,6 +24,20 @@ typedef struct AurexStdWriteResult {
     bool ok;
     int32_t written;
 } AurexStdWriteResult;
+
+typedef struct AurexStdProcessOutput {
+    int32_t status;
+    uint8_t *stdout_data;
+    int32_t stdout_len;
+} AurexStdProcessOutput;
+
+typedef struct AurexStdFileMetadata {
+    int32_t exists;
+    int32_t is_file;
+    int32_t is_dir;
+    int64_t size;
+    int64_t modified_ns;
+} AurexStdFileMetadata;
 
 FILE *aurex_std_v0_stdout(void) {
     return stdout;
@@ -74,6 +89,41 @@ AurexStdFileBuffer aurex_std_v0_read_file(const uint8_t *path) {
 
 void aurex_std_v0_free_file(AurexStdFileBuffer buffer) {
     free(buffer.data);
+}
+
+static int64_t aurex_std_host_c_modified_ns(const struct stat *info) {
+#if defined(__APPLE__)
+    return ((int64_t)info->st_mtimespec.tv_sec * 1000000000LL) + (int64_t)info->st_mtimespec.tv_nsec;
+#else
+    return ((int64_t)info->st_mtim.tv_sec * 1000000000LL) + (int64_t)info->st_mtim.tv_nsec;
+#endif
+}
+
+bool aurex_std_v0_file_metadata(const uint8_t *path, AurexStdFileMetadata *output) {
+    if (path == NULL || output == NULL) {
+        return false;
+    }
+
+    output->exists = 0;
+    output->is_file = 0;
+    output->is_dir = 0;
+    output->size = 0;
+    output->modified_ns = 0;
+
+    struct stat info;
+    if (stat((const char *)path, &info) != 0) {
+        if (errno == ENOENT || errno == ENOTDIR) {
+            return true;
+        }
+        return false;
+    }
+
+    output->exists = 1;
+    output->is_file = S_ISREG(info.st_mode) ? 1 : 0;
+    output->is_dir = S_ISDIR(info.st_mode) ? 1 : 0;
+    output->size = info.st_size < 0 ? 0 : (int64_t)info.st_size;
+    output->modified_ns = aurex_std_host_c_modified_ns(&info);
+    return true;
 }
 
 static int32_t aurex_std_host_c_string_len(const uint8_t *text) {
@@ -141,14 +191,14 @@ bool aurex_std_v0_output_close(FILE *file) {
     return fclose(file) == 0;
 }
 
-int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, int32_t arg_count) {
+static char **aurex_std_host_c_build_argv(const uint8_t *program, const uint8_t **args, int32_t arg_count) {
     if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
-        return 127;
+        return NULL;
     }
 
     char **argv = (char **)calloc((size_t)arg_count + 2, sizeof(char *));
     if (argv == NULL) {
-        return 126;
+        return NULL;
     }
 
     argv[0] = (char *)program;
@@ -156,6 +206,39 @@ int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, i
         argv[i + 1] = (char *)args[i];
     }
     argv[arg_count + 1] = NULL;
+    return argv;
+}
+
+static int32_t aurex_std_host_c_decode_process_status(int status) {
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+    return 126;
+}
+
+static int32_t aurex_std_host_c_wait_for_child(pid_t child) {
+    int status = 0;
+    while (waitpid(child, &status, 0) < 0) {
+        if (errno == EINTR) {
+            continue;
+        }
+        return 126;
+    }
+    return aurex_std_host_c_decode_process_status(status);
+}
+
+int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, int32_t arg_count) {
+    if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
+        return 127;
+    }
+
+    char **argv = aurex_std_host_c_build_argv(program, args, arg_count);
+    if (argv == NULL) {
+        return 126;
+    }
 
     const pid_t child = fork();
     if (child < 0) {
@@ -168,21 +251,138 @@ int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, i
         _exit(errno == ENOENT ? 127 : 126);
     }
 
-    int status = 0;
-    while (waitpid(child, &status, 0) < 0) {
+    const int32_t status = aurex_std_host_c_wait_for_child(child);
+    free(argv);
+    return status;
+}
+
+static bool aurex_std_host_c_append_stdout(
+    uint8_t **data,
+    size_t *len,
+    size_t *capacity,
+    const uint8_t *chunk,
+    size_t chunk_len
+) {
+    if (chunk_len == 0) {
+        return true;
+    }
+    const size_t required = *len + chunk_len + 1;
+    if (required < *len) {
+        return false;
+    }
+    if (required > *capacity) {
+        size_t next_capacity = *capacity == 0 ? 4096 : *capacity;
+        while (next_capacity < required) {
+            if (next_capacity > ((size_t)-1) / 2) {
+                next_capacity = required;
+                break;
+            }
+            next_capacity *= 2;
+        }
+        uint8_t *next_data = (uint8_t *)realloc(*data, next_capacity);
+        if (next_data == NULL) {
+            return false;
+        }
+        *data = next_data;
+        *capacity = next_capacity;
+    }
+    for (size_t i = 0; i < chunk_len; ++i) {
+        (*data)[*len + i] = chunk[i];
+    }
+    *len += chunk_len;
+    (*data)[*len] = 0;
+    return true;
+}
+
+static AurexStdProcessOutput aurex_std_host_c_process_output(int32_t status, uint8_t *stdout_data, int32_t stdout_len) {
+    AurexStdProcessOutput result;
+    result.status = status;
+    result.stdout_data = stdout_data;
+    result.stdout_len = stdout_len;
+    return result;
+}
+
+bool aurex_std_v0_run_process_capture(
+    const uint8_t *program,
+    const uint8_t **args,
+    int32_t arg_count,
+    AurexStdProcessOutput *output
+) {
+    if (output == NULL) {
+        return false;
+    }
+    *output = aurex_std_host_c_process_output(126, NULL, 0);
+    if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
+        *output = aurex_std_host_c_process_output(127, NULL, 0);
+        return true;
+    }
+
+    char **argv = aurex_std_host_c_build_argv(program, args, arg_count);
+    if (argv == NULL) {
+        return true;
+    }
+
+    int stdout_pipe[2];
+    if (pipe(stdout_pipe) < 0) {
+        free(argv);
+        return true;
+    }
+
+    const pid_t child = fork();
+    if (child < 0) {
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        free(argv);
+        return true;
+    }
+
+    if (child == 0) {
+        close(stdout_pipe[0]);
+        if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
+            _exit(126);
+        }
+        close(stdout_pipe[1]);
+        execvp(argv[0], argv);
+        _exit(errno == ENOENT ? 127 : 126);
+    }
+
+    close(stdout_pipe[1]);
+    uint8_t *data = NULL;
+    size_t len = 0;
+    size_t capacity = 0;
+    uint8_t buffer[4096];
+    bool capture_ok = true;
+    while (true) {
+        const ssize_t count = read(stdout_pipe[0], buffer, sizeof(buffer));
+        if (count > 0) {
+            if (!aurex_std_host_c_append_stdout(&data, &len, &capacity, buffer, (size_t)count)) {
+                capture_ok = false;
+                break;
+            }
+            continue;
+        }
+        if (count == 0) {
+            break;
+        }
         if (errno == EINTR) {
             continue;
         }
-        free(argv);
-        return 126;
+        capture_ok = false;
+        break;
+    }
+    close(stdout_pipe[0]);
+
+    const int32_t status = aurex_std_host_c_wait_for_child(child);
+    free(argv);
+    if (!capture_ok || len > (size_t)INT32_MAX) {
+        free(data);
+        return true;
     }
 
-    free(argv);
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
-    if (WIFSIGNALED(status)) {
-        return 128 + WTERMSIG(status);
-    }
-    return 126;
+    *output = aurex_std_host_c_process_output(status, data, (int32_t)len);
+    return true;
+}
+
+void aurex_std_v0_free_process_output_data(uint8_t *data) {
+    free(data);
 }

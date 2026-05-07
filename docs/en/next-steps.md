@@ -56,11 +56,13 @@ Current language slices:
   `String`, and query/join APIs on owned `Path`.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
-  in-tree uses.
+  in-tree uses. `std.fs.file::FileMetadata` now provides an
+  exists/is_file/is_dir/size/modified_time_ns baseline.
 - Standard process support has started. `std.sys.process::Command` provides
-  typed argv, `arg()`, `run()`, and `destroy()`, backed by host-c
-  `fork` / `execvp` / `waitpid`. cwd/env/stdout/stderr capture and pipe APIs
-  are still missing.
+  typed argv, `arg()`, `run()`, `run_capture()`, and `destroy()`, backed by
+  host-c `fork` / `execvp` / `waitpid`, with a stdout-capture baseline.
+  cwd/env/stderr capture, stdin/stdout/stderr pipes, and timeout APIs are still
+  missing.
 - `pub` / `priv` visibility keywords, cross-module private item filtering, and
   private field access checks.
 - Examples now include system-level CLI, file IO, memory/arena, std-module,
@@ -68,9 +70,9 @@ Current language slices:
 - M1 acceptance skeletons are now in the active tree: `examples/m1/frontend`
   covers source manager, diagnostics, lexer, token stream, parser subset, and
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
-  typed dependencies/sources/includes/custom commands, subprocess execution,
-  incremental stamp checks, build, clean, run, and test flows. Both are covered
-  by checked/IR/native integration tests.
+  typed dependencies/sources/includes/custom commands, subprocess stdout
+  capture, source/stamp mtime incremental checks, build, clean, run, and test
+  flows. Both are covered by checked/IR/native integration tests.
 
 ## Key Language Gaps
 
@@ -123,9 +125,10 @@ covered by integration tests:
    executable, source list, include path, dependency, custom command,
    subprocess, incremental checks, build, clean, run, and test. Build
    definitions should be typed Aurex APIs, not shell-string concatenation. A
-   minimal runnable example now exists; follow-up work should add real file
-   timestamps, directory walking, stdout/stderr capture, cwd/env, target-graph
-   cycle diagnostics, and richer error reporting.
+   minimal runnable example, stdout-capture baseline, and source/stamp mtime
+   incremental checks now exist; follow-up work should add directory walking,
+   stderr capture, cwd/env, target-graph cycle diagnostics, and richer error
+   reporting.
 
 ## M1 Priority
 
@@ -230,11 +233,12 @@ manual status helpers.
 6. `defer` / noncopyable / OS support  
    Started. `defer call();` now runs in reverse order when the current lexical
    scope exits, including normal exits, `return`, and `break` / `continue`
-   lowering. A subprocess baseline is now available through
-   `std.sys.process::Command` and host-c support. Next, add noncopyable resource
-   rules, directory walking, file metadata, cwd/env, stdout/stderr capture, and
-   temporary-directory support so files, processes, arenas, and temporary
-   directories compose safely.
+   lowering. A subprocess / stdout-capture baseline is now available through
+   `std.sys.process::Command` and host-c support, and a file metadata / mtime
+   baseline is available through `std.fs.file::FileMetadata`. Next, add
+   noncopyable resource rules, directory walking, cwd/env, stderr capture,
+   stdin/stdout/stderr pipes, and temporary-directory support so files,
+   processes, arenas, and temporary directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  
    Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the

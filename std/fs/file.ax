@@ -4,11 +4,85 @@ import std.core.mem;
 import std.core.result;
 import std.core.string;
 import std.core.text;
+import std.ffi.c.host_support;
 import std.ffi.c.libc as libc;
 
 pub struct FileBytes {
     priv data: *mut u8;
     priv len: usize;
+}
+
+pub struct FileMetadata {
+    priv exists_value: bool;
+    priv is_file_value: bool;
+    priv is_dir_value: bool;
+    priv size_value: usize;
+    priv modified_ns_value: i64;
+}
+
+pub fn file_metadata_exists(metadata: *const FileMetadata) -> bool {
+    return metadata.exists_value;
+}
+
+pub fn file_metadata_is_file(metadata: *const FileMetadata) -> bool {
+    return metadata.is_file_value;
+}
+
+pub fn file_metadata_is_dir(metadata: *const FileMetadata) -> bool {
+    return metadata.is_dir_value;
+}
+
+pub fn file_metadata_size(metadata: *const FileMetadata) -> usize {
+    return metadata.size_value;
+}
+
+pub fn file_metadata_modified_time_ns(metadata: *const FileMetadata) -> i64 {
+    return metadata.modified_ns_value;
+}
+
+pub fn metadata(path: *const u8) -> Result<FileMetadata, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    var host_metadata: HostFileMetadata = HostFileMetadata {
+        exists: 0,
+        is_file: 0,
+        is_dir: 0,
+        size: 0,
+        modified_ns: 0,
+    };
+    if !host_file_metadata(path, &host_metadata) {
+        return Result.err(1);
+    }
+    return Result.ok(FileMetadata {
+        exists_value: host_metadata.exists != 0,
+        is_file_value: host_metadata.is_file != 0,
+        is_dir_value: host_metadata.is_dir != 0,
+        size_value: cast(usize, host_metadata.size),
+        modified_ns_value: host_metadata.modified_ns,
+    });
+}
+
+impl FileMetadata {
+    pub fn exists(self: *const FileMetadata) -> bool {
+        return file_metadata_exists(self);
+    }
+
+    pub fn is_file(self: *const FileMetadata) -> bool {
+        return file_metadata_is_file(self);
+    }
+
+    pub fn is_dir(self: *const FileMetadata) -> bool {
+        return file_metadata_is_dir(self);
+    }
+
+    pub fn size(self: *const FileMetadata) -> usize {
+        return file_metadata_size(self);
+    }
+
+    pub fn modified_time_ns(self: *const FileMetadata) -> i64 {
+        return file_metadata_modified_time_ns(self);
+    }
 }
 
 pub fn file_bytes_len(bytes: *const FileBytes) -> usize {
@@ -134,12 +208,10 @@ impl FileBytes {
 }
 
 pub fn file_exists(path: *const u8) -> bool {
-    let file: *mut libc::CFile = libc::fopen(path, c"rb");
-    if file == null {
-        return false;
-    }
-    libc::fclose(file);
-    return true;
+    return match metadata(path) {
+        .ok(info) => info.exists(),
+        .err(_) => false,
+    };
 }
 
 pub fn remove_file(path: *const u8) -> bool {

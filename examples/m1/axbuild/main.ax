@@ -61,9 +61,22 @@ fn custom_command_run(command: *const CustomCommand) -> result::Result<i32, i32>
         }
         index = index + cast(usize, 1);
     }
-    let status: i32 = process_command.run()?;
+    let output_result: result::Result<process::ProcessOutput, i32> = process_command.run_capture();
     process_command.destroy();
-    return Result.ok(status);
+    return match output_result {
+        .ok(captured_output) => {
+            var output: process::ProcessOutput = captured_output;
+            let status: i32 = output.exit_status();
+            let captured: bool = output.stdout().len > cast(usize, 0) || status != 0;
+            output.destroy();
+            if !captured {
+                Result.err(12)
+            } else {
+                Result.ok(status)
+            }
+        },
+        .err(code) => Result.err(code),
+    };
 }
 
 impl CustomCommand {
@@ -87,7 +100,7 @@ fn target_new(name: *const u8, kind: TargetKind) -> Target {
         sources: vec::new<*const u8>(),
         include_paths: vec::new<*const u8>(),
         dependencies: vec::new<usize>(),
-        command: custom_command_new(c"true"),
+        command: custom_command_new(c"/bin/echo"),
     };
 }
 
@@ -153,8 +166,44 @@ fn project_add_target(project: *mut Project, target: Target) -> result::Result<u
     return Result.ok(id);
 }
 
+fn source_newer_than_stamp(path: *const u8, stamp_time: i64) -> bool {
+    return match file::metadata(path) {
+        .ok(source_metadata) => {
+            source_metadata.exists() &&
+                source_metadata.is_file() &&
+                source_metadata.modified_time_ns() > stamp_time
+        },
+        .err(_) => true,
+    };
+}
+
+fn project_sources_newer_than(project: *const Project, stamp_time: i64) -> bool {
+    var target_index: usize = cast(usize, 0);
+    while target_index < project.targets.len {
+        let target: Target = project.targets.data[target_index];
+        var source_index: usize = cast(usize, 0);
+        while source_index < target.sources.len {
+            if source_newer_than_stamp(target.sources.data[source_index], stamp_time) {
+                return true;
+            }
+            source_index = source_index + cast(usize, 1);
+        }
+        target_index = target_index + cast(usize, 1);
+    }
+    return false;
+}
+
 fn project_needs_build(project: *const Project) -> bool {
-    return !file::file_exists(project.stamp_path);
+    return match file::metadata(project.stamp_path) {
+        .ok(stamp_metadata) => {
+            if !stamp_metadata.exists() || !stamp_metadata.is_file() {
+                true
+            } else {
+                project_sources_newer_than(project, stamp_metadata.modified_time_ns())
+            }
+        },
+        .err(_) => true,
+    };
 }
 
 fn project_build_target(project: *mut Project, index: usize) -> result::Result<bool, i32> {
@@ -241,13 +290,13 @@ impl Project {
 
 fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
     var core: Target = target_new(c"core", TargetKind.library);
-    if !core.source(c"src/core.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
+    if !core.source(c"/tmp/aurex_m1_axbuild_core.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
         return Result.err(10);
     }
     let core_id: usize = project.add_target(core)?;
 
     var app: Target = target_new(c"app", TargetKind.executable);
-    if !app.source(c"src/main.ax") ||
+    if !app.source(c"/tmp/aurex_m1_axbuild_main.ax") ||
         !app.include_path(c"include") ||
         !app.dependency(core_id) ||
         !app.command.arg(c"build-app") {
@@ -256,7 +305,25 @@ fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
     return project.add_target(app);
 }
 
+fn prepare_project_sources() -> result::Result<bool, i32> {
+    let core_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_core.ax", c"fn core { return }")?;
+    let main_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_main.ax", c"fn main { return }")?;
+    return Result.ok(core_written > cast(usize, 0) && main_written > cast(usize, 0));
+}
+
+fn cleanup_project_sources() -> bool {
+    let core_cleaned: bool =
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_core.ax") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_core.ax");
+    let main_cleaned: bool =
+        !file::file_exists(c"/tmp/aurex_m1_axbuild_main.ax") ||
+        file::remove_file(c"/tmp/aurex_m1_axbuild_main.ax");
+    return core_cleaned && main_cleaned;
+}
+
 fn run_build_tool() -> result::Result<i32, i32> {
+    cleanup_project_sources();
+    let prepared: bool = prepare_project_sources()?;
     var project: Project = project_new(c"demo", c"/tmp/aurex_m1_axbuild_stamp");
     project.clean();
     let app_id: usize = configure_project(&project)?;
@@ -268,8 +335,9 @@ fn run_build_tool() -> result::Result<i32, i32> {
     let test_ok: bool = project.test_target(app_id)?;
     let cleaned: bool = project.clean();
     project.destroy();
+    let sources_cleaned: bool = cleanup_project_sources();
 
-    if initial_dirty && built && incremental_clean && rebuilt && run_ok && test_ok && cleaned {
+    if prepared && initial_dirty && built && incremental_clean && rebuilt && run_ok && test_ok && cleaned && sources_cleaned {
         return Result.ok(0);
     }
     return Result.ok(1);

@@ -201,6 +201,97 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+        const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
+        module.records.push_back(RecordLayout {
+            record_type,
+            "unit.Record",
+            "unit_Record",
+            false,
+            {RecordField {"value", i32}},
+        });
+        Function function = make_function(module, "bad_field_type", i32);
+        FunctionBuilder builder {module, function};
+        Value object;
+        object.kind = ValueKind::alloca;
+        object.type = ptr(module, PointerMutability::mut, record_type);
+        const ValueId object_id = builder.add(object);
+        Value field;
+        field.kind = ValueKind::field_addr;
+        field.type = ptr(module, PointerMutability::mut, bool_type);
+        field.object = object_id;
+        field.name = "value";
+        const ValueId field_id = builder.add(field);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {object_id, field_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "field address result type mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
+        module.records.push_back(RecordLayout {
+            record_type,
+            "unit.Record",
+            "unit_Record",
+            false,
+            {RecordField {"value", i32}},
+        });
+        Function function = make_function(module, "bad_field_mutability", i32);
+        FunctionBuilder builder {module, function};
+        Value object;
+        object.kind = ValueKind::param;
+        object.type = ptr(module, PointerMutability::const_, record_type);
+        const ValueId object_id = builder.add(object);
+        function.signature_params.push_back(FunctionParam {"object", object.type});
+        function.param_values.push_back(object_id);
+        Value field;
+        field.kind = ValueKind::field_addr;
+        field.type = ptr(module, PointerMutability::mut, i32);
+        field.object = object_id;
+        field.name = "value";
+        const ValueId field_id = builder.add(field);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {object_id, field_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "field address cannot be mutable through const object");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+        const TypeHandle array_i32 = module.types.array(4, i32);
+        Function function = make_function(module, "bad_index_type", i32);
+        FunctionBuilder builder {module, function};
+        Value object;
+        object.kind = ValueKind::alloca;
+        object.type = ptr(module, PointerMutability::mut, array_i32);
+        const ValueId object_id = builder.add(object);
+        const ValueId index_id = builder.add(integer_value(i32, "0"));
+        Value index;
+        index.kind = ValueKind::index_addr;
+        index.type = ptr(module, PointerMutability::mut, bool_type);
+        index.object = object_id;
+        index.index = index_id;
+        const ValueId index_addr_id = builder.add(index);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {object_id, index_id, index_addr_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "index address result type mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const ValueId first = add_value(module, Value {ValueKind::constant_ref, i32, "", "", invalid_function_id, invalid_value_id, invalid_value_id, invalid_value_id, invalid_value_id, {}, {}, {}, GlobalConstantId {1}});
         const ValueId second = add_value(module, Value {ValueKind::constant_ref, i32, "", "", invalid_function_id, invalid_value_id, invalid_value_id, invalid_value_id, invalid_value_id, {}, {}, {}, GlobalConstantId {0}});
         [[maybe_unused]] const GlobalConstantId first_constant =

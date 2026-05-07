@@ -328,9 +328,7 @@ private:
             verify_field_addr(*value);
             break;
         case ValueKind::index_addr:
-            verify_pointer_value(value->object, "index object");
-            verify_value_id(value->index, "index");
-            verify_type(value->type, "index result");
+            verify_index_addr(*value);
             break;
         case ValueKind::aggregate:
             verify_aggregate(*value);
@@ -552,12 +550,58 @@ private:
     void verify_field_addr(const Value& value) {
         verify_pointer_value(value.object, "field object");
         verify_type(value.type, "field address type");
+        if (!module_.types.is_pointer(value.type)) {
+            fail("field address result is not a pointer");
+            return;
+        }
         const sema::TypeHandle object_type = pointee_type(value.object);
         const sema::TypeHandle record_type = module_.types.is_pointer(object_type)
             ? module_.types.get(object_type).pointee
             : object_type;
-        if (find_record_field(module_, record_type, value.name) == nullptr) {
+        const RecordField* field = find_record_field(module_, record_type, value.name);
+        if (field == nullptr) {
             fail("unknown field '" + value.name + "'");
+            return;
+        }
+        const sema::TypeInfo& address = module_.types.get(value.type);
+        if (!module_.types.same(address.pointee, field->type)) {
+            fail("field address result type mismatch");
+        }
+        const Value* object = get(value.object);
+        if (object != nullptr &&
+            module_.types.is_pointer(object->type) &&
+            module_.types.get(object->type).pointer_mutability == sema::PointerMutability::const_ &&
+            address.pointer_mutability == sema::PointerMutability::mut) {
+            fail("field address cannot be mutable through const object");
+        }
+    }
+
+    void verify_index_addr(const Value& value) {
+        verify_pointer_value(value.object, "index object");
+        verify_value_id(value.index, "index");
+        verify_type(value.type, "index result");
+        if (!module_.types.is_pointer(value.type)) {
+            fail("index address result is not a pointer");
+            return;
+        }
+        const Value* index = get(value.index);
+        if (index != nullptr && !module_.types.is_integer(index->type)) {
+            fail("index must be an integer");
+        }
+        const sema::TypeHandle object_type = pointee_type(value.object);
+        const sema::TypeHandle element_type = module_.types.is_array(object_type)
+            ? module_.types.get(object_type).array_element
+            : object_type;
+        const sema::TypeInfo& address = module_.types.get(value.type);
+        if (sema::is_valid(element_type) && !module_.types.same(address.pointee, element_type)) {
+            fail("index address result type mismatch");
+        }
+        const Value* object = get(value.object);
+        if (object != nullptr &&
+            module_.types.is_pointer(object->type) &&
+            module_.types.get(object->type).pointer_mutability == sema::PointerMutability::const_ &&
+            address.pointer_mutability == sema::PointerMutability::mut) {
+            fail("index address cannot be mutable through const object");
         }
     }
 

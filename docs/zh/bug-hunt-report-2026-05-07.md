@@ -1664,3 +1664,122 @@ import b as beta;
   - `@m0_const_binary_ORDERED = ... constant i1 true`
 - 正例单文件编译运行通过。
 - `true && false` 负例仍在 sema 阶段失败。
+
+### 10.18 rvalue / const aggregate 字段读取被错误要求为 place
+
+问题：
+
+旧 sema 把普通字段读取和字段地址投影混在一起处理，要求非 pointer receiver 必须是 place。这会错误拒绝：
+
+```aurex
+fn make() -> S {
+    return S { value: 7 };
+}
+
+return make().value;
+```
+
+以及：
+
+```aurex
+const S_VALUE: S = S { value: 1 };
+return S_VALUE.value;
+```
+
+这两种都是只读字段访问，不需要用户侧有可写/可取址 place。真正需要 place 的场景是赋值左侧、`&expr.field`、`*mut self` receiver 等。
+
+修复：
+
+- `src/sema/sema_expr.cpp`：
+  - 字段读取不再要求非 pointer object 必须是 place。
+  - 仍然校验 object 必须是非 opaque struct 或 pointer-to-struct。
+  - private field access 规则不变。
+- `src/ir/lower_ast_expr.cpp`：
+  - `lower_object_place_or_value` 先尝试真实 place。
+  - 如果 object 是 rvalue，就把 object lowering 到临时 `alloca field.object`，`store` 后再 `field_addr`。
+  - 返回的字段地址对 rvalue receiver 视为 const，写入路径仍不能借此绕过 mutability。
+
+回归：
+
+- `tests/samples/positive/expressions/rvalue_struct_field_access.ax`
+- `tests/samples/positive/expressions/const_struct_field_access.ax`
+- 原负例 `tests/samples/negative/expressions/rvalue_struct_field_access.ax` 改为覆盖 `make().value = 1` 仍非法。
+- 原负例 `tests/samples/negative/expressions/const_struct_field_access.ax` 改为覆盖 `S_VALUE.value = 2` 仍非法。
+
+验证：
+
+- 两个正例 `--check`、`--dump-ir`、单文件编译运行均通过。
+- IR 中可见：
+  - `alloca field.object`
+  - `store` rvalue/const aggregate 到临时槽
+  - `field_addr` 后 `load`
+- 两个负例仍在 sema 阶段报 `left side of assignment must be writable`。
+
+### 10.19 rvalue receiver 调用 `*const self` 方法被误拒绝
+
+问题：
+
+旧 `method_receiver_matches` 对所有 pointer self 都要求 receiver 是 place，因此会拒绝：
+
+```aurex
+Counter.new(7).read()
+```
+
+其中 `read(self: *const Counter)` 只需要临时只读地址。这个限制对 `*mut self` 是必要的，但对 `*const self` 是误伤。
+
+修复：
+
+- `src/sema/sema_lookup.cpp`：
+  - `*mut self` 仍必须是 place，并且必须 writable。
+  - `*const self` 只要求 receiver type 和 pointee type 匹配，不再要求 place。
+- `src/ir/lower_ast_expr.cpp`：
+  - lowering 方法 receiver 时，如果 self 参数是 pointer 且 receiver 不是 pointer：
+    - `*mut self` 继续走 `lower_place_addr`。
+    - `*const self` 走 `lower_object_place_or_value`，必要时 materialize 到临时槽后传 const pointer。
+
+回归：
+
+- `tests/samples/positive/functions/method_rvalue_const_receiver.ax`
+- `tests/samples/positive/generics/generic_method_rvalue_const_receiver.ax`
+- 继续保留并验证：
+  - `tests/samples/negative/functions/method_receiver_not_place.ax`
+  - `tests/samples/negative/functions/method_receiver_mutability.ax`
+
+验证：
+
+- 普通方法和泛型方法正例 `--check`、`--dump-ir`、单文件编译运行均通过。
+- IR 中 rvalue receiver 先 `alloca field.object`，再 `ptr_cast` 为 `*const Counter` / `*const Box<i32>`。
+- `Counter.new(1).add(2)` 仍报 `method receiver must be a place expression`。
+- immutable local 调 `*mut self` 仍报 `mutable method receiver requires writable storage`。
+
+### 10.20 `field_addr` / `index_addr` verifier 漏检结果地址类型
+
+问题：
+
+IR verifier 只检查了 `field_addr` / `index_addr` 的 object 是 pointer、字段存在、index id 存在，但没有检查：
+
+- result 本身必须是 pointer。
+- result pointee 必须等于字段类型或元素类型。
+- 不能从 `*const T` object 产生 `*mut field` / `*mut element` 地址。
+- index value 必须是 integer。
+
+这会让 IR pass 可以构造出类型不匹配的地址投影，直到 LLVM backend 或更晚阶段才暴露。
+
+修复：
+
+- `src/ir/verify.cpp`：
+  - `verify_field_addr` 校验 result pointer、pointee type、const-to-mut 投影。
+  - 新增 `verify_index_addr`，校验 result pointer、index integer、元素 pointee type、const-to-mut 投影。
+
+回归：
+
+- `tests/gtest/ir/ir_verifier_structural_tests.cpp`
+
+验证：
+
+- `build/bin/aurex_tests --gtest_filter=CoreUnit.IrVerifierReportsRepresentativeStructuralErrors`
+- 新增坏 IR 分别覆盖：
+  - field address result type mismatch
+  - field address mutable through const object
+  - index address result type mismatch
+- 新增 rvalue field / const receiver 正例的 `--dump-ir` 均通过 verifier。

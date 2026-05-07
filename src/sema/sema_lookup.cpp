@@ -188,14 +188,16 @@ bool SemanticAnalyzer::method_receiver_matches(
     if (!checked_.types.same(pointee, receiver_type)) {
         return false;
     }
-    if (!is_place_expr(receiver)) {
-        report(module_.exprs[receiver.value].range, "method receiver must be a place expression");
-        return false;
-    }
-    if (checked_.types.get(self_type).pointer_mutability == PointerMutability::mut &&
-        !is_writable_place(receiver)) {
-        report(module_.exprs[receiver.value].range, "mutable method receiver requires writable storage");
-        return false;
+    const PointerMutability self_mutability = checked_.types.get(self_type).pointer_mutability;
+    if (self_mutability == PointerMutability::mut) {
+        if (!is_place_expr(receiver)) {
+            report(module_.exprs[receiver.value].range, "method receiver must be a place expression");
+            return false;
+        }
+        if (!is_writable_place(receiver)) {
+            report(module_.exprs[receiver.value].range, "mutable method receiver requires writable storage");
+            return false;
+        }
     }
     return true;
 }

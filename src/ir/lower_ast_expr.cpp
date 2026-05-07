@@ -226,7 +226,10 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
             if (sema::is_valid(param_type) &&
                 module_.types.is_pointer(param_type) &&
                 (!sema::is_valid(receiver_type) || !module_.types.is_pointer(receiver_type))) {
-                receiver = lower_place_addr(callee.object);
+                const sema::TypeInfo& param_info = module_.types.get(param_type);
+                receiver = param_info.pointer_mutability == sema::PointerMutability::mut
+                    ? lower_place_addr(callee.object)
+                    : lower_object_place_or_value(callee.object).address;
             } else {
                 receiver = lower_expr(callee.object, param_type);
             }

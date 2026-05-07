@@ -7,5 +7,6 @@ struct S {
 const S_VALUE: S = S { value: 1 };
 
 fn main() -> i32 {
-  return S_VALUE.value;
+  S_VALUE.value = 2;
+  return 0;
 }

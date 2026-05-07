@@ -262,6 +262,34 @@ fn project_target_index_matches(project: *const Project, name: *const u8, expect
     return Result.ok(index == expected);
 }
 
+fn project_target_name_or(project: *const Project, index: usize, fallback: *const u8) -> *const u8 {
+    if index >= project.targets.len {
+        return fallback;
+    }
+    let name: *const u8 = project.targets.data[index].name;
+    if name == null {
+        return fallback;
+    }
+    return name;
+}
+
+fn project_graph_diagnostic_target_name(project: *const Project, diagnostic: *const GraphDiagnostic) -> *const u8 {
+    if diagnostic.status() == GraphStatus.ok {
+        return c"";
+    }
+    return project_target_name_or(project, diagnostic.target_index(), c"<missing target>");
+}
+
+fn project_graph_diagnostic_related_name(project: *const Project, diagnostic: *const GraphDiagnostic) -> *const u8 {
+    if diagnostic.status() == GraphStatus.ok {
+        return c"";
+    }
+    if diagnostic.status() == GraphStatus.invalid_dependency {
+        return c"<invalid dependency>";
+    }
+    return project_target_name_or(project, diagnostic.related_index(), c"<missing target>");
+}
+
 fn source_newer_than_stamp(path: *const u8, stamp_time: i64) -> bool {
     return match file::metadata(path) {
         .ok(source_metadata) => {
@@ -457,6 +485,96 @@ fn project_cycle_diagnostic(project: *const Project) -> result::Result<GraphDiag
     return Result.ok(graph_diagnostic(GraphStatus.ok, cast(usize, 0), cast(usize, 0)));
 }
 
+fn project_find_dependency_path(
+    project: *const Project,
+    current: usize,
+    goal: usize,
+    states: *mut vec::Vec<u8>,
+    path: *mut vec::Vec<usize>
+) -> result::Result<bool, i32> {
+    if current >= project.targets.len || goal >= project.targets.len {
+        return Result.err(20);
+    }
+    if states.data[current] == VISIT_DONE {
+        return Result.ok(false);
+    }
+    if states.data[current] == VISIT_VISITING {
+        return Result.ok(false);
+    }
+    states.data[current] = VISIT_VISITING;
+    if !path.push(current) {
+        return Result.err(1);
+    }
+    if current == goal {
+        return Result.ok(true);
+    }
+
+    let target: Target = project.targets.data[current];
+    var dependency_index: usize = cast(usize, 0);
+    while dependency_index < target.dependencies.len {
+        let dependency: usize = target.dependencies.data[dependency_index];
+        if dependency >= project.targets.len {
+            return Result.err(20);
+        }
+        let found: bool = project_find_dependency_path(project, dependency, goal, states, path)?;
+        if found {
+            return Result.ok(true);
+        }
+        dependency_index = dependency_index + cast(usize, 1);
+    }
+
+    path.pop();
+    states.data[current] = VISIT_DONE;
+    return Result.ok(false);
+}
+
+fn project_cycle_path_from_diagnostic(project: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<vec::Vec<usize>, i32> {
+    if diagnostic.status() != GraphStatus.cycle {
+        return Result.err(24);
+    }
+    var states: vec::Vec<u8> = project_new_visit_state(project)?;
+    var path: vec::Vec<usize> = vec::new<usize>();
+    let found_result: result::Result<bool, i32> =
+        project_find_dependency_path(project, diagnostic.related_index(), diagnostic.target_index(), &states, &path);
+    let path_code: i32 = match found_result {
+        .ok(value) if value => 0,
+        .ok(_) => 25,
+        .err(code) => code,
+    };
+    states.destroy();
+    if path_code != 0 {
+        path.destroy();
+        return Result.err(path_code);
+    }
+    if !path.push(diagnostic.related_index()) {
+        path.destroy();
+        return Result.err(1);
+    }
+    return Result.ok(path);
+}
+
+fn project_cycle_path_names_from_diagnostic(project: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<vec::Vec<*const u8>, i32> {
+    var indexes: vec::Vec<usize> = project_cycle_path_from_diagnostic(project, diagnostic)?;
+    var names: vec::Vec<*const u8> = vec::new<*const u8>();
+    var index: usize = cast(usize, 0);
+    while index < indexes.len {
+        let target_index: usize = indexes.data[index];
+        if target_index >= project.targets.len {
+            indexes.destroy();
+            names.destroy();
+            return Result.err(20);
+        }
+        if !names.push(project_target_name_or(project, target_index, c"<missing target>")) {
+            indexes.destroy();
+            names.destroy();
+            return Result.err(1);
+        }
+        index = index + cast(usize, 1);
+    }
+    indexes.destroy();
+    return Result.ok(names);
+}
+
 fn project_graph_diagnostic(project: *const Project) -> result::Result<GraphDiagnostic, i32> {
     let duplicate: GraphDiagnostic = project_duplicate_target_diagnostic(project);
     if duplicate.status() != GraphStatus.ok {
@@ -613,6 +731,22 @@ impl Project {
         return project_graph_diagnostic(self);
     }
 
+    pub fn graph_diagnostic_target_name(self: *const Project, diagnostic: *const GraphDiagnostic) -> *const u8 {
+        return project_graph_diagnostic_target_name(self, diagnostic);
+    }
+
+    pub fn graph_diagnostic_related_name(self: *const Project, diagnostic: *const GraphDiagnostic) -> *const u8 {
+        return project_graph_diagnostic_related_name(self, diagnostic);
+    }
+
+    pub fn cycle_path(self: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<vec::Vec<usize>, i32> {
+        return project_cycle_path_from_diagnostic(self, diagnostic);
+    }
+
+    pub fn cycle_path_names(self: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<vec::Vec<*const u8>, i32> {
+        return project_cycle_path_names_from_diagnostic(self, diagnostic);
+    }
+
     pub fn clean(self: *mut Project) -> bool {
         return project_clean(self);
     }
@@ -683,8 +817,32 @@ fn project_graph_ok_diagnostic_matches(project: *const Project) -> result::Resul
         diagnostic.status() == GraphStatus.ok &&
         diagnostic.target_index() == cast(usize, 0) &&
         diagnostic.related_index() == cast(usize, 0) &&
-        text::c_string_equal(diagnostic.message(), c"graph ok")
+        text::c_string_equal(diagnostic.message(), c"graph ok") &&
+        text::c_string_equal(project.graph_diagnostic_target_name(&diagnostic), c"") &&
+        text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"")
     );
+}
+
+fn project_cycle_path_matches(project: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<bool, i32> {
+    var path: vec::Vec<usize> = project.cycle_path(diagnostic)?;
+    let ok: bool =
+        path.len == cast(usize, 3) &&
+        path.data[cast(usize, 0)] == cast(usize, 0) &&
+        path.data[cast(usize, 1)] == cast(usize, 1) &&
+        path.data[cast(usize, 2)] == cast(usize, 0);
+    path.destroy();
+    return Result.ok(ok);
+}
+
+fn project_cycle_path_names_match(project: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<bool, i32> {
+    var names: vec::Vec<*const u8> = project.cycle_path_names(diagnostic)?;
+    let ok: bool =
+        names.len == cast(usize, 3) &&
+        text::c_string_equal(names.data[cast(usize, 0)], c"first") &&
+        text::c_string_equal(names.data[cast(usize, 1)], c"second") &&
+        text::c_string_equal(names.data[cast(usize, 2)], c"first");
+    names.destroy();
+    return Result.ok(ok);
 }
 
 fn validate_missing_target_lookup() -> result::Result<bool, i32> {
@@ -719,7 +877,9 @@ fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
         diagnostic.status() == GraphStatus.duplicate_target &&
         diagnostic.target_index() == cast(usize, 0) &&
         diagnostic.related_index() == cast(usize, 1) &&
-        text::c_string_equal(diagnostic.message(), c"duplicate target name");
+        text::c_string_equal(diagnostic.message(), c"duplicate target name") &&
+        text::c_string_equal(project.graph_diagnostic_target_name(&diagnostic), c"dup") &&
+        text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"dup");
     project.destroy();
     return Result.ok(duplicate_ok && diagnostic_ok);
 }
@@ -748,9 +908,13 @@ fn validate_cycle_detection() -> result::Result<bool, i32> {
         diagnostic.status() == GraphStatus.cycle &&
         diagnostic.target_index() == cast(usize, 1) &&
         diagnostic.related_index() == cast(usize, 0) &&
-        text::c_string_equal(diagnostic.message(), c"target dependency cycle");
+        text::c_string_equal(diagnostic.message(), c"target dependency cycle") &&
+        text::c_string_equal(project.graph_diagnostic_target_name(&diagnostic), c"second") &&
+        text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"first");
+    let path_ok: bool = project_cycle_path_matches(&project, &diagnostic)?;
+    let path_names_ok: bool = project_cycle_path_names_match(&project, &diagnostic)?;
     project.destroy();
-    return Result.ok(cycle_ok && diagnostic_ok);
+    return Result.ok(cycle_ok && diagnostic_ok && path_ok && path_names_ok);
 }
 
 fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
@@ -769,7 +933,9 @@ fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
         diagnostic.status() == GraphStatus.invalid_dependency &&
         diagnostic.target_index() == cast(usize, 0) &&
         diagnostic.related_index() == cast(usize, 99) &&
-        text::c_string_equal(diagnostic.message(), c"invalid target dependency");
+        text::c_string_equal(diagnostic.message(), c"invalid target dependency") &&
+        text::c_string_equal(project.graph_diagnostic_target_name(&diagnostic), c"target") &&
+        text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"<invalid dependency>");
     project.destroy();
     return Result.ok(invalid_ok && diagnostic_ok);
 }

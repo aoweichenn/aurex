@@ -1,6 +1,7 @@
 #include "aurex/lex/lexer.hpp"
 
 #include "aurex/base/config.hpp"
+#include "aurex/base/string_literal.hpp"
 
 #include <array>
 #include <string>
@@ -382,7 +383,18 @@ void Lexer::scan_string() {
             continue;
         }
         if (c == '"') {
-            add_token(syntax::TokenKind::string_literal, begin, offset_);
+            const base::StringLiteralDecode decoded = base::decode_string_literal(
+                source_text_.substr(begin, offset_ - begin),
+                base::StringLiteralKind::string
+            );
+            for (const base::StringLiteralError& error : decoded.errors) {
+                report(begin + error.begin, begin + error.end, error.message);
+            }
+            if (decoded.ok()) {
+                add_token(syntax::TokenKind::string_literal, begin, offset_);
+            } else if (options_.emit_invalid_tokens) {
+                add_token(syntax::TokenKind::invalid, begin, offset_);
+            }
             return;
         }
         if (c == '\n') {
@@ -411,7 +423,18 @@ void Lexer::scan_c_string() {
             continue;
         }
         if (c == '"') {
-            add_token(syntax::TokenKind::c_string_literal, begin, offset_);
+            const base::StringLiteralDecode decoded = base::decode_string_literal(
+                source_text_.substr(begin, offset_ - begin),
+                base::StringLiteralKind::c_string
+            );
+            for (const base::StringLiteralError& error : decoded.errors) {
+                report(begin + error.begin, begin + error.end, error.message);
+            }
+            if (decoded.ok()) {
+                add_token(syntax::TokenKind::c_string_literal, begin, offset_);
+            } else if (options_.emit_invalid_tokens) {
+                add_token(syntax::TokenKind::invalid, begin, offset_);
+            }
             return;
         }
         if (c == '\n') {

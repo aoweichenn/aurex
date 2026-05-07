@@ -1,0 +1,7 @@
+module c_string_interior_nul;
+
+const TEXT: *const u8 = c"a\0b";
+
+fn main() -> i32 {
+    return 0;
+}

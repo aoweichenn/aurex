@@ -8,7 +8,7 @@
 
 本阶段最新进度见：[M1 进度报告 2026-05-07](m1-progress-2026-05-07.md)。该报告记录了当前已落地的 subprocess / stdout/stderr capture / cwd / env baseline、file metadata / mtime baseline、directory create / directory entries / recursive directory entries / single-level source discovery / recursive source discovery baseline、Map / CStringUsizeMap baseline、target graph validation / topological build baseline、target name lookup cache baseline、target graph diagnostic/message/name/cycle-path/cycle-path-name baseline、测试 direct process runner、M1 frontend 样例、M1 typed build-tool 样例、集成测试覆盖和测试耗时基线。
 
-基础字符串类型设计先行见：[字符串基础类型设计草案](string-primitive-design.md)。后续 `String` / `Path` / FFI / M1 样例继续推进时，应以该文档里的 `str` = 借用 UTF-8 文本切片、`String` = 拥有 UTF-8 buffer、`Bytes` / `Span<u8>` = 原始字节、`CStr` / `CString` = C FFI 边界这四层分工为准。
+基础字符串类型设计先行见：[字符串基础类型设计草案](string-primitive-design.md)。当前已落地 Phase 1 字面量诊断基线：普通字符串字面量验证 UTF-8、非法 escape 变成 lexer 诊断、支持 `\u{...}` Unicode scalar escape，并拒绝 `c"..."` 内部 NUL。后续 `String` / `Path` / FFI / M1 样例继续推进时，应以该文档里的 `str` = 借用 UTF-8 文本切片、`String` = 拥有 UTF-8 buffer、`Bytes` / `Span<u8>` = 原始字节、`CStr` / `CString` = C FFI 边界这四层分工为准。
 
 ## 当前已具备能力
 

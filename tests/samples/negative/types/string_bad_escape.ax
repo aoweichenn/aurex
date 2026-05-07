@@ -1,0 +1,7 @@
+module string_bad_escape;
+
+const TEXT: str = "\q";
+
+fn main() -> i32 {
+    return 0;
+}

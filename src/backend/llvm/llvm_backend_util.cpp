@@ -1,6 +1,9 @@
 #include "llvm_backend_internal.hpp"
 
+#include "aurex/base/string_literal.hpp"
+
 #include <charconv>
+#include <utility>
 
 namespace aurex::backend {
 
@@ -28,32 +31,11 @@ bool parse_u64(const std::string& text, std::uint64_t& out) noexcept {
 }
 
 std::string decode_string_literal(const std::string& literal, const bool has_c_prefix) {
-    std::string text = has_c_prefix && !literal.empty() && literal.front() == 'c'
-        ? literal.substr(1)
-        : literal;
-    if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
-        text = text.substr(1, text.size() - 2);
-    }
-
-    std::string decoded;
-    decoded.reserve(text.size());
-    for (std::size_t i = 0; i < text.size(); ++i) {
-        if (text[i] != '\\' || i + 1 >= text.size()) {
-            decoded.push_back(text[i]);
-            continue;
-        }
-        const char escaped = text[++i];
-        switch (escaped) {
-        case '0': decoded.push_back('\0'); break;
-        case 'n': decoded.push_back('\n'); break;
-        case 'r': decoded.push_back('\r'); break;
-        case 't': decoded.push_back('\t'); break;
-        case '\\': decoded.push_back('\\'); break;
-        case '"': decoded.push_back('"'); break;
-        default: decoded.push_back(escaped); break;
-        }
-    }
-    return decoded;
+    base::StringLiteralDecode decoded = base::decode_string_literal(
+        literal,
+        has_c_prefix ? base::StringLiteralKind::c_string : base::StringLiteralKind::string
+    );
+    return std::move(decoded.decoded);
 }
 
 std::uint64_t parse_byte_literal(const std::string& literal) {

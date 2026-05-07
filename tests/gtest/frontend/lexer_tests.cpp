@@ -124,4 +124,40 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_GE(invalid_diagnostics.diagnostics().size(), 4U);
 }
 
+TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
+    DiagnosticSink good_diagnostics;
+    constexpr std::string_view good_source =
+        "module string.lex;\n"
+        "const text: str = \"hi \\u{03A9}\\0\";\n"
+        "const c_text: *const u8 = c\"hi \\u{03A9}\";\n";
+    lex::Lexer good({3}, good_source, good_diagnostics);
+    auto good_result = good.tokenize();
+    ASSERT_TRUE(good_result) << good_result.error().message;
+    EXPECT_FALSE(good_diagnostics.has_error());
+
+    auto expect_lex_error = [](const std::string_view source, const std::string_view needle) {
+        DiagnosticSink diagnostics;
+        lex::Lexer lexer({4}, source, diagnostics);
+        auto result = lexer.tokenize();
+        ASSERT_FALSE(result);
+        std::string messages;
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            messages += diagnostic.message;
+            messages.push_back('\n');
+        }
+        expect_contains(messages, needle);
+    };
+
+    expect_lex_error("const text: str = \"\\q\";", "invalid escape sequence");
+    expect_lex_error("const text: str = \"\\u{D800}\";", "not a valid Unicode scalar");
+    expect_lex_error("const text: str = \"\\u{}\";", "unicode escape has no digits");
+    expect_lex_error("const text: *const u8 = c\"a\\0b\";", "interior NUL");
+
+    std::string invalid_utf8 = "const text: str = \"";
+    invalid_utf8.push_back(static_cast<char>(0xC3));
+    invalid_utf8.push_back('(');
+    invalid_utf8 += "\";";
+    expect_lex_error(invalid_utf8, "valid UTF-8");
+}
+
 } // namespace aurex::test

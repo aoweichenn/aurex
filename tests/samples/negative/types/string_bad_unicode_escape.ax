@@ -1,0 +1,7 @@
+module string_bad_unicode_escape;
+
+const TEXT: str = "\u{D800}";
+
+fn main() -> i32 {
+    return 0;
+}

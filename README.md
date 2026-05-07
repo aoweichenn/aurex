@@ -1,6 +1,6 @@
 # Aurex M0
 
-Documentation baseline: **0.1.2**.
+Documentation baseline: **0.1.3**.
 
 Aurex M0 is a small bootstrap compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
@@ -33,6 +33,15 @@ Feature-rich examples live under `examples/system`, with reusable modules under
 ```sh
 build/bin/aurexc -I examples/libs examples/system/memory_probe/main.ax -o build/tests/memory_probe
 build/tests/memory_probe
+```
+
+M1 acceptance examples live under `examples/m1`:
+
+```sh
+build/bin/aurexc examples/m1/frontend/main.ax -o build/tests/m1_frontend
+build/tests/m1_frontend
+build/bin/aurexc examples/m1/axbuild/main.ax -o build/tests/m1_axbuild
+build/tests/m1_axbuild
 ```
 
 Stage0 can also produce assembly and object files through clang:
@@ -94,6 +103,7 @@ See:
 - `docs/README.md`
 - `docs/zh/README.md`
 - `docs/en/README.md`
+- `docs/zh/m1-progress-2026-05-07.md`
 
 The documentation is now organized by topic and language instead of one file
 per small 0.1.x increment.

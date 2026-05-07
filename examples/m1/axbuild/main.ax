@@ -1,0 +1,290 @@
+module m1.axbuild.main;
+
+import std.core.result as result;
+import std.core.text as text;
+import std.core.vec as vec;
+import std.fs.file as file;
+import std.io.console as console;
+import std.sys.process as process;
+
+enum TargetKind: u8 {
+    library = 1,
+    executable = 2,
+}
+
+struct CustomCommand {
+    program: *const u8;
+    args: vec::Vec<*const u8>;
+}
+
+struct Target {
+    name: *const u8;
+    kind: TargetKind;
+    sources: vec::Vec<*const u8>;
+    include_paths: vec::Vec<*const u8>;
+    dependencies: vec::Vec<usize>;
+    command: CustomCommand;
+}
+
+struct Project {
+    name: *const u8;
+    targets: vec::Vec<Target>;
+    stamp_path: *const u8;
+}
+
+fn custom_command_new(program: *const u8) -> CustomCommand {
+    return CustomCommand {
+        program: program,
+        args: vec::new<*const u8>(),
+    };
+}
+
+fn custom_command_destroy(command: *mut CustomCommand) -> void {
+    command.args.destroy();
+    command.program = null;
+}
+
+fn custom_command_arg(command: *mut CustomCommand, arg: *const u8) -> bool {
+    if command.program == null || arg == null {
+        return false;
+    }
+    return command.args.push(arg);
+}
+
+fn custom_command_run(command: *const CustomCommand) -> result::Result<i32, i32> {
+    var process_command: process::Command = process::command(command.program);
+    var index: usize = cast(usize, 0);
+    while index < command.args.len {
+        if !process_command.arg(command.args.data[index]) {
+            process_command.destroy();
+            return Result.err(1);
+        }
+        index = index + cast(usize, 1);
+    }
+    let status: i32 = process_command.run()?;
+    process_command.destroy();
+    return Result.ok(status);
+}
+
+impl CustomCommand {
+    pub fn destroy(self: *mut CustomCommand) -> void {
+        custom_command_destroy(self);
+    }
+
+    pub fn arg(self: *mut CustomCommand, value: *const u8) -> bool {
+        return custom_command_arg(self, value);
+    }
+
+    pub fn run(self: *const CustomCommand) -> result::Result<i32, i32> {
+        return custom_command_run(self);
+    }
+}
+
+fn target_new(name: *const u8, kind: TargetKind) -> Target {
+    return Target {
+        name: name,
+        kind: kind,
+        sources: vec::new<*const u8>(),
+        include_paths: vec::new<*const u8>(),
+        dependencies: vec::new<usize>(),
+        command: custom_command_new(c"true"),
+    };
+}
+
+fn target_destroy(target: *mut Target) -> void {
+    target.sources.destroy();
+    target.include_paths.destroy();
+    target.dependencies.destroy();
+    target.command.destroy();
+}
+
+fn target_source(target: *mut Target, source: *const u8) -> bool {
+    return target.sources.push(source);
+}
+
+fn target_include(target: *mut Target, include_path: *const u8) -> bool {
+    return target.include_paths.push(include_path);
+}
+
+fn target_dependency(target: *mut Target, dependency: usize) -> bool {
+    return target.dependencies.push(dependency);
+}
+
+impl Target {
+    pub fn destroy(self: *mut Target) -> void {
+        target_destroy(self);
+    }
+
+    pub fn source(self: *mut Target, source: *const u8) -> bool {
+        return target_source(self, source);
+    }
+
+    pub fn include_path(self: *mut Target, include_path: *const u8) -> bool {
+        return target_include(self, include_path);
+    }
+
+    pub fn dependency(self: *mut Target, dependency: usize) -> bool {
+        return target_dependency(self, dependency);
+    }
+}
+
+fn project_new(name: *const u8, stamp_path: *const u8) -> Project {
+    return Project {
+        name: name,
+        targets: vec::new<Target>(),
+        stamp_path: stamp_path,
+    };
+}
+
+fn project_destroy(project: *mut Project) -> void {
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        target_destroy(&project.targets.data[index]);
+        index = index + cast(usize, 1);
+    }
+    project.targets.destroy();
+}
+
+fn project_add_target(project: *mut Project, target: Target) -> result::Result<usize, i32> {
+    let id: usize = project.targets.len;
+    if !project.targets.push(target) {
+        return Result.err(1);
+    }
+    return Result.ok(id);
+}
+
+fn project_needs_build(project: *const Project) -> bool {
+    return !file::file_exists(project.stamp_path);
+}
+
+fn project_build_target(project: *mut Project, index: usize) -> result::Result<bool, i32> {
+    if index >= project.targets.len {
+        return Result.err(2);
+    }
+    let status: i32 = project.targets.data[index].command.run()?;
+    return Result.ok(status == 0);
+}
+
+fn project_build(project: *mut Project) -> result::Result<bool, i32> {
+    if !project_needs_build(project) {
+        return Result.ok(true);
+    }
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        let ok: bool = project_build_target(project, index)?;
+        if !ok {
+            return Result.ok(false);
+        }
+        index = index + cast(usize, 1);
+    }
+    let written: usize = file::write_text(project.stamp_path, c"built")?;
+    return Result.ok(written == text::c_strlen(c"built"));
+}
+
+fn project_clean(project: *mut Project) -> bool {
+    if file::file_exists(project.stamp_path) {
+        return file::remove_file(project.stamp_path);
+    }
+    return true;
+}
+
+fn project_run_target(project: *mut Project, index: usize) -> result::Result<bool, i32> {
+    if index >= project.targets.len {
+        return Result.err(3);
+    }
+    if project.targets.data[index].kind != TargetKind.executable {
+        return Result.ok(false);
+    }
+    let status: i32 = project.targets.data[index].command.run()?;
+    return Result.ok(status == 0);
+}
+
+fn project_test_target(project: *const Project, index: usize) -> result::Result<bool, i32> {
+    if index >= project.targets.len {
+        return Result.err(4);
+    }
+    let target: Target = project.targets.data[index];
+    let has_sources: bool = target.sources.len > cast(usize, 0);
+    let has_dependency: bool = target.dependencies.len > cast(usize, 0);
+    return Result.ok(target.kind == TargetKind.executable && has_sources && has_dependency);
+}
+
+impl Project {
+    pub fn add_target(self: *mut Project, target: Target) -> result::Result<usize, i32> {
+        return project_add_target(self, target);
+    }
+
+    pub fn needs_build(self: *const Project) -> bool {
+        return project_needs_build(self);
+    }
+
+    pub fn build(self: *mut Project) -> result::Result<bool, i32> {
+        return project_build(self);
+    }
+
+    pub fn clean(self: *mut Project) -> bool {
+        return project_clean(self);
+    }
+
+    pub fn run_target(self: *mut Project, index: usize) -> result::Result<bool, i32> {
+        return project_run_target(self, index);
+    }
+
+    pub fn test_target(self: *const Project, index: usize) -> result::Result<bool, i32> {
+        return project_test_target(self, index);
+    }
+
+    pub fn destroy(self: *mut Project) -> void {
+        project_destroy(self);
+    }
+}
+
+fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
+    var core: Target = target_new(c"core", TargetKind.library);
+    if !core.source(c"src/core.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
+        return Result.err(10);
+    }
+    let core_id: usize = project.add_target(core)?;
+
+    var app: Target = target_new(c"app", TargetKind.executable);
+    if !app.source(c"src/main.ax") ||
+        !app.include_path(c"include") ||
+        !app.dependency(core_id) ||
+        !app.command.arg(c"build-app") {
+        return Result.err(11);
+    }
+    return project.add_target(app);
+}
+
+fn run_build_tool() -> result::Result<i32, i32> {
+    var project: Project = project_new(c"demo", c"/tmp/aurex_m1_axbuild_stamp");
+    project.clean();
+    let app_id: usize = configure_project(&project)?;
+    let initial_dirty: bool = project.needs_build();
+    let built: bool = project.build()?;
+    let incremental_clean: bool = !project.needs_build();
+    let rebuilt: bool = project.build()?;
+    let run_ok: bool = project.run_target(app_id)?;
+    let test_ok: bool = project.test_target(app_id)?;
+    let cleaned: bool = project.clean();
+    project.destroy();
+
+    if initial_dirty && built && incremental_clean && rebuilt && run_ok && test_ok && cleaned {
+        return Result.ok(0);
+    }
+    return Result.ok(1);
+}
+
+fn main() -> i32 {
+    return match run_build_tool() {
+        .ok(code) if code == 0 => {
+            if !console::print_line(c"m1 axbuild ok") {
+                process::EXIT_FAILURE
+            } else {
+                process::EXIT_SUCCESS
+            }
+        },
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

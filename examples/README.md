@@ -11,10 +11,24 @@ flat list of snippets.
 - `system/file_journal`: file IO, generic results, text spans, and match guards.
 - `system/memory_probe`: arena allocation, buffers, pointer casts, recursive
   helpers, and layout checks.
+- `m1/frontend`: M1 acceptance frontend slice with a source manager, diagnostics,
+  lexer, token stream, parser subset, and AST/IR summary checks.
+- `m1/axbuild`: M1 acceptance typed build-tool slice with project/target models,
+  dependency lists, custom commands, subprocess execution, incremental stamp
+  checks, build, clean, run, and test flows.
 
 Build a system example with the shared example modules on the import path:
 
 ```sh
 build/bin/aurexc -I examples/libs examples/system/file_journal/main.ax -o build/tests/file_journal
 build/tests/file_journal
+```
+
+Build an M1 acceptance example directly:
+
+```sh
+build/bin/aurexc examples/m1/frontend/main.ax -o build/tests/m1_frontend
+build/tests/m1_frontend
+build/bin/aurexc examples/m1/axbuild/main.ax -o build/tests/m1_axbuild
+build/tests/m1_axbuild
 ```

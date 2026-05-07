@@ -41,6 +41,21 @@ struct ExampleApp {
     };
 }
 
+[[nodiscard]] std::vector<ExampleApp> m1_examples() {
+    return {
+        ExampleApp {
+            "m1_frontend",
+            examples_root() / "m1" / "frontend" / "main.ax",
+            "m1 frontend ok",
+        },
+        ExampleApp {
+            "m1_axbuild",
+            examples_root() / "m1" / "axbuild" / "main.ax",
+            "m1 axbuild ok",
+        },
+    };
+}
+
 } // namespace
 
 TEST_F(AurexIntegrationTest, SystemExamplesCompileAndRun) {
@@ -80,10 +95,61 @@ TEST_F(AurexIntegrationTest, SystemExamplesExposeCurrentFeatureSet) {
     });
 }
 
+TEST_F(AurexIntegrationTest, M1ExamplesCompileAndRun) {
+    for (const ExampleApp& app : m1_examples()) {
+        const fs::path output = test_bin_root() / std::string(app.name);
+        require_success(aurexc() + " " + q(app.source) + " -o " + q(output));
+        expect_contains(require_success(q(output)).output, app.expected_output);
+    }
+}
+
+TEST_F(AurexIntegrationTest, M1ExamplesExposeAcceptanceFeatureSet) {
+    const fs::path frontend = examples_root() / "m1" / "frontend" / "main.ax";
+    const std::string frontend_checked = require_success(aurexc() + " --emit=checked " + q(frontend)).output;
+    expect_contains_all(frontend_checked, {
+        "struct SourceManager fields=1",
+        "struct Lexer fields=4",
+        "struct TokenStream fields=2",
+        "fn run_frontend -> std.core.result.Result<i32, i32>",
+        "fn method m1.frontend.main.Lexer.lex_all -> std.core.result.Result<i32, i32>",
+        "case TokenKind_kw_fn",
+    });
+
+    const std::string frontend_ir = require_success(aurexc() + " --emit=ir " + q(frontend)).output;
+    expect_contains_all(frontend_ir, {
+        "record Lexer @m0_m1_frontend_main_Lexer",
+        "record SourceManager @m0_m1_frontend_main_SourceManager",
+        "fn run_frontend() @m0_m1_frontend_main_run_frontend",
+        "call m0_m1_frontend_main_Lexer_lex_all",
+    });
+
+    const fs::path axbuild = examples_root() / "m1" / "axbuild" / "main.ax";
+    const std::string axbuild_checked = require_success(aurexc() + " --emit=checked " + q(axbuild)).output;
+    expect_contains_all(axbuild_checked, {
+        "struct Project fields=3",
+        "struct Target fields=6",
+        "struct CustomCommand fields=2",
+        "fn project_build -> std.core.result.Result<bool, i32>",
+        "fn method std.sys.process.Command.run -> std.core.result.Result<i32, i32>",
+        "fn host_run_process -> i32 @c_name=aurex_std_v0_run_process extern_c",
+        "case TargetKind_executable",
+    });
+
+    const std::string axbuild_ir = require_success(aurexc() + " --emit=ir " + q(axbuild)).output;
+    expect_contains_all(axbuild_ir, {
+        "fn host_run_process(program: *const u8",
+        "call aurex_std_v0_run_process",
+        "call m0_std_sys_process_Command_run",
+        "call m0_m1_axbuild_main_CustomCommand_run",
+    });
+}
+
 TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent) {
     const std::vector<fs::path> required = {
         examples_root() / "README.md",
         examples_root() / "hello.ax",
+        examples_root() / "m1" / "frontend" / "main.ax",
+        examples_root() / "m1" / "axbuild" / "main.ax",
         examples_root() / "libs" / "common" / "algorithms.ax",
         examples_root() / "libs" / "common" / "prelude.ax",
         examples_root() / "libs" / "common" / "status.ax",

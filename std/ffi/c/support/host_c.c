@@ -1,8 +1,11 @@
 #include <stdbool.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 /*
  * Aurex std host-c FFI support, ABI v0.
@@ -136,4 +139,50 @@ bool aurex_std_v0_output_close(FILE *file) {
         return false;
     }
     return fclose(file) == 0;
+}
+
+int32_t aurex_std_v0_run_process(const uint8_t *program, const uint8_t **args, int32_t arg_count) {
+    if (program == NULL || arg_count < 0 || (arg_count > 0 && args == NULL)) {
+        return 127;
+    }
+
+    char **argv = (char **)calloc((size_t)arg_count + 2, sizeof(char *));
+    if (argv == NULL) {
+        return 126;
+    }
+
+    argv[0] = (char *)program;
+    for (int32_t i = 0; i < arg_count; ++i) {
+        argv[i + 1] = (char *)args[i];
+    }
+    argv[arg_count + 1] = NULL;
+
+    const pid_t child = fork();
+    if (child < 0) {
+        free(argv);
+        return 126;
+    }
+
+    if (child == 0) {
+        execvp(argv[0], argv);
+        _exit(errno == ENOENT ? 127 : 126);
+    }
+
+    int status = 0;
+    while (waitpid(child, &status, 0) < 0) {
+        if (errno == EINTR) {
+            continue;
+        }
+        free(argv);
+        return 126;
+    }
+
+    free(argv);
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+    return 126;
 }

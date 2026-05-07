@@ -1,6 +1,6 @@
 # Next Steps
 
-Version: 0.1.2
+Version: 0.1.3
 
 ## Current Stage
 
@@ -12,6 +12,8 @@ to make Aurex expressive enough to write two real system programs naturally: a
 small self-hosting frontend example and a typed build tool similar in spirit to
 CMake. A full replacement of the C++ Stage0 compiler can happen later, but M1
 must prove these programs can be written cleanly in Aurex.
+
+Latest Chinese progress report: [M1 progress report 2026-05-07](../zh/m1-progress-2026-05-07.md).
 
 ## Current Capabilities
 
@@ -55,10 +57,20 @@ Current language slices:
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses.
+- Standard process support has started. `std.sys.process::Command` provides
+  typed argv, `arg()`, `run()`, and `destroy()`, backed by host-c
+  `fork` / `execvp` / `waitpid`. cwd/env/stdout/stderr capture and pipe APIs
+  are still missing.
 - `pub` / `priv` visibility keywords, cross-module private item filtering, and
   private field access checks.
 - Examples now include system-level CLI, file IO, memory/arena, std-module,
   generic result, visibility, and re-export facade coverage.
+- M1 acceptance skeletons are now in the active tree: `examples/m1/frontend`
+  covers source manager, diagnostics, lexer, token stream, parser subset, and
+  AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
+  typed dependencies/sources/includes/custom commands, subprocess execution,
+  incremental stamp checks, build, clean, run, and test flows. Both are covered
+  by checked/IR/native integration tests.
 
 ## Key Language Gaps
 
@@ -102,13 +114,18 @@ covered by integration tests:
    Implement a small compiler frontend in Aurex: source manager, lexer, token
    stream, parser subset, AST/IR dump, and diagnostics. It does not need to
    replace the C++ Stage0 compiler, but it must prove that Aurex can naturally
-   express compiler core code.
+   express compiler core code. A minimal runnable example now exists; follow-up
+   work should add fuller source-span diagnostics, AST node hierarchy, import
+   parsing, and more realistic error recovery.
 
 2. Typed build-tool example  
    Implement a small CMake-like build tool in Aurex: project, target, library,
    executable, source list, include path, dependency, custom command,
    subprocess, incremental checks, build, clean, run, and test. Build
-   definitions should be typed Aurex APIs, not shell-string concatenation.
+   definitions should be typed Aurex APIs, not shell-string concatenation. A
+   minimal runnable example now exists; follow-up work should add real file
+   timestamps, directory walking, stdout/stderr capture, cwd/env, target-graph
+   cycle diagnostics, and richer error reporting.
 
 ## M1 Priority
 
@@ -213,13 +230,17 @@ manual status helpers.
 6. `defer` / noncopyable / OS support  
    Started. `defer call();` now runs in reverse order when the current lexical
    scope exits, including normal exits, `return`, and `break` / `continue`
-   lowering. Next, add noncopyable resource rules, directory walking, file
-   metadata, subprocesses, cwd/env, and temporary-directory support so files,
-   processes, arenas, and temporary directories compose safely. Then start the
-   `axbuild` example.
+   lowering. A subprocess baseline is now available through
+   `std.sys.process::Command` and host-c support. Next, add noncopyable resource
+   rules, directory walking, file metadata, cwd/env, stdout/stderr capture, and
+   temporary-directory support so files, processes, arenas, and temporary
+   directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  
-   Add both system examples to integration tests and keep coverage above 90%.
+   Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the
+   active tree and covered by checked-surface, IR-surface, and native smoke
+   integration tests. Keep growing them from minimal acceptance examples into
+   realistic M1 engineering benchmarks while keeping coverage above 90%.
 
 ## Long-Term Priority
 

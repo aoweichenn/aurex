@@ -1,9 +1,62 @@
 module std.sys.process;
 
+import std.core.result;
+import std.core.vec as vec;
+import std.ffi.c.host_support;
 import std.ffi.c.libc;
 
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_FAILURE: i32 = 1;
+
+pub struct Command {
+    program: *const u8;
+    args: vec::Vec<*const u8>;
+}
+
+pub fn command(program: *const u8) -> Command {
+    return Command {
+        program: program,
+        args: vec::new<*const u8>(),
+    };
+}
+
+pub fn command_destroy(command_value: *mut Command) -> void {
+    command_value.args.destroy();
+    command_value.program = null;
+}
+
+pub fn command_arg(command_value: *mut Command, arg: *const u8) -> bool {
+    if command_value.program == null || arg == null {
+        return false;
+    }
+    return command_value.args.push(arg);
+}
+
+pub fn command_run(command_value: *mut Command) -> Result<i32, i32> {
+    if command_value.program == null {
+        return Result.err(1);
+    }
+    let status: i32 = host_run_process(
+        command_value.program,
+        command_value.args.data,
+        cast(i32, command_value.args.len)
+    );
+    return Result.ok(status);
+}
+
+impl Command {
+    pub fn destroy(self: *mut Command) -> void {
+        command_destroy(self);
+    }
+
+    pub fn arg(self: *mut Command, value: *const u8) -> bool {
+        return command_arg(self, value);
+    }
+
+    pub fn run(self: *mut Command) -> Result<i32, i32> {
+        return command_run(self);
+    }
+}
 
 fn exit_process(code: i32) -> void {
     exit(code);
@@ -24,4 +77,3 @@ fn env_or(name: *const u8, fallback: *const u8) -> *const u8 {
     }
     return value;
 }
-

@@ -1,10 +1,11 @@
 # Aurex Documentation
 
-Documentation baseline: **0.1.2**.
+Documentation baseline: **0.1.3**.
 
-This directory is organized by language. The Chinese and English trees use the
-same document names so readers can switch languages without learning a second
-layout.
+This directory is organized by language. The main Chinese and English trees use
+the same document names so readers can switch languages without learning a
+second layout. Dated investigation and progress reports may exist only in the
+language they were written in.
 
 ## Chinese
 
@@ -17,6 +18,7 @@ layout.
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
 - [下一步计划文档](zh/next-steps.md)
+- [M1 进度报告 2026-05-07](zh/m1-progress-2026-05-07.md)
 
 ## English
 

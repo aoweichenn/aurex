@@ -11,6 +11,7 @@ extern c {
     fn host_output_write_source_range(file: *mut OutputFile, source: *const u8, begin: i32, end: i32) -> bool @name("aurex_std_v0_output_write_source_range");
     fn host_output_write_i32(file: *mut OutputFile, value: i32) -> bool @name("aurex_std_v0_output_write_i32");
     fn host_output_close(file: *mut OutputFile) -> bool @name("aurex_std_v0_output_close");
+    fn host_run_process(program: *const u8, args: *mut *const u8, arg_count: i32) -> i32 @name("aurex_std_v0_run_process");
 }
 
 struct HostFileBuffer {

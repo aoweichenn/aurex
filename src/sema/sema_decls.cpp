@@ -346,6 +346,7 @@ void SemanticAnalyzer::register_value_names() {
             if (!checked_.types.is_integer(enum_type)) {
                 report(item.range, "enum base type must be an integer type");
             }
+            std::unordered_set<base::u64> seen_values;
             const auto type_found = named_types_.find(key);
             const TypeHandle named_enum_type = type_found == named_types_.end() ? enum_type : type_found->second;
             if (is_valid(named_enum_type)) {
@@ -359,6 +360,15 @@ void SemanticAnalyzer::register_value_names() {
                 const std::string enum_case_key = module_key(current_module_, full_name);
                 const bool has_payload = syntax::is_valid(enum_case.payload_type);
                 const TypeHandle payload_type = has_payload ? resolve_type(enum_case.payload_type) : invalid_type_handle;
+                base::u64 discriminant = 0;
+                const bool parsed_discriminant = parse_integer_literal_text(enum_case.value_text, discriminant);
+                if (!parsed_discriminant) {
+                    report(enum_case.range, "enum discriminant literal is out of range");
+                } else if (!integer_literal_fits_type(enum_type, enum_case.value_text)) {
+                    report(enum_case.range, "enum discriminant does not fit enum base type");
+                } else if (!seen_values.insert(discriminant).second) {
+                    report(enum_case.range, "duplicate enum discriminant value in " + std::string(item.name));
+                }
                 if (has_payload) {
                     if (!is_valid_storage_type(payload_type)) {
                         report(enum_case.range, "enum payload type is not valid storage");
@@ -550,7 +560,7 @@ void SemanticAnalyzer::analyze_const_decls() {
         const TypeHandle declared = resolve_type(item.const_type);
         const bool previous_const_initializer = in_const_initializer_;
         in_const_initializer_ = true;
-        const TypeHandle actual = analyze_expr(item.const_value);
+        const TypeHandle actual = analyze_expr(item.const_value, declared);
         in_const_initializer_ = previous_const_initializer;
         if (!is_valid_storage_type(declared)) {
             report(item.range, "const type is not valid storage");

@@ -17,7 +17,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::i32));
+        return analyze_integer_literal(expr_id, expr, expected_type);
     case syntax::ExprKind::bool_literal:
         return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
     case syntax::ExprKind::null_literal:
@@ -50,9 +50,9 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     case syntax::ExprKind::try_expr:
         return analyze_try_expr(expr_id, expr);
     case syntax::ExprKind::if_expr:
-        return analyze_if_expr(expr_id, expr);
+        return analyze_if_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::block_expr:
-        return analyze_block_expr(expr_id, expr);
+        return analyze_block_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::match_expr:
         return analyze_match_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::unary: {
@@ -297,6 +297,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         const TypeHandle queried = resolve_type(expr.cast_type);
         if (is_valid(queried) && checked_.types.get(queried).kind == TypeKind::opaque_struct) {
             report(expr.range, "opaque struct cannot be queried by size_of or align_of directly");
+        } else if (is_valid(queried) && !is_valid_storage_type(queried)) {
+            report(expr.range, "size_of and align_of require a valid storage type");
         }
         return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
     }
@@ -391,7 +393,11 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
     return record_expr_type(expr_id, invalid_type_handle);
 }
 
-TypeHandle SemanticAnalyzer::analyze_if_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+TypeHandle SemanticAnalyzer::analyze_if_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
     if (in_const_initializer_) {
         report(expr.range, "if expression cannot be used in const initializer");
     }
@@ -400,8 +406,8 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(const syntax::ExprId expr_id, const
         report(module_.exprs[expr.condition.value].range, "if expression condition must be bool");
     }
 
-    const TypeHandle then_type = analyze_expr(expr.then_expr);
-    const TypeHandle else_type = analyze_expr(expr.else_expr);
+    const TypeHandle then_type = analyze_expr(expr.then_expr, expected_type);
+    const TypeHandle else_type = analyze_expr(expr.else_expr, is_valid(then_type) ? then_type : expected_type);
     if (!checked_.types.same(then_type, else_type)) {
         report(expr.range, "if expression branches must have the same type");
         return record_expr_type(expr_id, invalid_type_handle);
@@ -413,7 +419,11 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(const syntax::ExprId expr_id, const
     return record_expr_type(expr_id, then_type);
 }
 
-TypeHandle SemanticAnalyzer::analyze_block_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+TypeHandle SemanticAnalyzer::analyze_block_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
     if (in_const_initializer_) {
         report(expr.range, "block expression cannot be used in const initializer");
     }
@@ -429,7 +439,7 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(const syntax::ExprId expr_id, co
             analyze_stmt(child, checked_.types.builtin(BuiltinType::void_), nullptr);
         }
     }
-    const TypeHandle result = analyze_expr(expr.block_result);
+    const TypeHandle result = analyze_expr(expr.block_result, expected_type);
     symbols_.pop_scope();
 
     if (!is_valid(result)) {

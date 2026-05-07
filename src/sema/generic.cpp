@@ -548,10 +548,20 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     base::u64 payload_size = 0;
     base::u64 payload_align = 1;
     std::unordered_set<std::string> seen_cases;
+    std::unordered_set<base::u64> seen_values;
     for (const syntax::EnumCaseDecl& enum_case : item->enum_cases) {
         if (!seen_cases.insert(std::string(enum_case.name)).second) {
             report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
             continue;
+        }
+        base::u64 discriminant = 0;
+        const bool parsed_discriminant = parse_integer_literal_text(enum_case.value_text, discriminant);
+        if (!parsed_discriminant) {
+            report(enum_case.range, "enum discriminant literal is out of range");
+        } else if (!integer_literal_fits_type(underlying, enum_case.value_text)) {
+            report(enum_case.range, "enum discriminant does not fit enum base type");
+        } else if (!seen_values.insert(discriminant).second) {
+            report(enum_case.range, "duplicate enum discriminant value in " + info.name);
         }
         const bool has_payload = syntax::is_valid(enum_case.payload_type);
         const TypeHandle payload_type = has_payload

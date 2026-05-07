@@ -275,9 +275,10 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         value.kind = ValueKind::aggregate;
         value.type = expr_type(expr_id);
         for (const syntax::FieldInit& init : expr.field_inits) {
+            const sema::TypeHandle field_type = aggregate_field_type(value.type, init.name);
             value.fields.push_back(FieldValue {
                 std::string(init.name),
-                lower_expr(init.value, aggregate_field_type(value.type, init.name)),
+                coerce_value(lower_expr(init.value, field_type), field_type),
             });
         }
         return append_value(value);

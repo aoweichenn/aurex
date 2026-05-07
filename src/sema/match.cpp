@@ -251,6 +251,8 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
     if (checked_.types.is_integer(matched)) {
         if (pattern.case_name == "true" || pattern.case_name == "false") {
             report(pattern.range, "integer match pattern must be an integer literal");
+        } else if (!integer_literal_fits_type(matched, pattern.case_name)) {
+            report(pattern.range, "integer match pattern literal is out of range for matched type");
         }
         return nullptr;
     }

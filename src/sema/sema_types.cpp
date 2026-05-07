@@ -63,7 +63,7 @@ namespace {
     }
 }
 
-[[nodiscard]] bool parse_u64_literal_text(const std::string_view text, base::u64& value) noexcept {
+[[nodiscard]] bool parse_u64_literal_checked(const std::string_view text, base::u64& value) noexcept {
     int base = 10;
     base::usize index = 0;
     if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
@@ -104,7 +104,7 @@ namespace {
     return saw_digit;
 }
 
-[[nodiscard]] bool integer_literal_fits_type(
+[[nodiscard]] bool literal_fits_integer_type(
     const TypeTable& types,
     const TypeHandle destination,
     const std::string_view text
@@ -119,7 +119,7 @@ namespace {
     }
 
     base::u64 value = 0;
-    if (!parse_u64_literal_text(text, value)) {
+    if (!parse_u64_literal_checked(text, value)) {
         return false;
     }
     if (builtin_is_unsigned(info.builtin)) {
@@ -364,7 +364,7 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
     if (checked_.types.is_integer(dst) && checked_.types.is_integer(src) && is_integer_literal(value)) {
         return syntax::is_valid(value) &&
                value.value < module_.exprs.size() &&
-               integer_literal_fits_type(checked_.types, dst, module_.exprs[value.value].text);
+               integer_literal_fits_type(dst, module_.exprs[value.value].text);
     }
     if (checked_.types.is_pointer(dst) && checked_.types.is_pointer(src)) {
         const TypeInfo& dst_info = checked_.types.get(dst);
@@ -378,7 +378,46 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
 }
 
 bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const noexcept {
-    return is_valid(type) && !checked_.types.is_void(type) && checked_.types.get(type).kind != TypeKind::opaque_struct;
+    if (!is_valid(type)) {
+        return false;
+    }
+    const TypeInfo& info = checked_.types.get(type);
+    if (checked_.types.is_void(type) || info.kind == TypeKind::opaque_struct) {
+        return false;
+    }
+    if (info.kind != TypeKind::array) {
+        return true;
+    }
+    if (!is_valid_storage_type(info.array_element)) {
+        return false;
+    }
+    const base::u64 element_size = abi_size(info.array_element);
+    return element_size == 0 || info.array_count <= std::numeric_limits<base::u64>::max() / element_size;
+}
+
+bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept {
+    return parse_u64_literal_checked(text, value);
+}
+
+bool SemanticAnalyzer::integer_literal_fits_type(const TypeHandle destination, const std::string_view text) const noexcept {
+    return literal_fits_integer_type(checked_.types, destination, text);
+}
+
+TypeHandle SemanticAnalyzer::analyze_integer_literal(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    const TypeHandle literal_type = checked_.types.is_integer(expected_type)
+        ? expected_type
+        : checked_.types.builtin(BuiltinType::i32);
+    if (!integer_literal_fits_type(literal_type, expr.text)) {
+        report(
+            expr.range,
+            "integer literal out of range for " + checked_.types.display_name(literal_type)
+        );
+    }
+    return record_expr_type(expr_id, literal_type);
 }
 
 bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const noexcept {

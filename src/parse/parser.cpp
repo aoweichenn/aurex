@@ -1,6 +1,7 @@
 #include "aurex/parse/parser.hpp"
 
 #include <charconv>
+#include <limits>
 #include <utility>
 
 namespace aurex::parse {
@@ -57,8 +58,8 @@ using syntax::TokenKind;
     }
 }
 
-[[nodiscard]] base::u64 parse_u64_literal(const std::string_view text) noexcept {
-    base::u64 value = 0;
+[[nodiscard]] bool parse_u64_literal(const std::string_view text, base::u64& value) noexcept {
+    value = 0;
     int base = 10;
     base::usize begin = 0;
     if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
@@ -80,10 +81,18 @@ using syntax::TokenKind;
             digit = static_cast<base::u64>(10 + c - 'a');
         } else if (c >= 'A' && c <= 'F') {
             digit = static_cast<base::u64>(10 + c - 'A');
+        } else {
+            return false;
+        }
+        if (digit >= static_cast<base::u64>(base)) {
+            return false;
+        }
+        if (value > (std::numeric_limits<base::u64>::max() - digit) / static_cast<base::u64>(base)) {
+            return false;
         }
         value = (value * static_cast<base::u64>(base)) + digit;
     }
-    return value;
+    return true;
 }
 
 } // namespace
@@ -867,10 +876,14 @@ syntax::TypeId Parser::parse_type() {
         const syntax::Token& count = expect(TokenKind::integer_literal, "expected array length");
         expect(TokenKind::r_bracket, "expected ']' after array length");
         const syntax::TypeId element = parse_type();
+        base::u64 array_count = 0;
+        if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
+            report_at(count, "array length literal is out of range");
+        }
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::array;
         type.range = merge(begin.range, module_.types[element.value].range);
-        type.array_count = parse_u64_literal(count.text);
+        type.array_count = array_count;
         type.array_element = element;
         return module_.push_type(type);
     }

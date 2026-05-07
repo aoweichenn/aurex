@@ -60,8 +60,8 @@ private:
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] const EnumCaseInfo* analyze_enum_case_pattern(
         syntax::PatternId pattern,
@@ -96,6 +96,9 @@ private:
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] bool parse_integer_literal_text(std::string_view text, base::u64& value) const noexcept;
+    [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
+    [[nodiscard]] TypeHandle analyze_integer_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
     [[nodiscard]] base::u64 abi_size(TypeHandle type) const noexcept;
     [[nodiscard]] base::u64 abi_align(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_integer_literal(syntax::ExprId expr) const noexcept;

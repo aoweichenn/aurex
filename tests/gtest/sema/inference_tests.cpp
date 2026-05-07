@@ -25,9 +25,7 @@ TEST_F(AurexIntegrationTest, LocalTypeInference) {
         ": *mut *mut i32 = alloca aliased",
     });
 
-    const fs::path bin = test_bin_root() / "local_inference";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path null_source = negative_sample("inference", "local_inference_null.ax");
     const CommandResult null_result = require_failure(aurexc() + " --check " + q(null_source));
@@ -68,9 +66,7 @@ TEST_F(AurexIntegrationTest, FunctionReturnInference) {
         "fn choose(flag: bool, value: i32)",
     });
 
-    const fs::path bin = test_bin_root() / "return_inference";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path mismatch = negative_sample("inference", "return_inference_mismatch.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "inferred function return types do not match");

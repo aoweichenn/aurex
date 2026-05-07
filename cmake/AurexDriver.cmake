@@ -5,6 +5,7 @@ target_include_directories(aurex_std_host_c PRIVATE std/ffi/c/support)
 
 add_library(aurex_driver
     src/driver/compiler.cpp
+    src/driver/file_cache.cpp
     src/driver/module_loader.cpp
     src/driver/native_toolchain.cpp
     src/driver/standard_library.cpp

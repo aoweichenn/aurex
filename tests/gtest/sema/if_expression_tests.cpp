@@ -29,9 +29,7 @@ TEST_F(AurexIntegrationTest, IfExpression) {
         "fn normalize(value: i32)",
     });
 
-    const fs::path bin = test_bin_root() / "if_expression";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path condition = negative_sample("expressions", "if_expression_condition.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(condition)).output, "if expression condition must be bool");

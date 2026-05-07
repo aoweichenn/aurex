@@ -1,15 +1,13 @@
 #include "aurex/driver/module_loader.hpp"
 
 #include "aurex/base/config.hpp"
+#include "aurex/driver/file_cache.hpp"
+#include "aurex/driver/standard_library.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/parse/parser.hpp"
-#include "aurex/driver/standard_library.hpp"
 #include "aurex/syntax/module.hpp"
 
-#include <cstddef>
-#include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <optional>
 #include <sstream>
 #include <utility>
@@ -17,31 +15,6 @@
 namespace aurex::driver {
 
 namespace {
-
-[[nodiscard]] base::Result<std::string> read_file(const std::filesystem::path& path) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) {
-        return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to open input file"});
-    }
-
-    std::string text;
-    std::error_code error;
-    const std::uintmax_t size = std::filesystem::file_size(path, error);
-    if (!error) {
-        text.resize(static_cast<std::size_t>(size));
-        if (!text.empty()) {
-            input.read(text.data(), static_cast<std::streamsize>(text.size()));
-            if (!input) {
-                return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to read input file"});
-            }
-        }
-        return base::Result<std::string>::ok(std::move(text));
-    }
-
-    std::ostringstream buffer;
-    buffer << input.rdbuf();
-    return base::Result<std::string>::ok(buffer.str());
-}
 
 [[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path) {
     std::error_code error;
@@ -349,7 +322,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     }
     loading_files_.insert(key);
 
-    auto source_result = read_file(canonical);
+    auto source_result = read_text_file(canonical);
     if (!source_result) {
         loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(source_result.error());

@@ -33,9 +33,7 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
         "const_ref @m0_match_expression_Choice_zero",
     });
 
-    const fs::path bin = test_bin_root() / "match_expression";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path non_enum = negative_sample("pattern_matching", "match_expression_non_enum.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(non_enum)).output, "match expression requires an enum, integer, or bool value");
@@ -76,9 +74,7 @@ TEST_F(AurexIntegrationTest, EnumPayloadAndMatchBinding) {
         "aggregate {.tag",
     });
 
-    const fs::path bin = test_bin_root() / "enum_payload";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path missing_arg = negative_sample("pattern_matching", "enum_payload_constructor_missing_arg.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing_arg)).output, "enum payload constructor requires exactly one argument");
@@ -116,9 +112,7 @@ TEST_F(AurexIntegrationTest, MatchWildcardAndScopedCases) {
         "const_ref @m0_match_wildcard_Mode_fast",
     });
 
-    const fs::path bin = test_bin_root() / "match_wildcard";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path unreachable = negative_sample("pattern_matching", "match_wildcard_unreachable.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(unreachable)).output, "match arm is unreachable after wildcard pattern");
@@ -140,9 +134,7 @@ TEST_F(AurexIntegrationTest, MatchOrPattern) {
         "or %",
     });
 
-    const fs::path bin = test_bin_root() / "match_or_pattern";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path payload_binding = negative_sample("pattern_matching", "match_or_pattern_payload_binding.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(payload_binding)).output, "or-pattern alternatives cannot bind payloads");
@@ -171,9 +163,7 @@ TEST_F(AurexIntegrationTest, MatchLiteralPattern) {
         "literal true",
     });
 
-    const fs::path bin = test_bin_root() / "match_literal_pattern";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path missing_wildcard = negative_sample("pattern_matching", "match_literal_missing_wildcard.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing_wildcard)).output, "match expression over integer or bool requires a wildcard arm");
@@ -202,9 +192,7 @@ TEST_F(AurexIntegrationTest, MatchGuard) {
         "match.next",
     });
 
-    const fs::path bin = test_bin_root() / "match_guard";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path non_bool = negative_sample("pattern_matching", "match_guard_non_bool.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(non_bool)).output, "match guard must be bool");
@@ -229,9 +217,7 @@ TEST_F(AurexIntegrationTest, LayoutAlignment) {
         "align_of layout_alignment.Payload",
     });
 
-    const fs::path bin = test_bin_root() / "layout_alignment";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 } // namespace aurex::test

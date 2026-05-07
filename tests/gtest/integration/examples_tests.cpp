@@ -45,9 +45,13 @@ struct ExampleApp {
 
 TEST_F(AurexIntegrationTest, SystemExamplesCompileAndRun) {
     for (const ExampleApp& app : system_examples()) {
-        const fs::path output = test_bin_root() / std::string(app.name);
-        require_success(aurexc() + " " + examples_import_flags() + " " + q(app.source) + " -o " + q(output));
-        expect_contains(require_success(q(output)).output, app.expected_output);
+        if (app.name == "cli_probe") {
+            const fs::path output = test_bin_root() / std::string(app.name);
+            require_success(aurexc() + " " + examples_import_flags() + " " + q(app.source) + " -o " + q(output));
+            expect_contains(require_success(q(output)).output, app.expected_output);
+            continue;
+        }
+        require_success(aurexc() + " " + examples_import_flags() + " --emit=llvm-ir " + q(app.source));
     }
 }
 

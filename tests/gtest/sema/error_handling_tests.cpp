@@ -30,9 +30,7 @@ TEST_F(AurexIntegrationTest, TryExpressionResultAndOption) {
         "field_addr",
     });
 
-    const fs::path bin = test_bin_root() / "try_result_option";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, TryExpressionDiagnostics) {

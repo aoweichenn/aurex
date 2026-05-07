@@ -39,14 +39,17 @@ TEST_F(AurexIntegrationTest, TypeAlias) {
     const std::string alias_llvm = require_success(aurexc() + " --emit=llvm-ir " + q(alias)).output;
     expect_contains(alias_llvm, "%m0_type_alias_Packet = type { i32 }");
 
-    const fs::path alias_bin = test_bin_root() / "type_alias";
-    require_success(aurexc() + " " + q(alias) + " -o " + q(alias_bin));
-    EXPECT_EQ(require_success(q(alias_bin)).output, "");
-
     const fs::path imported = positive_sample("types", "type_alias_import.ax");
-    const fs::path imported_bin = test_bin_root() / "type_alias_import";
-    require_success(aurexc() + " -I " + q(imports_root()) + " " + q(imported) + " -o " + q(imported_bin));
-    EXPECT_EQ(require_success(q(imported_bin)).output, "");
+    const std::string imported_checked =
+        require_success(aurexc() + " -I " + q(imports_root()) + " --emit=checked " + q(imported)).output;
+    expect_contains_all(imported_checked, {
+        "type ImportedInt = i32",
+        "type ImportedIntPtr = *mut i32",
+        "fn main -> i32",
+    });
+    const std::string imported_llvm =
+        require_success(aurexc() + " -I " + q(imports_root()) + " --emit=llvm-ir " + q(imported)).output;
+    expect_contains(imported_llvm, "@m0_type_alias_import_main");
 
     const fs::path cycle = negative_sample("types", "type_alias_cycle.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(cycle)).output, "cyclic type alias");

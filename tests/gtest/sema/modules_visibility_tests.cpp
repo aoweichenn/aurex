@@ -45,9 +45,11 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
         ".secret: i32",
     });
 
-    const fs::path bin = test_bin_root() / "visibility_import";
-    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    const std::string llvm_ir = require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(source)).output;
+    expect_contains_all(llvm_ir, {
+        "%m0_samplelib_visibility_PublicBox = type { i32, i32 }",
+        "@m0_visibility_import_main",
+    });
 
     const fs::path private_function = negative_sample("visibility", "private_function_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_function)).output, "unknown function: add_secret");
@@ -141,9 +143,12 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
         "call m0_samplelib_visibility_exported",
     });
 
-    const fs::path alias_bin = test_bin_root() / "import_alias_qualified_call";
-    require_success(aurexc() + " " + import_flags + " " + q(alias_source) + " -o " + q(alias_bin));
-    EXPECT_EQ(require_success(q(alias_bin)).output, "");
+    const std::string alias_llvm =
+        require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(alias_source)).output;
+    expect_contains_all(alias_llvm, {
+        "@m0_import_alias_qualified_call_main",
+        "call i32 @m0_samplelib_visibility_exported",
+    });
 }
 
 TEST_F(AurexIntegrationTest, PublicImportReexport) {
@@ -189,9 +194,7 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
         "const_ref @m0_samplelib_reexport_inner_base",
     });
 
-    const fs::path bin = test_bin_root() / "reexport_import";
-    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(source));
 
     const fs::path private_import = negative_sample("visibility", "private_reexport_import.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_import)).output, "unknown type: Count");

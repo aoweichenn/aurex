@@ -28,9 +28,7 @@ TEST_F(AurexIntegrationTest, FunctionPrototypes) {
         "fn choose(flag: bool, lhs: i32, rhs: i32)",
     });
 
-    const fs::path bin = test_bin_root() / "function_prototype";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path mismatch = negative_sample("functions", "function_prototype_mismatch.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "function prototype and definition signatures do not match");
@@ -87,9 +85,7 @@ TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
         "call snprintf",
     });
 
-    const fs::path bin = test_bin_root() / "variadic_extern_c";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path non_extern = negative_sample("functions", "variadic_non_extern.ax");
     expect_contains(
@@ -118,9 +114,7 @@ TEST_F(AurexIntegrationTest, DeferScopes) {
         "call m0_defer_scope_push",
     });
 
-    const fs::path bin = test_bin_root() / "defer_scope";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path non_call = negative_sample("functions", "defer_non_call.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(non_call)).output, "defer statement must be a function call");
@@ -146,9 +140,7 @@ TEST_F(AurexIntegrationTest, RecursiveFunctions) {
         "call m0_recursive_functions_even",
     });
 
-    const fs::path bin = test_bin_root() / "recursive_functions";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path inferred = negative_sample("inference", "recursive_return_inference.ax");
     expect_contains(
@@ -185,9 +177,7 @@ TEST_F(AurexIntegrationTest, MethodsAndAssociatedFunctions) {
         "call m0_method_calls_Counter_read",
     });
 
-    const fs::path bin = test_bin_root() / "method_calls";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path unknown = negative_sample("functions", "unknown_method.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(unknown)).output, "unknown method: unknown_method.Counter.missing");

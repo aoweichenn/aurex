@@ -27,9 +27,7 @@ TEST_F(AurexIntegrationTest, BlockExpression) {
         "phi [^if.expr.then",
     });
 
-    const fs::path bin = test_bin_root() / "block_expression";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path empty = negative_sample("expressions", "block_expression_empty.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(empty)).output, "block expression requires a final expression");

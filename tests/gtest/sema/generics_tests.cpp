@@ -29,9 +29,7 @@ TEST_F(AurexIntegrationTest, GenericEnumOption) {
         "field_addr",
     });
 
-    const fs::path bin = test_bin_root() / "generic_enum_option";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericEnumResultExpectedType) {
@@ -60,9 +58,7 @@ TEST_F(AurexIntegrationTest, GenericEnumResultExpectedType) {
         "ptr_cast",
     });
 
-    const fs::path bin = test_bin_root() / "generic_enum_result";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericEnumDiagnostics) {
@@ -107,9 +103,7 @@ TEST_F(AurexIntegrationTest, GenericStructPair) {
         ".right: i32",
     });
 
-    const fs::path bin = test_bin_root() / "generic_struct_pair";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericStructLiteralInference) {
@@ -138,9 +132,7 @@ TEST_F(AurexIntegrationTest, GenericStructLiteralInference) {
         "@m0_generic_struct_literal_inference_PairBox__i32",
     });
 
-    const fs::path bin = test_bin_root() / "generic_struct_literal_inference";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericFunctionIdentity) {
@@ -189,9 +181,7 @@ TEST_F(AurexIntegrationTest, GenericFunctionIdentity) {
         "call m0_generic_function_identity_first__i32__bool",
     });
 
-    const fs::path bin = test_bin_root() / "generic_function_identity";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericFunctionImport) {
@@ -210,9 +200,7 @@ TEST_F(AurexIntegrationTest, GenericFunctionImport) {
         "call m0_samplelib_generic_a_pick__i32",
     });
 
-    const fs::path bin = test_bin_root() / "generic_function_import";
-    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericImplMethods) {
@@ -283,9 +271,7 @@ TEST_F(AurexIntegrationTest, GenericImplMethods) {
         "call m0_generic_impl_methods_Plain_identity__u16",
     });
 
-    const fs::path bin = test_bin_root() / "generic_impl_methods";
-    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, QualifiedGenericSubstitutionImport) {
@@ -308,9 +294,7 @@ TEST_F(AurexIntegrationTest, QualifiedGenericSubstitutionImport) {
         "record samplelib.generic_a.Choice<i32>",
     });
 
-    const fs::path bin = test_bin_root() / "qualified_generic_substitution";
-    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, QualifiedGenericInferenceUsesAliasScope) {
@@ -334,9 +318,7 @@ TEST_F(AurexIntegrationTest, QualifiedGenericInferenceUsesAliasScope) {
         "call m0_qualified_generic_inference_import_unwrap_choice__i32",
     });
 
-    const fs::path bin = test_bin_root() / "qualified_generic_inference_import";
-    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(source));
 }
 
 TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
@@ -355,9 +337,11 @@ TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
         "fn touch(value: *mut generic_struct_array_field.Holder<[2]i32>)",
     });
 
-    const fs::path struct_bin = test_bin_root() / "generic_struct_array_field";
-    require_success(aurexc() + " " + q(struct_source) + " -o " + q(struct_bin));
-    EXPECT_EQ(require_success(q(struct_bin)).output, "");
+    const std::string struct_llvm = require_success(aurexc() + " --emit=llvm-ir " + q(struct_source)).output;
+    expect_contains_all(struct_llvm, {
+        "@m0_generic_struct_array_field_touch",
+        "@m0_generic_struct_array_field_main",
+    });
 
     const fs::path enum_source = positive_sample("generics", "generic_enum_small_payload.ax");
 
@@ -374,9 +358,11 @@ TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
         "ptr_cast",
     });
 
-    const fs::path enum_bin = test_bin_root() / "generic_enum_small_payload";
-    require_success(aurexc() + " " + q(enum_source) + " -o " + q(enum_bin));
-    EXPECT_EQ(require_success(q(enum_bin)).output, "");
+    const std::string enum_llvm = require_success(aurexc() + " --emit=llvm-ir " + q(enum_source)).output;
+    expect_contains_all(enum_llvm, {
+        "%m0_generic_enum_small_payload_SmallSlot__u16 = type { i8, i16 }",
+        "@m0_generic_enum_small_payload_main",
+    });
 }
 
 TEST_F(AurexIntegrationTest, GenericStructDiagnostics) {

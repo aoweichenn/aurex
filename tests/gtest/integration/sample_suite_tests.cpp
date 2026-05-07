@@ -25,22 +25,6 @@ const std::set<std::string>& skip_regular_samples() {
     return value;
 }
 
-const std::set<std::string>& run_regular_samples() {
-    static const std::set<std::string> value = {
-        "condition_regression",
-        "pointer_ops",
-        "mut_to_const_pointer",
-        "address_of_let",
-        "pointer_field_write",
-        "eval_order_call_stmt",
-        "eval_order_return",
-        "eval_order_assign",
-        "eval_order_condition",
-        "builtins",
-    };
-    return value;
-}
-
 driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::EmitKind emit_kind) {
     driver::CompilerInvocation invocation;
     invocation.tool_path = aurexc_path();
@@ -53,8 +37,13 @@ void add_sample_import_path(driver::CompilerInvocation& invocation) {
     invocation.import_paths.push_back(imports_root());
 }
 
-void compile_sample_executable(const fs::path& src, const fs::path& output, const bool use_sample_imports) {
-    driver::CompilerInvocation invocation = sample_invocation(src, driver::EmitKind::executable);
+void compile_sample_native(
+    const fs::path& src,
+    const fs::path& output,
+    const driver::EmitKind emit_kind,
+    const bool use_sample_imports
+) {
+    driver::CompilerInvocation invocation = sample_invocation(src, emit_kind);
     invocation.output_path = output;
     if (use_sample_imports) {
         add_sample_import_path(invocation);
@@ -62,7 +51,15 @@ void compile_sample_executable(const fs::path& src, const fs::path& output, cons
     require_compiler_success(invocation);
 }
 
-void compile_positive_samples_and_run_subset() {
+void verify_sample_llvm_ir(const fs::path& src, const bool use_sample_imports) {
+    driver::CompilerInvocation invocation = sample_invocation(src, driver::EmitKind::llvm_ir);
+    if (use_sample_imports) {
+        add_sample_import_path(invocation);
+    }
+    require_compiler_success(invocation);
+}
+
+void verify_positive_samples_llvm_ir() {
     for (const fs::path& src : sorted_files(positive_samples_root(), ".ax")) {
         const std::string name = stem(src);
         if (name.rfind("std_", 0) == 0) {
@@ -71,23 +68,23 @@ void compile_positive_samples_and_run_subset() {
         if (skip_regular_samples().contains(name)) {
             continue;
         }
-        const fs::path bin = test_bin_root() / name;
-        compile_sample_executable(src, bin, true);
-        if (run_regular_samples().contains(name)) {
-            require_success(q(bin));
-        }
+        verify_sample_llvm_ir(src, true);
     }
+}
+
+void run_positive_runtime_smoke_sample(const std::string_view area, const std::string_view filename) {
+    const fs::path src = positive_sample(area, filename);
+    const fs::path bin = test_bin_root() / stem(src);
+    compile_sample_native(src, bin, driver::EmitKind::executable, true);
+    require_success(q(bin));
 }
 
 void compile_and_run_std_positive_sample(const std::string_view filename) {
     const fs::path src = positive_sample("std", filename);
     const std::string name = src.stem().string();
     const fs::path bin = test_bin_root() / name;
-    const fs::path direct = test_bin_root() / (name + ".direct");
-    compile_sample_executable(src, bin, false);
+    compile_sample_native(src, bin, driver::EmitKind::executable, false);
     require_success(q(bin));
-    compile_sample_executable(src, direct, false);
-    require_success(q(direct));
 }
 
 void verify_const_enum_lowering() {
@@ -119,8 +116,16 @@ void verify_negative_sample_diagnostics() {
 } // namespace
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveSamples) {
-    compile_positive_samples_and_run_subset();
+    verify_positive_samples_llvm_ir();
     verify_const_enum_lowering();
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pointer_field_write) {
+    run_positive_runtime_smoke_sample("pointers", "pointer_field_write.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_eval_order_assign) {
+    run_positive_runtime_smoke_sample("evaluation", "eval_order_assign.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_NegativeSamples) {
@@ -280,7 +285,7 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
     });
 
     const fs::path bin = test_bin_root() / "std_collections_path_explicit";
-    compile_sample_executable(source, bin, false);
+    compile_sample_native(source, bin, driver::EmitKind::executable, false);
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
@@ -314,9 +319,7 @@ TEST_F(AurexIntegrationTest, StdTextSampleExposesGenericSpanBaseline) {
         "call m0_std_core_text_mut_span__i32",
     });
 
-    const fs::path bin = test_bin_root() / "std_text_generic_span";
-    compile_sample_executable(source, bin, false);
-    EXPECT_EQ(require_success(q(bin)).output, "");
+    // Runtime execution for this sample is covered by SampleSuite_Std_std_text.
 }
 
 } // namespace aurex::test

@@ -102,6 +102,7 @@ private:
     [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const noexcept;
     [[nodiscard]] bool parse_integer_literal_text(std::string_view text, base::u64& value) const noexcept;
     [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
+    [[nodiscard]] bool negative_integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] TypeHandle analyze_integer_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
     [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, std::unordered_set<std::string>& dependencies);
     [[nodiscard]] base::u64 abi_size(TypeHandle type) const noexcept;

@@ -1,0 +1,11 @@
+module qualified_enum_case_ref;
+
+import qualified_literal.remote as remote;
+
+fn main() -> i32 {
+  let mode: remote::Mode = remote::Mode.fast;
+  return match mode {
+    .fast => 0,
+    .slow => 1,
+  };
+}

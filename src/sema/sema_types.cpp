@@ -136,6 +136,30 @@ namespace {
     return value <= ((base::u64 {1} << (bits - 1)) - 1);
 }
 
+[[nodiscard]] bool negative_literal_fits_integer_type(
+    const TypeTable& types,
+    const TypeHandle destination,
+    const std::string_view text
+) noexcept {
+    if (!types.is_integer(destination)) {
+        return false;
+    }
+    const TypeInfo& info = types.get(destination);
+    const base::u32 bits = builtin_integer_bits(info.builtin);
+    if (bits == 0 || builtin_is_unsigned(info.builtin)) {
+        return false;
+    }
+
+    base::u64 value = 0;
+    if (!parse_u64_literal_checked(text, value)) {
+        return false;
+    }
+    if (bits >= 64) {
+        return value <= (base::u64 {1} << 63);
+    }
+    return value <= (base::u64 {1} << (bits - 1));
+}
+
 [[nodiscard]] base::u64 align_forward(const base::u64 offset, const base::u64 alignment) noexcept {
     if (alignment == 0) {
         return offset;
@@ -628,6 +652,13 @@ bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, b
 
 bool SemanticAnalyzer::integer_literal_fits_type(const TypeHandle destination, const std::string_view text) const noexcept {
     return literal_fits_integer_type(checked_.types, destination, text);
+}
+
+bool SemanticAnalyzer::negative_integer_literal_fits_type(
+    const TypeHandle destination,
+    const std::string_view text
+) const noexcept {
+    return negative_literal_fits_integer_type(checked_.types, destination, text);
 }
 
 TypeHandle SemanticAnalyzer::analyze_integer_literal(

@@ -12,3 +12,13 @@ pub enum Result<T, E>: u8 {
   ok(T) = 1,
   err(E) = 2,
 }
+
+pub enum Mode: u8 {
+  fast = 1,
+  slow = 2,
+}
+
+pub enum Maybe<T>: u8 {
+  none = 0,
+  some(T) = 1,
+}

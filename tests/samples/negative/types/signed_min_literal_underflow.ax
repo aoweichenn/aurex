@@ -1,0 +1,6 @@
+module signed_min_literal_underflow;
+
+fn main() -> i32 {
+  let value: i32 = -2147483649;
+  return value;
+}

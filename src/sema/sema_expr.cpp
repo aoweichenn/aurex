@@ -60,6 +60,23 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     case syntax::ExprKind::match_expr:
         return analyze_match_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::unary: {
+        if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
+            syntax::is_valid(expr.unary_operand) &&
+            expr.unary_operand.value < module_.exprs.size() &&
+            module_.exprs[expr.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
+            const syntax::ExprNode& operand_expr = module_.exprs[expr.unary_operand.value];
+            const TypeHandle literal_type = checked_.types.is_integer(expected_type)
+                ? expected_type
+                : checked_.types.builtin(BuiltinType::i32);
+            if (!negative_integer_literal_fits_type(literal_type, operand_expr.text)) {
+                report(
+                    expr.range,
+                    "integer literal out of range for " + checked_.types.display_name(literal_type)
+                );
+            }
+            static_cast<void>(record_expr_type(expr.unary_operand, literal_type));
+            return record_expr_type(expr_id, literal_type);
+        }
         const TypeHandle operand = analyze_expr(expr.unary_operand);
         if (expr.unary_op == syntax::UnaryOp::logical_not && !checked_.types.is_bool(operand)) {
             report(expr.range, "logical not requires bool operand");
@@ -154,11 +171,21 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             expr.object.value < module_.exprs.size() &&
             module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
             const syntax::ExprNode& object = module_.exprs[expr.object.value];
-            if (object.scope_name.empty() &&
-                find_generic_enum_template_in_visible_modules(object.text, expr.range, false) != nullptr) {
+            const GenericEnumTemplateInfo* enum_template = nullptr;
+            if (object.scope_name.empty()) {
+                enum_template = find_generic_enum_template_in_visible_modules(object.text, expr.range, false);
+            } else {
+                const syntax::ModuleId scope_module = resolve_import_alias(object.scope_name, object.scope_range, false);
+                if (syntax::is_valid(scope_module)) {
+                    enum_template = find_generic_enum_template_in_module(scope_module, object.text, expr.range, false);
+                }
+            }
+            if (enum_template != nullptr) {
                 const EnumCaseInfo* enum_case = nullptr;
                 if (const GenericEnumInstanceInfo* expected_instance = generic_enum_instance(expected_type);
-                    expected_instance != nullptr && expected_instance->name == object.text) {
+                    expected_instance != nullptr &&
+                    expected_instance->name == enum_template->name &&
+                    expected_instance->module.value == enum_template->module.value) {
                     enum_case = find_enum_case_by_type_and_case(expected_type, expr.field_name);
                 }
                 if (enum_case == nullptr) {
@@ -173,6 +200,22 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 }
                 record_expr_c_name(expr_id, enum_case->c_name);
                 return record_expr_type(expr_id, enum_case->type);
+            }
+            if (!object.scope_name.empty() || !object.type_args.empty()) {
+                const TypeHandle enum_type = resolve_associated_type_owner(object, false);
+                if (is_valid(enum_type) && checked_.types.get(enum_type).kind == TypeKind::enum_) {
+                    const EnumCaseInfo* enum_case = find_enum_case_by_type_and_case(enum_type, expr.field_name);
+                    if (enum_case == nullptr) {
+                        report(expr.range, "unknown enum case: " + std::string(object.text) + "." + std::string(expr.field_name));
+                        return record_expr_type(expr_id, invalid_type_handle);
+                    }
+                    if (is_valid(enum_case->payload_type)) {
+                        report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                        return record_expr_type(expr_id, invalid_type_handle);
+                    }
+                    record_expr_c_name(expr_id, enum_case->c_name);
+                    return record_expr_type(expr_id, enum_case->type);
+                }
             }
             if (object.scope_name.empty()) {
                 if (const EnumCaseInfo* enum_case = find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);

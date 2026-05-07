@@ -1,0 +1,6 @@
+module negative_unsigned_literal;
+
+fn main() -> i32 {
+  let value: u32 = -1;
+  return cast(i32, value);
+}

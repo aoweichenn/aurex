@@ -1,0 +1,11 @@
+module qualified_generic_enum_case_ref;
+
+import qualified_literal.remote as remote;
+
+fn main() -> i32 {
+  let value: remote::Maybe<i32> = remote::Maybe<i32>.none;
+  return match value {
+    .none => 0,
+    .some(item) => item,
+  };
+}

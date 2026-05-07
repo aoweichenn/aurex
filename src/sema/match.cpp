@@ -27,6 +27,26 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
 
     std::vector<std::string> covered;
     TypeHandle result = invalid_type_handle;
+    std::vector<base::SourceRange> pending_null_arm_ranges;
+    const auto is_null_result_expr = [&](const syntax::ExprId candidate) {
+        if (!syntax::is_valid(candidate) || candidate.value >= module_.exprs.size()) {
+            return false;
+        }
+        const syntax::ExprNode& candidate_expr = module_.exprs[candidate.value];
+        return candidate_expr.kind == syntax::ExprKind::null_literal ||
+            (candidate_expr.kind == syntax::ExprKind::block_expr && is_null_literal(candidate_expr.block_result));
+    };
+    const auto resolve_pending_null_arms = [&]() {
+        if (!is_valid(result) || pending_null_arm_ranges.empty()) {
+            return;
+        }
+        if (!checked_.types.is_pointer(result)) {
+            for (const base::SourceRange range : pending_null_arm_ranges) {
+                report(range, "match expression arms must have the same type");
+            }
+        }
+        pending_null_arm_ranges.clear();
+    };
     bool saw_wildcard = false;
     bool covered_true = false;
     bool covered_false = false;
@@ -88,8 +108,17 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
             arm_type = analyze_expr(arm.value, arm_expected);
         }
+        const bool null_result_arm = is_null_result_expr(arm.value);
+        if (!is_valid(arm_type) && null_result_arm && checked_.types.is_pointer(result)) {
+            arm_type = analyze_expr(arm.value, result);
+        }
+        if (!is_valid(arm_type) && null_result_arm && !is_valid(result)) {
+            pending_null_arm_ranges.push_back(module_.exprs[arm.value.value].range);
+            continue;
+        }
         if (!is_valid(result)) {
             result = arm_type;
+            resolve_pending_null_arms();
         } else if (!checked_.types.same(result, arm_type)) {
             report(arm.range, "match expression arms must have the same type");
         }

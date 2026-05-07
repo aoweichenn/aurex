@@ -1,0 +1,17 @@
+module null_if_expr;
+
+fn choose(flag: bool) -> *const i32 {
+    return if flag { null } else { null };
+}
+
+fn main() -> i32 {
+    let pointer: *const i32 = if true { null } else { choose(false) };
+    if pointer != null {
+        return 1;
+    }
+    let inferred = if false { null } else { choose(false) };
+    if inferred != null {
+        return 2;
+    }
+    return 0;
+}

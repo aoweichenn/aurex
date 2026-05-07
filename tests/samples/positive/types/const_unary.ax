@@ -1,0 +1,19 @@
+module const_unary;
+
+const NEG_ONE: i32 = -1;
+const I32_MIN: i32 = -2147483648;
+const FLAG: bool = !false;
+const MASK: i32 = ~0;
+
+fn main() -> i32 {
+  if !FLAG {
+    return 1;
+  }
+  if MASK != -1 {
+    return 2;
+  }
+  if I32_MIN == 0 {
+    return 3;
+  }
+  return NEG_ONE + 1;
+}

@@ -1,0 +1,22 @@
+module expected_integer_binary;
+
+fn main() -> i32 {
+    let wide: i64 = 2147483648 + 1;
+    let nested: i64 = -(2147483648 + 1);
+    if wide != 2147483649 {
+        return 1;
+    }
+    if 2147483649 != wide {
+        return 2;
+    }
+    if nested != -2147483649 {
+        return 3;
+    }
+    if (2147483648 + 1) != wide {
+        return 4;
+    }
+    if -(2147483648 + 1) != nested {
+        return 5;
+    }
+    return 0;
+}

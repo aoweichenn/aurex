@@ -1,0 +1,10 @@
+module extern_c_redeclare_same_signature;
+
+extern c {
+    fn first(value: i32) -> i32 @name("aurex_test_same_extern_symbol");
+    fn second(value: i32) -> i32 @name("aurex_test_same_extern_symbol");
+}
+
+fn main() -> i32 {
+    return 0;
+}

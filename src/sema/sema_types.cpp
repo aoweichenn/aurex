@@ -226,6 +226,7 @@ namespace {
     const TypeInfo& info = types.get(type);
     return info.kind == TypeKind::builtin &&
            info.builtin != BuiltinType::void_ &&
+           info.builtin != BuiltinType::bool_ &&
            info.builtin != BuiltinType::str;
 }
 
@@ -691,6 +692,9 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
         return checked_.types.is_pointer(dst) && checked_.types.is_pointer(src);
     }
     if (kind == syntax::ExprKind::bit_cast) {
+        if (checked_.types.same(dst, src)) {
+            return checked_.types.is_copyable(dst);
+        }
         if (!checked_.types.is_copyable(dst) || !checked_.types.is_copyable(src) || abi_size(dst) != abi_size(src)) {
             return false;
         }

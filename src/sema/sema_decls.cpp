@@ -497,11 +497,10 @@ void SemanticAnalyzer::validate_abi_symbols() {
         }
 
         const AbiSymbolInfo& prior = found->second;
-        if (prior.is_function &&
-            prior.function.is_extern_c &&
-            function.is_extern_c &&
-            !same_function_type(prior.function, function)) {
-            report(function.range, "extern C ABI symbol redeclared with incompatible signature: " + symbol);
+        if (prior.is_function && prior.function.is_extern_c && function.is_extern_c) {
+            if (!same_function_type(prior.function, function)) {
+                report(function.range, "extern C ABI symbol redeclared with incompatible signature: " + symbol);
+            }
             return;
         }
         report(function.range, "duplicate ABI symbol: " + symbol);
@@ -792,6 +791,11 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
         }
         return ok;
     }
+    case syntax::ExprKind::unary:
+        return (expr.unary_op == syntax::UnaryOp::logical_not ||
+                expr.unary_op == syntax::UnaryOp::numeric_negate ||
+                expr.unary_op == syntax::UnaryOp::bitwise_not) &&
+               is_const_evaluable_expr(expr.unary_operand, dependencies);
     case syntax::ExprKind::cast:
     case syntax::ExprKind::ptr_cast:
     case syntax::ExprKind::bit_cast:

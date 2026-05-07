@@ -1,0 +1,19 @@
+module null_match_expr;
+
+fn choose(flag: bool) -> *const i32 {
+    return match flag {
+        true => null,
+        false => null,
+    };
+}
+
+fn main() -> i32 {
+    let inferred = match false {
+        true => null,
+        false => choose(false),
+    };
+    if inferred != null {
+        return 1;
+    }
+    return 0;
+}

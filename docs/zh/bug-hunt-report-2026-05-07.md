@@ -1163,4 +1163,332 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 7. 建立 control-flow summary 与 defer-aware early-exit lowering。
 8. 将本报告 8.1 中的复现用例迁入测试，并为每个 bug ID 加测试。
 
-如果按这个顺序做，后续很多单点 bug 会被同一组基础设施一起消掉，而不是每个 lowering 错误单独打补丁。
+## 10. 继续修复记录
+
+本节记录 2026-05-07 后续修复过程。用户将“单个定向用例”的性能判断从 3 秒收紧到百毫秒级，因此本轮验证以单样例 `--check`、`--dump-ir`、`--dump-llvm-ir` 和必要的单文件编译运行为主；增量 C++ 构建单独计时，不把工具链冷启动和链接开销混入 sema 性能判断。
+
+### 10.1 常量一元表达式被 sema/IR/backend 不一致处理
+
+问题：
+
+- `const X: i32 = -1;`
+- `const FLAG: bool = !false;`
+- `const MASK: i32 = ~0;`
+
+语义层此前把一元表达式视为非编译期常量；放开后，IR verifier 和 LLVM 常量 lowering 又缺少 `ValueKind::unary` 支持，会报 `constant initializer is not compile-time constant` 或退化为 `undef` 风险。
+
+修复：
+
+- `src/sema/sema_decls.cpp`：`is_const_evaluable_expr` 允许 `!`、一元 `-`、`~` 的常量操作数。
+- `src/ir/verify.cpp`：常量 verifier 递归校验 `ValueKind::unary`，并明确拒绝 address/deref 这类运行期一元操作。
+- `src/backend/llvm/llvm_backend_value.cpp`：新增 `emit_constant_unary`，对 bool/integer not、integer negate、float negate 生成 LLVM constant。
+- `src/backend/llvm/llvm_backend_internal.hpp`：声明新增 helper。
+
+回归：
+
+- `tests/samples/positive/types/const_unary.ax`
+
+验证：
+
+- `build/bin/aurexc --check tests/samples/positive/types/const_unary.ax`
+- `build/bin/aurexc --dump-llvm-ir tests/samples/positive/types/const_unary.ax`
+- 单文件编译并运行，退出码为 0。
+
+### 10.2 相同签名的 extern C 重复声明被误判为 ABI 冲突
+
+问题：
+
+两个 Aurex 声明指向同一个 C ABI 符号且签名完全一致时，当前 ABI registry 仍然报 `duplicate ABI symbol`。这和后端 `extern_functions_` 复用同名 LLVM declaration 的设计不一致，也会阻止多模块重复声明同一个 C API。
+
+修复：
+
+- `src/sema/sema_decls.cpp`：`validate_abi_symbols` 对两个 `extern c` 函数同名且签名一致的情况直接允许；仍然拒绝签名不一致、extern 与非 extern 定义冲突、函数与常量 ABI 冲突。
+
+回归：
+
+- `tests/samples/positive/functions/extern_c_redeclare_same_signature.ax`
+- 继续保留并验证 `tests/samples/negative/functions/extern_abi_signature_mismatch.ax`
+
+验证：
+
+- 正例 `--check` 通过。
+- `--dump-llvm-ir` 中只生成一个 `declare i32 @aurex_test_same_extern_symbol(i32)`。
+- 负例仍在 sema 阶段报 `extern C ABI symbol redeclared with incompatible signature`。
+
+### 10.3 `ptr_from_addr` 宽地址字面量被错误按 i32 检查
+
+问题：
+
+`ptr_from_addr(*const T, 4294967296)` 在 64 位目标上应按地址宽度处理，但地址实参原来没有 expected type，整数字面量被默认按 `i32` 检查，导致误报溢出。
+
+修复：
+
+- `src/sema/sema_expr.cpp`：分析 `ptr_from_addr` 的地址实参时传入 `usize` expected type。
+
+回归：
+
+- `tests/samples/positive/pointers/ptr_from_addr_wide_literal.ax`
+- 继续验证 `tests/samples/negative/pointers/ptr_from_addr_non_pointer.ax`
+- 继续验证 `tests/samples/negative/expressions/expression_diagnostics_matrix.ax`
+
+验证：
+
+- 正例 `--check` 和 `--dump-llvm-ir` 通过。
+- LLVM IR 中宽字面量保持为 `inttoptr (i64 4294967296 to ptr)`。
+- 非指针目标和非整数地址仍然在 sema 阶段报错。
+
+### 10.4 二元/嵌套一元表达式没有传播 expected integer type
+
+问题：
+
+编译器已经在赋值、返回、调用实参、结构体字段等场景支持整数字面量 expected type，但二元表达式内部没有传播，导致以下合法边界表达式被错误地按默认 `i32` 检查：
+
+- `let wide: i64 = 2147483648 + 1;`
+- `wide != 2147483649`
+- `2147483649 != wide`
+- `let nested: i64 = -(2147483648 + 1);`
+
+修复：
+
+- `src/sema/sema_expr.cpp`：
+  - 对结果类型等于操作数类型的二元运算，将外层 expected numeric type 传入操作数。
+  - 当左侧是上下文敏感整数字面量、右侧有明确类型时，先分析右侧，再用右侧类型回填左侧。
+  - 对非字面量一元 `-`/`~` 继续向操作数传递合法 expected type。
+
+回归：
+
+- `tests/samples/positive/expressions/expected_integer_binary.ax`
+- 继续验证 `tests/samples/negative/types/inferred_i32_literal_overflow.ax`
+- 继续验证 `tests/samples/negative/types/cast_source_literal_overflow.ax`
+- 继续验证 signed min/unsigned negative 负例。
+
+验证：
+
+- 正例 `--check`、`--dump-llvm-ir`、单文件运行均通过。
+- LLVM IR 保留 `i64 2147483649` 和 `i64 -2147483649`。
+- 无上下文的宽整数字面量和显式 cast 源字面量仍按默认 `i32` 规则报溢出。
+
+### 10.5 `null` 在指针 expected type 内部表达式中丢失类型
+
+问题：
+
+直接赋值或返回 `null` 时，`can_assign` 能特判指针目标；但 `if`、block、match 等表达式内部会先把 `null` 记录成 invalid type，导致合法指针表达式被误拒绝，或在 match 中把 `null` 错误地降成非指针常量。
+
+示例风险：
+
+- `return if flag { null } else { null };`
+- `let inferred = if false { null } else { choose(false) };`
+- `let inferred = match false { true => null, false => choose(false) };`
+- `return match true { true => null, false => 1 };` 旧逻辑可能把整个 match 定成 `i32`，后端再处理 invalid/null 组合。
+
+修复：
+
+- `src/sema/sema_expr.cpp`：
+  - `null_literal` 在 expected pointer type 下记录成该指针类型。
+  - `if` 表达式在无外层 expected 且 then 分支是 null 结果时，先分析 else 分支，再用 else 类型回填 then 分支。
+  - 支持 block expression 最终结果为 null 的分支。
+- `src/sema/match.cpp`：
+  - 记录待定 null arm。
+  - 后续结果类型为指针时允许回填；结果类型为非指针时立即报 `match expression arms must have the same type`。
+
+回归：
+
+- `tests/samples/positive/pointers/null_if_expr.ax`
+- `tests/samples/positive/pointers/null_match_expr.ax`
+- `tests/samples/negative/pattern_matching/match_null_with_non_pointer_arm.ax`
+- 继续验证 `tests/samples/negative/inference/local_inference_null.ax`
+
+验证：
+
+- 指针正例 `--check`、`--dump-ir`、单文件运行均通过。
+- IR 中 `if`/`match` 的 phi 类型为 `*const i32`。
+- 无上下文 `let value = null;` 仍无法推断类型。
+- `match` 的 null/non-pointer arm 组合在 sema 阶段报错，不再进入 lowering。
+
+### 10.6 `bit_cast` 允许 bool 与 u8 互转，LLVM i1/i8 语义不匹配
+
+问题：
+
+`bool` 的 LLVM 表示是 `i1`，但 ABI size 计算按 1 byte。旧的 `bit_cast` 合法性只看 ABI size，因此会放过：
+
+- `bit_cast(bool, cast(u8, 2))`
+- `bit_cast(u8, true)`
+
+这两类转换在 LLVM 层不是合法的同宽 bitcast，容易退化成非法 IR、poison 或错误折叠。
+
+修复：
+
+- `src/sema/sema_types.cpp`：`is_builtin_scalar_bitcast_type` 排除 `bool`。
+- 同类型 `bit_cast(T, value: T)` 作为 no-op 仍允许，但要求类型 copyable。
+
+回归：
+
+- `tests/samples/negative/types/bit_cast_bool_from_u8.ax`
+- `tests/samples/negative/types/bit_cast_u8_from_bool.ax`
+- 继续验证 `tests/samples/positive/core/primitive_matrix.ax`
+
+验证：
+
+- 两个负例均在 sema 阶段报 `invalid explicit conversion`。
+- primitive matrix 的 `u32 <-> f32`、`u64 <-> f64` 合法 bitcast 仍通过。
+
+### 10.7 非字面量无符号整数取负被错误接受
+
+问题：
+
+`let x: u32 = -1;` 已经会因负字面量不适配 unsigned 被拒绝，但以下形式会绕过字面量特判：
+
+```m0
+let one: u32 = 1;
+let value: u32 = -one;
+```
+
+旧 sema 只要求一元 `-` 的操作数是 integer 或 float，因此会接受 unsigned 变量取负，后端再生成 wrapping negate。
+
+修复：
+
+- `src/sema/sema_expr.cpp`：新增 signed integer 判定；一元 numeric negate 只允许 signed integer 或 float。
+
+回归：
+
+- `tests/samples/negative/types/negative_unsigned_expression.ax`
+- 继续验证 `tests/samples/negative/types/negative_unsigned_literal.ax`
+- 继续验证 `tests/samples/positive/types/signed_min_literals.ax`
+
+验证：
+
+- 非字面量 unsigned 取负报 `numeric unary operator requires signed integer or float operand`。
+- signed min 字面量仍可通过。
+
+### 10.8 shift 字面量右操作数缺少 poison 防护
+
+问题：
+
+LLVM shift 对负数位移和 `amount >= bit_width` 是 poison。旧 sema 只检查类型，因此会放过：
+
+- `1 << 32`，当左操作数为 `i32`
+- `1 << -1`
+
+修复：
+
+- `src/sema/sema_expr.cpp`：
+  - 对 `shl`/`shr` 的字面量右操作数检查 bit width。
+  - 负整数字面量右操作数报 `shift amount cannot be negative`。
+  - 非负整数字面量超过或等于左操作数位宽时报 `shift amount is out of range`。
+  - `-0` 不再被误判为负 shift amount。
+
+回归：
+
+- `tests/samples/negative/expressions/shift_amount_overflow.ax`
+- `tests/samples/negative/expressions/shift_amount_negative.ax`
+- `tests/samples/positive/expressions/shift_amount_negative_zero.ax`
+- 继续验证 `tests/samples/positive/expressions/operator_matrix.ax`
+
+验证：
+
+- 两个负例均在 sema 阶段失败。
+- `1 << -0` 正例 `--check`、单文件编译、运行均通过。
+
+### 10.9 整数 `/`、`%` 的静态 poison 场景未被拒绝
+
+问题：
+
+LLVM integer `sdiv/udiv/srem/urem` 对除 0/模 0 是 poison；signed `INT_MIN / -1` 和 `INT_MIN % -1` 也是 poison。旧 sema 会放过这些确定错误的字面量表达式：
+
+- `1 / 0`
+- `1 % 0`
+- `1 / -0`
+- `-2147483648 / -1`
+- `-2147483648 % -1`
+
+修复：
+
+- `src/sema/sema_expr.cpp`：
+  - 复用整数字面量/一元负号字面量识别。
+  - 对 integer `/`、`%` 的 RHS 字面量 0 报错。
+  - 对 signed min literal 与 `-1` 的 `/`、`%` 报 signed overflow。
+
+回归：
+
+- `tests/samples/negative/expressions/integer_division_by_zero.ax`
+- `tests/samples/negative/expressions/integer_modulo_by_zero.ax`
+- `tests/samples/negative/expressions/integer_division_by_negative_zero.ax`
+- `tests/samples/negative/expressions/signed_division_overflow.ax`
+- `tests/samples/negative/expressions/signed_modulo_overflow.ax`
+
+验证：
+
+- 所有负例均在 sema 阶段失败，错误分别指向 zero RHS 或整个 overflowing binary expression。
+- `tests/samples/positive/expressions/operator_matrix.ax` 仍通过。
+- `tests/samples/positive/types/signed_min_literals.ax` 仍通过。
+
+### 10.10 `cast(bool, nonzero)` 被后端错误降成低位截断
+
+问题：
+
+语义层允许 numeric cast 到 `bool`。旧 LLVM lowering 对 integer-to-bool 使用 int cast，导致：
+
+- `cast(bool, 2)` 截断成 `i1 0`，运行结果为 false。
+- float-to-bool 使用 `fptoui/fptosi` 到 `i1`，对 `2.0` 等值可能进入 LLVM out-of-range poison。
+
+修复：
+
+- `src/backend/llvm/llvm_backend_value.cpp`：
+  - 运行时 numeric cast 到 bool 改为和 0 比较。
+  - integer 使用 `icmp ne x, 0`。
+  - float 使用 `fcmp une x, 0.0`，NaN 按非零处理。
+  - 常量 numeric cast 到 bool 使用 LLVM constant fold compare；折叠失败时返回目标类型 `undef`，避免空指针崩溃。
+
+回归：
+
+- `tests/samples/positive/types/cast_bool_nonzero.ax`
+
+验证：
+
+- 修复前样例编译运行返回 1。
+- 修复后 `--check`、`--dump-llvm-ir`、单文件运行均通过。
+- LLVM IR 中 `const bool = cast(bool, 2)` 降成 `i1 true`，`cast(bool, 0)` 降成 `i1 false`。
+
+### 10.11 浮点 `!=` 对 NaN 使用了错误 predicate
+
+问题：
+
+旧后端把 float not-equal 降成 ordered-not-equal：`fcmp one`。这会导致 `NaN != NaN` 返回 false，不符合 IEEE 风格的非等比较语义。
+
+修复：
+
+- `src/backend/llvm/llvm_backend_value.cpp`：float `!=` 从 `CreateFCmpONE` 改为 `CreateFCmpUNE`。
+- float `==` 保持 ordered-equal，`NaN == NaN` 仍为 false。
+
+回归：
+
+- `tests/samples/positive/expressions/float_nan_comparison.ax`
+
+验证：
+
+- 修复前样例运行返回 2。
+- 修复后 `--check`、`--dump-llvm-ir`、单文件运行均通过。
+- LLVM IR 中 `!=` 为 `fcmp une double`。
+
+### 10.12 补充全局 `const str` / `const c"..."` 后端覆盖
+
+结论：
+
+- `const TEXT: str = "hi";`
+- `const C_TEXT: *const u8 = c"hi";`
+
+当前后端能生成稳定 LLVM 全局常量：
+
+- `str` 降成 `{ ptr, i64 }` aggregate constant。
+- C string 降成带 `\0` 的 private global，并把 const pointer 指向该 global。
+
+回归：
+
+- `tests/samples/positive/types/const_string.ax`
+
+验证：
+
+- `--check`、`--dump-llvm-ir`、单文件编译运行均通过。
+- 注意：`str` 当前不是普通结构体类型，不能直接写 `text.len` / `text.data`。本样例只覆盖全局常量 lowering，不改变 `str` 字段访问设计。
+
+后续继续找 bug 时，优先级仍应放在“sema 能静态证明但旧逻辑放过、最终会进入 LLVM poison/undef/非法 IR”的路径上；这类问题单测小、定位快、收益高。

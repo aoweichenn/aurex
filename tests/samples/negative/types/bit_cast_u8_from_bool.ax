@@ -1,0 +1,6 @@
+module bit_cast_u8_from_bool;
+
+fn main() -> i32 {
+    let value: u8 = bit_cast(u8, true);
+    return cast(i32, value);
+}

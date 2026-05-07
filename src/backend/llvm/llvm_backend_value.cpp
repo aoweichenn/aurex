@@ -125,6 +125,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
         }
         return emit_constant_initializer(source_.values[constant->initializer.value]);
     }
+    case ValueKind::unary:
+        return emit_constant_unary(value);
     case ValueKind::aggregate:
         return emit_constant_aggregate(value);
     case ValueKind::cast:
@@ -138,6 +140,28 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
     }
 }
 
+llvm::Constant* LlvmEmitter::emit_constant_unary(const Value& value) {
+    llvm::Constant* operand = emit_constant_initializer(source_.values[value.lhs.value]);
+    switch (value.unary_op) {
+    case UnaryOp::logical_not:
+    case UnaryOp::bitwise_not:
+        return llvm::ConstantExpr::getNot(operand);
+    case UnaryOp::numeric_negate:
+        if (source_.types.is_float(value.type)) {
+            if (llvm::Constant* folded = llvm::ConstantFoldUnaryInstruction(llvm::Instruction::FNeg, operand);
+                folded != nullptr) {
+                return folded;
+            }
+            return llvm::UndefValue::get(llvm_type(value.type));
+        }
+        return llvm::ConstantExpr::getNeg(operand);
+    case UnaryOp::address_of:
+    case UnaryOp::dereference:
+        return operand;
+    }
+    return llvm::UndefValue::get(llvm_type(value.type));
+}
+
 llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
     llvm::Constant* operand = emit_constant_initializer(source_.values[value.lhs.value]);
     llvm::Type* target = llvm_type(value.target_type);
@@ -148,6 +172,30 @@ llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
     unsigned opcode = llvm::Instruction::BitCast;
     switch (value.cast_kind) {
     case CastKind::numeric:
+        if (source_.types.is_bool(value.target_type)) {
+            if (operand->getType()->isIntegerTy()) {
+                if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(
+                        llvm::CmpInst::ICMP_NE,
+                        operand,
+                        llvm::ConstantInt::get(operand->getType(), 0)
+                    );
+                    folded != nullptr) {
+                    return folded;
+                }
+                return llvm::UndefValue::get(target);
+            }
+            if (operand->getType()->isFloatingPointTy()) {
+                if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(
+                        llvm::CmpInst::FCMP_UNE,
+                        operand,
+                        llvm::ConstantFP::get(operand->getType(), 0.0)
+                    );
+                    folded != nullptr) {
+                    return folded;
+                }
+                return llvm::UndefValue::get(target);
+            }
+        }
         if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
             const unsigned source_bits = operand->getType()->getIntegerBitWidth();
             const unsigned target_bits = target->getIntegerBitWidth();
@@ -265,7 +313,7 @@ llvm::Value* LlvmEmitter::emit_binary(const Value& value) {
         if (lhs->getType()->isStructTy()) {
             return llvm::UndefValue::get(llvm_type(value.type));
         }
-        return is_float ? builder_.CreateFCmpONE(lhs, rhs) : builder_.CreateICmpNE(lhs, rhs);
+        return is_float ? builder_.CreateFCmpUNE(lhs, rhs) : builder_.CreateICmpNE(lhs, rhs);
     case BinaryOp::bit_and:
     case BinaryOp::logical_and: return builder_.CreateAnd(lhs, rhs);
     case BinaryOp::bit_xor: return builder_.CreateXor(lhs, rhs);
@@ -336,6 +384,14 @@ llvm::Value* LlvmEmitter::emit_cast(const Value& value) {
     const bool source_unsigned = is_unsigned_integer(source_.values[value.lhs.value].type);
     switch (value.cast_kind) {
     case CastKind::numeric:
+        if (source_.types.is_bool(value.target_type)) {
+            if (operand->getType()->isIntegerTy()) {
+                return builder_.CreateICmpNE(operand, llvm::ConstantInt::get(operand->getType(), 0));
+            }
+            if (operand->getType()->isFloatingPointTy()) {
+                return builder_.CreateFCmpUNE(operand, llvm::ConstantFP::get(operand->getType(), 0.0));
+            }
+        }
         if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
             return builder_.CreateIntCast(operand, target, !source_unsigned);
         }

@@ -1,0 +1,9 @@
+module bit_cast_bool_from_u8;
+
+fn main() -> i32 {
+    let value: bool = bit_cast(bool, cast(u8, 2));
+    if value {
+        return 1;
+    }
+    return 0;
+}

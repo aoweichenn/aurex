@@ -91,6 +91,19 @@ private:
             verify_constant_aggregate(*value, constant_stack);
             break;
         }
+        case ValueKind::unary: {
+            verify_value_id(value->lhs, "constant unary operand");
+            verify_type(value->type, "constant unary result");
+            if (value->unary_op == UnaryOp::address_of || value->unary_op == UnaryOp::dereference) {
+                fail("constant initializer contains a runtime-only unary operator");
+                break;
+            }
+            const Value* operand = get(value->lhs);
+            if (operand != nullptr) {
+                verify_constant_value(value->lhs, operand->type, constant_stack);
+            }
+            break;
+        }
         case ValueKind::cast: {
             verify_value_id(value->lhs, "cast operand");
             verify_type(value->type, "cast result");

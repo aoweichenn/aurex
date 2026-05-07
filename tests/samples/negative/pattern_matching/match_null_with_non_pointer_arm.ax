@@ -1,0 +1,8 @@
+module match_null_with_non_pointer_arm;
+
+fn main() -> i32 {
+    return match true {
+        true => null,
+        false => 1,
+    };
+}

@@ -14,6 +14,11 @@ CMake. A full replacement of the C++ Stage0 compiler can happen later, but M1
 must prove these programs can be written cleanly in Aurex.
 
 Latest Chinese progress report: [M1 progress report 2026-05-07](../zh/m1-progress-2026-05-07.md).
+It records the current subprocess / stdout-capture baseline, file metadata /
+mtime baseline, directory source-discovery baseline, target-graph validation /
+topological-build baseline, target-name lookup baseline, target-graph diagnostic
+and message baseline, test direct-process runner, M1 examples, integration-test
+coverage, and test-time baseline.
 
 ## Current Capabilities
 
@@ -74,8 +79,9 @@ Current language slices:
   typed dependencies/sources/includes/custom commands, subprocess stdout
   capture, source/stamp mtime incremental checks, directory source-discovery
   counts, target-name lookup, duplicate-target detection, target-graph
-  validation, topological build order, build, clean, run, and test flows. Both
-  are covered by checked/IR/native integration tests.
+  validation, topological build order, structured graph diagnostics/messages,
+  build, clean, run, and test flows. Both are covered by checked/IR/native
+  integration tests.
 
 ## Key Language Gaps
 
@@ -130,10 +136,11 @@ covered by integration tests:
    definitions should be typed Aurex APIs, not shell-string concatenation. A
    minimal runnable example, stdout-capture baseline, source/stamp mtime
    incremental checks, directory source-discovery counts, target-name lookup,
-   duplicate-target detection, target-graph validation, and topological build
-   order now exist; follow-up work should add full directory entries, recursive
-   walking, stderr capture, cwd/env, cycle-path diagnostics, and richer error
-   reporting.
+   duplicate-target detection, target-graph validation, topological build
+   order, and structured graph diagnostics/messages now exist; follow-up work
+   should add full directory entries, recursive walking, stderr capture, cwd/env,
+   complete cycle-path diagnostics, and richer user-facing reports with target
+   names.
 
 ## M1 Priority
 
@@ -249,7 +256,9 @@ manual status helpers.
 7. Self-hosting frontend and typed build-tool acceptance  
    Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the
    active tree and covered by checked-surface, IR-surface, and native smoke
-   integration tests. Keep growing them from minimal acceptance examples into
+   integration tests. Axbuild also covers the `GraphDiagnostic` checked/IR
+   surface, message surface, and duplicate-target, invalid-dependency, and cycle
+   back-edge diagnostics. Keep growing them from minimal acceptance examples into
    realistic M1 engineering benchmarks while keeping coverage above 90%.
 
 ## Long-Term Priority

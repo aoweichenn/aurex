@@ -6,7 +6,7 @@
 
 旧 selfhost 自举路线已经从 active tree 删除。当前项目重心是继续推进 C++ Stage0、Aurex IR 和 LLVM 后端，让语言核心具备足够强的表达力、模块隔离能力和后端契约。M1 的目标不再只是补语言特性，而是让 Aurex 能优雅编写两个真实系统级程序：一个自举前端样例，以及一个类似 CMake 的 typed 构建工具样例。完整替换 C++ Stage0 可以放到后续阶段，但 M1 必须证明这些程序已经能用 Aurex 自然表达。
 
-本阶段最新进度见：[M1 进度报告 2026-05-07](m1-progress-2026-05-07.md)。该报告记录了当前已落地的 subprocess / stdout capture baseline、file metadata / mtime baseline、directory source discovery baseline、target graph validation / topological build baseline、target name lookup baseline、M1 frontend 样例、M1 typed build-tool 样例、集成测试覆盖和测试耗时基线。
+本阶段最新进度见：[M1 进度报告 2026-05-07](m1-progress-2026-05-07.md)。该报告记录了当前已落地的 subprocess / stdout capture baseline、file metadata / mtime baseline、directory source discovery baseline、target graph validation / topological build baseline、target name lookup baseline、target graph diagnostic/message baseline、测试 direct process runner、M1 frontend 样例、M1 typed build-tool 样例、集成测试覆盖和测试耗时基线。
 
 ## 当前已具备能力
 
@@ -38,7 +38,7 @@ Stage0 主链路：
 - 标准库进程能力已启动，`std.sys.process::Command` 提供 typed argv、`arg()`、`run()`、`run_capture()` 和 `destroy()`，底层通过 host-c support 的 `fork` / `execvp` / `waitpid` 运行子进程，并已有 stdout capture baseline；当前还没有 cwd、env、stderr capture、stdin/stdout/stderr pipe 和 timeout API。
 - `pub` / `priv` 可见性关键字、跨模块 private item 过滤和 private field 访问检查。
 - examples 已经包含 CLI、文件 IO、内存/arena、std 模块、泛型结果类型、可见性和 re-export facade 的系统级小案例。
-- M1 验收样例骨架已进入 active tree：`examples/m1/frontend` 覆盖 source manager、diagnostic、lexer、token stream、parser subset 与 AST/IR summary；`examples/m1/axbuild` 覆盖 project/target、typed dependency/source/include/custom command、subprocess stdout capture、source/stamp mtime incremental check、directory source discovery count、target name lookup、duplicate target detection、target graph validation、topological build order、build/clean/run/test 流程。两者已纳入 integration tests 的 checked/IR/native smoke 覆盖。
+- M1 验收样例骨架已进入 active tree：`examples/m1/frontend` 覆盖 source manager、diagnostic、lexer、token stream、parser subset 与 AST/IR summary；`examples/m1/axbuild` 覆盖 project/target、typed dependency/source/include/custom command、subprocess stdout capture、source/stamp mtime incremental check、directory source discovery count、target name lookup、duplicate target detection、target graph validation、topological build order、结构化 graph diagnostic/message、build/clean/run/test 流程。两者已纳入 integration tests 的 checked/IR/native smoke 覆盖。
 
 ## 关键语言缺口
 
@@ -62,7 +62,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    用 Aurex 写一个小型 compiler frontend，包括 source manager、lexer、token stream、parser 子集、AST/IR dump 和 diagnostic。它不要求替换 C++ Stage0，但必须证明 Aurex 可以自然编写编译器核心代码。当前已有最小可运行样例，后续还应补 source span 更完整的 diagnostic、AST 节点层级、导入解析和更接近真实前端的错误恢复。
 
 2. typed 构建工具样例  
-   用 Aurex 写一个类似 CMake 的小构建工具，包括 project、target、library、executable、source list、include path、dependency、custom command、subprocess、incremental check、build、clean、run 和 test。构建描述应是 typed Aurex API，而不是 shell 字符串拼接。当前已有最小可运行样例、stdout capture baseline、source/stamp mtime incremental check、directory source discovery count、target name lookup、duplicate target detection、target graph validation 和 topological build order，后续还应补完整目录项列表、递归遍历、stderr capture、cwd/env、cycle path diagnostics 和错误报告。
+   用 Aurex 写一个类似 CMake 的小构建工具，包括 project、target、library、executable、source list、include path、dependency、custom command、subprocess、incremental check、build、clean、run 和 test。构建描述应是 typed Aurex API，而不是 shell 字符串拼接。当前已有最小可运行样例、stdout capture baseline、source/stamp mtime incremental check、directory source discovery count、target name lookup、duplicate target detection、target graph validation、topological build order 和结构化 graph diagnostic/message，后续还应补完整目录项列表、递归遍历、stderr capture、cwd/env、完整 cycle path diagnostics 和带 target 名称的错误报告。
 
 ## M1 优先级
 
@@ -116,7 +116,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    已启动。当前 `defer call();` 会在当前词法作用域退出时反序执行，并覆盖正常退出、`return`、`break` / `continue` lowering；subprocess / stdout capture baseline 已通过 `std.sys.process::Command` 接入 host-c support；文件 metadata / mtime baseline 已通过 `std.fs.file::FileMetadata` 接入 host-c support；directory source discovery count baseline 已通过 `std.fs.dir` 接入 host-c support。下一步补 noncopyable 资源规则、完整目录项列表、递归 walk、cwd/env、stderr capture、stdin/stdout/stderr pipe 和临时目录能力，让文件、进程、arena、临时目录能安全组合。
 
 7. 自举前端和 typed 构建工具验收  
-   已启动。`examples/m1/frontend` 和 `examples/m1/axbuild` 已进入 active tree，并由 integration tests 覆盖 checked surface、IR surface 和 native smoke。后续继续扩大样例深度，目标仍是让这两个程序从“最小验收样例”推进到足够真实的 M1 工程基准，并继续要求覆盖率保持 90% 以上。
+   已启动。`examples/m1/frontend` 和 `examples/m1/axbuild` 已进入 active tree，并由 integration tests 覆盖 checked surface、IR surface 和 native smoke；axbuild 还覆盖了 `GraphDiagnostic` 的 checked/IR surface、message surface 和 duplicate/invalid/cycle 三类图错误定位。后续继续扩大样例深度，目标仍是让这两个程序从“最小验收样例”推进到足够真实的 M1 工程基准，并继续要求覆盖率保持 90% 以上。
 
 ## 长期优先级
 

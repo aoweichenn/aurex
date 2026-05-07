@@ -17,7 +17,7 @@ flat list of snippets.
   dependency lists, custom commands, subprocess stdout capture, source/stamp
   mtime incremental checks, directory source-discovery counts, target-name
   lookup, duplicate-target detection, target-graph validation, topological build
-  order, build, clean, run, and test flows.
+  order, structured graph diagnostics/messages, build, clean, run, and test flows.
 
 Build a system example with the shared example modules on the import path:
 

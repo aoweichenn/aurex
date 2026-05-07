@@ -37,6 +37,9 @@ Included:
   build order.
 - M1 axbuild target-name lookup baseline, including name -> id lookup,
   missing-lookup checks, and duplicate-target-name status.
+- M1 axbuild target-graph diagnostic/message baseline, including
+  `GraphDiagnostic`, status, target index, related index, message, and
+  duplicate / invalid-dependency / cycle back-edge localization.
 - golden, positive, negative, and language-feature test flows.
 - checked/IR/native integration-test coverage for the M1 examples.
 - Chinese and English topic-based documentation sets.
@@ -84,8 +87,8 @@ Not included:
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
 - Grow M1 axbuild from source/stamp mtime, source-discovery, target-name lookup,
-  and target-graph smoke checks into full directory entries, recursive walking,
-  cycle-path diagnostics, cwd/env, stderr capture, and structured output
-  reporting.
+  target-graph smoke checks, and structured graph diagnostics/messages into full
+  directory entries, recursive walking, complete cycle-path diagnostics, cwd/env,
+  stderr capture, and structured output reporting.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

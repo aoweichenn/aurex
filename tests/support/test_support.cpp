@@ -471,6 +471,85 @@ private:
     return run_compiler(invocation);
 }
 
+[[nodiscard]] bool command_may_need_shell_expansion(const std::string_view command) noexcept {
+    return command.find('*') != std::string_view::npos ||
+           command.find('?') != std::string_view::npos ||
+           command.find('[') != std::string_view::npos ||
+           command.find('~') != std::string_view::npos;
+}
+
+[[nodiscard]] std::optional<CommandResult> try_run_direct_process_command(const std::string& command) {
+    if (command_may_need_shell_expansion(command)) {
+        return std::nullopt;
+    }
+
+    const std::optional<std::vector<std::string>> parsed = split_shell_words(command);
+    if (!parsed || parsed->empty()) {
+        return std::nullopt;
+    }
+
+    const std::string& program = parsed->front();
+    if (program.find('=') != std::string::npos && program.find('/') == std::string::npos) {
+        return std::nullopt;
+    }
+
+    int pipe_fds[2] = {-1, -1};
+    if (::pipe(pipe_fds) != 0) {
+        return CommandResult {126, "failed to create command output pipe: " + std::string(std::strerror(errno)) + "\n"};
+    }
+
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        const std::string message = "failed to fork command: " + std::string(std::strerror(errno)) + "\n";
+        ::close(pipe_fds[0]);
+        ::close(pipe_fds[1]);
+        return CommandResult {126, message};
+    }
+
+    if (pid == 0) {
+        ::close(pipe_fds[0]);
+        if (::dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
+            ::dup2(pipe_fds[1], STDERR_FILENO) < 0) {
+            _exit(126);
+        }
+        ::close(pipe_fds[1]);
+
+        std::vector<char*> argv;
+        argv.reserve(parsed->size() + 1);
+        for (const std::string& arg : *parsed) {
+            argv.push_back(const_cast<char*>(arg.c_str()));
+        }
+        argv.push_back(nullptr);
+        ::execvp(argv.front(), argv.data());
+        _exit(127);
+    }
+
+    ::close(pipe_fds[1]);
+    std::array<char, 4096> buffer {};
+    std::string output;
+    while (true) {
+        const ssize_t count = ::read(pipe_fds[0], buffer.data(), buffer.size());
+        if (count > 0) {
+            output.append(buffer.data(), static_cast<std::size_t>(count));
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        break;
+    }
+    ::close(pipe_fds[0]);
+
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0) {
+        if (errno == EINTR) {
+            continue;
+        }
+        return CommandResult {126, output + "failed to wait for command: " + std::string(std::strerror(errno)) + "\n"};
+    }
+    return CommandResult {decode_status(status), output};
+}
+
 [[nodiscard]] bool is_native_emit_kind(const driver::EmitKind emit_kind) noexcept {
     return emit_kind == driver::EmitKind::assembly ||
            emit_kind == driver::EmitKind::object ||
@@ -691,6 +770,9 @@ void remember_native_output(
 CommandResult run_command(const std::string& command) {
     if (std::optional<CommandResult> fast_result = try_run_aurexc_command(command)) {
         return *fast_result;
+    }
+    if (std::optional<CommandResult> direct_result = try_run_direct_process_command(command)) {
+        return *direct_result;
     }
 
     std::array<char, 4096> buffer {};

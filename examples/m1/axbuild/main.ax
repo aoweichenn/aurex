@@ -44,6 +44,70 @@ struct Project {
     stamp_path: *const u8;
 }
 
+struct GraphDiagnostic {
+    status: GraphStatus;
+    target_index: usize;
+    related_index: usize;
+}
+
+fn graph_diagnostic(status: GraphStatus, target_index: usize, related_index: usize) -> GraphDiagnostic {
+    return GraphDiagnostic {
+        status: status,
+        target_index: target_index,
+        related_index: related_index,
+    };
+}
+
+fn graph_diagnostic_status(diagnostic: *const GraphDiagnostic) -> GraphStatus {
+    return diagnostic.status;
+}
+
+fn graph_diagnostic_target_index(diagnostic: *const GraphDiagnostic) -> usize {
+    return diagnostic.target_index;
+}
+
+fn graph_diagnostic_related_index(diagnostic: *const GraphDiagnostic) -> usize {
+    return diagnostic.related_index;
+}
+
+fn graph_status_message(status: GraphStatus) -> *const u8 {
+    if status == GraphStatus.ok {
+        return c"graph ok";
+    }
+    if status == GraphStatus.invalid_dependency {
+        return c"invalid target dependency";
+    }
+    if status == GraphStatus.cycle {
+        return c"target dependency cycle";
+    }
+    if status == GraphStatus.duplicate_target {
+        return c"duplicate target name";
+    }
+    return c"unknown target graph status";
+}
+
+fn graph_diagnostic_message(diagnostic: *const GraphDiagnostic) -> *const u8 {
+    return graph_status_message(diagnostic.status());
+}
+
+impl GraphDiagnostic {
+    pub fn status(self: *const GraphDiagnostic) -> GraphStatus {
+        return graph_diagnostic_status(self);
+    }
+
+    pub fn target_index(self: *const GraphDiagnostic) -> usize {
+        return graph_diagnostic_target_index(self);
+    }
+
+    pub fn related_index(self: *const GraphDiagnostic) -> usize {
+        return graph_diagnostic_related_index(self);
+    }
+
+    pub fn message(self: *const GraphDiagnostic) -> *const u8 {
+        return graph_diagnostic_message(self);
+    }
+}
+
 fn custom_command_new(program: *const u8) -> CustomCommand {
     return CustomCommand {
         program: program,
@@ -241,40 +305,52 @@ fn project_sources_match_directory(project: *const Project, path: *const u8, suf
     return Result.ok(discovered == project_source_count(project));
 }
 
-fn project_target_names_unique(project: *const Project) -> bool {
+fn project_duplicate_target_diagnostic(project: *const Project) -> GraphDiagnostic {
     var left_index: usize = cast(usize, 0);
     while left_index < project.targets.len {
         let left: Target = project.targets.data[left_index];
         if left.name == null {
-            return false;
+            return graph_diagnostic(GraphStatus.duplicate_target, left_index, left_index);
         }
         var right_index: usize = left_index + cast(usize, 1);
         while right_index < project.targets.len {
             let right: Target = project.targets.data[right_index];
-            if right.name == null || text::c_string_equal(left.name, right.name) {
-                return false;
+            if right.name == null {
+                return graph_diagnostic(GraphStatus.duplicate_target, right_index, right_index);
+            }
+            if text::c_string_equal(left.name, right.name) {
+                return graph_diagnostic(GraphStatus.duplicate_target, left_index, right_index);
             }
             right_index = right_index + cast(usize, 1);
         }
         left_index = left_index + cast(usize, 1);
     }
-    return true;
+    return graph_diagnostic(GraphStatus.ok, cast(usize, 0), cast(usize, 0));
 }
 
-fn project_dependencies_in_bounds(project: *const Project) -> bool {
+fn project_target_names_unique(project: *const Project) -> bool {
+    return project_duplicate_target_diagnostic(project).status() == GraphStatus.ok;
+}
+
+fn project_invalid_dependency_diagnostic(project: *const Project) -> GraphDiagnostic {
     var target_index: usize = cast(usize, 0);
     while target_index < project.targets.len {
         let target: Target = project.targets.data[target_index];
         var dependency_index: usize = cast(usize, 0);
         while dependency_index < target.dependencies.len {
-            if target.dependencies.data[dependency_index] >= project.targets.len {
-                return false;
+            let dependency: usize = target.dependencies.data[dependency_index];
+            if dependency >= project.targets.len {
+                return graph_diagnostic(GraphStatus.invalid_dependency, target_index, dependency);
             }
             dependency_index = dependency_index + cast(usize, 1);
         }
         target_index = target_index + cast(usize, 1);
     }
-    return true;
+    return graph_diagnostic(GraphStatus.ok, cast(usize, 0), cast(usize, 0));
+}
+
+fn project_dependencies_in_bounds(project: *const Project) -> bool {
+    return project_invalid_dependency_diagnostic(project).status() == GraphStatus.ok;
 }
 
 fn project_new_visit_state(project: *const Project) -> result::Result<vec::Vec<u8>, i32> {
@@ -336,6 +412,65 @@ fn project_visit_target(
     return Result.ok(true);
 }
 
+fn project_cycle_diagnostic_visit(project: *const Project, index: usize, states: *mut vec::Vec<u8>) -> GraphDiagnostic {
+    if states.data[index] == VISIT_DONE {
+        return graph_diagnostic(GraphStatus.ok, cast(usize, 0), cast(usize, 0));
+    }
+    if states.data[index] == VISIT_VISITING {
+        return graph_diagnostic(GraphStatus.cycle, index, index);
+    }
+
+    states.data[index] = VISIT_VISITING;
+    let target: Target = project.targets.data[index];
+    var dependency_index: usize = cast(usize, 0);
+    while dependency_index < target.dependencies.len {
+        let dependency: usize = target.dependencies.data[dependency_index];
+        if dependency >= project.targets.len {
+            return graph_diagnostic(GraphStatus.invalid_dependency, index, dependency);
+        }
+        if states.data[dependency] == VISIT_VISITING {
+            return graph_diagnostic(GraphStatus.cycle, index, dependency);
+        }
+        let diagnostic: GraphDiagnostic = project_cycle_diagnostic_visit(project, dependency, states);
+        if diagnostic.status() != GraphStatus.ok {
+            return diagnostic;
+        }
+        dependency_index = dependency_index + cast(usize, 1);
+    }
+
+    states.data[index] = VISIT_DONE;
+    return graph_diagnostic(GraphStatus.ok, cast(usize, 0), cast(usize, 0));
+}
+
+fn project_cycle_diagnostic(project: *const Project) -> result::Result<GraphDiagnostic, i32> {
+    var states: vec::Vec<u8> = project_new_visit_state(project)?;
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        let diagnostic: GraphDiagnostic = project_cycle_diagnostic_visit(project, index, &states);
+        if diagnostic.status() != GraphStatus.ok {
+            states.destroy();
+            return Result.ok(diagnostic);
+        }
+        index = index + cast(usize, 1);
+    }
+    states.destroy();
+    return Result.ok(graph_diagnostic(GraphStatus.ok, cast(usize, 0), cast(usize, 0)));
+}
+
+fn project_graph_diagnostic(project: *const Project) -> result::Result<GraphDiagnostic, i32> {
+    let duplicate: GraphDiagnostic = project_duplicate_target_diagnostic(project);
+    if duplicate.status() != GraphStatus.ok {
+        return Result.ok(duplicate);
+    }
+
+    let invalid_dependency: GraphDiagnostic = project_invalid_dependency_diagnostic(project);
+    if invalid_dependency.status() != GraphStatus.ok {
+        return Result.ok(invalid_dependency);
+    }
+
+    return project_cycle_diagnostic(project);
+}
+
 fn project_build_order(project: *const Project) -> result::Result<vec::Vec<usize>, i32> {
     if !project_target_names_unique(project) {
         return Result.err(23);
@@ -366,15 +501,9 @@ fn project_build_order(project: *const Project) -> result::Result<vec::Vec<usize
 }
 
 fn project_graph_status(project: *const Project) -> GraphStatus {
-    let order_result: result::Result<vec::Vec<usize>, i32> = project_build_order(project);
-    return match order_result {
-        .ok(order_value) => {
-            var order: vec::Vec<usize> = order_value;
-            order.destroy();
-            GraphStatus.ok
-        },
-        .err(code) if code == 20 => GraphStatus.invalid_dependency,
-        .err(code) if code == 23 => GraphStatus.duplicate_target,
+    let diagnostic_result: result::Result<GraphDiagnostic, i32> = project_graph_diagnostic(project);
+    return match diagnostic_result {
+        .ok(diagnostic) => diagnostic.status(),
         .err(_) => GraphStatus.cycle,
     };
 }
@@ -480,6 +609,10 @@ impl Project {
         return project_graph_status(self);
     }
 
+    pub fn graph_diagnostic(self: *const Project) -> result::Result<GraphDiagnostic, i32> {
+        return project_graph_diagnostic(self);
+    }
+
     pub fn clean(self: *mut Project) -> bool {
         return project_clean(self);
     }
@@ -544,6 +677,16 @@ fn project_build_order_matches(project: *const Project, app_id: usize) -> result
     return Result.ok(ok);
 }
 
+fn project_graph_ok_diagnostic_matches(project: *const Project) -> result::Result<bool, i32> {
+    let diagnostic: GraphDiagnostic = project.graph_diagnostic()?;
+    return Result.ok(
+        diagnostic.status() == GraphStatus.ok &&
+        diagnostic.target_index() == cast(usize, 0) &&
+        diagnostic.related_index() == cast(usize, 0) &&
+        text::c_string_equal(diagnostic.message(), c"graph ok")
+    );
+}
+
 fn validate_missing_target_lookup() -> result::Result<bool, i32> {
     var project: Project = project_new(c"missing", c"/tmp/aurex_m1_axbuild_missing_stamp");
 
@@ -571,8 +714,14 @@ fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
         first_id == cast(usize, 0) &&
         second_id == cast(usize, 1) &&
         project.graph_status() == GraphStatus.duplicate_target;
+    let diagnostic: GraphDiagnostic = project.graph_diagnostic()?;
+    let diagnostic_ok: bool =
+        diagnostic.status() == GraphStatus.duplicate_target &&
+        diagnostic.target_index() == cast(usize, 0) &&
+        diagnostic.related_index() == cast(usize, 1) &&
+        text::c_string_equal(diagnostic.message(), c"duplicate target name");
     project.destroy();
-    return Result.ok(duplicate_ok);
+    return Result.ok(duplicate_ok && diagnostic_ok);
 }
 
 fn validate_cycle_detection() -> result::Result<bool, i32> {
@@ -594,8 +743,14 @@ fn validate_cycle_detection() -> result::Result<bool, i32> {
     }
     let second_id: usize = project.add_target(second)?;
     let cycle_ok: bool = second_id == cast(usize, 1) && project.graph_status() == GraphStatus.cycle;
+    let diagnostic: GraphDiagnostic = project.graph_diagnostic()?;
+    let diagnostic_ok: bool =
+        diagnostic.status() == GraphStatus.cycle &&
+        diagnostic.target_index() == cast(usize, 1) &&
+        diagnostic.related_index() == cast(usize, 0) &&
+        text::c_string_equal(diagnostic.message(), c"target dependency cycle");
     project.destroy();
-    return Result.ok(cycle_ok);
+    return Result.ok(cycle_ok && diagnostic_ok);
 }
 
 fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
@@ -609,8 +764,14 @@ fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
     }
     let target_id: usize = project.add_target(target)?;
     let invalid_ok: bool = target_id == cast(usize, 0) && project.graph_status() == GraphStatus.invalid_dependency;
+    let diagnostic: GraphDiagnostic = project.graph_diagnostic()?;
+    let diagnostic_ok: bool =
+        diagnostic.status() == GraphStatus.invalid_dependency &&
+        diagnostic.target_index() == cast(usize, 0) &&
+        diagnostic.related_index() == cast(usize, 99) &&
+        text::c_string_equal(diagnostic.message(), c"invalid target dependency");
     project.destroy();
-    return Result.ok(invalid_ok);
+    return Result.ok(invalid_ok && diagnostic_ok);
 }
 
 fn run_build_tool() -> result::Result<i32, i32> {
@@ -623,6 +784,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
     let core_lookup_ok: bool = project_target_index_matches(&project, c"core", cast(usize, 0))?;
     let app_lookup_ok: bool = project_target_index_matches(&project, c"app", app_id)?;
     let graph_ok: bool = project.graph_status() == GraphStatus.ok;
+    let graph_diagnostic_ok: bool = project_graph_ok_diagnostic_matches(&project)?;
     let order_ok: bool = project_build_order_matches(&project, app_id)?;
     let missing_lookup_ok: bool = validate_missing_target_lookup()?;
     let duplicate_detected: bool = validate_duplicate_target_detection()?;
@@ -643,6 +805,7 @@ fn run_build_tool() -> result::Result<i32, i32> {
         core_lookup_ok &&
         app_lookup_ok &&
         graph_ok &&
+        graph_diagnostic_ok &&
         order_ok &&
         missing_lookup_ok &&
         duplicate_detected &&

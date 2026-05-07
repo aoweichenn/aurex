@@ -1,6 +1,7 @@
 module std.core.map;
 
 import std.core.result as result;
+import std.core.text as text;
 import std.core.vec as vec;
 
 pub struct Entry<K, V> {
@@ -10,6 +11,15 @@ pub struct Entry<K, V> {
 
 pub struct Map<K, V> {
     entries: vec::Vec<Entry<K, V>>;
+}
+
+pub struct CStringUsizeEntry {
+    key: *const u8;
+    value: usize;
+}
+
+pub struct CStringUsizeMap {
+    entries: vec::Vec<CStringUsizeEntry>;
 }
 
 pub fn new<K, V>() -> Map<K, V> {
@@ -113,6 +123,139 @@ pub fn remove<K, V>(map: *mut Map<K, V>, key: K) -> result::Option<V> {
     return Option.none;
 }
 
+pub fn cstring_usize_new() -> CStringUsizeMap {
+    return CStringUsizeMap { entries: vec::new<CStringUsizeEntry>() };
+}
+
+pub fn cstring_usize_with_capacity(capacity: usize) -> result::Result<CStringUsizeMap, i32> {
+    var map: CStringUsizeMap = cstring_usize_new();
+    if !cstring_usize_reserve(&map, capacity) {
+        return Result.err(1);
+    }
+    return Result.ok(map);
+}
+
+pub fn cstring_usize_destroy(map: *mut CStringUsizeMap) -> void {
+    map.entries.destroy();
+}
+
+pub fn cstring_usize_len(map: *const CStringUsizeMap) -> usize {
+    return map.entries.len();
+}
+
+pub fn cstring_usize_capacity(map: *const CStringUsizeMap) -> usize {
+    return map.entries.capacity();
+}
+
+pub fn cstring_usize_is_empty(map: *const CStringUsizeMap) -> bool {
+    return map.entries.is_empty();
+}
+
+pub fn cstring_usize_reserve(map: *mut CStringUsizeMap, capacity: usize) -> bool {
+    return map.entries.reserve(capacity);
+}
+
+pub fn cstring_usize_clear(map: *mut CStringUsizeMap) -> void {
+    map.entries.clear();
+}
+
+fn cstring_usize_key_equal(left: *const u8, right: *const u8) -> bool {
+    if left == null || right == null {
+        return false;
+    }
+    return text::c_string_equal(left, right);
+}
+
+pub fn cstring_usize_find_index(map: *const CStringUsizeMap, key: *const u8) -> result::Option<usize> {
+    if key == null {
+        return Option.none;
+    }
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if cstring_usize_key_equal(map.entries.data[index].key, key) {
+            return Option.some(index);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Option.none;
+}
+
+pub fn cstring_usize_contains(map: *const CStringUsizeMap, key: *const u8) -> bool {
+    return cstring_usize_find_index(map, key).is_some();
+}
+
+pub fn cstring_usize_insert(map: *mut CStringUsizeMap, key: *const u8, value: usize) -> bool {
+    if key == null {
+        return false;
+    }
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if cstring_usize_key_equal(map.entries.data[index].key, key) {
+            map.entries.data[index].value = value;
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return map.entries.push(CStringUsizeEntry { key: key, value: value });
+}
+
+pub fn cstring_usize_insert_absent(map: *mut CStringUsizeMap, key: *const u8, value: usize) -> bool {
+    if key == null {
+        return false;
+    }
+    if cstring_usize_contains(map, key) {
+        return true;
+    }
+    return map.entries.push(CStringUsizeEntry { key: key, value: value });
+}
+
+pub fn cstring_usize_set(map: *mut CStringUsizeMap, key: *const u8, value: usize) -> bool {
+    if key == null {
+        return false;
+    }
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if cstring_usize_key_equal(map.entries.data[index].key, key) {
+            map.entries.data[index].value = value;
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return false;
+}
+
+pub fn cstring_usize_get(map: *const CStringUsizeMap, key: *const u8) -> result::Option<usize> {
+    if key == null {
+        return Option.none;
+    }
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if cstring_usize_key_equal(map.entries.data[index].key, key) {
+            return Option.some(map.entries.data[index].value);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Option.none;
+}
+
+pub fn cstring_usize_remove(map: *mut CStringUsizeMap, key: *const u8) -> result::Option<usize> {
+    if key == null {
+        return Option.none;
+    }
+    var index: usize = cast(usize, 0);
+    while index < map.entries.len {
+        if cstring_usize_key_equal(map.entries.data[index].key, key) {
+            let removed: result::Option<CStringUsizeEntry> = map.entries.remove(index);
+            return match removed {
+                .some(entry) => Option.some(entry.value),
+                .none => Option.none,
+            };
+        }
+        index = index + cast(usize, 1);
+    }
+    return Option.none;
+}
+
 impl<K, V> Map<K, V> {
     pub fn new() -> Map<K, V> {
         return new<K, V>();
@@ -168,5 +311,67 @@ impl<K, V> Map<K, V> {
 
     pub fn remove(self: *mut Map<K, V>, key: K) -> result::Option<V> {
         return remove<K, V>(self, key);
+    }
+}
+
+impl CStringUsizeMap {
+    pub fn new() -> CStringUsizeMap {
+        return cstring_usize_new();
+    }
+
+    pub fn with_capacity(capacity: usize) -> result::Result<CStringUsizeMap, i32> {
+        return cstring_usize_with_capacity(capacity);
+    }
+
+    pub fn destroy(self: *mut CStringUsizeMap) -> void {
+        cstring_usize_destroy(self);
+    }
+
+    pub fn len(self: *const CStringUsizeMap) -> usize {
+        return cstring_usize_len(self);
+    }
+
+    pub fn capacity(self: *const CStringUsizeMap) -> usize {
+        return cstring_usize_capacity(self);
+    }
+
+    pub fn is_empty(self: *const CStringUsizeMap) -> bool {
+        return cstring_usize_is_empty(self);
+    }
+
+    pub fn reserve(self: *mut CStringUsizeMap, capacity: usize) -> bool {
+        return cstring_usize_reserve(self, capacity);
+    }
+
+    pub fn clear(self: *mut CStringUsizeMap) -> void {
+        cstring_usize_clear(self);
+    }
+
+    pub fn find_index(self: *const CStringUsizeMap, key: *const u8) -> result::Option<usize> {
+        return cstring_usize_find_index(self, key);
+    }
+
+    pub fn contains(self: *const CStringUsizeMap, key: *const u8) -> bool {
+        return cstring_usize_contains(self, key);
+    }
+
+    pub fn insert(self: *mut CStringUsizeMap, key: *const u8, value: usize) -> bool {
+        return cstring_usize_insert(self, key, value);
+    }
+
+    pub fn insert_absent(self: *mut CStringUsizeMap, key: *const u8, value: usize) -> bool {
+        return cstring_usize_insert_absent(self, key, value);
+    }
+
+    pub fn set(self: *mut CStringUsizeMap, key: *const u8, value: usize) -> bool {
+        return cstring_usize_set(self, key, value);
+    }
+
+    pub fn get(self: *const CStringUsizeMap, key: *const u8) -> result::Option<usize> {
+        return cstring_usize_get(self, key);
+    }
+
+    pub fn remove(self: *mut CStringUsizeMap, key: *const u8) -> result::Option<usize> {
+        return cstring_usize_remove(self, key);
     }
 }

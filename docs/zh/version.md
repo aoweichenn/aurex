@@ -22,9 +22,10 @@
 - M1 验收样例 baseline，包括 `examples/m1/frontend` 和 `examples/m1/axbuild`。
 - `std.sys.process::Command` subprocess / stdout/stderr capture / cwd / env baseline，通过 host-c support 调用 `fork` / `execvp` / `waitpid`，并用独立 pipe 同时 drain stdout/stderr。
 - `std.fs.file::FileMetadata` metadata / mtime baseline，通过 host-c support 调用 `stat`。
-- `std.fs.dir` directory create / source discovery baseline，通过 host-c support 调用 `mkdir`、`opendir` / `readdir` / `stat` 按后缀统计普通文件，并提供单层和递归计数入口。
+- `std.fs.dir` directory create / directory entries / recursive directory entries / source discovery baseline，通过 host-c support 调用 `mkdir`、`opendir` / `readdir` / `stat` / `lstat` 读取拥有型单层/递归目录项，并按后缀统计普通文件，提供单层和递归计数入口。
+- `std.core.map` Vec-backed 泛型 `Map<K, V>` 和 borrowed C string -> usize 的 `CStringUsizeMap` baseline。
 - M1 axbuild target graph validation / topological build baseline，包括 dependency bounds、cycle / invalid dependency 状态和按拓扑顺序 build。
-- M1 axbuild target name lookup baseline，包括 name -> id 查找、missing lookup 检测和 duplicate target name 状态。
+- M1 axbuild target name lookup cache baseline，包括 name -> id 查找、lookup cache 与线性扫描对照、missing lookup 检测和 duplicate target name 状态。
 - M1 axbuild target graph diagnostic/message/name/cycle-path baseline，包括 `GraphDiagnostic`、status、target index、related index、message、target name、related name、cycle index path、cycle name path，以及 duplicate / invalid dependency / cycle back-edge 定位。
 - golden、positive、negative 和语言特性测试链路。
 - M1 样例的 checked/IR/native integration test 覆盖。
@@ -70,6 +71,6 @@
 - 更完整 ABI 属性和目标配置。
 - 模块隔离、可见性、泛型约束和 pattern matching 完整性。
 - M1 frontend 从 summary parser 推进到真实 AST、diagnostic、name resolution 和 type checking。
-- M1 axbuild 从 source/stamp mtime、directory create、single-level and recursive source discovery、target name lookup、target graph smoke、stdout/stderr capture、cwd/env 和结构化 graph diagnostic/message/name/cycle-path 推进到完整目录项列表、递归路径列表/iterator、dependency value diagnostic 和结构化输出报告。
+- M1 axbuild 从 source/stamp mtime、directory create、owned single-level/recursive directory entry read、source discovery by entries、single-level and recursive source discovery、target name lookup cache、target graph smoke、stdout/stderr capture、cwd/env 和结构化 graph diagnostic/message/name/cycle-path 推进到 streaming directory iterator / walk callback、glob/pattern、hash/bucketed map、dependency value diagnostic 和结构化输出报告。
 - M3 之后以新语言特性重新设计自举链路。
 - fixed-point self-host 验证。

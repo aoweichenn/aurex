@@ -15,9 +15,10 @@ must prove these programs can be written cleanly in Aurex.
 
 Latest Chinese progress report: [M1 progress report 2026-05-07](../zh/m1-progress-2026-05-07.md).
 It records the current subprocess / stdout/stderr-capture / cwd / env baseline, file metadata /
-mtime baseline, directory-create / single-level source-discovery / recursive
-source-discovery baseline, target-graph validation /
-topological-build baseline, target-name lookup baseline, target-graph diagnostic
+mtime baseline, directory-create / directory-entry / recursive-directory-entry /
+single-level source-discovery / recursive source-discovery baseline, Map /
+CStringUsizeMap baseline, target-graph validation /
+topological-build baseline, target-name lookup-cache baseline, target-graph diagnostic
 / message / name / cycle-path / cycle-path-name baseline, test direct-process
 runner, M1 examples, integration-test coverage, and test-time baseline.
 
@@ -58,14 +59,16 @@ Current language slices:
   `Option<T>.ok_or<E>`.
 - Standard-library container/text/path baseline started, including generic
   `Span<T>` / `MutSpan<T>`, capacity, append, insert/remove, and random-access
-  APIs on `Vec<T>`, generic `Vec<T>` method APIs, byte-level editing APIs on owned
+  APIs on `Vec<T>`, generic `Vec<T>` method APIs, a Vec-backed generic
+  `Map<K, V>`, borrowed C-string -> usize `CStringUsizeMap`, byte-level editing APIs on owned
   `String`, and query/join APIs on owned `Path`.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
   exists/is_file/is_dir/size/modified_time_ns baseline, and `std.fs.dir`
-  provides directory creation plus single-level and recursive source-discovery
-  baselines for counting regular files by suffix.
+  provides directory creation, owned single-level / recursive directory-entry
+  reads, and single-level / recursive source-discovery baselines for counting
+  regular files by suffix.
 - Standard process support has started. `std.sys.process::Command` provides
   typed argv, `arg()`, `cwd()`, `env()`, `run()`, `run_capture()`, and
   `destroy()`, backed by host-c `fork` / `execvp` / `waitpid`, with a
@@ -80,7 +83,8 @@ Current language slices:
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
   typed dependencies/sources/includes/custom commands, subprocess stdout/stderr
   capture, cwd/env, source/stamp mtime incremental checks, directory creation,
-  single-level and recursive source-discovery counts, target-name lookup, duplicate-target detection, target-graph
+  owned single-level / recursive directory-entry reads, source discovery by entries, single-level and
+  recursive source-discovery counts, target-name lookup caches, duplicate-target detection, target-graph
   validation, topological build order, structured graph diagnostics/messages/
   names/cycle index paths/cycle name paths, build, clean, run, and test flows.
   Both are covered by checked/IR/native integration tests.
@@ -103,8 +107,9 @@ Current language slices:
   composable diagnostic model.
 - Resource management still needs a minimal move/noncopyable model and unified
   handling for files, processes, arenas, and other resources.
-- The standard library still needs broader `Vec<T>`, `Map<K, V>`, full
-  directory entries, recursive path iterators, file metadata, subprocess support, and OS features required by
+- The standard library still needs broader `Vec<T>`, hash/bucketed `Map<K, V>`,
+  owned string-key maps, streaming
+  directory iterators / walk callbacks, file metadata, subprocess support, and OS features required by
   incremental builds.
 - Aurex needs a compatibility class/object model for programmers coming from
   traditional OOP code: encapsulation, inheritance, and dynamic polymorphism.
@@ -137,12 +142,13 @@ covered by integration tests:
    subprocess, incremental checks, build, clean, run, and test. Build
    definitions should be typed Aurex APIs, not shell-string concatenation. A
    minimal runnable example, stdout/stderr-capture baseline, cwd/env baseline,
-   source/stamp mtime incremental checks, directory creation, single-level and
-   recursive source-discovery counts, target-name lookup,
+   source/stamp mtime incremental checks, directory creation, owned
+   single-level / recursive directory-entry reads, source discovery by entries, single-level and
+   recursive source-discovery counts, target-name lookup caches,
    duplicate-target detection, target-graph validation, topological build
    order, and structured graph diagnostics/messages/names/cycle index paths/
-   cycle name paths now exist; follow-up work should add full directory
-   entries, recursive path lists / iterators, and richer user-facing reports with dependency
+   cycle name paths now exist; follow-up work should add streaming directory
+   iterators / walk callbacks, glob/pattern support, and richer user-facing reports with dependency
    values.
 
 ## M1 Priority
@@ -180,7 +186,7 @@ covered by integration tests:
 
 6. Establish resource management and OS engineering support  
    The `defer` MVP has landed. Follow-up work should add minimal noncopyable
-   resource rules, full directory entries, recursive path iterators, file metadata, subprocesses, cwd/env
+   resource rules, streaming directory iterators / walk callbacks, file metadata, subprocesses, cwd/env
    handling, temporary files, and path normalization. Without this slice, the
    build tool remains a toy.
 
@@ -222,17 +228,20 @@ manual status helpers.
    `unwrap_or`, and `ok_or<E>`. Next, keep growing the std APIs so code like
    `File.read_all(path)?` and `Parser.next()?` becomes natural.
 
-3. `Span` / `Vec` / `String` / `Path`
+3. `Span` / `Vec` / `Map` / `String` / `Path`
    Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with
    capacity, append, insert/remove, random-access, and generic `Vec<T>` method
-   operations, owned `String` append/insert/remove/truncate/clear and mutable
+   operations, a Vec-backed generic `Map<K, V>`, borrowed C-string -> usize
+   `CStringUsizeMap`, owned `String` append/insert/remove/truncate/clear and mutable
    span APIs, and owned `Path` absolute-path, parent, file-name, file-stem,
    extension, span/c-string join, and with-extension APIs, covered by std
    integration samples combining method APIs, `Result` / `Option`, and `?`.
    The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
    `std.sys.host` file IO now exposes M1-style APIs such as
-   `Result<FileBytes, i32>` and `Result<usize, i32>`. Next, grow this into
-   token-buffer, source-list, and more general path/build-graph scenarios.
+   `Result<FileBytes, i32>` and `Result<usize, i32>`. `examples/m1/axbuild`
+   now uses `CStringUsizeMap` for its target-name -> id lookup cache. Next,
+   grow this into token-buffer, source-list, owned string-key maps,
+   hash/bucketed maps, and more general path/build-graph scenarios.
 
 4. Generic constraints / traits / `where`
    Generic function, generic impl method, and method-specific generic
@@ -250,10 +259,10 @@ manual status helpers.
    scope exits, including normal exits, `return`, and `break` / `continue`
    lowering. A subprocess / stdout/stderr-capture / cwd / env baseline is now
    available through `std.sys.process::Command` and host-c support, and a file metadata / mtime
-   baseline is available through `std.fs.file::FileMetadata`. Directory-create
-   and source-discovery count baselines are available through `std.fs.dir`,
-   including single-level and recursive suffix counts. Next, add
-   noncopyable resource rules, full directory entries, recursive path iterators,
+   baseline is available through `std.fs.file::FileMetadata`. Directory-create,
+   owned single-level / recursive directory-entry, and source-discovery count baselines are available
+   through `std.fs.dir`, including single-level and recursive suffix counts.
+   Next, add noncopyable resource rules, streaming directory iterators / walk callbacks,
    stdin/stdout/stderr pipes, and temporary-directory support so files, processes,
    arenas, and temporary directories compose safely.
 

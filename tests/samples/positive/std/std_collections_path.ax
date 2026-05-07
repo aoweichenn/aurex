@@ -221,6 +221,59 @@ fn check_map_methods() -> result::Result<bool, i32> {
     return Result.ok(ok);
 }
 
+fn check_cstring_usize_map() -> bool {
+    var targets: map::CStringUsizeMap = map::cstring_usize_new();
+    if !map::cstring_usize_insert(&targets, c"core", cast(usize, 0)) ||
+        !map::cstring_usize_insert(&targets, c"app", cast(usize, 1)) ||
+        !map::cstring_usize_insert(&targets, c"core", cast(usize, 2)) {
+        map::cstring_usize_destroy(&targets);
+        return false;
+    }
+    let core_value: usize = map::cstring_usize_get(&targets, c"core").unwrap_or(cast(usize, 99));
+    let app_value: usize = map::cstring_usize_get(&targets, c"app").unwrap_or(cast(usize, 99));
+    let missing_ok: bool = map::cstring_usize_get(&targets, c"missing").is_none();
+    let absent_ok: bool = map::cstring_usize_insert_absent(&targets, c"core", cast(usize, 7));
+    let stable_core_value: usize = map::cstring_usize_get(&targets, c"core").unwrap_or(cast(usize, 99));
+    let removed: usize = map::cstring_usize_remove(&targets, c"app").unwrap_or(cast(usize, 99));
+    let ok: bool =
+        core_value == cast(usize, 2) &&
+        app_value == cast(usize, 1) &&
+        missing_ok &&
+        absent_ok &&
+        stable_core_value == cast(usize, 2) &&
+        removed == cast(usize, 1) &&
+        !map::cstring_usize_contains(&targets, c"app") &&
+        map::cstring_usize_len(&targets) == cast(usize, 1);
+    map::cstring_usize_destroy(&targets);
+    return ok;
+}
+
+fn check_cstring_usize_map_methods() -> result::Result<bool, i32> {
+    var targets: map::CStringUsizeMap = map::CStringUsizeMap.with_capacity(2)?;
+    if !targets.insert(c"core", cast(usize, 0)) ||
+        !targets.insert(c"app", cast(usize, 1)) ||
+        !targets.set(c"app", cast(usize, 3)) ||
+        !targets.insert_absent(c"core", cast(usize, 9)) {
+        targets.destroy();
+        return Result.ok(false);
+    }
+    let core_value: usize = targets.get(c"core").unwrap_or(cast(usize, 99));
+    let app_value: usize = targets.get(c"app").unwrap_or(cast(usize, 99));
+    let missing_ok: bool = targets.find_index(c"missing").is_none();
+    let removed: usize = targets.remove(c"core").unwrap_or(cast(usize, 99));
+    targets.clear();
+    let ok: bool =
+        core_value == cast(usize, 0) &&
+        app_value == cast(usize, 3) &&
+        missing_ok &&
+        removed == cast(usize, 0) &&
+        !targets.contains(c"core") &&
+        targets.is_empty() &&
+        targets.capacity() >= cast(usize, 2);
+    targets.destroy();
+    return Result.ok(ok);
+}
+
 fn check_string() -> result::Result<bool, i32> {
     var s: string::String = string::from_c(c"ab")?;
     if !string::push(&s, b'c') ||
@@ -353,6 +406,13 @@ fn run() -> result::Result<i32, i32> {
     let map_methods_ok: bool = check_map_methods()?;
     if !map_methods_ok {
         return Result.err(6);
+    }
+    if !check_cstring_usize_map() {
+        return Result.err(10);
+    }
+    let cstring_map_methods_ok: bool = check_cstring_usize_map_methods()?;
+    if !cstring_map_methods_ok {
+        return Result.err(11);
     }
     let string_ok: bool = check_string()?;
     if !string_ok {

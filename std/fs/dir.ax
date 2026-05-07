@@ -1,13 +1,166 @@
 module std.fs.dir;
 
 import std.core.result;
+import std.core.string;
+import std.core.vec as vec;
 import std.ffi.c.host_support;
+
+pub enum DirectoryEntryKind: u8 {
+    file = 1,
+    directory = 2,
+    symlink = 3,
+    other = 4,
+}
+
+pub struct DirectoryEntry {
+    priv name_value: String;
+    priv path_value: String;
+    priv kind_value: DirectoryEntryKind;
+}
+
+fn directory_entry_kind_from_host(kind: i32) -> DirectoryEntryKind {
+    if kind == 1 {
+        return DirectoryEntryKind.file;
+    }
+    if kind == 2 {
+        return DirectoryEntryKind.directory;
+    }
+    if kind == 3 {
+        return DirectoryEntryKind.symlink;
+    }
+    return DirectoryEntryKind.other;
+}
+
+fn directory_entry_from_host(entry: *const HostDirectoryEntry) -> Result<DirectoryEntry, i32> {
+    let name_result: Result<String, i32> = String.from_c(ptr_cast(*const u8, entry.name));
+    return match name_result {
+        .ok(host_name) => {
+            var name: String = host_name;
+            let path_result: Result<String, i32> = String.from_c(ptr_cast(*const u8, entry.path));
+            match path_result {
+                .ok(path) => Result.ok(DirectoryEntry {
+                    name_value: name,
+                    path_value: path,
+                    kind_value: directory_entry_kind_from_host(entry.kind),
+                }),
+                .err(code) => {
+                    name.destroy();
+                    Result.err(code)
+                },
+            }
+        },
+        .err(code) => Result.err(code),
+    };
+}
+
+pub fn directory_entry_name(entry: *const DirectoryEntry) -> *const u8 {
+    return entry.name_value.c_str();
+}
+
+pub fn directory_entry_path(entry: *const DirectoryEntry) -> *const u8 {
+    return entry.path_value.c_str();
+}
+
+pub fn directory_entry_kind(entry: *const DirectoryEntry) -> DirectoryEntryKind {
+    return entry.kind_value;
+}
+
+pub fn directory_entry_is_file(entry: *const DirectoryEntry) -> bool {
+    return entry.kind_value == DirectoryEntryKind.file;
+}
+
+pub fn directory_entry_is_directory(entry: *const DirectoryEntry) -> bool {
+    return entry.kind_value == DirectoryEntryKind.directory;
+}
+
+pub fn directory_entry_is_symlink(entry: *const DirectoryEntry) -> bool {
+    return entry.kind_value == DirectoryEntryKind.symlink;
+}
+
+pub fn directory_entry_destroy(entry: *mut DirectoryEntry) -> void {
+    entry.name_value.destroy();
+    entry.path_value.destroy();
+    entry.kind_value = DirectoryEntryKind.other;
+}
+
+pub fn destroy_entries(entries: *mut vec::Vec<DirectoryEntry>) -> void {
+    var index: usize = cast(usize, 0);
+    while index < entries.len {
+        directory_entry_destroy(&entries.data[index]);
+        index = index + cast(usize, 1);
+    }
+    entries.destroy();
+}
+
+fn push_host_directory_entry(entries: *mut vec::Vec<DirectoryEntry>, host_entry: *const HostDirectoryEntry) -> bool {
+    let entry_result: Result<DirectoryEntry, i32> = directory_entry_from_host(host_entry);
+    return match entry_result {
+        .ok(entry) => {
+            var owned: DirectoryEntry = entry;
+            if entries.push(owned) {
+                true
+            } else {
+                directory_entry_destroy(&owned);
+                false
+            }
+        },
+        .err(_) => false,
+    };
+}
+
+fn read_host_entries(path: *const u8, recursive: bool, output: *mut HostDirectoryEntries) -> bool {
+    if recursive {
+        return host_directory_read_entries_recursive(path, output);
+    }
+    return host_directory_read_entries(path, output);
+}
+
+fn directory_entries_from_host(host_entries: HostDirectoryEntries) -> Result<vec::Vec<DirectoryEntry>, i32> {
+    if host_entries.len < 0 {
+        return Result.err(1);
+    }
+
+    var entries: vec::Vec<DirectoryEntry> = vec::new<DirectoryEntry>();
+    var index: usize = cast(usize, 0);
+    while index < cast(usize, host_entries.len) {
+        if !push_host_directory_entry(&entries, &host_entries.data[index]) {
+            destroy_entries(&entries);
+            return Result.err(1);
+        }
+        index = index + cast(usize, 1);
+    }
+    return Result.ok(entries);
+}
 
 pub fn create_directory(path: *const u8) -> bool {
     if path == null {
         return false;
     }
     return host_directory_create(path);
+}
+
+fn read_entries_impl(path: *const u8, recursive: bool) -> Result<vec::Vec<DirectoryEntry>, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    var host_entries: HostDirectoryEntries = HostDirectoryEntries {
+        data: null,
+        len: 0,
+    };
+    if !read_host_entries(path, recursive, &host_entries) {
+        return Result.err(1);
+    }
+    let entries_result: Result<vec::Vec<DirectoryEntry>, i32> = directory_entries_from_host(host_entries);
+    host_directory_free_entries(host_entries);
+    return entries_result;
+}
+
+pub fn read_entries(path: *const u8) -> Result<vec::Vec<DirectoryEntry>, i32> {
+    return read_entries_impl(path, false);
+}
+
+pub fn read_entries_recursive(path: *const u8) -> Result<vec::Vec<DirectoryEntry>, i32> {
+    return read_entries_impl(path, true);
 }
 
 pub fn count_files_with_suffix(path: *const u8, suffix: *const u8) -> Result<i32, i32> {
@@ -40,4 +193,30 @@ pub fn count_files_with_suffix_recursive(path: *const u8, suffix: *const u8) -> 
 pub fn has_file_with_suffix_recursive(path: *const u8, suffix: *const u8) -> Result<bool, i32> {
     let count: i32 = count_files_with_suffix_recursive(path, suffix)?;
     return Result.ok(count > 0);
+}
+
+impl DirectoryEntry {
+    pub fn name_c_data(self: *const DirectoryEntry) -> *const u8 {
+        return directory_entry_name(self);
+    }
+
+    pub fn path_c_data(self: *const DirectoryEntry) -> *const u8 {
+        return directory_entry_path(self);
+    }
+
+    pub fn kind(self: *const DirectoryEntry) -> DirectoryEntryKind {
+        return directory_entry_kind(self);
+    }
+
+    pub fn is_file(self: *const DirectoryEntry) -> bool {
+        return directory_entry_is_file(self);
+    }
+
+    pub fn is_directory(self: *const DirectoryEntry) -> bool {
+        return directory_entry_is_directory(self);
+    }
+
+    pub fn is_symlink(self: *const DirectoryEntry) -> bool {
+        return directory_entry_is_symlink(self);
+    }
 }

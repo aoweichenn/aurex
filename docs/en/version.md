@@ -31,14 +31,18 @@ Included:
   pipes drained for stdout and stderr.
 - `std.fs.file::FileMetadata` metadata / mtime baseline through host-c `stat`
   support.
-- `std.fs.dir` directory-create / source-discovery baseline through host-c
-  `mkdir`, `opendir` / `readdir` / `stat` support for counting regular files by
-  suffix, with single-level and recursive count entry points.
+- `std.fs.dir` directory-create / directory-entry / recursive-directory-entry / source-discovery baseline
+  through host-c `mkdir`, `opendir` / `readdir`, `stat`, and `lstat` support for
+  owned single-level / recursive directory-entry reads and regular-file suffix
+  counts, with single-level and recursive count entry points.
+- `std.core.map` Vec-backed generic `Map<K, V>` and borrowed C-string -> usize
+  `CStringUsizeMap` baseline.
 - M1 axbuild target-graph validation / topological-build baseline, including
   dependency bounds, cycle / invalid-dependency status, and topological target
   build order.
-- M1 axbuild target-name lookup baseline, including name -> id lookup,
-  missing-lookup checks, and duplicate-target-name status.
+- M1 axbuild target-name lookup-cache baseline, including name -> id lookup,
+  lookup-cache / linear-scan parity checks, missing-lookup checks, and
+  duplicate-target-name status.
 - M1 axbuild target-graph diagnostic/message/name/cycle-path baseline,
   including `GraphDiagnostic`, status, target index, related index, message,
   target name, related name, cycle index path, cycle name path, and duplicate /
@@ -89,11 +93,13 @@ Not included:
   matching coverage.
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
-- Grow M1 axbuild from source/stamp mtime, directory creation, single-level and
-  recursive source-discovery, target-name lookup,
+- Grow M1 axbuild from source/stamp mtime, directory creation, owned
+  single-level / recursive directory-entry reads, source discovery by entries, single-level and recursive
+  source-discovery, target-name lookup caches,
   target-graph smoke checks, stdout/stderr capture, cwd/env, and structured
-  graph diagnostics/messages/names/cycle paths into full directory entries,
-  recursive path lists / iterators, dependency-value diagnostics, and structured output
+  graph diagnostics/messages/names/cycle paths into streaming directory
+  iterators / walk callbacks, glob/pattern support, hash/bucketed maps,
+  dependency-value diagnostics, and structured output
   reporting.
 - Redesigned bootstrap chain after M3 using newer language features.
 - Fixed-point self-host validation.

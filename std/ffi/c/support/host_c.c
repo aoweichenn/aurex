@@ -45,6 +45,24 @@ typedef struct AurexStdFileMetadata {
     int64_t modified_ns;
 } AurexStdFileMetadata;
 
+typedef struct AurexStdDirectoryEntry {
+    uint8_t *name;
+    uint8_t *path;
+    int32_t kind;
+} AurexStdDirectoryEntry;
+
+typedef struct AurexStdDirectoryEntries {
+    AurexStdDirectoryEntry *data;
+    int32_t len;
+} AurexStdDirectoryEntries;
+
+enum {
+    AUREX_STD_DIRECTORY_ENTRY_FILE = 1,
+    AUREX_STD_DIRECTORY_ENTRY_DIRECTORY = 2,
+    AUREX_STD_DIRECTORY_ENTRY_SYMLINK = 3,
+    AUREX_STD_DIRECTORY_ENTRY_OTHER = 4,
+};
+
 FILE *aurex_std_v0_stdout(void) {
     return stdout;
 }
@@ -191,6 +209,171 @@ static char *aurex_std_host_c_join_dir_entry(const char *dir_path, const char *e
 static bool aurex_std_host_c_is_regular_file(const char *path) {
     struct stat info;
     return stat(path, &info) == 0 && S_ISREG(info.st_mode);
+}
+
+static int32_t aurex_std_host_c_directory_entry_kind(const struct stat *info) {
+    if (S_ISREG(info->st_mode)) {
+        return AUREX_STD_DIRECTORY_ENTRY_FILE;
+    }
+    if (S_ISDIR(info->st_mode)) {
+        return AUREX_STD_DIRECTORY_ENTRY_DIRECTORY;
+    }
+    if (S_ISLNK(info->st_mode)) {
+        return AUREX_STD_DIRECTORY_ENTRY_SYMLINK;
+    }
+    return AUREX_STD_DIRECTORY_ENTRY_OTHER;
+}
+
+static uint8_t *aurex_std_host_c_copy_c_string(const char *text) {
+    const size_t len = strlen(text);
+    uint8_t *copy = (uint8_t *)malloc(len + 1);
+    if (copy == NULL) {
+        return NULL;
+    }
+    memcpy(copy, text, len + 1);
+    return copy;
+}
+
+static void aurex_std_host_c_free_directory_entries(AurexStdDirectoryEntries entries) {
+    if (entries.len > 0 && entries.data != NULL) {
+        for (int32_t i = 0; i < entries.len; ++i) {
+            free(entries.data[i].name);
+            free(entries.data[i].path);
+        }
+    }
+    free(entries.data);
+}
+
+static bool aurex_std_host_c_append_directory_entry(
+    AurexStdDirectoryEntries *entries,
+    size_t *capacity,
+    uint8_t *name,
+    uint8_t *path,
+    int32_t kind
+) {
+    if (entries->len == INT32_MAX) {
+        return false;
+    }
+    if ((size_t)entries->len == *capacity) {
+        size_t next_capacity = *capacity == 0 ? 8 : *capacity * 2;
+        if (next_capacity <= *capacity || next_capacity > (size_t)INT32_MAX) {
+            next_capacity = (size_t)INT32_MAX;
+        }
+        AurexStdDirectoryEntry *next = (AurexStdDirectoryEntry *)realloc(
+            entries->data,
+            next_capacity * sizeof(AurexStdDirectoryEntry)
+        );
+        if (next == NULL) {
+            return false;
+        }
+        entries->data = next;
+        *capacity = next_capacity;
+    }
+
+    entries->data[entries->len].name = name;
+    entries->data[entries->len].path = path;
+    entries->data[entries->len].kind = kind;
+    ++entries->len;
+    return true;
+}
+
+static bool aurex_std_host_c_read_directory_entries_into(
+    const char *path,
+    AurexStdDirectoryEntries *entries,
+    size_t *capacity,
+    bool recursive
+) {
+    DIR *directory = opendir(path);
+    if (directory == NULL) {
+        return false;
+    }
+
+    bool ok = true;
+    while (true) {
+        errno = 0;
+        struct dirent *entry = readdir(directory);
+        if (entry == NULL) {
+            ok = errno == 0;
+            break;
+        }
+        if (aurex_std_host_c_is_dot_entry(entry->d_name)) {
+            continue;
+        }
+
+        char *entry_path = aurex_std_host_c_join_dir_entry(path, entry->d_name);
+        if (entry_path == NULL) {
+            ok = false;
+            break;
+        }
+
+        struct stat info;
+        if (lstat(entry_path, &info) != 0) {
+            free(entry_path);
+            ok = false;
+            break;
+        }
+
+        uint8_t *name_copy = aurex_std_host_c_copy_c_string(entry->d_name);
+        if (name_copy == NULL) {
+            free(entry_path);
+            ok = false;
+            break;
+        }
+
+        uint8_t *path_copy = (uint8_t *)entry_path;
+        const int32_t kind = aurex_std_host_c_directory_entry_kind(&info);
+        if (!aurex_std_host_c_append_directory_entry(entries, capacity, name_copy, path_copy, kind)) {
+            free(name_copy);
+            free(path_copy);
+            ok = false;
+            break;
+        }
+
+        if (recursive && kind == AUREX_STD_DIRECTORY_ENTRY_DIRECTORY) {
+            ok = aurex_std_host_c_read_directory_entries_into((const char *)path_copy, entries, capacity, true);
+            if (!ok) {
+                break;
+            }
+        }
+    }
+
+    const bool close_ok = closedir(directory) == 0;
+    return ok && close_ok;
+}
+
+static bool aurex_std_host_c_read_directory_entries(
+    const uint8_t *path,
+    AurexStdDirectoryEntries *output,
+    bool recursive
+) {
+    if (path == NULL || output == NULL) {
+        return false;
+    }
+    output->data = NULL;
+    output->len = 0;
+
+    AurexStdDirectoryEntries entries = {NULL, 0};
+    size_t capacity = 0;
+    const bool ok = aurex_std_host_c_read_directory_entries_into((const char *)path, &entries, &capacity, recursive);
+    if (!ok) {
+        aurex_std_host_c_free_directory_entries(entries);
+        return false;
+    }
+
+    *output = entries;
+    return true;
+}
+
+bool aurex_std_v0_directory_read_entries(const uint8_t *path, AurexStdDirectoryEntries *output) {
+    return aurex_std_host_c_read_directory_entries(path, output, false);
+}
+
+bool aurex_std_v0_directory_read_entries_recursive(const uint8_t *path, AurexStdDirectoryEntries *output) {
+    return aurex_std_host_c_read_directory_entries(path, output, true);
+}
+
+void aurex_std_v0_directory_free_entries(AurexStdDirectoryEntries entries) {
+    aurex_std_host_c_free_directory_entries(entries);
 }
 
 static bool aurex_std_host_c_count_files_with_suffix_recursive_impl(

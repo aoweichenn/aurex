@@ -1,6 +1,7 @@
 module m1.axbuild.main;
 
 import std.core.result as result;
+import std.core.map as map;
 import std.core.text as text;
 import std.core.vec as vec;
 import std.fs.dir as directory;
@@ -41,6 +42,7 @@ struct Target {
 struct Project {
     name: *const u8;
     targets: vec::Vec<Target>;
+    target_lookup: map::CStringUsizeMap;
     stamp_path: *const u8;
 }
 
@@ -224,6 +226,7 @@ fn project_new(name: *const u8, stamp_path: *const u8) -> Project {
     return Project {
         name: name,
         targets: vec::new<Target>(),
+        target_lookup: map::cstring_usize_new(),
         stamp_path: stamp_path,
     };
 }
@@ -235,17 +238,28 @@ fn project_destroy(project: *mut Project) -> void {
         index = index + cast(usize, 1);
     }
     project.targets.destroy();
+    project.target_lookup.destroy();
 }
 
 fn project_add_target(project: *mut Project, target: Target) -> result::Result<usize, i32> {
     let id: usize = project.targets.len;
+    let register_name: bool = target.name != null && !project.target_lookup.contains(target.name);
+    if !project.targets.reserve(id + cast(usize, 1)) {
+        return Result.err(1);
+    }
+    if register_name && !project.target_lookup.reserve(project.target_lookup.len() + cast(usize, 1)) {
+        return Result.err(1);
+    }
+    if register_name && !project.target_lookup.insert_absent(target.name, id) {
+        return Result.err(1);
+    }
     if !project.targets.push(target) {
         return Result.err(1);
     }
     return Result.ok(id);
 }
 
-fn project_find_target(project: *const Project, name: *const u8) -> result::Result<usize, i32> {
+fn project_find_target_linear(project: *const Project, name: *const u8) -> result::Result<usize, i32> {
     if name == null {
         return Result.err(40);
     }
@@ -260,9 +274,50 @@ fn project_find_target(project: *const Project, name: *const u8) -> result::Resu
     return Result.err(41);
 }
 
+fn project_find_target(project: *const Project, name: *const u8) -> result::Result<usize, i32> {
+    if name == null {
+        return Result.err(40);
+    }
+    return match project.target_lookup.get(name) {
+        .some(index) if index < project.targets.len => Result.ok(index),
+        .some(_) => Result.err(41),
+        .none => Result.err(41),
+    };
+}
+
 fn project_target_index_matches(project: *const Project, name: *const u8, expected: usize) -> result::Result<bool, i32> {
     let index: usize = project_find_target(project, name)?;
     return Result.ok(index == expected);
+}
+
+fn project_lookup_matches_linear(project: *const Project, name: *const u8) -> result::Result<bool, i32> {
+    let fast_result: result::Result<usize, i32> = project_find_target(project, name);
+    let linear_result: result::Result<usize, i32> = project_find_target_linear(project, name);
+    return match fast_result {
+        .ok(fast_index) => match linear_result {
+            .ok(linear_index) => Result.ok(fast_index == linear_index),
+            .err(_) => Result.ok(false),
+        },
+        .err(fast_code) => match linear_result {
+            .ok(_) => Result.ok(false),
+            .err(linear_code) => Result.ok(fast_code == linear_code),
+        },
+    };
+}
+
+fn project_lookup_cache_matches(project: *const Project) -> result::Result<bool, i32> {
+    var index: usize = cast(usize, 0);
+    while index < project.targets.len {
+        let target: Target = project.targets.data[index];
+        if target.name != null {
+            let matches: bool = project_lookup_matches_linear(project, target.name)?;
+            if !matches {
+                return Result.ok(false);
+            }
+        }
+        index = index + cast(usize, 1);
+    }
+    return Result.ok(true);
 }
 
 fn project_target_name_or(project: *const Project, index: usize, fallback: *const u8) -> *const u8 {
@@ -334,6 +389,84 @@ fn project_source_count(project: *const Project) -> i32 {
 fn project_sources_match_directory(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
     let discovered: i32 = directory::count_files_with_suffix(path, suffix)?;
     return Result.ok(discovered == project_source_count(project));
+}
+
+fn c_string_has_suffix(value: *const u8, suffix: *const u8) -> bool {
+    if value == null || suffix == null {
+        return false;
+    }
+    let value_span: text::SpanU8 = text::c_span(value);
+    let suffix_span: text::SpanU8 = text::c_span(suffix);
+    if suffix_span.len > value_span.len {
+        return false;
+    }
+    let offset: usize = value_span.len - suffix_span.len;
+    var index: usize = cast(usize, 0);
+    while index < suffix_span.len {
+        if value_span.data[offset + index] != suffix_span.data[index] {
+            return false;
+        }
+        index = index + cast(usize, 1);
+    }
+    return true;
+}
+
+fn project_has_source(project: *const Project, source_path: *const u8) -> bool {
+    if source_path == null {
+        return false;
+    }
+    var target_index: usize = cast(usize, 0);
+    while target_index < project.targets.len {
+        let target: Target = project.targets.data[target_index];
+        var source_index: usize = cast(usize, 0);
+        while source_index < target.sources.len {
+            if text::c_string_equal(target.sources.data[source_index], source_path) {
+                return true;
+            }
+            source_index = source_index + cast(usize, 1);
+        }
+        target_index = target_index + cast(usize, 1);
+    }
+    return false;
+}
+
+fn project_read_directory_entries(path: *const u8, recursive: bool) -> result::Result<vec::Vec<directory::DirectoryEntry>, i32> {
+    if recursive {
+        return directory::read_entries_recursive(path);
+    }
+    return directory::read_entries(path);
+}
+
+fn project_sources_match_directory_entries_impl(
+    project: *const Project,
+    path: *const u8,
+    suffix: *const u8,
+    recursive: bool
+) -> result::Result<bool, i32> {
+    var entries: vec::Vec<directory::DirectoryEntry> = project_read_directory_entries(path, recursive)?;
+    var discovered: i32 = 0;
+    var all_known: bool = true;
+    var index: usize = cast(usize, 0);
+    while index < entries.len {
+        let entry_name: *const u8 = directory::directory_entry_name(&entries.data[index]);
+        if directory::directory_entry_is_file(&entries.data[index]) && c_string_has_suffix(entry_name, suffix) {
+            discovered = discovered + 1;
+            if !project_has_source(project, directory::directory_entry_path(&entries.data[index])) {
+                all_known = false;
+            }
+        }
+        index = index + cast(usize, 1);
+    }
+    directory::destroy_entries(&entries);
+    return Result.ok(all_known && discovered == project_source_count(project));
+}
+
+fn project_sources_match_directory_entries(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
+    return project_sources_match_directory_entries_impl(project, path, suffix, false);
+}
+
+fn project_sources_match_recursive_directory_entries(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
+    return project_sources_match_directory_entries_impl(project, path, suffix, true);
 }
 
 fn project_duplicate_target_diagnostic(project: *const Project) -> GraphDiagnostic {
@@ -871,12 +1004,18 @@ fn validate_missing_target_lookup() -> result::Result<bool, i32> {
     var target: Target = target_new(c"known", TargetKind.library);
     let known_id: usize = project.add_target(target)?;
     let lookup_result: result::Result<usize, i32> = project.find_target(c"missing");
+    let linear_result: result::Result<usize, i32> = project_find_target_linear(&project, c"missing");
     let missing_ok: bool = match lookup_result {
         .ok(_) => false,
         .err(code) => code == 41,
     };
+    let linear_missing_ok: bool = match linear_result {
+        .ok(_) => false,
+        .err(code) => code == 41,
+    };
+    let cache_ok: bool = project_lookup_cache_matches(&project)?;
     project.destroy();
-    return Result.ok(known_id == cast(usize, 0) && missing_ok);
+    return Result.ok(known_id == cast(usize, 0) && missing_ok && linear_missing_ok && cache_ok);
 }
 
 fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
@@ -900,8 +1039,10 @@ fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
         text::c_string_equal(diagnostic.message(), c"duplicate target name") &&
         text::c_string_equal(project.graph_diagnostic_target_name(&diagnostic), c"dup") &&
         text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"dup");
+    let lookup_ok: bool = project_target_index_matches(&project, c"dup", first_id)?;
+    let cache_ok: bool = project_lookup_cache_matches(&project)?;
     project.destroy();
-    return Result.ok(duplicate_ok && diagnostic_ok);
+    return Result.ok(duplicate_ok && diagnostic_ok && lookup_ok && cache_ok);
 }
 
 fn validate_cycle_detection() -> result::Result<bool, i32> {
@@ -1017,6 +1158,96 @@ fn validate_recursive_source_discovery() -> result::Result<bool, i32> {
     return Result.ok(count == 1 && has_source);
 }
 
+fn validate_entry_source_discovery() -> result::Result<bool, i32> {
+    var root_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries(c"/tmp/aurex_m1_axbuild_recursive_sources")?;
+    var root_count: i32 = 0;
+    var nested_dir_ok: bool = false;
+    var root_index: usize = cast(usize, 0);
+    while root_index < root_entries.len {
+        root_count = root_count + 1;
+        let root_name: *const u8 = directory::directory_entry_name(&root_entries.data[root_index]);
+        let root_path: *const u8 = directory::directory_entry_path(&root_entries.data[root_index]);
+        if directory::directory_entry_is_directory(&root_entries.data[root_index]) &&
+            text::c_string_equal(root_name, c"nested") &&
+            text::c_string_equal(root_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested") {
+            nested_dir_ok = true;
+        }
+        root_index = root_index + cast(usize, 1);
+    }
+    directory::destroy_entries(&root_entries);
+
+    var nested_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries(c"/tmp/aurex_m1_axbuild_recursive_sources/nested")?;
+    var source_count: i32 = 0;
+    var generated_source_ok: bool = false;
+    var nested_index: usize = cast(usize, 0);
+    while nested_index < nested_entries.len {
+        let source_name: *const u8 = directory::directory_entry_name(&nested_entries.data[nested_index]);
+        let source_path: *const u8 = directory::directory_entry_path(&nested_entries.data[nested_index]);
+        if directory::directory_entry_is_file(&nested_entries.data[nested_index]) &&
+            c_string_has_suffix(source_name, c".aurex_m1_source.ax") {
+            source_count = source_count + 1;
+            if text::c_string_equal(source_name, c"generated.aurex_m1_source.ax") &&
+                text::c_string_equal(source_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
+                generated_source_ok = true;
+            }
+        }
+        nested_index = nested_index + cast(usize, 1);
+    }
+    directory::destroy_entries(&nested_entries);
+
+    return Result.ok(root_count == 1 && nested_dir_ok && source_count == 1 && generated_source_ok);
+}
+
+fn validate_recursive_entry_source_discovery() -> result::Result<bool, i32> {
+    var entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_recursive(c"/tmp/aurex_m1_axbuild_recursive_sources")?;
+    var entry_count: i32 = 0;
+    var source_count: i32 = 0;
+    var nested_dir_ok: bool = false;
+    var generated_source_ok: bool = false;
+    var index: usize = cast(usize, 0);
+    while index < entries.len {
+        entry_count = entry_count + 1;
+        let entry_name: *const u8 = directory::directory_entry_name(&entries.data[index]);
+        let entry_path: *const u8 = directory::directory_entry_path(&entries.data[index]);
+        if directory::directory_entry_is_directory(&entries.data[index]) &&
+            text::c_string_equal(entry_name, c"nested") &&
+            text::c_string_equal(entry_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested") {
+            nested_dir_ok = true;
+        }
+        if directory::directory_entry_is_file(&entries.data[index]) &&
+            c_string_has_suffix(entry_name, c".aurex_m1_source.ax") {
+            source_count = source_count + 1;
+            if text::c_string_equal(entry_name, c"generated.aurex_m1_source.ax") &&
+                text::c_string_equal(entry_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
+                generated_source_ok = true;
+            }
+        }
+        index = index + cast(usize, 1);
+    }
+    directory::destroy_entries(&entries);
+
+    var project: Project = project_new(c"recursive", c"/tmp/aurex_m1_axbuild_recursive_stamp");
+    var target: Target = target_new(c"generated", TargetKind.library);
+    if !target.source(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
+        target.destroy();
+        project.destroy();
+        return Result.err(37);
+    }
+    let target_id: usize = project.add_target(target)?;
+    let project_match: bool =
+        project_sources_match_recursive_directory_entries(&project, c"/tmp/aurex_m1_axbuild_recursive_sources", c".aurex_m1_source.ax")?;
+    project.destroy();
+
+    return Result.ok(
+        entry_count == 2 &&
+        source_count == 1 &&
+        nested_dir_ok &&
+        generated_source_ok &&
+        target_id == cast(usize, 0) &&
+        project_match
+    );
+}
+
 fn run_build_tool() -> result::Result<i32, i32> {
     cleanup_project_sources();
     let prepared: bool = prepare_project_sources()?;
@@ -1024,9 +1255,13 @@ fn run_build_tool() -> result::Result<i32, i32> {
     project.clean();
     let app_id: usize = configure_project(&project)?;
     let discovery_ok: bool = project_sources_match_directory(&project, c"/tmp", c".aurex_m1_source.ax")?;
+    let entry_discovery_ok: bool = project_sources_match_directory_entries(&project, c"/tmp", c".aurex_m1_source.ax")?;
     let recursive_discovery_ok: bool = validate_recursive_source_discovery()?;
+    let entry_source_discovery_ok: bool = validate_entry_source_discovery()?;
+    let recursive_entry_source_discovery_ok: bool = validate_recursive_entry_source_discovery()?;
     let core_lookup_ok: bool = project_target_index_matches(&project, c"core", cast(usize, 0))?;
     let app_lookup_ok: bool = project_target_index_matches(&project, c"app", app_id)?;
+    let lookup_cache_ok: bool = project_lookup_cache_matches(&project)?;
     let graph_ok: bool = project.graph_status() == GraphStatus.ok;
     let graph_diagnostic_ok: bool = project_graph_ok_diagnostic_matches(&project)?;
     let order_ok: bool = project_build_order_matches(&project, app_id)?;
@@ -1048,9 +1283,13 @@ fn run_build_tool() -> result::Result<i32, i32> {
 
     if prepared &&
         discovery_ok &&
+        entry_discovery_ok &&
         recursive_discovery_ok &&
+        entry_source_discovery_ok &&
+        recursive_entry_source_discovery_ok &&
         core_lookup_ok &&
         app_lookup_ok &&
+        lookup_cache_ok &&
         graph_ok &&
         graph_diagnostic_ok &&
         order_ok &&

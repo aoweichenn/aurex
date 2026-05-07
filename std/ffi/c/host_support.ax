@@ -7,6 +7,9 @@ extern c {
     fn host_free_file(buffer: HostFileBuffer) -> void @name("aurex_std_v0_free_file");
     fn host_file_metadata(path: *const u8, output: *mut HostFileMetadata) -> bool @name("aurex_std_v0_file_metadata");
     fn host_directory_create(path: *const u8) -> bool @name("aurex_std_v0_directory_create");
+    fn host_directory_read_entries(path: *const u8, output: *mut HostDirectoryEntries) -> bool @name("aurex_std_v0_directory_read_entries");
+    fn host_directory_read_entries_recursive(path: *const u8, output: *mut HostDirectoryEntries) -> bool @name("aurex_std_v0_directory_read_entries_recursive");
+    fn host_directory_free_entries(entries: HostDirectoryEntries) -> void @name("aurex_std_v0_directory_free_entries");
     fn host_directory_count_files_with_suffix(path: *const u8, suffix: *const u8, output: *mut i32) -> bool @name("aurex_std_v0_directory_count_files_with_suffix");
     fn host_directory_count_files_with_suffix_recursive(path: *const u8, suffix: *const u8, output: *mut i32) -> bool @name("aurex_std_v0_directory_count_files_with_suffix_recursive");
     fn host_write_text(path: *const u8, data: *const u8) -> HostWriteStatus @name("aurex_std_v0_write_text");
@@ -38,6 +41,17 @@ struct HostFileMetadata {
     is_dir: i32;
     size: i64;
     modified_ns: i64;
+}
+
+struct HostDirectoryEntry {
+    name: *mut u8;
+    path: *mut u8;
+    kind: i32;
+}
+
+struct HostDirectoryEntries {
+    data: *mut HostDirectoryEntry;
+    len: i32;
 }
 
 struct HostProcessOutput {

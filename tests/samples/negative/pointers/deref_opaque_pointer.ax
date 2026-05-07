@@ -1,0 +1,14 @@
+module deref_opaque_pointer;
+
+extern c {
+    opaque struct Handle;
+}
+
+fn bad() -> void {
+    let handle: *mut Handle = ptr_from_addr(*mut Handle, 0);
+    return *handle;
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,0 +1,19 @@
+module method_rvalue_const_receiver;
+
+struct Counter {
+    value: i32;
+}
+
+impl Counter {
+    fn new(value: i32) -> Counter {
+        return Counter { value: value };
+    }
+
+    fn read(self: *const Counter) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    return Counter.new(7).read() - 7;
+}

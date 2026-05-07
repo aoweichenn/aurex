@@ -70,7 +70,11 @@ private:
         case ValueKind::c_string_literal:
         case ValueKind::size_of:
         case ValueKind::align_of:
-            verify_type(value->type, "constant value type");
+            if (value->kind == ValueKind::size_of || value->kind == ValueKind::align_of) {
+                verify_size_or_align(*value);
+            } else {
+                verify_literal_value(*value);
+            }
             break;
         case ValueKind::constant_ref: {
             verify_constant_ref(*value);
@@ -281,6 +285,8 @@ private:
 
         switch (value->kind) {
         case ValueKind::param:
+            verify_type(value->type, "value type");
+            break;
         case ValueKind::integer_literal:
         case ValueKind::bool_literal:
         case ValueKind::null_literal:
@@ -288,17 +294,20 @@ private:
         case ValueKind::c_string_literal:
         case ValueKind::byte_literal:
         case ValueKind::undef:
+            verify_literal_value(*value);
+            break;
         case ValueKind::alloca:
+            verify_alloca(*value);
+            break;
         case ValueKind::size_of:
         case ValueKind::align_of:
-            verify_type(value->type, "value type");
+            verify_size_or_align(*value);
             break;
         case ValueKind::constant_ref:
             verify_constant_ref(*value);
             break;
         case ValueKind::load:
-            verify_pointer_value(value->object, "load object");
-            verify_type(value->type, "load result");
+            verify_load(*value);
             break;
         case ValueKind::store:
             verify_pointer_value(value->object, "store target");
@@ -306,6 +315,12 @@ private:
             verify_type(value->type, "store result");
             if (!module_.types.is_void(value->type)) {
                 fail("store result must be void");
+            }
+            if (const Value* object = get(value->object);
+                object != nullptr &&
+                module_.types.is_pointer(object->type) &&
+                module_.types.get(object->type).pointer_mutability != sema::PointerMutability::mut) {
+                fail("store target must be mutable");
             }
             if (const sema::TypeHandle target = pointee_type(value->object);
                 sema::is_valid(target)) {
@@ -535,6 +550,84 @@ private:
         return true;
     }
 
+    void verify_literal_value(const Value& value) {
+        verify_type(value.type, "literal value type");
+        switch (value.kind) {
+        case ValueKind::integer_literal:
+            if (!module_.types.is_integer(value.type)) {
+                fail("integer literal type must be integer");
+            }
+            break;
+        case ValueKind::bool_literal:
+            if (!module_.types.is_bool(value.type)) {
+                fail("bool literal type must be bool");
+            }
+            break;
+        case ValueKind::null_literal:
+            if (!module_.types.is_pointer(value.type)) {
+                fail("null literal type must be pointer");
+            }
+            break;
+        case ValueKind::string_literal:
+            if (!module_.types.is_str(value.type)) {
+                fail("string literal type must be str");
+            }
+            break;
+        case ValueKind::c_string_literal:
+            if (!is_const_u8_pointer(value.type)) {
+                fail("c string literal type must be *const u8");
+            }
+            break;
+        case ValueKind::byte_literal:
+            if (!module_.types.same(value.type, module_.types.builtin(sema::BuiltinType::u8))) {
+                fail("byte literal type must be u8");
+            }
+            break;
+        case ValueKind::undef:
+            if (module_.types.is_void(value.type)) {
+                fail("undef value cannot have void type");
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    void verify_alloca(const Value& value) {
+        verify_type(value.type, "alloca result");
+        if (!module_.types.is_pointer(value.type)) {
+            fail("alloca result must be a pointer");
+            return;
+        }
+        const sema::TypeInfo& pointer = module_.types.get(value.type);
+        if (pointer.pointer_mutability != sema::PointerMutability::mut) {
+            fail("alloca result must be a mutable pointer");
+        }
+        verify_storage_type(pointer.pointee, "alloca pointee");
+    }
+
+    void verify_load(const Value& value) {
+        verify_pointer_value(value.object, "load object");
+        verify_type(value.type, "load result");
+        if (module_.types.is_void(value.type)) {
+            fail("load result must not be void");
+        }
+        if (const sema::TypeHandle source = pointee_type(value.object);
+            sema::is_valid(source) && !module_.types.same(value.type, source)) {
+            fail("load result type mismatch");
+        }
+    }
+
+    void verify_size_or_align(const Value& value) {
+        const std::string op = value.kind == ValueKind::size_of ? "size_of" : "align_of";
+        verify_type(value.type, op + " result");
+        if (!module_.types.same(value.type, module_.types.builtin(sema::BuiltinType::usize))) {
+            fail(op + " result must be usize");
+        }
+        verify_type(value.target_type, op + " target");
+        verify_storage_type(value.target_type, op + " target");
+    }
+
     void verify_constant_ref(const Value& value) {
         verify_type(value.type, "constant reference type");
         const GlobalConstant* constant = find_global_constant(module_, value.constant);
@@ -627,6 +720,33 @@ private:
         if (seen.size() != record->fields.size()) {
             fail("aggregate does not initialize every field");
         }
+    }
+
+    void verify_storage_type(const sema::TypeHandle type, const std::string& context) {
+        if (!sema::is_valid(type)) {
+            fail(context + " type is invalid");
+            return;
+        }
+        if (module_.types.is_void(type)) {
+            fail(context + " type is not valid storage");
+            return;
+        }
+        if (module_.types.is_array(type)) {
+            verify_storage_type(module_.types.get(type).array_element, context + " element");
+            return;
+        }
+        if (module_.types.get(type).kind == sema::TypeKind::opaque_struct) {
+            fail(context + " type is not valid storage");
+        }
+    }
+
+    [[nodiscard]] bool is_const_u8_pointer(const sema::TypeHandle type) const noexcept {
+        if (!module_.types.is_pointer(type)) {
+            return false;
+        }
+        const sema::TypeInfo& pointer = module_.types.get(type);
+        return pointer.pointer_mutability == sema::PointerMutability::const_ &&
+               module_.types.same(pointer.pointee, module_.types.builtin(sema::BuiltinType::u8));
     }
 
     void verify_block_id(const Function& function, const BlockId block, const std::string& context) {

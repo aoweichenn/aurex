@@ -177,6 +177,108 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+        const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+        Function function = make_function(module, "bad_load_result", i32);
+        FunctionBuilder builder {module, function};
+        Value object;
+        object.kind = ValueKind::alloca;
+        object.type = ptr_i32;
+        const ValueId object_id = builder.add(object);
+        Value load;
+        load.kind = ValueKind::load;
+        load.type = bool_type;
+        load.object = object_id;
+        const ValueId load_id = builder.add(load);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {object_id, load_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "load result type mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function function = make_function(module, "bad_alloca", i32);
+        FunctionBuilder builder {module, function};
+        Value object;
+        object.kind = ValueKind::alloca;
+        object.type = i32;
+        const ValueId object_id = builder.add(object);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {object_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "alloca result must be a pointer");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle const_ptr_i32 = ptr(module, PointerMutability::const_, i32);
+        Function function = make_function(module, "bad_store_const_target", i32);
+        FunctionBuilder builder {module, function};
+        Value object;
+        object.kind = ValueKind::null_literal;
+        object.type = const_ptr_i32;
+        const ValueId object_id = builder.add(object);
+        const ValueId source = builder.add(integer_value(i32, "1"));
+        Value store;
+        store.kind = ValueKind::store;
+        store.type = void_type;
+        store.object = object_id;
+        store.lhs = source;
+        const ValueId store_id = builder.add(store);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {object_id, source, store_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "store target must be mutable");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle usize = builtin(module, BuiltinType::usize);
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        Function function = make_function(module, "bad_scalar_shapes", i32);
+        FunctionBuilder builder {module, function};
+        Value null_value;
+        null_value.kind = ValueKind::null_literal;
+        null_value.type = i32;
+        const ValueId bad_null = builder.add(null_value);
+        Value bool_value;
+        bool_value.kind = ValueKind::bool_literal;
+        bool_value.type = i32;
+        bool_value.text = "true";
+        const ValueId bad_bool = builder.add(bool_value);
+        Value sizeof_value;
+        sizeof_value.kind = ValueKind::size_of;
+        sizeof_value.type = usize;
+        sizeof_value.target_type = void_type;
+        const ValueId bad_sizeof = builder.add(sizeof_value);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {bad_null, bad_bool, bad_sizeof, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        const auto verify = ir::verify_module(module);
+        ASSERT_FALSE(verify);
+        expect_contains_all(verify.error().message, {
+            "null literal type must be pointer",
+            "bool literal type must be bool",
+            "size_of target type is not valid storage",
+        });
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "bad_field", i32);
         FunctionBuilder builder {module, function};

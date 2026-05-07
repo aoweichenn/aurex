@@ -1,0 +1,19 @@
+module generic_method_rvalue_const_receiver;
+
+struct Box<T> {
+    value: T;
+}
+
+impl<T> Box<T> {
+    fn make(value: T) -> Box<T> {
+        return Box { value: value };
+    }
+
+    fn read(self: *const Box<T>) -> T {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    return Box<i32>.make(9).read() - 9;
+}

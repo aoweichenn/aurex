@@ -235,7 +235,12 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
                 report(expr.range, "dereference requires pointer operand");
                 return record_expr_type(expr_id, invalid_type_handle);
             }
-            return record_expr_type(expr_id, checked_.types.get(operand).pointee);
+            const TypeHandle pointee = checked_.types.get(operand).pointee;
+            if (!is_valid_storage_type(pointee)) {
+                report(expr.range, "dereference requires pointer to valid storage");
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            return record_expr_type(expr_id, pointee);
         }
         if (expr.unary_op == syntax::UnaryOp::address_of) {
             if (!is_place_expr(expr.unary_operand)) {
@@ -480,6 +485,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             const TypeHandle pointee = checked_.types.get(object).pointee;
             if (checked_.types.is_array(pointee)) {
                 report(expr.range, "indexing pointer to array requires explicit dereference");
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            if (!is_valid_storage_type(pointee)) {
+                report(expr.range, "indexing pointer requires pointer to valid storage");
                 return record_expr_type(expr_id, invalid_type_handle);
             }
             return record_expr_type(expr_id, pointee);

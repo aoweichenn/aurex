@@ -1,0 +1,10 @@
+module deref_void_pointer;
+
+fn bad() -> void {
+    let pointer: *mut void = ptr_from_addr(*mut void, 0);
+    return *pointer;
+}
+
+fn main() -> i32 {
+    return 0;
+}

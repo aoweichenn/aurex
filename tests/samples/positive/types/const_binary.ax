@@ -1,0 +1,26 @@
+module const_binary;
+
+const SUM: i32 = 1 + 2;
+const PRODUCT: i32 = SUM * 7;
+const MASK: i32 = (PRODUCT - 1) & 15;
+const ORDERED: bool = PRODUCT > SUM;
+const DIFFERENT: bool = PRODUCT != SUM;
+
+fn main() -> i32 {
+    if SUM != 3 {
+        return 1;
+    }
+    if PRODUCT != 21 {
+        return 2;
+    }
+    if MASK != 4 {
+        return 3;
+    }
+    if !ORDERED {
+        return 4;
+    }
+    if !DIFFERENT {
+        return 5;
+    }
+    return 0;
+}

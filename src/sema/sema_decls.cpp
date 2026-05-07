@@ -47,6 +47,32 @@ namespace {
     return count == 1 ? unit : types.array(count, unit);
 }
 
+[[nodiscard]] bool is_const_evaluable_binary_op(const syntax::BinaryOp op) noexcept {
+    switch (op) {
+    case syntax::BinaryOp::add:
+    case syntax::BinaryOp::sub:
+    case syntax::BinaryOp::mul:
+    case syntax::BinaryOp::less:
+    case syntax::BinaryOp::less_equal:
+    case syntax::BinaryOp::greater:
+    case syntax::BinaryOp::greater_equal:
+    case syntax::BinaryOp::equal:
+    case syntax::BinaryOp::not_equal:
+    case syntax::BinaryOp::bit_and:
+    case syntax::BinaryOp::bit_xor:
+    case syntax::BinaryOp::bit_or:
+        return true;
+    case syntax::BinaryOp::div:
+    case syntax::BinaryOp::mod:
+    case syntax::BinaryOp::shl:
+    case syntax::BinaryOp::shr:
+    case syntax::BinaryOp::logical_and:
+    case syntax::BinaryOp::logical_or:
+        return false;
+    }
+    return false;
+}
+
 struct AbiFunctionInfo {
     std::string name;
     TypeHandle return_type = invalid_type_handle;
@@ -796,6 +822,10 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                 expr.unary_op == syntax::UnaryOp::numeric_negate ||
                 expr.unary_op == syntax::UnaryOp::bitwise_not) &&
                is_const_evaluable_expr(expr.unary_operand, dependencies);
+    case syntax::ExprKind::binary:
+        return is_const_evaluable_binary_op(expr.binary_op) &&
+               is_const_evaluable_expr(expr.binary_lhs, dependencies) &&
+               is_const_evaluable_expr(expr.binary_rhs, dependencies);
     case syntax::ExprKind::cast:
     case syntax::ExprKind::ptr_cast:
     case syntax::ExprKind::bit_cast:

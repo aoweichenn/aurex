@@ -134,6 +134,65 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         module.functions.push_back(second);
         EXPECT_TRUE(ir::verify_module(module));
     }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function function = make_function(module, "bad_phi_edge", i32);
+        FunctionBuilder builder {module, function};
+        const ValueId one = builder.add(integer_value(i32, "1"));
+        const ValueId two = builder.add(integer_value(i32, "2"));
+        Value phi;
+        phi.kind = ValueKind::phi;
+        phi.type = i32;
+        const ValueId phi_id = builder.add(phi);
+
+        const BlockId entry = builder.block("entry");
+        const BlockId dead = builder.block("dead");
+        const BlockId join = builder.block("join");
+        function.blocks[entry.value].values = {one};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::branch;
+        function.blocks[entry.value].terminator.target = join;
+        function.blocks[dead.value].values = {two};
+        function.blocks[dead.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[dead.value].terminator.value = two;
+        module.values[phi_id.value].incoming = {
+            PhiInput {entry, one},
+            PhiInput {dead, two},
+        };
+        function.blocks[join.value].values = {phi_id};
+        function.blocks[join.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[join.value].terminator.value = phi_id;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "phi predecessor has no edge to block");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function function = make_function(module, "missing_phi_incoming", i32);
+        FunctionBuilder builder {module, function};
+        const ValueId one = builder.add(integer_value(i32, "1"));
+        const ValueId two = builder.add(integer_value(i32, "2"));
+        Value phi;
+        phi.kind = ValueKind::phi;
+        phi.type = i32;
+        const ValueId phi_id = builder.add(phi);
+
+        const BlockId entry = builder.block("entry");
+        const BlockId other = builder.block("other");
+        const BlockId join = builder.block("join");
+        function.blocks[entry.value].values = {one};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::branch;
+        function.blocks[entry.value].terminator.target = join;
+        function.blocks[other.value].values = {two};
+        function.blocks[other.value].terminator.kind = TerminatorKind::branch;
+        function.blocks[other.value].terminator.target = join;
+        module.values[phi_id.value].incoming = {PhiInput {entry, one}};
+        function.blocks[join.value].values = {phi_id};
+        function.blocks[join.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[join.value].terminator.value = phi_id;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "phi is missing incoming predecessor");
+    }
 }
 
 TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors) {

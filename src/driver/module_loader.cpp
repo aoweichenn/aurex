@@ -311,6 +311,19 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
     }
     if (const auto loaded = loaded_file_modules_.find(key); loaded != loaded_file_modules_.end()) {
+        const syntax::ModuleId module_id = loaded->second;
+        if (expected_module != nullptr &&
+            syntax::is_valid(module_id) &&
+            module_id.value < combined.modules.size() &&
+            !syntax::module_paths_equal(combined.modules[module_id.value].path, *expected_module)) {
+            push_error(
+                diagnostics_,
+                expected_module->range,
+                "module declaration '" + syntax::module_path_to_string(combined.modules[module_id.value].path) +
+                    "' does not match import '" + syntax::module_path_to_string(*expected_module) + "'"
+            );
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
+        }
         return base::Result<syntax::ModuleId>::ok(loaded->second);
     }
     loading_files_.insert(key);

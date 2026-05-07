@@ -9,6 +9,5 @@ fn make() -> S {
 }
 
 fn main() -> i32 {
-  make().value = 1;
-  return 0;
+  return make().value - 7;
 }

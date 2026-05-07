@@ -313,6 +313,32 @@ TEST_F(AurexIntegrationTest, QualifiedGenericSubstitutionImport) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
+TEST_F(AurexIntegrationTest, QualifiedGenericInferenceUsesAliasScope) {
+    const std::string import_flags = sample_import_flags();
+    const fs::path source = positive_sample("generics", "qualified_generic_inference_import.ax");
+
+    const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "fn qualified_generic_inference_import.read_box<i32> -> i32",
+        "fn qualified_generic_inference_import.unwrap_choice<i32> -> i32",
+        "struct samplelib.generic_a.Box<i32> fields=1",
+        "struct samplelib.generic_b.Box<i32> fields=1",
+        "case Choice<i32>_some : samplelib.generic_a.Choice<i32>(i32)",
+    });
+
+    const std::string ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn qualified_generic_inference_import.read_box<i32>(box: samplelib.generic_a.Box<i32>)",
+        "fn qualified_generic_inference_import.unwrap_choice<i32>(choice: samplelib.generic_a.Choice<i32>)",
+        "call m0_qualified_generic_inference_import_read_box__i32",
+        "call m0_qualified_generic_inference_import_unwrap_choice__i32",
+    });
+
+    const fs::path bin = test_bin_root() / "qualified_generic_inference_import";
+    require_success(aurexc() + " " + import_flags + " " + q(source) + " -o " + q(bin));
+    EXPECT_EQ(require_success(q(bin)).output, "");
+}
+
 TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
     const fs::path struct_source = positive_sample("generics", "generic_struct_array_field.ax");
 

@@ -374,6 +374,77 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
             "aggregate does not initialize every field",
         });
     }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+        Function function = make_function(module, "bad_store_source", i32);
+        FunctionBuilder builder {module, function};
+        Value slot;
+        slot.kind = ValueKind::alloca;
+        slot.type = ptr_i32;
+        const ValueId slot_id = builder.add(slot);
+        const ValueId source = builder.add(bool_value(module, true));
+        Value store;
+        store.kind = ValueKind::store;
+        store.type = void_type;
+        store.object = slot_id;
+        store.lhs = source;
+        const ValueId store_id = builder.add(store);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, source, store_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "store source type mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function function = make_function(module, "bad_binary_operands", i32);
+        FunctionBuilder builder {module, function};
+        const ValueId lhs = builder.add(integer_value(i32, "1"));
+        const ValueId rhs = builder.add(bool_value(module, false));
+        Value binary;
+        binary.kind = ValueKind::binary;
+        binary.type = i32;
+        binary.binary_op = BinaryOp::add;
+        binary.lhs = lhs;
+        binary.rhs = rhs;
+        const ValueId binary_id = builder.add(binary);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {lhs, rhs, binary_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "binary operand type mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+        Function function = make_function(module, "bad_binary_result", i32);
+        FunctionBuilder builder {module, function};
+        const ValueId lhs = builder.add(integer_value(i32, "1"));
+        const ValueId rhs = builder.add(integer_value(i32, "2"));
+        Value binary;
+        binary.kind = ValueKind::binary;
+        binary.type = bool_type;
+        binary.binary_op = BinaryOp::add;
+        binary.lhs = lhs;
+        binary.rhs = rhs;
+        const ValueId binary_id = builder.add(binary);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {lhs, rhs, binary_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "numeric binary result must match operand type");
+    }
 }
 
 } // namespace aurex::test

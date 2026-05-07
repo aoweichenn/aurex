@@ -1492,3 +1492,175 @@ LLVM integer `sdiv/udiv/srem/urem` 对除 0/模 0 是 poison；signed `INT_MIN /
 - 注意：`str` 当前不是普通结构体类型，不能直接写 `text.len` / `text.data`。本样例只覆盖全局常量 lowering，不改变 `str` 字段访问设计。
 
 后续继续找 bug 时，优先级仍应放在“sema 能静态证明但旧逻辑放过、最终会进入 LLVM poison/undef/非法 IR”的路径上；这类问题单测小、定位快、收益高。
+
+### 10.13 IR verifier 缺少关键结构不变量
+
+问题：
+
+IR verifier 过去只检查了一部分 value id / type 存在性，缺少几类会直接污染后端的结构不变量：
+
+- `store` 的 source type 可以和 target pointee type 不一致。
+- `unary` / `binary` 的 operand/result 约束不完整。
+- `cast` 的 result type 可以和 `target_type` 不一致。
+- `phi` incoming predecessor 可以不是当前 block 的真实 CFG predecessor。
+- `phi` 可以缺少真实 predecessor 的 incoming，或重复同一个 predecessor。
+
+这类问题如果在 verifier 漏掉，LLVM backend 可能在更晚阶段崩溃、生成非法 IR，或把错误表现成难定位的后端问题。
+
+修复：
+
+- `src/ir/verify.cpp`：
+  - `store` 校验 result 必须是 `void`，source type 必须等于 target pointee type。
+  - 新增 unary verifier：`!` 只允许 bool->bool，数值取负保持 numeric type，`~` 保持 integer type。
+  - 新增 binary verifier：校验两侧 operand type、numeric/integer/logical/comparison/equality 的 result type。
+  - `cast` 校验 result type 等于 `target_type`。
+  - `phi` 校验 predecessor set 和 CFG edge 精确匹配，拒绝重复 incoming。
+
+回归：
+
+- `tests/gtest/ir/ir_verifier_structural_tests.cpp`
+- `tests/gtest/ir/ir_verifier_edge_tests.cpp`
+
+验证：
+
+- `build/bin/aurex_tests --gtest_filter=CoreUnit.IrVerifierReportsRepresentativeStructuralErrors`
+- `build/bin/aurex_tests --gtest_filter=CoreUnit.IrVerifierReportsAdditionalEdgeCaseErrors`
+- `build/bin/aurex_tests --gtest_filter=CoreUnit.IrVerifierReportsRuntimeShapeErrors`
+- 多个正例 `--dump-ir` 通过，说明新 verifier 没有拒绝当前正常 lowering。
+
+### 10.14 指向数组的指针下标语义错误
+
+问题：
+
+`*mut [2]i32` 直接写 `values[0][0]` 时，旧 sema 把第一次下标当成普通 pointer indexing：
+
+```text
+%3 : *mut [2]i32 = load %0
+%5 : *mut [2]i32 = index_addr %3[%4]
+%7 : *mut i32 = index_addr %5[%6]
+```
+
+这表示 `values + 0` 得到“另一个数组地址”，再对数组元素取址。用户直觉通常是“先解引用数组，再取第 0 个元素”。这两种语义在非 0 下标时会产生完全不同的地址，属于潜在 wrong-code。
+
+修复：
+
+- `src/sema/sema_expr.cpp`：如果被下标对象是 pointer，且 pointee 是 array，直接报错：`indexing pointer to array requires explicit dereference`。
+- 调用方必须写成 `(*values)[0]`，这样语义明确是 array indexing，而不是 pointer arithmetic。
+
+回归：
+
+- `tests/samples/negative/pointers/index_pointer_to_array.ax`
+
+验证：
+
+- 负例在 sema 阶段失败。
+- 既有 pointer / array 正例继续通过。
+
+### 10.15 限定泛型类型推断忽略 alias scope
+
+问题：
+
+泛型函数参数类型模式中，`ga::Box<T>` / `ga::Choice<T>` 这类限定泛型类型在推断时仍走“可见模块查找 `Box` / `Choice`”路径。只要同一作用域同时 import 另一个模块的同名泛型类型，就会误报 ambiguous，甚至有绑定到错误模板的风险。
+
+示例：
+
+```aurex
+import samplelib.generic_a as ga;
+import samplelib.generic_b as gb;
+
+fn read_box<T>(box: ga::Box<T>) -> T {
+    return box.value;
+}
+```
+
+旧逻辑会把 `ga::Box<T>` 当成未限定的 `Box<T>` 参与泛型推断，看到 `generic_a.Box` 和 `generic_b.Box` 后报 ambiguous。
+
+修复：
+
+- `src/sema/generic.cpp`：`infer_generic_args_from_type_pattern` 在 named generic pattern 分支消费 `pattern.scope_name`：
+  - 有 alias 时先 `resolve_import_alias`。
+  - struct template 用 `find_generic_struct_template_in_module`。
+  - enum template 用 `find_generic_enum_template_in_module`。
+  - 没有 alias 时才走 visible-module lookup。
+
+回归：
+
+- `tests/samples/positive/generics/qualified_generic_inference_import.ax`
+- `tests/gtest/sema/generics_tests.cpp`
+
+验证：
+
+- `build/bin/aurexc -I tests/samples/imports --check tests/samples/positive/generics/qualified_generic_inference_import.ax`
+- `--emit=checked` 中同时存在 `samplelib.generic_a.Box<i32>` 和 `samplelib.generic_b.Box<i32>`，但实例化函数参数绑定到 `samplelib.generic_a.*`。
+- 单文件编译运行通过。
+- `build/bin/aurex_tests --gtest_filter=AurexIntegrationTest.QualifiedGenericInferenceUsesAliasScope`
+
+### 10.16 symlink import 命中 canonical cache 后跳过 module-name 校验
+
+问题：
+
+模块 loader 对同一 canonical file path 建缓存。旧逻辑在缓存命中时直接返回已加载 module id，没有重新校验当前 import path 期望的 module name。
+
+复现形态：
+
+```text
+imports_symlink/a.ax      # 内容声明 module a
+imports_symlink/b.ax -> a.ax
+```
+
+```aurex
+import a as alpha;
+import b as beta;
+```
+
+如果先加载 `a`，再加载 symlink `b`，`b.ax` canonical 后命中 `a.ax` 缓存，旧 loader 会静默把 `beta` 也绑定到 `module a`。
+
+修复：
+
+- `src/driver/module_loader.cpp`：`loaded_file_modules_` 缓存命中时，如果调用方提供了 `expected_module`，必须用已加载 module path 再跑一次 `module_paths_equal`。
+- 如果声明名和当前 import 期望名不同，报：
+  - `module declaration 'a' does not match import 'b'`
+
+回归：
+
+- `tests/gtest/integration/regression_tests.cpp`：测试里动态创建 `a.ax` 和 `b.ax -> a.ax`，避免依赖平台外部临时文件。
+
+验证：
+
+- `/private/tmp/aurex_bughunt/symlink_import_mismatch.ax` 现在在 module loading 阶段失败。
+- `build/bin/aurex_tests --gtest_filter=AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName`
+
+### 10.17 const 二元表达式三层支持不一致
+
+问题：
+
+此前 `const VALUE: i32 = 1 + 2;` 被 sema 判定为非编译期常量。即使放开 sema，IR verifier 和 LLVM constant initializer lowering 也没有 `ValueKind::binary` 的常量路径，会退回 `undef` 或报 `constant initializer is not compile-time constant`。
+
+修复：
+
+- `src/sema/sema_decls.cpp`：
+  - 放开可稳定折叠的二元 const 表达式：`+`、`-`、`*`、比较、相等/不等、位运算。
+  - 继续拒绝 `&&` / `||`，因为当前 lowering 需要短路 CFG，不是单个 constant value。
+  - 暂不放开 `/`、`%`、shift，避免 const ref 组合绕过更严格的除 0 / shift poison 检查。
+- `src/ir/verify.cpp`：
+  - 常量 initializer 允许 `ValueKind::binary`。
+  - 复用 binary verifier 校验 operand/result 合法性。
+  - 递归要求左右操作数也都是 compile-time constant。
+- `src/backend/llvm/llvm_backend_value.cpp`：
+  - 新增 `emit_constant_binary`。
+  - 使用 LLVM constant fold 生成 integer/float arithmetic、comparison、bitwise constant。
+- `src/backend/llvm/llvm_backend_internal.hpp`：声明新增 helper。
+
+回归：
+
+- `tests/samples/positive/types/const_binary.ax`
+- `tests/samples/negative/types/const_initializer_binary_expr.ax` 改为覆盖 `true && false` 仍不能作为 const initializer。
+
+验证：
+
+- `--dump-llvm-ir tests/samples/positive/types/const_binary.ax` 中：
+  - `@m0_const_binary_SUM = ... constant i32 3`
+  - `@m0_const_binary_PRODUCT = ... constant i32 21`
+  - `@m0_const_binary_ORDERED = ... constant i1 true`
+- 正例单文件编译运行通过。
+- `true && false` 负例仍在 sema 阶段失败。

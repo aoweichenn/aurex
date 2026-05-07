@@ -127,6 +127,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
     }
     case ValueKind::unary:
         return emit_constant_unary(value);
+    case ValueKind::binary:
+        return emit_constant_binary(value);
     case ValueKind::aggregate:
         return emit_constant_aggregate(value);
     case ValueKind::cast:
@@ -138,6 +140,79 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
     default:
         return llvm::UndefValue::get(llvm_type(value.type));
     }
+}
+
+llvm::Constant* LlvmEmitter::emit_constant_binary(const Value& value) {
+    llvm::Constant* lhs = emit_constant_initializer(source_.values[value.lhs.value]);
+    llvm::Constant* rhs = emit_constant_initializer(source_.values[value.rhs.value]);
+    const sema::TypeHandle operand_type = source_.values[value.lhs.value].type;
+    const bool is_float = source_.types.is_float(operand_type);
+    const bool is_unsigned = is_unsigned_integer(operand_type);
+
+    const auto fold_binary = [&](const unsigned opcode) -> llvm::Constant* {
+        if (llvm::Constant* folded = llvm::ConstantFoldBinaryInstruction(opcode, lhs, rhs);
+            folded != nullptr) {
+            return folded;
+        }
+        return llvm::UndefValue::get(llvm_type(value.type));
+    };
+    const auto fold_compare = [&](const llvm::CmpInst::Predicate predicate) -> llvm::Constant* {
+        if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(predicate, lhs, rhs);
+            folded != nullptr) {
+            return folded;
+        }
+        return llvm::UndefValue::get(llvm_type(value.type));
+    };
+
+    switch (value.binary_op) {
+    case BinaryOp::add:
+        return fold_binary(is_float ? llvm::Instruction::FAdd : llvm::Instruction::Add);
+    case BinaryOp::sub:
+        return fold_binary(is_float ? llvm::Instruction::FSub : llvm::Instruction::Sub);
+    case BinaryOp::mul:
+        return fold_binary(is_float ? llvm::Instruction::FMul : llvm::Instruction::Mul);
+    case BinaryOp::div:
+        return fold_binary(is_float
+            ? llvm::Instruction::FDiv
+            : (is_unsigned ? llvm::Instruction::UDiv : llvm::Instruction::SDiv));
+    case BinaryOp::mod:
+        return fold_binary(is_float
+            ? llvm::Instruction::FRem
+            : (is_unsigned ? llvm::Instruction::URem : llvm::Instruction::SRem));
+    case BinaryOp::shl:
+        return fold_binary(llvm::Instruction::Shl);
+    case BinaryOp::shr:
+        return fold_binary(is_unsigned ? llvm::Instruction::LShr : llvm::Instruction::AShr);
+    case BinaryOp::less:
+        return fold_compare(is_float
+            ? llvm::CmpInst::FCMP_OLT
+            : (is_unsigned ? llvm::CmpInst::ICMP_ULT : llvm::CmpInst::ICMP_SLT));
+    case BinaryOp::less_equal:
+        return fold_compare(is_float
+            ? llvm::CmpInst::FCMP_OLE
+            : (is_unsigned ? llvm::CmpInst::ICMP_ULE : llvm::CmpInst::ICMP_SLE));
+    case BinaryOp::greater:
+        return fold_compare(is_float
+            ? llvm::CmpInst::FCMP_OGT
+            : (is_unsigned ? llvm::CmpInst::ICMP_UGT : llvm::CmpInst::ICMP_SGT));
+    case BinaryOp::greater_equal:
+        return fold_compare(is_float
+            ? llvm::CmpInst::FCMP_OGE
+            : (is_unsigned ? llvm::CmpInst::ICMP_UGE : llvm::CmpInst::ICMP_SGE));
+    case BinaryOp::equal:
+        return fold_compare(is_float ? llvm::CmpInst::FCMP_OEQ : llvm::CmpInst::ICMP_EQ);
+    case BinaryOp::not_equal:
+        return fold_compare(is_float ? llvm::CmpInst::FCMP_UNE : llvm::CmpInst::ICMP_NE);
+    case BinaryOp::bit_and:
+    case BinaryOp::logical_and:
+        return fold_binary(llvm::Instruction::And);
+    case BinaryOp::bit_xor:
+        return fold_binary(llvm::Instruction::Xor);
+    case BinaryOp::bit_or:
+    case BinaryOp::logical_or:
+        return fold_binary(llvm::Instruction::Or);
+    }
+    return llvm::UndefValue::get(llvm_type(value.type));
 }
 
 llvm::Constant* LlvmEmitter::emit_constant_unary(const Value& value) {

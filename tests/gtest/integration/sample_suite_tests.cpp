@@ -13,6 +13,7 @@ const std::set<std::string>& skip_regular_samples() {
         "generic_function_import",
         "math",
         "module_name_collision",
+        "qualified_generic_inference_import",
         "qualified_generic_substitution",
         "reexport_import",
         "std_text",

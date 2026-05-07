@@ -827,13 +827,24 @@ bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
     }
     case syntax::TypeKind::named: {
         if (!pattern.type_args.empty()) {
-            if (const GenericStructTemplateInfo* template_info =
-                    find_generic_struct_template_in_visible_modules(pattern.name, pattern.range, false);
-                template_info != nullptr) {
+            const bool qualified = !pattern.scope_name.empty();
+            syntax::ModuleId scope_module = syntax::invalid_module_id;
+            if (qualified) {
+                scope_module = resolve_import_alias(pattern.scope_name, pattern.scope_range, false);
+                if (!syntax::is_valid(scope_module)) {
+                    result = false;
+                    break;
+                }
+            }
+
+            const GenericStructTemplateInfo* struct_template = qualified
+                ? find_generic_struct_template_in_module(scope_module, pattern.name, pattern.range, false)
+                : find_generic_struct_template_in_visible_modules(pattern.name, pattern.range, false);
+            if (struct_template != nullptr) {
                 const GenericStructInstanceInfo* instance = generic_struct_instance(actual);
                 if (instance == nullptr ||
-                    instance->name != template_info->name ||
-                    instance->module.value != template_info->module.value ||
+                    instance->name != struct_template->name ||
+                    instance->module.value != struct_template->module.value ||
                     instance->args.size() != pattern.type_args.size()) {
                     result = false;
                     break;
@@ -854,13 +865,15 @@ bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
                 }
                 break;
             }
-            if (const GenericEnumTemplateInfo* template_info =
-                    find_generic_enum_template_in_visible_modules(pattern.name, pattern.range, false);
-                template_info != nullptr) {
+
+            const GenericEnumTemplateInfo* enum_template = qualified
+                ? find_generic_enum_template_in_module(scope_module, pattern.name, pattern.range, false)
+                : find_generic_enum_template_in_visible_modules(pattern.name, pattern.range, false);
+            if (enum_template != nullptr) {
                 const GenericEnumInstanceInfo* instance = generic_enum_instance(actual);
                 if (instance == nullptr ||
-                    instance->name != template_info->name ||
-                    instance->module.value != template_info->module.value ||
+                    instance->name != enum_template->name ||
+                    instance->module.value != enum_template->module.value ||
                     instance->args.size() != pattern.type_args.size()) {
                     result = false;
                     break;

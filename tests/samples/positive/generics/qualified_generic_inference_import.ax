@@ -1,0 +1,22 @@
+module qualified_generic_inference_import;
+
+import samplelib.generic_a as ga;
+import samplelib.generic_b as gb;
+
+fn read_box<T>(box: ga::Box<T>) -> T {
+    return box.value;
+}
+
+fn unwrap_choice<T>(choice: ga::Choice<T>) -> T {
+    return match choice {
+        .some(value) => value,
+        .none => cast(T, 0),
+    };
+}
+
+fn main() -> i32 {
+    let left: ga::Box<i32> = ga::Box { value: 7 };
+    let right: gb::Box<i32> = gb::Box { value: 3 };
+    let choice: ga::Choice<i32> = ga::Choice<i32>.some(5);
+    return read_box(left) + unwrap_choice(choice) - right.value - 9;
+}

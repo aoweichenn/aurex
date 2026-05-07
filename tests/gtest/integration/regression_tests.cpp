@@ -3,6 +3,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 
 namespace aurex::test {
 namespace {
@@ -204,6 +205,37 @@ TEST_F(AurexIntegrationTest, MainAndCliRegressions) {
     expect_contains(llvm_ir, "define i32 @main()");
     expect_not_contains(llvm_ir, "aurex.main.result");
     expect_not_contains(llvm_ir, "call i32 @main(i32");
+}
+
+TEST_F(AurexIntegrationTest, SymlinkedImportStillValidatesExpectedModuleName) {
+    const fs::path import_dir = tmp_root() / "symlink_imports";
+    fs::create_directories(import_dir);
+    static_cast<void>(write_source_file(
+        import_dir / "a.ax",
+        "module a;\n"
+        "pub fn f() -> i32 { return 1; }\n"
+    ));
+
+    std::error_code error;
+    fs::remove(import_dir / "b.ax", error);
+    error.clear();
+    fs::create_symlink("a.ax", import_dir / "b.ax", error);
+    if (error) {
+        GTEST_SKIP() << "filesystem symlink creation failed: " << error.message();
+    }
+
+    const fs::path source = write_source_file(
+        tmp_root() / "symlink_import_mismatch.ax",
+        "module symlink_import_mismatch;\n"
+        "import a as alpha;\n"
+        "import b as beta;\n"
+        "fn main() -> i32 { return alpha::f() + beta::f(); }\n"
+    );
+
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(source)).output,
+        "module declaration 'a' does not match import 'b'"
+    );
 }
 
 } // namespace aurex::test

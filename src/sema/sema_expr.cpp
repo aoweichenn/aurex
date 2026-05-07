@@ -444,10 +444,6 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             }
         }
         TypeHandle object = analyze_expr(expr.object);
-        if (is_valid(object) && !checked_.types.is_pointer(object) && !is_place_expr(expr.object)) {
-            report(expr.range, "field access requires addressable storage or a pointer receiver");
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
         if (checked_.types.is_pointer(object)) {
             object = checked_.types.get(object).pointee;
         }
@@ -474,11 +470,19 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         if (!checked_.types.is_integer(index)) {
             report(module_.exprs[expr.index.value].range, "array index must be an integer");
         }
+        if (!is_valid(object)) {
+            return record_expr_type(expr_id, invalid_type_handle);
+        }
         if (checked_.types.is_array(object)) {
             return record_expr_type(expr_id, checked_.types.get(object).array_element);
         }
         if (checked_.types.is_pointer(object)) {
-            return record_expr_type(expr_id, checked_.types.get(object).pointee);
+            const TypeHandle pointee = checked_.types.get(object).pointee;
+            if (checked_.types.is_array(pointee)) {
+                report(expr.range, "indexing pointer to array requires explicit dereference");
+                return record_expr_type(expr_id, invalid_type_handle);
+            }
+            return record_expr_type(expr_id, pointee);
         }
         report(expr.range, "indexing requires array or pointer value");
         return record_expr_type(expr_id, invalid_type_handle);

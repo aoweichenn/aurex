@@ -402,7 +402,20 @@ PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id) 
     if (sema::is_valid(type) && module_.types.is_pointer(type)) {
         return PlaceAddress {lower_expr(expr_id), module_.types.get(type).pointer_mutability == sema::PointerMutability::mut};
     }
-    return lower_place_address(expr_id);
+    const PlaceAddress place = lower_place_address(expr_id);
+    if (is_valid(place.address)) {
+        return place;
+    }
+    if (!sema::is_valid(type) || module_.types.is_void(type)) {
+        return {};
+    }
+    const ValueId value = lower_expr(expr_id);
+    if (!is_valid(value)) {
+        return {};
+    }
+    const ValueId slot = append_temp_alloca("field.object", type);
+    append_store(slot, value);
+    return PlaceAddress {slot, false};
 }
 
 bool Lowerer::is_local_slot_type(const sema::TypeHandle type) const noexcept {

@@ -71,6 +71,7 @@ private:
     [[nodiscard]] llvm::Value* emit_constant_ref(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_initializer(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_unary(const Value& value);
+    [[nodiscard]] llvm::Constant* emit_constant_binary(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_cast(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_aggregate(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_string(const std::string& literal, bool c_string);

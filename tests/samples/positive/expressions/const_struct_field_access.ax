@@ -1,0 +1,11 @@
+module const_struct_field_access;
+
+struct S {
+  value: i32;
+}
+
+const S_VALUE: S = S { value: 1 };
+
+fn main() -> i32 {
+  return S_VALUE.value - 1;
+}

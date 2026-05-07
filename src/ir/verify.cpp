@@ -104,6 +104,18 @@ private:
             }
             break;
         }
+        case ValueKind::binary: {
+            verify_binary(*value);
+            const Value* lhs = get(value->lhs);
+            if (lhs != nullptr) {
+                verify_constant_value(value->lhs, lhs->type, constant_stack);
+            }
+            const Value* rhs = get(value->rhs);
+            if (rhs != nullptr) {
+                verify_constant_value(value->rhs, rhs->type, constant_stack);
+            }
+            break;
+        }
         case ValueKind::cast: {
             verify_value_id(value->lhs, "cast operand");
             verify_type(value->type, "cast result");
@@ -292,18 +304,22 @@ private:
             verify_pointer_value(value->object, "store target");
             verify_value_id(value->lhs, "store source");
             verify_type(value->type, "store result");
+            if (!module_.types.is_void(value->type)) {
+                fail("store result must be void");
+            }
+            if (const sema::TypeHandle target = pointee_type(value->object);
+                sema::is_valid(target)) {
+                verify_value_type(value->lhs, target, "store source");
+            }
             break;
         case ValueKind::unary:
-            verify_value_id(value->lhs, "unary operand");
-            verify_type(value->type, "unary result");
+            verify_unary(*value);
             break;
         case ValueKind::binary:
-            verify_value_id(value->lhs, "binary lhs");
-            verify_value_id(value->rhs, "binary rhs");
-            verify_type(value->type, "binary result");
+            verify_binary(*value);
             break;
         case ValueKind::phi:
-            verify_phi(function, *value);
+            verify_phi(function, block_id, *value);
             break;
         case ValueKind::call:
             verify_call(*value);
@@ -323,18 +339,155 @@ private:
             verify_value_id(value->lhs, "cast operand");
             verify_type(value->type, "cast result");
             verify_type(value->target_type, "cast target");
+            if (!module_.types.same(value->type, value->target_type)) {
+                fail("cast result type must match cast target type");
+            }
             break;
         }
     }
 
-    void verify_phi(const Function& function, const Value& value) {
+    void verify_unary(const Value& value) {
+        verify_value_id(value.lhs, "unary operand");
+        verify_type(value.type, "unary result");
+        const Value* operand = get(value.lhs);
+        if (operand == nullptr) {
+            return;
+        }
+        if (!sema::is_valid(operand->type)) {
+            fail("unary operand type is invalid");
+            return;
+        }
+        switch (value.unary_op) {
+        case UnaryOp::logical_not:
+            if (!module_.types.is_bool(operand->type) || !module_.types.is_bool(value.type)) {
+                fail("logical unary operator requires bool operand and result");
+            }
+            break;
+        case UnaryOp::numeric_negate:
+            if (!module_.types.same(operand->type, value.type) ||
+                (!module_.types.is_integer(value.type) && !module_.types.is_float(value.type))) {
+                fail("numeric unary operator requires matching numeric operand and result");
+            }
+            break;
+        case UnaryOp::bitwise_not:
+            if (!module_.types.same(operand->type, value.type) || !module_.types.is_integer(value.type)) {
+                fail("bitwise unary operator requires matching integer operand and result");
+            }
+            break;
+        case UnaryOp::address_of:
+        case UnaryOp::dereference:
+            if (!module_.types.same(operand->type, value.type)) {
+                fail("address/dereference unary passthrough type mismatch");
+            }
+            break;
+        }
+    }
+
+    void verify_binary(const Value& value) {
+        verify_value_id(value.lhs, "binary lhs");
+        verify_value_id(value.rhs, "binary rhs");
+        verify_type(value.type, "binary result");
+        const Value* lhs = get(value.lhs);
+        const Value* rhs = get(value.rhs);
+        if (lhs == nullptr || rhs == nullptr) {
+            return;
+        }
+        if (!module_.types.same(lhs->type, rhs->type)) {
+            fail("binary operand type mismatch");
+            return;
+        }
+
+        const sema::TypeHandle operand_type = lhs->type;
+        if (!sema::is_valid(operand_type)) {
+            fail("binary operand type is invalid");
+            return;
+        }
+        switch (value.binary_op) {
+        case BinaryOp::less:
+        case BinaryOp::less_equal:
+        case BinaryOp::greater:
+        case BinaryOp::greater_equal:
+            if (!module_.types.is_bool(value.type)) {
+                fail("comparison binary result must be bool");
+            }
+            if (!module_.types.is_integer(operand_type) && !module_.types.is_float(operand_type)) {
+                fail("comparison binary operands must be numeric");
+            }
+            break;
+        case BinaryOp::equal:
+        case BinaryOp::not_equal:
+            if (!module_.types.is_bool(value.type)) {
+                fail("equality binary result must be bool");
+            }
+            if (!module_.types.is_bool(operand_type) &&
+                !module_.types.is_integer(operand_type) &&
+                !module_.types.is_float(operand_type) &&
+                !module_.types.is_pointer(operand_type)) {
+                const sema::TypeInfo& info = module_.types.get(operand_type);
+                if (info.kind != sema::TypeKind::enum_ ||
+                    sema::is_valid(info.enum_payload_storage)) {
+                    fail("equality binary operands must be scalar");
+                }
+            }
+            break;
+        case BinaryOp::logical_and:
+        case BinaryOp::logical_or:
+            if (!module_.types.is_bool(value.type) || !module_.types.is_bool(operand_type)) {
+                fail("logical binary operator requires bool operands and result");
+            }
+            break;
+        case BinaryOp::bit_and:
+        case BinaryOp::bit_xor:
+        case BinaryOp::bit_or:
+        case BinaryOp::shl:
+        case BinaryOp::shr:
+        case BinaryOp::mod:
+            if (!module_.types.same(value.type, operand_type)) {
+                fail("integer binary result must match operand type");
+            }
+            if (!module_.types.is_integer(operand_type)) {
+                fail("integer binary operator requires integer operands");
+            }
+            break;
+        case BinaryOp::add:
+        case BinaryOp::sub:
+        case BinaryOp::mul:
+        case BinaryOp::div:
+            if (!module_.types.same(value.type, operand_type)) {
+                fail("numeric binary result must match operand type");
+            }
+            if (!module_.types.is_integer(operand_type) && !module_.types.is_float(operand_type)) {
+                fail("numeric binary operator requires numeric operands");
+            }
+            break;
+        }
+    }
+
+    void verify_phi(const Function& function, const BlockId block_id, const Value& value) {
         verify_type(value.type, "phi result");
         if (value.incoming.empty()) {
             fail("phi has no incoming values");
         }
+        std::unordered_set<base::u32> incoming_predecessors;
         for (const PhiInput& incoming : value.incoming) {
             verify_block_id(function, incoming.predecessor, "phi predecessor");
             verify_value_type(incoming.value, value.type, "phi incoming");
+            if (is_valid(incoming.predecessor) &&
+                incoming.predecessor.value < function.blocks.size() &&
+                !incoming_predecessors.insert(incoming.predecessor.value).second) {
+                fail("phi has duplicate incoming predecessor");
+            }
+            if (is_valid(incoming.predecessor) &&
+                incoming.predecessor.value < function.blocks.size() &&
+                !block_has_edge_to(function.blocks[incoming.predecessor.value], block_id)) {
+                fail("phi predecessor has no edge to block");
+            }
+        }
+        for (base::u32 predecessor = 0; predecessor < function.blocks.size(); ++predecessor) {
+            if (block_has_edge_to(function.blocks[predecessor], block_id) &&
+                !incoming_predecessors.contains(predecessor)) {
+                fail("phi is missing incoming predecessor");
+            }
         }
     }
 
@@ -436,6 +589,20 @@ private:
         if (!is_valid(block) || block.value >= function.blocks.size()) {
             fail(context + " block id is invalid");
         }
+    }
+
+    [[nodiscard]] bool block_has_edge_to(const BasicBlock& block, const BlockId target) const noexcept {
+        switch (block.terminator.kind) {
+        case TerminatorKind::branch:
+            return block.terminator.target.value == target.value;
+        case TerminatorKind::cond_branch:
+            return block.terminator.then_target.value == target.value ||
+                   block.terminator.else_target.value == target.value;
+        case TerminatorKind::none:
+        case TerminatorKind::return_:
+            return false;
+        }
+        return false;
     }
 
     void verify_value_id(const ValueId value, const std::string& context) {

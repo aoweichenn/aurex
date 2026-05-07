@@ -247,23 +247,31 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
         {"left", add_and_keep(integer_value(i32, "1"))},
         {"right", add_and_keep(integer_value(i32, "2"))},
     };
-    const ValueId pair_a_id = add_and_keep(pair_a);
+    add_and_keep(pair_a);
     Value pair_b = pair_a;
     pair_b.fields = {
         {"left", add_and_keep(integer_value(i32, "3"))},
         {"right", add_and_keep(integer_value(i32, "4"))},
     };
-    const ValueId pair_b_id = add_and_keep(pair_b);
-    Value struct_equal;
-    struct_equal.kind = ValueKind::binary;
-    struct_equal.type = bool_type;
-    struct_equal.binary_op = BinaryOp::equal;
-    struct_equal.lhs = pair_a_id;
-    struct_equal.rhs = pair_b_id;
-    add_and_keep(struct_equal);
-    Value struct_not_equal = struct_equal;
-    struct_not_equal.binary_op = BinaryOp::not_equal;
-    add_and_keep(struct_not_equal);
+    add_and_keep(pair_b);
+    Value pair_a_address;
+    pair_a_address.kind = ValueKind::alloca;
+    pair_a_address.type = ptr(module, PointerMutability::mut, pair_type);
+    const ValueId pair_a_address_id = add_and_keep(pair_a_address);
+    Value pair_b_address;
+    pair_b_address.kind = ValueKind::alloca;
+    pair_b_address.type = ptr(module, PointerMutability::mut, pair_type);
+    const ValueId pair_b_address_id = add_and_keep(pair_b_address);
+    Value pointer_equal;
+    pointer_equal.kind = ValueKind::binary;
+    pointer_equal.type = bool_type;
+    pointer_equal.binary_op = BinaryOp::equal;
+    pointer_equal.lhs = pair_a_address_id;
+    pointer_equal.rhs = pair_b_address_id;
+    add_and_keep(pointer_equal);
+    Value pointer_not_equal = pointer_equal;
+    pointer_not_equal.binary_op = BinaryOp::not_equal;
+    add_and_keep(pointer_not_equal);
 
     for (const BinaryOp op : {BinaryOp::logical_and, BinaryOp::logical_or}) {
         Value logical;

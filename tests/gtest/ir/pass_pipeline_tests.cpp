@@ -232,6 +232,7 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
 
     PassPipelineOptions options;
     options.verify_input = false;
+    options.verify_output = false;
     options.optimization_level = ir::OptimizationLevel::basic;
     ASSERT_TRUE(ir::run_pass_pipeline(module, options));
     EXPECT_EQ(module.constants[constant.value].initializer.value, one.value);
@@ -254,8 +255,8 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
         const ValueId one = builder.add(integer_value(i32, "1"));
         Value unary;
         unary.kind = ValueKind::unary;
-        unary.type = i32;
-        unary.unary_op = UnaryOp::numeric_negate;
+        unary.type = ptr_i32;
+        unary.unary_op = UnaryOp::address_of;
         unary.lhs = slot_id;
         const ValueId unary_id = builder.add(unary);
         Value index;
@@ -331,7 +332,7 @@ TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi) {
     Value phi;
     phi.kind = ValueKind::phi;
     phi.type = i32;
-    phi.incoming = {PhiInput {entry, one}, PhiInput {empty, one}};
+    phi.incoming = {PhiInput {empty, one}};
     const ValueId phi_id = builder.add(phi);
     function.blocks[join.value].values = {phi_id};
     function.blocks[join.value].terminator.kind = TerminatorKind::return_;

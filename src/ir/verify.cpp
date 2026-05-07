@@ -554,8 +554,8 @@ private:
         verify_type(value.type, "literal value type");
         switch (value.kind) {
         case ValueKind::integer_literal:
-            if (!module_.types.is_integer(value.type)) {
-                fail("integer literal type must be integer");
+            if (!is_integer_literal_type(value.type)) {
+                fail("integer literal type must be integer, got " + module_.types.display_name(value.type));
             }
             break;
         case ValueKind::bool_literal:
@@ -747,6 +747,18 @@ private:
         const sema::TypeInfo& pointer = module_.types.get(type);
         return pointer.pointer_mutability == sema::PointerMutability::const_ &&
                module_.types.same(pointer.pointee, module_.types.builtin(sema::BuiltinType::u8));
+    }
+
+    [[nodiscard]] bool is_integer_literal_type(const sema::TypeHandle type) const noexcept {
+        if (module_.types.is_integer(type)) {
+            return true;
+        }
+        if (!sema::is_valid(type)) {
+            return false;
+        }
+        const sema::TypeInfo& info = module_.types.get(type);
+        return info.kind == sema::TypeKind::enum_ &&
+               !sema::is_valid(info.enum_payload_storage);
     }
 
     void verify_block_id(const Function& function, const BlockId block, const std::string& context) {

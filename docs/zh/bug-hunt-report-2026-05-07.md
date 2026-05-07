@@ -1869,3 +1869,46 @@ let value = pointer[0];
 - `cmake --build build --target aurexc`
 - 三个新增负例 `--check` 均在 sema 阶段失败。
 - `tests/samples/positive/std/std_bootstrap.ax` 仍通过 `--check`，确认 `*mut void` 作为 handle 传递不受影响，只禁止读取其 pointee value。
+
+### 10.23 全量测试暴露的 verifier / 测试编排回归
+
+问题：
+
+全量 `build/bin/aurex_tests` 在补强 verifier 后首次暴露 14 个失败，集中在三类：
+
+- verifier 把 enum 判别值用的 `integer_literal` 误判为非法，因为 `TypeTable::is_integer` 不包含 enum 类型。
+- 少量 backend/pass whitebox 测试手写了 sema 不会生成的非法 IR，补强 verifier 后这些测试不应再假装是合法输入。
+- 泛型私有类型诊断路径在“先查 struct 再查 enum”时误报 `unknown generic enum`。
+- 正例 sample suite 对带 import 的普通正例没有统一加 `tests/samples/imports` import path，新增 qualified generic 样本后暴露出来。
+
+修复：
+
+- `src/ir/verify.cpp`：
+  - 新增 enum-aware integer literal type 检查。
+  - enum 判别值 literal 不再被误报为 `integer literal type must be integer`。
+- `src/sema/sema_types.cpp`：
+  - unqualified generic type 参数解析中，试探 enum template 时不再提前报告 `unknown generic enum`。
+  - 统一落到更准确的 `type arguments require a generic type: Name` 或后续具体 struct literal 诊断。
+- `tests/gtest/backend/llvm_runtime_tests.cpp`：
+  - 移除非法 struct equality 手写 IR，改用合法 pointer equality 覆盖 backend runtime equality lowering。
+- `tests/gtest/ir/pass_pipeline_tests.cpp`：
+  - 对专门测试 pass 容忍非法中间形态的用例显式关闭 output verifier。
+  - 把其他可合法化的手写 IR 调整为 verifier 可接受的形态。
+- `tests/gtest/integration/sample_suite_tests.cpp`：
+  - 正例 sample suite 编译普通样本时统一传入 `tests_import_flags()`。
+- `tests/gtest/sema/generics_tests.cpp`：
+  - 更新私有 generic struct / enum 负例的诊断断言，匹配当前更稳定的实际错误。
+
+验证：
+
+- 第一次全量：`91` 个测试中 `77` 通过、`14` 失败。
+- 修复后定向复跑：
+  - `CoreUnit.LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializers`
+  - `CoreUnit.PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg`
+  - `CoreUnit.PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance`
+  - `CoreUnit.PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi`
+  - `AurexIntegrationTest.GenericImportVisibilityAndAmbiguityDiagnostics`
+  - `AurexIntegrationTest.SampleSuite_PositiveSamples`
+- 最终全量：`build/bin/aurex_tests`
+  - `91` 个测试全部通过。
+  - gtest 总耗时约 `37338 ms`。

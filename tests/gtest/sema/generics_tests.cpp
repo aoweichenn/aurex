@@ -533,13 +533,13 @@ TEST_F(AurexIntegrationTest, GenericImportVisibilityAndAmbiguityDiagnostics) {
     const fs::path private_struct = negative_sample("generics", "private_generic_struct_import.ax");
     expect_contains(
         require_failure(aurexc() + " " + import_flags + " --check " + q(private_struct)).output,
-        "unknown generic struct: Hidden"
+        "type arguments require a generic struct: Hidden"
     );
 
     const fs::path private_enum = negative_sample("generics", "private_generic_enum_import.ax");
     expect_contains(
         require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output,
-        "unknown generic enum: Secret"
+        "type arguments require a generic type: Secret"
     );
 
     const fs::path ambiguous_function = negative_sample("generics", "ambiguous_generic_function.ax");

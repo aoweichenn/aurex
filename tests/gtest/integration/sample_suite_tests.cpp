@@ -51,7 +51,7 @@ void compile_positive_samples_and_run_subset() {
             continue;
         }
         const fs::path bin = test_bin_root() / name;
-        require_success(aurexc() + " " + q(src) + " -o " + q(bin));
+        require_success(aurexc() + " " + tests_import_flags() + " " + q(src) + " -o " + q(bin));
         if (run_regular_samples().contains(name)) {
             require_success(q(bin));
         }

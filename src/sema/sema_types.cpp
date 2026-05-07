@@ -363,7 +363,7 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                 }
                 break;
             }
-            if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range);
+            if (const GenericEnumTemplateInfo* info = find_generic_enum_template_in_visible_modules(type.name, type.range, false);
                 info != nullptr) {
                 if (substitution == nullptr) {
                     resolved = instantiate_generic_enum_from_syntax(*info, type.type_args, type.range, opaque_allowed_as_pointee);

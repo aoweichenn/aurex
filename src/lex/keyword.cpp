@@ -1,79 +1,92 @@
 #include "keyword.hpp"
 
-#include <array>
-
 namespace aurex::lex {
 
 syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
     using syntax::TokenKind;
-    struct Entry {
-        std::string_view text;
-        TokenKind kind;
-    };
-    static constexpr auto entries = std::to_array<Entry>({
-        Entry {"module", TokenKind::kw_module},
-        Entry {"import", TokenKind::kw_import},
-        Entry {"as", TokenKind::kw_as},
-        Entry {"pub", TokenKind::kw_pub},
-        Entry {"priv", TokenKind::kw_priv},
-        Entry {"extern", TokenKind::kw_extern},
-        Entry {"export", TokenKind::kw_export},
-        Entry {"c", TokenKind::kw_c},
-        Entry {"fn", TokenKind::kw_fn},
-        Entry {"struct", TokenKind::kw_struct},
-        Entry {"opaque", TokenKind::kw_opaque},
-        Entry {"enum", TokenKind::kw_enum},
-        Entry {"const", TokenKind::kw_const},
-        Entry {"type", TokenKind::kw_type},
-        Entry {"impl", TokenKind::kw_impl},
-        Entry {"match", TokenKind::kw_match},
-        Entry {"let", TokenKind::kw_let},
-        Entry {"var", TokenKind::kw_var},
-        Entry {"if", TokenKind::kw_if},
-        Entry {"else", TokenKind::kw_else},
-        Entry {"for", TokenKind::kw_for},
-        Entry {"while", TokenKind::kw_while},
-        Entry {"break", TokenKind::kw_break},
-        Entry {"continue", TokenKind::kw_continue},
-        Entry {"defer", TokenKind::kw_defer},
-        Entry {"return", TokenKind::kw_return},
-        Entry {"noncopy", TokenKind::kw_noncopy},
-        Entry {"move", TokenKind::kw_move},
-        Entry {"true", TokenKind::kw_true},
-        Entry {"false", TokenKind::kw_false},
-        Entry {"null", TokenKind::kw_null},
-        Entry {"void", TokenKind::kw_void},
-        Entry {"bool", TokenKind::kw_bool},
-        Entry {"i8", TokenKind::kw_i8},
-        Entry {"u8", TokenKind::kw_u8},
-        Entry {"i16", TokenKind::kw_i16},
-        Entry {"u16", TokenKind::kw_u16},
-        Entry {"i32", TokenKind::kw_i32},
-        Entry {"u32", TokenKind::kw_u32},
-        Entry {"i64", TokenKind::kw_i64},
-        Entry {"u64", TokenKind::kw_u64},
-        Entry {"isize", TokenKind::kw_isize},
-        Entry {"usize", TokenKind::kw_usize},
-        Entry {"f32", TokenKind::kw_f32},
-        Entry {"f64", TokenKind::kw_f64},
-        Entry {"str", TokenKind::kw_str},
-        Entry {"mut", TokenKind::kw_mut},
-        Entry {"cast", TokenKind::kw_cast},
-        Entry {"ptr_cast", TokenKind::kw_ptr_cast},
-        Entry {"bit_cast", TokenKind::kw_bit_cast},
-        Entry {"size_of", TokenKind::kw_size_of},
-        Entry {"align_of", TokenKind::kw_align_of},
-        Entry {"ptr_addr", TokenKind::kw_ptr_addr},
-        Entry {"ptr_from_addr", TokenKind::kw_ptr_from_addr},
-        Entry {"str_data", TokenKind::kw_str_data},
-        Entry {"str_byte_len", TokenKind::kw_str_byte_len},
-        Entry {"str_from_bytes_unchecked", TokenKind::kw_str_from_bytes_unchecked},
-    });
 
-    for (const Entry& entry : entries) {
-        if (entry.text == text) {
-            return entry.kind;
-        }
+    switch (text.size()) {
+    case 1:
+        if (text == "c") return TokenKind::kw_c;
+        break;
+    case 2:
+        if (text == "as") return TokenKind::kw_as;
+        if (text == "fn") return TokenKind::kw_fn;
+        if (text == "if") return TokenKind::kw_if;
+        if (text == "i8") return TokenKind::kw_i8;
+        if (text == "u8") return TokenKind::kw_u8;
+        break;
+    case 3:
+        if (text == "pub") return TokenKind::kw_pub;
+        if (text == "let") return TokenKind::kw_let;
+        if (text == "var") return TokenKind::kw_var;
+        if (text == "for") return TokenKind::kw_for;
+        if (text == "i16") return TokenKind::kw_i16;
+        if (text == "u16") return TokenKind::kw_u16;
+        if (text == "i32") return TokenKind::kw_i32;
+        if (text == "u32") return TokenKind::kw_u32;
+        if (text == "i64") return TokenKind::kw_i64;
+        if (text == "u64") return TokenKind::kw_u64;
+        if (text == "f32") return TokenKind::kw_f32;
+        if (text == "f64") return TokenKind::kw_f64;
+        if (text == "str") return TokenKind::kw_str;
+        if (text == "mut") return TokenKind::kw_mut;
+        break;
+    case 4:
+        if (text == "priv") return TokenKind::kw_priv;
+        if (text == "enum") return TokenKind::kw_enum;
+        if (text == "type") return TokenKind::kw_type;
+        if (text == "impl") return TokenKind::kw_impl;
+        if (text == "else") return TokenKind::kw_else;
+        if (text == "move") return TokenKind::kw_move;
+        if (text == "true") return TokenKind::kw_true;
+        if (text == "null") return TokenKind::kw_null;
+        if (text == "void") return TokenKind::kw_void;
+        if (text == "bool") return TokenKind::kw_bool;
+        if (text == "cast") return TokenKind::kw_cast;
+        break;
+    case 5:
+        if (text == "const") return TokenKind::kw_const;
+        if (text == "match") return TokenKind::kw_match;
+        if (text == "while") return TokenKind::kw_while;
+        if (text == "break") return TokenKind::kw_break;
+        if (text == "defer") return TokenKind::kw_defer;
+        if (text == "false") return TokenKind::kw_false;
+        if (text == "isize") return TokenKind::kw_isize;
+        if (text == "usize") return TokenKind::kw_usize;
+        break;
+    case 6:
+        if (text == "module") return TokenKind::kw_module;
+        if (text == "import") return TokenKind::kw_import;
+        if (text == "extern") return TokenKind::kw_extern;
+        if (text == "export") return TokenKind::kw_export;
+        if (text == "struct") return TokenKind::kw_struct;
+        if (text == "opaque") return TokenKind::kw_opaque;
+        if (text == "return") return TokenKind::kw_return;
+        break;
+    case 7:
+        if (text == "noncopy") return TokenKind::kw_noncopy;
+        if (text == "size_of") return TokenKind::kw_size_of;
+        break;
+    case 8:
+        if (text == "continue") return TokenKind::kw_continue;
+        if (text == "ptr_cast") return TokenKind::kw_ptr_cast;
+        if (text == "bit_cast") return TokenKind::kw_bit_cast;
+        if (text == "align_of") return TokenKind::kw_align_of;
+        if (text == "ptr_addr") return TokenKind::kw_ptr_addr;
+        if (text == "str_data") return TokenKind::kw_str_data;
+        break;
+    case 12:
+        if (text == "str_byte_len") return TokenKind::kw_str_byte_len;
+        break;
+    case 13:
+        if (text == "ptr_from_addr") return TokenKind::kw_ptr_from_addr;
+        break;
+    case 24:
+        if (text == "str_from_bytes_unchecked") return TokenKind::kw_str_from_bytes_unchecked;
+        break;
+    default:
+        break;
     }
     return TokenKind::identifier;
 }

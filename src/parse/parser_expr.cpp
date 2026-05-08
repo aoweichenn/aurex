@@ -49,7 +49,7 @@ syntax::ExprId Parser::parse_block_expr() {
             } else {
                 synchronize();
             }
-            panic_ = false;
+            reset_panic();
             continue;
         }
 
@@ -60,18 +60,18 @@ syntax::ExprId Parser::parse_block_expr() {
             stmt.lhs = expr;
             stmt.rhs = parse_expr();
             const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after assignment");
-            stmt.range = syntax::is_valid(expr) ? merge(module_.exprs[expr.value].range, end.range) : end.range;
-            block.statements.push_back(module_.push_stmt(std::move(stmt)));
-            panic_ = false;
+            stmt.range = syntax::is_valid(expr) ? merge(session_.module.exprs[expr.value].range, end.range) : end.range;
+            block.statements.push_back(session_.module.push_stmt(std::move(stmt)));
+            reset_panic();
             continue;
         }
         if (match(TokenKind::semicolon)) {
             syntax::StmtNode stmt;
             stmt.kind = syntax::StmtKind::expr;
             stmt.init = expr;
-            stmt.range = syntax::is_valid(expr) ? merge(module_.exprs[expr.value].range, previous().range) : previous().range;
-            block.statements.push_back(module_.push_stmt(std::move(stmt)));
-            panic_ = false;
+            stmt.range = syntax::is_valid(expr) ? merge(session_.module.exprs[expr.value].range, previous().range) : previous().range;
+            block.statements.push_back(session_.module.push_stmt(std::move(stmt)));
+            reset_panic();
             continue;
         }
 
@@ -81,19 +81,19 @@ syntax::ExprId Parser::parse_block_expr() {
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after block expression");
     block.range = merge(begin.range, end.range);
-    const syntax::StmtId block_id = module_.push_stmt(std::move(block));
+    const syntax::StmtId block_id = session_.module.push_stmt(std::move(block));
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::block_expr;
     expr.range = merge(begin.range, end.range);
     expr.block = block_id;
     expr.block_result = result;
-    panic_ = false;
-    return module_.push_expr(std::move(expr));
+    reset_panic();
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::StmtId Parser::parse_stmt() {
-    panic_ = false;
+    reset_panic();
     if (check(TokenKind::kw_let)) {
         return parse_let_or_var_stmt(syntax::StmtKind::let);
     }
@@ -118,7 +118,7 @@ syntax::StmtId Parser::parse_stmt() {
         syntax::StmtNode stmt;
         stmt.kind = syntax::StmtKind::break_;
         stmt.range = merge(begin.range, end.range);
-        return module_.push_stmt(stmt);
+        return session_.module.push_stmt(stmt);
     }
     if (match(TokenKind::kw_continue)) {
         const syntax::Token& begin = previous();
@@ -126,7 +126,7 @@ syntax::StmtId Parser::parse_stmt() {
         syntax::StmtNode stmt;
         stmt.kind = syntax::StmtKind::continue_;
         stmt.range = merge(begin.range, end.range);
-        return module_.push_stmt(stmt);
+        return session_.module.push_stmt(stmt);
     }
     if (check(TokenKind::kw_return)) {
         return parse_return_stmt();
@@ -154,7 +154,7 @@ syntax::StmtId Parser::parse_let_or_var_stmt(const syntax::StmtKind kind) {
     stmt.name = name.text;
     stmt.declared_type = type;
     stmt.init = init;
-    return module_.push_stmt(std::move(stmt));
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId Parser::parse_if_stmt() {
@@ -177,17 +177,17 @@ syntax::StmtId Parser::parse_if_stmt() {
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::if_;
     if (syntax::is_valid(else_if)) {
-        stmt.range = merge(begin.range, module_.stmts[else_if.value].range);
+        stmt.range = merge(begin.range, session_.module.stmts[else_if.value].range);
     } else if (syntax::is_valid(else_block)) {
-        stmt.range = merge(begin.range, module_.stmts[else_block.value].range);
+        stmt.range = merge(begin.range, session_.module.stmts[else_block.value].range);
     } else {
-        stmt.range = merge(begin.range, module_.stmts[then_block.value].range);
+        stmt.range = merge(begin.range, session_.module.stmts[then_block.value].range);
     }
     stmt.condition = condition;
     stmt.then_block = then_block;
     stmt.else_block = else_block;
     stmt.else_if = else_if;
-    return module_.push_stmt(std::move(stmt));
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId Parser::parse_while_stmt() {
@@ -200,10 +200,10 @@ syntax::StmtId Parser::parse_while_stmt() {
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::while_;
-    stmt.range = merge(begin.range, module_.stmts[body.value].range);
+    stmt.range = merge(begin.range, session_.module.stmts[body.value].range);
     stmt.condition = condition;
     stmt.body = body;
-    return module_.push_stmt(std::move(stmt));
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId Parser::parse_for_stmt() {
@@ -236,12 +236,12 @@ syntax::StmtId Parser::parse_for_stmt() {
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::for_;
-    stmt.range = merge(begin.range, module_.stmts[body.value].range);
+    stmt.range = merge(begin.range, session_.module.stmts[body.value].range);
     stmt.for_init = init;
     stmt.condition = condition;
     stmt.for_update = update;
     stmt.body = body;
-    return module_.push_stmt(std::move(stmt));
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId Parser::parse_defer_stmt() {
@@ -253,7 +253,7 @@ syntax::StmtId Parser::parse_defer_stmt() {
     stmt.kind = syntax::StmtKind::defer;
     stmt.range = merge(begin.range, end.range);
     stmt.init = value;
-    return module_.push_stmt(std::move(stmt));
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId Parser::parse_return_stmt() {
@@ -267,7 +267,7 @@ syntax::StmtId Parser::parse_return_stmt() {
     stmt.kind = syntax::StmtKind::return_;
     stmt.range = merge(begin.range, end.range);
     stmt.return_value = value;
-    return module_.push_stmt(std::move(stmt));
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId Parser::parse_expr_or_assign_stmt() {
@@ -285,17 +285,17 @@ syntax::StmtId Parser::parse_expr_or_assign_stmt(const bool require_semicolon) {
         stmt.kind = syntax::StmtKind::expr;
         stmt.init = lhs;
     }
-    base::SourceRange end_range = syntax::is_valid(lhs) ? module_.exprs[lhs.value].range : peek().range;
+    base::SourceRange end_range = syntax::is_valid(lhs) ? session_.module.exprs[lhs.value].range : peek().range;
     if (require_semicolon) {
         const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after expression statement");
         end_range = end.range;
-    } else if (stmt.kind == syntax::StmtKind::assign && syntax::is_valid(stmt.rhs) && stmt.rhs.value < module_.exprs.size()) {
-        end_range = module_.exprs[stmt.rhs.value].range;
-    } else if (stmt.kind == syntax::StmtKind::expr && syntax::is_valid(stmt.init) && stmt.init.value < module_.exprs.size()) {
-        end_range = module_.exprs[stmt.init.value].range;
+    } else if (stmt.kind == syntax::StmtKind::assign && syntax::is_valid(stmt.rhs) && stmt.rhs.value < session_.module.exprs.size()) {
+        end_range = session_.module.exprs[stmt.rhs.value].range;
+    } else if (stmt.kind == syntax::StmtKind::expr && syntax::is_valid(stmt.init) && stmt.init.value < session_.module.exprs.size()) {
+        end_range = session_.module.exprs[stmt.init.value].range;
     }
-    stmt.range = syntax::is_valid(lhs) ? merge(module_.exprs[lhs.value].range, end_range) : end_range;
-    return module_.push_stmt(std::move(stmt));
+    stmt.range = syntax::is_valid(lhs) ? merge(session_.module.exprs[lhs.value].range, end_range) : end_range;
+    return session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::ExprId Parser::parse_expr() {
@@ -321,11 +321,11 @@ syntax::ExprId Parser::parse_if_expr() {
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::if_expr;
-    expr.range = merge(begin.range, module_.exprs[else_expr.value].range);
+    expr.range = merge(begin.range, session_.module.exprs[else_expr.value].range);
     expr.condition = condition;
     expr.then_expr = then_expr;
     expr.else_expr = else_expr;
-    return module_.push_expr(std::move(expr));
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::parse_match_expr() {
@@ -349,11 +349,11 @@ syntax::ExprId Parser::parse_match_expr() {
         expect(TokenKind::fat_arrow, "expected '=>' after match case");
         const syntax::ExprId arm_value = parse_expr();
         base::SourceRange pattern_range = {};
-        if (syntax::is_valid(pattern) && pattern.value < module_.patterns.size()) {
-            pattern_range = module_.patterns[pattern.value].range;
+        if (syntax::is_valid(pattern) && pattern.value < session_.module.patterns.size()) {
+            pattern_range = session_.module.patterns[pattern.value].range;
         }
         base::SourceRange arm_range = syntax::is_valid(arm_value)
-            ? merge(pattern_range, module_.exprs[arm_value.value].range)
+            ? merge(pattern_range, session_.module.exprs[arm_value.value].range)
             : pattern_range;
         expr.match_arms.push_back(syntax::MatchArm {
             pattern,
@@ -365,13 +365,13 @@ syntax::ExprId Parser::parse_match_expr() {
             break;
         }
         expect(TokenKind::comma, "expected ',' after match arm");
-        panic_ = false;
+        reset_panic();
     }
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after match expression");
     expr.range = merge(begin.range, end.range);
-    panic_ = false;
-    return module_.push_expr(std::move(expr));
+    reset_panic();
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::PatternId Parser::parse_pattern() {
@@ -382,18 +382,18 @@ syntax::PatternId Parser::parse_pattern() {
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::or_pattern;
     pattern.alternatives.push_back(first);
-    base::SourceRange range = syntax::is_valid(first) && first.value < module_.patterns.size()
-        ? module_.patterns[first.value].range
+    base::SourceRange range = syntax::is_valid(first) && first.value < session_.module.patterns.size()
+        ? session_.module.patterns[first.value].range
         : previous().range;
     do {
         const syntax::PatternId alternative = parse_pattern_atom();
         pattern.alternatives.push_back(alternative);
-        if (syntax::is_valid(alternative) && alternative.value < module_.patterns.size()) {
-            range = merge(range, module_.patterns[alternative.value].range);
+        if (syntax::is_valid(alternative) && alternative.value < session_.module.patterns.size()) {
+            range = merge(range, session_.module.patterns[alternative.value].range);
         }
     } while (match(TokenKind::pipe));
     pattern.range = range;
-    return module_.push_pattern(pattern);
+    return session_.module.push_pattern(pattern);
 }
 
 syntax::PatternId Parser::parse_pattern_atom() {
@@ -403,7 +403,7 @@ syntax::PatternId Parser::parse_pattern_atom() {
             syntax::PatternNode pattern;
             pattern.kind = syntax::PatternKind::wildcard;
             pattern.range = first.range;
-            return module_.push_pattern(pattern);
+            return session_.module.push_pattern(pattern);
         }
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::enum_case;
@@ -424,7 +424,7 @@ syntax::PatternId Parser::parse_pattern_atom() {
             const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after payload binding");
             pattern.range = merge(pattern.range, end.range);
         }
-        return module_.push_pattern(pattern);
+        return session_.module.push_pattern(pattern);
     }
     if (match(TokenKind::integer_literal) || match(TokenKind::kw_true) || match(TokenKind::kw_false)) {
         const syntax::Token& token = previous();
@@ -432,7 +432,7 @@ syntax::PatternId Parser::parse_pattern_atom() {
         pattern.kind = syntax::PatternKind::literal;
         pattern.case_name = token.text;
         pattern.range = token.range;
-        return module_.push_pattern(pattern);
+        return session_.module.push_pattern(pattern);
     }
     if (match(TokenKind::dot)) {
         const syntax::Token& dot = previous();
@@ -450,14 +450,14 @@ syntax::PatternId Parser::parse_pattern_atom() {
             const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after payload binding");
             pattern.range = merge(pattern.range, end.range);
         }
-        return module_.push_pattern(pattern);
+        return session_.module.push_pattern(pattern);
     }
     report_here("expected match pattern");
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::wildcard;
     pattern.range = peek().range;
     advance();
-    return module_.push_pattern(pattern);
+    return session_.module.push_pattern(pattern);
 }
 
 syntax::ExprId Parser::parse_logical_or() {
@@ -465,7 +465,7 @@ syntax::ExprId Parser::parse_logical_or() {
     while (match(TokenKind::pipe_pipe)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_logical_and();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -475,7 +475,7 @@ syntax::ExprId Parser::parse_logical_and() {
     while (match(TokenKind::amp_amp)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_bit_or();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -485,7 +485,7 @@ syntax::ExprId Parser::parse_bit_or() {
     while (match(TokenKind::pipe)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_bit_xor();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -495,7 +495,7 @@ syntax::ExprId Parser::parse_bit_xor() {
     while (match(TokenKind::caret)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_bit_and();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -505,7 +505,7 @@ syntax::ExprId Parser::parse_bit_and() {
     while (match(TokenKind::amp)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_equality();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -515,7 +515,7 @@ syntax::ExprId Parser::parse_equality() {
     while (match(TokenKind::equal_equal) || match(TokenKind::bang_equal)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_compare();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -525,7 +525,7 @@ syntax::ExprId Parser::parse_compare() {
     while (match(TokenKind::less) || match(TokenKind::less_equal) || match(TokenKind::greater) || match(TokenKind::greater_equal)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_shift();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -535,7 +535,7 @@ syntax::ExprId Parser::parse_shift() {
     while (match(TokenKind::less_less) || match(TokenKind::greater_greater)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_add();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -545,7 +545,7 @@ syntax::ExprId Parser::parse_add() {
     while (match(TokenKind::plus) || match(TokenKind::minus)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_mul();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -555,7 +555,7 @@ syntax::ExprId Parser::parse_mul() {
     while (match(TokenKind::star) || match(TokenKind::slash) || match(TokenKind::percent)) {
         const TokenKind op = previous().kind;
         const syntax::ExprId rhs = parse_unary();
-        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(module_.exprs[expr.value].range, module_.exprs[rhs.value].range));
+        expr = make_binary(binary_op_from_token(op), expr, rhs, merge(session_.module.exprs[expr.value].range, session_.module.exprs[rhs.value].range));
     }
     return expr;
 }
@@ -566,7 +566,7 @@ syntax::ExprId Parser::parse_unary() {
         const syntax::ExprId operand = parse_unary();
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::unary;
-        expr.range = merge(op.range, module_.exprs[operand.value].range);
+        expr.range = merge(op.range, session_.module.exprs[operand.value].range);
         expr.text = op.text;
         switch (op.kind) {
         case TokenKind::bang:
@@ -588,7 +588,7 @@ syntax::ExprId Parser::parse_unary() {
             break;
         }
         expr.unary_operand = operand;
-        return module_.push_expr(std::move(expr));
+        return session_.module.push_expr(std::move(expr));
     }
     return parse_postfix();
 }
@@ -597,17 +597,17 @@ syntax::ExprId Parser::parse_postfix() {
     syntax::ExprId expr = parse_primary();
     while (true) {
         if (next_angle_list_is_type_scope() && match(TokenKind::less)) {
-            if (!syntax::is_valid(expr) || expr.value >= module_.exprs.size()) {
+            if (!syntax::is_valid(expr) || expr.value >= session_.module.exprs.size()) {
                 continue;
             }
-            syntax::ExprNode& node = module_.exprs[expr.value];
+            syntax::ExprNode& node = session_.module.exprs[expr.value];
             if (node.kind != syntax::ExprKind::name && node.kind != syntax::ExprKind::field) {
                 report_at(previous(), "type arguments are only supported on named function calls, methods, or enum constructors");
             }
             if (!check_type_arg_list_end()) {
                 do {
                     node.type_args.push_back(parse_type());
-                    panic_ = false;
+                    reset_panic();
                     if (check_type_arg_list_end()) {
                         break;
                     }
@@ -619,19 +619,19 @@ syntax::ExprId Parser::parse_postfix() {
             const syntax::Token& field = expect(TokenKind::identifier, "expected field name after '.'");
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::field;
-            node.range = merge(module_.exprs[expr.value].range, field.range);
+            node.range = merge(session_.module.exprs[expr.value].range, field.range);
             node.object = expr;
             node.field_name = field.text;
-            expr = module_.push_expr(std::move(node));
+            expr = session_.module.push_expr(std::move(node));
         } else if (match(TokenKind::l_bracket)) {
             const syntax::ExprId index = parse_expr();
             const syntax::Token& end = expect(TokenKind::r_bracket, "expected ']' after index");
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::index;
-            node.range = merge(module_.exprs[expr.value].range, end.range);
+            node.range = merge(session_.module.exprs[expr.value].range, end.range);
             node.object = expr;
             node.index = index;
-            expr = module_.push_expr(std::move(node));
+            expr = session_.module.push_expr(std::move(node));
         } else if (match(TokenKind::l_paren)) {
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::call;
@@ -645,21 +645,21 @@ syntax::ExprId Parser::parse_postfix() {
                 } while (match(TokenKind::comma) && !check(TokenKind::r_paren));
             }
             const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after argument list");
-            node.range = merge(module_.exprs[expr.value].range, end.range);
-            expr = module_.push_expr(std::move(node));
+            node.range = merge(session_.module.exprs[expr.value].range, end.range);
+            expr = session_.module.push_expr(std::move(node));
         } else if (match(TokenKind::question)) {
             const syntax::Token& question = previous();
             syntax::ExprNode node;
             node.kind = syntax::ExprKind::try_expr;
             node.unary_operand = expr;
-            node.range = syntax::is_valid(expr) && expr.value < module_.exprs.size()
-                ? merge(module_.exprs[expr.value].range, question.range)
+            node.range = syntax::is_valid(expr) && expr.value < session_.module.exprs.size()
+                ? merge(session_.module.exprs[expr.value].range, question.range)
                 : question.range;
-            expr = module_.push_expr(std::move(node));
+            expr = session_.module.push_expr(std::move(node));
         } else {
             break;
         }
-        panic_ = false;
+        reset_panic();
     }
     return expr;
 }
@@ -693,7 +693,7 @@ syntax::ExprId Parser::parse_primary() {
                     const syntax::Token& field = expect(TokenKind::identifier, "expected field name in struct literal");
                     expect(TokenKind::colon, "expected ':' after field name");
                     const syntax::ExprId value = parse_expr();
-                    node.field_inits.push_back(syntax::FieldInit {field.text, value, merge(field.range, module_.exprs[value.value].range)});
+                    node.field_inits.push_back(syntax::FieldInit {field.text, value, merge(field.range, session_.module.exprs[value.value].range)});
                     if (check(TokenKind::r_brace)) {
                         break;
                     }
@@ -701,7 +701,7 @@ syntax::ExprId Parser::parse_primary() {
             }
             const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after struct literal");
             node.range = merge(node.range, end.range);
-            return module_.push_expr(std::move(node));
+            return session_.module.push_expr(std::move(node));
         }
         if (!struct_type_args.empty()) {
             report_at(*name, "type arguments in expressions are only supported on struct literals, function calls, or scoped enum constructors");
@@ -712,7 +712,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.scope_range = scope_range;
         expr.range = scope_name.empty() ? name->range : merge(scope_range, name->range);
         expr.text = name->text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::integer_literal)) {
         const syntax::Token& token = previous();
@@ -720,7 +720,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::integer_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::float_literal)) {
         const syntax::Token& token = previous();
@@ -728,7 +728,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::float_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::kw_true) || match(TokenKind::kw_false)) {
         const syntax::Token& token = previous();
@@ -736,7 +736,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::bool_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::kw_null)) {
         const syntax::Token& token = previous();
@@ -744,7 +744,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::null_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::string_literal)) {
         const syntax::Token& token = previous();
@@ -752,7 +752,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::string_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::c_string_literal)) {
         const syntax::Token& token = previous();
@@ -760,7 +760,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::c_string_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::byte_literal)) {
         const syntax::Token& token = previous();
@@ -768,7 +768,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::byte_literal;
         expr.range = token.range;
         expr.text = token.text;
-        return module_.push_expr(expr);
+        return session_.module.push_expr(expr);
     }
     if (match(TokenKind::l_paren)) {
         const syntax::ExprId expr = parse_expr();
@@ -802,7 +802,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = syntax::ExprKind::ptr_addr;
         expr.range = merge(begin.range, end.range);
         expr.cast_expr = value;
-        return module_.push_expr(std::move(expr));
+        return session_.module.push_expr(std::move(expr));
     }
     if (match(TokenKind::kw_ptr_from_addr)) {
         const syntax::Token& begin = previous();
@@ -816,7 +816,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.range = merge(begin.range, end.range);
         expr.cast_type = type;
         expr.cast_expr = value;
-        return module_.push_expr(std::move(expr));
+        return session_.module.push_expr(std::move(expr));
     }
     if (match(TokenKind::kw_move)) {
         return parse_move_expr();
@@ -833,7 +833,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.kind = kind;
         expr.range = merge(begin.range, end.range);
         expr.cast_expr = value;
-        return module_.push_expr(std::move(expr));
+        return session_.module.push_expr(std::move(expr));
     }
     if (match(TokenKind::kw_str_from_bytes_unchecked)) {
         const syntax::Token& begin = previous();
@@ -847,7 +847,7 @@ syntax::ExprId Parser::parse_primary() {
         expr.range = merge(begin.range, end.range);
         expr.args.push_back(data);
         expr.args.push_back(len);
-        return module_.push_expr(std::move(expr));
+        return session_.module.push_expr(std::move(expr));
     }
 
     report_here("expected expression");
@@ -864,7 +864,7 @@ syntax::ExprId Parser::parse_move_expr() {
     expr.kind = syntax::ExprKind::move_expr;
     expr.range = merge(begin.range, end.range);
     expr.unary_operand = value;
-    return module_.push_expr(std::move(expr));
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::parse_builtin_cast(const syntax::ExprKind kind) {
@@ -880,7 +880,7 @@ syntax::ExprId Parser::parse_builtin_cast(const syntax::ExprKind kind) {
     expr.range = merge(begin.range, end.range);
     expr.cast_type = type;
     expr.cast_expr = value;
-    return module_.push_expr(std::move(expr));
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::parse_type_builtin(const syntax::ExprKind kind) {
@@ -893,7 +893,7 @@ syntax::ExprId Parser::parse_type_builtin(const syntax::ExprKind kind) {
     expr.kind = kind;
     expr.range = merge(begin.range, end.range);
     expr.cast_type = type;
-    return module_.push_expr(std::move(expr));
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs, base::SourceRange range) {
@@ -903,7 +903,7 @@ syntax::ExprId Parser::make_binary(const syntax::BinaryOp op, const syntax::Expr
     expr.binary_op = op;
     expr.binary_lhs = lhs;
     expr.binary_rhs = rhs;
-    return module_.push_expr(std::move(expr));
+    return session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::make_invalid_expr() {
@@ -913,7 +913,7 @@ syntax::ExprId Parser::make_invalid_expr() {
     if (!is_eof()) {
         advance();
     }
-    return module_.push_expr(expr);
+    return session_.module.push_expr(expr);
 }
 
 } // namespace aurex::parse

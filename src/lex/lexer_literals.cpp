@@ -7,67 +7,81 @@
 
 namespace aurex::lex {
 
+bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal_kind) {
+    bool saw_digit = false;
+    bool previous_was_digit = false;
+    bool previous_was_separator = false;
+    while (peek() == '_' ||
+           (digit_set == DigitSet::decimal && is_decimal_digit(peek())) ||
+           (digit_set == DigitSet::hexadecimal && is_hex_digit(peek())) ||
+           (digit_set == DigitSet::binary && is_binary_digit(peek()))) {
+        const base::usize separator_begin = offset_;
+        const char c = advance();
+        if (c == '_') {
+            if (!previous_was_digit) {
+                report(separator_begin, separator_begin + 1, "digit separator must be between digits");
+            }
+            previous_was_digit = false;
+            previous_was_separator = true;
+            continue;
+        }
+        saw_digit = true;
+        previous_was_digit = true;
+        previous_was_separator = false;
+    }
+    if (previous_was_separator && offset_ > 0) {
+        report(offset_ - 1, offset_, "digit separator must be between digits");
+    }
+    if (!saw_digit) {
+        report(offset_, offset_, std::string(literal_kind) + " literal has no digits");
+    }
+    return saw_digit;
+}
+
+bool Lexer::scan_fraction_part() {
+    if (peek() != '.' || !is_decimal_digit(peek_next())) {
+        return false;
+    }
+    advance();
+    static_cast<void>(scan_digits(DigitSet::decimal, "float"));
+    return true;
+}
+
+bool Lexer::scan_exponent_part() {
+    if (peek() != 'e' && peek() != 'E') {
+        return false;
+    }
+
+    const base::usize next = offset_ + 1;
+    const char next_char = next < source_text_.size() ? source_text_[next] : '\0';
+    if (!is_decimal_digit(next_char) && next_char != '+' && next_char != '-') {
+        return false;
+    }
+
+    advance();
+    if (peek() == '+' || peek() == '-') {
+        advance();
+    }
+    static_cast<void>(scan_digits(DigitSet::decimal, "float exponent"));
+    return true;
+}
+
 void Lexer::scan_number() {
     const base::usize begin = offset_;
     bool is_float = false;
 
-    const auto scan_digits = [this](const auto digit_predicate, const std::string_view literal_kind) {
-        bool saw_digit = false;
-        bool previous_was_digit = false;
-        bool previous_was_separator = false;
-        while (digit_predicate(peek()) || peek() == '_') {
-            const base::usize separator_begin = offset_;
-            const char c = advance();
-            if (c == '_') {
-                if (!previous_was_digit) {
-                    report(separator_begin, separator_begin + 1, "digit separator must be between digits");
-                }
-                previous_was_digit = false;
-                previous_was_separator = true;
-                continue;
-            }
-            saw_digit = true;
-            previous_was_digit = true;
-            previous_was_separator = false;
-        }
-        if (previous_was_separator && offset_ > 0) {
-            report(offset_ - 1, offset_, "digit separator must be between digits");
-        }
-        if (!saw_digit) {
-            report(offset_, offset_, std::string(literal_kind) + " literal has no digits");
-        }
-        return saw_digit;
-    };
-
     if (peek() == '0' && (peek_next() == 'x' || peek_next() == 'X')) {
         advance();
         advance();
-        static_cast<void>(scan_digits(is_hex_digit, "integer"));
+        static_cast<void>(scan_digits(DigitSet::hexadecimal, "integer"));
     } else if (peek() == '0' && (peek_next() == 'b' || peek_next() == 'B')) {
         advance();
         advance();
-        static_cast<void>(scan_digits(is_binary_digit, "integer"));
+        static_cast<void>(scan_digits(DigitSet::binary, "integer"));
     } else {
-        static_cast<void>(scan_digits(is_decimal_digit, "integer"));
-        if (peek() == '.' && is_decimal_digit(peek_next())) {
-            is_float = true;
-            advance();
-            static_cast<void>(scan_digits(is_decimal_digit, "float"));
-        }
-        if (peek() == 'e' || peek() == 'E') {
-            const base::usize next = offset_ + 1;
-            const char next_char = next < source_text_.size() ? source_text_[next] : '\0';
-            if (is_decimal_digit(next_char) ||
-                next_char == '+' ||
-                next_char == '-') {
-                is_float = true;
-                advance();
-                if (peek() == '+' || peek() == '-') {
-                    advance();
-                }
-                static_cast<void>(scan_digits(is_decimal_digit, "float exponent"));
-            }
-        }
+        static_cast<void>(scan_digits(DigitSet::decimal, "integer"));
+        is_float = scan_fraction_part();
+        is_float = scan_exponent_part() || is_float;
     }
 
     add_token(is_float ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin, offset_);

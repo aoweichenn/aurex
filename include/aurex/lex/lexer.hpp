@@ -32,6 +32,12 @@ public:
     [[nodiscard]] base::Result<std::vector<syntax::Token>> tokenize();
 
 private:
+    enum class DigitSet {
+        decimal,
+        hexadecimal,
+        binary,
+    };
+
     [[nodiscard]] bool is_at_end() const noexcept;
     [[nodiscard]] char peek() const noexcept;
     [[nodiscard]] char peek_next() const noexcept;
@@ -42,6 +48,9 @@ private:
     void scan_token();
     void scan_identifier();
     void scan_number();
+    [[nodiscard]] bool scan_digits(DigitSet digit_set, std::string_view literal_kind);
+    [[nodiscard]] bool scan_fraction_part();
+    [[nodiscard]] bool scan_exponent_part();
     void scan_string();
     void scan_c_string();
     void scan_string_body(

@@ -2,6 +2,7 @@
 
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
+#include "aurex/parse/parse_session.hpp"
 #include "aurex/syntax/ast.hpp"
 #include "aurex/syntax/token.hpp"
 
@@ -96,16 +97,9 @@ private:
     [[nodiscard]] syntax::ExprId make_invalid_expr();
 
     [[nodiscard]] base::SourceRange merge(base::SourceRange begin, base::SourceRange end) const noexcept;
+    void reset_panic() noexcept;
 
-    std::span<const syntax::Token> tokens_;
-    base::DiagnosticSink& diagnostics_;
-    syntax::AstModule module_;
-    base::usize current_ = 0;
-    syntax::Token split_greater_tail_ {};
-    syntax::Token last_split_greater_ {};
-    bool pending_split_greater_tail_ = false;
-    bool previous_was_split_greater_ = false;
-    bool panic_ = false;
+    ParseSession session_;
     bool allow_struct_literal_ = true;
 };
 

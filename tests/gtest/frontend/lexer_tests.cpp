@@ -131,6 +131,82 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_GE(invalid_diagnostics.diagnostics().size(), 4U);
 }
 
+TEST(CoreUnit, LexerRecognizesEveryKeyword) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source =
+        "module import as pub priv extern export c fn struct opaque enum const type impl match "
+        "let var if else for while break continue defer return noncopy move true false null "
+        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
+        "ptr_cast bit_cast size_of align_of ptr_addr ptr_from_addr str_data str_byte_len "
+        "str_from_bytes_unchecked";
+    lex::Lexer lexer({8}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_TRUE(result) << result.error().message;
+    EXPECT_FALSE(diagnostics.has_error());
+
+    const std::vector<TokenKind> expected {
+        TokenKind::kw_module,
+        TokenKind::kw_import,
+        TokenKind::kw_as,
+        TokenKind::kw_pub,
+        TokenKind::kw_priv,
+        TokenKind::kw_extern,
+        TokenKind::kw_export,
+        TokenKind::kw_c,
+        TokenKind::kw_fn,
+        TokenKind::kw_struct,
+        TokenKind::kw_opaque,
+        TokenKind::kw_enum,
+        TokenKind::kw_const,
+        TokenKind::kw_type,
+        TokenKind::kw_impl,
+        TokenKind::kw_match,
+        TokenKind::kw_let,
+        TokenKind::kw_var,
+        TokenKind::kw_if,
+        TokenKind::kw_else,
+        TokenKind::kw_for,
+        TokenKind::kw_while,
+        TokenKind::kw_break,
+        TokenKind::kw_continue,
+        TokenKind::kw_defer,
+        TokenKind::kw_return,
+        TokenKind::kw_noncopy,
+        TokenKind::kw_move,
+        TokenKind::kw_true,
+        TokenKind::kw_false,
+        TokenKind::kw_null,
+        TokenKind::kw_void,
+        TokenKind::kw_bool,
+        TokenKind::kw_i8,
+        TokenKind::kw_u8,
+        TokenKind::kw_i16,
+        TokenKind::kw_u16,
+        TokenKind::kw_i32,
+        TokenKind::kw_u32,
+        TokenKind::kw_i64,
+        TokenKind::kw_u64,
+        TokenKind::kw_isize,
+        TokenKind::kw_usize,
+        TokenKind::kw_f32,
+        TokenKind::kw_f64,
+        TokenKind::kw_str,
+        TokenKind::kw_mut,
+        TokenKind::kw_cast,
+        TokenKind::kw_ptr_cast,
+        TokenKind::kw_bit_cast,
+        TokenKind::kw_size_of,
+        TokenKind::kw_align_of,
+        TokenKind::kw_ptr_addr,
+        TokenKind::kw_ptr_from_addr,
+        TokenKind::kw_str_data,
+        TokenKind::kw_str_byte_len,
+        TokenKind::kw_str_from_bytes_unchecked,
+        TokenKind::eof,
+    };
+    EXPECT_EQ(token_kinds(result.value()), expected);
+}
+
 TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =

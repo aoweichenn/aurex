@@ -101,17 +101,17 @@ Parser::Parser(
     const std::span<const syntax::Token> tokens,
     base::DiagnosticSink& diagnostics
 ) noexcept
-    : tokens_(tokens), diagnostics_(diagnostics) {}
+    : session_(tokens, diagnostics) {}
 
 base::Result<syntax::AstModule> Parser::parse_module() {
     if (match(TokenKind::kw_module)) {
-        module_.module_path = parse_path();
+        session_.module.module_path = parse_path();
         expect(TokenKind::semicolon, "expected ';' after module declaration");
     }
 
     while (check(TokenKind::kw_import) ||
            ((check(TokenKind::kw_pub) || check(TokenKind::kw_priv)) && check_next(TokenKind::kw_import))) {
-        module_.imports.push_back(parse_import_decl());
+        session_.module.imports.push_back(parse_import_decl());
     }
 
     while (!is_eof()) {
@@ -121,81 +121,63 @@ base::Result<syntax::AstModule> Parser::parse_module() {
         }
     }
 
-    if (diagnostics_.has_error()) {
+    if (session_.diagnostics.has_error()) {
         return base::Result<syntax::AstModule>::fail(
             {base::ErrorCode::parse_error, "parsing failed"}
         );
     }
-    return base::Result<syntax::AstModule>::ok(std::move(module_));
+    return base::Result<syntax::AstModule>::ok(std::move(session_.module));
 }
 
 bool Parser::is_eof() const noexcept {
-    return peek().kind == TokenKind::eof;
+    return session_.cursor.is_eof();
 }
 
 const syntax::Token& Parser::peek() const noexcept {
-    if (pending_split_greater_tail_) {
-        return split_greater_tail_;
-    }
-    if (current_ >= tokens_.size()) {
-        return tokens_.back();
-    }
-    return tokens_[current_];
+    return session_.cursor.peek();
 }
 
 const syntax::Token& Parser::previous() const noexcept {
-    if (previous_was_split_greater_) {
-        return last_split_greater_;
-    }
-    if (current_ == 0) {
-        return tokens_.front();
-    }
-    return tokens_[current_ - 1];
+    return session_.cursor.previous();
 }
 
 bool Parser::check(const TokenKind kind) const noexcept {
-    return peek().kind == kind;
+    return session_.cursor.check(kind);
 }
 
 bool Parser::check_next(const TokenKind kind) const noexcept {
-    const base::usize next = current_ + (pending_split_greater_tail_ ? 0 : 1);
-    if (next >= tokens_.size()) {
-        return false;
-    }
-    return tokens_[next].kind == kind;
+    return session_.cursor.check_next(kind);
 }
 
 bool Parser::check_type_arg_list_end() const noexcept {
-    return check(TokenKind::greater) ||
-           (!pending_split_greater_tail_ &&
-            current_ < tokens_.size() &&
-            tokens_[current_].kind == TokenKind::greater_greater);
+    return session_.cursor.check_type_arg_list_end();
 }
 
 bool Parser::next_angle_list_is_type_scope() const noexcept {
     if (!check(TokenKind::less)) {
         return false;
     }
-    base::usize index = current_ + 1;
+    const std::span<const syntax::Token> tokens = session_.cursor.tokens();
+    base::usize index = session_.cursor.position() + 1;
     int depth = 1;
-    while (index < tokens_.size()) {
-        const TokenKind kind = tokens_[index].kind;
+    while (index < tokens.size()) {
+        const TokenKind kind = tokens[index].kind;
         if (kind == TokenKind::less) {
             ++depth;
         } else if (kind == TokenKind::greater) {
             --depth;
             if (depth == 0) {
                 const base::usize after = index + 1;
-                return after < tokens_.size() &&
-                       (tokens_[after].kind == TokenKind::dot || tokens_[after].kind == TokenKind::l_paren);
+                return after < tokens.size() &&
+                       (tokens[after].kind == TokenKind::dot || tokens[after].kind == TokenKind::l_paren);
             }
         } else if (kind == TokenKind::greater_greater) {
             for (int i = 0; i < 2; ++i) {
                 --depth;
                 if (depth == 0) {
                     const base::usize after = index + 1;
-                    return after < tokens_.size() &&
-                           (tokens_[after].kind == TokenKind::dot || tokens_[after].kind == TokenKind::l_paren);
+                    return after < tokens.size() &&
+                           (tokens[after].kind == TokenKind::dot || tokens[after].kind == TokenKind::l_paren);
                 }
             }
         } else if (kind == TokenKind::semicolon ||
@@ -213,24 +195,25 @@ bool Parser::next_angle_list_is_struct_literal() const noexcept {
     if (!check(TokenKind::less)) {
         return false;
     }
-    base::usize index = current_ + 1;
+    const std::span<const syntax::Token> tokens = session_.cursor.tokens();
+    base::usize index = session_.cursor.position() + 1;
     int depth = 1;
-    while (index < tokens_.size()) {
-        const TokenKind kind = tokens_[index].kind;
+    while (index < tokens.size()) {
+        const TokenKind kind = tokens[index].kind;
         if (kind == TokenKind::less) {
             ++depth;
         } else if (kind == TokenKind::greater) {
             --depth;
             if (depth == 0) {
                 const base::usize after = index + 1;
-                return after < tokens_.size() && tokens_[after].kind == TokenKind::l_brace;
+                return after < tokens.size() && tokens[after].kind == TokenKind::l_brace;
             }
         } else if (kind == TokenKind::greater_greater) {
             for (int i = 0; i < 2; ++i) {
                 --depth;
                 if (depth == 0) {
                     const base::usize after = index + 1;
-                    return after < tokens_.size() && tokens_[after].kind == TokenKind::l_brace;
+                    return after < tokens.size() && tokens[after].kind == TokenKind::l_brace;
                 }
             }
         } else if (kind == TokenKind::semicolon ||
@@ -244,25 +227,11 @@ bool Parser::next_angle_list_is_struct_literal() const noexcept {
 }
 
 bool Parser::match(const TokenKind kind) noexcept {
-    if (!check(kind)) {
-        return false;
-    }
-    advance();
-    return true;
+    return session_.cursor.match(kind);
 }
 
 const syntax::Token& Parser::advance() noexcept {
-    if (pending_split_greater_tail_) {
-        pending_split_greater_tail_ = false;
-        previous_was_split_greater_ = true;
-        last_split_greater_ = split_greater_tail_;
-        return last_split_greater_;
-    }
-    previous_was_split_greater_ = false;
-    if (!is_eof()) {
-        ++current_;
-    }
-    return previous();
+    return session_.cursor.advance();
 }
 
 const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
@@ -275,25 +244,8 @@ const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
 }
 
 const syntax::Token& Parser::expect_type_arg_list_end(std::string message) {
-    if (check(TokenKind::greater)) {
-        return advance();
-    }
-    if (!pending_split_greater_tail_ &&
-        current_ < tokens_.size() &&
-        tokens_[current_].kind == TokenKind::greater_greater) {
-        const syntax::Token token = tokens_[current_];
-        last_split_greater_ = token;
-        last_split_greater_.kind = TokenKind::greater;
-        last_split_greater_.range.end = last_split_greater_.range.begin + 1;
-        split_greater_tail_ = token;
-        split_greater_tail_.kind = TokenKind::greater;
-        split_greater_tail_.range.begin = split_greater_tail_.range.end > split_greater_tail_.range.begin
-            ? split_greater_tail_.range.end - 1
-            : split_greater_tail_.range.begin;
-        ++current_;
-        pending_split_greater_tail_ = true;
-        previous_was_split_greater_ = true;
-        return last_split_greater_;
+    if (check_type_arg_list_end()) {
+        return session_.cursor.consume_type_arg_list_end();
     }
     report_here(std::move(message));
     static const syntax::Token fallback {};
@@ -301,7 +253,7 @@ const syntax::Token& Parser::expect_type_arg_list_end(std::string message) {
 }
 
 void Parser::synchronize() {
-    panic_ = false;
+    reset_panic();
     if (is_eof()) {
         return;
     }
@@ -345,15 +297,11 @@ void Parser::report_here(std::string message) {
 }
 
 void Parser::report_at(const syntax::Token& token, std::string message) {
-    if (panic_) {
-        return;
-    }
-    panic_ = true;
-    diagnostics_.push(base::Diagnostic {
-        base::Severity::error,
-        token.range,
-        std::move(message),
-    });
+    session_.diagnostics.report_at(token, std::move(message));
+}
+
+void Parser::reset_panic() noexcept {
+    session_.diagnostics.reset_panic();
 }
 
 syntax::ModulePath Parser::parse_path() {
@@ -375,7 +323,7 @@ syntax::ModulePath Parser::parse_path() {
         }
     }
     path.range = range;
-    panic_ = false;
+    reset_panic();
     return path;
 }
 
@@ -398,7 +346,7 @@ syntax::ImportDecl Parser::parse_import_decl() {
         }
     }
     expect(TokenKind::semicolon, "expected ';' after import declaration");
-    panic_ = false;
+    reset_panic();
     return import;
 }
 
@@ -413,33 +361,33 @@ syntax::Visibility Parser::parse_visibility() {
 }
 
 syntax::ItemId Parser::parse_item() {
-    panic_ = false;
+    reset_panic();
     const syntax::Visibility visibility = parse_visibility();
     if (check(TokenKind::kw_const)) {
         const syntax::ItemId id = parse_const_decl();
         if (syntax::is_valid(id)) {
-            module_.items[id.value].visibility = visibility;
+            session_.module.items[id.value].visibility = visibility;
         }
         return id;
     }
     if (check(TokenKind::kw_type)) {
         const syntax::ItemId id = parse_type_alias_decl();
         if (syntax::is_valid(id)) {
-            module_.items[id.value].visibility = visibility;
+            session_.module.items[id.value].visibility = visibility;
         }
         return id;
     }
     if (check(TokenKind::kw_struct) || check(TokenKind::kw_noncopy)) {
         const syntax::ItemId id = parse_struct_decl();
         if (syntax::is_valid(id)) {
-            module_.items[id.value].visibility = visibility;
+            session_.module.items[id.value].visibility = visibility;
         }
         return id;
     }
     if (check(TokenKind::kw_enum)) {
         const syntax::ItemId id = parse_enum_decl();
         if (syntax::is_valid(id)) {
-            module_.items[id.value].visibility = visibility;
+            session_.module.items[id.value].visibility = visibility;
         }
         return id;
     }
@@ -452,7 +400,7 @@ syntax::ItemId Parser::parse_item() {
     if (check(TokenKind::kw_opaque)) {
         const syntax::ItemId id = parse_opaque_struct_decl();
         if (syntax::is_valid(id)) {
-            module_.items[id.value].visibility = visibility;
+            session_.module.items[id.value].visibility = visibility;
         }
         return id;
     }
@@ -474,15 +422,15 @@ syntax::ItemId Parser::parse_item() {
         }
         syntax::ItemId id = parse_fn_decl(true, false);
         if (syntax::is_valid(id)) {
-            module_.items[id.value].range.begin = begin.range.begin;
-            module_.items[id.value].visibility = syntax::Visibility::public_;
+            session_.module.items[id.value].range.begin = begin.range.begin;
+            session_.module.items[id.value].visibility = syntax::Visibility::public_;
         }
         return id;
     }
     if (check(TokenKind::kw_fn)) {
         const syntax::ItemId id = parse_fn_decl(false, false);
         if (syntax::is_valid(id)) {
-            module_.items[id.value].visibility = visibility;
+            session_.module.items[id.value].visibility = visibility;
         }
         return id;
     }
@@ -506,8 +454,8 @@ syntax::ItemId Parser::parse_const_decl() {
     item.name = name.text;
     item.const_type = type;
     item.const_value = value;
-    panic_ = false;
-    return module_.push_item(std::move(item));
+    reset_panic();
+    return session_.module.push_item(std::move(item));
 }
 
 syntax::ItemId Parser::parse_type_alias_decl() {
@@ -522,8 +470,8 @@ syntax::ItemId Parser::parse_type_alias_decl() {
     item.range = merge(begin.range, end.range);
     item.name = name.text;
     item.alias_type = target;
-    panic_ = false;
-    return module_.push_item(std::move(item));
+    reset_panic();
+    return session_.module.push_item(std::move(item));
 }
 
 syntax::ItemId Parser::parse_struct_decl() {
@@ -557,13 +505,13 @@ syntax::ItemId Parser::parse_struct_decl() {
                 field_visibility,
             });
         }
-        panic_ = false;
+        reset_panic();
     }
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after struct declaration");
     item.range = merge(begin.range, end.range);
-    panic_ = false;
-    return module_.push_item(std::move(item));
+    reset_panic();
+    return session_.module.push_item(std::move(item));
 }
 
 syntax::ItemId Parser::parse_enum_decl() {
@@ -601,13 +549,13 @@ syntax::ItemId Parser::parse_enum_decl() {
                 merge(case_name.range, comma.range),
             });
         }
-        panic_ = false;
+        reset_panic();
     }
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after enum declaration");
     item.range = merge(begin.range, end.range);
-    panic_ = false;
-    return module_.push_item(std::move(item));
+    reset_panic();
+    return session_.module.push_item(std::move(item));
 }
 
 std::vector<std::string_view> Parser::parse_generic_param_list() {
@@ -619,14 +567,14 @@ std::vector<std::string_view> Parser::parse_generic_param_list() {
             if (name.kind == TokenKind::identifier) {
                 params.push_back(name.text);
             }
-            panic_ = false;
+            reset_panic();
             if (check(TokenKind::greater)) {
                 break;
             }
         } while (match(TokenKind::comma) && !check(TokenKind::greater));
     }
     expect(TokenKind::greater, "expected '>' after generic parameter list");
-    panic_ = false;
+    reset_panic();
     return params;
 }
 
@@ -649,7 +597,7 @@ syntax::ItemId Parser::parse_impl_block() {
         if (!check(TokenKind::kw_fn)) {
             report_here("expected function declaration in impl block");
             synchronize();
-            panic_ = false;
+            reset_panic();
             continue;
         }
         const syntax::ItemId method = parse_fn_decl(false, false);
@@ -657,22 +605,22 @@ syntax::ItemId Parser::parse_impl_block() {
             std::vector<std::string_view> method_params = generic_params;
             method_params.insert(
                 method_params.end(),
-                module_.items[method.value].generic_params.begin(),
-                module_.items[method.value].generic_params.end()
+                session_.module.items[method.value].generic_params.begin(),
+                session_.module.items[method.value].generic_params.end()
             );
-            module_.items[method.value].visibility = visibility;
-            module_.items[method.value].generic_params = std::move(method_params);
-            module_.items[method.value].impl_generic_param_count = generic_params.size();
-            module_.items[method.value].impl_type = impl_type;
+            session_.module.items[method.value].visibility = visibility;
+            session_.module.items[method.value].generic_params = std::move(method_params);
+            session_.module.items[method.value].impl_generic_param_count = generic_params.size();
+            session_.module.items[method.value].impl_type = impl_type;
             block.impl_items.push_back(method);
         }
-        panic_ = false;
+        reset_panic();
     }
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after impl block");
     block.range = merge(begin.range, end.range);
-    panic_ = false;
-    return module_.push_item(std::move(block));
+    reset_panic();
+    return session_.module.push_item(std::move(block));
 }
 
 std::vector<syntax::TypeId> Parser::parse_type_arg_list() {
@@ -681,14 +629,14 @@ std::vector<syntax::TypeId> Parser::parse_type_arg_list() {
     if (!check_type_arg_list_end()) {
         do {
             args.push_back(parse_type());
-            panic_ = false;
+            reset_panic();
             if (check_type_arg_list_end()) {
                 break;
             }
         } while (match(TokenKind::comma) && !check_type_arg_list_end());
     }
     expect_type_arg_list_end("expected '>' after type argument list");
-    panic_ = false;
+    reset_panic();
     return args;
 }
 
@@ -716,13 +664,13 @@ syntax::ItemId Parser::parse_extern_block() {
             report_here("expected extern item");
             synchronize();
         }
-        panic_ = false;
+        reset_panic();
     }
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after extern block");
     block.range = merge(begin.range, end.range);
-    panic_ = false;
-    return module_.push_item(std::move(block));
+    reset_panic();
+    return session_.module.push_item(std::move(block));
 }
 
 syntax::ItemId Parser::parse_opaque_struct_decl() {
@@ -736,8 +684,8 @@ syntax::ItemId Parser::parse_opaque_struct_decl() {
     item.range = merge(begin.range, end.range);
     item.name = name.text;
     item.is_extern_c = true;
-    panic_ = false;
-    return module_.push_item(std::move(item));
+    reset_panic();
+    return session_.module.push_item(std::move(item));
 }
 
 syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
@@ -776,11 +724,11 @@ syntax::ItemId Parser::parse_fn_decl(const bool is_export_c, const bool is_exter
         item.range = merge(begin.range, previous().range);
     } else {
         item.body = parse_block();
-        item.range = syntax::is_valid(item.body) ? merge(begin.range, module_.stmts[item.body.value].range) : begin.range;
+        item.range = syntax::is_valid(item.body) ? merge(begin.range, session_.module.stmts[item.body.value].range) : begin.range;
     }
 
-    panic_ = false;
-    return module_.push_item(std::move(item));
+    reset_panic();
+    return session_.module.push_item(std::move(item));
 }
 
 std::vector<syntax::ParamDecl> Parser::parse_param_list(bool& is_variadic) {
@@ -800,9 +748,9 @@ std::vector<syntax::ParamDecl> Parser::parse_param_list(bool& is_variadic) {
         expect(TokenKind::colon, "expected ':' after parameter name");
         const syntax::TypeId type = parse_type();
         if (name.kind == TokenKind::identifier) {
-            params.push_back(syntax::ParamDecl {name.text, type, merge(name.range, module_.types[type.value].range)});
+            params.push_back(syntax::ParamDecl {name.text, type, merge(name.range, session_.module.types[type.value].range)});
         }
-        panic_ = false;
+        reset_panic();
         if (check(TokenKind::r_paren)) {
             break;
         }
@@ -831,11 +779,11 @@ void Parser::parse_optional_abi_name(syntax::ItemNode& item) {
         item.abi_name = value.text.substr(1, value.text.size() - 2);
     }
     expect(TokenKind::r_paren, "expected ')' after ABI attribute");
-    panic_ = false;
+    reset_panic();
 }
 
 syntax::TypeId Parser::parse_type() {
-    panic_ = false;
+    reset_panic();
     if (is_primitive_type_token(peek().kind)) {
         return parse_primitive_type();
     }
@@ -856,7 +804,7 @@ syntax::TypeId Parser::parse_type() {
             type.type_args = parse_type_arg_list();
             type.range = merge(type.range, previous().range);
         }
-        return module_.push_type(type);
+        return session_.module.push_type(type);
     }
     if (match(TokenKind::star)) {
         const syntax::Token& begin = previous();
@@ -871,10 +819,10 @@ syntax::TypeId Parser::parse_type() {
         const syntax::TypeId pointee = parse_type();
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::pointer;
-        type.range = merge(begin.range, module_.types[pointee.value].range);
+        type.range = merge(begin.range, session_.module.types[pointee.value].range);
         type.pointer_mutability = mutability;
         type.pointee = pointee;
-        return module_.push_type(type);
+        return session_.module.push_type(type);
     }
     if (match(TokenKind::l_bracket)) {
         const syntax::Token& begin = previous();
@@ -887,10 +835,10 @@ syntax::TypeId Parser::parse_type() {
         }
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::array;
-        type.range = merge(begin.range, module_.types[element.value].range);
+        type.range = merge(begin.range, session_.module.types[element.value].range);
         type.array_count = array_count;
         type.array_element = element;
-        return module_.push_type(type);
+        return session_.module.push_type(type);
     }
 
     report_here("expected type");
@@ -898,7 +846,7 @@ syntax::TypeId Parser::parse_type() {
     type.kind = syntax::TypeKind::primitive;
     type.primitive = syntax::PrimitiveTypeKind::void_;
     type.range = peek().range;
-    return module_.push_type(type);
+    return session_.module.push_type(type);
 }
 
 syntax::TypeId Parser::parse_primitive_type() {
@@ -907,7 +855,7 @@ syntax::TypeId Parser::parse_primitive_type() {
     type.kind = syntax::TypeKind::primitive;
     type.range = token.range;
     type.primitive = primitive_from_token(token.kind);
-    return module_.push_type(type);
+    return session_.module.push_type(type);
 }
 
 syntax::StmtId Parser::parse_block() {
@@ -922,13 +870,13 @@ syntax::StmtId Parser::parse_block() {
         } else {
             synchronize();
         }
-        panic_ = false;
+        reset_panic();
     }
 
     const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after block");
     block.range = merge(begin.range, end.range);
-    panic_ = false;
-    return module_.push_stmt(std::move(block));
+    reset_panic();
+    return session_.module.push_stmt(std::move(block));
 }
 
 base::SourceRange Parser::merge(base::SourceRange begin, base::SourceRange end) const noexcept {

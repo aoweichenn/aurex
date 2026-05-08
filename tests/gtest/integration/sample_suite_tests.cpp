@@ -152,6 +152,45 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_text) {
     compile_and_run_std_positive_sample("std_text.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_bytes) {
+    const fs::path source = positive_sample("std", "std_bytes.ax");
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
+    expect_contains_all(checked, {
+        "struct Bytes fields=1",
+        "struct Path fields=1",
+        "fn check_bytes_raw_mutation -> std.core.result.Result<bool, i32>",
+        "fn check_bytes_self_append_alias -> std.core.result.Result<bool, i32>",
+        "fn check_path_accepts_raw_bytes_and_rejects_nul -> std.core.result.Result<bool, i32>",
+        "fn append -> bool @c_name=m0_std_core_bytes_append",
+        "fn as_mut_span -> std.core.text.MutSpan<u8> @c_name=m0_std_core_bytes_as_mut_span",
+        "fn from_span -> std.core.result.Result<std.core.bytes.Bytes, i32> @c_name=m0_std_core_bytes_from_span",
+        "fn method std.core.bytes.Bytes.append -> bool",
+        "fn method std.core.bytes.Bytes.as_mut_span -> std.core.text.MutSpan<u8>",
+        "fn method std.core.bytes.Bytes.from_span -> std.core.result.Result<std.core.bytes.Bytes, i32>",
+        "fn method std.fs.path.Path.from_span -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn method std.fs.path.Path.from_str -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn method std.fs.path.Path.join_span -> std.core.result.Result<std.fs.path.Path, i32>",
+    });
+
+    const std::string ir = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::ir)
+    ).output;
+    expect_contains_all(ir, {
+        "record Bytes",
+        "record Path",
+        "call m0_std_core_bytes_Bytes_from_span",
+        "call m0_std_core_bytes_Bytes_as_mut_span",
+        "call m0_std_core_bytes_Bytes_append",
+        "call m0_std_fs_path_Path_from_span",
+        "call m0_std_fs_path_Path_from_str",
+        "call m0_std_fs_path_Path_join_span",
+    });
+
+    compile_and_run_std_positive_sample("std_bytes.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_Std_std_cstring) {
     const fs::path source = positive_sample("std", "std_cstring.ax");
     const std::string checked = require_compiler_success(
@@ -292,26 +331,39 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "fn method std.core.result.Result<i32, u8>.is_ok -> bool",
         "fn method std.core.result.Result<i32, u8>.is_err -> bool",
         "fn method std.core.result.Result<i32, u8>.unwrap_or -> i32",
+        "struct Bytes fields=1",
+        "fn check_bytes -> std.core.result.Result<bool, i32>",
+        "fn append -> bool @c_name=m0_std_core_bytes_append",
+        "fn as_mut_span -> std.core.text.MutSpan<u8> @c_name=m0_std_core_bytes_as_mut_span",
+        "fn from_span -> std.core.result.Result<std.core.bytes.Bytes, i32> @c_name=m0_std_core_bytes_from_span",
+        "fn method std.core.bytes.Bytes.from_span -> std.core.result.Result<std.core.bytes.Bytes, i32>",
+        "fn method std.core.bytes.Bytes.push -> bool",
+        "fn method std.core.bytes.Bytes.append -> bool",
+        "fn method std.core.bytes.Bytes.as_mut_span -> std.core.text.MutSpan<u8>",
+        "fn method std.core.bytes.Bytes.remove -> std.core.result.Option<u8>",
+        "fn method std.core.bytes.Bytes.pop -> std.core.result.Option<u8>",
+        "fn method std.core.bytes.Bytes.equals_span -> bool",
         "fn method std.core.string.String.from_c -> std.core.result.Result<std.core.string.String, i32>",
         "fn insert -> bool @c_name=m0_std_core_string_insert",
         "fn pop -> std.core.result.Option<u8> @c_name=m0_std_core_string_pop",
         "fn remove -> std.core.result.Option<u8> @c_name=m0_std_core_string_remove",
         "fn truncate -> void @c_name=m0_std_core_string_truncate",
         "fn clear -> void @c_name=m0_std_core_string_clear",
-        "fn as_mut_span -> std.core.text.MutSpan<u8> @c_name=m0_std_core_string_as_mut_span",
         "fn method std.core.string.String.insert -> bool",
         "fn method std.core.string.String.pop -> std.core.result.Option<u8>",
         "fn method std.core.string.String.remove -> std.core.result.Option<u8>",
         "fn method std.core.string.String.truncate -> void",
         "fn method std.core.string.String.clear -> void",
-        "fn method std.core.string.String.as_mut_span -> std.core.text.MutSpan<u8>",
         "fn from_span -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn from_str -> std.core.result.Result<std.fs.path.Path, i32> @c_name=m0_std_fs_path_from_str",
         "fn is_absolute -> bool @c_name=m0_std_fs_path_is_absolute",
         "fn parent -> std.core.result.Option<std.core.text.Span<u8>>",
         "fn extension -> std.core.result.Option<std.core.text.Span<u8>>",
         "fn file_stem -> std.core.text.Span<u8>",
         "fn join_span -> std.core.result.Result<std.fs.path.Path, i32>",
         "fn with_extension -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn method std.fs.path.Path.from_span -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn method std.fs.path.Path.from_str -> std.core.result.Result<std.fs.path.Path, i32>",
         "fn method std.fs.path.Path.join_c -> std.core.result.Result<std.fs.path.Path, i32>",
         "fn method std.fs.path.Path.is_absolute -> bool",
         "fn method std.fs.path.Path.parent -> std.core.result.Option<std.core.text.Span<u8>>",
@@ -332,6 +384,7 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "record std.core.vec.Vec<std.core.map.CStringUsizeEntry>",
         "record String",
         "record Path",
+        "record Bytes",
         "call m0_std_core_map_cstring_usize_get",
         "call m0_std_core_map_cstring_usize_insert",
         "call m0_std_core_map_cstring_usize_insert_absent",
@@ -363,12 +416,18 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "call m0_std_core_result_Result__i32__u8_is_ok",
         "call m0_std_core_result_Result__i32__u8_is_err",
         "call m0_std_core_result_Result__i32__u8_unwrap_or",
+        "call m0_std_core_bytes_Bytes_from_span",
+        "call m0_std_core_bytes_Bytes_push",
+        "call m0_std_core_bytes_Bytes_append",
+        "call m0_std_core_bytes_Bytes_as_mut_span",
+        "call m0_std_core_bytes_Bytes_remove",
+        "call m0_std_core_bytes_Bytes_pop",
+        "call m0_std_core_bytes_Bytes_equals_span",
         "call m0_std_core_string_from_c",
         "call m0_std_core_string_insert",
         "call m0_std_core_string_remove",
         "call m0_std_core_string_pop",
         "call m0_std_core_string_truncate",
-        "call m0_std_core_string_as_mut_span",
         "call m0_std_core_string_clear",
         "call m0_std_core_string_String_insert",
         "call m0_std_core_string_String_remove",

@@ -1,6 +1,6 @@
 # Aurex Documentation
 
-Documentation baseline: **0.1.3**.
+Documentation baseline: **0.1.7**.
 
 This directory provides the English documentation set. Documents are organized
 by topic instead of small incremental `0.1.0`, `0.1.1`, and similar release

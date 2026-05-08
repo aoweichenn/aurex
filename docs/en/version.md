@@ -1,10 +1,10 @@
 # Version Document
 
-Version: 0.1.3
+Version: 0.1.7
 
 ## Version Positioning
 
-0.1.3 is the current documentation baseline. This document no longer lists tiny
+0.1.7 is the current documentation baseline. This document no longer lists tiny
 per-version changes for every 0.1.x step. Instead, it summarizes the 0.1.x
 capability set as one coherent state.
 
@@ -12,7 +12,7 @@ The version document describes the current public state, compatibility strategy,
 and future direction. Historical per-small-version changes are no longer kept
 as standalone documents; use git history for that level of detail.
 
-## 0.1.3 Scope
+## 0.1.7 Scope
 
 Included:
 
@@ -37,6 +37,14 @@ Included:
   counts, with single-level and recursive count entry points.
 - `std.core.map` Vec-backed generic `Map<K, V>` and borrowed C-string -> usize
   `CStringUsizeMap` baseline.
+- String primitive direction is now split as `str` = borrowed UTF-8 text slice,
+  `String` = owned UTF-8 buffer, `Bytes` / `Span<u8>` = raw bytes, `CStr` /
+  `CString` = C FFI, and `Path` = platform path bytes. The current baseline
+  includes string-literal UTF-8 / escape diagnostics, `std.core.str` borrowed
+  APIs and scalar APIs, the `std.core.string.String`
+  `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked`
+  UTF-8 surface, removal of `String.as_mut_span`, `std.core.bytes.Bytes`,
+  bytes-backed `std.fs.path.Path`, and `std.ffi.c.string.CStr` / `CString`.
 - M1 axbuild target-graph validation / topological-build baseline, including
   dependency bounds, cycle / invalid-dependency status, and topological target
   build order.

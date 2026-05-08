@@ -5,7 +5,7 @@ This document records the M1 naming, namespace, and compatibility rules for the 
 ## Goals
 
 - Keep call sites short: the module name carries context, so function names should not repeat the type prefix.
-- Keep type names stable: containers and views use durable short names such as `Vec<T>`, `Span<T>`, `MutSpan<T>`, `String`, and `Path`.
+- Keep type names stable: containers and views use durable short names such as `Vec<T>`, `Span<T>`, `MutSpan<T>`, `Bytes`, `String`, and `Path`.
 - Keep semantics readable: `new`, `with_capacity`, and `from_*` construct values; `as_*` returns borrowed views; future `into_*` APIs will represent consuming conversions.
 - Preserve compatibility: old names such as `vec_u8_push`, `string_from_c`, and `path_join_c` remain as wrappers, but new docs and examples should prefer the short API.
 - Keep error handling evolvable: M1 may keep low-level memory APIs returning `bool`, while user-facing constructors and conversions should prefer `Result<T, E>`.
@@ -17,17 +17,18 @@ Types use `UpperCamelCase`:
 - `Vec<T>`: growable contiguous storage.
 - `Span<T>`: read-only contiguous view.
 - `MutSpan<T>`: mutable contiguous view.
-- `String`: owned UTF-8/byte string.
-- `Path`: owned filesystem path value.
+- `Bytes`: owned raw bytes, with no UTF-8 invariant.
+- `String`: owned UTF-8 string, without a raw mutable byte view.
+- `Path`: owned filesystem path value backed by platform path bytes, not ordinary text.
 - `Option<T>` and `Result<T, E>`: base algebraic data types.
 
 Functions and methods use `snake_case`:
 
-- Construction: `new`, `with_capacity`, `from_c`, `from_span`.
-- Capacity and length: `len`, `capacity`, `is_empty`, `reserve`, `clear`.
-- Mutation: `push`, `extend`, `insert`, `remove`, `swap_remove`, `pop`, `truncate`, `append_span`, `append_c`.
+- Construction: `new`, `with_capacity`, `from_str`, `from_utf8`, `from_c_utf8`, `from_c`, `from_span`.
+- Capacity and length: `len`, `byte_len`, `capacity`, `is_empty`, `reserve`, `clear`.
+- Mutation: `push_scalar`, `insert_scalar`, `pop_scalar`, `remove_scalar_at`, `append`, `push`, `extend`, `insert`, `remove`, `swap_remove`, `pop`, `truncate`, `append_span`, `append_c`.
 - Random access: `get`, `set`, `first`, `last`.
-- Views: `as_span`, `as_mut_span`, `as_c`, `c_str`.
+- Views: `as_str`, `as_str_checked`, `as_bytes`, `as_span`, `as_mut_span`, `as_c`, `c_str`. `as_mut_span` belongs to raw storage such as `Vec<T>` and `Bytes`, not to `String`.
 - Queries: `bytes_equal`, `starts_with`, `file_name`.
 
 Do not encode the type name into every function name. New code should use `vec::push(&items, value)` instead of growing the `vec_u8_push` naming family.
@@ -81,9 +82,12 @@ Recommended imports:
 
 ```aurex
 import std.core.result as result;
+import std.core.str as strings;
 import std.core.string as string;
+import std.core.bytes as bytes;
 import std.core.text as text;
 import std.core.vec as vec;
+import std.ffi.c.string as cstring;
 import std.fs.path as path;
 ```
 
@@ -97,13 +101,35 @@ import std.fs.path as path;
 `std.core.string`:
 
 - Type: `string::String`.
-- New API: `string::new`, `string::from_c`, `string::destroy`, `string::len`, `string::is_empty`, `string::reserve`, `string::push`, `string::insert`, `string::append_span`, `string::append_c`, `string::pop`, `string::remove`, `string::truncate`, `string::clear`, `string::as_span`, `string::as_mut_span`, `string::c_str`, `string::equals_span`, `string::ends_with_byte`.
+- New API: `string::new`, `string::from_str`, `string::from_utf8`, `string::from_c_utf8`, `string::destroy`, `string::len`, `string::byte_len`, `string::is_empty`, `string::reserve`, `string::append`, `string::push_scalar`, `string::insert_scalar`, `string::pop_scalar`, `string::remove_scalar_at`, `string::as_str`, `string::as_str_checked`, `string::as_bytes`, `string::slice_bytes_checked`, `string::truncate_bytes_checked`, `string::is_valid_utf8`, `string::equals`, `string::starts_with`, `string::ends_with`.
+- Compatibility / transition API: `string::from_c`, `string::push`, `string::insert`, `string::append_span`, `string::append_c`, `string::pop`, `string::remove`, `string::truncate`, `string::clear`, `string::as_span`, `string::c_str`, `string::equals_span`, `string::ends_with_byte`. These APIs preserve the UTF-8 invariant where applicable; raw mutable bytes moved to `Bytes.as_mut_span`.
 - Compatibility API: `string::string_new`, `string::string_from_c`, and related wrappers remain available.
+
+`std.core.bytes`:
+
+- Type: `bytes::Bytes`, an owned raw byte buffer.
+- New API: `bytes::new`, `bytes::with_capacity`, `bytes::from_span`, `bytes::destroy`, `bytes::len`, `bytes::is_empty`, `bytes::capacity`, `bytes::reserve`, `bytes::push`, `bytes::append`, `bytes::pop`, `bytes::remove`, `bytes::truncate`, `bytes::clear`, `bytes::as_span`, `bytes::as_mut_span`, `bytes::equals_span`.
+- Method API: `Bytes.new`, `with_capacity`, `from_span`, `destroy`, `len`, `is_empty`, `capacity`, `reserve`, `push`, `append`, `pop`, `remove`, `truncate`, `clear`, `as_span`, `as_mut_span`, `equals_span`.
+- Constraint: `Bytes` does not validate UTF-8 and may contain arbitrary bytes. `Bytes.append` supports self-aliasing, so `raw.append(raw.as_span())` remains valid across reallocation.
+
+`std.core.str`:
+
+- Type: builtin borrowed UTF-8 text slice `str`.
+- API: `strings::byte_len`, `strings::is_empty`, `strings::as_bytes`, `strings::equals`, `strings::starts_with`, `strings::ends_with`, `strings::is_boundary`, `strings::slice_bytes_checked`, `strings::is_scalar_value`, `strings::scalar_utf8_width`, `strings::scalar_at`, `strings::scalar_width_at`, `strings::next_boundary`, `strings::previous_boundary`, `strings::scalar_count`, `strings::is_valid_utf8`, `strings::from_utf8`.
+
+`std.ffi.c.string`:
+
+- Types: `cstring::CStr`, `cstring::CString`.
+- `CStr` API: `CStr.from_c`, `byte_len`, `as_c`, `as_bytes`, `as_str_utf8`.
+- `CString` API: `CString.from_str`, `from_utf8`, `from_c_utf8`, `destroy`, `byte_len`, `as_c`, `as_cstr`, `as_str`, `as_str_checked`.
+- Constraint: `CString.from_str` rejects interior NUL; `CString.from_utf8` validates both UTF-8 and interior NUL.
 
 `std.fs.path`:
 
 - Type: `path::Path`.
-- New API: `path::from_c`, `path::from_span`, `path::destroy`, `path::as_c`, `path::as_span`, `path::is_absolute`, `path::parent`, `path::file_name`, `path::file_stem`, `path::extension`, `path::join_c`, `path::join_span`, `path::with_extension`.
+- New API: `path::from_c`, `path::from_span`, `path::from_str`, `path::destroy`, `path::as_c`, `path::as_span`, `path::is_absolute`, `path::parent`, `path::file_name`, `path::file_stem`, `path::extension`, `path::join_c`, `path::join_span`, `path::with_extension`.
+- Method API: `Path.from_c`, `from_span`, `from_str`, `destroy`, `as_c`, `as_span`, `file_name`, `is_absolute`, `parent`, `extension`, `file_stem`, `join_c`, `join_span`, `with_extension`.
+- Constraint: `Path` stores platform path bytes and does not validate UTF-8. `from_span` and `join_span` reject interior NUL because the current POSIX/C FFI compatibility view is NUL-terminated. `from_str` is a convenience constructor from UTF-8 text.
 - Compatibility API: `path::path_from_c`, `path::path_join_c`, and related wrappers remain available.
 
 `std.core.text`:

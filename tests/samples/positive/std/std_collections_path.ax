@@ -1,6 +1,7 @@
 module std_collections_path;
 
 import std.core.result as result;
+import std.core.bytes as bytes;
 import std.core.map as map;
 import std.core.string as string;
 import std.core.text as text;
@@ -291,10 +292,11 @@ fn check_string() -> result::Result<bool, i32> {
         .none => b'?',
     };
     string::truncate(&s, cast(usize, 2));
-    let bytes: text::MutSpanU8 = string::as_mut_span(&s);
-    bytes.data[cast(usize, 1)] = b'Y';
+    let replaced: bool = string::remove(&s, cast(usize, 1)).is_some() &&
+        string::insert(&s, cast(usize, 1), b'Y');
     let edited_ok: bool = removed == b'b' &&
         popped == b'd' &&
+        replaced &&
         string::len(&s) == cast(usize, 2) &&
         string::equals_span(&s, text::c_span(c"aY")) &&
         string::ends_with_byte(&s, b'Y') &&
@@ -304,6 +306,25 @@ fn check_string() -> result::Result<bool, i32> {
         string::is_empty(&s) &&
         text::c_string_equal(string::c_str(&s), c"");
     string::destroy(&s);
+    return Result.ok(ok);
+}
+
+fn check_bytes() -> result::Result<bool, i32> {
+    var raw: bytes::Bytes = bytes::Bytes.from_span(text::c_span(c"ab"))?;
+    if !raw.push(cast(u8, 0xFF)) || !raw.append(text::c_span(c"cd")) {
+        raw.destroy();
+        return Result.err(12);
+    }
+    let span: text::MutSpanU8 = raw.as_mut_span();
+    span.data[cast(usize, 1)] = b'B';
+    let removed: u8 = raw.remove(cast(usize, 2)).unwrap_or(b'?');
+    let popped: u8 = raw.pop().unwrap_or(b'?');
+    let ok: bool = raw.len() == cast(usize, 3) &&
+        raw.capacity() >= raw.len() &&
+        removed == cast(u8, 0xFF) &&
+        popped == b'd' &&
+        raw.equals_span(text::c_span(c"aBc"));
+    raw.destroy();
     return Result.ok(ok);
 }
 
@@ -421,6 +442,10 @@ fn run() -> result::Result<i32, i32> {
     let string_methods_ok: bool = check_string_methods()?;
     if !string_methods_ok {
         return Result.err(8);
+    }
+    let bytes_ok: bool = check_bytes()?;
+    if !bytes_ok {
+        return Result.err(12);
     }
     let path_ok: bool = check_path()?;
     if !path_ok {

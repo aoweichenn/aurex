@@ -5,7 +5,7 @@
 ## 设计目标
 
 - 调用点短：模块名承担上下文，不在函数名里重复类型前缀。
-- 类型稳定：容器和视图使用可长期演进的短类型名，如 `Vec<T>`、`Span<T>`、`MutSpan<T>`、`String`、`Path`。
+- 类型稳定：容器和视图使用可长期演进的短类型名，如 `Vec<T>`、`Span<T>`、`MutSpan<T>`、`Bytes`、`String`、`Path`。
 - 语义清晰：`new`、`with_capacity`、`from_*` 表示构造；`as_*` 表示借用视图；未来 `into_*` 表示消耗式转换。
 - 兼容可控：旧的 `vec_u8_push`、`string_from_c`、`path_join_c` 等长名保留为包装层，但新文档和新样例优先使用短 API。
 - 错误模型可演进：M1 允许底层内存 API 返回 `bool`，面向用户的构造和转换优先返回 `Result<T, E>`；后续应逐步把可恢复错误迁到 `Result`。
@@ -17,8 +17,9 @@
 - `Vec<T>`：可增长连续存储容器。
 - `Span<T>`：只读连续视图。
 - `MutSpan<T>`：可写连续视图。
-- `String`：拥有的 UTF-8 字符串；原始 bytes 后续应收敛到 `Vec<u8>` / `Bytes`。
-- `Path`：拥有的文件路径值。
+- `Bytes`：拥有的原始 bytes；不承诺 UTF-8，可暴露 `MutSpan<u8>`。
+- `String`：拥有的 UTF-8 字符串；不暴露 raw mutable byte view。
+- `Path`：拥有的文件路径值；语义是平台路径 bytes，不等同于普通 `String`。
 - `Option<T>`、`Result<T, E>`：基础代数数据类型。
 
 函数和方法使用 `snake_case`：
@@ -27,7 +28,7 @@
 - 容量和长度：`len`、`byte_len`、`capacity`、`is_empty`、`reserve`、`clear`。
 - 变更：`push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`、`append`、`truncate_bytes_checked`、`push`、`extend`、`insert`、`remove`、`swap_remove`、`pop`、`truncate`、`append_span`、`append_c`。
 - 随机访问：`get`、`set`、`first`、`last`。
-- 视图：`as_str`、`as_str_checked`、`as_bytes`、`as_span`、`as_mut_span`、`as_c`、`c_str`。
+- 视图：`as_str`、`as_str_checked`、`as_bytes`、`as_span`、`as_mut_span`、`as_c`、`c_str`。其中 `as_mut_span` 只用于 `Vec<T>` / `Bytes` 这类原始可变存储，不属于 `String`。
 - 查询：`bytes_equal`、`starts_with`、`file_name`。
 
 避免把类型名重复编码进函数名。新代码应写 `vec::push(&items, value)`，而不是继续扩展 `vec_u8_push` 这类前缀函数。
@@ -76,6 +77,7 @@ fn main() -> i32 {
 import std.core.result as result;
 import std.core.str as strings;
 import std.core.string as string;
+import std.core.bytes as bytes;
 import std.core.text as text;
 import std.core.vec as vec;
 import std.ffi.c.string as cstring;
@@ -89,11 +91,18 @@ import std.fs.path as path;
 - Method API：`Vec<T>.destroy`、`len`、`capacity`、`is_empty`、`as_span`、`as_mut_span`、`reserve`、`push`、`insert`、`extend`、`pop`、`remove`、`swap_remove`、`get`、`set`、`first`、`last`、`clear`、`truncate`。
 - 兼容 API：`vec::vec_u8_new`、`vec::vec_u8_push` 等保留，但不作为新文档的主路径。
 
+`std.core.bytes`：
+
+- 类型：`bytes::Bytes`，拥有型 raw bytes buffer。
+- 新 API：`bytes::new`、`bytes::with_capacity`、`bytes::from_span`、`bytes::destroy`、`bytes::len`、`bytes::is_empty`、`bytes::capacity`、`bytes::reserve`、`bytes::push`、`bytes::append`、`bytes::pop`、`bytes::remove`、`bytes::truncate`、`bytes::clear`、`bytes::as_span`、`bytes::as_mut_span`、`bytes::equals_span`。
+- Method API：`Bytes.new`、`with_capacity`、`from_span`、`destroy`、`len`、`is_empty`、`capacity`、`reserve`、`push`、`append`、`pop`、`remove`、`truncate`、`clear`、`as_span`、`as_mut_span`、`equals_span`。
+- 约束：`Bytes` 不验证 UTF-8，允许任意 byte，包括 `0x00`；`as_mut_span` 是 raw byte mutation 的公开位置。`Bytes.append` 支持 self-alias，`raw.append(raw.as_span())` 触发扩容时仍保持正确复制。
+
 `std.core.string`：
 
 - 类型：`string::String`。
 - 新 API：`string::new`、`string::from_str`、`string::from_utf8`、`string::from_c_utf8`、`string::destroy`、`string::len`、`string::byte_len`、`string::is_empty`、`string::reserve`、`string::append`、`string::push_scalar`、`string::insert_scalar`、`string::pop_scalar`、`string::remove_scalar_at`、`string::as_str`、`string::as_str_checked`、`string::as_bytes`、`string::slice_bytes_checked`、`string::truncate_bytes_checked`、`string::is_valid_utf8`、`string::equals`、`string::starts_with`、`string::ends_with`。
-- 兼容/过渡 API：`string::from_c`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::as_mut_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。这些 API 当前会尽量维护 UTF-8 不变量；`as_mut_span` 仍是后续迁到 `Bytes` 或 unsafe 边界的风险点。
+- 兼容/过渡 API：`string::from_c`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。这些 API 当前会尽量维护 UTF-8 不变量；raw mutable byte view 已迁到 `Bytes.as_mut_span`。
 - 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
 
 `std.core.str`：
@@ -112,7 +121,9 @@ import std.fs.path as path;
 `std.fs.path`：
 
 - 类型：`path::Path`。
-- 新 API：`path::from_c`、`path::from_span`、`path::destroy`、`path::as_c`、`path::as_span`、`path::is_absolute`、`path::parent`、`path::file_name`、`path::file_stem`、`path::extension`、`path::join_c`、`path::join_span`、`path::with_extension`。
+- 新 API：`path::from_c`、`path::from_span`、`path::from_str`、`path::destroy`、`path::as_c`、`path::as_span`、`path::is_absolute`、`path::parent`、`path::file_name`、`path::file_stem`、`path::extension`、`path::join_c`、`path::join_span`、`path::with_extension`。
+- Method API：`Path.from_c`、`from_span`、`from_str`、`destroy`、`as_c`、`as_span`、`file_name`、`is_absolute`、`parent`、`extension`、`file_stem`、`join_c`、`join_span`、`with_extension`。
+- 约束：`Path` 存储平台路径 bytes，不验证 UTF-8；`from_span` 和 `join_span` 拒绝内部 NUL，因为当前 POSIX/C FFI 兼容视图需要 NUL-terminated buffer；`from_str` 只是从 UTF-8 文本构造路径的便利入口。
 - 兼容 API：`path::path_from_c`、`path::path_join_c` 等保留。
 
 `std.core.text`：

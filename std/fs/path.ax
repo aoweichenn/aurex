@@ -1,37 +1,121 @@
 module std.fs.path;
 
+import std.core.bytes;
+import std.core.mem;
 import std.core.result;
-import std.core.string;
 import std.core.text;
 
 pub struct Path {
-    text: String;
+    storage: Bytes;
+}
+
+fn contains_nul(bytes: SpanU8) -> bool {
+    var index: usize = cast(usize, 0);
+    while index < bytes.len {
+        if bytes.data[index] == b'\0' {
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return false;
+}
+
+fn set_trailing_nul(path: *mut Path) -> void {
+    if path.storage.storage.data != null {
+        path.storage.storage.data[path.storage.storage.len] = b'\0';
+    }
+}
+
+fn reserve(path: *mut Path, capacity: usize) -> bool {
+    if !path.storage.reserve(capacity + cast(usize, 1)) {
+        return false;
+    }
+    set_trailing_nul(path);
+    return true;
+}
+
+fn append_bytes(path: *mut Path, bytes: SpanU8) -> bool {
+    if contains_nul(bytes) {
+        return false;
+    }
+    if bytes.len == cast(usize, 0) {
+        return true;
+    }
+    let old_len: usize = path.storage.len();
+    let next_len: usize = old_len + bytes.len;
+    if !reserve(path, next_len) {
+        return false;
+    }
+    let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(path.storage.storage.data) + old_len);
+    copy_bytes(dst, bytes.data, bytes.len);
+    path.storage.storage.len = next_len;
+    path.storage.storage.data[path.storage.storage.len] = b'\0';
+    return true;
+}
+
+fn push_byte(path: *mut Path, value: u8) -> bool {
+    if value == b'\0' {
+        return false;
+    }
+    let old_len: usize = path.storage.len();
+    let next_len: usize = old_len + cast(usize, 1);
+    if !reserve(path, next_len) {
+        return false;
+    }
+    path.storage.storage.data[old_len] = value;
+    path.storage.storage.len = next_len;
+    path.storage.storage.data[path.storage.storage.len] = b'\0';
+    return true;
+}
+
+fn ends_with_byte(path: *const Path, value: u8) -> bool {
+    let span: SpanU8 = as_span(path);
+    if span.len == cast(usize, 0) {
+        return false;
+    }
+    return span.data[span.len - cast(usize, 1)] == value;
 }
 
 pub fn from_c(text: *const u8) -> Result<Path, i32> {
-    let owned: String = String.from_c(text)?;
-    return Result.ok(Path { text: owned });
+    if text == null {
+        return Result.err(1);
+    }
+    return from_span(c_span(text));
 }
 
 pub fn from_span(text: SpanU8) -> Result<Path, i32> {
-    var owned: String = String.new();
-    if !owned.append_span(text) {
-        owned.destroy();
+    if contains_nul(text) {
+        return Result.err(2);
+    }
+    var path: Path = Path { storage: Bytes.new() };
+    if !append_bytes(&path, text) {
+        destroy(&path);
         return Result.err(1);
     }
-    return Result.ok(Path { text: owned });
+    if !reserve(&path, path.storage.len()) {
+        destroy(&path);
+        return Result.err(1);
+    }
+    return Result.ok(path);
+}
+
+pub fn from_str(text: str) -> Result<Path, i32> {
+    return from_span(SpanU8 { data: str_data(text), len: str_byte_len(text) });
 }
 
 pub fn destroy(path: *mut Path) -> void {
-    path.text.destroy();
+    path.storage.destroy();
 }
 
 pub fn as_c(path: *const Path) -> *const u8 {
-    return path.text.c_str();
+    if path.storage.storage.data == null {
+        return c"";
+    }
+    return ptr_cast(*const u8, path.storage.storage.data);
 }
 
 pub fn as_span(path: *const Path) -> SpanU8 {
-    return path.text.as_span();
+    return path.storage.as_span();
 }
 
 pub fn file_name(path: *const Path) -> SpanU8 {
@@ -129,41 +213,43 @@ pub fn join_span(base: *const Path, child: SpanU8) -> Result<Path, i32> {
     if child.len == cast(usize, 0) {
         return from_span(as_span(base));
     }
+    if contains_nul(child) {
+        return Result.err(2);
+    }
     if child.data[cast(usize, 0)] == b'/' {
         return from_span(child);
     }
 
-    var joined: String = String.from_c(base.text.c_str())?;
-    if !joined.is_empty() && !joined.ends_with_byte(b'/') {
-        if !joined.push(b'/') {
+    var joined: Path = from_span(as_span(base))?;
+    if !joined.storage.is_empty() && !ends_with_byte(&joined, b'/') {
+        if !push_byte(&joined, b'/') {
             joined.destroy();
             return Result.err(1);
         }
     }
-    if !joined.append_span(child) {
+    if !append_bytes(&joined, child) {
         joined.destroy();
         return Result.err(1);
     }
-    return Result.ok(Path { text: joined });
+    return Result.ok(joined);
 }
 
 pub fn with_extension(path: *const Path, extension: SpanU8) -> Result<Path, i32> {
+    if contains_nul(extension) {
+        return Result.err(2);
+    }
     let source: SpanU8 = as_span(path);
     let stem: SpanU8 = file_stem(path);
     let prefix_len: usize = ptr_addr(stem.data) + stem.len - ptr_addr(source.data);
-    var updated: String = String.new();
     let prefix: SpanU8 = SpanU8 { data: source.data, len: prefix_len };
-    if !updated.append_span(prefix) {
-        updated.destroy();
-        return Result.err(1);
-    }
+    var updated: Path = from_span(prefix)?;
     if extension.len > cast(usize, 0) {
-        if !updated.push(b'.') || !updated.append_span(extension) {
+        if !push_byte(&updated, b'.') || !append_bytes(&updated, extension) {
             updated.destroy();
             return Result.err(1);
         }
     }
-    return Result.ok(Path { text: updated });
+    return Result.ok(updated);
 }
 
 pub fn path_from_c(text: *const u8) -> Result<Path, i32> {
@@ -197,6 +283,10 @@ impl Path {
 
     pub fn from_span(text: SpanU8) -> Result<Path, i32> {
         return from_span(text);
+    }
+
+    pub fn from_str(text: str) -> Result<Path, i32> {
+        return from_str(text);
     }
 
     pub fn destroy(self: *mut Path) -> void {

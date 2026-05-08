@@ -1,0 +1,112 @@
+module std_bytes;
+
+import std.core.bytes as bytes;
+import std.core.result as result;
+import std.core.text as text;
+import std.fs.path as path;
+
+fn check_bytes_raw_mutation() -> result::Result<bool, i32> {
+    var raw: bytes::Bytes = bytes::Bytes.new();
+    if !raw.push(b'A') || !raw.push(cast(u8, 0x00)) || !raw.push(cast(u8, 0xFF)) {
+        raw.destroy();
+        return Result.err(1);
+    }
+
+    let span: text::MutSpanU8 = raw.as_mut_span();
+    span.data[cast(usize, 0)] = b'B';
+    span.data[cast(usize, 1)] = cast(u8, 0xFE);
+
+    var clone: bytes::Bytes = bytes::Bytes.from_span(raw.as_span())?;
+    let ok: bool = raw.len() == cast(usize, 3) &&
+        raw.capacity() >= raw.len() &&
+        span.len == cast(usize, 3) &&
+        span.data[cast(usize, 0)] == b'B' &&
+        span.data[cast(usize, 1)] == cast(u8, 0xFE) &&
+        span.data[cast(usize, 2)] == cast(u8, 0xFF) &&
+        clone.equals_span(raw.as_span());
+    clone.destroy();
+    raw.destroy();
+    return Result.ok(ok);
+}
+
+fn check_bytes_self_append_alias() -> result::Result<bool, i32> {
+    var raw: bytes::Bytes = bytes::Bytes.new();
+    var index: usize = cast(usize, 0);
+    while index < cast(usize, 8) {
+        if !raw.push(b'a' + cast(u8, index)) {
+            raw.destroy();
+            return Result.err(2);
+        }
+        index = index + cast(usize, 1);
+    }
+
+    let view: text::SpanU8 = raw.as_span();
+    if !raw.append(view) {
+        raw.destroy();
+        return Result.err(2);
+    }
+
+    let span: text::SpanU8 = raw.as_span();
+    let ok: bool = span.len == cast(usize, 16) &&
+        span.data[cast(usize, 0)] == b'a' &&
+        span.data[cast(usize, 7)] == b'h' &&
+        span.data[cast(usize, 8)] == b'a' &&
+        span.data[cast(usize, 15)] == b'h';
+    raw.destroy();
+    return Result.ok(ok);
+}
+
+fn check_path_accepts_raw_bytes_and_rejects_nul() -> result::Result<bool, i32> {
+    var raw_path: bytes::Bytes = bytes::Bytes.new();
+    if !raw_path.push(b'/') || !raw_path.push(cast(u8, 0xFF)) || !raw_path.push(b'a') {
+        raw_path.destroy();
+        return Result.err(3);
+    }
+
+    var p: path::Path = path::Path.from_span(raw_path.as_span())?;
+    let span: text::SpanU8 = p.as_span();
+    let raw_path_ok: bool = span.len == cast(usize, 3) &&
+        span.data[cast(usize, 0)] == b'/' &&
+        span.data[cast(usize, 1)] == cast(u8, 0xFF) &&
+        span.data[cast(usize, 2)] == b'a' &&
+        p.as_c()[cast(usize, 3)] == b'\0';
+
+    var nul_path: bytes::Bytes = bytes::Bytes.new();
+    if !nul_path.push(b'a') || !nul_path.push(b'\0') || !nul_path.push(b'b') {
+        p.destroy();
+        raw_path.destroy();
+        nul_path.destroy();
+        return Result.err(3);
+    }
+    let rejects_nul: bool = path::Path.from_span(nul_path.as_span()).is_err() &&
+        p.join_span(nul_path.as_span()).is_err();
+
+    var text_path: path::Path = path::Path.from_str("src/main.ax")?;
+    let from_str_ok: bool = text::bytes_equal(text_path.file_name(), text::c_span(c"main.ax"));
+
+    text_path.destroy();
+    p.destroy();
+    raw_path.destroy();
+    nul_path.destroy();
+    return Result.ok(raw_path_ok && rejects_nul && from_str_ok);
+}
+
+fn run() -> result::Result<i32, i32> {
+    if !check_bytes_raw_mutation()? {
+        return Result.err(1);
+    }
+    if !check_bytes_self_append_alias()? {
+        return Result.err(2);
+    }
+    if !check_path_accepts_raw_bytes_and_rejects_nul()? {
+        return Result.err(3);
+    }
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

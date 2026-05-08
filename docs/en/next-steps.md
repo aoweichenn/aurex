@@ -1,6 +1,6 @@
 # Next Steps
 
-Version: 0.1.3
+Version: 0.1.7
 
 ## Current Stage
 
@@ -59,9 +59,12 @@ Current language slices:
   `Option<T>.ok_or<E>`.
 - Standard-library container/text/path baseline started, including generic
   `Span<T>` / `MutSpan<T>`, capacity, append, insert/remove, and random-access
-  APIs on `Vec<T>`, generic `Vec<T>` method APIs, a Vec-backed generic
-  `Map<K, V>`, borrowed C-string -> usize `CStringUsizeMap`, byte-level editing APIs on owned
-  `String`, and query/join APIs on owned `Path`.
+  APIs on `Vec<T>`, generic `Vec<T>` method APIs, owned raw
+  `std.core.bytes.Bytes`, a Vec-backed generic `Map<K, V>`, borrowed C-string
+  -> usize `CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar APIs,
+  UTF-8-oriented APIs on owned `String`, removal of `String.as_mut_span`, C FFI
+  `CStr` / `CString` boundary types, and query/join APIs on bytes-backed
+  `Path`.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
@@ -228,14 +231,18 @@ manual status helpers.
    `unwrap_or`, and `ok_or<E>`. Next, keep growing the std APIs so code like
    `File.read_all(path)?` and `Parser.next()?` becomes natural.
 
-3. `Span` / `Vec` / `Map` / `String` / `Path`
+3. `Span` / `Vec` / `Map` / `Bytes` / `String` / `Path`
    Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with
    capacity, append, insert/remove, random-access, and generic `Vec<T>` method
-   operations, a Vec-backed generic `Map<K, V>`, borrowed C-string -> usize
-   `CStringUsizeMap`, owned `String` append/insert/remove/truncate/clear and mutable
-   span APIs, and owned `Path` absolute-path, parent, file-name, file-stem,
-   extension, span/c-string join, and with-extension APIs, covered by std
-   integration samples combining method APIs, `Result` / `Option`, and `?`.
+   operations, owned raw `std.core.bytes.Bytes`, a Vec-backed generic
+   `Map<K, V>`, borrowed C-string -> usize `CStringUsizeMap`, borrowed UTF-8
+   `str` APIs and scalar APIs, owned UTF-8 `String`
+   `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked`
+   APIs, removal of `String.as_mut_span`, C FFI `CStr` / `CString` boundary
+   types, and bytes-backed `Path` absolute-path, parent, file-name, file-stem,
+   extension, from_str, span/c-string join, and with-extension APIs, covered by
+   std integration samples combining method APIs,
+   `Result` / `Option`, and `?`.
    The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
    `std.sys.host` file IO now exposes M1-style APIs such as
    `Result<FileBytes, i32>` and `Result<usize, i32>`. `examples/m1/axbuild`

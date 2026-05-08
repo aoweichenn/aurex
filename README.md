@@ -1,6 +1,6 @@
 # Aurex M0
 
-Documentation baseline: **0.1.3**.
+Documentation baseline: **0.1.7**.
 
 Aurex M0 is a small bootstrap compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.

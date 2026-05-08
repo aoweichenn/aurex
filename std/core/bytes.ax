@@ -1,0 +1,186 @@
+module std.core.bytes;
+
+import std.core.mem;
+import std.core.result;
+import std.core.text;
+import std.core.vec as vec;
+
+pub struct Bytes {
+    storage: vec::VecU8;
+}
+
+pub fn new() -> Bytes {
+    return Bytes { storage: vec::new<u8>() };
+}
+
+pub fn with_capacity(capacity: usize) -> Result<Bytes, i32> {
+    var bytes: Bytes = new();
+    if !reserve(&bytes, capacity) {
+        return Result.err(1);
+    }
+    return Result.ok(bytes);
+}
+
+pub fn destroy(bytes: *mut Bytes) -> void {
+    bytes.storage.destroy();
+}
+
+pub fn len(bytes: *const Bytes) -> usize {
+    return bytes.storage.len;
+}
+
+pub fn is_empty(bytes: *const Bytes) -> bool {
+    return bytes.storage.len == cast(usize, 0);
+}
+
+pub fn capacity(bytes: *const Bytes) -> usize {
+    return bytes.storage.capacity;
+}
+
+pub fn reserve(bytes: *mut Bytes, capacity: usize) -> bool {
+    return bytes.storage.reserve(capacity);
+}
+
+pub fn push(bytes: *mut Bytes, value: u8) -> bool {
+    return bytes.storage.push(value);
+}
+
+pub fn append(bytes: *mut Bytes, values: SpanU8) -> bool {
+    if values.len == cast(usize, 0) {
+        return true;
+    }
+
+    var source_is_self: bool = false;
+    var source_offset: usize = cast(usize, 0);
+    if bytes.storage.data != null {
+        let base_addr: usize = ptr_addr(bytes.storage.data);
+        let end_addr: usize = base_addr + bytes.storage.len;
+        let source_addr: usize = ptr_addr(values.data);
+        if source_addr >= base_addr && source_addr < end_addr {
+            source_is_self = true;
+            source_offset = source_addr - base_addr;
+        }
+    }
+
+    let old_len: usize = bytes.storage.len;
+    let next_len: usize = old_len + values.len;
+    if !bytes.storage.reserve(next_len) {
+        return false;
+    }
+
+    var src: *const u8 = values.data;
+    if source_is_self {
+        src = ptr_from_addr(*const u8, ptr_addr(bytes.storage.data) + source_offset);
+    }
+    let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(bytes.storage.data) + old_len);
+    move_bytes(dst, src, values.len);
+    bytes.storage.len = next_len;
+    return true;
+}
+
+pub fn from_span(values: SpanU8) -> Result<Bytes, i32> {
+    var bytes: Bytes = new();
+    if !append(&bytes, values) {
+        bytes.destroy();
+        return Result.err(1);
+    }
+    return Result.ok(bytes);
+}
+
+pub fn pop(bytes: *mut Bytes) -> Option<u8> {
+    return bytes.storage.pop();
+}
+
+pub fn remove(bytes: *mut Bytes, index: usize) -> Option<u8> {
+    return bytes.storage.remove(index);
+}
+
+pub fn truncate(bytes: *mut Bytes, len: usize) -> void {
+    bytes.storage.truncate(len);
+}
+
+pub fn clear(bytes: *mut Bytes) -> void {
+    bytes.storage.clear();
+}
+
+pub fn as_span(bytes: *const Bytes) -> SpanU8 {
+    return bytes.storage.as_span();
+}
+
+pub fn as_mut_span(bytes: *mut Bytes) -> MutSpanU8 {
+    return bytes.storage.as_mut_span();
+}
+
+pub fn equals_span(bytes: *const Bytes, values: SpanU8) -> bool {
+    return bytes_equal(as_span(bytes), values);
+}
+
+impl Bytes {
+    pub fn new() -> Bytes {
+        return new();
+    }
+
+    pub fn with_capacity(capacity: usize) -> Result<Bytes, i32> {
+        return with_capacity(capacity);
+    }
+
+    pub fn from_span(values: SpanU8) -> Result<Bytes, i32> {
+        return from_span(values);
+    }
+
+    pub fn destroy(self: *mut Bytes) -> void {
+        destroy(self);
+    }
+
+    pub fn len(self: *const Bytes) -> usize {
+        return len(self);
+    }
+
+    pub fn is_empty(self: *const Bytes) -> bool {
+        return is_empty(self);
+    }
+
+    pub fn capacity(self: *const Bytes) -> usize {
+        return capacity(self);
+    }
+
+    pub fn reserve(self: *mut Bytes, capacity: usize) -> bool {
+        return reserve(self, capacity);
+    }
+
+    pub fn push(self: *mut Bytes, value: u8) -> bool {
+        return push(self, value);
+    }
+
+    pub fn append(self: *mut Bytes, values: SpanU8) -> bool {
+        return append(self, values);
+    }
+
+    pub fn pop(self: *mut Bytes) -> Option<u8> {
+        return pop(self);
+    }
+
+    pub fn remove(self: *mut Bytes, index: usize) -> Option<u8> {
+        return remove(self, index);
+    }
+
+    pub fn truncate(self: *mut Bytes, len: usize) -> void {
+        truncate(self, len);
+    }
+
+    pub fn clear(self: *mut Bytes) -> void {
+        clear(self);
+    }
+
+    pub fn as_span(self: *const Bytes) -> SpanU8 {
+        return as_span(self);
+    }
+
+    pub fn as_mut_span(self: *mut Bytes) -> MutSpanU8 {
+        return as_mut_span(self);
+    }
+
+    pub fn equals_span(self: *const Bytes, values: SpanU8) -> bool {
+        return equals_span(self, values);
+    }
+}

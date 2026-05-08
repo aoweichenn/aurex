@@ -363,10 +363,6 @@ pub fn as_bytes(string: *const String) -> SpanU8 {
     return as_span(string);
 }
 
-pub fn as_mut_span(string: *mut String) -> MutSpanU8 {
-    return string.bytes.as_mut_span();
-}
-
 pub fn as_str(string: *const String) -> str {
     let bytes: SpanU8 = as_span(string);
     return str_from_bytes_unchecked(bytes.data, bytes.len);
@@ -662,10 +658,6 @@ impl String {
 
     pub fn as_bytes(self: *const String) -> SpanU8 {
         return string_as_bytes(self);
-    }
-
-    pub fn as_mut_span(self: *mut String) -> MutSpanU8 {
-        return as_mut_span(self);
     }
 
     pub fn as_str(self: *const String) -> str {

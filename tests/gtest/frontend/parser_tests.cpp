@@ -407,6 +407,92 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
     expect_contains(messages, "expected expression");
 }
 
+TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators) {
+    constexpr base::SourceId kParamRecoverySourceId {13};
+    constexpr std::string_view source =
+        "module parser.parameter_recovery;\n"
+        "fn recovered(a: i32 @ b: i32) -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kParamRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' or ')' after parameter");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
+    constexpr base::SourceId kStructDeclFieldRecoverySourceId {14};
+    constexpr std::string_view source =
+        "module parser.struct_decl_field_recovery;\n"
+        "struct Pair { a: i32 @ b: i32; }\n"
+        "fn recovered() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kStructDeclFieldRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ';' after field declaration");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
+    constexpr base::SourceId kEnumCaseRecoverySourceId {15};
+    constexpr std::string_view source =
+        "module parser.enum_case_recovery;\n"
+        "enum Code: u8 { a = 1 @ b = 2, }\n"
+        "fn recovered() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kEnumCaseRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' after enum case");
+    expect_contains(messages, "expected expression");
+}
+
 TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
     constexpr std::string_view source =
         "module parser.angle;\n"

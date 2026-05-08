@@ -2,15 +2,24 @@
 #include "aurex/base/integer.hpp"
 #include "aurex/lex/lexer.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
 constexpr aurex::base::usize default_iterations = 1000;
 constexpr aurex::base::usize default_repetitions = 256;
+constexpr aurex::base::usize default_warmup_iterations = 0;
+constexpr aurex::base::usize default_runs = 1;
+constexpr aurex::base::usize first_position_arg = 1;
+constexpr aurex::base::usize max_position_args = 3;
 constexpr double nanoseconds_per_millisecond = 1'000'000.0;
 
 enum class BenchmarkScenario {
@@ -59,6 +68,27 @@ constexpr std::string_view punctuation_benchmark_snippet =
     "... . :: : -> - => == = != ! <= << < >= >> > && & || | "
     "( ) { } [ ] , ; + * / % ^ ~ @ ?\n";
 
+struct BenchmarkConfig final {
+    aurex::base::usize iterations = default_iterations;
+    aurex::base::usize repetitions = default_repetitions;
+    aurex::base::usize warmup_iterations = default_warmup_iterations;
+    aurex::base::usize runs = default_runs;
+    BenchmarkScenario scenario = BenchmarkScenario::mixed;
+    std::string file_path;
+};
+
+struct RunMeasurement final {
+    aurex::base::usize elapsed_ns = 0;
+    aurex::base::usize total_tokens = 0;
+};
+
+struct MetricSummary final {
+    double min = 0.0;
+    double median = 0.0;
+    double max = 0.0;
+    double average = 0.0;
+};
+
 [[nodiscard]] BenchmarkScenario parse_scenario(const std::string_view text) noexcept {
     if (text == "identifiers") {
         return BenchmarkScenario::identifiers;
@@ -73,6 +103,14 @@ constexpr std::string_view punctuation_benchmark_snippet =
         return BenchmarkScenario::punctuation;
     }
     return BenchmarkScenario::mixed;
+}
+
+[[nodiscard]] bool is_option(const std::string_view text) noexcept {
+    return text.starts_with("--");
+}
+
+[[nodiscard]] bool option_requires_value(const std::string_view text) noexcept {
+    return text == "--file" || text == "--warmup" || text == "--runs";
 }
 
 [[nodiscard]] std::string_view scenario_name(const BenchmarkScenario scenario) noexcept {
@@ -107,6 +145,13 @@ constexpr std::string_view punctuation_benchmark_snippet =
     return mixed_benchmark_snippet;
 }
 
+[[nodiscard]] std::string input_name(const BenchmarkConfig& config) {
+    if (!config.file_path.empty()) {
+        return config.file_path;
+    }
+    return std::string(scenario_name(config.scenario));
+}
+
 [[nodiscard]] aurex::base::usize parse_positive_usize(
     const char* const text,
     const aurex::base::usize fallback
@@ -119,11 +164,81 @@ constexpr std::string_view punctuation_benchmark_snippet =
     }
 }
 
+void apply_position_arg(BenchmarkConfig& config, const aurex::base::usize position, const char* const text) {
+    switch (position) {
+    case 0:
+        config.iterations = parse_positive_usize(text, default_iterations);
+        return;
+    case 1:
+        config.repetitions = parse_positive_usize(text, default_repetitions);
+        return;
+    case 2:
+        config.scenario = parse_scenario(text);
+        return;
+    default:
+        return;
+    }
+}
+
+bool apply_option(
+    BenchmarkConfig& config,
+    const std::string_view option,
+    const char* const value
+) {
+    if (option == "--file") {
+        config.file_path = value;
+        return true;
+    }
+    if (option == "--warmup") {
+        config.warmup_iterations = parse_positive_usize(value, default_warmup_iterations);
+        return true;
+    }
+    if (option == "--runs") {
+        config.runs = parse_positive_usize(value, default_runs);
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] BenchmarkConfig parse_config(const int argc, char** argv) {
+    BenchmarkConfig config;
+    aurex::base::usize position = 0;
+    for (int index = first_position_arg; index < argc; ++index) {
+        const std::string_view arg = argv[index];
+        if (!is_option(arg)) {
+            if (position < max_position_args) {
+                apply_position_arg(config, position, argv[index]);
+            }
+            ++position;
+            continue;
+        }
+
+        if (!option_requires_value(arg) || index + 1 >= argc) {
+            std::cerr << "unknown or incomplete option: " << arg << '\n';
+            continue;
+        }
+        if (!apply_option(config, arg, argv[index + 1])) {
+            std::cerr << "unknown option: " << arg << '\n';
+        }
+        ++index;
+    }
+    return config;
+}
+
+[[nodiscard]] std::string read_file(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return {};
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+
 [[nodiscard]] std::string make_source(
     const aurex::base::usize repetitions,
-    const BenchmarkScenario scenario
+    const std::string_view snippet
 ) {
-    const std::string_view snippet = scenario_snippet(scenario);
     std::string source;
     source.reserve(snippet.size() * repetitions);
     for (aurex::base::usize index = 0; index < repetitions; ++index) {
@@ -132,47 +247,124 @@ constexpr std::string_view punctuation_benchmark_snippet =
     return source;
 }
 
-} // namespace
+[[nodiscard]] std::string make_source(const BenchmarkConfig& config) {
+    if (!config.file_path.empty()) {
+        const std::string file_text = read_file(config.file_path);
+        return make_source(config.repetitions, file_text);
+    }
+    return make_source(config.repetitions, scenario_snippet(config.scenario));
+}
 
-int main(const int argc, char** argv) {
-    const aurex::base::usize iterations = argc > 1
-        ? parse_positive_usize(argv[1], default_iterations)
-        : default_iterations;
-    const aurex::base::usize repetitions = argc > 2
-        ? parse_positive_usize(argv[2], default_repetitions)
-        : default_repetitions;
-    const BenchmarkScenario scenario = argc > 3
-        ? parse_scenario(argv[3])
-        : BenchmarkScenario::mixed;
-    const std::string source = make_source(repetitions, scenario);
-
-    aurex::base::usize total_tokens = 0;
-    const auto started = std::chrono::steady_clock::now();
+[[nodiscard]] bool tokenize_source(
+    const std::string& source,
+    const aurex::base::usize iterations,
+    aurex::base::usize& total_tokens
+) {
+    total_tokens = 0;
     for (aurex::base::usize iteration = 0; iteration < iterations; ++iteration) {
         aurex::base::DiagnosticSink diagnostics;
         aurex::lex::Lexer lexer({1}, source, diagnostics);
         auto result = lexer.tokenize();
         if (!result || diagnostics.has_error()) {
-            std::cerr << "lexer benchmark input failed to tokenize\n";
-            return 1;
+            return false;
         }
         total_tokens += result.value().size();
     }
+    return true;
+}
+
+[[nodiscard]] RunMeasurement measure_run(
+    const std::string& source,
+    const aurex::base::usize iterations
+) {
+    aurex::base::usize total_tokens = 0;
+    const auto started = std::chrono::steady_clock::now();
+    if (!tokenize_source(source, iterations, total_tokens)) {
+        return {};
+    }
     const auto elapsed = std::chrono::steady_clock::now() - started;
     const auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
-    const auto total_bytes = static_cast<double>(source.size()) * static_cast<double>(iterations);
-    const auto total_token_count = static_cast<double>(total_tokens);
-    const double elapsed_ms = static_cast<double>(elapsed_ns) / nanoseconds_per_millisecond;
-    const double ns_per_byte = static_cast<double>(elapsed_ns) / total_bytes;
-    const double ns_per_token = static_cast<double>(elapsed_ns) / total_token_count;
+    return RunMeasurement {
+        static_cast<aurex::base::usize>(elapsed_ns),
+        total_tokens,
+    };
+}
 
-    std::cout << "scenario: " << scenario_name(scenario) << '\n'
-              << "iterations: " << iterations << '\n'
+[[nodiscard]] MetricSummary summarize(std::vector<double> values) {
+    std::sort(values.begin(), values.end());
+    double total = 0.0;
+    for (const double value : values) {
+        total += value;
+    }
+    const aurex::base::usize median_index = values.size() / 2;
+    return MetricSummary {
+        values.front(),
+        values[median_index],
+        values.back(),
+        total / static_cast<double>(values.size()),
+    };
+}
+
+void print_summary(const std::string_view label, const MetricSummary summary) {
+    std::cout << label << "_min: " << summary.min << '\n'
+              << label << "_median: " << summary.median << '\n'
+              << label << "_max: " << summary.max << '\n'
+              << label << "_avg: " << summary.average << '\n';
+}
+
+} // namespace
+
+int main(const int argc, char** argv) {
+    const BenchmarkConfig config = parse_config(argc, argv);
+    const std::string source = make_source(config);
+    if (source.empty()) {
+        std::cerr << "lexer benchmark input is empty or unreadable\n";
+        return 1;
+    }
+
+    if (config.warmup_iterations > 0) {
+        aurex::base::usize warmup_tokens = 0;
+        if (!tokenize_source(source, config.warmup_iterations, warmup_tokens)) {
+            std::cerr << "lexer benchmark warmup input failed to tokenize\n";
+            return 1;
+        }
+    }
+
+    std::vector<double> elapsed_ms_values;
+    std::vector<double> ns_per_byte_values;
+    std::vector<double> ns_per_token_values;
+    elapsed_ms_values.reserve(config.runs);
+    ns_per_byte_values.reserve(config.runs);
+    ns_per_token_values.reserve(config.runs);
+
+    aurex::base::usize last_total_tokens = 0;
+    for (aurex::base::usize run = 0; run < config.runs; ++run) {
+        const RunMeasurement measurement = measure_run(source, config.iterations);
+        if (measurement.elapsed_ns == 0 || measurement.total_tokens == 0) {
+            std::cerr << "lexer benchmark input failed to tokenize\n";
+            return 1;
+        }
+        const auto total_bytes = static_cast<double>(source.size()) * static_cast<double>(config.iterations);
+        const auto total_token_count = static_cast<double>(measurement.total_tokens);
+        elapsed_ms_values.push_back(static_cast<double>(measurement.elapsed_ns) / nanoseconds_per_millisecond);
+        ns_per_byte_values.push_back(static_cast<double>(measurement.elapsed_ns) / total_bytes);
+        ns_per_token_values.push_back(static_cast<double>(measurement.elapsed_ns) / total_token_count);
+        last_total_tokens = measurement.total_tokens;
+    }
+
+    std::cout << std::setprecision(6)
+              << "input: " << input_name(config) << '\n'
+              << "iterations: " << config.iterations << '\n'
+              << "repetitions: " << config.repetitions << '\n'
+              << "warmup_iterations: " << config.warmup_iterations << '\n'
+              << "runs: " << config.runs << '\n'
               << "source_bytes: " << source.size() << '\n'
-              << "total_bytes: " << static_cast<unsigned long long>(total_bytes) << '\n'
-              << "total_tokens: " << total_tokens << '\n'
-              << "elapsed_ms: " << elapsed_ms << '\n'
-              << "ns_per_byte: " << ns_per_byte << '\n'
-              << "ns_per_token: " << ns_per_token << '\n';
+              << "total_bytes_per_run: "
+              << static_cast<unsigned long long>(static_cast<double>(source.size()) * static_cast<double>(config.iterations))
+              << '\n'
+              << "total_tokens_per_run: " << last_total_tokens << '\n';
+    print_summary("elapsed_ms", summarize(elapsed_ms_values));
+    print_summary("ns_per_byte", summarize(ns_per_byte_values));
+    print_summary("ns_per_token", summarize(ns_per_token_values));
     return 0;
 }

@@ -1,5 +1,8 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
+#include <optional>
 #include <utility>
 
 namespace aurex::parse {
@@ -28,20 +31,13 @@ syntax::ItemId ItemParser::parse_struct_decl() {
     item.is_noncopy = is_noncopy;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
-        const syntax::Visibility field_visibility = this->parse_visibility();
-        const syntax::Token& field_name = this->expect(TokenKind::identifier, "expected field name");
-        this->expect(TokenKind::colon, "expected ':' after field name");
-        const syntax::TypeId field_type = this->parse_type();
-        const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after field declaration");
-        if (field_name.kind == TokenKind::identifier) {
-            item.fields.push_back(syntax::FieldDecl {
-                field_name.text,
-                field_type,
-                this->merge(field_name.range, end.range),
-                field_visibility,
-            });
+        if (std::optional<syntax::FieldDecl> field = this->parse_struct_field_decl()) {
+            item.fields.push_back(field.value());
         }
         this->reset_panic();
+        if (!this->recover_struct_field_decl_separator()) {
+            break;
+        }
     }
 
     const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after struct declaration");
@@ -68,30 +64,103 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     item.enum_base_type = base_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
-        const syntax::Token& case_name = this->expect(TokenKind::identifier, "expected enum case name");
-        syntax::TypeId payload_type = syntax::invalid_type_id;
-        if (this->match(TokenKind::l_paren)) {
-            payload_type = this->parse_type();
-            this->expect(TokenKind::r_paren, "expected ')' after enum case payload type");
-        }
-        this->expect(TokenKind::equal, "expected '=' after enum case name");
-        const syntax::Token& value = this->expect(TokenKind::integer_literal, "expected integer literal enum value");
-        const syntax::Token& comma = this->expect(TokenKind::comma, "expected ',' after enum case");
-        if (case_name.kind == TokenKind::identifier) {
-            item.enum_cases.push_back(syntax::EnumCaseDecl {
-                case_name.text,
-                payload_type,
-                value.text,
-                this->merge(case_name.range, comma.range),
-            });
+        if (std::optional<syntax::EnumCaseDecl> enum_case = this->parse_enum_case_decl()) {
+            item.enum_cases.push_back(enum_case.value());
         }
         this->reset_panic();
+        if (!this->recover_enum_case_separator()) {
+            break;
+        }
     }
 
     const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after enum declaration");
     item.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));
+}
+
+std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
+    const syntax::Visibility field_visibility = this->parse_visibility();
+    const syntax::Token& field_name = this->expect(TokenKind::identifier, "expected field name");
+    this->expect(TokenKind::colon, "expected ':' after field name");
+    const syntax::TypeId field_type = this->parse_type();
+    if (field_name.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+    const base::SourceRange end_range = this->check(TokenKind::semicolon) || this->check(TokenKind::comma)
+        ? this->peek().range
+        : this->type_range_or(field_type, field_name.range);
+    return syntax::FieldDecl {
+        field_name.text,
+        field_type,
+        this->merge(field_name.range, end_range),
+        field_visibility,
+    };
+}
+
+bool ItemParser::recover_struct_field_decl_separator() {
+    if (this->check(TokenKind::r_brace)) {
+        return false;
+    }
+    if (this->match(TokenKind::semicolon)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+
+    this->report_here("expected ';' after field declaration");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::struct_decl_field)) {
+        this->synchronize(RecoveryContext::struct_decl_field);
+    }
+    if (this->match(TokenKind::semicolon) || this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+    this->reset_panic();
+    return token_starts_struct_decl_field(this->peek().kind);
+}
+
+std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
+    const syntax::Token& case_name = this->expect(TokenKind::identifier, "expected enum case name");
+    syntax::TypeId payload_type = syntax::invalid_type_id;
+    if (this->match(TokenKind::l_paren)) {
+        payload_type = this->parse_type();
+        this->expect(TokenKind::r_paren, "expected ')' after enum case payload type");
+    }
+    this->expect(TokenKind::equal, "expected '=' after enum case name");
+    const syntax::Token& value = this->expect(TokenKind::integer_literal, "expected integer literal enum value");
+    if (case_name.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+    const base::SourceRange end_range = this->check(TokenKind::comma) || this->check(TokenKind::semicolon)
+        ? this->peek().range
+        : value.range;
+    return syntax::EnumCaseDecl {
+        case_name.text,
+        payload_type,
+        value.text,
+        this->merge(case_name.range, end_range),
+    };
+}
+
+bool ItemParser::recover_enum_case_separator() {
+    if (this->check(TokenKind::r_brace)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+
+    this->report_here("expected ',' after enum case");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::enum_case)) {
+        this->synchronize(RecoveryContext::enum_case);
+    }
+    if (this->match(TokenKind::comma) || this->match(TokenKind::semicolon)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+    this->reset_panic();
+    return token_starts_enum_case(this->peek().kind);
 }
 
 syntax::ItemId ItemParser::parse_opaque_struct_decl() {

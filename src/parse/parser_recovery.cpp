@@ -153,6 +153,54 @@ using syntax::TokenKind;
     }
 }
 
+[[nodiscard]] bool token_ends_parameter(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::comma:
+    case TokenKind::r_paren:
+    case TokenKind::arrow:
+    case TokenKind::l_brace:
+    case TokenKind::semicolon:
+    case TokenKind::r_brace:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool token_ends_struct_decl_field(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::semicolon:
+    case TokenKind::comma:
+    case TokenKind::r_brace:
+    case TokenKind::kw_fn:
+    case TokenKind::kw_struct:
+    case TokenKind::kw_enum:
+    case TokenKind::kw_impl:
+    case TokenKind::kw_extern:
+    case TokenKind::kw_export:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool token_ends_enum_case(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::comma:
+    case TokenKind::semicolon:
+    case TokenKind::r_brace:
+    case TokenKind::kw_fn:
+    case TokenKind::kw_struct:
+    case TokenKind::kw_enum:
+    case TokenKind::kw_impl:
+    case TokenKind::kw_extern:
+    case TokenKind::kw_export:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 bool token_starts_match_arm(const TokenKind kind) noexcept {
@@ -169,6 +217,20 @@ bool token_starts_match_arm(const TokenKind kind) noexcept {
 }
 
 bool token_starts_struct_field(const TokenKind kind) noexcept {
+    return kind == TokenKind::identifier;
+}
+
+bool token_starts_parameter(const TokenKind kind) noexcept {
+    return kind == TokenKind::identifier || kind == TokenKind::ellipsis;
+}
+
+bool token_starts_struct_decl_field(const TokenKind kind) noexcept {
+    return kind == TokenKind::identifier ||
+           kind == TokenKind::kw_pub ||
+           kind == TokenKind::kw_priv;
+}
+
+bool token_starts_enum_case(const TokenKind kind) noexcept {
     return kind == TokenKind::identifier;
 }
 
@@ -197,6 +259,21 @@ bool token_matches_recovery_context(
     case RecoveryContext::struct_field:
         return token_ends_struct_field(kind) ||
                token_starts_struct_field(kind) ||
+               token_starts_item(kind) ||
+               token_starts_non_expression_statement(kind);
+    case RecoveryContext::parameter:
+        return token_ends_parameter(kind) ||
+               token_starts_parameter(kind) ||
+               token_starts_item(kind) ||
+               token_starts_non_expression_statement(kind);
+    case RecoveryContext::struct_decl_field:
+        return token_ends_struct_decl_field(kind) ||
+               token_starts_struct_decl_field(kind) ||
+               token_starts_item(kind) ||
+               token_starts_non_expression_statement(kind);
+    case RecoveryContext::enum_case:
+        return token_ends_enum_case(kind) ||
+               token_starts_enum_case(kind) ||
                token_starts_item(kind) ||
                token_starts_non_expression_statement(kind);
     case RecoveryContext::item_or_statement:

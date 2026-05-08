@@ -15,6 +15,12 @@ enum class RecoveryContext {
     call_argument,
     // Struct literal field list boundary after a malformed field or separator.
     struct_field,
+    // Function parameter list boundary after a malformed parameter or separator.
+    parameter,
+    // Struct declaration field list boundary after a malformed field or separator.
+    struct_decl_field,
+    // Enum case list boundary after a malformed case or separator.
+    enum_case,
     // Transitional default for bridge calls that have not chosen a narrower boundary.
     item_or_statement,
 };

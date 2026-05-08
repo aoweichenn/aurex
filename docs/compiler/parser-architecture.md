@@ -52,6 +52,14 @@ Current contexts:
 - `RecoveryContext::struct_field` is used inside struct literal field lists. It
   stops at field separators, the closing `}`, valid field starters, and obvious
   outer grammar starters.
+- `RecoveryContext::parameter` is used inside function parameter lists. It
+  stops at parameter separators, `)`, return/body/prototype boundaries, valid
+  parameter starters, and obvious outer grammar starters.
+- `RecoveryContext::struct_decl_field` is used inside struct declaration field
+  lists. It stops at field separators, `}`, declaration starters, and obvious
+  outer grammar starters.
+- `RecoveryContext::enum_case` is used inside enum case lists. It stops at case
+  separators, `}`, declaration starters, and obvious outer grammar starters.
 - `RecoveryContext::item_or_statement` remains the conservative default for
   bridge calls while a caller is being migrated to a narrower context.
 
@@ -116,7 +124,7 @@ Near-term improvements:
 
 - Keep deduplicating small lookahead and recovery helpers.
 - Add narrower recovery contexts where the grammar has a real boundary, such as
-  parameter lists and enum case lists.
+  generic parameter lists and ABI attribute arguments.
 - Keep tests close to grammar boundaries that are likely to regress.
 - Make parser parts easier to reason about before algorithmic changes.
 

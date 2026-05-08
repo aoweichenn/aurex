@@ -1,5 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
 #include <string_view>
 #include <utility>
 
@@ -66,33 +68,65 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
 
 std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
     std::vector<syntax::ParamDecl> params;
-    do {
+    while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
         if (this->match(TokenKind::ellipsis)) {
             is_variadic = true;
             if (!this->check(TokenKind::r_paren)) {
                 this->report_here("variadic marker must be last in parameter list");
-                while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
-                    this->advance();
-                }
+                this->synchronize(RecoveryContext::parameter);
             }
             break;
         }
-        const syntax::Token& name = this->expect(TokenKind::identifier, "expected parameter name");
-        this->expect(TokenKind::colon, "expected ':' after parameter name");
-        const syntax::TypeId type = this->parse_type();
-        if (name.kind == TokenKind::identifier) {
-            params.push_back(syntax::ParamDecl {
-                name.text,
-                type,
-                this->merge(name.range, this->type_range_or(type, name.range)),
-            });
-        }
+        params.push_back(this->parse_param());
         this->reset_panic();
-        if (this->check(TokenKind::r_paren)) {
+        if (!this->recover_param_separator(is_variadic)) {
             break;
         }
-    } while (this->match(TokenKind::comma) && !this->check(TokenKind::r_paren));
+    }
     return params;
+}
+
+syntax::ParamDecl ItemParser::parse_param() {
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected parameter name");
+    this->expect(TokenKind::colon, "expected ':' after parameter name");
+    const syntax::TypeId type = this->parse_type();
+    if (name.kind != TokenKind::identifier) {
+        return {};
+    }
+    return syntax::ParamDecl {
+        name.text,
+        type,
+        this->merge(name.range, this->type_range_or(type, name.range)),
+    };
+}
+
+bool ItemParser::recover_param_separator(bool& is_variadic) {
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        if (this->match(TokenKind::ellipsis)) {
+            is_variadic = true;
+            if (!this->check(TokenKind::r_paren)) {
+                this->report_here("variadic marker must be last in parameter list");
+                this->synchronize(RecoveryContext::parameter);
+            }
+            return false;
+        }
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here("expected ',' or ')' after parameter");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::parameter)) {
+        this->synchronize(RecoveryContext::parameter);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return token_starts_parameter(this->peek().kind);
 }
 
 syntax::TypeId ItemParser::parse_optional_return_type() {

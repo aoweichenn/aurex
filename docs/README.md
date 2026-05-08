@@ -15,6 +15,7 @@ language they were written in.
 - [运行流程文档](zh/runtime-flow.md)
 - [API 接口文档](zh/api.md)
 - [字符串基础类型设计草案](zh/string-primitive-design.md)
+- [Aurex 基础语法地基评估](zh/basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](zh/language-syntax-and-design-review.md)
 - [设计实现文档](zh/implementation.md)
 - [使用文档](zh/usage.md)

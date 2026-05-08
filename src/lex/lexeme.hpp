@@ -65,9 +65,4 @@ inline constexpr std::string_view unterminated_c_string_message = "unterminated 
 inline constexpr std::string_view unterminated_byte_message = "unterminated byte literal";
 inline constexpr std::string_view oversized_byte_message = "byte literal must contain one byte";
 
-template <base::usize Size>
-[[nodiscard]] consteval base::usize token_text_length(const char (&)[Size]) noexcept {
-    return Size - single_byte_lexeme_width;
-}
-
 } // namespace aurex::lex

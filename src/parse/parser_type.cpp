@@ -9,6 +9,13 @@ namespace {
 
 using syntax::TokenKind;
 
+constexpr int kBinaryRadix = 2;
+constexpr int kDecimalRadix = 10;
+constexpr int kHexRadix = 16;
+constexpr base::usize kRadixMarkerOffset = 1;
+constexpr base::usize kRadixPrefixLength = 2;
+constexpr base::u64 kDecimalDigitCount = 10;
+
 [[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::kw_void:
@@ -55,14 +62,18 @@ using syntax::TokenKind;
 
 [[nodiscard]] bool parse_u64_literal(const std::string_view text, base::u64& value) noexcept {
     value = 0;
-    int base = 10;
+    int radix = kDecimalRadix;
     base::usize begin = 0;
-    if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
-        base = 16;
-        begin = 2;
-    } else if (text.size() > 2 && text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) {
-        base = 2;
-        begin = 2;
+    if (text.size() > kRadixPrefixLength &&
+        text.front() == '0' &&
+        (text[kRadixMarkerOffset] == 'x' || text[kRadixMarkerOffset] == 'X')) {
+        radix = kHexRadix;
+        begin = kRadixPrefixLength;
+    } else if (text.size() > kRadixPrefixLength &&
+               text.front() == '0' &&
+               (text[kRadixMarkerOffset] == 'b' || text[kRadixMarkerOffset] == 'B')) {
+        radix = kBinaryRadix;
+        begin = kRadixPrefixLength;
     }
     for (base::usize i = begin; i < text.size(); ++i) {
         const char c = text[i];
@@ -73,19 +84,19 @@ using syntax::TokenKind;
         if (c >= '0' && c <= '9') {
             digit = static_cast<base::u64>(c - '0');
         } else if (c >= 'a' && c <= 'f') {
-            digit = static_cast<base::u64>(10 + c - 'a');
+            digit = static_cast<base::u64>(kDecimalDigitCount + c - 'a');
         } else if (c >= 'A' && c <= 'F') {
-            digit = static_cast<base::u64>(10 + c - 'A');
+            digit = static_cast<base::u64>(kDecimalDigitCount + c - 'A');
         } else {
             return false;
         }
-        if (digit >= static_cast<base::u64>(base)) {
+        if (digit >= static_cast<base::u64>(radix)) {
             return false;
         }
-        if (value > (std::numeric_limits<base::u64>::max() - digit) / static_cast<base::u64>(base)) {
+        if (value > (std::numeric_limits<base::u64>::max() - digit) / static_cast<base::u64>(radix)) {
             return false;
         }
-        value = (value * static_cast<base::u64>(base)) + digit;
+        value = (value * static_cast<base::u64>(radix)) + digit;
     }
     return true;
 }

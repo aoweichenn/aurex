@@ -10,6 +10,8 @@ namespace {
 
 using syntax::TokenKind;
 
+constexpr int kGreaterGreaterTokenArity = 2;
+
 } // namespace
 
 Parser::Parser(
@@ -89,7 +91,7 @@ bool Parser::next_angle_list_is_type_scope() const noexcept {
                        (tokens[after].kind == TokenKind::dot || tokens[after].kind == TokenKind::l_paren);
             }
         } else if (kind == TokenKind::greater_greater) {
-            for (int i = 0; i < 2; ++i) {
+            for (int i = 0; i < kGreaterGreaterTokenArity; ++i) {
                 --depth;
                 if (depth == 0) {
                     const base::usize after = index + 1;
@@ -126,7 +128,7 @@ bool Parser::next_angle_list_is_struct_literal() const noexcept {
                 return after < tokens.size() && tokens[after].kind == TokenKind::l_brace;
             }
         } else if (kind == TokenKind::greater_greater) {
-            for (int i = 0; i < 2; ++i) {
+            for (int i = 0; i < kGreaterGreaterTokenArity; ++i) {
                 --depth;
                 if (depth == 0) {
                     const base::usize after = index + 1;

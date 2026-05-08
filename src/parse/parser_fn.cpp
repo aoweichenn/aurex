@@ -1,5 +1,6 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::parse {
@@ -7,6 +8,16 @@ namespace aurex::parse {
 namespace {
 
 using syntax::TokenKind;
+
+constexpr base::usize kStringDelimiterSize = 1;
+constexpr base::usize kStringDelimiterPairSize = kStringDelimiterSize * 2;
+
+[[nodiscard]] std::string_view unquote_string_literal(const std::string_view text) noexcept {
+    if (text.size() < kStringDelimiterPairSize) {
+        return {};
+    }
+    return text.substr(kStringDelimiterSize, text.size() - kStringDelimiterPairSize);
+}
 
 } // namespace
 
@@ -97,8 +108,8 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
     }
     expect(TokenKind::l_paren, "expected '(' after ABI attribute");
     const syntax::Token& value = expect(TokenKind::string_literal, "expected string literal in ABI name");
-    if (value.text.size() >= 2) {
-        item.abi_name = value.text.substr(1, value.text.size() - 2);
+    if (value.kind == TokenKind::string_literal) {
+        item.abi_name = unquote_string_literal(value.text);
     }
     expect(TokenKind::r_paren, "expected ')' after ABI attribute");
     reset_panic();

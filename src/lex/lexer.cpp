@@ -7,6 +7,7 @@
 #include "punctuator.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -129,8 +130,9 @@ bool Lexer::scan_punctuator(const base::usize begin, const char first) {
     if (!match.matched()) {
         return false;
     }
+    const base::usize end = begin + match.width;
     this->advance_bytes(match.width);
-    this->finish_token(match.kind, begin);
+    this->add_nonempty_token(match.kind, begin, end);
     return true;
 }
 
@@ -165,7 +167,7 @@ void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin) 
 void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin, const std::string_view text) {
     this->tokens_.push_back(syntax::Token {
         kind,
-        this->current_range(begin),
+        base::SourceRange {this->source_id_, begin, begin + text.size()},
         text,
     });
 }
@@ -174,6 +176,18 @@ void Lexer::finish_invalid_token(const base::usize begin) {
     if (this->options_.emit_invalid_tokens) {
         this->finish_token(syntax::TokenKind::invalid, begin);
     }
+}
+
+void Lexer::add_nonempty_token(
+    const syntax::TokenKind kind,
+    const base::usize begin,
+    const base::usize end
+) {
+    this->tokens_.push_back(syntax::Token {
+        kind,
+        base::SourceRange {this->source_id_, begin, end},
+        this->cursor_.nonempty_slice(begin, end),
+    });
 }
 
 void Lexer::add_token(const syntax::TokenKind kind, const base::usize begin, const base::usize end) {

@@ -104,6 +104,12 @@ public:
         return std::string_view {source_text_.data() + begin, end - begin};
     }
 
+    [[nodiscard]] std::string_view nonempty_slice(const base::usize begin, const base::usize end) const noexcept {
+        assert(begin < end);
+        assert(end <= source_text_.size());
+        return std::string_view {source_text_.data() + begin, end - begin};
+    }
+
     [[nodiscard]] std::string_view current_slice(const base::usize begin) const noexcept {
         return slice(begin, offset_);
     }

@@ -46,6 +46,12 @@ Current contexts:
 - `RecoveryContext::match_arm` is used between `match` arms. It stops at arm
   separators, the closing `}`, valid pattern starters, and obvious outer grammar
   starters.
+- `RecoveryContext::call_argument` is used inside function and method call
+  argument lists. It stops at argument separators, call closers, enclosing
+  delimiters, and obvious outer grammar starters.
+- `RecoveryContext::struct_field` is used inside struct literal field lists. It
+  stops at field separators, the closing `}`, valid field starters, and obvious
+  outer grammar starters.
 - `RecoveryContext::item_or_statement` remains the conservative default for
   bridge calls while a caller is being migrated to a narrower context.
 
@@ -110,7 +116,7 @@ Near-term improvements:
 
 - Keep deduplicating small lookahead and recovery helpers.
 - Add narrower recovery contexts where the grammar has a real boundary, such as
-  call argument lists and struct literal fields.
+  parameter lists and enum case lists.
 - Keep tests close to grammar boundaries that are likely to regress.
 - Make parser parts easier to reason about before algorithmic changes.
 

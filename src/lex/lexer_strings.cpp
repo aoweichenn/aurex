@@ -58,7 +58,7 @@ void Lexer::scan_string_body(
         }
         if (c == lexeme_double_quote) {
             if (!needs_decode_validation) {
-                this->finish_token(token_kind, begin);
+                this->add_nonempty_token(token_kind, begin, this->cursor_.offset());
                 return;
             }
             const base::StringLiteralDecode decoded = base::decode_string_literal(
@@ -69,7 +69,7 @@ void Lexer::scan_string_body(
                 this->report(begin + error.begin, begin + error.end, error.message);
             }
             if (decoded.ok()) {
-                this->finish_token(token_kind, begin);
+                this->add_nonempty_token(token_kind, begin, this->cursor_.offset());
             } else {
                 this->finish_invalid_token(begin);
             }
@@ -124,7 +124,7 @@ void Lexer::scan_byte(const base::usize begin) {
         return;
     }
 
-    this->finish_token(syntax::TokenKind::byte_literal, begin);
+    this->add_nonempty_token(syntax::TokenKind::byte_literal, begin, this->cursor_.offset());
 }
 
 } // namespace aurex::lex

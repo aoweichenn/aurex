@@ -186,6 +186,9 @@ private:
         std::vector<syntax::TypeId> struct_type_args,
         ExprContext context
     );
+    void parse_struct_fields(std::vector<syntax::FieldInit>& fields, ExprContext context);
+    [[nodiscard]] syntax::FieldInit parse_struct_field(ExprContext context);
+    [[nodiscard]] bool recover_struct_field_separator();
     [[nodiscard]] syntax::ExprId make_name_expr(
         std::string_view scope_name,
         base::SourceRange scope_range,
@@ -206,6 +209,8 @@ private:
     [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId expr);
     [[nodiscard]] syntax::ExprId parse_index_suffix(syntax::ExprId expr, ExprContext context);
     [[nodiscard]] syntax::ExprId parse_call_suffix(syntax::ExprId expr, ExprContext context);
+    void parse_call_args(std::vector<syntax::ExprId>& args, ExprContext context);
+    [[nodiscard]] bool recover_call_arg_separator();
     [[nodiscard]] syntax::ExprId parse_try_suffix(syntax::ExprId expr);
 };
 

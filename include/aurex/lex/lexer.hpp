@@ -33,12 +33,6 @@ public:
     [[nodiscard]] base::Result<std::vector<syntax::Token>> tokenize();
 
 private:
-    enum class DigitSet {
-        decimal,
-        hexadecimal,
-        binary,
-    };
-
     struct DigitScanResult {
         bool saw_digit = false;
         bool had_error = false;
@@ -59,10 +53,8 @@ private:
     void scan_number();
     template <typename IsDigit>
     [[nodiscard]] DigitScanResult scan_digits_matching(IsDigit is_digit, std::string_view literal_kind);
-    [[nodiscard]] DigitScanResult scan_digits(DigitSet digit_set, std::string_view literal_kind);
     template <typename IsValidDigit>
     [[nodiscard]] bool scan_invalid_radix_tail_matching(IsValidDigit is_valid_digit, std::string_view message);
-    [[nodiscard]] bool scan_invalid_radix_tail(DigitSet digit_set, std::string_view message);
     [[nodiscard]] bool scan_fraction_part(bool& had_error);
     [[nodiscard]] bool scan_exponent_part(bool& had_error);
     void scan_string_body(
@@ -81,6 +73,7 @@ private:
     void finish_token(syntax::TokenKind kind, base::usize begin);
     void finish_token(syntax::TokenKind kind, base::usize begin, std::string_view text);
     void finish_invalid_token(base::usize begin);
+    void add_nonempty_token(syntax::TokenKind kind, base::usize begin, base::usize end);
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
     void report_current(base::usize begin, std::string_view message) const;
     void report(base::usize begin, base::usize end, std::string_view message) const;

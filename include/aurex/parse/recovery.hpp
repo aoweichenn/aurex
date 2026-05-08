@@ -6,6 +6,7 @@
 namespace aurex::parse {
 
 [[nodiscard]] bool token_starts_match_arm(syntax::TokenKind kind) noexcept;
+[[nodiscard]] bool token_starts_struct_field(syntax::TokenKind kind) noexcept;
 
 [[nodiscard]] bool token_matches_recovery_context(
     syntax::TokenKind kind,

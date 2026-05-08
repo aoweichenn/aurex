@@ -348,6 +348,65 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
     expect_contains(messages, "expected expression");
 }
 
+TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
+    constexpr base::SourceId kCallArgRecoverySourceId {11};
+    constexpr std::string_view source =
+        "module parser.call_arg_recovery;\n"
+        "fn recovered() -> i32 {\n"
+        "  let value = id(1 @ 2, 3);\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kCallArgRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' or ')' after argument");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
+    constexpr base::SourceId kStructFieldRecoverySourceId {12};
+    constexpr std::string_view source =
+        "module parser.struct_field_recovery;\n"
+        "struct Pair { a: i32; b: i32; }\n"
+        "fn recovered() -> i32 {\n"
+        "  let value = Pair { a: 1 @ b: 2 };\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kStructFieldRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' or '}' after struct literal field");
+    expect_contains(messages, "expected expression");
+}
+
 TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
     constexpr std::string_view source =
         "module parser.angle;\n"

@@ -1,5 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
 #include <optional>
 #include <utility>
 #include <vector>
@@ -83,17 +85,44 @@ syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId expr, c
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::call;
     node.callee = expr;
-    if (!this->check(TokenKind::r_paren)) {
-        do {
-            node.args.push_back(this->parse_expr(context));
-            if (this->check(TokenKind::r_paren)) {
-                break;
-            }
-        } while (this->match(TokenKind::comma) && !this->check(TokenKind::r_paren));
-    }
+    this->parse_call_args(node.args, context);
     const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after argument list");
     node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
     return this->session_.module.push_expr(std::move(node));
+}
+
+void PostfixExprParser::parse_call_args(
+    std::vector<syntax::ExprId>& args,
+    const ExprContext context
+) {
+    while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+        args.push_back(this->parse_expr(context));
+        this->reset_panic();
+        if (!this->recover_call_arg_separator()) {
+            break;
+        }
+    }
+}
+
+bool PostfixExprParser::recover_call_arg_separator() {
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here("expected ',' or ')' after argument");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::call_argument)) {
+        this->synchronize(RecoveryContext::call_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return false;
 }
 
 syntax::ExprId PostfixExprParser::parse_try_suffix(const syntax::ExprId expr) {

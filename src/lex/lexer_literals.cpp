@@ -24,7 +24,7 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
                 report(
                     separator_begin,
                     separator_begin + single_byte_lexeme_width,
-                    "digit separator must be between digits"
+                    malformed_digit_separator_message
                 );
             }
             previous_separator_begin = separator_begin;
@@ -40,7 +40,7 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
         report(
             previous_separator_begin,
             previous_separator_begin + single_byte_lexeme_width,
-            "digit separator must be between digits"
+            malformed_digit_separator_message
         );
     }
     if (!saw_digit) {
@@ -50,7 +50,7 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
 }
 
 bool Lexer::scan_fraction_part() {
-    if (peek() != '.' || !is_decimal_digit(peek_next())) {
+    if (peek() != lexeme_dot || !is_decimal_digit(peek_next())) {
         return false;
     }
     advance();
@@ -59,17 +59,17 @@ bool Lexer::scan_fraction_part() {
 }
 
 bool Lexer::scan_exponent_part() {
-    if (peek() != 'e' && peek() != 'E') {
+    if (peek() != float_exponent_lower && peek() != float_exponent_upper) {
         return false;
     }
 
     const char next_char = peek_next();
-    if (!is_decimal_digit(next_char) && next_char != '+' && next_char != '-') {
+    if (!is_decimal_digit(next_char) && next_char != lexeme_plus && next_char != lexeme_minus) {
         return false;
     }
 
     advance();
-    if (peek() == '+' || peek() == '-') {
+    if (peek() == lexeme_plus || peek() == lexeme_minus) {
         advance();
     }
     static_cast<void>(scan_digits(DigitSet::decimal, "float exponent"));
@@ -100,7 +100,7 @@ void Lexer::scan_string(const base::usize begin) {
         begin,
         syntax::TokenKind::string_literal,
         base::StringLiteralKind::string,
-        "unterminated string literal"
+        unterminated_string_message
     );
 }
 
@@ -110,7 +110,7 @@ void Lexer::scan_c_string(const base::usize begin) {
         begin,
         syntax::TokenKind::c_string_literal,
         base::StringLiteralKind::c_string,
-        "unterminated c string literal"
+        unterminated_c_string_message
     );
 }
 
@@ -127,11 +127,11 @@ void Lexer::scan_string_body(
             escaped = false;
             continue;
         }
-        if (c == '\\') {
+        if (c == lexeme_escape) {
             escaped = true;
             continue;
         }
-        if (c == '"') {
+        if (c == lexeme_double_quote) {
             const base::StringLiteralDecode decoded = base::decode_string_literal(
                 source_text_.substr(begin, offset_ - begin),
                 literal_kind
@@ -146,7 +146,7 @@ void Lexer::scan_string_body(
             }
             return;
         }
-        if (c == '\n') {
+        if (c == lexeme_line_feed) {
             report(begin, offset_, std::string(unterminated_message));
             add_token(syntax::TokenKind::invalid, begin, offset_);
             return;
@@ -159,13 +159,13 @@ void Lexer::scan_string_body(
 void Lexer::scan_byte(const base::usize begin) {
     advance_bytes(byte_literal_prefix.size());
 
-    if (is_at_end() || peek() == '\n') {
-        report(begin, offset_, "unterminated byte literal");
+    if (is_at_end() || peek() == lexeme_line_feed) {
+        report(begin, offset_, unterminated_byte_message);
         add_token(syntax::TokenKind::invalid, begin, offset_);
         return;
     }
 
-    if (peek() == '\\') {
+    if (peek() == lexeme_escape) {
         advance();
         if (!is_at_end()) {
             advance();
@@ -174,14 +174,14 @@ void Lexer::scan_byte(const base::usize begin) {
         advance();
     }
 
-    if (!match('\'')) {
-        while (!is_at_end() && peek() != '\'' && peek() != '\n') {
+    if (!match(lexeme_single_quote)) {
+        while (!is_at_end() && peek() != lexeme_single_quote && peek() != lexeme_line_feed) {
             advance();
         }
-        if (match('\'')) {
-            report(begin, offset_, "byte literal must contain one byte");
+        if (match(lexeme_single_quote)) {
+            report(begin, offset_, oversized_byte_message);
         } else {
-            report(begin, offset_, "unterminated byte literal");
+            report(begin, offset_, unterminated_byte_message);
         }
         add_token(syntax::TokenKind::invalid, begin, offset_);
         return;

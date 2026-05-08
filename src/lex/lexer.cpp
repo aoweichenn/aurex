@@ -5,6 +5,7 @@
 #include "keyword.hpp"
 #include "lexeme.hpp"
 
+#include <string>
 #include <utility>
 
 namespace aurex::lex {
@@ -33,7 +34,7 @@ base::Result<std::vector<syntax::Token>> Lexer::tokenize() {
     add_token(syntax::TokenKind::eof, source_text_.size(), source_text_.size());
     if (diagnostics_.has_error()) {
         return base::Result<std::vector<syntax::Token>>::fail(
-            {base::ErrorCode::lex_error, "lexing failed"}
+            {base::ErrorCode::lex_error, std::string(lexing_failed_message)}
         );
     }
     return base::Result<std::vector<syntax::Token>>::ok(std::move(tokens_));
@@ -109,31 +110,31 @@ void Lexer::scan_token() {
     using syntax::TokenKind;
     const char c = advance();
     switch (c) {
-    case '"':
+    case lexeme_double_quote:
         scan_string(begin);
         break;
-    case '(':
+    case lexeme_l_paren:
         add_token(TokenKind::l_paren, begin, offset_);
         break;
-    case ')':
+    case lexeme_r_paren:
         add_token(TokenKind::r_paren, begin, offset_);
         break;
-    case '{':
+    case lexeme_l_brace:
         add_token(TokenKind::l_brace, begin, offset_);
         break;
-    case '}':
+    case lexeme_r_brace:
         add_token(TokenKind::r_brace, begin, offset_);
         break;
-    case '[':
+    case lexeme_l_bracket:
         add_token(TokenKind::l_bracket, begin, offset_);
         break;
-    case ']':
+    case lexeme_r_bracket:
         add_token(TokenKind::r_bracket, begin, offset_);
         break;
-    case ',':
+    case lexeme_comma:
         add_token(TokenKind::comma, begin, offset_);
         break;
-    case '.':
+    case lexeme_dot:
         if (starts_with(ellipsis_tail_after_dot)) {
             advance_bytes(ellipsis_tail_after_dot.size());
             add_token(TokenKind::ellipsis, begin, offset_);
@@ -141,79 +142,79 @@ void Lexer::scan_token() {
             add_token(TokenKind::dot, begin, offset_);
         }
         break;
-    case ';':
+    case lexeme_semicolon:
         add_token(TokenKind::semicolon, begin, offset_);
         break;
-    case ':':
-        add_token(match(':') ? TokenKind::colon_colon : TokenKind::colon, begin, offset_);
+    case lexeme_colon:
+        add_token(match(lexeme_colon) ? TokenKind::colon_colon : TokenKind::colon, begin, offset_);
         break;
-    case '+':
+    case lexeme_plus:
         add_token(TokenKind::plus, begin, offset_);
         break;
-    case '-': {
-        const TokenKind kind = match('>') ? TokenKind::arrow : TokenKind::minus;
+    case lexeme_minus: {
+        const TokenKind kind = match(lexeme_greater) ? TokenKind::arrow : TokenKind::minus;
         add_token(kind, begin, offset_);
         break;
     }
-    case '*':
+    case lexeme_star:
         add_token(TokenKind::star, begin, offset_);
         break;
-    case '/':
+    case lexeme_slash:
         add_token(TokenKind::slash, begin, offset_);
         break;
-    case '%':
+    case lexeme_percent:
         add_token(TokenKind::percent, begin, offset_);
         break;
-    case '&':
-        add_token(match('&') ? TokenKind::amp_amp : TokenKind::amp, begin, offset_);
+    case lexeme_amp:
+        add_token(match(lexeme_amp) ? TokenKind::amp_amp : TokenKind::amp, begin, offset_);
         break;
-    case '|':
-        add_token(match('|') ? TokenKind::pipe_pipe : TokenKind::pipe, begin, offset_);
+    case lexeme_pipe:
+        add_token(match(lexeme_pipe) ? TokenKind::pipe_pipe : TokenKind::pipe, begin, offset_);
         break;
-    case '^':
+    case lexeme_caret:
         add_token(TokenKind::caret, begin, offset_);
         break;
-    case '~':
+    case lexeme_tilde:
         add_token(TokenKind::tilde, begin, offset_);
         break;
-    case '!':
-        add_token(match('=') ? TokenKind::bang_equal : TokenKind::bang, begin, offset_);
+    case lexeme_bang:
+        add_token(match(lexeme_equal) ? TokenKind::bang_equal : TokenKind::bang, begin, offset_);
         break;
-    case '=':
-        if (match('=')) {
+    case lexeme_equal:
+        if (match(lexeme_equal)) {
             add_token(TokenKind::equal_equal, begin, offset_);
-        } else if (match('>')) {
+        } else if (match(lexeme_greater)) {
             add_token(TokenKind::fat_arrow, begin, offset_);
         } else {
             add_token(TokenKind::equal, begin, offset_);
         }
         break;
-    case '<':
-        if (match('=')) {
+    case lexeme_less:
+        if (match(lexeme_equal)) {
             add_token(TokenKind::less_equal, begin, offset_);
-        } else if (match('<')) {
+        } else if (match(lexeme_less)) {
             add_token(TokenKind::less_less, begin, offset_);
         } else {
             add_token(TokenKind::less, begin, offset_);
         }
         break;
-    case '>':
-        if (match('=')) {
+    case lexeme_greater:
+        if (match(lexeme_equal)) {
             add_token(TokenKind::greater_equal, begin, offset_);
-        } else if (match('>')) {
+        } else if (match(lexeme_greater)) {
             add_token(TokenKind::greater_greater, begin, offset_);
         } else {
             add_token(TokenKind::greater, begin, offset_);
         }
         break;
-    case '@':
+    case lexeme_at:
         add_token(TokenKind::at, begin, offset_);
         break;
-    case '?':
+    case lexeme_question:
         add_token(TokenKind::question, begin, offset_);
         break;
     default:
-        report(begin, offset_, "invalid character");
+        report(begin, offset_, invalid_character_message);
         if (options_.emit_invalid_tokens) {
             add_token(TokenKind::invalid, begin, offset_);
         }
@@ -238,12 +239,12 @@ void Lexer::add_token(const syntax::TokenKind kind, const base::usize begin, con
     });
 }
 
-void Lexer::report(const base::usize begin, const base::usize end, std::string message) const
+void Lexer::report(const base::usize begin, const base::usize end, const std::string_view message) const
 {
     diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         base::SourceRange {source_id_, begin, end},
-        std::move(message),
+        std::string(message),
     });
 }
 

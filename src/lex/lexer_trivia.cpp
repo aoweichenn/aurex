@@ -23,7 +23,7 @@ void Lexer::skip_trivia() {
 }
 
 void Lexer::scan_line_comment() {
-    while (!is_at_end() && peek() != '\n') {
+    while (!is_at_end() && peek() != lexeme_line_feed) {
         advance();
     }
 }
@@ -38,7 +38,7 @@ void Lexer::scan_block_comment() {
         }
         advance();
     }
-    report(begin, offset_, "unterminated block comment");
+    report(begin, offset_, unterminated_block_comment_message);
 }
 
 } // namespace aurex::lex

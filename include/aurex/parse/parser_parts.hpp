@@ -11,7 +11,11 @@
 namespace aurex::parse {
 
 class Parser;
+class BlockParser;
+class BuiltinExprParser;
+class ControlStmtParser;
 class ItemParser;
+class PostfixExprParser;
 class PrimaryExprParser;
 class TypeParser;
 
@@ -55,14 +59,26 @@ public:
     explicit StmtParser(Parser& parser) noexcept
         : ParserPartBase(parser) {}
 
-    [[nodiscard]] syntax::StmtId parse_block();
-    [[nodiscard]] syntax::ExprId parse_block_expr(ExprContext context = ExprContext::normal);
     [[nodiscard]] syntax::StmtId parse_stmt();
+    [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
     [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt();
     [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt(bool require_semicolon);
+};
 
-private:
-    [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
+class BlockParser final : private ParserPartBase {
+public:
+    explicit BlockParser(Parser& parser) noexcept
+        : ParserPartBase(parser) {}
+
+    [[nodiscard]] syntax::StmtId parse_block();
+    [[nodiscard]] syntax::ExprId parse_block_expr(ExprContext context = ExprContext::normal);
+};
+
+class ControlStmtParser final : private ParserPartBase {
+public:
+    explicit ControlStmtParser(Parser& parser) noexcept
+        : ParserPartBase(parser) {}
+
     [[nodiscard]] syntax::StmtId parse_if_stmt();
     [[nodiscard]] syntax::StmtId parse_for_stmt();
     [[nodiscard]] syntax::StmtId parse_while_stmt();
@@ -141,14 +157,41 @@ public:
     explicit PrimaryExprParser(Parser& parser) noexcept
         : ParserPartBase(parser) {}
 
+    [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
+
+private:
+    [[nodiscard]] syntax::ExprId parse_name_or_struct_literal(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_literal(syntax::ExprKind kind);
+    [[nodiscard]] syntax::ExprId make_invalid_expr();
+};
+
+class PostfixExprParser final : private ParserPartBase {
+public:
+    explicit PostfixExprParser(Parser& parser) noexcept
+        : ParserPartBase(parser) {}
+
     [[nodiscard]] syntax::ExprId parse_postfix(ExprContext context);
 
 private:
-    [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_builtin_cast(syntax::ExprKind kind, ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_type_args_suffix(syntax::ExprId expr);
+    [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId expr);
+    [[nodiscard]] syntax::ExprId parse_index_suffix(syntax::ExprId expr, ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_call_suffix(syntax::ExprId expr, ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_try_suffix(syntax::ExprId expr);
+};
+
+class BuiltinExprParser final : private ParserPartBase {
+public:
+    explicit BuiltinExprParser(Parser& parser) noexcept
+        : ParserPartBase(parser) {}
+
+    [[nodiscard]] syntax::ExprId parse_cast(syntax::ExprKind kind, ExprContext context);
     [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);
-    [[nodiscard]] syntax::ExprId parse_move_expr(ExprContext context);
-    [[nodiscard]] syntax::ExprId make_invalid_expr();
+    [[nodiscard]] syntax::ExprId parse_ptr_addr(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_ptr_from_addr(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_move(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_str_unary(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_str_from_bytes_unchecked(ExprContext context);
 };
 
 class PatternParser final : private ParserPartBase {

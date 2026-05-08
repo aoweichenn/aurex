@@ -82,11 +82,11 @@ std::vector<syntax::TypeId> ParserPartBase::parse_type_arg_list() {
 }
 
 syntax::StmtId ParserPartBase::parse_block() {
-    return StmtParser(parser_).parse_block();
+    return BlockParser(parser_).parse_block();
 }
 
 syntax::ExprId ParserPartBase::parse_block_expr(const ExprContext context) {
-    return StmtParser(parser_).parse_block_expr(context);
+    return BlockParser(parser_).parse_block_expr(context);
 }
 
 syntax::StmtId ParserPartBase::parse_stmt() {

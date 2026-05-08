@@ -66,7 +66,7 @@ private:
     void scan_line_comment();
     void scan_block_comment();
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
-    void report(base::usize begin, base::usize end, std::string message) const;
+    void report(base::usize begin, base::usize end, std::string_view message) const;
 
     base::SourceId source_id_;
     std::string_view source_text_;

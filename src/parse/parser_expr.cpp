@@ -235,7 +235,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
         expr.unary_operand = operand;
         return session_.module.push_expr(std::move(expr));
     }
-    return PrimaryExprParser(parser_).parse_postfix(context);
+    return PostfixExprParser(parser_).parse_postfix(context);
 }
 
 syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs, base::SourceRange range) {

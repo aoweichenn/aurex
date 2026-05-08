@@ -3,6 +3,7 @@
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
 #include "aurex/base/source.hpp"
+#include "aurex/lex/lexer_cursor.hpp"
 #include "aurex/syntax/token.hpp"
 
 #include <string_view>
@@ -40,7 +41,6 @@ private:
 
     [[nodiscard]] bool is_at_end() const noexcept;
     [[nodiscard]] bool starts_with(std::string_view text) const noexcept;
-    [[nodiscard]] char peek_at(base::usize lookahead) const noexcept;
     [[nodiscard]] char peek() const noexcept;
     [[nodiscard]] char peek_next() const noexcept;
     char advance() noexcept;
@@ -69,10 +69,9 @@ private:
     void report(base::usize begin, base::usize end, std::string_view message) const;
 
     base::SourceId source_id_;
-    std::string_view source_text_;
+    detail::LexerCursor cursor_;
     base::DiagnosticSink& diagnostics_;
     LexerOptions options_;
-    base::usize offset_ {};
     std::vector<syntax::Token> tokens_;
 };
 

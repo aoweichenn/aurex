@@ -29,7 +29,7 @@ void Lexer::scan_line_comment() {
 }
 
 void Lexer::scan_block_comment() {
-    const base::usize begin = offset_;
+    const base::usize begin = cursor_.offset();
     advance_bytes(block_comment_prefix.size());
     while (!is_at_end()) {
         if (starts_with(block_comment_suffix)) {
@@ -38,7 +38,7 @@ void Lexer::scan_block_comment() {
         }
         advance();
     }
-    report(begin, offset_, unterminated_block_comment_message);
+    report(begin, cursor_.offset(), unterminated_block_comment_message);
 }
 
 } // namespace aurex::lex

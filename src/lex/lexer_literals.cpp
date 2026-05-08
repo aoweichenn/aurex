@@ -12,12 +12,12 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
     bool saw_digit = false;
     bool previous_was_digit = false;
     bool previous_was_separator = false;
-    base::usize previous_separator_begin = offset_;
+    base::usize previous_separator_begin = cursor_.offset();
     while (peek() == digit_separator ||
            (digit_set == DigitSet::decimal && is_decimal_digit(peek())) ||
            (digit_set == DigitSet::hexadecimal && is_hex_digit(peek())) ||
            (digit_set == DigitSet::binary && is_binary_digit(peek()))) {
-        const base::usize separator_begin = offset_;
+        const base::usize separator_begin = cursor_.offset();
         const char c = advance();
         if (c == digit_separator) {
             if (!previous_was_digit) {
@@ -44,7 +44,7 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
         );
     }
     if (!saw_digit) {
-        report(offset_, offset_, std::string(literal_kind) + " literal has no digits");
+        report(cursor_.offset(), cursor_.offset(), std::string(literal_kind) + " literal has no digits");
     }
     return saw_digit;
 }
@@ -77,7 +77,7 @@ bool Lexer::scan_exponent_part() {
 }
 
 void Lexer::scan_number() {
-    const base::usize begin = offset_;
+    const base::usize begin = cursor_.offset();
     bool is_float = false;
 
     if (starts_with(hex_integer_prefix_lower) || starts_with(hex_integer_prefix_upper)) {
@@ -92,7 +92,7 @@ void Lexer::scan_number() {
         is_float = scan_exponent_part() || is_float;
     }
 
-    add_token(is_float ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin, offset_);
+    add_token(is_float ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin, cursor_.offset());
 }
 
 void Lexer::scan_string(const base::usize begin) {
@@ -133,35 +133,35 @@ void Lexer::scan_string_body(
         }
         if (c == lexeme_double_quote) {
             const base::StringLiteralDecode decoded = base::decode_string_literal(
-                source_text_.substr(begin, offset_ - begin),
+                cursor_.slice(begin, cursor_.offset()),
                 literal_kind
             );
             for (const base::StringLiteralError& error : decoded.errors) {
                 report(begin + error.begin, begin + error.end, error.message);
             }
             if (decoded.ok()) {
-                add_token(token_kind, begin, offset_);
+                add_token(token_kind, begin, cursor_.offset());
             } else if (options_.emit_invalid_tokens) {
-                add_token(syntax::TokenKind::invalid, begin, offset_);
+                add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
             }
             return;
         }
         if (c == lexeme_line_feed) {
-            report(begin, offset_, std::string(unterminated_message));
-            add_token(syntax::TokenKind::invalid, begin, offset_);
+            report(begin, cursor_.offset(), std::string(unterminated_message));
+            add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
             return;
         }
     }
-    report(begin, offset_, std::string(unterminated_message));
-    add_token(syntax::TokenKind::invalid, begin, offset_);
+    report(begin, cursor_.offset(), std::string(unterminated_message));
+    add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
 }
 
 void Lexer::scan_byte(const base::usize begin) {
     advance_bytes(byte_literal_prefix.size());
 
     if (is_at_end() || peek() == lexeme_line_feed) {
-        report(begin, offset_, unterminated_byte_message);
-        add_token(syntax::TokenKind::invalid, begin, offset_);
+        report(begin, cursor_.offset(), unterminated_byte_message);
+        add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
         return;
     }
 
@@ -179,15 +179,15 @@ void Lexer::scan_byte(const base::usize begin) {
             advance();
         }
         if (match(lexeme_single_quote)) {
-            report(begin, offset_, oversized_byte_message);
+            report(begin, cursor_.offset(), oversized_byte_message);
         } else {
-            report(begin, offset_, unterminated_byte_message);
+            report(begin, cursor_.offset(), unterminated_byte_message);
         }
-        add_token(syntax::TokenKind::invalid, begin, offset_);
+        add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
         return;
     }
 
-    add_token(syntax::TokenKind::byte_literal, begin, offset_);
+    add_token(syntax::TokenKind::byte_literal, begin, cursor_.offset());
 }
 
 } // namespace aurex::lex

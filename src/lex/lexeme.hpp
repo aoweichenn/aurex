@@ -6,9 +6,6 @@
 
 namespace aurex::lex {
 
-inline constexpr char eof_sentinel = '\0';
-inline constexpr base::usize current_character_lookahead = 0;
-inline constexpr base::usize next_character_lookahead = 1;
 inline constexpr base::usize single_byte_lexeme_width = 1;
 
 inline constexpr char lexeme_l_paren = '(';

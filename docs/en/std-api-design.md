@@ -159,7 +159,8 @@ import std.fs.path as path;
 `std.core.result`:
 
 - Types: `result::Option<T>` and `result::Result<T, E>`.
-- Method API: `Option<T>.is_some`, `is_none`, `unwrap_or`, `ok_or<E>`, plus `Result<T, E>.is_ok`, `is_err`, and `unwrap_or`.
+- Method API: `Option<T>.is_some`, `is_none`, `is_some_ref`, `is_none_ref`, `unwrap_or`, `ok_or<E>`, plus `Result<T, E>.is_ok`, `is_err`, `is_ok_ref`, `is_err_ref`, and `unwrap_or`.
+- The `*_ref` state checks read only the enum tag and do not consume the payload; they are the low-risk state-checking entry points once noncopy payloads enter `Result` / `Option`.
 - `Option<T>.ok_or<E>` is the first public standard-library API that uses method-level generic parameters, proving that impl parameters and method-specific parameters can be inferred together at one call site.
 
 ## Migration Policy

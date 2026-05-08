@@ -37,13 +37,43 @@ fn unwrap_local_try(value: i32) -> Result<i32, i32> {
     return Result.ok(result);
 }
 
+fn check_result_ref_status() -> bool {
+    var ok_result: Result<Owner, i32> = forward_result(13);
+    let ok_status: bool = ok_result.is_ok_ref() && !ok_result.is_err_ref();
+    let ok_value: i32 = unwrap_or_code(move(ok_result));
+
+    var err_result: Result<Owner, i32> = Result.err(17);
+    let err_status: bool = err_result.is_err_ref() && !err_result.is_ok_ref();
+    let err_value: i32 = unwrap_or_code(move(err_result));
+
+    return ok_status && ok_value == 13 && err_status && err_value == 17;
+}
+
+fn check_option_ref_status() -> bool {
+    var some_owner: Option<Owner> = Option.some(make_owner(19));
+    let some_status: bool = some_owner.is_some_ref() && !some_owner.is_none_ref();
+    let some_value: i32 = match move(some_owner) {
+        .some(owner) => consume(move(owner)),
+        .none => 0,
+    };
+
+    var no_owner: Option<Owner> = Option.none;
+    let none_status: bool = no_owner.is_none_ref() && !no_owner.is_some_ref();
+    let none_value: i32 = match move(no_owner) {
+        .some(owner) => consume(move(owner)),
+        .none => 23,
+    };
+
+    return some_status && some_value == 19 && none_status && none_value == 23;
+}
+
 fn main() -> i32 {
     let direct: i32 = unwrap_or_code(forward_result(11));
     let via_try: i32 = match unwrap_local_try(31) {
         .ok(value) => value,
         .err(code) => code,
     };
-    if direct + via_try == 42 {
+    if direct + via_try == 42 && check_result_ref_status() && check_option_ref_status() {
         return 0;
     }
     return direct + via_try;

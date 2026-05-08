@@ -91,7 +91,8 @@ Current language slices:
 - Standard `Result` / `Option` / `?` slice, usable for explicit error
   propagation and early-return control flow. `Option<T>` / `Result<T, E>` now
   also have baseline method APIs, including method-level generic
-  `Option<T>.ok_or<E>`.
+  `Option<T>.ok_or<E>`, plus non-consuming `is_some_ref` / `is_none_ref` /
+  `is_ok_ref` / `is_err_ref` state checks.
 - Standard-library container/text/path baseline started, including generic
   `Span<T>` / `MutSpan<T>`, capacity, append, insert/remove, and random-access
   APIs on `Vec<T>`, generic `Vec<T>` method APIs, owned raw
@@ -280,8 +281,9 @@ manual status helpers.
    Completed. The method foundation now has a standard error-propagation slice
    for `Result` and `Option`, including `?` early returns. `Option<T>` /
    `Result<T, E>` also expose baseline methods such as `is_some`, `is_ok`,
-   `unwrap_or`, and `ok_or<E>`. Next, keep growing the std APIs so code like
-   `File.read_all(path)?` and `Parser.next()?` becomes natural.
+   `unwrap_or`, and `ok_or<E>`, plus `*_ref` state checks that read only the
+   enum tag and do not consume the payload. Next, keep growing the std APIs so
+   code like `File.read_all(path)?` and `Parser.next()?` becomes natural.
 
 3. `Span` / `Vec` / `Map` / `Bytes` / `String` / `Path`
    Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with

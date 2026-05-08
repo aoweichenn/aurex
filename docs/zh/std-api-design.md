@@ -153,7 +153,8 @@ import std.fs.path as path;
 `std.core.result`：
 
 - 类型：`result::Option<T>`、`result::Result<T, E>`。
-- Method API：`Option<T>.is_some`、`is_none`、`unwrap_or`、`ok_or<E>`，以及 `Result<T, E>.is_ok`、`is_err`、`unwrap_or`。
+- Method API：`Option<T>.is_some`、`is_none`、`is_some_ref`、`is_none_ref`、`unwrap_or`、`ok_or<E>`，以及 `Result<T, E>.is_ok`、`is_err`、`is_ok_ref`、`is_err_ref`、`unwrap_or`。
+- `*_ref` 状态检查只读 enum tag，不消费 payload；这是 noncopy payload 进入 `Result` / `Option` 后的低风险状态检查入口。
 - `Option<T>.ok_or<E>` 是当前标准库里第一个公开使用方法级泛型参数的 API，用来验证 `impl<T>` 参数和方法自身参数可以在同一次调用里组合推导。
 
 ## 迁移策略

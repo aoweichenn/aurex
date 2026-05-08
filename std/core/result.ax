@@ -10,6 +10,43 @@ pub enum Result<T, E>: u8 {
     err(E) = 2,
 }
 
+const OPTION_TAG_SOME: u8 = 1;
+const OPTION_TAG_NONE: u8 = 2;
+const RESULT_TAG_OK: u8 = 1;
+const RESULT_TAG_ERR: u8 = 2;
+
+pub fn option_is_some_ref<T>(value: *const Option<T>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == OPTION_TAG_SOME;
+}
+
+pub fn option_is_none_ref<T>(value: *const Option<T>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == OPTION_TAG_NONE;
+}
+
+pub fn result_is_ok_ref<T, E>(value: *const Result<T, E>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == RESULT_TAG_OK;
+}
+
+pub fn result_is_err_ref<T, E>(value: *const Result<T, E>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == RESULT_TAG_ERR;
+}
+
 impl<T> Option<T> {
     pub fn is_some(self: Option<T>) -> bool {
         return match self {
@@ -18,8 +55,16 @@ impl<T> Option<T> {
         };
     }
 
+    pub fn is_some_ref(self: *const Option<T>) -> bool {
+        return option_is_some_ref<T>(self);
+    }
+
     pub fn is_none(self: Option<T>) -> bool {
         return !self.is_some();
+    }
+
+    pub fn is_none_ref(self: *const Option<T>) -> bool {
+        return option_is_none_ref<T>(self);
     }
 
     pub fn unwrap_or(self: Option<T>, fallback: T) -> T {
@@ -45,8 +90,16 @@ impl<T, E> Result<T, E> {
         };
     }
 
+    pub fn is_ok_ref(self: *const Result<T, E>) -> bool {
+        return result_is_ok_ref<T, E>(self);
+    }
+
     pub fn is_err(self: Result<T, E>) -> bool {
         return !self.is_ok();
+    }
+
+    pub fn is_err_ref(self: *const Result<T, E>) -> bool {
+        return result_is_err_ref<T, E>(self);
     }
 
     pub fn unwrap_or(self: Result<T, E>, fallback: T) -> T {

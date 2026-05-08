@@ -159,6 +159,8 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
     const std::string owner_result_checked = require_success(aurexc() + " --emit=checked " + q(owner_result_source)).output;
     expect_contains_all(owner_result_checked, {
         "struct Owner noncopy",
+        "fn check_result_ref_status -> bool",
+        "fn check_option_ref_status -> bool",
         "fn wrap -> std.core.result.Result<ownership_result.Owner, i32>",
         "fn unwrap_local_try -> std.core.result.Result<i32, i32>",
     });

@@ -964,6 +964,22 @@ bool SemanticAnalyzer::is_fresh_owned_expr(const syntax::ExprId expr_id) const n
     case syntax::ExprKind::match_expr:
     case syntax::ExprKind::struct_literal:
         return true;
+    case syntax::ExprKind::field: {
+        TypeHandle expr_type = invalid_type_handle;
+        if (current_generic_expr_types_ != nullptr) {
+            if (const auto found = current_generic_expr_types_->find(expr_id.value);
+                found != current_generic_expr_types_->end()) {
+                expr_type = found->second;
+            }
+        } else if (expr_id.value < checked_.expr_types.size()) {
+            expr_type = checked_.expr_types[expr_id.value];
+        }
+        if (!is_valid(expr_type) || checked_.types.get(expr_type).kind != TypeKind::enum_) {
+            return false;
+        }
+        const EnumCaseInfo* enum_case = find_enum_case_by_type_and_case(expr_type, expr.field_name);
+        return enum_case != nullptr && !is_valid(enum_case->payload_type);
+    }
     default:
         return false;
     }

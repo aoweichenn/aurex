@@ -156,8 +156,12 @@ fn check_vec_generic_methods() -> bool {
 fn check_result_option_methods() -> bool {
     let some: result::Option<i32> = Option.some(7);
     let none: result::Option<i32> = Option.none;
+    let some_ref_ok: bool = some.is_some_ref() && !some.is_none_ref();
+    let none_ref_ok: bool = none.is_none_ref() && !none.is_some_ref();
     let ok_from_some: result::Result<i32, u8> = some.ok_or<u8>(cast(u8, 1));
     let err_from_none: result::Result<i32, u8> = none.ok_or<u8>(cast(u8, 2));
+    let ok_ref_ok: bool = ok_from_some.is_ok_ref() && !ok_from_some.is_err_ref();
+    let err_ref_ok: bool = err_from_none.is_err_ref() && !err_from_none.is_ok_ref();
     let ok_value: i32 = ok_from_some.unwrap_or(0);
     let err_value: i32 = err_from_none.unwrap_or(9);
     let direct_ok: result::Result<i32, u8> = Result.ok(12);
@@ -165,11 +169,15 @@ fn check_result_option_methods() -> bool {
     return some.is_some() &&
         !some.is_none() &&
         none.is_none() &&
+        some_ref_ok &&
+        none_ref_ok &&
         some.unwrap_or(0) == 7 &&
         none.unwrap_or(5) == 5 &&
         ok_from_some.is_ok() &&
         !ok_from_some.is_err() &&
         err_from_none.is_err() &&
+        ok_ref_ok &&
+        err_ref_ok &&
         ok_value == 7 &&
         err_value == 9 &&
         direct_ok.unwrap_or(0) == 12 &&

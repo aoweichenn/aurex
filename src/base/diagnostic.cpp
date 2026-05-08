@@ -4,21 +4,25 @@
 
 namespace aurex::base {
 
+namespace {
+
+[[nodiscard]] bool is_error_severity(const Severity severity) noexcept {
+    return severity == Severity::error || severity == Severity::fatal;
+}
+
+} // namespace
+
 void DiagnosticSink::push(Diagnostic diagnostic) {
-    diagnostics_.push_back(std::move(diagnostic));
+    this->has_error_ = this->has_error_ || is_error_severity(diagnostic.severity);
+    this->diagnostics_.push_back(std::move(diagnostic));
 }
 
 bool DiagnosticSink::has_error() const noexcept {
-    for (const Diagnostic& diagnostic : diagnostics_) {
-        if (diagnostic.severity == Severity::error || diagnostic.severity == Severity::fatal) {
-            return true;
-        }
-    }
-    return false;
+    return this->has_error_;
 }
 
 std::span<const Diagnostic> DiagnosticSink::diagnostics() const noexcept {
-    return diagnostics_;
+    return this->diagnostics_;
 }
 
 std::string_view severity_name(const Severity severity) noexcept {

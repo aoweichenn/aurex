@@ -32,15 +32,18 @@ Lexer::DigitScanResult Lexer::scan_digits(const DigitSet digit_set, const std::s
     DigitScanResult result;
     bool previous_was_digit = false;
     bool previous_was_separator = false;
-    base::usize previous_separator_begin = this->cursor_.offset();
-    while (true) {
-        const char c = this->peek();
+    const base::usize begin = this->cursor_.offset();
+    const std::string_view remaining = this->cursor_.remaining_text();
+    base::usize width = 0;
+    base::usize previous_separator_begin = begin;
+    while (width < remaining.size()) {
+        const char c = remaining[width];
         if (c != digit_separator && !is_digit_in_set(c)) {
             break;
         }
 
-        const base::usize separator_begin = this->cursor_.offset();
-        this->advance();
+        const base::usize separator_begin = begin + width;
+        ++width;
         if (c == digit_separator) {
             if (!previous_was_digit) {
                 result.had_error = true;
@@ -59,6 +62,7 @@ Lexer::DigitScanResult Lexer::scan_digits(const DigitSet digit_set, const std::s
         previous_was_digit = true;
         previous_was_separator = false;
     }
+    this->advance_bytes(width);
     if (previous_was_separator) {
         result.had_error = true;
         this->report(
@@ -70,8 +74,8 @@ Lexer::DigitScanResult Lexer::scan_digits(const DigitSet digit_set, const std::s
     if (!result.saw_digit) {
         result.had_error = true;
         this->report(
-            this->cursor_.offset(),
-            this->cursor_.offset(),
+            begin + width,
+            begin + width,
             std::string(literal_kind) + " literal has no digits"
         );
     }
@@ -86,15 +90,20 @@ bool Lexer::scan_invalid_radix_tail(const DigitSet digit_set, const std::string_
 
     bool had_error = false;
     bool reported = false;
-    while (this->peek() == digit_separator || is_ident_continue(this->peek())) {
-        const char c = this->peek();
+    const base::usize begin = this->cursor_.offset();
+    const std::string_view remaining = this->cursor_.remaining_text();
+    base::usize width = 0;
+    while (width < remaining.size() &&
+           (remaining[width] == digit_separator || is_ident_continue(remaining[width]))) {
+        const char c = remaining[width];
         if (c != digit_separator && !is_valid_radix_digit(c) && !reported) {
-            this->report(this->cursor_.offset(), this->cursor_.offset() + single_byte_lexeme_width, message);
+            this->report(begin + width, begin + width + single_byte_lexeme_width, message);
             reported = true;
             had_error = true;
         }
-        this->advance();
+        ++width;
     }
+    this->advance_bytes(width);
     return had_error;
 }
 
@@ -135,10 +144,13 @@ bool Lexer::scan_exponent_part(bool& had_error) {
 
 void Lexer::scan_number() {
     const base::usize begin = this->cursor_.offset();
+    const char first = this->peek();
+    const char second = this->peek_next();
     NumberScanState state = NumberScanState::decimal_integer;
     bool had_error = false;
 
-    if (this->starts_with(hex_integer_prefix_lower) || this->starts_with(hex_integer_prefix_upper)) {
+    if (first == hex_integer_prefix_lower.front() &&
+        (second == hex_integer_prefix_lower.back() || second == hex_integer_prefix_upper.back())) {
         state = NumberScanState::radix_integer;
         this->advance_bytes(hex_integer_prefix_lower.size());
         const DigitScanResult digits = this->scan_digits(DigitSet::hexadecimal, "integer");
@@ -147,7 +159,8 @@ void Lexer::scan_number() {
             DigitSet::hexadecimal,
             invalid_hexadecimal_digit_message
         ) || had_error;
-    } else if (this->starts_with(binary_integer_prefix_lower) || this->starts_with(binary_integer_prefix_upper)) {
+    } else if (first == binary_integer_prefix_lower.front() &&
+               (second == binary_integer_prefix_lower.back() || second == binary_integer_prefix_upper.back())) {
         state = NumberScanState::radix_integer;
         this->advance_bytes(binary_integer_prefix_lower.size());
         const DigitScanResult digits = this->scan_digits(DigitSet::binary, "integer");

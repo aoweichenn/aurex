@@ -6,10 +6,24 @@
 #include "lexeme.hpp"
 #include "punctuator.hpp"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
 namespace aurex::lex {
+
+namespace {
+
+constexpr base::usize estimated_bytes_per_token = 2;
+constexpr base::usize max_estimated_token_capacity = 262'144;
+
+[[nodiscard]] base::usize initial_token_capacity(const base::usize source_size) noexcept {
+    const base::usize configured_minimum = base::config::initial_token_capacity;
+    const base::usize estimated_capacity = (source_size / estimated_bytes_per_token) + 1;
+    return std::min(std::max(configured_minimum, estimated_capacity), max_estimated_token_capacity);
+}
+
+} // namespace
 
 Lexer::Lexer(
     const base::SourceId source_id,
@@ -21,7 +35,7 @@ Lexer::Lexer(
       cursor_(source_text),
       diagnostics_(diagnostics),
       options_(options) {
-    this->tokens_.reserve(base::config::initial_token_capacity);
+    this->tokens_.reserve(initial_token_capacity(source_text.size()));
 }
 
 base::Result<std::vector<syntax::Token>> Lexer::tokenize() {
@@ -117,9 +131,12 @@ bool Lexer::scan_punctuator(const base::usize begin) {
 
 void Lexer::scan_identifier() {
     const base::usize begin = this->cursor_.offset();
-    while (is_ident_continue(this->peek())) {
-        this->advance();
+    const std::string_view remaining = this->cursor_.remaining_text();
+    base::usize width = 0;
+    while (width < remaining.size() && is_ident_continue(remaining[width])) {
+        ++width;
     }
+    this->advance_bytes(width);
     const std::string_view text = this->cursor_.slice(begin, this->cursor_.offset());
     this->finish_token(keyword_kind(text), begin);
 }

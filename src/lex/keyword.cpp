@@ -86,6 +86,8 @@ struct KeywordBucket final {
     base::usize end {};
 };
 
+inline constexpr base::usize ascii_first_char_bucket_count = 128;
+
 [[nodiscard]] consteval base::usize compute_max_keyword_text_length() noexcept {
     base::usize max_length = 0;
     for (const KeywordEntry& entry : keyword_entries) {
@@ -96,9 +98,34 @@ struct KeywordBucket final {
     return max_length;
 }
 
-[[nodiscard]] consteval bool keyword_entries_are_sorted_by_length() noexcept {
-    for (base::usize index = 1; index < keyword_entries.size(); ++index) {
-        if (keyword_entries[index - 1].text.size() > keyword_entries[index].text.size()) {
+[[nodiscard]] constexpr base::usize first_char_bucket(const char c) noexcept {
+    return static_cast<unsigned char>(c);
+}
+
+[[nodiscard]] constexpr bool keyword_entry_less(const KeywordEntry& lhs, const KeywordEntry& rhs) noexcept {
+    if (lhs.text.size() != rhs.text.size()) {
+        return lhs.text.size() < rhs.text.size();
+    }
+    const base::usize lhs_bucket = first_char_bucket(lhs.text.front());
+    const base::usize rhs_bucket = first_char_bucket(rhs.text.front());
+    if (lhs_bucket != rhs_bucket) {
+        return lhs_bucket < rhs_bucket;
+    }
+    return lhs.text < rhs.text;
+}
+
+[[nodiscard]] consteval bool keyword_entries_are_nonempty() noexcept {
+    for (const KeywordEntry& entry : keyword_entries) {
+        if (entry.text.empty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] consteval bool keyword_first_chars_are_ascii() noexcept {
+    for (const KeywordEntry& entry : keyword_entries) {
+        if (first_char_bucket(entry.text.front()) >= ascii_first_char_bucket_count) {
             return false;
         }
     }
@@ -116,27 +143,73 @@ struct KeywordBucket final {
     return true;
 }
 
+[[nodiscard]] consteval std::array<KeywordEntry, keyword_entries.size()> build_sorted_keyword_entries() noexcept {
+    std::array<KeywordEntry, keyword_entries.size()> sorted = keyword_entries;
+    for (base::usize cursor = 0; cursor < sorted.size(); ++cursor) {
+        base::usize selected = cursor;
+        for (base::usize candidate = cursor + 1; candidate < sorted.size(); ++candidate) {
+            if (keyword_entry_less(sorted[candidate], sorted[selected])) {
+                selected = candidate;
+            }
+        }
+        if (selected != cursor) {
+            const KeywordEntry selected_entry = sorted[selected];
+            sorted[selected] = sorted[cursor];
+            sorted[cursor] = selected_entry;
+        }
+    }
+    return sorted;
+}
+
+[[nodiscard]] consteval bool keyword_entries_are_sorted_by_bucket(
+    const std::array<KeywordEntry, keyword_entries.size()>& entries
+) noexcept {
+    for (base::usize index = 1; index < entries.size(); ++index) {
+        if (keyword_entry_less(entries[index], entries[index - 1])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 inline constexpr base::usize max_keyword_text_length = compute_max_keyword_text_length();
 inline constexpr base::usize empty_keyword_bucket_count = 1;
 inline constexpr base::usize keyword_bucket_count = max_keyword_text_length + empty_keyword_bucket_count;
+inline constexpr std::array sorted_keyword_entries = build_sorted_keyword_entries();
 
-static_assert(keyword_entries_are_sorted_by_length(), "keyword entries must stay sorted by keyword text length");
+using KeywordFirstCharBuckets = std::array<KeywordBucket, ascii_first_char_bucket_count>;
+using KeywordBuckets = std::array<KeywordFirstCharBuckets, keyword_bucket_count>;
+
+static_assert(keyword_entries_are_nonempty(), "keyword entries must not contain empty keyword text");
+static_assert(keyword_first_chars_are_ascii(), "keyword entries must start with an ASCII character");
 static_assert(keyword_entries_are_unique(), "keyword entries contain duplicate keyword text");
+static_assert(
+    keyword_entries_are_sorted_by_bucket(sorted_keyword_entries),
+    "sorted keyword entries must stay sorted by keyword text length and first character"
+);
 
-[[nodiscard]] consteval std::array<KeywordBucket, keyword_bucket_count> build_keyword_buckets() noexcept {
-    std::array<KeywordBucket, keyword_bucket_count> buckets {};
+[[nodiscard]] consteval KeywordBuckets build_keyword_buckets() noexcept {
+    KeywordBuckets buckets {};
     base::usize cursor = 0;
     for (base::usize length = 0; length < buckets.size(); ++length) {
-        while (cursor < keyword_entries.size() && keyword_entries[cursor].text.size() < length) {
-            ++cursor;
-        }
+        for (base::usize first = 0; first < ascii_first_char_bucket_count; ++first) {
+            while (cursor < sorted_keyword_entries.size() &&
+                   (sorted_keyword_entries[cursor].text.size() < length ||
+                    (sorted_keyword_entries[cursor].text.size() == length &&
+                     first_char_bucket(sorted_keyword_entries[cursor].text.front()) < first))) {
+                ++cursor;
+            }
 
-        base::usize end = cursor;
-        while (end < keyword_entries.size() && keyword_entries[end].text.size() == length) {
-            ++end;
-        }
+            base::usize end = cursor;
+            while (end < sorted_keyword_entries.size() &&
+                   sorted_keyword_entries[end].text.size() == length &&
+                   first_char_bucket(sorted_keyword_entries[end].text.front()) == first) {
+                ++end;
+            }
 
-        buckets[length] = KeywordBucket {cursor, end};
+            buckets[length][first] = KeywordBucket {cursor, end};
+            cursor = end;
+        }
     }
     return buckets;
 }
@@ -146,13 +219,18 @@ inline constexpr std::array keyword_buckets = build_keyword_buckets();
 } // namespace
 
 syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
-    if (text.size() >= keyword_buckets.size()) {
+    if (text.empty() || text.size() >= keyword_buckets.size()) {
         return syntax::TokenKind::identifier;
     }
 
-    const KeywordBucket bucket = keyword_buckets[text.size()];
+    const base::usize first = first_char_bucket(text.front());
+    if (first >= ascii_first_char_bucket_count) {
+        return syntax::TokenKind::identifier;
+    }
+
+    const KeywordBucket bucket = keyword_buckets[text.size()][first];
     for (base::usize index = bucket.begin; index < bucket.end; ++index) {
-        const KeywordEntry& keyword = keyword_entries[index];
+        const KeywordEntry& keyword = sorted_keyword_entries[index];
         if (text == keyword.text) {
             return keyword.kind;
         }

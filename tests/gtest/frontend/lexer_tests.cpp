@@ -219,6 +219,43 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     EXPECT_EQ(token_kinds(result.value()), expected);
 }
 
+TEST(CoreUnit, LexerKeepsKeywordLikeIdentifiersAsIdentifiers) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source =
+        "modulee importable pub_ fnx for2 str_datax str_byte_length ptr_from_address";
+    lex::Lexer lexer({11}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_TRUE(result) << result.error().message;
+    EXPECT_FALSE(diagnostics.has_error());
+
+    const std::vector<TokenKind> expected {
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::identifier,
+        TokenKind::eof,
+    };
+    EXPECT_EQ(token_kinds(result.value()), expected);
+}
+
+TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings) {
+    DiagnosticSink diagnostics;
+    std::string source;
+    source.push_back(static_cast<char>(0xC3));
+    lex::Lexer lexer({12}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, ErrorCode::lex_error);
+    ASSERT_EQ(diagnostics.diagnostics().size(), 1U);
+    EXPECT_EQ(diagnostics.diagnostics().front().message, "invalid character");
+    EXPECT_EQ(diagnostics.diagnostics().front().range.begin, 0U);
+    EXPECT_EQ(diagnostics.diagnostics().front().range.end, 1U);
+}
+
 TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
@@ -288,6 +325,30 @@ TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents) {
     EXPECT_EQ(result.error().code, ErrorCode::lex_error);
     ASSERT_TRUE(diagnostics.has_error());
     expect_contains(diagnostics.diagnostics().front().message, "digit separator must be between digits");
+}
+
+TEST(CoreUnit, LexerPreservesNumericDiagnosticRanges) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source = "0x_FF 0b102 1e+";
+    lex::Lexer lexer({10}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_FALSE(result);
+    ASSERT_GE(diagnostics.diagnostics().size(), 3U);
+
+    const base::Diagnostic& separator = diagnostics.diagnostics()[0];
+    EXPECT_EQ(separator.message, "digit separator must be between digits");
+    EXPECT_EQ(separator.range.begin, 2U);
+    EXPECT_EQ(separator.range.end, 3U);
+
+    const base::Diagnostic& invalid_binary_digit = diagnostics.diagnostics()[1];
+    EXPECT_EQ(invalid_binary_digit.message, "invalid digit in binary literal");
+    EXPECT_EQ(invalid_binary_digit.range.begin, 10U);
+    EXPECT_EQ(invalid_binary_digit.range.end, 11U);
+
+    const base::Diagnostic& missing_exponent_digits = diagnostics.diagnostics()[2];
+    EXPECT_EQ(missing_exponent_digits.message, "float exponent literal has no digits");
+    EXPECT_EQ(missing_exponent_digits.range.begin, source.size());
+    EXPECT_EQ(missing_exponent_digits.range.end, source.size());
 }
 
 TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {

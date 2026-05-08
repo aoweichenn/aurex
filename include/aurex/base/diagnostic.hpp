@@ -30,6 +30,7 @@ public:
 
 private:
     std::vector<Diagnostic> diagnostics_;
+    bool has_error_ = false;
 };
 
 [[nodiscard]] std::string_view severity_name(Severity severity) noexcept;

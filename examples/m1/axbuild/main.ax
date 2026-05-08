@@ -35,7 +35,7 @@ struct CustomCommand {
 struct Target {
     name: *const u8;
     kind: TargetKind;
-    sources: vec::Vec<*const u8>;
+    sources: vec::Vec<paths::Path>;
     include_paths: vec::Vec<*const u8>;
     dependencies: vec::Vec<usize>;
     command: CustomCommand;
@@ -45,7 +45,7 @@ struct Project {
     name: *const u8;
     targets: vec::Vec<Target>;
     target_lookup: map::CStringUsizeMap;
-    stamp_path: *const u8;
+    stamp_path: paths::Path;
 }
 
 struct GraphDiagnostic {
@@ -119,19 +119,32 @@ fn custom_command_new(program: *const u8) -> CustomCommand {
     };
 }
 
+fn custom_command_empty() -> CustomCommand {
+    return CustomCommand {
+        program: null,
+        args: vec::new<*const u8>(),
+    };
+}
+
 fn custom_command_destroy(command: *mut CustomCommand) -> void {
+    if command == null {
+        return;
+    }
     command.args.destroy();
     command.program = null;
 }
 
 fn custom_command_arg(command: *mut CustomCommand, arg: *const u8) -> bool {
-    if command.program == null || arg == null {
+    if command == null || command.program == null || arg == null {
         return false;
     }
     return command.args.push(arg);
 }
 
 fn custom_command_run(command: *const CustomCommand) -> result::Result<i32, i32> {
+    if command == null || command.program == null {
+        return Result.err(1);
+    }
     var process_command: process::Command = process::command(command.program);
     var index: usize = cast(usize, 0);
     while index < command.args.len {
@@ -180,7 +193,7 @@ fn target_new(name: *const u8, kind: TargetKind) -> Target {
     return Target {
         name: name,
         kind: kind,
-        sources: vec::new<*const u8>(),
+        sources: vec::new<paths::Path>(),
         include_paths: vec::new<*const u8>(),
         dependencies: vec::new<usize>(),
         command: custom_command_new(c"/bin/echo"),
@@ -188,21 +201,62 @@ fn target_new(name: *const u8, kind: TargetKind) -> Target {
 }
 
 fn target_destroy(target: *mut Target) -> void {
+    if target == null {
+        return;
+    }
+    var source_index: usize = cast(usize, 0);
+    while source_index < target.sources.len {
+        target.sources.data[source_index].destroy();
+        source_index = source_index + cast(usize, 1);
+    }
     target.sources.destroy();
     target.include_paths.destroy();
     target.dependencies.destroy();
     target.command.destroy();
 }
 
-fn target_source(target: *mut Target, source: *const u8) -> bool {
-    return target.sources.push(source);
+fn target_disown_after_move(target: *mut Target) -> void {
+    if target == null {
+        return;
+    }
+    target.name = null;
+    target.kind = TargetKind.library;
+    target.sources = vec::new<paths::Path>();
+    target.include_paths = vec::new<*const u8>();
+    target.dependencies = vec::new<usize>();
+    target.command = custom_command_empty();
+}
+
+fn target_source(target: *mut Target, source: str) -> bool {
+    if target == null {
+        return false;
+    }
+    let source_result: result::Result<paths::Path, i32> = paths::Path.from_str(source);
+    return match source_result {
+        .ok(path) => {
+            var owned_path: paths::Path = path;
+            if target.sources.push(owned_path) {
+                true
+            } else {
+                owned_path.destroy();
+                false
+            }
+        },
+        .err(_) => false,
+    };
 }
 
 fn target_include(target: *mut Target, include_path: *const u8) -> bool {
+    if target == null || include_path == null {
+        return false;
+    }
     return target.include_paths.push(include_path);
 }
 
 fn target_dependency(target: *mut Target, dependency: usize) -> bool {
+    if target == null {
+        return false;
+    }
     return target.dependencies.push(dependency);
 }
 
@@ -211,7 +265,7 @@ impl Target {
         target_destroy(self);
     }
 
-    pub fn source(self: *mut Target, source: *const u8) -> bool {
+    pub fn source(self: *mut Target, source: str) -> bool {
         return target_source(self, source);
     }
 
@@ -224,16 +278,20 @@ impl Target {
     }
 }
 
-fn project_new(name: *const u8, stamp_path: *const u8) -> Project {
-    return Project {
+fn project_new(name: *const u8, stamp_path: str) -> result::Result<Project, i32> {
+    var owned_stamp_path: paths::Path = paths::Path.from_str(stamp_path)?;
+    return Result.ok(Project {
         name: name,
         targets: vec::new<Target>(),
         target_lookup: map::cstring_usize_new(),
-        stamp_path: stamp_path,
-    };
+        stamp_path: owned_stamp_path,
+    });
 }
 
 fn project_destroy(project: *mut Project) -> void {
+    if project == null {
+        return;
+    }
     var index: usize = cast(usize, 0);
     while index < project.targets.len {
         target_destroy(&project.targets.data[index]);
@@ -241,23 +299,43 @@ fn project_destroy(project: *mut Project) -> void {
     }
     project.targets.destroy();
     project.target_lookup.destroy();
+    project.stamp_path.destroy();
 }
 
-fn project_add_target(project: *mut Project, target: Target) -> result::Result<usize, i32> {
+fn project_add_target(project: *mut Project, target: *mut Target) -> result::Result<usize, i32> {
+    if project == null || target == null {
+        return Result.err(1);
+    }
     let id: usize = project.targets.len;
     let register_name: bool = target.name != null && !project.target_lookup.contains(target.name);
     if !project.targets.reserve(id + cast(usize, 1)) {
+        target.destroy();
         return Result.err(1);
     }
     if register_name && !project.target_lookup.reserve(project.target_lookup.len() + cast(usize, 1)) {
+        target.destroy();
         return Result.err(1);
     }
     if register_name && !project.target_lookup.insert_absent(target.name, id) {
+        target.destroy();
         return Result.err(1);
     }
-    if !project.targets.push(target) {
+    let stored_target: Target = Target {
+        name: target.name,
+        kind: target.kind,
+        sources: target.sources,
+        include_paths: target.include_paths,
+        dependencies: target.dependencies,
+        command: target.command,
+    };
+    if !project.targets.push(stored_target) {
+        if register_name {
+            project.target_lookup.remove(target.name);
+        }
+        target.destroy();
         return Result.err(1);
     }
+    target_disown_after_move(target);
     return Result.ok(id);
 }
 
@@ -267,7 +345,7 @@ fn project_find_target_linear(project: *const Project, name: *const u8) -> resul
     }
     var index: usize = cast(usize, 0);
     while index < project.targets.len {
-        let target: Target = project.targets.data[index];
+        let target: *const Target = &project.targets.data[index];
         if target.name != null && text::c_string_equal(target.name, name) {
             return Result.ok(index);
         }
@@ -310,7 +388,7 @@ fn project_lookup_matches_linear(project: *const Project, name: *const u8) -> re
 fn project_lookup_cache_matches(project: *const Project) -> result::Result<bool, i32> {
     var index: usize = cast(usize, 0);
     while index < project.targets.len {
-        let target: Target = project.targets.data[index];
+        let target: *const Target = &project.targets.data[index];
         if target.name != null {
             let matches: bool = project_lookup_matches_linear(project, target.name)?;
             if !matches {
@@ -350,8 +428,8 @@ fn project_graph_diagnostic_related_name(project: *const Project, diagnostic: *c
     return project_target_name_or(project, diagnostic.related_index(), c"<missing target>");
 }
 
-fn source_newer_than_stamp(path: *const u8, stamp_time: i64) -> bool {
-    return match file::metadata(path) {
+fn source_newer_than_stamp(path: *const paths::Path, stamp_time: i64) -> bool {
+    return match file::metadata_path(path) {
         .ok(source_metadata) => {
             source_metadata.exists() &&
                 source_metadata.is_file() &&
@@ -364,10 +442,10 @@ fn source_newer_than_stamp(path: *const u8, stamp_time: i64) -> bool {
 fn project_sources_newer_than(project: *const Project, stamp_time: i64) -> bool {
     var target_index: usize = cast(usize, 0);
     while target_index < project.targets.len {
-        let target: Target = project.targets.data[target_index];
+        let target: *const Target = &project.targets.data[target_index];
         var source_index: usize = cast(usize, 0);
         while source_index < target.sources.len {
-            if source_newer_than_stamp(target.sources.data[source_index], stamp_time) {
+            if source_newer_than_stamp(&target.sources.data[source_index], stamp_time) {
                 return true;
             }
             source_index = source_index + cast(usize, 1);
@@ -381,7 +459,7 @@ fn project_source_count(project: *const Project) -> i32 {
     var count: i32 = 0;
     var target_index: usize = cast(usize, 0);
     while target_index < project.targets.len {
-        let target: Target = project.targets.data[target_index];
+        let target: *const Target = &project.targets.data[target_index];
         count = count + cast(i32, target.sources.len);
         target_index = target_index + cast(usize, 1);
     }
@@ -412,16 +490,16 @@ fn bytes_has_suffix(value: text::SpanU8, suffix: str) -> bool {
     return true;
 }
 
-fn project_has_source(project: *const Project, source_path: *const u8) -> bool {
-    if source_path == null {
+fn project_has_source(project: *const Project, source_path: text::SpanU8) -> bool {
+    if source_path.len > cast(usize, 0) && source_path.data == null {
         return false;
     }
     var target_index: usize = cast(usize, 0);
     while target_index < project.targets.len {
-        let target: Target = project.targets.data[target_index];
+        let target: *const Target = &project.targets.data[target_index];
         var source_index: usize = cast(usize, 0);
         while source_index < target.sources.len {
-            if text::c_string_equal(target.sources.data[source_index], source_path) {
+            if text::bytes_equal(target.sources.data[source_index].as_span(), source_path) {
                 return true;
             }
             source_index = source_index + cast(usize, 1);
@@ -452,7 +530,7 @@ fn project_sources_match_directory_entries_impl(
         let entry_name: text::SpanU8 = entries.data[index].name_bytes();
         if entries.data[index].is_file() && bytes_has_suffix(entry_name, suffix) {
             discovered = discovered + 1;
-            if !project_has_source(project, entries.data[index].path_c_data()) {
+            if !project_has_source(project, entries.data[index].path_bytes()) {
                 all_known = false;
             }
         }
@@ -473,13 +551,13 @@ fn project_sources_match_recursive_directory_entries(project: *const Project, pa
 fn project_duplicate_target_diagnostic(project: *const Project) -> GraphDiagnostic {
     var left_index: usize = cast(usize, 0);
     while left_index < project.targets.len {
-        let left: Target = project.targets.data[left_index];
+        let left: *const Target = &project.targets.data[left_index];
         if left.name == null {
             return graph_diagnostic(GraphStatus.duplicate_target, left_index, left_index);
         }
         var right_index: usize = left_index + cast(usize, 1);
         while right_index < project.targets.len {
-            let right: Target = project.targets.data[right_index];
+            let right: *const Target = &project.targets.data[right_index];
             if right.name == null {
                 return graph_diagnostic(GraphStatus.duplicate_target, right_index, right_index);
             }
@@ -500,7 +578,7 @@ fn project_target_names_unique(project: *const Project) -> bool {
 fn project_invalid_dependency_diagnostic(project: *const Project) -> GraphDiagnostic {
     var target_index: usize = cast(usize, 0);
     while target_index < project.targets.len {
-        let target: Target = project.targets.data[target_index];
+        let target: *const Target = &project.targets.data[target_index];
         var dependency_index: usize = cast(usize, 0);
         while dependency_index < target.dependencies.len {
             let dependency: usize = target.dependencies.data[dependency_index];
@@ -548,7 +626,7 @@ fn project_visit_target(
     }
 
     states.data[index] = VISIT_VISITING;
-    let target: Target = project.targets.data[index];
+    let target: *const Target = &project.targets.data[index];
     var dependency_index: usize = cast(usize, 0);
     while dependency_index < target.dependencies.len {
         let dependency: usize = target.dependencies.data[dependency_index];
@@ -586,7 +664,7 @@ fn project_cycle_diagnostic_visit(project: *const Project, index: usize, states:
     }
 
     states.data[index] = VISIT_VISITING;
-    let target: Target = project.targets.data[index];
+    let target: *const Target = &project.targets.data[index];
     var dependency_index: usize = cast(usize, 0);
     while dependency_index < target.dependencies.len {
         let dependency: usize = target.dependencies.data[dependency_index];
@@ -646,7 +724,7 @@ fn project_find_dependency_path(
         return Result.ok(true);
     }
 
-    let target: Target = project.targets.data[current];
+    let target: *const Target = &project.targets.data[current];
     var dependency_index: usize = cast(usize, 0);
     while dependency_index < target.dependencies.len {
         let dependency: usize = target.dependencies.data[dependency_index];
@@ -764,7 +842,7 @@ fn project_graph_status(project: *const Project) -> GraphStatus {
 }
 
 fn project_needs_build(project: *const Project) -> bool {
-    return match file::metadata(project.stamp_path) {
+    return match file::metadata_path(&project.stamp_path) {
         .ok(stamp_metadata) => {
             if !stamp_metadata.exists() || !stamp_metadata.is_file() {
                 true
@@ -807,13 +885,13 @@ fn project_build(project: *mut Project) -> result::Result<bool, i32> {
         index = index + cast(usize, 1);
     }
     order.destroy();
-    let written: usize = file::write_text(project.stamp_path, c"built")?;
-    return Result.ok(written == text::c_strlen(c"built"));
+    let written: usize = file::write_str_path(&project.stamp_path, "built")?;
+    return Result.ok(written == strings::byte_len("built"));
 }
 
 fn project_clean(project: *mut Project) -> bool {
-    if file::file_exists(project.stamp_path) {
-        return file::remove_file(project.stamp_path);
+    if file::file_exists_path(&project.stamp_path) {
+        return file::remove_file_path(&project.stamp_path);
     }
     return true;
 }
@@ -833,14 +911,14 @@ fn project_test_target(project: *const Project, index: usize) -> result::Result<
     if index >= project.targets.len {
         return Result.err(4);
     }
-    let target: Target = project.targets.data[index];
+    let target: *const Target = &project.targets.data[index];
     let has_sources: bool = target.sources.len > cast(usize, 0);
     let has_dependency: bool = target.dependencies.len > cast(usize, 0);
     return Result.ok(target.kind == TargetKind.executable && has_sources && has_dependency);
 }
 
 impl Project {
-    pub fn add_target(self: *mut Project, target: Target) -> result::Result<usize, i32> {
+    pub fn add_target(self: *mut Project, target: *mut Target) -> result::Result<usize, i32> {
         return project_add_target(self, target);
     }
 
@@ -903,23 +981,25 @@ impl Project {
 
 fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
     var core: Target = target_new(c"core", TargetKind.library);
-    if !core.source(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
+    if !core.source("/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax") || !core.include_path(c"include") || !core.command.arg(c"build-core") {
+        core.destroy();
         return Result.err(10);
     }
-    let core_id: usize = project.add_target(core)?;
+    let core_id: usize = project.add_target(&core)?;
     let core_lookup: usize = project.find_target(c"core")?;
     if core_lookup != core_id {
         return Result.err(13);
     }
 
     var app: Target = target_new(c"app", TargetKind.executable);
-    if !app.source(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
+    if !app.source("/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
         !app.include_path(c"include") ||
         !app.dependency(core_lookup) ||
         !app.command.arg(c"build-app") {
+        app.destroy();
         return Result.err(11);
     }
-    return project.add_target(app);
+    return project.add_target(&app);
 }
 
 fn prepare_project_sources() -> result::Result<bool, i32> {
@@ -947,22 +1027,26 @@ fn prepare_project_sources() -> result::Result<bool, i32> {
     return Result.ok(core_written > cast(usize, 0) && main_written > cast(usize, 0) && nested_written > cast(usize, 0));
 }
 
+fn cleanup_path(path_text: str) -> bool {
+    let path_result: result::Result<paths::Path, i32> = paths::Path.from_str(path_text);
+    return match path_result {
+        .ok(path) => {
+            var owned_path: paths::Path = path;
+            let cleaned: bool = !file::file_exists_path(&owned_path) || file::remove_file_path(&owned_path);
+            owned_path.destroy();
+            cleaned
+        },
+        .err(_) => false,
+    };
+}
+
 fn cleanup_project_sources() -> bool {
-    let core_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax");
-    let main_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax");
+    let core_cleaned: bool = cleanup_path("/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax");
+    let main_cleaned: bool = cleanup_path("/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax");
     let nested_file_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax");
-    let nested_dir_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_recursive_sources/nested") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_recursive_sources/nested");
-    let root_dir_cleaned: bool =
-        !file::file_exists(c"/tmp/aurex_m1_axbuild_recursive_sources") ||
-        file::remove_file(c"/tmp/aurex_m1_axbuild_recursive_sources");
+        cleanup_path("/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax");
+    let nested_dir_cleaned: bool = cleanup_path("/tmp/aurex_m1_axbuild_recursive_sources/nested");
+    let root_dir_cleaned: bool = cleanup_path("/tmp/aurex_m1_axbuild_recursive_sources");
     return core_cleaned && main_cleaned && nested_file_cleaned && nested_dir_cleaned && root_dir_cleaned;
 }
 
@@ -1011,10 +1095,11 @@ fn project_cycle_path_names_match(project: *const Project, diagnostic: *const Gr
 }
 
 fn validate_missing_target_lookup() -> result::Result<bool, i32> {
-    var project: Project = project_new(c"missing", c"/tmp/aurex_m1_axbuild_missing_stamp");
+    var project: Project = project_new(c"missing", "/tmp/aurex_m1_axbuild_missing_stamp")?;
+    defer project.destroy();
 
     var target: Target = target_new(c"known", TargetKind.library);
-    let known_id: usize = project.add_target(target)?;
+    let known_id: usize = project.add_target(&target)?;
     let lookup_result: result::Result<usize, i32> = project.find_target(c"missing");
     let linear_result: result::Result<usize, i32> = project_find_target_linear(&project, c"missing");
     let missing_ok: bool = match lookup_result {
@@ -1026,18 +1111,18 @@ fn validate_missing_target_lookup() -> result::Result<bool, i32> {
         .err(code) => code == 41,
     };
     let cache_ok: bool = project_lookup_cache_matches(&project)?;
-    project.destroy();
     return Result.ok(known_id == cast(usize, 0) && missing_ok && linear_missing_ok && cache_ok);
 }
 
 fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
-    var project: Project = project_new(c"duplicate", c"/tmp/aurex_m1_axbuild_duplicate_stamp");
+    var project: Project = project_new(c"duplicate", "/tmp/aurex_m1_axbuild_duplicate_stamp")?;
+    defer project.destroy();
 
     var first: Target = target_new(c"dup", TargetKind.library);
-    let first_id: usize = project.add_target(first)?;
+    let first_id: usize = project.add_target(&first)?;
 
     var second: Target = target_new(c"dup", TargetKind.executable);
-    let second_id: usize = project.add_target(second)?;
+    let second_id: usize = project.add_target(&second)?;
 
     let duplicate_ok: bool =
         first_id == cast(usize, 0) &&
@@ -1053,28 +1138,26 @@ fn validate_duplicate_target_detection() -> result::Result<bool, i32> {
         text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"dup");
     let lookup_ok: bool = project_target_index_matches(&project, c"dup", first_id)?;
     let cache_ok: bool = project_lookup_cache_matches(&project)?;
-    project.destroy();
     return Result.ok(duplicate_ok && diagnostic_ok && lookup_ok && cache_ok);
 }
 
 fn validate_cycle_detection() -> result::Result<bool, i32> {
-    var project: Project = project_new(c"cycle", c"/tmp/aurex_m1_axbuild_cycle_stamp");
+    var project: Project = project_new(c"cycle", "/tmp/aurex_m1_axbuild_cycle_stamp")?;
+    defer project.destroy();
 
     var first: Target = target_new(c"first", TargetKind.library);
     if !first.dependency(cast(usize, 1)) {
         first.destroy();
-        project.destroy();
         return Result.err(30);
     }
-    let first_id: usize = project.add_target(first)?;
+    let first_id: usize = project.add_target(&first)?;
 
     var second: Target = target_new(c"second", TargetKind.library);
     if !second.dependency(first_id) {
         second.destroy();
-        project.destroy();
         return Result.err(31);
     }
-    let second_id: usize = project.add_target(second)?;
+    let second_id: usize = project.add_target(&second)?;
     let cycle_ok: bool = second_id == cast(usize, 1) && project.graph_status() == GraphStatus.cycle;
     let diagnostic: GraphDiagnostic = project.graph_diagnostic()?;
     let diagnostic_ok: bool =
@@ -1086,20 +1169,19 @@ fn validate_cycle_detection() -> result::Result<bool, i32> {
         text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"first");
     let path_ok: bool = project_cycle_path_matches(&project, &diagnostic)?;
     let path_names_ok: bool = project_cycle_path_names_match(&project, &diagnostic)?;
-    project.destroy();
     return Result.ok(cycle_ok && diagnostic_ok && path_ok && path_names_ok);
 }
 
 fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
-    var project: Project = project_new(c"invalid", c"/tmp/aurex_m1_axbuild_invalid_stamp");
+    var project: Project = project_new(c"invalid", "/tmp/aurex_m1_axbuild_invalid_stamp")?;
+    defer project.destroy();
 
     var target: Target = target_new(c"target", TargetKind.library);
     if !target.dependency(cast(usize, 99)) {
         target.destroy();
-        project.destroy();
         return Result.err(32);
     }
-    let target_id: usize = project.add_target(target)?;
+    let target_id: usize = project.add_target(&target)?;
     let invalid_ok: bool = target_id == cast(usize, 0) && project.graph_status() == GraphStatus.invalid_dependency;
     let diagnostic: GraphDiagnostic = project.graph_diagnostic()?;
     let diagnostic_ok: bool =
@@ -1109,7 +1191,6 @@ fn validate_invalid_dependency_detection() -> result::Result<bool, i32> {
         text::c_string_equal(diagnostic.message(), c"invalid target dependency") &&
         text::c_string_equal(project.graph_diagnostic_target_name(&diagnostic), c"target") &&
         text::c_string_equal(project.graph_diagnostic_related_name(&diagnostic), c"<invalid dependency>");
-    project.destroy();
     return Result.ok(invalid_ok && diagnostic_ok);
 }
 
@@ -1248,17 +1329,16 @@ fn validate_recursive_entry_source_discovery() -> result::Result<bool, i32> {
     }
     directory::destroy_entries(&entries);
 
-    var project: Project = project_new(c"recursive", c"/tmp/aurex_m1_axbuild_recursive_stamp");
+    var project: Project = project_new(c"recursive", "/tmp/aurex_m1_axbuild_recursive_stamp")?;
+    defer project.destroy();
     var target: Target = target_new(c"generated", TargetKind.library);
-    if !target.source(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
+    if !target.source("/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
         target.destroy();
-        project.destroy();
         return Result.err(37);
     }
-    let target_id: usize = project.add_target(target)?;
+    let target_id: usize = project.add_target(&target)?;
     let project_match: bool =
         project_sources_match_recursive_directory_entries(&project, &root_path, ".aurex_m1_source.ax")?;
-    project.destroy();
 
     return Result.ok(
         entry_count == 2 &&
@@ -1275,7 +1355,8 @@ fn run_build_tool() -> result::Result<i32, i32> {
     let prepared: bool = prepare_project_sources()?;
     var tmp_path: paths::Path = paths::Path.from_str("/tmp")?;
     defer tmp_path.destroy();
-    var project: Project = project_new(c"demo", c"/tmp/aurex_m1_axbuild_stamp");
+    var project: Project = project_new(c"demo", "/tmp/aurex_m1_axbuild_stamp")?;
+    defer project.destroy();
     project.clean();
     let app_id: usize = configure_project(&project)?;
     let discovery_ok: bool = project_sources_match_directory(&project, &tmp_path, ".aurex_m1_source.ax")?;
@@ -1302,7 +1383,6 @@ fn run_build_tool() -> result::Result<i32, i32> {
     let run_ok: bool = project.run_target(app_id)?;
     let test_ok: bool = project.test_target(app_id)?;
     let cleaned: bool = project.clean();
-    project.destroy();
     let sources_cleaned: bool = cleanup_project_sources();
 
     if prepared &&

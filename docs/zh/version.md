@@ -28,6 +28,7 @@
 - M1 axbuild target graph validation / topological build baseline，包括 dependency bounds、cycle / invalid dependency 状态和按拓扑顺序 build。
 - M1 axbuild target name lookup cache baseline，包括 name -> id 查找、lookup cache 与线性扫描对照、missing lookup 检测和 duplicate target name 状态。
 - M1 axbuild target graph diagnostic/message/name/cycle-path baseline，包括 `GraphDiagnostic`、status、target index、related index、message、target name、related name、cycle index path、cycle name path，以及 duplicate / invalid dependency / cycle back-edge 定位。
+- M1 axbuild `Path` 风险收口 baseline，包括 `Target.sources: Vec<Path>`、`Project.stamp_path: Path`、source/stamp metadata、stamp 写入、clean、目录扫描和临时 source cleanup 的 `Path` / `str` 入口，以及 `Project.add_target(&target)` 的显式所有权转移和失败回滚。
 - golden、positive、negative 和语言特性测试链路。
 - M1 样例的 checked/IR/native integration test 覆盖。
 - 中英文主题文档集。
@@ -72,6 +73,6 @@
 - 更完整 ABI 属性和目标配置。
 - 模块隔离、可见性、泛型约束和 pattern matching 完整性。
 - M1 frontend 从 summary parser 推进到真实 AST、diagnostic、name resolution 和 type checking。
-- M1 axbuild 从 source/stamp mtime、directory create、owned single-level/recursive directory entry read、`Path` + `str` suffix + bytes entry 名称匹配的 source discovery、single-level and recursive source discovery、target name lookup cache、target graph smoke、stdout/stderr capture、cwd/env 和结构化 graph diagnostic/message/name/cycle-path 推进到 streaming directory iterator / walk callback、glob/pattern、hash/bucketed map、dependency value diagnostic 和结构化输出报告。
+- M1 axbuild 从 `Path` backed source list/stamp/cleanup、source/stamp mtime、directory create、owned single-level/recursive directory entry read、`Path` + `str` suffix + bytes entry 名称匹配的 source discovery、single-level and recursive source discovery、target name lookup cache、target graph smoke、stdout/stderr capture、cwd/env 和结构化 graph diagnostic/message/name/cycle-path 推进到 streaming directory iterator / walk callback、glob/pattern、hash/bucketed map、dependency value diagnostic 和结构化输出报告。
 - M3 之后以新语言特性重新设计自举链路。
 - fixed-point self-host 验证。

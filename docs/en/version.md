@@ -62,6 +62,11 @@ Included:
   including `GraphDiagnostic`, status, target index, related index, message,
   target name, related name, cycle index path, cycle name path, and duplicate /
   invalid-dependency / cycle back-edge localization.
+- M1 axbuild `Path` risk-closure baseline, including
+  `Target.sources: Vec<Path>`, `Project.stamp_path: Path`, `Path` / `str` entry points for
+  source/stamp metadata, stamp writes, clean, directory scanning, and
+  temporary-source cleanup, plus explicit ownership transfer and failure
+  rollback in `Project.add_target(&target)`.
 - golden, positive, negative, and language-feature test flows.
 - checked/IR/native integration-test coverage for the M1 examples.
 - Chinese and English topic-based documentation sets.
@@ -108,7 +113,8 @@ Not included:
   matching coverage.
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
-- Grow M1 axbuild from source/stamp mtime, directory creation, owned
+- Grow M1 axbuild from `Path`-backed source lists/stamps/cleanup,
+  source/stamp mtime, directory creation, owned
   single-level / recursive directory-entry reads, source discovery through
   `Path` + `str` suffixes + bytes entry-name matching, single-level and recursive
   source-discovery, target-name lookup caches,

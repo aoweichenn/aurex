@@ -37,8 +37,10 @@ UTF-8-preserving `String` APIs with `String.as_mut_span` removed, raw
 wrappers for suffix arguments, and bytes-backed `DirectoryEntry` views:
 `name_bytes()` / `path_bytes()` expose raw path bytes, while `name_utf8()` /
 `path_utf8()` perform checked UTF-8 conversion. `examples/m1/axbuild`
-directory scanning now uses `Path` + `str` suffixes + bytes entry-name
-matching.
+now uses `Path` / `str` entry points for directory scanning, target source
+lists, project stamp paths, source/stamp metadata, stamp writes, clean, and
+temporary-source cleanup. Target insertion also uses explicit ownership
+transfer so owned `Path` values are not left behind as shallow local owners.
 
 ## Current Capabilities
 
@@ -108,8 +110,10 @@ Current language slices:
   AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
   typed dependencies/sources/includes/custom commands, subprocess stdout/stderr
   capture, cwd/env, source/stamp mtime incremental checks, directory creation,
-  owned single-level / recursive directory-entry reads, source discovery by entries, single-level and
-  recursive source-discovery counts, target-name lookup caches, duplicate-target detection, target-graph
+  owned single-level / recursive directory-entry reads, source discovery by
+  entries, single-level and recursive source-discovery counts, `Path`-backed
+  target sources and stamp handling, explicit target ownership transfer,
+  target-name lookup caches, duplicate-target detection, target-graph
   validation, topological build order, structured graph diagnostics/messages/
   names/cycle index paths/cycle name paths, build, clean, run, and test flows.
   Both are covered by checked/IR/native integration tests.

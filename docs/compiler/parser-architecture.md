@@ -16,7 +16,7 @@ the narrowest parser part that owns the relevant grammar surface.
 | `TypeParser` | Type syntax, primitive types, named/scoped types, pointer types, array types, and type argument lists. |
 | `StmtParser` | Statement dispatch, local declarations, expression statements, and assignment statements. |
 | `BlockParser` | Statement blocks and block expressions. |
-| `ControlStmtParser` | `if`, `for`, `while`, `defer`, and `return` statements. |
+| `ControlStmtParser` | Control statements and their clauses: `if`, `for`, `while`, `break`, `continue`, `defer`, and `return`. |
 | `ExprParser` | High-level expression dispatch, conditional/match expressions, unary operators, and table-driven binary precedence parsing. |
 | `PrimaryExprParser` | Primary expression dispatch, literals, grouped expressions, block expressions, and builtin keyword dispatch. |
 | `NameExprParser` | Identifier expressions, scoped names, and struct literals. |

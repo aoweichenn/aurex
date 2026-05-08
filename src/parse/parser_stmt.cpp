@@ -30,21 +30,11 @@ syntax::StmtId StmtParser::parse_stmt() {
     if (this->check(TokenKind::kw_defer)) {
         return ControlStmtParser(this->parser_).parse_defer_stmt();
     }
-    if (this->match(TokenKind::kw_break)) {
-        const syntax::Token& begin = this->previous();
-        const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after break");
-        syntax::StmtNode stmt;
-        stmt.kind = syntax::StmtKind::break_;
-        stmt.range = this->merge(begin.range, end.range);
-        return this->session_.module.push_stmt(stmt);
+    if (this->check(TokenKind::kw_break)) {
+        return ControlStmtParser(this->parser_).parse_break_stmt();
     }
-    if (this->match(TokenKind::kw_continue)) {
-        const syntax::Token& begin = this->previous();
-        const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after continue");
-        syntax::StmtNode stmt;
-        stmt.kind = syntax::StmtKind::continue_;
-        stmt.range = this->merge(begin.range, end.range);
-        return this->session_.module.push_stmt(stmt);
+    if (this->check(TokenKind::kw_continue)) {
+        return ControlStmtParser(this->parser_).parse_continue_stmt();
     }
     if (this->check(TokenKind::kw_return)) {
         return ControlStmtParser(this->parser_).parse_return_stmt();

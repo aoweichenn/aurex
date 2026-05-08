@@ -2,7 +2,8 @@
 #include "aurex/lex/lexer.hpp"
 #include "aurex/syntax/ast_dump.hpp"
 #include "aurex/syntax/token.hpp"
-#include "support/test_support.hpp"
+
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <string>
@@ -24,6 +25,17 @@ std::vector<TokenKind> token_kinds(const std::vector<Token>& tokens) {
         kinds.push_back(token.kind);
     }
     return kinds;
+}
+
+void expect_contains(const std::string_view text, const std::string_view needle) {
+    EXPECT_NE(text.find(needle), std::string_view::npos)
+        << "expected text to contain: " << needle << "\nactual text:\n" << text;
+}
+
+void expect_contains_all(const std::string_view text, const std::vector<std::string_view>& needles) {
+    for (const std::string_view needle : needles) {
+        expect_contains(text, needle);
+    }
 }
 
 } // namespace

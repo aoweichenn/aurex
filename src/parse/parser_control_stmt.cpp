@@ -55,27 +55,14 @@ syntax::StmtId ControlStmtParser::parse_while_stmt() {
 
 syntax::StmtId ControlStmtParser::parse_for_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_for, "expected 'for'");
-    syntax::StmtId init = syntax::invalid_stmt_id;
-    if (this->match(TokenKind::semicolon)) {
-        // Empty initializer.
-    } else if (this->check(TokenKind::kw_let)) {
-        init = StmtParser(this->parser_).parse_let_or_var_stmt(syntax::StmtKind::let);
-    } else if (this->check(TokenKind::kw_var)) {
-        init = StmtParser(this->parser_).parse_let_or_var_stmt(syntax::StmtKind::var);
-    } else {
-        init = StmtParser(this->parser_).parse_expr_or_assign_stmt(true);
-    }
-
+    const syntax::StmtId init = this->parse_for_init_clause();
     syntax::ExprId condition = syntax::invalid_expr_id;
     if (!this->check(TokenKind::semicolon)) {
         condition = this->parse_expr(ExprContext::no_struct_literal);
     }
     this->expect(TokenKind::semicolon, "expected ';' after for condition");
 
-    syntax::StmtId update = syntax::invalid_stmt_id;
-    if (!this->check(TokenKind::l_brace)) {
-        update = StmtParser(this->parser_).parse_expr_or_assign_stmt(false);
-    }
+    const syntax::StmtId update = this->parse_for_update_clause();
     const syntax::StmtId body = this->parse_block();
 
     syntax::StmtNode stmt;
@@ -86,6 +73,24 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
     stmt.for_update = update;
     stmt.body = body;
     return this->session_.module.push_stmt(std::move(stmt));
+}
+
+syntax::StmtId ControlStmtParser::parse_break_stmt() {
+    const syntax::Token& begin = this->expect(TokenKind::kw_break, "expected 'break'");
+    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after break");
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::break_;
+    stmt.range = this->merge(begin.range, end.range);
+    return this->session_.module.push_stmt(stmt);
+}
+
+syntax::StmtId ControlStmtParser::parse_continue_stmt() {
+    const syntax::Token& begin = this->expect(TokenKind::kw_continue, "expected 'continue'");
+    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after continue");
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::continue_;
+    stmt.range = this->merge(begin.range, end.range);
+    return this->session_.module.push_stmt(stmt);
 }
 
 syntax::StmtId ControlStmtParser::parse_defer_stmt() {
@@ -112,6 +117,26 @@ syntax::StmtId ControlStmtParser::parse_return_stmt() {
     stmt.range = this->merge(begin.range, end.range);
     stmt.return_value = value;
     return this->session_.module.push_stmt(std::move(stmt));
+}
+
+syntax::StmtId ControlStmtParser::parse_for_init_clause() {
+    if (this->match(TokenKind::semicolon)) {
+        return syntax::invalid_stmt_id;
+    }
+    if (this->check(TokenKind::kw_let)) {
+        return StmtParser(this->parser_).parse_let_or_var_stmt(syntax::StmtKind::let);
+    }
+    if (this->check(TokenKind::kw_var)) {
+        return StmtParser(this->parser_).parse_let_or_var_stmt(syntax::StmtKind::var);
+    }
+    return StmtParser(this->parser_).parse_expr_or_assign_stmt(true);
+}
+
+syntax::StmtId ControlStmtParser::parse_for_update_clause() {
+    if (this->check(TokenKind::l_brace)) {
+        return syntax::invalid_stmt_id;
+    }
+    return StmtParser(this->parser_).parse_expr_or_assign_stmt(false);
 }
 
 } // namespace aurex::parse

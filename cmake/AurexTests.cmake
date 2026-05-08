@@ -3,6 +3,21 @@ include(CTest)
 if(BUILD_TESTING)
     find_package(GTest REQUIRED)
 
+    add_executable(aurex_lexer_tests
+        tests/gtest/frontend/lexer_tests.cpp
+    )
+    target_link_libraries(aurex_lexer_tests PRIVATE
+        GTest::gtest_main
+        aurex_lex
+    )
+    set_target_properties(aurex_lexer_tests PROPERTIES
+        BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
+    )
+    add_test(
+        NAME aurex_tests_lexer_unit
+        COMMAND aurex_lexer_tests --gtest_color=auto
+    )
+
     add_executable(aurex_tests
         tests/support/test_support.cpp
         tests/gtest/backend/llvm_constants_tests.cpp

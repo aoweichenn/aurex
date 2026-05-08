@@ -8,6 +8,10 @@
 #include <string_view>
 #include <vector>
 
+namespace aurex::base {
+enum class StringLiteralKind;
+}
+
 namespace aurex::lex {
 
 struct LexerOptions {
@@ -40,6 +44,12 @@ private:
     void scan_number();
     void scan_string();
     void scan_c_string();
+    void scan_string_body(
+        base::usize begin,
+        syntax::TokenKind token_kind,
+        base::StringLiteralKind literal_kind,
+        std::string_view unterminated_message
+    );
     void scan_byte();
     void scan_line_comment();
     void scan_block_comment();

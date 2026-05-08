@@ -11,13 +11,11 @@ namespace aurex::lex {
 namespace {
 
 [[nodiscard]] bool is_ident_start(const char c) noexcept {
-    const auto value = static_cast<unsigned char>(c);
-    return std::isalpha(value) != 0 || c == '_';
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
 }
 
 [[nodiscard]] bool is_ident_continue(const char c) noexcept {
-    const auto value = static_cast<unsigned char>(c);
-    return std::isalnum(value) != 0 || c == '_';
+    return is_ident_start(c) || (c >= '0' && c <= '9');
 }
 
 [[nodiscard]] bool is_decimal_digit(const char c) noexcept {
@@ -25,12 +23,15 @@ namespace {
 }
 
 [[nodiscard]] bool is_hex_digit(const char c) noexcept {
-    const auto value = static_cast<unsigned char>(c);
-    return std::isxdigit(value) != 0;
+    return is_decimal_digit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
 }
 
 [[nodiscard]] bool is_binary_digit(const char c) noexcept {
     return c == '0' || c == '1';
+}
+
+[[nodiscard]] bool is_trivia_space(const char c) noexcept {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
 [[nodiscard]] syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
@@ -176,26 +177,19 @@ bool Lexer::match(const char expected) noexcept {
 }
 
 void Lexer::skip_trivia() {
-    bool consumed = true;
-    while (consumed && !is_at_end()) {
-        consumed = false;
-        while (!is_at_end()) {
-            const char c = peek();
-            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
-                advance();
-                consumed = true;
-                continue;
-            }
-            break;
+    while (!is_at_end()) {
+        while (!is_at_end() && is_trivia_space(peek())) {
+            advance();
         }
-
         if (peek() == '/' && peek_next() == '/') {
             scan_line_comment();
-            consumed = true;
-        } else if (peek() == '/' && peek_next() == '*') {
-            scan_block_comment();
-            consumed = true;
+            continue;
         }
+        if (peek() == '/' && peek_next() == '*') {
+            scan_block_comment();
+            continue;
+        }
+        break;
     }
 }
 
@@ -412,46 +406,32 @@ void Lexer::scan_number() {
 
 void Lexer::scan_string() {
     const base::usize begin = offset_ - 1;
-    bool escaped = false;
-    while (!is_at_end()) {
-        const char c = advance();
-        if (escaped) {
-            escaped = false;
-            continue;
-        }
-        if (c == '\\') {
-            escaped = true;
-            continue;
-        }
-        if (c == '"') {
-            const base::StringLiteralDecode decoded = base::decode_string_literal(
-                source_text_.substr(begin, offset_ - begin),
-                base::StringLiteralKind::string
-            );
-            for (const base::StringLiteralError& error : decoded.errors) {
-                report(begin + error.begin, begin + error.end, error.message);
-            }
-            if (decoded.ok()) {
-                add_token(syntax::TokenKind::string_literal, begin, offset_);
-            } else if (options_.emit_invalid_tokens) {
-                add_token(syntax::TokenKind::invalid, begin, offset_);
-            }
-            return;
-        }
-        if (c == '\n') {
-            report(begin, offset_, "unterminated string literal");
-            add_token(syntax::TokenKind::invalid, begin, offset_);
-            return;
-        }
-    }
-    report(begin, offset_, "unterminated string literal");
-    add_token(syntax::TokenKind::invalid, begin, offset_);
+    scan_string_body(
+        begin,
+        syntax::TokenKind::string_literal,
+        base::StringLiteralKind::string,
+        "unterminated string literal"
+    );
 }
 
 void Lexer::scan_c_string() {
     const base::usize begin = offset_;
     advance();
     advance();
+    scan_string_body(
+        begin,
+        syntax::TokenKind::c_string_literal,
+        base::StringLiteralKind::c_string,
+        "unterminated c string literal"
+    );
+}
+
+void Lexer::scan_string_body(
+    const base::usize begin,
+    const syntax::TokenKind token_kind,
+    const base::StringLiteralKind literal_kind,
+    const std::string_view unterminated_message
+) {
     bool escaped = false;
     while (!is_at_end()) {
         const char c = advance();
@@ -466,25 +446,25 @@ void Lexer::scan_c_string() {
         if (c == '"') {
             const base::StringLiteralDecode decoded = base::decode_string_literal(
                 source_text_.substr(begin, offset_ - begin),
-                base::StringLiteralKind::c_string
+                literal_kind
             );
             for (const base::StringLiteralError& error : decoded.errors) {
                 report(begin + error.begin, begin + error.end, error.message);
             }
             if (decoded.ok()) {
-                add_token(syntax::TokenKind::c_string_literal, begin, offset_);
+                add_token(token_kind, begin, offset_);
             } else if (options_.emit_invalid_tokens) {
                 add_token(syntax::TokenKind::invalid, begin, offset_);
             }
             return;
         }
         if (c == '\n') {
-            report(begin, offset_, "unterminated c string literal");
+            report(begin, offset_, std::string(unterminated_message));
             add_token(syntax::TokenKind::invalid, begin, offset_);
             return;
         }
     }
-    report(begin, offset_, "unterminated c string literal");
+    report(begin, offset_, std::string(unterminated_message));
     add_token(syntax::TokenKind::invalid, begin, offset_);
 }
 

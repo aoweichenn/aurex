@@ -10,7 +10,7 @@ pub struct CStr {
     priv len_value: usize;
 }
 
-pub struct CString {
+pub noncopy struct CString {
     priv data_value: *mut u8;
     priv len_value: usize;
 }

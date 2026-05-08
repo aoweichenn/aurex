@@ -41,6 +41,8 @@ now uses `Path` / `str` entry points for directory scanning, target source
 lists, project stamp paths, source/stamp metadata, stamp writes, clean, and
 temporary-source cleanup. Target insertion also uses explicit ownership
 transfer so owned `Path` values are not left behind as shallow local owners.
+At the C FFI boundary, `CStr` remains a borrowed copyable view while `CString`
+is now a `noncopy` owned resource.
 
 ## Current Capabilities
 
@@ -99,8 +101,8 @@ Current language slices:
   `std.core.bytes.Bytes`, a Vec-backed generic `Map<K, V>`, borrowed C-string
   -> usize `CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar APIs,
   UTF-8-oriented APIs on owned `String`, removal of `String.as_mut_span`, C FFI
-  `CStr` / `CString` boundary types, and query/join APIs on bytes-backed
-  `Path`.
+  `CStr` borrowed views, `CString` noncopy owned boundary values, and
+  query/join APIs on bytes-backed `Path`.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
@@ -151,8 +153,8 @@ Current language slices:
   propagation slice, but still needs broader std API migration and a
   composable diagnostic model.
 - Resource management now has a `noncopy struct` / `move(value)` MVP. The
-  first file/host/process resources, including `FileBytes`, `HostFileBytes`,
-  `Command`, and `ProcessOutput`, are now noncopy. It still needs
+  first owned resources, including `FileBytes`, `HostFileBytes`, `Command`,
+  `ProcessOutput`, and `CString`, are now noncopy. It still needs
   Drop/destructor conventions, borrow checking, partial moves, move-only
   generic constraints, and a unified migration strategy for arenas, `String`,
   `Bytes`, `Path`, and other owned resources.
@@ -240,7 +242,7 @@ covered by integration tests:
 
 6. Establish resource management and OS engineering support  
    The `defer` MVP has landed, and `for` continue/update/exit paths now reuse
-   scope cleanup. The first file/process owned resources are noncopy. Follow-up
+   scope cleanup. The first file/process/FFI owned resources are noncopy. Follow-up
    work should add Drop/destructor support, borrow checking, streaming
    directory iterators / walk callbacks, richer file metadata, subprocess
    pipes, cwd/env handling, temporary files, and path normalization. Without
@@ -292,10 +294,11 @@ manual status helpers.
    `Map<K, V>`, borrowed C-string -> usize `CStringUsizeMap`, borrowed UTF-8
    `str` APIs and scalar APIs, owned UTF-8 `String`
    `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked`
-   APIs, removal of `String.as_mut_span`, C FFI `CStr` / `CString` boundary
-   types, and bytes-backed `Path` absolute-path, parent, file-name, file-stem,
-   extension, from_str, span/c-string join, and with-extension APIs, covered by
-   std integration samples combining method APIs,
+   APIs, removal of `String.as_mut_span`, C FFI `CStr` borrowed views and
+   `CString` noncopy owned boundary values, and bytes-backed `Path`
+   absolute-path, parent, file-name, file-stem, extension, from_str,
+   span/c-string join, and with-extension APIs, covered by std integration
+   samples combining method APIs,
    `Result` / `Option`, and `?`.
    The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
    `std.sys.host` file IO now exposes M1-style APIs such as
@@ -331,8 +334,9 @@ manual status helpers.
    coverage. A subprocess / stdout/stderr-capture / cwd / env baseline is now
    available through noncopy `std.sys.process::Command` / `ProcessOutput` and
    host-c support, and a file metadata / mtime baseline is available through
-   `std.fs.file::FileMetadata`. `std.fs.file::FileBytes` and
-   `std.sys.host::HostFileBytes` are also noncopy. Directory-create, owned
+   `std.fs.file::FileMetadata`. `std.fs.file::FileBytes`,
+   `std.sys.host::HostFileBytes`, and `std.ffi.c.string::CString` are also
+   noncopy. Directory-create, owned
    single-level / recursive directory-entry, and source-discovery count
    baselines are available through `std.fs.dir`, including single-level and
    recursive suffix counts. Next, add Drop/destructor support, borrow checking,

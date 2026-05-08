@@ -43,7 +43,7 @@ builtin str = {
 - 测试已经锁住 `size_of(str) == 16`、`align_of(str) == 8` 这一 64-bit ABI 事实。
 - `std.core.string.String` 仍以 `VecU8` 存储并维护尾随 `\0` 作为兼容层，但已经新增 `from_str`、`from_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`、`byte_len`、`slice_bytes_checked`、`truncate_bytes_checked`、`equals(str)`、`starts_with(str)`、`ends_with(str)` 等 UTF-8/`str` surface；旧字节级 `push/insert/remove/truncate/append_span/from_c` 已开始收口到 UTF-8 边界检查，且不再暴露 `String.as_mut_span()`。
 - `std.core.bytes.Bytes` 已作为拥有型 raw bytes 容器落地，提供 `from_span`、`as_span`、`as_mut_span`、`append`、`push/pop/remove/truncate/clear` 等 API；`Bytes.append` 已处理 self-alias，扩容时不会读失效源指针。
-- `std.ffi.c.string` 已提供 `CStr` / `CString` 第一版，把 borrowed/owned NUL-terminated C 字符串从普通文本 API 中隔离出来。
+- `std.ffi.c.string` 已提供 `CStr` / `CString` 第一版，把 borrowed/owned NUL-terminated C 字符串从普通文本 API 中隔离出来；其中 `CStr` 是 borrowed copyable 视图，`CString` 已迁为 `noncopy` 拥有型资源。
 - `std.core.text` 目前主要是 `SpanU8`、ASCII helper、`c_strlen`、`strcmp` 这类 C/bytes 工具。
 - `std.fs.path.Path` 已从 `String` 语义中拆出，当前由 `Bytes` 存储平台路径 bytes；`from_span` 接受非 UTF-8 bytes 但拒绝内部 NUL，`from_str` 只是 UTF-8 文本便利入口，`as_c` 仍提供 NUL-terminated 兼容视图。
 - `std.fs.file` 已新增 `Path` 入口包装和 `write_str` / `write_str_path`；`std.fs.dir` 已新增目录 path 的 `Path` 入口包装、`str` suffix 包装，以及 bytes-backed `DirectoryEntry` 视图：`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 执行显式 UTF-8 校验。旧 `*const u8` / `c"..."` 函数保留为兼容层，M1 axbuild 的目录扫描、target source list、project stamp path、source/stamp metadata、stamp 写入、clean 和临时 source cleanup 已迁到 `Path` / `str` 入口，并补上 target 所有权转移；后续进程和少量 FFI 参数仍应继续向 `Path`、`CStr` / `CString` 和 `str` 分层迁移。
@@ -329,7 +329,7 @@ FFI 层应有单独类型：
 状态：已落地第一批边界类型。
 
 - 已完成：新增 `std.ffi.c.string.CStr`，表示 borrowed NUL-terminated C 字符串，不拥有内存。
-- 已完成：新增 `std.ffi.c.string.CString`，表示 owned NUL-terminated C 字符串，`from_str` 拒绝内部 NUL，`from_utf8` 拒绝非法 UTF-8。
+- 已完成：新增 `std.ffi.c.string.CString`，表示 `noncopy` owned NUL-terminated C 字符串，`from_str` 拒绝内部 NUL，`from_utf8` 拒绝非法 UTF-8，调用方用完后必须显式 `destroy()`。
 - 已完成：`CStr.as_str_utf8()` 和 `CString.as_str()` / `as_str_checked()` 把 C 边界显式转回 `str`。
 - 已完成：新增 `tests/samples/positive/std/std_cstring.ax` 和 `SampleSuite_Std_std_cstring`，覆盖 borrowed/owned C string、UTF-8 conversion、内部 NUL 拒绝和 invalid UTF-8 拒绝。
 - 未完成：文件、目录、进程、console、host support 还没有整体改成接收 `CStr` / `CString`；`std.fs.file` / `std.fs.dir` 已有 `Path` / `str` 新入口，目录 suffix 的 `str` 包装已落地并拒绝内部 NUL，但 `c"..."` 仍在底层 std、host support 和部分兼容测试中作为过渡。

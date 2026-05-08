@@ -118,7 +118,7 @@ import std.fs.path as path;
 - 类型：`cstring::CStr`、`cstring::CString`。
 - `CStr` API：`cstring::CStr.from_c`、`byte_len`、`as_c`、`as_bytes`、`as_str_utf8`。
 - `CString` API：`cstring::CString.from_str`、`from_utf8`、`from_c_utf8`、`destroy`、`byte_len`、`as_c`、`as_cstr`、`as_str`、`as_str_checked`。
-- 约束：`CString.from_str` 拒绝内部 NUL；`CString.from_utf8` 同时验证 UTF-8 和内部 NUL。普通 `str` / `String` 不隐式转成 C string，需要 FFI 指针时显式构造 `CString` 或借用 `CStr`。
+- 约束：`CStr` 是 borrowed copyable 视图；`CString` 是 `noncopy` 拥有型 C 字符串，必须显式 `destroy()`，不能隐式拷贝。`CString.from_str` 拒绝内部 NUL；`CString.from_utf8` 同时验证 UTF-8 和内部 NUL。普通 `str` / `String` 不隐式转成 C string，需要 FFI 指针时显式构造 `CString` 或借用 `CStr`。
 
 `std.fs.path`：
 

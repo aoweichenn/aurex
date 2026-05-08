@@ -288,7 +288,7 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_cstring) {
     ).output;
     expect_contains_all(checked, {
         "struct CStr fields=2",
-        "struct CString fields=2",
+        "struct CString noncopy fields=2",
         "fn cstr_as_str_utf8 -> std.core.result.Result<str, i32>",
         "fn cstring_from_str -> std.core.result.Result<std.ffi.c.string.CString, i32>",
         "fn cstring_from_utf8 -> std.core.result.Result<std.ffi.c.string.CString, i32>",

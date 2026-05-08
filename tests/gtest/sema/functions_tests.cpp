@@ -198,6 +198,10 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
         require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_try_without_move.ax"))).output,
         "non-copyable value must be moved explicitly in try expression"
     );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_cstring_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
 }
 
 TEST_F(AurexIntegrationTest, RecursiveFunctions) {

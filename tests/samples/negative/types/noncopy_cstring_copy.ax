@@ -1,0 +1,18 @@
+module noncopy_cstring_copy;
+
+import std.core.result as result;
+import std.ffi.c.string as cstring;
+
+fn run() -> result::Result<i32, i32> {
+    var first: cstring::CString = cstring::CString.from_str("owned")?;
+    var second: cstring::CString = first;
+    second.destroy();
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

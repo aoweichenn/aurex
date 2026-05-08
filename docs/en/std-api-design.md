@@ -124,7 +124,7 @@ import std.fs.path as path;
 - Types: `cstring::CStr`, `cstring::CString`.
 - `CStr` API: `CStr.from_c`, `byte_len`, `as_c`, `as_bytes`, `as_str_utf8`.
 - `CString` API: `CString.from_str`, `from_utf8`, `from_c_utf8`, `destroy`, `byte_len`, `as_c`, `as_cstr`, `as_str`, `as_str_checked`.
-- Constraint: `CString.from_str` rejects interior NUL; `CString.from_utf8` validates both UTF-8 and interior NUL.
+- Constraint: `CStr` is a borrowed copyable view; `CString` is a `noncopy` owned C string that must be explicitly destroyed and must not be implicitly copied. `CString.from_str` rejects interior NUL; `CString.from_utf8` validates both UTF-8 and interior NUL.
 
 `std.fs.path`:
 

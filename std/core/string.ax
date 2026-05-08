@@ -6,7 +6,7 @@ import std.core.str as strings;
 import std.core.text;
 import std.core.vec;
 
-pub struct String {
+pub noncopy struct String {
     bytes: VecU8;
 }
 
@@ -329,7 +329,7 @@ pub fn from_str(text: str) -> Result<String, i32> {
         destroy(&string);
         return Result.err(1);
     }
-    return Result.ok(string);
+    return Result.ok(move(string));
 }
 
 pub fn from_utf8(bytes: SpanU8) -> Result<String, i32> {
@@ -341,7 +341,7 @@ pub fn from_utf8(bytes: SpanU8) -> Result<String, i32> {
         destroy(&string);
         return Result.err(1);
     }
-    return Result.ok(string);
+    return Result.ok(move(string));
 }
 
 pub fn from_c(text: *const u8) -> Result<String, i32> {

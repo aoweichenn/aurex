@@ -23,7 +23,7 @@ struct SourceFile {
     text: text::SpanU8;
 }
 
-struct SourceManager {
+noncopy struct SourceManager {
     files: vec::Vec<SourceFile>;
 }
 
@@ -32,7 +32,7 @@ struct Diagnostic {
     position: usize;
 }
 
-struct Diagnostics {
+noncopy struct Diagnostics {
     errors: vec::Vec<Diagnostic>;
 }
 
@@ -43,7 +43,7 @@ struct Token {
     end: usize;
 }
 
-struct Lexer {
+noncopy struct Lexer {
     source: SourceFile;
     cursor: usize;
     tokens: vec::Vec<Token>;

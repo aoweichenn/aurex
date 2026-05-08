@@ -1,0 +1,23 @@
+module noncopy_map_insert_path_key;
+
+import std.core.map as map;
+import std.core.result as result;
+import std.fs.path as path;
+
+fn run() -> result::Result<i32, i32> {
+    var table: map::Map<path::Path, usize> = map::Map<path::Path, usize>.new();
+    var key: path::Path = path::Path.from_str("/tmp/aurex-owned-key")?;
+    if table.insert(move(key), cast(usize, 1)) {
+        table.destroy();
+        return Result.ok(1);
+    }
+    table.destroy();
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

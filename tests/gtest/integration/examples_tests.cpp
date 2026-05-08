@@ -107,8 +107,8 @@ TEST_F(AurexIntegrationTest, M1ExamplesExposeAcceptanceFeatureSet) {
     const fs::path frontend = examples_root() / "m1" / "frontend" / "main.ax";
     const std::string frontend_checked = require_success(aurexc() + " --emit=checked " + q(frontend)).output;
     expect_contains_all(frontend_checked, {
-        "struct SourceManager fields=1",
-        "struct Lexer fields=4",
+        "struct SourceManager noncopy fields=1",
+        "struct Lexer noncopy fields=4",
         "struct TokenStream fields=2",
         "fn run_frontend -> std.core.result.Result<i32, i32>",
         "fn method m1.frontend.main.Lexer.lex_all -> std.core.result.Result<i32, i32>",
@@ -126,22 +126,22 @@ TEST_F(AurexIntegrationTest, M1ExamplesExposeAcceptanceFeatureSet) {
     const fs::path axbuild = examples_root() / "m1" / "axbuild" / "main.ax";
     const std::string axbuild_checked = require_success(aurexc() + " --emit=checked " + q(axbuild)).output;
     expect_contains_all(axbuild_checked, {
-        "struct Project fields=4",
-        "struct Target fields=6",
+        "struct Project noncopy fields=4",
+        "struct Target noncopy fields=6",
         "struct GraphDiagnostic fields=3",
-        "struct CustomCommand fields=2",
+        "struct CustomCommand noncopy fields=2",
         "struct CStringUsizeEntry fields=2",
-        "struct CStringUsizeMap fields=1",
+        "struct CStringUsizeMap noncopy fields=1",
         "struct Command noncopy fields=4",
         "struct ProcessOutput noncopy fields=5",
         "struct HostProcessOutput fields=5",
         "struct FileMetadata fields=5",
-        "struct DirectoryEntry fields=3",
+        "struct DirectoryEntry noncopy fields=3",
         "struct HostDirectoryEntry fields=3",
         "struct HostDirectoryEntries fields=2",
-        "struct std.core.vec.Vec<std.core.map.CStringUsizeEntry> fields=3",
-        "struct std.core.vec.Vec<std.fs.dir.DirectoryEntry> fields=3",
-        "struct std.core.vec.Vec<std.fs.path.Path> fields=3",
+        "struct std.core.vec.Vec<std.core.map.CStringUsizeEntry> noncopy fields=3",
+        "struct std.core.vec.Vec<std.fs.dir.DirectoryEntry> noncopy fields=3",
+        "struct std.core.vec.Vec<std.fs.path.Path> noncopy fields=3",
         "fn bytes_has_suffix -> bool",
         "fn cleanup_path -> bool",
         "fn custom_command_empty -> m1.axbuild.main.CustomCommand",

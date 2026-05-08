@@ -5,7 +5,7 @@ import std.core.result;
 import std.core.text;
 import std.core.vec as vec;
 
-pub struct Bytes {
+pub noncopy struct Bytes {
     storage: vec::VecU8;
 }
 
@@ -18,7 +18,7 @@ pub fn with_capacity(capacity: usize) -> Result<Bytes, i32> {
     if !reserve(&bytes, capacity) {
         return Result.err(1);
     }
-    return Result.ok(bytes);
+    return Result.ok(move(bytes));
 }
 
 pub fn destroy(bytes: *mut Bytes) -> void {
@@ -84,7 +84,7 @@ pub fn from_span(values: SpanU8) -> Result<Bytes, i32> {
         bytes.destroy();
         return Result.err(1);
     }
-    return Result.ok(bytes);
+    return Result.ok(move(bytes));
 }
 
 pub fn pop(bytes: *mut Bytes) -> Option<u8> {

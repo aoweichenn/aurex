@@ -14,7 +14,7 @@
 
 类型使用 `UpperCamelCase`：
 
-- `Vec<T>`：可增长连续存储容器。
+- `Vec<T>`：`noncopy` 可增长连续存储容器，拥有 heap buffer。
 - `Span<T>`：只读连续视图。
 - `MutSpan<T>`：可写连续视图。
 - `Bytes`：拥有的原始 bytes；不承诺 UTF-8，可暴露 `MutSpan<u8>`。
@@ -89,20 +89,28 @@ import std.fs.path as path;
 `std.core.vec`：
 
 - 类型：`vec::Vec<T>`、兼容别名 `vec::VecU8`。
-- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::len<T>`、`vec::capacity<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::insert<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::remove<T>`、`vec::swap_remove<T>`、`vec::get<T>`、`vec::set<T>`、`vec::first<T>`、`vec::last<T>`、`vec::truncate<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
-- Method API：`Vec<T>.destroy`、`len`、`capacity`、`is_empty`、`as_span`、`as_mut_span`、`reserve`、`push`、`insert`、`extend`、`pop`、`remove`、`swap_remove`、`get`、`set`、`first`、`last`、`clear`、`truncate`。
+- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::take<T>`、`vec::len<T>`、`vec::capacity<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::insert<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::remove<T>`、`vec::swap_remove<T>`、`vec::get<T>`、`vec::set<T>`、`vec::first<T>`、`vec::last<T>`、`vec::truncate<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
+- Method API：`Vec<T>.destroy`、`take`、`len`、`capacity`、`is_empty`、`as_span`、`as_mut_span`、`reserve`、`push`、`insert`、`extend`、`pop`、`remove`、`swap_remove`、`get`、`set`、`first`、`last`、`clear`、`truncate`。
+- 约束：`Vec<T>` 本体不可隐式复制；需要把 buffer 从一个 owner 转到另一个 owner 时使用 `take()`。当前 `extend/from_span/get/set/first/last/pop/remove/swap_remove/clear/truncate` 只支持 copyable element type；noncopy 元素先使用 `push(move(value))` / `insert(move(value))` 和类型专属销毁循环，直到语言级部分 move、Drop 和泛型约束落地。
 - 兼容 API：`vec::vec_u8_new`、`vec::vec_u8_push` 等保留，但不作为新文档的主路径。
+
+`std.core.map`：
+
+- 类型：`map::Map<K, V>`、`map::CStringUsizeMap`。
+- `Map<K,V>` API：`new`、`with_capacity`、`destroy`、`len`、`capacity`、`is_empty`、`reserve`、`clear`、`find_index`、`contains`、`insert`、`set`、`get`、`remove`，并提供同名 method API。
+- `CStringUsizeMap` API：`new`、`with_capacity`、`destroy`、`len`、`capacity`、`is_empty`、`reserve`、`clear`、`find_index`、`contains`、`insert`、`insert_absent`、`set`、`get`、`remove`。
+- 约束：`Map<K,V>` 本体不可隐式复制；当前 Vec-backed 泛型 map 的 key/value API 仍是按值模型，`find_index/contains` 要求 key copyable，`insert/set/get/remove/clear` 要求 key/value copyable。需要 noncopy key/value 的 map 之前，应先补 borrow key 查询、entry API、Drop/partial move 或语言级 trait/where 约束。`CStringUsizeMap` 是当前 M1 使用的专用 borrowed C-string key -> `usize` map，key 不拥有字符串内存。
 
 `std.core.bytes`：
 
-- 类型：`bytes::Bytes`，拥有型 raw bytes buffer。
+- 类型：`bytes::Bytes`，`noncopy` 拥有型 raw bytes buffer。
 - 新 API：`bytes::new`、`bytes::with_capacity`、`bytes::from_span`、`bytes::destroy`、`bytes::len`、`bytes::is_empty`、`bytes::capacity`、`bytes::reserve`、`bytes::push`、`bytes::append`、`bytes::pop`、`bytes::remove`、`bytes::truncate`、`bytes::clear`、`bytes::as_span`、`bytes::as_mut_span`、`bytes::equals_span`。
 - Method API：`Bytes.new`、`with_capacity`、`from_span`、`destroy`、`len`、`is_empty`、`capacity`、`reserve`、`push`、`append`、`pop`、`remove`、`truncate`、`clear`、`as_span`、`as_mut_span`、`equals_span`。
-- 约束：`Bytes` 不验证 UTF-8，允许任意 byte，包括 `0x00`；`as_mut_span` 是 raw byte mutation 的公开位置。`Bytes.append` 支持 self-alias，`raw.append(raw.as_span())` 触发扩容时仍保持正确复制。
+- 约束：`Bytes` 是 `noncopy` 拥有型 raw bytes，不验证 UTF-8，允许任意 byte，包括 `0x00`；`as_mut_span` 是 raw byte mutation 的公开位置。`Bytes.append` 支持 self-alias，`raw.append(raw.as_span())` 触发扩容时仍保持正确复制。
 
 `std.core.string`：
 
-- 类型：`string::String`。
+- 类型：`string::String`，`noncopy` 拥有型 UTF-8 buffer。
 - 新 API：`string::new`、`string::from_str`、`string::from_utf8`、`string::from_c_utf8`、`string::destroy`、`string::len`、`string::byte_len`、`string::is_empty`、`string::reserve`、`string::append`、`string::push_scalar`、`string::insert_scalar`、`string::pop_scalar`、`string::remove_scalar_at`、`string::as_str`、`string::as_str_checked`、`string::as_bytes`、`string::slice_bytes_checked`、`string::truncate_bytes_checked`、`string::is_valid_utf8`、`string::equals`、`string::starts_with`、`string::ends_with`。
 - 兼容/过渡 API：`string::from_c`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。这些 API 当前会尽量维护 UTF-8 不变量；raw mutable byte view 已迁到 `Bytes.as_mut_span`。
 - 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
@@ -125,7 +133,7 @@ import std.fs.path as path;
 - 类型：`path::Path`。
 - 新 API：`path::from_c`、`path::from_span`、`path::from_str`、`path::destroy`、`path::as_c`、`path::as_span`、`path::is_absolute`、`path::parent`、`path::file_name`、`path::file_stem`、`path::extension`、`path::join_c`、`path::join_span`、`path::with_extension`。
 - Method API：`Path.from_c`、`from_span`、`from_str`、`destroy`、`as_c`、`as_span`、`file_name`、`is_absolute`、`parent`、`extension`、`file_stem`、`join_c`、`join_span`、`with_extension`。
-- 约束：`Path` 存储平台路径 bytes，不验证 UTF-8；`from_span` 和 `join_span` 拒绝内部 NUL，因为当前 POSIX/C FFI 兼容视图需要 NUL-terminated buffer；`from_str` 只是从 UTF-8 文本构造路径的便利入口。
+- 约束：`Path` 是 `noncopy` 拥有型平台路径 bytes，不验证 UTF-8；`from_span` 和 `join_span` 拒绝内部 NUL，因为当前 POSIX/C FFI 兼容视图需要 NUL-terminated buffer；`from_str` 只是从 UTF-8 文本构造路径的便利入口。
 - 兼容 API：`path::path_from_c`、`path::path_join_c` 等保留。
 
 `std.fs.file`：
@@ -143,7 +151,7 @@ import std.fs.path as path;
 - `Path` API：`directory::create_directory_path`、`directory::read_entries_path`、`directory::read_entries_recursive_path`、`directory::count_files_with_suffix_path`、`directory::has_file_with_suffix_path`、`directory::count_files_with_suffix_recursive_path`、`directory::has_file_with_suffix_recursive_path` 接收 `*const path::Path`，空 path 指针返回 `false` 或 `Result.err(1)`。
 - suffix 文本 API：`directory::count_files_with_suffix_str`、`directory::count_files_with_suffix_path_str`、`directory::has_file_with_suffix_str`、`directory::has_file_with_suffix_path_str` 及递归版本接收 `str` suffix，内部通过 `CString.from_str` 构造 FFI 参数并拒绝内部 NUL。
 - Directory entry API：`DirectoryEntry` 内部使用 bytes-backed `Path` 保存 host 返回的 name/path；`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 返回 `Result<str, i32>` checked 文本视图；`name_c_data()` / `path_c_data()` 保留为 C 兼容入口。null entry 指针不会解引用：C 兼容入口返回空 C string，bytes 入口返回空 span，checked UTF-8 入口返回 `Result.err(1)`。
-- 约束：目录项默认不暴露 unchecked `str`，因为 POSIX path bytes 不保证 UTF-8；业务代码只有在确知路径是文本时才调用 `name_utf8()` / `path_utf8()`，否则应使用 bytes 视图或 `Path`/C 兼容边界。
+- 约束：`DirectoryEntry` 是 `noncopy` 拥有型目录项，内部持有两个 `Path`；目录项默认不暴露 unchecked `str`，因为 POSIX path bytes 不保证 UTF-8；业务代码只有在确知路径是文本时才调用 `name_utf8()` / `path_utf8()`，否则应使用 bytes 视图或 `Path`/C 兼容边界。
 
 `std.core.text`：
 
@@ -155,6 +163,7 @@ import std.fs.path as path;
 - 类型：`result::Option<T>`、`result::Result<T, E>`。
 - Method API：`Option<T>.is_some`、`is_none`、`is_some_ref`、`is_none_ref`、`unwrap_or`、`ok_or<E>`，以及 `Result<T, E>.is_ok`、`is_err`、`is_ok_ref`、`is_err_ref`、`unwrap_or`。
 - `*_ref` 状态检查只读 enum tag，不消费 payload；这是 noncopy payload 进入 `Result` / `Option` 后的低风险状态检查入口。
+- 约束：消费式状态/兜底 API 会在当前阶段限制 noncopy payload。`Option<T>.is_some/is_none/unwrap_or` 要求 `T` copyable；`Option<T>.ok_or<E>` 要求 `E` copyable；`Result<T,E>.is_ok/is_err/unwrap_or` 要求 `T` 和 `E` 都 copyable。noncopy payload 应使用 `*_ref` 状态检查，或者 `match move(...)` 并显式移动/销毁 payload。
 - `Option<T>.ok_or<E>` 是当前标准库里第一个公开使用方法级泛型参数的 API，用来验证 `impl<T>` 参数和方法自身参数可以在同一次调用里组合推导。
 
 ## 迁移策略

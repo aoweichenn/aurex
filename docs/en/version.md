@@ -41,7 +41,8 @@ Included:
   stores name/path as bytes-backed `Path` values with raw-bytes and
   checked-UTF-8 views.
 - `std.core.map` Vec-backed generic `Map<K, V>` and borrowed C-string -> usize
-  `CStringUsizeMap` baseline.
+  `CStringUsizeMap` baseline; the current by-value `Map<K,V>` key/value APIs
+  now have copyable key/value semantic guards.
 - String primitive direction is now split as `str` = borrowed UTF-8 text slice,
   `String` = owned UTF-8 buffer, `Bytes` / `Span<u8>` = raw bytes, `CStr` /
   `CString` = C FFI, and `Path` = platform path bytes. The current baseline
@@ -51,7 +52,10 @@ Included:
   UTF-8 surface, removal of `String.as_mut_span`, `std.core.bytes.Bytes`,
   bytes-backed `std.fs.path.Path`, first `std.fs.file` and `std.fs.dir`
   `Path` / `str` entry points, bytes-backed `DirectoryEntry` raw-bytes /
-  checked-UTF-8 views, and `std.ffi.c.string.CStr` / `CString`.
+  checked-UTF-8 views, and `std.ffi.c.string.CStr` / `CString`. Owned std
+  resources such as `String`, `Bytes`, `Path`, `DirectoryEntry`, `Vec<T>`,
+  `Map<K,V>`, and `CStringUsizeMap` are noncopy, and several copy-only `Vec`,
+  `Map`, and `Result` / `Option` APIs now have semantic diagnostics.
 - M1 axbuild target-graph validation / topological-build baseline, including
   dependency bounds, cycle / invalid-dependency status, and topological target
   build order.

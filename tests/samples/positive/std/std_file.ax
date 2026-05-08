@@ -9,7 +9,26 @@ import std.fs.path as paths;
 
 fn read_bytes_path_null_is_err() -> bool {
     var result: Result<FileBytes, i32> = read_bytes_path(null);
-    return result.is_err_ref();
+    return match move(result) {
+        .ok(bytes) => {
+            var owned_bytes: FileBytes = move(bytes);
+            owned_bytes.destroy();
+            false
+        },
+        .err(_) => true,
+    };
+}
+
+fn read_text_path_null_is_err() -> bool {
+    var result: Result<String, i32> = read_text_path(null);
+    return match move(result) {
+        .ok(text_value) => {
+            var owned_text: String = move(text_value);
+            owned_text.destroy();
+            false
+        },
+        .err(_) => true,
+    };
 }
 
 fn check_path_apis() -> Result<bool, i32> {
@@ -47,7 +66,7 @@ fn check_path_apis() -> Result<bool, i32> {
 
     let null_path_ok: bool = metadata_path(null).is_err() &&
         read_bytes_path_null_is_err() &&
-        read_text_path(null).is_err() &&
+        read_text_path_null_is_err() &&
         write_bytes_path(null, raw_bytes).is_err() &&
         write_text_path(null, c"x").is_err() &&
         write_str_path(null, "x").is_err() &&

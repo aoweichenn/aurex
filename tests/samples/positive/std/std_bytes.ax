@@ -5,6 +5,17 @@ import std.core.result as result;
 import std.core.text as text;
 import std.fs.path as path;
 
+fn path_result_is_err(value: result::Result<path::Path, i32>) -> bool {
+    return match move(value) {
+        .ok(path_value) => {
+            var owned_path: path::Path = move(path_value);
+            owned_path.destroy();
+            false
+        },
+        .err(_) => true,
+    };
+}
+
 fn check_bytes_raw_mutation() -> result::Result<bool, i32> {
     var raw: bytes::Bytes = bytes::Bytes.new();
     if !raw.push(b'A') || !raw.push(cast(u8, 0x00)) || !raw.push(cast(u8, 0xFF)) {
@@ -78,8 +89,8 @@ fn check_path_accepts_raw_bytes_and_rejects_nul() -> result::Result<bool, i32> {
         nul_path.destroy();
         return Result.err(3);
     }
-    let rejects_nul: bool = path::Path.from_span(nul_path.as_span()).is_err() &&
-        p.join_span(nul_path.as_span()).is_err();
+    let rejects_nul: bool = path_result_is_err(path::Path.from_span(nul_path.as_span())) &&
+        path_result_is_err(p.join_span(nul_path.as_span()));
 
     var text_path: path::Path = path::Path.from_str("src/main.ax")?;
     let from_str_ok: bool = text::bytes_equal(text_path.file_name(), text::c_span(c"main.ax"));

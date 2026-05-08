@@ -368,7 +368,7 @@ fn make_path() -> result::Result<path::Path, i32> {
     var root: path::Path = path::from_c(c"/tmp")?;
     var joined: path::Path = path::join_c(&root, c"aurex/std.txt")?;
     path::destroy(&root);
-    return Result.ok(joined);
+    return Result.ok(move(joined));
 }
 
 fn check_path() -> result::Result<bool, i32> {

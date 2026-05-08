@@ -223,6 +223,11 @@ private:
         const std::vector<TypeHandle>& args,
         base::SourceRange range
     );
+    [[nodiscard]] bool validate_generic_function_ownership_constraints(
+        const GenericFunctionTemplateInfo& info,
+        const std::vector<TypeHandle>& args,
+        base::SourceRange range
+    );
     [[nodiscard]] bool infer_generic_function_args(
         const GenericFunctionTemplateInfo& info,
         const std::vector<TypeHandle>& arg_types,

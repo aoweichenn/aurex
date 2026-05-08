@@ -15,7 +15,7 @@ pub enum DirectoryEntryKind: u8 {
     other = 4,
 }
 
-pub struct DirectoryEntry {
+pub noncopy struct DirectoryEntry {
     priv name_value: paths::Path;
     priv path_value: paths::Path;
     priv kind_value: DirectoryEntryKind;
@@ -46,14 +46,14 @@ fn directory_entry_from_host(entry: *const HostDirectoryEntry) -> Result<Directo
         return Result.err(1);
     }
     let name_result: Result<paths::Path, i32> = paths::Path.from_c(ptr_cast(*const u8, entry.name));
-    return match name_result {
+    return match move(name_result) {
         .ok(host_name) => {
-            var name: paths::Path = host_name;
+            var name: paths::Path = move(host_name);
             let path_result: Result<paths::Path, i32> = paths::Path.from_c(ptr_cast(*const u8, entry.path));
-            match path_result {
+            match move(path_result) {
                 .ok(path) => Result.ok(DirectoryEntry {
-                    name_value: name,
-                    path_value: path,
+                    name_value: move(name),
+                    path_value: move(path),
                     kind_value: directory_entry_kind_from_host(entry.kind),
                 }),
                 .err(code) => {
@@ -159,14 +159,15 @@ pub fn destroy_entries(entries: *mut vec::Vec<DirectoryEntry>) -> void {
 
 fn push_host_directory_entry(entries: *mut vec::Vec<DirectoryEntry>, host_entry: *const HostDirectoryEntry) -> bool {
     let entry_result: Result<DirectoryEntry, i32> = directory_entry_from_host(host_entry);
-    return match entry_result {
+    return match move(entry_result) {
         .ok(entry) => {
-            var owned: DirectoryEntry = entry;
-            if entries.push(owned) {
-                true
-            } else {
+            var owned: DirectoryEntry = move(entry);
+            if entries.len == entries.capacity && !entries.reserve(entries.len + cast(usize, 1)) {
                 directory_entry_destroy(&owned);
                 false
+            } else {
+                entries.push(move(owned));
+                true
             }
         },
         .err(_) => false,
@@ -194,7 +195,7 @@ fn directory_entries_from_host(host_entries: HostDirectoryEntries) -> Result<vec
         }
         index = index + cast(usize, 1);
     }
-    return Result.ok(entries);
+    return Result.ok(move(entries));
 }
 
 pub fn create_directory(path: *const u8) -> bool {
@@ -224,7 +225,7 @@ fn read_entries_impl(path: *const u8, recursive: bool) -> Result<vec::Vec<Direct
     }
     let entries_result: Result<vec::Vec<DirectoryEntry>, i32> = directory_entries_from_host(host_entries);
     host_directory_free_entries(host_entries);
-    return entries_result;
+    return move(entries_result);
 }
 
 pub fn read_entries(path: *const u8) -> Result<vec::Vec<DirectoryEntry>, i32> {

@@ -14,7 +14,7 @@ This document records the M1 naming, namespace, and compatibility rules for the 
 
 Types use `UpperCamelCase`:
 
-- `Vec<T>`: growable contiguous storage.
+- `Vec<T>`: `noncopy` growable contiguous storage that owns a heap buffer.
 - `Span<T>`: read-only contiguous view.
 - `MutSpan<T>`: mutable contiguous view.
 - `Bytes`: owned raw bytes, with no UTF-8 invariant.
@@ -96,20 +96,28 @@ import std.fs.path as path;
 `std.core.vec`:
 
 - Types: `vec::Vec<T>` and compatibility alias `vec::VecU8`.
-- New API: `vec::new<T>`, `vec::with_capacity<T>`, `vec::destroy<T>`, `vec::len<T>`, `vec::capacity<T>`, `vec::is_empty<T>`, `vec::reserve<T>`, `vec::push<T>`, `vec::insert<T>`, `vec::extend<T>`, `vec::pop<T>`, `vec::remove<T>`, `vec::swap_remove<T>`, `vec::get<T>`, `vec::set<T>`, `vec::first<T>`, `vec::last<T>`, `vec::truncate<T>`, `vec::clear<T>`, `vec::as_span<T>`, `vec::as_mut_span<T>`, `vec::from_span<T>`.
-- Method API: `Vec<T>.destroy`, `len`, `capacity`, `is_empty`, `as_span`, `as_mut_span`, `reserve`, `push`, `insert`, `extend`, `pop`, `remove`, `swap_remove`, `get`, `set`, `first`, `last`, `clear`, `truncate`.
+- New API: `vec::new<T>`, `vec::with_capacity<T>`, `vec::destroy<T>`, `vec::take<T>`, `vec::len<T>`, `vec::capacity<T>`, `vec::is_empty<T>`, `vec::reserve<T>`, `vec::push<T>`, `vec::insert<T>`, `vec::extend<T>`, `vec::pop<T>`, `vec::remove<T>`, `vec::swap_remove<T>`, `vec::get<T>`, `vec::set<T>`, `vec::first<T>`, `vec::last<T>`, `vec::truncate<T>`, `vec::clear<T>`, `vec::as_span<T>`, `vec::as_mut_span<T>`, `vec::from_span<T>`.
+- Method API: `Vec<T>.destroy`, `take`, `len`, `capacity`, `is_empty`, `as_span`, `as_mut_span`, `reserve`, `push`, `insert`, `extend`, `pop`, `remove`, `swap_remove`, `get`, `set`, `first`, `last`, `clear`, `truncate`.
+- Constraint: `Vec<T>` cannot be implicitly copied. Use `take()` when a buffer must move from one owner slot to another. For now, `extend/from_span/get/set/first/last/pop/remove/swap_remove/clear/truncate` require a copyable element type; noncopy elements should use `push(move(value))` / `insert(move(value))` plus type-specific destruction loops until language-level partial moves, Drop, and generic constraints land.
 - Compatibility API: `vec::vec_u8_new`, `vec::vec_u8_push`, and the other `vec_u8_*` names remain available but are not the primary documentation path.
+
+`std.core.map`:
+
+- Types: `map::Map<K, V>` and `map::CStringUsizeMap`.
+- `Map<K,V>` API: `new`, `with_capacity`, `destroy`, `len`, `capacity`, `is_empty`, `reserve`, `clear`, `find_index`, `contains`, `insert`, `set`, `get`, and `remove`, with matching method APIs.
+- `CStringUsizeMap` API: `new`, `with_capacity`, `destroy`, `len`, `capacity`, `is_empty`, `reserve`, `clear`, `find_index`, `contains`, `insert`, `insert_absent`, `set`, `get`, and `remove`.
+- Constraint: `Map<K,V>` cannot be implicitly copied. The current Vec-backed generic map still uses by-value key/value APIs: `find_index/contains` require a copyable key type, and `insert/set/get/remove/clear` require copyable key and value types. A noncopy key/value map should wait for borrowed-key lookup, entry APIs, Drop/partial moves, or language-level trait/where constraints. `CStringUsizeMap` is the current M1-specialized borrowed C-string key -> `usize` map; it does not own key strings.
 
 `std.core.string`:
 
-- Type: `string::String`.
+- Type: `string::String`, a `noncopy` owned UTF-8 buffer.
 - New API: `string::new`, `string::from_str`, `string::from_utf8`, `string::from_c_utf8`, `string::destroy`, `string::len`, `string::byte_len`, `string::is_empty`, `string::reserve`, `string::append`, `string::push_scalar`, `string::insert_scalar`, `string::pop_scalar`, `string::remove_scalar_at`, `string::as_str`, `string::as_str_checked`, `string::as_bytes`, `string::slice_bytes_checked`, `string::truncate_bytes_checked`, `string::is_valid_utf8`, `string::equals`, `string::starts_with`, `string::ends_with`.
 - Compatibility / transition API: `string::from_c`, `string::push`, `string::insert`, `string::append_span`, `string::append_c`, `string::pop`, `string::remove`, `string::truncate`, `string::clear`, `string::as_span`, `string::c_str`, `string::equals_span`, `string::ends_with_byte`. These APIs preserve the UTF-8 invariant where applicable; raw mutable bytes moved to `Bytes.as_mut_span`.
 - Compatibility API: `string::string_new`, `string::string_from_c`, and related wrappers remain available.
 
 `std.core.bytes`:
 
-- Type: `bytes::Bytes`, an owned raw byte buffer.
+- Type: `bytes::Bytes`, a `noncopy` owned raw byte buffer.
 - New API: `bytes::new`, `bytes::with_capacity`, `bytes::from_span`, `bytes::destroy`, `bytes::len`, `bytes::is_empty`, `bytes::capacity`, `bytes::reserve`, `bytes::push`, `bytes::append`, `bytes::pop`, `bytes::remove`, `bytes::truncate`, `bytes::clear`, `bytes::as_span`, `bytes::as_mut_span`, `bytes::equals_span`.
 - Method API: `Bytes.new`, `with_capacity`, `from_span`, `destroy`, `len`, `is_empty`, `capacity`, `reserve`, `push`, `append`, `pop`, `remove`, `truncate`, `clear`, `as_span`, `as_mut_span`, `equals_span`.
 - Constraint: `Bytes` does not validate UTF-8 and may contain arbitrary bytes. `Bytes.append` supports self-aliasing, so `raw.append(raw.as_span())` remains valid across reallocation.
@@ -131,7 +139,7 @@ import std.fs.path as path;
 - Type: `path::Path`.
 - New API: `path::from_c`, `path::from_span`, `path::from_str`, `path::destroy`, `path::as_c`, `path::as_span`, `path::is_absolute`, `path::parent`, `path::file_name`, `path::file_stem`, `path::extension`, `path::join_c`, `path::join_span`, `path::with_extension`.
 - Method API: `Path.from_c`, `from_span`, `from_str`, `destroy`, `as_c`, `as_span`, `file_name`, `is_absolute`, `parent`, `extension`, `file_stem`, `join_c`, `join_span`, `with_extension`.
-- Constraint: `Path` stores platform path bytes and does not validate UTF-8. `from_span` and `join_span` reject interior NUL because the current POSIX/C FFI compatibility view is NUL-terminated. `from_str` is a convenience constructor from UTF-8 text.
+- Constraint: `Path` is a `noncopy` owned platform path byte buffer and does not validate UTF-8. `from_span` and `join_span` reject interior NUL because the current POSIX/C FFI compatibility view is NUL-terminated. `from_str` is a convenience constructor from UTF-8 text.
 - Compatibility API: `path::path_from_c`, `path::path_join_c`, and related wrappers remain available.
 
 `std.fs.file`:
@@ -149,7 +157,7 @@ import std.fs.path as path;
 - `Path` API: `directory::create_directory_path`, `directory::read_entries_path`, `directory::read_entries_recursive_path`, `directory::count_files_with_suffix_path`, `directory::has_file_with_suffix_path`, `directory::count_files_with_suffix_recursive_path`, and `directory::has_file_with_suffix_recursive_path` accept `*const path::Path`; null path pointers return `false` or `Result.err(1)`.
 - Suffix text API: `directory::count_files_with_suffix_str`, `directory::count_files_with_suffix_path_str`, `directory::has_file_with_suffix_str`, `directory::has_file_with_suffix_path_str`, and the recursive variants accept `str` suffixes, build FFI arguments through `CString.from_str`, and reject interior NUL.
 - Directory entry API: `DirectoryEntry` stores host-returned names and paths as bytes-backed `Path` values. `name_bytes()` / `path_bytes()` return raw path bytes, while `name_utf8()` / `path_utf8()` return `Result<str, i32>` checked text views. `name_c_data()` and `path_c_data()` remain as C compatibility entry points. Null entry pointers are defensive: C compatibility entry points return an empty C string, bytes entry points return an empty span, and checked UTF-8 entry points return `Result.err(1)`.
-- Constraint: directory entries do not expose unchecked `str` because POSIX path bytes are not guaranteed to be UTF-8. Application code should call `name_utf8()` / `path_utf8()` only when it expects text; otherwise, use raw bytes views or stay at the `Path` / C compatibility boundary.
+- Constraint: `DirectoryEntry` is a `noncopy` owned directory entry that holds two `Path` values. Directory entries do not expose unchecked `str` because POSIX path bytes are not guaranteed to be UTF-8. Application code should call `name_utf8()` / `path_utf8()` only when it expects text; otherwise, use raw bytes views or stay at the `Path` / C compatibility boundary.
 
 `std.core.text`:
 
@@ -161,6 +169,7 @@ import std.fs.path as path;
 - Types: `result::Option<T>` and `result::Result<T, E>`.
 - Method API: `Option<T>.is_some`, `is_none`, `is_some_ref`, `is_none_ref`, `unwrap_or`, `ok_or<E>`, plus `Result<T, E>.is_ok`, `is_err`, `is_ok_ref`, `is_err_ref`, and `unwrap_or`.
 - The `*_ref` state checks read only the enum tag and do not consume the payload; they are the low-risk state-checking entry points once noncopy payloads enter `Result` / `Option`.
+- Constraint: consuming status/fallback APIs are restricted around noncopy payloads for now. `Option<T>.is_some/is_none/unwrap_or` require copyable `T`; `Option<T>.ok_or<E>` requires copyable `E`; `Result<T,E>.is_ok/is_err/unwrap_or` require copyable `T` and `E`. Noncopy payloads should use `*_ref` state checks, or `match move(...)` with explicit payload move/destruction.
 - `Option<T>.ok_or<E>` is the first public standard-library API that uses method-level generic parameters, proving that impl parameters and method-specific parameters can be inferred together at one call site.
 
 ## Migration Policy

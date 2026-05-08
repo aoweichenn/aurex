@@ -5,7 +5,7 @@ import std.core.mem;
 import std.core.result;
 import std.core.text;
 
-pub struct Path {
+pub noncopy struct Path {
     storage: Bytes;
 }
 
@@ -96,7 +96,7 @@ pub fn from_span(text: SpanU8) -> Result<Path, i32> {
         destroy(&path);
         return Result.err(1);
     }
-    return Result.ok(path);
+    return Result.ok(move(path));
 }
 
 pub fn from_str(text: str) -> Result<Path, i32> {
@@ -231,7 +231,7 @@ pub fn join_span(base: *const Path, child: SpanU8) -> Result<Path, i32> {
         joined.destroy();
         return Result.err(1);
     }
-    return Result.ok(joined);
+    return Result.ok(move(joined));
 }
 
 pub fn with_extension(path: *const Path, extension: SpanU8) -> Result<Path, i32> {
@@ -249,7 +249,7 @@ pub fn with_extension(path: *const Path, extension: SpanU8) -> Result<Path, i32>
             return Result.err(1);
         }
     }
-    return Result.ok(updated);
+    return Result.ok(move(updated));
 }
 
 pub fn path_from_c(text: *const u8) -> Result<Path, i32> {

@@ -1,0 +1,18 @@
+module noncopy_result_unwrap_or;
+
+import std.core.result;
+
+noncopy struct Owner {
+    value: i32;
+}
+
+fn make_owner(value: i32) -> Owner {
+    return Owner { value: value };
+}
+
+fn main() -> i32 {
+    var result: Result<Owner, i32> = Result.ok(make_owner(1));
+    var fallback: Owner = make_owner(2);
+    let unwrapped: Owner = move(result).unwrap_or(move(fallback));
+    return unwrapped.value;
+}

@@ -8,6 +8,17 @@ import std.fs.dir as directory;
 import std.fs.file as file;
 import std.fs.path as path;
 
+fn entries_result_is_err(value: result::Result<vec::Vec<directory::DirectoryEntry>, i32>) -> bool {
+    return match move(value) {
+        .ok(entries_value) => {
+            var entries: vec::Vec<directory::DirectoryEntry> = move(entries_value);
+            directory::destroy_entries(&entries);
+            false
+        },
+        .err(_) => true,
+    };
+}
+
 fn cleanup_paths(root: *const path::Path, nested: *const path::Path, source: *const path::Path, note: *const path::Path) -> void {
     file::remove_file_path(source);
     file::remove_file_path(note);
@@ -79,8 +90,8 @@ fn check_directory_path_apis() -> result::Result<bool, i32> {
     let has_txt: bool = directory::has_file_with_suffix_recursive_path_str(&root_path, ".txt")?;
     let has_md: bool = directory::has_file_with_suffix_path_str(&root_path, ".md")?;
     let null_path_ok: bool = !directory::create_directory_path(null) &&
-        directory::read_entries_path(null).is_err() &&
-        directory::read_entries_recursive_path(null).is_err() &&
+        entries_result_is_err(directory::read_entries_path(null)) &&
+        entries_result_is_err(directory::read_entries_recursive_path(null)) &&
         directory::count_files_with_suffix_path(null, c".ax").is_err() &&
         directory::count_files_with_suffix_path(&root_path, null).is_err() &&
         directory::count_files_with_suffix_path_str(null, ".ax").is_err() &&

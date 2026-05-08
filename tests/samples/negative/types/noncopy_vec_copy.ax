@@ -1,0 +1,10 @@
+module noncopy_vec_copy;
+
+import std.core.vec as vec;
+
+fn main() -> i32 {
+    var first: vec::Vec<u8> = vec::new<u8>();
+    var second: vec::Vec<u8> = first;
+    second.destroy();
+    return 0;
+}

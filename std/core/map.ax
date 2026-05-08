@@ -9,7 +9,7 @@ pub struct Entry<K, V> {
     value: V;
 }
 
-pub struct Map<K, V> {
+pub noncopy struct Map<K, V> {
     entries: vec::Vec<Entry<K, V>>;
 }
 
@@ -18,7 +18,7 @@ pub struct CStringUsizeEntry {
     value: usize;
 }
 
-pub struct CStringUsizeMap {
+pub noncopy struct CStringUsizeMap {
     entries: vec::Vec<CStringUsizeEntry>;
 }
 
@@ -31,7 +31,7 @@ pub fn with_capacity<K, V>(capacity: usize) -> result::Result<Map<K, V>, i32> {
     if !reserve<K, V>(&map, capacity) {
         return Result.err(1);
     }
-    return Result.ok(map);
+    return Result.ok(move(map));
 }
 
 pub fn destroy<K, V>(map: *mut Map<K, V>) -> void {
@@ -132,7 +132,7 @@ pub fn cstring_usize_with_capacity(capacity: usize) -> result::Result<CStringUsi
     if !cstring_usize_reserve(&map, capacity) {
         return Result.err(1);
     }
-    return Result.ok(map);
+    return Result.ok(move(map));
 }
 
 pub fn cstring_usize_destroy(map: *mut CStringUsizeMap) -> void {

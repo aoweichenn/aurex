@@ -1,0 +1,26 @@
+module noncopy_vec_extend_path;
+
+import std.core.result as result;
+import std.core.vec as vec;
+import std.fs.path as path;
+
+fn run() -> result::Result<i32, i32> {
+    var source: vec::Vec<path::Path> = vec::new<path::Path>();
+    var item: path::Path = path::Path.from_str("/tmp/aurex-owned-path")?;
+    if !source.push(move(item)) {
+        return Result.err(1);
+    }
+    var dest: vec::Vec<path::Path> = vec::new<path::Path>();
+    let copied: bool = dest.extend(source.as_span());
+    if copied {
+        return Result.ok(1);
+    }
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    return match run() {
+        .ok(code) => code,
+        .err(code) => code,
+    };
+}

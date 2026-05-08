@@ -40,7 +40,8 @@ wrappers for suffix arguments, and bytes-backed `DirectoryEntry` views:
 now uses `Path` / `str` entry points for directory scanning, target source
 lists, project stamp paths, source/stamp metadata, stamp writes, clean, and
 temporary-source cleanup. Target insertion also uses explicit ownership
-transfer so owned `Path` values are not left behind as shallow local owners.
+transfer through `Vec.take()` / field reset so owned `Path` values and owned
+containers are not left behind as shallow local owners.
 At the C FFI boundary, `CStr` remains a borrowed copyable view while `CString`
 is now a `noncopy` owned resource.
 
@@ -78,13 +79,19 @@ Current language slices:
   paths have regression coverage.
 - Minimal ownership semantics have started: `noncopy struct` marks a struct as
   move-only, and `move(value)` explicitly transfers ownership from a local or
-  parameter. Semantic analysis now rejects implicit copies of move-only values
-  in local initialization, assignment, return values, function arguments,
-  method receivers, struct-literal fields, and enum payloads, and reports use
-  after move. Enum copyability now propagates from payloads, so
+  parameter. `move(copyable)` is also accepted as explicit value passing and
+  does not mark the source binding moved; this lets one generic std
+  implementation serve both copyable and noncopy payloads. Semantic analysis
+  now rejects implicit copies of move-only values in local initialization,
+  assignment, return values, function arguments, method receivers,
+  struct-literal fields, and enum payloads, and reports use after move. Enum
+  copyability now propagates from payloads, so
   `Result<NonCopy, E>` / `Option<NonCopy>` become noncopy; `match` and `?`
   consume noncopy enum sources, and `if` / `else if` move-state merging is
-  fallthrough-aware.
+  fallthrough-aware. Some std generic APIs now also have temporary copyability
+  constraints: raw-copy / by-value-read `Vec` APIs, by-value key/value `Map`
+  APIs, and consuming `Result` / `Option` status/fallback APIs reject noncopy
+  payloads.
 - `impl` / method / associated-function MVP with explicit `self`,
   `value.method()` instance calls, public `value.field` access,
   `Type.function()` associated calls, `impl<T> Type<T>` generic instance
@@ -94,15 +101,23 @@ Current language slices:
   propagation and early-return control flow. `Option<T>` / `Result<T, E>` now
   also have baseline method APIs, including method-level generic
   `Option<T>.ok_or<E>`, plus non-consuming `is_some_ref` / `is_none_ref` /
-  `is_ok_ref` / `is_err_ref` state checks.
+  `is_ok_ref` / `is_err_ref` state checks. For noncopy payloads, status checks
+  should use `*_ref` or explicit `match move(...)`; consuming
+  `is_some/is_none/is_ok/is_err/unwrap_or/ok_or` calls are restricted to
+  payload combinations that can be safely copied or discarded today.
 - Standard-library container/text/path baseline started, including generic
-  `Span<T>` / `MutSpan<T>`, capacity, append, insert/remove, and random-access
-  APIs on `Vec<T>`, generic `Vec<T>` method APIs, owned raw
-  `std.core.bytes.Bytes`, a Vec-backed generic `Map<K, V>`, borrowed C-string
-  -> usize `CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar APIs,
+  `Span<T>` / `MutSpan<T>`, a `noncopy` generic `Vec<T>` with capacity,
+  append, insert, take/reset transfer, copyable-element remove/random-access
+  APIs and method APIs, owned raw `std.core.bytes.Bytes`, a Vec-backed
+  `noncopy` generic `Map<K, V>`, borrowed C-string -> usize noncopy
+  `CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar APIs,
   UTF-8-oriented APIs on owned `String`, removal of `String.as_mut_span`, C FFI
   `CStr` borrowed views, `CString` noncopy owned boundary values, and
-  query/join APIs on bytes-backed `Path`.
+  query/join APIs on bytes-backed `Path`. `Vec` APIs that copy from borrowed
+  storage or read elements by value are temporarily restricted to copyable
+  element types, and the current by-value `Map<K, V>` key/value APIs are
+  similarly restricted to copyable keys/values until language-level generic
+  constraints and place moves land.
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
@@ -154,10 +169,12 @@ Current language slices:
   composable diagnostic model.
 - Resource management now has a `noncopy struct` / `move(value)` MVP. The
   first owned resources, including `FileBytes`, `HostFileBytes`, `Command`,
-  `ProcessOutput`, and `CString`, are now noncopy. It still needs
-  Drop/destructor conventions, borrow checking, partial moves, move-only
-  generic constraints, and a unified migration strategy for arenas, `String`,
-  `Bytes`, `Path`, and other owned resources.
+  `ProcessOutput`, `CString`, `Bytes`, `String`, `Path`, `DirectoryEntry`,
+  `Vec<T>`, `Map<K, V>`, and `CStringUsizeMap`, are now noncopy. Several
+  copy-only `Vec`, `Map`, and `Result` / `Option` APIs now have semantic
+  guards. It still needs Drop/destructor conventions, borrow checking, partial
+  moves, language-level move-only generic constraints, and a unified lifetime
+  strategy for arenas, temporary directories, and more complex OS resources.
 - The string foundation still needs continued public API tightening:
   `std.fs.file` and `std.fs.dir` now have `Path` / `str` entry points, and
   directory suffixes plus M1 axbuild directory scanning have moved to
@@ -242,11 +259,12 @@ covered by integration tests:
 
 6. Establish resource management and OS engineering support  
    The `defer` MVP has landed, and `for` continue/update/exit paths now reuse
-   scope cleanup. The first file/process/FFI owned resources are noncopy. Follow-up
-   work should add Drop/destructor support, borrow checking, streaming
-   directory iterators / walk callbacks, richer file metadata, subprocess
-   pipes, cwd/env handling, temporary files, and path normalization. Without
-   this slice, the build tool remains a toy.
+   scope cleanup. The first file/process/FFI/text/path/container owned
+   resources are noncopy. Follow-up work should add Drop/destructor support,
+   borrow checking, partial moves, language-level move-only generic
+   constraints, streaming directory iterators / walk callbacks, richer file
+   metadata, subprocess pipes, cwd/env handling, temporary files, and path
+   normalization. Without this slice, the build tool remains a toy.
 
 7. Push sum types and pattern matching to an industrial baseline  
    Prioritize exhaustiveness, unreachable arms, payload bindings, guard
@@ -284,15 +302,18 @@ manual status helpers.
    for `Result` and `Option`, including `?` early returns. `Option<T>` /
    `Result<T, E>` also expose baseline methods such as `is_some`, `is_ok`,
    `unwrap_or`, and `ok_or<E>`, plus `*_ref` state checks that read only the
-   enum tag and do not consume the payload. Next, keep growing the std APIs so
+   enum tag and do not consume the payload. Consuming status/fallback methods
+   are currently only for copyable payload combinations; noncopy payloads use
+   `*_ref` or explicit `match move(...)`. Next, keep growing the std APIs so
    code like `File.read_all(path)?` and `Parser.next()?` becomes natural.
 
 3. `Span` / `Vec` / `Map` / `Bytes` / `String` / `Path`
-   Started. The tree now has `Span<T>` / `MutSpan<T>`, a `Vec<T>` shape with
-   capacity, append, insert/remove, random-access, and generic `Vec<T>` method
-   operations, owned raw `std.core.bytes.Bytes`, a Vec-backed generic
-   `Map<K, V>`, borrowed C-string -> usize `CStringUsizeMap`, borrowed UTF-8
-   `str` APIs and scalar APIs, owned UTF-8 `String`
+   Started. The tree now has `Span<T>` / `MutSpan<T>`, a `noncopy Vec<T>` with
+   capacity, append, insert, take/reset transfer, copyable-element
+   remove/random-access, and generic `Vec<T>` method operations, owned raw
+   `std.core.bytes.Bytes`, a Vec-backed `noncopy Map<K, V>`, borrowed C-string
+   -> usize `noncopy CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar
+   APIs, owned UTF-8 `String`
    `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked`
    APIs, removal of `String.as_mut_span`, C FFI `CStr` borrowed views and
    `CString` noncopy owned boundary values, and bytes-backed `Path`
@@ -310,8 +331,10 @@ manual status helpers.
    views, with `std_dir` covering directory creation, direct/recursive reads,
    suffix counts, null-entry defenses, and `defer` cleanup.
    `examples/m1/axbuild`
-   now uses `CStringUsizeMap` for its target-name -> id lookup cache and uses
-   `Path` + `str` suffixes + bytes entry-name matching for directory scanning.
+   now uses `CStringUsizeMap` for its target-name -> id lookup cache, uses
+   `Path` + `str` suffixes + bytes entry-name matching for directory scanning,
+   and transfers target owned fields through `Vec.take()` / reset rather than
+   shallow field copies.
    Next,
    grow this into token-buffer, source-list, owned string-key maps,
    hash/bucketed maps, and more general path/build-graph scenarios.
@@ -334,15 +357,16 @@ manual status helpers.
    coverage. A subprocess / stdout/stderr-capture / cwd / env baseline is now
    available through noncopy `std.sys.process::Command` / `ProcessOutput` and
    host-c support, and a file metadata / mtime baseline is available through
-   `std.fs.file::FileMetadata`. `std.fs.file::FileBytes`,
-   `std.sys.host::HostFileBytes`, and `std.ffi.c.string::CString` are also
-   noncopy. Directory-create, owned
+   `std.fs.file::FileMetadata`. `FileBytes`, `HostFileBytes`, `CString`,
+   `Bytes`, `String`, `Path`, `DirectoryEntry`, `Vec<T>`, `Map<K, V>`, and
+   `CStringUsizeMap` are also noncopy. Directory-create, owned
    single-level / recursive directory-entry, and source-discovery count
    baselines are available through `std.fs.dir`, including single-level and
    recursive suffix counts. Next, add Drop/destructor support, borrow checking,
-   move-only generic constraints, streaming directory iterators / walk
-   callbacks, stdin/stdout/stderr pipes, and temporary-directory support so
-   files, processes, arenas, and temporary directories compose safely.
+   partial moves, language-level move-only generic constraints, streaming
+   directory iterators / walk callbacks, stdin/stdout/stderr pipes, and
+   temporary-directory support so files, processes, arenas, and temporary
+   directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  
    Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the

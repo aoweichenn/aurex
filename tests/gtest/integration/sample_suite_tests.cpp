@@ -248,8 +248,8 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_bytes) {
         sample_invocation(source, driver::EmitKind::checked)
     ).output;
     expect_contains_all(checked, {
-        "struct Bytes fields=1",
-        "struct Path fields=1",
+        "struct Bytes noncopy fields=1",
+        "struct Path noncopy fields=1",
         "fn check_bytes_raw_mutation -> std.core.result.Result<bool, i32>",
         "fn check_bytes_self_append_alias -> std.core.result.Result<bool, i32>",
         "fn check_path_accepts_raw_bytes_and_rejects_nul -> std.core.result.Result<bool, i32>",
@@ -339,6 +339,7 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_string) {
         sample_invocation(source, driver::EmitKind::checked)
     ).output;
     expect_contains_all(checked, {
+        "struct String noncopy fields=1",
         "fn from_str -> std.core.result.Result<std.core.string.String, i32>",
         "fn from_utf8 -> std.core.result.Result<std.core.string.String, i32>",
         "fn append -> bool @c_name=m0_std_core_string_append",
@@ -385,8 +386,8 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "fn std.core.vec.truncate<u8> -> void",
         "fn std.core.vec.as_span<u8> -> std.core.text.Span<u8>",
         "struct CStringUsizeEntry fields=2",
-        "struct CStringUsizeMap fields=1",
-        "struct std.core.vec.Vec<std.core.map.CStringUsizeEntry> fields=3",
+        "struct CStringUsizeMap noncopy fields=1",
+        "struct std.core.vec.Vec<std.core.map.CStringUsizeEntry> noncopy fields=3",
         "fn check_cstring_usize_map -> bool",
         "fn check_cstring_usize_map_methods -> std.core.result.Result<bool, i32>",
         "fn cstring_usize_get -> std.core.result.Option<usize>",
@@ -425,7 +426,7 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "fn method std.core.result.Result<i32, u8>.is_err -> bool",
         "fn method std.core.result.Result<i32, u8>.is_err_ref -> bool",
         "fn method std.core.result.Result<i32, u8>.unwrap_or -> i32",
-        "struct Bytes fields=1",
+        "struct Bytes noncopy fields=1",
         "fn check_bytes -> std.core.result.Result<bool, i32>",
         "fn append -> bool @c_name=m0_std_core_bytes_append",
         "fn as_mut_span -> std.core.text.MutSpan<u8> @c_name=m0_std_core_bytes_as_mut_span",
@@ -448,6 +449,7 @@ TEST_F(AurexIntegrationTest, StdCollectionsPathSampleExposesM1ContainerBaseline)
         "fn method std.core.string.String.remove -> std.core.result.Option<u8>",
         "fn method std.core.string.String.truncate -> void",
         "fn method std.core.string.String.clear -> void",
+        "struct Path noncopy fields=1",
         "fn from_span -> std.core.result.Result<std.fs.path.Path, i32>",
         "fn from_str -> std.core.result.Result<std.fs.path.Path, i32> @c_name=m0_std_fs_path_from_str",
         "fn is_absolute -> bool @c_name=m0_std_fs_path_is_absolute",

@@ -27,12 +27,12 @@ const VISIT_UNVISITED: u8 = 0;
 const VISIT_VISITING: u8 = 1;
 const VISIT_DONE: u8 = 2;
 
-struct CustomCommand {
+noncopy struct CustomCommand {
     program: *const u8;
     args: vec::Vec<*const u8>;
 }
 
-struct Target {
+noncopy struct Target {
     name: *const u8;
     kind: TargetKind;
     sources: vec::Vec<paths::Path>;
@@ -41,7 +41,7 @@ struct Target {
     command: CustomCommand;
 }
 
-struct Project {
+noncopy struct Project {
     name: *const u8;
     targets: vec::Vec<Target>;
     target_lookup: map::CStringUsizeMap;
@@ -132,6 +132,19 @@ fn custom_command_destroy(command: *mut CustomCommand) -> void {
     }
     command.args.destroy();
     command.program = null;
+}
+
+fn custom_command_take(command: *mut CustomCommand) -> CustomCommand {
+    if command == null {
+        return custom_command_empty();
+    }
+    let taken: CustomCommand = CustomCommand {
+        program: command.program,
+        args: command.args.take(),
+    };
+    command.program = null;
+    command.args = vec::new<*const u8>();
+    return move(taken);
 }
 
 fn custom_command_arg(command: *mut CustomCommand, arg: *const u8) -> bool {
@@ -232,14 +245,15 @@ fn target_source(target: *mut Target, source: str) -> bool {
         return false;
     }
     let source_result: result::Result<paths::Path, i32> = paths::Path.from_str(source);
-    return match source_result {
+    return match move(source_result) {
         .ok(path) => {
-            var owned_path: paths::Path = path;
-            if target.sources.push(owned_path) {
-                true
-            } else {
+            var owned_path: paths::Path = move(path);
+            if target.sources.len == target.sources.capacity && !target.sources.reserve(target.sources.len + cast(usize, 1)) {
                 owned_path.destroy();
                 false
+            } else {
+                target.sources.push(move(owned_path));
+                true
             }
         },
         .err(_) => false,
@@ -284,7 +298,7 @@ fn project_new(name: *const u8, stamp_path: str) -> result::Result<Project, i32>
         name: name,
         targets: vec::new<Target>(),
         target_lookup: map::cstring_usize_new(),
-        stamp_path: owned_stamp_path,
+        stamp_path: move(owned_stamp_path),
     });
 }
 
@@ -323,18 +337,13 @@ fn project_add_target(project: *mut Project, target: *mut Target) -> result::Res
     let stored_target: Target = Target {
         name: target.name,
         kind: target.kind,
-        sources: target.sources,
-        include_paths: target.include_paths,
-        dependencies: target.dependencies,
-        command: target.command,
+        sources: target.sources.take(),
+        include_paths: target.include_paths.take(),
+        dependencies: target.dependencies.take(),
+        command: custom_command_take(&target.command),
     };
-    if !project.targets.push(stored_target) {
-        if register_name {
-            project.target_lookup.remove(target.name);
-        }
-        target.destroy();
-        return Result.err(1);
-    }
+    project.targets.data[id] = move(stored_target);
+    project.targets.len = id + cast(usize, 1);
     target_disown_after_move(target);
     return Result.ok(id);
 }
@@ -606,7 +615,7 @@ fn project_new_visit_state(project: *const Project) -> result::Result<vec::Vec<u
         }
         index = index + cast(usize, 1);
     }
-    return Result.ok(states);
+    return Result.ok(move(states));
 }
 
 fn project_visit_target(
@@ -765,7 +774,7 @@ fn project_cycle_path_from_diagnostic(project: *const Project, diagnostic: *cons
         path.destroy();
         return Result.err(1);
     }
-    return Result.ok(path);
+    return Result.ok(move(path));
 }
 
 fn project_cycle_path_names_from_diagnostic(project: *const Project, diagnostic: *const GraphDiagnostic) -> result::Result<vec::Vec<*const u8>, i32> {
@@ -787,7 +796,7 @@ fn project_cycle_path_names_from_diagnostic(project: *const Project, diagnostic:
         index = index + cast(usize, 1);
     }
     indexes.destroy();
-    return Result.ok(names);
+    return Result.ok(move(names));
 }
 
 fn project_graph_diagnostic(project: *const Project) -> result::Result<GraphDiagnostic, i32> {
@@ -830,7 +839,7 @@ fn project_build_order(project: *const Project) -> result::Result<vec::Vec<usize
         index = index + cast(usize, 1);
     }
     states.destroy();
-    return Result.ok(order);
+    return Result.ok(move(order));
 }
 
 fn project_graph_status(project: *const Project) -> GraphStatus {
@@ -1029,9 +1038,9 @@ fn prepare_project_sources() -> result::Result<bool, i32> {
 
 fn cleanup_path(path_text: str) -> bool {
     let path_result: result::Result<paths::Path, i32> = paths::Path.from_str(path_text);
-    return match path_result {
+    return match move(path_result) {
         .ok(path) => {
-            var owned_path: paths::Path = path;
+            var owned_path: paths::Path = move(path);
             let cleaned: bool = !file::file_exists_path(&owned_path) || file::remove_file_path(&owned_path);
             owned_path.destroy();
             cleaned
@@ -1111,7 +1120,9 @@ fn validate_missing_target_lookup() -> result::Result<bool, i32> {
         .err(code) => code == 41,
     };
     let cache_ok: bool = project_lookup_cache_matches(&project)?;
-    return Result.ok(known_id == cast(usize, 0) && missing_ok && linear_missing_ok && cache_ok);
+    let removed_known: usize = project.target_lookup.remove(c"known").unwrap_or(cast(usize, 99));
+    let remove_ok: bool = removed_known == known_id && !project.target_lookup.contains(c"known");
+    return Result.ok(known_id == cast(usize, 0) && missing_ok && linear_missing_ok && cache_ok && remove_ok);
 }
 
 fn validate_duplicate_target_detection() -> result::Result<bool, i32> {

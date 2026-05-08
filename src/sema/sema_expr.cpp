@@ -207,9 +207,6 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         if (source.empty()) {
             report(expr.range, "move requires a local or parameter");
         }
-        if (is_valid(moved) && !is_move_only_value(moved)) {
-            report(expr.range, "move requires a non-copyable local or parameter");
-        }
         return record_expr_type(expr_id, moved);
     }
     case syntax::ExprKind::if_expr:

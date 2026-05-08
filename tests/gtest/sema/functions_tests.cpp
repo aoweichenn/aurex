@@ -174,10 +174,7 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
         require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_use_after_move.ax"))).output,
         "use of moved value: first"
     );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "move_copyable.ax"))).output,
-        "move requires a non-copyable local or parameter"
-    );
+    require_success(aurexc() + " --check " + q(positive_sample("types", "move_copyable.ax")));
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "move_non_place.ax"))).output,
         "move requires a local or parameter"
@@ -201,6 +198,54 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_cstring_copy.ax"))).output,
         "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_bytes_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_string_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_path_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_extend_path.ax"))).output,
+        "requires copyable element type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_insert_path_key.ax"))).output,
+        "requires copyable key type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_get_path_value.ax"))).output,
+        "requires copyable value type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_option_is_some.ax"))).output,
+        "requires copyable payload type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_result_is_err.ax"))).output,
+        "requires copyable ok type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_option_ok_or_error.ax"))).output,
+        "requires copyable error type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_result_unwrap_or.ax"))).output,
+        "requires copyable ok type"
     );
 }
 

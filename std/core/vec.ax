@@ -4,7 +4,7 @@ import std.core.mem;
 import std.core.result;
 import std.core.text;
 
-pub struct Vec<T> {
+pub noncopy struct Vec<T> {
     data: *mut T;
     len: usize;
     capacity: usize;
@@ -21,7 +21,7 @@ pub fn with_capacity<T>(capacity: usize) -> Result<Vec<T>, i32> {
     if !reserve<T>(&vec, capacity) {
         return Result.err(1);
     }
-    return Result.ok(vec);
+    return Result.ok(move(vec));
 }
 
 pub fn destroy<T>(vec: *mut Vec<T>) -> void {
@@ -31,6 +31,21 @@ pub fn destroy<T>(vec: *mut Vec<T>) -> void {
     vec.data = null;
     vec.len = cast(usize, 0);
     vec.capacity = cast(usize, 0);
+}
+
+pub fn take<T>(vec: *mut Vec<T>) -> Vec<T> {
+    if vec == null {
+        return new<T>();
+    }
+    let taken: Vec<T> = Vec<T> {
+        data: vec.data,
+        len: vec.len,
+        capacity: vec.capacity,
+    };
+    vec.data = null;
+    vec.len = cast(usize, 0);
+    vec.capacity = cast(usize, 0);
+    return move(taken);
 }
 
 pub fn len<T>(vec: *const Vec<T>) -> usize {
@@ -77,7 +92,7 @@ pub fn push<T>(vec: *mut Vec<T>, value: T) -> bool {
             return false;
         }
     }
-    vec.data[vec.len] = value;
+    vec.data[vec.len] = move(value);
     vec.len = vec.len + cast(usize, 1);
     return true;
 }
@@ -100,7 +115,7 @@ pub fn insert<T>(vec: *mut Vec<T>, index: usize, value: T) -> bool {
         let src: *const u8 = ptr_from_addr(*const u8, ptr_addr(vec.data) + (index * size_of(T)));
         move_bytes(dst, src, (vec.len - index) * size_of(T));
     }
-    vec.data[index] = value;
+    vec.data[index] = move(value);
     vec.len = vec.len + cast(usize, 1);
     return true;
 }
@@ -139,7 +154,7 @@ pub fn remove<T>(vec: *mut Vec<T>, index: usize) -> Option<T> {
         move_bytes(dst, src, (vec.len - next) * size_of(T));
     }
     vec.len = vec.len - cast(usize, 1);
-    return Option.some(removed);
+    return Option.some(move(removed));
 }
 
 pub fn swap_remove<T>(vec: *mut Vec<T>, index: usize) -> Option<T> {
@@ -151,7 +166,7 @@ pub fn swap_remove<T>(vec: *mut Vec<T>, index: usize) -> Option<T> {
     if index != vec.len {
         vec.data[index] = vec.data[vec.len];
     }
-    return Option.some(removed);
+    return Option.some(move(removed));
 }
 
 pub fn get<T>(vec: *const Vec<T>, index: usize) -> Option<T> {
@@ -165,7 +180,7 @@ pub fn set<T>(vec: *mut Vec<T>, index: usize, value: T) -> bool {
     if index >= vec.len {
         return false;
     }
-    vec.data[index] = value;
+    vec.data[index] = move(value);
     return true;
 }
 
@@ -198,12 +213,16 @@ pub fn from_span<T>(items: Span<T>) -> Result<Vec<T>, i32> {
     if !extend<T>(&vec, items) {
         return Result.err(1);
     }
-    return Result.ok(vec);
+    return Result.ok(move(vec));
 }
 
 impl<T> Vec<T> {
     pub fn destroy(self: *mut Vec<T>) -> void {
         destroy<T>(self);
+    }
+
+    pub fn take(self: *mut Vec<T>) -> Vec<T> {
+        return take<T>(self);
     }
 
     pub fn len(self: *const Vec<T>) -> usize {
@@ -231,11 +250,11 @@ impl<T> Vec<T> {
     }
 
     pub fn push(self: *mut Vec<T>, value: T) -> bool {
-        return push<T>(self, value);
+        return push<T>(self, move(value));
     }
 
     pub fn insert(self: *mut Vec<T>, index: usize, value: T) -> bool {
-        return insert<T>(self, index, value);
+        return insert<T>(self, index, move(value));
     }
 
     pub fn extend(self: *mut Vec<T>, items: Span<T>) -> bool {
@@ -259,7 +278,7 @@ impl<T> Vec<T> {
     }
 
     pub fn set(self: *mut Vec<T>, index: usize, value: T) -> bool {
-        return set<T>(self, index, value);
+        return set<T>(self, index, move(value));
     }
 
     pub fn first(self: *const Vec<T>) -> Option<T> {

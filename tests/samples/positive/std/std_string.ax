@@ -6,6 +6,17 @@ import std.core.string as string;
 import std.core.text as text;
 import std.core.vec as vec;
 
+fn string_result_is_err(value: result::Result<string::String, i32>) -> bool {
+    return match move(value) {
+        .ok(string_value) => {
+            var owned_string: string::String = move(string_value);
+            owned_string.destroy();
+            false
+        },
+        .err(_) => true,
+    };
+}
+
 fn check_owned_str_roundtrip() -> result::Result<bool, i32> {
     var s: string::String = string::String.from_str("aur\u{03A9}")?;
     if !s.append("ex") {
@@ -36,7 +47,7 @@ fn check_utf8_validation() -> result::Result<bool, i32> {
 
     var s: string::String = string::String.from_str("ok")?;
     let before_len: usize = s.byte_len();
-    let from_invalid_rejected: bool = string::String.from_utf8(invalid.as_span()).is_err();
+    let from_invalid_rejected: bool = string_result_is_err(string::String.from_utf8(invalid.as_span()));
     let append_invalid_rejected: bool = !s.append_span(invalid.as_span()) &&
         s.byte_len() == before_len &&
         s.equals("ok");

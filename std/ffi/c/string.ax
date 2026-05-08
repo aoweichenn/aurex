@@ -1,0 +1,178 @@
+module std.ffi.c.string;
+
+import std.core.mem;
+import std.core.result;
+import std.core.str as strings;
+import std.core.text;
+
+pub struct CStr {
+    priv data_value: *const u8;
+    priv len_value: usize;
+}
+
+pub struct CString {
+    priv data_value: *mut u8;
+    priv len_value: usize;
+}
+
+fn contains_nul(bytes: SpanU8) -> bool {
+    var index: usize = cast(usize, 0);
+    while index < bytes.len {
+        if bytes.data[index] == b'\0' {
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return false;
+}
+
+pub fn cstr_from_c(text: *const u8) -> Result<CStr, i32> {
+    if text == null {
+        return Result.err(1);
+    }
+    return Result.ok(CStr { data_value: text, len_value: c_strlen(text) });
+}
+
+pub fn cstr_from_c_unchecked(text: *const u8, len: usize) -> CStr {
+    return CStr { data_value: text, len_value: len };
+}
+
+pub fn cstr_byte_len(text: *const CStr) -> usize {
+    return text.len_value;
+}
+
+pub fn cstr_as_c(text: *const CStr) -> *const u8 {
+    return text.data_value;
+}
+
+pub fn cstr_as_bytes(text: *const CStr) -> SpanU8 {
+    return SpanU8 { data: text.data_value, len: text.len_value };
+}
+
+pub fn cstr_as_str_utf8(text: *const CStr) -> Result<str, i32> {
+    return strings::from_utf8(cstr_as_bytes(text));
+}
+
+pub fn cstring_from_str(text: str) -> Result<CString, i32> {
+    let bytes: SpanU8 = strings::as_bytes(text);
+    if contains_nul(bytes) {
+        return Result.err(2);
+    }
+
+    let capacity: usize = bytes.len + cast(usize, 1);
+    let data: *mut u8 = alloc_bytes(capacity);
+    if data == null {
+        return Result.err(1);
+    }
+    if bytes.len > cast(usize, 0) {
+        copy_bytes(data, bytes.data, bytes.len);
+    }
+    data[bytes.len] = b'\0';
+    return Result.ok(CString { data_value: data, len_value: bytes.len });
+}
+
+pub fn cstring_from_utf8(bytes: SpanU8) -> Result<CString, i32> {
+    let text: str = strings::from_utf8(bytes)?;
+    return cstring_from_str(text);
+}
+
+pub fn cstring_from_c_utf8(text: *const u8) -> Result<CString, i32> {
+    if text == null {
+        return Result.err(1);
+    }
+    return cstring_from_utf8(c_span(text));
+}
+
+pub fn cstring_destroy(text: *mut CString) -> void {
+    if text.data_value != null {
+        free_bytes(text.data_value);
+    }
+    text.data_value = null;
+    text.len_value = cast(usize, 0);
+}
+
+pub fn cstring_byte_len(text: *const CString) -> usize {
+    return text.len_value;
+}
+
+pub fn cstring_as_c(text: *const CString) -> *const u8 {
+    if text.data_value == null {
+        return c"";
+    }
+    return ptr_cast(*const u8, text.data_value);
+}
+
+pub fn cstring_as_cstr(text: *const CString) -> CStr {
+    return CStr {
+        data_value: cstring_as_c(text),
+        len_value: text.len_value,
+    };
+}
+
+pub fn cstring_as_str(text: *const CString) -> str {
+    return str_from_bytes_unchecked(cstring_as_c(text), text.len_value);
+}
+
+pub fn cstring_as_str_checked(text: *const CString) -> Result<str, i32> {
+    return strings::from_utf8(SpanU8 { data: cstring_as_c(text), len: text.len_value });
+}
+
+impl CStr {
+    pub fn from_c(text: *const u8) -> Result<CStr, i32> {
+        return cstr_from_c(text);
+    }
+
+    pub fn byte_len(self: *const CStr) -> usize {
+        return cstr_byte_len(self);
+    }
+
+    pub fn as_c(self: *const CStr) -> *const u8 {
+        return cstr_as_c(self);
+    }
+
+    pub fn as_bytes(self: *const CStr) -> SpanU8 {
+        return cstr_as_bytes(self);
+    }
+
+    pub fn as_str_utf8(self: *const CStr) -> Result<str, i32> {
+        return cstr_as_str_utf8(self);
+    }
+}
+
+impl CString {
+    pub fn from_str(text: str) -> Result<CString, i32> {
+        return cstring_from_str(text);
+    }
+
+    pub fn from_utf8(bytes: SpanU8) -> Result<CString, i32> {
+        return cstring_from_utf8(bytes);
+    }
+
+    pub fn from_c_utf8(text: *const u8) -> Result<CString, i32> {
+        return cstring_from_c_utf8(text);
+    }
+
+    pub fn destroy(self: *mut CString) -> void {
+        cstring_destroy(self);
+    }
+
+    pub fn byte_len(self: *const CString) -> usize {
+        return cstring_byte_len(self);
+    }
+
+    pub fn as_c(self: *const CString) -> *const u8 {
+        return cstring_as_c(self);
+    }
+
+    pub fn as_cstr(self: *const CString) -> CStr {
+        return cstring_as_cstr(self);
+    }
+
+    pub fn as_str(self: *const CString) -> str {
+        return cstring_as_str(self);
+    }
+
+    pub fn as_str_checked(self: *const CString) -> Result<str, i32> {
+        return cstring_as_str_checked(self);
+    }
+}

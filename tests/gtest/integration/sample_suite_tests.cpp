@@ -152,6 +152,26 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_text) {
     compile_and_run_std_positive_sample("std_text.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_cstring) {
+    const fs::path source = positive_sample("std", "std_cstring.ax");
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
+    expect_contains_all(checked, {
+        "struct CStr fields=2",
+        "struct CString fields=2",
+        "fn cstr_as_str_utf8 -> std.core.result.Result<str, i32>",
+        "fn cstring_from_str -> std.core.result.Result<std.ffi.c.string.CString, i32>",
+        "fn cstring_from_utf8 -> std.core.result.Result<std.ffi.c.string.CString, i32>",
+        "fn cstring_as_cstr -> std.ffi.c.string.CStr",
+        "fn method std.ffi.c.string.CStr.as_str_utf8 -> std.core.result.Result<str, i32>",
+        "fn method std.ffi.c.string.CString.from_str -> std.core.result.Result<std.ffi.c.string.CString, i32>",
+        "fn method std.ffi.c.string.CString.as_c -> *const u8",
+    });
+
+    compile_and_run_std_positive_sample("std_cstring.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_Std_std_str) {
     const fs::path source = positive_sample("std", "std_str.ax");
     const std::string checked = require_compiler_success(
@@ -163,6 +183,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_str) {
         "fn equals -> bool @c_name=m0_std_core_str_equals",
         "fn from_utf8 -> std.core.result.Result<str, i32>",
         "fn slice_bytes_checked -> std.core.result.Result<str, i32>",
+        "fn scalar_at -> std.core.result.Result<u32, i32>",
+        "fn scalar_utf8_width -> std.core.result.Result<usize, i32>",
+        "fn scalar_count -> usize @c_name=m0_std_core_str_scalar_count",
+        "fn next_boundary -> std.core.result.Result<usize, i32>",
         "fn method std.core.result.Result<str, i32>.unwrap_or -> str",
     });
 
@@ -189,13 +213,25 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_string) {
         "fn from_str -> std.core.result.Result<std.core.string.String, i32>",
         "fn from_utf8 -> std.core.result.Result<std.core.string.String, i32>",
         "fn append -> bool @c_name=m0_std_core_string_append",
+        "fn push_scalar -> bool @c_name=m0_std_core_string_push_scalar",
+        "fn insert_scalar -> bool @c_name=m0_std_core_string_insert_scalar",
+        "fn pop_scalar -> std.core.result.Option<u32>",
+        "fn remove_scalar_at -> std.core.result.Option<u32>",
         "fn as_str -> str @c_name=m0_std_core_string_as_str",
         "fn as_str_checked -> std.core.result.Result<str, i32>",
+        "fn slice_bytes_checked -> std.core.result.Result<str, i32>",
+        "fn truncate_bytes_checked -> bool",
         "fn method std.core.string.String.from_str -> std.core.result.Result<std.core.string.String, i32>",
         "fn method std.core.string.String.from_utf8 -> std.core.result.Result<std.core.string.String, i32>",
         "fn method std.core.string.String.append -> bool",
+        "fn method std.core.string.String.push_scalar -> bool",
+        "fn method std.core.string.String.insert_scalar -> bool",
+        "fn method std.core.string.String.pop_scalar -> std.core.result.Option<u32>",
+        "fn method std.core.string.String.remove_scalar_at -> std.core.result.Option<u32>",
         "fn method std.core.string.String.as_str -> str",
         "fn method std.core.string.String.as_str_checked -> std.core.result.Result<str, i32>",
+        "fn method std.core.string.String.slice_bytes_checked -> std.core.result.Result<str, i32>",
+        "fn method std.core.string.String.truncate_bytes_checked -> bool",
     });
 
     compile_and_run_std_positive_sample("std_string.ax");

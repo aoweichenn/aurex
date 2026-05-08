@@ -25,7 +25,7 @@
 
 - 构造：`new`、`with_capacity`、`from_str`、`from_utf8`、`from_c_utf8`、`from_c`、`from_span`。
 - 容量和长度：`len`、`byte_len`、`capacity`、`is_empty`、`reserve`、`clear`。
-- 变更：`push`、`extend`、`insert`、`remove`、`swap_remove`、`pop`、`truncate`、`append`、`append_span`、`append_c`。
+- 变更：`push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`、`append`、`truncate_bytes_checked`、`push`、`extend`、`insert`、`remove`、`swap_remove`、`pop`、`truncate`、`append_span`、`append_c`。
 - 随机访问：`get`、`set`、`first`、`last`。
 - 视图：`as_str`、`as_str_checked`、`as_bytes`、`as_span`、`as_mut_span`、`as_c`、`c_str`。
 - 查询：`bytes_equal`、`starts_with`、`file_name`。
@@ -78,6 +78,7 @@ import std.core.str as strings;
 import std.core.string as string;
 import std.core.text as text;
 import std.core.vec as vec;
+import std.ffi.c.string as cstring;
 import std.fs.path as path;
 ```
 
@@ -91,15 +92,22 @@ import std.fs.path as path;
 `std.core.string`：
 
 - 类型：`string::String`。
-- 新 API：`string::new`、`string::from_str`、`string::from_utf8`、`string::from_c_utf8`、`string::destroy`、`string::len`、`string::byte_len`、`string::is_empty`、`string::reserve`、`string::append`、`string::as_str`、`string::as_str_checked`、`string::as_bytes`、`string::is_valid_utf8`、`string::equals`、`string::starts_with`、`string::ends_with`。
+- 新 API：`string::new`、`string::from_str`、`string::from_utf8`、`string::from_c_utf8`、`string::destroy`、`string::len`、`string::byte_len`、`string::is_empty`、`string::reserve`、`string::append`、`string::push_scalar`、`string::insert_scalar`、`string::pop_scalar`、`string::remove_scalar_at`、`string::as_str`、`string::as_str_checked`、`string::as_bytes`、`string::slice_bytes_checked`、`string::truncate_bytes_checked`、`string::is_valid_utf8`、`string::equals`、`string::starts_with`、`string::ends_with`。
 - 兼容/过渡 API：`string::from_c`、`string::push`、`string::insert`、`string::append_span`、`string::append_c`、`string::pop`、`string::remove`、`string::truncate`、`string::clear`、`string::as_span`、`string::as_mut_span`、`string::c_str`、`string::equals_span`、`string::ends_with_byte`。这些 API 当前会尽量维护 UTF-8 不变量；`as_mut_span` 仍是后续迁到 `Bytes` 或 unsafe 边界的风险点。
 - 兼容 API：`string::string_new`、`string::string_from_c` 等保留。
 
 `std.core.str`：
 
 - 类型：内建 borrowed UTF-8 文本切片 `str`。
-- API：`strings::byte_len`、`strings::is_empty`、`strings::as_bytes`、`strings::equals`、`strings::starts_with`、`strings::ends_with`、`strings::is_boundary`、`strings::slice_bytes_checked`、`strings::is_valid_utf8`、`strings::from_utf8`。
+- API：`strings::byte_len`、`strings::is_empty`、`strings::as_bytes`、`strings::equals`、`strings::starts_with`、`strings::ends_with`、`strings::is_boundary`、`strings::slice_bytes_checked`、`strings::is_scalar_value`、`strings::scalar_utf8_width`、`strings::scalar_at`、`strings::scalar_width_at`、`strings::next_boundary`、`strings::previous_boundary`、`strings::scalar_count`、`strings::is_valid_utf8`、`strings::from_utf8`。
 - 约束：`strings::as_bytes` 只返回只读 `SpanU8`；构造 `str` 必须通过 UTF-8 validation 或已验证边界的切片。低层 `str_from_bytes_unchecked` 是编译器/标准库支撑点，不是普通业务 API。
+
+`std.ffi.c.string`：
+
+- 类型：`cstring::CStr`、`cstring::CString`。
+- `CStr` API：`cstring::CStr.from_c`、`byte_len`、`as_c`、`as_bytes`、`as_str_utf8`。
+- `CString` API：`cstring::CString.from_str`、`from_utf8`、`from_c_utf8`、`destroy`、`byte_len`、`as_c`、`as_cstr`、`as_str`、`as_str_checked`。
+- 约束：`CString.from_str` 拒绝内部 NUL；`CString.from_utf8` 同时验证 UTF-8 和内部 NUL。普通 `str` / `String` 不隐式转成 C string，需要 FFI 指针时显式构造 `CString` 或借用 `CStr`。
 
 `std.fs.path`：
 

@@ -1,14 +1,14 @@
 # 版本文档
 
-版本：0.1.4
+版本：0.1.6
 
 ## 版本定位
 
-0.1.4 是当前文档基线。本文档不再按每个小版本列出零散修改点，而是把 0.1.x 阶段能力收束为一个整体状态说明。
+0.1.6 是当前文档基线。本文档不再按每个小版本列出零散修改点，而是把 0.1.x 阶段能力收束为一个整体状态说明。
 
 版本文档只描述当前公开状态、兼容策略和后续方向。历史小版本的逐条改动不再保留为独立文档；需要追溯时使用 git history。
 
-## 0.1.4 范围
+## 0.1.6 范围
 
 包含：
 
@@ -24,7 +24,7 @@
 - `std.fs.file::FileMetadata` metadata / mtime baseline，通过 host-c support 调用 `stat`。
 - `std.fs.dir` directory create / directory entries / recursive directory entries / source discovery baseline，通过 host-c support 调用 `mkdir`、`opendir` / `readdir` / `stat` / `lstat` 读取拥有型单层/递归目录项，并按后缀统计普通文件，提供单层和递归计数入口。
 - `std.core.map` Vec-backed 泛型 `Map<K, V>` 和 borrowed C string -> usize 的 `CStringUsizeMap` baseline。
-- 字符串基础类型方向已冻结为 `str` = borrowed UTF-8 text slice、`String` = owned UTF-8 buffer、`Span<u8>` / future `Bytes` = raw bytes、`CStr` / `CString` = C FFI；当前已落地字符串字面量 UTF-8/escape 诊断、`std.core.str` borrowed API，以及 `std.core.string.String` 的 `from_str/from_utf8/as_str/append(str)` UTF-8 surface。
+- 字符串基础类型方向已冻结为 `str` = borrowed UTF-8 text slice、`String` = owned UTF-8 buffer、`Span<u8>` / future `Bytes` = raw bytes、`CStr` / `CString` = C FFI；当前已落地字符串字面量 UTF-8/escape 诊断、`std.core.str` borrowed API 和 scalar API、`std.core.string.String` 的 `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked` UTF-8 surface，以及 `std.ffi.c.string.CStr` / `CString` FFI 边界类型。
 - M1 axbuild target graph validation / topological build baseline，包括 dependency bounds、cycle / invalid dependency 状态和按拓扑顺序 build。
 - M1 axbuild target name lookup cache baseline，包括 name -> id 查找、lookup cache 与线性扫描对照、missing lookup 检测和 duplicate target name 状态。
 - M1 axbuild target graph diagnostic/message/name/cycle-path baseline，包括 `GraphDiagnostic`、status、target index、related index、message、target name、related name、cycle index path、cycle name path，以及 duplicate / invalid dependency / cycle back-edge 定位。

@@ -1,8 +1,8 @@
 # Aurex 字符串基础类型设计草案
 
-版本：0.1.4 设计草案
+版本：0.1.6 设计草案
 日期：2026-05-08
-状态：设计冻结前草案；Phase 1、Phase 2 已落地，Phase 3 `String` UTF-8 surface 已启动。
+状态：设计冻结前草案；Phase 1、Phase 2、Phase 3 已落地，Phase 4 C FFI 边界和 Phase 5 scalar API 已启动。
 
 本文目标是把 Aurex 的字符串基础类型设计清楚，再继续改标准库和 M1 样例。这里的“基础类型”指和 `int`、`usize`、`bool` 同一层级的语言内建类型，而不是 C 的 `char*` 包装，也不是某个需要 allocator 的拥有型容器。
 
@@ -41,7 +41,8 @@ builtin str = {
 - 语义分析中普通字符串字面量类型是 `str`，`c"..."` 类型是 `*const u8`。
 - LLVM 后端把 `str` 降低为 `{ ptr, usize }`，普通字符串字面量降低为全局字节数据加长度。
 - 测试已经锁住 `size_of(str) == 16`、`align_of(str) == 8` 这一 64-bit ABI 事实。
-- `std.core.string.String` 仍以 `VecU8` 存储并维护尾随 `\0` 作为兼容层，但已经新增 `from_str`、`from_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`byte_len`、`equals(str)`、`starts_with(str)`、`ends_with(str)` 等 UTF-8/`str` surface；旧字节级 `push/insert/remove/truncate/append_span/from_c` 已开始收口到 UTF-8 边界检查。
+- `std.core.string.String` 仍以 `VecU8` 存储并维护尾随 `\0` 作为兼容层，但已经新增 `from_str`、`from_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`、`byte_len`、`slice_bytes_checked`、`truncate_bytes_checked`、`equals(str)`、`starts_with(str)`、`ends_with(str)` 等 UTF-8/`str` surface；旧字节级 `push/insert/remove/truncate/append_span/from_c` 已开始收口到 UTF-8 边界检查。
+- `std.ffi.c.string` 已提供 `CStr` / `CString` 第一版，把 borrowed/owned NUL-terminated C 字符串从普通文本 API 中隔离出来。
 - `std.core.text` 目前主要是 `SpanU8`、ASCII helper、`c_strlen`、`strcmp` 这类 C/bytes 工具。
 - `std.fs.path`、`std.fs.file`、`std.fs.dir` 和 M1 样例仍大量使用 `*const u8` / `c"..."`。
 
@@ -174,8 +175,13 @@ let p: *const u8 = c"hello";
 - `as_bytes(s: str) -> Span<u8>`：O(1)，只读 byte view。
 - `is_boundary(s: str, index: usize) -> bool`：检查 UTF-8 scalar 边界。
 - `slice_bytes_checked(s: str, begin: usize, end: usize) -> Result<str, SliceError>`：begin/end 必须在边界上。
-- `scalars(s: str) -> ScalarIter`：按 Unicode scalar value 迭代，O(n)。
+- `is_scalar_value(value: u32) -> bool`：检查 `u32` 是否是合法 Unicode scalar value，排除 surrogate 和超过 `U+10FFFF` 的值。
+- `scalar_utf8_width(value: u32) -> Result<usize, ScalarError>`：返回合法 scalar 的 UTF-8 byte 宽度。
+- `scalar_at(s: str, byte_index: usize) -> Result<u32, ScalarError>`：byte_index 必须在 scalar 边界上，返回 Unicode scalar value。
+- `scalar_width_at(s: str, byte_index: usize) -> Result<usize, ScalarError>`：返回当前 scalar 的 UTF-8 byte 宽度。
+- `next_boundary(s: str, byte_index: usize) -> Result<usize, ScalarError>` / `previous_boundary(s: str, byte_index: usize) -> Result<usize, ScalarError>`：显式边界移动。
 - `scalar_count(s: str) -> usize`：O(n)，名字明确。
+- 后续再提供 `scalars(s: str) -> ScalarIter`：按 Unicode scalar value 迭代，O(n)。
 - `graphemes(s: str)` 和 `grapheme_count(s: str)`：放在 `std.unicode`，O(n)，依赖 Unicode 数据版本。
 
 如果未来引入 `char`：
@@ -216,7 +222,7 @@ let p: *const u8 = c"hello";
 - `from_str(text: str) -> Result<String, AllocError>`。
 - `from_utf8(bytes: Vec<u8>) -> Result<String, Utf8Error>`，成功后接管 bytes。
 - `try_from_bytes(bytes: Span<u8>) -> Result<String, Utf8Error | AllocError>`。
-- `push(self, ch: char)` 或 `append(self, text: str)`，而不是 `push(u8)`。
+- `push_scalar(self, value: u32)`、`insert_scalar(self, byte_index: usize, value: u32)` 或 `append(self, text: str)`，而不是用 `push(u8)` 拼文本。
 - 字节级可变视图只能作为 unsafe/受控 API 暴露，或移到 `Bytes`。
 
 当前 `String.push(u8)`、`insert(index, u8)`、`remove(index)`、`truncate(byte_len)` 可以先保留兼容包装，但新 API 不应继续扩展它们。
@@ -307,19 +313,25 @@ FFI 层应有单独类型：
 - 已完成：新增 `equals(str)`、`starts_with(str)`、`ends_with(str)`，让拥有型字符串可以直接对接 borrowed `str` API。
 - 已完成：旧 `from_c` 改为 `from_c_utf8` 包装，`read_text` 改为通过 `String.from_utf8` 验证文件内容。
 - 已完成：旧 `push(u8)` 仅接受 ASCII byte，`insert(index, u8)` 要求 UTF-8 边界和 ASCII byte，`remove/pop/truncate` 避免切断多字节 scalar；`append_span` / `append_c` 现在要求输入是合法 UTF-8。
+- 已完成：新增 `slice_bytes_checked` 和 `truncate_bytes_checked`，owned `String` 的字节边界操作也必须显式检查 UTF-8 scalar 边界。
+- 已完成：新增 `push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`，把 owned `String` 的文本 mutation 从 byte API 迁到 Unicode scalar value API。
 - 已完成：新增 `tests/samples/positive/std/std_string.ax` 和 `SampleSuite_Std_std_string`，覆盖 `String.from_str`、`from_utf8`、`as_str`、checked view、invalid UTF-8 拒绝、旧 byte API 的 UTF-8 边界保护和 C 兼容入口。
 - 未完成：`as_mut_span` 仍然是兼容风险点，后续应迁到 `Bytes` 或 unsafe/受控 API；真正的 `Path` 也还没有从 `String` 中拆出平台 bytes 语义。
 
 ### Phase 4：隔离 C FFI
 
-- 新增 `std.ffi.c.CStr` / `CString`。
-- 文件、进程、console、host support 边界改为内部转换，不让普通业务代码到处传 `*const u8`。
-- `c"..."` 仅在 FFI 相关测试和底层 std 模块中使用。
+状态：已落地第一批边界类型。
+
+- 已完成：新增 `std.ffi.c.string.CStr`，表示 borrowed NUL-terminated C 字符串，不拥有内存。
+- 已完成：新增 `std.ffi.c.string.CString`，表示 owned NUL-terminated C 字符串，`from_str` 拒绝内部 NUL，`from_utf8` 拒绝非法 UTF-8。
+- 已完成：`CStr.as_str_utf8()` 和 `CString.as_str()` / `as_str_checked()` 把 C 边界显式转回 `str`。
+- 已完成：新增 `tests/samples/positive/std/std_cstring.ax` 和 `SampleSuite_Std_std_cstring`，覆盖 borrowed/owned C string、UTF-8 conversion、内部 NUL 拒绝和 invalid UTF-8 拒绝。
+- 未完成：文件、进程、console、host support 还没有整体改成接收 `CStr` / `CString`；`c"..."` 仍在底层 std 和部分测试中作为兼容过渡。
 
 ### Phase 5：Unicode 扩展
 
-- 添加 UTF-8 scalar iterator。
-- 添加 scalar count、checked scalar boundary helper。
+- 已完成：添加 `is_scalar_value`、`scalar_utf8_width`、`scalar_at`、`scalar_width_at`、`next_boundary`、`previous_boundary`、`scalar_count`，用 `u32` 显式表示 Unicode scalar value。
+- 待完成：添加 UTF-8 scalar iterator。
 - 后续再引入 UAX #29 grapheme iterator 和 UAX #15 normalization。
 - Unicode 数据版本必须在模块中显式记录，不影响 core `str` ABI。
 
@@ -349,11 +361,11 @@ FFI 层应有单独类型：
 - `size_of(str)` 和 `align_of(str)` 在 64-bit 下保持 16/8。
 - `"abc"` 类型是 `str`，`c"abc"` 类型是 `*const u8` 或未来 `CStr`，二者不能隐式互转。
 - `"a\0b"` 是合法 `str`，`byte_len()` 为 3，不能被 C API 截断。
-- 非 ASCII 文本如 `"ƒ"` 的 `byte_len()` 为 2，`scalar_count()` 为 1。
+- 已完成：非 ASCII 文本如 `"ƒ"` 的 `byte_len()` 为 2，`scalar_count()` 为 1。
 - 已完成：invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
 - 已完成：`slice_bytes_checked("ƒ", 0, 1)` 失败，`slice_bytes_checked("ƒ", 0, 2)` 成功。
-- `String.from_utf8` 接受合法 UTF-8，拒绝非法 bytes。
-- `CString.from_str("a\0b")` 拒绝内部 NUL。
+- 已完成：`String.from_utf8` 接受合法 UTF-8，拒绝非法 bytes。
+- 已完成：`CString.from_str("a\0b")` 拒绝内部 NUL。
 - 标准库文件/进程/path API 的公开层不再要求业务代码传 `c"..."`。
 
 ## 参考资料

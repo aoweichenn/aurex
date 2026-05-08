@@ -50,6 +50,45 @@ fn append_valid_utf8_span_unchecked(string: *mut String, bytes: SpanU8) -> bool 
     return true;
 }
 
+fn encoded_scalar_byte(value: u32, width: usize, offset: usize) -> u8 {
+    if width == cast(usize, 1) {
+        return cast(u8, value);
+    }
+    if width == cast(usize, 2) {
+        if offset == cast(usize, 0) {
+            return cast(u8, 0xC0 | (value >> 6));
+        }
+        return cast(u8, 0x80 | (value & 0x3F));
+    }
+    if width == cast(usize, 3) {
+        if offset == cast(usize, 0) {
+            return cast(u8, 0xE0 | (value >> 12));
+        }
+        if offset == cast(usize, 1) {
+            return cast(u8, 0x80 | ((value >> 6) & 0x3F));
+        }
+        return cast(u8, 0x80 | (value & 0x3F));
+    }
+    if offset == cast(usize, 0) {
+        return cast(u8, 0xF0 | (value >> 18));
+    }
+    if offset == cast(usize, 1) {
+        return cast(u8, 0x80 | ((value >> 12) & 0x3F));
+    }
+    if offset == cast(usize, 2) {
+        return cast(u8, 0x80 | ((value >> 6) & 0x3F));
+    }
+    return cast(u8, 0x80 | (value & 0x3F));
+}
+
+fn write_encoded_scalar(dst: *mut u8, value: u32, width: usize) -> void {
+    var offset: usize = cast(usize, 0);
+    while offset < width {
+        dst[offset] = encoded_scalar_byte(value, width, offset);
+        offset = offset + cast(usize, 1);
+    }
+}
+
 pub fn new() -> String {
     return String { bytes: vec_u8_new() };
 }
@@ -88,6 +127,25 @@ pub fn push(string: *mut String, value: u8) -> bool {
         return false;
     }
     string.bytes.data[string.bytes.len] = value;
+    string.bytes.len = next_len;
+    string.bytes.data[string.bytes.len] = b'\0';
+    return true;
+}
+
+pub fn push_scalar(string: *mut String, value: u32) -> bool {
+    if !is_valid_utf8(string) {
+        return false;
+    }
+    let width: usize = strings::scalar_utf8_width(value).unwrap_or(cast(usize, 0));
+    if width == cast(usize, 0) {
+        return false;
+    }
+    let next_len: usize = string.bytes.len + width;
+    if !reserve(string, next_len) {
+        return false;
+    }
+    let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(string.bytes.data) + string.bytes.len);
+    write_encoded_scalar(dst, value, width);
     string.bytes.len = next_len;
     string.bytes.data[string.bytes.len] = b'\0';
     return true;
@@ -139,6 +197,37 @@ pub fn insert(string: *mut String, index: usize, value: u8) -> bool {
     return true;
 }
 
+pub fn insert_scalar(string: *mut String, index: usize, value: u32) -> bool {
+    if !is_valid_utf8(string) {
+        return false;
+    }
+    if index > string.bytes.len {
+        return false;
+    }
+    if !strings::is_boundary(as_str(string), index) {
+        return false;
+    }
+    let width: usize = strings::scalar_utf8_width(value).unwrap_or(cast(usize, 0));
+    if width == cast(usize, 0) {
+        return false;
+    }
+    let old_len: usize = string.bytes.len;
+    let next_len: usize = old_len + width;
+    if !reserve(string, next_len) {
+        return false;
+    }
+    if index < old_len {
+        let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(string.bytes.data) + index + width);
+        let src: *const u8 = ptr_from_addr(*const u8, ptr_addr(string.bytes.data) + index);
+        move_bytes(dst, src, old_len - index);
+    }
+    let write_at: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(string.bytes.data) + index);
+    write_encoded_scalar(write_at, value, width);
+    string.bytes.len = next_len;
+    string.bytes.data[string.bytes.len] = b'\0';
+    return true;
+}
+
 pub fn pop(string: *mut String) -> Option<u8> {
     if string.bytes.len == cast(usize, 0) {
         return Option.none;
@@ -152,6 +241,19 @@ pub fn pop(string: *mut String) -> Option<u8> {
     return value;
 }
 
+pub fn pop_scalar(string: *mut String) -> Option<u32> {
+    if !is_valid_utf8(string) || string.bytes.len == cast(usize, 0) {
+        return Option.none;
+    }
+    let view: str = as_str(string);
+    let begin: usize = strings::previous_boundary(view, string.bytes.len).unwrap_or(string.bytes.len);
+    let value: u32 = strings::scalar_at(view, begin).unwrap_or(cast(u32, 0));
+    if !truncate_bytes_checked(string, begin) {
+        return Option.none;
+    }
+    return Option.some(value);
+}
+
 pub fn remove(string: *mut String, index: usize) -> Option<u8> {
     if !is_valid_utf8(string) || index >= string.bytes.len {
         return Option.none;
@@ -163,6 +265,31 @@ pub fn remove(string: *mut String, index: usize) -> Option<u8> {
     let value: Option<u8> = string.bytes.remove(index);
     set_trailing_nul(string);
     return value;
+}
+
+pub fn remove_scalar_at(string: *mut String, index: usize) -> Option<u32> {
+    if !is_valid_utf8(string) || index >= string.bytes.len {
+        return Option.none;
+    }
+    let view: str = as_str(string);
+    if !strings::is_boundary(view, index) {
+        return Option.none;
+    }
+    let width: usize = strings::scalar_width_at(view, index).unwrap_or(cast(usize, 0));
+    if width == cast(usize, 0) {
+        return Option.none;
+    }
+    let value: u32 = strings::scalar_at(view, index).unwrap_or(cast(u32, 0));
+    let old_len: usize = string.bytes.len;
+    let next_index: usize = index + width;
+    if next_index < old_len {
+        let dst: *mut u8 = ptr_from_addr(*mut u8, ptr_addr(string.bytes.data) + index);
+        let src: *const u8 = ptr_from_addr(*const u8, ptr_addr(string.bytes.data) + next_index);
+        move_bytes(dst, src, old_len - next_index);
+    }
+    string.bytes.len = old_len - width;
+    set_trailing_nul(string);
+    return Option.some(value);
 }
 
 pub fn truncate(string: *mut String, len: usize) -> void {
@@ -179,6 +306,21 @@ pub fn truncate(string: *mut String, len: usize) -> void {
 pub fn clear(string: *mut String) -> void {
     string.bytes.clear();
     set_trailing_nul(string);
+}
+
+pub fn truncate_bytes_checked(string: *mut String, len: usize) -> bool {
+    if len > string.bytes.len {
+        return false;
+    }
+    if !is_valid_utf8(string) {
+        return false;
+    }
+    if !strings::is_boundary(as_str(string), len) {
+        return false;
+    }
+    string.bytes.truncate(len);
+    set_trailing_nul(string);
+    return true;
 }
 
 pub fn from_str(text: str) -> Result<String, i32> {
@@ -232,6 +374,11 @@ pub fn as_str(string: *const String) -> str {
 
 pub fn as_str_checked(string: *const String) -> Result<str, i32> {
     return strings::from_utf8(as_span(string));
+}
+
+pub fn slice_bytes_checked(string: *const String, begin: usize, end: usize) -> Result<str, i32> {
+    let view: str = as_str_checked(string)?;
+    return strings::slice_bytes_checked(view, begin, end);
 }
 
 pub fn is_valid_utf8(string: *const String) -> bool {
@@ -308,6 +455,10 @@ pub fn string_push_byte(string: *mut String, value: u8) -> bool {
     return push(string, value);
 }
 
+pub fn string_push_scalar(string: *mut String, value: u32) -> bool {
+    return push_scalar(string, value);
+}
+
 pub fn string_append(string: *mut String, text: str) -> bool {
     return append(string, text);
 }
@@ -322,6 +473,18 @@ pub fn string_append_c(string: *mut String, text: *const u8) -> bool {
 
 pub fn string_append_c_utf8(string: *mut String, text: *const u8) -> bool {
     return append_c_utf8(string, text);
+}
+
+pub fn string_insert_scalar(string: *mut String, index: usize, value: u32) -> bool {
+    return insert_scalar(string, index, value);
+}
+
+pub fn string_pop_scalar(string: *mut String) -> Option<u32> {
+    return pop_scalar(string);
+}
+
+pub fn string_remove_scalar_at(string: *mut String, index: usize) -> Option<u32> {
+    return remove_scalar_at(string, index);
 }
 
 pub fn string_from_str(text: str) -> Result<String, i32> {
@@ -358,6 +521,14 @@ pub fn string_as_str_checked(string: *const String) -> Result<str, i32> {
 
 pub fn string_is_valid_utf8(string: *const String) -> bool {
     return is_valid_utf8(string);
+}
+
+pub fn string_slice_bytes_checked(string: *const String, begin: usize, end: usize) -> Result<str, i32> {
+    return slice_bytes_checked(string, begin, end);
+}
+
+pub fn string_truncate_bytes_checked(string: *mut String, len: usize) -> bool {
+    return truncate_bytes_checked(string, len);
 }
 
 pub fn string_c_str(string: *const String) -> *const u8 {
@@ -429,6 +600,10 @@ impl String {
         return string_push_byte(self, value);
     }
 
+    pub fn push_scalar(self: *mut String, value: u32) -> bool {
+        return string_push_scalar(self, value);
+    }
+
     pub fn append(self: *mut String, text: str) -> bool {
         return string_append(self, text);
     }
@@ -449,16 +624,32 @@ impl String {
         return insert(self, index, value);
     }
 
+    pub fn insert_scalar(self: *mut String, index: usize, value: u32) -> bool {
+        return string_insert_scalar(self, index, value);
+    }
+
     pub fn pop(self: *mut String) -> Option<u8> {
         return pop(self);
+    }
+
+    pub fn pop_scalar(self: *mut String) -> Option<u32> {
+        return string_pop_scalar(self);
     }
 
     pub fn remove(self: *mut String, index: usize) -> Option<u8> {
         return remove(self, index);
     }
 
+    pub fn remove_scalar_at(self: *mut String, index: usize) -> Option<u32> {
+        return string_remove_scalar_at(self, index);
+    }
+
     pub fn truncate(self: *mut String, len: usize) -> void {
         truncate(self, len);
+    }
+
+    pub fn truncate_bytes_checked(self: *mut String, len: usize) -> bool {
+        return string_truncate_bytes_checked(self, len);
     }
 
     pub fn clear(self: *mut String) -> void {
@@ -483,6 +674,10 @@ impl String {
 
     pub fn as_str_checked(self: *const String) -> Result<str, i32> {
         return string_as_str_checked(self);
+    }
+
+    pub fn slice_bytes_checked(self: *const String, begin: usize, end: usize) -> Result<str, i32> {
+        return string_slice_bytes_checked(self, begin, end);
     }
 
     pub fn is_valid_utf8(self: *const String) -> bool {

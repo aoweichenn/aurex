@@ -51,8 +51,15 @@ fn check_compat_byte_api_keeps_utf8_boundary() -> result::Result<bool, i32> {
     let push_non_ascii_rejected: bool = !s.push(cast(u8, 0xC3));
     let pop_scalar_rejected: bool = s.pop().is_none();
     let remove_scalar_rejected: bool = s.remove(cast(usize, 0)).is_none();
+    let bad_slice_rejected: bool = s.slice_bytes_checked(cast(usize, 0), cast(usize, 1)).is_err();
+    let good_slice: str = s.slice_bytes_checked(cast(usize, 0), cast(usize, 2)).unwrap_or("bad");
+    let good_slice_ok: bool = strings::equals(good_slice, "\u{03A9}");
     s.truncate(cast(usize, 1));
     let truncate_middle_rejected: bool = s.byte_len() == cast(usize, 2) && s.equals("\u{03A9}");
+    let truncate_checked_middle_rejected: bool = !s.truncate_bytes_checked(cast(usize, 1)) &&
+        s.byte_len() == cast(usize, 2);
+    let truncate_checked_out_of_bounds_rejected: bool = !s.truncate_bytes_checked(cast(usize, 9)) &&
+        s.byte_len() == cast(usize, 2);
     s.truncate(cast(usize, 0));
     let truncate_boundary_ok: bool = s.is_empty();
     s.destroy();
@@ -60,7 +67,11 @@ fn check_compat_byte_api_keeps_utf8_boundary() -> result::Result<bool, i32> {
         push_non_ascii_rejected &&
         pop_scalar_rejected &&
         remove_scalar_rejected &&
+        bad_slice_rejected &&
+        good_slice_ok &&
         truncate_middle_rejected &&
+        truncate_checked_middle_rejected &&
+        truncate_checked_out_of_bounds_rejected &&
         truncate_boundary_ok);
 }
 
@@ -85,6 +96,37 @@ fn check_self_append_alias() -> result::Result<bool, i32> {
     return Result.ok(ok);
 }
 
+fn check_scalar_mutation() -> result::Result<bool, i32> {
+    var s: string::String = string::String.from_str("ab")?;
+    if !s.push_scalar(0x03A9) {
+        s.destroy();
+        return Result.err(6);
+    }
+    let push_ok: bool = s.equals("ab\u{03A9}") &&
+        s.byte_len() == cast(usize, 4) &&
+        strings::scalar_count(s.as_str()) == cast(usize, 3);
+
+    if !s.insert_scalar(cast(usize, 1), 0x1F600) {
+        s.destroy();
+        return Result.err(6);
+    }
+    let insert_ok: bool = s.equals("a\u{1F600}b\u{03A9}") &&
+        s.byte_len() == cast(usize, 8) &&
+        strings::scalar_count(s.as_str()) == cast(usize, 4);
+
+    let invalid_scalar_rejected: bool = !s.push_scalar(0xD800) &&
+        !s.insert_scalar(cast(usize, 2), cast(u32, b'X')) &&
+        !s.insert_scalar(cast(usize, 99), cast(u32, b'Y'));
+
+    let removed: u32 = s.remove_scalar_at(cast(usize, 1)).unwrap_or(cast(u32, 0));
+    let remove_ok: bool = removed == 0x1F600 && s.equals("ab\u{03A9}");
+    let popped: u32 = s.pop_scalar().unwrap_or(cast(u32, 0));
+    let pop_ok: bool = popped == 0x03A9 && s.equals("ab");
+
+    s.destroy();
+    return Result.ok(push_ok && insert_ok && invalid_scalar_rejected && remove_ok && pop_ok);
+}
+
 fn run() -> result::Result<i32, i32> {
     let roundtrip_ok: bool = check_owned_str_roundtrip()?;
     if !roundtrip_ok {
@@ -105,6 +147,10 @@ fn run() -> result::Result<i32, i32> {
     let alias_ok: bool = check_self_append_alias()?;
     if !alias_ok {
         return Result.err(5);
+    }
+    let scalar_ok: bool = check_scalar_mutation()?;
+    if !scalar_ok {
+        return Result.err(6);
     }
     return Result.ok(0);
 }

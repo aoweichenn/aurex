@@ -11,15 +11,15 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::ItemId ItemParser::parse_struct_decl() {
-    const bool is_noncopy = match(TokenKind::kw_noncopy);
-    const syntax::Token& begin = is_noncopy ? previous() : peek();
-    expect(TokenKind::kw_struct, is_noncopy ? "expected 'struct' after 'noncopy'" : "expected 'struct'");
-    const syntax::Token& name = expect(TokenKind::identifier, "expected struct name");
+    const bool is_noncopy = this->match(TokenKind::kw_noncopy);
+    const syntax::Token& begin = is_noncopy ? this->previous() : this->peek();
+    this->expect(TokenKind::kw_struct, is_noncopy ? "expected 'struct' after 'noncopy'" : "expected 'struct'");
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected struct name");
     std::vector<std::string_view> generic_params;
-    if (check(TokenKind::less)) {
-        generic_params = parse_generic_param_list();
+    if (this->check(TokenKind::less)) {
+        generic_params = this->parse_generic_param_list();
     }
-    expect(TokenKind::l_brace, "expected '{' after struct name");
+    this->expect(TokenKind::l_brace, "expected '{' after struct name");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::struct_decl;
@@ -27,39 +27,39 @@ syntax::ItemId ItemParser::parse_struct_decl() {
     item.generic_params = std::move(generic_params);
     item.is_noncopy = is_noncopy;
 
-    while (!is_eof() && !check(TokenKind::r_brace)) {
-        const syntax::Visibility field_visibility = parse_visibility();
-        const syntax::Token& field_name = expect(TokenKind::identifier, "expected field name");
-        expect(TokenKind::colon, "expected ':' after field name");
-        const syntax::TypeId field_type = parse_type();
-        const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after field declaration");
+    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        const syntax::Visibility field_visibility = this->parse_visibility();
+        const syntax::Token& field_name = this->expect(TokenKind::identifier, "expected field name");
+        this->expect(TokenKind::colon, "expected ':' after field name");
+        const syntax::TypeId field_type = this->parse_type();
+        const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after field declaration");
         if (field_name.kind == TokenKind::identifier) {
             item.fields.push_back(syntax::FieldDecl {
                 field_name.text,
                 field_type,
-                merge(field_name.range, end.range),
+                this->merge(field_name.range, end.range),
                 field_visibility,
             });
         }
-        reset_panic();
+        this->reset_panic();
     }
 
-    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after struct declaration");
-    item.range = merge(begin.range, end.range);
-    reset_panic();
-    return session_.module.push_item(std::move(item));
+    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after struct declaration");
+    item.range = this->merge(begin.range, end.range);
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
 }
 
 syntax::ItemId ItemParser::parse_enum_decl() {
-    const syntax::Token& begin = expect(TokenKind::kw_enum, "expected 'enum'");
-    const syntax::Token& name = expect(TokenKind::identifier, "expected enum name");
+    const syntax::Token& begin = this->expect(TokenKind::kw_enum, "expected 'enum'");
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected enum name");
     std::vector<std::string_view> generic_params;
-    if (check(TokenKind::less)) {
-        generic_params = parse_generic_param_list();
+    if (this->check(TokenKind::less)) {
+        generic_params = this->parse_generic_param_list();
     }
-    expect(TokenKind::colon, "expected ':' after enum name");
-    const syntax::TypeId base_type = parse_type();
-    expect(TokenKind::l_brace, "expected '{' after enum base type");
+    this->expect(TokenKind::colon, "expected ':' after enum name");
+    const syntax::TypeId base_type = this->parse_type();
+    this->expect(TokenKind::l_brace, "expected '{' after enum base type");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::enum_decl;
@@ -67,46 +67,46 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     item.generic_params = std::move(generic_params);
     item.enum_base_type = base_type;
 
-    while (!is_eof() && !check(TokenKind::r_brace)) {
-        const syntax::Token& case_name = expect(TokenKind::identifier, "expected enum case name");
+    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        const syntax::Token& case_name = this->expect(TokenKind::identifier, "expected enum case name");
         syntax::TypeId payload_type = syntax::invalid_type_id;
-        if (match(TokenKind::l_paren)) {
-            payload_type = parse_type();
-            expect(TokenKind::r_paren, "expected ')' after enum case payload type");
+        if (this->match(TokenKind::l_paren)) {
+            payload_type = this->parse_type();
+            this->expect(TokenKind::r_paren, "expected ')' after enum case payload type");
         }
-        expect(TokenKind::equal, "expected '=' after enum case name");
-        const syntax::Token& value = expect(TokenKind::integer_literal, "expected integer literal enum value");
-        const syntax::Token& comma = expect(TokenKind::comma, "expected ',' after enum case");
+        this->expect(TokenKind::equal, "expected '=' after enum case name");
+        const syntax::Token& value = this->expect(TokenKind::integer_literal, "expected integer literal enum value");
+        const syntax::Token& comma = this->expect(TokenKind::comma, "expected ',' after enum case");
         if (case_name.kind == TokenKind::identifier) {
             item.enum_cases.push_back(syntax::EnumCaseDecl {
                 case_name.text,
                 payload_type,
                 value.text,
-                merge(case_name.range, comma.range),
+                this->merge(case_name.range, comma.range),
             });
         }
-        reset_panic();
+        this->reset_panic();
     }
 
-    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after enum declaration");
-    item.range = merge(begin.range, end.range);
-    reset_panic();
-    return session_.module.push_item(std::move(item));
+    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after enum declaration");
+    item.range = this->merge(begin.range, end.range);
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
 }
 
 syntax::ItemId ItemParser::parse_opaque_struct_decl() {
-    const syntax::Token& begin = expect(TokenKind::kw_opaque, "expected 'opaque'");
-    expect(TokenKind::kw_struct, "expected 'struct' after 'opaque'");
-    const syntax::Token& name = expect(TokenKind::identifier, "expected opaque struct name");
-    const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after opaque struct declaration");
+    const syntax::Token& begin = this->expect(TokenKind::kw_opaque, "expected 'opaque'");
+    this->expect(TokenKind::kw_struct, "expected 'struct' after 'opaque'");
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected opaque struct name");
+    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after opaque struct declaration");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::opaque_struct_decl;
-    item.range = merge(begin.range, end.range);
+    item.range = this->merge(begin.range, end.range);
     item.name = name.text;
     item.is_extern_c = true;
-    reset_panic();
-    return session_.module.push_item(std::move(item));
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
 }
 
 } // namespace aurex::parse

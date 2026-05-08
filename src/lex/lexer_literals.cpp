@@ -8,8 +8,23 @@
 
 namespace aurex::lex {
 
-bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal_kind) {
-    bool saw_digit = false;
+namespace {
+
+enum class NumberScanState {
+    decimal_integer,
+    radix_integer,
+    fraction,
+    exponent,
+};
+
+[[nodiscard]] bool is_float_state(const NumberScanState state) noexcept {
+    return state == NumberScanState::fraction || state == NumberScanState::exponent;
+}
+
+} // namespace
+
+Lexer::DigitScanResult Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal_kind) {
+    DigitScanResult result;
     bool previous_was_digit = false;
     bool previous_was_separator = false;
     base::usize previous_separator_begin = cursor_.offset();
@@ -21,6 +36,7 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
         const char c = advance();
         if (c == digit_separator) {
             if (!previous_was_digit) {
+                result.had_error = true;
                 report(
                     separator_begin,
                     separator_begin + single_byte_lexeme_width,
@@ -32,67 +48,122 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
             previous_was_separator = true;
             continue;
         }
-        saw_digit = true;
+        result.saw_digit = true;
         previous_was_digit = true;
         previous_was_separator = false;
     }
     if (previous_was_separator) {
+        result.had_error = true;
         report(
             previous_separator_begin,
             previous_separator_begin + single_byte_lexeme_width,
             malformed_digit_separator_message
         );
     }
-    if (!saw_digit) {
+    if (!result.saw_digit) {
+        result.had_error = true;
         report(cursor_.offset(), cursor_.offset(), std::string(literal_kind) + " literal has no digits");
     }
-    return saw_digit;
+    return result;
 }
 
-bool Lexer::scan_fraction_part() {
+bool Lexer::scan_invalid_radix_tail(const DigitSet digit_set, const std::string_view message) {
+    bool had_error = false;
+    bool reported = false;
+    while (peek() == digit_separator || is_ident_continue(peek())) {
+        const char c = peek();
+        const bool valid_digit =
+            (digit_set == DigitSet::hexadecimal && is_hex_digit(c)) ||
+            (digit_set == DigitSet::binary && is_binary_digit(c));
+        if (c != digit_separator && !valid_digit && !reported) {
+            report(cursor_.offset(), cursor_.offset() + single_byte_lexeme_width, message);
+            reported = true;
+            had_error = true;
+        }
+        advance();
+    }
+    return had_error;
+}
+
+bool Lexer::scan_fraction_part(bool& had_error) {
     if (peek() != lexeme_dot || !is_decimal_digit(peek_next())) {
         return false;
     }
     advance();
-    static_cast<void>(scan_digits(DigitSet::decimal, "float"));
+    const DigitScanResult digits = scan_digits(DigitSet::decimal, "float");
+    had_error = had_error || digits.had_error;
     return true;
 }
 
-bool Lexer::scan_exponent_part() {
+bool Lexer::scan_exponent_part(bool& had_error) {
     if (peek() != float_exponent_lower && peek() != float_exponent_upper) {
         return false;
     }
 
     const char next_char = peek_next();
     if (!is_decimal_digit(next_char) && next_char != lexeme_plus && next_char != lexeme_minus) {
-        return false;
+        if (next_char != digit_separator && is_ident_continue(next_char)) {
+            return false;
+        }
+        advance();
+        const DigitScanResult digits = scan_digits(DigitSet::decimal, "float exponent");
+        had_error = had_error || digits.had_error;
+        return true;
     }
 
     advance();
     if (peek() == lexeme_plus || peek() == lexeme_minus) {
         advance();
     }
-    static_cast<void>(scan_digits(DigitSet::decimal, "float exponent"));
+    const DigitScanResult digits = scan_digits(DigitSet::decimal, "float exponent");
+    had_error = had_error || digits.had_error;
     return true;
 }
 
 void Lexer::scan_number() {
     const base::usize begin = cursor_.offset();
-    bool is_float = false;
+    NumberScanState state = NumberScanState::decimal_integer;
+    bool had_error = false;
 
     if (starts_with(hex_integer_prefix_lower) || starts_with(hex_integer_prefix_upper)) {
+        state = NumberScanState::radix_integer;
         advance_bytes(hex_integer_prefix_lower.size());
-        static_cast<void>(scan_digits(DigitSet::hexadecimal, "integer"));
+        const DigitScanResult digits = scan_digits(DigitSet::hexadecimal, "integer");
+        had_error = digits.had_error;
+        had_error = scan_invalid_radix_tail(
+            DigitSet::hexadecimal,
+            invalid_hexadecimal_digit_message
+        ) || had_error;
     } else if (starts_with(binary_integer_prefix_lower) || starts_with(binary_integer_prefix_upper)) {
+        state = NumberScanState::radix_integer;
         advance_bytes(binary_integer_prefix_lower.size());
-        static_cast<void>(scan_digits(DigitSet::binary, "integer"));
+        const DigitScanResult digits = scan_digits(DigitSet::binary, "integer");
+        had_error = digits.had_error;
+        had_error = scan_invalid_radix_tail(
+            DigitSet::binary,
+            invalid_binary_digit_message
+        ) || had_error;
     } else {
-        static_cast<void>(scan_digits(DigitSet::decimal, "integer"));
-        is_float = scan_fraction_part();
-        is_float = scan_exponent_part() || is_float;
+        const DigitScanResult digits = scan_digits(DigitSet::decimal, "integer");
+        had_error = digits.had_error;
+        if (scan_fraction_part(had_error)) {
+            state = NumberScanState::fraction;
+        }
+        if (scan_exponent_part(had_error)) {
+            state = NumberScanState::exponent;
+        }
     }
 
-    add_token(is_float ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin, cursor_.offset());
+    if (had_error) {
+        if (options_.emit_invalid_tokens) {
+            finish_token(syntax::TokenKind::invalid, begin);
+        }
+        return;
+    }
+    finish_token(
+        is_float_state(state) ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal,
+        begin
+    );
 }
 
 void Lexer::scan_string(const base::usize begin) {
@@ -140,20 +211,20 @@ void Lexer::scan_string_body(
                 report(begin + error.begin, begin + error.end, error.message);
             }
             if (decoded.ok()) {
-                add_token(token_kind, begin, cursor_.offset());
+                finish_token(token_kind, begin);
             } else if (options_.emit_invalid_tokens) {
-                add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
+                finish_token(syntax::TokenKind::invalid, begin);
             }
             return;
         }
         if (c == lexeme_line_feed) {
             report(begin, cursor_.offset(), std::string(unterminated_message));
-            add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
+            finish_token(syntax::TokenKind::invalid, begin);
             return;
         }
     }
     report(begin, cursor_.offset(), std::string(unterminated_message));
-    add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
+    finish_token(syntax::TokenKind::invalid, begin);
 }
 
 void Lexer::scan_byte(const base::usize begin) {
@@ -161,7 +232,7 @@ void Lexer::scan_byte(const base::usize begin) {
 
     if (is_at_end() || peek() == lexeme_line_feed) {
         report(begin, cursor_.offset(), unterminated_byte_message);
-        add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
+        finish_token(syntax::TokenKind::invalid, begin);
         return;
     }
 
@@ -183,11 +254,11 @@ void Lexer::scan_byte(const base::usize begin) {
         } else {
             report(begin, cursor_.offset(), unterminated_byte_message);
         }
-        add_token(syntax::TokenKind::invalid, begin, cursor_.offset());
+        finish_token(syntax::TokenKind::invalid, begin);
         return;
     }
 
-    add_token(syntax::TokenKind::byte_literal, begin, cursor_.offset());
+    finish_token(syntax::TokenKind::byte_literal, begin);
 }
 
 } // namespace aurex::lex

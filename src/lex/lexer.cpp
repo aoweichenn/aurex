@@ -4,6 +4,7 @@
 #include "char_class.hpp"
 #include "keyword.hpp"
 #include "lexeme.hpp"
+#include "punctuator.hpp"
 
 #include <string>
 #include <utility>
@@ -88,119 +89,31 @@ void Lexer::scan_token() {
         return;
     }
 
-    using syntax::TokenKind;
-    const char c = advance();
-    switch (c) {
-    case lexeme_double_quote:
+    if (peek() == lexeme_double_quote) {
+        advance();
         scan_string(begin);
-        break;
-    case lexeme_l_paren:
-        add_token(TokenKind::l_paren, begin, cursor_.offset());
-        break;
-    case lexeme_r_paren:
-        add_token(TokenKind::r_paren, begin, cursor_.offset());
-        break;
-    case lexeme_l_brace:
-        add_token(TokenKind::l_brace, begin, cursor_.offset());
-        break;
-    case lexeme_r_brace:
-        add_token(TokenKind::r_brace, begin, cursor_.offset());
-        break;
-    case lexeme_l_bracket:
-        add_token(TokenKind::l_bracket, begin, cursor_.offset());
-        break;
-    case lexeme_r_bracket:
-        add_token(TokenKind::r_bracket, begin, cursor_.offset());
-        break;
-    case lexeme_comma:
-        add_token(TokenKind::comma, begin, cursor_.offset());
-        break;
-    case lexeme_dot:
-        if (starts_with(ellipsis_tail_after_dot)) {
-            advance_bytes(ellipsis_tail_after_dot.size());
-            add_token(TokenKind::ellipsis, begin, cursor_.offset());
-        } else {
-            add_token(TokenKind::dot, begin, cursor_.offset());
-        }
-        break;
-    case lexeme_semicolon:
-        add_token(TokenKind::semicolon, begin, cursor_.offset());
-        break;
-    case lexeme_colon:
-        add_token(match(lexeme_colon) ? TokenKind::colon_colon : TokenKind::colon, begin, cursor_.offset());
-        break;
-    case lexeme_plus:
-        add_token(TokenKind::plus, begin, cursor_.offset());
-        break;
-    case lexeme_minus: {
-        const TokenKind kind = match(lexeme_greater) ? TokenKind::arrow : TokenKind::minus;
-        add_token(kind, begin, cursor_.offset());
-        break;
+        return;
     }
-    case lexeme_star:
-        add_token(TokenKind::star, begin, cursor_.offset());
-        break;
-    case lexeme_slash:
-        add_token(TokenKind::slash, begin, cursor_.offset());
-        break;
-    case lexeme_percent:
-        add_token(TokenKind::percent, begin, cursor_.offset());
-        break;
-    case lexeme_amp:
-        add_token(match(lexeme_amp) ? TokenKind::amp_amp : TokenKind::amp, begin, cursor_.offset());
-        break;
-    case lexeme_pipe:
-        add_token(match(lexeme_pipe) ? TokenKind::pipe_pipe : TokenKind::pipe, begin, cursor_.offset());
-        break;
-    case lexeme_caret:
-        add_token(TokenKind::caret, begin, cursor_.offset());
-        break;
-    case lexeme_tilde:
-        add_token(TokenKind::tilde, begin, cursor_.offset());
-        break;
-    case lexeme_bang:
-        add_token(match(lexeme_equal) ? TokenKind::bang_equal : TokenKind::bang, begin, cursor_.offset());
-        break;
-    case lexeme_equal:
-        if (match(lexeme_equal)) {
-            add_token(TokenKind::equal_equal, begin, cursor_.offset());
-        } else if (match(lexeme_greater)) {
-            add_token(TokenKind::fat_arrow, begin, cursor_.offset());
-        } else {
-            add_token(TokenKind::equal, begin, cursor_.offset());
-        }
-        break;
-    case lexeme_less:
-        if (match(lexeme_equal)) {
-            add_token(TokenKind::less_equal, begin, cursor_.offset());
-        } else if (match(lexeme_less)) {
-            add_token(TokenKind::less_less, begin, cursor_.offset());
-        } else {
-            add_token(TokenKind::less, begin, cursor_.offset());
-        }
-        break;
-    case lexeme_greater:
-        if (match(lexeme_equal)) {
-            add_token(TokenKind::greater_equal, begin, cursor_.offset());
-        } else if (match(lexeme_greater)) {
-            add_token(TokenKind::greater_greater, begin, cursor_.offset());
-        } else {
-            add_token(TokenKind::greater, begin, cursor_.offset());
-        }
-        break;
-    case lexeme_at:
-        add_token(TokenKind::at, begin, cursor_.offset());
-        break;
-    case lexeme_question:
-        add_token(TokenKind::question, begin, cursor_.offset());
-        break;
-    default:
-        report(begin, cursor_.offset(), invalid_character_message);
-        if (options_.emit_invalid_tokens) {
-            add_token(TokenKind::invalid, begin, cursor_.offset());
-        }
-        break;
+
+    if (scan_punctuator(begin)) {
+        return;
     }
+
+    advance();
+    report(begin, cursor_.offset(), invalid_character_message);
+    if (options_.emit_invalid_tokens) {
+        finish_token(syntax::TokenKind::invalid, begin);
+    }
+}
+
+bool Lexer::scan_punctuator(const base::usize begin) {
+    const auto match = match_punctuator(cursor_.remaining_text());
+    if (!match.has_value()) {
+        return false;
+    }
+    advance_bytes(match->text.size());
+    finish_token(match->kind, begin);
+    return true;
 }
 
 void Lexer::scan_identifier() {
@@ -209,7 +122,11 @@ void Lexer::scan_identifier() {
         advance();
     }
     const std::string_view text = cursor_.slice(begin, cursor_.offset());
-    add_token(keyword_kind(text), begin, cursor_.offset());
+    finish_token(keyword_kind(text), begin);
+}
+
+void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin) {
+    add_token(kind, begin, cursor_.offset());
 }
 
 void Lexer::add_token(const syntax::TokenKind kind, const base::usize begin, const base::usize end) {

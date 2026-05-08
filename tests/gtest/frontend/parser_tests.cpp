@@ -6,6 +6,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace aurex::test {
@@ -31,6 +32,42 @@ void expect_parse_error(const std::string_view source, const std::string_view me
         }
     }
     EXPECT_TRUE(found) << "missing diagnostic: " << message;
+}
+
+[[nodiscard]] syntax::AstModule parse_success(const std::string_view source) {
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({7}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    if (!tokens) {
+        ADD_FAILURE() << tokens.error().message;
+        return {};
+    }
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    if (!parsed) {
+        ADD_FAILURE() << parsed.error().message;
+        return {};
+    }
+    if (diagnostics.has_error()) {
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            ADD_FAILURE() << diagnostic.message;
+        }
+        return {};
+    }
+    return std::move(parsed.value());
+}
+
+[[nodiscard]] const syntax::ItemNode* find_item(
+    const syntax::AstModule& module,
+    const std::string_view name
+) noexcept {
+    for (const syntax::ItemNode& item : module.items) {
+        if (item.name == name) {
+            return &item;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -219,6 +256,144 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "binary",
         });
     }
+}
+
+TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
+    constexpr std::string_view source =
+        "module parser.angle;\n"
+        "struct Wrap<T> { value: T; }\n"
+        "enum Result<T, E>: u8 { ok(T) = 1, err(E) = 2, }\n"
+        "fn main() -> i32 {\n"
+        "  let call = Result<Wrap<Wrap<i32>>, bool>.ok(Wrap<Wrap<i32>> { value: Wrap<i32> { value: 1 } })?;\n"
+        "  let literal: Wrap<Wrap<i32>> = Wrap<Wrap<i32>> { value: Wrap<i32> { value: 2 } };\n"
+        "  let shifted: i32 = 16 >> 2;\n"
+        "  return shifted;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 3U);
+
+    const syntax::StmtNode& call_stmt = module.stmts[body.statements[0].value];
+    ASSERT_TRUE(syntax::is_valid(call_stmt.init));
+    const syntax::ExprNode& try_expr = module.exprs[call_stmt.init.value];
+    ASSERT_EQ(try_expr.kind, syntax::ExprKind::try_expr);
+    ASSERT_TRUE(syntax::is_valid(try_expr.unary_operand));
+    const syntax::ExprNode& call_expr = module.exprs[try_expr.unary_operand.value];
+    ASSERT_EQ(call_expr.kind, syntax::ExprKind::call);
+    ASSERT_TRUE(syntax::is_valid(call_expr.callee));
+    const syntax::ExprNode& field_expr = module.exprs[call_expr.callee.value];
+    ASSERT_EQ(field_expr.kind, syntax::ExprKind::field);
+    EXPECT_EQ(field_expr.field_name, "ok");
+    ASSERT_TRUE(syntax::is_valid(field_expr.object));
+    const syntax::ExprNode& result_name = module.exprs[field_expr.object.value];
+    ASSERT_EQ(result_name.kind, syntax::ExprKind::name);
+    EXPECT_EQ(result_name.text, "Result");
+    EXPECT_EQ(result_name.type_args.size(), 2U);
+
+    const syntax::StmtNode& literal_stmt = module.stmts[body.statements[1].value];
+    ASSERT_TRUE(syntax::is_valid(literal_stmt.init));
+    const syntax::ExprNode& literal = module.exprs[literal_stmt.init.value];
+    ASSERT_EQ(literal.kind, syntax::ExprKind::struct_literal);
+    EXPECT_EQ(literal.struct_name, "Wrap");
+    EXPECT_EQ(literal.struct_type_args.size(), 1U);
+
+    const syntax::StmtNode& shifted_stmt = module.stmts[body.statements[2].value];
+    ASSERT_TRUE(syntax::is_valid(shifted_stmt.init));
+    const syntax::ExprNode& shifted = module.exprs[shifted_stmt.init.value];
+    ASSERT_EQ(shifted.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(shifted.binary_op, syntax::BinaryOp::shr);
+}
+
+TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
+    constexpr std::string_view source =
+        "module parser.precedence;\n"
+        "fn main() -> i32 {\n"
+        "  let chain: i32 = 1 - 2 - 3;\n"
+        "  let mixed: bool = 1 + 2 * 3 < 10 && false || true;\n"
+        "  return 0;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 2U);
+
+    const syntax::StmtNode& chain_stmt = module.stmts[body.statements[0].value];
+    ASSERT_TRUE(syntax::is_valid(chain_stmt.init));
+    const syntax::ExprNode& chain = module.exprs[chain_stmt.init.value];
+    ASSERT_EQ(chain.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(chain.binary_op, syntax::BinaryOp::sub);
+    ASSERT_TRUE(syntax::is_valid(chain.binary_lhs));
+    const syntax::ExprNode& chain_lhs = module.exprs[chain.binary_lhs.value];
+    ASSERT_EQ(chain_lhs.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(chain_lhs.binary_op, syntax::BinaryOp::sub);
+
+    const syntax::StmtNode& mixed_stmt = module.stmts[body.statements[1].value];
+    ASSERT_TRUE(syntax::is_valid(mixed_stmt.init));
+    const syntax::ExprNode& mixed = module.exprs[mixed_stmt.init.value];
+    ASSERT_EQ(mixed.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(mixed.binary_op, syntax::BinaryOp::logical_or);
+    ASSERT_TRUE(syntax::is_valid(mixed.binary_lhs));
+    const syntax::ExprNode& logical_and = module.exprs[mixed.binary_lhs.value];
+    ASSERT_EQ(logical_and.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(logical_and.binary_op, syntax::BinaryOp::logical_and);
+    ASSERT_TRUE(syntax::is_valid(logical_and.binary_lhs));
+    const syntax::ExprNode& comparison = module.exprs[logical_and.binary_lhs.value];
+    ASSERT_EQ(comparison.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(comparison.binary_op, syntax::BinaryOp::less);
+    ASSERT_TRUE(syntax::is_valid(comparison.binary_lhs));
+    const syntax::ExprNode& addition = module.exprs[comparison.binary_lhs.value];
+    ASSERT_EQ(addition.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(addition.binary_op, syntax::BinaryOp::add);
+    ASSERT_TRUE(syntax::is_valid(addition.binary_rhs));
+    const syntax::ExprNode& multiplication = module.exprs[addition.binary_rhs.value];
+    ASSERT_EQ(multiplication.kind, syntax::ExprKind::binary);
+    EXPECT_EQ(multiplication.binary_op, syntax::BinaryOp::mul);
+}
+
+TEST(CoreUnit, ParserRejectsStructLiteralInControlConditions) {
+    expect_parse_error(
+        "module parser.condition_struct_literal;\n"
+        "struct Flag { value: bool; }\n"
+        "fn main() -> i32 {\n"
+        "  if Flag { value: true } { return 1; }\n"
+        "  return 0;\n"
+        "}\n",
+        "expected ';' after expression statement"
+    );
+}
+
+TEST(CoreUnit, ParserCoversAbiNamesAndArrayRadicesDirectly) {
+    constexpr std::string_view source =
+        "module parser.abi_radix;\n"
+        "extern c { fn c_puts(s: *const u8) -> i32 @name(\"puts\"); }\n"
+        "type BinBytes = [0b1010]u8;\n"
+        "type HexBytes = [0x2A]u8;\n"
+        "type DecBytes = [1_000]u8;\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* c_puts = find_item(module, "c_puts");
+    ASSERT_NE(c_puts, nullptr);
+    EXPECT_EQ(c_puts->abi_name, "puts");
+
+    const syntax::ItemNode* bin = find_item(module, "BinBytes");
+    const syntax::ItemNode* hex = find_item(module, "HexBytes");
+    const syntax::ItemNode* dec = find_item(module, "DecBytes");
+    ASSERT_NE(bin, nullptr);
+    ASSERT_NE(hex, nullptr);
+    ASSERT_NE(dec, nullptr);
+    ASSERT_TRUE(syntax::is_valid(bin->alias_type));
+    ASSERT_TRUE(syntax::is_valid(hex->alias_type));
+    ASSERT_TRUE(syntax::is_valid(dec->alias_type));
+    EXPECT_EQ(module.types[bin->alias_type.value].array_count, 10U);
+    EXPECT_EQ(module.types[hex->alias_type.value].array_count, 42U);
+    EXPECT_EQ(module.types[dec->alias_type.value].array_count, 1000U);
 }
 
 TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches) {

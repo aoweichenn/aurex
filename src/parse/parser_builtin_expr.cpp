@@ -11,106 +11,106 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const ExprContext context) {
-    const syntax::Token& begin = previous();
-    expect(TokenKind::l_paren, "expected '(' after cast builtin");
-    const syntax::TypeId type = parse_type();
-    expect(TokenKind::comma, "expected ',' after cast type");
-    const syntax::ExprId value = parse_expr(context);
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after cast expression");
+    const syntax::Token& begin = this->previous();
+    this->expect(TokenKind::l_paren, "expected '(' after cast builtin");
+    const syntax::TypeId type = this->parse_type();
+    this->expect(TokenKind::comma, "expected ',' after cast type");
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after cast expression");
 
     syntax::ExprNode expr;
     expr.kind = kind;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.cast_type = type;
     expr.cast_expr = value;
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind) {
-    const syntax::Token& begin = previous();
-    expect(TokenKind::l_paren, "expected '(' after type builtin");
-    const syntax::TypeId type = parse_type();
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after type builtin");
+    const syntax::Token& begin = this->previous();
+    this->expect(TokenKind::l_paren, "expected '(' after type builtin");
+    const syntax::TypeId type = this->parse_type();
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after type builtin");
 
     syntax::ExprNode expr;
     expr.kind = kind;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.cast_type = type;
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId BuiltinExprParser::parse_ptr_addr(const ExprContext context) {
-    const syntax::Token& begin = previous();
-    expect(TokenKind::l_paren, "expected '(' after ptr_addr");
-    const syntax::ExprId value = parse_expr(context);
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after ptr_addr argument");
+    const syntax::Token& begin = this->previous();
+    this->expect(TokenKind::l_paren, "expected '(' after ptr_addr");
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after ptr_addr argument");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::ptr_addr;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.cast_expr = value;
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId BuiltinExprParser::parse_ptr_from_addr(const ExprContext context) {
-    const syntax::Token& begin = previous();
-    expect(TokenKind::l_paren, "expected '(' after ptr_from_addr");
-    const syntax::TypeId type = parse_type();
-    expect(TokenKind::comma, "expected ',' after ptr_from_addr type");
-    const syntax::ExprId value = parse_expr(context);
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after ptr_from_addr argument");
+    const syntax::Token& begin = this->previous();
+    this->expect(TokenKind::l_paren, "expected '(' after ptr_from_addr");
+    const syntax::TypeId type = this->parse_type();
+    this->expect(TokenKind::comma, "expected ',' after ptr_from_addr type");
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after ptr_from_addr argument");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::ptr_from_addr;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.cast_type = type;
     expr.cast_expr = value;
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId BuiltinExprParser::parse_move(const ExprContext context) {
-    const syntax::Token& begin = previous();
-    expect(TokenKind::l_paren, "expected '(' after move");
-    const syntax::ExprId value = parse_expr(context);
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after move argument");
+    const syntax::Token& begin = this->previous();
+    this->expect(TokenKind::l_paren, "expected '(' after move");
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after move argument");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::move_expr;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.unary_operand = value;
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
-    const syntax::Token& begin = previous();
+    const syntax::Token& begin = this->previous();
     const syntax::ExprKind kind = begin.kind == TokenKind::kw_str_data
         ? syntax::ExprKind::str_data
         : syntax::ExprKind::str_byte_len;
-    expect(TokenKind::l_paren, "expected '(' after str builtin");
-    const syntax::ExprId value = parse_expr(context);
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after str builtin argument");
+    this->expect(TokenKind::l_paren, "expected '(' after str builtin");
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after str builtin argument");
 
     syntax::ExprNode expr;
     expr.kind = kind;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.cast_expr = value;
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId BuiltinExprParser::parse_str_from_bytes_unchecked(const ExprContext context) {
-    const syntax::Token& begin = previous();
-    expect(TokenKind::l_paren, "expected '(' after str_from_bytes_unchecked");
-    const syntax::ExprId data = parse_expr(context);
-    expect(TokenKind::comma, "expected ',' after str_from_bytes_unchecked data");
-    const syntax::ExprId len = parse_expr(context);
-    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after str_from_bytes_unchecked length");
+    const syntax::Token& begin = this->previous();
+    this->expect(TokenKind::l_paren, "expected '(' after str_from_bytes_unchecked");
+    const syntax::ExprId data = this->parse_expr(context);
+    this->expect(TokenKind::comma, "expected ',' after str_from_bytes_unchecked data");
+    const syntax::ExprId len = this->parse_expr(context);
+    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after str_from_bytes_unchecked length");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::str_from_bytes_unchecked;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.args.push_back(data);
     expr.args.push_back(len);
-    return session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 } // namespace aurex::parse

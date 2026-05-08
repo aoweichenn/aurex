@@ -14,15 +14,15 @@ public:
         : sink_(sink) {}
 
     void report_here(const TokenCursor& cursor, std::string message) {
-        report_at(cursor.peek(), std::move(message));
+        this->report_at(cursor.peek(), std::move(message));
     }
 
     void report_at(const syntax::Token& token, std::string message) {
-        if (panic_) {
+        if (this->panic_) {
             return;
         }
-        panic_ = true;
-        sink_.push(base::Diagnostic {
+        this->panic_ = true;
+        this->sink_.push(base::Diagnostic {
             base::Severity::error,
             token.range,
             std::move(message),
@@ -30,11 +30,11 @@ public:
     }
 
     void reset_panic() noexcept {
-        panic_ = false;
+        this->panic_ = false;
     }
 
     [[nodiscard]] bool has_error() const noexcept {
-        return sink_.has_error();
+        return this->sink_.has_error();
     }
 
 private:

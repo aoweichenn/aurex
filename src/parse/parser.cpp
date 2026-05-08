@@ -10,7 +10,79 @@ namespace {
 
 using syntax::TokenKind;
 
+enum class AngleListFollower {
+    type_scope,
+    struct_literal,
+};
+
 constexpr int kGreaterGreaterTokenArity = 2;
+constexpr int kSingleGreaterTokenArity = 1;
+constexpr int kInitialAngleListDepth = 1;
+constexpr int kClosedAngleListDepth = 0;
+constexpr base::usize kNextTokenOffset = 1;
+
+[[nodiscard]] bool angle_list_follower_matches(
+    const TokenKind kind,
+    const AngleListFollower follower
+) noexcept {
+    switch (follower) {
+    case AngleListFollower::type_scope:
+        return kind == TokenKind::dot || kind == TokenKind::l_paren;
+    case AngleListFollower::struct_literal:
+        return kind == TokenKind::l_brace;
+    }
+    return false;
+}
+
+[[nodiscard]] bool angle_list_scan_should_stop(
+    const TokenKind kind,
+    const AngleListFollower follower
+) noexcept {
+    switch (kind) {
+    case TokenKind::semicolon:
+    case TokenKind::r_brace:
+    case TokenKind::fat_arrow:
+        return true;
+    case TokenKind::l_brace:
+        return follower == AngleListFollower::type_scope;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool next_angle_list_has_follower(
+    const std::span<const syntax::Token> tokens,
+    const base::usize less_position,
+    const AngleListFollower follower
+) noexcept {
+    if (less_position >= tokens.size() || tokens[less_position].kind != TokenKind::less) {
+        return false;
+    }
+
+    base::usize index = less_position + kNextTokenOffset;
+    int depth = kInitialAngleListDepth;
+    while (index < tokens.size()) {
+        const TokenKind kind = tokens[index].kind;
+        if (kind == TokenKind::less) {
+            ++depth;
+        } else if (kind == TokenKind::greater || kind == TokenKind::greater_greater) {
+            const int close_count = kind == TokenKind::greater_greater
+                ? kGreaterGreaterTokenArity
+                : kSingleGreaterTokenArity;
+            for (int i = 0; i < close_count; ++i) {
+                --depth;
+                if (depth == kClosedAngleListDepth) {
+                    const base::usize after = index + kNextTokenOffset;
+                    return after < tokens.size() && angle_list_follower_matches(tokens[after].kind, follower);
+                }
+            }
+        } else if (angle_list_scan_should_stop(kind, follower)) {
+            return false;
+        }
+        ++index;
+    }
+    return false;
+}
 
 } // namespace
 
@@ -23,165 +95,108 @@ Parser::Parser(
 base::Result<syntax::AstModule> Parser::parse_module() {
     ItemParser items(*this);
 
-    if (match(TokenKind::kw_module)) {
-        session_.module.module_path = items.parse_path();
-        expect(TokenKind::semicolon, "expected ';' after module declaration");
+    if (this->match(TokenKind::kw_module)) {
+        this->session_.module.module_path = items.parse_path();
+        this->expect(TokenKind::semicolon, "expected ';' after module declaration");
     }
 
-    while (check(TokenKind::kw_import) ||
-           ((check(TokenKind::kw_pub) || check(TokenKind::kw_priv)) && check_next(TokenKind::kw_import))) {
-        session_.module.imports.push_back(items.parse_import_decl());
+    while (this->check(TokenKind::kw_import) ||
+           ((this->check(TokenKind::kw_pub) || this->check(TokenKind::kw_priv)) && this->check_next(TokenKind::kw_import))) {
+        this->session_.module.imports.push_back(items.parse_import_decl());
     }
 
-    while (!is_eof()) {
+    while (!this->is_eof()) {
         const syntax::ItemId item = items.parse_item();
         if (!syntax::is_valid(item)) {
-            synchronize();
+            this->synchronize();
         }
     }
 
-    if (session_.diagnostics.has_error()) {
+    if (this->session_.diagnostics.has_error()) {
         return base::Result<syntax::AstModule>::fail(
             {base::ErrorCode::parse_error, "parsing failed"}
         );
     }
-    return base::Result<syntax::AstModule>::ok(std::move(session_.module));
+    return base::Result<syntax::AstModule>::ok(std::move(this->session_.module));
 }
 
 bool Parser::is_eof() const noexcept {
-    return session_.cursor.is_eof();
+    return this->session_.cursor.is_eof();
 }
 
 const syntax::Token& Parser::peek() const noexcept {
-    return session_.cursor.peek();
+    return this->session_.cursor.peek();
 }
 
 const syntax::Token& Parser::previous() const noexcept {
-    return session_.cursor.previous();
+    return this->session_.cursor.previous();
 }
 
 bool Parser::check(const TokenKind kind) const noexcept {
-    return session_.cursor.check(kind);
+    return this->session_.cursor.check(kind);
 }
 
 bool Parser::check_next(const TokenKind kind) const noexcept {
-    return session_.cursor.check_next(kind);
+    return this->session_.cursor.check_next(kind);
 }
 
 bool Parser::check_type_arg_list_end() const noexcept {
-    return session_.cursor.check_type_arg_list_end();
+    return this->session_.cursor.check_type_arg_list_end();
 }
 
 bool Parser::next_angle_list_is_type_scope() const noexcept {
-    if (!check(TokenKind::less)) {
-        return false;
-    }
-    const std::span<const syntax::Token> tokens = session_.cursor.tokens();
-    base::usize index = session_.cursor.position() + 1;
-    int depth = 1;
-    while (index < tokens.size()) {
-        const TokenKind kind = tokens[index].kind;
-        if (kind == TokenKind::less) {
-            ++depth;
-        } else if (kind == TokenKind::greater) {
-            --depth;
-            if (depth == 0) {
-                const base::usize after = index + 1;
-                return after < tokens.size() &&
-                       (tokens[after].kind == TokenKind::dot || tokens[after].kind == TokenKind::l_paren);
-            }
-        } else if (kind == TokenKind::greater_greater) {
-            for (int i = 0; i < kGreaterGreaterTokenArity; ++i) {
-                --depth;
-                if (depth == 0) {
-                    const base::usize after = index + 1;
-                    return after < tokens.size() &&
-                           (tokens[after].kind == TokenKind::dot || tokens[after].kind == TokenKind::l_paren);
-                }
-            }
-        } else if (kind == TokenKind::semicolon ||
-                   kind == TokenKind::l_brace ||
-                   kind == TokenKind::r_brace ||
-                   kind == TokenKind::fat_arrow) {
-            return false;
-        }
-        ++index;
-    }
-    return false;
+    return next_angle_list_has_follower(
+        this->session_.cursor.tokens(),
+        this->session_.cursor.position(),
+        AngleListFollower::type_scope
+    );
 }
 
 bool Parser::next_angle_list_is_struct_literal() const noexcept {
-    if (!check(TokenKind::less)) {
-        return false;
-    }
-    const std::span<const syntax::Token> tokens = session_.cursor.tokens();
-    base::usize index = session_.cursor.position() + 1;
-    int depth = 1;
-    while (index < tokens.size()) {
-        const TokenKind kind = tokens[index].kind;
-        if (kind == TokenKind::less) {
-            ++depth;
-        } else if (kind == TokenKind::greater) {
-            --depth;
-            if (depth == 0) {
-                const base::usize after = index + 1;
-                return after < tokens.size() && tokens[after].kind == TokenKind::l_brace;
-            }
-        } else if (kind == TokenKind::greater_greater) {
-            for (int i = 0; i < kGreaterGreaterTokenArity; ++i) {
-                --depth;
-                if (depth == 0) {
-                    const base::usize after = index + 1;
-                    return after < tokens.size() && tokens[after].kind == TokenKind::l_brace;
-                }
-            }
-        } else if (kind == TokenKind::semicolon ||
-                   kind == TokenKind::r_brace ||
-                   kind == TokenKind::fat_arrow) {
-            return false;
-        }
-        ++index;
-    }
-    return false;
+    return next_angle_list_has_follower(
+        this->session_.cursor.tokens(),
+        this->session_.cursor.position(),
+        AngleListFollower::struct_literal
+    );
 }
 
 bool Parser::match(const TokenKind kind) noexcept {
-    return session_.cursor.match(kind);
+    return this->session_.cursor.match(kind);
 }
 
 const syntax::Token& Parser::advance() noexcept {
-    return session_.cursor.advance();
+    return this->session_.cursor.advance();
 }
 
 const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
-    if (check(kind)) {
-        return advance();
+    if (this->check(kind)) {
+        return this->advance();
     }
-    report_here(std::move(message));
+    this->report_here(std::move(message));
     static const syntax::Token fallback {};
     return fallback;
 }
 
 const syntax::Token& Parser::expect_type_arg_list_end(std::string message) {
-    if (check_type_arg_list_end()) {
-        return session_.cursor.consume_type_arg_list_end();
+    if (this->check_type_arg_list_end()) {
+        return this->session_.cursor.consume_type_arg_list_end();
     }
-    report_here(std::move(message));
+    this->report_here(std::move(message));
     static const syntax::Token fallback {};
     return fallback;
 }
 
 void Parser::synchronize() {
-    reset_panic();
-    if (is_eof()) {
+    this->reset_panic();
+    if (this->is_eof()) {
         return;
     }
-    advance();
-    while (!is_eof()) {
-        if (previous().kind == TokenKind::semicolon) {
+    this->advance();
+    while (!this->is_eof()) {
+        if (this->previous().kind == TokenKind::semicolon) {
             return;
         }
-        switch (peek().kind) {
+        switch (this->peek().kind) {
         case TokenKind::r_brace:
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
@@ -205,22 +220,22 @@ void Parser::synchronize() {
         case TokenKind::kw_import:
             return;
         default:
-            advance();
+            this->advance();
             break;
         }
     }
 }
 
 void Parser::report_here(std::string message) {
-    report_at(peek(), std::move(message));
+    this->report_at(this->peek(), std::move(message));
 }
 
 void Parser::report_at(const syntax::Token& token, std::string message) {
-    session_.diagnostics.report_at(token, std::move(message));
+    this->session_.diagnostics.report_at(token, std::move(message));
 }
 
 void Parser::reset_panic() noexcept {
-    session_.diagnostics.reset_panic();
+    this->session_.diagnostics.reset_panic();
 }
 
 base::SourceRange Parser::merge(base::SourceRange begin, base::SourceRange end) const noexcept {

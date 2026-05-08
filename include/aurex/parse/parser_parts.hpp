@@ -133,22 +133,12 @@ public:
 private:
     [[nodiscard]] syntax::ExprId parse_if_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_match_expr(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_logical_or(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_logical_and(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_bit_or(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_bit_xor(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_bit_and(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_equality(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_compare(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_shift(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_add(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_mul(ExprContext context);
+    [[nodiscard]] syntax::ExprId parse_binary_expr(ExprContext context, int min_precedence);
     [[nodiscard]] syntax::ExprId parse_unary(ExprContext context);
     [[nodiscard]] syntax::ExprId make_binary(
         syntax::BinaryOp op,
         syntax::ExprId lhs,
-        syntax::ExprId rhs,
-        base::SourceRange range
+        syntax::ExprId rhs
     );
 };
 

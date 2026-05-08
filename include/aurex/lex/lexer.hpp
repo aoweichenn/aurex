@@ -39,6 +39,11 @@ private:
         binary,
     };
 
+    struct DigitScanResult {
+        bool saw_digit = false;
+        bool had_error = false;
+    };
+
     [[nodiscard]] bool is_at_end() const noexcept;
     [[nodiscard]] bool starts_with(std::string_view text) const noexcept;
     [[nodiscard]] char peek() const noexcept;
@@ -49,11 +54,13 @@ private:
 
     void skip_trivia();
     void scan_token();
+    [[nodiscard]] bool scan_punctuator(base::usize begin);
     void scan_identifier();
     void scan_number();
-    [[nodiscard]] bool scan_digits(DigitSet digit_set, std::string_view literal_kind);
-    [[nodiscard]] bool scan_fraction_part();
-    [[nodiscard]] bool scan_exponent_part();
+    [[nodiscard]] DigitScanResult scan_digits(DigitSet digit_set, std::string_view literal_kind);
+    [[nodiscard]] bool scan_invalid_radix_tail(DigitSet digit_set, std::string_view message);
+    [[nodiscard]] bool scan_fraction_part(bool& had_error);
+    [[nodiscard]] bool scan_exponent_part(bool& had_error);
     void scan_string_body(
         base::usize begin,
         syntax::TokenKind token_kind,
@@ -65,6 +72,7 @@ private:
     void scan_byte(base::usize begin);
     void scan_line_comment();
     void scan_block_comment();
+    void finish_token(syntax::TokenKind kind, base::usize begin);
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
     void report(base::usize begin, base::usize end, std::string_view message) const;
 

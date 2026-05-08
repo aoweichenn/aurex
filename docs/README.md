@@ -33,3 +33,7 @@ language they were written in.
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
 - [Next Steps](en/next-steps.md)
+
+## Compiler Internals
+
+- [Parser Architecture](compiler/parser-architecture.md)

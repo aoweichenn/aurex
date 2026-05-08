@@ -22,20 +22,20 @@ constexpr base::usize kStringDelimiterPairSize = kStringDelimiterSize * 2;
 } // namespace
 
 syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
-    const syntax::Token& begin = expect(TokenKind::kw_fn, "expected 'fn'");
-    const syntax::Token& name = expect(TokenKind::identifier, "expected function name");
+    const syntax::Token& begin = this->expect(TokenKind::kw_fn, "expected 'fn'");
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected function name");
     std::vector<std::string_view> generic_params;
-    if (check(TokenKind::less)) {
-        generic_params = parse_generic_param_list();
+    if (this->check(TokenKind::less)) {
+        generic_params = this->parse_generic_param_list();
     }
-    expect(TokenKind::l_paren, "expected '(' after function name");
+    this->expect(TokenKind::l_paren, "expected '(' after function name");
     std::vector<syntax::ParamDecl> params;
     bool is_variadic = false;
-    if (!check(TokenKind::r_paren)) {
-        params = parse_param_list(is_variadic);
+    if (!this->check(TokenKind::r_paren)) {
+        params = this->parse_param_list(is_variadic);
     }
-    expect(TokenKind::r_paren, "expected ')' after parameter list");
-    const syntax::TypeId return_type = parse_optional_return_type();
+    this->expect(TokenKind::r_paren, "expected ')' after parameter list");
+    const syntax::TypeId return_type = this->parse_optional_return_type();
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::fn_decl;
@@ -47,72 +47,72 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     item.is_extern_c = is_extern_c;
     item.is_variadic = is_variadic;
 
-    parse_optional_abi_name(item);
+    this->parse_optional_abi_name(item);
 
     if (is_extern_c) {
-        const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after extern function declaration");
-        item.range = merge(begin.range, end.range);
-    } else if (match(TokenKind::semicolon)) {
+        const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after extern function declaration");
+        item.range = this->merge(begin.range, end.range);
+    } else if (this->match(TokenKind::semicolon)) {
         item.is_prototype = true;
-        item.range = merge(begin.range, previous().range);
+        item.range = this->merge(begin.range, this->previous().range);
     } else {
-        item.body = parse_block();
-        item.range = syntax::is_valid(item.body) ? merge(begin.range, session_.module.stmts[item.body.value].range) : begin.range;
+        item.body = this->parse_block();
+        item.range = syntax::is_valid(item.body) ? this->merge(begin.range, this->session_.module.stmts[item.body.value].range) : begin.range;
     }
 
-    reset_panic();
-    return session_.module.push_item(std::move(item));
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
 }
 
 std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
     std::vector<syntax::ParamDecl> params;
     do {
-        if (match(TokenKind::ellipsis)) {
+        if (this->match(TokenKind::ellipsis)) {
             is_variadic = true;
-            if (!check(TokenKind::r_paren)) {
-                report_here("variadic marker must be last in parameter list");
-                while (!is_eof() && !check(TokenKind::r_paren)) {
-                    advance();
+            if (!this->check(TokenKind::r_paren)) {
+                this->report_here("variadic marker must be last in parameter list");
+                while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+                    this->advance();
                 }
             }
             break;
         }
-        const syntax::Token& name = expect(TokenKind::identifier, "expected parameter name");
-        expect(TokenKind::colon, "expected ':' after parameter name");
-        const syntax::TypeId type = parse_type();
+        const syntax::Token& name = this->expect(TokenKind::identifier, "expected parameter name");
+        this->expect(TokenKind::colon, "expected ':' after parameter name");
+        const syntax::TypeId type = this->parse_type();
         if (name.kind == TokenKind::identifier) {
-            params.push_back(syntax::ParamDecl {name.text, type, merge(name.range, session_.module.types[type.value].range)});
+            params.push_back(syntax::ParamDecl {name.text, type, this->merge(name.range, this->session_.module.types[type.value].range)});
         }
-        reset_panic();
-        if (check(TokenKind::r_paren)) {
+        this->reset_panic();
+        if (this->check(TokenKind::r_paren)) {
             break;
         }
-    } while (match(TokenKind::comma) && !check(TokenKind::r_paren));
+    } while (this->match(TokenKind::comma) && !this->check(TokenKind::r_paren));
     return params;
 }
 
 syntax::TypeId ItemParser::parse_optional_return_type() {
-    if (!match(TokenKind::arrow)) {
+    if (!this->match(TokenKind::arrow)) {
         return syntax::invalid_type_id;
     }
-    return parse_type();
+    return this->parse_type();
 }
 
 void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
-    if (!match(TokenKind::at)) {
+    if (!this->match(TokenKind::at)) {
         return;
     }
-    const syntax::Token& attr = expect(TokenKind::identifier, "expected ABI attribute name");
+    const syntax::Token& attr = this->expect(TokenKind::identifier, "expected ABI attribute name");
     if (attr.text != "name") {
-        report_at(attr, "expected ABI attribute 'name'");
+        this->report_at(attr, "expected ABI attribute 'name'");
     }
-    expect(TokenKind::l_paren, "expected '(' after ABI attribute");
-    const syntax::Token& value = expect(TokenKind::string_literal, "expected string literal in ABI name");
+    this->expect(TokenKind::l_paren, "expected '(' after ABI attribute");
+    const syntax::Token& value = this->expect(TokenKind::string_literal, "expected string literal in ABI name");
     if (value.kind == TokenKind::string_literal) {
         item.abi_name = unquote_string_literal(value.text);
     }
-    expect(TokenKind::r_paren, "expected ')' after ABI attribute");
-    reset_panic();
+    this->expect(TokenKind::r_paren, "expected ')' after ABI attribute");
+    this->reset_panic();
 }
 
 } // namespace aurex::parse

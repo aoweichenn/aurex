@@ -19,6 +19,10 @@ public:
         return source_text_.size();
     }
 
+    [[nodiscard]] std::string_view remaining_text() const noexcept {
+        return source_text_.substr(offset_);
+    }
+
     [[nodiscard]] base::usize offset() const noexcept {
         return offset_;
     }

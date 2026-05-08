@@ -105,95 +105,95 @@ constexpr base::u64 kDecimalDigitCount = 10;
 
 std::vector<syntax::TypeId> TypeParser::parse_type_arg_list() {
     std::vector<syntax::TypeId> args;
-    expect(TokenKind::less, "expected '<' before type argument list");
-    if (!check_type_arg_list_end()) {
+    this->expect(TokenKind::less, "expected '<' before type argument list");
+    if (!this->check_type_arg_list_end()) {
         do {
-            args.push_back(parse_type());
-            reset_panic();
-            if (check_type_arg_list_end()) {
+            args.push_back(this->parse_type());
+            this->reset_panic();
+            if (this->check_type_arg_list_end()) {
                 break;
             }
-        } while (match(TokenKind::comma) && !check_type_arg_list_end());
+        } while (this->match(TokenKind::comma) && !this->check_type_arg_list_end());
     }
-    expect_type_arg_list_end("expected '>' after type argument list");
-    reset_panic();
+    this->expect_type_arg_list_end("expected '>' after type argument list");
+    this->reset_panic();
     return args;
 }
 
 syntax::TypeId TypeParser::parse_type() {
-    reset_panic();
-    if (is_primitive_type_token(peek().kind)) {
-        return parse_primitive_type();
+    this->reset_panic();
+    if (is_primitive_type_token(this->peek().kind)) {
+        return this->parse_primitive_type();
     }
-    if (check(TokenKind::identifier)) {
-        const syntax::Token& name = advance();
+    if (this->check(TokenKind::identifier)) {
+        const syntax::Token& name = this->advance();
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::named;
         type.range = name.range;
         type.name = name.text;
-        if (match(TokenKind::colon_colon)) {
-            const syntax::Token& scoped_name = expect(TokenKind::identifier, "expected type name after '::'");
+        if (this->match(TokenKind::colon_colon)) {
+            const syntax::Token& scoped_name = this->expect(TokenKind::identifier, "expected type name after '::'");
             type.scope_name = name.text;
             type.scope_range = name.range;
             type.name = scoped_name.text;
-            type.range = merge(name.range, scoped_name.range);
+            type.range = this->merge(name.range, scoped_name.range);
         }
-        if (check(TokenKind::less)) {
-            type.type_args = parse_type_arg_list();
-            type.range = merge(type.range, previous().range);
+        if (this->check(TokenKind::less)) {
+            type.type_args = this->parse_type_arg_list();
+            type.range = this->merge(type.range, this->previous().range);
         }
-        return session_.module.push_type(type);
+        return this->session_.module.push_type(type);
     }
-    if (match(TokenKind::star)) {
-        const syntax::Token& begin = previous();
+    if (this->match(TokenKind::star)) {
+        const syntax::Token& begin = this->previous();
         syntax::PointerMutability mutability = syntax::PointerMutability::const_;
-        if (match(TokenKind::kw_mut)) {
+        if (this->match(TokenKind::kw_mut)) {
             mutability = syntax::PointerMutability::mut;
-        } else if (match(TokenKind::kw_const)) {
+        } else if (this->match(TokenKind::kw_const)) {
             mutability = syntax::PointerMutability::const_;
         } else {
-            report_here("expected 'mut' or 'const' after '*'");
+            this->report_here("expected 'mut' or 'const' after '*'");
         }
-        const syntax::TypeId pointee = parse_type();
+        const syntax::TypeId pointee = this->parse_type();
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::pointer;
-        type.range = merge(begin.range, session_.module.types[pointee.value].range);
+        type.range = this->merge(begin.range, this->session_.module.types[pointee.value].range);
         type.pointer_mutability = mutability;
         type.pointee = pointee;
-        return session_.module.push_type(type);
+        return this->session_.module.push_type(type);
     }
-    if (match(TokenKind::l_bracket)) {
-        const syntax::Token& begin = previous();
-        const syntax::Token& count = expect(TokenKind::integer_literal, "expected array length");
-        expect(TokenKind::r_bracket, "expected ']' after array length");
-        const syntax::TypeId element = parse_type();
+    if (this->match(TokenKind::l_bracket)) {
+        const syntax::Token& begin = this->previous();
+        const syntax::Token& count = this->expect(TokenKind::integer_literal, "expected array length");
+        this->expect(TokenKind::r_bracket, "expected ']' after array length");
+        const syntax::TypeId element = this->parse_type();
         base::u64 array_count = 0;
         if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
-            report_at(count, "array length literal is out of range");
+            this->report_at(count, "array length literal is out of range");
         }
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::array;
-        type.range = merge(begin.range, session_.module.types[element.value].range);
+        type.range = this->merge(begin.range, this->session_.module.types[element.value].range);
         type.array_count = array_count;
         type.array_element = element;
-        return session_.module.push_type(type);
+        return this->session_.module.push_type(type);
     }
 
-    report_here("expected type");
+    this->report_here("expected type");
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::primitive;
     type.primitive = syntax::PrimitiveTypeKind::void_;
-    type.range = peek().range;
-    return session_.module.push_type(type);
+    type.range = this->peek().range;
+    return this->session_.module.push_type(type);
 }
 
 syntax::TypeId TypeParser::parse_primitive_type() {
-    const syntax::Token& token = advance();
+    const syntax::Token& token = this->advance();
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::primitive;
     type.range = token.range;
     type.primitive = primitive_from_token(token.kind);
-    return session_.module.push_type(type);
+    return this->session_.module.push_type(type);
 }
 
 } // namespace aurex::parse

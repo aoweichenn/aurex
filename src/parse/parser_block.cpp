@@ -11,63 +11,63 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::StmtId BlockParser::parse_block() {
-    const syntax::Token& begin = expect(TokenKind::l_brace, "expected block");
+    const syntax::Token& begin = this->expect(TokenKind::l_brace, "expected block");
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
 
-    while (!is_eof() && !check(TokenKind::r_brace)) {
-        const syntax::StmtId stmt = parse_stmt();
+    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        const syntax::StmtId stmt = this->parse_stmt();
         if (syntax::is_valid(stmt)) {
             block.statements.push_back(stmt);
         } else {
-            synchronize();
+            this->synchronize();
         }
-        reset_panic();
+        this->reset_panic();
     }
 
-    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after block");
-    block.range = merge(begin.range, end.range);
-    reset_panic();
-    return session_.module.push_stmt(std::move(block));
+    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after block");
+    block.range = this->merge(begin.range, end.range);
+    this->reset_panic();
+    return this->session_.module.push_stmt(std::move(block));
 }
 
 syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
-    const syntax::Token& begin = expect(TokenKind::l_brace, "expected block expression");
+    const syntax::Token& begin = this->expect(TokenKind::l_brace, "expected block expression");
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
     syntax::ExprId result = syntax::invalid_expr_id;
 
-    while (!is_eof() && !check(TokenKind::r_brace)) {
-        if (check(TokenKind::kw_let) || check(TokenKind::kw_var) || check(TokenKind::kw_defer)) {
-            const syntax::StmtId stmt = parse_stmt();
+    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        if (this->check(TokenKind::kw_let) || this->check(TokenKind::kw_var) || this->check(TokenKind::kw_defer)) {
+            const syntax::StmtId stmt = this->parse_stmt();
             if (syntax::is_valid(stmt)) {
                 block.statements.push_back(stmt);
             } else {
-                synchronize();
+                this->synchronize();
             }
-            reset_panic();
+            this->reset_panic();
             continue;
         }
 
-        const syntax::ExprId expr = parse_expr(context);
-        if (match(TokenKind::equal)) {
+        const syntax::ExprId expr = this->parse_expr(context);
+        if (this->match(TokenKind::equal)) {
             syntax::StmtNode stmt;
             stmt.kind = syntax::StmtKind::assign;
             stmt.lhs = expr;
-            stmt.rhs = parse_expr(context);
-            const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after assignment");
-            stmt.range = syntax::is_valid(expr) ? merge(session_.module.exprs[expr.value].range, end.range) : end.range;
-            block.statements.push_back(session_.module.push_stmt(std::move(stmt)));
-            reset_panic();
+            stmt.rhs = this->parse_expr(context);
+            const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after assignment");
+            stmt.range = syntax::is_valid(expr) ? this->merge(this->session_.module.exprs[expr.value].range, end.range) : end.range;
+            block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
+            this->reset_panic();
             continue;
         }
-        if (match(TokenKind::semicolon)) {
+        if (this->match(TokenKind::semicolon)) {
             syntax::StmtNode stmt;
             stmt.kind = syntax::StmtKind::expr;
             stmt.init = expr;
-            stmt.range = syntax::is_valid(expr) ? merge(session_.module.exprs[expr.value].range, previous().range) : previous().range;
-            block.statements.push_back(session_.module.push_stmt(std::move(stmt)));
-            reset_panic();
+            stmt.range = syntax::is_valid(expr) ? this->merge(this->session_.module.exprs[expr.value].range, this->previous().range) : this->previous().range;
+            block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
+            this->reset_panic();
             continue;
         }
 
@@ -75,17 +75,17 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
         break;
     }
 
-    const syntax::Token& end = expect(TokenKind::r_brace, "expected '}' after block expression");
-    block.range = merge(begin.range, end.range);
-    const syntax::StmtId block_id = session_.module.push_stmt(std::move(block));
+    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after block expression");
+    block.range = this->merge(begin.range, end.range);
+    const syntax::StmtId block_id = this->session_.module.push_stmt(std::move(block));
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::block_expr;
-    expr.range = merge(begin.range, end.range);
+    expr.range = this->merge(begin.range, end.range);
     expr.block = block_id;
     expr.block_result = result;
-    reset_panic();
-    return session_.module.push_expr(std::move(expr));
+    this->reset_panic();
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 } // namespace aurex::parse

@@ -152,8 +152,6 @@ bool token_matches_recovery_context(
                detail::token_starts_statement(kind);
     case RecoveryContext::block_end:
         return detail::token_starts_item(kind);
-    case RecoveryContext::item_or_statement:
-        return detail::token_starts_item(kind) || detail::token_starts_statement(kind);
     }
     return false;
 }

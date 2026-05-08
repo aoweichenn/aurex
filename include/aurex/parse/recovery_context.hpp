@@ -69,8 +69,6 @@ enum class RecoveryContext {
     block_start,
     // Block closer boundary after malformed or missing block tails.
     block_end,
-    // Transitional default for bridge calls that have not chosen a narrower boundary.
-    item_or_statement,
 };
 
 } // namespace aurex::parse

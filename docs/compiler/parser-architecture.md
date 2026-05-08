@@ -11,7 +11,10 @@ the narrowest parser part that owns the relevant grammar surface.
 | Component | Responsibility |
 | --- | --- |
 | `Parser` | Parse session coordination, token cursor wrappers, diagnostics, recovery entry point, source range helpers, and top-level module flow. |
-| `ParserPartBase` | Shared bridge for parser parts that need cursor, diagnostics, AST storage, and cross-part entry points. |
+| `ParserPartCore` | Shared cursor, diagnostics, recovered `expect`, and parse-session access for grammar parser parts. |
+| `ParserPartRouter` | Cross-part parse entry points such as `parse_type`, `parse_expr`, `parse_stmt`, and `parse_pattern`. |
+| `ParserPartRangeReader` | AST-id-to-source-range helpers used on recovery-prone paths. |
+| `ParserPartBase` | Thin compatibility base that composes the core/router/range-reader layers for concrete parser parts. |
 | `RecoveryContext` helpers | Contextual recovery boundary sets for items, statements, expression statements, and future narrower parse regions. |
 | `ItemParser` | Module paths, imports, visibility, top-level item dispatch, const/type aliases, generic parameter lists. |
 | `TypeParser` | Type syntax, primitive types, named/scoped types, pointer types, array types, and type argument lists. |
@@ -31,6 +34,28 @@ part header that declares the class they implement, plus any concrete parser
 part they instantiate directly. `parser_parts.hpp` is only a compatibility
 umbrella for callers that intentionally need every parser part declaration; do
 not add new parser class declarations directly to it.
+
+The shared parser-part bridge is layered deliberately:
+
+- `ParserPartCore` owns token navigation, diagnostics, and recovered `expect`
+  helpers.
+- `ParserPartRouter` owns cross-parser calls and is the only shared layer that
+  instantiates another concrete parser part.
+- `ParserPartRangeReader` owns AST range lookup helpers and keeps recovery
+  source-range fallback logic out of grammar parser parts.
+- `ParserPartBase` is intentionally thin. Do not add new helper families
+  directly to it; add them to the narrow layer that owns the responsibility.
+
+`Parser` implementation is also split by infrastructure responsibility:
+
+- `parser.cpp` owns construction and top-level module flow only.
+- `parser_cursor.cpp` owns cursor forwarding and angle-list lookahead entry
+  points used by grammar parser parts.
+- `parser_diagnostics.cpp` owns `expect`, recovered `expect`, synchronization,
+  and diagnostic forwarding.
+- `parser_source_ranges.cpp` owns source-range composition.
+- `parser_angle_lookahead.cpp` owns the angle-list scanner and related magic
+  constants such as token arity and scan offsets.
 
 Recovery token sets are split into source-private start-token, list-boundary,
 and delimiter-boundary files. The public recovery API should stay limited to
@@ -148,9 +173,6 @@ Current contexts:
 - `RecoveryContext::block_end` is used when a block tail is malformed or
   missing. It stops at `}` or the next item starter so one missing brace does
   not consume following declarations.
-- `RecoveryContext::item_or_statement` remains the conservative default for
-  bridge calls while a caller is being migrated to a narrower context.
-
 When adding recovery behavior, name the recovery set after the grammar boundary
 it represents. Do not inline a long token switch into a grammar parser part.
 
@@ -158,6 +180,8 @@ it represents. Do not inline a long token switch into a grammar parser part.
 
 - Keep `Parser` as a coordinator. Do not move feature-specific grammar logic
   back into it.
+- Keep `Parser` infrastructure implementation in the focused source file that
+  owns the concern: cursor, diagnostics/recovery, source ranges, or lookahead.
 - Split by responsibility, not by arbitrary line count.
 - Keep public headers concise. Prefer implementation-local helpers in `.cpp`
   files when a helper is not part of the parser part interface.
@@ -214,7 +238,7 @@ Near-term improvements:
 
 - Keep deduplicating small lookahead and recovery helpers.
 - Add narrower recovery contexts where the grammar has a real boundary instead
-  of using the transitional `item_or_statement` default.
+  of introducing broad default synchronization behavior.
 - Keep tests close to grammar boundaries that are likely to regress.
 - Make parser parts easier to reason about before algorithmic changes.
 

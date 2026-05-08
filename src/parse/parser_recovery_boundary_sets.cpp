@@ -119,79 +119,12 @@ bool token_ends_generic_parameter(const TokenKind kind) noexcept {
     }
 }
 
-bool token_matches_abi_attribute_argument(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::string_literal:
-    case TokenKind::r_paren:
-    case TokenKind::l_brace:
-    case TokenKind::semicolon:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
 bool token_ends_builtin_argument(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::comma:
     case TokenKind::r_paren:
     case TokenKind::semicolon:
     case TokenKind::r_bracket:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool token_matches_path_segment_boundary(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::dot:
-    case TokenKind::semicolon:
-    case TokenKind::kw_as:
-    case TokenKind::l_brace:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool token_matches_import_alias_boundary(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::semicolon:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool token_matches_statement_terminator_boundary(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::semicolon:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool token_matches_for_clause_separator_boundary(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::semicolon:
-    case TokenKind::l_brace:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool token_matches_block_start_boundary(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::l_brace:
     case TokenKind::r_brace:
         return true;
     default:

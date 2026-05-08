@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_pattern_part.hpp"
 
 namespace aurex::parse {
 
@@ -42,18 +42,20 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
         pattern.case_name = first.text;
         pattern.range = first.range;
         if (this->match(TokenKind::dot)) {
-            const syntax::Token& case_name = this->expect(TokenKind::identifier, "expected enum case name after '.'");
+            const syntax::Token& case_name =
+                this->expect_identifier_recovered("expected enum case name after '.'");
             pattern.enum_name = first.text;
             pattern.case_name = case_name.text;
             pattern.scoped = true;
             pattern.range = this->merge(first.range, case_name.range);
         }
         if (this->match(TokenKind::l_paren)) {
-            const syntax::Token& binding = this->expect(TokenKind::identifier, "expected payload binding name");
+            const syntax::Token& binding =
+                this->expect_identifier_recovered("expected payload binding name");
             if (binding.kind == TokenKind::identifier) {
                 pattern.binding_name = binding.text;
             }
-            const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after payload binding");
+            const syntax::Token& end = this->expect_payload_binding_end();
             pattern.range = this->merge(pattern.range, end.range);
         }
         return this->session_.module.push_pattern(pattern);
@@ -68,18 +70,20 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     }
     if (this->match(TokenKind::dot)) {
         const syntax::Token& dot = this->previous();
-        const syntax::Token& case_name = this->expect(TokenKind::identifier, "expected enum case name after '.'");
+        const syntax::Token& case_name =
+            this->expect_identifier_recovered("expected enum case name after '.'");
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::enum_case;
         pattern.case_name = case_name.text;
         pattern.scoped = true;
         pattern.range = this->merge(dot.range, case_name.range);
         if (this->match(TokenKind::l_paren)) {
-            const syntax::Token& binding = this->expect(TokenKind::identifier, "expected payload binding name");
+            const syntax::Token& binding =
+                this->expect_identifier_recovered("expected payload binding name");
             if (binding.kind == TokenKind::identifier) {
                 pattern.binding_name = binding.text;
             }
-            const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after payload binding");
+            const syntax::Token& end = this->expect_payload_binding_end();
             pattern.range = this->merge(pattern.range, end.range);
         }
         return this->session_.module.push_pattern(pattern);
@@ -90,6 +94,14 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     pattern.range = this->peek().range;
     this->advance();
     return this->session_.module.push_pattern(pattern);
+}
+
+const syntax::Token& PatternParser::expect_payload_binding_end() {
+    return this->expect_recovered(
+        TokenKind::r_paren,
+        "expected ')' after payload binding",
+        RecoveryContext::pattern_payload
+    );
 }
 
 } // namespace aurex::parse

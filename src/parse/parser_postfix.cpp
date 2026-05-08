@@ -1,5 +1,6 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_postfix_expr_part.hpp"
 
+#include "aurex/parse/parser_primary_expr_part.hpp"
 #include "aurex/parse/recovery.hpp"
 
 #include <optional>
@@ -61,7 +62,7 @@ syntax::ExprId PostfixExprParser::parse_type_args_suffix(const syntax::ExprId ex
 }
 
 syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) {
-    const syntax::Token& field = this->expect(TokenKind::identifier, "expected field name after '.'");
+    const syntax::Token& field = this->expect_identifier_recovered("expected field name after '.'");
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::field;
     node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
@@ -72,7 +73,7 @@ syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) 
 
 syntax::ExprId PostfixExprParser::parse_index_suffix(const syntax::ExprId expr, const ExprContext context) {
     const syntax::ExprId index = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_bracket, "expected ']' after index");
+    const syntax::Token& end = this->expect_index_suffix_end();
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::index;
     node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
@@ -81,12 +82,24 @@ syntax::ExprId PostfixExprParser::parse_index_suffix(const syntax::ExprId expr, 
     return this->session_.module.push_expr(std::move(node));
 }
 
+const syntax::Token& PostfixExprParser::expect_index_suffix_end() {
+    return this->expect_recovered(
+        TokenKind::r_bracket,
+        "expected ']' after index",
+        RecoveryContext::index_expression
+    );
+}
+
 syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId expr, const ExprContext context) {
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::call;
     node.callee = expr;
     this->parse_call_args(node.args, context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after argument list");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::r_paren,
+        "expected ')' after argument list",
+        RecoveryContext::call_argument
+    );
     node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
     return this->session_.module.push_expr(std::move(node));
 }

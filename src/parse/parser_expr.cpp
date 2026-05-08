@@ -1,5 +1,6 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_expr_part.hpp"
 
+#include "aurex/parse/parser_postfix_expr_part.hpp"
 #include "aurex/parse/recovery.hpp"
 
 #include <string_view>
@@ -89,7 +90,11 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
 
     const syntax::ExprId then_expr = this->parse_block_expr(context);
-    this->expect(TokenKind::kw_else, "if expression requires else branch");
+    this->expect_recovered(
+        TokenKind::kw_else,
+        "if expression requires else branch",
+        RecoveryContext::if_else
+    );
     const syntax::ExprId else_expr = this->check(TokenKind::kw_if)
         ? this->parse_if_expr(context)
         : this->parse_block_expr(context);
@@ -106,7 +111,11 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
 syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
     const syntax::Token& begin = this->expect(TokenKind::kw_match, "expected 'match'");
     const syntax::ExprId value = this->parse_expr(ExprContext::no_struct_literal);
-    this->expect(TokenKind::l_brace, "expected '{' after match value");
+    this->expect_recovered(
+        TokenKind::l_brace,
+        "expected '{' after match value",
+        RecoveryContext::block_start
+    );
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::match_expr;
@@ -119,7 +128,11 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         }
     }
 
-    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after match expression");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::r_brace,
+        "expected '}' after match expression",
+        RecoveryContext::match_arm
+    );
     expr.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_expr(std::move(expr));
@@ -134,7 +147,11 @@ syntax::MatchArm ExprParser::parse_match_arm(
     if (this->match(TokenKind::kw_if)) {
         guard = this->parse_expr(context);
     }
-    this->expect(TokenKind::fat_arrow, "expected '=>' after match case");
+    this->expect_recovered(
+        TokenKind::fat_arrow,
+        "expected '=>' after match case",
+        RecoveryContext::match_arm_arrow
+    );
     const syntax::ExprId arm_value = this->parse_expr(context);
     const base::SourceRange pattern_range = this->pattern_range_or(pattern, fallback_range);
     const base::SourceRange arm_range = syntax::is_valid(arm_value)

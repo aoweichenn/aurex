@@ -43,6 +43,11 @@ private:
     bool match(syntax::TokenKind kind) noexcept;
     const syntax::Token& advance() noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
+    const syntax::Token& expect_recovered(
+        syntax::TokenKind kind,
+        std::string message,
+        RecoveryContext context
+    );
     const syntax::Token& expect_type_arg_list_end(std::string message);
     void synchronize(RecoveryContext context = RecoveryContext::item_or_statement);
     void report_here(std::string message);

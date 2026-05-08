@@ -1,6 +1,6 @@
 #include "aurex/parse/parser.hpp"
 
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_item_part.hpp"
 #include "aurex/parse/recovery.hpp"
 
 #include <utility>
@@ -98,7 +98,11 @@ base::Result<syntax::AstModule> Parser::parse_module() {
 
     if (this->match(TokenKind::kw_module)) {
         this->session_.module.module_path = items.parse_path();
-        this->expect(TokenKind::semicolon, "expected ';' after module declaration");
+        this->expect_recovered(
+            TokenKind::semicolon,
+            "expected ';' after module declaration",
+            RecoveryContext::module_terminator
+        );
     }
 
     while (this->check(TokenKind::kw_import) ||
@@ -174,6 +178,29 @@ const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
         return this->advance();
     }
     this->report_here(std::move(message));
+    static const syntax::Token fallback {};
+    return fallback;
+}
+
+const syntax::Token& Parser::expect_recovered(
+    const TokenKind kind,
+    std::string message,
+    const RecoveryContext context
+) {
+    if (this->check(kind)) {
+        return this->advance();
+    }
+
+    this->report_here(std::move(message));
+    if (!token_matches_recovery_context(this->peek().kind, context)) {
+        this->synchronize(context);
+    }
+    if (this->check(kind)) {
+        const syntax::Token& token = this->advance();
+        this->reset_panic();
+        return token;
+    }
+    this->reset_panic();
     static const syntax::Token fallback {};
     return fallback;
 }

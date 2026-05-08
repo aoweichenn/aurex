@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_builtin_expr_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
 
@@ -14,11 +14,11 @@ using syntax::TokenKind;
 
 syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect(TokenKind::l_paren, "expected '(' after cast builtin");
+    this->expect_builtin_arg_list_start("expected '(' after cast builtin");
     const syntax::TypeId type = this->parse_type();
     this->recover_builtin_arg_separator("expected ',' after cast type");
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after cast expression");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after cast expression");
 
     syntax::ExprNode expr;
     expr.kind = kind;
@@ -30,9 +30,9 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
 
 syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind) {
     const syntax::Token& begin = this->previous();
-    this->expect(TokenKind::l_paren, "expected '(' after type builtin");
+    this->expect_builtin_arg_list_start("expected '(' after type builtin");
     const syntax::TypeId type = this->parse_type();
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after type builtin");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after type builtin");
 
     syntax::ExprNode expr;
     expr.kind = kind;
@@ -43,9 +43,9 @@ syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind
 
 syntax::ExprId BuiltinExprParser::parse_ptr_addr(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect(TokenKind::l_paren, "expected '(' after ptr_addr");
+    this->expect_builtin_arg_list_start("expected '(' after ptr_addr");
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after ptr_addr argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after ptr_addr argument");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::ptr_addr;
@@ -56,11 +56,11 @@ syntax::ExprId BuiltinExprParser::parse_ptr_addr(const ExprContext context) {
 
 syntax::ExprId BuiltinExprParser::parse_ptr_from_addr(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect(TokenKind::l_paren, "expected '(' after ptr_from_addr");
+    this->expect_builtin_arg_list_start("expected '(' after ptr_from_addr");
     const syntax::TypeId type = this->parse_type();
     this->recover_builtin_arg_separator("expected ',' after ptr_from_addr type");
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after ptr_from_addr argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after ptr_from_addr argument");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::ptr_from_addr;
@@ -72,9 +72,9 @@ syntax::ExprId BuiltinExprParser::parse_ptr_from_addr(const ExprContext context)
 
 syntax::ExprId BuiltinExprParser::parse_move(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect(TokenKind::l_paren, "expected '(' after move");
+    this->expect_builtin_arg_list_start("expected '(' after move");
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after move argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after move argument");
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::move_expr;
@@ -88,9 +88,9 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     const syntax::ExprKind kind = begin.kind == TokenKind::kw_str_data
         ? syntax::ExprKind::str_data
         : syntax::ExprKind::str_byte_len;
-    this->expect(TokenKind::l_paren, "expected '(' after str builtin");
+    this->expect_builtin_arg_list_start("expected '(' after str builtin");
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after str builtin argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after str builtin argument");
 
     syntax::ExprNode expr;
     expr.kind = kind;
@@ -101,11 +101,13 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
 
 syntax::ExprId BuiltinExprParser::parse_str_from_bytes_unchecked(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect(TokenKind::l_paren, "expected '(' after str_from_bytes_unchecked");
+    this->expect_builtin_arg_list_start("expected '(' after str_from_bytes_unchecked");
     const syntax::ExprId data = this->parse_expr(context);
     this->recover_builtin_arg_separator("expected ',' after str_from_bytes_unchecked data");
     const syntax::ExprId len = this->parse_expr(context);
-    const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after str_from_bytes_unchecked length");
+    const syntax::Token& end = this->expect_builtin_arg_list_end(
+        "expected ')' after str_from_bytes_unchecked length"
+    );
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::str_from_bytes_unchecked;
@@ -113,6 +115,14 @@ syntax::ExprId BuiltinExprParser::parse_str_from_bytes_unchecked(const ExprConte
     expr.args.push_back(data);
     expr.args.push_back(len);
     return this->session_.module.push_expr(std::move(expr));
+}
+
+void BuiltinExprParser::expect_builtin_arg_list_start(std::string message) {
+    this->expect_recovered(
+        TokenKind::l_paren,
+        std::move(message),
+        RecoveryContext::builtin_argument_list_start
+    );
 }
 
 void BuiltinExprParser::recover_builtin_arg_separator(std::string message) {
@@ -130,6 +140,14 @@ void BuiltinExprParser::recover_builtin_arg_separator(std::string message) {
         return;
     }
     this->reset_panic();
+}
+
+const syntax::Token& BuiltinExprParser::expect_builtin_arg_list_end(std::string message) {
+    return this->expect_recovered(
+        TokenKind::r_paren,
+        std::move(message),
+        RecoveryContext::builtin_argument
+    );
 }
 
 } // namespace aurex::parse

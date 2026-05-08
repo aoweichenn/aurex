@@ -1,4 +1,7 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_primary_expr_part.hpp"
+
+#include "aurex/parse/parser_builtin_expr_part.hpp"
+#include "aurex/parse/parser_name_expr_part.hpp"
 
 namespace aurex::parse {
 
@@ -82,7 +85,7 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
     }
     if (this->match(TokenKind::l_paren)) {
         const syntax::ExprId expr = this->parse_expr(context);
-        this->expect(TokenKind::r_paren, "expected ')' after expression");
+        this->expect_grouped_expression_end();
         return expr;
     }
     if (this->check(TokenKind::l_brace)) {
@@ -122,6 +125,14 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
         return parser.parse_str_from_bytes_unchecked(context);
     }
     return syntax::invalid_expr_id;
+}
+
+void PrimaryExprParser::expect_grouped_expression_end() {
+    this->expect_recovered(
+        TokenKind::r_paren,
+        "expected ')' after expression",
+        RecoveryContext::grouped_expression
+    );
 }
 
 syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) {

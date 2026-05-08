@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_item_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
 
@@ -26,18 +26,22 @@ constexpr base::usize kStringDelimiterPairSize = kStringDelimiterSize * 2;
 
 syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
     const syntax::Token& begin = this->expect(TokenKind::kw_fn, "expected 'fn'");
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected function name");
+    const syntax::Token& name = this->expect_identifier_recovered("expected function name");
     std::vector<std::string_view> generic_params;
     if (this->check(TokenKind::less)) {
         generic_params = this->parse_generic_param_list();
     }
-    this->expect(TokenKind::l_paren, "expected '(' after function name");
+    this->expect_param_list_start("expected '(' after function name");
     std::vector<syntax::ParamDecl> params;
     bool is_variadic = false;
     if (!this->check(TokenKind::r_paren)) {
         params = this->parse_param_list(is_variadic);
     }
-    this->expect(TokenKind::r_paren, "expected ')' after parameter list");
+    this->expect_recovered(
+        TokenKind::r_paren,
+        "expected ')' after parameter list",
+        RecoveryContext::parameter
+    );
     const syntax::TypeId return_type = this->parse_optional_return_type();
 
     syntax::ItemNode item;
@@ -53,7 +57,9 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     this->parse_optional_abi_name(item);
 
     if (is_extern_c) {
-        const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after extern function declaration");
+        const syntax::Token& end = this->expect_item_terminator(
+            "expected ';' after extern function declaration"
+        );
         item.range = this->merge(begin.range, end.range);
     } else if (this->match(TokenKind::semicolon)) {
         item.is_prototype = true;
@@ -65,6 +71,14 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
 
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));
+}
+
+void ItemParser::expect_param_list_start(std::string message) {
+    this->expect_recovered(
+        TokenKind::l_paren,
+        std::move(message),
+        RecoveryContext::parameter_list_start
+    );
 }
 
 std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
@@ -90,8 +104,8 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
 }
 
 std::optional<syntax::ParamDecl> ItemParser::parse_param() {
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected parameter name");
-    this->expect(TokenKind::colon, "expected ':' after parameter name");
+    const syntax::Token& name = this->expect_identifier_recovered("expected parameter name");
+    this->expect_type_annotation_colon("expected ':' after parameter name");
     const syntax::TypeId type = this->parse_type();
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
@@ -143,14 +157,22 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
     if (!this->match(TokenKind::at)) {
         return;
     }
-    const syntax::Token& attr = this->expect(TokenKind::identifier, "expected ABI attribute name");
+    const syntax::Token& attr = this->expect_identifier_recovered("expected ABI attribute name");
     if (attr.text != "name") {
         this->report_at(attr, "expected ABI attribute 'name'");
     }
-    this->expect(TokenKind::l_paren, "expected '(' after ABI attribute");
+    this->expect_abi_attribute_argument_start();
     this->parse_abi_name_argument(item);
     this->recover_abi_attribute_argument_end();
     this->reset_panic();
+}
+
+void ItemParser::expect_abi_attribute_argument_start() {
+    this->expect_recovered(
+        TokenKind::l_paren,
+        "expected '(' after ABI attribute",
+        RecoveryContext::abi_attribute_start
+    );
 }
 
 void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) {

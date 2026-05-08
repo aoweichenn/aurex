@@ -103,6 +103,32 @@ bool token_starts_non_expression_statement(const TokenKind kind) noexcept {
     }
 }
 
+bool token_starts_type(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::identifier:
+    case TokenKind::star:
+    case TokenKind::l_bracket:
+    case TokenKind::kw_void:
+    case TokenKind::kw_bool:
+    case TokenKind::kw_i8:
+    case TokenKind::kw_u8:
+    case TokenKind::kw_i16:
+    case TokenKind::kw_u16:
+    case TokenKind::kw_i32:
+    case TokenKind::kw_u32:
+    case TokenKind::kw_i64:
+    case TokenKind::kw_u64:
+    case TokenKind::kw_isize:
+    case TokenKind::kw_usize:
+    case TokenKind::kw_f32:
+    case TokenKind::kw_f64:
+    case TokenKind::kw_str:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace aurex::parse::detail
 
 namespace aurex::parse {

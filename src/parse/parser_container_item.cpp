@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_item_part.hpp"
 
 #include <utility>
 
@@ -17,7 +17,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
         generic_params = this->parse_generic_param_list();
     }
     const syntax::TypeId impl_type = this->parse_type();
-    this->expect(TokenKind::l_brace, "expected '{' after impl type");
+    this->expect_item_container_start("expected '{' after impl type");
 
     syntax::ItemNode block;
     block.kind = syntax::ItemKind::impl_block;
@@ -49,7 +49,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
         this->reset_panic();
     }
 
-    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after impl block");
+    const syntax::Token& end = this->expect_item_container_end("expected '}' after impl block");
     block.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_item(std::move(block));
@@ -58,7 +58,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
 syntax::ItemId ItemParser::parse_extern_block() {
     const syntax::Token& begin = this->expect(TokenKind::kw_extern, "expected 'extern'");
     this->expect(TokenKind::kw_c, "expected 'c' after 'extern'");
-    this->expect(TokenKind::l_brace, "expected '{' after 'extern c'");
+    this->expect_item_container_start("expected '{' after 'extern c'");
 
     syntax::ItemNode block;
     block.kind = syntax::ItemKind::extern_block;
@@ -82,7 +82,7 @@ syntax::ItemId ItemParser::parse_extern_block() {
         this->reset_panic();
     }
 
-    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after extern block");
+    const syntax::Token& end = this->expect_item_container_end("expected '}' after extern block");
     block.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_item(std::move(block));

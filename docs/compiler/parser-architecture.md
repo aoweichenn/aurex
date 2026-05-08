@@ -25,10 +25,17 @@ the narrowest parser part that owns the relevant grammar surface.
 | `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, move, and string helpers. |
 | `PatternParser` | Match patterns. |
 
-Recovery token sets are split into source-private start-token and
-boundary-token files. The public recovery API should stay limited to context
-selection and the small starter predicates that grammar parser parts already
-need.
+Parser part declarations are split by responsibility under
+`include/aurex/parse/*_part.hpp`. Source files should include the narrowest
+part header that declares the class they implement, plus any concrete parser
+part they instantiate directly. `parser_parts.hpp` is only a compatibility
+umbrella for callers that intentionally need every parser part declaration; do
+not add new parser class declarations directly to it.
+
+Recovery token sets are split into source-private start-token, list-boundary,
+and delimiter-boundary files. The public recovery API should stay limited to
+context selection and the small starter predicates that grammar parser parts
+already need.
 
 ## Recovery Contexts
 
@@ -38,6 +45,9 @@ of always scanning for every possible grammar starter.
 
 Current contexts:
 
+- `RecoveryContext::identifier` is used at required declaration, member,
+  scoped-name, and pattern name positions. It stops at the next identifier,
+  common punctuation boundaries, item starters, and obvious statement starters.
 - `RecoveryContext::item` is used by top-level parsing and item containers
   such as `impl` and `extern c` blocks. It stops at item starters and `}` so a
   malformed member does not consume the next declaration or the container end.
@@ -68,19 +78,64 @@ Current contexts:
 - `RecoveryContext::generic_parameter` is used inside generic parameter lists.
   It stops at parameter separators, `>`, declaration followers, valid generic
   parameter starters, and obvious outer grammar starters.
+- `RecoveryContext::parameter_list_start` is used before function parameter
+  lists. It stops at `(`, legal parameter starters, signature followers, and
+  obvious outer grammar starters so an inserted token before `(` does not
+  damage the whole signature.
 - `RecoveryContext::abi_attribute_argument` is used inside ABI attribute
   argument parentheses. It stops at the argument value, `)`, function
   body/prototype boundaries, and obvious outer grammar starters.
+- `RecoveryContext::abi_attribute_start` is used before ABI attribute argument
+  parentheses. It stops at `(`, a direct string value for missing-paren
+  recovery, signature/body boundaries, and obvious outer grammar starters.
 - `RecoveryContext::builtin_argument` is used inside builtin expression
   argument lists after a malformed separator. It stops at separators, `)`,
   enclosing delimiters, valid expression starters, and obvious outer grammar
   starters so fixed-shape builtins can still parse their next argument.
+- `RecoveryContext::builtin_argument_list_start` is used before builtin
+  argument lists. It stops at `(`, valid first argument starters, enclosing
+  delimiters, and obvious outer grammar starters so both inserted-token and
+  missing-paren cases stay local.
+- `RecoveryContext::grouped_expression` is used after a malformed
+  parenthesized expression. It stops at `)`, common enclosing delimiters, and
+  obvious outer grammar starters.
+- `RecoveryContext::index_expression` is used after a malformed indexing
+  expression. It stops at `]`, common enclosing delimiters, and obvious outer
+  grammar starters.
+- `RecoveryContext::array_type_length` is used after a malformed array type
+  length. It stops at `]`, common enclosing delimiters, and obvious outer
+  grammar starters so the element type can still be parsed.
+- `RecoveryContext::pattern_payload` is used after a malformed enum pattern
+  payload binding. It stops at `)`, match-arm separators, `=>`, and obvious
+  outer grammar starters.
+- `RecoveryContext::enum_case_payload` is used after a malformed enum
+  declaration payload type. It stops at `)`, `=`, case separators, declaration
+  ends, and obvious outer grammar starters.
 - `RecoveryContext::path_segment` is used inside module and import paths. It
   stops at path separators, path terminators, import aliases, valid path
   segment starters, and obvious outer grammar starters.
 - `RecoveryContext::import_alias` is used after a malformed `import ... as`
   alias. It stops at the import terminator or obvious outer grammar starters so
   the import declaration can close locally.
+- `RecoveryContext::module_terminator` is used after a malformed top-level
+  `module` declaration path. It stops at `;`, item/import starters, and obvious
+  statement starters so imports and declarations remain reachable.
+- `RecoveryContext::item_terminator` is used after malformed item-level
+  declarations that must end in `;`. It stops at `;`, container ends, item
+  starters, and obvious statement starters.
+- `RecoveryContext::type_annotation` is used before required type annotations
+  and enum base types. It stops at `:`, valid type starters, common declaration
+  boundaries, and obvious outer grammar starters.
+- `RecoveryContext::initializer` is used before required initializer/value
+  separators such as declaration `=` and enum case `=`. It stops at `=`, valid
+  expression or type starters, common declaration boundaries, and obvious outer
+  grammar starters.
+- `RecoveryContext::match_arm_arrow` is used between a match pattern/guard and
+  its arm value. It stops at `=>`, expression starters, arm separators, the
+  match closer, and obvious outer grammar starters.
+- `RecoveryContext::if_else` is used by if expressions before the required
+  `else` branch. It stops at `else`, block starts, enclosing delimiters, and
+  obvious outer grammar starters.
 - `RecoveryContext::statement_terminator` is used after malformed
   control-statement tails and block-expression assignment tails. It stops at
   semicolons, block ends, item starters, and non-expression statement starters.
@@ -106,6 +161,8 @@ it represents. Do not inline a long token switch into a grammar parser part.
 - Split by responsibility, not by arbitrary line count.
 - Keep public headers concise. Prefer implementation-local helpers in `.cpp`
   files when a helper is not part of the parser part interface.
+- Keep parser part declarations in their focused `*_part.hpp` header. Do not
+  grow `parser_parts.hpp` back into a declaration dump.
 - Avoid magic numbers and magic strings in parser logic. Name domain values
   such as token arity, radix, delimiter width, binding power, and limits.
 - Inside C++ class methods, qualify member function calls and member field

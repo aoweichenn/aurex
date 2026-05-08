@@ -1,7 +1,11 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_part_base.hpp"
 
+#include "aurex/parse/parser_block_part.hpp"
+#include "aurex/parse/parser_expr_part.hpp"
+#include "aurex/parse/parser_pattern_part.hpp"
 #include "aurex/parse/parser.hpp"
-#include "aurex/parse/recovery.hpp"
+#include "aurex/parse/parser_stmt_part.hpp"
+#include "aurex/parse/parser_type_part.hpp"
 
 #include <utility>
 
@@ -59,22 +63,31 @@ const syntax::Token& ParserPartBase::expect_recovered(
     std::string message,
     const RecoveryContext context
 ) {
-    if (this->check(kind)) {
-        return this->advance();
-    }
+    return this->parser_.expect_recovered(kind, std::move(message), context);
+}
 
-    this->report_here(std::move(message));
-    if (!token_matches_recovery_context(this->peek().kind, context)) {
-        this->synchronize(context);
-    }
-    if (this->check(kind)) {
-        const syntax::Token& token = this->advance();
-        this->reset_panic();
-        return token;
-    }
-    this->reset_panic();
-    static const syntax::Token fallback {};
-    return fallback;
+const syntax::Token& ParserPartBase::expect_identifier_recovered(std::string message) {
+    return this->expect_recovered(
+        syntax::TokenKind::identifier,
+        std::move(message),
+        RecoveryContext::identifier
+    );
+}
+
+const syntax::Token& ParserPartBase::expect_type_annotation_colon(std::string message) {
+    return this->expect_recovered(
+        syntax::TokenKind::colon,
+        std::move(message),
+        RecoveryContext::type_annotation
+    );
+}
+
+const syntax::Token& ParserPartBase::expect_initializer_equal(std::string message) {
+    return this->expect_recovered(
+        syntax::TokenKind::equal,
+        std::move(message),
+        RecoveryContext::initializer
+    );
 }
 
 const syntax::Token& ParserPartBase::expect_type_arg_list_end(std::string message) {

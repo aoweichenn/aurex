@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_item_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
 
@@ -94,12 +94,12 @@ syntax::ItemId ItemParser::parse_item() {
 
 syntax::ItemId ItemParser::parse_const_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_const, "expected 'const'");
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected const name");
-    this->expect(TokenKind::colon, "expected ':' after const name");
+    const syntax::Token& name = this->expect_identifier_recovered("expected const name");
+    this->expect_type_annotation_colon("expected ':' after const name");
     const syntax::TypeId type = this->parse_type();
-    this->expect(TokenKind::equal, "expected '=' in const declaration");
+    this->expect_initializer_equal("expected '=' in const declaration");
     const syntax::ExprId value = this->parse_expr();
-    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after const declaration");
+    const syntax::Token& end = this->expect_item_terminator("expected ';' after const declaration");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::const_decl;
@@ -113,10 +113,10 @@ syntax::ItemId ItemParser::parse_const_decl() {
 
 syntax::ItemId ItemParser::parse_type_alias_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_type, "expected 'type'");
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected type alias name");
-    this->expect(TokenKind::equal, "expected '=' in type alias declaration");
+    const syntax::Token& name = this->expect_identifier_recovered("expected type alias name");
+    this->expect_initializer_equal("expected '=' in type alias declaration");
     const syntax::TypeId target = this->parse_type();
-    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after type alias declaration");
+    const syntax::Token& end = this->expect_item_terminator("expected ';' after type alias declaration");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::type_alias;
@@ -139,13 +139,13 @@ std::vector<std::string_view> ItemParser::parse_generic_param_list() {
             break;
         }
     }
-    this->expect(TokenKind::greater, "expected '>' after generic parameter list");
+    this->expect_generic_param_list_end();
     this->reset_panic();
     return params;
 }
 
 std::optional<std::string_view> ItemParser::parse_generic_param() {
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected generic parameter name");
+    const syntax::Token& name = this->expect_identifier_recovered("expected generic parameter name");
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
@@ -171,6 +171,14 @@ bool ItemParser::recover_generic_param_separator() {
     }
     this->reset_panic();
     return token_starts_generic_parameter(this->peek().kind);
+}
+
+void ItemParser::expect_generic_param_list_end() {
+    this->expect_recovered(
+        TokenKind::greater,
+        "expected '>' after generic parameter list",
+        RecoveryContext::generic_parameter
+    );
 }
 
 } // namespace aurex::parse

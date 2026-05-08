@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_type_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
 
@@ -150,7 +150,8 @@ syntax::TypeId TypeParser::parse_type() {
         type.range = name.range;
         type.name = name.text;
         if (this->match(TokenKind::colon_colon)) {
-            const syntax::Token& scoped_name = this->expect(TokenKind::identifier, "expected type name after '::'");
+            const syntax::Token& scoped_name =
+                this->expect_identifier_recovered("expected type name after '::'");
             type.scope_name = name.text;
             type.scope_range = name.range;
             type.name = scoped_name.text;
@@ -183,7 +184,7 @@ syntax::TypeId TypeParser::parse_type() {
     if (this->match(TokenKind::l_bracket)) {
         const syntax::Token& begin = this->previous();
         const syntax::Token& count = this->expect(TokenKind::integer_literal, "expected array length");
-        this->expect(TokenKind::r_bracket, "expected ']' after array length");
+        this->expect_array_length_end();
         const syntax::TypeId element = this->parse_type();
         base::u64 array_count = 0;
         if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
@@ -203,6 +204,14 @@ syntax::TypeId TypeParser::parse_type() {
     type.primitive = syntax::PrimitiveTypeKind::void_;
     type.range = this->peek().range;
     return this->session_.module.push_type(type);
+}
+
+void TypeParser::expect_array_length_end() {
+    this->expect_recovered(
+        TokenKind::r_bracket,
+        "expected ']' after array length",
+        RecoveryContext::array_type_length
+    );
 }
 
 syntax::TypeId TypeParser::parse_primitive_type() {

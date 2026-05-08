@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_item_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
 
@@ -45,9 +45,34 @@ syntax::ImportDecl ItemParser::parse_import_decl() {
     if (this->match(TokenKind::kw_as)) {
         this->parse_import_alias(import);
     }
-    this->expect(TokenKind::semicolon, "expected ';' after import declaration");
+    [[maybe_unused]] const syntax::Token& terminator =
+        this->expect_item_terminator("expected ';' after import declaration");
     this->reset_panic();
     return import;
+}
+
+const syntax::Token& ItemParser::expect_item_terminator(std::string message) {
+    return this->expect_recovered(
+        TokenKind::semicolon,
+        std::move(message),
+        RecoveryContext::item_terminator
+    );
+}
+
+void ItemParser::expect_item_container_start(std::string message) {
+    this->expect_recovered(
+        TokenKind::l_brace,
+        std::move(message),
+        RecoveryContext::block_start
+    );
+}
+
+const syntax::Token& ItemParser::expect_item_container_end(std::string message) {
+    return this->expect_recovered(
+        TokenKind::r_brace,
+        std::move(message),
+        RecoveryContext::block_end
+    );
 }
 
 std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message) {
@@ -55,22 +80,23 @@ std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message)
         return this->advance();
     }
 
-    this->expect(syntax::TokenKind::identifier, std::move(message));
-    this->recover_path_segment();
+    const syntax::Token& segment = this->expect_recovered(
+        syntax::TokenKind::identifier,
+        std::move(message),
+        RecoveryContext::path_segment
+    );
+    if (segment.kind == TokenKind::identifier) {
+        return segment;
+    }
+    if (token_starts_path_segment(this->peek().kind)) {
+        return this->advance();
+    }
     return std::nullopt;
 }
 
-void ItemParser::recover_path_segment() {
-    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::path_segment)) {
-        this->synchronize(RecoveryContext::path_segment);
-    }
-}
-
 void ItemParser::parse_import_alias(syntax::ImportDecl& import) {
-    const syntax::Token& alias = this->expect(
-        TokenKind::identifier,
-        "expected import alias after 'as'"
-    );
+    const syntax::Token& alias =
+        this->expect_identifier_recovered("expected import alias after 'as'");
     if (alias.kind == TokenKind::identifier) {
         import.alias = alias.text;
         import.alias_range = alias.range;

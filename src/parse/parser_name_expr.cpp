@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_name_expr_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
 
@@ -21,7 +21,7 @@ syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext co
     if (this->match(TokenKind::colon_colon)) {
         scope_name = first.text;
         scope_range = first.range;
-        name = &this->expect(TokenKind::identifier, "expected item name after '::'");
+        name = &this->expect_identifier_recovered("expected item name after '::'");
     }
 
     std::vector<syntax::TypeId> struct_type_args;
@@ -64,7 +64,11 @@ syntax::ExprId NameExprParser::parse_struct_literal(
     node.struct_type_args = std::move(struct_type_args);
     node.range = scope_name.empty() ? name.range : this->merge(scope_range, name.range);
     this->parse_struct_fields(node.field_inits, context);
-    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after struct literal");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::r_brace,
+        "expected '}' after struct literal",
+        RecoveryContext::struct_field
+    );
     node.range = this->merge(node.range, end.range);
     return this->session_.module.push_expr(std::move(node));
 }
@@ -83,11 +87,9 @@ void NameExprParser::parse_struct_fields(
 }
 
 syntax::FieldInit NameExprParser::parse_struct_field(const ExprContext context) {
-    const syntax::Token& field = this->expect(
-        TokenKind::identifier,
-        "expected field name in struct literal"
-    );
-    this->expect(TokenKind::colon, "expected ':' after field name");
+    const syntax::Token& field =
+        this->expect_identifier_recovered("expected field name in struct literal");
+    this->expect_type_annotation_colon("expected ':' after field name");
     const syntax::ExprId value = this->parse_expr(context);
     return syntax::FieldInit {
         field.text,

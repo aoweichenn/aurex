@@ -1,4 +1,6 @@
-#include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/parser_stmt_part.hpp"
+
+#include "aurex/parse/parser_control_stmt_part.hpp"
 
 #include <utility>
 
@@ -56,12 +58,12 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     const StatementTerminatorRecovery recovery
 ) {
     const syntax::Token& begin = this->advance();
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected local name");
+    const syntax::Token& name = this->expect_identifier_recovered("expected local name");
     syntax::TypeId type = syntax::invalid_type_id;
     if (this->match(TokenKind::colon)) {
         type = this->parse_type();
     }
-    this->expect(TokenKind::equal, "expected initializer");
+    this->expect_initializer_equal("expected initializer");
     const syntax::ExprId init = this->parse_expr();
     const syntax::Token& end = this->expect_statement_semicolon(
         "expected ';' after local declaration",

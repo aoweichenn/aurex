@@ -14,6 +14,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         report(expr.range, "match expression cannot be used in const initializer");
     }
     const TypeHandle matched = analyze_expr(expr.match_value);
+    consume_ownership_transfer(expr.match_value, matched, "match value");
     const bool enum_match = is_valid(matched) && checked_.types.get(matched).kind == TypeKind::enum_;
     const bool literal_match = is_valid(matched) && (checked_.types.is_integer(matched) || checked_.types.is_bool(matched));
     if (!enum_match && !literal_match) {

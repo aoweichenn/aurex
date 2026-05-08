@@ -156,9 +156,9 @@ fn custom_command_run(command: *const CustomCommand) -> result::Result<i32, i32>
     }
     let output_result: result::Result<process::ProcessOutput, i32> = process_command.run_capture();
     process_command.destroy();
-    return match output_result {
+    return match move(output_result) {
         .ok(captured_output) => {
-            var output: process::ProcessOutput = captured_output;
+            var output: process::ProcessOutput = move(captured_output);
             let status: i32 = output.exit_status();
             let captured: bool =
                 output.stdout().len > cast(usize, 0) ||
@@ -1203,9 +1203,9 @@ fn validate_stderr_capture() -> result::Result<bool, i32> {
 
     let output_result: result::Result<process::ProcessOutput, i32> = command.run_capture();
     command.destroy();
-    return match output_result {
+    return match move(output_result) {
         .ok(captured_output) => {
-            var output: process::ProcessOutput = captured_output;
+            var output: process::ProcessOutput = move(captured_output);
             let ok: bool =
                 output.exit_status() == 0 &&
                 output.stdout().len == cast(usize, 0) &&
@@ -1230,9 +1230,9 @@ fn validate_cwd_env_capture() -> result::Result<bool, i32> {
 
     let output_result: result::Result<process::ProcessOutput, i32> = command.run_capture();
     command.destroy();
-    return match output_result {
+    return match move(output_result) {
         .ok(captured_output) => {
-            var output: process::ProcessOutput = captured_output;
+            var output: process::ProcessOutput = move(captured_output);
             let ok: bool =
                 output.exit_status() == 0 &&
                 output.stderr().len == cast(usize, 0) &&

@@ -111,6 +111,7 @@ TEST_F(AurexIntegrationTest, DeferScopes) {
         "fn normal_scope(log: *mut u8, index: *mut usize)",
         "fn early_return(log: *mut u8, index: *mut usize)",
         "fn loop_paths(log: *mut u8, index: *mut usize)",
+        "fn for_paths(log: *mut u8, index: *mut usize)",
         "call m0_defer_scope_push",
     });
 
@@ -137,6 +138,10 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
 
     const fs::path bad_for_condition = negative_sample("control_flow", "for_condition_bool.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(bad_for_condition)).output, "for condition must be bool");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_init_scope.ax"))).output,
+        "unknown name: i"
+    );
 
     const fs::path owner_source = positive_sample("types", "ownership_move.ax");
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(owner_source)).output;
@@ -149,6 +154,15 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
     const std::string owner_ast = require_success(aurexc() + " --emit=ast " + q(owner_source)).output;
     expect_contains(owner_ast, "move_expr");
     require_success(aurexc() + " --emit=llvm-ir " + q(owner_source));
+
+    const fs::path owner_result_source = positive_sample("types", "ownership_result.ax");
+    const std::string owner_result_checked = require_success(aurexc() + " --emit=checked " + q(owner_result_source)).output;
+    expect_contains_all(owner_result_checked, {
+        "struct Owner noncopy",
+        "fn wrap -> std.core.result.Result<ownership_result.Owner, i32>",
+        "fn unwrap_local_try -> std.core.result.Result<i32, i32>",
+    });
+    require_success(aurexc() + " --emit=llvm-ir " + q(owner_result_source));
 
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_implicit_copy.ax"))).output,
@@ -165,6 +179,22 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "move_non_place.ax"))).output,
         "move requires a local or parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_conditional_move_use.ax"))).output,
+        "use of moved value: owner"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_enum_payload_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_match_without_move.ax"))).output,
+        "non-copyable value must be moved explicitly in match value"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_try_without_move.ax"))).output,
+        "non-copyable value must be moved explicitly in try expression"
     );
 }
 

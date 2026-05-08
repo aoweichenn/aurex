@@ -33,8 +33,8 @@ Stage0 主链路：
 - generic function MVP：支持显式 `<T>`、调用时类型实参，以及基于实参/期望返回类型的基础推断。
 - `extern c` 变长参数声明与调用，包含 C ABI 默认实参提升。
 - 作用域级 `defer` 语句，按反序在正常离开、`return`、`break` / `continue` 路径执行清理调用。
-- `for init; condition; update { ... }` 语句已落地，三段均可为空；`continue` 先进入 update 再回到 condition，`break` 进入 exit，并沿用 `defer` 的循环退出清理规则。
-- 最小所有权语义已启动：`noncopy struct` 可把结构体标记为 move-only，`move(value)` 显式转移 local/parameter 所有权；语义分析已禁止 move-only 值在 local 初始化、赋值、返回、函数实参、method receiver、struct literal 字段和 enum payload 中隐式复制，并检查 move 后继续使用。
+- `for init; condition; update { ... }` 语句已落地，三段均可为空；`continue` 先进入 update 再回到 condition，`break` 进入 exit，并沿用 `defer` 的循环退出清理规则。模块合并时 `for_init` / `for_update` 已纳入 AST ID remap，带 import 的 `for + defer + continue/break` 已有回归覆盖。
+- 最小所有权语义已启动：`noncopy struct` 可把结构体标记为 move-only，`move(value)` 显式转移 local/parameter 所有权；语义分析已禁止 move-only 值在 local 初始化、赋值、返回、函数实参、method receiver、struct literal 字段和 enum payload 中隐式复制，并检查 move 后继续使用。enum copyability 已按 payload 传播，`Result<NonCopy, E>` / `Option<NonCopy>` 会随 payload 变成 noncopy；`match` 和 `?` 会消费 noncopy enum 源值，`if`/`else if` 的 moved-state 合流已按 fallthrough 分支处理。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 `value.method()`、公开字段 `value.field`、`Type.function()` 风格 associated call、`impl<T> Type<T>` 泛型实例方法，以及 `fn method<U>` 方法级泛型参数；跨模块 private field / private method 访问已有稳定诊断。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流；`Option<T>` / `Result<T, E>` 已有基础 method API，包含使用方法级泛型的 `Option<T>.ok_or<E>`。
 - 标准库容器/文本/路径基线已启动，包含 borrowed UTF-8 `str` 基础 API 和 scalar API、拥有型 UTF-8 `String` 的 `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked` surface、`std.core.bytes.Bytes` raw bytes 拥有型容器、`std.ffi.c.string.CStr` / `CString` FFI 边界类型、泛型 `Span<T>` / `MutSpan<T>`、泛型 `Vec<T>` 的容量、追加、插入/删除、随机访问和泛型 method API、Vec-backed 泛型 `Map<K, V>`、borrowed C string -> usize 的 `CStringUsizeMap`、`String` 兼容 byte API 的 UTF-8 边界保护，以及 bytes-backed `Path` 的查询与 join API。
@@ -51,7 +51,7 @@ Stage0 主链路：
 - 调用模型已有 `impl` / method MVP、泛型 impl 实例方法、方法级泛型参数和跨模块成员可见性诊断，但还缺 trait/class 复用、method public surface tooling 和 overload/trait 场景下更完整的诊断。
 - 泛型仍缺约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
 - 错误处理已有标准 `Result<T, E>` / `Option<T>` 与 `?` 传播切片，但还缺更完整的 std API 迁移和可组合诊断模型。
-- 资源管理已经有 `noncopy struct` / `move(value)` MVP，但还缺析构/Drop 约定、借用检查、部分 move、move-only 泛型约束，以及文件、进程、arena、String/Bytes/Path 等资源类型的统一迁移策略。
+- 资源管理已经有 `noncopy struct` / `move(value)` MVP，`FileBytes`、`HostFileBytes`、`Command`、`ProcessOutput` 等第一批文件/host/process 资源已迁为 noncopy；但还缺析构/Drop 约定、借用检查、部分 move、move-only 泛型约束，以及 arena、String/Bytes/Path 等拥有型资源的统一迁移策略。
 - 标准库还缺更完整的 `Vec<T>`、hash/bucketed `Map<K, V>`、owned string-key map、streaming directory iterator / walk callback、文件 metadata、subprocess 和 incremental build 需要的 OS 能力。
 - 字符串基础类型需要继续冻结到 public API：`str` 已按和 `int` 同层级的借用 UTF-8 文本切片推进，普通文本、原始 bytes、拥有型 `String`、C FFI 字符串和平台 `Path` 已在核心 std 类型上拆开；`std.fs.file` / `std.fs.dir` 已有 `Path` / `str` 新入口，M1 axbuild 的 source path、stamp path、目录扫描和临时文件清理已收口到 `str` / `Path`，后续风险主要是进程 argv/env/cwd 和剩余 FFI 场景中的底层 `c"..."` / `*const u8` 兼容入口还要继续收口。
 - 需要一个兼容传统 OOP 思维的 class/object model：封装、继承和动态多态，但它应作为迁移友好层，不替代 struct/enum/trait/generic 的核心设计。
@@ -87,7 +87,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    提供面向传统 OOP 使用者的封装、继承和动态多态层。M1 建议先做单继承、显式 `virtual`、`override`、`abstract`、`final`、`pub` / `priv` / `protected` 可见性，以及通过 base pointer/reference 的 vtable dispatch。多继承不进入 M1；需要多态组合时优先使用 trait/interface，class 主要服务迁移和老代码建模。
 
 6. 建立资源管理和 OS 工程能力  
-   `defer` MVP 已落地，后续继续支持最小 noncopyable 资源规则、目录遍历、文件 metadata、subprocess、cwd/env、临时文件和路径规范化。没有这一步，构建工具只能是玩具。
+   `defer` MVP 已落地，`for` 的 `continue` / update / exit 路径也已复用 scope cleanup；第一批文件/进程拥有型资源已迁为 noncopy。后续继续支持 Drop/destructor、借用检查、目录遍历、文件 metadata、subprocess、cwd/env、临时文件和路径规范化。没有这一步，构建工具只能是玩具。
 
 7. 强化 sum type / pattern matching 到工业可用边界  
    重点是 exhaustiveness、unreachable arm、payload binding、guard 约束和 enum layout 与 LLVM lowering 的一致性。自举前端会大量依赖 token/AST match。
@@ -118,7 +118,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    在 method 和 trait 基础稳定后实现 class，这样 class 的成员解析、visibility、vtable lowering 可以复用已有调用模型。完成后增加一个 OOP 风格插件/任务 runner example。
 
 6. `defer` / noncopyable / OS 能力  
-   已启动。当前 `defer call();` 会在当前词法作用域退出时反序执行，并覆盖正常退出、`return`、`break` / `continue` lowering；subprocess / stdout/stderr capture / cwd / env baseline 已通过 `std.sys.process::Command` 接入 host-c support；文件 metadata / mtime baseline 已通过 `std.fs.file::FileMetadata` 接入 host-c support；directory create、owned single-level/recursive directory entry read 和 source discovery count baseline 已通过 `std.fs.dir` 接入 host-c support，计数能力包含单层和递归后缀计数。下一步补 noncopyable 资源规则、streaming directory iterator / walk callback、stdin/stdout/stderr pipe 和临时目录能力，让文件、进程、arena、临时目录能安全组合。
+   已启动。当前 `defer call();` 会在当前词法作用域退出时反序执行，并覆盖正常退出、`return`、`break` / `continue` lowering；`for` 的 update 和 exit lowering 已有带 import 的回归覆盖；subprocess / stdout/stderr capture / cwd / env baseline 已通过 noncopy `std.sys.process::Command` / `ProcessOutput` 接入 host-c support；文件 metadata / mtime baseline 已通过 `std.fs.file::FileMetadata` 接入 host-c support；`std.fs.file::FileBytes` 和 `std.sys.host::HostFileBytes` 已迁为 noncopy；directory create、owned single-level/recursive directory entry read 和 source discovery count baseline 已通过 `std.fs.dir` 接入 host-c support，计数能力包含单层和递归后缀计数。下一步补 Drop/destructor、borrow checking、move-only 泛型约束、streaming directory iterator / walk callback、stdin/stdout/stderr pipe 和临时目录能力，让文件、进程、arena、临时目录能安全组合。
 
 7. 自举前端和 typed 构建工具验收  
    已启动。`examples/m1/frontend` 和 `examples/m1/axbuild` 已进入 active tree，并由 integration tests 覆盖 checked surface、IR surface 和 native smoke；axbuild 还覆盖了 `GraphDiagnostic` 的 checked/IR surface、message surface、target/related name surface、cycle index/name path surface 和 duplicate/invalid/cycle 三类图错误定位。后续继续扩大样例深度，目标仍是让这两个程序从“最小验收样例”推进到足够真实的 M1 工程基准，并继续要求覆盖率保持 90% 以上。

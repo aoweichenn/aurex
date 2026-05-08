@@ -1,5 +1,23 @@
 module for_loop;
 
+fn push_digit(log: *mut i32, value: i32) -> void {
+    *log = *log * 10 + value;
+}
+
+fn for_defer_continue() -> i32 {
+    var log: i32 = 0;
+    for var i: i32 = 0; i < 3; i = i + 1 {
+        defer push_digit(&log, 1);
+        if i == 0 {
+            continue;
+        }
+        if i == 1 {
+            break;
+        }
+    }
+    return log;
+}
+
 fn main() -> i32 {
     var sum: i32 = 0;
 
@@ -18,7 +36,7 @@ fn main() -> i32 {
         sum = sum + 10;
     }
 
-    if sum == 27 {
+    if sum == 27 && for_defer_continue() == 11 {
         return 0;
     }
     return sum;

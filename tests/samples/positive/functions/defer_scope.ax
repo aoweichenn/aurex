@@ -42,6 +42,19 @@ fn loop_paths(log: *mut u8, index: *mut usize) -> void {
     push(log, index, b'Z');
 }
 
+fn for_paths(log: *mut u8, index: *mut usize) -> void {
+    for var i: i32 = 0; i < 3; i = i + 1 {
+        defer push(log, index, b'Q');
+        if i == 0 {
+            continue;
+        }
+        if i == 1 {
+            break;
+        }
+    }
+    push(log, index, b'R');
+}
+
 fn main() -> i32 {
     let log: *mut u8 = alloc_zeroed_bytes(cast(usize, 32), cast(usize, 1));
     if log == null {
@@ -55,8 +68,9 @@ fn main() -> i32 {
         return 2;
     }
     loop_paths(log, &index);
+    for_paths(log, &index);
 
-    if !c_string_equal(ptr_cast(*const u8, log), c"CBDAFELLZ") {
+    if !c_string_equal(ptr_cast(*const u8, log), c"CBDAFELLZQQR") {
         return 3;
     }
     return 0;

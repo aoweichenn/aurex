@@ -146,6 +146,7 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_file) {
         sample_invocation(source, driver::EmitKind::checked)
     ).output;
     expect_contains_all(checked, {
+        "struct FileBytes noncopy fields=2",
         "fn check_path_apis -> std.core.result.Result<bool, i32>",
         "fn metadata_path -> std.core.result.Result<std.fs.file.FileMetadata, i32>",
         "fn read_bytes_path -> std.core.result.Result<std.fs.file.FileBytes, i32>",

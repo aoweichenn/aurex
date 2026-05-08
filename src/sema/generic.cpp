@@ -547,6 +547,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     TypeHandle payload_storage = invalid_type_handle;
     base::u64 payload_size = 0;
     base::u64 payload_align = 1;
+    bool contains_array_payload = false;
+    bool copyable = true;
     std::unordered_set<std::string> seen_cases;
     std::unordered_set<base::u64> seen_values;
     for (const syntax::EnumCaseDecl& enum_case : item->enum_cases) {
@@ -581,7 +583,11 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             payload_size = std::max(payload_size, case_size);
             payload_align = std::max(payload_align, case_align);
             if (checked_.types.contains_array(payload_type)) {
+                contains_array_payload = true;
                 report(enum_case.range, "enum payload cannot contain array storage");
+            }
+            if (!checked_.types.is_copyable(payload_type)) {
+                copyable = false;
             }
         }
         const std::string case_c_name = generic_case_c_name(info, args, enum_case.name);
@@ -611,6 +617,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             payload_align
         );
     }
+    checked_.types.set_record_properties(enum_type, contains_array_payload, copyable && !contains_array_payload);
     current_module_ = previous_module;
     return enum_type;
 }

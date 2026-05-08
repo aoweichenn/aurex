@@ -1,0 +1,25 @@
+module noncopy_try_without_move;
+
+import std.core.result;
+
+noncopy struct Owner {
+    value: i32;
+}
+
+fn make_owner(value: i32) -> Owner {
+    return Owner { value: value };
+}
+
+fn make_result() -> Result<Owner, i32> {
+    return Result.ok(make_owner(5));
+}
+
+fn unwrap_local() -> Result<i32, i32> {
+    let result: Result<Owner, i32> = make_result();
+    let owner: Owner = result?;
+    return Result.ok(owner.value);
+}
+
+fn main() -> i32 {
+    return unwrap_local()?;
+}

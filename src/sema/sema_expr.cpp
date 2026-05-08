@@ -696,6 +696,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
     }
 
     const TypeHandle source_type = analyze_expr(expr.unary_operand);
+    consume_ownership_transfer(expr.unary_operand, source_type, "try expression");
     const GenericEnumInstanceInfo* const source_instance = generic_enum_instance(source_type);
     if (source_instance == nullptr) {
         report(expr.range, "try expression requires Result<T, E> or Option<T>");

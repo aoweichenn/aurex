@@ -57,6 +57,8 @@ private:
     [[nodiscard]] TypeHandle analyze_assignment_target(syntax::ExprId expr);
     [[nodiscard]] bool block_guarantees_return(syntax::StmtId block) const noexcept;
     [[nodiscard]] bool stmt_guarantees_return(syntax::StmtId stmt) const noexcept;
+    [[nodiscard]] bool block_may_fallthrough(syntax::StmtId block) const noexcept;
+    [[nodiscard]] bool stmt_may_fallthrough(syntax::StmtId stmt) const noexcept;
     void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
     void finalize_inferred_return(const syntax::ItemNode& function, const std::string& key, ReturnTypeInference& inference);
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);

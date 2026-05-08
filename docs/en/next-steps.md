@@ -71,13 +71,18 @@ Current language slices:
 - `for init; condition; update { ... }` statements are now implemented, with
   all three clauses optional. `continue` enters the update clause before the
   next condition check, `break` exits the loop, and loop exits reuse the
-  existing `defer` cleanup model.
+  existing `defer` cleanup model. Module merging now remaps `for_init` and
+  `for_update` AST ids, and imported-module `for + defer + continue/break`
+  paths have regression coverage.
 - Minimal ownership semantics have started: `noncopy struct` marks a struct as
   move-only, and `move(value)` explicitly transfers ownership from a local or
   parameter. Semantic analysis now rejects implicit copies of move-only values
   in local initialization, assignment, return values, function arguments,
   method receivers, struct-literal fields, and enum payloads, and reports use
-  after move.
+  after move. Enum copyability now propagates from payloads, so
+  `Result<NonCopy, E>` / `Option<NonCopy>` become noncopy; `match` and `?`
+  consume noncopy enum sources, and `if` / `else if` move-state merging is
+  fallthrough-aware.
 - `impl` / method / associated-function MVP with explicit `self`,
   `value.method()` instance calls, public `value.field` access,
   `Type.function()` associated calls, `impl<T> Type<T>` generic instance
@@ -144,10 +149,12 @@ Current language slices:
 - Error handling has the standard `Result<T, E>` / `Option<T>` and `?`
   propagation slice, but still needs broader std API migration and a
   composable diagnostic model.
-- Resource management now has a `noncopy struct` / `move(value)` MVP, but still
-  needs Drop/destructor conventions, borrow checking, partial moves,
-  move-only generic constraints, and a unified migration strategy for files,
-  processes, arenas, `String`, `Bytes`, `Path`, and other owned resources.
+- Resource management now has a `noncopy struct` / `move(value)` MVP. The
+  first file/host/process resources, including `FileBytes`, `HostFileBytes`,
+  `Command`, and `ProcessOutput`, are now noncopy. It still needs
+  Drop/destructor conventions, borrow checking, partial moves, move-only
+  generic constraints, and a unified migration strategy for arenas, `String`,
+  `Bytes`, `Path`, and other owned resources.
 - The string foundation still needs continued public API tightening:
   `std.fs.file` and `std.fs.dir` now have `Path` / `str` entry points, and
   directory suffixes plus M1 axbuild directory scanning have moved to
@@ -231,10 +238,12 @@ covered by integration tests:
    composition.
 
 6. Establish resource management and OS engineering support  
-   The `defer` MVP has landed. Follow-up work should add minimal noncopyable
-   resource rules, streaming directory iterators / walk callbacks, file metadata, subprocesses, cwd/env
-   handling, temporary files, and path normalization. Without this slice, the
-   build tool remains a toy.
+   The `defer` MVP has landed, and `for` continue/update/exit paths now reuse
+   scope cleanup. The first file/process owned resources are noncopy. Follow-up
+   work should add Drop/destructor support, borrow checking, streaming
+   directory iterators / walk callbacks, richer file metadata, subprocess
+   pipes, cwd/env handling, temporary files, and path normalization. Without
+   this slice, the build tool remains a toy.
 
 7. Push sum types and pattern matching to an industrial baseline  
    Prioritize exhaustiveness, unreachable arms, payload bindings, guard
@@ -316,14 +325,18 @@ manual status helpers.
 6. `defer` / noncopyable / OS support  
    Started. `defer call();` now runs in reverse order when the current lexical
    scope exits, including normal exits, `return`, and `break` / `continue`
-   lowering. A subprocess / stdout/stderr-capture / cwd / env baseline is now
-   available through `std.sys.process::Command` and host-c support, and a file metadata / mtime
-   baseline is available through `std.fs.file::FileMetadata`. Directory-create,
-   owned single-level / recursive directory-entry, and source-discovery count baselines are available
-   through `std.fs.dir`, including single-level and recursive suffix counts.
-   Next, add noncopyable resource rules, streaming directory iterators / walk callbacks,
-   stdin/stdout/stderr pipes, and temporary-directory support so files, processes,
-   arenas, and temporary directories compose safely.
+   lowering. `for` update and exit lowering now have imported-module regression
+   coverage. A subprocess / stdout/stderr-capture / cwd / env baseline is now
+   available through noncopy `std.sys.process::Command` / `ProcessOutput` and
+   host-c support, and a file metadata / mtime baseline is available through
+   `std.fs.file::FileMetadata`. `std.fs.file::FileBytes` and
+   `std.sys.host::HostFileBytes` are also noncopy. Directory-create, owned
+   single-level / recursive directory-entry, and source-discovery count
+   baselines are available through `std.fs.dir`, including single-level and
+   recursive suffix counts. Next, add Drop/destructor support, borrow checking,
+   move-only generic constraints, streaming directory iterators / walk
+   callbacks, stdin/stdout/stderr pipes, and temporary-directory support so
+   files, processes, arenas, and temporary directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  
    Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the

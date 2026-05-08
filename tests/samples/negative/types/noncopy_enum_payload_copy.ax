@@ -1,0 +1,24 @@
+module noncopy_enum_payload_copy;
+
+import std.core.result;
+
+noncopy struct Owner {
+    value: i32;
+}
+
+fn make_owner(value: i32) -> Owner {
+    return Owner { value: value };
+}
+
+fn make_result() -> Result<Owner, i32> {
+    return Result.ok(make_owner(1));
+}
+
+fn main() -> i32 {
+    let first: Result<Owner, i32> = make_result();
+    let second: Result<Owner, i32> = first;
+    return match move(second) {
+        .ok(owner) => owner.value,
+        .err(code) => code,
+    };
+}

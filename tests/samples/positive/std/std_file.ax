@@ -7,6 +7,17 @@ import std.core.text;
 import std.fs.file;
 import std.fs.path as paths;
 
+fn read_bytes_path_null_is_err() -> bool {
+    return match read_bytes_path(null) {
+        .ok(bytes) => {
+            var owned: FileBytes = move(bytes);
+            owned.destroy();
+            false
+        },
+        .err(_) => true,
+    };
+}
+
 fn check_path_apis() -> Result<bool, i32> {
     var file_path: paths::Path = paths::Path.from_str("/tmp/aurex_std_file_path_test.txt")?;
     var renamed_path: paths::Path = paths::Path.from_str("/tmp/aurex_std_file_path_test_renamed.txt")?;
@@ -41,7 +52,7 @@ fn check_path_apis() -> Result<bool, i32> {
     remove_file_path(&file_path);
 
     let null_path_ok: bool = metadata_path(null).is_err() &&
-        read_bytes_path(null).is_err() &&
+        read_bytes_path_null_is_err() &&
         read_text_path(null).is_err() &&
         write_bytes_path(null, raw_bytes).is_err() &&
         write_text_path(null, c"x").is_err() &&

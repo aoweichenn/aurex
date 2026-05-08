@@ -401,6 +401,8 @@ void SemanticAnalyzer::register_value_names() {
             TypeHandle payload_storage = invalid_type_handle;
             base::u64 payload_size = 0;
             base::u64 payload_align = 1;
+            bool contains_array_payload = false;
+            bool copyable = true;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
                 const std::string enum_case_key = module_key(current_module_, full_name);
@@ -429,7 +431,11 @@ void SemanticAnalyzer::register_value_names() {
                     payload_size = std::max(payload_size, case_size);
                     payload_align = std::max(payload_align, case_align);
                     if (checked_.types.contains_array(payload_type)) {
+                        contains_array_payload = true;
                         report(enum_case.range, "enum payload cannot contain array storage");
+                    }
+                    if (!checked_.types.is_copyable(payload_type)) {
+                        copyable = false;
                     }
                 }
                 const auto case_inserted = checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
@@ -471,6 +477,13 @@ void SemanticAnalyzer::register_value_names() {
                     payload_storage_type(checked_.types, payload_size, payload_align),
                     payload_size,
                     payload_align
+                );
+            }
+            if (is_valid(named_enum_type)) {
+                checked_.types.set_record_properties(
+                    named_enum_type,
+                    contains_array_payload,
+                    copyable && !contains_array_payload
                 );
             }
         }

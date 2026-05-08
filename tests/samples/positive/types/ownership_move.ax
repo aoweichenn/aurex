@@ -16,6 +16,14 @@ fn forward(owner: Owner) -> Owner {
     return move(owner);
 }
 
+fn return_after_branch_move(flag: bool) -> i32 {
+    var owner: Owner = make_owner(8);
+    if flag {
+        return consume(move(owner));
+    }
+    return consume(move(owner));
+}
+
 fn main() -> i32 {
     let first: Owner = make_owner(3);
     let second: Owner = Owner { value: 4 };
@@ -26,8 +34,8 @@ fn main() -> i32 {
     let consumed: i32 = consume(move(slot));
     slot = make_owner(20);
 
-    let total: i32 = consume(move(moved)) + consume(move(forwarded)) + consumed + consume(move(slot));
-    if total == 37 {
+    let total: i32 = consume(move(moved)) + consume(move(forwarded)) + consumed + consume(move(slot)) + return_after_branch_move(false);
+    if total == 45 {
         return 0;
     }
     return total;

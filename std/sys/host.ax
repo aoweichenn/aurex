@@ -4,7 +4,7 @@ import std.core.result;
 import std.core.text;
 import std.ffi.c.host_support;
 
-pub struct HostFileBytes {
+pub noncopy struct HostFileBytes {
     priv data: *mut u8;
     priv len: usize;
 }

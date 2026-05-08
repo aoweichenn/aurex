@@ -9,14 +9,14 @@ import std.ffi.c.libc;
 const EXIT_SUCCESS: i32 = 0;
 const EXIT_FAILURE: i32 = 1;
 
-pub struct Command {
+pub noncopy struct Command {
     program: *const u8;
     args: vec::Vec<*const u8>;
     cwd_path: *const u8;
     env_vars: vec::Vec<*const u8>;
 }
 
-pub struct ProcessOutput {
+pub noncopy struct ProcessOutput {
     priv status: i32;
     priv stdout_data: *mut u8;
     priv stdout_len: usize;

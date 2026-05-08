@@ -9,7 +9,7 @@ import std.ffi.c.host_support;
 import std.ffi.c.libc as libc;
 import std.fs.path as paths;
 
-pub struct FileBytes {
+pub noncopy struct FileBytes {
     priv data: *mut u8;
     priv len: usize;
 }

@@ -1,0 +1,50 @@
+module ownership_result;
+
+import std.core.result;
+
+noncopy struct Owner {
+    value: i32;
+}
+
+fn make_owner(value: i32) -> Owner {
+    return Owner { value: value };
+}
+
+fn consume(owner: Owner) -> i32 {
+    return owner.value;
+}
+
+fn wrap(owner: Owner) -> Result<Owner, i32> {
+    return Result.ok(move(owner));
+}
+
+fn forward_result(value: i32) -> Result<Owner, i32> {
+    var wrapped: Result<Owner, i32> = wrap(make_owner(value));
+    return move(wrapped);
+}
+
+fn unwrap_or_code(input: Result<Owner, i32>) -> i32 {
+    return match move(input) {
+        .ok(owner) => consume(move(owner)),
+        .err(code) => code,
+    };
+}
+
+fn unwrap_local_try(value: i32) -> Result<i32, i32> {
+    var wrapped: Result<Owner, i32> = forward_result(value);
+    var owner: Owner = move(wrapped)?;
+    let result: i32 = consume(move(owner));
+    return Result.ok(result);
+}
+
+fn main() -> i32 {
+    let direct: i32 = unwrap_or_code(forward_result(11));
+    let via_try: i32 = match unwrap_local_try(31) {
+        .ok(value) => value,
+        .err(code) => code,
+    };
+    if direct + via_try == 42 {
+        return 0;
+    }
+    return direct + via_try;
+}

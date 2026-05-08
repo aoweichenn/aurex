@@ -217,18 +217,30 @@ void SemanticAnalyzer::analyze_stmt(
         moved_bindings_ = before_if;
         analyze_block(stmt.then_block, expected_return, return_inference);
         const std::unordered_set<std::string> then_moved = moved_bindings_;
+        const bool then_falls_through = block_may_fallthrough(stmt.then_block);
         std::unordered_set<std::string> else_moved = before_if;
+        bool else_falls_through = true;
         if (syntax::is_valid(stmt.else_block)) {
             moved_bindings_ = before_if;
             analyze_block(stmt.else_block, expected_return, return_inference);
             else_moved = moved_bindings_;
+            else_falls_through = block_may_fallthrough(stmt.else_block);
         }
         if (syntax::is_valid(stmt.else_if)) {
             moved_bindings_ = before_if;
             analyze_stmt(stmt.else_if, expected_return, return_inference);
             else_moved = moved_bindings_;
+            else_falls_through = stmt_may_fallthrough(stmt.else_if);
         }
-        merge_ownership_states(then_moved, else_moved);
+        if (then_falls_through && else_falls_through) {
+            merge_ownership_states(then_moved, else_moved);
+        } else if (then_falls_through) {
+            moved_bindings_ = then_moved;
+        } else if (else_falls_through) {
+            moved_bindings_ = else_moved;
+        } else {
+            moved_bindings_ = before_if;
+        }
         break;
     }
     case syntax::StmtKind::while_: {
@@ -354,6 +366,49 @@ bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) cons
     }
     default:
         return false;
+    }
+}
+
+bool SemanticAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const noexcept {
+    if (!syntax::is_valid(block_id) || block_id.value >= module_.stmts.size()) {
+        return true;
+    }
+    const syntax::StmtNode& block = module_.stmts[block_id.value];
+    if (block.kind != syntax::StmtKind::block) {
+        return stmt_may_fallthrough(block_id);
+    }
+    for (const syntax::StmtId child : block.statements) {
+        if (!stmt_may_fallthrough(child)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool SemanticAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const noexcept {
+    if (!syntax::is_valid(stmt_id) || stmt_id.value >= module_.stmts.size()) {
+        return true;
+    }
+    const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
+    switch (stmt.kind) {
+    case syntax::StmtKind::return_:
+    case syntax::StmtKind::break_:
+    case syntax::StmtKind::continue_:
+        return false;
+    case syntax::StmtKind::block:
+        return block_may_fallthrough(stmt_id);
+    case syntax::StmtKind::if_: {
+        const bool then_falls_through = block_may_fallthrough(stmt.then_block);
+        if (syntax::is_valid(stmt.else_block)) {
+            return then_falls_through || block_may_fallthrough(stmt.else_block);
+        }
+        if (syntax::is_valid(stmt.else_if)) {
+            return then_falls_through || stmt_may_fallthrough(stmt.else_if);
+        }
+        return true;
+    }
+    default:
+        return true;
     }
 }
 

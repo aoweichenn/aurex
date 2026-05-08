@@ -46,7 +46,7 @@ builtin str = {
 - `std.ffi.c.string` 已提供 `CStr` / `CString` 第一版，把 borrowed/owned NUL-terminated C 字符串从普通文本 API 中隔离出来。
 - `std.core.text` 目前主要是 `SpanU8`、ASCII helper、`c_strlen`、`strcmp` 这类 C/bytes 工具。
 - `std.fs.path.Path` 已从 `String` 语义中拆出，当前由 `Bytes` 存储平台路径 bytes；`from_span` 接受非 UTF-8 bytes 但拒绝内部 NUL，`from_str` 只是 UTF-8 文本便利入口，`as_c` 仍提供 NUL-terminated 兼容视图。
-- `std.fs.file` 已新增 `Path` 入口包装和 `write_str` / `write_str_path`；`std.fs.dir` 已新增目录 path 的 `Path` 入口包装、`str` suffix 包装，以及 bytes-backed `DirectoryEntry` 视图：`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 执行显式 UTF-8 校验。旧 `*const u8` / `c"..."` 函数保留为兼容层，M1 axbuild 的目录扫描已迁到 `Path` + `str` suffix + bytes entry 名称匹配；后续进程和少量 FFI 参数仍应继续向 `Path`、`CStr` / `CString` 和 `str` 分层迁移。
+- `std.fs.file` 已新增 `Path` 入口包装和 `write_str` / `write_str_path`；`std.fs.dir` 已新增目录 path 的 `Path` 入口包装、`str` suffix 包装，以及 bytes-backed `DirectoryEntry` 视图：`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 执行显式 UTF-8 校验。旧 `*const u8` / `c"..."` 函数保留为兼容层，M1 axbuild 的目录扫描、target source list、project stamp path、source/stamp metadata、stamp 写入、clean 和临时 source cleanup 已迁到 `Path` / `str` 入口，并补上 target 所有权转移；后续进程和少量 FFI 参数仍应继续向 `Path`、`CStr` / `CString` 和 `str` 分层迁移。
 
 因此 ABI 方向已经接近正确；真正要重构的是“类型边界”和“标准库 API 边界”：`str` 负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span<u8>` 负责原始字节，`CStr` / `CString` 负责 C FFI。
 
@@ -391,7 +391,7 @@ FFI 层应有单独类型：
 - 已完成：`Bytes` 覆盖 raw mutable bytes 和自别名 append。
 - 已完成：`Path.from_span` 接受非 UTF-8 bytes 并拒绝内部 NUL。
 - 已完成：`std.fs.file` 公开层新增 `Path` 和 `str` 入口，`write_str_path("a\0b")` 按长度写入，不走 C string 截断语义。
-- 已完成：`std.fs.dir` 公开层新增目录 path 的 `Path` 入口、suffix 的 `str` 入口，以及目录项 raw bytes / checked UTF-8 视图；M1 axbuild 目录扫描已迁到 `Path` + `str` suffix + bytes entry 名称匹配。
+- 已完成：`std.fs.dir` 公开层新增目录 path 的 `Path` 入口、suffix 的 `str` 入口，以及目录项 raw bytes / checked UTF-8 视图；M1 axbuild 目录扫描、source list、stamp path、clean 和临时 cleanup 已迁到 `Path` / `str` 入口，target 加入 project 时也会显式转移 owned `Path` 所有权。
 - 标准库进程、path 更深层 API 和剩余 FFI 公开层继续减少业务代码传 `c"..."` 的需求。
 
 ## 参考资料

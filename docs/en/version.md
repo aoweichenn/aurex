@@ -30,11 +30,16 @@ Included:
   baseline through host-c `fork` / `execvp` / `waitpid` support, with separate
   pipes drained for stdout and stderr.
 - `std.fs.file::FileMetadata` metadata / mtime baseline through host-c `stat`
-  support.
+  support, plus `std.fs.file` `Path` wrappers and `write_str` /
+  `write_str_path` so new file APIs do not need raw `c"..."` paths for normal
+  path/text use.
 - `std.fs.dir` directory-create / directory-entry / recursive-directory-entry / source-discovery baseline
   through host-c `mkdir`, `opendir` / `readdir`, `stat`, and `lstat` support for
   owned single-level / recursive directory-entry reads and regular-file suffix
-  counts, with single-level and recursive count entry points.
+  counts, with single-level and recursive count entry points. Directory paths
+  now have `Path` wrappers, suffixes have `str` wrappers, and `DirectoryEntry`
+  stores name/path as bytes-backed `Path` values with raw-bytes and
+  checked-UTF-8 views.
 - `std.core.map` Vec-backed generic `Map<K, V>` and borrowed C-string -> usize
   `CStringUsizeMap` baseline.
 - String primitive direction is now split as `str` = borrowed UTF-8 text slice,
@@ -44,7 +49,9 @@ Included:
   APIs and scalar APIs, the `std.core.string.String`
   `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked`
   UTF-8 surface, removal of `String.as_mut_span`, `std.core.bytes.Bytes`,
-  bytes-backed `std.fs.path.Path`, and `std.ffi.c.string.CStr` / `CString`.
+  bytes-backed `std.fs.path.Path`, first `std.fs.file` and `std.fs.dir`
+  `Path` / `str` entry points, bytes-backed `DirectoryEntry` raw-bytes /
+  checked-UTF-8 views, and `std.ffi.c.string.CStr` / `CString`.
 - M1 axbuild target-graph validation / topological-build baseline, including
   dependency bounds, cycle / invalid-dependency status, and topological target
   build order.
@@ -102,7 +109,8 @@ Not included:
 - Grow the M1 frontend from a summary parser into real AST, diagnostics, name
   resolution, and type checking.
 - Grow M1 axbuild from source/stamp mtime, directory creation, owned
-  single-level / recursive directory-entry reads, source discovery by entries, single-level and recursive
+  single-level / recursive directory-entry reads, source discovery through
+  `Path` + `str` suffixes + bytes entry-name matching, single-level and recursive
   source-discovery, target-name lookup caches,
   target-graph smoke checks, stdout/stderr capture, cwd/env, and structured
   graph diagnostics/messages/names/cycle paths into streaming directory

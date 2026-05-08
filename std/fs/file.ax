@@ -2,10 +2,12 @@ module std.fs.file;
 
 import std.core.mem;
 import std.core.result;
+import std.core.str as strings;
 import std.core.string;
 import std.core.text;
 import std.ffi.c.host_support;
 import std.ffi.c.libc as libc;
+import std.fs.path as paths;
 
 pub struct FileBytes {
     priv data: *mut u8;
@@ -61,6 +63,13 @@ pub fn metadata(path: *const u8) -> Result<FileMetadata, i32> {
         size_value: cast(usize, host_metadata.size),
         modified_ns_value: host_metadata.modified_ns,
     });
+}
+
+pub fn metadata_path(path: *const paths::Path) -> Result<FileMetadata, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return metadata(paths::as_c(path));
 }
 
 impl FileMetadata {
@@ -150,11 +159,25 @@ pub fn read_bytes(path: *const u8) -> Result<FileBytes, i32> {
     return Result.ok(FileBytes { data: data, len: len });
 }
 
+pub fn read_bytes_path(path: *const paths::Path) -> Result<FileBytes, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return read_bytes(paths::as_c(path));
+}
+
 pub fn read_text(path: *const u8) -> Result<String, i32> {
     var bytes: FileBytes = read_bytes(path)?;
     let text_result: Result<String, i32> = String.from_utf8(bytes.as_span());
     bytes.destroy();
     return text_result;
+}
+
+pub fn read_text_path(path: *const paths::Path) -> Result<String, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return read_text(paths::as_c(path));
 }
 
 pub fn write_bytes(path: *const u8, bytes: SpanU8) -> Result<usize, i32> {
@@ -173,11 +196,36 @@ pub fn write_bytes(path: *const u8, bytes: SpanU8) -> Result<usize, i32> {
     return Result.ok(written);
 }
 
+pub fn write_bytes_path(path: *const paths::Path, bytes: SpanU8) -> Result<usize, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return write_bytes(paths::as_c(path), bytes);
+}
+
 pub fn write_text(path: *const u8, text: *const u8) -> Result<usize, i32> {
     if text == null {
         return Result.err(1);
     }
     return write_bytes(path, c_span(text));
+}
+
+pub fn write_text_path(path: *const paths::Path, text: *const u8) -> Result<usize, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return write_text(paths::as_c(path), text);
+}
+
+pub fn write_str(path: *const u8, text: str) -> Result<usize, i32> {
+    return write_bytes(path, strings::as_bytes(text));
+}
+
+pub fn write_str_path(path: *const paths::Path, text: str) -> Result<usize, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return write_str(paths::as_c(path), text);
 }
 
 impl FileBytes {
@@ -209,10 +257,31 @@ pub fn file_exists(path: *const u8) -> bool {
     };
 }
 
+pub fn file_exists_path(path: *const paths::Path) -> bool {
+    if path == null {
+        return false;
+    }
+    return file_exists(paths::as_c(path));
+}
+
 pub fn remove_file(path: *const u8) -> bool {
     return libc::remove(path) == 0;
 }
 
+pub fn remove_file_path(path: *const paths::Path) -> bool {
+    if path == null {
+        return false;
+    }
+    return remove_file(paths::as_c(path));
+}
+
 pub fn rename_file(old_path: *const u8, new_path: *const u8) -> bool {
     return libc::rename(old_path, new_path) == 0;
+}
+
+pub fn rename_file_path(old_path: *const paths::Path, new_path: *const paths::Path) -> bool {
+    if old_path == null || new_path == null {
+        return false;
+    }
+    return rename_file(paths::as_c(old_path), paths::as_c(new_path));
 }

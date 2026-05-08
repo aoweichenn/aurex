@@ -141,7 +141,95 @@ TEST_F(AurexIntegrationTest, SampleSuite_Std_std_ffi) {
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_Std_std_file) {
+    const fs::path source = positive_sample("std", "std_file.ax");
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
+    expect_contains_all(checked, {
+        "fn check_path_apis -> std.core.result.Result<bool, i32>",
+        "fn metadata_path -> std.core.result.Result<std.fs.file.FileMetadata, i32>",
+        "fn read_bytes_path -> std.core.result.Result<std.fs.file.FileBytes, i32>",
+        "fn read_text_path -> std.core.result.Result<std.core.string.String, i32>",
+        "fn write_bytes_path -> std.core.result.Result<usize, i32>",
+        "fn write_text_path -> std.core.result.Result<usize, i32>",
+        "fn write_str -> std.core.result.Result<usize, i32>",
+        "fn write_str_path -> std.core.result.Result<usize, i32>",
+        "fn file_exists_path -> bool",
+        "fn remove_file_path -> bool",
+        "fn rename_file_path -> bool",
+        "fn method std.fs.path.Path.from_str -> std.core.result.Result<std.fs.path.Path, i32>",
+        "fn method std.core.string.String.equals -> bool",
+    });
+
+    const std::string ir = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::ir)
+    ).output;
+    expect_contains_all(ir, {
+        "call m0_std_fs_path_Path_from_str",
+        "call m0_std_fs_file_write_bytes_path",
+        "call m0_std_fs_file_write_text_path",
+        "call m0_std_fs_file_write_str_path",
+        "call m0_std_fs_file_metadata_path",
+        "call m0_std_fs_file_read_bytes_path",
+        "call m0_std_fs_file_read_text_path",
+        "call m0_std_fs_file_file_exists_path",
+        "call m0_std_fs_file_remove_file_path",
+        "call m0_std_fs_file_rename_file_path",
+    });
+
     compile_and_run_std_positive_sample("std_file.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_Std_std_dir) {
+    const fs::path source = positive_sample("std", "std_dir.ax");
+    const std::string checked = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::checked)
+    ).output;
+    expect_contains_all(checked, {
+        "fn check_directory_path_apis -> std.core.result.Result<bool, i32>",
+        "fn create_directory_path -> bool",
+        "fn read_entries_path -> std.core.result.Result<std.core.vec.Vec<std.fs.dir.DirectoryEntry>, i32>",
+        "fn read_entries_recursive_path -> std.core.result.Result<std.core.vec.Vec<std.fs.dir.DirectoryEntry>, i32>",
+        "fn count_files_with_suffix_path -> std.core.result.Result<i32, i32>",
+        "fn count_files_with_suffix_path_str -> std.core.result.Result<i32, i32>",
+        "fn count_files_with_suffix_recursive_path -> std.core.result.Result<i32, i32>",
+        "fn count_files_with_suffix_recursive_path_str -> std.core.result.Result<i32, i32>",
+        "fn has_file_with_suffix_path -> std.core.result.Result<bool, i32>",
+        "fn has_file_with_suffix_path_str -> std.core.result.Result<bool, i32>",
+        "fn has_file_with_suffix_recursive_path -> std.core.result.Result<bool, i32>",
+        "fn has_file_with_suffix_recursive_path_str -> std.core.result.Result<bool, i32>",
+        "fn directory_entry_name_bytes -> std.core.text.Span<u8>",
+        "fn directory_entry_name_utf8 -> std.core.result.Result<str, i32>",
+        "fn directory_entry_path_bytes -> std.core.text.Span<u8>",
+        "fn directory_entry_path_utf8 -> std.core.result.Result<str, i32>",
+        "fn method std.fs.dir.DirectoryEntry.name_bytes -> std.core.text.Span<u8>",
+        "fn method std.fs.dir.DirectoryEntry.name_utf8 -> std.core.result.Result<str, i32>",
+        "fn method std.fs.dir.DirectoryEntry.path_bytes -> std.core.text.Span<u8>",
+        "fn method std.fs.dir.DirectoryEntry.path_utf8 -> std.core.result.Result<str, i32>",
+        "fn method std.fs.path.Path.from_str -> std.core.result.Result<std.fs.path.Path, i32>",
+    });
+
+    const std::string ir = require_compiler_success(
+        sample_invocation(source, driver::EmitKind::ir)
+    ).output;
+    expect_contains_all(ir, {
+        "call m0_std_fs_path_Path_from_str",
+        "call m0_std_fs_file_write_str_path",
+        "call m0_std_fs_dir_create_directory_path",
+        "call m0_std_fs_dir_read_entries_path",
+        "call m0_std_fs_dir_read_entries_recursive_path",
+        "call m0_std_fs_dir_count_files_with_suffix_path_str",
+        "call m0_std_fs_dir_count_files_with_suffix_recursive_path_str",
+        "call m0_std_fs_dir_has_file_with_suffix_path_str",
+        "call m0_std_fs_dir_has_file_with_suffix_recursive_path_str",
+        "call m0_std_fs_dir_DirectoryEntry_name_utf8",
+        "call m0_std_fs_dir_DirectoryEntry_name_bytes",
+        "call m0_std_fs_dir_DirectoryEntry_path_utf8",
+        "call m0_std_fs_dir_DirectoryEntry_path_bytes",
+        "call m0_std_fs_dir_directory_entry_name_utf8",
+    });
+
+    compile_and_run_std_positive_sample("std_dir.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_Std_std_mem) {

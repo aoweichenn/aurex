@@ -2,7 +2,7 @@
 
 版本：0.1.7 设计草案
 日期：2026-05-08
-状态：设计冻结前草案；Phase 1、Phase 2、Phase 3、Phase 4 C FFI 边界、Phase 5 scalar API、raw `Bytes` / bytes-backed `Path` 风险收口已落地。
+状态：设计冻结前草案；Phase 1、Phase 2、Phase 3、Phase 4 C FFI 边界、Phase 5 scalar API、raw `Bytes` / bytes-backed `Path` / std fs `Path` 入口风险收口已落地。
 
 本文目标是把 Aurex 的字符串基础类型设计清楚，再继续改标准库和 M1 样例。这里的“基础类型”指和 `int`、`usize`、`bool` 同一层级的语言内建类型，而不是 C 的 `char*` 包装，也不是某个需要 allocator 的拥有型容器。
 
@@ -46,7 +46,7 @@ builtin str = {
 - `std.ffi.c.string` 已提供 `CStr` / `CString` 第一版，把 borrowed/owned NUL-terminated C 字符串从普通文本 API 中隔离出来。
 - `std.core.text` 目前主要是 `SpanU8`、ASCII helper、`c_strlen`、`strcmp` 这类 C/bytes 工具。
 - `std.fs.path.Path` 已从 `String` 语义中拆出，当前由 `Bytes` 存储平台路径 bytes；`from_span` 接受非 UTF-8 bytes 但拒绝内部 NUL，`from_str` 只是 UTF-8 文本便利入口，`as_c` 仍提供 NUL-terminated 兼容视图。
-- `std.fs.file`、`std.fs.dir` 和 M1 样例仍有部分底层接口使用 `*const u8` / `c"..."`，后续应继续向 `Path`、`CStr` / `CString` 和 `str` 分层迁移。
+- `std.fs.file` 已新增 `Path` 入口包装和 `write_str` / `write_str_path`；`std.fs.dir` 已新增目录 path 的 `Path` 入口包装、`str` suffix 包装，以及 bytes-backed `DirectoryEntry` 视图：`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 执行显式 UTF-8 校验。旧 `*const u8` / `c"..."` 函数保留为兼容层，M1 axbuild 的目录扫描已迁到 `Path` + `str` suffix + bytes entry 名称匹配；后续进程和少量 FFI 参数仍应继续向 `Path`、`CStr` / `CString` 和 `str` 分层迁移。
 
 因此 ABI 方向已经接近正确；真正要重构的是“类型边界”和“标准库 API 边界”：`str` 负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span<u8>` 负责原始字节，`CStr` / `CString` 负责 C FFI。
 
@@ -260,7 +260,7 @@ FFI 层应有单独类型：
 - Windows path 需要宽字符/UTF-16 系统 API。
 - Aurex 的 `Path` 应是独立类型，提供 `from_str`、`from_span` / future `from_bytes`、`display`、`as_platform` 等显式入口。
 - 当前 POSIX 侧基线已经让 `Path` 由 `Bytes` 支撑：`from_span` 不验证 UTF-8，但拒绝内部 NUL；`from_str` 是便利构造；`as_span` 返回 raw bytes；`as_c` 返回内部 NUL-terminated 兼容指针。
-- 标准库文件 API 应优先接收 `Path` 或 `str`，底层 FFI 再转换成平台需要的形式。
+- 标准库文件和目录 API 已开始优先接收 `Path` 或 `str`：`std.fs.file` 提供 `metadata_path`、`read_bytes_path`、`read_text_path`、`write_bytes_path`、`write_text_path`、`write_str`、`write_str_path`、`file_exists_path`、`remove_file_path` 和 `rename_file_path`；`std.fs.dir` 提供目录 path 的 `*_path` 包装、suffix 的 `*_str` / `*_path_str` 包装，以及 `DirectoryEntry.name_bytes()` / `path_bytes()` 原始 bytes 视图和 `name_utf8()` / `path_utf8()` checked 文本视图，底层再通过 `Path.as_c()` 转换到当前 POSIX/C FFI 兼容形式。
 
 ## 实施路线
 
@@ -332,7 +332,7 @@ FFI 层应有单独类型：
 - 已完成：新增 `std.ffi.c.string.CString`，表示 owned NUL-terminated C 字符串，`from_str` 拒绝内部 NUL，`from_utf8` 拒绝非法 UTF-8。
 - 已完成：`CStr.as_str_utf8()` 和 `CString.as_str()` / `as_str_checked()` 把 C 边界显式转回 `str`。
 - 已完成：新增 `tests/samples/positive/std/std_cstring.ax` 和 `SampleSuite_Std_std_cstring`，覆盖 borrowed/owned C string、UTF-8 conversion、内部 NUL 拒绝和 invalid UTF-8 拒绝。
-- 未完成：文件、进程、console、host support 还没有整体改成接收 `CStr` / `CString`；`c"..."` 仍在底层 std 和部分测试中作为兼容过渡。
+- 未完成：文件、目录、进程、console、host support 还没有整体改成接收 `CStr` / `CString`；`std.fs.file` / `std.fs.dir` 已有 `Path` / `str` 新入口，目录 suffix 的 `str` 包装已落地并拒绝内部 NUL，但 `c"..."` 仍在底层 std、host support 和部分兼容测试中作为过渡。
 
 ### Phase 5：Unicode 扩展
 
@@ -349,7 +349,11 @@ FFI 层应有单独类型：
 - 已完成：`Bytes` 提供 `from_span`、`as_span`、`as_mut_span`、`append`、`push/pop/remove/truncate/clear` 和 method API。
 - 已完成：`Bytes.append` 处理 self-alias，覆盖 `raw.append(raw.as_span())` 触发扩容的场景。
 - 已完成：`std.fs.path.Path` 改为 bytes-backed，`from_span` 接受非 UTF-8 path bytes、拒绝内部 NUL，`from_str` 作为便利入口，`as_c` 提供 NUL-terminated 兼容视图。
+- 已完成：`std.fs.file` 新增 `Path` 入口包装：`metadata_path`、`read_bytes_path`、`read_text_path`、`write_bytes_path`、`write_text_path`、`file_exists_path`、`remove_file_path`、`rename_file_path`；新增 `write_str` / `write_str_path` 按 `str` 的真实 byte length 写入，允许内部 `\0` 文本不被 C 字符串截断。
+- 已完成：`std.fs.dir` 新增 `Path` 入口包装：`create_directory_path`、`read_entries_path`、`read_entries_recursive_path`、`count_files_with_suffix_path`、`count_files_with_suffix_recursive_path`、`has_file_with_suffix_path`、`has_file_with_suffix_recursive_path`；新增 suffix `str` 包装：`count_files_with_suffix_str`、`count_files_with_suffix_path_str`、`has_file_with_suffix_str`、`has_file_with_suffix_path_str` 及递归版本，内部通过 `CString.from_str` 拒绝内部 NUL；`DirectoryEntry` 改为 bytes-backed `Path` 存储，提供 `name_bytes()` / `path_bytes()` 原始 bytes 视图、`name_utf8()` / `path_utf8()` checked UTF-8 视图，旧 `name_c_data()` / `path_c_data()` 保留为兼容层。
 - 已完成：新增 `tests/samples/positive/std/std_bytes.ax` 和 `SampleSuite_Std_std_bytes`，覆盖 raw bytes mutation、自别名 append、非 UTF-8 path bytes、NUL rejection 和 `Path.from_str`。
+- 已完成：`tests/samples/positive/std/std_file.ax` 和 `SampleSuite_Std_std_file` 覆盖 `std.fs.file` 的 `Path` 包装、空 path 指针防御、rename/remove/exists 组合，以及 `"path\0text"` 通过 `write_str_path` / `read_text_path` 往返不截断。
+- 已完成：新增 `tests/samples/positive/std/std_dir.ax` 和 `SampleSuite_Std_std_dir`，覆盖目录创建、单层/递归读取、suffix `str` 计数/查询、目录项 raw bytes 视图、checked UTF-8 名称/路径视图、空 path / null entry 指针防御和 `defer` 清理组合。
 - 已完成：`std_collections_path` 样例不再通过 `String.as_mut_span` 编辑字符串，改用受控 `String` byte compatibility API，并新增 `Bytes` raw mutation 覆盖。
 
 ### Phase 6：高级文本结构
@@ -386,7 +390,9 @@ FFI 层应有单独类型：
 - 已完成：`String` safe surface 不再暴露 `as_mut_span`。
 - 已完成：`Bytes` 覆盖 raw mutable bytes 和自别名 append。
 - 已完成：`Path.from_span` 接受非 UTF-8 bytes 并拒绝内部 NUL。
-- 标准库文件/进程/path API 的公开层继续减少业务代码传 `c"..."` 的需求。
+- 已完成：`std.fs.file` 公开层新增 `Path` 和 `str` 入口，`write_str_path("a\0b")` 按长度写入，不走 C string 截断语义。
+- 已完成：`std.fs.dir` 公开层新增目录 path 的 `Path` 入口、suffix 的 `str` 入口，以及目录项 raw bytes / checked UTF-8 视图；M1 axbuild 目录扫描已迁到 `Path` + `str` suffix + bytes entry 名称匹配。
+- 标准库进程、path 更深层 API 和剩余 FFI 公开层继续减少业务代码传 `c"..."` 的需求。
 
 ## 参考资料
 

@@ -81,6 +81,8 @@ import std.core.bytes as bytes;
 import std.core.text as text;
 import std.core.vec as vec;
 import std.ffi.c.string as cstring;
+import std.fs.dir as directory;
+import std.fs.file as file;
 import std.fs.path as path;
 ```
 
@@ -125,6 +127,23 @@ import std.fs.path as path;
 - Method API：`Path.from_c`、`from_span`、`from_str`、`destroy`、`as_c`、`as_span`、`file_name`、`is_absolute`、`parent`、`extension`、`file_stem`、`join_c`、`join_span`、`with_extension`。
 - 约束：`Path` 存储平台路径 bytes，不验证 UTF-8；`from_span` 和 `join_span` 拒绝内部 NUL，因为当前 POSIX/C FFI 兼容视图需要 NUL-terminated buffer；`from_str` 只是从 UTF-8 文本构造路径的便利入口。
 - 兼容 API：`path::path_from_c`、`path::path_join_c` 等保留。
+
+`std.fs.file`：
+
+- 类型：`file::FileBytes`、`file::FileMetadata`。
+- C 兼容 API：`file::metadata`、`file::read_bytes`、`file::read_text`、`file::write_bytes`、`file::write_text`、`file::file_exists`、`file::remove_file`、`file::rename_file` 继续接收 `*const u8` path，作为底层兼容入口保留。
+- `Path` API：`file::metadata_path`、`file::read_bytes_path`、`file::read_text_path`、`file::write_bytes_path`、`file::write_text_path`、`file::file_exists_path`、`file::remove_file_path`、`file::rename_file_path` 接收 `*const path::Path`，空指针返回 `Result.err(1)` 或 `false`。
+- 文本 API：`file::write_str(path, text: str)` 和 `file::write_str_path(path, text: str)` 按 `str` 的 byte length 写入，允许内部 `\0`，不经过 `c_strlen`。
+- 约束：`Path.from_span` 已拒绝内部 NUL，因此 `*_path` 包装可以安全通过 `Path.as_c()` 调用当前 POSIX/C FFI；新业务代码优先使用 `Path` 和 `str` 入口，只有 FFI 或旧兼容代码继续直接传 `c"..."`。
+
+`std.fs.dir`：
+
+- 类型：`directory::DirectoryEntry`、`directory::DirectoryEntryKind`。
+- C 兼容 API：`directory::create_directory`、`directory::read_entries`、`directory::read_entries_recursive`、`directory::count_files_with_suffix`、`directory::has_file_with_suffix`、`directory::count_files_with_suffix_recursive`、`directory::has_file_with_suffix_recursive` 继续接收 `*const u8` path / suffix，作为底层兼容入口保留。
+- `Path` API：`directory::create_directory_path`、`directory::read_entries_path`、`directory::read_entries_recursive_path`、`directory::count_files_with_suffix_path`、`directory::has_file_with_suffix_path`、`directory::count_files_with_suffix_recursive_path`、`directory::has_file_with_suffix_recursive_path` 接收 `*const path::Path`，空 path 指针返回 `false` 或 `Result.err(1)`。
+- suffix 文本 API：`directory::count_files_with_suffix_str`、`directory::count_files_with_suffix_path_str`、`directory::has_file_with_suffix_str`、`directory::has_file_with_suffix_path_str` 及递归版本接收 `str` suffix，内部通过 `CString.from_str` 构造 FFI 参数并拒绝内部 NUL。
+- Directory entry API：`DirectoryEntry` 内部使用 bytes-backed `Path` 保存 host 返回的 name/path；`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 返回 `Result<str, i32>` checked 文本视图；`name_c_data()` / `path_c_data()` 保留为 C 兼容入口。null entry 指针不会解引用：C 兼容入口返回空 C string，bytes 入口返回空 span，checked UTF-8 入口返回 `Result.err(1)`。
+- 约束：目录项默认不暴露 unchecked `str`，因为 POSIX path bytes 不保证 UTF-8；业务代码只有在确知路径是文本时才调用 `name_utf8()` / `path_utf8()`，否则应使用 bytes 视图或 `Path`/C 兼容边界。
 
 `std.core.text`：
 

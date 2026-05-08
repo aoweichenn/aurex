@@ -1,9 +1,72 @@
 module std_file;
 
 import std.core.result;
+import std.core.str as strings;
 import std.core.string;
 import std.core.text;
 import std.fs.file;
+import std.fs.path as paths;
+
+fn check_path_apis() -> Result<bool, i32> {
+    var file_path: paths::Path = paths::Path.from_str("/tmp/aurex_std_file_path_test.txt")?;
+    var renamed_path: paths::Path = paths::Path.from_str("/tmp/aurex_std_file_path_test_renamed.txt")?;
+    remove_file_path(&file_path);
+    remove_file_path(&renamed_path);
+
+    let raw_bytes: SpanU8 = span_u8(c"path-raw", cast(usize, 8));
+    let raw_written: usize = write_bytes_path(&file_path, raw_bytes)?;
+    var raw_read: FileBytes = read_bytes_path(&file_path)?;
+    let raw_ok: bool = raw_written == raw_bytes.len && bytes_equal(raw_read.as_span(), raw_bytes);
+    raw_read.destroy();
+
+    let legacy_written: usize = write_text_path(&file_path, c"legacy-text")?;
+    let legacy_ok: bool = legacy_written == c_strlen(c"legacy-text");
+
+    let payload: str = "path\0text";
+    let payload_bytes: SpanU8 = strings::as_bytes(payload);
+    let written: usize = write_str_path(&file_path, payload)?;
+    let meta: FileMetadata = metadata_path(&file_path)?;
+    var read_back: FileBytes = read_bytes_path(&file_path)?;
+    let bytes_ok: bool = bytes_equal(read_back.as_span(), payload_bytes);
+    read_back.destroy();
+
+    var text_back: String = read_text_path(&file_path)?;
+    let text_ok: bool = text_back.equals(payload);
+    text_back.destroy();
+
+    let renamed_ok: bool = rename_file_path(&file_path, &renamed_path);
+    let exists_old: bool = file_exists_path(&file_path);
+    let exists_new: bool = file_exists_path(&renamed_path);
+    let removed: bool = remove_file_path(&renamed_path);
+    remove_file_path(&file_path);
+
+    let null_path_ok: bool = metadata_path(null).is_err() &&
+        read_bytes_path(null).is_err() &&
+        read_text_path(null).is_err() &&
+        write_bytes_path(null, raw_bytes).is_err() &&
+        write_text_path(null, c"x").is_err() &&
+        write_str_path(null, "x").is_err() &&
+        !file_exists_path(null) &&
+        !remove_file_path(null) &&
+        !rename_file_path(null, &renamed_path) &&
+        !rename_file_path(&file_path, null);
+
+    file_path.destroy();
+    renamed_path.destroy();
+    return Result.ok(raw_ok &&
+        legacy_ok &&
+        written == payload_bytes.len &&
+        meta.exists() &&
+        meta.is_file() &&
+        meta.size() == payload_bytes.len &&
+        bytes_ok &&
+        text_ok &&
+        renamed_ok &&
+        !exists_old &&
+        exists_new &&
+        removed &&
+        null_path_ok);
+}
 
 fn run() -> Result<i32, i32> {
     let path: *const u8 = c"/tmp/aurex_std_file_test.txt";
@@ -32,6 +95,9 @@ fn run() -> Result<i32, i32> {
     remove_file(text_path);
     if !text_ok {
         return Result.ok(5);
+    }
+    if !check_path_apis()? {
+        return Result.ok(6);
     }
     return Result.ok(0);
 }

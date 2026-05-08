@@ -88,6 +88,8 @@ import std.core.bytes as bytes;
 import std.core.text as text;
 import std.core.vec as vec;
 import std.ffi.c.string as cstring;
+import std.fs.dir as directory;
+import std.fs.file as file;
 import std.fs.path as path;
 ```
 
@@ -131,6 +133,23 @@ import std.fs.path as path;
 - Method API: `Path.from_c`, `from_span`, `from_str`, `destroy`, `as_c`, `as_span`, `file_name`, `is_absolute`, `parent`, `extension`, `file_stem`, `join_c`, `join_span`, `with_extension`.
 - Constraint: `Path` stores platform path bytes and does not validate UTF-8. `from_span` and `join_span` reject interior NUL because the current POSIX/C FFI compatibility view is NUL-terminated. `from_str` is a convenience constructor from UTF-8 text.
 - Compatibility API: `path::path_from_c`, `path::path_join_c`, and related wrappers remain available.
+
+`std.fs.file`:
+
+- Types: `file::FileBytes` and `file::FileMetadata`.
+- C compatibility API: `file::metadata`, `file::read_bytes`, `file::read_text`, `file::write_bytes`, `file::write_text`, `file::file_exists`, `file::remove_file`, and `file::rename_file` still accept `*const u8` paths as low-level compatibility entry points.
+- `Path` API: `file::metadata_path`, `file::read_bytes_path`, `file::read_text_path`, `file::write_bytes_path`, `file::write_text_path`, `file::file_exists_path`, `file::remove_file_path`, and `file::rename_file_path` accept `*const path::Path`; null path pointers return `Result.err(1)` or `false`.
+- Text API: `file::write_str(path, text: str)` and `file::write_str_path(path, text: str)` write by the `str` byte length, allow interior `\0`, and do not use `c_strlen`.
+- Constraint: `Path.from_span` already rejects interior NUL, so the `*_path` wrappers can safely call the current POSIX/C FFI through `Path.as_c()`. New application code should prefer `Path` and `str` entry points; direct `c"..."` paths should stay in FFI or legacy compatibility code.
+
+`std.fs.dir`:
+
+- Types: `directory::DirectoryEntry` and `directory::DirectoryEntryKind`.
+- C compatibility API: `directory::create_directory`, `directory::read_entries`, `directory::read_entries_recursive`, `directory::count_files_with_suffix`, `directory::has_file_with_suffix`, `directory::count_files_with_suffix_recursive`, and `directory::has_file_with_suffix_recursive` still accept `*const u8` paths / suffixes as low-level compatibility entry points.
+- `Path` API: `directory::create_directory_path`, `directory::read_entries_path`, `directory::read_entries_recursive_path`, `directory::count_files_with_suffix_path`, `directory::has_file_with_suffix_path`, `directory::count_files_with_suffix_recursive_path`, and `directory::has_file_with_suffix_recursive_path` accept `*const path::Path`; null path pointers return `false` or `Result.err(1)`.
+- Suffix text API: `directory::count_files_with_suffix_str`, `directory::count_files_with_suffix_path_str`, `directory::has_file_with_suffix_str`, `directory::has_file_with_suffix_path_str`, and the recursive variants accept `str` suffixes, build FFI arguments through `CString.from_str`, and reject interior NUL.
+- Directory entry API: `DirectoryEntry` stores host-returned names and paths as bytes-backed `Path` values. `name_bytes()` / `path_bytes()` return raw path bytes, while `name_utf8()` / `path_utf8()` return `Result<str, i32>` checked text views. `name_c_data()` and `path_c_data()` remain as C compatibility entry points. Null entry pointers are defensive: C compatibility entry points return an empty C string, bytes entry points return an empty span, and checked UTF-8 entry points return `Result.err(1)`.
+- Constraint: directory entries do not expose unchecked `str` because POSIX path bytes are not guaranteed to be UTF-8. Application code should call `name_utf8()` / `path_utf8()` only when it expects text; otherwise, use raw bytes views or stay at the `Path` / C compatibility boundary.
 
 `std.core.text`:
 

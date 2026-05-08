@@ -1,9 +1,12 @@
 module std.fs.dir;
 
 import std.core.result;
-import std.core.string;
+import std.core.str as strings;
+import std.core.text as text;
 import std.core.vec as vec;
 import std.ffi.c.host_support;
+import std.ffi.c.string as cstrings;
+import std.fs.path as paths;
 
 pub enum DirectoryEntryKind: u8 {
     file = 1,
@@ -13,9 +16,16 @@ pub enum DirectoryEntryKind: u8 {
 }
 
 pub struct DirectoryEntry {
-    priv name_value: String;
-    priv path_value: String;
+    priv name_value: paths::Path;
+    priv path_value: paths::Path;
     priv kind_value: DirectoryEntryKind;
+}
+
+fn empty_span_u8() -> text::SpanU8 {
+    return text::SpanU8 {
+        data: null,
+        len: cast(usize, 0),
+    };
 }
 
 fn directory_entry_kind_from_host(kind: i32) -> DirectoryEntryKind {
@@ -32,11 +42,14 @@ fn directory_entry_kind_from_host(kind: i32) -> DirectoryEntryKind {
 }
 
 fn directory_entry_from_host(entry: *const HostDirectoryEntry) -> Result<DirectoryEntry, i32> {
-    let name_result: Result<String, i32> = String.from_c(ptr_cast(*const u8, entry.name));
+    if entry == null {
+        return Result.err(1);
+    }
+    let name_result: Result<paths::Path, i32> = paths::Path.from_c(ptr_cast(*const u8, entry.name));
     return match name_result {
         .ok(host_name) => {
-            var name: String = host_name;
-            let path_result: Result<String, i32> = String.from_c(ptr_cast(*const u8, entry.path));
+            var name: paths::Path = host_name;
+            let path_result: Result<paths::Path, i32> = paths::Path.from_c(ptr_cast(*const u8, entry.path));
             match path_result {
                 .ok(path) => Result.ok(DirectoryEntry {
                     name_value: name,
@@ -54,36 +67,88 @@ fn directory_entry_from_host(entry: *const HostDirectoryEntry) -> Result<Directo
 }
 
 pub fn directory_entry_name(entry: *const DirectoryEntry) -> *const u8 {
-    return entry.name_value.c_str();
+    if entry == null {
+        return c"";
+    }
+    return entry.name_value.as_c();
 }
 
 pub fn directory_entry_path(entry: *const DirectoryEntry) -> *const u8 {
-    return entry.path_value.c_str();
+    if entry == null {
+        return c"";
+    }
+    return entry.path_value.as_c();
+}
+
+pub fn directory_entry_name_bytes(entry: *const DirectoryEntry) -> text::SpanU8 {
+    if entry == null {
+        return empty_span_u8();
+    }
+    return entry.name_value.as_span();
+}
+
+pub fn directory_entry_path_bytes(entry: *const DirectoryEntry) -> text::SpanU8 {
+    if entry == null {
+        return empty_span_u8();
+    }
+    return entry.path_value.as_span();
+}
+
+pub fn directory_entry_name_utf8(entry: *const DirectoryEntry) -> Result<str, i32> {
+    if entry == null {
+        return Result.err(1);
+    }
+    return strings::from_utf8(directory_entry_name_bytes(entry));
+}
+
+pub fn directory_entry_path_utf8(entry: *const DirectoryEntry) -> Result<str, i32> {
+    if entry == null {
+        return Result.err(1);
+    }
+    return strings::from_utf8(directory_entry_path_bytes(entry));
 }
 
 pub fn directory_entry_kind(entry: *const DirectoryEntry) -> DirectoryEntryKind {
+    if entry == null {
+        return DirectoryEntryKind.other;
+    }
     return entry.kind_value;
 }
 
 pub fn directory_entry_is_file(entry: *const DirectoryEntry) -> bool {
+    if entry == null {
+        return false;
+    }
     return entry.kind_value == DirectoryEntryKind.file;
 }
 
 pub fn directory_entry_is_directory(entry: *const DirectoryEntry) -> bool {
+    if entry == null {
+        return false;
+    }
     return entry.kind_value == DirectoryEntryKind.directory;
 }
 
 pub fn directory_entry_is_symlink(entry: *const DirectoryEntry) -> bool {
+    if entry == null {
+        return false;
+    }
     return entry.kind_value == DirectoryEntryKind.symlink;
 }
 
 pub fn directory_entry_destroy(entry: *mut DirectoryEntry) -> void {
+    if entry == null {
+        return;
+    }
     entry.name_value.destroy();
     entry.path_value.destroy();
     entry.kind_value = DirectoryEntryKind.other;
 }
 
 pub fn destroy_entries(entries: *mut vec::Vec<DirectoryEntry>) -> void {
+    if entries == null {
+        return;
+    }
     var index: usize = cast(usize, 0);
     while index < entries.len {
         directory_entry_destroy(&entries.data[index]);
@@ -139,6 +204,13 @@ pub fn create_directory(path: *const u8) -> bool {
     return host_directory_create(path);
 }
 
+pub fn create_directory_path(path: *const paths::Path) -> bool {
+    if path == null {
+        return false;
+    }
+    return create_directory(paths::as_c(path));
+}
+
 fn read_entries_impl(path: *const u8, recursive: bool) -> Result<vec::Vec<DirectoryEntry>, i32> {
     if path == null {
         return Result.err(1);
@@ -159,8 +231,22 @@ pub fn read_entries(path: *const u8) -> Result<vec::Vec<DirectoryEntry>, i32> {
     return read_entries_impl(path, false);
 }
 
+pub fn read_entries_path(path: *const paths::Path) -> Result<vec::Vec<DirectoryEntry>, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return read_entries(paths::as_c(path));
+}
+
 pub fn read_entries_recursive(path: *const u8) -> Result<vec::Vec<DirectoryEntry>, i32> {
     return read_entries_impl(path, true);
+}
+
+pub fn read_entries_recursive_path(path: *const paths::Path) -> Result<vec::Vec<DirectoryEntry>, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return read_entries_recursive(paths::as_c(path));
 }
 
 pub fn count_files_with_suffix(path: *const u8, suffix: *const u8) -> Result<i32, i32> {
@@ -174,8 +260,47 @@ pub fn count_files_with_suffix(path: *const u8, suffix: *const u8) -> Result<i32
     return Result.ok(count);
 }
 
+pub fn count_files_with_suffix_str(path: *const u8, suffix: str) -> Result<i32, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    var suffix_c: cstrings::CString = cstrings::CString.from_str(suffix)?;
+    let result: Result<i32, i32> = count_files_with_suffix(path, suffix_c.as_c());
+    suffix_c.destroy();
+    return result;
+}
+
+pub fn count_files_with_suffix_path(path: *const paths::Path, suffix: *const u8) -> Result<i32, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return count_files_with_suffix(paths::as_c(path), suffix);
+}
+
+pub fn count_files_with_suffix_path_str(path: *const paths::Path, suffix: str) -> Result<i32, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return count_files_with_suffix_str(paths::as_c(path), suffix);
+}
+
 pub fn has_file_with_suffix(path: *const u8, suffix: *const u8) -> Result<bool, i32> {
     let count: i32 = count_files_with_suffix(path, suffix)?;
+    return Result.ok(count > 0);
+}
+
+pub fn has_file_with_suffix_str(path: *const u8, suffix: str) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix_str(path, suffix)?;
+    return Result.ok(count > 0);
+}
+
+pub fn has_file_with_suffix_path(path: *const paths::Path, suffix: *const u8) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix_path(path, suffix)?;
+    return Result.ok(count > 0);
+}
+
+pub fn has_file_with_suffix_path_str(path: *const paths::Path, suffix: str) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix_path_str(path, suffix)?;
     return Result.ok(count > 0);
 }
 
@@ -190,8 +315,47 @@ pub fn count_files_with_suffix_recursive(path: *const u8, suffix: *const u8) -> 
     return Result.ok(count);
 }
 
+pub fn count_files_with_suffix_recursive_str(path: *const u8, suffix: str) -> Result<i32, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    var suffix_c: cstrings::CString = cstrings::CString.from_str(suffix)?;
+    let result: Result<i32, i32> = count_files_with_suffix_recursive(path, suffix_c.as_c());
+    suffix_c.destroy();
+    return result;
+}
+
+pub fn count_files_with_suffix_recursive_path(path: *const paths::Path, suffix: *const u8) -> Result<i32, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return count_files_with_suffix_recursive(paths::as_c(path), suffix);
+}
+
+pub fn count_files_with_suffix_recursive_path_str(path: *const paths::Path, suffix: str) -> Result<i32, i32> {
+    if path == null {
+        return Result.err(1);
+    }
+    return count_files_with_suffix_recursive_str(paths::as_c(path), suffix);
+}
+
 pub fn has_file_with_suffix_recursive(path: *const u8, suffix: *const u8) -> Result<bool, i32> {
     let count: i32 = count_files_with_suffix_recursive(path, suffix)?;
+    return Result.ok(count > 0);
+}
+
+pub fn has_file_with_suffix_recursive_str(path: *const u8, suffix: str) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix_recursive_str(path, suffix)?;
+    return Result.ok(count > 0);
+}
+
+pub fn has_file_with_suffix_recursive_path(path: *const paths::Path, suffix: *const u8) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix_recursive_path(path, suffix)?;
+    return Result.ok(count > 0);
+}
+
+pub fn has_file_with_suffix_recursive_path_str(path: *const paths::Path, suffix: str) -> Result<bool, i32> {
+    let count: i32 = count_files_with_suffix_recursive_path_str(path, suffix)?;
     return Result.ok(count > 0);
 }
 
@@ -202,6 +366,22 @@ impl DirectoryEntry {
 
     pub fn path_c_data(self: *const DirectoryEntry) -> *const u8 {
         return directory_entry_path(self);
+    }
+
+    pub fn name_bytes(self: *const DirectoryEntry) -> text::SpanU8 {
+        return directory_entry_name_bytes(self);
+    }
+
+    pub fn path_bytes(self: *const DirectoryEntry) -> text::SpanU8 {
+        return directory_entry_path_bytes(self);
+    }
+
+    pub fn name_utf8(self: *const DirectoryEntry) -> Result<str, i32> {
+        return directory_entry_name_utf8(self);
+    }
+
+    pub fn path_utf8(self: *const DirectoryEntry) -> Result<str, i32> {
+        return directory_entry_path_utf8(self);
     }
 
     pub fn kind(self: *const DirectoryEntry) -> DirectoryEntryKind {

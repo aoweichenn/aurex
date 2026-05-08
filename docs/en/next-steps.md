@@ -22,6 +22,24 @@ topological-build baseline, target-name lookup-cache baseline, target-graph diag
 / message / name / cycle-path / cycle-path-name baseline, test direct-process
 runner, M1 examples, integration-test coverage, and test-time baseline.
 
+String foundation work now follows the Chinese design draft:
+`str` is borrowed UTF-8 text, `String` owns UTF-8 bytes, `Bytes` /
+`Span<u8>` hold raw bytes, `CStr` / `CString` cover C FFI, and `Path`
+stores platform path bytes. The current tree has string-literal UTF-8 and
+escape diagnostics, `std.core.str` borrowed APIs and scalar APIs,
+UTF-8-preserving `String` APIs with `String.as_mut_span` removed, raw
+`std.core.bytes.Bytes`, bytes-backed `std.fs.path.Path`, and first
+`std.fs.file` `Path` / `str` entry points: `metadata_path`,
+`read_bytes_path`, `read_text_path`, `write_bytes_path`, `write_text_path`,
+`file_exists_path`, `remove_file_path`, `rename_file_path`, plus
+`write_str` / `write_str_path` that write by the true `str` byte length.
+`std.fs.dir` now also has `Path` wrappers for directory paths, `str`
+wrappers for suffix arguments, and bytes-backed `DirectoryEntry` views:
+`name_bytes()` / `path_bytes()` expose raw path bytes, while `name_utf8()` /
+`path_utf8()` perform checked UTF-8 conversion. `examples/m1/axbuild`
+directory scanning now uses `Path` + `str` suffixes + bytes entry-name
+matching.
+
 ## Current Capabilities
 
 Stage0 main path:
@@ -68,10 +86,14 @@ Current language slices:
 - Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
   the old `BufferU8` and handwritten file-result structures removed from
   in-tree uses. `std.fs.file::FileMetadata` now provides an
-  exists/is_file/is_dir/size/modified_time_ns baseline, and `std.fs.dir`
-  provides directory creation, owned single-level / recursive directory-entry
-  reads, and single-level / recursive source-discovery baselines for counting
-  regular files by suffix.
+  exists/is_file/is_dir/size/modified_time_ns baseline. `std.fs.file` also
+  provides `Path` wrappers and `write_str` / `write_str_path`, so new text
+  writes use the `str` byte length and do not truncate at interior `\0`.
+  `std.fs.dir` provides directory creation, owned single-level / recursive
+  directory-entry reads, `Path` wrappers for directory paths, `str` wrappers
+  for suffixes, raw-bytes and checked-UTF-8 directory-entry views, and
+  single-level / recursive source-discovery baselines for counting regular
+  files by suffix.
 - Standard process support has started. `std.sys.process::Command` provides
   typed argv, `arg()`, `cwd()`, `env()`, `run()`, `run_capture()`, and
   `destroy()`, backed by host-c `fork` / `execvp` / `waitpid`, with a
@@ -110,6 +132,11 @@ Current language slices:
   composable diagnostic model.
 - Resource management still needs a minimal move/noncopyable model and unified
   handling for files, processes, arenas, and other resources.
+- The string foundation still needs continued public API tightening:
+  `std.fs.file` and `std.fs.dir` now have `Path` / `str` entry points, and
+  directory suffixes plus M1 axbuild directory scanning have moved to
+  `Path` / `str`. Remaining process, console, and FFI-facing code still has
+  low-level `c"..."` / `*const u8` compatibility boundaries to retire.
 - The standard library still needs broader `Vec<T>`, hash/bucketed `Map<K, V>`,
   owned string-key maps, streaming
   directory iterators / walk callbacks, file metadata, subprocess support, and OS features required by
@@ -245,8 +272,17 @@ manual status helpers.
    `Result` / `Option`, and `?`.
    The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
    `std.sys.host` file IO now exposes M1-style APIs such as
-   `Result<FileBytes, i32>` and `Result<usize, i32>`. `examples/m1/axbuild`
-   now uses `CStringUsizeMap` for its target-name -> id lookup cache. Next,
+   `Result<FileBytes, i32>` and `Result<usize, i32>`. `std.fs.file` now has
+   `Path` wrappers and `write_str_path`, with `std_file` covering
+   `"path\0text"` so C-string truncation cannot leak back into this path.
+   `std.fs.dir` now has `Path` wrappers for directory paths, `str` wrappers for
+   suffixes, and bytes-backed `DirectoryEntry` raw-bytes / checked-UTF-8
+   views, with `std_dir` covering directory creation, direct/recursive reads,
+   suffix counts, null-entry defenses, and `defer` cleanup.
+   `examples/m1/axbuild`
+   now uses `CStringUsizeMap` for its target-name -> id lookup cache and uses
+   `Path` + `str` suffixes + bytes entry-name matching for directory scanning.
+   Next,
    grow this into token-buffer, source-list, owned string-key maps,
    hash/bucketed maps, and more general path/build-graph scenarios.
 

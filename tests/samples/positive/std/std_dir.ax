@@ -1,0 +1,134 @@
+module std_dir;
+
+import std.core.result as result;
+import std.core.str as strings;
+import std.core.text as text;
+import std.core.vec as vec;
+import std.fs.dir as directory;
+import std.fs.file as file;
+import std.fs.path as path;
+
+fn cleanup_paths(root: *const path::Path, nested: *const path::Path, source: *const path::Path, note: *const path::Path) -> void {
+    file::remove_file_path(source);
+    file::remove_file_path(note);
+    file::remove_file_path(nested);
+    file::remove_file_path(root);
+}
+
+fn contains_entry(entries: *const vec::Vec<directory::DirectoryEntry>, name: str, want_directory: bool) -> bool {
+    var index: usize = cast(usize, 0);
+    while index < entries.len() {
+        let entry_name: str = entries.data[index].name_utf8().unwrap_or("");
+        let entry_name_bytes: text::SpanU8 = entries.data[index].name_bytes();
+        let entry_path: str = entries.data[index].path_utf8().unwrap_or("");
+        let entry_path_bytes: text::SpanU8 = entries.data[index].path_bytes();
+        let is_matching_name: bool = strings::equals(entry_name, name) &&
+            entry_name_bytes.len == strings::byte_len(name);
+        let path_is_consistent: bool = entry_path_bytes.len == strings::byte_len(entry_path) &&
+            entry_path_bytes.len >= entry_name_bytes.len;
+        let is_matching_kind: bool = entries.data[index].is_directory() == want_directory;
+        if is_matching_name && path_is_consistent && is_matching_kind {
+            return true;
+        }
+        index = index + cast(usize, 1);
+    }
+    return false;
+}
+
+fn check_directory_path_apis() -> result::Result<bool, i32> {
+    var root_path: path::Path = path::Path.from_str("/tmp/aurex_std_dir_path_test")?;
+    var nested_path: path::Path = path::Path.from_str("/tmp/aurex_std_dir_path_test/nested")?;
+    var source_path: path::Path = path::Path.from_str("/tmp/aurex_std_dir_path_test/main.ax")?;
+    var note_path: path::Path = path::Path.from_str("/tmp/aurex_std_dir_path_test/nested/note.txt")?;
+    defer root_path.destroy();
+    defer nested_path.destroy();
+    defer source_path.destroy();
+    defer note_path.destroy();
+    defer cleanup_paths(&root_path, &nested_path, &source_path, &note_path);
+
+    cleanup_paths(&root_path, &nested_path, &source_path, &note_path);
+    if !directory::create_directory_path(&root_path) {
+        return Result.ok(false);
+    }
+    if !directory::create_directory_path(&nested_path) {
+        return Result.ok(false);
+    }
+
+    let source_text: str = "fn main {}\n";
+    let note_text: str = "note";
+    let source_written: usize = file::write_str_path(&source_path, source_text)?;
+    let note_written: usize = file::write_str_path(&note_path, note_text)?;
+
+    var root_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_path(&root_path)?;
+    let root_ok: bool = contains_entry(&root_entries, "main.ax", false) &&
+        contains_entry(&root_entries, "nested", true);
+    directory::destroy_entries(&root_entries);
+
+    var nested_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_path(&nested_path)?;
+    let nested_ok: bool = contains_entry(&nested_entries, "note.txt", false);
+    directory::destroy_entries(&nested_entries);
+
+    var recursive_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_recursive_path(&root_path)?;
+    let recursive_ok: bool = contains_entry(&recursive_entries, "main.ax", false) &&
+        contains_entry(&recursive_entries, "nested", true) &&
+        contains_entry(&recursive_entries, "note.txt", false);
+    directory::destroy_entries(&recursive_entries);
+
+    let direct_ax_count: i32 = directory::count_files_with_suffix_path_str(&root_path, ".ax")?;
+    let recursive_txt_count: i32 = directory::count_files_with_suffix_recursive_path_str(&root_path, ".txt")?;
+    let has_txt: bool = directory::has_file_with_suffix_recursive_path_str(&root_path, ".txt")?;
+    let has_md: bool = directory::has_file_with_suffix_path_str(&root_path, ".md")?;
+    let null_path_ok: bool = !directory::create_directory_path(null) &&
+        directory::read_entries_path(null).is_err() &&
+        directory::read_entries_recursive_path(null).is_err() &&
+        directory::count_files_with_suffix_path(null, c".ax").is_err() &&
+        directory::count_files_with_suffix_path(&root_path, null).is_err() &&
+        directory::count_files_with_suffix_path_str(null, ".ax").is_err() &&
+        directory::count_files_with_suffix_path_str(&root_path, ".a\0x").is_err() &&
+        directory::has_file_with_suffix_path(null, c".ax").is_err() &&
+        directory::has_file_with_suffix_path_str(null, ".ax").is_err() &&
+        directory::count_files_with_suffix_recursive_path(null, c".ax").is_err() &&
+        directory::count_files_with_suffix_recursive_path(&root_path, null).is_err() &&
+        directory::count_files_with_suffix_recursive_path_str(null, ".ax").is_err() &&
+        directory::count_files_with_suffix_recursive_path_str(&root_path, ".a\0x").is_err() &&
+        directory::has_file_with_suffix_recursive_path(null, c".ax").is_err() &&
+        directory::has_file_with_suffix_recursive_path_str(null, ".ax").is_err();
+    let null_entry_ok: bool =
+        text::c_string_equal(directory::directory_entry_name(null), c"") &&
+        text::c_string_equal(directory::directory_entry_path(null), c"") &&
+        directory::directory_entry_name_bytes(null).len == cast(usize, 0) &&
+        directory::directory_entry_path_bytes(null).len == cast(usize, 0) &&
+        directory::directory_entry_name_utf8(null).is_err() &&
+        directory::directory_entry_path_utf8(null).is_err() &&
+        directory::directory_entry_kind(null) == directory::DirectoryEntryKind.other &&
+        !directory::directory_entry_is_file(null) &&
+        !directory::directory_entry_is_directory(null) &&
+        !directory::directory_entry_is_symlink(null);
+    directory::directory_entry_destroy(null);
+    directory::destroy_entries(null);
+
+    return Result.ok(source_written == strings::byte_len(source_text) &&
+        note_written == strings::byte_len(note_text) &&
+        root_ok &&
+        nested_ok &&
+        recursive_ok &&
+        direct_ax_count == 1 &&
+        recursive_txt_count == 1 &&
+        has_txt &&
+        !has_md &&
+        null_path_ok &&
+        null_entry_ok);
+}
+
+fn main() -> i32 {
+    return match check_directory_path_apis() {
+        .ok(value) => {
+            if value {
+                0
+            } else {
+                1
+            }
+        },
+        .err(code) => code,
+    };
+}

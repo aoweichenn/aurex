@@ -103,6 +103,10 @@ if(BUILD_TESTING)
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_file
     )
     add_test(
+        NAME aurex_tests_sample_suite_std_dir
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_dir
+    )
+    add_test(
         NAME aurex_tests_sample_suite_std_mem
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_mem
     )
@@ -150,6 +154,7 @@ if(BUILD_TESTING)
     set_tests_properties(
         aurex_tests_sample_suite_negative
         aurex_tests_sample_suite_std_bootstrap
+        aurex_tests_sample_suite_std_dir
         aurex_tests_sample_suite_std_ffi
         aurex_tests_sample_suite_std_file
         aurex_tests_sample_suite_std_mem

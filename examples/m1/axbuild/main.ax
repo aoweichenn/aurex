@@ -2,10 +2,12 @@ module m1.axbuild.main;
 
 import std.core.result as result;
 import std.core.map as map;
+import std.core.str as strings;
 import std.core.text as text;
 import std.core.vec as vec;
 import std.fs.dir as directory;
 import std.fs.file as file;
+import std.fs.path as paths;
 import std.io.console as console;
 import std.sys.process as process;
 
@@ -386,24 +388,23 @@ fn project_source_count(project: *const Project) -> i32 {
     return count;
 }
 
-fn project_sources_match_directory(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
-    let discovered: i32 = directory::count_files_with_suffix(path, suffix)?;
+fn project_sources_match_directory(project: *const Project, path: *const paths::Path, suffix: str) -> result::Result<bool, i32> {
+    let discovered: i32 = directory::count_files_with_suffix_path_str(path, suffix)?;
     return Result.ok(discovered == project_source_count(project));
 }
 
-fn c_string_has_suffix(value: *const u8, suffix: *const u8) -> bool {
-    if value == null || suffix == null {
+fn bytes_has_suffix(value: text::SpanU8, suffix: str) -> bool {
+    if value.len > cast(usize, 0) && value.data == null {
         return false;
     }
-    let value_span: text::SpanU8 = text::c_span(value);
-    let suffix_span: text::SpanU8 = text::c_span(suffix);
-    if suffix_span.len > value_span.len {
+    let suffix_span: text::SpanU8 = strings::as_bytes(suffix);
+    if suffix_span.len > value.len {
         return false;
     }
-    let offset: usize = value_span.len - suffix_span.len;
+    let offset: usize = value.len - suffix_span.len;
     var index: usize = cast(usize, 0);
     while index < suffix_span.len {
-        if value_span.data[offset + index] != suffix_span.data[index] {
+        if value.data[offset + index] != suffix_span.data[index] {
             return false;
         }
         index = index + cast(usize, 1);
@@ -430,17 +431,17 @@ fn project_has_source(project: *const Project, source_path: *const u8) -> bool {
     return false;
 }
 
-fn project_read_directory_entries(path: *const u8, recursive: bool) -> result::Result<vec::Vec<directory::DirectoryEntry>, i32> {
+fn project_read_directory_entries(path: *const paths::Path, recursive: bool) -> result::Result<vec::Vec<directory::DirectoryEntry>, i32> {
     if recursive {
-        return directory::read_entries_recursive(path);
+        return directory::read_entries_recursive_path(path);
     }
-    return directory::read_entries(path);
+    return directory::read_entries_path(path);
 }
 
 fn project_sources_match_directory_entries_impl(
     project: *const Project,
-    path: *const u8,
-    suffix: *const u8,
+    path: *const paths::Path,
+    suffix: str,
     recursive: bool
 ) -> result::Result<bool, i32> {
     var entries: vec::Vec<directory::DirectoryEntry> = project_read_directory_entries(path, recursive)?;
@@ -448,10 +449,10 @@ fn project_sources_match_directory_entries_impl(
     var all_known: bool = true;
     var index: usize = cast(usize, 0);
     while index < entries.len {
-        let entry_name: *const u8 = directory::directory_entry_name(&entries.data[index]);
-        if directory::directory_entry_is_file(&entries.data[index]) && c_string_has_suffix(entry_name, suffix) {
+        let entry_name: text::SpanU8 = entries.data[index].name_bytes();
+        if entries.data[index].is_file() && bytes_has_suffix(entry_name, suffix) {
             discovered = discovered + 1;
-            if !project_has_source(project, directory::directory_entry_path(&entries.data[index])) {
+            if !project_has_source(project, entries.data[index].path_c_data()) {
                 all_known = false;
             }
         }
@@ -461,11 +462,11 @@ fn project_sources_match_directory_entries_impl(
     return Result.ok(all_known && discovered == project_source_count(project));
 }
 
-fn project_sources_match_directory_entries(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
+fn project_sources_match_directory_entries(project: *const Project, path: *const paths::Path, suffix: str) -> result::Result<bool, i32> {
     return project_sources_match_directory_entries_impl(project, path, suffix, false);
 }
 
-fn project_sources_match_recursive_directory_entries(project: *const Project, path: *const u8, suffix: *const u8) -> result::Result<bool, i32> {
+fn project_sources_match_recursive_directory_entries(project: *const Project, path: *const paths::Path, suffix: str) -> result::Result<bool, i32> {
     return project_sources_match_directory_entries_impl(project, path, suffix, true);
 }
 
@@ -922,16 +923,27 @@ fn configure_project(project: *mut Project) -> result::Result<usize, i32> {
 }
 
 fn prepare_project_sources() -> result::Result<bool, i32> {
-    if !directory::create_directory(c"/tmp/aurex_m1_axbuild_recursive_sources") {
+    var root_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources")?;
+    var nested_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources/nested")?;
+    var core_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax")?;
+    var main_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax")?;
+    var generated_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax")?;
+    defer root_path.destroy();
+    defer nested_path.destroy();
+    defer core_path.destroy();
+    defer main_path.destroy();
+    defer generated_path.destroy();
+
+    if !directory::create_directory_path(&root_path) {
         return Result.err(35);
     }
-    if !directory::create_directory(c"/tmp/aurex_m1_axbuild_recursive_sources/nested") {
+    if !directory::create_directory_path(&nested_path) {
         return Result.err(36);
     }
 
-    let core_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_core.aurex_m1_source.ax", c"fn core { return }")?;
-    let main_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_main.aurex_m1_source.ax", c"fn main { return }")?;
-    let nested_written: usize = file::write_text(c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax", c"fn generated { return }")?;
+    let core_written: usize = file::write_str_path(&core_path, "fn core { return }")?;
+    let main_written: usize = file::write_str_path(&main_path, "fn main { return }")?;
+    let nested_written: usize = file::write_str_path(&generated_path, "fn generated { return }")?;
     return Result.ok(core_written > cast(usize, 0) && main_written > cast(usize, 0) && nested_written > cast(usize, 0));
 }
 
@@ -1153,41 +1165,48 @@ fn validate_cwd_env_capture() -> result::Result<bool, i32> {
 }
 
 fn validate_recursive_source_discovery() -> result::Result<bool, i32> {
-    let count: i32 = directory::count_files_with_suffix_recursive(c"/tmp/aurex_m1_axbuild_recursive_sources", c".aurex_m1_source.ax")?;
-    let has_source: bool = directory::has_file_with_suffix_recursive(c"/tmp/aurex_m1_axbuild_recursive_sources", c".aurex_m1_source.ax")?;
+    var root_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources")?;
+    defer root_path.destroy();
+    let count: i32 = directory::count_files_with_suffix_recursive_path_str(&root_path, ".aurex_m1_source.ax")?;
+    let has_source: bool = directory::has_file_with_suffix_recursive_path_str(&root_path, ".aurex_m1_source.ax")?;
     return Result.ok(count == 1 && has_source);
 }
 
 fn validate_entry_source_discovery() -> result::Result<bool, i32> {
-    var root_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries(c"/tmp/aurex_m1_axbuild_recursive_sources")?;
+    var root_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources")?;
+    var nested_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources/nested")?;
+    defer root_path.destroy();
+    defer nested_path.destroy();
+
+    var root_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_path(&root_path)?;
     var root_count: i32 = 0;
     var nested_dir_ok: bool = false;
     var root_index: usize = cast(usize, 0);
     while root_index < root_entries.len {
         root_count = root_count + 1;
-        let root_name: *const u8 = directory::directory_entry_name(&root_entries.data[root_index]);
-        let root_path: *const u8 = directory::directory_entry_path(&root_entries.data[root_index]);
-        if directory::directory_entry_is_directory(&root_entries.data[root_index]) &&
-            text::c_string_equal(root_name, c"nested") &&
-            text::c_string_equal(root_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested") {
+        let root_name: str = root_entries.data[root_index].name_utf8().unwrap_or("");
+        let root_entry_path: str = root_entries.data[root_index].path_utf8().unwrap_or("");
+        if root_entries.data[root_index].is_directory() &&
+            strings::equals(root_name, "nested") &&
+            strings::equals(root_entry_path, "/tmp/aurex_m1_axbuild_recursive_sources/nested") {
             nested_dir_ok = true;
         }
         root_index = root_index + cast(usize, 1);
     }
     directory::destroy_entries(&root_entries);
 
-    var nested_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries(c"/tmp/aurex_m1_axbuild_recursive_sources/nested")?;
+    var nested_entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_path(&nested_path)?;
     var source_count: i32 = 0;
     var generated_source_ok: bool = false;
     var nested_index: usize = cast(usize, 0);
     while nested_index < nested_entries.len {
-        let source_name: *const u8 = directory::directory_entry_name(&nested_entries.data[nested_index]);
-        let source_path: *const u8 = directory::directory_entry_path(&nested_entries.data[nested_index]);
-        if directory::directory_entry_is_file(&nested_entries.data[nested_index]) &&
-            c_string_has_suffix(source_name, c".aurex_m1_source.ax") {
+        let source_name: str = nested_entries.data[nested_index].name_utf8().unwrap_or("");
+        let source_path: str = nested_entries.data[nested_index].path_utf8().unwrap_or("");
+        if nested_entries.data[nested_index].is_file() &&
+            bytes_has_suffix(nested_entries.data[nested_index].name_bytes(), ".aurex_m1_source.ax") {
             source_count = source_count + 1;
-            if text::c_string_equal(source_name, c"generated.aurex_m1_source.ax") &&
-                text::c_string_equal(source_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
+            if strings::equals(source_name, "generated.aurex_m1_source.ax") &&
+                strings::equals(source_path, "/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
                 generated_source_ok = true;
             }
         }
@@ -1199,7 +1218,10 @@ fn validate_entry_source_discovery() -> result::Result<bool, i32> {
 }
 
 fn validate_recursive_entry_source_discovery() -> result::Result<bool, i32> {
-    var entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_recursive(c"/tmp/aurex_m1_axbuild_recursive_sources")?;
+    var root_path: paths::Path = paths::Path.from_str("/tmp/aurex_m1_axbuild_recursive_sources")?;
+    defer root_path.destroy();
+
+    var entries: vec::Vec<directory::DirectoryEntry> = directory::read_entries_recursive_path(&root_path)?;
     var entry_count: i32 = 0;
     var source_count: i32 = 0;
     var nested_dir_ok: bool = false;
@@ -1207,18 +1229,18 @@ fn validate_recursive_entry_source_discovery() -> result::Result<bool, i32> {
     var index: usize = cast(usize, 0);
     while index < entries.len {
         entry_count = entry_count + 1;
-        let entry_name: *const u8 = directory::directory_entry_name(&entries.data[index]);
-        let entry_path: *const u8 = directory::directory_entry_path(&entries.data[index]);
-        if directory::directory_entry_is_directory(&entries.data[index]) &&
-            text::c_string_equal(entry_name, c"nested") &&
-            text::c_string_equal(entry_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested") {
+        let entry_name: str = entries.data[index].name_utf8().unwrap_or("");
+        let entry_path: str = entries.data[index].path_utf8().unwrap_or("");
+        if entries.data[index].is_directory() &&
+            strings::equals(entry_name, "nested") &&
+            strings::equals(entry_path, "/tmp/aurex_m1_axbuild_recursive_sources/nested") {
             nested_dir_ok = true;
         }
-        if directory::directory_entry_is_file(&entries.data[index]) &&
-            c_string_has_suffix(entry_name, c".aurex_m1_source.ax") {
+        if entries.data[index].is_file() &&
+            bytes_has_suffix(entries.data[index].name_bytes(), ".aurex_m1_source.ax") {
             source_count = source_count + 1;
-            if text::c_string_equal(entry_name, c"generated.aurex_m1_source.ax") &&
-                text::c_string_equal(entry_path, c"/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
+            if strings::equals(entry_name, "generated.aurex_m1_source.ax") &&
+                strings::equals(entry_path, "/tmp/aurex_m1_axbuild_recursive_sources/nested/generated.aurex_m1_source.ax") {
                 generated_source_ok = true;
             }
         }
@@ -1235,7 +1257,7 @@ fn validate_recursive_entry_source_discovery() -> result::Result<bool, i32> {
     }
     let target_id: usize = project.add_target(target)?;
     let project_match: bool =
-        project_sources_match_recursive_directory_entries(&project, c"/tmp/aurex_m1_axbuild_recursive_sources", c".aurex_m1_source.ax")?;
+        project_sources_match_recursive_directory_entries(&project, &root_path, ".aurex_m1_source.ax")?;
     project.destroy();
 
     return Result.ok(
@@ -1251,11 +1273,13 @@ fn validate_recursive_entry_source_discovery() -> result::Result<bool, i32> {
 fn run_build_tool() -> result::Result<i32, i32> {
     cleanup_project_sources();
     let prepared: bool = prepare_project_sources()?;
+    var tmp_path: paths::Path = paths::Path.from_str("/tmp")?;
+    defer tmp_path.destroy();
     var project: Project = project_new(c"demo", c"/tmp/aurex_m1_axbuild_stamp");
     project.clean();
     let app_id: usize = configure_project(&project)?;
-    let discovery_ok: bool = project_sources_match_directory(&project, c"/tmp", c".aurex_m1_source.ax")?;
-    let entry_discovery_ok: bool = project_sources_match_directory_entries(&project, c"/tmp", c".aurex_m1_source.ax")?;
+    let discovery_ok: bool = project_sources_match_directory(&project, &tmp_path, ".aurex_m1_source.ax")?;
+    let entry_discovery_ok: bool = project_sources_match_directory_entries(&project, &tmp_path, ".aurex_m1_source.ax")?;
     let recursive_discovery_ok: bool = validate_recursive_source_discovery()?;
     let entry_source_discovery_ok: bool = validate_entry_source_discovery()?;
     let recursive_entry_source_discovery_ok: bool = validate_recursive_entry_source_discovery()?;

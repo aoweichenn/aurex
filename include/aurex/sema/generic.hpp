@@ -28,6 +28,7 @@ struct GenericStructTemplateInfo {
     std::vector<std::string> params;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
+    bool is_noncopy = false;
 };
 
 struct GenericFunctionTemplateInfo {

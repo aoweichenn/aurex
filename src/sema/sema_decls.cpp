@@ -123,6 +123,7 @@ void SemanticAnalyzer::register_type_names() {
             info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
             info.range = item.range;
             info.visibility = item.visibility;
+            info.is_noncopy = item.is_noncopy;
             for (std::string_view param : item.generic_params) {
                 const std::string param_name(param);
                 if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
@@ -198,6 +199,7 @@ void SemanticAnalyzer::register_type_names() {
             info.module = owner;
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
+            info.is_noncopy = item.is_noncopy;
             info.visibility = item.visibility;
             auto struct_inserted = checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
@@ -640,7 +642,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
         current_module_ = item_module(item);
         const std::string key = module_key(current_module_, item.name);
         bool contains_array = false;
-        bool copyable = true;
+        bool copyable = !item.is_noncopy;
         std::unordered_set<std::string> seen_fields;
         for (const syntax::FieldDecl& field : item.fields) {
             if (!seen_fields.insert(std::string(field.name)).second) {

@@ -326,9 +326,11 @@ void Parser::synchronize() {
         case TokenKind::kw_let:
         case TokenKind::kw_var:
         case TokenKind::kw_if:
+        case TokenKind::kw_for:
         case TokenKind::kw_while:
         case TokenKind::kw_defer:
         case TokenKind::kw_return:
+        case TokenKind::kw_noncopy:
         case TokenKind::kw_import:
             return;
         default:
@@ -427,7 +429,7 @@ syntax::ItemId Parser::parse_item() {
         }
         return id;
     }
-    if (check(TokenKind::kw_struct)) {
+    if (check(TokenKind::kw_struct) || check(TokenKind::kw_noncopy)) {
         const syntax::ItemId id = parse_struct_decl();
         if (syntax::is_valid(id)) {
             module_.items[id.value].visibility = visibility;
@@ -525,7 +527,9 @@ syntax::ItemId Parser::parse_type_alias_decl() {
 }
 
 syntax::ItemId Parser::parse_struct_decl() {
-    const syntax::Token& begin = expect(TokenKind::kw_struct, "expected 'struct'");
+    const bool is_noncopy = match(TokenKind::kw_noncopy);
+    const syntax::Token& begin = is_noncopy ? previous() : peek();
+    expect(TokenKind::kw_struct, is_noncopy ? "expected 'struct' after 'noncopy'" : "expected 'struct'");
     const syntax::Token& name = expect(TokenKind::identifier, "expected struct name");
     std::vector<std::string_view> generic_params;
     if (check(TokenKind::less)) {
@@ -537,6 +541,7 @@ syntax::ItemId Parser::parse_struct_decl() {
     item.kind = syntax::ItemKind::struct_decl;
     item.name = name.text;
     item.generic_params = std::move(generic_params);
+    item.is_noncopy = is_noncopy;
 
     while (!is_eof() && !check(TokenKind::r_brace)) {
         const syntax::Visibility field_visibility = parse_visibility();

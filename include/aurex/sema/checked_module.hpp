@@ -28,6 +28,7 @@ struct StructInfo {
     TypeHandle type = invalid_type_handle;
     std::vector<StructFieldInfo> fields;
     bool is_opaque = false;
+    bool is_noncopy = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
 

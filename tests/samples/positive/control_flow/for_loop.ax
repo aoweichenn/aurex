@@ -1,0 +1,25 @@
+module for_loop;
+
+fn main() -> i32 {
+    var sum: i32 = 0;
+
+    for var i: i32 = 0; i < 5; i = i + 1 {
+        if i == 3 {
+            continue;
+        }
+        sum = sum + i;
+    }
+
+    var j: i32 = 0;
+    for ; ; j = j + 1 {
+        if j == 2 {
+            break;
+        }
+        sum = sum + 10;
+    }
+
+    if sum == 27 {
+        return 0;
+    }
+    return sum;
+}

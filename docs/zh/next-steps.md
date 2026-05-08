@@ -33,6 +33,8 @@ Stage0 主链路：
 - generic function MVP：支持显式 `<T>`、调用时类型实参，以及基于实参/期望返回类型的基础推断。
 - `extern c` 变长参数声明与调用，包含 C ABI 默认实参提升。
 - 作用域级 `defer` 语句，按反序在正常离开、`return`、`break` / `continue` 路径执行清理调用。
+- `for init; condition; update { ... }` 语句已落地，三段均可为空；`continue` 先进入 update 再回到 condition，`break` 进入 exit，并沿用 `defer` 的循环退出清理规则。
+- 最小所有权语义已启动：`noncopy struct` 可把结构体标记为 move-only，`move(value)` 显式转移 local/parameter 所有权；语义分析已禁止 move-only 值在 local 初始化、赋值、返回、函数实参、method receiver、struct literal 字段和 enum payload 中隐式复制，并检查 move 后继续使用。
 - `impl` / method / associated function MVP，支持显式 `self`、实例 `value.method()`、公开字段 `value.field`、`Type.function()` 风格 associated call、`impl<T> Type<T>` 泛型实例方法，以及 `fn method<U>` 方法级泛型参数；跨模块 private field / private method 访问已有稳定诊断。
 - 标准 `Result` / `Option` / `?` 切片已落地，可用于显式返回的错误传播与早返回控制流；`Option<T>` / `Result<T, E>` 已有基础 method API，包含使用方法级泛型的 `Option<T>.ok_or<E>`。
 - 标准库容器/文本/路径基线已启动，包含 borrowed UTF-8 `str` 基础 API 和 scalar API、拥有型 UTF-8 `String` 的 `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked` surface、`std.core.bytes.Bytes` raw bytes 拥有型容器、`std.ffi.c.string.CStr` / `CString` FFI 边界类型、泛型 `Span<T>` / `MutSpan<T>`、泛型 `Vec<T>` 的容量、追加、插入/删除、随机访问和泛型 method API、Vec-backed 泛型 `Map<K, V>`、borrowed C string -> usize 的 `CStringUsizeMap`、`String` 兼容 byte API 的 UTF-8 边界保护，以及 bytes-backed `Path` 的查询与 join API。
@@ -49,7 +51,7 @@ Stage0 主链路：
 - 调用模型已有 `impl` / method MVP、泛型 impl 实例方法、方法级泛型参数和跨模块成员可见性诊断，但还缺 trait/class 复用、method public surface tooling 和 overload/trait 场景下更完整的诊断。
 - 泛型仍缺约束、where-like predicate、trait/interface 设计、单态化缓存策略和诊断可解释性。
 - 错误处理已有标准 `Result<T, E>` / `Option<T>` 与 `?` 传播切片，但还缺更完整的 std API 迁移和可组合诊断模型。
-- 资源管理仍缺最小 move/noncopyable 语义和文件、进程、arena 等资源的统一用法。
+- 资源管理已经有 `noncopy struct` / `move(value)` MVP，但还缺析构/Drop 约定、借用检查、部分 move、move-only 泛型约束，以及文件、进程、arena、String/Bytes/Path 等资源类型的统一迁移策略。
 - 标准库还缺更完整的 `Vec<T>`、hash/bucketed `Map<K, V>`、owned string-key map、streaming directory iterator / walk callback、文件 metadata、subprocess 和 incremental build 需要的 OS 能力。
 - 字符串基础类型需要继续冻结到 public API：`str` 已按和 `int` 同层级的借用 UTF-8 文本切片推进，普通文本、原始 bytes、拥有型 `String`、C FFI 字符串和平台 `Path` 已在核心 std 类型上拆开；`std.fs.file` / `std.fs.dir` 已有 `Path` / `str` 新入口，M1 axbuild 的 source path、stamp path、目录扫描和临时文件清理已收口到 `str` / `Path`，后续风险主要是进程 argv/env/cwd 和剩余 FFI 场景中的底层 `c"..."` / `*const u8` 兼容入口还要继续收口。
 - 需要一个兼容传统 OOP 思维的 class/object model：封装、继承和动态多态，但它应作为迁移友好层，不替代 struct/enum/trait/generic 的核心设计。

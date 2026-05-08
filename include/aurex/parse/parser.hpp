@@ -64,10 +64,12 @@ private:
     [[nodiscard]] syntax::StmtId parse_stmt();
     [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
     [[nodiscard]] syntax::StmtId parse_if_stmt();
+    [[nodiscard]] syntax::StmtId parse_for_stmt();
     [[nodiscard]] syntax::StmtId parse_while_stmt();
     [[nodiscard]] syntax::StmtId parse_defer_stmt();
     [[nodiscard]] syntax::StmtId parse_return_stmt();
     [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt();
+    [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt(bool require_semicolon);
 
     [[nodiscard]] syntax::ExprId parse_expr();
     [[nodiscard]] syntax::ExprId parse_if_expr();
@@ -89,6 +91,7 @@ private:
     [[nodiscard]] syntax::ExprId parse_primary();
     [[nodiscard]] syntax::ExprId parse_builtin_cast(syntax::ExprKind kind);
     [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);
+    [[nodiscard]] syntax::ExprId parse_move_expr();
     [[nodiscard]] syntax::ExprId make_binary(syntax::BinaryOp op, syntax::ExprId lhs, syntax::ExprId rhs, base::SourceRange range);
     [[nodiscard]] syntax::ExprId make_invalid_expr();
 

@@ -45,6 +45,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  fn printf(format: *const u8, ...) -> i32 @name(\"printf\");\n"
         "}\n"
         "struct Counter { value: i32; }\n"
+        "noncopy struct Owner { value: i32; }\n"
         "impl Counter {\n"
         "  pub fn inc(self: *mut Counter) -> i32 {\n"
         "    self.value = self.value + 1;\n"
@@ -53,6 +54,11 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "}\n"
         "export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name(\"exported\") {\n"
         "  var i: i32 = 0;\n"
+        "  let owner: Owner = Owner { value: 1 };\n"
+        "  let moved_owner: Owner = move(owner);\n"
+        "  for var f: i32 = 0; f < 2; f = f + 1 {\n"
+        "    if f == 1 { continue; }\n"
+        "  }\n"
         "  while i < argc {\n"
         "    i = i + 1;\n"
         "    if i == 1 { continue; } else { break; }\n"
@@ -84,6 +90,9 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_impl",
         "kw_opaque",
         "kw_while",
+        "kw_for",
+        "kw_noncopy",
+        "kw_move",
         "kw_break",
         "kw_continue",
         "kw_defer",
@@ -104,13 +113,16 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "opaque_struct Handle extern_c",
         "fn printf extern_c variadic @name=printf",
         "impl for Counter",
+        "struct Owner noncopy",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
         "stmt #",
         "while",
+        "for",
         "break",
         "continue",
         "defer",
+        "move_expr",
         "expr #",
         "null_literal",
         "string_literal",

@@ -94,6 +94,9 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
     case syntax::StmtKind::if_:
         lower_if(stmt);
         break;
+    case syntax::StmtKind::for_:
+        lower_for(stmt);
+        break;
     case syntax::StmtKind::while_:
         lower_while(stmt);
         break;
@@ -203,6 +206,51 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
     append_branch_if_open(condition_block);
     loop_contexts_.pop_back();
 
+    current_block_ = exit_block;
+}
+
+void Lowerer::lower_for(const syntax::StmtNode& stmt) {
+    const auto previous_locals = locals_;
+    const base::usize scope_depth = defer_scopes_.size();
+    defer_scopes_.push_back({});
+
+    if (syntax::is_valid(stmt.for_init)) {
+        lower_stmt(stmt.for_init);
+    }
+
+    const BlockId condition_block = add_block(*current_function_, "for.cond" + std::to_string(current_function_->blocks.size()));
+    const BlockId body_block = add_block(*current_function_, "for.body" + std::to_string(current_function_->blocks.size()));
+    const BlockId update_block = add_block(*current_function_, "for.update" + std::to_string(current_function_->blocks.size()));
+    const BlockId exit_block = add_block(*current_function_, "for.exit" + std::to_string(current_function_->blocks.size()));
+
+    append_branch_if_open(condition_block);
+    current_block_ = condition_block;
+    if (syntax::is_valid(stmt.condition)) {
+        const ValueId condition = lower_expr(stmt.condition);
+        Terminator cond;
+        cond.kind = TerminatorKind::cond_branch;
+        cond.condition = condition;
+        cond.then_target = body_block;
+        cond.else_target = exit_block;
+        set_terminator(current_block_, cond);
+    } else {
+        append_branch_if_open(body_block);
+    }
+
+    loop_contexts_.push_back(LoopContext {exit_block, update_block, defer_scopes_.size()});
+    current_block_ = body_block;
+    lower_block(stmt.body);
+    append_branch_if_open(update_block);
+
+    current_block_ = update_block;
+    if (syntax::is_valid(stmt.for_update)) {
+        lower_stmt(stmt.for_update);
+    }
+    append_branch_if_open(condition_block);
+    loop_contexts_.pop_back();
+
+    defer_scopes_.resize(scope_depth);
+    locals_ = previous_locals;
     current_block_ = exit_block;
 }
 

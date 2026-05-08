@@ -34,11 +34,14 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_var: return "kw_var";
     case TokenKind::kw_if: return "kw_if";
     case TokenKind::kw_else: return "kw_else";
+    case TokenKind::kw_for: return "kw_for";
     case TokenKind::kw_while: return "kw_while";
     case TokenKind::kw_break: return "kw_break";
     case TokenKind::kw_continue: return "kw_continue";
     case TokenKind::kw_defer: return "kw_defer";
     case TokenKind::kw_return: return "kw_return";
+    case TokenKind::kw_noncopy: return "kw_noncopy";
+    case TokenKind::kw_move: return "kw_move";
     case TokenKind::kw_true: return "kw_true";
     case TokenKind::kw_false: return "kw_false";
     case TokenKind::kw_null: return "kw_null";
@@ -236,6 +239,7 @@ std::string_view stmt_kind_name(const StmtKind kind) {
     case StmtKind::var: return "var";
     case StmtKind::assign: return "assign";
     case StmtKind::if_: return "if";
+    case StmtKind::for_: return "for";
     case StmtKind::while_: return "while";
     case StmtKind::break_: return "break";
     case StmtKind::continue_: return "continue";
@@ -261,6 +265,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::binary: return "binary";
     case ExprKind::call: return "call";
     case ExprKind::try_expr: return "try_expr";
+    case ExprKind::move_expr: return "move_expr";
     case ExprKind::if_expr: return "if_expr";
     case ExprKind::block_expr: return "block_expr";
     case ExprKind::match_expr: return "match_expr";
@@ -322,6 +327,12 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     }
     if (is_valid(stmt.body)) {
         dump_stmt(out, module, stmt.body, depth + 1);
+    }
+    if (is_valid(stmt.for_init)) {
+        dump_stmt(out, module, stmt.for_init, depth + 1);
+    }
+    if (is_valid(stmt.for_update)) {
+        dump_stmt(out, module, stmt.for_update, depth + 1);
     }
     if (is_valid(stmt.return_value)) {
         dump_expr(out, module, stmt.return_value, depth + 1);
@@ -497,6 +508,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (item.is_prototype) {
         out << " prototype";
+    }
+    if (item.is_noncopy) {
+        out << " noncopy";
     }
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;

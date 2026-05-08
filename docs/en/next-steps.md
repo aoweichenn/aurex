@@ -68,6 +68,16 @@ Current language slices:
   promotions.
 - Scope-level `defer` statements, run in reverse order on normal exits,
   `return`, and `break` / `continue` paths.
+- `for init; condition; update { ... }` statements are now implemented, with
+  all three clauses optional. `continue` enters the update clause before the
+  next condition check, `break` exits the loop, and loop exits reuse the
+  existing `defer` cleanup model.
+- Minimal ownership semantics have started: `noncopy struct` marks a struct as
+  move-only, and `move(value)` explicitly transfers ownership from a local or
+  parameter. Semantic analysis now rejects implicit copies of move-only values
+  in local initialization, assignment, return values, function arguments,
+  method receivers, struct-literal fields, and enum payloads, and reports use
+  after move.
 - `impl` / method / associated-function MVP with explicit `self`,
   `value.method()` instance calls, public `value.field` access,
   `Type.function()` associated calls, `impl<T> Type<T>` generic instance
@@ -134,8 +144,10 @@ Current language slices:
 - Error handling has the standard `Result<T, E>` / `Option<T>` and `?`
   propagation slice, but still needs broader std API migration and a
   composable diagnostic model.
-- Resource management still needs a minimal move/noncopyable model and unified
-  handling for files, processes, arenas, and other resources.
+- Resource management now has a `noncopy struct` / `move(value)` MVP, but still
+  needs Drop/destructor conventions, borrow checking, partial moves,
+  move-only generic constraints, and a unified migration strategy for files,
+  processes, arenas, `String`, `Bytes`, `Path`, and other owned resources.
 - The string foundation still needs continued public API tightening:
   `std.fs.file` and `std.fs.dir` now have `Path` / `str` entry points, and
   directory suffixes plus M1 axbuild directory scanning have moved to

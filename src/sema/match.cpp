@@ -50,7 +50,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     bool saw_wildcard = false;
     bool covered_true = false;
     bool covered_false = false;
+    const std::unordered_set<std::string> before_match = moved_bindings_;
+    std::unordered_set<std::string> merged_arm_moves = before_match;
     for (const syntax::MatchArm& arm : expr.match_arms) {
+        moved_bindings_ = before_match;
         const bool guarded = syntax::is_valid(arm.guard);
         const syntax::PatternNode* pattern = syntax::is_valid(arm.pattern) && arm.pattern.value < module_.patterns.size()
             ? &module_.patterns[arm.pattern.value]
@@ -74,11 +77,13 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             if (case_info == nullptr) {
                 const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
                 arm_type = analyze_expr(arm.value, arm_expected);
+                consume_ownership_transfer(arm.value, arm_type, "match arm");
             } else if (!is_valid(case_info->payload_type)) {
                 report(arm.range, "match arm payload binding requires a payload enum case");
             } else {
                 symbols_.push_scope();
-                static_cast<void>(symbols_.insert(Symbol {
+                push_ownership_scope();
+                auto inserted = symbols_.insert(Symbol {
                     SymbolKind::local,
                     std::string(pattern->binding_name),
                     {},
@@ -87,7 +92,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                     arm.range,
                     false,
                     syntax::Visibility::private_,
-                }, diagnostics_));
+                }, diagnostics_);
+                if (inserted) {
+                    register_ownership_binding(pattern->binding_name);
+                }
                 if (guarded) {
                     const TypeHandle guard_type = analyze_expr(arm.guard);
                     if (!checked_.types.is_bool(guard_type)) {
@@ -96,6 +104,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 }
                 const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
                 arm_type = analyze_expr(arm.value, arm_expected);
+                consume_ownership_transfer(arm.value, arm_type, "match arm");
+                pop_ownership_scope();
                 symbols_.pop_scope();
             }
         } else {
@@ -107,6 +117,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             }
             const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
             arm_type = analyze_expr(arm.value, arm_expected);
+            consume_ownership_transfer(arm.value, arm_type, "match arm");
         }
         const bool null_result_arm = is_null_result_expr(arm.value);
         if (!is_valid(arm_type) && null_result_arm && checked_.types.is_pointer(result)) {
@@ -114,6 +125,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
         if (!is_valid(arm_type) && null_result_arm && !is_valid(result)) {
             pending_null_arm_ranges.push_back(module_.exprs[arm.value.value].range);
+            merged_arm_moves.insert(moved_bindings_.begin(), moved_bindings_.end());
             continue;
         }
         if (!is_valid(result)) {
@@ -122,7 +134,9 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         } else if (!checked_.types.same(result, arm_type)) {
             report(arm.range, "match expression arms must have the same type");
         }
+        merged_arm_moves.insert(moved_bindings_.begin(), moved_bindings_.end());
     }
+    moved_bindings_ = merged_arm_moves;
 
     if (enum_match) {
         const auto check_case = [&](const EnumCaseInfo& case_info) {

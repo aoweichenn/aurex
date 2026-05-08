@@ -55,9 +55,11 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "  let f32_value: f32 = 9;\n"
         "  let f64_value: f64 = 10;\n"
         "  let span_value: text::SpanU8 = text::span_u8(c\"hi\", cast(usize, 2));\n"
+        "  let moved_value: i32 = move(i8_value);\n"
         "  let try_token: i32 = 1?;\n"
         "  extern c fn printf(format: *const u8, ...) -> i32;\n"
         "  defer printf(c\"cleanup\");\n"
+        "  for var index: i32 = 0; index < 1; index = index + 1 { }\n"
         "  if true && !false || flag { return; }\n"
         "  if i8_value != 0 && i16_value <= 2 && u16_value > 1 && u32_value >= 4 { return; }\n"
         "}\n";
@@ -96,6 +98,8 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "kw_f64",
         "kw_impl",
         "kw_defer",
+        "kw_for",
+        "kw_move",
         "slash",
         "percent",
         "pipe",

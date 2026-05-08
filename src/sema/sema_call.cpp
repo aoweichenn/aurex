@@ -103,9 +103,10 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
             if (!can_assign(enum_case->payload_type, actual, expr.args.front())) {
                 report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
             }
-            if (is_copy_forbidden_value(enum_case->payload_type)) {
+            if (checked_.types.contains_array(enum_case->payload_type)) {
                 report(module_.exprs[expr.args.front().value].range, "non-copyable array storage cannot be used as enum payload");
             }
+            consume_ownership_transfer(expr.args.front(), enum_case->payload_type, "enum payload");
         }
         record_expr_c_name(expr.callee, enum_case->c_name);
         return record_expr_type(expr_id, enum_case->type);
@@ -130,9 +131,10 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
             if (!can_assign(enum_case->payload_type, arg_types.front(), expr.args.front())) {
                 report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
             }
-            if (is_copy_forbidden_value(enum_case->payload_type)) {
+            if (checked_.types.contains_array(enum_case->payload_type)) {
                 report(module_.exprs[expr.args.front().value].range, "non-copyable array storage cannot be used as enum payload");
             }
+            consume_ownership_transfer(expr.args.front(), enum_case->payload_type, "enum payload");
         }
         record_expr_c_name(expr.callee, enum_case->c_name);
         return record_expr_type(expr_id, enum_case->type);
@@ -314,9 +316,10 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
             if (!can_assign(expected, actual, expr.args[i])) {
                 report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
             }
-            if (is_copy_forbidden_value(expected)) {
+            if (checked_.types.contains_array(expected)) {
                 report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
             }
+            consume_ownership_transfer(expr.args[i], expected, "function argument");
         }
         if (signature->is_variadic) {
             for (base::usize i = count; i < expr.args.size(); ++i) {
@@ -420,9 +423,10 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
             if (!can_assign(instance->param_types[i], actual, expr.args[i])) {
                 report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
             }
-            if (is_copy_forbidden_value(instance->param_types[i])) {
+            if (checked_.types.contains_array(instance->param_types[i])) {
                 report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
             }
+            consume_ownership_transfer(expr.args[i], instance->param_types[i], "function argument");
         }
         return record_expr_type(expr_id, instance->return_type);
     }
@@ -444,9 +448,10 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         if (!can_assign(signature->param_types[i], actual, expr.args[i])) {
             report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
         }
-        if (is_copy_forbidden_value(signature->param_types[i])) {
+        if (checked_.types.contains_array(signature->param_types[i])) {
             report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
         }
+        consume_ownership_transfer(expr.args[i], signature->param_types[i], "function argument");
     }
     if (signature->is_variadic) {
         for (base::usize i = count; i < expr.args.size(); ++i) {

@@ -103,6 +103,9 @@ syntax::StmtId Parser::parse_stmt() {
     if (check(TokenKind::kw_if)) {
         return parse_if_stmt();
     }
+    if (check(TokenKind::kw_for)) {
+        return parse_for_stmt();
+    }
     if (check(TokenKind::kw_while)) {
         return parse_while_stmt();
     }
@@ -203,6 +206,44 @@ syntax::StmtId Parser::parse_while_stmt() {
     return module_.push_stmt(std::move(stmt));
 }
 
+syntax::StmtId Parser::parse_for_stmt() {
+    const syntax::Token& begin = expect(TokenKind::kw_for, "expected 'for'");
+    syntax::StmtId init = syntax::invalid_stmt_id;
+    if (match(TokenKind::semicolon)) {
+        // Empty initializer.
+    } else if (check(TokenKind::kw_let)) {
+        init = parse_let_or_var_stmt(syntax::StmtKind::let);
+    } else if (check(TokenKind::kw_var)) {
+        init = parse_let_or_var_stmt(syntax::StmtKind::var);
+    } else {
+        init = parse_expr_or_assign_stmt(true);
+    }
+
+    syntax::ExprId condition = syntax::invalid_expr_id;
+    if (!check(TokenKind::semicolon)) {
+        const bool previous_struct_literal_mode = allow_struct_literal_;
+        allow_struct_literal_ = false;
+        condition = parse_expr();
+        allow_struct_literal_ = previous_struct_literal_mode;
+    }
+    expect(TokenKind::semicolon, "expected ';' after for condition");
+
+    syntax::StmtId update = syntax::invalid_stmt_id;
+    if (!check(TokenKind::l_brace)) {
+        update = parse_expr_or_assign_stmt(false);
+    }
+    const syntax::StmtId body = parse_block();
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::for_;
+    stmt.range = merge(begin.range, module_.stmts[body.value].range);
+    stmt.for_init = init;
+    stmt.condition = condition;
+    stmt.for_update = update;
+    stmt.body = body;
+    return module_.push_stmt(std::move(stmt));
+}
+
 syntax::StmtId Parser::parse_defer_stmt() {
     const syntax::Token& begin = expect(TokenKind::kw_defer, "expected 'defer'");
     const syntax::ExprId value = parse_expr();
@@ -230,6 +271,10 @@ syntax::StmtId Parser::parse_return_stmt() {
 }
 
 syntax::StmtId Parser::parse_expr_or_assign_stmt() {
+    return parse_expr_or_assign_stmt(true);
+}
+
+syntax::StmtId Parser::parse_expr_or_assign_stmt(const bool require_semicolon) {
     const syntax::ExprId lhs = parse_expr();
     syntax::StmtNode stmt;
     if (match(TokenKind::equal)) {
@@ -240,8 +285,16 @@ syntax::StmtId Parser::parse_expr_or_assign_stmt() {
         stmt.kind = syntax::StmtKind::expr;
         stmt.init = lhs;
     }
-    const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after expression statement");
-    stmt.range = syntax::is_valid(lhs) ? merge(module_.exprs[lhs.value].range, end.range) : end.range;
+    base::SourceRange end_range = syntax::is_valid(lhs) ? module_.exprs[lhs.value].range : peek().range;
+    if (require_semicolon) {
+        const syntax::Token& end = expect(TokenKind::semicolon, "expected ';' after expression statement");
+        end_range = end.range;
+    } else if (stmt.kind == syntax::StmtKind::assign && syntax::is_valid(stmt.rhs) && stmt.rhs.value < module_.exprs.size()) {
+        end_range = module_.exprs[stmt.rhs.value].range;
+    } else if (stmt.kind == syntax::StmtKind::expr && syntax::is_valid(stmt.init) && stmt.init.value < module_.exprs.size()) {
+        end_range = module_.exprs[stmt.init.value].range;
+    }
+    stmt.range = syntax::is_valid(lhs) ? merge(module_.exprs[lhs.value].range, end_range) : end_range;
     return module_.push_stmt(std::move(stmt));
 }
 
@@ -757,6 +810,9 @@ syntax::ExprId Parser::parse_primary() {
         expr.cast_expr = value;
         return module_.push_expr(std::move(expr));
     }
+    if (match(TokenKind::kw_move)) {
+        return parse_move_expr();
+    }
     if (match(TokenKind::kw_str_data) || match(TokenKind::kw_str_byte_len)) {
         const syntax::Token& begin = previous();
         const syntax::ExprKind kind = begin.kind == TokenKind::kw_str_data
@@ -788,6 +844,19 @@ syntax::ExprId Parser::parse_primary() {
 
     report_here("expected expression");
     return make_invalid_expr();
+}
+
+syntax::ExprId Parser::parse_move_expr() {
+    const syntax::Token& begin = previous();
+    expect(TokenKind::l_paren, "expected '(' after move");
+    const syntax::ExprId value = parse_expr();
+    const syntax::Token& end = expect(TokenKind::r_paren, "expected ')' after move argument");
+
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::move_expr;
+    expr.range = merge(begin.range, end.range);
+    expr.unary_operand = value;
+    return module_.push_expr(std::move(expr));
 }
 
 syntax::ExprId Parser::parse_builtin_cast(const syntax::ExprKind kind) {

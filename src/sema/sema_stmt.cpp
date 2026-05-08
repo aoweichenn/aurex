@@ -23,31 +23,35 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     const GenericTypeSubstitution* const previous_type_substitution = current_type_substitution_;
     const int previous_loop_depth = loop_depth_;
     const SymbolTable previous_symbols = symbols_;
-    current_module_ = signature.module;
-    current_type_substitution_ = substitution;
-    symbols_ = SymbolTable {};
-    if (signature.has_conflict) {
+    const std::unordered_set<std::string> previous_moved_bindings = moved_bindings_;
+    const std::vector<std::vector<std::string>> previous_ownership_scopes = ownership_scopes_;
+    const auto restore_context = [&]() {
         current_module_ = previous_module;
+        current_function_return_type_ = previous_function_return_type;
         current_type_substitution_ = previous_type_substitution;
         loop_depth_ = previous_loop_depth;
         symbols_ = previous_symbols;
+        moved_bindings_ = previous_moved_bindings;
+        ownership_scopes_ = previous_ownership_scopes;
+    };
+    current_module_ = signature.module;
+    current_type_substitution_ = substitution;
+    symbols_ = SymbolTable {};
+    moved_bindings_.clear();
+    ownership_scopes_.clear();
+    if (signature.has_conflict) {
+        restore_context();
         return;
     }
     if (state == FunctionBodyState::analyzing) {
         if (!is_valid(signature.return_type)) {
             report(function.range, "cannot infer recursive function return type without an explicit return type");
         }
-        current_module_ = previous_module;
-        current_type_substitution_ = previous_type_substitution;
-        loop_depth_ = previous_loop_depth;
-        symbols_ = previous_symbols;
+        restore_context();
         return;
     }
     if (state == FunctionBodyState::analyzed) {
-        current_module_ = previous_module;
-        current_type_substitution_ = previous_type_substitution;
-        loop_depth_ = previous_loop_depth;
-        symbols_ = previous_symbols;
+        restore_context();
         return;
     }
     state = FunctionBodyState::analyzing;
@@ -61,12 +65,13 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     current_function_return_type_ = expected_return;
 
     symbols_.push_scope();
+    push_ownership_scope();
     for (base::usize i = 0; i < function.params.size(); ++i) {
         const syntax::ParamDecl& param = function.params[i];
         const TypeHandle param_type = i < signature.param_types.size()
             ? signature.param_types[i]
             : resolve_type(param.type);
-        static_cast<void>(symbols_.insert(Symbol {
+        auto inserted = symbols_.insert(Symbol {
             SymbolKind::parameter,
             std::string(param.name),
             {},
@@ -75,9 +80,13 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
             param.range,
             false,
             syntax::Visibility::private_,
-        }, diagnostics_));
+        }, diagnostics_);
+        if (inserted) {
+            register_ownership_binding(param.name);
+        }
     }
     analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
+    pop_ownership_scope();
     symbols_.pop_scope();
     if (infer_return_type) {
         finalize_inferred_return(function, key, return_inference);
@@ -92,11 +101,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         report(function.range, "not all control paths return a value");
     }
     state = FunctionBodyState::analyzed;
-    current_module_ = previous_module;
-    current_function_return_type_ = previous_function_return_type;
-    current_type_substitution_ = previous_type_substitution;
-    loop_depth_ = previous_loop_depth;
-    symbols_ = previous_symbols;
+    restore_context();
 }
 
 void SemanticAnalyzer::analyze_block(
@@ -112,10 +117,32 @@ void SemanticAnalyzer::analyze_block(
         return;
     }
     symbols_.push_scope();
+    push_ownership_scope();
     for (syntax::StmtId child : stmt.statements) {
         analyze_stmt(child, expected_return, return_inference);
     }
+    pop_ownership_scope();
     symbols_.pop_scope();
+}
+
+TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return invalid_type_handle;
+    }
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    if (expr.kind != syntax::ExprKind::name || !expr.scope_name.empty()) {
+        return analyze_expr(expr_id);
+    }
+    const Symbol* symbol = find_symbol(expr.text, expr.range);
+    if (symbol == nullptr) {
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    if (symbol->kind == SymbolKind::function) {
+        report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
+        return record_expr_type(expr_id, invalid_type_handle);
+    }
+    record_expr_c_name(expr_id, symbol->c_name);
+    return record_expr_type(expr_id, symbol->type);
 }
 
 void SemanticAnalyzer::analyze_stmt(
@@ -144,10 +171,8 @@ void SemanticAnalyzer::analyze_stmt(
         if (has_declared_type && !can_assign(local_type, init, stmt.init)) {
             report(stmt.range, "initializer type does not match declared type");
         }
-        if (is_valid(local_type) && !checked_.types.is_copyable(local_type)) {
-            report(stmt.range, "non-copyable storage type cannot be implicitly copied");
-        }
-        static_cast<void>(symbols_.insert(Symbol {
+        consume_ownership_transfer(stmt.init, local_type, "local initialization");
+        auto inserted = symbols_.insert(Symbol {
             SymbolKind::local,
             std::string(stmt.name),
             {},
@@ -156,20 +181,30 @@ void SemanticAnalyzer::analyze_stmt(
             stmt.range,
             stmt.kind == syntax::StmtKind::var,
             syntax::Visibility::private_,
-        }, diagnostics_));
+        }, diagnostics_);
+        if (inserted) {
+            register_ownership_binding(stmt.name);
+        }
         break;
     }
     case syntax::StmtKind::assign: {
         if (!is_writable_place(stmt.lhs)) {
             report(module_.exprs[stmt.lhs.value].range, "left side of assignment must be writable");
         }
-        const TypeHandle lhs = analyze_expr(stmt.lhs);
+        const TypeHandle lhs = analyze_assignment_target(stmt.lhs);
         const TypeHandle rhs = analyze_expr(stmt.rhs, lhs);
         if (!can_assign(lhs, rhs, stmt.rhs)) {
             report(stmt.range, "assignment type mismatch");
         }
-        if (!checked_.types.is_copyable(lhs)) {
+        if (checked_.types.contains_array(lhs)) {
             report(stmt.range, "array or array-containing type cannot be assigned");
+        }
+        consume_ownership_transfer(stmt.rhs, lhs, "assignment");
+        if (syntax::is_valid(stmt.lhs) && stmt.lhs.value < module_.exprs.size()) {
+            const syntax::ExprNode& lhs_expr = module_.exprs[stmt.lhs.value];
+            if (lhs_expr.kind == syntax::ExprKind::name && lhs_expr.scope_name.empty()) {
+                mark_ownership_initialized(lhs_expr.text);
+            }
         }
         break;
     }
@@ -178,13 +213,22 @@ void SemanticAnalyzer::analyze_stmt(
         if (!checked_.types.is_bool(condition)) {
             report(module_.exprs[stmt.condition.value].range, "if condition must be bool");
         }
+        const std::unordered_set<std::string> before_if = moved_bindings_;
+        moved_bindings_ = before_if;
         analyze_block(stmt.then_block, expected_return, return_inference);
+        const std::unordered_set<std::string> then_moved = moved_bindings_;
+        std::unordered_set<std::string> else_moved = before_if;
         if (syntax::is_valid(stmt.else_block)) {
+            moved_bindings_ = before_if;
             analyze_block(stmt.else_block, expected_return, return_inference);
+            else_moved = moved_bindings_;
         }
         if (syntax::is_valid(stmt.else_if)) {
+            moved_bindings_ = before_if;
             analyze_stmt(stmt.else_if, expected_return, return_inference);
+            else_moved = moved_bindings_;
         }
+        merge_ownership_states(then_moved, else_moved);
         break;
     }
     case syntax::StmtKind::while_: {
@@ -192,15 +236,46 @@ void SemanticAnalyzer::analyze_stmt(
         if (!checked_.types.is_bool(condition)) {
             report(module_.exprs[stmt.condition.value].range, "while condition must be bool");
         }
+        const std::unordered_set<std::string> before_loop = moved_bindings_;
         ++loop_depth_;
         analyze_block(stmt.body, expected_return, return_inference);
         --loop_depth_;
+        merge_ownership_states(before_loop, moved_bindings_);
+        break;
+    }
+    case syntax::StmtKind::for_: {
+        symbols_.push_scope();
+        push_ownership_scope();
+        if (syntax::is_valid(stmt.for_init)) {
+            analyze_stmt(stmt.for_init, expected_return, return_inference);
+        }
+        if (syntax::is_valid(stmt.condition)) {
+            const TypeHandle condition = analyze_expr(stmt.condition);
+            if (!checked_.types.is_bool(condition)) {
+                report(module_.exprs[stmt.condition.value].range, "for condition must be bool");
+            }
+        }
+        const std::unordered_set<std::string> before_loop = moved_bindings_;
+        ++loop_depth_;
+        analyze_block(stmt.body, expected_return, return_inference);
+        if (syntax::is_valid(stmt.for_update)) {
+            analyze_stmt(stmt.for_update, expected_return, return_inference);
+        }
+        --loop_depth_;
+        const std::unordered_set<std::string> after_loop = moved_bindings_;
+        merge_ownership_states(before_loop, after_loop);
+        pop_ownership_scope();
+        symbols_.pop_scope();
         break;
     }
     case syntax::StmtKind::return_: {
         const TypeHandle actual = syntax::is_valid(stmt.return_value)
             ? analyze_expr(stmt.return_value, expected_return)
             : checked_.types.builtin(BuiltinType::void_);
+        if (syntax::is_valid(stmt.return_value)) {
+            const TypeHandle transfer_type = is_valid(expected_return) ? expected_return : actual;
+            consume_ownership_transfer(stmt.return_value, transfer_type, "return");
+        }
         if (return_inference != nullptr) {
             record_inferred_return(stmt_id, actual, *return_inference);
         } else if (is_valid(actual) &&
@@ -224,7 +299,7 @@ void SemanticAnalyzer::analyze_stmt(
     case syntax::StmtKind::break_:
     case syntax::StmtKind::continue_:
         if (loop_depth_ == 0) {
-            report(stmt.range, "break and continue are only valid inside while loops");
+            report(stmt.range, "break and continue are only valid inside loops");
         }
         break;
     case syntax::StmtKind::defer:

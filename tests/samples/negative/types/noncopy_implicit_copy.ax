@@ -1,0 +1,15 @@
+module noncopy_implicit_copy;
+
+noncopy struct Owner {
+    value: i32;
+}
+
+fn make_owner(value: i32) -> Owner {
+    return Owner { value: value };
+}
+
+fn main() -> i32 {
+    let first: Owner = make_owner(1);
+    let second: Owner = first;
+    return second.value;
+}

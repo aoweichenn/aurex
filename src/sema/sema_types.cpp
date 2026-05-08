@@ -941,6 +941,120 @@ bool SemanticAnalyzer::is_copy_forbidden_value(const TypeHandle type) const noex
     return is_valid(type) && (!checked_.types.is_copyable(type) || checked_.types.contains_array(type));
 }
 
+bool SemanticAnalyzer::is_move_only_value(const TypeHandle type) const noexcept {
+    return is_valid(type) && !checked_.types.is_copyable(type) && !checked_.types.contains_array(type);
+}
+
+bool SemanticAnalyzer::is_explicit_move_expr(const syntax::ExprId expr_id) const noexcept {
+    return syntax::is_valid(expr_id) &&
+           expr_id.value < module_.exprs.size() &&
+           module_.exprs[expr_id.value].kind == syntax::ExprKind::move_expr;
+}
+
+bool SemanticAnalyzer::is_fresh_owned_expr(const syntax::ExprId expr_id) const noexcept {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return false;
+    }
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    switch (expr.kind) {
+    case syntax::ExprKind::call:
+    case syntax::ExprKind::try_expr:
+    case syntax::ExprKind::if_expr:
+    case syntax::ExprKind::block_expr:
+    case syntax::ExprKind::match_expr:
+    case syntax::ExprKind::struct_literal:
+        return true;
+    default:
+        return false;
+    }
+}
+
+std::string SemanticAnalyzer::move_source_name(const syntax::ExprId expr_id) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return {};
+    }
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    if (expr.kind != syntax::ExprKind::name || !expr.scope_name.empty()) {
+        return {};
+    }
+    const Symbol* symbol = find_symbol(expr.text, expr.range);
+    if (symbol == nullptr || (symbol->kind != SymbolKind::local && symbol->kind != SymbolKind::parameter)) {
+        return {};
+    }
+    return symbol->name;
+}
+
+void SemanticAnalyzer::push_ownership_scope() {
+    ownership_scopes_.push_back({});
+}
+
+void SemanticAnalyzer::pop_ownership_scope() {
+    if (ownership_scopes_.empty()) {
+        return;
+    }
+    for (const std::string& name : ownership_scopes_.back()) {
+        moved_bindings_.erase(name);
+    }
+    ownership_scopes_.pop_back();
+}
+
+void SemanticAnalyzer::register_ownership_binding(const std::string_view name) {
+    if (ownership_scopes_.empty()) {
+        push_ownership_scope();
+    }
+    ownership_scopes_.back().push_back(std::string(name));
+    moved_bindings_.erase(std::string(name));
+}
+
+void SemanticAnalyzer::mark_ownership_initialized(const std::string_view name) {
+    moved_bindings_.erase(std::string(name));
+}
+
+void SemanticAnalyzer::mark_ownership_moved(const std::string_view name) {
+    moved_bindings_.insert(std::string(name));
+}
+
+bool SemanticAnalyzer::is_ownership_moved(const std::string_view name) const {
+    return moved_bindings_.contains(std::string(name));
+}
+
+void SemanticAnalyzer::report_moved_value_use(const std::string_view name, const base::SourceRange range) {
+    report(range, "use of moved value: " + std::string(name));
+}
+
+void SemanticAnalyzer::consume_ownership_transfer(
+    const syntax::ExprId expr_id,
+    const TypeHandle type,
+    const std::string_view context
+) {
+    if (!is_move_only_value(type)) {
+        return;
+    }
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+        return;
+    }
+    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    if (expr.kind == syntax::ExprKind::move_expr) {
+        const std::string source = move_source_name(expr.unary_operand);
+        if (!source.empty()) {
+            mark_ownership_moved(source);
+        }
+        return;
+    }
+    if (is_fresh_owned_expr(expr_id)) {
+        return;
+    }
+    report(module_.exprs[expr_id.value].range, "non-copyable value must be moved explicitly in " + std::string(context));
+}
+
+void SemanticAnalyzer::merge_ownership_states(
+    const std::unordered_set<std::string>& lhs,
+    const std::unordered_set<std::string>& rhs
+) {
+    moved_bindings_ = lhs;
+    moved_bindings_.insert(rhs.begin(), rhs.end());
+}
+
 const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noexcept {
     if (!is_valid(type)) {
         return nullptr;

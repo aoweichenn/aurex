@@ -120,6 +120,54 @@ TEST_F(AurexIntegrationTest, DeferScopes) {
     expect_contains(require_failure(aurexc() + " --check " + q(non_call)).output, "defer statement must be a function call");
 }
 
+TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
+    const fs::path for_source = positive_sample("control_flow", "for_loop.ax");
+
+    const std::string for_ast = require_success(aurexc() + " --emit=ast " + q(for_source)).output;
+    expect_contains(for_ast, "for");
+
+    const std::string for_ir = require_success(aurexc() + " --emit=ir " + q(for_source)).output;
+    expect_contains_all(for_ir, {
+        "for.cond",
+        "for.body",
+        "for.update",
+        "for.exit",
+    });
+    require_success(aurexc() + " --emit=llvm-ir " + q(for_source));
+
+    const fs::path bad_for_condition = negative_sample("control_flow", "for_condition_bool.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(bad_for_condition)).output, "for condition must be bool");
+
+    const fs::path owner_source = positive_sample("types", "ownership_move.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(owner_source)).output;
+    expect_contains_all(checked, {
+        "struct Owner noncopy",
+        "fn forward -> ownership_move.Owner",
+        "fn consume -> i32",
+    });
+
+    const std::string owner_ast = require_success(aurexc() + " --emit=ast " + q(owner_source)).output;
+    expect_contains(owner_ast, "move_expr");
+    require_success(aurexc() + " --emit=llvm-ir " + q(owner_source));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_implicit_copy.ax"))).output,
+        "non-copyable value must be moved explicitly"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_use_after_move.ax"))).output,
+        "use of moved value: first"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "move_copyable.ax"))).output,
+        "move requires a non-copyable local or parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "move_non_place.ax"))).output,
+        "move requires a local or parameter"
+    );
+}
+
 TEST_F(AurexIntegrationTest, RecursiveFunctions) {
     const fs::path source = positive_sample("functions", "recursive_functions.ax");
 

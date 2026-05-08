@@ -190,6 +190,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
             return record_expr_type(expr_id, invalid_type_handle);
         }
+        if ((symbol->kind == SymbolKind::local || symbol->kind == SymbolKind::parameter) &&
+            is_ownership_moved(symbol->name)) {
+            report_moved_value_use(symbol->name, expr.range);
+        }
         record_expr_c_name(expr_id, symbol->c_name);
         return record_expr_type(expr_id, symbol->type);
     }
@@ -197,6 +201,17 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
         return analyze_call_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::try_expr:
         return analyze_try_expr(expr_id, expr);
+    case syntax::ExprKind::move_expr: {
+        const TypeHandle moved = analyze_expr(expr.unary_operand);
+        const std::string source = move_source_name(expr.unary_operand);
+        if (source.empty()) {
+            report(expr.range, "move requires a local or parameter");
+        }
+        if (is_valid(moved) && !is_move_only_value(moved)) {
+            report(expr.range, "move requires a non-copyable local or parameter");
+        }
+        return record_expr_type(expr_id, moved);
+    }
     case syntax::ExprKind::if_expr:
         return analyze_if_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::block_expr:
@@ -590,6 +605,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
             if (!can_assign(field_info->type, actual, init.value)) {
                 report(init.range, "struct literal field type mismatch");
             }
+            consume_ownership_transfer(init.value, field_info->type, "struct literal field");
         }
         for (const StructFieldInfo& field : info->fields) {
             if (!initialized_fields.contains(field.name)) {
@@ -764,19 +780,41 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
     };
     TypeHandle then_type = invalid_type_handle;
     TypeHandle else_type = invalid_type_handle;
+    const std::unordered_set<std::string> before_if = moved_bindings_;
+    std::unordered_set<std::string> then_moved = before_if;
+    std::unordered_set<std::string> else_moved = before_if;
     if (!is_valid(expected_type) && is_null_result_expr(expr.then_expr) && !is_null_result_expr(expr.else_expr)) {
+        moved_bindings_ = before_if;
         else_type = analyze_expr(expr.else_expr);
+        consume_ownership_transfer(expr.else_expr, else_type, "if expression branch");
+        else_moved = moved_bindings_;
+        moved_bindings_ = before_if;
         then_type = analyze_expr(expr.then_expr, else_type);
+        consume_ownership_transfer(expr.then_expr, then_type, "if expression branch");
+        then_moved = moved_bindings_;
     } else {
+        moved_bindings_ = before_if;
         then_type = analyze_expr(expr.then_expr, expected_type);
+        consume_ownership_transfer(expr.then_expr, then_type, "if expression branch");
+        then_moved = moved_bindings_;
+        moved_bindings_ = before_if;
         else_type = analyze_expr(expr.else_expr, is_valid(then_type) ? then_type : expected_type);
+        consume_ownership_transfer(expr.else_expr, else_type, "if expression branch");
+        else_moved = moved_bindings_;
         if (!is_valid(then_type) && checked_.types.is_pointer(else_type) && is_null_result_expr(expr.then_expr)) {
+            moved_bindings_ = before_if;
             then_type = analyze_expr(expr.then_expr, else_type);
+            consume_ownership_transfer(expr.then_expr, then_type, "if expression branch");
+            then_moved = moved_bindings_;
         }
         if (!is_valid(else_type) && checked_.types.is_pointer(then_type) && is_null_result_expr(expr.else_expr)) {
+            moved_bindings_ = before_if;
             else_type = analyze_expr(expr.else_expr, then_type);
+            consume_ownership_transfer(expr.else_expr, else_type, "if expression branch");
+            else_moved = moved_bindings_;
         }
     }
+    merge_ownership_states(then_moved, else_moved);
     if (!checked_.types.same(then_type, else_type)) {
         report(expr.range, "if expression branches must have the same type");
         return record_expr_type(expr_id, invalid_type_handle);
@@ -802,6 +840,7 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
     }
 
     symbols_.push_scope();
+    push_ownership_scope();
     if (syntax::is_valid(expr.block) && expr.block.value < module_.stmts.size()) {
         const syntax::StmtNode& block = module_.stmts[expr.block.value];
         for (syntax::StmtId child : block.statements) {
@@ -809,6 +848,8 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
         }
     }
     const TypeHandle result = analyze_expr(expr.block_result, expected_type);
+    consume_ownership_transfer(expr.block_result, result, "block expression result");
+    pop_ownership_scope();
     symbols_.pop_scope();
 
     if (!is_valid(result)) {

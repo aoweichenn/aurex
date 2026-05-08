@@ -106,6 +106,7 @@ private:
     void lower_block_contents(syntax::StmtId block_id);
     void lower_stmt(syntax::StmtId stmt_id);
     void lower_if(const syntax::StmtNode& stmt);
+    void lower_for(const syntax::StmtNode& stmt);
     void lower_while(const syntax::StmtNode& stmt);
 
     [[nodiscard]] ValueId lower_short_circuit_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);

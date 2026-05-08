@@ -672,6 +672,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     instance_info.module = info.module;
     instance_info.type = struct_type;
     instance_info.is_opaque = false;
+    instance_info.is_noncopy = info.is_noncopy;
 
     GenericTypeSubstitution substitution;
     for (base::usize i = 0; i < info.params.size(); ++i) {
@@ -681,7 +682,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     const syntax::ModuleId previous_module = current_module_;
     current_module_ = info.module;
     bool contains_array = false;
-    bool copyable = true;
+    bool copyable = !info.is_noncopy;
     std::unordered_set<std::string> seen_fields;
     for (const syntax::FieldDecl& field : item->fields) {
         if (!seen_fields.insert(std::string(field.name)).second) {

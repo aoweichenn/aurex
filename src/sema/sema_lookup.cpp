@@ -185,10 +185,11 @@ bool SemanticAnalyzer::method_receiver_matches(
     }
     const TypeHandle self_type = signature.param_types.front();
     if (checked_.types.same(self_type, receiver_type)) {
-        if (is_copy_forbidden_value(self_type)) {
+        if (checked_.types.contains_array(self_type)) {
             report(module_.exprs[receiver.value].range, "non-copyable array storage cannot be passed by value");
             return false;
         }
+        consume_ownership_transfer(receiver, self_type, "method receiver");
         return true;
     }
     if (!checked_.types.is_pointer(self_type)) {

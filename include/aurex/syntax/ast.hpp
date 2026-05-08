@@ -71,6 +71,7 @@ enum class ExprKind {
     binary,
     call,
     try_expr,
+    move_expr,
     if_expr,
     block_expr,
     match_expr,
@@ -184,6 +185,7 @@ enum class StmtKind {
     var,
     assign,
     if_,
+    for_,
     while_,
     break_,
     continue_,
@@ -206,6 +208,8 @@ struct StmtNode {
     StmtId else_block = invalid_stmt_id;
     StmtId else_if = invalid_stmt_id;
     StmtId body = invalid_stmt_id;
+    StmtId for_init = invalid_stmt_id;
+    StmtId for_update = invalid_stmt_id;
     ExprId return_value = invalid_expr_id;
     std::vector<StmtId> statements;
 };
@@ -258,6 +262,7 @@ struct ItemNode {
     TypeId return_type = invalid_type_id;
     StmtId body = invalid_stmt_id;
     TypeId impl_type = invalid_type_id;
+    bool is_noncopy = false;
     bool is_export_c = false;
     bool is_extern_c = false;
     bool is_variadic = false;

@@ -61,15 +61,15 @@ Stage0 主链路：
 
 ## 所有权完善路线
 
-当前所有权模型已经完成第一层安全边界：拥有型资源通过 `noncopy struct` 禁止隐式浅拷贝，`move(value)` 显式转移所有权，`Result<NonCopy, E>` / `Option<NonCopy>` 会自动变成 noncopy，`Vec`、`Map`、`Result` / `Option` 的危险 copy-only API 已有语义护栏。下一阶段目标不是继续扩大禁用面，而是让语言知道“哪些值需要销毁、在哪里销毁、怎样从容器中安全移动出来”，逐步把护栏变成可用能力。
+当前所有权模型已经完成第一层安全边界：拥有型资源通过 `noncopy struct` 禁止隐式浅拷贝，`move(value)` 显式转移所有权，`Result<NonCopy, E>` / `Option<NonCopy>` 会自动变成 noncopy，`Vec`、`Map`、`Result` / `Option` 的危险 copy-only API 已有语义护栏。2026-05-08 已继续落地析构 MVP 的第一段：语义层能识别固定形状的 `destroy(self: *mut T) -> void` destructor，泛型方法实例化能按类型归属模块找到公开 destructor，`Vec<T>` 增加了受约束的 `destroy_deep/clear_deep/truncate_deep`，并把 `std.fs.dir` 和 M1 axbuild 的部分手写销毁循环迁移到这些标准库能力上。下一阶段目标不是继续扩大禁用面，而是继续补“怎样从容器中安全移动出来”和“怎样把能力约束正规化”。
 
 建议按以下顺序推进：
 
 1. Drop / 析构 MVP
-   先不要立刻做全自动作用域析构，避免一次性改变大量现有行为。第一步让语义分析识别类型是否有合法 destructor，推荐先接受固定形状的 `destroy(self: *mut T) -> void` method，建立 `has_destructor(T)` / `is_droppable(T)` 内部查询能力。这样 `Vec<T>`、`Map<K,V>`、`Result<T,E>` 后续可以基于“是否可销毁”做约束，而不是继续只按 copyable / noncopy 二分。
+   已完成第一步，但还不是自动 Drop。语义分析现在接受固定形状的 `destroy(self: *mut T) -> void` method 作为 destructor，并提供内部 `has_destructor(T)` 查询；泛型 body 在实例化为具体 `T` 后，可以按 `T` 的归属模块找到公开 destructor。后续再把它扩展成正式 `drop T` capability，而不是继续只按 copyable / noncopy 二分。
 
 2. `Vec<T>` 深销毁能力
-   当前 `Vec<T>.destroy()` 只释放 buffer，不销毁元素 payload，所以 `Vec<Path>`、`Vec<DirectoryEntry>` 仍依赖类型专属循环。Drop MVP 后应新增受约束的 `Vec<T>` 深销毁入口，例如 `destroy_deep<T>(vec: *mut Vec<T>)` 或等价 API：当 `T` 有 destructor 时逐个销毁元素，再释放 buffer；当 `T` 没有 destructor 且 noncopy 时给出诊断。`Vec<T>.clear/truncate` 对 noncopy 元素也应先保持禁用，等深销毁语义稳定后再放开为“销毁被丢弃元素”。
+   已完成初版。`Vec<T>.destroy()` 仍只释放 buffer，不改变旧语义；新增 `destroy_deep<T>(vec: *mut Vec<T>)`、`clear_deep<T>`、`truncate_deep<T>` 和对应 method API。它们要求 `T` 有合法 destructor，实例化 `Vec<Path>` / `Vec<DirectoryEntry>` / `Vec<Target>` 时会逐个调用元素 `destroy()`；没有 destructor 的 noncopy 元素会得到语义诊断。普通 `clear/truncate/remove/get` 仍保持 copy-only 护栏，避免绕过销毁或 move-out 语义。
 
 3. `Vec<T>` move-out API
    不应直接把现有 `get/first/last/remove` 对 noncopy 放开，因为它们当前的 by-value 形态容易被误解为复制。应新增显式移动语义的 API，例如 `take_at(index)` / `swap_take(index)`，语义是从容器槽位移动出元素并维护 `len`，失败返回 `Option<T>`。只读访问未来应走 borrowed reference/view，而不是 by-value `get()`。
@@ -81,9 +81,9 @@ Stage0 主链路：
    当前 copyability guard 是 sema 对 `std.core.vec`、`std.core.map`、`std.core.result` 的过渡性特例。Drop MVP 后应抽象成最小能力谓词：`copy T`、`drop T`，后续再扩展 `eq K`、`hash K`。公开语法可以稍后再定，但内部应先让泛型实例化基于 capability 做诊断，为未来 `where` / trait 约束铺路。
 
 6. M1 cleanup 收口
-   等 `Vec` / `Map` 的 drop 和 move-out 能力稳定后，再回头清理 `std.fs.dir::destroy_entries`、M1 axbuild 的 target/project destroy、`Vec<Path>` / `Vec<DirectoryEntry>` 手写销毁循环，以及 positive samples 中为了避免吞掉资源而写的临时 match helper。目标是让 M1 样例仍保持显式生命周期，但清理逻辑从“手写资源协议”收敛到标准库能力。
+   已完成第一批收口：`DirectoryEntry` 补上 `destroy(self: *mut DirectoryEntry)`，`std.fs.dir::destroy_entries` 已委托 `Vec<DirectoryEntry>.destroy_deep()`；M1 axbuild 的 `Target.sources: Vec<Path>` 和 `Project.targets: Vec<Target>` 清理也迁到 `destroy_deep()`。后续等 `Vec` move-out 和 `Map` borrowed/entry API 稳定后，再继续清理剩余临时 match helper 和 map-like owned value 路径。
 
-这个路线的原则是保守推进：先识别可销毁，再让容器能安全销毁元素，再提供显式 move-out，最后才放宽 API。自动作用域 Drop、borrow checker、partial move 和正式 trait/where 都很重要，但不应在第一批 Drop MVP 中混在一起做，否则容易同时改变语义、lowering 和 std 行为，风险过大。
+这个路线的原则是保守推进：先识别可销毁，再让容器能安全销毁元素，再提供显式 move-out，最后才放宽 API。当前已经完成“识别可销毁”和“Vec 深销毁”的第一版；自动作用域 Drop、borrow checker、partial move 和正式 trait/where 仍不应混在这一批里做，否则容易同时改变语义、lowering 和 std 行为，风险过大。
 
 ## M1 验收目标
 
@@ -144,7 +144,7 @@ M1 结束时应能在 active tree 中保留两个 Aurex 编写的系统级样例
    在 method 和 trait 基础稳定后实现 class，这样 class 的成员解析、visibility、vtable lowering 可以复用已有调用模型。完成后增加一个 OOP 风格插件/任务 runner example。
 
 6. `defer` / noncopyable / OS 能力  
-   已启动。当前 `defer call();` 会在当前词法作用域退出时反序执行，并覆盖正常退出、`return`、`break` / `continue` lowering；`for` 的 update 和 exit lowering 已有带 import 的回归覆盖；subprocess / stdout/stderr capture / cwd / env baseline 已通过 noncopy `std.sys.process::Command` / `ProcessOutput` 接入 host-c support；文件 metadata / mtime baseline 已通过 `std.fs.file::FileMetadata` 接入 host-c support；`FileBytes`、`HostFileBytes`、`CString`、`Bytes`、`String`、`Path`、`DirectoryEntry`、`Vec<T>`、`Map<K,V>` 和 `CStringUsizeMap` 已迁为 noncopy；directory create、owned single-level/recursive directory entry read 和 source discovery count baseline 已通过 `std.fs.dir` 接入 host-c support，计数能力包含单层和递归后缀计数。下一步先做 Drop/析构 MVP：识别 `destroy(self: *mut T) -> void`，建立内部 `has_destructor(T)` / `is_droppable(T)` 查询；随后给 `Vec<T>` 增加受约束的深销毁入口，设计 `take_at` / `swap_take` 这类显式 move-out API；再给 `Map<K,V>` 增加 borrowed-key 查询、ref 返回、take/remove-drop 和 entry 形态；最后把这些能力抽象成 `copy/drop` capability predicate，为正式 `where` / trait 约束铺路。完成这条线后再继续 borrow checking、partial move、streaming directory iterator / walk callback、stdin/stdout/stderr pipe 和临时目录能力，让文件、进程、arena、临时目录能安全组合。
+   已启动。当前 `defer call();` 会在当前词法作用域退出时反序执行，并覆盖正常退出、`return`、`break` / `continue` lowering；`for` 的 update 和 exit lowering 已有带 import 的回归覆盖；subprocess / stdout/stderr capture / cwd / env baseline 已通过 noncopy `std.sys.process::Command` / `ProcessOutput` 接入 host-c support；文件 metadata / mtime baseline 已通过 `std.fs.file::FileMetadata` 接入 host-c support；`FileBytes`、`HostFileBytes`、`CString`、`Bytes`、`String`、`Path`、`DirectoryEntry`、`Vec<T>`、`Map<K,V>` 和 `CStringUsizeMap` 已迁为 noncopy；directory create、owned single-level/recursive directory entry read 和 source discovery count baseline 已通过 `std.fs.dir` 接入 host-c support，计数能力包含单层和递归后缀计数。Drop/析构 MVP 已完成第一段：识别 `destroy(self: *mut T) -> void`，建立内部 `has_destructor(T)` 查询，并给 `Vec<T>` 增加受约束的 `destroy_deep/clear_deep/truncate_deep`。下一步设计 `take_at` / `swap_take` 这类显式 move-out API；再给 `Map<K,V>` 增加 borrowed-key 查询、ref 返回、take/remove-drop 和 entry 形态；最后把这些能力抽象成 `copy/drop` capability predicate，为正式 `where` / trait 约束铺路。完成这条线后再继续 borrow checking、partial move、streaming directory iterator / walk callback、stdin/stdout/stderr pipe 和临时目录能力，让文件、进程、arena、临时目录能安全组合。
 
 7. 自举前端和 typed 构建工具验收  
    已启动。`examples/m1/frontend` 和 `examples/m1/axbuild` 已进入 active tree，并由 integration tests 覆盖 checked surface、IR surface 和 native smoke；axbuild 还覆盖了 `GraphDiagnostic` 的 checked/IR surface、message surface、target/related name surface、cycle index/name path surface 和 duplicate/invalid/cycle 三类图错误定位。后续继续扩大样例深度，目标仍是让这两个程序从“最小验收样例”推进到足够真实的 M1 工程基准，并继续要求覆盖率保持 90% 以上。

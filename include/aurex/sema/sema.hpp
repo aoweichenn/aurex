@@ -149,6 +149,12 @@ private:
     void merge_pattern_case_names(syntax::PatternId pattern, syntax::PatternId alternative);
     void record_syntax_type_handle(syntax::TypeId type, TypeHandle resolved) noexcept;
     [[nodiscard]] bool method_receiver_matches(const FunctionSignature& signature, TypeHandle receiver_type, syntax::ExprId receiver);
+    [[nodiscard]] syntax::ModuleId owner_module(TypeHandle owner_type) const noexcept;
+    [[nodiscard]] const FunctionSignature* find_method_in_owner_module(
+        TypeHandle owner_type,
+        std::string_view name,
+        bool require_self
+    ) const;
     [[nodiscard]] const FunctionSignature* find_method_in_visible_modules(
         TypeHandle owner_type,
         std::string_view name,
@@ -156,6 +162,8 @@ private:
         bool require_self,
         bool report_unknown = true
     );
+    [[nodiscard]] bool is_destructor_signature(const FunctionSignature& signature, TypeHandle owner_type) const;
+    [[nodiscard]] bool has_destructor(TypeHandle owner_type) const;
     [[nodiscard]] const GenericFunctionInstanceInfo* find_generic_method_in_visible_modules(
         TypeHandle owner_type,
         std::string_view name,
@@ -221,12 +229,14 @@ private:
     [[nodiscard]] const GenericFunctionInstanceInfo* instantiate_generic_function(
         const GenericFunctionTemplateInfo& info,
         const std::vector<TypeHandle>& args,
-        base::SourceRange range
+        base::SourceRange range,
+        bool report_ownership_diagnostics = true
     );
     [[nodiscard]] bool validate_generic_function_ownership_constraints(
         const GenericFunctionTemplateInfo& info,
         const std::vector<TypeHandle>& args,
-        base::SourceRange range
+        base::SourceRange range,
+        bool report_diagnostics = true
     );
     [[nodiscard]] bool infer_generic_function_args(
         const GenericFunctionTemplateInfo& info,

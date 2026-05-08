@@ -55,7 +55,10 @@ Included:
   checked-UTF-8 views, and `std.ffi.c.string.CStr` / `CString`. Owned std
   resources such as `String`, `Bytes`, `Path`, `DirectoryEntry`, `Vec<T>`,
   `Map<K,V>`, and `CStringUsizeMap` are noncopy, and several copy-only `Vec`,
-  `Map`, and `Result` / `Option` APIs now have semantic diagnostics.
+  `Map`, and `Result` / `Option` APIs now have semantic diagnostics. The first
+  destructor MVP recognizes `destroy(self: *mut T) -> void` and exposes
+  `Vec<T>.destroy_deep/clear_deep/truncate_deep` for explicit deep destruction
+  of owned elements.
 - M1 axbuild target-graph validation / topological-build baseline, including
   dependency bounds, cycle / invalid-dependency status, and topological target
   build order.

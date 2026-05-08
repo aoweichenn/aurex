@@ -217,12 +217,7 @@ fn target_destroy(target: *mut Target) -> void {
     if target == null {
         return;
     }
-    var source_index: usize = cast(usize, 0);
-    while source_index < target.sources.len {
-        target.sources.data[source_index].destroy();
-        source_index = source_index + cast(usize, 1);
-    }
-    target.sources.destroy();
+    target.sources.destroy_deep();
     target.include_paths.destroy();
     target.dependencies.destroy();
     target.command.destroy();
@@ -306,12 +301,7 @@ fn project_destroy(project: *mut Project) -> void {
     if project == null {
         return;
     }
-    var index: usize = cast(usize, 0);
-    while index < project.targets.len {
-        target_destroy(&project.targets.data[index]);
-        index = index + cast(usize, 1);
-    }
-    project.targets.destroy();
+    project.targets.destroy_deep();
     project.target_lookup.destroy();
     project.stamp_path.destroy();
 }

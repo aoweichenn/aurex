@@ -298,7 +298,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
                     "' from modules " + module_name(result_module) + " and " + module_name(module));
                 return nullptr;
             }
-            imported_result = instantiate_generic_function(info, inferred, range);
+            imported_result = instantiate_generic_function(info, inferred, range, report_unknown);
             result_module = module;
         }
     }
@@ -988,7 +988,8 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
 const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_function(
     const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange range
+    const base::SourceRange range,
+    const bool report_ownership_diagnostics
 ) {
     if (args.size() != info.params.size()) {
         report(range, "generic function type argument count mismatch for " + info.name);
@@ -999,7 +1000,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
             return nullptr;
         }
     }
-    if (!validate_generic_function_ownership_constraints(info, args, range)) {
+    if (!validate_generic_function_ownership_constraints(info, args, range, report_ownership_diagnostics)) {
         return nullptr;
     }
 
@@ -1184,13 +1185,32 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
 bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
     const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange range
+    const base::SourceRange range,
+    const bool report_diagnostics
 ) {
     if (args.empty()) {
         return true;
     }
     const std::string module = module_name(info.module);
     if (module == "std.core.vec") {
+        const bool destructor_vec_api =
+            info.name == "destroy_deep" ||
+            info.name == "clear_deep" ||
+            info.name == "truncate_deep";
+        if (destructor_vec_api) {
+            if (has_destructor(args.front())) {
+                return true;
+            }
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.vec." + info.name + "<T> requires element type with destructor method; " +
+                        checked_.types.display_name(args.front()) + " has no destroy(self: *mut T) method"
+                );
+            }
+            return false;
+        }
+
         const bool copy_only_vec_api =
             info.name == "extend" ||
             info.name == "from_span" ||
@@ -1206,11 +1226,13 @@ bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
         if (!copy_only_vec_api || checked_.types.is_copyable(args.front())) {
             return true;
         }
-        report(
-            range,
-            "std.core.vec." + info.name + "<T> requires copyable element type; " +
-                checked_.types.display_name(args.front()) + " is non-copyable"
-        );
+        if (report_diagnostics) {
+            report(
+                range,
+                "std.core.vec." + info.name + "<T> requires copyable element type; " +
+                    checked_.types.display_name(args.front()) + " is non-copyable"
+            );
+        }
         return false;
     }
     if (module == "std.core.map" && args.size() >= 2) {
@@ -1227,19 +1249,23 @@ bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
             return true;
         }
         if (!checked_.types.is_copyable(args[0])) {
-            report(
-                range,
-                "std.core.map." + info.name + "<K, V> requires copyable key type; " +
-                    checked_.types.display_name(args[0]) + " is non-copyable"
-            );
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.map." + info.name + "<K, V> requires copyable key type; " +
+                        checked_.types.display_name(args[0]) + " is non-copyable"
+                );
+            }
             return false;
         }
         if (key_value_copy_api && !checked_.types.is_copyable(args[1])) {
-            report(
-                range,
-                "std.core.map." + info.name + "<K, V> requires copyable value type; " +
-                    checked_.types.display_name(args[1]) + " is non-copyable"
-            );
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.map." + info.name + "<K, V> requires copyable value type; " +
+                        checked_.types.display_name(args[1]) + " is non-copyable"
+                );
+            }
             return false;
         }
     }
@@ -1252,11 +1278,13 @@ bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
                 (info.name == "unwrap_or" && args.size() == 1)
             );
         if (option_payload_copy_api && !checked_.types.is_copyable(args[0])) {
-            report(
-                range,
-                "std.core.result.Option." + info.name + "<T> requires copyable payload type; " +
-                    checked_.types.display_name(args[0]) + " is non-copyable"
-            );
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.result.Option." + info.name + "<T> requires copyable payload type; " +
+                        checked_.types.display_name(args[0]) + " is non-copyable"
+                );
+            }
             return false;
         }
 
@@ -1264,11 +1292,13 @@ bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
             args.size() >= 2 &&
             info.name == "ok_or";
         if (option_error_copy_api && !checked_.types.is_copyable(args[1])) {
-            report(
-                range,
-                "std.core.result.Option.ok_or<T, E> requires copyable error type; " +
-                    checked_.types.display_name(args[1]) + " is non-copyable"
-            );
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.result.Option.ok_or<T, E> requires copyable error type; " +
+                        checked_.types.display_name(args[1]) + " is non-copyable"
+                );
+            }
             return false;
         }
 
@@ -1280,19 +1310,23 @@ bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
                 info.name == "unwrap_or"
             );
         if (result_copy_api && !checked_.types.is_copyable(args[0])) {
-            report(
-                range,
-                "std.core.result.Result." + info.name + "<T, E> requires copyable ok type; " +
-                    checked_.types.display_name(args[0]) + " is non-copyable"
-            );
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.result.Result." + info.name + "<T, E> requires copyable ok type; " +
+                        checked_.types.display_name(args[0]) + " is non-copyable"
+                );
+            }
             return false;
         }
         if (result_copy_api && !checked_.types.is_copyable(args[1])) {
-            report(
-                range,
-                "std.core.result.Result." + info.name + "<T, E> requires copyable err type; " +
-                    checked_.types.display_name(args[1]) + " is non-copyable"
-            );
+            if (report_diagnostics) {
+                report(
+                    range,
+                    "std.core.result.Result." + info.name + "<T, E> requires copyable err type; " +
+                        checked_.types.display_name(args[1]) + " is non-copyable"
+                );
+            }
             return false;
         }
     }

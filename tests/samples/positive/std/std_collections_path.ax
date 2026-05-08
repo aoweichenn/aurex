@@ -153,6 +153,34 @@ fn check_vec_generic_methods() -> bool {
     return ok;
 }
 
+fn check_vec_path_deep_destroy() -> result::Result<bool, i32> {
+    var paths: vec::Vec<path::Path> = vec::new<path::Path>();
+    defer paths.destroy_deep();
+    if !paths.reserve(cast(usize, 4)) {
+        return Result.err(13);
+    }
+    var first: path::Path = path::Path.from_str("/tmp/aurex/std/first.ax")?;
+    paths.push(move(first));
+    var second: path::Path = path::Path.from_str("/tmp/aurex/std/second.ax")?;
+    paths.push(move(second));
+    var third: path::Path = path::Path.from_str("/tmp/aurex/std/third.ax")?;
+    paths.push(move(third));
+    paths.truncate_deep(cast(usize, 1));
+    var fourth: path::Path = path::Path.from_str("/tmp/aurex/std/fourth.ax")?;
+    paths.push(move(fourth));
+    let len_after_truncate: usize = paths.len();
+    let first_kept: bool = text::bytes_equal(paths.data[cast(usize, 0)].file_name(), text::c_span(c"first.ax"));
+    paths.clear_deep();
+    var final_path: path::Path = path::Path.from_str("/tmp/aurex/std/final.ax")?;
+    paths.push(move(final_path));
+    let ok: bool =
+        len_after_truncate == cast(usize, 2) &&
+        first_kept &&
+        paths.len() == cast(usize, 1) &&
+        text::bytes_equal(paths.data[cast(usize, 0)].file_name(), text::c_span(c"final.ax"));
+    return Result.ok(ok);
+}
+
 fn check_result_option_methods() -> bool {
     let some: result::Option<i32> = Option.some(7);
     let none: result::Option<i32> = Option.none;
@@ -425,6 +453,10 @@ fn run() -> result::Result<i32, i32> {
     }
     if !check_vec_generic_methods() {
         return Result.err(3);
+    }
+    let vec_path_deep_ok: bool = check_vec_path_deep_destroy()?;
+    if !vec_path_deep_ok {
+        return Result.err(13);
     }
     if !check_result_option_methods() {
         return Result.err(4);

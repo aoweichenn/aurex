@@ -149,12 +149,7 @@ pub fn destroy_entries(entries: *mut vec::Vec<DirectoryEntry>) -> void {
     if entries == null {
         return;
     }
-    var index: usize = cast(usize, 0);
-    while index < entries.len {
-        directory_entry_destroy(&entries.data[index]);
-        index = index + cast(usize, 1);
-    }
-    entries.destroy();
+    entries.destroy_deep();
 }
 
 fn push_host_directory_entry(entries: *mut vec::Vec<DirectoryEntry>, host_entry: *const HostDirectoryEntry) -> bool {
@@ -361,6 +356,10 @@ pub fn has_file_with_suffix_recursive_path_str(path: *const paths::Path, suffix:
 }
 
 impl DirectoryEntry {
+    pub fn destroy(self: *mut DirectoryEntry) -> void {
+        directory_entry_destroy(self);
+    }
+
     pub fn name_c_data(self: *const DirectoryEntry) -> *const u8 {
         return directory_entry_name(self);
     }

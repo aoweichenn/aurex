@@ -33,6 +33,30 @@ pub fn destroy<T>(vec: *mut Vec<T>) -> void {
     vec.capacity = cast(usize, 0);
 }
 
+pub fn truncate_deep<T>(vec: *mut Vec<T>, len: usize) -> void {
+    if vec == null || len >= vec.len {
+        return;
+    }
+    var index: usize = len;
+    while index < vec.len {
+        vec.data[index].destroy();
+        index = index + cast(usize, 1);
+    }
+    vec.len = len;
+}
+
+pub fn clear_deep<T>(vec: *mut Vec<T>) -> void {
+    truncate_deep<T>(vec, cast(usize, 0));
+}
+
+pub fn destroy_deep<T>(vec: *mut Vec<T>) -> void {
+    if vec == null {
+        return;
+    }
+    clear_deep<T>(vec);
+    destroy<T>(vec);
+}
+
 pub fn take<T>(vec: *mut Vec<T>) -> Vec<T> {
     if vec == null {
         return new<T>();
@@ -219,6 +243,18 @@ pub fn from_span<T>(items: Span<T>) -> Result<Vec<T>, i32> {
 impl<T> Vec<T> {
     pub fn destroy(self: *mut Vec<T>) -> void {
         destroy<T>(self);
+    }
+
+    pub fn destroy_deep(self: *mut Vec<T>) -> void {
+        destroy_deep<T>(self);
+    }
+
+    pub fn clear_deep(self: *mut Vec<T>) -> void {
+        clear_deep<T>(self);
+    }
+
+    pub fn truncate_deep(self: *mut Vec<T>, len: usize) -> void {
+        truncate_deep<T>(self, len);
     }
 
     pub fn take(self: *mut Vec<T>) -> Vec<T> {

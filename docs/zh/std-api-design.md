@@ -89,9 +89,9 @@ import std.fs.path as path;
 `std.core.vec`：
 
 - 类型：`vec::Vec<T>`、兼容别名 `vec::VecU8`。
-- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::take<T>`、`vec::len<T>`、`vec::capacity<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::insert<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::remove<T>`、`vec::swap_remove<T>`、`vec::get<T>`、`vec::set<T>`、`vec::first<T>`、`vec::last<T>`、`vec::truncate<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
-- Method API：`Vec<T>.destroy`、`take`、`len`、`capacity`、`is_empty`、`as_span`、`as_mut_span`、`reserve`、`push`、`insert`、`extend`、`pop`、`remove`、`swap_remove`、`get`、`set`、`first`、`last`、`clear`、`truncate`。
-- 约束：`Vec<T>` 本体不可隐式复制；需要把 buffer 从一个 owner 转到另一个 owner 时使用 `take()`。当前 `extend/from_span/get/set/first/last/pop/remove/swap_remove/clear/truncate` 只支持 copyable element type；noncopy 元素先使用 `push(move(value))` / `insert(move(value))` 和类型专属销毁循环，直到语言级部分 move、Drop 和泛型约束落地。
+- 新 API：`vec::new<T>`、`vec::with_capacity<T>`、`vec::destroy<T>`、`vec::destroy_deep<T>`、`vec::clear_deep<T>`、`vec::truncate_deep<T>`、`vec::take<T>`、`vec::len<T>`、`vec::capacity<T>`、`vec::is_empty<T>`、`vec::reserve<T>`、`vec::push<T>`、`vec::insert<T>`、`vec::extend<T>`、`vec::pop<T>`、`vec::remove<T>`、`vec::swap_remove<T>`、`vec::get<T>`、`vec::set<T>`、`vec::first<T>`、`vec::last<T>`、`vec::truncate<T>`、`vec::clear<T>`、`vec::as_span<T>`、`vec::as_mut_span<T>`、`vec::from_span<T>`。
+- Method API：`Vec<T>.destroy`、`destroy_deep`、`clear_deep`、`truncate_deep`、`take`、`len`、`capacity`、`is_empty`、`as_span`、`as_mut_span`、`reserve`、`push`、`insert`、`extend`、`pop`、`remove`、`swap_remove`、`get`、`set`、`first`、`last`、`clear`、`truncate`。
+- 约束：`Vec<T>` 本体不可隐式复制；需要把 buffer 从一个 owner 转到另一个 owner 时使用 `take()`。`destroy<T>` 只释放 Vec buffer，不销毁元素 payload；当 `T` 有 `destroy(self: *mut T) -> void` destructor 时，使用 `destroy_deep/clear_deep/truncate_deep` 逐个销毁元素。当前 `extend/from_span/get/set/first/last/pop/remove/swap_remove/clear/truncate` 仍只支持 copyable element type；noncopy 元素的读出/移除要等显式 move-out API、borrowed view 和正式 `drop` capability 继续落地。
 - 兼容 API：`vec::vec_u8_new`、`vec::vec_u8_push` 等保留，但不作为新文档的主路径。
 
 `std.core.map`：

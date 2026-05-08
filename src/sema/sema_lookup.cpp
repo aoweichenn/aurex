@@ -175,6 +175,73 @@ bool SemanticAnalyzer::can_access(const syntax::ModuleId owner, const syntax::Vi
     return owner.value == current_module_.value || visibility == syntax::Visibility::public_;
 }
 
+syntax::ModuleId SemanticAnalyzer::owner_module(const TypeHandle owner_type) const noexcept {
+    if (!is_valid(owner_type)) {
+        return syntax::invalid_module_id;
+    }
+    if (const StructInfo* info = find_struct(owner_type); info != nullptr) {
+        return info->module;
+    }
+    if (const GenericEnumInstanceInfo* info = generic_enum_instance(owner_type); info != nullptr) {
+        return info->module;
+    }
+    if (const auto found = enum_cases_by_type_.find(owner_type.value);
+        found != enum_cases_by_type_.end() &&
+        !found->second.empty()) {
+        return found->second.front()->module;
+    }
+    return syntax::invalid_module_id;
+}
+
+const FunctionSignature* SemanticAnalyzer::find_method_in_owner_module(
+    const TypeHandle owner_type,
+    const std::string_view name,
+    const bool require_self
+) const {
+    const syntax::ModuleId owner = owner_module(owner_type);
+    if (!syntax::is_valid(owner)) {
+        return nullptr;
+    }
+    const auto found = checked_.functions.find(method_key(owner, owner_type, name));
+    if (found == checked_.functions.end()) {
+        return nullptr;
+    }
+    const FunctionSignature& signature = found->second;
+    if (!signature.is_method || (require_self && !signature.has_self_param)) {
+        return nullptr;
+    }
+    if (!can_access(owner, signature.visibility)) {
+        return nullptr;
+    }
+    return &signature;
+}
+
+bool SemanticAnalyzer::is_destructor_signature(
+    const FunctionSignature& signature,
+    const TypeHandle owner_type
+) const {
+    if (!signature.is_method ||
+        !signature.has_self_param ||
+        signature.name != "destroy" ||
+        signature.param_types.size() != 1 ||
+        !checked_.types.same(signature.method_owner_type, owner_type) ||
+        !checked_.types.is_void(signature.return_type)) {
+        return false;
+    }
+    const TypeHandle self_type = signature.param_types.front();
+    if (!checked_.types.is_pointer(self_type)) {
+        return false;
+    }
+    const TypeInfo& self = checked_.types.get(self_type);
+    return self.pointer_mutability == PointerMutability::mut &&
+           checked_.types.same(self.pointee, owner_type);
+}
+
+bool SemanticAnalyzer::has_destructor(const TypeHandle owner_type) const {
+    const FunctionSignature* signature = find_method_in_owner_module(owner_type, "destroy", true);
+    return signature != nullptr && is_destructor_signature(*signature, owner_type);
+}
+
 bool SemanticAnalyzer::method_receiver_matches(
     const FunctionSignature& signature,
     const TypeHandle receiver_type,
@@ -260,11 +327,18 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
         result_module = module;
     }
     if (imported_result == nullptr && report_unknown) {
+        if (const FunctionSignature* owner_result = find_method_in_owner_module(owner_type, name, require_self);
+            owner_result != nullptr) {
+            return owner_result;
+        }
         if (inaccessible_result != nullptr) {
             report(range, "method is private: " + checked_.types.display_name(owner_type) + "." + std::string(name));
             return nullptr;
         }
         report(range, "unknown method: " + checked_.types.display_name(owner_type) + "." + std::string(name));
+    }
+    if (imported_result == nullptr) {
+        return find_method_in_owner_module(owner_type, name, require_self);
     }
     return imported_result;
 }

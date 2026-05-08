@@ -224,6 +224,18 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
         "requires copyable element type"
     );
     expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_destroy_deep_without_destructor.ax"))).output,
+        "requires element type with destructor method"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_clear_deep_without_destructor.ax"))).output,
+        "requires element type with destructor method"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_truncate_deep_without_destructor.ax"))).output,
+        "requires element type with destructor method"
+    );
+    expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_insert_path_key.ax"))).output,
         "requires copyable key type"
     );

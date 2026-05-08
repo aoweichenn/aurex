@@ -1,0 +1,15 @@
+module noncopy_vec_clear_deep_without_destructor;
+
+import std.core.vec as vec;
+
+noncopy struct Owner {
+    value: i32;
+}
+
+fn main() -> i32 {
+    var owners: vec::Vec<Owner> = vec::new<Owner>();
+    var owner: Owner = Owner { value: 1 };
+    owners.push(move(owner));
+    owners.clear_deep();
+    return 0;
+}

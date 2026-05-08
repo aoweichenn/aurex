@@ -202,29 +202,34 @@ The current ownership model has its first safety boundary: owned resources use
 `noncopy struct` to reject implicit shallow copies, `move(value)` transfers
 ownership explicitly, `Result<NonCopy, E>` / `Option<NonCopy>` become noncopy,
 and risky copy-only APIs on `Vec`, `Map`, and `Result` / `Option` have semantic
-guards. The next stage should stop merely widening the set of disabled APIs and
-instead teach the language which values need destruction, where destruction can
-run, and how values can move out of containers safely.
+guards. On 2026-05-08 the first destructor step also landed: sema recognizes
+the fixed `destroy(self: *mut T) -> void` destructor shape, generic method
+instantiation can resolve a concrete `T.destroy()` through the concrete type's
+home module, `Vec<T>` has constrained `destroy_deep/clear_deep/truncate_deep`
+APIs, and `std.fs.dir` plus M1 axbuild have started using those APIs for owned
+cleanup. The next stage should focus on safe move-out and regular capability
+constraints rather than merely widening the disabled API set.
 
 Recommended sequence:
 
 1. Drop / destructor MVP
-   Do not start with fully automatic scope drops; that would change too much
-   existing behavior at once. First teach semantic analysis to recognize
-   whether a type has a valid destructor. The initial accepted shape should be a
-   fixed `destroy(self: *mut T) -> void` method, with internal
-   `has_destructor(T)` / `is_droppable(T)` queries. This lets `Vec<T>`,
-   `Map<K,V>`, and `Result<T,E>` constrain behavior by droppability instead of
-   only copyability.
+   The first step is implemented, but it is not automatic Drop yet. Semantic
+   analysis now recognizes a fixed `destroy(self: *mut T) -> void` method as a
+   destructor and exposes an internal `has_destructor(T)` query. Generic method
+   bodies can also resolve a concrete `T.destroy()` through the concrete type's
+   home module after instantiation. The next step is to regularize this as a
+   real `drop T` capability instead of continuing to hard-code copyable /
+   noncopyable splits.
 
 2. Deep destruction for `Vec<T>`
-   Today `Vec<T>.destroy()` frees only the buffer; it does not destroy element
-   payloads, so `Vec<Path>` and `Vec<DirectoryEntry>` still need type-specific
-   loops. After the Drop MVP, add a constrained deep-destroy entry point such as
-   `destroy_deep<T>(vec: *mut Vec<T>)`: for droppable `T`, destroy each element
-   before freeing the buffer; for noncopy `T` without a destructor, report a
-   diagnostic. `Vec<T>.clear/truncate` should remain restricted for noncopy
-   elements until this destruction behavior is stable.
+   The initial version is implemented. `Vec<T>.destroy()` still frees only the
+   buffer, preserving the old meaning. New constrained APIs
+   `destroy_deep<T>`, `clear_deep<T>`, and `truncate_deep<T>` plus matching
+   methods require `T` to have a valid destructor, then call `T.destroy()` for
+   each discarded element. `Vec<Path>`, `Vec<DirectoryEntry>`, and the M1
+   `Vec<Target>` cleanup paths now use this capability. Plain
+   `clear/truncate/remove/get` remain copy-only guarded until move-out and
+   borrowing semantics are explicit.
 
 3. Move-out APIs for `Vec<T>`
    Do not directly enable existing `get/first/last/remove` for noncopy
@@ -251,19 +256,21 @@ Recommended sequence:
    clauses and traits have a clean path.
 
 6. M1 cleanup closure
-   After `Vec` / `Map` drop and move-out behavior is stable, remove bespoke
-   cleanup loops from `std.fs.dir::destroy_entries`, M1 axbuild target/project
-   destruction, `Vec<Path>` / `Vec<DirectoryEntry>` handling, and the temporary
-   match helpers used in positive samples to avoid swallowing owned resources.
-   The goal is to keep M1 lifetimes explicit while moving cleanup mechanics
-   from ad hoc resource protocols into standard-library capabilities.
+   The first cleanup pass is implemented. `DirectoryEntry` now has
+   `destroy(self: *mut DirectoryEntry)`, `std.fs.dir::destroy_entries`
+   delegates to `Vec<DirectoryEntry>.destroy_deep()`, and M1 axbuild now uses
+   `destroy_deep()` for `Target.sources: Vec<Path>` and
+   `Project.targets: Vec<Target>`. After `Vec` move-out and `Map`
+   borrowed/entry APIs are stable, continue removing temporary match helpers
+   and map-like owned-value cleanup code.
 
 This route is deliberately conservative: identify droppable values first, then
 let containers destroy elements safely, then add explicit move-out, and only
-then relax APIs. Automatic scope Drop, borrow checking, partial moves, and full
-trait/where constraints are important, but they should not all land in the
-first Drop MVP; doing that would change language semantics, lowering, and std
-behavior at the same time.
+then relax APIs. The first versions of destructor recognition and `Vec` deep
+destruction are now in place. Automatic scope Drop, borrow checking, partial
+moves, and full trait/where constraints are important, but they should not all
+land in the first Drop MVP; doing that would change language semantics,
+lowering, and std behavior at the same time.
 
 ## M1 Acceptance Targets
 

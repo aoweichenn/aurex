@@ -1,0 +1,22 @@
+module float_literal;
+
+fn main() -> i32 {
+    let a: f64 = 1.5;
+    let b = 2.5;
+    let f32_value: f32 = 1.25;
+    let exp: f64 = 1e3;
+    let signed_exp: f64 = 1.0e-3;
+    if a + b != 4.0 {
+        return 1;
+    }
+    if f32_value != 1.25 {
+        return 2;
+    }
+    if exp != 1000.0 {
+        return 3;
+    }
+    if signed_exp <= 0.0 {
+        return 4;
+    }
+    return 0;
+}

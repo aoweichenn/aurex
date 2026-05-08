@@ -159,6 +159,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
         return analyze_integer_literal(expr_id, expr, expected_type);
+    case syntax::ExprKind::float_literal:
+        return analyze_float_literal(expr_id, expr, expected_type);
     case syntax::ExprKind::bool_literal:
         return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
     case syntax::ExprKind::null_literal:

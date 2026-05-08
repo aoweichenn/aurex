@@ -63,6 +63,7 @@ private:
         }
         switch (value->kind) {
         case ValueKind::integer_literal:
+        case ValueKind::float_literal:
         case ValueKind::bool_literal:
         case ValueKind::byte_literal:
         case ValueKind::undef:
@@ -294,6 +295,7 @@ private:
             verify_type(value->type, "value type");
             break;
         case ValueKind::integer_literal:
+        case ValueKind::float_literal:
         case ValueKind::bool_literal:
         case ValueKind::null_literal:
         case ValueKind::string_literal:
@@ -571,6 +573,11 @@ private:
         case ValueKind::integer_literal:
             if (!is_integer_literal_type(value.type)) {
                 fail("integer literal type must be integer, got " + module_.types.display_name(value.type));
+            }
+            break;
+        case ValueKind::float_literal:
+            if (!module_.types.is_float(value.type)) {
+                fail("float literal type must be float, got " + module_.types.display_name(value.type));
             }
             break;
         case ValueKind::bool_literal:

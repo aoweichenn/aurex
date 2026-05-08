@@ -61,6 +61,7 @@ struct TypeNode {
 enum class ExprKind {
     invalid,
     integer_literal,
+    float_literal,
     bool_literal,
     null_literal,
     string_literal,

@@ -215,7 +215,7 @@ void Lexer::scan_token() {
         return;
     }
     if (is_decimal_digit(peek())) {
-        scan_integer();
+        scan_number();
         return;
     }
 
@@ -344,35 +344,70 @@ void Lexer::scan_identifier() {
     add_token(keyword_kind(text), begin, offset_);
 }
 
-void Lexer::scan_integer() {
+void Lexer::scan_number() {
     const base::usize begin = offset_;
-    bool saw_digit = false;
+    bool is_float = false;
+
+    const auto scan_digits = [this](const auto digit_predicate, const std::string_view literal_kind) {
+        bool saw_digit = false;
+        bool previous_was_digit = false;
+        bool previous_was_separator = false;
+        while (digit_predicate(peek()) || peek() == '_') {
+            const base::usize separator_begin = offset_;
+            const char c = advance();
+            if (c == '_') {
+                if (!previous_was_digit) {
+                    report(separator_begin, separator_begin + 1, "digit separator must be between digits");
+                }
+                previous_was_digit = false;
+                previous_was_separator = true;
+                continue;
+            }
+            saw_digit = true;
+            previous_was_digit = true;
+            previous_was_separator = false;
+        }
+        if (previous_was_separator && offset_ > 0) {
+            report(offset_ - 1, offset_, "digit separator must be between digits");
+        }
+        if (!saw_digit) {
+            report(offset_, offset_, std::string(literal_kind) + " literal has no digits");
+        }
+        return saw_digit;
+    };
 
     if (peek() == '0' && (peek_next() == 'x' || peek_next() == 'X')) {
         advance();
         advance();
-        while (is_hex_digit(peek()) || peek() == '_') {
-            saw_digit = saw_digit || is_hex_digit(peek());
-            advance();
-        }
+        static_cast<void>(scan_digits(is_hex_digit, "integer"));
     } else if (peek() == '0' && (peek_next() == 'b' || peek_next() == 'B')) {
         advance();
         advance();
-        while (is_binary_digit(peek()) || peek() == '_') {
-            saw_digit = saw_digit || is_binary_digit(peek());
-            advance();
-        }
+        static_cast<void>(scan_digits(is_binary_digit, "integer"));
     } else {
-        while (is_decimal_digit(peek()) || peek() == '_') {
-            saw_digit = saw_digit || is_decimal_digit(peek());
+        static_cast<void>(scan_digits(is_decimal_digit, "integer"));
+        if (peek() == '.' && is_decimal_digit(peek_next())) {
+            is_float = true;
             advance();
+            static_cast<void>(scan_digits(is_decimal_digit, "float"));
+        }
+        if (peek() == 'e' || peek() == 'E') {
+            const base::usize next = offset_ + 1;
+            const char next_char = next < source_text_.size() ? source_text_[next] : '\0';
+            if (is_decimal_digit(next_char) ||
+                next_char == '+' ||
+                next_char == '-') {
+                is_float = true;
+                advance();
+                if (peek() == '+' || peek() == '-') {
+                    advance();
+                }
+                static_cast<void>(scan_digits(is_decimal_digit, "float exponent"));
+            }
         }
     }
 
-    if (!saw_digit) {
-        report(begin, offset_, "integer literal has no digits");
-    }
-    add_token(syntax::TokenKind::integer_literal, begin, offset_);
+    add_token(is_float ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin, offset_);
 }
 
 void Lexer::scan_string() {

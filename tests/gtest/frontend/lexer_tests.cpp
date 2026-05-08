@@ -37,6 +37,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "const hex: i32 = 0x2A;\n"
         "const bin: i32 = 0b1010;\n"
         "const dec: i32 = 1_000;\n"
+        "const flt: f64 = 1.25e+2;\n"
         "const s: str = \"hi\\\\n\";\n"
         "const c: *const u8 = c\"hi\\n\";\n"
         "const b: u8 = b'\\n';\n"
@@ -70,6 +71,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
 
     const std::vector<TokenKind> kinds = token_kinds(result.value());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::integer_literal), kinds.end());
+    EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::float_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::string_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::c_string_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::byte_literal), kinds.end());
@@ -100,6 +102,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "kw_defer",
         "kw_for",
         "kw_move",
+        "float_literal",
         "slash",
         "percent",
         "pipe",
@@ -126,6 +129,24 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_EQ(invalid_result.error().code, ErrorCode::lex_error);
     ASSERT_TRUE(invalid_diagnostics.has_error());
     EXPECT_GE(invalid_diagnostics.diagnostics().size(), 4U);
+}
+
+TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source =
+        "module bad.numbers;\n"
+        "const trailing: i32 = 1_;\n"
+        "const repeated: i32 = 1__2;\n"
+        "const hex: i32 = 0x_FF;\n"
+        "const bin: i32 = 0b_1010;\n"
+        "const frac: f64 = 1.0_;\n"
+        "const exp: f64 = 1e+;\n";
+    lex::Lexer lexer({7}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, ErrorCode::lex_error);
+    ASSERT_TRUE(diagnostics.has_error());
+    expect_contains(diagnostics.diagnostics().front().message, "digit separator must be between digits");
 }
 
 TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {

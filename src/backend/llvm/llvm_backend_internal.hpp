@@ -87,6 +87,7 @@ private:
     void emit_terminator(const Terminator& terminator);
 
     [[nodiscard]] llvm::Value* integer_constant(sema::TypeHandle type, const std::string& text);
+    [[nodiscard]] llvm::Value* float_constant(sema::TypeHandle type, const std::string& text);
     [[nodiscard]] llvm::Value* emit_string_literal(const std::string& literal, bool c_string);
     [[nodiscard]] llvm::Value* global_string_pointer(const std::string& text, const std::string& name, bool add_null);
     [[nodiscard]] llvm::Type* llvm_type(sema::TypeHandle type);
@@ -112,6 +113,7 @@ private:
 };
 
 [[nodiscard]] bool parse_u64(const std::string& text, std::uint64_t& out) noexcept;
+[[nodiscard]] bool parse_f64(const std::string& text, double& out) noexcept;
 [[nodiscard]] std::string decode_string_literal(const std::string& literal, bool has_c_prefix);
 [[nodiscard]] std::uint64_t parse_byte_literal(const std::string& literal);
 

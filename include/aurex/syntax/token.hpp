@@ -11,6 +11,7 @@ enum class TokenKind {
     invalid,
     identifier,
     integer_literal,
+    float_literal,
     string_literal,
     c_string_literal,
     byte_literal,

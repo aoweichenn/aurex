@@ -2,6 +2,21 @@
 
 namespace aurex::sema {
 
+namespace {
+
+[[nodiscard]] bool is_allowed_expression_statement(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr_id
+) noexcept {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= module.exprs.size()) {
+        return false;
+    }
+    const syntax::ExprKind kind = module.exprs[expr_id.value].kind;
+    return kind == syntax::ExprKind::call || kind == syntax::ExprKind::try_expr;
+}
+
+} // namespace
+
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     const std::string key = function_key(function);
     const auto found = checked_.functions.find(key);
@@ -300,8 +315,8 @@ void SemanticAnalyzer::analyze_stmt(
     case syntax::StmtKind::expr:
         if (syntax::is_valid(stmt.init) &&
             stmt.init.value < module_.exprs.size() &&
-            module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
-            report(module_.exprs[stmt.init.value].range, "expression statement must be a function call");
+            !is_allowed_expression_statement(module_, stmt.init)) {
+            report(module_.exprs[stmt.init.value].range, "expression statement must be a function call or try expression");
         }
         static_cast<void>(analyze_expr(stmt.init));
         break;

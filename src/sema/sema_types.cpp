@@ -1,9 +1,11 @@
 #include "aurex/sema/sema.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -104,6 +106,22 @@ namespace {
         value = value * static_cast<base::u64>(base) + digit;
     }
     return saw_digit;
+}
+
+template <typename Float>
+[[nodiscard]] bool parse_float_literal_checked(const std::string_view text) noexcept {
+    std::string digits;
+    digits.reserve(text.size());
+    for (const char c : text) {
+        if (c != '_') {
+            digits.push_back(c);
+        }
+    }
+    Float value {};
+    const char* begin = digits.data();
+    const char* end = digits.data() + digits.size();
+    const auto result = std::from_chars(begin, end, value);
+    return result.ec == std::errc {} && result.ptr == end;
 }
 
 [[nodiscard]] bool literal_fits_integer_type(
@@ -674,6 +692,26 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
         report(
             expr.range,
             "integer literal out of range for " + checked_.types.display_name(literal_type)
+        );
+    }
+    return record_expr_type(expr_id, literal_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_float_literal(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    const TypeHandle literal_type = checked_.types.is_float(expected_type)
+        ? expected_type
+        : checked_.types.builtin(BuiltinType::f64);
+    const bool fits = checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
+        ? parse_float_literal_checked<float>(expr.text)
+        : parse_float_literal_checked<double>(expr.text);
+    if (!fits) {
+        report(
+            expr.range,
+            "float literal out of range for " + checked_.types.display_name(literal_type)
         );
     }
     return record_expr_type(expr_id, literal_type);

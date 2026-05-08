@@ -11,6 +11,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::invalid: return "invalid";
     case TokenKind::identifier: return "identifier";
     case TokenKind::integer_literal: return "integer_literal";
+    case TokenKind::float_literal: return "float_literal";
     case TokenKind::string_literal: return "string_literal";
     case TokenKind::c_string_literal: return "c_string_literal";
     case TokenKind::byte_literal: return "byte_literal";
@@ -255,6 +256,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     switch (kind) {
     case ExprKind::invalid: return "invalid";
     case ExprKind::integer_literal: return "integer_literal";
+    case ExprKind::float_literal: return "float_literal";
     case ExprKind::bool_literal: return "bool_literal";
     case ExprKind::null_literal: return "null_literal";
     case ExprKind::string_literal: return "string_literal";

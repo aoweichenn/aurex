@@ -30,6 +30,20 @@ bool parse_u64(const std::string& text, std::uint64_t& out) noexcept {
     return result.ec == std::errc {} && result.ptr == end;
 }
 
+bool parse_f64(const std::string& text, double& out) noexcept {
+    std::string digits;
+    digits.reserve(text.size());
+    for (const char c : text) {
+        if (c != '_') {
+            digits.push_back(c);
+        }
+    }
+    const char* begin = digits.data();
+    const char* end = digits.data() + digits.size();
+    const auto result = std::from_chars(begin, end, out);
+    return result.ec == std::errc {} && result.ptr == end;
+}
+
 std::string decode_string_literal(const std::string& literal, const bool has_c_prefix) {
     base::StringLiteralDecode decoded = base::decode_string_literal(
         literal,

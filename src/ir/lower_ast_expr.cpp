@@ -136,12 +136,19 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     const syntax::ExprNode& expr = ast_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::float_literal:
     case syntax::ExprKind::bool_literal:
     case syntax::ExprKind::byte_literal: {
         Value value;
-        value.kind = expr.kind == syntax::ExprKind::byte_literal
-            ? ValueKind::byte_literal
-            : (expr.kind == syntax::ExprKind::bool_literal ? ValueKind::bool_literal : ValueKind::integer_literal);
+        if (expr.kind == syntax::ExprKind::byte_literal) {
+            value.kind = ValueKind::byte_literal;
+        } else if (expr.kind == syntax::ExprKind::bool_literal) {
+            value.kind = ValueKind::bool_literal;
+        } else if (expr.kind == syntax::ExprKind::float_literal) {
+            value.kind = ValueKind::float_literal;
+        } else {
+            value.kind = ValueKind::integer_literal;
+        }
         value.type = expr_type(expr_id);
         value.text = std::string(expr.text);
         return append_value(value);

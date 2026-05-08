@@ -65,6 +65,7 @@ enum class AbiCallConv {
 enum class ValueKind {
     param,
     integer_literal,
+    float_literal,
     bool_literal,
     null_literal,
     string_literal,

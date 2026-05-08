@@ -64,7 +64,8 @@ ptr_addr ptr_from_addr str_data str_byte_len str_from_bytes_unchecked
 
 字面量：
 
-- 整数字面量：十进制、`0x` / `0X` 十六进制、`0b` / `0B` 二进制，允许 `_` 分隔。
+- 整数字面量：十进制、`0x` / `0X` 十六进制、`0b` / `0B` 二进制，允许 `_` 分隔；`_` 只能出现在两个合法数字之间。
+- 浮点字面量：`1.0`、`1e3`、`1.0e-3`，没有期望类型时默认 `f64`，有 `f32` / `f64` 期望类型时按期望类型检查。
 - 普通字符串字面量：`"text"`，类型是 `str`，lexer 会校验解码后的内容必须是有效 UTF-8。
 - C 字符串字面量：`c"text"`，类型是 `*const u8`，会拒绝内部 NUL，面向 FFI。
 - byte 字面量：`b'a'`、`b'\n'`，类型是 `u8`。
@@ -77,7 +78,7 @@ ptr_addr ptr_from_addr str_data str_byte_len str_from_bytes_unchecked
 \0 \n \r \t \\ \" \u{...}
 ```
 
-当前没有浮点数字面量。`f32` / `f64` 类型和浮点运算已经存在，但样例中通过 `cast(f64, 0)` 之类方式构造浮点值。
+当前浮点字面量不支持 `.5`、`1.` 或 `1.0f32` 这类后缀/省略形式。
 
 标点和操作符：
 
@@ -393,7 +394,7 @@ return;
 - `break` / `continue` 只允许在 loop 内。
 - `continue` 会先进入 for-update，再回 condition。
 - `defer` 当前只允许函数调用表达式。
-- 表达式语句当前只允许函数调用；非调用表达式作为 statement 会诊断。
+- 表达式语句当前只允许函数调用或 `?` try expression；其他无效果表达式作为 statement 会诊断。
 
 ### 表达式
 
@@ -497,14 +498,14 @@ str_from_bytes_unchecked(data, len)
 `if` 表达式：
 
 ```aurex
-let x: i32 = if cond { 1 } else { 2 };
+let x: i32 = if cond { 1 } else if other { 2 } else { 3 };
 ```
 
 规则：
 
 - `if` 表达式必须有 `else`。
-- then / else 必须是 block expression。
-- 两边类型必须一致。
+- then / else block 必须产生值；`else` 可以继续接 `if` expression。
+- 所有分支类型必须一致。
 - 结果不能是 `void`。
 - const initializer 中不能使用。
 
@@ -654,7 +655,6 @@ p1 | p2 | p3
 
 这份清单很重要，因为它能防止后续误以为“应该已经有”：
 
-- 浮点字面量。
 - `char` / Unicode scalar 字面量。
 - raw string、multi-line string、bytes string。
 - tuple、tuple struct、anonymous record。
@@ -972,7 +972,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 4. 给“当前没有”的语法做 negative tests。
 5. 决定默认可见性是否在 M1 前切到 private。
 6. 为 `unsafe` 设计最小语法，不一定立刻改所有 lowering。
-7. 增加浮点字面量：`1.0`、`1e-3`、`1.0f32` 或后缀方案。
+7. 浮点字面量已补齐基础形式；后续只需决定是否增加后缀方案。
 8. 明确 byte / text / C string 的字面量边界。
 
 ### P1：类型系统主线
@@ -1179,7 +1179,7 @@ where T: Eq
 2. 给 parser 写 EBNF，并用 tests 锁住每类语法。
 3. 决定默认可见性迁移策略，建议 M1 前切到 default private。
 4. 加 `unsafe` block / `unsafe fn` 的语法和诊断框架。
-5. 加浮点字面量。
+5. 冻结浮点字面量后缀策略。
 6. 让 enum base type / discriminant 可选。
 7. 引入 capability 内部模型：`Copy`、`Drop`、`Sized`。
 8. 设计并实现最小 `where` 约束。

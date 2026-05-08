@@ -37,7 +37,7 @@ private:
     void skip_trivia();
     void scan_token();
     void scan_identifier();
-    void scan_integer();
+    void scan_number();
     void scan_string();
     void scan_c_string();
     void scan_byte();

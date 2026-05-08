@@ -773,6 +773,7 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::float_literal:
     case syntax::ExprKind::bool_literal:
     case syntax::ExprKind::null_literal:
     case syntax::ExprKind::string_literal:

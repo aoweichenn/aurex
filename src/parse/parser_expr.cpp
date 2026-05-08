@@ -317,7 +317,7 @@ syntax::ExprId Parser::parse_if_expr() {
 
     const syntax::ExprId then_expr = parse_block_expr();
     expect(TokenKind::kw_else, "if expression requires else branch");
-    const syntax::ExprId else_expr = parse_block_expr();
+    const syntax::ExprId else_expr = check(TokenKind::kw_if) ? parse_if_expr() : parse_block_expr();
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::if_expr;
@@ -718,6 +718,14 @@ syntax::ExprId Parser::parse_primary() {
         const syntax::Token& token = previous();
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::integer_literal;
+        expr.range = token.range;
+        expr.text = token.text;
+        return module_.push_expr(expr);
+    }
+    if (match(TokenKind::float_literal)) {
+        const syntax::Token& token = previous();
+        syntax::ExprNode expr;
+        expr.kind = syntax::ExprKind::float_literal;
         expr.range = token.range;
         expr.text = token.text;
         return module_.push_expr(expr);

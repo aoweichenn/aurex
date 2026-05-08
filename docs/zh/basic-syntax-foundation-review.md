@@ -58,13 +58,13 @@ fn main() -> i32 {
 
 代码层面的基础事实：
 
-- lexer 只有 `integer_literal`，没有 `float_literal`：`include/aurex/syntax/token.hpp`、`src/lex/lexer.cpp`。
-- `f32` / `f64` 类型和浮点运算已经存在，但用户只能通过 `cast(f64, 0)` 等方式构造浮点值。
-- statement `if` 支持 `else if`，expression `if` 只支持 `else { ... }`。
+- lexer 已有 `integer_literal` 和 `float_literal`：`include/aurex/syntax/token.hpp`、`src/lex/lexer.cpp`。
+- `f32` / `f64` 类型、浮点字面量和浮点运算已经存在。浮点字面量当前支持 `1.0`、`1e3`、`1.0e-3` 这类基础形式。
+- statement `if` 和 expression `if` 都支持 `else if`。
 - 普通 block statement 和 block expression 分别由两个 parser 入口处理。
-- parser 能生成任意 expression statement，但 sema 又把 expression statement 限制为函数调用。
+- parser 能生成任意 expression statement；sema 当前只允许函数调用和 `?` try expression 作为 expression statement。
 - 顶层 item 和 struct field 默认 public，import 默认 private。
-- 整数字面量允许 `_`，但当前规则过宽。
+- 整数字面量允许 `_`，规则已收紧为只能出现在两个合法数字之间。
 
 ## 总体判断
 
@@ -72,10 +72,7 @@ Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` /
 
 现在最主要的问题不是“缺高级特性”，而是基础语法里有几处不一致：
 
-- 有类型但没有对应字面量。
 - 有表达式块，但普通块和表达式块不是同一套语法。
-- 有 `if` statement 的 `else if`，但没有 `if` expression 的 `else if`。
-- parser 和 sema 对 expression statement 的边界不一致。
 - const initializer 支持的基础运算比运行时表达式少太多。
 - 可见性默认值对长期模块 API 不友好。
 
@@ -93,23 +90,23 @@ Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` /
 
 因此 Aurex 现在不需要追逐复杂高级特性，应该先把基础语法改成“规则少、例外少、可预测”。
 
-## P0 缺陷：浮点类型没有浮点字面量
+## P0 已补：浮点类型没有浮点字面量
 
-现状：
+补齐前：
 
 ```aurex
 let zero: f64 = cast(f64, 0);
 let nan: f64 = zero / zero;
 ```
 
-问题：
+原问题：
 
 - `f32` / `f64` 是内建基础类型，但没有 `1.0`、`1e-3` 这类字面量。
 - 这会让 primitive matrix 很不完整。
 - 用户会被迫用 `cast` 写最普通的浮点值，语法噪声过高。
 - 后端和 sema 已经有浮点路径，缺的是词法、AST、常量/类型推断规则。
 
-建议：
+已采用的基础形态：
 
 ```aurex
 let a: f64 = 1.0;
@@ -117,7 +114,7 @@ let b: f64 = 1e-3;
 let c: f32 = 0.5;
 ```
 
-第一阶段不要急着加复杂后缀。建议规则：
+第一阶段不做复杂后缀。当前规则：
 
 - `1.0`、`.5`、`1.` 三者里先只接受 `1.0`，避免和未来 range / field / method 语法冲突。
 - 接受 exponent：`1e3`、`1.0e-3`。
@@ -125,9 +122,9 @@ let c: f32 = 0.5;
 - 有期望类型 `f32` / `f64` 时按期望类型检查。
 - 暂不支持 `1.0f32` / `1.0_f32` 后缀，等整数后缀策略一起设计。
 
-优先级：最高。基础标量类型不能没有对应 literal。
+状态：已补。基础标量类型现在有对应 literal。
 
-## P0 缺陷：整数字面量分隔符规则过松
+## P0 已补：整数字面量分隔符规则过松
 
 现状：
 
@@ -148,7 +145,7 @@ let d: i32 = 0b_1010;
 - 过宽的词法会让 formatter、diagnostic、未来 suffix 规则更难定。
 - 如果以后加类型后缀，`1_u32`、`1__u32` 这类边界会更麻烦。
 
-建议先定严格规则：
+已采用严格规则：
 
 ```text
 decimal = digit ( "_" ? digit )*
@@ -163,7 +160,7 @@ binary  = "0b" binary_digit ( "_" ? binary_digit )*
 - `0x` / `0b` 后必须立刻有合法数字。
 - 暂不允许 `0x_FF`，除非以后明确选择 Go 风格。
 
-优先级：最高。越早收紧越好，后面放宽比收紧容易。
+状态：已补。越早收紧越好，后面放宽比收紧容易。
 
 ## P0 缺陷：block statement 和 block expression 不统一
 
@@ -224,9 +221,9 @@ let value = {
 
 优先级：最高。它会简化 parser 和用户心智模型。
 
-## P0 缺陷：`if` 表达式不支持 `else if`
+## P0 已补：`if` 表达式不支持 `else if`
 
-现状：
+补齐前：
 
 statement 可写：
 
@@ -258,13 +255,13 @@ let value = if a {
 };
 ```
 
-问题：
+原问题：
 
 - statement 和 expression 规则不一致。
 - 用户会被迫嵌套一层 block expression，语法很别扭。
 - `if` expression 是基础表达式，不是高级语法，应该和 `if` statement 的链式条件一致。
 
-建议：
+已采用语法：
 
 ```text
 if_expr = "if" expr block_expr "else" (if_expr | block_expr)
@@ -276,9 +273,9 @@ if_expr = "if" expr block_expr "else" (if_expr | block_expr)
 - 最终必须有 `else`。
 - `else if` 链只是右结合的 nested `if_expr`。
 
-优先级：高。
+状态：已补。
 
-## P0 缺陷：expression statement 的规则前后不一致
+## P0 已补：expression statement 的规则前后不一致
 
 现状：
 
@@ -291,7 +288,7 @@ x + y;
 move(value);
 ```
 
-但 sema 中 expression statement 只允许 `call`，否则报：
+补齐前 sema 中 expression statement 只允许 `call`，否则报：
 
 ```text
 expression statement must be a function call
@@ -306,7 +303,7 @@ expression statement must be a function call
 
 建议选择一个明确规则，不要维持半状态。
 
-推荐规则：
+已采用规则：
 
 ```text
 expr_stmt =
@@ -322,7 +319,7 @@ expr_stmt =
 - `x + y;` 仍然诊断。
 - `move(x);` 暂不作为普通 expression statement 允许，除非未来定义“显式丢弃/销毁”语法。
 
-优先级：高。
+状态：已补。普通无效表达式语句仍然诊断。
 
 ## P0 缺陷：const initializer 的基础运算不完整
 
@@ -596,11 +593,11 @@ b"bytes"    // bytes?
 
 第一批最值得马上做：
 
-1. 增加浮点字面量。
-2. 收紧整数字面量 `_` 规则。
+1. 增加浮点字面量。已补。
+2. 收紧整数字面量 `_` 规则。已补。
 3. 统一 block statement / block expression 语法。
-4. 让 `if` expression 支持 `else if`。
-5. 明确 expression statement 规则，至少允许 `foo()?;`。
+4. 让 `if` expression 支持 `else if`。已补。
+5. 明确 expression statement 规则，至少允许 `foo()?;`。已补。
 6. 补齐 const initializer 的纯标量运算。
 
 第二批再做：

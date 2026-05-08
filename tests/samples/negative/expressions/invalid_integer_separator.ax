@@ -1,0 +1,6 @@
+module invalid_integer_separator;
+
+fn main() -> i32 {
+    let value: i32 = 1_;
+    return value;
+}

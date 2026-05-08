@@ -91,6 +91,7 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         out << "param " << value.name;
         break;
     case ValueKind::integer_literal:
+    case ValueKind::float_literal:
     case ValueKind::bool_literal:
     case ValueKind::byte_literal:
         out << "literal " << value.text;

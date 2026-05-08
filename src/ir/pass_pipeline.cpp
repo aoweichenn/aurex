@@ -178,6 +178,7 @@ struct FunctionUseInfo {
                 break;
             case ValueKind::param:
             case ValueKind::integer_literal:
+            case ValueKind::float_literal:
             case ValueKind::bool_literal:
             case ValueKind::null_literal:
             case ValueKind::string_literal:

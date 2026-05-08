@@ -1,0 +1,38 @@
+module try_expression_statement;
+
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
+
+fn fail_if(value: i32) -> Result<i32, i32> {
+    if value < 0 {
+        return Result.err(7);
+    }
+    return Result.ok(value);
+}
+
+fn check(value: i32) -> Result<i32, i32> {
+    fail_if(value)?;
+    return Result.ok(0);
+}
+
+fn main() -> i32 {
+    let ok = check(1);
+    let err = check(-1);
+    let ok_code: i32 = match ok {
+        .ok(value) => value,
+        .err(code) => code,
+    };
+    let err_code: i32 = match err {
+        .ok(value) => value,
+        .err(code) => code,
+    };
+    if ok_code != 0 {
+        return 1;
+    }
+    if err_code != 7 {
+        return 2;
+    }
+    return 0;
+}

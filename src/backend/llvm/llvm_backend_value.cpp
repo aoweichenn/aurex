@@ -17,6 +17,7 @@ llvm::Value* LlvmEmitter::emit_value(const ValueId id) {
     case ValueKind::phi:
         return values_.at(id.value);
     case ValueKind::integer_literal:
+    case ValueKind::float_literal:
     case ValueKind::bool_literal:
     case ValueKind::byte_literal:
     case ValueKind::undef:
@@ -51,6 +52,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         break;
     case ValueKind::integer_literal:
         return integer_constant(value.type, value.text);
+    case ValueKind::float_literal:
+        return float_constant(value.type, value.text);
     case ValueKind::bool_literal:
         return llvm::ConstantInt::get(llvm_type(value.type), value.text == "true" ? 1 : 0, false);
     case ValueKind::byte_literal:
@@ -121,6 +124,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
     switch (value.kind) {
     case ValueKind::integer_literal:
         return llvm::cast<llvm::Constant>(integer_constant(value.type, value.text));
+    case ValueKind::float_literal:
+        return llvm::cast<llvm::Constant>(float_constant(value.type, value.text));
     case ValueKind::bool_literal:
         return llvm::ConstantInt::get(llvm_type(value.type), value.text == "true" ? 1 : 0, false);
     case ValueKind::byte_literal:
@@ -520,6 +525,12 @@ llvm::Value* LlvmEmitter::integer_constant(const sema::TypeHandle type, const st
     std::uint64_t value = 0;
     static_cast<void>(parse_u64(text, value));
     return llvm::ConstantInt::get(llvm_type(type), value, !is_unsigned_integer(type));
+}
+
+llvm::Value* LlvmEmitter::float_constant(const sema::TypeHandle type, const std::string& text) {
+    double value = 0.0;
+    static_cast<void>(parse_f64(text, value));
+    return llvm::ConstantFP::get(llvm_type(type), value);
 }
 
 llvm::Value* LlvmEmitter::emit_string_literal(const std::string& literal, const bool c_string) {

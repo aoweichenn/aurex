@@ -1,10 +1,27 @@
 module variadic_extern_c;
 
-import std.core.mem;
-import std.core.text;
-
 extern c {
+    fn calloc(count: usize, size: usize) -> *mut void @name("calloc");
+    fn free(ptr: *mut void) -> void @name("free");
+    fn strlen(text: *const u8) -> usize @name("strlen");
+    fn strcmp(left: *const u8, right: *const u8) -> i32 @name("strcmp");
     fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32 @name("snprintf");
+}
+
+fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {
+    return ptr_cast(*mut u8, calloc(count, size));
+}
+
+fn free_bytes(ptr: *mut u8) -> void {
+    free(ptr_cast(*mut void, ptr));
+}
+
+fn c_strlen(text: *const u8) -> usize {
+    return strlen(text);
+}
+
+fn c_string_equal(left: *const u8, right: *const u8) -> bool {
+    return strcmp(left, right) == 0;
 }
 
 fn main() -> i32 {

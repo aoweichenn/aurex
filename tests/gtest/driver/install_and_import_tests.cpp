@@ -9,13 +9,10 @@ TEST_F(AurexIntegrationTest, InstallAndImportPaths) {
     const fs::path install_root = work_root() / "install";
     require_success(q(std::string_view(AUREX_TEST_CMAKE_COMMAND)) + " --install " + q(build_root()) + " --prefix " + q(install_root));
 
-    const std::string installed_std_llvm =
+    const std::string installed_hello_llvm =
         require_success(q(install_root / "bin" / "aurexc") + " --emit=llvm-ir " +
-                        q(positive_sample("std", "std_text.ax"))).output;
-    expect_contains_all(installed_std_llvm, {
-        "@m0_std_text_main",
-        "@m0_std_core_text_span__u8",
-    });
+                        q(source_root() / "examples" / "hello.ax")).output;
+    expect_contains(installed_hello_llvm, "define i32 @main");
 
     const std::string import_ll =
         require_success(aurexc() + " " + tests_import_flags() + " --emit=llvm-ir " +

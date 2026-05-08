@@ -4,4 +4,3 @@ add_executable(aurexc
 target_link_libraries(aurexc PRIVATE aurex_driver)
 
 install(TARGETS aurexc DESTINATION bin)
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/std/" DESTINATION share/aurex/std)

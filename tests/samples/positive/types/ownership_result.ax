@@ -1,6 +1,71 @@
 module ownership_result;
 
-import std.core.result;
+enum Option<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}
+
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
+
+const OPTION_TAG_SOME: u8 = 1;
+const OPTION_TAG_NONE: u8 = 2;
+const RESULT_TAG_OK: u8 = 1;
+const RESULT_TAG_ERR: u8 = 2;
+
+fn option_is_some_ref<T>(value: *const Option<T>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == OPTION_TAG_SOME;
+}
+
+fn option_is_none_ref<T>(value: *const Option<T>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == OPTION_TAG_NONE;
+}
+
+fn result_is_ok_ref<T, E>(value: *const Result<T, E>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == RESULT_TAG_OK;
+}
+
+fn result_is_err_ref<T, E>(value: *const Result<T, E>) -> bool {
+    if value == null {
+        return false;
+    }
+    let tag: *const u8 = ptr_cast(*const u8, value);
+    return *tag == RESULT_TAG_ERR;
+}
+
+impl<T> Option<T> {
+    fn is_some_ref(self: *const Option<T>) -> bool {
+        return option_is_some_ref<T>(self);
+    }
+
+    fn is_none_ref(self: *const Option<T>) -> bool {
+        return option_is_none_ref<T>(self);
+    }
+}
+
+impl<T, E> Result<T, E> {
+    fn is_ok_ref(self: *const Result<T, E>) -> bool {
+        return result_is_ok_ref<T, E>(self);
+    }
+
+    fn is_err_ref(self: *const Result<T, E>) -> bool {
+        return result_is_err_ref<T, E>(self);
+    }
+}
 
 noncopy struct Owner {
     value: i32;

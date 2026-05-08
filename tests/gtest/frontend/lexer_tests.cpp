@@ -33,7 +33,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     constexpr std::string_view source =
         "// line comment\n"
         "module lex.unit; /* block comment */\n"
-        "import std.core.text as text;\n"
+        "import common.text as text;\n"
         "const hex: i32 = 0x2A;\n"
         "const bin: i32 = 0b1010;\n"
         "const dec: i32 = 1_000;\n"

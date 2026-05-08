@@ -1,6 +1,6 @@
 # Aurex M0
 
-Documentation baseline: **0.1.7**.
+Documentation baseline: **language-core-no-std**.
 
 Aurex M0 is a small bootstrap compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
@@ -27,21 +27,10 @@ Stage0 now resolves imports:
 build/bin/aurexc -I tests/samples/imports tests/samples/positive/modules/import_path.ax -o build/tests/import_path
 ```
 
-Feature-rich examples live under `examples/system`, with reusable modules under
-`examples/libs`:
+Reusable import examples live under `examples/libs`:
 
 ```sh
-build/bin/aurexc -I examples/libs examples/system/memory_probe/main.ax -o build/tests/memory_probe
-build/tests/memory_probe
-```
-
-M1 acceptance examples live under `examples/m1`:
-
-```sh
-build/bin/aurexc examples/m1/frontend/main.ax -o build/tests/m1_frontend
-build/tests/m1_frontend
-build/bin/aurexc examples/m1/axbuild/main.ax -o build/tests/m1_axbuild
-build/tests/m1_axbuild
+build/bin/aurexc -I examples/libs --emit=checked tests/samples/positive/modules/import_path.ax
 ```
 
 Stage0 can also produce assembly and object files through clang:
@@ -69,13 +58,12 @@ The old Stage0 C backend has been removed from the production build; the
 historical standalone C translator and the old bootstrap tree have also been
 removed from the active tree.
 
-The bundled std root is found through `--stdlib`, `AUREX_STDLIB`, build-tree
-defaults, and relocatable install layouts such as `share/aurex/std` next to the
-installed `bin/aurexc`. Executable output links the selected std support backend
-(`--std-backend host-c` by default), whose stable host-facing symbols are
-versioned as `aurex_std_v0_*`. Temporary C FFI bindings live under
-`std/ffi/c/`; language-level std modules import that boundary instead of
-declaring host C directly.
+This branch intentionally freezes and removes the Aurex standard library.
+There is no bundled `std/` tree, no implicit standard-library import path, no
+`--stdlib` / `--no-stdlib` / `--std-backend` CLI surface, and no automatic
+host-C support linking. Native output contains only the user's Aurex module
+lowered through LLVM IR and clang. Language-core experiments that need C
+functions declare a narrow `extern c` boundary in the sample under test.
 
 ## Quality Gates
 
@@ -85,8 +73,8 @@ tools/bench.py
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
-language samples, negative semantic samples, current language features, std FFI
-checks, LLVM lowering, native execution, and install-tree std lookup.
+language samples, negative semantic samples, current language features, LLVM
+lowering, native execution, import paths, and install-tree compiler execution.
 
 ## Bootstrap Status
 
@@ -103,7 +91,6 @@ See:
 - `docs/README.md`
 - `docs/zh/README.md`
 - `docs/en/README.md`
-- `docs/zh/m1-progress-2026-05-07.md`
 
 The documentation is now organized by topic and language instead of one file
 per small 0.1.x increment.

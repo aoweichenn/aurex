@@ -1,6 +1,14 @@
 module try_result_option;
 
-import std.core.result;
+enum Option<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}
+
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
 
 fn parse_digit(value: i32) -> Result<i32, i32> {
     if value < 0 {

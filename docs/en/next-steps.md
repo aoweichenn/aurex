@@ -1,498 +1,61 @@
 # Next Steps
 
-Version: 0.1.7
+## Branch Principle
 
-## Current Stage
+The standard library is frozen and removed from this branch. Do not expand std
+or use std samples to prove language features. New features should be validated
+with self-contained `.ax` samples first. Restore std only after syntax, types,
+ownership, borrow, and drop rules stabilize.
 
-The old selfhost bootstrap track has been removed from the active tree. Current
-work focuses on the C++ Stage0 compiler, Aurex IR, and the LLVM backend, with
-language work aimed at stronger expressiveness, module isolation, and backend
-contracts. M1 is no longer just a feature-completion milestone. Its target is
-to make Aurex expressive enough to write two real system programs naturally: a
-small self-hosting frontend example and a typed build tool similar in spirit to
-CMake. A full replacement of the C++ Stage0 compiler can happen later, but M1
-must prove these programs can be written cleanly in Aurex.
+## Priority Route
 
-Latest Chinese progress report: [M1 progress report 2026-05-07](../zh/m1-progress-2026-05-07.md).
-It records the current subprocess / stdout/stderr-capture / cwd / env baseline, file metadata /
-mtime baseline, directory-create / directory-entry / recursive-directory-entry /
-single-level source-discovery / recursive source-discovery baseline, Map /
-CStringUsizeMap baseline, target-graph validation /
-topological-build baseline, target-name lookup-cache baseline, target-graph diagnostic
-/ message / name / cycle-path / cycle-path-name baseline, test direct-process
-runner, M1 examples, integration-test coverage, and test-time baseline.
+1. Ownership closure
 
-String foundation work now follows the Chinese design draft:
-`str` is borrowed UTF-8 text, `String` owns UTF-8 bytes, `Bytes` /
-`Span<u8>` hold raw bytes, `CStr` / `CString` cover C FFI, and `Path`
-stores platform path bytes. The current tree has string-literal UTF-8 and
-escape diagnostics, `std.core.str` borrowed APIs and scalar APIs,
-UTF-8-preserving `String` APIs with `String.as_mut_span` removed, raw
-`std.core.bytes.Bytes`, bytes-backed `std.fs.path.Path`, and first
-`std.fs.file` `Path` / `str` entry points: `metadata_path`,
-`read_bytes_path`, `read_text_path`, `write_bytes_path`, `write_text_path`,
-`file_exists_path`, `remove_file_path`, `rename_file_path`, plus
-`write_str` / `write_str_path` that write by the true `str` byte length.
-`std.fs.dir` now also has `Path` wrappers for directory paths, `str`
-wrappers for suffix arguments, and bytes-backed `DirectoryEntry` views:
-`name_bytes()` / `path_bytes()` expose raw path bytes, while `name_utf8()` /
-`path_utf8()` perform checked UTF-8 conversion. `examples/m1/axbuild`
-now uses `Path` / `str` entry points for directory scanning, target source
-lists, project stamp paths, source/stamp metadata, stamp writes, clean, and
-temporary-source cleanup. Target insertion also uses explicit ownership
-transfer through `Vec.take()` / field reset so owned `Path` values and owned
-containers are not left behind as shallow local owners.
-At the C FFI boundary, `CStr` remains a borrowed copyable view while `CString`
-is now a `noncopy` owned resource.
+   Unify rules for copy, move, noncopy enum payloads, match payloads, and `?`.
+   Add coverage for partial move, field move-out, use-after-move, conditional
+   control-flow joins, and loop moved-state diagnostics.
 
-## Current Capabilities
+2. Drop / destructor design
 
-Stage0 main path:
+   Turn `destroy(self: *mut T) -> void` recognition into a language-level drop
+   capability. Decide drop order, interaction with early return / break /
+   continue / defer, generic `drop T` constraints, and diagnostics for noncopy
+   types without destructors.
 
-- Handwritten lexer and recursive-descent parser.
-- Module declarations, import search paths, and standard-library lookup.
-- Semantic analysis, type tables, symbols, ABI names, and basic diagnostics.
-- Aurex typed CFG/SSA-like IR, IR verifier, and a conservative pass pipeline.
-- LLVM IR lowering plus clang output for assembly, objects, and executables.
-- Build-tree and install-tree std lookup with host-c backend support.
+3. Borrow semantics
 
-Current language slices:
+   Design shared borrow, mutable borrow, borrowed returns, aliasing rules, and
+   lifetime regions. Start with local borrow checking, then expand across
+   function signatures.
 
-- Structs, enums, type aliases, and opaque types.
-- Basic generic struct / enum instantiation, including nested generic type-arg
-  substitution and expected-type / field-value inference for struct literals.
-- `match` expressions, literal patterns, wildcard, or-patterns, and guards.
-- Block / if expressions.
-- Controlled local and return type inference slices.
-- Function prototypes and recursive function checks.
-- Generic function MVP with explicit `<T>`, call-site type arguments, and
-  basic inference from arguments / expected return type.
-- `extern c` variadic declarations and calls, including C ABI default argument
-  promotions.
-- Scope-level `defer` statements, run in reverse order on normal exits,
-  `return`, and `break` / `continue` paths.
-- `for init; condition; update { ... }` statements are now implemented, with
-  all three clauses optional. `continue` enters the update clause before the
-  next condition check, `break` exits the loop, and loop exits reuse the
-  existing `defer` cleanup model. Module merging now remaps `for_init` and
-  `for_update` AST ids, and imported-module `for + defer + continue/break`
-  paths have regression coverage.
-- Minimal ownership semantics have started: `noncopy struct` marks a struct as
-  move-only, and `move(value)` explicitly transfers ownership from a local or
-  parameter. `move(copyable)` is also accepted as explicit value passing and
-  does not mark the source binding moved; this lets one generic std
-  implementation serve both copyable and noncopy payloads. Semantic analysis
-  now rejects implicit copies of move-only values in local initialization,
-  assignment, return values, function arguments, method receivers,
-  struct-literal fields, and enum payloads, and reports use after move. Enum
-  copyability now propagates from payloads, so
-  `Result<NonCopy, E>` / `Option<NonCopy>` become noncopy; `match` and `?`
-  consume noncopy enum sources, and `if` / `else if` move-state merging is
-  fallthrough-aware. Some std generic APIs now also have temporary copyability
-  constraints: raw-copy / by-value-read `Vec` APIs, by-value key/value `Map`
-  APIs, and consuming `Result` / `Option` status/fallback APIs reject noncopy
-  payloads.
-- `impl` / method / associated-function MVP with explicit `self`,
-  `value.method()` instance calls, public `value.field` access,
-  `Type.function()` associated calls, `impl<T> Type<T>` generic instance
-  methods, and `fn method<U>` method-level generic parameters. Cross-module
-  private-field and private-method access now have stable diagnostics.
-- Standard `Result` / `Option` / `?` slice, usable for explicit error
-  propagation and early-return control flow. `Option<T>` / `Result<T, E>` now
-  also have baseline method APIs, including method-level generic
-  `Option<T>.ok_or<E>`, plus non-consuming `is_some_ref` / `is_none_ref` /
-  `is_ok_ref` / `is_err_ref` state checks. For noncopy payloads, status checks
-  should use `*_ref` or explicit `match move(...)`; consuming
-  `is_some/is_none/is_ok/is_err/unwrap_or/ok_or` calls are restricted to
-  payload combinations that can be safely copied or discarded today.
-- Standard-library container/text/path baseline started, including generic
-  `Span<T>` / `MutSpan<T>`, a `noncopy` generic `Vec<T>` with capacity,
-  append, insert, take/reset transfer, copyable-element remove/random-access
-  APIs and method APIs, owned raw `std.core.bytes.Bytes`, a Vec-backed
-  `noncopy` generic `Map<K, V>`, borrowed C-string -> usize noncopy
-  `CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar APIs,
-  UTF-8-oriented APIs on owned `String`, removal of `String.as_mut_span`, C FFI
-  `CStr` borrowed views, `CString` noncopy owned boundary values, and
-  query/join APIs on bytes-backed `Path`. `Vec` APIs that copy from borrowed
-  storage or read elements by value are temporarily restricted to copyable
-  element types, and the current by-value `Map<K, V>` key/value APIs are
-  similarly restricted to copyable keys/values until language-level generic
-  constraints and place moves land.
-- Standard file and host-file IO now use `Result`-style owned-buffer APIs, with
-  the old `BufferU8` and handwritten file-result structures removed from
-  in-tree uses. `std.fs.file::FileMetadata` now provides an
-  exists/is_file/is_dir/size/modified_time_ns baseline. `std.fs.file` also
-  provides `Path` wrappers and `write_str` / `write_str_path`, so new text
-  writes use the `str` byte length and do not truncate at interior `\0`.
-  `std.fs.dir` provides directory creation, owned single-level / recursive
-  directory-entry reads, `Path` wrappers for directory paths, `str` wrappers
-  for suffixes, raw-bytes and checked-UTF-8 directory-entry views, and
-  single-level / recursive source-discovery baselines for counting regular
-  files by suffix.
-- Standard process support has started. `std.sys.process::Command` provides
-  typed argv, `arg()`, `cwd()`, `env()`, `run()`, `run_capture()`, and
-  `destroy()`, backed by host-c `fork` / `execvp` / `waitpid`, with a
-  stdout/stderr-capture, cwd, and env baseline. stdin/stdout/stderr pipes and
-  timeout APIs are still missing.
-- `pub` / `priv` visibility keywords, cross-module private item filtering, and
-  private field access checks.
-- Examples now include system-level CLI, file IO, memory/arena, std-module,
-  generic result, visibility, and re-export facade coverage.
-- M1 acceptance skeletons are now in the active tree: `examples/m1/frontend`
-  covers source manager, diagnostics, lexer, token stream, parser subset, and
-  AST/IR summary checks; `examples/m1/axbuild` covers project/target modeling,
-  typed dependencies/sources/includes/custom commands, subprocess stdout/stderr
-  capture, cwd/env, source/stamp mtime incremental checks, directory creation,
-  owned single-level / recursive directory-entry reads, source discovery by
-  entries, single-level and recursive source-discovery counts, `Path`-backed
-  target sources and stamp handling, explicit target ownership transfer,
-  target-name lookup caches, duplicate-target detection, target-graph
-  validation, topological build order, structured graph diagnostics/messages/
-  names/cycle index paths/cycle name paths, build, clean, run, and test flows.
-  Both are covered by checked/IR/native integration tests.
+4. Capability / trait / where
 
-## Key Language Gaps
+   Replace temporary hardcodes with language mechanisms. Start with `copy T` and
+   `drop T`; later add `eq T`, `ord T`, and `hash T`. Candidate syntax:
 
-- Visibility should extend to finer API boundaries, including constructors,
-  enum payloads, type-alias propagation, and re-export rules.
-- Module isolation still needs explicit package/crate boundaries, import
-  aliases, selective imports, better cycle diagnostics, and a stable public
-  surface dump.
-- The call model has an `impl` / method MVP, generic impl instance methods,
-  method-level generic parameters, and cross-module member-visibility
-  diagnostics, but still needs trait/class reuse, method public-surface
-  tooling, and stronger diagnostics for overload/trait cases.
-- Generics still need constraints, where-like predicates, trait/interface
-  design, monomorphization caching, and explainable diagnostics.
-- Error handling has the standard `Result<T, E>` / `Option<T>` and `?`
-  propagation slice, but still needs broader std API migration and a
-  composable diagnostic model.
-- Resource management now has a `noncopy struct` / `move(value)` MVP. The
-  first owned resources, including `FileBytes`, `HostFileBytes`, `Command`,
-  `ProcessOutput`, `CString`, `Bytes`, `String`, `Path`, `DirectoryEntry`,
-  `Vec<T>`, `Map<K, V>`, and `CStringUsizeMap`, are now noncopy. Several
-  copy-only `Vec`, `Map`, and `Result` / `Option` APIs now have semantic
-  guards. It still needs Drop/destructor conventions, borrow checking, partial
-  moves, language-level move-only generic constraints, and a unified lifetime
-  strategy for arenas, temporary directories, and more complex OS resources.
-- The string foundation still needs continued public API tightening:
-  `std.fs.file` and `std.fs.dir` now have `Path` / `str` entry points, and
-  directory suffixes plus M1 axbuild directory scanning have moved to
-  `Path` / `str`. Remaining process, console, and FFI-facing code still has
-  low-level `c"..."` / `*const u8` compatibility boundaries to retire.
-- The standard library still needs broader `Vec<T>`, hash/bucketed `Map<K, V>`,
-  owned string-key maps, streaming
-  directory iterators / walk callbacks, file metadata, subprocess support, and OS features required by
-  incremental builds.
-- Aurex needs a compatibility class/object model for programmers coming from
-  traditional OOP code: encapsulation, inheritance, and dynamic polymorphism.
-  This should be a migration-friendly layer, not a replacement for the
-  struct/enum/trait/generic core.
-- Pattern matching needs stronger exhaustiveness, binding consistency, enum
-  layout interaction, and lowering verification.
-- AIR should continue to mature as the Stage0 internal backend contract:
-  slot/lvalue descriptors, record/enum layout, phi/SSA joins, dominance, call
-  signatures, and cross-module item bindings should all be verifiable.
-- The LLVM backend must keep up with new frontend features so language work
-  does not stop at check/dump coverage.
+   ```aurex
+   fn clone_or<T>(value: T, fallback: T) -> T where T: Copy
+   fn destroy_all<T>(items: *mut T, len: usize) -> void where T: Drop
+   ```
 
-## Ownership Roadmap
+5. String primitive
 
-The current ownership model has its first safety boundary: owned resources use
-`noncopy struct` to reject implicit shallow copies, `move(value)` transfers
-ownership explicitly, `Result<NonCopy, E>` / `Option<NonCopy>` become noncopy,
-and risky copy-only APIs on `Vec`, `Map`, and `Result` / `Option` have semantic
-guards. On 2026-05-08 the first destructor step also landed: sema recognizes
-the fixed `destroy(self: *mut T) -> void` destructor shape, generic method
-instantiation can resolve a concrete `T.destroy()` through the concrete type's
-home module, `Vec<T>` has constrained `destroy_deep/clear_deep/truncate_deep`
-APIs, and `std.fs.dir` plus M1 axbuild have started using those APIs for owned
-cleanup. The next stage should focus on safe move-out and regular capability
-constraints rather than merely widening the disabled API set.
+   Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
+   restore `String`/`Bytes` std implementations yet. First settle type identity,
+   ABI, literals, slice boundaries, and builtin operation boundaries.
 
-Recommended sequence:
+6. Test performance
 
-1. Drop / destructor MVP
-   The first step is implemented, but it is not automatic Drop yet. Semantic
-   analysis now recognizes a fixed `destroy(self: *mut T) -> void` method as a
-   destructor and exposes an internal `has_destructor(T)` query. Generic method
-   bodies can also resolve a concrete `T.destroy()` through the concrete type's
-   home module after instantiation. The next step is to regularize this as a
-   real `drop T` capability instead of continuing to hard-code copyable /
-   noncopyable splits.
+   Keep the test harness on direct C++ driver calls for cacheable compiler work.
+   Separate check/IR/native tests, and only build/run binaries when runtime
+   behavior is the actual subject.
 
-2. Deep destruction for `Vec<T>`
-   The initial version is implemented. `Vec<T>.destroy()` still frees only the
-   buffer, preserving the old meaning. New constrained APIs
-   `destroy_deep<T>`, `clear_deep<T>`, and `truncate_deep<T>` plus matching
-   methods require `T` to have a valid destructor, then call `T.destroy()` for
-   each discarded element. `Vec<Path>`, `Vec<DirectoryEntry>`, and the M1
-   `Vec<Target>` cleanup paths now use this capability. Plain
-   `clear/truncate/remove/get` remain copy-only guarded until move-out and
-   borrowing semantics are explicit.
+## Explicitly Deferred
 
-3. Move-out APIs for `Vec<T>`
-   Do not directly enable existing `get/first/last/remove` for noncopy
-   elements, because their by-value shape still suggests copying. Add explicit
-   move-out APIs such as `take_at(index)` / `swap_take(index)` that move an
-   element out of a slot and maintain `len`. Read-only access should eventually
-   use borrowed references/views rather than by-value `get()`.
+- std containers, file/dir/process/console APIs.
+- M1 frontend / axbuild examples.
+- host support C shims.
+- Installed std lookup.
 
-4. Borrowed lookup and entry APIs for `Map<K,V>`
-   The current Vec-backed `Map<K,V>` uses by-value key/value APIs, so it only
-   accepts copyable keys and values. To support noncopy values, add borrowed-key
-   lookup and reference-returning operations such as `contains_ref(key: *const
-   K)`, `get_ref(key: *const K)`, and `get_mut_ref(key: *const K)`, then add
-   explicit move/drop operations such as `take(key)` and `remove_drop(key)`.
-   Owned string-key maps and hash/bucketed maps should be built on this API
-   shape rather than on wider by-value map operations.
-
-5. Capability predicates / generic constraints
-   Current copyability guards are transitional special cases in sema for
-   `std.core.vec`, `std.core.map`, and `std.core.result`. Once Drop exists,
-   abstract them into minimal capability predicates: `copy T` and `drop T`,
-   later `eq K` and `hash K`. Public syntax can wait, but generic
-   instantiation should start using capabilities internally so future `where`
-   clauses and traits have a clean path.
-
-6. M1 cleanup closure
-   The first cleanup pass is implemented. `DirectoryEntry` now has
-   `destroy(self: *mut DirectoryEntry)`, `std.fs.dir::destroy_entries`
-   delegates to `Vec<DirectoryEntry>.destroy_deep()`, and M1 axbuild now uses
-   `destroy_deep()` for `Target.sources: Vec<Path>` and
-   `Project.targets: Vec<Target>`. After `Vec` move-out and `Map`
-   borrowed/entry APIs are stable, continue removing temporary match helpers
-   and map-like owned-value cleanup code.
-
-This route is deliberately conservative: identify droppable values first, then
-let containers destroy elements safely, then add explicit move-out, and only
-then relax APIs. The first versions of destructor recognition and `Vec` deep
-destruction are now in place. Automatic scope Drop, borrow checking, partial
-moves, and full trait/where constraints are important, but they should not all
-land in the first Drop MVP; doing that would change language semantics,
-lowering, and std behavior at the same time.
-
-## M1 Acceptance Targets
-
-M1 should finish with two Aurex-written system examples in the active tree, both
-covered by integration tests:
-
-1. Self-hosting frontend example  
-   Implement a small compiler frontend in Aurex: source manager, lexer, token
-   stream, parser subset, AST/IR dump, and diagnostics. It does not need to
-   replace the C++ Stage0 compiler, but it must prove that Aurex can naturally
-   express compiler core code. A minimal runnable example now exists; follow-up
-   work should add fuller source-span diagnostics, AST node hierarchy, import
-   parsing, and more realistic error recovery.
-
-2. Typed build-tool example  
-   Implement a small CMake-like build tool in Aurex: project, target, library,
-   executable, source list, include path, dependency, custom command,
-   subprocess, incremental checks, build, clean, run, and test. Build
-   definitions should be typed Aurex APIs, not shell-string concatenation. A
-   minimal runnable example, stdout/stderr-capture baseline, cwd/env baseline,
-   source/stamp mtime incremental checks, directory creation, owned
-   single-level / recursive directory-entry reads, source discovery by entries, single-level and
-   recursive source-discovery counts, target-name lookup caches,
-   duplicate-target detection, target-graph validation, topological build
-   order, and structured graph diagnostics/messages/names/cycle index paths/
-   cycle name paths now exist; follow-up work should add streaming directory
-   iterators / walk callbacks, glob/pattern support, and richer user-facing reports with dependency
-   values.
-
-## M1 Priority
-
-1. Finish the method / associated-function / `impl` call model  
-   The MVP has landed: explicit `self` parameters, method-call lowering,
-   associated functions, public field access, `impl<T> Type<T>` generic
-   instance methods, method-level generic parameters, and cross-module method
-   visibility diagnostics are supported. Follow-up work should add method
-   public-surface dumps, overload/trait diagnostics, and continued example
-   migration from C-style helpers to method APIs.
-
-2. Establish standard `Result` / `Option` / `?` error handling  
-   The frontend and build tool both need many composable error paths. M1 should
-   provide standard generic result types, error propagation, stable diagnostics,
-   and example rewrites instead of continuing to rely on manual status helpers.
-
-3. Add the `Span` / `String` / `Vec` / `Map` / `Path` standard-library baseline  
-   The compiler frontend needs token buffers, AST lists, symbol tables, and
-   source spans. The build tool needs path lists, target graphs, dependency
-   maps, and command argv builders.
-
-4. Move generics from basic instantiation to a constrained model  
-   Generic function MVP has landed. Next add minimal `where`,
-   traits/interfaces, trait impls, and static dispatch. M1 does not need trait
-   objects, but it must support containers, algorithms, and typed build graphs.
-
-5. Add the compatibility class/object model  
-   Provide an OOP-friendly layer with encapsulation, inheritance, and dynamic
-   polymorphism. The recommended M1 shape is single inheritance, explicit
-   `virtual`, `override`, `abstract`, `final`, `pub` / `priv` / `protected`
-   visibility, and vtable dispatch through base pointers/references. Multiple
-   inheritance is out of scope for M1; use traits/interfaces for polymorphic
-   composition.
-
-6. Establish resource management and OS engineering support  
-   The `defer` MVP has landed, and `for` continue/update/exit paths now reuse
-   scope cleanup. The first file/process/FFI/text/path/container owned
-   resources are noncopy. Follow-up work should proceed as
-   Drop/destructor MVP -> deep destruction for `Vec<T>` -> explicit
-   `Vec<T>` move-out -> borrowed lookup / entry APIs for `Map<K,V>` ->
-   capability predicates -> M1 cleanup closure, then continue with borrow
-   checking, directory traversal, file metadata, subprocess pipes, cwd/env
-   handling, temporary files, and path normalization. Without this slice, the
-   build tool remains a toy.
-
-7. Push sum types and pattern matching to an industrial baseline  
-   Prioritize exhaustiveness, unreachable arms, payload bindings, guard
-   constraints, and consistency between enum layout and LLVM lowering. The
-   self-hosting frontend will rely heavily on token and AST matching.
-
-8. Stabilize the AIR/IR backend contract  
-   AIR should first mature as a verifiable Stage0 design target, while LLVM
-   remains the production backend. The frontend example should first produce a
-   structured dump; full backend handoff can come later.
-
-9. Improve diagnostics and public-surface tooling  
-   Module boundaries, generic constraints, method/class dispatch, match
-   coverage, and visibility errors need stable, testable diagnostics before
-   they can be considered usable in larger codebases.
-
-## Implementation Order
-
-The `impl` / method MVP is now complete. When implementation resumes, start
-with the standard `Result` / `Option` / `?` slice so file, CLI, parser, and
-build-graph code can propagate errors naturally instead of continuing to use
-manual status helpers.
-
-1. `impl` / method MVP  
-   Completed. The parser accepts `impl Type { ... }`,
-   `impl<T> Type<T> { ... }`, and `method<U>` method-level generic
-   parameters. Sema registers methods into a type-associated scope, and call
-   resolution accepts `value.field`, `value.method(args)`,
-   `value.method<U>(args)`, and `Type.function(args)`. Cross-module member
-   access obeys `pub` / `priv`. Tests cover parse, sema, IR lowering, negative
-   diagnostics, and a small example migration from helper functions to methods.
-
-2. `Result` / `Option` / `?`  
-   Completed. The method foundation now has a standard error-propagation slice
-   for `Result` and `Option`, including `?` early returns. `Option<T>` /
-   `Result<T, E>` also expose baseline methods such as `is_some`, `is_ok`,
-   `unwrap_or`, and `ok_or<E>`, plus `*_ref` state checks that read only the
-   enum tag and do not consume the payload. Consuming status/fallback methods
-   are currently only for copyable payload combinations; noncopy payloads use
-   `*_ref` or explicit `match move(...)`. Next, keep growing the std APIs so
-   code like `File.read_all(path)?` and `Parser.next()?` becomes natural.
-
-3. `Span` / `Vec` / `Map` / `Bytes` / `String` / `Path`
-   Started. The tree now has `Span<T>` / `MutSpan<T>`, a `noncopy Vec<T>` with
-   capacity, append, insert, take/reset transfer, copyable-element
-   remove/random-access, and generic `Vec<T>` method operations, owned raw
-   `std.core.bytes.Bytes`, a Vec-backed `noncopy Map<K, V>`, borrowed C-string
-   -> usize `noncopy CStringUsizeMap`, borrowed UTF-8 `str` APIs and scalar
-   APIs, owned UTF-8 `String`
-   `from_str/from_utf8/as_str/append(str)/push_scalar/insert_scalar/pop_scalar/remove_scalar_at/slice_bytes_checked/truncate_bytes_checked`
-   APIs, removal of `String.as_mut_span`, C FFI `CStr` borrowed views and
-   `CString` noncopy owned boundary values, and bytes-backed `Path`
-   absolute-path, parent, file-name, file-stem, extension, from_str,
-   span/c-string join, and with-extension APIs, covered by std integration
-   samples combining method APIs,
-   `Result` / `Option`, and `?`.
-   The old `BufferU8` use has moved to `VecU8`, and `std.fs.file` /
-   `std.sys.host` file IO now exposes M1-style APIs such as
-   `Result<FileBytes, i32>` and `Result<usize, i32>`. `std.fs.file` now has
-   `Path` wrappers and `write_str_path`, with `std_file` covering
-   `"path\0text"` so C-string truncation cannot leak back into this path.
-   `std.fs.dir` now has `Path` wrappers for directory paths, `str` wrappers for
-   suffixes, and bytes-backed `DirectoryEntry` raw-bytes / checked-UTF-8
-   views, with `std_dir` covering directory creation, direct/recursive reads,
-   suffix counts, null-entry defenses, and `defer` cleanup.
-   `examples/m1/axbuild`
-   now uses `CStringUsizeMap` for its target-name -> id lookup cache, uses
-   `Path` + `str` suffixes + bytes entry-name matching for directory scanning,
-   and transfers target owned fields through `Vec.take()` / reset rather than
-   shallow field copies.
-   Next,
-   grow this into token-buffer, source-list, owned string-key maps,
-   hash/bucketed maps, and more general path/build-graph scenarios.
-
-4. Generic constraints / traits / `where`
-   Generic function, generic impl method, and method-specific generic
-   parameters have landed. Next add the smallest trait/interface or capability
-   predicate, then constraints, method-like resolution, and monomorphization
-   caching. Then add typed graph and map-like examples.
-
-5. Class/object model MVP  
-   Implement classes after methods and traits are stable so member resolution,
-   visibility, and vtable lowering can reuse the existing call model. Then add
-   an OOP-style plugin or task-runner example.
-
-6. `defer` / noncopyable / OS support  
-   Started. `defer call();` now runs in reverse order when the current lexical
-   scope exits, including normal exits, `return`, and `break` / `continue`
-   lowering. `for` update and exit lowering now have imported-module regression
-   coverage. A subprocess / stdout/stderr-capture / cwd / env baseline is now
-   available through noncopy `std.sys.process::Command` / `ProcessOutput` and
-   host-c support, and a file metadata / mtime baseline is available through
-   `std.fs.file::FileMetadata`. `FileBytes`, `HostFileBytes`, `CString`,
-   `Bytes`, `String`, `Path`, `DirectoryEntry`, `Vec<T>`, `Map<K, V>`, and
-   `CStringUsizeMap` are also noncopy. Directory-create, owned
-   single-level / recursive directory-entry, and source-discovery count
-   baselines are available through `std.fs.dir`, including single-level and
-   recursive suffix counts. Next, implement the Drop/destructor MVP: recognize
-   `destroy(self: *mut T) -> void` and expose internal
-   `has_destructor(T)` / `is_droppable(T)` queries. Then add constrained deep
-   destruction for `Vec<T>`, design explicit move-out APIs such as `take_at` /
-   `swap_take`, add borrowed-key lookup, reference returns, take/remove-drop,
-   and entry shapes for `Map<K,V>`, and finally lift these checks into
-   `copy/drop` capability predicates as groundwork for real `where` / trait
-   constraints. After that, continue with borrow checking, partial moves,
-   streaming directory iterators / walk callbacks, stdin/stdout/stderr pipes,
-   and temporary-directory support so files, processes, arenas, and temporary
-   directories compose safely.
-
-7. Self-hosting frontend and typed build-tool acceptance  
-   Started. `examples/m1/frontend` and `examples/m1/axbuild` are now in the
-   active tree and covered by checked-surface, IR-surface, and native smoke
-   integration tests. Axbuild also covers the `GraphDiagnostic` checked/IR
-   surface, message surface, target/related-name surface, cycle index/name path
-   surface, and duplicate-target, invalid-dependency, and cycle back-edge diagnostics.
-   Keep growing them from minimal acceptance examples into realistic M1
-   engineering benchmarks while keeping coverage above 90%.
-
-## Long-Term Priority
-
-1. Finish the module visibility and isolation baseline  
-   `pub` / `priv` has landed. Next steps are re-export rules, import aliases,
-   selective imports, and public API dumps. The module system is the foundation
-   for future self-hosting, packages, and large-codebase maintainability.
-
-2. Push sum types and pattern matching to an industrial baseline  
-   Prioritize exhaustiveness, unreachable arms, payload bindings, guard
-   constraints, and consistency between enum layout and LLVM lowering.
-
-3. Move generics from basic instantiation to a constrained model  
-   Generic function MVP has landed. Next design the smallest viable
-   trait/interface or capability predicate, then extend constraints,
-   method-like resolution, and monomorphization caching.
-
-4. Stabilize the AIR/IR backend contract  
-   AIR should first mature as a verifiable Stage0 design target, while LLVM
-   remains the production backend. Future bootstrap work only needs to reach AIR
-   initially; it does not need to own a backend immediately.
-
-5. Improve diagnostics and public-surface tooling  
-   Module boundaries, generic constraints, match coverage, and visibility errors
-   need stable, testable diagnostics before they can be considered usable in
-   larger codebases.
-
-## Future Bootstrap Strategy
-
-Do not restore the old selfhost track. The new bootstrap should be rewritten
-against the current roadmap: module isolation, explicit visibility, methods,
-standard error handling, generics/constraints, traits, the necessary
-class-compatibility layer, sum types, pattern matching, resource management, and
-AIR output. The M1 bootstrap target is an Aurex-written frontend example; a full
-replacement of C++ Stage0 and backend handoff can come later. LLVM remains the
-production backend for current language features.
+These return only after ownership, borrow/drop, capability, trait, and `where`
+have stable language-level design and test matrices.

@@ -30,9 +30,6 @@ Common options:
 - `--opt-level O0|O1|O2|O3` / `-O O0|O1|O2|O3` / `-O0`: control the IR pass pipeline.
 - `--clang path`: select clang executable.
 - `--clang-arg arg`: pass an argument to clang.
-- `--stdlib path`: select std root.
-- `--std-backend host-c|none`: select std backend support.
-- `--no-stdlib`: disable default std import and support link.
 - `-I path`: add import search path.
 - `-o path`: set output path.
 
@@ -41,10 +38,6 @@ Exit codes:
 - `0`: success.
 - `1`: compilation or toolchain failure.
 - `2`: argument error.
-
-Environment variables:
-
-- `AUREX_STDLIB`: select the std root, with lower priority than `--stdlib`.
 
 ## C++ Driver API
 
@@ -55,14 +48,11 @@ Important fields:
 - `input_path`
 - `tool_path`
 - `output_path`
-- `standard_library_path`
 - `emit_kind`
 - `import_paths`
 - `clang_path`
 - `clang_args`
 - `optimization_level`
-- `standard_library_backend`
-- `use_standard_library`
 
 Entry point:
 
@@ -99,44 +89,6 @@ Optimization levels:
 - `OptimizationLevel::basic`: `O1`
 - `OptimizationLevel::standard`: `O2`
 - `OptimizationLevel::aggressive`: `O3`
-
-## Standard-Library API
-
-Header: `include/aurex/driver/standard_library.hpp`
-
-Core APIs:
-
-- `standard_library_backend_name(backend)`
-- `find_standard_library(invocation)`
-- `standard_library_import_paths(invocation)`
-- `standard_library_support_sources(layout, backend)`
-
-Default backend:
-
-```text
-host-c -> std/ffi/c/support/host_c.c
-```
-
-Stable host support symbols:
-
-```text
-aurex_std_v0_read_file
-aurex_std_v0_free_file
-aurex_std_v0_write_text
-aurex_std_v0_output_open
-aurex_std_v0_output_write_text
-aurex_std_v0_output_write_source_range
-aurex_std_v0_output_write_i32
-aurex_std_v0_output_close
-```
-
-Standard-library root requirements:
-
-```text
-core/text.ax
-ffi/c/libc.ax
-ffi/c/support/host_c.c
-```
 
 ## Aurex Source ABI API
 

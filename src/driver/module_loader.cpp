@@ -2,7 +2,6 @@
 
 #include "aurex/base/config.hpp"
 #include "aurex/driver/file_cache.hpp"
-#include "aurex/driver/standard_library.hpp"
 #include "aurex/lex/lexer.hpp"
 #include "aurex/parse/parser.hpp"
 #include "aurex/syntax/module.hpp"
@@ -274,7 +273,7 @@ ModuleLoader::ModuleLoader(
     : invocation_(invocation),
       sources_(sources),
       diagnostics_(diagnostics),
-      import_paths_(standard_library_import_paths(invocation)) {}
+      import_paths_(invocation.import_paths) {}
 
 base::Result<syntax::AstModule> ModuleLoader::load_root() {
     syntax::AstModule combined;

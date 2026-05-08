@@ -68,7 +68,7 @@ OBJECT_ARGS=(
     --object "${BUILD_DIR}/bin/aurex_tests"
     --object "${BUILD_DIR}/bin/aurexc"
 )
-IGNORE_REGEX='(/tests/|/build[^/]*/|/std/ffi/c/support/|/opt/|/usr/|gtest|gmock|googletest)'
+IGNORE_REGEX='(/tests/|/build[^/]*/|/opt/|/usr/|gtest|gmock|googletest)'
 SOURCE_FILES=()
 while IFS= read -r source_file; do
     SOURCE_FILES+=("${source_file}")

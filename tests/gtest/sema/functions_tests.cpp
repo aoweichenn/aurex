@@ -161,8 +161,8 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
         "struct Owner noncopy",
         "fn check_result_ref_status -> bool",
         "fn check_option_ref_status -> bool",
-        "fn wrap -> std.core.result.Result<ownership_result.Owner, i32>",
-        "fn unwrap_local_try -> std.core.result.Result<i32, i32>",
+        "fn wrap -> ownership_result.Result<ownership_result.Owner, i32>",
+        "fn unwrap_local_try -> ownership_result.Result<i32, i32>",
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(owner_result_source));
 
@@ -194,70 +194,6 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_try_without_move.ax"))).output,
         "non-copyable value must be moved explicitly in try expression"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_cstring_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_bytes_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_string_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_path_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_extend_path.ax"))).output,
-        "requires copyable element type"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_destroy_deep_without_destructor.ax"))).output,
-        "requires element type with destructor method"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_clear_deep_without_destructor.ax"))).output,
-        "requires element type with destructor method"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_vec_truncate_deep_without_destructor.ax"))).output,
-        "requires element type with destructor method"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_insert_path_key.ax"))).output,
-        "requires copyable key type"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_map_get_path_value.ax"))).output,
-        "requires copyable value type"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_option_is_some.ax"))).output,
-        "requires copyable payload type"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_result_is_err.ax"))).output,
-        "requires copyable ok type"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_option_ok_or_error.ax"))).output,
-        "requires copyable error type"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_result_unwrap_or.ax"))).output,
-        "requires copyable ok type"
     );
 }
 

@@ -16,8 +16,7 @@ using base::Severity;
 } // namespace
 
 TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
-    EXPECT_EQ(base::abi::std_support_symbol("open"), "aurex_std_v0_open");
-    EXPECT_EQ(base::abi::legacy_std_support_symbol("open"), "aurex_std_open");
+    EXPECT_EQ(base::abi::internal_symbol_prefix, "m0");
 
     base::SourceRange forward {{7}, 3, 9};
     EXPECT_EQ(forward.length(), 6U);

@@ -9,7 +9,6 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -436,25 +435,6 @@ private:
             }
         } else if ((arg == "-O0" || arg == "-O1" || arg == "-O2" || arg == "-O3") && arg.size() == 3) {
             invocation.optimization_level = static_cast<ir::OptimizationLevel>(arg[2] - '0');
-        } else if (arg == "--stdlib") {
-            if (++i >= parsed->size()) {
-                return std::nullopt;
-            }
-            invocation.standard_library_path = (*parsed)[i];
-        } else if (arg == "--std-backend") {
-            if (++i >= parsed->size()) {
-                return std::nullopt;
-            }
-            const std::string& backend = (*parsed)[i];
-            if (backend == "host-c") {
-                invocation.standard_library_backend = driver::StandardLibraryBackend::host_c;
-            } else if (backend == "none") {
-                invocation.standard_library_backend = driver::StandardLibraryBackend::none;
-            } else {
-                return std::nullopt;
-            }
-        } else if (arg == "--no-stdlib") {
-            invocation.use_standard_library = false;
         } else if (!arg.empty() && arg.front() == '-') {
             return std::nullopt;
         } else {
@@ -612,14 +592,6 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     key += "tool=";
     key += canonical_or_absolute(invocation.tool_path).string();
     key.push_back('\n');
-    key += "stdlib=";
-    key += canonical_or_absolute(invocation.standard_library_path).string();
-    key.push_back('\n');
-    key += "stdlib_env=";
-    if (const char* env = std::getenv("AUREX_STDLIB"); env != nullptr) {
-        key += env;
-    }
-    key.push_back('\n');
     key += "cwd=";
     std::error_code cwd_error;
     key += fs::current_path(cwd_error).string();
@@ -637,10 +609,6 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     key += "opt=";
     key += std::to_string(static_cast<int>(invocation.optimization_level));
     key.push_back('\n');
-    key += "std_backend=";
-    key += std::to_string(static_cast<int>(invocation.standard_library_backend));
-    key.push_back('\n');
-    key += invocation.use_standard_library ? "use_std=1\n" : "use_std=0\n";
     return key;
 }
 

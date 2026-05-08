@@ -18,11 +18,8 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
         "--emit=asm",
         "--emit=obj",
         "--emit=exe",
-        "--no-stdlib",
         "--dump-modules",
         "--opt-level",
-        "--stdlib",
-        "--std-backend",
     });
 
     const fs::path hello = source_root() / "examples" / "hello.ax";
@@ -47,11 +44,6 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
     const std::string eval_order =
         require_success(aurexc() + " --emit=ir --opt-level O1 " + q(positive_sample("evaluation", "eval_order_assign.ax"))).output;
     expect_contains(eval_order, "call m0_eval_order_assign_next(%");
-
-    const std::string std_text =
-        require_success(aurexc() + " --emit=ir " + q(positive_sample("std", "std_text.ax"))).output;
-    expect_contains(std_text, "phi [");
-    expect_contains(std_text, "usize = cast");
 
     const std::string pointer_field =
         require_success(aurexc() + " --emit=ir " + q(positive_sample("pointers", "pointer_field_write.ax"))).output;
@@ -81,7 +73,6 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         driver::CompilerInvocation invocation;
         invocation.input_path = source_root() / "examples" / "hello.ax";
         invocation.emit_kind = static_cast<driver::EmitKind>(999);
-        invocation.use_standard_library = false;
         driver::Compiler compiler;
         const auto result = compiler.run(invocation);
         ASSERT_FALSE(result);
@@ -95,7 +86,6 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         invocation.emit_kind = driver::EmitKind::object;
         invocation.output_path = tmp_root() / "bad_clang.o";
         invocation.clang_path = "/definitely/not/a/real/clang";
-        invocation.use_standard_library = false;
         driver::Compiler compiler;
         const auto result = compiler.run(invocation);
         ASSERT_FALSE(result);

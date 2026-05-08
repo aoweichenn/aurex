@@ -1,114 +1,33 @@
 # Runtime Flow
 
-Version: 0.1.2
+## Compile Pipeline
 
-## CLI Flow
+1. `aurexc` parses CLI options into `CompilerInvocation`.
+2. `ModuleLoader` loads the root file and resolves imports through the importer
+   directory and explicit `-I` entries.
+3. The lexer produces tokens and the parser builds the AST.
+4. The semantic analyzer performs name resolution, type checking, generic
+   instantiation, ownership checks, and control-flow checks over the combined
+   module.
+5. Dump/check modes return at their requested stage.
+6. IR lowering produces Aurex IR and the pass pipeline runs according to
+   `--opt-level`.
+7. The LLVM backend emits LLVM IR.
+8. Native modes pass temporary LLVM IR to clang for assembly, object, or
+   executable output.
 
-1. `src/cli/main.cpp` parses arguments.
-2. It builds a `CompilerInvocation`.
-3. It calls `driver::Compiler::run`.
-4. The driver selects dump, check, IR, LLVM IR, or native output based on
-   `EmitKind`.
+## Module Lookup
 
-Exit codes:
+This branch has only two lookup sources:
 
-- `0`: success.
-- `1`: compilation, IO, backend, or native toolchain failure.
-- `2`: command-line argument error.
+1. The importing file's directory.
+2. Explicit `-I path` entries.
 
-## Module Loading Flow
+There is no standard-library root, no environment-variable lookup, no install
+prefix probing, and no automatic host support source linking.
 
-1. Read the root input file.
-2. Run lexer/tokenize.
-3. Build root AST through parser.
-4. Walk imports.
-5. Resolve module files through importer directory, `-I`, and std paths.
-6. Validate that module declaration matches the import path.
-7. Merge AST while preserving module IDs and module paths.
+## Native Output
 
-Lookup uses the importer directory first, then `-I` paths and standard-library
-import roots. When std is enabled, the driver adds the parent directory of the
-std root to the import path, so `import std.core.text;` resolves to
-`std/core/text.ax`.
-
-## Semantic Flow
-
-1. Register type names.
-2. Analyze struct properties.
-3. Register functions, constants, enum cases, and other value names.
-4. Analyze constant initializers.
-5. Analyze function bodies.
-6. Produce `CheckedModule` with type table, expression types, ABI symbols,
-   function signatures, and record layout metadata.
-
-The semantic stage does not mutate AST. Later stages query types and ABI
-information from `CheckedModule` by AST ID.
-
-## IR Flow
-
-1. Copy the type table from `CheckedModule`.
-2. Build record layouts.
-3. Declare global constants and functions.
-4. Lower global constant initializers.
-5. Lower function bodies into basic blocks, terminators, and typed values.
-6. Run `verify_module`.
-7. At `--opt-level O1` and above, run local mem2reg and CFG cleanup.
-8. Run verifier again.
-
-Optimization-level behavior:
-
-- `O0`: input/output verifier only.
-- `O1`: current local mem2reg and CFG cleanup.
-- `O2` / `O3`: currently the same conservative pass set as `O1`, reserved as
-  future extension points.
-
-## Native Output Flow
-
-1. LLVM backend emits LLVM IR text.
-2. Driver writes a temporary `.ll` file.
-3. If executable output uses std, locate std and select backend support.
-4. Invoke clang:
-   - `--emit=asm` adds `-S`
-   - `--emit=obj` adds `-c`
-   - `--emit=exe` links directly
-5. Remove the temporary LLVM IR file.
-
-Native output requires `-o`. Dump, check, IR, and LLVM IR modes write to stdout
-or only return status and do not require `-o`.
-
-## Standard-Library And Backend Support Link Flow
-
-1. `--no-stdlib` disables std import paths and support linking.
-2. When std is enabled, module loading tries to add the std import root, so
-   imports such as `std.core.text` resolve to `std/core/text.ax`.
-3. Only executable output links std backend support.
-4. `--std-backend host-c` links `std/ffi/c/support/host_c.c`.
-5. `--std-backend none` links no support source file.
-
-## Installed Standard-Library Lookup
-
-Lookup order:
-
-1. `--stdlib path`
-2. `AUREX_STDLIB`
-3. Built-in std path from the build
-4. Paths relative to the `aurexc` executable:
-   - `bin/std`
-   - `bin/../std`
-   - `bin/../../std`
-   - `bin/../share/aurex/std`
-   - `bin/../lib/aurex/std`
-   - `bin/../../share/aurex/std`
-5. Current working directory's `std`
-
-A candidate directory is accepted as a std root only if it contains
-`core/text.ax`, `ffi/c/libc.ax`, and `ffi/c/support/host_c.c`.
-
-## Failure Flow
-
-- Lexer/parser/sema failure: print diagnostics and source caret, then return an
-  error.
-- IR verifier failure: return the verifier error and block backend execution.
-- LLVM verifier or clang failure: return a backend/toolchain error.
-- Missing std: executable output errors and suggests `AUREX_STDLIB` or
-  `--no-stdlib`.
+Native output compiles only the LLVM IR generated for the current Aurex program.
+When a sample needs libc, it declares a narrow local `extern c` boundary and
+lets clang use the platform's normal libc linkage.

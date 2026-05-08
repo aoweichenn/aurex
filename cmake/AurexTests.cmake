@@ -13,7 +13,6 @@ if(BUILD_TESTING)
         tests/gtest/driver/cli_driver_tests.cpp
         tests/gtest/driver/install_and_import_tests.cpp
         tests/gtest/driver/native_toolchain_tests.cpp
-        tests/gtest/driver/standard_library_tests.cpp
         tests/gtest/frontend/ast_dump_tests.cpp
         tests/gtest/frontend/lexer_tests.cpp
         tests/gtest/frontend/parser_tests.cpp
@@ -68,7 +67,7 @@ if(BUILD_TESTING)
         "CoreUnit.*"
     )
     aurex_add_gtest(aurex_tests_driver_and_regressions
-        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.SystemExamples*:AurexIntegrationTest.M1Examples*:AurexIntegrationTest.ExamplesDocumentationAndLibrariesArePresent:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.GenericEnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedGenericStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.StdTextSampleExposesGenericSpanBaseline"
+        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.GenericEnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedGenericStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName"
     )
     aurex_add_gtest(aurex_tests_functions
         "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndOwnershipSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
@@ -90,50 +89,6 @@ if(BUILD_TESTING)
         NAME aurex_tests_sample_suite_negative
         COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_NegativeSamples
     )
-    add_test(
-        NAME aurex_tests_sample_suite_std_bootstrap
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_bootstrap
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_ffi
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_ffi
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_file
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_file
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_dir
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_dir
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_mem
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_mem
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_text
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_text
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_bytes
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_bytes
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_cstring
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_cstring
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_str
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_str
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_std_string
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Std_std_string
-    )
-    add_test(
-        NAME aurex_tests_std_collections_path_baseline
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.StdCollectionsPathSampleExposesM1ContainerBaseline
-    )
     set_tests_properties(
         aurex_tests_core_unit
         aurex_tests_driver_and_regressions
@@ -153,26 +108,9 @@ if(BUILD_TESTING)
     )
     set_tests_properties(
         aurex_tests_sample_suite_negative
-        aurex_tests_sample_suite_std_bootstrap
-        aurex_tests_sample_suite_std_dir
-        aurex_tests_sample_suite_std_ffi
-        aurex_tests_sample_suite_std_file
-        aurex_tests_sample_suite_std_mem
-        aurex_tests_sample_suite_std_bytes
-        aurex_tests_sample_suite_std_cstring
-        aurex_tests_sample_suite_std_str
-        aurex_tests_sample_suite_std_string
-        aurex_tests_sample_suite_std_text
         PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         LABELS "slow;sample-suite"
-        TIMEOUT 300
-    )
-    set_tests_properties(
-        aurex_tests_std_collections_path_baseline
-        PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        LABELS "slow;std-baseline"
         TIMEOUT 300
     )
 endif()

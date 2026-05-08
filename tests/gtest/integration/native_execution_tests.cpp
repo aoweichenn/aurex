@@ -30,11 +30,4 @@ TEST_F(AurexIntegrationTest, NativeHelloExplicitExecutableOutputs) {
     EXPECT_EQ(require_success(q(direct)).output, "hello from Aurex M0\n");
 }
 
-TEST_F(AurexIntegrationTest, NativeHelloStdBackendNoneOutputs) {
-    const fs::path hello = source_root() / "examples" / "hello.ax";
-    const fs::path stdnone = test_bin_root() / "hello.stdnone";
-    require_success(aurexc() + " --std-backend none " + q(hello) + " -o " + q(stdnone));
-    EXPECT_EQ(require_success(q(stdnone)).output, "hello from Aurex M0\n");
-}
-
 } // namespace aurex::test

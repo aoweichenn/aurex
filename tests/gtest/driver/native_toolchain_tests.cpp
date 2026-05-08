@@ -14,7 +14,7 @@ TEST(CoreUnit, NativeToolchainRejectsSupportSourcesForNonExecutableAndReportsMis
     unsupported.emit_kind = driver::EmitKind::object;
     unsupported.input_path = source_root() / "examples" / "hello.ax";
     unsupported.output_path = tmp_root() / "hello.o";
-    unsupported.support_source_paths.push_back(source_root() / "std" / "ffi" / "c" / "support" / "host_c.c");
+    unsupported.support_source_paths.push_back(tmp_root() / "native_support.c");
     auto support_result = driver::invoke_clang(unsupported);
     ASSERT_FALSE(support_result);
     EXPECT_EQ(support_result.error().code, ErrorCode::codegen_error);

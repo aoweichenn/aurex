@@ -15,8 +15,8 @@ TEST_F(AurexIntegrationTest, TryExpressionResultAndOption) {
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn add_one_result -> std.core.result.Result<i32, i32>",
-        "fn unwrap_even -> std.core.result.Option<i32>",
+        "fn add_one_result -> try_result_option.Result<i32, i32>",
+        "fn unwrap_even -> try_result_option.Option<i32>",
         "case Result<i32, i32>_ok",
         "case Option<i32>_some",
     });

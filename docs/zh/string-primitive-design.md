@@ -2,9 +2,9 @@
 
 版本：0.1.7 设计草案
 日期：2026-05-08
-状态：设计冻结前草案；Phase 1、Phase 2、Phase 3、Phase 4 C FFI 边界、Phase 5 scalar API、raw `Bytes` / bytes-backed `Path` / std fs `Path` 入口风险收口已落地。
+状态：语言核心设计草案；历史标准库落地记录仅作为设计输入。本分支已冻结并删除标准库实现，后续先稳定内建 `str` 的语言语义，再恢复 `String` / `Bytes` / Path 等库类型。
 
-本文目标是把 Aurex 的字符串基础类型设计清楚，再继续改标准库和 M1 样例。这里的“基础类型”指和 `int`、`usize`、`bool` 同一层级的语言内建类型，而不是 C 的 `char*` 包装，也不是某个需要 allocator 的拥有型容器。
+本文目标是把 Aurex 的字符串基础类型设计清楚。这里的“基础类型”指和 `int`、`usize`、`bool` 同一层级的语言内建类型，而不是 C 的 `char*` 包装，也不是某个需要 allocator 的拥有型容器。
 
 ## 结论先行
 

@@ -1,6 +1,9 @@
 module noncopy_match_without_move;
 
-import std.core.result;
+enum Result<T, E>: u8 {
+    ok(T) = 1,
+    err(E) = 2,
+}
 
 noncopy struct Owner {
     value: i32;

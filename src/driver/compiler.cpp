@@ -7,7 +7,6 @@
 #include "aurex/driver/module_loader.hpp"
 #include "aurex/driver/file_cache.hpp"
 #include "aurex/driver/native_toolchain.hpp"
-#include "aurex/driver/standard_library.hpp"
 #include "aurex/ir/ir_dump.hpp"
 #include "aurex/ir/lower_ast.hpp"
 #include "aurex/ir/pass_pipeline.hpp"
@@ -209,21 +208,6 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         request.clang_args = invocation.clang_args;
         request.input_path = temp_ir_result.value();
         request.output_path = invocation.output_path;
-        if (invocation.use_standard_library && invocation.emit_kind == EmitKind::executable) {
-            const std::optional<StandardLibraryLayout> standard_library = find_standard_library(invocation);
-            if (!standard_library) {
-                std::error_code remove_error;
-                std::filesystem::remove(temp_ir_result.value(), remove_error);
-                return base::Result<void>::fail({
-                    base::ErrorCode::io_error,
-                    "failed to locate Aurex standard library; set AUREX_STDLIB or pass --no-stdlib"
-                });
-            }
-            request.support_source_paths = standard_library_support_sources(
-                *standard_library,
-                invocation.standard_library_backend
-            );
-        }
         request.emit_kind = invocation.emit_kind;
         request.input_is_llvm_ir = true;
         auto native_result = invoke_clang(request);

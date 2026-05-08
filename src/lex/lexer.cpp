@@ -86,20 +86,21 @@ bool Lexer::match(const char expected) noexcept {
 void Lexer::scan_token() {
     const base::usize begin = this->cursor_.offset();
     const char first = this->peek();
+    const std::uint8_t first_classes = char_classes(first);
 
-    if (first == c_string_prefix.front() && this->starts_with(c_string_prefix)) {
+    if (first == c_string_prefix.front() && this->peek_next() == c_string_prefix.back()) {
         this->scan_c_string(begin);
         return;
     }
-    if (first == byte_literal_prefix.front() && this->starts_with(byte_literal_prefix)) {
+    if (first == byte_literal_prefix.front() && this->peek_next() == byte_literal_prefix.back()) {
         this->scan_byte(begin);
         return;
     }
-    if (is_ident_start(first)) {
+    if (has_char_class_flags(first_classes, char_class_identifier_start)) {
         this->scan_identifier();
         return;
     }
-    if (is_decimal_digit(first)) {
+    if (has_char_class_flags(first_classes, char_class_decimal_digit)) {
         this->scan_number();
         return;
     }
@@ -110,7 +111,7 @@ void Lexer::scan_token() {
         return;
     }
 
-    if (this->scan_punctuator(begin)) {
+    if (this->scan_punctuator(begin, first)) {
         return;
     }
 
@@ -119,13 +120,17 @@ void Lexer::scan_token() {
     this->finish_invalid_token(begin);
 }
 
-bool Lexer::scan_punctuator(const base::usize begin) {
-    const auto match = match_punctuator(this->cursor_.remaining_text());
-    if (!match.has_value()) {
+bool Lexer::scan_punctuator(const base::usize begin, const char first) {
+    const auto match = match_punctuator(
+        first,
+        this->peek_next(),
+        this->cursor_.peek_at(detail::punctuator_third_byte_offset)
+    );
+    if (!match.matched()) {
         return false;
     }
-    this->advance_bytes(match->width);
-    this->finish_token(match->kind, begin);
+    this->advance_bytes(match.width);
+    this->finish_token(match.kind, begin);
     return true;
 }
 
@@ -137,8 +142,8 @@ void Lexer::scan_identifier() {
         ++width;
     }
     this->advance_bytes(width);
-    const std::string_view text = this->cursor_.slice(begin, this->cursor_.offset());
-    this->finish_token(keyword_kind(text), begin);
+    const std::string_view text {remaining.data(), width};
+    this->finish_token(keyword_kind(text), begin, text);
 }
 
 base::SourceRange Lexer::range(const base::usize begin, const base::usize end) const noexcept {
@@ -150,7 +155,19 @@ base::SourceRange Lexer::current_range(const base::usize begin) const noexcept {
 }
 
 void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin) {
-    this->add_token(kind, begin, this->cursor_.offset());
+    this->tokens_.push_back(syntax::Token {
+        kind,
+        this->current_range(begin),
+        this->cursor_.current_slice(begin),
+    });
+}
+
+void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin, const std::string_view text) {
+    this->tokens_.push_back(syntax::Token {
+        kind,
+        this->current_range(begin),
+        text,
+    });
 }
 
 void Lexer::finish_invalid_token(const base::usize begin) {

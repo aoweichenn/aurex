@@ -4,6 +4,7 @@
 #include "aurex/base/result.hpp"
 #include "aurex/parse/expr_context.hpp"
 #include "aurex/parse/parse_session.hpp"
+#include "aurex/parse/recovery_context.hpp"
 #include "aurex/syntax/ast.hpp"
 #include "aurex/syntax/token.hpp"
 
@@ -43,7 +44,7 @@ private:
     const syntax::Token& advance() noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
     const syntax::Token& expect_type_arg_list_end(std::string message);
-    void synchronize();
+    void synchronize(RecoveryContext context = RecoveryContext::item_or_statement);
     void report_here(std::string message);
     void report_at(const syntax::Token& token, std::string message);
 

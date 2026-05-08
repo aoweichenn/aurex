@@ -1,6 +1,7 @@
 #include "aurex/parse/parser.hpp"
 
 #include "aurex/parse/parser_parts.hpp"
+#include "aurex/parse/recovery.hpp"
 
 #include <utility>
 
@@ -108,7 +109,7 @@ base::Result<syntax::AstModule> Parser::parse_module() {
     while (!this->is_eof()) {
         const syntax::ItemId item = items.parse_item();
         if (!syntax::is_valid(item)) {
-            this->synchronize();
+            this->synchronize(RecoveryContext::item);
         }
     }
 
@@ -186,7 +187,7 @@ const syntax::Token& Parser::expect_type_arg_list_end(std::string message) {
     return fallback;
 }
 
-void Parser::synchronize() {
+void Parser::synchronize(const RecoveryContext context) {
     this->reset_panic();
     if (this->is_eof()) {
         return;
@@ -196,33 +197,10 @@ void Parser::synchronize() {
         if (this->previous().kind == TokenKind::semicolon) {
             return;
         }
-        switch (this->peek().kind) {
-        case TokenKind::r_brace:
-        case TokenKind::kw_fn:
-        case TokenKind::kw_struct:
-        case TokenKind::kw_enum:
-        case TokenKind::kw_impl:
-        case TokenKind::kw_opaque:
-        case TokenKind::kw_const:
-        case TokenKind::kw_type:
-        case TokenKind::kw_pub:
-        case TokenKind::kw_priv:
-        case TokenKind::kw_extern:
-        case TokenKind::kw_export:
-        case TokenKind::kw_let:
-        case TokenKind::kw_var:
-        case TokenKind::kw_if:
-        case TokenKind::kw_for:
-        case TokenKind::kw_while:
-        case TokenKind::kw_defer:
-        case TokenKind::kw_return:
-        case TokenKind::kw_noncopy:
-        case TokenKind::kw_import:
+        if (token_matches_recovery_context(this->peek().kind, context)) {
             return;
-        default:
-            this->advance();
-            break;
         }
+        this->advance();
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include "aurex/base/integer.hpp"
 
+#include <cassert>
 #include <string_view>
 
 namespace aurex::lex::detail {
@@ -19,8 +20,16 @@ public:
         return source_text_.size();
     }
 
+    [[nodiscard]] base::usize remaining_size() const noexcept {
+        return offset_ < source_text_.size() ? source_text_.size() - offset_ : 0;
+    }
+
     [[nodiscard]] std::string_view remaining_text() const noexcept {
-        return source_text_.substr(offset_);
+        const base::usize remaining = remaining_size();
+        if (remaining == 0) {
+            return {};
+        }
+        return std::string_view {source_text_.data() + offset_, remaining};
     }
 
     [[nodiscard]] base::usize offset() const noexcept {
@@ -32,8 +41,13 @@ public:
     }
 
     [[nodiscard]] bool starts_with(const std::string_view text) const noexcept {
-        return source_text_.size() - offset_ >= text.size() &&
-               source_text_.substr(offset_, text.size()) == text;
+        if (remaining_size() < text.size()) {
+            return false;
+        }
+        if (text.empty()) {
+            return true;
+        }
+        return std::string_view {source_text_.data() + offset_, text.size()} == text;
     }
 
     [[nodiscard]] char peek_at(const base::usize lookahead) const noexcept {
@@ -45,11 +59,18 @@ public:
     }
 
     [[nodiscard]] char peek() const noexcept {
-        return peek_at(cursor_current_lookahead);
+        if (offset_ >= source_text_.size()) {
+            return cursor_eof_sentinel;
+        }
+        return source_text_[offset_];
     }
 
     [[nodiscard]] char peek_next() const noexcept {
-        return peek_at(cursor_next_lookahead);
+        const base::usize target = offset_ + cursor_next_lookahead;
+        if (target >= source_text_.size()) {
+            return cursor_eof_sentinel;
+        }
+        return source_text_[target];
     }
 
     char advance() noexcept {
@@ -67,7 +88,7 @@ public:
     }
 
     [[nodiscard]] bool match(const char expected) noexcept {
-        if (peek() != expected) {
+        if (offset_ >= source_text_.size() || source_text_[offset_] != expected) {
             return false;
         }
         ++offset_;
@@ -75,7 +96,16 @@ public:
     }
 
     [[nodiscard]] std::string_view slice(const base::usize begin, const base::usize end) const noexcept {
-        return source_text_.substr(begin, end - begin);
+        assert(begin <= end);
+        assert(end <= source_text_.size());
+        if (begin == end) {
+            return {};
+        }
+        return std::string_view {source_text_.data() + begin, end - begin};
+    }
+
+    [[nodiscard]] std::string_view current_slice(const base::usize begin) const noexcept {
+        return slice(begin, offset_);
     }
 
 private:

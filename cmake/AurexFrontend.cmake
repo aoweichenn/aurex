@@ -24,6 +24,7 @@ add_library(aurex_parse
     src/parse/parser_pattern.cpp
     src/parse/parser_postfix.cpp
     src/parse/parser_primary.cpp
+    src/parse/parser_recovery.cpp
     src/parse/parser_stmt.cpp
     src/parse/parser_type.cpp
 )

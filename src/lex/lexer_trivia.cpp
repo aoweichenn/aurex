@@ -15,13 +15,16 @@ void Lexer::skip_trivia() {
             ++trivia_width;
         }
         this->advance_bytes(trivia_width);
-        if (this->starts_with(line_comment_prefix)) {
-            this->scan_line_comment();
-            continue;
-        }
-        if (this->starts_with(block_comment_prefix)) {
-            this->scan_block_comment();
-            continue;
+        if (this->peek() == lexeme_slash) {
+            const char next = this->peek_next();
+            if (next == lexeme_slash) {
+                this->scan_line_comment();
+                continue;
+            }
+            if (next == lexeme_star) {
+                this->scan_block_comment();
+                continue;
+            }
         }
         break;
     }
@@ -34,7 +37,7 @@ void Lexer::scan_line_comment() {
         this->advance_bytes(remaining.size());
         return;
     }
-    this->advance_bytes(line_end);
+    this->advance_bytes(line_end + single_byte_lexeme_width);
 }
 
 void Lexer::scan_block_comment() {

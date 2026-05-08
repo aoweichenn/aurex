@@ -57,8 +57,8 @@ const syntax::Token& ParserPartBase::expect_type_arg_list_end(std::string messag
     return this->parser_.expect_type_arg_list_end(std::move(message));
 }
 
-void ParserPartBase::synchronize() {
-    this->parser_.synchronize();
+void ParserPartBase::synchronize(const RecoveryContext context) {
+    this->parser_.synchronize(context);
 }
 
 void ParserPartBase::report_here(std::string message) {

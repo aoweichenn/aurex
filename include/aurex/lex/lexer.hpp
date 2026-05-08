@@ -54,10 +54,14 @@ private:
 
     void skip_trivia();
     void scan_token();
-    [[nodiscard]] bool scan_punctuator(base::usize begin);
+    [[nodiscard]] bool scan_punctuator(base::usize begin, char first);
     void scan_identifier();
     void scan_number();
+    template <typename IsDigit>
+    [[nodiscard]] DigitScanResult scan_digits_matching(IsDigit is_digit, std::string_view literal_kind);
     [[nodiscard]] DigitScanResult scan_digits(DigitSet digit_set, std::string_view literal_kind);
+    template <typename IsValidDigit>
+    [[nodiscard]] bool scan_invalid_radix_tail_matching(IsValidDigit is_valid_digit, std::string_view message);
     [[nodiscard]] bool scan_invalid_radix_tail(DigitSet digit_set, std::string_view message);
     [[nodiscard]] bool scan_fraction_part(bool& had_error);
     [[nodiscard]] bool scan_exponent_part(bool& had_error);
@@ -75,6 +79,7 @@ private:
     [[nodiscard]] base::SourceRange range(base::usize begin, base::usize end) const noexcept;
     [[nodiscard]] base::SourceRange current_range(base::usize begin) const noexcept;
     void finish_token(syntax::TokenKind kind, base::usize begin);
+    void finish_token(syntax::TokenKind kind, base::usize begin, std::string_view text);
     void finish_invalid_token(base::usize begin);
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
     void report_current(base::usize begin, std::string_view message) const;

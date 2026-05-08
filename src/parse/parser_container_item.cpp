@@ -28,7 +28,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
         const syntax::Visibility visibility = this->parse_visibility();
         if (!this->check(TokenKind::kw_fn)) {
             this->report_here("expected function declaration in impl block");
-            this->synchronize();
+            this->synchronize(RecoveryContext::item);
             this->reset_panic();
             continue;
         }
@@ -77,7 +77,7 @@ syntax::ItemId ItemParser::parse_extern_block() {
             }
         } else {
             this->report_here("expected extern item");
-            this->synchronize();
+            this->synchronize(RecoveryContext::item);
         }
         this->reset_panic();
     }

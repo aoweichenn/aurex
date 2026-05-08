@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace aurex::parse {
 
@@ -24,7 +25,7 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
     const syntax::ExprId expr,
     const ExprContext context
 ) {
-    if (this->next_angle_list_is_type_scope() && this->match(TokenKind::less)) {
+    if (this->next_angle_list_is_type_scope() && this->check(TokenKind::less)) {
         return this->parse_type_args_suffix(expr);
     }
     if (this->match(TokenKind::dot)) {
@@ -43,24 +44,17 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
 }
 
 syntax::ExprId PostfixExprParser::parse_type_args_suffix(const syntax::ExprId expr) {
+    const syntax::Token& begin = this->peek();
+    std::vector<syntax::TypeId> type_args = this->parse_type_arg_list();
     if (!syntax::is_valid(expr) || expr.value >= this->session_.module.exprs.size()) {
         return expr;
     }
     syntax::ExprNode& node = this->session_.module.exprs[expr.value];
     if (node.kind != syntax::ExprKind::name && node.kind != syntax::ExprKind::field) {
-        this->report_at(this->previous(), "type arguments are only supported on named function calls, methods, or enum constructors");
+        this->report_at(begin, "type arguments are only supported on named function calls, methods, or enum constructors");
     }
-    if (!this->check_type_arg_list_end()) {
-        do {
-            node.type_args.push_back(this->parse_type());
-            this->reset_panic();
-            if (this->check_type_arg_list_end()) {
-                break;
-            }
-        } while (this->match(TokenKind::comma) && !this->check_type_arg_list_end());
-    }
-    const syntax::Token& end = this->expect_type_arg_list_end("expected '>' after type argument list");
-    node.range = this->merge(node.range, end.range);
+    node.type_args.insert(node.type_args.end(), type_args.begin(), type_args.end());
+    node.range = this->merge(node.range, this->previous().range);
     return expr;
 }
 

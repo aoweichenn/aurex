@@ -8,9 +8,32 @@ namespace aurex::lex {
 
 inline constexpr base::usize single_byte_lexeme_width = 1;
 
+inline constexpr char lexeme_nul = '\0';
 inline constexpr char lexeme_dot = '.';
+inline constexpr char lexeme_colon = ':';
 inline constexpr char lexeme_plus = '+';
 inline constexpr char lexeme_minus = '-';
+inline constexpr char lexeme_star = '*';
+inline constexpr char lexeme_slash = '/';
+inline constexpr char lexeme_percent = '%';
+inline constexpr char lexeme_amp = '&';
+inline constexpr char lexeme_pipe = '|';
+inline constexpr char lexeme_caret = '^';
+inline constexpr char lexeme_tilde = '~';
+inline constexpr char lexeme_bang = '!';
+inline constexpr char lexeme_equal = '=';
+inline constexpr char lexeme_less = '<';
+inline constexpr char lexeme_greater = '>';
+inline constexpr char lexeme_at = '@';
+inline constexpr char lexeme_question = '?';
+inline constexpr char lexeme_l_paren = '(';
+inline constexpr char lexeme_r_paren = ')';
+inline constexpr char lexeme_l_brace = '{';
+inline constexpr char lexeme_r_brace = '}';
+inline constexpr char lexeme_l_bracket = '[';
+inline constexpr char lexeme_r_bracket = ']';
+inline constexpr char lexeme_comma = ',';
+inline constexpr char lexeme_semicolon = ';';
 inline constexpr char lexeme_double_quote = '"';
 inline constexpr char lexeme_single_quote = '\'';
 inline constexpr char lexeme_escape = '\\';
@@ -29,6 +52,7 @@ inline constexpr std::string_view binary_integer_prefix_upper = "0B";
 inline constexpr std::string_view line_comment_prefix = "//";
 inline constexpr std::string_view block_comment_prefix = "/*";
 inline constexpr std::string_view block_comment_suffix = "*/";
+inline constexpr std::string_view byte_literal_recovery_chars = "'\n";
 
 inline constexpr std::string_view lexing_failed_message = "lexing failed";
 inline constexpr std::string_view invalid_character_message = "invalid character";

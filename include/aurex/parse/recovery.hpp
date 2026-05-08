@@ -1,0 +1,15 @@
+#pragma once
+
+#include "aurex/parse/recovery_context.hpp"
+#include "aurex/syntax/token.hpp"
+
+namespace aurex::parse {
+
+[[nodiscard]] bool token_starts_match_arm(syntax::TokenKind kind) noexcept;
+
+[[nodiscard]] bool token_matches_recovery_context(
+    syntax::TokenKind kind,
+    RecoveryContext context
+) noexcept;
+
+} // namespace aurex::parse

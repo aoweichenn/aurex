@@ -143,6 +143,19 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_GE(invalid_diagnostics.diagnostics().size(), 4U);
 }
 
+TEST(CoreUnit, LexerTokenizesEmptySourceToEofOnly) {
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({13}, "", diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_TRUE(result) << result.error().message;
+    ASSERT_EQ(result.value().size(), 1U);
+    EXPECT_FALSE(diagnostics.has_error());
+    EXPECT_EQ(result.value().front().kind, TokenKind::eof);
+    EXPECT_TRUE(result.value().front().text.empty());
+    EXPECT_EQ(result.value().front().range.begin, 0U);
+    EXPECT_EQ(result.value().front().range.end, 0U);
+}
+
 TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
@@ -380,11 +393,38 @@ TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
     expect_lex_error("const text: str = \"\\u{}\";", "unicode escape has no digits");
     expect_lex_error("const text: *const u8 = c\"a\\0b\";", "interior NUL");
 
+    std::string raw_nul_c_string = "const text: *const u8 = c\"a";
+    raw_nul_c_string.push_back('\0');
+    raw_nul_c_string += "b\";";
+    expect_lex_error(raw_nul_c_string, "interior NUL");
+
     std::string invalid_utf8 = "const text: str = \"";
     invalid_utf8.push_back(static_cast<char>(0xC3));
     invalid_utf8.push_back('(');
     invalid_utf8 += "\";";
     expect_lex_error(invalid_utf8, "valid UTF-8");
+}
+
+TEST(CoreUnit, LexerPreservesStringAndByteRecoveryBoundaries) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source = "\"escaped\\\nmissing\" b'wide' b'unterminated\nnext";
+    lex::Lexer lexer({14}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_FALSE(result);
+    ASSERT_GE(diagnostics.diagnostics().size(), 3U);
+
+    const base::Diagnostic& invalid_escape = diagnostics.diagnostics()[0];
+    EXPECT_EQ(invalid_escape.message, "invalid escape sequence");
+
+    const base::Diagnostic& oversized_byte = diagnostics.diagnostics()[1];
+    EXPECT_EQ(oversized_byte.message, "byte literal must contain one byte");
+    EXPECT_EQ(oversized_byte.range.begin, 19U);
+    EXPECT_EQ(oversized_byte.range.end, 26U);
+
+    const base::Diagnostic& unterminated_byte = diagnostics.diagnostics()[2];
+    EXPECT_EQ(unterminated_byte.message, "unterminated byte literal");
+    EXPECT_EQ(unterminated_byte.range.begin, 27U);
+    EXPECT_EQ(unterminated_byte.range.end, 41U);
 }
 
 } // namespace aurex::test

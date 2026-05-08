@@ -1,5 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
 #include <string_view>
 #include <utility>
 
@@ -111,34 +113,60 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
     expr.match_value = value;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
-        const syntax::PatternId pattern = this->parse_pattern();
-        syntax::ExprId guard = syntax::invalid_expr_id;
-        if (this->match(TokenKind::kw_if)) {
-            guard = this->parse_expr(context);
-        }
-        this->expect(TokenKind::fat_arrow, "expected '=>' after match case");
-        const syntax::ExprId arm_value = this->parse_expr(context);
-        const base::SourceRange pattern_range = this->pattern_range_or(pattern, begin.range);
-        base::SourceRange arm_range = syntax::is_valid(arm_value)
-            ? this->merge(pattern_range, this->expr_range_or(arm_value, pattern_range))
-            : pattern_range;
-        expr.match_arms.push_back(syntax::MatchArm {
-            pattern,
-            guard,
-            arm_value,
-            arm_range,
-        });
-        if (this->check(TokenKind::r_brace)) {
+        expr.match_arms.push_back(this->parse_match_arm(context, begin.range));
+        if (!this->recover_match_arm_separator()) {
             break;
         }
-        this->expect(TokenKind::comma, "expected ',' after match arm");
-        this->reset_panic();
     }
 
     const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after match expression");
     expr.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_expr(std::move(expr));
+}
+
+syntax::MatchArm ExprParser::parse_match_arm(
+    const ExprContext context,
+    const base::SourceRange fallback_range
+) {
+    const syntax::PatternId pattern = this->parse_pattern();
+    syntax::ExprId guard = syntax::invalid_expr_id;
+    if (this->match(TokenKind::kw_if)) {
+        guard = this->parse_expr(context);
+    }
+    this->expect(TokenKind::fat_arrow, "expected '=>' after match case");
+    const syntax::ExprId arm_value = this->parse_expr(context);
+    const base::SourceRange pattern_range = this->pattern_range_or(pattern, fallback_range);
+    const base::SourceRange arm_range = syntax::is_valid(arm_value)
+        ? this->merge(pattern_range, this->expr_range_or(arm_value, pattern_range))
+        : pattern_range;
+    return syntax::MatchArm {
+        pattern,
+        guard,
+        arm_value,
+        arm_range,
+    };
+}
+
+bool ExprParser::recover_match_arm_separator() {
+    if (this->check(TokenKind::r_brace)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+
+    this->report_here("expected ',' after match arm");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::match_arm)) {
+        this->synchronize(RecoveryContext::match_arm);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+    this->reset_panic();
+    return token_starts_match_arm(this->peek().kind);
 }
 
 syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context, const int min_precedence) {

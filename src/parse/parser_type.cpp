@@ -1,5 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
 #include <limits>
 #include <string_view>
 
@@ -106,18 +108,34 @@ constexpr base::u64 kDecimalDigitCount = 10;
 std::vector<syntax::TypeId> TypeParser::parse_type_arg_list() {
     std::vector<syntax::TypeId> args;
     this->expect(TokenKind::less, "expected '<' before type argument list");
-    if (!this->check_type_arg_list_end()) {
-        do {
-            args.push_back(this->parse_type());
-            this->reset_panic();
-            if (this->check_type_arg_list_end()) {
-                break;
-            }
-        } while (this->match(TokenKind::comma) && !this->check_type_arg_list_end());
+    while (!this->is_eof() && !this->check_type_arg_list_end()) {
+        args.push_back(this->parse_type());
+        this->reset_panic();
+        if (!this->recover_type_arg_separator()) {
+            break;
+        }
     }
     this->expect_type_arg_list_end("expected '>' after type argument list");
     this->reset_panic();
     return args;
+}
+
+bool TypeParser::recover_type_arg_separator() {
+    if (this->check_type_arg_list_end()) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        return !this->check_type_arg_list_end();
+    }
+
+    this->report_here("expected ',' or '>' after type argument");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::type_argument)) {
+        this->synchronize(RecoveryContext::type_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        return !this->check_type_arg_list_end();
+    }
+    return false;
 }
 
 syntax::TypeId TypeParser::parse_type() {

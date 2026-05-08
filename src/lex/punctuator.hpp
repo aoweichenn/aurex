@@ -5,168 +5,150 @@
 
 #include "lexeme.hpp"
 
-#include <array>
-#include <optional>
-#include <string_view>
-
 namespace aurex::lex {
 
 struct PunctuatorMatch final {
-    base::usize width;
-    syntax::TokenKind kind;
+    base::usize width {};
+    syntax::TokenKind kind {syntax::TokenKind::invalid};
+
+    [[nodiscard]] bool matched() const noexcept {
+        return kind != syntax::TokenKind::invalid;
+    }
 };
 
 namespace detail {
 
-struct PunctuatorEntry final {
-    std::string_view text;
-    syntax::TokenKind kind;
-};
-
-inline constexpr std::array dot_punctuators {
-    PunctuatorEntry {"...", syntax::TokenKind::ellipsis},
-    PunctuatorEntry {".", syntax::TokenKind::dot},
-};
-inline constexpr std::array colon_punctuators {
-    PunctuatorEntry {"::", syntax::TokenKind::colon_colon},
-    PunctuatorEntry {":", syntax::TokenKind::colon},
-};
-inline constexpr std::array minus_punctuators {
-    PunctuatorEntry {"->", syntax::TokenKind::arrow},
-    PunctuatorEntry {"-", syntax::TokenKind::minus},
-};
-inline constexpr std::array equal_punctuators {
-    PunctuatorEntry {"=>", syntax::TokenKind::fat_arrow},
-    PunctuatorEntry {"==", syntax::TokenKind::equal_equal},
-    PunctuatorEntry {"=", syntax::TokenKind::equal},
-};
-inline constexpr std::array bang_punctuators {
-    PunctuatorEntry {"!=", syntax::TokenKind::bang_equal},
-    PunctuatorEntry {"!", syntax::TokenKind::bang},
-};
-inline constexpr std::array less_punctuators {
-    PunctuatorEntry {"<=", syntax::TokenKind::less_equal},
-    PunctuatorEntry {"<<", syntax::TokenKind::less_less},
-    PunctuatorEntry {"<", syntax::TokenKind::less},
-};
-inline constexpr std::array greater_punctuators {
-    PunctuatorEntry {">=", syntax::TokenKind::greater_equal},
-    PunctuatorEntry {">>", syntax::TokenKind::greater_greater},
-    PunctuatorEntry {">", syntax::TokenKind::greater},
-};
-inline constexpr std::array amp_punctuators {
-    PunctuatorEntry {"&&", syntax::TokenKind::amp_amp},
-    PunctuatorEntry {"&", syntax::TokenKind::amp},
-};
-inline constexpr std::array pipe_punctuators {
-    PunctuatorEntry {"||", syntax::TokenKind::pipe_pipe},
-    PunctuatorEntry {"|", syntax::TokenKind::pipe},
-};
-
-template <base::usize entry_count>
-[[nodiscard]] consteval bool punctuator_entries_are_longest_first(
-    const std::array<PunctuatorEntry, entry_count>& entries
-) noexcept {
-    for (base::usize index = 1; index < entries.size(); ++index) {
-        if (entries[index - 1].text.empty() || entries[index].text.empty()) {
-            return false;
-        }
-        if (entries[index - 1].text.size() < entries[index].text.size()) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static_assert(punctuator_entries_are_longest_first(dot_punctuators));
-static_assert(punctuator_entries_are_longest_first(colon_punctuators));
-static_assert(punctuator_entries_are_longest_first(minus_punctuators));
-static_assert(punctuator_entries_are_longest_first(equal_punctuators));
-static_assert(punctuator_entries_are_longest_first(bang_punctuators));
-static_assert(punctuator_entries_are_longest_first(less_punctuators));
-static_assert(punctuator_entries_are_longest_first(greater_punctuators));
-static_assert(punctuator_entries_are_longest_first(amp_punctuators));
-static_assert(punctuator_entries_are_longest_first(pipe_punctuators));
-
-template <base::usize entry_count>
-[[nodiscard]] inline std::optional<PunctuatorMatch> match_bucket(
-    const std::string_view text,
-    const std::array<PunctuatorEntry, entry_count>& entries
-) noexcept {
-    for (const PunctuatorEntry& entry : entries) {
-        if (!text.starts_with(entry.text)) {
-            continue;
-        }
-        return PunctuatorMatch {entry.text.size(), entry.kind};
-    }
-    return std::nullopt;
-}
+inline constexpr base::usize punctuator_second_byte_offset = 1;
+inline constexpr base::usize punctuator_third_byte_offset = 2;
+inline constexpr base::usize double_byte_punctuator_width = 2;
+inline constexpr base::usize ellipsis_punctuator_width = 3;
 
 [[nodiscard]] inline PunctuatorMatch single_char_match(const syntax::TokenKind kind) noexcept {
     return PunctuatorMatch {single_byte_lexeme_width, kind};
 }
 
+[[nodiscard]] inline PunctuatorMatch double_char_match(const syntax::TokenKind kind) noexcept {
+    return PunctuatorMatch {double_byte_punctuator_width, kind};
+}
+
+[[nodiscard]] inline PunctuatorMatch match_two_or_one(
+    const char actual_second,
+    const char second,
+    const syntax::TokenKind double_kind,
+    const syntax::TokenKind single_kind
+) noexcept {
+    if (actual_second == second) {
+        return double_char_match(double_kind);
+    }
+    return single_char_match(single_kind);
+}
+
 } // namespace detail
 
-[[nodiscard]] inline std::optional<PunctuatorMatch> match_punctuator(const std::string_view text) noexcept {
-    if (text.empty()) {
-        return std::nullopt;
-    }
-
-    const char first = text.front();
+[[nodiscard]] inline PunctuatorMatch match_punctuator(
+    const char first,
+    const char second,
+    const char third
+) noexcept {
     switch (first) {
-    case '.':
-        return detail::match_bucket(text, detail::dot_punctuators);
-    case ':':
-        return detail::match_bucket(text, detail::colon_punctuators);
-    case '-':
-        return detail::match_bucket(text, detail::minus_punctuators);
-    case '=':
-        return detail::match_bucket(text, detail::equal_punctuators);
-    case '!':
-        return detail::match_bucket(text, detail::bang_punctuators);
-    case '<':
-        return detail::match_bucket(text, detail::less_punctuators);
-    case '>':
-        return detail::match_bucket(text, detail::greater_punctuators);
-    case '&':
-        return detail::match_bucket(text, detail::amp_punctuators);
-    case '|':
-        return detail::match_bucket(text, detail::pipe_punctuators);
-    case '(':
+    case lexeme_dot:
+        if (second == lexeme_dot && third == lexeme_dot) {
+            return PunctuatorMatch {detail::ellipsis_punctuator_width, syntax::TokenKind::ellipsis};
+        }
+        return detail::single_char_match(syntax::TokenKind::dot);
+    case lexeme_colon:
+        return detail::match_two_or_one(
+            second,
+            lexeme_colon,
+            syntax::TokenKind::colon_colon,
+            syntax::TokenKind::colon
+        );
+    case lexeme_minus:
+        return detail::match_two_or_one(
+            second,
+            lexeme_greater,
+            syntax::TokenKind::arrow,
+            syntax::TokenKind::minus
+        );
+    case lexeme_equal:
+        if (second == lexeme_greater) {
+            return detail::double_char_match(syntax::TokenKind::fat_arrow);
+        }
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::equal_equal);
+        }
+        return detail::single_char_match(syntax::TokenKind::equal);
+    case lexeme_bang:
+        return detail::match_two_or_one(
+            second,
+            lexeme_equal,
+            syntax::TokenKind::bang_equal,
+            syntax::TokenKind::bang
+        );
+    case lexeme_less:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::less_equal);
+        }
+        if (second == lexeme_less) {
+            return detail::double_char_match(syntax::TokenKind::less_less);
+        }
+        return detail::single_char_match(syntax::TokenKind::less);
+    case lexeme_greater:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::greater_equal);
+        }
+        if (second == lexeme_greater) {
+            return detail::double_char_match(syntax::TokenKind::greater_greater);
+        }
+        return detail::single_char_match(syntax::TokenKind::greater);
+    case lexeme_amp:
+        return detail::match_two_or_one(
+            second,
+            lexeme_amp,
+            syntax::TokenKind::amp_amp,
+            syntax::TokenKind::amp
+        );
+    case lexeme_pipe:
+        return detail::match_two_or_one(
+            second,
+            lexeme_pipe,
+            syntax::TokenKind::pipe_pipe,
+            syntax::TokenKind::pipe
+        );
+    case lexeme_l_paren:
         return detail::single_char_match(syntax::TokenKind::l_paren);
-    case ')':
+    case lexeme_r_paren:
         return detail::single_char_match(syntax::TokenKind::r_paren);
-    case '{':
+    case lexeme_l_brace:
         return detail::single_char_match(syntax::TokenKind::l_brace);
-    case '}':
+    case lexeme_r_brace:
         return detail::single_char_match(syntax::TokenKind::r_brace);
-    case '[':
+    case lexeme_l_bracket:
         return detail::single_char_match(syntax::TokenKind::l_bracket);
-    case ']':
+    case lexeme_r_bracket:
         return detail::single_char_match(syntax::TokenKind::r_bracket);
-    case ',':
+    case lexeme_comma:
         return detail::single_char_match(syntax::TokenKind::comma);
-    case ';':
+    case lexeme_semicolon:
         return detail::single_char_match(syntax::TokenKind::semicolon);
-    case '+':
+    case lexeme_plus:
         return detail::single_char_match(syntax::TokenKind::plus);
-    case '*':
+    case lexeme_star:
         return detail::single_char_match(syntax::TokenKind::star);
-    case '/':
+    case lexeme_slash:
         return detail::single_char_match(syntax::TokenKind::slash);
-    case '%':
+    case lexeme_percent:
         return detail::single_char_match(syntax::TokenKind::percent);
-    case '^':
+    case lexeme_caret:
         return detail::single_char_match(syntax::TokenKind::caret);
-    case '~':
+    case lexeme_tilde:
         return detail::single_char_match(syntax::TokenKind::tilde);
-    case '@':
+    case lexeme_at:
         return detail::single_char_match(syntax::TokenKind::at);
-    case '?':
+    case lexeme_question:
         return detail::single_char_match(syntax::TokenKind::question);
     default:
-        return std::nullopt;
+        return {};
     }
 }
 

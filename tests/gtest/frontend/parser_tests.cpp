@@ -258,6 +258,96 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
     }
 }
 
+TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
+    constexpr base::SourceId kRecoverySourceId {8};
+    constexpr std::string_view source =
+        "module parser.recovery_boundary;\n"
+        "let top_level = 1\n"
+        "fn recovered() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected item declaration");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
+    constexpr base::SourceId kTypeArgRecoverySourceId {9};
+    constexpr std::string_view source =
+        "module parser.type_arg_recovery;\n"
+        "type Broken = Pair<i32 bool, str>;\n"
+        "fn recovered() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kTypeArgRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' or '>' after type argument");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
+    constexpr base::SourceId kMatchArmRecoverySourceId {10};
+    constexpr std::string_view source =
+        "module parser.match_arm_recovery;\n"
+        "fn recovered(value: i32) -> i32 {\n"
+        "  let matched = match value {\n"
+        "    0 => 0 @\n"
+        "    1 => 1,\n"
+        "  };\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kMatchArmRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' after match arm");
+    expect_contains(messages, "expected expression");
+}
+
 TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
     constexpr std::string_view source =
         "module parser.angle;\n"

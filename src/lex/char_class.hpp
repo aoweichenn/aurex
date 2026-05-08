@@ -80,8 +80,19 @@ constexpr void mark_char_class_range(
 
 inline constexpr std::array byte_char_classes = build_byte_char_classes();
 
+[[nodiscard]] inline std::uint8_t char_classes(const char c) noexcept {
+    return byte_char_classes[char_class_index(c)];
+}
+
+[[nodiscard]] inline bool has_char_class_flags(
+    const std::uint8_t classes,
+    const std::uint8_t flags
+) noexcept {
+    return (classes & flags) != no_char_class;
+}
+
 [[nodiscard]] inline bool has_char_class(const char c, const std::uint8_t flags) noexcept {
-    return (byte_char_classes[char_class_index(c)] & flags) != no_char_class;
+    return has_char_class_flags(char_classes(c), flags);
 }
 
 [[nodiscard]] inline bool is_ident_start(const char c) noexcept {

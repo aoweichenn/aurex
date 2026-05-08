@@ -20,7 +20,7 @@ syntax::StmtId BlockParser::parse_block() {
         if (syntax::is_valid(stmt)) {
             block.statements.push_back(stmt);
         } else {
-            this->synchronize();
+            this->synchronize(RecoveryContext::statement);
         }
         this->reset_panic();
     }
@@ -43,7 +43,7 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
             if (syntax::is_valid(stmt)) {
                 block.statements.push_back(stmt);
             } else {
-                this->synchronize();
+                this->synchronize(RecoveryContext::statement);
             }
             this->reset_panic();
             continue;

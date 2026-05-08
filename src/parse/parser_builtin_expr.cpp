@@ -1,5 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
 #include <utility>
 
 namespace aurex::parse {
@@ -14,7 +16,7 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
     const syntax::Token& begin = this->previous();
     this->expect(TokenKind::l_paren, "expected '(' after cast builtin");
     const syntax::TypeId type = this->parse_type();
-    this->expect(TokenKind::comma, "expected ',' after cast type");
+    this->recover_builtin_arg_separator("expected ',' after cast type");
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after cast expression");
 
@@ -56,7 +58,7 @@ syntax::ExprId BuiltinExprParser::parse_ptr_from_addr(const ExprContext context)
     const syntax::Token& begin = this->previous();
     this->expect(TokenKind::l_paren, "expected '(' after ptr_from_addr");
     const syntax::TypeId type = this->parse_type();
-    this->expect(TokenKind::comma, "expected ',' after ptr_from_addr type");
+    this->recover_builtin_arg_separator("expected ',' after ptr_from_addr type");
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after ptr_from_addr argument");
 
@@ -101,7 +103,7 @@ syntax::ExprId BuiltinExprParser::parse_str_from_bytes_unchecked(const ExprConte
     const syntax::Token& begin = this->previous();
     this->expect(TokenKind::l_paren, "expected '(' after str_from_bytes_unchecked");
     const syntax::ExprId data = this->parse_expr(context);
-    this->expect(TokenKind::comma, "expected ',' after str_from_bytes_unchecked data");
+    this->recover_builtin_arg_separator("expected ',' after str_from_bytes_unchecked data");
     const syntax::ExprId len = this->parse_expr(context);
     const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after str_from_bytes_unchecked length");
 
@@ -111,6 +113,23 @@ syntax::ExprId BuiltinExprParser::parse_str_from_bytes_unchecked(const ExprConte
     expr.args.push_back(data);
     expr.args.push_back(len);
     return this->session_.module.push_expr(std::move(expr));
+}
+
+void BuiltinExprParser::recover_builtin_arg_separator(std::string message) {
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return;
+    }
+
+    this->report_here(std::move(message));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::builtin_argument)) {
+        this->synchronize(RecoveryContext::builtin_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return;
+    }
+    this->reset_panic();
 }
 
 } // namespace aurex::parse

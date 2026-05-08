@@ -1,6 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
 #include "aurex/parse/parser.hpp"
+#include "aurex/parse/recovery.hpp"
 
 #include <utility>
 
@@ -51,6 +52,29 @@ const syntax::Token& ParserPartBase::advance() noexcept {
 
 const syntax::Token& ParserPartBase::expect(const syntax::TokenKind kind, std::string message) {
     return this->parser_.expect(kind, std::move(message));
+}
+
+const syntax::Token& ParserPartBase::expect_recovered(
+    const syntax::TokenKind kind,
+    std::string message,
+    const RecoveryContext context
+) {
+    if (this->check(kind)) {
+        return this->advance();
+    }
+
+    this->report_here(std::move(message));
+    if (!token_matches_recovery_context(this->peek().kind, context)) {
+        this->synchronize(context);
+    }
+    if (this->check(kind)) {
+        const syntax::Token& token = this->advance();
+        this->reset_panic();
+        return token;
+    }
+    this->reset_panic();
+    static const syntax::Token fallback {};
+    return fallback;
 }
 
 const syntax::Token& ParserPartBase::expect_type_arg_list_end(std::string message) {

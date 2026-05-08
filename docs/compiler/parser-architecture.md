@@ -25,6 +25,11 @@ the narrowest parser part that owns the relevant grammar surface.
 | `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, move, and string helpers. |
 | `PatternParser` | Match patterns. |
 
+Recovery token sets are split into source-private start-token and
+boundary-token files. The public recovery API should stay limited to context
+selection and the small starter predicates that grammar parser parts already
+need.
+
 ## Recovery Contexts
 
 Parser recovery is intentionally contextual. `Parser::synchronize` accepts a
@@ -66,6 +71,28 @@ Current contexts:
 - `RecoveryContext::abi_attribute_argument` is used inside ABI attribute
   argument parentheses. It stops at the argument value, `)`, function
   body/prototype boundaries, and obvious outer grammar starters.
+- `RecoveryContext::builtin_argument` is used inside builtin expression
+  argument lists after a malformed separator. It stops at separators, `)`,
+  enclosing delimiters, valid expression starters, and obvious outer grammar
+  starters so fixed-shape builtins can still parse their next argument.
+- `RecoveryContext::path_segment` is used inside module and import paths. It
+  stops at path separators, path terminators, import aliases, valid path
+  segment starters, and obvious outer grammar starters.
+- `RecoveryContext::import_alias` is used after a malformed `import ... as`
+  alias. It stops at the import terminator or obvious outer grammar starters so
+  the import declaration can close locally.
+- `RecoveryContext::statement_terminator` is used after malformed
+  control-statement tails and block-expression assignment tails. It stops at
+  semicolons, block ends, item starters, and non-expression statement starters.
+- `RecoveryContext::for_clause_separator` is used after a malformed `for`
+  condition clause. It stops at the second `;`, a loop body `{`, block ends,
+  item starters, and non-expression statement starters.
+- `RecoveryContext::block_start` is used before parsing a block body. It stops
+  at `{`, `}`, item starters, and statement starters so a malformed control
+  header can still attach to the intended body.
+- `RecoveryContext::block_end` is used when a block tail is malformed or
+  missing. It stops at `}` or the next item starter so one missing brace does
+  not consume following declarations.
 - `RecoveryContext::item_or_statement` remains the conservative default for
   bridge calls while a caller is being migrated to a narrower context.
 
@@ -129,8 +156,8 @@ a maintainability boundary, not the final parsing algorithm.
 Near-term improvements:
 
 - Keep deduplicating small lookahead and recovery helpers.
-- Add narrower recovery contexts where the grammar has a real boundary, such as
-  import paths and builtin expression argument lists.
+- Add narrower recovery contexts where the grammar has a real boundary instead
+  of using the transitional `item_or_statement` default.
 - Keep tests close to grammar boundaries that are likely to regress.
 - Make parser parts easier to reason about before algorithmic changes.
 

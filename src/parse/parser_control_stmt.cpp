@@ -60,7 +60,11 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
     if (!this->check(TokenKind::semicolon)) {
         condition = this->parse_expr(ExprContext::no_struct_literal);
     }
-    this->expect(TokenKind::semicolon, "expected ';' after for condition");
+    this->expect_recovered(
+        TokenKind::semicolon,
+        "expected ';' after for condition",
+        RecoveryContext::for_clause_separator
+    );
 
     const syntax::StmtId update = this->parse_for_update_clause();
     const syntax::StmtId body = this->parse_block();
@@ -77,7 +81,11 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
 
 syntax::StmtId ControlStmtParser::parse_break_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_break, "expected 'break'");
-    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after break");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::semicolon,
+        "expected ';' after break",
+        RecoveryContext::statement_terminator
+    );
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::break_;
     stmt.range = this->merge(begin.range, end.range);
@@ -86,7 +94,11 @@ syntax::StmtId ControlStmtParser::parse_break_stmt() {
 
 syntax::StmtId ControlStmtParser::parse_continue_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_continue, "expected 'continue'");
-    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after continue");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::semicolon,
+        "expected ';' after continue",
+        RecoveryContext::statement_terminator
+    );
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::continue_;
     stmt.range = this->merge(begin.range, end.range);
@@ -96,7 +108,11 @@ syntax::StmtId ControlStmtParser::parse_continue_stmt() {
 syntax::StmtId ControlStmtParser::parse_defer_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_defer, "expected 'defer'");
     const syntax::ExprId value = this->parse_expr();
-    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after defer statement");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::semicolon,
+        "expected ';' after defer statement",
+        RecoveryContext::statement_terminator
+    );
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::defer;
@@ -111,7 +127,11 @@ syntax::StmtId ControlStmtParser::parse_return_stmt() {
     if (!this->check(TokenKind::semicolon)) {
         value = this->parse_expr();
     }
-    const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after return");
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::semicolon,
+        "expected ';' after return",
+        RecoveryContext::statement_terminator
+    );
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::return_;
     stmt.range = this->merge(begin.range, end.range);

@@ -22,6 +22,11 @@ class PostfixExprParser;
 class PrimaryExprParser;
 class TypeParser;
 
+enum class StatementTerminatorRecovery {
+    direct,
+    synchronize,
+};
+
 class ParserPartBase {
 protected:
     explicit ParserPartBase(Parser& parser) noexcept;
@@ -37,6 +42,11 @@ protected:
     bool match(syntax::TokenKind kind) noexcept;
     const syntax::Token& advance() noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
+    const syntax::Token& expect_recovered(
+        syntax::TokenKind kind,
+        std::string message,
+        RecoveryContext context
+    );
     const syntax::Token& expect_type_arg_list_end(std::string message);
     void synchronize(RecoveryContext context = RecoveryContext::item_or_statement);
     void report_here(std::string message);
@@ -67,9 +77,21 @@ public:
         : ParserPartBase(parser) {}
 
     [[nodiscard]] syntax::StmtId parse_stmt();
-    [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
+    [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(
+        syntax::StmtKind kind,
+        StatementTerminatorRecovery recovery = StatementTerminatorRecovery::direct
+    );
     [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt();
-    [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt(bool require_semicolon);
+    [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt(
+        bool require_semicolon,
+        StatementTerminatorRecovery recovery = StatementTerminatorRecovery::direct
+    );
+
+private:
+    [[nodiscard]] const syntax::Token& expect_statement_semicolon(
+        std::string message,
+        StatementTerminatorRecovery recovery
+    );
 };
 
 class BlockParser final : private ParserPartBase {
@@ -79,6 +101,11 @@ public:
 
     [[nodiscard]] syntax::StmtId parse_block();
     [[nodiscard]] syntax::ExprId parse_block_expr(ExprContext context = ExprContext::normal);
+
+private:
+    [[nodiscard]] const syntax::Token& expect_block_start(std::string message);
+    [[nodiscard]] const syntax::Token& expect_block_end(std::string message);
+    [[nodiscard]] bool at_block_recovery_boundary() const noexcept;
 };
 
 class ControlStmtParser final : private ParserPartBase {
@@ -122,6 +149,10 @@ public:
     [[nodiscard]] syntax::ItemId parse_item();
 
 private:
+    [[nodiscard]] std::optional<syntax::Token> parse_path_segment(std::string message);
+    void recover_path_segment();
+    void parse_import_alias(syntax::ImportDecl& import);
+    void recover_import_alias();
     [[nodiscard]] syntax::Visibility parse_visibility();
     [[nodiscard]] syntax::ItemId parse_const_decl();
     [[nodiscard]] syntax::ItemId parse_type_alias_decl();
@@ -236,6 +267,9 @@ public:
     [[nodiscard]] syntax::ExprId parse_move(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_str_unary(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_str_from_bytes_unchecked(ExprContext context);
+
+private:
+    void recover_builtin_arg_separator(std::string message);
 };
 
 class PatternParser final : private ParserPartBase {

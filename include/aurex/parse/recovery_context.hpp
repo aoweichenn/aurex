@@ -25,6 +25,20 @@ enum class RecoveryContext {
     generic_parameter,
     // ABI attribute argument boundary after a malformed attribute argument.
     abi_attribute_argument,
+    // Builtin expression argument boundary after a malformed separator.
+    builtin_argument,
+    // Module/import path segment boundary after a malformed segment.
+    path_segment,
+    // Import alias boundary after a malformed `as` alias.
+    import_alias,
+    // Statement terminator boundary after malformed control-statement tails.
+    statement_terminator,
+    // For-loop clause separator boundary after a malformed condition clause.
+    for_clause_separator,
+    // Block opener boundary after malformed control-flow or expression block headers.
+    block_start,
+    // Block closer boundary after malformed or missing block tails.
+    block_end,
     // Transitional default for bridge calls that have not chosen a narrower boundary.
     item_or_statement,
 };

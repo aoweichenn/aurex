@@ -1,5 +1,7 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
 #include <utility>
 
 namespace aurex::parse {
@@ -11,11 +13,11 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::StmtId BlockParser::parse_block() {
-    const syntax::Token& begin = this->expect(TokenKind::l_brace, "expected block");
+    const syntax::Token& begin = this->expect_block_start("expected block");
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
 
-    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+    while (!this->is_eof() && !this->at_block_recovery_boundary()) {
         const syntax::StmtId stmt = this->parse_stmt();
         if (syntax::is_valid(stmt)) {
             block.statements.push_back(stmt);
@@ -25,19 +27,19 @@ syntax::StmtId BlockParser::parse_block() {
         this->reset_panic();
     }
 
-    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after block");
+    const syntax::Token& end = this->expect_block_end("expected '}' after block");
     block.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_stmt(std::move(block));
 }
 
 syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
-    const syntax::Token& begin = this->expect(TokenKind::l_brace, "expected block expression");
+    const syntax::Token& begin = this->expect_block_start("expected block expression");
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
     syntax::ExprId result = syntax::invalid_expr_id;
 
-    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+    while (!this->is_eof() && !this->at_block_recovery_boundary()) {
         if (this->check(TokenKind::kw_let) || this->check(TokenKind::kw_var) || this->check(TokenKind::kw_defer)) {
             const syntax::StmtId stmt = this->parse_stmt();
             if (syntax::is_valid(stmt)) {
@@ -55,7 +57,11 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
             stmt.kind = syntax::StmtKind::assign;
             stmt.lhs = expr;
             stmt.rhs = this->parse_expr(context);
-            const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after assignment");
+            const syntax::Token& end = this->expect_recovered(
+                TokenKind::semicolon,
+                "expected ';' after assignment",
+                RecoveryContext::statement_terminator
+            );
             stmt.range = this->merge(this->expr_range_or(expr, end.range), end.range);
             block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
             this->reset_panic();
@@ -75,7 +81,7 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
         break;
     }
 
-    const syntax::Token& end = this->expect(TokenKind::r_brace, "expected '}' after block expression");
+    const syntax::Token& end = this->expect_block_end("expected '}' after block expression");
     block.range = this->merge(begin.range, end.range);
     const syntax::StmtId block_id = this->session_.module.push_stmt(std::move(block));
 
@@ -86,6 +92,26 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
     expr.block_result = result;
     this->reset_panic();
     return this->session_.module.push_expr(std::move(expr));
+}
+
+const syntax::Token& BlockParser::expect_block_start(std::string message) {
+    return this->expect_recovered(
+        TokenKind::l_brace,
+        std::move(message),
+        RecoveryContext::block_start
+    );
+}
+
+const syntax::Token& BlockParser::expect_block_end(std::string message) {
+    return this->expect_recovered(
+        TokenKind::r_brace,
+        std::move(message),
+        RecoveryContext::block_end
+    );
+}
+
+bool BlockParser::at_block_recovery_boundary() const noexcept {
+    return token_matches_recovery_context(this->peek().kind, RecoveryContext::item);
 }
 
 } // namespace aurex::parse

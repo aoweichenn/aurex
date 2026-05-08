@@ -551,6 +551,216 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments) {
     expect_contains(messages, "expected expression");
 }
 
+TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments) {
+    constexpr base::SourceId kPathRecoverySourceId {18};
+    constexpr std::string_view source =
+        "module parser.path_recovery;\n"
+        "import c.@;\n"
+        "fn recovered() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kPathRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected identifier after '.'");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
+    constexpr base::SourceId kBuiltinArgRecoverySourceId {19};
+    constexpr std::string_view source =
+        "module parser.builtin_arg_recovery;\n"
+        "fn recovered(argc: i32) -> i32 {\n"
+        "  let value = cast(i32 @ argc);\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kBuiltinArgRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' after cast type");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases) {
+    constexpr base::SourceId kImportAliasRecoverySourceId {20};
+    constexpr std::string_view source =
+        "module parser.import_alias_recovery;\n"
+        "import c.host as @;\n"
+        "fn recovered() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kImportAliasRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected import alias after 'as'");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators) {
+    constexpr base::SourceId kStatementTerminatorRecoverySourceId {21};
+    constexpr std::string_view source =
+        "module parser.statement_terminator_recovery;\n"
+        "fn recovered() -> i32 {\n"
+        "  let value = 1 @;\n"
+        "  value @;\n"
+        "  return 1 @;\n"
+        "  let broken = ;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kStatementTerminatorRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ';' after local declaration");
+    expect_contains(messages, "expected ';' after expression statement");
+    expect_contains(messages, "expected ';' after return");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators) {
+    constexpr base::SourceId kForClauseRecoverySourceId {22};
+    constexpr std::string_view source =
+        "module parser.for_clause_recovery;\n"
+        "fn recovered() -> i32 {\n"
+        "  for var i: i32 = 0; i < 3 @; i = i + 1 {\n"
+        "  }\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kForClauseRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ';' after for condition");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners) {
+    constexpr base::SourceId kBlockOpenerRecoverySourceId {23};
+    constexpr std::string_view source =
+        "module parser.block_opener_recovery;\n"
+        "fn recovered(value: i32) -> i32 {\n"
+        "  if value > 0 @ {\n"
+        "    return 1;\n"
+        "  }\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kBlockOpenerRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected block");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem) {
+    constexpr base::SourceId kBlockEndRecoverySourceId {24};
+    constexpr std::string_view source =
+        "module parser.block_end_recovery;\n"
+        "fn first() -> i32 {\n"
+        "  return 1;\n"
+        "fn second() -> i32 {\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(kBlockEndRecoverySourceId, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected '}' after block");
+    expect_contains(messages, "expected expression");
+}
+
 TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
     constexpr std::string_view source =
         "module parser.angle;\n"

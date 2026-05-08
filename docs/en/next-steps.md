@@ -196,6 +196,75 @@ Current language slices:
 - The LLVM backend must keep up with new frontend features so language work
   does not stop at check/dump coverage.
 
+## Ownership Roadmap
+
+The current ownership model has its first safety boundary: owned resources use
+`noncopy struct` to reject implicit shallow copies, `move(value)` transfers
+ownership explicitly, `Result<NonCopy, E>` / `Option<NonCopy>` become noncopy,
+and risky copy-only APIs on `Vec`, `Map`, and `Result` / `Option` have semantic
+guards. The next stage should stop merely widening the set of disabled APIs and
+instead teach the language which values need destruction, where destruction can
+run, and how values can move out of containers safely.
+
+Recommended sequence:
+
+1. Drop / destructor MVP
+   Do not start with fully automatic scope drops; that would change too much
+   existing behavior at once. First teach semantic analysis to recognize
+   whether a type has a valid destructor. The initial accepted shape should be a
+   fixed `destroy(self: *mut T) -> void` method, with internal
+   `has_destructor(T)` / `is_droppable(T)` queries. This lets `Vec<T>`,
+   `Map<K,V>`, and `Result<T,E>` constrain behavior by droppability instead of
+   only copyability.
+
+2. Deep destruction for `Vec<T>`
+   Today `Vec<T>.destroy()` frees only the buffer; it does not destroy element
+   payloads, so `Vec<Path>` and `Vec<DirectoryEntry>` still need type-specific
+   loops. After the Drop MVP, add a constrained deep-destroy entry point such as
+   `destroy_deep<T>(vec: *mut Vec<T>)`: for droppable `T`, destroy each element
+   before freeing the buffer; for noncopy `T` without a destructor, report a
+   diagnostic. `Vec<T>.clear/truncate` should remain restricted for noncopy
+   elements until this destruction behavior is stable.
+
+3. Move-out APIs for `Vec<T>`
+   Do not directly enable existing `get/first/last/remove` for noncopy
+   elements, because their by-value shape still suggests copying. Add explicit
+   move-out APIs such as `take_at(index)` / `swap_take(index)` that move an
+   element out of a slot and maintain `len`. Read-only access should eventually
+   use borrowed references/views rather than by-value `get()`.
+
+4. Borrowed lookup and entry APIs for `Map<K,V>`
+   The current Vec-backed `Map<K,V>` uses by-value key/value APIs, so it only
+   accepts copyable keys and values. To support noncopy values, add borrowed-key
+   lookup and reference-returning operations such as `contains_ref(key: *const
+   K)`, `get_ref(key: *const K)`, and `get_mut_ref(key: *const K)`, then add
+   explicit move/drop operations such as `take(key)` and `remove_drop(key)`.
+   Owned string-key maps and hash/bucketed maps should be built on this API
+   shape rather than on wider by-value map operations.
+
+5. Capability predicates / generic constraints
+   Current copyability guards are transitional special cases in sema for
+   `std.core.vec`, `std.core.map`, and `std.core.result`. Once Drop exists,
+   abstract them into minimal capability predicates: `copy T` and `drop T`,
+   later `eq K` and `hash K`. Public syntax can wait, but generic
+   instantiation should start using capabilities internally so future `where`
+   clauses and traits have a clean path.
+
+6. M1 cleanup closure
+   After `Vec` / `Map` drop and move-out behavior is stable, remove bespoke
+   cleanup loops from `std.fs.dir::destroy_entries`, M1 axbuild target/project
+   destruction, `Vec<Path>` / `Vec<DirectoryEntry>` handling, and the temporary
+   match helpers used in positive samples to avoid swallowing owned resources.
+   The goal is to keep M1 lifetimes explicit while moving cleanup mechanics
+   from ad hoc resource protocols into standard-library capabilities.
+
+This route is deliberately conservative: identify droppable values first, then
+let containers destroy elements safely, then add explicit move-out, and only
+then relax APIs. Automatic scope Drop, borrow checking, partial moves, and full
+trait/where constraints are important, but they should not all land in the
+first Drop MVP; doing that would change language semantics, lowering, and std
+behavior at the same time.
+
 ## M1 Acceptance Targets
 
 M1 should finish with two Aurex-written system examples in the active tree, both
@@ -260,11 +329,13 @@ covered by integration tests:
 6. Establish resource management and OS engineering support  
    The `defer` MVP has landed, and `for` continue/update/exit paths now reuse
    scope cleanup. The first file/process/FFI/text/path/container owned
-   resources are noncopy. Follow-up work should add Drop/destructor support,
-   borrow checking, partial moves, language-level move-only generic
-   constraints, streaming directory iterators / walk callbacks, richer file
-   metadata, subprocess pipes, cwd/env handling, temporary files, and path
-   normalization. Without this slice, the build tool remains a toy.
+   resources are noncopy. Follow-up work should proceed as
+   Drop/destructor MVP -> deep destruction for `Vec<T>` -> explicit
+   `Vec<T>` move-out -> borrowed lookup / entry APIs for `Map<K,V>` ->
+   capability predicates -> M1 cleanup closure, then continue with borrow
+   checking, directory traversal, file metadata, subprocess pipes, cwd/env
+   handling, temporary files, and path normalization. Without this slice, the
+   build tool remains a toy.
 
 7. Push sum types and pattern matching to an industrial baseline  
    Prioritize exhaustiveness, unreachable arms, payload bindings, guard
@@ -362,10 +433,16 @@ manual status helpers.
    `CStringUsizeMap` are also noncopy. Directory-create, owned
    single-level / recursive directory-entry, and source-discovery count
    baselines are available through `std.fs.dir`, including single-level and
-   recursive suffix counts. Next, add Drop/destructor support, borrow checking,
-   partial moves, language-level move-only generic constraints, streaming
-   directory iterators / walk callbacks, stdin/stdout/stderr pipes, and
-   temporary-directory support so files, processes, arenas, and temporary
+   recursive suffix counts. Next, implement the Drop/destructor MVP: recognize
+   `destroy(self: *mut T) -> void` and expose internal
+   `has_destructor(T)` / `is_droppable(T)` queries. Then add constrained deep
+   destruction for `Vec<T>`, design explicit move-out APIs such as `take_at` /
+   `swap_take`, add borrowed-key lookup, reference returns, take/remove-drop,
+   and entry shapes for `Map<K,V>`, and finally lift these checks into
+   `copy/drop` capability predicates as groundwork for real `where` / trait
+   constraints. After that, continue with borrow checking, partial moves,
+   streaming directory iterators / walk callbacks, stdin/stdout/stderr pipes,
+   and temporary-directory support so files, processes, arenas, and temporary
    directories compose safely.
 
 7. Self-hosting frontend and typed build-tool acceptance  

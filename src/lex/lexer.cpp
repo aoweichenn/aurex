@@ -3,6 +3,7 @@
 #include "aurex/base/config.hpp"
 #include "char_class.hpp"
 #include "keyword.hpp"
+#include "lexeme.hpp"
 
 #include <utility>
 
@@ -42,28 +43,39 @@ bool Lexer::is_at_end() const noexcept {
     return offset_ >= source_text_.size();
 }
 
-char Lexer::peek() const noexcept {
-    if (is_at_end()) {
-        return '\0';
+bool Lexer::starts_with(const std::string_view text) const noexcept {
+    return source_text_.size() - offset_ >= text.size() &&
+           source_text_.substr(offset_, text.size()) == text;
+}
+
+char Lexer::peek_at(const base::usize lookahead) const noexcept {
+    const base::usize target = offset_ + lookahead;
+    if (target >= source_text_.size()) {
+        return eof_sentinel;
     }
-    return source_text_[offset_];
+    return source_text_[target];
+}
+
+char Lexer::peek() const noexcept {
+    return peek_at(current_character_lookahead);
 }
 
 char Lexer::peek_next() const noexcept {
-    const base::usize next = offset_ + 1;
-    if (next >= source_text_.size()) {
-        return '\0';
-    }
-    return source_text_[next];
+    return peek_at(next_character_lookahead);
 }
 
 char Lexer::advance() noexcept {
     if (is_at_end()) {
-        return '\0';
+        return eof_sentinel;
     }
     const char c = source_text_[offset_];
     ++offset_;
     return c;
+}
+
+void Lexer::advance_bytes(const base::usize byte_count) noexcept {
+    const base::usize remaining = source_text_.size() - offset_;
+    offset_ += byte_count < remaining ? byte_count : remaining;
 }
 
 bool Lexer::match(const char expected) noexcept {
@@ -77,12 +89,12 @@ bool Lexer::match(const char expected) noexcept {
 void Lexer::scan_token() {
     const base::usize begin = offset_;
 
-    if (peek() == 'c' && peek_next() == '"') {
-        scan_c_string();
+    if (starts_with(c_string_prefix)) {
+        scan_c_string(begin);
         return;
     }
-    if (peek() == 'b' && peek_next() == '\'') {
-        scan_byte();
+    if (starts_with(byte_literal_prefix)) {
+        scan_byte(begin);
         return;
     }
     if (is_ident_start(peek())) {
@@ -98,7 +110,7 @@ void Lexer::scan_token() {
     const char c = advance();
     switch (c) {
     case '"':
-        scan_string();
+        scan_string(begin);
         break;
     case '(':
         add_token(TokenKind::l_paren, begin, offset_);
@@ -122,9 +134,8 @@ void Lexer::scan_token() {
         add_token(TokenKind::comma, begin, offset_);
         break;
     case '.':
-        if (peek() == '.' && peek_next() == '.') {
-            advance();
-            advance();
+        if (starts_with(ellipsis_tail_after_dot)) {
+            advance_bytes(ellipsis_tail_after_dot.size());
             add_token(TokenKind::ellipsis, begin, offset_);
         } else {
             add_token(TokenKind::dot, begin, offset_);

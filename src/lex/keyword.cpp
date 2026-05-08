@@ -1,22 +1,24 @@
 #include "keyword.hpp"
 
+#include "lexeme.hpp"
+
 namespace aurex::lex {
 
 syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
     using syntax::TokenKind;
 
     switch (text.size()) {
-    case 1:
+    case token_text_length("c"):
         if (text == "c") return TokenKind::kw_c;
         break;
-    case 2:
+    case token_text_length("as"):
         if (text == "as") return TokenKind::kw_as;
         if (text == "fn") return TokenKind::kw_fn;
         if (text == "if") return TokenKind::kw_if;
         if (text == "i8") return TokenKind::kw_i8;
         if (text == "u8") return TokenKind::kw_u8;
         break;
-    case 3:
+    case token_text_length("pub"):
         if (text == "pub") return TokenKind::kw_pub;
         if (text == "let") return TokenKind::kw_let;
         if (text == "var") return TokenKind::kw_var;
@@ -32,7 +34,7 @@ syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
         if (text == "str") return TokenKind::kw_str;
         if (text == "mut") return TokenKind::kw_mut;
         break;
-    case 4:
+    case token_text_length("priv"):
         if (text == "priv") return TokenKind::kw_priv;
         if (text == "enum") return TokenKind::kw_enum;
         if (text == "type") return TokenKind::kw_type;
@@ -45,7 +47,7 @@ syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
         if (text == "bool") return TokenKind::kw_bool;
         if (text == "cast") return TokenKind::kw_cast;
         break;
-    case 5:
+    case token_text_length("const"):
         if (text == "const") return TokenKind::kw_const;
         if (text == "match") return TokenKind::kw_match;
         if (text == "while") return TokenKind::kw_while;
@@ -55,7 +57,7 @@ syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
         if (text == "isize") return TokenKind::kw_isize;
         if (text == "usize") return TokenKind::kw_usize;
         break;
-    case 6:
+    case token_text_length("module"):
         if (text == "module") return TokenKind::kw_module;
         if (text == "import") return TokenKind::kw_import;
         if (text == "extern") return TokenKind::kw_extern;
@@ -64,11 +66,11 @@ syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
         if (text == "opaque") return TokenKind::kw_opaque;
         if (text == "return") return TokenKind::kw_return;
         break;
-    case 7:
+    case token_text_length("noncopy"):
         if (text == "noncopy") return TokenKind::kw_noncopy;
         if (text == "size_of") return TokenKind::kw_size_of;
         break;
-    case 8:
+    case token_text_length("continue"):
         if (text == "continue") return TokenKind::kw_continue;
         if (text == "ptr_cast") return TokenKind::kw_ptr_cast;
         if (text == "bit_cast") return TokenKind::kw_bit_cast;
@@ -76,13 +78,13 @@ syntax::TokenKind keyword_kind(const std::string_view text) noexcept {
         if (text == "ptr_addr") return TokenKind::kw_ptr_addr;
         if (text == "str_data") return TokenKind::kw_str_data;
         break;
-    case 12:
+    case token_text_length("str_byte_len"):
         if (text == "str_byte_len") return TokenKind::kw_str_byte_len;
         break;
-    case 13:
+    case token_text_length("ptr_from_addr"):
         if (text == "ptr_from_addr") return TokenKind::kw_ptr_from_addr;
         break;
-    case 24:
+    case token_text_length("str_from_bytes_unchecked"):
         if (text == "str_from_bytes_unchecked") return TokenKind::kw_str_from_bytes_unchecked;
         break;
     default:

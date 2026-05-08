@@ -2,6 +2,7 @@
 
 #include "aurex/base/diagnostic.hpp"
 #include "aurex/base/result.hpp"
+#include "aurex/parse/expr_context.hpp"
 #include "aurex/parse/parse_session.hpp"
 #include "aurex/syntax/ast.hpp"
 #include "aurex/syntax/token.hpp"
@@ -10,6 +11,13 @@
 #include <string>
 
 namespace aurex::parse {
+
+class ExprParser;
+class ItemParser;
+class ParserPartBase;
+class PatternParser;
+class StmtParser;
+class TypeParser;
 
 class Parser final {
 public:
@@ -39,68 +47,17 @@ private:
     void report_here(std::string message);
     void report_at(const syntax::Token& token, std::string message);
 
-    [[nodiscard]] syntax::ModulePath parse_path();
-    [[nodiscard]] syntax::ImportDecl parse_import_decl();
-    [[nodiscard]] syntax::Visibility parse_visibility();
-    [[nodiscard]] syntax::ItemId parse_item();
-    [[nodiscard]] syntax::ItemId parse_const_decl();
-    [[nodiscard]] syntax::ItemId parse_type_alias_decl();
-    [[nodiscard]] syntax::ItemId parse_struct_decl();
-    [[nodiscard]] syntax::ItemId parse_enum_decl();
-    [[nodiscard]] syntax::ItemId parse_impl_block();
-    [[nodiscard]] syntax::ItemId parse_extern_block();
-    [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
-    [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);
-    [[nodiscard]] std::vector<std::string_view> parse_generic_param_list();
-    [[nodiscard]] std::vector<syntax::TypeId> parse_type_arg_list();
-    [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
-    [[nodiscard]] syntax::TypeId parse_optional_return_type();
-    void parse_optional_abi_name(syntax::ItemNode& item);
-
-    [[nodiscard]] syntax::TypeId parse_type();
-    [[nodiscard]] syntax::TypeId parse_primitive_type();
-
-    [[nodiscard]] syntax::StmtId parse_block();
-    [[nodiscard]] syntax::ExprId parse_block_expr();
-    [[nodiscard]] syntax::StmtId parse_stmt();
-    [[nodiscard]] syntax::StmtId parse_let_or_var_stmt(syntax::StmtKind kind);
-    [[nodiscard]] syntax::StmtId parse_if_stmt();
-    [[nodiscard]] syntax::StmtId parse_for_stmt();
-    [[nodiscard]] syntax::StmtId parse_while_stmt();
-    [[nodiscard]] syntax::StmtId parse_defer_stmt();
-    [[nodiscard]] syntax::StmtId parse_return_stmt();
-    [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt();
-    [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt(bool require_semicolon);
-
-    [[nodiscard]] syntax::ExprId parse_expr();
-    [[nodiscard]] syntax::ExprId parse_if_expr();
-    [[nodiscard]] syntax::ExprId parse_match_expr();
-    [[nodiscard]] syntax::PatternId parse_pattern();
-    [[nodiscard]] syntax::PatternId parse_pattern_atom();
-    [[nodiscard]] syntax::ExprId parse_logical_or();
-    [[nodiscard]] syntax::ExprId parse_logical_and();
-    [[nodiscard]] syntax::ExprId parse_bit_or();
-    [[nodiscard]] syntax::ExprId parse_bit_xor();
-    [[nodiscard]] syntax::ExprId parse_bit_and();
-    [[nodiscard]] syntax::ExprId parse_equality();
-    [[nodiscard]] syntax::ExprId parse_compare();
-    [[nodiscard]] syntax::ExprId parse_shift();
-    [[nodiscard]] syntax::ExprId parse_add();
-    [[nodiscard]] syntax::ExprId parse_mul();
-    [[nodiscard]] syntax::ExprId parse_unary();
-    [[nodiscard]] syntax::ExprId parse_postfix();
-    [[nodiscard]] syntax::ExprId parse_primary();
-    [[nodiscard]] syntax::ExprId parse_builtin_cast(syntax::ExprKind kind);
-    [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);
-    [[nodiscard]] syntax::ExprId parse_move_expr();
-    [[nodiscard]] syntax::ExprId make_binary(syntax::BinaryOp op, syntax::ExprId lhs, syntax::ExprId rhs, base::SourceRange range);
-    [[nodiscard]] syntax::ExprId make_invalid_expr();
-
     [[nodiscard]] base::SourceRange merge(base::SourceRange begin, base::SourceRange end) const noexcept;
     void reset_panic() noexcept;
 
+    friend class ExprParser;
+    friend class ItemParser;
+    friend class ParserPartBase;
+    friend class PatternParser;
+    friend class StmtParser;
+    friend class TypeParser;
+
     ParseSession session_;
-    bool allow_struct_literal_ = true;
 };
 
 } // namespace aurex::parse

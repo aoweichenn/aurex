@@ -39,9 +39,12 @@ private:
     };
 
     [[nodiscard]] bool is_at_end() const noexcept;
+    [[nodiscard]] bool starts_with(std::string_view text) const noexcept;
+    [[nodiscard]] char peek_at(base::usize lookahead) const noexcept;
     [[nodiscard]] char peek() const noexcept;
     [[nodiscard]] char peek_next() const noexcept;
     char advance() noexcept;
+    void advance_bytes(base::usize byte_count) noexcept;
     [[nodiscard]] bool match(char expected) noexcept;
 
     void skip_trivia();
@@ -51,15 +54,15 @@ private:
     [[nodiscard]] bool scan_digits(DigitSet digit_set, std::string_view literal_kind);
     [[nodiscard]] bool scan_fraction_part();
     [[nodiscard]] bool scan_exponent_part();
-    void scan_string();
-    void scan_c_string();
     void scan_string_body(
         base::usize begin,
         syntax::TokenKind token_kind,
         base::StringLiteralKind literal_kind,
         std::string_view unterminated_message
     );
-    void scan_byte();
+    void scan_string(base::usize begin);
+    void scan_c_string(base::usize begin);
+    void scan_byte(base::usize begin);
     void scan_line_comment();
     void scan_block_comment();
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
@@ -69,7 +72,7 @@ private:
     std::string_view source_text_;
     base::DiagnosticSink& diagnostics_;
     LexerOptions options_;
-    base::usize offset_ = 0;
+    base::usize offset_ {};
     std::vector<syntax::Token> tokens_;
 };
 

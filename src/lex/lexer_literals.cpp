@@ -2,6 +2,7 @@
 
 #include "aurex/base/string_literal.hpp"
 #include "char_class.hpp"
+#include "lexeme.hpp"
 
 #include <string>
 
@@ -11,16 +12,22 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
     bool saw_digit = false;
     bool previous_was_digit = false;
     bool previous_was_separator = false;
-    while (peek() == '_' ||
+    base::usize previous_separator_begin = offset_;
+    while (peek() == digit_separator ||
            (digit_set == DigitSet::decimal && is_decimal_digit(peek())) ||
            (digit_set == DigitSet::hexadecimal && is_hex_digit(peek())) ||
            (digit_set == DigitSet::binary && is_binary_digit(peek()))) {
         const base::usize separator_begin = offset_;
         const char c = advance();
-        if (c == '_') {
+        if (c == digit_separator) {
             if (!previous_was_digit) {
-                report(separator_begin, separator_begin + 1, "digit separator must be between digits");
+                report(
+                    separator_begin,
+                    separator_begin + single_byte_lexeme_width,
+                    "digit separator must be between digits"
+                );
             }
+            previous_separator_begin = separator_begin;
             previous_was_digit = false;
             previous_was_separator = true;
             continue;
@@ -29,8 +36,12 @@ bool Lexer::scan_digits(const DigitSet digit_set, const std::string_view literal
         previous_was_digit = true;
         previous_was_separator = false;
     }
-    if (previous_was_separator && offset_ > 0) {
-        report(offset_ - 1, offset_, "digit separator must be between digits");
+    if (previous_was_separator) {
+        report(
+            previous_separator_begin,
+            previous_separator_begin + single_byte_lexeme_width,
+            "digit separator must be between digits"
+        );
     }
     if (!saw_digit) {
         report(offset_, offset_, std::string(literal_kind) + " literal has no digits");
@@ -52,8 +63,7 @@ bool Lexer::scan_exponent_part() {
         return false;
     }
 
-    const base::usize next = offset_ + 1;
-    const char next_char = next < source_text_.size() ? source_text_[next] : '\0';
+    const char next_char = peek_next();
     if (!is_decimal_digit(next_char) && next_char != '+' && next_char != '-') {
         return false;
     }
@@ -70,13 +80,11 @@ void Lexer::scan_number() {
     const base::usize begin = offset_;
     bool is_float = false;
 
-    if (peek() == '0' && (peek_next() == 'x' || peek_next() == 'X')) {
-        advance();
-        advance();
+    if (starts_with(hex_integer_prefix_lower) || starts_with(hex_integer_prefix_upper)) {
+        advance_bytes(hex_integer_prefix_lower.size());
         static_cast<void>(scan_digits(DigitSet::hexadecimal, "integer"));
-    } else if (peek() == '0' && (peek_next() == 'b' || peek_next() == 'B')) {
-        advance();
-        advance();
+    } else if (starts_with(binary_integer_prefix_lower) || starts_with(binary_integer_prefix_upper)) {
+        advance_bytes(binary_integer_prefix_lower.size());
         static_cast<void>(scan_digits(DigitSet::binary, "integer"));
     } else {
         static_cast<void>(scan_digits(DigitSet::decimal, "integer"));
@@ -87,8 +95,7 @@ void Lexer::scan_number() {
     add_token(is_float ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin, offset_);
 }
 
-void Lexer::scan_string() {
-    const base::usize begin = offset_ - 1;
+void Lexer::scan_string(const base::usize begin) {
     scan_string_body(
         begin,
         syntax::TokenKind::string_literal,
@@ -97,10 +104,8 @@ void Lexer::scan_string() {
     );
 }
 
-void Lexer::scan_c_string() {
-    const base::usize begin = offset_;
-    advance();
-    advance();
+void Lexer::scan_c_string(const base::usize begin) {
+    advance_bytes(c_string_prefix.size());
     scan_string_body(
         begin,
         syntax::TokenKind::c_string_literal,
@@ -151,10 +156,8 @@ void Lexer::scan_string_body(
     add_token(syntax::TokenKind::invalid, begin, offset_);
 }
 
-void Lexer::scan_byte() {
-    const base::usize begin = offset_;
-    advance();
-    advance();
+void Lexer::scan_byte(const base::usize begin) {
+    advance_bytes(byte_literal_prefix.size());
 
     if (is_at_end() || peek() == '\n') {
         report(begin, offset_, "unterminated byte literal");

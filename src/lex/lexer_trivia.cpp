@@ -1,6 +1,7 @@
 #include "aurex/lex/lexer.hpp"
 
 #include "char_class.hpp"
+#include "lexeme.hpp"
 
 namespace aurex::lex {
 
@@ -9,11 +10,11 @@ void Lexer::skip_trivia() {
         while (!is_at_end() && is_trivia_space(peek())) {
             advance();
         }
-        if (peek() == '/' && peek_next() == '/') {
+        if (starts_with(line_comment_prefix)) {
             scan_line_comment();
             continue;
         }
-        if (peek() == '/' && peek_next() == '*') {
+        if (starts_with(block_comment_prefix)) {
             scan_block_comment();
             continue;
         }
@@ -29,12 +30,10 @@ void Lexer::scan_line_comment() {
 
 void Lexer::scan_block_comment() {
     const base::usize begin = offset_;
-    advance();
-    advance();
+    advance_bytes(block_comment_prefix.size());
     while (!is_at_end()) {
-        if (peek() == '*' && peek_next() == '/') {
-            advance();
-            advance();
+        if (starts_with(block_comment_suffix)) {
+            advance_bytes(block_comment_suffix.size());
             return;
         }
         advance();

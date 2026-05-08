@@ -60,6 +60,12 @@ Current contexts:
   outer grammar starters.
 - `RecoveryContext::enum_case` is used inside enum case lists. It stops at case
   separators, `}`, declaration starters, and obvious outer grammar starters.
+- `RecoveryContext::generic_parameter` is used inside generic parameter lists.
+  It stops at parameter separators, `>`, declaration followers, valid generic
+  parameter starters, and obvious outer grammar starters.
+- `RecoveryContext::abi_attribute_argument` is used inside ABI attribute
+  argument parentheses. It stops at the argument value, `)`, function
+  body/prototype boundaries, and obvious outer grammar starters.
 - `RecoveryContext::item_or_statement` remains the conservative default for
   bridge calls while a caller is being migrated to a narrower context.
 
@@ -124,7 +130,7 @@ Near-term improvements:
 
 - Keep deduplicating small lookahead and recovery helpers.
 - Add narrower recovery contexts where the grammar has a real boundary, such as
-  generic parameter lists and ABI attribute arguments.
+  import paths and builtin expression argument lists.
 - Keep tests close to grammar boundaries that are likely to regress.
 - Make parser parts easier to reason about before algorithmic changes.
 

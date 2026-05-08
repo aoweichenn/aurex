@@ -136,11 +136,15 @@ private:
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
     [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);
     [[nodiscard]] std::vector<std::string_view> parse_generic_param_list();
+    [[nodiscard]] std::optional<std::string_view> parse_generic_param();
+    [[nodiscard]] bool recover_generic_param_separator();
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
-    [[nodiscard]] syntax::ParamDecl parse_param();
+    [[nodiscard]] std::optional<syntax::ParamDecl> parse_param();
     [[nodiscard]] bool recover_param_separator(bool& is_variadic);
     [[nodiscard]] syntax::TypeId parse_optional_return_type();
     void parse_optional_abi_name(syntax::ItemNode& item);
+    void parse_abi_name_argument(syntax::ItemNode& item);
+    void recover_abi_attribute_argument_end();
 };
 
 class ExprParser final : private ParserPartBase {

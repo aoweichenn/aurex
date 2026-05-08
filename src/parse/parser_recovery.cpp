@@ -201,6 +201,35 @@ using syntax::TokenKind;
     }
 }
 
+[[nodiscard]] bool token_ends_generic_parameter(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::greater:
+    case TokenKind::comma:
+    case TokenKind::l_paren:
+    case TokenKind::r_paren:
+    case TokenKind::l_brace:
+    case TokenKind::colon:
+    case TokenKind::semicolon:
+    case TokenKind::r_brace:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool token_matches_abi_attribute_argument(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::string_literal:
+    case TokenKind::r_paren:
+    case TokenKind::l_brace:
+    case TokenKind::semicolon:
+    case TokenKind::r_brace:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 bool token_starts_match_arm(const TokenKind kind) noexcept {
@@ -231,6 +260,10 @@ bool token_starts_struct_decl_field(const TokenKind kind) noexcept {
 }
 
 bool token_starts_enum_case(const TokenKind kind) noexcept {
+    return kind == TokenKind::identifier;
+}
+
+bool token_starts_generic_parameter(const TokenKind kind) noexcept {
     return kind == TokenKind::identifier;
 }
 
@@ -274,6 +307,15 @@ bool token_matches_recovery_context(
     case RecoveryContext::enum_case:
         return token_ends_enum_case(kind) ||
                token_starts_enum_case(kind) ||
+               token_starts_item(kind) ||
+               token_starts_non_expression_statement(kind);
+    case RecoveryContext::generic_parameter:
+        return token_ends_generic_parameter(kind) ||
+               token_starts_generic_parameter(kind) ||
+               token_starts_item(kind) ||
+               token_starts_non_expression_statement(kind);
+    case RecoveryContext::abi_attribute_argument:
+        return token_matches_abi_attribute_argument(kind) ||
                token_starts_item(kind) ||
                token_starts_non_expression_statement(kind);
     case RecoveryContext::item_or_statement:

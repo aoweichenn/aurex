@@ -21,6 +21,10 @@ enum class RecoveryContext {
     struct_decl_field,
     // Enum case list boundary after a malformed case or separator.
     enum_case,
+    // Generic parameter list boundary after a malformed parameter or separator.
+    generic_parameter,
+    // ABI attribute argument boundary after a malformed attribute argument.
+    abi_attribute_argument,
     // Transitional default for bridge calls that have not chosen a narrower boundary.
     item_or_statement,
 };

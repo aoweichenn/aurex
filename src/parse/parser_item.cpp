@@ -1,5 +1,8 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include "aurex/parse/recovery.hpp"
+
+#include <optional>
 #include <utility>
 
 namespace aurex::parse {
@@ -127,21 +130,47 @@ syntax::ItemId ItemParser::parse_type_alias_decl() {
 std::vector<std::string_view> ItemParser::parse_generic_param_list() {
     std::vector<std::string_view> params;
     this->expect(TokenKind::less, "expected '<' before generic parameter list");
-    if (!this->check(TokenKind::greater)) {
-        do {
-            const syntax::Token& name = this->expect(TokenKind::identifier, "expected generic parameter name");
-            if (name.kind == TokenKind::identifier) {
-                params.push_back(name.text);
-            }
-            this->reset_panic();
-            if (this->check(TokenKind::greater)) {
-                break;
-            }
-        } while (this->match(TokenKind::comma) && !this->check(TokenKind::greater));
+    while (!this->is_eof() && !this->check(TokenKind::greater)) {
+        if (std::optional<std::string_view> param = this->parse_generic_param()) {
+            params.push_back(param.value());
+        }
+        this->reset_panic();
+        if (!this->recover_generic_param_separator()) {
+            break;
+        }
     }
     this->expect(TokenKind::greater, "expected '>' after generic parameter list");
     this->reset_panic();
     return params;
+}
+
+std::optional<std::string_view> ItemParser::parse_generic_param() {
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected generic parameter name");
+    if (name.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+    return name.text;
+}
+
+bool ItemParser::recover_generic_param_separator() {
+    if (this->check(TokenKind::greater)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::greater);
+    }
+
+    this->report_here("expected ',' or '>' after generic parameter");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_parameter)) {
+        this->synchronize(RecoveryContext::generic_parameter);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::greater);
+    }
+    this->reset_panic();
+    return token_starts_generic_parameter(this->peek().kind);
 }
 
 } // namespace aurex::parse

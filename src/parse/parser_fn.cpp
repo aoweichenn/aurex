@@ -2,6 +2,7 @@
 
 #include "aurex/parse/recovery.hpp"
 
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -77,7 +78,9 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
             }
             break;
         }
-        params.push_back(this->parse_param());
+        if (std::optional<syntax::ParamDecl> param = this->parse_param()) {
+            params.push_back(param.value());
+        }
         this->reset_panic();
         if (!this->recover_param_separator(is_variadic)) {
             break;
@@ -86,12 +89,12 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
     return params;
 }
 
-syntax::ParamDecl ItemParser::parse_param() {
+std::optional<syntax::ParamDecl> ItemParser::parse_param() {
     const syntax::Token& name = this->expect(TokenKind::identifier, "expected parameter name");
     this->expect(TokenKind::colon, "expected ':' after parameter name");
     const syntax::TypeId type = this->parse_type();
     if (name.kind != TokenKind::identifier) {
-        return {};
+        return std::nullopt;
     }
     return syntax::ParamDecl {
         name.text,
@@ -145,11 +148,28 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
         this->report_at(attr, "expected ABI attribute 'name'");
     }
     this->expect(TokenKind::l_paren, "expected '(' after ABI attribute");
+    this->parse_abi_name_argument(item);
+    this->recover_abi_attribute_argument_end();
+    this->reset_panic();
+}
+
+void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) {
     const syntax::Token& value = this->expect(TokenKind::string_literal, "expected string literal in ABI name");
     if (value.kind == TokenKind::string_literal) {
         item.abi_name = unquote_string_literal(value.text);
     }
-    this->expect(TokenKind::r_paren, "expected ')' after ABI attribute");
+}
+
+void ItemParser::recover_abi_attribute_argument_end() {
+    if (this->match(TokenKind::r_paren)) {
+        return;
+    }
+
+    this->report_here("expected ')' after ABI attribute");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::abi_attribute_argument)) {
+        this->synchronize(RecoveryContext::abi_attribute_argument);
+    }
+    this->match(TokenKind::r_paren);
     this->reset_panic();
 }
 

@@ -1,5 +1,6 @@
 #include "aurex/parse/parser_parts.hpp"
 
+#include <optional>
 #include <utility>
 
 namespace aurex::parse {
@@ -12,23 +13,33 @@ using syntax::TokenKind;
 
 syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
     syntax::ExprId expr = PrimaryExprParser(this->parser_).parse_primary(context);
-    while (true) {
-        if (this->next_angle_list_is_type_scope() && this->match(TokenKind::less)) {
-            expr = this->parse_type_args_suffix(expr);
-        } else if (this->match(TokenKind::dot)) {
-            expr = this->parse_field_suffix(expr);
-        } else if (this->match(TokenKind::l_bracket)) {
-            expr = this->parse_index_suffix(expr, context);
-        } else if (this->match(TokenKind::l_paren)) {
-            expr = this->parse_call_suffix(expr, context);
-        } else if (this->match(TokenKind::question)) {
-            expr = this->parse_try_suffix(expr);
-        } else {
-            break;
-        }
+    while (std::optional<syntax::ExprId> next = this->parse_next_suffix(expr, context)) {
+        expr = next.value();
         this->reset_panic();
     }
     return expr;
+}
+
+std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
+    const syntax::ExprId expr,
+    const ExprContext context
+) {
+    if (this->next_angle_list_is_type_scope() && this->match(TokenKind::less)) {
+        return this->parse_type_args_suffix(expr);
+    }
+    if (this->match(TokenKind::dot)) {
+        return this->parse_field_suffix(expr);
+    }
+    if (this->match(TokenKind::l_bracket)) {
+        return this->parse_index_suffix(expr, context);
+    }
+    if (this->match(TokenKind::l_paren)) {
+        return this->parse_call_suffix(expr, context);
+    }
+    if (this->match(TokenKind::question)) {
+        return this->parse_try_suffix(expr);
+    }
+    return std::nullopt;
 }
 
 syntax::ExprId PostfixExprParser::parse_type_args_suffix(const syntax::ExprId expr) {

@@ -21,127 +21,147 @@ Lexer::Lexer(
       cursor_(source_text),
       diagnostics_(diagnostics),
       options_(options) {
-    tokens_.reserve(base::config::initial_token_capacity);
+    this->tokens_.reserve(base::config::initial_token_capacity);
 }
 
 base::Result<std::vector<syntax::Token>> Lexer::tokenize() {
-    while (!is_at_end()) {
-        skip_trivia();
-        if (!is_at_end()) {
-            scan_token();
+    while (!this->is_at_end()) {
+        this->skip_trivia();
+        if (!this->is_at_end()) {
+            this->scan_token();
         }
     }
 
-    add_token(syntax::TokenKind::eof, cursor_.source_size(), cursor_.source_size());
-    if (diagnostics_.has_error()) {
+    this->add_token(syntax::TokenKind::eof, this->cursor_.source_size(), this->cursor_.source_size());
+    if (this->diagnostics_.has_error()) {
         return base::Result<std::vector<syntax::Token>>::fail(
             {base::ErrorCode::lex_error, std::string(lexing_failed_message)}
         );
     }
-    return base::Result<std::vector<syntax::Token>>::ok(std::move(tokens_));
+    return base::Result<std::vector<syntax::Token>>::ok(std::move(this->tokens_));
 }
 
 bool Lexer::is_at_end() const noexcept {
-    return cursor_.is_at_end();
+    return this->cursor_.is_at_end();
 }
 
 bool Lexer::starts_with(const std::string_view text) const noexcept {
-    return cursor_.starts_with(text);
+    return this->cursor_.starts_with(text);
 }
 
 char Lexer::peek() const noexcept {
-    return cursor_.peek();
+    return this->cursor_.peek();
 }
 
 char Lexer::peek_next() const noexcept {
-    return cursor_.peek_next();
+    return this->cursor_.peek_next();
 }
 
 char Lexer::advance() noexcept {
-    return cursor_.advance();
+    return this->cursor_.advance();
 }
 
 void Lexer::advance_bytes(const base::usize byte_count) noexcept {
-    cursor_.advance_bytes(byte_count);
+    this->cursor_.advance_bytes(byte_count);
 }
 
 bool Lexer::match(const char expected) noexcept {
-    return cursor_.match(expected);
+    return this->cursor_.match(expected);
 }
 
 void Lexer::scan_token() {
-    const base::usize begin = cursor_.offset();
+    const base::usize begin = this->cursor_.offset();
 
-    if (starts_with(c_string_prefix)) {
-        scan_c_string(begin);
+    if (this->starts_with(c_string_prefix)) {
+        this->scan_c_string(begin);
         return;
     }
-    if (starts_with(byte_literal_prefix)) {
-        scan_byte(begin);
+    if (this->starts_with(byte_literal_prefix)) {
+        this->scan_byte(begin);
         return;
     }
-    if (is_ident_start(peek())) {
-        scan_identifier();
+    if (is_ident_start(this->peek())) {
+        this->scan_identifier();
         return;
     }
-    if (is_decimal_digit(peek())) {
-        scan_number();
-        return;
-    }
-
-    if (peek() == lexeme_double_quote) {
-        advance();
-        scan_string(begin);
+    if (is_decimal_digit(this->peek())) {
+        this->scan_number();
         return;
     }
 
-    if (scan_punctuator(begin)) {
+    if (this->peek() == lexeme_double_quote) {
+        this->advance();
+        this->scan_string(begin);
         return;
     }
 
-    advance();
-    report(begin, cursor_.offset(), invalid_character_message);
-    if (options_.emit_invalid_tokens) {
-        finish_token(syntax::TokenKind::invalid, begin);
+    if (this->scan_punctuator(begin)) {
+        return;
     }
+
+    this->advance();
+    this->report_current(begin, invalid_character_message);
+    this->finish_invalid_token(begin);
 }
 
 bool Lexer::scan_punctuator(const base::usize begin) {
-    const auto match = match_punctuator(cursor_.remaining_text());
+    const auto match = match_punctuator(this->cursor_.remaining_text());
     if (!match.has_value()) {
         return false;
     }
-    advance_bytes(match->text.size());
-    finish_token(match->kind, begin);
+    this->advance_bytes(match->text.size());
+    this->finish_token(match->kind, begin);
     return true;
 }
 
 void Lexer::scan_identifier() {
-    const base::usize begin = cursor_.offset();
-    while (is_ident_continue(peek())) {
-        advance();
+    const base::usize begin = this->cursor_.offset();
+    while (is_ident_continue(this->peek())) {
+        this->advance();
     }
-    const std::string_view text = cursor_.slice(begin, cursor_.offset());
-    finish_token(keyword_kind(text), begin);
+    const std::string_view text = this->cursor_.slice(begin, this->cursor_.offset());
+    this->finish_token(keyword_kind(text), begin);
+}
+
+base::SourceRange Lexer::range(const base::usize begin, const base::usize end) const noexcept {
+    return base::SourceRange {this->source_id_, begin, end};
+}
+
+base::SourceRange Lexer::current_range(const base::usize begin) const noexcept {
+    return this->range(begin, this->cursor_.offset());
 }
 
 void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin) {
-    add_token(kind, begin, cursor_.offset());
+    this->add_token(kind, begin, this->cursor_.offset());
+}
+
+void Lexer::finish_invalid_token(const base::usize begin) {
+    if (this->options_.emit_invalid_tokens) {
+        this->finish_token(syntax::TokenKind::invalid, begin);
+    }
 }
 
 void Lexer::add_token(const syntax::TokenKind kind, const base::usize begin, const base::usize end) {
-    tokens_.push_back(syntax::Token {
+    this->tokens_.push_back(syntax::Token {
         kind,
-        base::SourceRange {source_id_, begin, end},
-        cursor_.slice(begin, end),
+        this->range(begin, end),
+        this->cursor_.slice(begin, end),
+    });
+}
+
+void Lexer::report_current(const base::usize begin, const std::string_view message) const {
+    this->diagnostics_.push(base::Diagnostic {
+        base::Severity::error,
+        this->current_range(begin),
+        std::string(message),
     });
 }
 
 void Lexer::report(const base::usize begin, const base::usize end, const std::string_view message) const
 {
-    diagnostics_.push(base::Diagnostic {
+    this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
-        base::SourceRange {source_id_, begin, end},
+        this->range(begin, end),
         std::string(message),
     });
 }

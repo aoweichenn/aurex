@@ -18,7 +18,8 @@ the narrowest parser part that owns the relevant grammar surface.
 | `BlockParser` | Statement blocks and block expressions. |
 | `ControlStmtParser` | `if`, `for`, `while`, `defer`, and `return` statements. |
 | `ExprParser` | High-level expression dispatch, conditional/match expressions, unary operators, and table-driven binary precedence parsing. |
-| `PrimaryExprParser` | Identifiers, literals, grouped expressions, struct literals, block expressions, and builtin dispatch. |
+| `PrimaryExprParser` | Primary expression dispatch, literals, grouped expressions, block expressions, and builtin keyword dispatch. |
+| `NameExprParser` | Identifier expressions, scoped names, and struct literals. |
 | `PostfixExprParser` | Postfix expression suffixes: type arguments, field access, indexing, calls, and `?`. |
 | `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, move, and string helpers. |
 | `PatternParser` | Match patterns. |

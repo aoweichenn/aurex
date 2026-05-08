@@ -1,7 +1,8 @@
 add_library(aurex_lex
     src/lex/keyword.cpp
     src/lex/lexer.cpp
-    src/lex/lexer_literals.cpp
+    src/lex/lexer_numbers.cpp
+    src/lex/lexer_strings.cpp
     src/lex/lexer_trivia.cpp
 )
 target_link_libraries(aurex_lex PUBLIC aurex_base aurex_syntax)
@@ -18,6 +19,7 @@ add_library(aurex_parse
     src/parse/parser_fn.cpp
     src/parse/parser_item.cpp
     src/parse/parser_module_item.cpp
+    src/parse/parser_name_expr.cpp
     src/parse/parser_parts.cpp
     src/parse/parser_pattern.cpp
     src/parse/parser_postfix.cpp

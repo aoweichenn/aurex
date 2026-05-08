@@ -72,8 +72,12 @@ private:
     void scan_byte(base::usize begin);
     void scan_line_comment();
     void scan_block_comment();
+    [[nodiscard]] base::SourceRange range(base::usize begin, base::usize end) const noexcept;
+    [[nodiscard]] base::SourceRange current_range(base::usize begin) const noexcept;
     void finish_token(syntax::TokenKind kind, base::usize begin);
+    void finish_invalid_token(base::usize begin);
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
+    void report_current(base::usize begin, std::string_view message) const;
     void report(base::usize begin, base::usize end, std::string_view message) const;
 
     base::SourceId source_id_;

@@ -35,6 +35,9 @@ the narrowest parser part that owns the relevant grammar surface.
   such as token arity, radix, delimiter width, binding power, and limits.
 - Inside C++ class methods, qualify member function calls and member field
   access with `this->`.
+- Use `ParserPartBase` range helpers such as `expr_range_or` and
+  `stmt_range_or` when deriving source ranges from AST ids on recovery-prone
+  paths. Do not index AST vectors directly just to read a node range.
 - Preserve behavior during architecture refactors unless the task explicitly
   asks for syntax or semantic changes.
 - Add or adjust focused parser tests before changing parsing algorithms,

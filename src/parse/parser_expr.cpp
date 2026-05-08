@@ -94,7 +94,7 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::if_expr;
-    expr.range = this->merge(begin.range, this->session_.module.exprs[else_expr.value].range);
+    expr.range = this->merge(begin.range, this->expr_range_or(else_expr, begin.range));
     expr.condition = condition;
     expr.then_expr = then_expr;
     expr.else_expr = else_expr;
@@ -118,12 +118,9 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         }
         this->expect(TokenKind::fat_arrow, "expected '=>' after match case");
         const syntax::ExprId arm_value = this->parse_expr(context);
-        base::SourceRange pattern_range = {};
-        if (syntax::is_valid(pattern) && pattern.value < this->session_.module.patterns.size()) {
-            pattern_range = this->session_.module.patterns[pattern.value].range;
-        }
+        const base::SourceRange pattern_range = this->pattern_range_or(pattern, begin.range);
         base::SourceRange arm_range = syntax::is_valid(arm_value)
-            ? this->merge(pattern_range, this->session_.module.exprs[arm_value.value].range)
+            ? this->merge(pattern_range, this->expr_range_or(arm_value, pattern_range))
             : pattern_range;
         expr.match_arms.push_back(syntax::MatchArm {
             pattern,
@@ -167,7 +164,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
         const syntax::ExprId operand = this->parse_unary(context);
         syntax::ExprNode expr;
         expr.kind = syntax::ExprKind::unary;
-        expr.range = this->merge(op.range, this->session_.module.exprs[operand.value].range);
+        expr.range = this->merge(op.range, this->expr_range_or(operand, op.range));
         expr.text = op.text;
         switch (op.kind) {
         case TokenKind::bang:
@@ -195,12 +192,11 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
 }
 
 syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) {
+    const base::SourceRange lhs_range = this->expr_range_or(lhs, this->expr_range_or(rhs, this->peek().range));
+    const base::SourceRange rhs_range = this->expr_range_or(rhs, lhs_range);
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::binary;
-    expr.range = this->merge(
-        this->session_.module.exprs[lhs.value].range,
-        this->session_.module.exprs[rhs.value].range
-    );
+    expr.range = this->merge(lhs_range, rhs_range);
     expr.binary_op = op;
     expr.binary_lhs = lhs;
     expr.binary_rhs = rhs;

@@ -157,7 +157,7 @@ syntax::TypeId TypeParser::parse_type() {
         const syntax::TypeId pointee = this->parse_type();
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::pointer;
-        type.range = this->merge(begin.range, this->session_.module.types[pointee.value].range);
+        type.range = this->merge(begin.range, this->type_range_or(pointee, begin.range));
         type.pointer_mutability = mutability;
         type.pointee = pointee;
         return this->session_.module.push_type(type);
@@ -173,7 +173,7 @@ syntax::TypeId TypeParser::parse_type() {
         }
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::array;
-        type.range = this->merge(begin.range, this->session_.module.types[element.value].range);
+        type.range = this->merge(begin.range, this->type_range_or(element, begin.range));
         type.array_count = array_count;
         type.array_element = element;
         return this->session_.module.push_type(type);

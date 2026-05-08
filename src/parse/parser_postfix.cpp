@@ -68,7 +68,7 @@ syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) 
     const syntax::Token& field = this->expect(TokenKind::identifier, "expected field name after '.'");
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::field;
-    node.range = this->merge(this->session_.module.exprs[expr.value].range, field.range);
+    node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
     node.object = expr;
     node.field_name = field.text;
     return this->session_.module.push_expr(std::move(node));
@@ -79,7 +79,7 @@ syntax::ExprId PostfixExprParser::parse_index_suffix(const syntax::ExprId expr, 
     const syntax::Token& end = this->expect(TokenKind::r_bracket, "expected ']' after index");
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::index;
-    node.range = this->merge(this->session_.module.exprs[expr.value].range, end.range);
+    node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
     node.object = expr;
     node.index = index;
     return this->session_.module.push_expr(std::move(node));
@@ -98,7 +98,7 @@ syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId expr, c
         } while (this->match(TokenKind::comma) && !this->check(TokenKind::r_paren));
     }
     const syntax::Token& end = this->expect(TokenKind::r_paren, "expected ')' after argument list");
-    node.range = this->merge(this->session_.module.exprs[expr.value].range, end.range);
+    node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
     return this->session_.module.push_expr(std::move(node));
 }
 
@@ -107,9 +107,7 @@ syntax::ExprId PostfixExprParser::parse_try_suffix(const syntax::ExprId expr) {
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::try_expr;
     node.unary_operand = expr;
-    node.range = syntax::is_valid(expr) && expr.value < this->session_.module.exprs.size()
-        ? this->merge(this->session_.module.exprs[expr.value].range, question.range)
-        : question.range;
+    node.range = this->merge(this->expr_range_or(expr, question.range), question.range);
     return this->session_.module.push_expr(std::move(node));
 }
 

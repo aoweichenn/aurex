@@ -71,25 +71,26 @@ bool Lexer::match(const char expected) noexcept {
 
 void Lexer::scan_token() {
     const base::usize begin = this->cursor_.offset();
+    const char first = this->peek();
 
-    if (this->starts_with(c_string_prefix)) {
+    if (first == c_string_prefix.front() && this->starts_with(c_string_prefix)) {
         this->scan_c_string(begin);
         return;
     }
-    if (this->starts_with(byte_literal_prefix)) {
+    if (first == byte_literal_prefix.front() && this->starts_with(byte_literal_prefix)) {
         this->scan_byte(begin);
         return;
     }
-    if (is_ident_start(this->peek())) {
+    if (is_ident_start(first)) {
         this->scan_identifier();
         return;
     }
-    if (is_decimal_digit(this->peek())) {
+    if (is_decimal_digit(first)) {
         this->scan_number();
         return;
     }
 
-    if (this->peek() == lexeme_double_quote) {
+    if (first == lexeme_double_quote) {
         this->advance();
         this->scan_string(begin);
         return;
@@ -109,7 +110,7 @@ bool Lexer::scan_punctuator(const base::usize begin) {
     if (!match.has_value()) {
         return false;
     }
-    this->advance_bytes(match->text.size());
+    this->advance_bytes(match->width);
     this->finish_token(match->kind, begin);
     return true;
 }

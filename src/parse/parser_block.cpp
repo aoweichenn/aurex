@@ -56,7 +56,7 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
             stmt.lhs = expr;
             stmt.rhs = this->parse_expr(context);
             const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after assignment");
-            stmt.range = syntax::is_valid(expr) ? this->merge(this->session_.module.exprs[expr.value].range, end.range) : end.range;
+            stmt.range = this->merge(this->expr_range_or(expr, end.range), end.range);
             block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
             this->reset_panic();
             continue;
@@ -65,7 +65,7 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
             syntax::StmtNode stmt;
             stmt.kind = syntax::StmtKind::expr;
             stmt.init = expr;
-            stmt.range = syntax::is_valid(expr) ? this->merge(this->session_.module.exprs[expr.value].range, this->previous().range) : this->previous().range;
+            stmt.range = this->merge(this->expr_range_or(expr, this->previous().range), this->previous().range);
             block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
             this->reset_panic();
             continue;

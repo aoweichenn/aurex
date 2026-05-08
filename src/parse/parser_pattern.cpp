@@ -16,14 +16,12 @@ syntax::PatternId PatternParser::parse_pattern() {
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::or_pattern;
     pattern.alternatives.push_back(first);
-    base::SourceRange range = syntax::is_valid(first) && first.value < this->session_.module.patterns.size()
-        ? this->session_.module.patterns[first.value].range
-        : this->previous().range;
+    base::SourceRange range = this->pattern_range_or(first, this->previous().range);
     do {
         const syntax::PatternId alternative = this->parse_pattern_atom();
         pattern.alternatives.push_back(alternative);
-        if (syntax::is_valid(alternative) && alternative.value < this->session_.module.patterns.size()) {
-            range = this->merge(range, this->session_.module.patterns[alternative.value].range);
+        if (syntax::is_valid(alternative)) {
+            range = this->merge(range, this->pattern_range_or(alternative, range));
         }
     } while (this->match(TokenKind::pipe));
     pattern.range = range;

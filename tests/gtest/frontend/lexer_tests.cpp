@@ -219,6 +219,59 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     EXPECT_EQ(token_kinds(result.value()), expected);
 }
 
+TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source =
+        "... . :: : -> - => == = != ! <= << < >= >> > && & || | "
+        "( ) { } [ ] , ; + * / % ^ ~ @ ?";
+    lex::Lexer lexer({9}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_TRUE(result) << result.error().message;
+    EXPECT_FALSE(diagnostics.has_error());
+
+    const std::vector<TokenKind> expected {
+        TokenKind::ellipsis,
+        TokenKind::dot,
+        TokenKind::colon_colon,
+        TokenKind::colon,
+        TokenKind::arrow,
+        TokenKind::minus,
+        TokenKind::fat_arrow,
+        TokenKind::equal_equal,
+        TokenKind::equal,
+        TokenKind::bang_equal,
+        TokenKind::bang,
+        TokenKind::less_equal,
+        TokenKind::less_less,
+        TokenKind::less,
+        TokenKind::greater_equal,
+        TokenKind::greater_greater,
+        TokenKind::greater,
+        TokenKind::amp_amp,
+        TokenKind::amp,
+        TokenKind::pipe_pipe,
+        TokenKind::pipe,
+        TokenKind::l_paren,
+        TokenKind::r_paren,
+        TokenKind::l_brace,
+        TokenKind::r_brace,
+        TokenKind::l_bracket,
+        TokenKind::r_bracket,
+        TokenKind::comma,
+        TokenKind::semicolon,
+        TokenKind::plus,
+        TokenKind::star,
+        TokenKind::slash,
+        TokenKind::percent,
+        TokenKind::caret,
+        TokenKind::tilde,
+        TokenKind::at,
+        TokenKind::question,
+        TokenKind::eof,
+    };
+    EXPECT_EQ(token_kinds(result.value()), expected);
+}
+
 TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =

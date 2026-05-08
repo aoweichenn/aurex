@@ -80,16 +80,16 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(const bool require_semicolo
         stmt.kind = syntax::StmtKind::expr;
         stmt.init = lhs;
     }
-    base::SourceRange end_range = syntax::is_valid(lhs) ? this->session_.module.exprs[lhs.value].range : this->peek().range;
+    base::SourceRange end_range = this->expr_range_or(lhs, this->peek().range);
     if (require_semicolon) {
         const syntax::Token& end = this->expect(TokenKind::semicolon, "expected ';' after expression statement");
         end_range = end.range;
-    } else if (stmt.kind == syntax::StmtKind::assign && syntax::is_valid(stmt.rhs) && stmt.rhs.value < this->session_.module.exprs.size()) {
-        end_range = this->session_.module.exprs[stmt.rhs.value].range;
-    } else if (stmt.kind == syntax::StmtKind::expr && syntax::is_valid(stmt.init) && stmt.init.value < this->session_.module.exprs.size()) {
-        end_range = this->session_.module.exprs[stmt.init.value].range;
+    } else if (stmt.kind == syntax::StmtKind::assign) {
+        end_range = this->expr_range_or(stmt.rhs, end_range);
+    } else if (stmt.kind == syntax::StmtKind::expr) {
+        end_range = this->expr_range_or(stmt.init, end_range);
     }
-    stmt.range = syntax::is_valid(lhs) ? this->merge(this->session_.module.exprs[lhs.value].range, end_range) : end_range;
+    stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
     return this->session_.module.push_stmt(std::move(stmt));
 }
 

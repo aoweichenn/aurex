@@ -108,4 +108,44 @@ base::SourceRange ParserPartBase::merge(
     return this->parser_.merge(begin, end);
 }
 
+base::SourceRange ParserPartBase::expr_range_or(
+    const syntax::ExprId id,
+    const base::SourceRange fallback
+) const noexcept {
+    if (!syntax::is_valid(id) || id.value >= this->session_.module.exprs.size()) {
+        return fallback;
+    }
+    return this->session_.module.exprs[id.value].range;
+}
+
+base::SourceRange ParserPartBase::stmt_range_or(
+    const syntax::StmtId id,
+    const base::SourceRange fallback
+) const noexcept {
+    if (!syntax::is_valid(id) || id.value >= this->session_.module.stmts.size()) {
+        return fallback;
+    }
+    return this->session_.module.stmts[id.value].range;
+}
+
+base::SourceRange ParserPartBase::type_range_or(
+    const syntax::TypeId id,
+    const base::SourceRange fallback
+) const noexcept {
+    if (!syntax::is_valid(id) || id.value >= this->session_.module.types.size()) {
+        return fallback;
+    }
+    return this->session_.module.types[id.value].range;
+}
+
+base::SourceRange ParserPartBase::pattern_range_or(
+    const syntax::PatternId id,
+    const base::SourceRange fallback
+) const noexcept {
+    if (!syntax::is_valid(id) || id.value >= this->session_.module.patterns.size()) {
+        return fallback;
+    }
+    return this->session_.module.patterns[id.value].range;
+}
+
 } // namespace aurex::parse

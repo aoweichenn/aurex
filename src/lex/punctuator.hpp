@@ -3,6 +3,8 @@
 #include "aurex/base/integer.hpp"
 #include "aurex/syntax/token.hpp"
 
+#include "lexeme.hpp"
+
 #include <array>
 #include <optional>
 #include <string_view>
@@ -10,7 +12,7 @@
 namespace aurex::lex {
 
 struct PunctuatorMatch final {
-    std::string_view text;
+    base::usize width;
     syntax::TokenKind kind;
 };
 
@@ -60,24 +62,6 @@ inline constexpr std::array pipe_punctuators {
     PunctuatorEntry {"||", syntax::TokenKind::pipe_pipe},
     PunctuatorEntry {"|", syntax::TokenKind::pipe},
 };
-inline constexpr std::array single_char_punctuators {
-    PunctuatorEntry {"(", syntax::TokenKind::l_paren},
-    PunctuatorEntry {")", syntax::TokenKind::r_paren},
-    PunctuatorEntry {"{", syntax::TokenKind::l_brace},
-    PunctuatorEntry {"}", syntax::TokenKind::r_brace},
-    PunctuatorEntry {"[", syntax::TokenKind::l_bracket},
-    PunctuatorEntry {"]", syntax::TokenKind::r_bracket},
-    PunctuatorEntry {",", syntax::TokenKind::comma},
-    PunctuatorEntry {";", syntax::TokenKind::semicolon},
-    PunctuatorEntry {"+", syntax::TokenKind::plus},
-    PunctuatorEntry {"*", syntax::TokenKind::star},
-    PunctuatorEntry {"/", syntax::TokenKind::slash},
-    PunctuatorEntry {"%", syntax::TokenKind::percent},
-    PunctuatorEntry {"^", syntax::TokenKind::caret},
-    PunctuatorEntry {"~", syntax::TokenKind::tilde},
-    PunctuatorEntry {"@", syntax::TokenKind::at},
-    PunctuatorEntry {"?", syntax::TokenKind::question},
-};
 
 template <base::usize entry_count>
 [[nodiscard]] consteval bool punctuator_entries_are_longest_first(
@@ -103,7 +87,6 @@ static_assert(punctuator_entries_are_longest_first(less_punctuators));
 static_assert(punctuator_entries_are_longest_first(greater_punctuators));
 static_assert(punctuator_entries_are_longest_first(amp_punctuators));
 static_assert(punctuator_entries_are_longest_first(pipe_punctuators));
-static_assert(punctuator_entries_are_longest_first(single_char_punctuators));
 
 template <base::usize entry_count>
 [[nodiscard]] inline std::optional<PunctuatorMatch> match_bucket(
@@ -114,9 +97,13 @@ template <base::usize entry_count>
         if (!text.starts_with(entry.text)) {
             continue;
         }
-        return PunctuatorMatch {entry.text, entry.kind};
+        return PunctuatorMatch {entry.text.size(), entry.kind};
     }
     return std::nullopt;
+}
+
+[[nodiscard]] inline PunctuatorMatch single_char_match(const syntax::TokenKind kind) noexcept {
+    return PunctuatorMatch {single_byte_lexeme_width, kind};
 }
 
 } // namespace detail
@@ -147,22 +134,37 @@ template <base::usize entry_count>
     case '|':
         return detail::match_bucket(text, detail::pipe_punctuators);
     case '(':
+        return detail::single_char_match(syntax::TokenKind::l_paren);
     case ')':
+        return detail::single_char_match(syntax::TokenKind::r_paren);
     case '{':
+        return detail::single_char_match(syntax::TokenKind::l_brace);
     case '}':
+        return detail::single_char_match(syntax::TokenKind::r_brace);
     case '[':
+        return detail::single_char_match(syntax::TokenKind::l_bracket);
     case ']':
+        return detail::single_char_match(syntax::TokenKind::r_bracket);
     case ',':
+        return detail::single_char_match(syntax::TokenKind::comma);
     case ';':
+        return detail::single_char_match(syntax::TokenKind::semicolon);
     case '+':
+        return detail::single_char_match(syntax::TokenKind::plus);
     case '*':
+        return detail::single_char_match(syntax::TokenKind::star);
     case '/':
+        return detail::single_char_match(syntax::TokenKind::slash);
     case '%':
+        return detail::single_char_match(syntax::TokenKind::percent);
     case '^':
+        return detail::single_char_match(syntax::TokenKind::caret);
     case '~':
+        return detail::single_char_match(syntax::TokenKind::tilde);
     case '@':
+        return detail::single_char_match(syntax::TokenKind::at);
     case '?':
-        return detail::match_bucket(text, detail::single_char_punctuators);
+        return detail::single_char_match(syntax::TokenKind::question);
     default:
         return std::nullopt;
     }

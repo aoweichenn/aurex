@@ -57,7 +57,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
         item.range = this->merge(begin.range, this->previous().range);
     } else {
         item.body = this->parse_block();
-        item.range = syntax::is_valid(item.body) ? this->merge(begin.range, this->session_.module.stmts[item.body.value].range) : begin.range;
+        item.range = this->merge(begin.range, this->stmt_range_or(item.body, begin.range));
     }
 
     this->reset_panic();
@@ -81,7 +81,11 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
         this->expect(TokenKind::colon, "expected ':' after parameter name");
         const syntax::TypeId type = this->parse_type();
         if (name.kind == TokenKind::identifier) {
-            params.push_back(syntax::ParamDecl {name.text, type, this->merge(name.range, this->session_.module.types[type.value].range)});
+            params.push_back(syntax::ParamDecl {
+                name.text,
+                type,
+                this->merge(name.range, this->type_range_or(type, name.range)),
+            });
         }
         this->reset_panic();
         if (this->check(TokenKind::r_paren)) {

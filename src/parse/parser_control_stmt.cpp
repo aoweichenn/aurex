@@ -27,11 +27,11 @@ syntax::StmtId ControlStmtParser::parse_if_stmt() {
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::if_;
     if (syntax::is_valid(else_if)) {
-        stmt.range = this->merge(begin.range, this->session_.module.stmts[else_if.value].range);
+        stmt.range = this->merge(begin.range, this->stmt_range_or(else_if, begin.range));
     } else if (syntax::is_valid(else_block)) {
-        stmt.range = this->merge(begin.range, this->session_.module.stmts[else_block.value].range);
+        stmt.range = this->merge(begin.range, this->stmt_range_or(else_block, begin.range));
     } else {
-        stmt.range = this->merge(begin.range, this->session_.module.stmts[then_block.value].range);
+        stmt.range = this->merge(begin.range, this->stmt_range_or(then_block, begin.range));
     }
     stmt.condition = condition;
     stmt.then_block = then_block;
@@ -47,7 +47,7 @@ syntax::StmtId ControlStmtParser::parse_while_stmt() {
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::while_;
-    stmt.range = this->merge(begin.range, this->session_.module.stmts[body.value].range);
+    stmt.range = this->merge(begin.range, this->stmt_range_or(body, begin.range));
     stmt.condition = condition;
     stmt.body = body;
     return this->session_.module.push_stmt(std::move(stmt));
@@ -67,7 +67,7 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::for_;
-    stmt.range = this->merge(begin.range, this->session_.module.stmts[body.value].range);
+    stmt.range = this->merge(begin.range, this->stmt_range_or(body, begin.range));
     stmt.for_init = init;
     stmt.condition = condition;
     stmt.for_update = update;

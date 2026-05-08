@@ -369,6 +369,26 @@ TEST(CoreUnit, ParserRejectsStructLiteralInControlConditions) {
     );
 }
 
+TEST(CoreUnit, ParserReportsIncompleteExpressionsWithoutCrashing) {
+    expect_parse_error(
+        "module parser.incomplete_struct_literal;\n"
+        "struct Pair { value: i32; }\n"
+        "fn main() -> i32 {\n"
+        "  let value = Pair { value: };\n"
+        "  return 0;\n"
+        "}\n",
+        "expected expression"
+    );
+    expect_parse_error(
+        "module parser.incomplete_binary;\n"
+        "fn main() -> i32 {\n"
+        "  let value = (1 + );\n"
+        "  return 0;\n"
+        "}\n",
+        "expected expression"
+    );
+}
+
 TEST(CoreUnit, ParserCoversAbiNamesAndArrayRadicesDirectly) {
     constexpr std::string_view source =
         "module parser.abi_radix;\n"

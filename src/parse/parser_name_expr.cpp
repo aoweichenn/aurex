@@ -72,7 +72,7 @@ syntax::ExprId NameExprParser::parse_struct_literal(
             node.field_inits.push_back(syntax::FieldInit {
                 field.text,
                 value,
-                this->merge(field.range, this->session_.module.exprs[value.value].range),
+                this->merge(field.range, this->expr_range_or(value, field.range)),
             });
             if (this->check(TokenKind::r_brace)) {
                 break;

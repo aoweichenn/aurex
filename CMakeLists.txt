@@ -44,6 +44,9 @@ else()
         aurex_driver
         aurexc
     )
+    if(TARGET aurex_lex_bench)
+        list(APPEND AUREX_WARNING_TARGETS aurex_lex_bench)
+    endif()
     if(TARGET aurex_tests)
         list(APPEND AUREX_WARNING_TARGETS aurex_tests)
     endif()

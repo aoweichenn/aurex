@@ -181,6 +181,118 @@ TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
     EXPECT_EQ(rewritten_phi.incoming[0].predecessor.value, 0U);
 }
 
+TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging) {
+    Module module;
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle u8 = builtin(module, BuiltinType::u8);
+    const TypeHandle u32 = builtin(module, BuiltinType::u32);
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle f64 = builtin(module, BuiltinType::f64);
+    const TypeHandle usize = builtin(module, BuiltinType::usize);
+    const TypeHandle str_type = builtin(module, BuiltinType::str);
+    const TypeHandle ptr_bool = ptr(module, PointerMutability::mut, bool_type);
+    const TypeHandle ptr_f64 = ptr(module, PointerMutability::mut, f64);
+    const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+    const TypeHandle ptr_ptr_i32 = ptr(module, PointerMutability::mut, ptr_i32);
+    const TypeHandle enum_type = module.types.named_enum("unit.Tag", "unit_Tag");
+    module.types.set_enum_underlying(enum_type, u32);
+    const TypeHandle ptr_enum = ptr(module, PointerMutability::mut, enum_type);
+    const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
+
+    Function function = make_function(module, "scalar_kinds", i32);
+    FunctionBuilder builder {module, function};
+    Value text_value;
+    text_value.kind = ValueKind::string_literal;
+    text_value.type = str_type;
+    text_value.text = "\"scalar kinds\"";
+    const ValueId string_value = builder.add(text_value);
+
+    Value bool_slot;
+    bool_slot.kind = ValueKind::alloca;
+    bool_slot.type = ptr_bool;
+    const ValueId bool_slot_id = builder.add(bool_slot);
+    Value float_slot;
+    float_slot.kind = ValueKind::alloca;
+    float_slot.type = ptr_f64;
+    const ValueId float_slot_id = builder.add(float_slot);
+    Value pointer_slot;
+    pointer_slot.kind = ValueKind::alloca;
+    pointer_slot.type = ptr_ptr_i32;
+    const ValueId pointer_slot_id = builder.add(pointer_slot);
+    Value enum_slot;
+    enum_slot.kind = ValueKind::alloca;
+    enum_slot.type = ptr_enum;
+    const ValueId enum_slot_id = builder.add(enum_slot);
+    Value str_data;
+    str_data.kind = ValueKind::str_data;
+    str_data.type = const_u8_ptr;
+    str_data.object = string_value;
+    const ValueId string_data = builder.add(str_data);
+    Value str_byte_len;
+    str_byte_len.kind = ValueKind::str_byte_len;
+    str_byte_len.type = usize;
+    str_byte_len.object = string_value;
+    const ValueId string_byte_len = builder.add(str_byte_len);
+    Value from_bytes;
+    from_bytes.kind = ValueKind::str_from_bytes_unchecked;
+    from_bytes.type = str_type;
+    from_bytes.args = {string_data, string_byte_len};
+    const ValueId rebuilt_string = builder.add(from_bytes);
+    const ValueId result = builder.add(integer_value(i32, "0"));
+    const BlockId entry = builder.block("entry");
+    function.blocks[entry.value].values = {
+        bool_slot_id,
+        float_slot_id,
+        pointer_slot_id,
+        enum_slot_id,
+        string_value,
+        string_data,
+        string_byte_len,
+        rebuilt_string,
+        result,
+    };
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    function.blocks[entry.value].terminator.value = result;
+    module.functions.push_back(function);
+
+    PassPipelineOptions options;
+    options.optimization_level = ir::OptimizationLevel::basic;
+    ASSERT_TRUE(ir::run_pass_pipeline(module, options));
+    ASSERT_EQ(module.functions[0].blocks.size(), 1U);
+}
+
+TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch) {
+    Module module;
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    Function function = make_function(module, "merge_redirects", i32);
+    FunctionBuilder builder {module, function};
+    const ValueId result = builder.add(integer_value(i32, "7"));
+    const ValueId condition = builder.add(bool_value(module, true));
+    const BlockId entry = builder.block("entry");
+    const BlockId then_block = builder.block("then");
+    const BlockId else_block = builder.block("else");
+    const BlockId join = builder.block("join");
+    function.blocks[entry.value].terminator.kind = TerminatorKind::cond_branch;
+    function.blocks[entry.value].terminator.condition = condition;
+    function.blocks[entry.value].terminator.then_target = then_block;
+    function.blocks[entry.value].terminator.else_target = else_block;
+    function.blocks[then_block.value].terminator.kind = TerminatorKind::branch;
+    function.blocks[then_block.value].terminator.target = join;
+    function.blocks[else_block.value].terminator.kind = TerminatorKind::branch;
+    function.blocks[else_block.value].terminator.target = join;
+    function.blocks[join.value].values = {result};
+    function.blocks[join.value].terminator.kind = TerminatorKind::return_;
+    function.blocks[join.value].terminator.value = result;
+    module.functions.push_back(function);
+
+    PassPipelineOptions options;
+    options.optimization_level = ir::OptimizationLevel::basic;
+    ASSERT_TRUE(ir::run_pass_pipeline(module, options));
+    ASSERT_EQ(module.functions[0].blocks.size(), 2U);
+    EXPECT_EQ(module.functions[0].blocks[0].terminator.kind, TerminatorKind::branch);
+    EXPECT_EQ(module.functions[0].blocks[0].terminator.target.value, 1U);
+}
+
 TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);

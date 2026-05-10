@@ -12,16 +12,27 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     Module module;
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle u8 = builtin(module, BuiltinType::u8);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle usize = builtin(module, BuiltinType::usize);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+    const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
     const TypeHandle str_type = builtin(module, BuiltinType::str);
     const TypeHandle record_type = module.types.named_struct("dump.Record", "dump_Record", false);
+    const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
     module.records.push_back(RecordLayout {
         record_type,
         "dump.Record",
         "dump_Record",
         false,
         {RecordField {"value", i32}},
+    });
+    module.records.push_back(RecordLayout {
+        opaque_type,
+        "dump.Opaque",
+        "dump_Opaque",
+        true,
+        {},
     });
 
     module.constants.push_back(GlobalConstant {"broken", "dump_broken", i32, INVALID_VALUE_ID});
@@ -47,6 +58,22 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     string_value.text = "\"dump\"";
     const ValueId text = builder.add(string_value);
 
+    Value str_data;
+    str_data.kind = ValueKind::str_data;
+    str_data.type = const_u8_ptr;
+    str_data.object = text;
+    const ValueId string_data = builder.add(str_data);
+    Value str_byte_len;
+    str_byte_len.kind = ValueKind::str_byte_len;
+    str_byte_len.type = usize;
+    str_byte_len.object = text;
+    const ValueId string_byte_len = builder.add(str_byte_len);
+    Value from_bytes;
+    from_bytes.kind = ValueKind::str_from_bytes_unchecked;
+    from_bytes.type = str_type;
+    from_bytes.args = {string_data, string_byte_len};
+    const ValueId rebuilt_string = builder.add(from_bytes);
+
     Value missing_constant;
     missing_constant.kind = ValueKind::constant_ref;
     missing_constant.type = i32;
@@ -54,7 +81,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     missing_constant.constant = INVALID_GLOBAL_CONSTANT_ID;
     const ValueId fallback_constant = builder.add(missing_constant);
 
-    std::vector<ValueId> values {lhs, rhs, flag, ptr_value, text, fallback_constant};
+    std::vector<ValueId> values {lhs, rhs, flag, ptr_value, text, string_data, string_byte_len, rebuilt_string, fallback_constant};
     for (const UnaryOp op : {UnaryOp::bitwise_not, UnaryOp::address_of, UnaryOp::dereference}) {
         Value unary;
         unary.kind = ValueKind::unary;
@@ -69,6 +96,8 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
              BinaryOp::mod,
              BinaryOp::shl,
              BinaryOp::shr,
+             BinaryOp::less_equal,
+             BinaryOp::greater_equal,
              BinaryOp::bit_and,
              BinaryOp::bit_xor,
              BinaryOp::bit_or,
@@ -76,10 +105,12 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
          }) {
         Value binary;
         binary.kind = ValueKind::binary;
-        binary.type = op == BinaryOp::logical_and ? bool_type : i32;
+        const bool is_comparison = op == BinaryOp::less_equal || op == BinaryOp::greater_equal;
+        const bool is_logical = op == BinaryOp::logical_and;
+        binary.type = is_logical || is_comparison ? bool_type : i32;
         binary.binary_op = op;
-        binary.lhs = op == BinaryOp::logical_and ? flag : lhs;
-        binary.rhs = op == BinaryOp::logical_and ? flag : rhs;
+        binary.lhs = is_logical ? flag : lhs;
+        binary.rhs = is_logical ? flag : rhs;
         values.push_back(builder.add(binary));
     }
 
@@ -90,6 +121,10 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     cast.cast_kind = CastKind::bitcast;
     cast.lhs = ptr_value;
     values.push_back(builder.add(cast));
+    Value ptr_from_addr = cast;
+    ptr_from_addr.cast_kind = CastKind::ptr_from_addr;
+    ptr_from_addr.lhs = lhs;
+    values.push_back(builder.add(ptr_from_addr));
 
     const BlockId entry = builder.block("entry");
     const BlockId dead = builder.block("dead");
@@ -104,8 +139,12 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "const broken @dump_broken: i32 = %invalid",
         "linkage(export_c)",
         "abi(c)",
+        "record dump.Opaque @dump_Opaque opaque",
         "null",
         "string \"dump\"",
+        "str_data",
+        "str_byte_len",
+        "str_from_bytes_unchecked",
         "const_ref @fallback_constant",
         "bitnot",
         "addr_of",
@@ -115,11 +154,14 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "mod",
         "shl",
         "shr",
+        "le",
+        "ge",
         "bitand",
         "bitxor",
         "bitor",
         "and",
         "bit_cast",
+        "ptr_from_addr",
         "unreachable",
         "br ^invalid",
     });

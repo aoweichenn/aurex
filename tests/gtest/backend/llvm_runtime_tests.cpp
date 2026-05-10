@@ -40,6 +40,8 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
         false,
         {RecordField {"left", i32}, RecordField {"right", i32}},
     });
+    const TypeHandle ptr_pair = ptr(module, PointerMutability::mut, pair_type);
+    const TypeHandle ptr_ptr_pair = ptr(module, PointerMutability::mut, ptr_pair);
 
     Value undef;
     undef.kind = ValueKind::undef;
@@ -161,6 +163,9 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     op_unsigned_param.type = u32;
     op_unsigned_param.name = "u_lhs";
     const ValueId op_unsigned = builder.add(op_unsigned_param);
+    Value op_unsigned_rhs_param = op_unsigned_param;
+    op_unsigned_rhs_param.name = "u_rhs";
+    const ValueId op_unsigned_rhs = builder.add(op_unsigned_rhs_param);
     Value op_float_param;
     op_float_param.kind = ValueKind::param;
     op_float_param.type = f64;
@@ -176,10 +181,11 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
         FunctionParam {"lhs", i32},
         FunctionParam {"rhs", i32},
         FunctionParam {"u_lhs", u32},
+        FunctionParam {"u_rhs", u32},
         FunctionParam {"float_value", f64},
         FunctionParam {"ptr", ptr_i32},
     };
-    ops.param_values = {op_flag, op_lhs, op_rhs, op_unsigned, op_float, op_pointer};
+    ops.param_values = {op_flag, op_lhs, op_rhs, op_unsigned, op_unsigned_rhs, op_float, op_pointer};
 
     std::vector<ValueId> values;
     auto add_and_keep = [&](Value value) {
@@ -228,6 +234,15 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
         cmp.lhs = op_float;
         cmp.rhs = op_float;
         add_and_keep(cmp);
+    }
+    for (const BinaryOp op : {BinaryOp::less_equal, BinaryOp::greater, BinaryOp::greater_equal}) {
+        Value unsigned_cmp;
+        unsigned_cmp.kind = ValueKind::binary;
+        unsigned_cmp.type = bool_type;
+        unsigned_cmp.binary_op = op;
+        unsigned_cmp.lhs = op_unsigned;
+        unsigned_cmp.rhs = op_unsigned_rhs;
+        add_and_keep(unsigned_cmp);
     }
 
     for (const BinaryOp op : {BinaryOp::add, BinaryOp::sub, BinaryOp::mul, BinaryOp::div}) {
@@ -284,13 +299,14 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     }
 
     for (const auto [kind, result_type, operand] : {
-             std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i64, op_lhs},
-             std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f64, op_lhs},
-             std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f64, op_unsigned},
-             std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i32, op_float},
-             std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f32, op_float},
-             std::tuple<CastKind, TypeHandle, ValueId> {CastKind::ptr_addr, usize, op_pointer},
-         }) {
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i64, op_lhs},
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f64, op_lhs},
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f64, op_unsigned},
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i32, op_float},
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, u32, op_float},
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f32, op_float},
+            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::ptr_addr, usize, op_pointer},
+        }) {
         Value cast;
         cast.kind = ValueKind::cast;
         cast.type = result_type;
@@ -319,6 +335,17 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     pointer_bitcast.lhs = op_pointer;
     add_and_keep(pointer_bitcast);
 
+    Value pointer_slot;
+    pointer_slot.kind = ValueKind::alloca;
+    pointer_slot.type = ptr_ptr_pair;
+    const ValueId pointer_slot_id = add_and_keep(pointer_slot);
+    Value pointer_slot_field;
+    pointer_slot_field.kind = ValueKind::field_addr;
+    pointer_slot_field.type = ptr(module, PointerMutability::mut, i32);
+    pointer_slot_field.object = pointer_slot_id;
+    pointer_slot_field.name = "left";
+    add_and_keep(pointer_slot_field);
+
     Value index;
     index.kind = ValueKind::index_addr;
     index.type = ptr_i32;
@@ -332,6 +359,13 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     void_call.call_target = sink_id;
     void_call.args = {loaded};
     add_and_keep(void_call);
+
+    Value unnamed_call;
+    unnamed_call.kind = ValueKind::call;
+    unnamed_call.type = i32;
+    unnamed_call.call_target = FunctionId {1};
+    unnamed_call.args = {op_flag, op_lhs, op_rhs};
+    add_and_keep(unnamed_call);
 
     Value ref_runtime;
     ref_runtime.kind = ValueKind::constant_ref;
@@ -361,11 +395,119 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
         "phi i32",
         "sitofp",
         "uitofp",
+        "fptoui",
         "fptosi",
         "fptrunc",
         "ptrtoint",
         "inttoptr",
         "call void @unit_sink",
+        "icmp ule",
+        "icmp ugt",
+        "icmp uge",
+    });
+}
+
+TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
+    Module module;
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle f64 = builtin(module, BuiltinType::f64);
+    const TypeHandle u8 = builtin(module, BuiltinType::u8);
+    const TypeHandle usize = builtin(module, BuiltinType::usize);
+    const TypeHandle str_type = builtin(module, BuiltinType::str);
+    const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
+
+    Function function = make_function(module, "runtime_edges", i32);
+    FunctionBuilder builder {module, function};
+    Value int_lhs_param;
+    int_lhs_param.kind = ValueKind::param;
+    int_lhs_param.type = i32;
+    int_lhs_param.name = "lhs";
+    const ValueId int_lhs = builder.add(int_lhs_param);
+    Value int_rhs_param = int_lhs_param;
+    int_rhs_param.name = "rhs";
+    const ValueId int_rhs = builder.add(int_rhs_param);
+    Value float_lhs_param;
+    float_lhs_param.kind = ValueKind::param;
+    float_lhs_param.type = f64;
+    float_lhs_param.name = "float_lhs";
+    const ValueId float_lhs = builder.add(float_lhs_param);
+    Value float_rhs_param = float_lhs_param;
+    float_rhs_param.name = "float_rhs";
+    const ValueId float_rhs = builder.add(float_rhs_param);
+    Value text_param;
+    text_param.kind = ValueKind::param;
+    text_param.type = str_type;
+    text_param.name = "text";
+    const ValueId text = builder.add(text_param);
+    function.signature_params = {
+        FunctionParam {"lhs", i32},
+        FunctionParam {"rhs", i32},
+        FunctionParam {"float_lhs", f64},
+        FunctionParam {"float_rhs", f64},
+        FunctionParam {"text", str_type},
+    };
+    function.param_values = {int_lhs, int_rhs, float_lhs, float_rhs, text};
+
+    std::vector<ValueId> values;
+    auto add_and_keep = [&](Value value) {
+        const ValueId id = builder.add(std::move(value));
+        values.push_back(id);
+        return id;
+    };
+
+    const ValueId runtime_string_id = text;
+
+    Value str_data;
+    str_data.kind = ValueKind::str_data;
+    str_data.type = const_u8_ptr;
+    str_data.object = runtime_string_id;
+    const ValueId str_data_id = add_and_keep(str_data);
+
+    Value str_byte_len;
+    str_byte_len.kind = ValueKind::str_byte_len;
+    str_byte_len.type = usize;
+    str_byte_len.object = runtime_string_id;
+    const ValueId str_byte_len_id = add_and_keep(str_byte_len);
+
+    Value from_bytes;
+    from_bytes.kind = ValueKind::str_from_bytes_unchecked;
+    from_bytes.type = str_type;
+    from_bytes.args = {str_data_id, str_byte_len_id};
+    add_and_keep(from_bytes);
+
+    Value float_less;
+    float_less.kind = ValueKind::binary;
+    float_less.type = bool_type;
+    float_less.binary_op = BinaryOp::less;
+    float_less.lhs = float_lhs;
+    float_less.rhs = float_rhs;
+    add_and_keep(float_less);
+
+    Value int_xor;
+    int_xor.kind = ValueKind::binary;
+    int_xor.type = i32;
+    int_xor.binary_op = BinaryOp::bit_xor;
+    int_xor.lhs = int_lhs;
+    int_xor.rhs = int_rhs;
+    add_and_keep(int_xor);
+
+    const ValueId result = add_and_keep(integer_value(i32, "0"));
+    const BlockId entry = builder.block("entry");
+    function.blocks[entry.value].values = std::move(values);
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    function.blocks[entry.value].terminator.value = result;
+    module.functions.push_back(function);
+
+    auto llvm_ir = backend::emit_llvm_ir({&module, "unit_backend_runtime_edges"});
+    ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
+    expect_contains_all(llvm_ir.value().text, {
+        "extractvalue",
+        "insertvalue",
+        "str.data",
+        "str.len",
+        "fcmp olt",
+        "xor",
     });
 }
 

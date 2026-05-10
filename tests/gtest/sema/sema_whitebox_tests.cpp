@@ -83,6 +83,9 @@ constexpr sema::BuiltinType SEMA_TEST_INVALID_BUILTIN_TYPE = static_cast<sema::B
 constexpr sema::TypeKind SEMA_TEST_INVALID_TYPE_KIND = static_cast<sema::TypeKind>(99);
 constexpr std::string_view SEMA_TEST_INVALID_TYPE_DISPLAY = "<invalid>";
 constexpr std::string_view SEMA_TEST_UNKNOWN_TYPE_DISPLAY = "<unknown>";
+constexpr std::string_view SEMA_TEST_SYMBOL_OUTER_NAME = "outer_value";
+constexpr std::string_view SEMA_TEST_SYMBOL_INNER_NAME = "inner_value";
+constexpr std::string_view SEMA_TEST_SYMBOL_DUPLICATE_NAME = "duplicate_value";
 
 [[nodiscard]] ModuleId module_id(const u32 value) noexcept {
     return ModuleId {value};
@@ -1616,6 +1619,47 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
     EXPECT_FALSE(kind_table.is_pointer(builtin_type));
     EXPECT_FALSE(kind_table.is_array(builtin_type));
     EXPECT_FALSE(kind_table.contains_array(builtin_type));
+}
+
+TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
+    base::DiagnosticSink diagnostics;
+    sema::SymbolTable symbols;
+
+    const auto outer_inserted = symbols.insert(
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_OUTER_NAME, module_id(0), INVALID_TYPE_HANDLE),
+        diagnostics
+    );
+    ASSERT_TRUE(outer_inserted) << outer_inserted.error().message;
+    ASSERT_NE(symbols.find(SEMA_TEST_SYMBOL_OUTER_NAME), nullptr);
+    EXPECT_EQ(symbols.find("missing_symbol"), nullptr);
+    EXPECT_EQ(symbols.get(sema::INVALID_SYMBOL_ID), nullptr);
+    EXPECT_EQ(symbols.get(sema::SymbolId {1}), nullptr);
+
+    symbols.push_scope();
+    const auto inner_inserted = symbols.insert(
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_INNER_NAME, module_id(0), INVALID_TYPE_HANDLE),
+        diagnostics
+    );
+    ASSERT_TRUE(inner_inserted) << inner_inserted.error().message;
+    EXPECT_NE(symbols.find(SEMA_TEST_SYMBOL_INNER_NAME), nullptr);
+    EXPECT_NE(symbols.find(SEMA_TEST_SYMBOL_OUTER_NAME), nullptr);
+
+    const auto duplicate_name_inserted = symbols.insert(
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE),
+        diagnostics
+    );
+    ASSERT_TRUE(duplicate_name_inserted) << duplicate_name_inserted.error().message;
+    const auto duplicate_shadow = symbols.insert(
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE),
+        diagnostics
+    );
+    ASSERT_FALSE(duplicate_shadow);
+    EXPECT_EQ(duplicate_shadow.error().code, base::ErrorCode::sema_error);
+    EXPECT_TRUE(diagnostics.has_error());
+
+    symbols.pop_scope();
+    EXPECT_EQ(symbols.find(SEMA_TEST_SYMBOL_INNER_NAME), nullptr);
+    ASSERT_NE(symbols.find(SEMA_TEST_SYMBOL_OUTER_NAME), nullptr);
 }
 
 } // namespace aurex::test

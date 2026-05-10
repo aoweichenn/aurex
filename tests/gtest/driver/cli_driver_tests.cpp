@@ -1,10 +1,23 @@
 #include <aurex/driver/compiler.hpp>
+#include <aurex/driver/file_cache.hpp>
 #include <support/test_support.hpp>
 
+#include <cerrno>
+#include <cstring>
 #include <fstream>
+#include <sys/stat.h>
+#include <thread>
 #include <string>
+#include <string_view>
 
 namespace aurex::test {
+namespace {
+
+constexpr std::string_view DRIVER_FILE_CACHE_FIRST_TEXT = "cached-one";
+constexpr std::string_view DRIVER_FILE_CACHE_SECOND_TEXT = "cached-two";
+constexpr std::string_view DRIVER_FILE_CACHE_FIFO_TEXT = "fifo-stream";
+
+} // namespace
 
 TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
     expect_contains(require_success(aurexc() + " --version").output, "0.1.2");
@@ -93,6 +106,63 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         expect_contains(result.error().message, "exit code 127");
     }
 
+}
+
+TEST_F(AurexIntegrationTest, CliFileCacheCoversMissHitClearAndEmptyFiles) {
+    driver::clear_file_cache();
+
+    const fs::path missing = tmp_root() / "missing.ax";
+    const auto missing_result = driver::read_text_file(missing);
+    ASSERT_FALSE(missing_result);
+    EXPECT_EQ(missing_result.error().code, base::ErrorCode::io_error);
+
+    const fs::path empty = tmp_root() / "empty.ax";
+    {
+        std::ofstream out(empty, std::ios::binary);
+    }
+    const auto empty_result = driver::read_text_file(empty);
+    ASSERT_TRUE(empty_result) << empty_result.error().message;
+    EXPECT_TRUE(empty_result.value().empty());
+
+    const fs::path cached = tmp_root() / "cached.ax";
+    {
+        std::ofstream out(cached, std::ios::binary);
+        out << DRIVER_FILE_CACHE_FIRST_TEXT;
+    }
+    const auto first = driver::read_text_file(cached);
+    ASSERT_TRUE(first) << first.error().message;
+    EXPECT_EQ(first.value(), DRIVER_FILE_CACHE_FIRST_TEXT);
+
+    const auto cached_hit = driver::read_text_file(cached);
+    ASSERT_TRUE(cached_hit) << cached_hit.error().message;
+    EXPECT_EQ(cached_hit.value(), DRIVER_FILE_CACHE_FIRST_TEXT);
+
+    driver::clear_file_cache();
+    {
+        std::ofstream out(cached, std::ios::binary | std::ios::trunc);
+        out << DRIVER_FILE_CACHE_SECOND_TEXT;
+    }
+    const auto after_clear = driver::read_text_file(cached);
+    ASSERT_TRUE(after_clear) << after_clear.error().message;
+    EXPECT_EQ(after_clear.value(), DRIVER_FILE_CACHE_SECOND_TEXT);
+
+    const fs::path fifo = tmp_root() / "fifo.ax";
+    std::error_code remove_error;
+    fs::remove(fifo, remove_error);
+    ASSERT_EQ(::mkfifo(fifo.c_str(), 0600), 0) << std::strerror(errno);
+
+    std::thread writer([fifo] {
+        std::ofstream out(fifo, std::ios::binary);
+        out << DRIVER_FILE_CACHE_FIFO_TEXT;
+    });
+
+    const auto fifo_result = driver::read_text_file(fifo);
+    writer.join();
+    ASSERT_TRUE(fifo_result) << fifo_result.error().message;
+    EXPECT_EQ(fifo_result.value(), DRIVER_FILE_CACHE_FIFO_TEXT);
+    fs::remove(fifo, remove_error);
+
+    driver::clear_file_cache();
 }
 
 } // namespace aurex::test

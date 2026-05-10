@@ -293,4 +293,172 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
     }
 }
 
+TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges) {
+    Module module;
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle u32 = builtin(module, BuiltinType::u32);
+    const TypeHandle i64 = builtin(module, BuiltinType::i64);
+    const TypeHandle f64 = builtin(module, BuiltinType::f64);
+    const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+    const TypeHandle ptr_i64 = ptr(module, PointerMutability::mut, i64);
+
+    auto add_float_literal = [&](const std::string& text) {
+        Value value;
+        value.kind = ValueKind::float_literal;
+        value.type = f64;
+        value.text = text;
+        return add_value(module, value);
+    };
+    auto add_binary_constant = [&](
+                                   const std::string& name,
+                                   const std::string& symbol,
+                                   const TypeHandle result_type,
+                                   const BinaryOp op,
+                                   const ValueId lhs,
+                                   const ValueId rhs
+                               ) {
+        Value value;
+        value.kind = ValueKind::binary;
+        value.type = result_type;
+        value.binary_op = op;
+        value.lhs = lhs;
+        value.rhs = rhs;
+        return add_global_constant(module, GlobalConstant {name, symbol, result_type, add_value(module, value)});
+    };
+    auto add_cast_constant = [&](
+                                 const std::string& name,
+                                 const std::string& symbol,
+                                 const TypeHandle result_type,
+                                 const ValueId operand,
+                                 const CastKind cast_kind = CastKind::numeric
+                             ) {
+        Value value;
+        value.kind = ValueKind::cast;
+        value.type = result_type;
+        value.target_type = result_type;
+        value.cast_kind = cast_kind;
+        value.lhs = operand;
+        return add_global_constant(module, GlobalConstant {name, symbol, result_type, add_value(module, value)});
+    };
+    auto add_unary_constant = [&](
+                                 const std::string& name,
+                                 const std::string& symbol,
+                                 const TypeHandle result_type,
+                                 const UnaryOp unary_op,
+                                 const ValueId operand
+                             ) {
+        Value value;
+        value.kind = ValueKind::unary;
+        value.type = result_type;
+        value.unary_op = unary_op;
+        value.lhs = operand;
+        return add_global_constant(module, GlobalConstant {name, symbol, result_type, add_value(module, value)});
+    };
+
+    const ValueId int_one = add_value(module, integer_value(i32, "1"));
+    const ValueId int_two = add_value(module, integer_value(i32, "2"));
+    const ValueId int_three = add_value(module, integer_value(i32, "3"));
+    const ValueId float_one = add_float_literal("1.5");
+    const ValueId float_two = add_float_literal("2.5");
+    const ValueId float_same = add_float_literal("3.5");
+    Value null_pointer;
+    null_pointer.kind = ValueKind::null_literal;
+    null_pointer.type = ptr_i32;
+    const ValueId null_pointer_id = add_value(module, null_pointer);
+
+    [[maybe_unused]] const GlobalConstantId float_less_constant =
+        add_binary_constant("float_less", "unit_float_less", bool_type, BinaryOp::less, float_one, float_two);
+    [[maybe_unused]] const GlobalConstantId int_less_constant =
+        add_binary_constant("int_less", "unit_int_less", bool_type, BinaryOp::less, int_one, int_two);
+    [[maybe_unused]] const GlobalConstantId float_less_equal_constant =
+        add_binary_constant("float_less_equal", "unit_float_less_equal", bool_type, BinaryOp::less_equal, float_one, float_two);
+    [[maybe_unused]] const GlobalConstantId int_less_equal_constant =
+        add_binary_constant("int_less_equal", "unit_int_less_equal", bool_type, BinaryOp::less_equal, int_one, int_two);
+    [[maybe_unused]] const GlobalConstantId float_greater_equal_constant =
+        add_binary_constant("float_greater_equal", "unit_float_greater_equal", bool_type, BinaryOp::greater_equal, float_two, float_one);
+    [[maybe_unused]] const GlobalConstantId int_greater_equal_constant =
+        add_binary_constant("int_greater_equal", "unit_int_greater_equal", bool_type, BinaryOp::greater_equal, int_two, int_one);
+    [[maybe_unused]] const GlobalConstantId float_greater_constant =
+        add_binary_constant("float_greater", "unit_float_greater", bool_type, BinaryOp::greater, float_two, float_one);
+    [[maybe_unused]] const GlobalConstantId int_greater_constant =
+        add_binary_constant("int_greater", "unit_int_greater", bool_type, BinaryOp::greater, int_two, int_one);
+    [[maybe_unused]] const GlobalConstantId float_equal_constant =
+        add_binary_constant("float_equal", "unit_float_equal", bool_type, BinaryOp::equal, float_same, float_same);
+    [[maybe_unused]] const GlobalConstantId int_equal_constant =
+        add_binary_constant("int_equal", "unit_int_equal", bool_type, BinaryOp::equal, int_three, int_three);
+    [[maybe_unused]] const GlobalConstantId float_not_equal_constant =
+        add_binary_constant("float_not_equal", "unit_float_not_equal", bool_type, BinaryOp::not_equal, float_one, float_two);
+    [[maybe_unused]] const GlobalConstantId int_not_equal_constant =
+        add_binary_constant("int_not_equal", "unit_int_not_equal", bool_type, BinaryOp::not_equal, int_one, int_two);
+    [[maybe_unused]] const GlobalConstantId u32_xor_constant = add_binary_constant(
+        "u32_xor",
+        "unit_u32_xor",
+        u32,
+        BinaryOp::bit_xor,
+        add_value(module, integer_value(u32, "10")),
+        add_value(module, integer_value(u32, "12"))
+    );
+    [[maybe_unused]] const GlobalConstantId float_add_constant =
+        add_binary_constant("float_add", "unit_float_add", f64, BinaryOp::add, add_float_literal("1.25"), add_float_literal("2.5"));
+    [[maybe_unused]] const GlobalConstantId float_sub_constant =
+        add_binary_constant("float_sub", "unit_float_sub", f64, BinaryOp::sub, add_float_literal("7.5"), add_float_literal("2.25"));
+    [[maybe_unused]] const GlobalConstantId float_mul_constant =
+        add_binary_constant("float_mul", "unit_float_mul", f64, BinaryOp::mul, add_float_literal("1.5"), add_float_literal("4.0"));
+    [[maybe_unused]] const GlobalConstantId float_div_constant =
+        add_binary_constant("float_div", "unit_float_div", f64, BinaryOp::div, add_float_literal("9.0"), add_float_literal("3.0"));
+    [[maybe_unused]] const GlobalConstantId u32_div_constant =
+        add_binary_constant("u32_div", "unit_u32_div", u32, BinaryOp::div, add_value(module, integer_value(u32, "21")), add_value(module, integer_value(u32, "3")));
+    [[maybe_unused]] const GlobalConstantId u32_mod_constant =
+        add_binary_constant("u32_mod", "unit_u32_mod", u32, BinaryOp::mod, add_value(module, integer_value(u32, "22")), add_value(module, integer_value(u32, "5")));
+    [[maybe_unused]] const GlobalConstantId u32_shr_constant =
+        add_binary_constant("u32_shr", "unit_u32_shr", u32, BinaryOp::shr, add_value(module, integer_value(u32, "32")), add_value(module, integer_value(u32, "2")));
+    [[maybe_unused]] const GlobalConstantId u32_less_equal_constant =
+        add_binary_constant("u32_less_equal", "unit_u32_less_equal", bool_type, BinaryOp::less_equal, add_value(module, integer_value(u32, "5")), add_value(module, integer_value(u32, "5")));
+    [[maybe_unused]] const GlobalConstantId u32_greater_constant =
+        add_binary_constant("u32_greater", "unit_u32_greater", bool_type, BinaryOp::greater, add_value(module, integer_value(u32, "9")), add_value(module, integer_value(u32, "4")));
+    [[maybe_unused]] const GlobalConstantId u32_greater_equal_constant =
+        add_binary_constant("u32_greater_equal", "unit_u32_greater_equal", bool_type, BinaryOp::greater_equal, add_value(module, integer_value(u32, "9")), add_value(module, integer_value(u32, "9")));
+    [[maybe_unused]] const GlobalConstantId u32_bit_or_constant =
+        add_binary_constant("u32_bit_or", "unit_u32_bit_or", u32, BinaryOp::bit_or, add_value(module, integer_value(u32, "10")), add_value(module, integer_value(u32, "12")));
+    [[maybe_unused]] const GlobalConstantId float_neg_constant =
+        add_unary_constant("float_neg", "unit_float_neg", f64, UnaryOp::numeric_negate, add_float_literal("8.0"));
+    [[maybe_unused]] const GlobalConstantId float_to_bool_constant =
+        add_cast_constant("float_to_bool", "unit_float_to_bool", bool_type, float_one);
+    [[maybe_unused]] const GlobalConstantId pointer_cast_constant =
+        add_cast_constant("pointer_cast", "unit_pointer_cast", ptr_i64, null_pointer_id, CastKind::pointer);
+
+    auto llvm_ir = backend::emit_llvm_ir({&module, "unit_backend_edges"});
+    ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
+    expect_contains_all(llvm_ir.value().text, {
+        "@unit_float_less",
+        "@unit_int_less",
+        "@unit_float_less_equal",
+        "@unit_int_less_equal",
+        "@unit_float_greater_equal",
+        "@unit_int_greater_equal",
+        "@unit_float_greater",
+        "@unit_int_greater",
+        "@unit_float_equal",
+        "@unit_int_equal",
+        "@unit_float_not_equal",
+        "@unit_int_not_equal",
+        "@unit_u32_xor",
+        "@unit_float_add",
+        "@unit_float_sub",
+        "@unit_float_mul",
+        "@unit_float_div",
+        "@unit_u32_div",
+        "@unit_u32_mod",
+        "@unit_u32_shr",
+        "@unit_u32_less_equal",
+        "@unit_u32_greater",
+        "@unit_u32_greater_equal",
+        "@unit_u32_bit_or",
+        "@unit_float_neg",
+        "@unit_float_to_bool",
+        "@unit_pointer_cast",
+    });
+}
+
 } // namespace aurex::test

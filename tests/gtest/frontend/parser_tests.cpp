@@ -1,13 +1,19 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/lex/lexer.hpp>
+#include <aurex/parse/recovery.hpp>
+#include <aurex/parse/parser_part_ranges.hpp>
 #include <aurex/parse/parser.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 #include <support/test_support.hpp>
 
+#include <array>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <parse/parser_recovery_sets.hpp>
 
 namespace aurex::test {
 namespace {
@@ -70,6 +76,22 @@ void expect_parse_error(const std::string_view source, const std::string_view me
     return nullptr;
 }
 
+class ParserPartRangeReaderProbe final : public parse::ParserPartRangeReader {
+public:
+    explicit ParserPartRangeReaderProbe(parse::Parser& parser) noexcept
+        : parse::ParserPartRangeReader(parser) {}
+
+    [[nodiscard]] syntax::AstModule& module() noexcept {
+        return this->session_.module;
+    }
+
+    using parse::ParserPartRangeReader::expr_range_or;
+    using parse::ParserPartRangeReader::merge;
+    using parse::ParserPartRangeReader::pattern_range_or;
+    using parse::ParserPartRangeReader::stmt_range_or;
+    using parse::ParserPartRangeReader::type_range_or;
+};
+
 } // namespace
 
 TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
@@ -104,6 +126,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let p: *mut i32 = ptr_from_addr(*mut i32, ptr_addr(argv));\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
+        "  let size: usize = size_of(*mut i32);\n"
+        "  let data: *const u8 = str_data(s);\n"
+        "  let len: usize = str_byte_len(s);\n"
+        "  let raw: str = str_from_bytes_unchecked(data, len);\n"
         "  let b: u8 = b'\\n';\n"
         "  let a: i32 = cast(i32, argc) + bit_cast(i32, argc) + align_of(*mut i32);\n"
         "  let q: *mut i32 = ptr_cast(*mut i32, p);\n"
@@ -1414,6 +1440,394 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches) {
         "import c.;\n",
         "expected identifier after '.'"
     );
+}
+
+TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
+    using syntax::TokenKind;
+
+    const auto expect_true_all = [](const auto predicate, const std::initializer_list<TokenKind> kinds) {
+        for (const TokenKind kind : kinds) {
+            EXPECT_TRUE(predicate(kind)) << static_cast<int>(kind);
+        }
+    };
+    const auto expect_false_on = [](const auto predicate, const TokenKind kind) {
+        EXPECT_FALSE(predicate(kind)) << static_cast<int>(kind);
+    };
+
+    expect_true_all(
+        parse::detail::token_starts_item,
+        {
+            TokenKind::r_brace,
+            TokenKind::kw_fn,
+            TokenKind::kw_struct,
+            TokenKind::kw_enum,
+            TokenKind::kw_impl,
+            TokenKind::kw_opaque,
+            TokenKind::kw_const,
+            TokenKind::kw_type,
+            TokenKind::kw_pub,
+            TokenKind::kw_priv,
+            TokenKind::kw_extern,
+            TokenKind::kw_export,
+            TokenKind::kw_import,
+        }
+    );
+    expect_false_on(parse::detail::token_starts_item, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_starts_expression,
+        {
+            TokenKind::identifier,
+            TokenKind::integer_literal,
+            TokenKind::float_literal,
+            TokenKind::string_literal,
+            TokenKind::c_string_literal,
+            TokenKind::byte_literal,
+            TokenKind::kw_if,
+            TokenKind::kw_match,
+            TokenKind::kw_true,
+            TokenKind::kw_false,
+            TokenKind::kw_null,
+            TokenKind::kw_cast,
+            TokenKind::kw_ptr_cast,
+            TokenKind::kw_bit_cast,
+            TokenKind::kw_size_of,
+            TokenKind::kw_align_of,
+            TokenKind::kw_ptr_addr,
+            TokenKind::kw_ptr_from_addr,
+            TokenKind::kw_str_data,
+            TokenKind::kw_str_byte_len,
+            TokenKind::kw_str_from_bytes_unchecked,
+            TokenKind::l_paren,
+            TokenKind::l_brace,
+            TokenKind::minus,
+            TokenKind::star,
+            TokenKind::amp,
+            TokenKind::tilde,
+            TokenKind::bang,
+        }
+    );
+    expect_false_on(parse::detail::token_starts_expression, TokenKind::kw_module);
+
+    EXPECT_TRUE(parse::detail::token_starts_statement(TokenKind::identifier));
+    expect_true_all(
+        parse::detail::token_starts_statement,
+        {
+            TokenKind::kw_let,
+            TokenKind::kw_var,
+            TokenKind::kw_for,
+            TokenKind::kw_while,
+            TokenKind::kw_break,
+            TokenKind::kw_continue,
+            TokenKind::kw_defer,
+            TokenKind::kw_return,
+        }
+    );
+    expect_false_on(parse::detail::token_starts_statement, TokenKind::semicolon);
+
+    expect_true_all(
+        parse::detail::token_starts_non_expression_statement,
+        {
+            TokenKind::kw_let,
+            TokenKind::kw_var,
+            TokenKind::kw_if,
+            TokenKind::kw_for,
+            TokenKind::kw_while,
+            TokenKind::kw_break,
+            TokenKind::kw_continue,
+            TokenKind::kw_defer,
+            TokenKind::kw_return,
+        }
+    );
+    expect_false_on(parse::detail::token_starts_non_expression_statement, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_starts_type,
+        {
+            TokenKind::identifier,
+            TokenKind::star,
+            TokenKind::l_bracket,
+            TokenKind::kw_void,
+            TokenKind::kw_bool,
+            TokenKind::kw_i8,
+            TokenKind::kw_u8,
+            TokenKind::kw_i16,
+            TokenKind::kw_u16,
+            TokenKind::kw_i32,
+            TokenKind::kw_u32,
+            TokenKind::kw_i64,
+            TokenKind::kw_u64,
+            TokenKind::kw_isize,
+            TokenKind::kw_usize,
+            TokenKind::kw_f32,
+            TokenKind::kw_f64,
+            TokenKind::kw_str,
+        }
+    );
+    expect_false_on(parse::detail::token_starts_type, TokenKind::kw_fn);
+
+    expect_true_all(
+        parse::token_starts_match_arm,
+        {
+            TokenKind::identifier,
+            TokenKind::integer_literal,
+            TokenKind::kw_true,
+            TokenKind::kw_false,
+            TokenKind::dot,
+        }
+    );
+    expect_false_on(parse::token_starts_match_arm, TokenKind::kw_let);
+
+    expect_true_all(parse::token_starts_struct_field, {TokenKind::identifier});
+    expect_false_on(parse::token_starts_struct_field, TokenKind::kw_fn);
+
+    expect_true_all(parse::token_starts_parameter, {TokenKind::identifier, TokenKind::ellipsis});
+    expect_false_on(parse::token_starts_parameter, TokenKind::kw_fn);
+
+    expect_true_all(
+        parse::token_starts_struct_decl_field,
+        {TokenKind::identifier, TokenKind::kw_pub, TokenKind::kw_priv}
+    );
+    expect_false_on(parse::token_starts_struct_decl_field, TokenKind::kw_fn);
+
+    expect_true_all(parse::token_starts_enum_case, {TokenKind::identifier});
+    expect_false_on(parse::token_starts_enum_case, TokenKind::kw_fn);
+
+    expect_true_all(parse::token_starts_generic_parameter, {TokenKind::identifier});
+    expect_false_on(parse::token_starts_generic_parameter, TokenKind::kw_fn);
+
+    expect_true_all(
+        parse::token_starts_path_segment,
+        {TokenKind::identifier, TokenKind::kw_c, TokenKind::kw_str}
+    );
+    expect_false_on(parse::token_starts_path_segment, TokenKind::kw_fn);
+
+    expect_true_all(
+        parse::detail::token_ends_type_argument,
+        {
+            TokenKind::greater,
+            TokenKind::greater_greater,
+            TokenKind::comma,
+            TokenKind::semicolon,
+            TokenKind::r_paren,
+            TokenKind::r_bracket,
+            TokenKind::r_brace,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_type_argument, TokenKind::identifier);
+
+    expect_true_all(parse::detail::token_ends_match_arm, {TokenKind::comma, TokenKind::r_brace});
+    expect_false_on(parse::detail::token_ends_match_arm, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_call_argument,
+        {
+            TokenKind::comma,
+            TokenKind::r_paren,
+            TokenKind::semicolon,
+            TokenKind::r_bracket,
+            TokenKind::r_brace,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_call_argument, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_struct_field,
+        {
+            TokenKind::comma,
+            TokenKind::r_brace,
+            TokenKind::semicolon,
+            TokenKind::r_paren,
+            TokenKind::r_bracket,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_struct_field, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_parameter,
+        {
+            TokenKind::comma,
+            TokenKind::r_paren,
+            TokenKind::arrow,
+            TokenKind::l_brace,
+            TokenKind::semicolon,
+            TokenKind::r_brace,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_parameter, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_struct_decl_field,
+        {
+            TokenKind::semicolon,
+            TokenKind::comma,
+            TokenKind::r_brace,
+            TokenKind::kw_fn,
+            TokenKind::kw_struct,
+            TokenKind::kw_enum,
+            TokenKind::kw_impl,
+            TokenKind::kw_extern,
+            TokenKind::kw_export,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_struct_decl_field, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_enum_case,
+        {
+            TokenKind::comma,
+            TokenKind::semicolon,
+            TokenKind::r_brace,
+            TokenKind::kw_fn,
+            TokenKind::kw_struct,
+            TokenKind::kw_enum,
+            TokenKind::kw_impl,
+            TokenKind::kw_extern,
+            TokenKind::kw_export,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_enum_case, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_generic_parameter,
+        {
+            TokenKind::greater,
+            TokenKind::comma,
+            TokenKind::l_paren,
+            TokenKind::r_paren,
+            TokenKind::l_brace,
+            TokenKind::colon,
+            TokenKind::semicolon,
+            TokenKind::r_brace,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_generic_parameter, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_builtin_argument,
+        {
+            TokenKind::comma,
+            TokenKind::r_paren,
+            TokenKind::semicolon,
+            TokenKind::r_bracket,
+            TokenKind::r_brace,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_builtin_argument, TokenKind::identifier);
+}
+
+TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
+    constexpr std::string_view source =
+        "module parser.ranges;\n"
+        "fn main() -> i32 { return 0; }\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({18}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+    constexpr base::usize PARSER_RANGE_TEST_MIN_TOKEN_COUNT = 2;
+    constexpr base::u32 PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET = 1;
+    ASSERT_GT(tokens.value().size(), PARSER_RANGE_TEST_MIN_TOKEN_COUNT);
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    ParserPartRangeReaderProbe reader(parser);
+
+    const base::SourceId source_id = tokens.value().front().range.source;
+    const base::SourceRange begin_range = tokens.value().front().range;
+    const base::SourceRange end_range = tokens.value()[PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET].range;
+    const base::SourceRange fallback_range = tokens.value().back().range;
+
+    const syntax::ExprId expr_id = reader.module().push_expr(
+        [&] {
+            syntax::ExprNode expr;
+            expr.kind = syntax::ExprKind::integer_literal;
+            expr.range = begin_range;
+            return expr;
+        }()
+    );
+    const syntax::StmtId stmt_id = reader.module().push_stmt(
+        [&] {
+            syntax::StmtNode stmt;
+            stmt.kind = syntax::StmtKind::expr;
+            stmt.range = end_range;
+            return stmt;
+        }()
+    );
+    const syntax::TypeId type_id = reader.module().push_type(
+        [&] {
+            syntax::TypeNode type;
+            type.kind = syntax::TypeKind::primitive;
+            type.range = begin_range;
+            type.primitive = syntax::PrimitiveTypeKind::i32;
+            return type;
+        }()
+    );
+    const syntax::PatternId pattern_id = reader.module().push_pattern(
+        [&] {
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::wildcard;
+            pattern.range = end_range;
+            return pattern;
+        }()
+    );
+
+    const base::SourceRange merged = reader.merge(begin_range, end_range);
+    EXPECT_EQ(merged.source.value, source_id.value);
+    EXPECT_EQ(merged.begin, begin_range.begin);
+    EXPECT_EQ(merged.end, end_range.end);
+
+    const auto expect_range = [](const base::SourceRange actual, const base::SourceRange expected) {
+        EXPECT_EQ(actual.source.value, expected.source.value);
+        EXPECT_EQ(actual.begin, expected.begin);
+        EXPECT_EQ(actual.end, expected.end);
+    };
+
+    expect_range(reader.expr_range_or(expr_id, fallback_range), begin_range);
+    expect_range(reader.expr_range_or(syntax::INVALID_EXPR_ID, fallback_range), fallback_range);
+    expect_range(reader.expr_range_or(syntax::ExprId {expr_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+
+    expect_range(reader.stmt_range_or(stmt_id, fallback_range), end_range);
+    expect_range(reader.stmt_range_or(syntax::INVALID_STMT_ID, fallback_range), fallback_range);
+    expect_range(reader.stmt_range_or(syntax::StmtId {stmt_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+
+    expect_range(reader.type_range_or(type_id, fallback_range), begin_range);
+    expect_range(reader.type_range_or(syntax::INVALID_TYPE_ID, fallback_range), fallback_range);
+    expect_range(reader.type_range_or(syntax::TypeId {type_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+
+    expect_range(reader.pattern_range_or(pattern_id, fallback_range), end_range);
+    expect_range(reader.pattern_range_or(syntax::INVALID_PATTERN_ID, fallback_range), fallback_range);
+    expect_range(reader.pattern_range_or(syntax::PatternId {pattern_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+}
+
+TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
+    constexpr std::string_view source =
+        "module parser.builtin_recovery;\n"
+        "fn main() -> i32 {\n"
+        "  let text: str = \"hello\";\n"
+        "  let data: *const u8 = str_data(text);\n"
+        "  let len: usize = str_byte_len(text);\n"
+        "  let broken_cast: i32 = cast(i32 1);\n"
+        "  let broken_str: str = str_from_bytes_unchecked(data len);\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({19}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages.push_back('\n');
+    }
+    expect_contains(messages, "expected ',' after cast type");
+    expect_contains(messages, "expected ',' after str_from_bytes_unchecked data");
 }
 
 } // namespace aurex::test

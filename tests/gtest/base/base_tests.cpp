@@ -13,6 +13,8 @@ using base::DiagnosticSink;
 using base::ErrorCode;
 using base::Severity;
 
+constexpr int BASE_TEST_UNKNOWN_SEVERITY_VALUE = 99;
+
 } // namespace
 
 TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
@@ -25,6 +27,10 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     base::SourceRange reversed {{7}, 9, 3};
     EXPECT_EQ(reversed.length(), 0U);
     EXPECT_FALSE(reversed.empty());
+
+    base::SourceRange empty {{7}, 3, 3};
+    EXPECT_EQ(empty.length(), 0U);
+    EXPECT_TRUE(empty.empty());
 
     base::SourceManager sources;
     const base::SourceId id = sources.add_source("unit.ax", "module unit;");
@@ -46,6 +52,7 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     EXPECT_EQ(base::severity_name(Severity::warning), "warning");
     EXPECT_EQ(base::severity_name(Severity::error), "error");
     EXPECT_EQ(base::severity_name(Severity::fatal), "fatal");
+    EXPECT_EQ(base::severity_name(static_cast<Severity>(BASE_TEST_UNKNOWN_SEVERITY_VALUE)), "unknown");
 
     auto ok_int = base::Result<int>::ok(11);
     ASSERT_TRUE(ok_int);

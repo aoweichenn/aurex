@@ -1,5 +1,6 @@
 #include <array>
 
+#include <aurex/ir/enum_layout.hpp>
 #include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::test {
@@ -9,6 +10,9 @@ using namespace irtest;
 
 constexpr base::u64 TYPE_TABLE_TEST_ARRAY_COUNT = 4;
 constexpr base::usize TYPE_TABLE_TEST_BUILTIN_COUNT = 15;
+constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE = 8;
+constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT = 4;
+constexpr base::usize TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT = 2;
 
 } // namespace
 
@@ -54,11 +58,31 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
 
     module.types.set_record_properties(record_type, true, false);
     module.types.set_enum_underlying(enum_type, u32);
-    module.types.set_enum_payload_layout(enum_type, record_type, 8, 4);
+    module.types.set_enum_payload_layout(
+        enum_type,
+        record_type,
+        TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE,
+        TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT
+    );
     EXPECT_TRUE(module.types.contains_array(record_type));
     EXPECT_FALSE(module.types.is_copyable(record_type));
-    EXPECT_EQ(module.types.get(enum_type).enum_payload_size, 8U);
+    EXPECT_EQ(module.types.get(enum_type).enum_payload_size, TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE);
     EXPECT_FALSE(module.types.is_copyable(opaque));
+    EXPECT_TRUE(ir::is_payload_enum(module.types, enum_type));
+    EXPECT_FALSE(ir::is_payload_enum(module.types, record_type));
+    EXPECT_EQ(ir::enum_tag_type(module.types, enum_type).value, u32.value);
+    EXPECT_EQ(ir::enum_tag_type(module.types, record_type).value, sema::INVALID_TYPE_HANDLE.value);
+    EXPECT_EQ(ir::enum_tag_type(module.types, sema::INVALID_TYPE_HANDLE).value, sema::INVALID_TYPE_HANDLE.value);
+    EXPECT_EQ(ir::enum_payload_storage_type(module.types, enum_type).value, record_type.value);
+    EXPECT_EQ(ir::enum_payload_storage_type(module.types, record_type).value, sema::INVALID_TYPE_HANDLE.value);
+    EXPECT_EQ(ir::enum_payload_storage_type(module.types, sema::INVALID_TYPE_HANDLE).value, sema::INVALID_TYPE_HANDLE.value);
+
+    const RecordLayout payload_record = ir::make_payload_enum_record(module.types, enum_type);
+    ASSERT_EQ(payload_record.fields.size(), TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT);
+    EXPECT_EQ(payload_record.fields[0].name, ir::IR_ENUM_TAG_FIELD_NAME);
+    EXPECT_EQ(payload_record.fields[0].type.value, u32.value);
+    EXPECT_EQ(payload_record.fields[1].name, ir::IR_ENUM_PAYLOAD_FIELD_NAME);
+    EXPECT_EQ(payload_record.fields[1].type.value, record_type.value);
 
     RecordLayout record;
     record.type = record_type;

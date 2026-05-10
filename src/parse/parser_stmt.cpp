@@ -103,12 +103,6 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
     if (this->match_assignment_operator(op)) {
         return this->parse_assignment_tail(lhs, context, op, require_semicolon, recovery);
     }
-    if (this->match(TokenKind::plus_plus)) {
-        return this->parse_postfix_update_stmt(lhs, syntax::AssignOp::add, require_semicolon, recovery);
-    }
-    if (this->match(TokenKind::minus_minus)) {
-        return this->parse_postfix_update_stmt(lhs, syntax::AssignOp::sub, require_semicolon, recovery);
-    }
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::expr;
@@ -198,38 +192,6 @@ syntax::StmtId StmtParser::parse_assignment_tail(
     }
     stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
     return this->session_.module.push_stmt(std::move(stmt));
-}
-
-syntax::StmtId StmtParser::parse_postfix_update_stmt(
-    const syntax::ExprId lhs,
-    const syntax::AssignOp op,
-    const bool require_semicolon,
-    const StatementTerminatorRecovery recovery
-) {
-    syntax::StmtNode stmt;
-    stmt.kind = syntax::StmtKind::assign;
-    stmt.assign_op = op;
-    stmt.lhs = lhs;
-    stmt.rhs = this->make_integer_literal_one(this->previous().range);
-
-    base::SourceRange end_range = this->expr_range_or(stmt.rhs, this->expr_range_or(lhs, this->peek().range));
-    if (require_semicolon) {
-        const syntax::Token& end = this->expect_statement_semicolon(
-            "expected ';' after update statement",
-            recovery
-        );
-        end_range = end.range;
-    }
-    stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
-    return this->session_.module.push_stmt(std::move(stmt));
-}
-
-syntax::ExprId StmtParser::make_integer_literal_one(const base::SourceRange range) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::integer_literal;
-    expr.range = range;
-    expr.text = "1";
-    return this->session_.module.push_expr(std::move(expr));
 }
 
 const syntax::Token& StmtParser::expect_statement_semicolon(

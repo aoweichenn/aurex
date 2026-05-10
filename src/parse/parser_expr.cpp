@@ -174,7 +174,7 @@ bool ExprParser::recover_match_arm_separator() {
         return !this->check(TokenKind::r_brace);
     }
 
-    this->report_here("expected ',' after match arm");
+    this->report_here("expected ',' or '}' after match arm");
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::match_arm)) {
         this->synchronize(RecoveryContext::match_arm);
     }
@@ -200,6 +200,21 @@ syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context, const in
 }
 
 syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
+    if (this->check(TokenKind::plus_plus)) {
+        return this->parse_rejected_update_operator_expr(
+            TokenKind::plus_plus,
+            "increment operator is not supported; use '+= 1'",
+            context
+        );
+    }
+    if (this->check(TokenKind::minus_minus)) {
+        return this->parse_rejected_update_operator_expr(
+            TokenKind::minus_minus,
+            "decrement operator is not supported; use '-= 1'",
+            context
+        );
+    }
+
     if (this->match(TokenKind::bang) ||
         this->match(TokenKind::minus) ||
         this->match(TokenKind::tilde) ||
@@ -234,6 +249,21 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
         return this->session_.module.push_expr(std::move(expr));
     }
     return PostfixExprParser(this->parser_).parse_postfix(context);
+}
+
+syntax::ExprId ExprParser::parse_rejected_update_operator_expr(
+    const TokenKind kind,
+    std::string message,
+    const ExprContext context
+) {
+    const syntax::Token& op = this->expect(kind, "expected unsupported update operator");
+    this->report_at(op, std::move(message));
+    const syntax::ExprId operand = this->parse_unary(context);
+
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::invalid;
+    expr.range = this->merge(op.range, this->expr_range_or(operand, op.range));
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) {

@@ -43,6 +43,20 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
     if (this->match(TokenKind::question)) {
         return this->parse_try_suffix(expr);
     }
+    if (this->check(TokenKind::plus_plus)) {
+        return this->parse_rejected_update_suffix(
+            expr,
+            TokenKind::plus_plus,
+            "increment operator is not supported; use '+= 1'"
+        );
+    }
+    if (this->check(TokenKind::minus_minus)) {
+        return this->parse_rejected_update_suffix(
+            expr,
+            TokenKind::minus_minus,
+            "decrement operator is not supported; use '-= 1'"
+        );
+    }
     return std::nullopt;
 }
 
@@ -144,6 +158,20 @@ syntax::ExprId PostfixExprParser::parse_try_suffix(const syntax::ExprId expr) {
     node.kind = syntax::ExprKind::try_expr;
     node.unary_operand = expr;
     node.range = this->merge(this->expr_range_or(expr, question.range), question.range);
+    return this->session_.module.push_expr(std::move(node));
+}
+
+syntax::ExprId PostfixExprParser::parse_rejected_update_suffix(
+    const syntax::ExprId expr,
+    const TokenKind kind,
+    std::string message
+) {
+    const syntax::Token& op = this->expect(kind, "expected unsupported update operator");
+    this->report_at(op, std::move(message));
+
+    syntax::ExprNode node;
+    node.kind = syntax::ExprKind::invalid;
+    node.range = this->merge(this->expr_range_or(expr, op.range), op.range);
     return this->session_.module.push_expr(std::move(node));
 }
 

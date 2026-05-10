@@ -284,6 +284,41 @@ TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
     expect_contains(messages, "expected expression");
 }
 
+TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
+    constexpr std::string_view source =
+        "module parser.trailing_separators;\n"
+        "struct Pair<T, U,> { left: T; right: U; }\n"
+        "enum Choice<T, E>: u8 { ok = 1, err(E) = 2 }\n"
+        "fn choose<T, E,>(first: T, second: E,) -> Choice<T, E> {\n"
+        "  let pair = Pair<T, E> { left: first, right: second, };\n"
+        "  if pair.left == first { return Choice<T, E>.ok; }\n"
+        "  return Choice<T, E>.err(pair.right);\n"
+        "}\n"
+        "fn score() -> i32 {\n"
+        "  let value = choose<i32, bool>(41, false,);\n"
+        "  return match value {\n"
+        "    .ok => 41,\n"
+        "    .err(flag) => if flag { 1 } else { 0 }\n"
+        "  };\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* pair = find_item(module, "Pair");
+    ASSERT_NE(pair, nullptr);
+    EXPECT_EQ(pair->generic_params.size(), 2U);
+    EXPECT_EQ(pair->fields.size(), 2U);
+
+    const syntax::ItemNode* choice = find_item(module, "Choice");
+    ASSERT_NE(choice, nullptr);
+    EXPECT_EQ(choice->generic_params.size(), 2U);
+    EXPECT_EQ(choice->enum_cases.size(), 2U);
+
+    const syntax::ItemNode* choose = find_item(module, "choose");
+    ASSERT_NE(choose, nullptr);
+    EXPECT_EQ(choose->generic_params.size(), 2U);
+    EXPECT_EQ(choose->params.size(), 2U);
+}
+
 TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
     constexpr base::SourceId kTypeArgRecoverySourceId {9};
     constexpr std::string_view source =
@@ -341,7 +376,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ',' after match arm");
+    expect_contains(messages, "expected ',' or '}' after match arm");
     expect_contains(messages, "expected expression");
 }
 
@@ -457,7 +492,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ';' after field declaration");
+    expect_contains(messages, "expected ';' or '}' after field declaration");
     expect_contains(messages, "expected expression");
 }
 
@@ -486,7 +521,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ',' after enum case");
+    expect_contains(messages, "expected ',' or '}' after enum case");
     expect_contains(messages, "expected expression");
 }
 
@@ -1131,16 +1166,15 @@ TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
     EXPECT_EQ(multiplication.binary_op, syntax::BinaryOp::mul);
 }
 
-TEST(CoreUnit, ParserCoversCompoundAssignmentAndPostfixUpdateStatements) {
+TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {
     constexpr std::string_view source =
         "module parser.assign_ops;\n"
         "fn main() -> i32 {\n"
         "  var value: i32 = 1;\n"
         "  value += 2;\n"
         "  value <<= 1;\n"
-        "  value++;\n"
-        "  value--;\n"
-        "  for var i: i32 = 0; i < 2; i++ {\n"
+        "  value -= 1;\n"
+        "  for var i: i32 = 0; i < 2; i += 1 {\n"
         "    value |= i;\n"
         "  }\n"
         "  return value;\n"
@@ -1161,24 +1195,64 @@ TEST(CoreUnit, ParserCoversCompoundAssignmentAndPostfixUpdateStatements) {
     ASSERT_EQ(shl_assign.kind, syntax::StmtKind::assign);
     EXPECT_EQ(shl_assign.assign_op, syntax::AssignOp::shl);
 
-    const syntax::StmtNode& increment = module.stmts[body.statements[3].value];
-    ASSERT_EQ(increment.kind, syntax::StmtKind::assign);
-    EXPECT_EQ(increment.assign_op, syntax::AssignOp::add);
-    ASSERT_TRUE(syntax::is_valid(increment.rhs));
-    const syntax::ExprNode& increment_amount = module.exprs[increment.rhs.value];
-    EXPECT_EQ(increment_amount.kind, syntax::ExprKind::integer_literal);
-    EXPECT_EQ(increment_amount.text, "1");
-
-    const syntax::StmtNode& decrement = module.stmts[body.statements[4].value];
+    const syntax::StmtNode& decrement = module.stmts[body.statements[3].value];
     ASSERT_EQ(decrement.kind, syntax::StmtKind::assign);
     EXPECT_EQ(decrement.assign_op, syntax::AssignOp::sub);
 
-    const syntax::StmtNode& loop = module.stmts[body.statements[5].value];
+    const syntax::StmtNode& loop = module.stmts[body.statements[4].value];
     ASSERT_EQ(loop.kind, syntax::StmtKind::for_);
     ASSERT_TRUE(syntax::is_valid(loop.for_update));
     const syntax::StmtNode& update = module.stmts[loop.for_update.value];
     EXPECT_EQ(update.kind, syntax::StmtKind::assign);
     EXPECT_EQ(update.assign_op, syntax::AssignOp::add);
+}
+
+TEST(CoreUnit, ParserRejectsIncrementAndDecrementSyntax) {
+    expect_parse_error(
+        "module parser.increment_syntax;\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 0;\n"
+        "  value++;\n"
+        "  return value;\n"
+        "}\n",
+        "increment operator is not supported; use '+= 1'"
+    );
+    expect_parse_error(
+        "module parser.increment_expr_syntax;\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 0;\n"
+        "  let old: i32 = value++;\n"
+        "  return old;\n"
+        "}\n",
+        "increment operator is not supported; use '+= 1'"
+    );
+    expect_parse_error(
+        "module parser.decrement_syntax;\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 0;\n"
+        "  value--;\n"
+        "  return value;\n"
+        "}\n",
+        "decrement operator is not supported; use '-= 1'"
+    );
+    expect_parse_error(
+        "module parser.prefix_increment_syntax;\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 0;\n"
+        "  ++value;\n"
+        "  return value;\n"
+        "}\n",
+        "increment operator is not supported; use '+= 1'"
+    );
+    expect_parse_error(
+        "module parser.prefix_decrement_syntax;\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 0;\n"
+        "  --value;\n"
+        "  return value;\n"
+        "}\n",
+        "decrement operator is not supported; use '-= 1'"
+    );
 }
 
 TEST(CoreUnit, ParserRejectsStructLiteralInControlConditions) {

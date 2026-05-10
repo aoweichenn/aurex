@@ -104,7 +104,7 @@ bool ItemParser::recover_struct_field_decl_separator() {
         return !this->check(TokenKind::r_brace);
     }
 
-    this->report_here("expected ';' after field declaration");
+    this->report_here("expected ';' or '}' after field declaration");
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::struct_decl_field)) {
         this->synchronize(RecoveryContext::struct_decl_field);
     }
@@ -152,7 +152,7 @@ bool ItemParser::recover_enum_case_separator() {
         return !this->check(TokenKind::r_brace);
     }
 
-    this->report_here("expected ',' after enum case");
+    this->report_here("expected ',' or '}' after enum case");
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::enum_case)) {
         this->synchronize(RecoveryContext::enum_case);
     }

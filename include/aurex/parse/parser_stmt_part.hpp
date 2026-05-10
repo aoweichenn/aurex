@@ -39,13 +39,6 @@ private:
         bool require_semicolon,
         StatementTerminatorRecovery recovery
     );
-    [[nodiscard]] syntax::StmtId parse_postfix_update_stmt(
-        syntax::ExprId lhs,
-        syntax::AssignOp op,
-        bool require_semicolon,
-        StatementTerminatorRecovery recovery
-    );
-    [[nodiscard]] syntax::ExprId make_integer_literal_one(const base::SourceRange range);
     [[nodiscard]] const syntax::Token& expect_statement_semicolon(
         std::string message,
         StatementTerminatorRecovery recovery

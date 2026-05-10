@@ -1,7 +1,7 @@
-module increment_let;
+module increment_syntax;
 
 fn main() -> i32 {
-    let value: i32 = 1;
+    var value: i32 = 1;
     value++;
     return value;
 }

@@ -24,6 +24,11 @@ private:
     void parse_call_args(std::vector<syntax::ExprId>& args, ExprContext context);
     [[nodiscard]] bool recover_call_arg_separator();
     [[nodiscard]] syntax::ExprId parse_try_suffix(syntax::ExprId expr);
+    [[nodiscard]] syntax::ExprId parse_rejected_update_suffix(
+        syntax::ExprId expr,
+        syntax::TokenKind kind,
+        std::string message
+    );
 };
 
 } // namespace aurex::parse

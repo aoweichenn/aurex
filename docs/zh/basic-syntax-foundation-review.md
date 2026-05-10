@@ -405,20 +405,17 @@ flags = flags | mask;
 ```aurex
 i += 1;
 flags |= mask;
-i++;
-i--;
 ```
 
-`++` / `--` 的规则：
+M2 明确不支持自增自减语法：
 
-- 只允许 statement-only postfix update。
-- `x++;` 等价于 `x += 1;`，`x--;` 等价于 `x -= 1;`。
-- 没有 prefix `++x` / `--x`。
-- 没有表达式值语义，不能写 `let old = x++;`、`foo(x++)`、`x = y++`。
+- `x++`、`++x`、`x--`、`--x` 都是语法错误。
+- 计数更新统一写 `x += 1` / `x -= 1`。
+- 词法层保留 `++` / `--` 为独立 token，只用于诊断和防止 `--x` 被拆成两个一元负号。
+- 设计取向跟 Rust/Zig 更接近，不引入 C/C++/Java/JavaScript 的更新表达式值语义。
 
 ```text
 += -= *= /= %= <<= >>= &= ^= |=
-++ --
 ```
 
 语义：
@@ -747,28 +744,46 @@ identifier_continue = identifier_start | "0".."9"
 
 状态：已补实现，继续保留为语法规范要求。
 
-## P1 缺陷：trailing separator 策略要统一
+## P1 已补：trailing separator 策略统一
 
-现状：
+当前冻结规则：
 
-- struct field declaration 用 `;`。
-- enum case 用 `,`，当前每个 case 后都要求 `,`。
-- parameter list、argument list、struct literal field list、match arm list 有各自处理。
+- 圆括号列表允许 trailing comma：函数参数、调用参数、ABI 属性等。
+- 角括号列表允许 trailing comma：generic parameter、type argument。
+- comma 分隔的花括号列表允许 trailing comma，但不强制最后一个 comma：struct literal field、enum case、match arm。
+- struct field declaration 继续使用 `;`，按 statement-like 风格保留最后一个 `;`。
 
-问题：
+动机：
 
 - 用户需要记很多小规则。
 - formatter 和 diff 友好性依赖稳定 trailing separator。
+- enum case 和 match arm 的最后一项不应为了 parser 方便而强制 comma。
 
-建议：
+示例：
 
-- 圆括号列表：允许 trailing comma。
-- 花括号列表中如果元素用 comma 分隔：允许 trailing comma，但不要强制最后一个必须 comma。
-- struct field declaration 继续用 semicolon，可以保留。
-- enum case 建议允许最后一个 case 省略 comma。
-- match arm 建议允许 trailing comma，并要求多行 match 使用 comma。
+```aurex
+struct Pair<T, U,> {
+    left: T;
+    right: U;
+}
 
-优先级：中。
+enum Choice<T, E>: u8 {
+    ok = 1,
+    err(E) = 2
+}
+
+let pair = Pair<i32, bool> {
+    left: 1,
+    right: false,
+};
+
+let result = match value {
+    .ok => 0,
+    .err(flag) => if flag { 1 } else { 2 }
+};
+```
+
+状态：已补。parser 单测覆盖统一策略，positive sample `core/trailing_separator_policy.ax` 覆盖 sema / IR / LLVM 路径。
 
 ## P2 可暂缓：shadowing 策略
 

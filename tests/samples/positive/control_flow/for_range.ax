@@ -1,5 +1,9 @@
 module for_range;
 
+fn push_digit(log: *mut i32, value: i32) -> void {
+    *log = *log * 10 + value;
+}
+
 fn contextual_start(limit: i64) -> i64 {
     var total: i64 = 0;
     for i in range(-(1 + 1), limit) {
@@ -8,8 +12,71 @@ fn contextual_start(limit: i64) -> i64 {
     return total;
 }
 
+fn range_control_paths() -> i32 {
+    var total: i32 = 0;
+    var log: i32 = 0;
+    for i in range(0, 5) {
+        defer push_digit(&log, 1);
+        if i == 1 {
+            continue;
+        }
+        if i == 3 {
+            break;
+        }
+        total += i;
+    }
+    return total * 1000 + log;
+}
+
+fn range_step_paths() -> i32 {
+    var total: i32 = 0;
+    for i in range(1, 6, 2) {
+        total += i;
+    }
+    for i in range(5, 0, -2) {
+        total += i;
+    }
+    for i in range(0, 5, 0) {
+        total += 100;
+    }
+    return total;
+}
+
+fn dynamic_forward_step(step: i32) -> i32 {
+    var total: i32 = 0;
+    for i in range(0, 6, step) {
+        total += i;
+    }
+    return total;
+}
+
+fn dynamic_reverse_step(step: i32) -> i32 {
+    var total: i32 = 0;
+    for i in range(6, 0, step) {
+        total += i;
+    }
+    return total;
+}
+
+fn unsigned_step() -> u32 {
+    let start: u32 = 0;
+    let end: u32 = 6;
+    let step: u32 = 2;
+    var total: u32 = 0;
+    for i in range(start, end, step) {
+        total += i;
+    }
+    return total;
+}
+
 fn main() -> i32 {
-    if contextual_start(2) == -2 {
+    if contextual_start(2) == -2 &&
+        range_control_paths() == 3111 &&
+        range_step_paths() == 18 &&
+        dynamic_forward_step(2) == 6 &&
+        dynamic_forward_step(0) == 0 &&
+        dynamic_reverse_step(-2) == 12 &&
+        unsigned_step() == 6 {
         return 0;
     }
     return 1;

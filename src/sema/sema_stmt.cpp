@@ -8,6 +8,8 @@ namespace {
 
 constexpr base::usize SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY = 16;
 constexpr base::usize SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX = 0;
+constexpr base::usize SEMA_FOR_RANGE_MAX_OPERAND_COUNT = 3;
+constexpr char SEMA_FOR_RANGE_ARITY_MESSAGE[] = "range expects 1 to 3 arguments";
 
 enum class ControlFlowQuery {
     guarantees_return,
@@ -566,28 +568,54 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
     const syntax::StmtId stmt_id,
     const syntax::StmtNode& stmt
 ) {
-    TypeHandle start = INVALID_TYPE_HANDLE;
-    TypeHandle end = INVALID_TYPE_HANDLE;
     if (!syntax::is_valid(stmt.range_end)) {
         this->record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
-        this->report(stmt.range, "range expects 1 or 2 arguments");
+        this->report(stmt.range, SEMA_FOR_RANGE_ARITY_MESSAGE);
         return INVALID_TYPE_HANDLE;
     }
 
+    std::vector<syntax::ExprId> operands;
+    operands.reserve(SEMA_FOR_RANGE_MAX_OPERAND_COUNT);
+    bool has_start = false;
+    bool has_step = false;
+    base::usize start_index = 0;
+    base::usize end_index = 0;
+    base::usize step_index = 0;
     if (syntax::is_valid(stmt.range_start)) {
-        const bool start_contextual = statement_contextual_integer_expr(this->module_, stmt.range_start);
-        const bool end_contextual = statement_contextual_integer_expr(this->module_, stmt.range_end);
-        if (start_contextual && !end_contextual) {
-            end = this->analyze_expr(stmt.range_end);
-            start = this->analyze_expr(stmt.range_start, end);
-        } else {
-            start = this->analyze_expr(stmt.range_start);
-            end = this->analyze_expr(stmt.range_end, start);
-        }
-    } else {
-        end = this->analyze_expr(stmt.range_end);
-        start = end;
+        has_start = true;
+        start_index = operands.size();
+        operands.push_back(stmt.range_start);
     }
+    end_index = operands.size();
+    operands.push_back(stmt.range_end);
+    if (syntax::is_valid(stmt.range_step)) {
+        has_step = true;
+        step_index = operands.size();
+        operands.push_back(stmt.range_step);
+    }
+
+    std::vector<TypeHandle> operand_types(operands.size(), INVALID_TYPE_HANDLE);
+    TypeHandle range_type = INVALID_TYPE_HANDLE;
+    for (base::usize i = 0; i < operands.size(); ++i) {
+        if (!statement_contextual_integer_expr(this->module_, operands[i])) {
+            operand_types[i] = this->analyze_expr(operands[i]);
+            range_type = operand_types[i];
+            break;
+        }
+    }
+    if (!is_valid(range_type) && !operands.empty()) {
+        operand_types.front() = this->analyze_expr(operands.front());
+        range_type = operand_types.front();
+    }
+    for (base::usize i = 0; i < operands.size(); ++i) {
+        if (!is_valid(operand_types[i])) {
+            operand_types[i] = this->analyze_expr(operands[i], range_type);
+        }
+    }
+
+    const TypeHandle end = operand_types[end_index];
+    const TypeHandle start = has_start ? operand_types[start_index] : end;
+    const TypeHandle step = has_step ? operand_types[step_index] : range_type;
 
     if (syntax::is_valid(stmt.range_start) && !this->checked_.types.is_integer(start)) {
         this->report(expr_range_or(this->module_, stmt.range_start, stmt.range), "range bounds must be integer");
@@ -595,11 +623,27 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
     if (!this->checked_.types.is_integer(end)) {
         this->report(expr_range_or(this->module_, stmt.range_end, stmt.range), "range bounds must be integer");
     }
-    if (is_valid(start) && is_valid(end) && !this->checked_.types.same(start, end)) {
+    if (has_step && !this->checked_.types.is_integer(step)) {
+        this->report(expr_range_or(this->module_, stmt.range_step, stmt.range), "range step must be integer");
+    }
+    const bool bounds_have_same_type =
+        is_valid(start) &&
+        is_valid(end) &&
+        this->checked_.types.same(start, end);
+    if (is_valid(start) && is_valid(end) && !bounds_have_same_type) {
         this->report(stmt.range, "range bounds must have the same type");
     }
+    if (has_step &&
+        bounds_have_same_type &&
+        this->checked_.types.is_integer(start) &&
+        this->checked_.types.is_integer(step) &&
+        !this->checked_.types.same(start, step)) {
+        this->report(expr_range_or(this->module_, stmt.range_step, stmt.range), "range step must have the same type as bounds");
+    }
 
-    const TypeHandle local_type = this->checked_.types.is_integer(start) ? start : end;
+    const TypeHandle local_type = this->checked_.types.is_integer(start)
+        ? start
+        : (this->checked_.types.is_integer(end) ? end : step);
     this->record_stmt_local_type(stmt_id, local_type);
     return local_type;
 }

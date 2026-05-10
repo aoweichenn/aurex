@@ -69,7 +69,7 @@ fn main() -> i32 {
 - parser 能生成任意 expression statement；sema 当前只允许函数调用和 `?` try expression 作为 expression statement。
 - 顶层 item 和 struct field 默认 public，import 默认 private。
 - 整数字面量允许 `_`，规则已收紧为只能出现在两个合法数字之间。
-- `for i in range(end)` / `for i in range(start, end)` 已作为基础计数循环补齐；当前只支持整数半开区间，不支持 step 或容器迭代。
+- `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)` 已作为基础计数循环补齐；当前只支持整数半开区间和显式 step，不支持容器迭代。
 
 ## 总体判断
 

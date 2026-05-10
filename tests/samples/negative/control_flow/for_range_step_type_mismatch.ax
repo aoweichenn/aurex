@@ -1,0 +1,11 @@
+module for_range_step_type_mismatch;
+
+fn main() -> i32 {
+    let start: i32 = 0;
+    let end: i32 = 3;
+    let step: i64 = 1;
+    for i in range(start, end, step) {
+        return i;
+    }
+    return 0;
+}

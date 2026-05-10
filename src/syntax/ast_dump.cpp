@@ -335,6 +335,9 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     if (is_valid(stmt.range_end)) {
         dump_expr(out, module, stmt.range_end, depth + 1);
     }
+    if (is_valid(stmt.range_step)) {
+        dump_expr(out, module, stmt.range_step, depth + 1);
+    }
     if (is_valid(stmt.then_block)) {
         dump_stmt(out, module, stmt.then_block, depth + 1);
     }

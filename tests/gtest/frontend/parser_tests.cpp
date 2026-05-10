@@ -1291,6 +1291,9 @@ TEST(CoreUnit, ParserParsesForRangeStatements) {
         "  for j in range(1, limit) {\n"
         "    total += j;\n"
         "  }\n"
+        "  for k in range(1, limit, 2) {\n"
+        "    total += k;\n"
+        "  }\n"
         "  return total;\n"
         "}\n";
     const syntax::AstModule module = parse_success(source);
@@ -1306,6 +1309,7 @@ TEST(CoreUnit, ParserParsesForRangeStatements) {
     EXPECT_EQ(end_loop.name, "i");
     EXPECT_FALSE(syntax::is_valid(end_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(end_loop.range_end));
+    EXPECT_FALSE(syntax::is_valid(end_loop.range_step));
     EXPECT_TRUE(syntax::is_valid(end_loop.body));
 
     const syntax::StmtNode& start_end_loop = module.stmts[body.statements[2].value];
@@ -1313,7 +1317,16 @@ TEST(CoreUnit, ParserParsesForRangeStatements) {
     EXPECT_EQ(start_end_loop.name, "j");
     EXPECT_TRUE(syntax::is_valid(start_end_loop.range_start));
     EXPECT_TRUE(syntax::is_valid(start_end_loop.range_end));
+    EXPECT_FALSE(syntax::is_valid(start_end_loop.range_step));
     EXPECT_TRUE(syntax::is_valid(start_end_loop.body));
+
+    const syntax::StmtNode& stepped_loop = module.stmts[body.statements[3].value];
+    ASSERT_EQ(stepped_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(stepped_loop.name, "k");
+    EXPECT_TRUE(syntax::is_valid(stepped_loop.range_start));
+    EXPECT_TRUE(syntax::is_valid(stepped_loop.range_end));
+    EXPECT_TRUE(syntax::is_valid(stepped_loop.range_step));
+    EXPECT_TRUE(syntax::is_valid(stepped_loop.body));
 }
 
 TEST(CoreUnit, ParserReportsMalformedForRangeSyntax) {
@@ -1334,6 +1347,15 @@ TEST(CoreUnit, ParserReportsMalformedForRangeSyntax) {
         "  return 0;\n"
         "}\n",
         "expected '(' after range"
+    );
+    expect_parse_error(
+        "module parser.for_range_too_many_args;\n"
+        "fn main() -> i32 {\n"
+        "  for i in range(0, 3, 1, 1) {\n"
+        "  }\n"
+        "  return 0;\n"
+        "}\n",
+        "range expects 1 to 3 arguments"
     );
 }
 

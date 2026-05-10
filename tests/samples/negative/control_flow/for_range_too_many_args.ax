@@ -1,0 +1,8 @@
+module for_range_too_many_args;
+
+fn main() -> i32 {
+    for i in range(0, 3, 1, 1) {
+        return i;
+    }
+    return 0;
+}

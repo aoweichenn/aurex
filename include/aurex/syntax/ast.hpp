@@ -222,6 +222,7 @@ struct StmtNode {
     ExprId condition = INVALID_EXPR_ID;
     ExprId range_start = INVALID_EXPR_ID;
     ExprId range_end = INVALID_EXPR_ID;
+    ExprId range_step = INVALID_EXPR_ID;
     StmtId then_block = INVALID_STMT_ID;
     StmtId else_block = INVALID_STMT_ID;
     StmtId else_if = INVALID_STMT_ID;

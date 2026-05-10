@@ -2,6 +2,7 @@
 
 #include <aurex/parse/parser_stmt_part.hpp>
 
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -13,7 +14,10 @@ using syntax::TokenKind;
 
 constexpr std::string_view PARSER_FOR_RANGE_CALLEE = "range";
 constexpr base::usize PARSER_FOR_RANGE_MIN_ARG_COUNT = 1;
-constexpr base::usize PARSER_FOR_RANGE_MAX_ARG_COUNT = 2;
+constexpr base::usize PARSER_FOR_RANGE_START_END_ARG_COUNT = 2;
+constexpr base::usize PARSER_FOR_RANGE_STEP_ARG_COUNT = 3;
+constexpr base::usize PARSER_FOR_RANGE_MAX_ARG_COUNT = PARSER_FOR_RANGE_STEP_ARG_COUNT;
+constexpr std::string_view PARSER_FOR_RANGE_ARITY_MESSAGE = "range expects 1 to 3 arguments";
 
 } // namespace
 
@@ -114,7 +118,7 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
         );
     }
     if (args.size() < PARSER_FOR_RANGE_MIN_ARG_COUNT || args.size() > PARSER_FOR_RANGE_MAX_ARG_COUNT) {
-        this->report_at(callee, "range expects 1 or 2 arguments");
+        this->report_at(callee, std::string(PARSER_FOR_RANGE_ARITY_MESSAGE));
     }
 
     const syntax::StmtId body = this->parse_block();
@@ -125,9 +129,12 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
     stmt.name = name.text;
     if (args.size() == PARSER_FOR_RANGE_MIN_ARG_COUNT) {
         stmt.range_end = args[0];
-    } else if (args.size() >= PARSER_FOR_RANGE_MAX_ARG_COUNT) {
+    } else if (args.size() >= PARSER_FOR_RANGE_START_END_ARG_COUNT) {
         stmt.range_start = args[0];
         stmt.range_end = args[1];
+        if (args.size() >= PARSER_FOR_RANGE_STEP_ARG_COUNT) {
+            stmt.range_step = args[2];
+        }
     }
     stmt.body = body;
     return this->session_.module.push_stmt(std::move(stmt));

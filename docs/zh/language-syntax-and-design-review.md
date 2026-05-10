@@ -1030,7 +1030,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 2. `Vec<T>` 增加 move-out API，例如 `take_at` / `swap_take`。
 3. `Map<K,V>` 增加 borrowed-key 查询和 entry API。
 4. 如果恢复文件、目录、进程 API，它们应全部迁到 `Result` 和 owned resource。
-5. iterator / slice 语法、容器 `for item in container` 和带 step 的 range 在 borrow/slice 基线后再定；当前只承认基础整数 `for i in range(end)` / `for i in range(start, end)`。
+5. iterator / slice 语法和容器 `for item in container` 在 borrow/slice 基线后再定；当前只承认基础整数 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`。
 
 ### P3：高级能力
 

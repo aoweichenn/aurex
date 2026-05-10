@@ -144,6 +144,21 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(for_source));
 
+    const fs::path range_source = positive_sample("control_flow", "for_range.ax");
+    const std::string range_ir = require_success(aurexc() + " --emit=ir " + q(range_source)).output;
+    expect_contains_all(range_ir, {
+        "fn range_control_paths()",
+        "fn range_step_paths()",
+        "for.range.step",
+        "for.range.cond",
+        "for.range.body",
+        "for.range.update",
+        "for.range.exit",
+    });
+    const fs::path range_bin = test_bin_root() / "for_range";
+    require_success(aurexc() + " " + q(range_source) + " -o " + q(range_bin));
+    require_success(q(range_bin));
+
     const fs::path bad_for_condition = negative_sample("control_flow", "for_condition_bool.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(bad_for_condition)).output, "for condition must be bool");
     expect_contains(
@@ -168,7 +183,19 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_arity.ax"))).output,
-        "range expects 1 or 2 arguments"
+        "range expects 1 to 3 arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_step_non_integer.ax"))).output,
+        "range step must be integer"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_step_type_mismatch.ax"))).output,
+        "range step must have the same type as bounds"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_too_many_args.ax"))).output,
+        "range expects 1 to 3 arguments"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,

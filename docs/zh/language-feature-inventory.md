@@ -394,18 +394,22 @@ for i in range(10) {
 for i in range(2, 10) {
     continue;
 }
+
+for i in range(10, 0, -2) {
+    continue;
+}
 ```
 
 当前 `for i in range(...)` 是 M2 基础语法糖，不是通用 iterator：
 
 - `range(end)` 是半开区间 `[0, end)`。
 - `range(start, end)` 是半开区间 `[start, end)`。
-- `start` / `end` 只求值一次，必须是同一种整数类型。
+- `range(start, end, step)` 支持显式步长；`step > 0` 时向上迭代，`step < 0` 时向下迭代，`step == 0` 时零次迭代。
+- `start` / `end` / `step` 只求值一次，必须是同一种整数类型。
 - loop 变量默认不可变，作用域只在循环体内。
-- 当前没有 `range(start, end, step)`。
 - 当前没有 `for item in container`、数组/切片/字符串迭代或 iterator protocol。
 
-`break` / `continue` 只能在 loop 中使用；在 range-for 中，`continue` 跳到隐藏的 `i += 1` 更新点。
+`break` / `continue` 只能在 loop 中使用；在 range-for 中，`continue` 跳到隐藏的 cursor 更新点，隐式 step 使用 `1`，显式 step 使用用户给定的步长。
 
 defer：
 
@@ -722,7 +726,6 @@ M2 已删除：
 - lambda / closure。
 - operator overloading。
 - user-defined implicit conversion。
-- `range(start, end, step)`。
 - `for item in container` / iterator protocol。
 
 ### 模块、包和工程能力未完成

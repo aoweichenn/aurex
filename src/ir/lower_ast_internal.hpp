@@ -129,6 +129,12 @@ private:
     [[nodiscard]] ValueId append_temp_alloca(const std::string& name, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_integer_literal(std::string_view text, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
+    [[nodiscard]] ValueId append_for_range_condition(
+        ValueId cursor_slot,
+        ValueId end_slot,
+        ValueId step_slot,
+        sema::TypeHandle range_type
+    );
     [[nodiscard]] ValueId append_load(
         ValueId address,
         sema::TypeHandle value_type,

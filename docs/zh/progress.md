@@ -74,7 +74,7 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - block statement 和 block expression 主体规则已统一；expression block 可完整承载普通 statement，并额外要求 final expression。
 - const initializer 已补齐纯标量运算；当前仍没有函数调用、控制流表达式或完整 comptime。
 - compound assignment 已补齐；`++` / `--` 自增自减语法已从 M2 基础语法移除，统一使用 `+= 1` / `-= 1`。
-- 基础 range-for 已补齐为 `for i in range(end)` / `for i in range(start, end)`；当前仍没有 step、容器迭代、slice 迭代或 iterator protocol。
+- 基础 range-for 已补齐为 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`；当前仍没有容器迭代、slice 迭代或 iterator protocol。
 - trailing separator 策略已冻结：括号/角括号列表允许 trailing comma，comma 分隔花括号列表允许但不强制最后一个 comma。
 - 顶层 item 和 struct field 默认 public，不适合作为长期模块 API 基线。
 - enum 仍偏 C enum 语法，base type 和 discriminant 必填，不适合作为主力 ADT 表达。

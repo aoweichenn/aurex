@@ -812,11 +812,9 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
     }
 
     symbols_.push_scope();
-    if (syntax::is_valid(expr.block) && expr.block.value < module_.stmts.size()) {
-        const syntax::StmtNode& block = module_.stmts[expr.block.value];
-        for (syntax::StmtId child : block.statements) {
-            analyze_stmt(child, checked_.types.builtin(BuiltinType::void_), nullptr);
-        }
+    analyze_block_statements(expr.block, current_function_return_type_, current_return_inference_);
+    if (!block_may_fallthrough(expr.block)) {
+        report(expr.range, "block expression final expression is unreachable");
     }
     const TypeHandle result = analyze_expr(expr.block_result, expected_type);
     symbols_.pop_scope();

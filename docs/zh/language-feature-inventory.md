@@ -17,9 +17,9 @@ M2 当前原则：
 
 Aurex 现在已经具备一个小型系统语言核心：模块、import、可见性、函数、C FFI、struct、enum payload、泛型、method、pointer、array、`str`、block expression、`if` expression、`match` expression、`defer`、C-style `for`、`Result` / `Option` 形状约定和 `?` 都已经存在。
 
-但它还不是“基础语法冻结”的语言。最需要先修的是基础层的不一致，而不是继续添加更高级特性：
+但它还不是“基础语法冻结”的语言。最需要先修的是基础层剩余不一致，而不是继续添加更高级特性：
 
-- block statement 和 block expression 仍是两套语法。
+- block statement 和 block expression 主体规则已统一；expression context 额外要求 final expression。
 - const initializer 已补齐纯标量运算，但还不是完整 comptime。
 - compound assignment 已补齐；M2 采用 Rust/Zig 风格，不提供 `++` / `--` 自增自减语法。
 - trailing separator 策略已冻结：括号/角括号列表允许 trailing comma，comma 分隔的花括号列表允许但不强制最后一个 comma。
@@ -504,16 +504,21 @@ block expression：
 ```aurex
 let value = {
     let x = 1;
+    if x > 0 {
+        cleanup();
+    }
     x + 1
 };
 ```
 
-当前限制：
+当前规则：
 
-- block expression 和 statement block 是不同 parser 路径。
-- block expression 内只自然支持 `let`、`var`、`defer`、表达式语句和赋值。
-- 不能像普通 block 一样完整承载 `if` statement、`while`、`for`、`return`、`break`、`continue`。
+- block body 语法与普通 statement block 共用同一套 statement 解析。
+- block expression 可以包含 `let` / `var`、赋值、允许的 expression statement、普通 `if` statement、`while`、`for`、嵌套 block、`defer`、`return`、`break`、`continue`。
 - expression context 要求 tail expression，且 result 不能是 void。
+- `return`、`break`、`continue` 的合法性由语义阶段判断。
+- 如果 block body 已经保证不 fallthrough，tail expression 会被诊断为不可达。
+- 普通函数体和普通 statement block 暂不把最后表达式当作隐式 `return`。
 
 match expression：
 
@@ -656,7 +661,6 @@ M2 已删除：
 
 ### 基础语法未完成
 
-- 统一 block statement / block expression。
 - enum base type / discriminant 可选。
 - 多字段 enum payload。
 - raw string、bytes string、Unicode scalar `char`。
@@ -731,19 +735,19 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 
 ### P0：必须先做
 
-1. 统一 block 语法
+1. 统一 block 语法：已补
 
-   当前 `parse_block()` 和 `parse_block_expr()` 分裂，block expression 不能完整承载普通 statement。这会影响 `unsafe {}`、borrow scope、defer/drop、`if let`、`let ... else` 和未来 formatter。建议统一为：
+   block expression 已经可以完整承载普通 statement，主体规则与普通 block 共用。当前冻结为：
 
    ```text
    block = "{" stmt* tail_expr? "}"
    ```
 
-   statement context 可忽略 tail，expression context 要求 tail。
+   expression context 要求 tail；statement/function body context 暂不引入隐式 return。
 
-2. 冻结 expression statement 规则
+2. 冻结 expression statement 规则：已补
 
-   当前语义已收口到 call / try expression。需要把它写入正式语法说明，并给所有非法 expression statement 保持负例。
+   当前语义已收口到 call / try expression，并已有负例保持 `x + y;` 这类无效语句的诊断。
 
 ### P1：基础语言形态收口
 

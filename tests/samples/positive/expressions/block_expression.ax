@@ -11,6 +11,16 @@ fn adjust(flag: bool, base: i32) {
     };
 }
 
+fn inferred_return(flag: bool) {
+    let value = {
+        if flag {
+            return 40;
+        }
+        2
+    };
+    return value;
+}
+
 fn main() -> i32 {
     let outer = 100;
     let value = {
@@ -22,5 +32,31 @@ fn main() -> i32 {
         };
         inner + extra + outer - 100
     };
-    return value - 42;
+    let unified = {
+        var total: i32 = 0;
+        if value == 42 {
+            total += 1;
+        }
+        while total < 3 {
+            total += 1;
+        }
+        for var i: i32 = 0; i < 4; i += 1 {
+            if i == 1 {
+                continue;
+            }
+            if i == 3 {
+                break;
+            }
+            total += i;
+        }
+        {
+            total += 10;
+        }
+        if total == 15 {
+            total + 27
+        } else {
+            0
+        }
+    };
+    return value + unified + inferred_return(true) - 124;
 }

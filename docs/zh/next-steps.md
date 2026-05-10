@@ -8,7 +8,7 @@
 
 1. 基础语法冻结
 
-   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。const initializer 纯标量运算、compound assignment 和 trailing separator 策略已补齐，`++` / `--` 已按 Rust/Zig 风格从语法层移除，接下来优先完成：统一 block statement / block expression、冻结 expression statement 规则。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
+   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。const initializer 纯标量运算、compound assignment、trailing separator、expression statement 规则和 block statement / block expression 主体统一已经补齐，`++` / `--` 已按 Rust/Zig 风格从语法层移除。接下来优先收口 default private、`unsafe`、`str` 安全边界和 enum ADT 语法。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
 2. enum ADT 与 pattern 地基
 

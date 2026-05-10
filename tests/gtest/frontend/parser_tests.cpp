@@ -319,6 +319,53 @@ TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
     EXPECT_EQ(choose->params.size(), 2U);
 }
 
+TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
+    constexpr std::string_view source =
+        "module parser.block_body;\n"
+        "fn main() -> i32 {\n"
+        "  let value = {\n"
+        "    var total: i32 = 0;\n"
+        "    if total == 0 {\n"
+        "      total += 1;\n"
+        "    }\n"
+        "    while total < 2 {\n"
+        "      total += 1;\n"
+        "    }\n"
+        "    for var i: i32 = 0; i < 3; i += 1 {\n"
+        "      if i == 1 { continue; }\n"
+        "      total += i;\n"
+        "    }\n"
+        "    {\n"
+        "      total += 10;\n"
+        "    }\n"
+        "    if total == 14 { total } else { 0 }\n"
+        "  };\n"
+        "  return value;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 2U);
+    const syntax::StmtNode& value_stmt = module.stmts[body.statements.front().value];
+    ASSERT_EQ(value_stmt.kind, syntax::StmtKind::let);
+    ASSERT_TRUE(syntax::is_valid(value_stmt.init));
+    const syntax::ExprNode& block_expr = module.exprs[value_stmt.init.value];
+    ASSERT_EQ(block_expr.kind, syntax::ExprKind::block_expr);
+    ASSERT_TRUE(syntax::is_valid(block_expr.block));
+    ASSERT_TRUE(syntax::is_valid(block_expr.block_result));
+    const syntax::StmtNode& expr_block = module.stmts[block_expr.block.value];
+    ASSERT_EQ(expr_block.kind, syntax::StmtKind::block);
+    ASSERT_EQ(expr_block.statements.size(), 5U);
+    EXPECT_EQ(module.stmts[expr_block.statements[1].value].kind, syntax::StmtKind::if_);
+    EXPECT_EQ(module.stmts[expr_block.statements[2].value].kind, syntax::StmtKind::while_);
+    EXPECT_EQ(module.stmts[expr_block.statements[3].value].kind, syntax::StmtKind::for_);
+    EXPECT_EQ(module.stmts[expr_block.statements[4].value].kind, syntax::StmtKind::block);
+    EXPECT_EQ(module.exprs[block_expr.block_result.value].kind, syntax::ExprKind::if_expr);
+}
+
 TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
     constexpr base::SourceId kTypeArgRecoverySourceId {9};
     constexpr std::string_view source =

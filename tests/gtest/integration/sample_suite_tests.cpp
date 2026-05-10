@@ -121,6 +121,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_compound_assignment) {
     run_positive_runtime_smoke_sample("expressions", "compound_assignment.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_block_expression) {
+    run_positive_runtime_smoke_sample("expressions", "block_expression.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_NegativeSamples) {
     verify_negative_sample_diagnostics();
 }

@@ -77,12 +77,14 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     const syntax::ModuleId previous_module = current_module_;
     const TypeHandle previous_function_return_type = current_function_return_type_;
     const GenericTypeSubstitution* const previous_type_substitution = current_type_substitution_;
+    ReturnTypeInference* const previous_return_inference = current_return_inference_;
     const int previous_loop_depth = loop_depth_;
     const SymbolTable previous_symbols = symbols_;
     const auto restore_context = [&]() {
         current_module_ = previous_module;
         current_function_return_type_ = previous_function_return_type;
         current_type_substitution_ = previous_type_substitution;
+        current_return_inference_ = previous_return_inference;
         loop_depth_ = previous_loop_depth;
         symbols_ = previous_symbols;
     };
@@ -113,6 +115,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         expected_return = invalid_type_handle;
     }
     current_function_return_type_ = expected_return;
+    current_return_inference_ = infer_return_type ? &return_inference : nullptr;
 
     symbols_.push_scope();
     for (base::usize i = 0; i < function.params.size(); ++i) {
@@ -155,6 +158,16 @@ void SemanticAnalyzer::analyze_block(
     const TypeHandle expected_return,
     ReturnTypeInference* const return_inference
 ) {
+    symbols_.push_scope();
+    analyze_block_statements(block, expected_return, return_inference);
+    symbols_.pop_scope();
+}
+
+void SemanticAnalyzer::analyze_block_statements(
+    const syntax::StmtId block,
+    const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference
+) {
     if (!syntax::is_valid(block) || block.value >= module_.stmts.size()) {
         return;
     }
@@ -162,11 +175,9 @@ void SemanticAnalyzer::analyze_block(
     if (stmt.kind != syntax::StmtKind::block) {
         return;
     }
-    symbols_.push_scope();
     for (syntax::StmtId child : stmt.statements) {
         analyze_stmt(child, expected_return, return_inference);
     }
-    symbols_.pop_scope();
 }
 
 TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id) {

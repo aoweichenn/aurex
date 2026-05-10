@@ -11,11 +11,14 @@ TEST_F(AurexIntegrationTest, BlockExpression) {
         "stmt #",
         "let inner\n",
         "var total\n",
+        "while",
+        "for",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "fn adjust -> i32",
+        "fn inferred_return -> i32",
         "fn main -> i32",
     });
 
@@ -40,6 +43,9 @@ TEST_F(AurexIntegrationTest, BlockExpression) {
 
     const fs::path const_initializer = negative_sample("expressions", "block_expression_const_initializer.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(const_initializer)).output, "block expression cannot be used in const initializer");
+
+    const fs::path unreachable_tail = negative_sample("expressions", "block_expression_unreachable_tail.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(unreachable_tail)).output, "block expression final expression is unreachable");
 }
 
 } // namespace aurex::test

@@ -53,6 +53,7 @@ private:
         const GenericTypeSubstitution* substitution
     );
     void analyze_block(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
+    void analyze_block_statements(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void analyze_stmt(syntax::StmtId stmt, TypeHandle expected_return, ReturnTypeInference* return_inference);
     [[nodiscard]] TypeHandle analyze_assignment_target(syntax::ExprId expr);
     [[nodiscard]] bool block_guarantees_return(syntax::StmtId block) const noexcept;
@@ -306,6 +307,7 @@ private:
     std::unordered_map<base::u32, std::string>* current_generic_pattern_c_names_ = nullptr;
     std::unordered_map<base::u32, std::unordered_set<std::string>>* current_generic_pattern_case_sets_ = nullptr;
     std::unordered_map<base::u32, TypeHandle>* current_generic_stmt_local_types_ = nullptr;
+    ReturnTypeInference* current_return_inference_ = nullptr;
     int loop_depth_ = 0;
     bool in_const_initializer_ = false;
 };

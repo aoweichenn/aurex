@@ -65,7 +65,7 @@ fn main() -> i32 {
 - lexer 已有 `integer_literal` 和 `float_literal`：`include/aurex/syntax/token.hpp`、`src/lex/lexer.cpp`。
 - `f32` / `f64` 类型、浮点字面量和浮点运算已经存在。浮点字面量当前支持 `1.0`、`1e3`、`1.0e-3` 这类基础形式。
 - statement `if` 和 expression `if` 都支持 `else if`。
-- 普通 block statement 和 block expression 分别由两个 parser 入口处理。
+- 普通 block statement 和 block expression 已共用 block body 解析规则；expression context 额外要求 final expression。
 - parser 能生成任意 expression statement；sema 当前只允许函数调用和 `?` try expression 作为 expression statement。
 - 顶层 item 和 struct field 默认 public，import 默认 private。
 - 整数字面量允许 `_`，规则已收紧为只能出现在两个合法数字之间。
@@ -184,9 +184,9 @@ binary  = "0b" binary_digit ( "_" ? binary_digit )*
 
 状态：已补。越早收紧越好，后面放宽比收紧容易。
 
-## P0 缺陷：block statement 和 block expression 不统一
+## P0 已补：block statement 和 block expression 主体不统一
 
-现状：
+补齐前：
 
 普通 block：
 
@@ -208,7 +208,7 @@ let y = {
 };
 ```
 
-问题：
+原问题：
 
 - `parse_block()` 和 `parse_block_expr()` 是两套入口。
 - block expression 里目前手写了一部分 statement 支持，和普通 block 不是完全同构。
@@ -216,7 +216,7 @@ let y = {
 - 这种差异会持续制造边界问题：哪些 statement 能在 expression block 里出现，哪些不能，用户很难记。
 - 现代 expression-oriented 语言通常把 block 看成“一串 statement 加一个可选 tail expression”。
 
-建议把 block 统一成一种基础语法：
+已采用的 M2 规则：
 
 ```text
 block = "{" stmt* tail_expr? "}"
@@ -225,10 +225,13 @@ tail_expr = expr without trailing ";"
 
 语义规则：
 
-- 在 statement context 中，block 的结果可以被忽略。
+- block body 解析已经共用一套 statement 规则。
 - 在 expression context 中，block 必须有 tail expression。
 - tail expression 类型不能是 `void`，除非以后明确允许 `void` expression。
-- `return`、`break`、`continue` 的类型问题不要在 parser 特判，交给语义阶段处理。
+- expression block 现在可以包含普通 `if`、`while`、`for`、嵌套 block、`defer`、`return`、`break`、`continue`。
+- `return`、`break`、`continue` 的合法性由语义阶段判断。
+- 如果 block body 已经由 `return` / `break` / `continue` 保证不 fallthrough，后面的 tail expression 会诊断为不可达。
+- 普通函数体和普通 statement block 暂不引入“最后表达式等于隐式 return”的语义；函数返回仍使用显式 `return`。
 
 示例：
 
@@ -238,13 +241,14 @@ let value = {
     if total == 0 {
         total = 1;
     }
+    while total < 3 {
+        total += 1;
+    }
     total
 };
 ```
 
-优先级：最高。它会简化 parser 和用户心智模型。
-
-这也是 M2 最应该先做的基础语法修复。只要 block 不统一，后续 `unsafe {}`、`defer`、Drop、borrow scope、`if let`、`let ... else` 都会继续遇到“statement context 和 expression context 是否同构”的问题。
+状态：已补。后续 `unsafe {}`、`defer`、Drop、borrow scope、`if let`、`let ... else` 可以基于同一套 block body 规则扩展，不需要再为 expression block 单独补 statement 子集。
 
 ## P0 已补：`if` 表达式不支持 `else if`
 
@@ -870,7 +874,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 
 1. 增加浮点字面量。已补。
 2. 收紧整数字面量 `_` 规则。已补。
-3. 统一 block statement / block expression 语法。
+3. 统一 block statement / block expression 语法。已补。
 4. 让 `if` expression 支持 `else if`。已补。
 5. 明确 expression statement 规则，至少允许 `foo()?;`。已补。
 6. 为 `unsafe` block / `unsafe fn` 定最小语法。

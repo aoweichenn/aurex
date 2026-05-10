@@ -1,0 +1,9 @@
+module block_expression_unreachable_tail;
+
+fn main() -> i32 {
+    let value = {
+        return 1;
+        2
+    };
+    return value;
+}

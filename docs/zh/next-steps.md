@@ -2,7 +2,7 @@
 
 ## 当前分支原则
 
-标准库已冻结并从本分支删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证，等语法、类型系统、ownership/borrow/drop 规则稳定后再恢复标准库。
+标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证，等语法、类型系统、ownership/borrow/drop 规则稳定后再恢复标准库。
 
 ## 优先路线
 
@@ -38,7 +38,7 @@
 ## 明确暂缓
 
 - std 容器、文件、目录、进程、console。
-- M1 frontend / axbuild 样例。
+- M1 frontend / axbuild 样例；M1 阶段已经舍弃，不能作为当前路线继续推进。
 - host support C shim。
 - 安装后 std 查找。
 

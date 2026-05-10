@@ -1,8 +1,10 @@
 # 介绍文档
 
-Aurex 是一个系统语言编译器项目。当前 `language-core-no-std` 分支的目标是暂时冻结标准库，把工程重心拉回语言核心：语法、类型系统、泛型、sum type、pattern matching、控制流、所有权、后续 borrow/drop/capability/trait/where 设计，以及 IR/LLVM 后端的稳定性。
+Aurex 是一个系统语言编译器项目。当前阶段是 **M2 language-core-no-std**。M2 的目标是暂时冻结标准库，把工程重心拉回语言核心：语法、类型系统、泛型、sum type、pattern matching、控制流、所有权、后续 borrow/drop/capability/trait/where 设计，以及 IR/LLVM 后端的稳定性。
 
-本分支已经删除 `std/` 源树、std driver 查找/链接代码、std CLI 选项、std/M1/system 样例和 std 专项测试。需要运行时能力的语言测试应通过局部 `extern c` 声明表达，不再依赖 Aurex 标准库包装。
+M1 阶段已经舍弃。它把标准库、host support、构建工具样例、自举实验和语言核心同时推进，导致基础语法与类型规则没有形成稳定基线。M2 不再沿着 M1 修补，而是先把语言地基重新做稳。
+
+本阶段已经删除 `std/` 源树、std driver 查找/链接代码、std CLI 选项、std/M1/system 样例和 std 专项测试。需要运行时能力的语言测试应通过局部 `extern c` 声明表达，不再依赖 Aurex 标准库包装。
 
 短期目标：
 

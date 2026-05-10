@@ -1,9 +1,11 @@
 # Aurex 基础语法地基评估
 
-日期：2026-05-08
-状态：基础语法专项审计
+日期：2026-05-10
+状态：M2 基础语法专项审计
 
 本文只讨论 Aurex 当前最基础的语法地基，不讨论高级语法和大型语义系统。
+
+M2 背景：M1 阶段已经舍弃。M1 的失败点在于标准库、host support、构建工具样例、自举实验和语言核心同时扩张，基础语法还没有稳定就开始承载过多目标。M2 的任务是先把语言地基重新做稳，再考虑恢复标准库和自举路线。
 
 纳入范围：
 
@@ -74,9 +76,27 @@ Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` /
 
 - 有表达式块，但普通块和表达式块不是同一套语法。
 - const initializer 支持的基础运算比运行时表达式少太多。
+- 目前没有 `unsafe` 边界，unchecked 字符串、raw pointer、bit cast 等破坏不变量的操作仍在普通表达式层。
+- `str` 已是语言内建，但还缺 slice/UTF-8 boundary/check-vs-unchecked 的最小安全 API。
 - 可见性默认值对长期模块 API 不友好。
+- enum 语法过早绑定 C ABI 形态，作为 ADT 过重。
+- 指针语法在基础层承担了 safe borrow、raw pointer、method receiver 和 FFI 多种角色。
+- 错误处理 `?` 已经可用，但仍依赖“形状约定”，缺正式标准核心定义和约束表达。
+- 泛型基础语法只能列类型参数，不能表达能力约束。
 
 这些都是地基问题，应该先修。否则继续往上加 trait、borrow、class、macro，只会把不一致扩大。
+
+## M2 和 M1 的分界
+
+M2 不应该继承 M1 的“先让完整系统样例跑起来，再回头补语言规则”的路线。基础语法阶段的正确验收标准应改成：
+
+- 每条语法规则能用一小段自包含 `.ax` 样例解释。
+- parser、AST、sema、IR lowering 对同一结构没有两套不同规则。
+- 正例和负例能证明语言规则，而不是证明标准库包装或 host support 是否存在。
+- 所有跨模块 API、资源转移、错误传播和 unsafe 操作都有明确语法或明确暂缓。
+- 文档说法必须和当前仓库一致：当前没有 `std/`，没有 selfhost，M1 只是历史输入。
+
+M1 的可取经验是：Aurex 确实需要 `str`、Result/Option、容器、路径、文件、构建工具和自举。但这些不能作为 M2 基础语法的前提。M2 应先回答“语言本身如何表达这些东西”。
 
 ## 现代语言对比下的基础准则
 
@@ -190,6 +210,7 @@ let y = {
 
 - `parse_block()` 和 `parse_block_expr()` 是两套入口。
 - block expression 里目前手写了一部分 statement 支持，和普通 block 不是完全同构。
+- expression block 目前只直接接受 `let` / `var` / `defer` 和表达式/赋值，不能像普通 block 一样自然承载 `if` statement、`for`、`while`、`return`、`break`、`continue` 等完整 statement 形态。
 - 这种差异会持续制造边界问题：哪些 statement 能在 expression block 里出现，哪些不能，用户很难记。
 - 现代 expression-oriented 语言通常把 block 看成“一串 statement 加一个可选 tail expression”。
 
@@ -220,6 +241,8 @@ let value = {
 ```
 
 优先级：最高。它会简化 parser 和用户心智模型。
+
+这也是 M2 最应该先做的基础语法修复。只要 block 不统一，后续 `unsafe {}`、`defer`、Drop、borrow scope、`if let`、`let ... else` 都会继续遇到“statement context 和 expression context 是否同构”的问题。
 
 ## P0 已补：`if` 表达式不支持 `else if`
 
@@ -369,6 +392,10 @@ const HAS_FLAG: bool = (MASK != 0) && true;
 
 优先级：高。
 
+M2 判断：这是语言地基问题，不是优化器问题。系统语言的常量计算至少要覆盖 page size、alignment、mask、flag、tag 和数组长度推导所需的纯标量表达式。当前 runtime 能表达但 const 不能表达，会迫使用户把本该静态化的值搬到运行期。
+
+第一阶段不必引入完整 comptime，也不必允许函数调用；只需把已有纯表达式规则补齐，并确保 sema、IR constant、LLVM constant folding 三层一致。
+
 ## P1 缺陷：基础赋值语法太薄
 
 现状：
@@ -437,9 +464,11 @@ struct User {
 
 1. 当前阶段保留默认 public，但文档标记为过渡行为。
 2. 增加 warning：跨模块可见但未写 `pub` 的 item/field。
-3. M1 前切换到 default private。
+3. M2 收口期切换到 default private。
 
 优先级：中高。越晚改，样例和库越难迁移。
+
+M1 失败的一个信号就是 API surface 没有被语言机制约束住。M2 应把“默认 private，显式 public”作为长期方向。当前样例可以有迁移成本，但这个成本越早支付越小。
 
 ## P1 缺陷：函数返回类型推导边界需要收紧
 
@@ -491,9 +520,215 @@ let x = result::ok(1);
 
 优先级：中。
 
-## P1 缺陷：标识符规则应显式 ASCII，而不是 locale 相关
+## P1 缺陷：enum 语法过重，ADT 表达能力不足
 
 现状：
+
+```aurex
+enum Option<T>: u8 {
+    some(T) = 1,
+    none = 2,
+}
+```
+
+问题：
+
+- 每个 enum 都必须显式 base type。
+- 每个 case 都必须显式 discriminant。
+- payload 目前是单个 payload type，不支持多字段 payload。
+- 这很适合 ABI 稳定的 C-like enum，但不适合作为编译器 AST、Result/Option、状态机、token payload 等主力 ADT。
+
+长期建议：
+
+```aurex
+enum Option<T> {
+    some(T),
+    none,
+}
+
+enum Result<T, E> {
+    ok(T),
+    err(E),
+}
+
+enum Token {
+    identifier(str),
+    integer(str),
+    keyword(str),
+}
+
+enum CStatus: u8 {
+    ok = 0,
+    err = 1,
+}
+```
+
+语义分层：
+
+- 不写 base type 的 enum 是语言 ADT，layout 由编译器决定，不承诺 C ABI。
+- 写 base type 和 discriminant 的 enum 是 ABI/repr enum。
+- payload enum 可以有自动 tag；只有需要 ABI 稳定时才要求显式 tag。
+
+优先级：中高。M2 如果继续要求所有 ADT 都写 C enum 形式，后续 Result/Option、AST 和 pattern matching 会一直显得笨重。
+
+## P1 缺陷：泛型参数只有名字，没有约束语法
+
+现状：
+
+```aurex
+fn identity<T>(value: T) -> T {
+    return value;
+}
+```
+
+当前能表达“有一个类型参数 T”，但不能表达：
+
+```aurex
+fn clone<T>(value: T) -> T where T: Copy
+fn destroy<T>(value: *mut T) -> void where T: Drop
+fn contains<K>(key: K) -> bool where K: Eq
+```
+
+问题：
+
+- 当前 copyability、noncopy、destructor、Result/Option payload 消费等规则无法通过函数签名表达。
+- 泛型函数的错误常常只能在实例化体内报出，API 用户看不到约束。
+- 恢复核心库后，`Vec<T>`、`Map<K,V>`、`Result<T,E>`、`Option<T>` 都需要 copy/drop/eq/hash 这类基础约束。
+
+建议 M2 先设计最小 capability 语法，不急着实现完整 trait：
+
+```aurex
+fn get<T>(items: *const Vec<T>, index: usize) -> T
+where T: Copy
+
+fn destroy_all<T>(items: *mut Vec<T>) -> void
+where T: Drop
+```
+
+优先级：中高。没有约束语法，泛型越多，诊断越晚，库设计越依赖文档约定。
+
+## P1 缺陷：`unsafe` 边界缺失
+
+现状这些操作是普通表达式：
+
+```aurex
+ptr_cast(*mut T, p)
+bit_cast(U, value)
+ptr_from_addr(*mut T, address)
+str_from_bytes_unchecked(data, len)
+*ptr
+```
+
+问题：
+
+- raw pointer 解引用、指针整数转换、unchecked UTF-8、bit cast 都可能破坏语言不变量。
+- 这些能力如果长期保持 safe surface，后续优化器、borrow checker 和核心库都会缺少可信边界。
+- M1 的标准库经验已经说明：底层 escape hatch 必须存在，但必须被隔离。
+
+建议语法：
+
+```aurex
+unsafe {
+    let p = ptr_from_addr(*mut Header, address);
+    return (*p).len;
+}
+
+unsafe fn from_raw(data: *const u8, len: usize) -> str {
+    return str_from_bytes_unchecked(data, len);
+}
+```
+
+第一阶段可以只做语法和诊断框架：
+
+- unsafe-only 内建在 safe context 下报警。
+- unsafe block 允许这些内建。
+- unsafe fn 的调用也必须在 unsafe context。
+- `str_from_bytes_unchecked` 必须被纳入 unsafe-only 清单，避免 safe 代码直接伪造 `str` 的 UTF-8 不变量。
+
+优先级：中高。它是 borrow/drop/optimizer 合约的前置地基。
+
+## P1 缺陷：`str` 已是内建，但安全 API 边界还没形成
+
+现状：
+
+- 普通字符串字面量类型是 `str`。
+- `str` 在 LLVM 后端降低为 `{ ptr, usize }`。
+- `size_of(str)` / `align_of(str)` 已有 64-bit ABI 测试。
+- 编译器内建已有 `str_data`、`str_byte_len`、`str_from_bytes_unchecked`。
+
+问题：
+
+- `str_from_bytes_unchecked` 能直接构造 `str`，但当前没有 `unsafe` 语法约束。
+- 没有语言核心层面的 `slice_bytes_checked` / UTF-8 boundary 规则，恢复标准库后容易再次把安全边界推给库约定。
+- `str_data` 暴露 raw pointer，长期需要和 borrow/lifetime/FFI 边界一起解释。
+- `c"..."` 仍是 `*const u8`，这是合理 FFI 过渡，但不能变成普通文本 API 的替代品。
+
+M2 最小方向：
+
+```aurex
+let text: str = "hello";
+let n: usize = str_byte_len(text);
+
+unsafe {
+    let borrowed = str_from_bytes_unchecked(data, n);
+}
+```
+
+建议：
+
+- `str` 继续作为语言内建，不依赖标准库存在。
+- `str_byte_len` 可以保持 O(1) 基础观察能力。
+- checked UTF-8 构造和 checked slice 可以先设计语义，再决定是 compiler builtin、core intrinsic 还是未来 `core.str` API。
+- unchecked 构造必须进入 `unsafe`。
+- `c"..."` 只用于 FFI，不能隐式转 `str`。
+
+优先级：中高。字符串是诊断、模块名、路径显示、未来 std API 的共同地基；如果 `str` 的 safe/unsafe 边界不先定，M1 的标准库问题会在恢复 `String`、`Path`、`CString` 时再次出现。
+
+## P1 缺陷：raw pointer 和 safe borrow 没有分层
+
+现状：
+
+```aurex
+fn len(self: *const Buffer) -> usize
+fn push(self: *mut Buffer, value: u8) -> void
+```
+
+`*const` / `*mut` 现在同时承担：
+
+- C FFI raw pointer。
+- method receiver。
+- address-of 结果。
+- 未来 borrow 语义。
+- buffer/span 类数据结构的内部引用。
+
+问题：
+
+- raw pointer 没有生命周期、别名、有效性保证。
+- 如果 method receiver 长期使用 raw pointer，safe API 和 unsafe API 的边界会混在一起。
+- borrow checker 很难在这种语法上自然落地。
+
+长期建议：
+
+```aurex
+fn len(self: &Buffer) -> usize
+fn push(self: &mut Buffer, value: u8) -> void
+
+extern c {
+    fn write(fd: i32, data: *const u8, len: usize) -> isize;
+}
+```
+
+分层原则：
+
+- `&T` / `&mut T` 是 safe borrow。
+- `*const T` / `*mut T` 是 raw pointer，主要用于 FFI 和 unsafe 内部实现。
+- `&place` 应产生 safe borrow，而不是默认产生 raw pointer；raw address-of 可以另设 unsafe 操作。
+
+优先级：中。实现可以晚于 M2 语法冻结，但文档必须明确方向。
+
+## P1 已补：标识符规则应显式 ASCII，而不是 locale 相关
+
+历史问题：
 
 lexer 用 `std::isalpha` / `std::isalnum` 判断标识符字符。
 
@@ -510,9 +745,11 @@ identifier_start = "A".."Z" | "a".."z" | "_"
 identifier_continue = identifier_start | "0".."9"
 ```
 
-暂不建议现在加入 Unicode identifier。Unicode identifier 需要 normalization、confusable、tooling、diagnostic 策略，不是 M0/M1 基础地基必须项。
+当前实现已经使用显式 ASCII char class table，不再依赖 locale。文档仍应固定这个规则，避免未来误引入平台相关行为。
 
-优先级：中。
+暂不建议现在加入 Unicode identifier。Unicode identifier 需要 normalization、confusable、tooling、diagnostic 策略，不是 M2 基础地基必须项。
+
+状态：已补实现，继续保留为语法规范要求。
 
 ## P1 缺陷：trailing separator 策略要统一
 
@@ -587,7 +824,34 @@ b"bytes"    // bytes?
 - 如果加 `char`，应表示 Unicode scalar value。
 - raw string 可以晚一点加，等 `str` / bytes / C string 边界完全冻结。
 
-优先级：低。不是 M0/M1 必须。
+优先级：低。不是 M2 必须。
+
+## P2 可暂缓：模块 package 语法
+
+当前 module/import 已经能支撑多文件样例：
+
+```aurex
+module common.result;
+import common.status as status;
+```
+
+但还没有：
+
+- package manifest。
+- package root。
+- module visibility surface dump。
+- selective import。
+- glob import。
+- versioned dependency。
+
+M2 不建议马上做包管理。原因是 package 设计会反向影响 module path、visibility、public API 和 std/core 分层。现在更应该先冻结：
+
+- 文件路径如何映射 module path。
+- import alias 是否是唯一推荐限定方式。
+- default private 迁移。
+- public re-export 规则。
+
+优先级：低到中。
 
 ## 建议执行顺序
 
@@ -599,6 +863,9 @@ b"bytes"    // bytes?
 4. 让 `if` expression 支持 `else if`。已补。
 5. 明确 expression statement 规则，至少允许 `foo()?;`。已补。
 6. 补齐 const initializer 的纯标量运算。
+7. 为 `unsafe` block / `unsafe fn` 定最小语法。
+8. 固定 `str` 的 safe/unsafe API 边界。
+9. 给 enum ADT 语法写正式草案。
 
 第二批再做：
 
@@ -606,8 +873,9 @@ b"bytes"    // bytes?
 2. 设计 default private 迁移。
 3. 收紧 public 函数返回类型推导。
 4. 冻结 namespace `.` / `::` 规则。
-5. 显式 ASCII identifier 实现。
-6. 统一 trailing separator。
+5. 统一 trailing separator。
+6. 设计 capability / `where` 约束语法。
+7. 设计 safe reference `&T` / `&mut T`。
 
 第三批暂缓：
 
@@ -615,6 +883,7 @@ b"bytes"    // bytes?
 2. `char` / raw string / bytes string。
 3. 嵌套 block comment。
 4. 更复杂 literal suffix。
+5. package manifest 和包管理。
 
 ## 不建议现在做
 

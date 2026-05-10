@@ -2,7 +2,7 @@
 
 ## Branch Goal
 
-The `language-core-no-std` branch isolates language-core validation:
+The M2 `language-core-no-std` stage isolates language-core validation:
 
 - The compiler must build, install, and run without a standard-library tree.
 - Imports come only from the importing directory and explicit `-I` entries.

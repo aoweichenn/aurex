@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述 `language-core-no-std` 分支的用法。本分支冻结并移除了标准库，所有示例和测试都应围绕语言语法、语义、IR 和后端本身展开。
+本文描述 **M2 language-core-no-std** 阶段的用法。本阶段冻结并移除了标准库，所有示例和测试都应围绕语言语法、语义、IR 和后端本身展开。
 
 ## 构建
 
@@ -19,7 +19,7 @@ build/tests/hello
 期望输出：
 
 ```text
-hello from Aurex M0
+hello from Aurex M2
 ```
 
 ## 输出模式

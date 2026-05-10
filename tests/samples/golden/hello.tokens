@@ -31,7 +31,7 @@
 94..95 l_brace `{`
 100..104 identifier `puts`
 104..105 l_paren `(`
-105..127 c_string_literal `c"hello from Aurex M0"`
+105..127 c_string_literal `c"hello from Aurex M2"`
 127..128 r_paren `)`
 128..129 semicolon `;`
 134..140 kw_return `return`

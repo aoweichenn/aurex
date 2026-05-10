@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-`language-core-no-std` 移除了标准库层：
+M2 `language-core-no-std` 移除了标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。

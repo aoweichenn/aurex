@@ -2,7 +2,7 @@
 
 ## Branch Principle
 
-The standard library is frozen and removed from this branch. Do not expand std
+The standard library is frozen and removed from the current M2 tree. Do not expand std
 or use std samples to prove language features. New features should be validated
 with self-contained `.ax` samples first. Restore std only after syntax, types,
 ownership, borrow, and drop rules stabilize.
@@ -53,7 +53,8 @@ ownership, borrow, and drop rules stabilize.
 ## Explicitly Deferred
 
 - std containers, file/dir/process/console APIs.
-- M1 frontend / axbuild examples.
+- M1 frontend / axbuild examples; the M1 track has been discarded and should not
+  continue as the current route.
 - host support C shims.
 - Installed std lookup.
 

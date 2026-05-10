@@ -1,8 +1,8 @@
 # Aurex 字符串基础类型设计草案
 
-版本：0.1.7 设计草案
-日期：2026-05-08
-状态：语言核心设计草案；历史标准库落地记录仅作为设计输入。本分支已冻结并删除标准库实现，后续先稳定内建 `str` 的语言语义，再恢复 `String` / `Bytes` / Path 等库类型。
+版本：M2 设计草案
+日期：2026-05-10
+状态：语言核心设计草案。M2 当前仓库已经冻结并删除标准库实现；旧 M1 标准库落地记录只作为历史输入，不再代表当前树的实现状态。后续应先稳定内建 `str` 的语言语义，再恢复 `String` / `Bytes` / `Path` 等库类型。
 
 本文目标是把 Aurex 的字符串基础类型设计清楚。这里的“基础类型”指和 `int`、`usize`、`bool` 同一层级的语言内建类型，而不是 C 的 `char*` 包装，也不是某个需要 allocator 的拥有型容器。
 
@@ -33,22 +33,19 @@ builtin str = {
 
 这基本采用 Rust `str` 的系统级核心模型，吸收 Swift 现代 UTF-8 存储和 grapheme API 的经验，但不采用 Swift 的默认 grapheme collection 语义；同时避免 Go 的“字符串可含任意 bytes”、Java/JavaScript 的 UTF-16 surrogate 历史包袱，以及 C/C++ 的 C-string/text/bytes 混杂问题。
 
-## 当前项目状态
+## 当前项目状态（M2）
 
-当前 Aurex 已经具备 `str` 的雏形，但标准库语义还没有跟上：
+当前 Aurex 已经具备 `str` 的语言核心雏形，但没有活跃标准库层：
 
 - 编译器类型表已有 `BuiltinType::str`，`TypeTable::is_str()` 能识别内建 `str`。
 - 语义分析中普通字符串字面量类型是 `str`，`c"..."` 类型是 `*const u8`。
 - LLVM 后端把 `str` 降低为 `{ ptr, usize }`，普通字符串字面量降低为全局字节数据加长度。
 - 测试已经锁住 `size_of(str) == 16`、`align_of(str) == 8` 这一 64-bit ABI 事实。
-- `std.core.string.String` 仍以 `VecU8` 存储并维护尾随 `\0` 作为兼容层，但已经新增 `from_str`、`from_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`、`byte_len`、`slice_bytes_checked`、`truncate_bytes_checked`、`equals(str)`、`starts_with(str)`、`ends_with(str)` 等 UTF-8/`str` surface；旧字节级 `push/insert/remove/truncate/append_span/from_c` 已开始收口到 UTF-8 边界检查，且不再暴露 `String.as_mut_span()`。
-- `std.core.bytes.Bytes` 已作为 `noncopy` 拥有型 raw bytes 容器落地，提供 `from_span`、`as_span`、`as_mut_span`、`append`、`push/pop/remove/truncate/clear` 等 API；`Bytes.append` 已处理 self-alias，扩容时不会读失效源指针。
-- `std.ffi.c.string` 已提供 `CStr` / `CString` 第一版，把 borrowed/owned NUL-terminated C 字符串从普通文本 API 中隔离出来；其中 `CStr` 是 borrowed copyable 视图，`CString` 已迁为 `noncopy` 拥有型资源。
-- `std.core.text` 目前主要是 `SpanU8`、ASCII helper、`c_strlen`、`strcmp` 这类 C/bytes 工具。
-- `std.fs.path.Path` 已从 `String` 语义中拆出，当前由 `Bytes` 存储平台路径 bytes；`from_span` 接受非 UTF-8 bytes 但拒绝内部 NUL，`from_str` 只是 UTF-8 文本便利入口，`as_c` 仍提供 NUL-terminated 兼容视图。
-- `std.fs.file` 已新增 `Path` 入口包装和 `write_str` / `write_str_path`；`std.fs.dir` 已新增目录 path 的 `Path` 入口包装、`str` suffix 包装，以及 bytes-backed `DirectoryEntry` 视图：`name_bytes()` / `path_bytes()` 返回原始路径 bytes，`name_utf8()` / `path_utf8()` 执行显式 UTF-8 校验。旧 `*const u8` / `c"..."` 函数保留为兼容层，M1 axbuild 的目录扫描、target source list、project stamp path、source/stamp metadata、stamp 写入、clean 和临时 source cleanup 已迁到 `Path` / `str` 入口，并补上 target 所有权转移；后续进程和少量 FFI 参数仍应继续向 `Path`、`CStr` / `CString` 和 `str` 分层迁移。
+- 字符串字面量解码已经集中到共享实现，普通字符串会做 UTF-8 / Unicode scalar / escape 诊断，C 字符串会拒绝内部 NUL。
+- 编译器内建已经有 `str_data`、`str_byte_len`、`str_from_bytes_unchecked`，但这些还没有被正式 `unsafe` 体系约束。
+- 当前仓库根目录没有 `std/` 或 `selfhost/`。不存在当前有效的 `std.core.string.String`、`std.core.bytes.Bytes`、`std.fs.path.Path`、`std.ffi.c.string.CString` 实现。
 
-因此 ABI 方向已经接近正确；真正要重构的是“类型边界”和“标准库 API 边界”：`str` 负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span<u8>` 负责原始字节，`CStr` / `CString` 负责 C FFI。
+因此 M2 的判断是：`str` 的 ABI 方向已经接近正确；真正要补的是语言级安全边界和未来库类型边界。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span<u8>` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为恢复标准库时的设计素材。
 
 ## 业界设计对比
 
@@ -152,7 +149,7 @@ let s: str = "hello";
 - 支持 `\\`、`\"`、`\0`、`\n`、`\r`、`\t`。
 - 应新增 `\u{...}`，表示 Unicode scalar value，排除 surrogate range 和超过 `U+10FFFF` 的值。
 - 普通 `str` 字面量不应支持任意 raw byte escape；如果未来支持 `\xNN`，只允许产生 ASCII byte，或明确改成 bytes literal。
-- 无效 escape 不能像当前 `decode_string_literal` 那样静默吞掉，必须诊断。
+- 无效 escape 必须诊断，不能静默吞掉。
 
 C 字符串字面量：
 
@@ -210,11 +207,11 @@ let p: *const u8 = c"hello";
 
 这样做的原因是：build target name、module name、symbol key、diagnostic label 等系统工程场景需要稳定、可预测、低成本的 key 语义；用户可见文本再通过显式 Unicode 模块获得更高级语义。
 
-## 标准库类型边界
+## 未来标准库类型边界
 
 ### `String`
 
-`std.core.string.String` 应重新定义为拥有型 UTF-8 buffer：
+未来 `String` 应重新定义为拥有型 UTF-8 buffer：
 
 - 内部可继续使用 `Vec<u8>`。
 - 它是 `noncopy` 拥有型资源，不能隐式浅拷贝。
@@ -226,13 +223,13 @@ let p: *const u8 = c"hello";
 - `from_utf8(bytes: Vec<u8>) -> Result<String, Utf8Error>`，成功后接管 bytes。
 - `try_from_bytes(bytes: Span<u8>) -> Result<String, Utf8Error | AllocError>`。
 - `push_scalar(self, value: u32)`、`insert_scalar(self, byte_index: usize, value: u32)` 或 `append(self, text: str)`，而不是用 `push(u8)` 拼文本。
-- 字节级可变视图不能出现在 safe `String` surface；当前已从 `String` 移除，raw mutation 使用 `Bytes.as_mut_span()`。
+- 字节级可变视图不能出现在 safe `String` surface；raw mutation 应使用 `Bytes.as_mut_span()` 一类 raw bytes API。
 
-当前 `String.push(u8)`、`insert(index, u8)`、`remove(index)`、`truncate(byte_len)` 可以先保留兼容包装，但新 API 不应继续扩展它们。
+如果恢复旧兼容 API，`String.push(u8)`、`insert(index, u8)`、`remove(index)`、`truncate(byte_len)` 只能作为受控兼容层保留，新 API 不应继续扩展它们。
 
 ### `Bytes`
 
-新增或明确使用：
+未来应明确使用：
 
 - `Bytes` / `Vec<u8>`：拥有原始 bytes，均为 `noncopy` owner。
 - `Span<u8>`：借用原始 bytes。
@@ -260,26 +257,26 @@ FFI 层应有单独类型：
 - POSIX path 是 bytes，通常但不保证 UTF-8。
 - Windows path 需要宽字符/UTF-16 系统 API。
 - Aurex 的 `Path` 应是独立类型，提供 `from_str`、`from_span` / future `from_bytes`、`display`、`as_platform` 等显式入口。
-- 当前 POSIX 侧基线已经让 `Path` 由 `Bytes` 支撑，并迁为 `noncopy` 拥有型资源：`from_span` 不验证 UTF-8，但拒绝内部 NUL；`from_str` 是便利构造；`as_span` 返回 raw bytes；`as_c` 返回内部 NUL-terminated 兼容指针。
-- 标准库文件和目录 API 已开始优先接收 `Path` 或 `str`：`std.fs.file` 提供 `metadata_path`、`read_bytes_path`、`read_text_path`、`write_bytes_path`、`write_text_path`、`write_str`、`write_str_path`、`file_exists_path`、`remove_file_path` 和 `rename_file_path`；`std.fs.dir` 提供目录 path 的 `*_path` 包装、suffix 的 `*_str` / `*_path_str` 包装，以及 `DirectoryEntry.name_bytes()` / `path_bytes()` 原始 bytes 视图和 `name_utf8()` / `path_utf8()` checked 文本视图，底层再通过 `Path.as_c()` 转换到当前 POSIX/C FFI 兼容形式。
+- POSIX 侧可由 `Bytes` 支撑，`from_span` 不验证 UTF-8 但拒绝内部 NUL，`from_str` 只是便利构造。
+- Windows 侧不应强行复用 POSIX byte path 模型，必须给宽字符 / UTF-16 系统 API 留出边界。
 
 ## 实施路线
 
-### Phase 0：锁定设计和现状测试
+### Phase 0：锁定 M2 现状
 
-- 保留现有 `str` ABI：两字 `{ptr, len}`。
-- 增加/保留 `size_of(str)`、`align_of(str)`、普通字面量类型和 `c"..."` 类型测试。
+- 已完成：保留现有 `str` ABI：两字 `{ptr, len}`。
+- 已完成：保留 `size_of(str)`、`align_of(str)`、普通字面量类型和 `c"..."` 类型测试。
 - 写入本设计文档，后续代码改动以本文为准。
 
 ### Phase 1：编译器字面量与诊断
 
-状态：已落地基线。
+状态：M2 当前基线。
 
 - 已完成：普通字符串字面量解码后验证 UTF-8。
-- invalid escape 改为诊断，不再静默接受。
-- 新增 `\u{...}` Unicode scalar escape。
-- 明确普通 `str` 字面量不产生 trailing NUL。
-- `c"..."` 仍生成 trailing NUL，但加入内部 NUL/无效 escape 诊断策略。
+- 已完成：invalid escape 改为诊断，不再静默接受。
+- 已完成：新增 `\u{...}` Unicode scalar escape。
+- 已完成：普通 `str` 字面量不产生 trailing NUL。
+- 已完成：`c"..."` 生成 trailing NUL，并加入内部 NUL / 无效 escape 诊断策略。
 - 增加 negative tests：invalid UTF-8、invalid scalar、surrogate、bad escape。
 
 落地文件：
@@ -289,9 +286,30 @@ FFI 层应有单独类型：
 - `src/backend/llvm/llvm_backend_util.cpp`：LLVM 后端复用共享解码逻辑，避免 lexer/backend escape 语义分裂。
 - `tests/gtest/frontend/lexer_tests.cpp`、`tests/gtest/backend/llvm_utility_tests.cpp`、`tests/samples/positive/types/string_unicode_escape.ax` 和三个 negative samples 覆盖 Phase 1 行为。
 
-### Phase 2：`std.core.str` 基础 API
+### Phase 2：补上 `unsafe` 边界
 
-状态：已落地基线。
+状态：M2 待设计。
+
+`str_from_bytes_unchecked(data, len)` 当前能绕过 UTF-8 不变量，是典型 unsafe 操作。M2 应先引入最小 `unsafe` 语法，再决定它是否保留为裸内建：
+
+```aurex
+unsafe {
+    let text = str_from_bytes_unchecked(data, len);
+}
+```
+
+第一阶段要求：
+
+- safe context 下调用 unchecked 构造必须诊断。
+- `unsafe fn` 调用必须发生在 unsafe context。
+- `str_data` / `str_byte_len` 可以继续是 safe 只读观察操作。
+- 文档要明确：任何构造 `str` 的入口都必须证明 UTF-8 有效，或者被标记为 unsafe。
+
+### Phase 3：恢复 `core.str` 最小 API
+
+状态：M2 暂缓实现，先写规范。
+
+恢复标准库前，不应急着重建完整 `std.core.str`。可以先定义未来最小 surface：
 
 - `byte_len`
 - `is_empty`
@@ -303,63 +321,34 @@ FFI 层应有单独类型：
 - `equals`
 - `from_utf8`
 
-落地文件：
+验收重点不是 API 数量，而是边界：
 
-- `std/core/str.ax`：提供 `byte_len`、`is_empty`、`as_bytes`、`equals`、`starts_with`、`ends_with`、`is_boundary`、`slice_bytes_checked`、`is_valid_utf8`、`from_utf8`。
-- `src/parse/parser_expr.cpp` / `src/sema/sema_expr.cpp` / `src/ir/lower_ast_expr.cpp` / `src/backend/llvm/llvm_backend_value.cpp`：提供低层 `str_data`、`str_byte_len`、`str_from_bytes_unchecked` 编译器内建，支撑标准库实现。
-- `tests/samples/positive/std/std_str.ax` 和 `AurexIntegrationTest.SampleSuite_Std_std_str`：覆盖 checked surface、IR surface 和 native runtime。
+- checked API 不能调用后留下非法 `str`。
+- unchecked API 必须在 `unsafe` 内。
+- API 不应依赖 M1 标准库名字特判。
+- 正例和负例应放在 language-core 样例中，直到 `std/` 正式恢复。
 
-注意：`str_from_bytes_unchecked` 当前是为了在缺少 unsafe 语义前支撑标准库 checked API 的低层内建。普通代码应使用 `std.core.str.from_utf8` 或 `slice_bytes_checked`，不要直接构造可能违反 UTF-8 不变量的 `str`。
+### Phase 4：恢复拥有型文本和 raw bytes 类型
 
-### Phase 3：重构 `String`
+状态：M2 后置。
 
-状态：已落地第一批兼容重构。
+`String`、`Bytes`、`CStr`、`CString`、`Path` 应等 ownership、borrow/drop、capability/where 和 default visibility 收口后再恢复。原因是这些类型会立刻触发：
 
-- 已完成：`String` 新增 `from_str`、`from_utf8`、`from_c_utf8`、`as_str`、`as_str_checked`、`as_bytes`、`append(str)`、`byte_len`。
-- 已完成：新增 `equals(str)`、`starts_with(str)`、`ends_with(str)`，让拥有型字符串可以直接对接 borrowed `str` API。
-- 已完成：旧 `from_c` 改为 `from_c_utf8` 包装，`read_text` 改为通过 `String.from_utf8` 验证文件内容。
-- 已完成：旧 `push(u8)` 仅接受 ASCII byte，`insert(index, u8)` 要求 UTF-8 边界和 ASCII byte，`remove/pop/truncate` 避免切断多字节 scalar；`append_span` / `append_c` 现在要求输入是合法 UTF-8。
-- 已完成：新增 `slice_bytes_checked` 和 `truncate_bytes_checked`，owned `String` 的字节边界操作也必须显式检查 UTF-8 scalar 边界。
-- 已完成：新增 `push_scalar`、`insert_scalar`、`pop_scalar`、`remove_scalar_at`，把 owned `String` 的文本 mutation 从 byte API 迁到 Unicode scalar value API。
-- 已完成：新增 `tests/samples/positive/std/std_string.ax` 和 `SampleSuite_Std_std_string`，覆盖 `String.from_str`、`from_utf8`、`as_str`、checked view、invalid UTF-8 拒绝、旧 byte API 的 UTF-8 边界保护和 C 兼容入口。
-- 已完成：移除 `String.as_mut_span()`，避免 safe API 直接破坏 UTF-8 不变量；需要 raw mutable bytes 时使用 `std.core.bytes.Bytes`。
-- 已完成：`String.append(str)` 的 self-alias 场景已覆盖，扩容后不会读失效源指针。
-- 已完成：`String` 已迁为 `noncopy`，防止拥有 UTF-8 buffer 被隐式浅拷贝。
+- owner 是否 copyable。
+- destructor / drop 如何表达。
+- borrowed `str` 能否安全指向 owned `String`。
+- `Bytes.as_mut_span()` 和 `String` UTF-8 不变量如何隔离。
+- `Path` 是否按平台分层，而不是把所有路径伪装成 UTF-8 文本。
 
-### Phase 4：隔离 C FFI
-
-状态：已落地第一批边界类型。
-
-- 已完成：新增 `std.ffi.c.string.CStr`，表示 borrowed NUL-terminated C 字符串，不拥有内存。
-- 已完成：新增 `std.ffi.c.string.CString`，表示 `noncopy` owned NUL-terminated C 字符串，`from_str` 拒绝内部 NUL，`from_utf8` 拒绝非法 UTF-8，调用方用完后必须显式 `destroy()`。
-- 已完成：`CStr.as_str_utf8()` 和 `CString.as_str()` / `as_str_checked()` 把 C 边界显式转回 `str`。
-- 已完成：新增 `tests/samples/positive/std/std_cstring.ax` 和 `SampleSuite_Std_std_cstring`，覆盖 borrowed/owned C string、UTF-8 conversion、内部 NUL 拒绝和 invalid UTF-8 拒绝。
-- 未完成：文件、目录、进程、console、host support 还没有整体改成接收 `CStr` / `CString`；`std.fs.file` / `std.fs.dir` 已有 `Path` / `str` 新入口，目录 suffix 的 `str` 包装已落地并拒绝内部 NUL，但 `c"..."` 仍在底层 std、host support 和部分兼容测试中作为过渡。
+这部分不能再沿 M1 的“先把库 API 做出来，再反推语言规则”的路线推进。
 
 ### Phase 5：Unicode 扩展
 
-- 已完成：添加 `is_scalar_value`、`scalar_utf8_width`、`scalar_at`、`scalar_width_at`、`next_boundary`、`previous_boundary`、`scalar_count`，用 `u32` 显式表示 Unicode scalar value。
-- 待完成：添加 UTF-8 scalar iterator。
-- 后续再引入 UAX #29 grapheme iterator 和 UAX #15 normalization。
+状态：M2 之后。
+
+- UTF-8 scalar iterator 可以作为 core text 扩展。
+- UAX #29 grapheme iterator 和 UAX #15 normalization 应放在显式 Unicode 模块。
 - Unicode 数据版本必须在模块中显式记录，不影响 core `str` ABI。
-
-### Phase 5.5：raw bytes 与平台路径拆分
-
-状态：已落地第一批风险收口。
-
-- 已完成：新增 `std.core.bytes.Bytes`，作为 `noncopy` 拥有型 raw bytes 容器，不承诺 UTF-8。
-- 已完成：`Bytes` 已迁为 `noncopy`，防止 raw buffer owner 被隐式浅拷贝。
-- 已完成：`Bytes` 提供 `from_span`、`as_span`、`as_mut_span`、`append`、`push/pop/remove/truncate/clear` 和 method API。
-- 已完成：`Bytes.append` 处理 self-alias，覆盖 `raw.append(raw.as_span())` 触发扩容的场景。
-- 已完成：`std.fs.path.Path` 改为 bytes-backed，`from_span` 接受非 UTF-8 path bytes、拒绝内部 NUL，`from_str` 作为便利入口，`as_c` 提供 NUL-terminated 兼容视图。
-- 已完成：`Path` 已迁为 `noncopy`；`DirectoryEntry` 也作为持有两个 `Path` 的拥有型目录项迁为 `noncopy`。
-- 已完成：`std.fs.file` 新增 `Path` 入口包装：`metadata_path`、`read_bytes_path`、`read_text_path`、`write_bytes_path`、`write_text_path`、`file_exists_path`、`remove_file_path`、`rename_file_path`；新增 `write_str` / `write_str_path` 按 `str` 的真实 byte length 写入，允许内部 `\0` 文本不被 C 字符串截断。
-- 已完成：`std.fs.dir` 新增 `Path` 入口包装：`create_directory_path`、`read_entries_path`、`read_entries_recursive_path`、`count_files_with_suffix_path`、`count_files_with_suffix_recursive_path`、`has_file_with_suffix_path`、`has_file_with_suffix_recursive_path`；新增 suffix `str` 包装：`count_files_with_suffix_str`、`count_files_with_suffix_path_str`、`has_file_with_suffix_str`、`has_file_with_suffix_path_str` 及递归版本，内部通过 `CString.from_str` 拒绝内部 NUL；`DirectoryEntry` 改为 bytes-backed `Path` 存储，提供 `name_bytes()` / `path_bytes()` 原始 bytes 视图、`name_utf8()` / `path_utf8()` checked UTF-8 视图，旧 `name_c_data()` / `path_c_data()` 保留为兼容层。
-- 已完成：新增 `tests/samples/positive/std/std_bytes.ax` 和 `SampleSuite_Std_std_bytes`，覆盖 raw bytes mutation、自别名 append、非 UTF-8 path bytes、NUL rejection 和 `Path.from_str`。
-- 已完成：`tests/samples/positive/std/std_file.ax` 和 `SampleSuite_Std_std_file` 覆盖 `std.fs.file` 的 `Path` 包装、空 path 指针防御、rename/remove/exists 组合，以及 `"path\0text"` 通过 `write_str_path` / `read_text_path` 往返不截断。
-- 已完成：新增 `tests/samples/positive/std/std_dir.ax` 和 `SampleSuite_Std_std_dir`，覆盖目录创建、单层/递归读取、suffix `str` 计数/查询、目录项 raw bytes 视图、checked UTF-8 名称/路径视图、空 path / null entry 指针防御和 `defer` 清理组合。
-- 已完成：`std_collections_path` 样例不再通过 `String.as_mut_span` 编辑字符串，改用受控 `String` byte compatibility API，并新增 `Bytes` raw mutation 覆盖。
-- 已完成：`Vec<T>`、`Map<K,V>` 和 `CStringUsizeMap` 已迁为 `noncopy` owner；`Vec.take()` / reset 用于 M1 axbuild 中 target owned 字段转移，`Vec` copy-only API 对 noncopy element type 有语义诊断护栏；`Map<K,V>` 当前按值 key/value API 也有 copyable key/value 约束。
 
 ### Phase 6：高级文本结构
 
@@ -382,23 +371,26 @@ FFI 层应有单独类型：
 
 ## 验收测试清单
 
-后续实现时至少补这些测试；已完成的项保留在这里作为回归边界：
+M2 当前 language-core 至少要覆盖：
 
 - `size_of(str)` 和 `align_of(str)` 在 64-bit 下保持 16/8。
 - `"abc"` 类型是 `str`，`c"abc"` 类型是 `*const u8` 或未来 `CStr`，二者不能隐式互转。
-- `"a\0b"` 是合法 `str`，`byte_len()` 为 3，不能被 C API 截断。
-- 已完成：非 ASCII 文本如 `"ƒ"` 的 `byte_len()` 为 2，`scalar_count()` 为 1。
-- 已完成：invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
-- 已完成：`slice_bytes_checked("ƒ", 0, 1)` 失败，`slice_bytes_checked("ƒ", 0, 2)` 成功。
-- 已完成：`String.from_utf8` 接受合法 UTF-8，拒绝非法 bytes。
-- 已完成：`CString.from_str("a\0b")` 拒绝内部 NUL。
-- 已完成：`String` safe surface 不再暴露 `as_mut_span`。
-- 已完成：`Bytes` 覆盖 raw mutable bytes 和自别名 append。
-- 已完成：`Path.from_span` 接受非 UTF-8 bytes 并拒绝内部 NUL。
-- 已完成：`std.fs.file` 公开层新增 `Path` 和 `str` 入口，`write_str_path("a\0b")` 按长度写入，不走 C string 截断语义。
-- 已完成：`std.fs.dir` 公开层新增目录 path 的 `Path` 入口、suffix 的 `str` 入口，以及目录项 raw bytes / checked UTF-8 视图；M1 axbuild 目录扫描、source list、stamp path、clean 和临时 cleanup 已迁到 `Path` / `str` 入口，target 加入 project 时也会通过 `Vec.take()` / reset 显式转移 owned `Path` / owned container 字段。
-- 已完成：`String`、`Bytes`、`Path`、`DirectoryEntry`、`Vec<T>`、`Map<K,V>`、`CStringUsizeMap` 这些拥有型 std 值不能隐式复制；`Vec<Path>.extend(...)`、`Map<Path, usize>.insert(...)`、`Map<u8, Path>.get(...)` 这类会复制、按值读取或覆盖 noncopy 元素的入口有负例覆盖；`Result` / `Option` 的消费式状态查询对 noncopy payload 也会给出诊断。
-- 标准库进程、path 更深层 API 和剩余 FFI 公开层继续减少业务代码传 `c"..."` 的需求。
+- 普通字符串字面量允许内部 `\0`，C 字符串字面量拒绝内部 NUL。
+- 非 ASCII 文本如 `"ƒ"` 按 UTF-8 byte length 表达，不能被截断成单字节字符。
+- invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
+- `str_data`、`str_byte_len`、`str_from_bytes_unchecked` 的类型检查稳定。
+- 在引入 `unsafe` 后，`str_from_bytes_unchecked` 不能继续暴露在 safe context。
+
+恢复标准库后再补这些验收项：
+
+- `slice_bytes_checked("ƒ", 0, 1)` 失败，`slice_bytes_checked("ƒ", 0, 2)` 成功。
+- `String.from_utf8` 接受合法 UTF-8，拒绝非法 bytes。
+- `CString.from_str("a\0b")` 拒绝内部 NUL。
+- `String` safe surface 不暴露 raw mutable byte view。
+- `Bytes` 覆盖 raw mutable bytes 和自别名 append。
+- `Path.from_span` 接受非 UTF-8 bytes 并拒绝内部 NUL。
+- 文件、目录、进程和 console API 优先接收 `Path`、`str`、`CStr` / `CString` 等边界类型，不再要求业务代码直接传 `c"..."`。
+- 拥有型 std 值的 copy/drop/borrow 约束必须通过语言能力表达，而不是通过标准库名字特判。
 
 ## 参考资料
 

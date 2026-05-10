@@ -1,10 +1,15 @@
-# Aurex M0
+# Aurex M2
 
-Documentation baseline: **language-core-no-std**.
+Documentation baseline: **M2 language-core-no-std**.
 
-Aurex M0 is a small bootstrap compiler project written in modern C++20. The
+Aurex is a small systems-language compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
 Stage0 now compiles through Aurex IR -> LLVM IR -> clang by default.
+
+M2 is a deliberate reset after the M1 design track. The M1 standard-library,
+selfhost, and system/build-tool experiments are no longer active in this tree.
+M2 focuses on stabilizing the language core first: syntax, type checking,
+generics, ownership, pattern matching, Aurex IR, and LLVM/native output.
 
 ## Quick Start
 
@@ -18,7 +23,7 @@ build/tests/hello
 Expected output:
 
 ```text
-hello from Aurex M0
+hello from Aurex M2
 ```
 
 Stage0 now resolves imports:
@@ -76,13 +81,13 @@ The test script covers lexer/AST dumps, hello end-to-end codegen, positive
 language samples, negative semantic samples, current language features, LLVM
 lowering, native execution, import paths, and install-tree compiler execution.
 
-## Bootstrap Status
+## Stage Status
 
-The previous M0-written bootstrap experiment has been removed. Active work is
-on the C++ Stage0 compiler, Aurex IR, and the LLVM backend. A new bootstrap
-track is expected around M3, after the language has enough module isolation,
-visibility, generics, sum types, pattern matching, inference, and AIR contracts
-to make the rewrite representative instead of carrying old seed constraints.
+The previous M1/selfhost/bootstrap experiment has been removed from the active
+tree. Active work is on the C++ Stage0 compiler, Aurex IR, and the LLVM backend.
+A new bootstrap track should wait until the M2 language core has stable module
+isolation, visibility, generics, sum types, pattern matching, ownership,
+borrow/drop, capability/trait/where, and IR contracts.
 
 ## Documentation
 

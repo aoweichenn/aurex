@@ -1,6 +1,6 @@
 # Aurex Documentation
 
-Documentation baseline: **language-core-no-std**.
+Documentation baseline: **M2 language-core-no-std**.
 
 This directory is organized by language. The main Chinese and English trees use
 the same document names so readers can switch languages without learning a
@@ -18,6 +18,7 @@ language they were written in.
 - [Aurex 基础语法地基评估](zh/basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](zh/language-syntax-and-design-review.md)
 - [设计实现文档](zh/implementation.md)
+- [当前进度文档](zh/progress.md)
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
 - [下一步计划文档](zh/next-steps.md)
@@ -30,6 +31,7 @@ language they were written in.
 - [Runtime Flow](en/runtime-flow.md)
 - [API Reference](en/api.md)
 - [Design And Implementation](en/implementation.md)
+- [Current Progress](en/progress.md)
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
 - [Next Steps](en/next-steps.md)

@@ -20,7 +20,7 @@ namespace {
 TEST_F(AurexIntegrationTest, ExamplesHelloCompilesAndRuns) {
     const fs::path output = test_bin_root() / "hello_example";
     require_success(aurexc() + " " + q(examples_root() / "hello.ax") + " -o " + q(output));
-    EXPECT_EQ(require_success(q(output)).output, "hello from Aurex M0\n");
+    EXPECT_EQ(require_success(q(output)).output, "hello from Aurex M2\n");
 }
 
 TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly) {

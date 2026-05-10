@@ -1,6 +1,6 @@
 # Usage Guide
 
-This document describes the `language-core-no-std` branch. The standard library
+This document describes the **M2 language-core-no-std** stage. The standard library
 is frozen and removed here, so examples and tests should target syntax,
 semantics, IR, and backend behavior directly.
 
@@ -21,7 +21,7 @@ build/tests/hello
 Expected output:
 
 ```text
-hello from Aurex M0
+hello from Aurex M2
 ```
 
 ## Emission Modes
@@ -72,4 +72,4 @@ tools/run_tests.sh
 The suite covers lexer/parser, modules, visibility, generics, sum types,
 pattern matching, `?`, `defer`, `for`, ownership, IR, LLVM lowering, native
 execution, and installed compiler execution. Standard-library APIs, std host
-support, and M1 system/build-tool examples are out of scope on this branch.
+support, and M1 system/build-tool examples are out of scope for M2.

@@ -14,7 +14,7 @@
 
 ## Branch Boundary
 
-`language-core-no-std` removes the standard-library layer:
+M2 `language-core-no-std` removes the standard-library layer:
 
 - No `std/` source tree.
 - The driver does not locate a std root.

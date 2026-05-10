@@ -6,7 +6,7 @@ TEST_F(AurexIntegrationTest, NativeHelloDefaultExecutableOutputs) {
     const fs::path hello = source_root() / "examples" / "hello.ax";
     const fs::path hello_bin = test_bin_root() / "hello";
     require_success(aurexc() + " " + q(hello) + " -o " + q(hello_bin));
-    EXPECT_EQ(require_success(q(hello_bin)).output, "hello from Aurex M0\n");
+    EXPECT_EQ(require_success(q(hello_bin)).output, "hello from Aurex M2\n");
 }
 
 TEST_F(AurexIntegrationTest, NativeHelloAssemblyOutput) {
@@ -27,7 +27,7 @@ TEST_F(AurexIntegrationTest, NativeHelloExplicitExecutableOutputs) {
     const fs::path hello = source_root() / "examples" / "hello.ax";
     const fs::path direct = test_bin_root() / "hello.direct";
     require_success(aurexc() + " --emit=exe " + q(hello) + " -o " + q(direct));
-    EXPECT_EQ(require_success(q(direct)).output, "hello from Aurex M0\n");
+    EXPECT_EQ(require_success(q(direct)).output, "hello from Aurex M2\n");
 }
 
 } // namespace aurex::test

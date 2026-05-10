@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**language-core-no-std**。
+文档基线：**M2 language-core-no-std**。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -13,6 +13,7 @@
 - [Aurex 基础语法地基评估](basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](language-syntax-and-design-review.md)
 - [设计实现文档](implementation.md)
+- [当前进度文档](progress.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)
 - [下一步计划文档](next-steps.md)

@@ -1,8 +1,237 @@
 #include <aurex/sema/sema.hpp>
 
+#include <vector>
+
 namespace aurex::sema {
 
 namespace {
+
+constexpr base::usize SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY = 16;
+
+enum class ControlFlowQuery {
+    guarantees_return,
+    may_fallthrough,
+};
+
+enum class ControlFlowFrameKind {
+    statement,
+    block,
+    if_statement,
+};
+
+enum class ControlFlowIfStage {
+    evaluate_then,
+    after_then,
+    evaluate_alternate,
+    after_alternate,
+};
+
+struct ControlFlowFrame {
+    ControlFlowFrameKind kind = ControlFlowFrameKind::statement;
+    syntax::StmtId stmt = syntax::invalid_stmt_id;
+    base::usize next_child = 0;
+    ControlFlowIfStage if_stage = ControlFlowIfStage::evaluate_then;
+};
+
+[[nodiscard]] const syntax::StmtNode* statement_node(
+    const syntax::AstModule& module,
+    const syntax::StmtId stmt
+) noexcept {
+    if (!syntax::is_valid(stmt) || stmt.value >= module.stmts.size()) {
+        return nullptr;
+    }
+    return &module.stmts[stmt.value];
+}
+
+[[nodiscard]] base::SourceRange expr_range_or(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr,
+    const base::SourceRange fallback
+) noexcept {
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return fallback;
+    }
+    return module.exprs[expr.value].range;
+}
+
+[[nodiscard]] bool default_control_flow_result(const ControlFlowQuery query) noexcept {
+    return query == ControlFlowQuery::may_fallthrough;
+}
+
+[[nodiscard]] bool block_short_circuits(const ControlFlowQuery query, const bool child_result) noexcept {
+    return query == ControlFlowQuery::guarantees_return ? child_result : !child_result;
+}
+
+[[nodiscard]] bool if_then_short_circuits(const ControlFlowQuery query, const bool then_result) noexcept {
+    return query == ControlFlowQuery::guarantees_return ? !then_result : then_result;
+}
+
+[[nodiscard]] bool abrupt_stmt_result(
+    const ControlFlowQuery query,
+    const syntax::StmtKind kind
+) noexcept {
+    if (query == ControlFlowQuery::guarantees_return) {
+        return kind == syntax::StmtKind::return_;
+    }
+    return false;
+}
+
+void finish_control_flow_frame(
+    std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query,
+    bool result,
+    bool& has_result,
+    bool& final_result
+) {
+    stack.pop_back();
+    while (!stack.empty()) {
+        ControlFlowFrame& parent = stack.back();
+        switch (parent.kind) {
+        case ControlFlowFrameKind::block:
+            if (block_short_circuits(query, result)) {
+                stack.pop_back();
+                continue;
+            }
+            ++parent.next_child;
+            return;
+        case ControlFlowFrameKind::if_statement:
+            if (parent.if_stage == ControlFlowIfStage::after_then) {
+                if (if_then_short_circuits(query, result)) {
+                    stack.pop_back();
+                    continue;
+                }
+                parent.if_stage = ControlFlowIfStage::evaluate_alternate;
+                return;
+            }
+            if (parent.if_stage == ControlFlowIfStage::after_alternate) {
+                stack.pop_back();
+                continue;
+            }
+            return;
+        case ControlFlowFrameKind::statement:
+            return;
+        }
+    }
+    has_result = true;
+    final_result = result;
+}
+
+void evaluate_control_flow_statement(
+    const syntax::AstModule& module,
+    std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query,
+    bool& has_result,
+    bool& final_result
+) {
+    ControlFlowFrame& frame = stack.back();
+    const syntax::StmtNode* const node = statement_node(module, frame.stmt);
+    if (node == nullptr) {
+        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        return;
+    }
+    switch (node->kind) {
+    case syntax::StmtKind::return_:
+    case syntax::StmtKind::break_:
+    case syntax::StmtKind::continue_:
+        finish_control_flow_frame(stack, query, abrupt_stmt_result(query, node->kind), has_result, final_result);
+        break;
+    case syntax::StmtKind::block:
+        frame.kind = ControlFlowFrameKind::block;
+        frame.next_child = 0;
+        break;
+    case syntax::StmtKind::if_:
+        frame.kind = ControlFlowFrameKind::if_statement;
+        frame.if_stage = ControlFlowIfStage::evaluate_then;
+        break;
+    default:
+        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        break;
+    }
+}
+
+void evaluate_control_flow_block(
+    const syntax::AstModule& module,
+    std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query,
+    bool& has_result,
+    bool& final_result
+) {
+    ControlFlowFrame& frame = stack.back();
+    const syntax::StmtNode* const node = statement_node(module, frame.stmt);
+    if (node == nullptr) {
+        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        return;
+    }
+    if (node->kind != syntax::StmtKind::block) {
+        frame.kind = ControlFlowFrameKind::statement;
+        return;
+    }
+    if (frame.next_child >= node->statements.size()) {
+        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        return;
+    }
+    stack.push_back(ControlFlowFrame {ControlFlowFrameKind::statement, node->statements[frame.next_child]});
+}
+
+void evaluate_control_flow_if_statement(
+    const syntax::AstModule& module,
+    std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query,
+    bool& has_result,
+    bool& final_result
+) {
+    ControlFlowFrame& frame = stack.back();
+    const syntax::StmtNode* const node = statement_node(module, frame.stmt);
+    if (node == nullptr || node->kind != syntax::StmtKind::if_) {
+        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        return;
+    }
+    if (frame.if_stage == ControlFlowIfStage::evaluate_then) {
+        frame.if_stage = ControlFlowIfStage::after_then;
+        stack.push_back(ControlFlowFrame {ControlFlowFrameKind::block, node->then_block});
+        return;
+    }
+    if (frame.if_stage == ControlFlowIfStage::evaluate_alternate) {
+        frame.if_stage = ControlFlowIfStage::after_alternate;
+        if (syntax::is_valid(node->else_block)) {
+            stack.push_back(ControlFlowFrame {ControlFlowFrameKind::block, node->else_block});
+            return;
+        }
+        if (syntax::is_valid(node->else_if)) {
+            stack.push_back(ControlFlowFrame {ControlFlowFrameKind::statement, node->else_if});
+            return;
+        }
+        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+    }
+}
+
+[[nodiscard]] bool evaluate_control_flow(
+    const syntax::AstModule& module,
+    const syntax::StmtId stmt,
+    const ControlFlowFrameKind root_kind,
+    const ControlFlowQuery query
+) {
+    std::vector<ControlFlowFrame> stack;
+    stack.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+    stack.push_back(ControlFlowFrame {root_kind, stmt});
+
+    bool has_result = false;
+    bool final_result = default_control_flow_result(query);
+    while (!has_result && !stack.empty()) {
+        switch (stack.back().kind) {
+        case ControlFlowFrameKind::statement:
+            evaluate_control_flow_statement(module, stack, query, has_result, final_result);
+            break;
+        case ControlFlowFrameKind::block:
+            evaluate_control_flow_block(module, stack, query, has_result, final_result);
+            break;
+        case ControlFlowFrameKind::if_statement:
+            evaluate_control_flow_if_statement(module, stack, query, has_result, final_result);
+            break;
+        }
+    }
+    return final_result;
+}
 
 [[nodiscard]] bool is_allowed_expression_statement(
     const syntax::AstModule& module,
@@ -59,12 +288,12 @@ namespace {
 } // namespace
 
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
-    const std::string key = function_key(function);
-    const auto found = checked_.functions.find(key);
-    if (found == checked_.functions.end()) {
+    const std::string key = this->function_key(function);
+    const auto found = this->checked_.functions.find(key);
+    if (found == this->checked_.functions.end()) {
         return;
     }
-    analyze_function_body_with_signature(function, key, found->second, function_body_states_[key], nullptr);
+    this->analyze_function_body_with_signature(function, key, found->second, this->function_body_states_[key], nullptr);
 }
 
 void SemanticAnalyzer::analyze_function_body_with_signature(
@@ -74,30 +303,30 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     FunctionBodyState& state,
     const GenericTypeSubstitution* const substitution
 ) {
-    const syntax::ModuleId previous_module = current_module_;
-    const TypeHandle previous_function_return_type = current_function_return_type_;
-    const GenericTypeSubstitution* const previous_type_substitution = current_type_substitution_;
-    ReturnTypeInference* const previous_return_inference = current_return_inference_;
-    const int previous_loop_depth = loop_depth_;
-    const SymbolTable previous_symbols = symbols_;
+    const syntax::ModuleId previous_module = this->current_module_;
+    const TypeHandle previous_function_return_type = this->current_function_return_type_;
+    const GenericTypeSubstitution* const previous_type_substitution = this->current_type_substitution_;
+    ReturnTypeInference* const previous_return_inference = this->current_return_inference_;
+    const int previous_loop_depth = this->loop_depth_;
+    const SymbolTable previous_symbols = this->symbols_;
     const auto restore_context = [&]() {
-        current_module_ = previous_module;
-        current_function_return_type_ = previous_function_return_type;
-        current_type_substitution_ = previous_type_substitution;
-        current_return_inference_ = previous_return_inference;
-        loop_depth_ = previous_loop_depth;
-        symbols_ = previous_symbols;
+        this->current_module_ = previous_module;
+        this->current_function_return_type_ = previous_function_return_type;
+        this->current_type_substitution_ = previous_type_substitution;
+        this->current_return_inference_ = previous_return_inference;
+        this->loop_depth_ = previous_loop_depth;
+        this->symbols_ = previous_symbols;
     };
-    current_module_ = signature.module;
-    current_type_substitution_ = substitution;
-    symbols_ = SymbolTable {};
+    this->current_module_ = signature.module;
+    this->current_type_substitution_ = substitution;
+    this->symbols_ = SymbolTable {};
     if (signature.has_conflict) {
         restore_context();
         return;
     }
     if (state == FunctionBodyState::analyzing) {
         if (!is_valid(signature.return_type)) {
-            report(function.range, "cannot infer recursive function return type without an explicit return type");
+            this->report(function.range, "cannot infer recursive function return type without an explicit return type");
         }
         restore_context();
         return;
@@ -107,22 +336,22 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         return;
     }
     state = FunctionBodyState::analyzing;
-    loop_depth_ = 0;
+    this->loop_depth_ = 0;
     const bool infer_return_type = !syntax::is_valid(function.return_type);
     ReturnTypeInference return_inference;
     TypeHandle expected_return = signature.return_type;
     if (infer_return_type) {
         expected_return = invalid_type_handle;
     }
-    current_function_return_type_ = expected_return;
-    current_return_inference_ = infer_return_type ? &return_inference : nullptr;
+    this->current_function_return_type_ = expected_return;
+    this->current_return_inference_ = infer_return_type ? &return_inference : nullptr;
 
-    symbols_.push_scope();
+    this->symbols_.push_scope();
     for (base::usize i = 0; i < function.params.size(); ++i) {
         const syntax::ParamDecl& param = function.params[i];
         const TypeHandle param_type = i < signature.param_types.size()
             ? signature.param_types[i]
-            : resolve_type(param.type);
+            : this->resolve_type(param.type);
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::parameter,
             std::string(param.name),
@@ -135,19 +364,19 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         }, this->diagnostics_);
         static_cast<void>(inserted);
     }
-    analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
-    symbols_.pop_scope();
+    this->analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
+    this->symbols_.pop_scope();
     if (infer_return_type) {
-        finalize_inferred_return(function, key, return_inference);
+        this->finalize_inferred_return(function, key, return_inference);
         if (is_valid(return_inference.inferred_type) &&
-            !checked_.types.is_void(return_inference.inferred_type) &&
-            !block_guarantees_return(function.body)) {
-            report(function.range, "not all control paths return a value");
+            !this->checked_.types.is_void(return_inference.inferred_type) &&
+            !this->block_guarantees_return(function.body)) {
+            this->report(function.range, "not all control paths return a value");
         }
     } else if (is_valid(expected_return) &&
-        !checked_.types.is_void(expected_return) &&
-        !block_guarantees_return(function.body)) {
-        report(function.range, "not all control paths return a value");
+        !this->checked_.types.is_void(expected_return) &&
+        !this->block_guarantees_return(function.body)) {
+        this->report(function.range, "not all control paths return a value");
     }
     state = FunctionBodyState::analyzed;
     restore_context();
@@ -158,9 +387,7 @@ void SemanticAnalyzer::analyze_block(
     const TypeHandle expected_return,
     ReturnTypeInference* const return_inference
 ) {
-    symbols_.push_scope();
-    analyze_block_statements(block, expected_return, return_inference);
-    symbols_.pop_scope();
+    this->analyze_statement_tree(block, expected_return, return_inference, StatementAnalysisRootKind::scoped_block);
 }
 
 void SemanticAnalyzer::analyze_block_statements(
@@ -168,36 +395,27 @@ void SemanticAnalyzer::analyze_block_statements(
     const TypeHandle expected_return,
     ReturnTypeInference* const return_inference
 ) {
-    if (!syntax::is_valid(block) || block.value >= module_.stmts.size()) {
-        return;
-    }
-    const syntax::StmtNode& stmt = module_.stmts[block.value];
-    if (stmt.kind != syntax::StmtKind::block) {
-        return;
-    }
-    for (syntax::StmtId child : stmt.statements) {
-        analyze_stmt(child, expected_return, return_inference);
-    }
+    this->analyze_statement_tree(block, expected_return, return_inference, StatementAnalysisRootKind::block_statements);
 }
 
 TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id) {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return invalid_type_handle;
     }
-    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
     if (expr.kind != syntax::ExprKind::name || !expr.scope_name.empty()) {
-        return analyze_expr(expr_id);
+        return this->analyze_expr(expr_id);
     }
-    const Symbol* symbol = find_symbol(expr.text, expr.range);
+    const Symbol* symbol = this->find_symbol(expr.text, expr.range);
     if (symbol == nullptr) {
-        return record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, invalid_type_handle);
     }
     if (symbol->kind == SymbolKind::function) {
-        report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
-        return record_expr_type(expr_id, invalid_type_handle);
+        this->report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
+        return this->record_expr_type(expr_id, invalid_type_handle);
     }
-    record_expr_c_name(expr_id, symbol->c_name);
-    return record_expr_type(expr_id, symbol->type);
+    this->record_expr_c_name(expr_id, symbol->c_name);
+    return this->record_expr_type(expr_id, symbol->type);
 }
 
 void SemanticAnalyzer::analyze_stmt(
@@ -205,26 +423,122 @@ void SemanticAnalyzer::analyze_stmt(
     const TypeHandle expected_return,
     ReturnTypeInference* const return_inference
 ) {
-    if (!syntax::is_valid(stmt_id) || stmt_id.value >= module_.stmts.size()) {
+    this->analyze_statement_tree(stmt_id, expected_return, return_inference, StatementAnalysisRootKind::statement);
+}
+
+void SemanticAnalyzer::analyze_statement_tree(
+    const syntax::StmtId root,
+    const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference,
+    const StatementAnalysisRootKind root_kind
+) {
+    std::vector<StatementAnalysisAction> stack;
+    stack.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+    switch (root_kind) {
+    case StatementAnalysisRootKind::statement:
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, root});
+        break;
+    case StatementAnalysisRootKind::scoped_block:
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, root});
+        break;
+    case StatementAnalysisRootKind::block_statements:
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, root});
+        break;
+    }
+    while (!stack.empty()) {
+        const StatementAnalysisAction action = stack.back();
+        stack.pop_back();
+        this->analyze_statement_action(action, stack, expected_return, return_inference);
+    }
+}
+
+void SemanticAnalyzer::analyze_statement_action(
+    const StatementAnalysisAction& action,
+    std::vector<StatementAnalysisAction>& stack,
+    const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference
+) {
+    switch (action.kind) {
+    case StatementAnalysisActionKind::statement:
+        this->analyze_statement_node(action.stmt, stack, expected_return, return_inference);
+        break;
+    case StatementAnalysisActionKind::scoped_block:
+        this->symbols_.push_scope();
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, action.stmt});
+        break;
+    case StatementAnalysisActionKind::block_statements:
+        this->analyze_statement_block(action.stmt, stack);
+        break;
+    case StatementAnalysisActionKind::pop_scope:
+        this->symbols_.pop_scope();
+        break;
+    case StatementAnalysisActionKind::enter_loop:
+        ++this->loop_depth_;
+        break;
+    case StatementAnalysisActionKind::exit_loop:
+        --this->loop_depth_;
+        break;
+    case StatementAnalysisActionKind::for_condition:
+        this->analyze_for_condition(action.stmt);
+        break;
+    }
+}
+
+void SemanticAnalyzer::analyze_statement_block(
+    const syntax::StmtId block,
+    std::vector<StatementAnalysisAction>& stack
+) {
+    const syntax::StmtNode* const stmt = statement_node(this->module_, block);
+    if (stmt == nullptr || stmt->kind != syntax::StmtKind::block) {
         return;
     }
-    const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
+    for (base::usize i = stmt->statements.size(); i > 0; --i) {
+        stack.push_back(StatementAnalysisAction {
+            StatementAnalysisActionKind::statement,
+            stmt->statements[i - 1],
+        });
+    }
+}
+
+void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
+    const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
+    if (stmt == nullptr || stmt->kind != syntax::StmtKind::for_ || !syntax::is_valid(stmt->condition)) {
+        return;
+    }
+    const TypeHandle condition = this->analyze_expr(stmt->condition);
+    if (!this->checked_.types.is_bool(condition)) {
+        this->report(expr_range_or(this->module_, stmt->condition, stmt->range), "for condition must be bool");
+    }
+}
+
+void SemanticAnalyzer::analyze_statement_node(
+    const syntax::StmtId stmt_id,
+    std::vector<StatementAnalysisAction>& stack,
+    const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference
+) {
+    const syntax::StmtNode* const stmt_ptr = statement_node(this->module_, stmt_id);
+    if (stmt_ptr == nullptr) {
+        return;
+    }
+    const syntax::StmtNode& stmt = *stmt_ptr;
     switch (stmt.kind) {
     case syntax::StmtKind::let:
     case syntax::StmtKind::var: {
         const bool has_declared_type = syntax::is_valid(stmt.declared_type);
-        const TypeHandle declared_type = has_declared_type ? resolve_type(stmt.declared_type) : invalid_type_handle;
-        const TypeHandle init = analyze_expr(stmt.init, declared_type);
+        const TypeHandle declared_type = has_declared_type ? this->resolve_type(stmt.declared_type) : invalid_type_handle;
+        const TypeHandle init = this->analyze_expr(stmt.init, declared_type);
         const TypeHandle local_type = has_declared_type ? declared_type : init;
-        record_stmt_local_type(stmt_id, local_type);
+        this->record_stmt_local_type(stmt_id, local_type);
         if (!has_declared_type && !is_valid(local_type)) {
-            report(stmt.range, "local variable type cannot be inferred");
+            this->report(stmt.range, "local variable type cannot be inferred");
         }
-        if (is_valid(local_type) && !is_valid_storage_type(local_type)) {
-            report(stmt.range, "local variable type is not valid storage");
+        if (is_valid(local_type) && !this->is_valid_storage_type(local_type)) {
+            this->report(stmt.range, "local variable type is not valid storage");
         }
-        if (has_declared_type && !can_assign(local_type, init, stmt.init)) {
-            report(stmt.range, "initializer type does not match declared type");
+        if (has_declared_type && !this->can_assign(local_type, init, stmt.init)) {
+            this->report(stmt.range, "initializer type does not match declared type");
         }
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,
@@ -240,10 +554,10 @@ void SemanticAnalyzer::analyze_stmt(
         break;
     }
     case syntax::StmtKind::assign: {
-        if (!is_writable_place(stmt.lhs)) {
-            report(module_.exprs[stmt.lhs.value].range, "left side of assignment must be writable");
+        if (!this->is_writable_place(stmt.lhs)) {
+            this->report(expr_range_or(this->module_, stmt.lhs, stmt.range), "left side of assignment must be writable");
         }
-        const TypeHandle lhs = analyze_assignment_target(stmt.lhs);
+        const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
         if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
             syntax::ExprNode binary;
@@ -252,191 +566,116 @@ void SemanticAnalyzer::analyze_stmt(
             binary.binary_op = binary_op;
             binary.binary_lhs = stmt.lhs;
             binary.binary_rhs = stmt.rhs;
-            const TypeHandle result = analyze_expr(syntax::invalid_expr_id, binary, lhs);
-            if (!can_assign(lhs, result, stmt.rhs)) {
-                report(stmt.range, "compound assignment type mismatch");
+            const TypeHandle result = this->analyze_expr(syntax::invalid_expr_id, binary, lhs);
+            if (!this->can_assign(lhs, result, stmt.rhs)) {
+                this->report(stmt.range, "compound assignment type mismatch");
             }
         } else {
-            const TypeHandle rhs = analyze_expr(stmt.rhs, lhs);
-            if (!can_assign(lhs, rhs, stmt.rhs)) {
-                report(stmt.range, "assignment type mismatch");
+            const TypeHandle rhs = this->analyze_expr(stmt.rhs, lhs);
+            if (!this->can_assign(lhs, rhs, stmt.rhs)) {
+                this->report(stmt.range, "assignment type mismatch");
             }
         }
-        if (checked_.types.contains_array(lhs)) {
-            report(stmt.range, "array or array-containing type cannot be assigned");
+        if (this->checked_.types.contains_array(lhs)) {
+            this->report(stmt.range, "array or array-containing type cannot be assigned");
         }
         break;
     }
     case syntax::StmtKind::if_: {
-        const TypeHandle condition = analyze_expr(stmt.condition);
-        if (!checked_.types.is_bool(condition)) {
-            report(module_.exprs[stmt.condition.value].range, "if condition must be bool");
-        }
-        analyze_block(stmt.then_block, expected_return, return_inference);
-        if (syntax::is_valid(stmt.else_block)) {
-            analyze_block(stmt.else_block, expected_return, return_inference);
+        const TypeHandle condition = this->analyze_expr(stmt.condition);
+        if (!this->checked_.types.is_bool(condition)) {
+            this->report(expr_range_or(this->module_, stmt.condition, stmt.range), "if condition must be bool");
         }
         if (syntax::is_valid(stmt.else_if)) {
-            analyze_stmt(stmt.else_if, expected_return, return_inference);
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.else_if});
         }
+        if (syntax::is_valid(stmt.else_block)) {
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
+        }
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.then_block});
         break;
     }
     case syntax::StmtKind::while_: {
-        const TypeHandle condition = analyze_expr(stmt.condition);
-        if (!checked_.types.is_bool(condition)) {
-            report(module_.exprs[stmt.condition.value].range, "while condition must be bool");
+        const TypeHandle condition = this->analyze_expr(stmt.condition);
+        if (!this->checked_.types.is_bool(condition)) {
+            this->report(expr_range_or(this->module_, stmt.condition, stmt.range), "while condition must be bool");
         }
-        ++loop_depth_;
-        analyze_block(stmt.body, expected_return, return_inference);
-        --loop_depth_;
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
         break;
     }
     case syntax::StmtKind::for_: {
-        symbols_.push_scope();
-        if (syntax::is_valid(stmt.for_init)) {
-            analyze_stmt(stmt.for_init, expected_return, return_inference);
-        }
-        if (syntax::is_valid(stmt.condition)) {
-            const TypeHandle condition = analyze_expr(stmt.condition);
-            if (!checked_.types.is_bool(condition)) {
-                report(module_.exprs[stmt.condition.value].range, "for condition must be bool");
-            }
-        }
-        ++loop_depth_;
-        analyze_block(stmt.body, expected_return, return_inference);
+        this->symbols_.push_scope();
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
         if (syntax::is_valid(stmt.for_update)) {
-            analyze_stmt(stmt.for_update, expected_return, return_inference);
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.for_update});
         }
-        --loop_depth_;
-        symbols_.pop_scope();
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::for_condition, stmt_id});
+        if (syntax::is_valid(stmt.for_init)) {
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.for_init});
+        }
         break;
     }
     case syntax::StmtKind::return_: {
         const TypeHandle actual = syntax::is_valid(stmt.return_value)
-            ? analyze_expr(stmt.return_value, expected_return)
-            : checked_.types.builtin(BuiltinType::void_);
+            ? this->analyze_expr(stmt.return_value, expected_return)
+            : this->checked_.types.builtin(BuiltinType::void_);
         if (return_inference != nullptr) {
-            record_inferred_return(stmt_id, actual, *return_inference);
+            this->record_inferred_return(stmt_id, actual, *return_inference);
         } else if (is_valid(actual) &&
             is_valid(expected_return) &&
-            !can_assign(expected_return, actual, stmt.return_value)) {
-            report(stmt.range, "return type mismatch");
+            !this->can_assign(expected_return, actual, stmt.return_value)) {
+            this->report(stmt.range, "return type mismatch");
         }
         break;
     }
     case syntax::StmtKind::expr:
         if (syntax::is_valid(stmt.init) &&
-            stmt.init.value < module_.exprs.size() &&
-            !is_allowed_expression_statement(module_, stmt.init)) {
-            report(module_.exprs[stmt.init.value].range, "expression statement must be a function call or try expression");
+            stmt.init.value < this->module_.exprs.size() &&
+            !is_allowed_expression_statement(this->module_, stmt.init)) {
+            this->report(this->module_.exprs[stmt.init.value].range, "expression statement must be a function call or try expression");
         }
-        static_cast<void>(analyze_expr(stmt.init));
+        static_cast<void>(this->analyze_expr(stmt.init));
         break;
     case syntax::StmtKind::block:
-        analyze_block(stmt_id, expected_return, return_inference);
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt_id});
         break;
     case syntax::StmtKind::break_:
     case syntax::StmtKind::continue_:
-        if (loop_depth_ == 0) {
-            report(stmt.range, "break and continue are only valid inside loops");
+        if (this->loop_depth_ == 0) {
+            this->report(stmt.range, "break and continue are only valid inside loops");
         }
         break;
     case syntax::StmtKind::defer:
         if (!syntax::is_valid(stmt.init) ||
-            stmt.init.value >= module_.exprs.size() ||
-            module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
-            report(stmt.range, "defer statement must be a function call");
+            stmt.init.value >= this->module_.exprs.size() ||
+            this->module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
+            this->report(stmt.range, "defer statement must be a function call");
             break;
         }
-        static_cast<void>(analyze_expr(stmt.init));
+        static_cast<void>(this->analyze_expr(stmt.init));
         break;
     }
 }
 
-bool SemanticAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const noexcept {
-    if (!syntax::is_valid(block_id) || block_id.value >= module_.stmts.size()) {
-        return false;
-    }
-    const syntax::StmtNode& block = module_.stmts[block_id.value];
-    if (block.kind != syntax::StmtKind::block) {
-        return stmt_guarantees_return(block_id);
-    }
-    for (const syntax::StmtId child : block.statements) {
-        if (stmt_guarantees_return(child)) {
-            return true;
-        }
-    }
-    return false;
+bool SemanticAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const {
+    return evaluate_control_flow(this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::guarantees_return);
 }
 
-bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const noexcept {
-    if (!syntax::is_valid(stmt_id) || stmt_id.value >= module_.stmts.size()) {
-        return false;
-    }
-    const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
-    switch (stmt.kind) {
-    case syntax::StmtKind::return_:
-        return true;
-    case syntax::StmtKind::block:
-        return block_guarantees_return(stmt_id);
-    case syntax::StmtKind::if_: {
-        if (!block_guarantees_return(stmt.then_block)) {
-            return false;
-        }
-        if (syntax::is_valid(stmt.else_block)) {
-            return block_guarantees_return(stmt.else_block);
-        }
-        if (syntax::is_valid(stmt.else_if)) {
-            return stmt_guarantees_return(stmt.else_if);
-        }
-        return false;
-    }
-    default:
-        return false;
-    }
+bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const {
+    return evaluate_control_flow(this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::guarantees_return);
 }
 
-bool SemanticAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const noexcept {
-    if (!syntax::is_valid(block_id) || block_id.value >= module_.stmts.size()) {
-        return true;
-    }
-    const syntax::StmtNode& block = module_.stmts[block_id.value];
-    if (block.kind != syntax::StmtKind::block) {
-        return stmt_may_fallthrough(block_id);
-    }
-    for (const syntax::StmtId child : block.statements) {
-        if (!stmt_may_fallthrough(child)) {
-            return false;
-        }
-    }
-    return true;
+bool SemanticAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const {
+    return evaluate_control_flow(this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::may_fallthrough);
 }
 
-bool SemanticAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const noexcept {
-    if (!syntax::is_valid(stmt_id) || stmt_id.value >= module_.stmts.size()) {
-        return true;
-    }
-    const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
-    switch (stmt.kind) {
-    case syntax::StmtKind::return_:
-    case syntax::StmtKind::break_:
-    case syntax::StmtKind::continue_:
-        return false;
-    case syntax::StmtKind::block:
-        return block_may_fallthrough(stmt_id);
-    case syntax::StmtKind::if_: {
-        const bool then_falls_through = block_may_fallthrough(stmt.then_block);
-        if (syntax::is_valid(stmt.else_block)) {
-            return then_falls_through || block_may_fallthrough(stmt.else_block);
-        }
-        if (syntax::is_valid(stmt.else_if)) {
-            return then_falls_through || stmt_may_fallthrough(stmt.else_if);
-        }
-        return true;
-    }
-    default:
-        return true;
-    }
+bool SemanticAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const {
+    return evaluate_control_flow(this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::may_fallthrough);
 }
 
 void SemanticAnalyzer::record_inferred_return(
@@ -446,9 +685,9 @@ void SemanticAnalyzer::record_inferred_return(
 ) {
     inference.returns.push_back(stmt_id);
     if (!is_valid(actual)) {
-        if (syntax::is_valid(stmt_id) && stmt_id.value < module_.stmts.size()) {
-            const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
-            report(stmt.range, "function return type cannot be inferred");
+        if (syntax::is_valid(stmt_id) && stmt_id.value < this->module_.stmts.size()) {
+            const syntax::StmtNode& stmt = this->module_.stmts[stmt_id.value];
+            this->report(stmt.range, "function return type cannot be inferred");
         }
         return;
     }
@@ -456,10 +695,10 @@ void SemanticAnalyzer::record_inferred_return(
         inference.inferred_type = actual;
         return;
     }
-    if (!checked_.types.same(inference.inferred_type, actual)) {
-        if (syntax::is_valid(stmt_id) && stmt_id.value < module_.stmts.size()) {
-            const syntax::StmtNode& stmt = module_.stmts[stmt_id.value];
-            report(stmt.range, "inferred function return types do not match");
+    if (!this->checked_.types.same(inference.inferred_type, actual)) {
+        if (syntax::is_valid(stmt_id) && stmt_id.value < this->module_.stmts.size()) {
+            const syntax::StmtNode& stmt = this->module_.stmts[stmt_id.value];
+            this->report(stmt.range, "inferred function return types do not match");
         }
     }
 }
@@ -471,26 +710,26 @@ void SemanticAnalyzer::finalize_inferred_return(
 ) {
     TypeHandle return_type = inference.inferred_type;
     if (inference.returns.empty()) {
-        return_type = checked_.types.builtin(BuiltinType::void_);
+        return_type = this->checked_.types.builtin(BuiltinType::void_);
     }
     if (!is_valid(return_type)) {
-        return_type = checked_.types.builtin(BuiltinType::void_);
+        return_type = this->checked_.types.builtin(BuiltinType::void_);
     }
-    validate_function_return_type(function, return_type);
-    if (const auto found = checked_.functions.find(key); found != checked_.functions.end()) {
+    this->validate_function_return_type(function, return_type);
+    if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
         found->second.return_type = return_type;
     }
-    if (const auto global = global_values_.find(key); global != global_values_.end()) {
+    if (const auto global = this->global_values_.find(key); global != this->global_values_.end()) {
         global->second.type = return_type;
     }
 }
 
 void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) {
-    if (checked_.types.is_array(return_type)) {
-        report(function.range, "array type cannot be used as a function return type");
+    if (this->checked_.types.is_array(return_type)) {
+        this->report(function.range, "array type cannot be used as a function return type");
     }
-    if (checked_.types.contains_array(return_type)) {
-        report(function.range, "struct containing array cannot be returned by value");
+    if (this->checked_.types.contains_array(return_type)) {
+        this->report(function.range, "struct containing array cannot be returned by value");
     }
 }
 
@@ -502,23 +741,23 @@ void SemanticAnalyzer::ensure_function_return_known(
         return;
     }
     const std::string key = signature.is_method
-        ? method_key(signature.module, signature.method_owner_type, signature.name)
-        : module_key(signature.module, signature.name);
-    const FunctionBodyState state = function_body_states_.contains(key)
-        ? function_body_states_.at(key)
+        ? this->method_key(signature.module, signature.method_owner_type, signature.name)
+        : this->module_key(signature.module, signature.name);
+    const FunctionBodyState state = this->function_body_states_.contains(key)
+        ? this->function_body_states_.at(key)
         : FunctionBodyState::not_started;
     if (state == FunctionBodyState::analyzing) {
-        report(use_range, "cannot infer recursive function return type without an explicit return type");
+        this->report(use_range, "cannot infer recursive function return type without an explicit return type");
         return;
     }
-    const auto item_found = function_definition_items_.find(key);
-    if (item_found == function_definition_items_.end() ||
+    const auto item_found = this->function_definition_items_.find(key);
+    if (item_found == this->function_definition_items_.end() ||
         !syntax::is_valid(item_found->second) ||
-        item_found->second.value >= module_.items.size()) {
-        report(use_range, "function return type cannot be inferred");
+        item_found->second.value >= this->module_.items.size()) {
+        this->report(use_range, "function return type cannot be inferred");
         return;
     }
-    analyze_function_body(module_.items[item_found->second.value]);
+    this->analyze_function_body(this->module_.items[item_found->second.value]);
 }
 
 } // namespace aurex::sema

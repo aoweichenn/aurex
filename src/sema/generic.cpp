@@ -2,13 +2,34 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace aurex::sema {
 
 namespace {
+
+constexpr base::usize SEMA_GENERIC_INFERENCE_INITIAL_STACK_CAPACITY = 16;
+
+struct GenericTypeInferenceFrame {
+    syntax::TypeId pattern_type = syntax::invalid_type_id;
+    TypeHandle actual = invalid_type_handle;
+};
+
+[[nodiscard]] std::optional<base::usize> generic_parameter_index(
+    const std::vector<std::string>& params,
+    const std::string_view name
+) {
+    for (base::usize index = 0; index < params.size(); ++index) {
+        if (params[index] == name) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
 
 [[nodiscard]] TypeHandle payload_storage_type(TypeTable& types, const base::u64 size, const base::u64 alignment) {
     TypeHandle unit = types.builtin(BuiltinType::u8);
@@ -751,167 +772,136 @@ bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
     const std::string_view context,
     const syntax::ModuleId pattern_module
 ) {
-    if (!syntax::is_valid(pattern_type_id) || pattern_type_id.value >= module_.types.size()) {
-        return false;
-    }
-    if (!is_valid(actual)) {
+    if (!syntax::is_valid(pattern_type_id) || pattern_type_id.value >= this->module_.types.size() || !is_valid(actual)) {
         return false;
     }
 
-    const syntax::ModuleId previous_module = current_module_;
-    current_module_ = pattern_module;
+    const syntax::ModuleId previous_module = this->current_module_;
+    this->current_module_ = pattern_module;
 
-    const syntax::TypeNode& pattern = module_.types[pattern_type_id.value];
-    bool result = false;
-    if (pattern.kind == syntax::TypeKind::named && pattern.type_args.empty()) {
-        const auto found = std::find(params.begin(), params.end(), std::string(pattern.name));
-        if (found != params.end()) {
-            const base::usize index = static_cast<base::usize>(std::distance(params.begin(), found));
-            if (index >= inferred.size()) {
-                result = false;
-            } else if (!is_valid(inferred[index])) {
-                inferred[index] = actual;
-                result = true;
-            } else if (!checked_.types.same(inferred[index], actual)) {
-                report(range, std::string(context) + " type inference conflict for " + params[index]);
-                result = false;
-            } else {
-                result = true;
-            }
-            current_module_ = previous_module;
-            return result;
+    bool result = true;
+    std::vector<GenericTypeInferenceFrame> stack;
+    stack.reserve(SEMA_GENERIC_INFERENCE_INITIAL_STACK_CAPACITY);
+    stack.push_back(GenericTypeInferenceFrame {pattern_type_id, actual});
+    while (result && !stack.empty()) {
+        const GenericTypeInferenceFrame frame = stack.back();
+        stack.pop_back();
+        if (!syntax::is_valid(frame.pattern_type) ||
+            frame.pattern_type.value >= this->module_.types.size() ||
+            !is_valid(frame.actual)) {
+            result = false;
+            break;
         }
-    }
 
-    switch (pattern.kind) {
-    case syntax::TypeKind::primitive: {
-        const TypeHandle expected = resolve_type(pattern_type_id);
-        result = can_assign(expected, actual, syntax::invalid_expr_id);
-        break;
-    }
-    case syntax::TypeKind::pointer: {
-        if (!checked_.types.is_pointer(actual)) {
-            result = false;
-            break;
-        }
-        const TypeInfo& actual_info = checked_.types.get(actual);
-        const PointerMutability expected_mutability = pattern.pointer_mutability == syntax::PointerMutability::mut
-            ? PointerMutability::mut
-            : PointerMutability::const_;
-        if (actual_info.pointer_mutability != expected_mutability) {
-            result = false;
-            break;
-        }
-        result = infer_generic_args_from_type_pattern(
-            pattern.pointee,
-            actual_info.pointee,
-            params,
-            inferred,
-            range,
-            context,
-            pattern_module
-        );
-        break;
-    }
-    case syntax::TypeKind::array: {
-        if (!checked_.types.is_array(actual)) {
-            result = false;
-            break;
-        }
-        const TypeInfo& actual_info = checked_.types.get(actual);
-        if (actual_info.array_count != pattern.array_count) {
-            result = false;
-            break;
-        }
-        result = infer_generic_args_from_type_pattern(
-            pattern.array_element,
-            actual_info.array_element,
-            params,
-            inferred,
-            range,
-            context,
-            pattern_module
-        );
-        break;
-    }
-    case syntax::TypeKind::named: {
-        if (!pattern.type_args.empty()) {
-            const bool qualified = !pattern.scope_name.empty();
-            syntax::ModuleId scope_module = syntax::invalid_module_id;
-            if (qualified) {
-                scope_module = resolve_import_alias(pattern.scope_name, pattern.scope_range, false);
-                if (!syntax::is_valid(scope_module)) {
+        const syntax::TypeNode& pattern = this->module_.types[frame.pattern_type.value];
+        if (pattern.kind == syntax::TypeKind::named && pattern.type_args.empty()) {
+            const std::optional<base::usize> param_index = generic_parameter_index(params, pattern.name);
+            if (param_index.has_value()) {
+                const base::usize index = param_index.value();
+                if (index >= inferred.size()) {
                     result = false;
-                    break;
-                }
-            }
-
-            const GenericStructTemplateInfo* struct_template = qualified
-                ? find_generic_struct_template_in_module(scope_module, pattern.name, pattern.range, false)
-                : find_generic_struct_template_in_visible_modules(pattern.name, pattern.range, false);
-            if (struct_template != nullptr) {
-                const GenericStructInstanceInfo* instance = generic_struct_instance(actual);
-                if (instance == nullptr ||
-                    instance->name != struct_template->name ||
-                    instance->module.value != struct_template->module.value ||
-                    instance->args.size() != pattern.type_args.size()) {
+                } else if (!is_valid(inferred[index])) {
+                    inferred[index] = frame.actual;
+                } else if (!this->checked_.types.same(inferred[index], frame.actual)) {
+                    this->report(range, std::string(context) + " type inference conflict for " + params[index]);
                     result = false;
-                    break;
                 }
-                result = true;
-                for (base::usize i = 0; i < pattern.type_args.size(); ++i) {
-                    if (!infer_generic_args_from_type_pattern(
-                            pattern.type_args[i],
-                            instance->args[i],
-                            params,
-                            inferred,
-                            range,
-                            context,
-                            pattern_module
-                        )) {
-                        result = false;
-                    }
-                }
+                continue;
+            }
+        }
+
+        switch (pattern.kind) {
+        case syntax::TypeKind::primitive: {
+            const TypeHandle expected = this->resolve_type(frame.pattern_type);
+            result = this->can_assign(expected, frame.actual, syntax::invalid_expr_id);
+            break;
+        }
+        case syntax::TypeKind::pointer: {
+            if (!this->checked_.types.is_pointer(frame.actual)) {
+                result = false;
                 break;
             }
-
-            const GenericEnumTemplateInfo* enum_template = qualified
-                ? find_generic_enum_template_in_module(scope_module, pattern.name, pattern.range, false)
-                : find_generic_enum_template_in_visible_modules(pattern.name, pattern.range, false);
-            if (enum_template != nullptr) {
-                const GenericEnumInstanceInfo* instance = generic_enum_instance(actual);
-                if (instance == nullptr ||
-                    instance->name != enum_template->name ||
-                    instance->module.value != enum_template->module.value ||
-                    instance->args.size() != pattern.type_args.size()) {
-                    result = false;
-                    break;
-                }
-                result = true;
-                for (base::usize i = 0; i < pattern.type_args.size(); ++i) {
-                    if (!infer_generic_args_from_type_pattern(
-                            pattern.type_args[i],
-                            instance->args[i],
-                            params,
-                            inferred,
-                            range,
-                            context,
-                            pattern_module
-                        )) {
-                        result = false;
-                    }
-                }
+            const TypeInfo& actual_info = this->checked_.types.get(frame.actual);
+            const PointerMutability expected_mutability = pattern.pointer_mutability == syntax::PointerMutability::mut
+                ? PointerMutability::mut
+                : PointerMutability::const_;
+            if (actual_info.pointer_mutability != expected_mutability) {
+                result = false;
                 break;
             }
+            stack.push_back(GenericTypeInferenceFrame {pattern.pointee, actual_info.pointee});
+            break;
         }
+        case syntax::TypeKind::array: {
+            if (!this->checked_.types.is_array(frame.actual)) {
+                result = false;
+                break;
+            }
+            const TypeInfo& actual_info = this->checked_.types.get(frame.actual);
+            if (actual_info.array_count != pattern.array_count) {
+                result = false;
+                break;
+            }
+            stack.push_back(GenericTypeInferenceFrame {pattern.array_element, actual_info.array_element});
+            break;
+        }
+        case syntax::TypeKind::named: {
+            if (!pattern.type_args.empty()) {
+                const bool qualified = !pattern.scope_name.empty();
+                syntax::ModuleId scope_module = syntax::invalid_module_id;
+                if (qualified) {
+                    scope_module = this->resolve_import_alias(pattern.scope_name, pattern.scope_range, false);
+                    if (!syntax::is_valid(scope_module)) {
+                        result = false;
+                        break;
+                    }
+                }
 
-        const TypeHandle expected = resolve_type(pattern_type_id);
-        result = can_assign(expected, actual, syntax::invalid_expr_id);
-        break;
-    }
+                const GenericStructTemplateInfo* struct_template = qualified
+                    ? this->find_generic_struct_template_in_module(scope_module, pattern.name, pattern.range, false)
+                    : this->find_generic_struct_template_in_visible_modules(pattern.name, pattern.range, false);
+                if (struct_template != nullptr) {
+                    const GenericStructInstanceInfo* instance = this->generic_struct_instance(frame.actual);
+                    if (instance == nullptr ||
+                        instance->name != struct_template->name ||
+                        instance->module.value != struct_template->module.value ||
+                        instance->args.size() != pattern.type_args.size()) {
+                        result = false;
+                        break;
+                    }
+                    for (base::usize i = pattern.type_args.size(); i > 0; --i) {
+                        stack.push_back(GenericTypeInferenceFrame {pattern.type_args[i - 1], instance->args[i - 1]});
+                    }
+                    break;
+                }
+
+                const GenericEnumTemplateInfo* enum_template = qualified
+                    ? this->find_generic_enum_template_in_module(scope_module, pattern.name, pattern.range, false)
+                    : this->find_generic_enum_template_in_visible_modules(pattern.name, pattern.range, false);
+                if (enum_template != nullptr) {
+                    const GenericEnumInstanceInfo* instance = this->generic_enum_instance(frame.actual);
+                    if (instance == nullptr ||
+                        instance->name != enum_template->name ||
+                        instance->module.value != enum_template->module.value ||
+                        instance->args.size() != pattern.type_args.size()) {
+                        result = false;
+                        break;
+                    }
+                    for (base::usize i = pattern.type_args.size(); i > 0; --i) {
+                        stack.push_back(GenericTypeInferenceFrame {pattern.type_args[i - 1], instance->args[i - 1]});
+                    }
+                    break;
+                }
+            }
+
+            const TypeHandle expected = this->resolve_type(frame.pattern_type);
+            result = this->can_assign(expected, frame.actual, syntax::invalid_expr_id);
+            break;
+        }
+        }
     }
 
-    current_module_ = previous_module;
+    this->current_module_ = previous_module;
     return result;
 }
 

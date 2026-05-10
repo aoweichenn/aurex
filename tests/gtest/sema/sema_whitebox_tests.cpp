@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -40,6 +41,14 @@ using sema::is_valid;
 using syntax::ExprId;
 using syntax::ModuleId;
 using syntax::TypeId;
+
+constexpr base::u64 SEMA_TEST_NESTED_ARRAY_COUNT = 5;
+constexpr base::u64 SEMA_TEST_INVALID_ARRAY_COUNT = 2;
+constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
+constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
+constexpr std::string_view SEMA_TEST_FLOAT_OVERFLOW_LITERAL = "1e999999999";
+constexpr std::string_view SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL = "1_2.5";
+constexpr std::string_view SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL = "1.0x";
 
 [[nodiscard]] ModuleId module_id(const u32 value) noexcept {
     return ModuleId {value};
@@ -149,6 +158,22 @@ using syntax::TypeId;
     return module.push_expr(expr);
 }
 
+[[nodiscard]] syntax::StmtId push_stmt(syntax::AstModule& module, const syntax::StmtKind kind) {
+    syntax::StmtNode stmt;
+    stmt.kind = kind;
+    return module.push_stmt(stmt);
+}
+
+[[nodiscard]] syntax::StmtId push_block(
+    syntax::AstModule& module,
+    const std::initializer_list<syntax::StmtId> statements
+) {
+    syntax::StmtNode block;
+    block.kind = syntax::StmtKind::block;
+    block.statements.assign(statements.begin(), statements.end());
+    return module.push_stmt(block);
+}
+
 } // namespace
 
 TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
@@ -170,6 +195,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
 
     const ExprId value_expr = push_name(module, "value");
     const ExprId scoped_value_expr = push_name(module, "shared", "one");
+    const ExprId missing_scoped_value_expr = push_name(module, "shared", "missing");
     const ExprId ptr_expr = push_name(module, "ptr");
     syntax::ExprNode field_expr;
     field_expr.kind = syntax::ExprKind::field;
@@ -179,6 +205,9 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     syntax::ExprNode value_field_expr = field_expr;
     value_field_expr.object = value_expr;
     const ExprId value_field_id = module.push_expr(value_field_expr);
+    syntax::ExprNode nested_value_field_expr = field_expr;
+    nested_value_field_expr.object = value_field_id;
+    const ExprId nested_value_field_id = module.push_expr(nested_value_field_expr);
     syntax::ExprNode index_expr;
     index_expr.kind = syntax::ExprKind::index;
     index_expr.object = ptr_expr;
@@ -187,6 +216,9 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     syntax::ExprNode value_index_expr = index_expr;
     value_index_expr.object = value_expr;
     const ExprId value_index_id = module.push_expr(value_index_expr);
+    syntax::ExprNode nested_value_index_expr = index_expr;
+    nested_value_index_expr.object = nested_value_field_id;
+    const ExprId nested_value_index_id = module.push_expr(nested_value_index_expr);
     syntax::ExprNode deref_expr;
     deref_expr.kind = syntax::ExprKind::unary;
     deref_expr.unary_op = syntax::UnaryOp::dereference;
@@ -219,12 +251,16 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     const TypeHandle str = types.builtin(BuiltinType::str);
     const TypeHandle ptr_i32 = types.pointer(PointerMutability::mut, i32);
     const TypeHandle const_ptr_i32 = types.pointer(PointerMutability::const_, i32);
-    const TypeHandle array_i16 = types.array(3, i16);
+    const TypeHandle array_i16 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i16);
     const TypeHandle missing_struct = types.named_struct("missing.Struct", "missing_Struct", false);
     const TypeHandle record_type = types.named_struct("lib.one.Record", "lib_one_Record", false);
     const TypeHandle enum_type = types.named_enum("lib.one.Enum", "lib_one_Enum");
     const TypeHandle payload_enum_type = types.named_enum("lib.one.Payload", "lib_one_Payload");
     const TypeHandle opaque_type = types.opaque_struct("lib.one.Opaque", "lib_one_Opaque");
+    const TypeHandle nested_array_i16 = types.array(SEMA_TEST_NESTED_ARRAY_COUNT, array_i16);
+    const TypeHandle array_void = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, void_type);
+    const TypeHandle array_opaque = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, opaque_type);
+    const TypeHandle overflowing_array = types.array(SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT, array_i16);
     types.set_enum_underlying(enum_type, u16);
     types.set_enum_underlying(payload_enum_type, u8);
     types.set_enum_payload_layout(payload_enum_type, u64, sizeof(std::uint64_t), alignof(std::uint64_t));
@@ -261,12 +297,13 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_EQ(analyzer.abi_align(i8), alignof(std::uint8_t));
     EXPECT_EQ(analyzer.abi_align(i64), alignof(std::uint64_t));
     EXPECT_EQ(analyzer.abi_align(isize), alignof(std::ptrdiff_t));
+    EXPECT_EQ(analyzer.abi_align(usize), alignof(std::size_t));
     EXPECT_EQ(analyzer.abi_align(f32), alignof(float));
     EXPECT_EQ(analyzer.abi_align(f64), alignof(double));
     EXPECT_EQ(analyzer.abi_align(str), alignof(void*));
     EXPECT_EQ(analyzer.abi_size(ptr_i32), sizeof(void*));
     EXPECT_EQ(analyzer.abi_align(ptr_i32), alignof(void*));
-    EXPECT_EQ(analyzer.abi_size(array_i16), 3U * sizeof(std::uint16_t));
+    EXPECT_EQ(analyzer.abi_size(array_i16), SEMA_TEST_SMALL_ARRAY_COUNT * sizeof(std::uint16_t));
     EXPECT_EQ(analyzer.abi_align(array_i16), alignof(std::uint16_t));
     EXPECT_EQ(analyzer.abi_size(missing_struct), 0U);
     EXPECT_EQ(analyzer.abi_align(missing_struct), 1U);
@@ -282,8 +319,18 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::cast, invalid_type_handle, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::cast, f64, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::ptr_cast, const_ptr_i32, ptr_i32));
+    EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, i32, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, u32, i32));
+    EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, bool_type, i8));
+    EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, str, ptr_i32));
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::ptr_addr, u32, ptr_i32));
+    EXPECT_FALSE(analyzer.is_valid_storage_type(invalid_type_handle));
+    EXPECT_FALSE(analyzer.is_valid_storage_type(void_type));
+    EXPECT_FALSE(analyzer.is_valid_storage_type(opaque_type));
+    EXPECT_TRUE(analyzer.is_valid_storage_type(nested_array_i16));
+    EXPECT_FALSE(analyzer.is_valid_storage_type(array_void));
+    EXPECT_FALSE(analyzer.is_valid_storage_type(array_opaque));
+    EXPECT_FALSE(analyzer.is_valid_storage_type(overflowing_array));
 
     analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "value"), symbol(SymbolKind::local, "value", module_id(0), i32, true));
     analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "ptr"), symbol(SymbolKind::local, "ptr", module_id(0), ptr_i32, true));
@@ -291,17 +338,23 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
 
     EXPECT_TRUE(analyzer.is_place_expr(value_expr));
     EXPECT_TRUE(analyzer.is_place_expr(scoped_value_expr));
+    EXPECT_FALSE(analyzer.is_place_expr(missing_scoped_value_expr));
     EXPECT_TRUE(analyzer.is_place_expr(field_id));
     EXPECT_TRUE(analyzer.is_place_expr(index_id));
+    EXPECT_TRUE(analyzer.is_place_expr(nested_value_field_id));
+    EXPECT_TRUE(analyzer.is_place_expr(nested_value_index_id));
     EXPECT_TRUE(analyzer.is_place_expr(deref_id));
     EXPECT_FALSE(analyzer.is_place_expr(not_id));
     EXPECT_FALSE(analyzer.is_place_expr(syntax::invalid_expr_id));
     EXPECT_TRUE(analyzer.is_writable_place(value_expr));
     EXPECT_TRUE(analyzer.is_writable_place(scoped_value_expr));
+    EXPECT_FALSE(analyzer.is_writable_place(missing_scoped_value_expr));
     EXPECT_TRUE(analyzer.is_writable_place(field_id));
     EXPECT_TRUE(analyzer.is_writable_place(index_id));
     EXPECT_TRUE(analyzer.is_writable_place(value_field_id));
     EXPECT_TRUE(analyzer.is_writable_place(value_index_id));
+    EXPECT_TRUE(analyzer.is_writable_place(nested_value_field_id));
+    EXPECT_TRUE(analyzer.is_writable_place(nested_value_index_id));
     EXPECT_TRUE(analyzer.is_writable_place(deref_id));
     EXPECT_FALSE(analyzer.is_writable_place(not_id));
     EXPECT_FALSE(analyzer.is_writable_place(syntax::invalid_expr_id));
@@ -731,6 +784,225 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     EXPECT_GT(diagnostics.diagnostics().size(), 0U);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const syntax::StmtId return_stmt = push_stmt(module, syntax::StmtKind::return_);
+    const syntax::StmtId expr_stmt = push_stmt(module, syntax::StmtKind::expr);
+    const syntax::StmtId break_stmt = push_stmt(module, syntax::StmtKind::break_);
+    const syntax::StmtId continue_stmt = push_stmt(module, syntax::StmtKind::continue_);
+
+    const syntax::StmtId nested_return_block = push_block(module, {return_stmt});
+    const syntax::StmtId nested_fallthrough_block = push_block(module, {expr_stmt});
+    const syntax::StmtId mixed_block = push_block(module, {expr_stmt, nested_return_block});
+
+    syntax::StmtNode full_if;
+    full_if.kind = syntax::StmtKind::if_;
+    full_if.then_block = nested_return_block;
+    full_if.else_block = push_block(module, {return_stmt});
+    const syntax::StmtId full_if_stmt = module.push_stmt(full_if);
+
+    syntax::StmtNode partial_if = full_if;
+    partial_if.else_block = nested_fallthrough_block;
+    const syntax::StmtId partial_if_stmt = module.push_stmt(partial_if);
+
+    syntax::StmtNode else_if_leaf;
+    else_if_leaf.kind = syntax::StmtKind::if_;
+    else_if_leaf.then_block = nested_return_block;
+    else_if_leaf.else_block = push_block(module, {return_stmt});
+    const syntax::StmtId else_if_leaf_stmt = module.push_stmt(else_if_leaf);
+
+    syntax::StmtNode else_if_root;
+    else_if_root.kind = syntax::StmtKind::if_;
+    else_if_root.then_block = nested_return_block;
+    else_if_root.else_if = else_if_leaf_stmt;
+    const syntax::StmtId else_if_root_stmt = module.push_stmt(else_if_root);
+
+    syntax::StmtNode missing_else_if_root = else_if_root;
+    missing_else_if_root.else_if = syntax::invalid_stmt_id;
+    const syntax::StmtId missing_else_if_stmt = module.push_stmt(missing_else_if_root);
+
+    const syntax::StmtId fallthrough_block = push_block(module, {expr_stmt, partial_if_stmt});
+    const syntax::StmtId non_fallthrough_block = push_block(module, {expr_stmt, full_if_stmt, expr_stmt});
+    const syntax::StmtId abrupt_block = push_block(module, {continue_stmt, expr_stmt});
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+
+    EXPECT_FALSE(analyzer.block_guarantees_return(syntax::invalid_stmt_id));
+    EXPECT_FALSE(analyzer.stmt_guarantees_return(syntax::invalid_stmt_id));
+    EXPECT_TRUE(analyzer.block_may_fallthrough(syntax::invalid_stmt_id));
+    EXPECT_TRUE(analyzer.stmt_may_fallthrough(syntax::invalid_stmt_id));
+
+    EXPECT_TRUE(analyzer.block_guarantees_return(return_stmt));
+    EXPECT_TRUE(analyzer.block_guarantees_return(mixed_block));
+    EXPECT_TRUE(analyzer.stmt_guarantees_return(full_if_stmt));
+    EXPECT_TRUE(analyzer.stmt_guarantees_return(else_if_root_stmt));
+    EXPECT_FALSE(analyzer.stmt_guarantees_return(partial_if_stmt));
+    EXPECT_FALSE(analyzer.stmt_guarantees_return(missing_else_if_stmt));
+    EXPECT_FALSE(analyzer.stmt_guarantees_return(expr_stmt));
+
+    EXPECT_FALSE(analyzer.stmt_may_fallthrough(return_stmt));
+    EXPECT_FALSE(analyzer.stmt_may_fallthrough(break_stmt));
+    EXPECT_FALSE(analyzer.stmt_may_fallthrough(continue_stmt));
+    EXPECT_FALSE(analyzer.stmt_may_fallthrough(full_if_stmt));
+    EXPECT_FALSE(analyzer.stmt_may_fallthrough(else_if_root_stmt));
+    EXPECT_FALSE(analyzer.block_may_fallthrough(non_fallthrough_block));
+    EXPECT_FALSE(analyzer.block_may_fallthrough(abrupt_block));
+    EXPECT_TRUE(analyzer.stmt_may_fallthrough(partial_if_stmt));
+    EXPECT_TRUE(analyzer.stmt_may_fallthrough(missing_else_if_stmt));
+    EXPECT_TRUE(analyzer.block_may_fallthrough(fallthrough_block));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutAndGenericInference) {
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib", "one"}),
+    };
+    module.modules[0].imports = {resolved_import(module_id(1), "one")};
+
+    const TypeId t_type_id = module.push_type(named_node("T"));
+    const TypeId e_type_id = module.push_type(named_node("E"));
+
+    syntax::TypeNode pointer_t;
+    pointer_t.kind = syntax::TypeKind::pointer;
+    pointer_t.pointer_mutability = syntax::PointerMutability::mut;
+    pointer_t.pointee = t_type_id;
+    const TypeId pointer_t_id = module.push_type(pointer_t);
+
+    syntax::TypeNode array_pointer_t;
+    array_pointer_t.kind = syntax::TypeKind::array;
+    array_pointer_t.array_count = SEMA_TEST_SMALL_ARRAY_COUNT;
+    array_pointer_t.array_element = pointer_t_id;
+    const TypeId array_pointer_t_id = module.push_type(array_pointer_t);
+
+    syntax::TypeNode pair_pattern = named_node("Pair");
+    pair_pattern.type_args = {array_pointer_t_id, e_type_id};
+    const TypeId pair_pattern_id = module.push_type(pair_pattern);
+
+    syntax::TypeNode qualified_pair_pattern = pair_pattern;
+    qualified_pair_pattern.scope_name = "one";
+    const TypeId qualified_pair_pattern_id = module.push_type(qualified_pair_pattern);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.syntax_type_handles.assign(module.types.size(), invalid_type_handle);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle u8 = types.builtin(BuiltinType::u8);
+    const TypeHandle u64 = types.builtin(BuiltinType::u64);
+    const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
+    const TypeHandle mut_ptr_i32 = types.pointer(PointerMutability::mut, i32);
+    const TypeHandle array_mut_ptr_i32 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, mut_ptr_i32);
+    const TypeHandle pair_instance = types.named_struct("Pair<i32,u64>", "Pair_i32_u64", false);
+    const TypeHandle scoped_pair_instance = types.named_struct("one.Pair<i32,u64>", "one_Pair_i32_u64", false);
+    const TypeHandle option_instance = types.named_enum("Option<i32>", "Option_i32");
+
+    GenericStructTemplateInfo pair_info;
+    pair_info.name = "Pair";
+    pair_info.module = module_id(0);
+    pair_info.params = {"T", "E"};
+    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(0), "Pair"), pair_info);
+
+    GenericStructTemplateInfo scoped_pair_info = pair_info;
+    scoped_pair_info.module = module_id(1);
+    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(1), "Pair"), scoped_pair_info);
+
+    sema::GenericStructInstanceInfo pair_instance_info;
+    pair_instance_info.name = "Pair";
+    pair_instance_info.module = module_id(0);
+    pair_instance_info.args = {array_mut_ptr_i32, u64};
+    analyzer.generic_struct_instances_.emplace("Pair:i32:u64", pair_instance);
+    analyzer.generic_struct_instance_infos_.emplace(pair_instance.value, pair_instance_info);
+
+    sema::GenericStructInstanceInfo scoped_pair_instance_info = pair_instance_info;
+    scoped_pair_instance_info.module = module_id(1);
+    analyzer.generic_struct_instances_.emplace("one.Pair:i32:u64", scoped_pair_instance);
+    analyzer.generic_struct_instance_infos_.emplace(scoped_pair_instance.value, scoped_pair_instance_info);
+
+    GenericEnumTemplateInfo option_info;
+    option_info.name = "Option";
+    option_info.module = module_id(0);
+    option_info.params = {"T"};
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(0), "Option"), option_info);
+
+    sema::GenericEnumInstanceInfo option_instance_info;
+    option_instance_info.name = "Option";
+    option_instance_info.module = module_id(0);
+    option_instance_info.args = {i32};
+    analyzer.generic_enum_instances_.emplace("Option:i32", option_instance);
+    analyzer.generic_enum_instance_infos_.emplace(option_instance.value, option_instance_info);
+
+    std::vector<TypeHandle> inferred = {invalid_type_handle, invalid_type_handle};
+    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(pair_pattern_id, pair_instance, {"T", "E"}, inferred, {}, "pattern", module_id(0)));
+    EXPECT_TRUE(types.same(inferred[0], i32));
+    EXPECT_TRUE(types.same(inferred[1], u64));
+
+    std::vector<TypeHandle> scoped_inferred = {invalid_type_handle, invalid_type_handle};
+    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(
+        qualified_pair_pattern_id,
+        scoped_pair_instance,
+        {"T", "E"},
+        scoped_inferred,
+        {},
+        "pattern",
+        module_id(0)
+    ));
+    EXPECT_TRUE(types.same(scoped_inferred[0], i32));
+    EXPECT_TRUE(types.same(scoped_inferred[1], u64));
+
+    std::vector<TypeHandle> too_small_inferred;
+    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(t_type_id, i32, {"T"}, too_small_inferred, {}, "pattern", module_id(0)));
+
+    std::vector<TypeHandle> conflicting_inferred = {bool_type};
+    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(t_type_id, i32, {"T"}, conflicting_inferred, {}, "pattern", module_id(0)));
+
+    syntax::TypeNode option_pattern = named_node("Option");
+    option_pattern.type_args = {t_type_id};
+    const TypeId option_pattern_id = module.push_type(option_pattern);
+    analyzer.checked_.syntax_type_handles.resize(module.types.size(), invalid_type_handle);
+    std::vector<TypeHandle> enum_inferred = {invalid_type_handle};
+    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(option_pattern_id, option_instance, {"T"}, enum_inferred, {}, "pattern", module_id(0)));
+    EXPECT_TRUE(types.same(enum_inferred[0], i32));
+
+    const TypeHandle max_array_u8 = types.array(SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT, u8);
+    EXPECT_EQ(analyzer.abi_size(max_array_u8), SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT);
+    EXPECT_EQ(analyzer.abi_align(max_array_u8), alignof(std::uint8_t));
+
+    const TypeHandle overflow_array_u64 = types.array(SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT, u64);
+    EXPECT_EQ(analyzer.abi_size(overflow_array_u64), SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT);
+    EXPECT_EQ(analyzer.abi_align(overflow_array_u64), alignof(std::uint64_t));
+
+    const TypeHandle overflow_struct_type = types.named_struct("OverflowStruct", "OverflowStruct", true);
+    StructInfo overflow_struct;
+    overflow_struct.name = "OverflowStruct";
+    overflow_struct.module = module_id(0);
+    overflow_struct.type = overflow_struct_type;
+    overflow_struct.fields = {
+        StructFieldInfo {"huge", "huge", module_id(0), max_array_u8},
+        StructFieldInfo {"tail", "tail", module_id(0), u64},
+    };
+    analyzer.checked_.structs.emplace(analyzer.module_key(module_id(0), "OverflowStruct"), overflow_struct);
+
+    const TypeHandle overflow_enum_type = types.named_enum("OverflowEnum", "OverflowEnum");
+    types.set_enum_underlying(overflow_enum_type, max_array_u8);
+    EnumCaseInfo overflow_case;
+    overflow_case.name = "payload";
+    overflow_case.case_name = "payload";
+    overflow_case.module = module_id(0);
+    overflow_case.type = overflow_enum_type;
+    overflow_case.payload_type = u64;
+    analyzer.checked_.enum_cases.emplace(analyzer.module_key(module_id(0), "payload"), overflow_case);
+    analyzer.named_types_.emplace(analyzer.module_key(module_id(0), "OverflowEnum"), overflow_enum_type);
+
+    analyzer.validate_type_layouts();
+    EXPECT_GT(diagnostics.diagnostics().size(), 0U);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     syntax::AstModule module;
     module.modules = {
@@ -751,6 +1023,16 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     const ExprId empty_expr = push_integer_text(module, "");
     const ExprId overflow_expr = push_integer_text(module, "18446744073709551616");
     const ExprId signed_overflow_expr = push_integer_text(module, "9223372036854775808");
+    syntax::ExprNode float_overflow_expr;
+    float_overflow_expr.kind = syntax::ExprKind::float_literal;
+    float_overflow_expr.text = SEMA_TEST_FLOAT_OVERFLOW_LITERAL;
+    const ExprId float_overflow_expr_id = module.push_expr(float_overflow_expr);
+    syntax::ExprNode separated_float_expr = float_overflow_expr;
+    separated_float_expr.text = SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL;
+    const ExprId separated_float_expr_id = module.push_expr(separated_float_expr);
+    syntax::ExprNode invalid_float_expr = float_overflow_expr;
+    invalid_float_expr.text = SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL;
+    const ExprId invalid_float_expr_id = module.push_expr(invalid_float_expr);
 
     syntax::TypeNode scoped_missing_alias_type = named_node("Missing");
     scoped_missing_alias_type.scope_name = "missing";
@@ -826,6 +1108,18 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     EXPECT_FALSE(analyzer.can_assign(u64, u64, overflow_expr));
     EXPECT_FALSE(analyzer.can_assign(i64, i64, signed_overflow_expr));
     EXPECT_FALSE(analyzer.can_assign(bool_type, u8, hex_expr));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_float_literal(float_overflow_expr_id, module.exprs[float_overflow_expr_id.value], types.builtin(BuiltinType::f32)),
+        types.builtin(BuiltinType::f32)
+    ));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_float_literal(separated_float_expr_id, module.exprs[separated_float_expr_id.value], invalid_type_handle),
+        types.builtin(BuiltinType::f64)
+    ));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_float_literal(invalid_float_expr_id, module.exprs[invalid_float_expr_id.value], types.builtin(BuiltinType::f64)),
+        types.builtin(BuiltinType::f64)
+    ));
     EXPECT_TRUE(types.is_str(types.builtin(BuiltinType::str)));
 
     const TypeHandle zero_align_enum = types.named_enum("ZeroAlign", "ZeroAlign");

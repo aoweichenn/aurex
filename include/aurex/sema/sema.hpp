@@ -35,6 +35,32 @@ private:
         std::vector<syntax::StmtId> returns;
     };
 
+    enum class StatementAnalysisRootKind {
+        statement,
+        scoped_block,
+        block_statements,
+    };
+
+    enum class StatementAnalysisActionKind {
+        statement,
+        scoped_block,
+        block_statements,
+        pop_scope,
+        enter_loop,
+        exit_loop,
+        for_condition,
+    };
+
+    struct StatementAnalysisAction {
+        StatementAnalysisActionKind kind = StatementAnalysisActionKind::statement;
+        syntax::StmtId stmt = syntax::invalid_stmt_id;
+    };
+
+    struct TypeAbiLayout {
+        base::u64 size = 0;
+        base::u64 align = 1;
+    };
+
     void register_type_names();
     void register_value_names();
     void validate_function_prototypes();
@@ -55,11 +81,31 @@ private:
     void analyze_block(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void analyze_block_statements(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void analyze_stmt(syntax::StmtId stmt, TypeHandle expected_return, ReturnTypeInference* return_inference);
+    void analyze_statement_tree(
+        syntax::StmtId root,
+        TypeHandle expected_return,
+        ReturnTypeInference* return_inference,
+        StatementAnalysisRootKind root_kind
+    );
+    void analyze_statement_action(
+        const StatementAnalysisAction& action,
+        std::vector<StatementAnalysisAction>& stack,
+        TypeHandle expected_return,
+        ReturnTypeInference* return_inference
+    );
+    void analyze_statement_node(
+        syntax::StmtId stmt,
+        std::vector<StatementAnalysisAction>& stack,
+        TypeHandle expected_return,
+        ReturnTypeInference* return_inference
+    );
+    void analyze_statement_block(syntax::StmtId block, std::vector<StatementAnalysisAction>& stack);
+    void analyze_for_condition(syntax::StmtId stmt);
     [[nodiscard]] TypeHandle analyze_assignment_target(syntax::ExprId expr);
-    [[nodiscard]] bool block_guarantees_return(syntax::StmtId block) const noexcept;
-    [[nodiscard]] bool stmt_guarantees_return(syntax::StmtId stmt) const noexcept;
-    [[nodiscard]] bool block_may_fallthrough(syntax::StmtId block) const noexcept;
-    [[nodiscard]] bool stmt_may_fallthrough(syntax::StmtId stmt) const noexcept;
+    [[nodiscard]] bool block_guarantees_return(syntax::StmtId block) const;
+    [[nodiscard]] bool stmt_guarantees_return(syntax::StmtId stmt) const;
+    [[nodiscard]] bool block_may_fallthrough(syntax::StmtId block) const;
+    [[nodiscard]] bool stmt_may_fallthrough(syntax::StmtId stmt) const;
     void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
     void finalize_inferred_return(const syntax::ItemNode& function, const std::string& key, ReturnTypeInference& inference);
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
@@ -139,16 +185,17 @@ private:
     [[nodiscard]] TypeHandle resolve_type_with_substitution(syntax::TypeId type, const GenericTypeSubstitution* substitution, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
-    [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const noexcept;
-    [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const noexcept;
+    [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
+    [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const;
     [[nodiscard]] bool parse_integer_literal_text(std::string_view text, base::u64& value) const noexcept;
     [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] bool negative_integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] TypeHandle analyze_integer_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_float_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
     [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, std::unordered_set<std::string>& dependencies);
-    [[nodiscard]] base::u64 abi_size(TypeHandle type) const noexcept;
-    [[nodiscard]] base::u64 abi_align(TypeHandle type) const noexcept;
+    [[nodiscard]] TypeAbiLayout abi_layout(TypeHandle type) const;
+    [[nodiscard]] base::u64 abi_size(TypeHandle type) const;
+    [[nodiscard]] base::u64 abi_align(TypeHandle type) const;
     [[nodiscard]] bool is_integer_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_null_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_place_expr(syntax::ExprId expr);

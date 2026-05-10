@@ -79,6 +79,10 @@ constexpr std::string_view SEMA_TEST_FLOAT_OVERFLOW_LITERAL = "1e999999999";
 constexpr std::string_view SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL = "1_2.5";
 constexpr std::string_view SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL = "1.0x";
 constexpr syntax::BinaryOp SEMA_TEST_INVALID_BINARY_OP = static_cast<syntax::BinaryOp>(99);
+constexpr sema::BuiltinType SEMA_TEST_INVALID_BUILTIN_TYPE = static_cast<sema::BuiltinType>(99);
+constexpr sema::TypeKind SEMA_TEST_INVALID_TYPE_KIND = static_cast<sema::TypeKind>(99);
+constexpr std::string_view SEMA_TEST_INVALID_TYPE_DISPLAY = "<invalid>";
+constexpr std::string_view SEMA_TEST_UNKNOWN_TYPE_DISPLAY = "<unknown>";
 
 [[nodiscard]] ModuleId module_id(const u32 value) noexcept {
     return ModuleId {value};
@@ -1566,6 +1570,52 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationRejectsUnsupportedShapes) {
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(invalid_binary_id, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(plain_field_id, dependencies));
     EXPECT_TRUE(dependencies.empty());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
+    sema::TypeTable builtin_table;
+    const TypeHandle builtin_type = builtin_table.builtin(BuiltinType::i32);
+    ASSERT_LT(builtin_type.value, builtin_table.types_.size());
+    builtin_table.types_[builtin_type.value].builtin = SEMA_TEST_INVALID_BUILTIN_TYPE;
+    EXPECT_EQ(builtin_table.display_name(builtin_type), SEMA_TEST_UNKNOWN_TYPE_DISPLAY);
+
+    sema::TypeTable kind_table;
+    const TypeHandle kind_type = kind_table.builtin(BuiltinType::i32);
+    ASSERT_LT(kind_type.value, kind_table.types_.size());
+    kind_table.types_[kind_type.value].kind = SEMA_TEST_INVALID_TYPE_KIND;
+    EXPECT_EQ(kind_table.display_name(kind_type), SEMA_TEST_UNKNOWN_TYPE_DISPLAY);
+
+    const TypeHandle out_of_range_type {static_cast<base::u32>(kind_table.types_.size())};
+    EXPECT_FALSE(kind_table.is_integer(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_float(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_bool(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_str(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_void(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_pointer(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_array(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_copyable(out_of_range_type));
+    EXPECT_FALSE(kind_table.contains_array(out_of_range_type));
+    EXPECT_EQ(kind_table.display_name(out_of_range_type), SEMA_TEST_INVALID_TYPE_DISPLAY);
+    EXPECT_EQ(kind_table.c_name(out_of_range_type), "void");
+
+    EXPECT_FALSE(kind_table.is_integer(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_float(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_bool(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_str(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_void(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_pointer(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_array(invalid_type_handle));
+    EXPECT_FALSE(kind_table.is_copyable(invalid_type_handle));
+    EXPECT_FALSE(kind_table.contains_array(invalid_type_handle));
+
+    EXPECT_FALSE(kind_table.is_integer(builtin_type));
+    EXPECT_FALSE(kind_table.is_float(builtin_type));
+    EXPECT_FALSE(kind_table.is_bool(builtin_type));
+    EXPECT_FALSE(kind_table.is_str(builtin_type));
+    EXPECT_FALSE(kind_table.is_void(builtin_type));
+    EXPECT_FALSE(kind_table.is_pointer(builtin_type));
+    EXPECT_FALSE(kind_table.is_array(builtin_type));
+    EXPECT_FALSE(kind_table.contains_array(builtin_type));
 }
 
 } // namespace aurex::test

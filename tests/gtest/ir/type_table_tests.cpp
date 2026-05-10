@@ -1,3 +1,5 @@
+#include <array>
+
 #include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::test {
@@ -6,6 +8,7 @@ namespace {
 using namespace irtest;
 
 constexpr base::u64 TYPE_TABLE_TEST_ARRAY_COUNT = 4;
+constexpr base::usize TYPE_TABLE_TEST_BUILTIN_COUNT = 15;
 
 } // namespace
 
@@ -82,6 +85,68 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     const BlockId entry = add_block(function, "entry");
     EXPECT_TRUE(is_valid(entry));
     EXPECT_FALSE(is_valid(invalid_block_id));
+}
+
+TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
+    Module module;
+
+    const TypeHandle void_type = builtin(module, BuiltinType::void_);
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle i8 = builtin(module, BuiltinType::i8);
+    const TypeHandle u8 = builtin(module, BuiltinType::u8);
+    const TypeHandle i16 = builtin(module, BuiltinType::i16);
+    const TypeHandle u16 = builtin(module, BuiltinType::u16);
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle u32 = builtin(module, BuiltinType::u32);
+    const TypeHandle i64 = builtin(module, BuiltinType::i64);
+    const TypeHandle u64 = builtin(module, BuiltinType::u64);
+    const TypeHandle isize = builtin(module, BuiltinType::isize);
+    const TypeHandle usize = builtin(module, BuiltinType::usize);
+    const TypeHandle f32 = builtin(module, BuiltinType::f32);
+    const TypeHandle f64 = builtin(module, BuiltinType::f64);
+    const TypeHandle str = builtin(module, BuiltinType::str);
+
+    const std::array<std::pair<TypeHandle, std::string_view>, TYPE_TABLE_TEST_BUILTIN_COUNT> builtins = {{
+        {void_type, "void"},
+        {bool_type, "bool"},
+        {i8, "i8"},
+        {u8, "u8"},
+        {i16, "i16"},
+        {u16, "u16"},
+        {i32, "i32"},
+        {u32, "u32"},
+        {i64, "i64"},
+        {u64, "u64"},
+        {isize, "isize"},
+        {usize, "usize"},
+        {f32, "f32"},
+        {f64, "f64"},
+        {str, "str"},
+    }};
+
+    for (const auto& [type, display] : builtins) {
+        EXPECT_EQ(module.types.display_name(type), display);
+        EXPECT_EQ(module.types.c_name(type), display);
+    }
+
+    EXPECT_FALSE(module.types.is_copyable(void_type));
+    EXPECT_TRUE(module.types.is_bool(bool_type));
+    EXPECT_TRUE(module.types.is_integer(i8));
+    EXPECT_TRUE(module.types.is_integer(u8));
+    EXPECT_TRUE(module.types.is_integer(i16));
+    EXPECT_TRUE(module.types.is_integer(u16));
+    EXPECT_TRUE(module.types.is_integer(i32));
+    EXPECT_TRUE(module.types.is_integer(u32));
+    EXPECT_TRUE(module.types.is_integer(i64));
+    EXPECT_TRUE(module.types.is_integer(u64));
+    EXPECT_TRUE(module.types.is_integer(isize));
+    EXPECT_TRUE(module.types.is_integer(usize));
+    EXPECT_TRUE(module.types.is_float(f32));
+    EXPECT_TRUE(module.types.is_float(f64));
+    EXPECT_TRUE(module.types.is_str(str));
+    EXPECT_TRUE(module.types.is_void(void_type));
+    EXPECT_FALSE(module.types.is_integer(bool_type));
+    EXPECT_FALSE(module.types.is_float(i32));
 }
 
 } // namespace aurex::test

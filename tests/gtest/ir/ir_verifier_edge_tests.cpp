@@ -13,7 +13,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"missing", "unit_missing", i32, invalid_value_id});
+            add_global_constant(module, GlobalConstant {"missing", "unit_missing", i32, INVALID_VALUE_ID});
         expect_error_contains(ir::verify_module(module), "constant initializer value id is invalid");
     }
     {

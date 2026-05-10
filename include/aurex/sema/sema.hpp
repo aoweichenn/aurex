@@ -31,7 +31,7 @@ private:
     };
 
     struct ReturnTypeInference {
-        TypeHandle inferred_type = invalid_type_handle;
+        TypeHandle inferred_type = INVALID_TYPE_HANDLE;
         std::vector<syntax::StmtId> returns;
     };
 
@@ -57,7 +57,7 @@ private:
 
     struct StatementAnalysisAction {
         StatementAnalysisActionKind kind = StatementAnalysisActionKind::statement;
-        syntax::StmtId stmt = syntax::invalid_stmt_id;
+        syntax::StmtId stmt = syntax::INVALID_STMT_ID;
     };
 
     struct TypeAbiLayout {
@@ -385,8 +385,8 @@ private:
     std::unordered_map<std::string, const EnumCaseInfo*> enum_cases_by_type_and_case_;
     std::unordered_map<base::u32, std::vector<const EnumCaseInfo*>> enum_cases_by_type_;
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;
-    syntax::ModuleId current_module_ = syntax::invalid_module_id;
-    TypeHandle current_function_return_type_ = invalid_type_handle;
+    syntax::ModuleId current_module_ = syntax::INVALID_MODULE_ID;
+    TypeHandle current_function_return_type_ = INVALID_TYPE_HANDLE;
     const GenericTypeSubstitution* current_type_substitution_ = nullptr;
     std::unordered_map<base::u32, TypeHandle>* current_generic_syntax_type_handles_ = nullptr;
     std::unordered_map<base::u32, TypeHandle>* current_generic_expr_types_ = nullptr;

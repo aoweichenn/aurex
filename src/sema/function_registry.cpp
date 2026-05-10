@@ -56,14 +56,14 @@ void FunctionRegistry::register_function(
     signature.is_method = syntax::is_valid(item.impl_type);
     signature.has_self_param = signature.is_method && !item.params.empty() && item.params.front().name == "self";
     signature.visibility = item.visibility;
-    signature.prototype_item = is_prototype ? item_id : syntax::invalid_item_id;
-    signature.definition_item = signature.has_definition ? item_id : syntax::invalid_item_id;
+    signature.prototype_item = is_prototype ? item_id : syntax::INVALID_ITEM_ID;
+    signature.definition_item = signature.has_definition ? item_id : syntax::INVALID_ITEM_ID;
 
-    if (syntax::is_valid(item_id) && item_id.value < checked_.item_c_names.size()) {
-        checked_.item_c_names[item_id.value] = signature.c_name;
+    if (syntax::is_valid(item_id) && item_id.value < this->checked_.item_c_names.size()) {
+        this->checked_.item_c_names[item_id.value] = signature.c_name;
     }
 
-    merge_function(std::move(key), std::move(signature), is_prototype);
+    this->merge_function(std::move(key), std::move(signature), is_prototype);
 }
 
 void FunctionRegistry::merge_function(
@@ -71,52 +71,52 @@ void FunctionRegistry::merge_function(
     FunctionSignature signature,
     const bool is_prototype
 ) {
-    const auto existing = checked_.functions.find(key);
-    if (existing == checked_.functions.end()) {
-        auto inserted = checked_.functions.emplace(std::move(key), std::move(signature));
-        insert_function_value(inserted.first->first, inserted.first->second);
+    const auto existing = this->checked_.functions.find(key);
+    if (existing == this->checked_.functions.end()) {
+        auto inserted = this->checked_.functions.emplace(std::move(key), std::move(signature));
+        this->insert_function_value(inserted.first->first, inserted.first->second);
         return;
     }
 
     FunctionSignature& prior = existing->second;
-    if (!same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
+    if (!this->same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
         prior.has_conflict = true;
-        report(signature.range, "function prototype and definition signatures do not match: " + signature.name);
+        this->report(signature.range, "function prototype and definition signatures do not match: " + signature.name);
         return;
     }
     if (prior.is_extern_c || signature.is_extern_c || prior.is_export_c != signature.is_export_c || prior.c_name != signature.c_name) {
         prior.has_conflict = true;
-        report(signature.range, "function declaration conflicts with existing function: " + signature.name);
+        this->report(signature.range, "function declaration conflicts with existing function: " + signature.name);
         return;
     }
     if (is_prototype) {
         if (prior.has_prototype) {
             prior.has_conflict = true;
-            report(signature.range, "duplicate function prototype: " + signature.name);
+            this->report(signature.range, "duplicate function prototype: " + signature.name);
             return;
         }
         if (prior.has_definition) {
             prior.has_conflict = true;
-            report(signature.range, "function prototype must appear before definition: " + signature.name);
+            this->report(signature.range, "function prototype must appear before definition: " + signature.name);
             return;
         }
         prior.has_prototype = true;
         prior.visibility = signature.visibility;
         prior.prototype_item = signature.prototype_item;
         prior.range = signature.range;
-        refresh_function_value(key, prior);
+        this->refresh_function_value(key, prior);
         return;
     }
     if (prior.has_definition) {
         prior.has_conflict = true;
-        report(signature.range, "duplicate function definition: " + signature.name);
+        this->report(signature.range, "duplicate function definition: " + signature.name);
         return;
     }
     prior.has_definition = true;
     prior.visibility = signature.visibility;
     prior.definition_item = signature.definition_item;
     prior.range = signature.range;
-    refresh_function_value(key, prior);
+    this->refresh_function_value(key, prior);
 }
 
 
@@ -126,7 +126,7 @@ bool FunctionRegistry::same_signature(
     const std::vector<TypeHandle>& param_types,
     const bool is_variadic
 ) const noexcept {
-    if (!checked_.types.same(existing.return_type, return_type)) {
+    if (!this->checked_.types.same(existing.return_type, return_type)) {
         return false;
     }
     if (existing.is_variadic != is_variadic) {
@@ -136,7 +136,7 @@ bool FunctionRegistry::same_signature(
         return false;
     }
     for (base::usize i = 0; i < param_types.size(); ++i) {
-        if (!checked_.types.same(existing.param_types[i], param_types[i])) {
+        if (!this->checked_.types.same(existing.param_types[i], param_types[i])) {
             return false;
         }
     }
@@ -144,7 +144,7 @@ bool FunctionRegistry::same_signature(
 }
 
 void FunctionRegistry::insert_function_value(const std::string& key, const FunctionSignature& signature) {
-    const auto value_inserted = global_values_.emplace(key, Symbol {
+    const auto value_inserted = this->global_values_.emplace(key, Symbol {
         SymbolKind::function,
         signature.name,
         signature.c_name,
@@ -155,14 +155,14 @@ void FunctionRegistry::insert_function_value(const std::string& key, const Funct
         signature.visibility,
     });
     if (!value_inserted.second) {
-        report(signature.range, "duplicate value definition in module: " + signature.name);
+        this->report(signature.range, "duplicate value definition in module: " + signature.name);
     }
 }
 
 void FunctionRegistry::refresh_function_value(const std::string& key, const FunctionSignature& signature) {
-    const auto found = global_values_.find(key);
-    if (found == global_values_.end()) {
-        insert_function_value(key, signature);
+    const auto found = this->global_values_.find(key);
+    if (found == this->global_values_.end()) {
+        this->insert_function_value(key, signature);
         return;
     }
     found->second.c_name = signature.c_name;
@@ -171,7 +171,7 @@ void FunctionRegistry::refresh_function_value(const std::string& key, const Func
 }
 
 void FunctionRegistry::report(base::SourceRange range, std::string message) {
-    diagnostics_.push(base::Diagnostic {
+    this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,
         std::move(message),

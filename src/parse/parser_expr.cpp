@@ -13,21 +13,20 @@ namespace {
 using syntax::TokenKind;
 
 enum class BinaryPrecedence {
-    logical_or,
-    logical_and,
-    bit_or,
-    bit_xor,
-    bit_and,
-    equality,
-    comparison,
-    shift,
-    additive,
-    multiplicative,
-    after_multiplicative,
+    LOGICAL_OR,
+    LOGICAL_AND,
+    BIT_OR,
+    BIT_XOR,
+    BIT_AND,
+    EQUALITY,
+    COMPARISON,
+    SHIFT,
+    ADDITIVE,
+    MULTIPLICATIVE,
 };
 
-constexpr BinaryPrecedence kLowestBinaryPrecedence = BinaryPrecedence::logical_or;
-constexpr int kLeftAssociativeRhsPrecedenceStep = 1;
+constexpr BinaryPrecedence PARSER_EXPR_LOWEST_BINARY_PRECEDENCE = BinaryPrecedence::LOGICAL_OR;
+constexpr int PARSER_EXPR_LEFT_ASSOCIATIVE_RHS_PRECEDENCE_STEP = 1;
 
 struct BinaryOperatorSyntax {
     TokenKind token;
@@ -35,25 +34,25 @@ struct BinaryOperatorSyntax {
     BinaryPrecedence precedence;
 };
 
-constexpr BinaryOperatorSyntax kBinaryOperators[] = {
-    {TokenKind::pipe_pipe, syntax::BinaryOp::logical_or, BinaryPrecedence::logical_or},
-    {TokenKind::amp_amp, syntax::BinaryOp::logical_and, BinaryPrecedence::logical_and},
-    {TokenKind::pipe, syntax::BinaryOp::bit_or, BinaryPrecedence::bit_or},
-    {TokenKind::caret, syntax::BinaryOp::bit_xor, BinaryPrecedence::bit_xor},
-    {TokenKind::amp, syntax::BinaryOp::bit_and, BinaryPrecedence::bit_and},
-    {TokenKind::equal_equal, syntax::BinaryOp::equal, BinaryPrecedence::equality},
-    {TokenKind::bang_equal, syntax::BinaryOp::not_equal, BinaryPrecedence::equality},
-    {TokenKind::less, syntax::BinaryOp::less, BinaryPrecedence::comparison},
-    {TokenKind::less_equal, syntax::BinaryOp::less_equal, BinaryPrecedence::comparison},
-    {TokenKind::greater, syntax::BinaryOp::greater, BinaryPrecedence::comparison},
-    {TokenKind::greater_equal, syntax::BinaryOp::greater_equal, BinaryPrecedence::comparison},
-    {TokenKind::less_less, syntax::BinaryOp::shl, BinaryPrecedence::shift},
-    {TokenKind::greater_greater, syntax::BinaryOp::shr, BinaryPrecedence::shift},
-    {TokenKind::plus, syntax::BinaryOp::add, BinaryPrecedence::additive},
-    {TokenKind::minus, syntax::BinaryOp::sub, BinaryPrecedence::additive},
-    {TokenKind::star, syntax::BinaryOp::mul, BinaryPrecedence::multiplicative},
-    {TokenKind::slash, syntax::BinaryOp::div, BinaryPrecedence::multiplicative},
-    {TokenKind::percent, syntax::BinaryOp::mod, BinaryPrecedence::multiplicative},
+constexpr BinaryOperatorSyntax PARSER_EXPR_BINARY_OPERATORS[] = {
+    {TokenKind::pipe_pipe, syntax::BinaryOp::logical_or, BinaryPrecedence::LOGICAL_OR},
+    {TokenKind::amp_amp, syntax::BinaryOp::logical_and, BinaryPrecedence::LOGICAL_AND},
+    {TokenKind::pipe, syntax::BinaryOp::bit_or, BinaryPrecedence::BIT_OR},
+    {TokenKind::caret, syntax::BinaryOp::bit_xor, BinaryPrecedence::BIT_XOR},
+    {TokenKind::amp, syntax::BinaryOp::bit_and, BinaryPrecedence::BIT_AND},
+    {TokenKind::equal_equal, syntax::BinaryOp::equal, BinaryPrecedence::EQUALITY},
+    {TokenKind::bang_equal, syntax::BinaryOp::not_equal, BinaryPrecedence::EQUALITY},
+    {TokenKind::less, syntax::BinaryOp::less, BinaryPrecedence::COMPARISON},
+    {TokenKind::less_equal, syntax::BinaryOp::less_equal, BinaryPrecedence::COMPARISON},
+    {TokenKind::greater, syntax::BinaryOp::greater, BinaryPrecedence::COMPARISON},
+    {TokenKind::greater_equal, syntax::BinaryOp::greater_equal, BinaryPrecedence::COMPARISON},
+    {TokenKind::less_less, syntax::BinaryOp::shl, BinaryPrecedence::SHIFT},
+    {TokenKind::greater_greater, syntax::BinaryOp::shr, BinaryPrecedence::SHIFT},
+    {TokenKind::plus, syntax::BinaryOp::add, BinaryPrecedence::ADDITIVE},
+    {TokenKind::minus, syntax::BinaryOp::sub, BinaryPrecedence::ADDITIVE},
+    {TokenKind::star, syntax::BinaryOp::mul, BinaryPrecedence::MULTIPLICATIVE},
+    {TokenKind::slash, syntax::BinaryOp::div, BinaryPrecedence::MULTIPLICATIVE},
+    {TokenKind::percent, syntax::BinaryOp::mod, BinaryPrecedence::MULTIPLICATIVE},
 };
 
 [[nodiscard]] int precedence_rank(const BinaryPrecedence precedence) noexcept {
@@ -61,11 +60,11 @@ constexpr BinaryOperatorSyntax kBinaryOperators[] = {
 }
 
 [[nodiscard]] int next_stronger_precedence(const BinaryPrecedence precedence) noexcept {
-    return precedence_rank(precedence) + kLeftAssociativeRhsPrecedenceStep;
+    return precedence_rank(precedence) + PARSER_EXPR_LEFT_ASSOCIATIVE_RHS_PRECEDENCE_STEP;
 }
 
 [[nodiscard]] const BinaryOperatorSyntax* binary_operator_for(const TokenKind kind) noexcept {
-    for (const BinaryOperatorSyntax& op : kBinaryOperators) {
+    for (const BinaryOperatorSyntax& op : PARSER_EXPR_BINARY_OPERATORS) {
         if (op.token == kind) {
             return &op;
         }
@@ -82,7 +81,7 @@ syntax::ExprId ExprParser::parse_expr(const ExprContext context) {
     if (this->check(TokenKind::kw_match)) {
         return this->parse_match_expr(context);
     }
-    return this->parse_binary_expr(context, precedence_rank(kLowestBinaryPrecedence));
+    return this->parse_binary_expr(context, precedence_rank(PARSER_EXPR_LOWEST_BINARY_PRECEDENCE));
 }
 
 syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
@@ -143,7 +142,7 @@ syntax::MatchArm ExprParser::parse_match_arm(
     const base::SourceRange fallback_range
 ) {
     const syntax::PatternId pattern = this->parse_pattern();
-    syntax::ExprId guard = syntax::invalid_expr_id;
+    syntax::ExprId guard = syntax::INVALID_EXPR_ID;
     if (this->match(TokenKind::kw_if)) {
         guard = this->parse_expr(context);
     }

@@ -129,7 +129,7 @@ BlockParser::BlockBody BlockParser::parse_block_body(
     const syntax::Token& begin = this->expect_block_start(std::string(start_message));
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
-    syntax::ExprId result = syntax::invalid_expr_id;
+    syntax::ExprId result = syntax::INVALID_EXPR_ID;
 
     while (!this->is_eof() && !this->at_block_recovery_boundary()) {
         if (mode == BlockBodyMode::statement || this->token_starts_required_statement()) {

@@ -71,7 +71,7 @@ syntax::ItemId ItemParser::parse_item() {
         this->expect(TokenKind::kw_c, "expected 'c' after 'export'");
         if (!this->check(TokenKind::kw_fn)) {
             this->report_here("expected function declaration after 'export c'");
-            return syntax::invalid_item_id;
+            return syntax::INVALID_ITEM_ID;
         }
         syntax::ItemId id = this->parse_fn_decl(true, false);
         if (syntax::is_valid(id)) {
@@ -89,7 +89,7 @@ syntax::ItemId ItemParser::parse_item() {
     }
 
     this->report_here("expected item declaration");
-    return syntax::invalid_item_id;
+    return syntax::INVALID_ITEM_ID;
 }
 
 syntax::ItemId ItemParser::parse_const_decl() {

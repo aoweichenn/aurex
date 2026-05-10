@@ -11,44 +11,44 @@
 namespace aurex::ir {
 
 struct ValueId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct BlockId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct FunctionId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct GlobalConstantId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr ValueId invalid_value_id {ValueId::invalid_value};
-inline constexpr BlockId invalid_block_id {BlockId::invalid_value};
-inline constexpr FunctionId invalid_function_id {FunctionId::invalid_value};
-inline constexpr GlobalConstantId invalid_global_constant_id {GlobalConstantId::invalid_value};
+inline constexpr ValueId INVALID_VALUE_ID {ValueId::INVALID_VALUE};
+inline constexpr BlockId INVALID_BLOCK_ID {BlockId::INVALID_VALUE};
+inline constexpr FunctionId INVALID_FUNCTION_ID {FunctionId::INVALID_VALUE};
+inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID {GlobalConstantId::INVALID_VALUE};
 
 [[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept {
-    return id.value != ValueId::invalid_value;
+    return id.value != ValueId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const BlockId id) noexcept {
-    return id.value != BlockId::invalid_value;
+    return id.value != BlockId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const FunctionId id) noexcept {
-    return id.value != FunctionId::invalid_value;
+    return id.value != FunctionId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const GlobalConstantId id) noexcept {
-    return id.value != GlobalConstantId::invalid_value;
+    return id.value != GlobalConstantId::INVALID_VALUE;
 }
 
 enum class Linkage {
@@ -130,33 +130,33 @@ enum class CastKind {
 
 struct FieldValue {
     std::string name;
-    ValueId value = invalid_value_id;
+    ValueId value = INVALID_VALUE_ID;
 };
 
 struct PhiInput {
-    BlockId predecessor = invalid_block_id;
-    ValueId value = invalid_value_id;
+    BlockId predecessor = INVALID_BLOCK_ID;
+    ValueId value = INVALID_VALUE_ID;
 };
 
 struct FunctionParam {
     std::string name;
-    sema::TypeHandle type = sema::invalid_type_handle;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
 };
 
 struct GlobalConstant {
     std::string name;
     std::string symbol;
-    sema::TypeHandle type = sema::invalid_type_handle;
-    ValueId initializer = invalid_value_id;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+    ValueId initializer = INVALID_VALUE_ID;
 };
 
 struct RecordField {
     std::string name;
-    sema::TypeHandle type = sema::invalid_type_handle;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
 };
 
 struct RecordLayout {
-    sema::TypeHandle type = sema::invalid_type_handle;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     std::string name;
     std::string symbol;
     bool is_opaque = false;
@@ -165,22 +165,22 @@ struct RecordLayout {
 
 struct Value {
     ValueKind kind = ValueKind::integer_literal;
-    sema::TypeHandle type = sema::invalid_type_handle;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     std::string name;
     std::string text;
-    FunctionId call_target = invalid_function_id;
-    ValueId lhs = invalid_value_id;
-    ValueId rhs = invalid_value_id;
-    ValueId object = invalid_value_id;
-    ValueId index = invalid_value_id;
+    FunctionId call_target = INVALID_FUNCTION_ID;
+    ValueId lhs = INVALID_VALUE_ID;
+    ValueId rhs = INVALID_VALUE_ID;
+    ValueId object = INVALID_VALUE_ID;
+    ValueId index = INVALID_VALUE_ID;
     std::vector<ValueId> args;
     std::vector<FieldValue> fields;
     std::vector<PhiInput> incoming;
-    GlobalConstantId constant = invalid_global_constant_id;
+    GlobalConstantId constant = INVALID_GLOBAL_CONSTANT_ID;
     UnaryOp unary_op = UnaryOp::logical_not;
     BinaryOp binary_op = BinaryOp::add;
     CastKind cast_kind = CastKind::numeric;
-    sema::TypeHandle target_type = sema::invalid_type_handle;
+    sema::TypeHandle target_type = sema::INVALID_TYPE_HANDLE;
 };
 
 enum class TerminatorKind {
@@ -192,11 +192,11 @@ enum class TerminatorKind {
 
 struct Terminator {
     TerminatorKind kind = TerminatorKind::none;
-    ValueId condition = invalid_value_id;
-    ValueId value = invalid_value_id;
-    BlockId target = invalid_block_id;
-    BlockId then_target = invalid_block_id;
-    BlockId else_target = invalid_block_id;
+    ValueId condition = INVALID_VALUE_ID;
+    ValueId value = INVALID_VALUE_ID;
+    BlockId target = INVALID_BLOCK_ID;
+    BlockId then_target = INVALID_BLOCK_ID;
+    BlockId else_target = INVALID_BLOCK_ID;
 };
 
 struct BasicBlock {
@@ -212,7 +212,7 @@ struct Function {
     AbiCallConv call_conv = AbiCallConv::aurex;
     bool is_entry = false;
     bool is_variadic = false;
-    sema::TypeHandle return_type = sema::invalid_type_handle;
+    sema::TypeHandle return_type = sema::INVALID_TYPE_HANDLE;
     std::vector<FunctionParam> signature_params;
     std::vector<ValueId> param_values;
     std::vector<BasicBlock> blocks;

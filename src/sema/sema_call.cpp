@@ -27,7 +27,7 @@ TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
             enum_template != nullptr) {
             return instantiate_generic_enum_from_syntax(*enum_template, object.type_args, object.range, false);
         }
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
 
     const syntax::ModuleId scope_module = resolve_import_alias(
@@ -36,7 +36,7 @@ TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
         report_unknown
     );
     if (!syntax::is_valid(scope_module)) {
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
     if (object.type_args.empty()) {
         return find_type_in_module(scope_module, object.text, object.range, false, report_unknown);
@@ -51,7 +51,7 @@ TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
         enum_template != nullptr) {
         return instantiate_generic_enum_from_syntax(*enum_template, object.type_args, object.range, false);
     }
-    return invalid_type_handle;
+    return INVALID_TYPE_HANDLE;
 }
 
 TypeHandle SemanticAnalyzer::analyze_call_expr(
@@ -63,7 +63,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         (this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::name &&
          this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::field)) {
         this->report(expr.range, "callee must be a function name");
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const syntax::ExprNode& callee = this->module_.exprs[expr.callee.value];
     const std::string name = callee.kind == syntax::ExprKind::field
@@ -126,7 +126,7 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
     if (expr.args.size() != SEMA_ENUM_PAYLOAD_ARGUMENT_COUNT) {
         this->report(expr.range, "enum payload constructor requires exactly one argument: " + enum_case.name);
     }
-    TypeHandle actual = invalid_type_handle;
+    TypeHandle actual = INVALID_TYPE_HANDLE;
     if (!expr.args.empty()) {
         actual = this->analyze_expr(expr.args.front(), enum_case.payload_type);
         if (!this->can_assign(enum_case.payload_type, actual, expr.args.front())) {
@@ -152,7 +152,7 @@ TypeHandle SemanticAnalyzer::analyze_generic_enum_constructor_call(
     }
     const EnumCaseInfo* enum_case = this->instantiate_generic_enum_constructor(expr.callee, arg_types, expected_type, true);
     if (enum_case == nullptr) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (!is_valid(enum_case->payload_type)) {
         this->report(expr.range, "enum case constructor requires a payload case: " + enum_case->name);
@@ -195,7 +195,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         generic_signature.has_self_param = instance.has_self_param;
         signature = &generic_signature;
     };
-    TypeHandle receiver_type = invalid_type_handle;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
     bool has_receiver = false;
     bool receiver_valid = true;
     std::vector<TypeHandle> call_arg_types;
@@ -220,7 +220,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
             signature = this->find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
             if (signature != nullptr && !callee.type_args.empty()) {
                 this->report(callee.range, "type arguments require a generic method: " + this->checked_.types.display_name(associated_owner) + "." + std::string(name));
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             if (signature == nullptr) {
                 const std::vector<TypeHandle>& method_arg_types = collect_call_arg_types();
@@ -258,12 +258,12 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
                 }
                 if (signature == nullptr &&
                     this->diagnostics_.diagnostics().size() != diagnostics_before_generic_lookup) {
-                    return this->record_expr_type(expr_id, invalid_type_handle);
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                 }
             }
             if (signature == nullptr) {
                 signature = this->find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             if (signature->has_self_param) {
                 this->report(callee.range, "method requires a receiver: " + this->checked_.types.display_name(associated_owner) + "." + std::string(name));
@@ -281,7 +281,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
         if (signature != nullptr && !callee.type_args.empty()) {
             this->report(callee.range, "type arguments require a generic method: " + this->checked_.types.display_name(owner_type) + "." + std::string(name));
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         if (signature == nullptr) {
             std::vector<TypeHandle> method_arg_types;
@@ -327,12 +327,12 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
             }
             if (signature == nullptr &&
                 this->diagnostics_.diagnostics().size() != diagnostics_before_generic_lookup) {
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
         }
         if (signature == nullptr) {
             signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true);
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         receiver_valid = this->method_receiver_matches(*signature, receiver_type, callee.object);
     }
@@ -340,7 +340,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
     this->record_expr_c_name(expr.callee, signature->c_name);
     const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
     if (!receiver_valid || signature->param_types.size() < receiver_count) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->validate_call_arguments(expr, name, signature->param_types, receiver_count, signature->is_variadic);
     return this->record_expr_type(expr_id, signature->return_type);
@@ -357,11 +357,11 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
     const FunctionSignature* signature = nullptr;
     const GenericFunctionTemplateInfo* generic_function = nullptr;
     const bool qualified_callee = callee.kind == syntax::ExprKind::name && !callee.scope_name.empty();
-    syntax::ModuleId callee_module = syntax::invalid_module_id;
+    syntax::ModuleId callee_module = syntax::INVALID_MODULE_ID;
     if (qualified_callee) {
         callee_module = this->resolve_import_alias(callee.scope_name, callee.scope_range);
         if (!syntax::is_valid(callee_module)) {
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
     if (callee.type_args.empty()) {
@@ -405,14 +405,14 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
                     static_cast<void>(this->find_generic_function_template_in_visible_modules(name, callee_range, true));
                 }
             }
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
 
         const GenericFunctionInstanceInfo* instance = nullptr;
         if (!callee.type_args.empty()) {
             instance = this->instantiate_generic_function_from_syntax(*generic_function, callee.type_args, callee_range);
             if (instance == nullptr) {
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
         } else {
             std::vector<TypeHandle> arg_types;
@@ -420,17 +420,17 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
             for (const syntax::ExprId arg : expr.args) {
                 arg_types.push_back(this->analyze_expr(arg));
             }
-            std::vector<TypeHandle> inferred(generic_function->params.size(), invalid_type_handle);
+            std::vector<TypeHandle> inferred(generic_function->params.size(), INVALID_TYPE_HANDLE);
             static_cast<void>(this->infer_generic_function_args(*generic_function, arg_types, expected_type, inferred, callee_range));
             for (const TypeHandle arg : inferred) {
                 if (!is_valid(arg)) {
                     this->report(callee_range, "generic function requires explicit type arguments: " + generic_function->name);
-                    return this->record_expr_type(expr_id, invalid_type_handle);
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                 }
             }
             instance = this->instantiate_generic_function(*generic_function, inferred, callee_range);
             if (instance == nullptr) {
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
         }
 
@@ -439,11 +439,11 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
         return this->record_expr_type(expr_id, instance->return_type);
     }
     if (signature == nullptr) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (!callee.type_args.empty()) {
         this->report(callee_range, "type arguments require a generic function: " + std::string(name));
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->ensure_function_return_known(*signature, this->module_.exprs[expr.callee.value].range);
     this->record_expr_c_name(expr.callee, signature->c_name);

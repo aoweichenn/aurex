@@ -91,23 +91,23 @@ struct IdMap {
 };
 
 [[nodiscard]] syntax::TypeId remap_type(const syntax::TypeId id, const IdMap& map) {
-    return syntax::is_valid(id) && id.value < map.types.size() ? map.types[id.value] : syntax::invalid_type_id;
+    return syntax::is_valid(id) && id.value < map.types.size() ? map.types[id.value] : syntax::INVALID_TYPE_ID;
 }
 
 [[nodiscard]] syntax::ExprId remap_expr(const syntax::ExprId id, const IdMap& map) {
-    return syntax::is_valid(id) && id.value < map.exprs.size() ? map.exprs[id.value] : syntax::invalid_expr_id;
+    return syntax::is_valid(id) && id.value < map.exprs.size() ? map.exprs[id.value] : syntax::INVALID_EXPR_ID;
 }
 
 [[nodiscard]] syntax::StmtId remap_stmt(const syntax::StmtId id, const IdMap& map) {
-    return syntax::is_valid(id) && id.value < map.stmts.size() ? map.stmts[id.value] : syntax::invalid_stmt_id;
+    return syntax::is_valid(id) && id.value < map.stmts.size() ? map.stmts[id.value] : syntax::INVALID_STMT_ID;
 }
 
 [[nodiscard]] syntax::PatternId remap_pattern(const syntax::PatternId id, const IdMap& map) {
-    return syntax::is_valid(id) && id.value < map.patterns.size() ? map.patterns[id.value] : syntax::invalid_pattern_id;
+    return syntax::is_valid(id) && id.value < map.patterns.size() ? map.patterns[id.value] : syntax::INVALID_PATTERN_ID;
 }
 
 [[nodiscard]] syntax::ItemId remap_item(const syntax::ItemId id, const IdMap& map) {
-    return syntax::is_valid(id) && id.value < map.items.size() ? map.items[id.value] : syntax::invalid_item_id;
+    return syntax::is_valid(id) && id.value < map.items.size() ? map.items[id.value] : syntax::INVALID_ITEM_ID;
 }
 
 void remap_type_node(syntax::TypeNode& node, const IdMap& map) {
@@ -277,7 +277,7 @@ ModuleLoader::ModuleLoader(
 
 base::Result<syntax::AstModule> ModuleLoader::load_root() {
     syntax::AstModule combined;
-    auto result = load_file(canonical_or_absolute(invocation_.input_path), combined, 0, true, nullptr);
+    auto result = this->load_file(canonical_or_absolute(this->invocation_.input_path), combined, 0, true, nullptr);
     if (!result) {
         return base::Result<syntax::AstModule>::fail(result.error());
     }
@@ -285,7 +285,7 @@ base::Result<syntax::AstModule> ModuleLoader::load_root() {
 }
 
 std::span<const ModuleRecord> ModuleLoader::modules() const noexcept {
-    return modules_;
+    return this->modules_;
 }
 
 base::Result<syntax::ModuleId> ModuleLoader::load_file(
@@ -295,24 +295,24 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     const bool is_root,
     const syntax::ModulePath* expected_module
 ) {
-    if (depth > base::config::max_include_depth) {
+    if (depth > base::config::AUREX_MAX_INCLUDE_DEPTH) {
         return base::Result<syntax::ModuleId>::fail({base::ErrorCode::invalid_source, "maximum import depth exceeded"});
     }
 
     const std::filesystem::path canonical = canonical_or_absolute(path);
     const std::string key = canonical.string();
-    if (loading_files_.contains(key)) {
-        push_error(diagnostics_, expected_module != nullptr ? expected_module->range : base::SourceRange {}, "cyclic import involving: " + key);
+    if (this->loading_files_.contains(key)) {
+        push_error(this->diagnostics_, expected_module != nullptr ? expected_module->range : base::SourceRange {}, "cyclic import involving: " + key);
         return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
     }
-    if (const auto loaded = loaded_file_modules_.find(key); loaded != loaded_file_modules_.end()) {
+    if (const auto loaded = this->loaded_file_modules_.find(key); loaded != this->loaded_file_modules_.end()) {
         const syntax::ModuleId module_id = loaded->second;
         if (expected_module != nullptr &&
             syntax::is_valid(module_id) &&
             module_id.value < combined.modules.size() &&
             !syntax::module_paths_equal(combined.modules[module_id.value].path, *expected_module)) {
             push_error(
-                diagnostics_,
+                this->diagnostics_,
                 expected_module->range,
                 "module declaration '" + syntax::module_path_to_string(combined.modules[module_id.value].path) +
                     "' does not match import '" + syntax::module_path_to_string(*expected_module) + "'"
@@ -321,53 +321,53 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         }
         return base::Result<syntax::ModuleId>::ok(loaded->second);
     }
-    loading_files_.insert(key);
+    this->loading_files_.insert(key);
 
     auto source_result = read_text_file(canonical);
     if (!source_result) {
-        loading_files_.erase(key);
+        this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(source_result.error());
     }
 
-    const base::SourceId source_id = sources_.add_source(canonical.string(), std::move(source_result.value()));
-    lex::Lexer lexer(source_id, sources_.text(source_id), diagnostics_);
+    const base::SourceId source_id = this->sources_.add_source(canonical.string(), std::move(source_result.value()));
+    lex::Lexer lexer(source_id, this->sources_.text(source_id), this->diagnostics_);
     auto token_result = lexer.tokenize();
     if (!token_result) {
-        loading_files_.erase(key);
+        this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(token_result.error());
     }
-    parse::Parser parser(token_result.value(), diagnostics_);
+    parse::Parser parser(token_result.value(), this->diagnostics_);
     auto ast_result = parser.parse_module();
     if (!ast_result) {
-        loading_files_.erase(key);
+        this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(ast_result.error());
     }
 
     syntax::AstModule module = std::move(ast_result.value());
     if (module.module_path.parts.empty()) {
-        push_error(diagnostics_, base::SourceRange {source_id, 0, 0}, "module declaration is required for importable files");
-        loading_files_.erase(key);
+        push_error(this->diagnostics_, base::SourceRange {source_id, 0, 0}, "module declaration is required for importable files");
+        this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
     }
     if (expected_module != nullptr && !syntax::module_paths_equal(module.module_path, *expected_module)) {
         push_error(
-            diagnostics_,
+            this->diagnostics_,
             module.module_path.range,
             "module declaration '" + syntax::module_path_to_string(module.module_path) +
                 "' does not match import '" + syntax::module_path_to_string(*expected_module) + "'"
         );
-        loading_files_.erase(key);
+        this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
     }
     const std::string module_name = syntax::module_path_to_string(module.module_path);
-    const auto module_inserted = loaded_modules_.emplace(module_name, LoadedModule {canonical, syntax::invalid_module_id, module.module_path.range});
+    const auto module_inserted = this->loaded_modules_.emplace(module_name, LoadedModule {canonical, syntax::INVALID_MODULE_ID, module.module_path.range});
     if (!module_inserted.second && module_inserted.first->second.path != canonical) {
         push_error(
-            diagnostics_,
+            this->diagnostics_,
             module.module_path.range,
             "duplicate module name '" + module_name + "' already loaded from " + module_inserted.first->second.path.string()
         );
-        loading_files_.erase(key);
+        this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
     }
 
@@ -376,7 +376,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         module_id = syntax::ModuleId {static_cast<base::u32>(combined.modules.size())};
         module_inserted.first->second.id = module_id;
         combined.modules.push_back(syntax::ModuleInfo {module.module_path, {}});
-        modules_.push_back(ModuleRecord {module_name, canonical});
+        this->modules_.push_back(ModuleRecord {module_name, canonical});
     }
     if (is_root) {
         combined.module_path = module.module_path;
@@ -386,21 +386,21 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     std::vector<syntax::ResolvedImport> direct_imports;
     direct_imports.reserve(imports.size());
     for (const syntax::ImportDecl& import : imports) {
-        const auto import_file = find_import_file(import.path, canonical.parent_path(), import_paths_);
+        const auto import_file = find_import_file(import.path, canonical.parent_path(), this->import_paths_);
         if (!import_file) {
-            const std::vector<std::filesystem::path> candidates = import_candidates(import.path, canonical.parent_path(), import_paths_);
+            const std::vector<std::filesystem::path> candidates = import_candidates(import.path, canonical.parent_path(), this->import_paths_);
             push_error(
-                diagnostics_,
+                this->diagnostics_,
                 import.path.range,
                 "failed to resolve import: " + syntax::module_path_to_string(import.path) +
                     " (searched: " + format_import_candidates(candidates) + ")"
             );
-            loading_files_.erase(key);
+            this->loading_files_.erase(key);
             return base::Result<syntax::ModuleId>::fail({base::ErrorCode::io_error, "module loading failed"});
         }
-        auto import_result = load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import.path);
+        auto import_result = this->load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import.path);
         if (!import_result) {
-            loading_files_.erase(key);
+            this->loading_files_.erase(key);
             return import_result;
         }
         direct_imports.push_back(syntax::ResolvedImport {
@@ -415,8 +415,8 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     }
 
     append_module_into(combined, std::move(module), is_root, module_id);
-    loading_files_.erase(key);
-    loaded_file_modules_.emplace(key, module_id);
+    this->loading_files_.erase(key);
+    this->loaded_file_modules_.emplace(key, module_id);
     return base::Result<syntax::ModuleId>::ok(module_id);
 }
 

@@ -11,12 +11,24 @@ namespace {
 
 using syntax::TokenKind;
 
-constexpr int kBinaryRadix = 2;
-constexpr int kDecimalRadix = 10;
-constexpr int kHexRadix = 16;
-constexpr base::usize kRadixMarkerOffset = 1;
-constexpr base::usize kRadixPrefixLength = 2;
-constexpr base::u64 kDecimalDigitCount = 10;
+constexpr int PARSER_TYPE_BINARY_RADIX = 2;
+constexpr int PARSER_TYPE_DECIMAL_RADIX = 10;
+constexpr int PARSER_TYPE_HEX_RADIX = 16;
+constexpr base::usize PARSER_TYPE_RADIX_MARKER_OFFSET = 1;
+constexpr base::usize PARSER_TYPE_RADIX_PREFIX_LENGTH = 2;
+constexpr base::u64 PARSER_TYPE_DECIMAL_DIGIT_COUNT = 10;
+constexpr char PARSER_TYPE_ASCII_ZERO = '0';
+constexpr char PARSER_TYPE_ASCII_HEX_PREFIX_LOWER = 'x';
+constexpr char PARSER_TYPE_ASCII_HEX_PREFIX_UPPER = 'X';
+constexpr char PARSER_TYPE_ASCII_BINARY_PREFIX_LOWER = 'b';
+constexpr char PARSER_TYPE_ASCII_BINARY_PREFIX_UPPER = 'B';
+constexpr char PARSER_TYPE_ASCII_DECIMAL_FIRST = '0';
+constexpr char PARSER_TYPE_ASCII_DECIMAL_LAST = '9';
+constexpr char PARSER_TYPE_ASCII_HEX_LOWER_FIRST = 'a';
+constexpr char PARSER_TYPE_ASCII_HEX_LOWER_LAST = 'f';
+constexpr char PARSER_TYPE_ASCII_HEX_UPPER_FIRST = 'A';
+constexpr char PARSER_TYPE_ASCII_HEX_UPPER_LAST = 'F';
+constexpr char PARSER_TYPE_DIGIT_SEPARATOR = '_';
 
 [[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
     switch (kind) {
@@ -64,31 +76,33 @@ constexpr base::u64 kDecimalDigitCount = 10;
 
 [[nodiscard]] bool parse_u64_literal(const std::string_view text, base::u64& value) noexcept {
     value = 0;
-    int radix = kDecimalRadix;
+    int radix = PARSER_TYPE_DECIMAL_RADIX;
     base::usize begin = 0;
-    if (text.size() > kRadixPrefixLength &&
-        text.front() == '0' &&
-        (text[kRadixMarkerOffset] == 'x' || text[kRadixMarkerOffset] == 'X')) {
-        radix = kHexRadix;
-        begin = kRadixPrefixLength;
-    } else if (text.size() > kRadixPrefixLength &&
-               text.front() == '0' &&
-               (text[kRadixMarkerOffset] == 'b' || text[kRadixMarkerOffset] == 'B')) {
-        radix = kBinaryRadix;
-        begin = kRadixPrefixLength;
+    if (text.size() > PARSER_TYPE_RADIX_PREFIX_LENGTH &&
+        text.front() == PARSER_TYPE_ASCII_ZERO &&
+        (text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_HEX_PREFIX_LOWER ||
+         text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_HEX_PREFIX_UPPER)) {
+        radix = PARSER_TYPE_HEX_RADIX;
+        begin = PARSER_TYPE_RADIX_PREFIX_LENGTH;
+    } else if (text.size() > PARSER_TYPE_RADIX_PREFIX_LENGTH &&
+               text.front() == PARSER_TYPE_ASCII_ZERO &&
+               (text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_BINARY_PREFIX_LOWER ||
+                text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_BINARY_PREFIX_UPPER)) {
+        radix = PARSER_TYPE_BINARY_RADIX;
+        begin = PARSER_TYPE_RADIX_PREFIX_LENGTH;
     }
     for (base::usize i = begin; i < text.size(); ++i) {
         const char c = text[i];
-        if (c == '_') {
+        if (c == PARSER_TYPE_DIGIT_SEPARATOR) {
             continue;
         }
         base::u64 digit = 0;
-        if (c >= '0' && c <= '9') {
-            digit = static_cast<base::u64>(c - '0');
-        } else if (c >= 'a' && c <= 'f') {
-            digit = static_cast<base::u64>(kDecimalDigitCount + c - 'a');
-        } else if (c >= 'A' && c <= 'F') {
-            digit = static_cast<base::u64>(kDecimalDigitCount + c - 'A');
+        if (c >= PARSER_TYPE_ASCII_DECIMAL_FIRST && c <= PARSER_TYPE_ASCII_DECIMAL_LAST) {
+            digit = static_cast<base::u64>(c - PARSER_TYPE_ASCII_DECIMAL_FIRST);
+        } else if (c >= PARSER_TYPE_ASCII_HEX_LOWER_FIRST && c <= PARSER_TYPE_ASCII_HEX_LOWER_LAST) {
+            digit = static_cast<base::u64>(PARSER_TYPE_DECIMAL_DIGIT_COUNT + c - PARSER_TYPE_ASCII_HEX_LOWER_FIRST);
+        } else if (c >= PARSER_TYPE_ASCII_HEX_UPPER_FIRST && c <= PARSER_TYPE_ASCII_HEX_UPPER_LAST) {
+            digit = static_cast<base::u64>(PARSER_TYPE_DECIMAL_DIGIT_COUNT + c - PARSER_TYPE_ASCII_HEX_UPPER_FIRST);
         } else {
             return false;
         }

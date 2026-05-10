@@ -29,7 +29,7 @@ enum class ControlFlowIfStage {
 
 struct ControlFlowFrame {
     ControlFlowFrameKind kind = ControlFlowFrameKind::statement;
-    syntax::StmtId stmt = syntax::invalid_stmt_id;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
     base::usize next_child = SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX;
     ControlFlowIfStage if_stage = ControlFlowIfStage::evaluate_then;
 };
@@ -342,7 +342,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     ReturnTypeInference return_inference;
     TypeHandle expected_return = signature.return_type;
     if (infer_return_type) {
-        expected_return = invalid_type_handle;
+        expected_return = INVALID_TYPE_HANDLE;
     }
     this->current_function_return_type_ = expected_return;
     this->current_return_inference_ = infer_return_type ? &return_inference : nullptr;
@@ -357,7 +357,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
             SymbolKind::parameter,
             std::string(param.name),
             {},
-            syntax::invalid_module_id,
+            syntax::INVALID_MODULE_ID,
             param_type,
             param.range,
             false,
@@ -401,7 +401,7 @@ void SemanticAnalyzer::analyze_block_statements(
 
 TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id) {
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
     const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
     if (expr.kind != syntax::ExprKind::name || !expr.scope_name.empty()) {
@@ -409,11 +409,11 @@ TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr
     }
     const Symbol* symbol = this->find_symbol(expr.text, expr.range);
     if (symbol == nullptr) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (symbol->kind == SymbolKind::function) {
         this->report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->record_expr_c_name(expr_id, symbol->c_name);
     return this->record_expr_type(expr_id, symbol->type);
@@ -528,7 +528,7 @@ void SemanticAnalyzer::analyze_statement_node(
     case syntax::StmtKind::let:
     case syntax::StmtKind::var: {
         const bool has_declared_type = syntax::is_valid(stmt.declared_type);
-        const TypeHandle declared_type = has_declared_type ? this->resolve_type(stmt.declared_type) : invalid_type_handle;
+        const TypeHandle declared_type = has_declared_type ? this->resolve_type(stmt.declared_type) : INVALID_TYPE_HANDLE;
         const TypeHandle init = this->analyze_expr(stmt.init, declared_type);
         const TypeHandle local_type = has_declared_type ? declared_type : init;
         this->record_stmt_local_type(stmt_id, local_type);
@@ -545,7 +545,7 @@ void SemanticAnalyzer::analyze_statement_node(
             SymbolKind::local,
             std::string(stmt.name),
             {},
-            syntax::invalid_module_id,
+            syntax::INVALID_MODULE_ID,
             local_type,
             stmt.range,
             stmt.kind == syntax::StmtKind::var,
@@ -567,7 +567,7 @@ void SemanticAnalyzer::analyze_statement_node(
             binary.binary_op = binary_op;
             binary.binary_lhs = stmt.lhs;
             binary.binary_rhs = stmt.rhs;
-            const TypeHandle result = this->analyze_expr(syntax::invalid_expr_id, binary, lhs);
+            const TypeHandle result = this->analyze_expr(syntax::INVALID_EXPR_ID, binary, lhs);
             if (!this->can_assign(lhs, result, stmt.rhs)) {
                 this->report(stmt.range, "compound assignment type mismatch");
             }

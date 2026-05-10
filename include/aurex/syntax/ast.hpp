@@ -53,9 +53,9 @@ struct TypeNode {
     std::string_view name;
     std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
-    TypeId pointee = invalid_type_id;
+    TypeId pointee = INVALID_TYPE_ID;
     base::u64 array_count = 0;
-    TypeId array_element = invalid_type_id;
+    TypeId array_element = INVALID_TYPE_ID;
 };
 
 enum class ExprKind {
@@ -152,14 +152,14 @@ struct PatternNode {
 
 struct FieldInit {
     std::string_view name;
-    ExprId value = invalid_expr_id;
+    ExprId value = INVALID_EXPR_ID;
     base::SourceRange range {};
 };
 
 struct MatchArm {
-    PatternId pattern = invalid_pattern_id;
-    ExprId guard = invalid_expr_id;
-    ExprId value = invalid_expr_id;
+    PatternId pattern = INVALID_PATTERN_ID;
+    ExprId guard = INVALID_EXPR_ID;
+    ExprId value = INVALID_EXPR_ID;
     base::SourceRange range {};
 };
 
@@ -170,27 +170,27 @@ struct ExprNode {
     base::SourceRange scope_range {};
     std::string_view text;
     UnaryOp unary_op = UnaryOp::logical_not;
-    ExprId unary_operand = invalid_expr_id;
+    ExprId unary_operand = INVALID_EXPR_ID;
     BinaryOp binary_op = BinaryOp::add;
-    ExprId binary_lhs = invalid_expr_id;
-    ExprId binary_rhs = invalid_expr_id;
-    ExprId callee = invalid_expr_id;
+    ExprId binary_lhs = INVALID_EXPR_ID;
+    ExprId binary_rhs = INVALID_EXPR_ID;
+    ExprId callee = INVALID_EXPR_ID;
     std::vector<ExprId> args;
-    ExprId condition = invalid_expr_id;
-    ExprId then_expr = invalid_expr_id;
-    ExprId else_expr = invalid_expr_id;
-    StmtId block = invalid_stmt_id;
-    ExprId block_result = invalid_expr_id;
-    ExprId match_value = invalid_expr_id;
+    ExprId condition = INVALID_EXPR_ID;
+    ExprId then_expr = INVALID_EXPR_ID;
+    ExprId else_expr = INVALID_EXPR_ID;
+    StmtId block = INVALID_STMT_ID;
+    ExprId block_result = INVALID_EXPR_ID;
+    ExprId match_value = INVALID_EXPR_ID;
     std::vector<MatchArm> match_arms;
-    ExprId object = invalid_expr_id;
+    ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
-    ExprId index = invalid_expr_id;
+    ExprId index = INVALID_EXPR_ID;
     std::string_view struct_name;
     std::vector<TypeId> struct_type_args;
     std::vector<FieldInit> field_inits;
-    TypeId cast_type = invalid_type_id;
-    ExprId cast_expr = invalid_expr_id;
+    TypeId cast_type = INVALID_TYPE_ID;
+    ExprId cast_expr = INVALID_EXPR_ID;
     std::vector<TypeId> type_args;
 };
 
@@ -213,38 +213,38 @@ struct StmtNode {
     StmtKind kind = StmtKind::expr;
     base::SourceRange range {};
     std::string_view name;
-    TypeId declared_type = invalid_type_id;
-    ExprId init = invalid_expr_id;
+    TypeId declared_type = INVALID_TYPE_ID;
+    ExprId init = INVALID_EXPR_ID;
     AssignOp assign_op = AssignOp::assign;
-    ExprId lhs = invalid_expr_id;
-    ExprId rhs = invalid_expr_id;
-    ExprId condition = invalid_expr_id;
-    StmtId then_block = invalid_stmt_id;
-    StmtId else_block = invalid_stmt_id;
-    StmtId else_if = invalid_stmt_id;
-    StmtId body = invalid_stmt_id;
-    StmtId for_init = invalid_stmt_id;
-    StmtId for_update = invalid_stmt_id;
-    ExprId return_value = invalid_expr_id;
+    ExprId lhs = INVALID_EXPR_ID;
+    ExprId rhs = INVALID_EXPR_ID;
+    ExprId condition = INVALID_EXPR_ID;
+    StmtId then_block = INVALID_STMT_ID;
+    StmtId else_block = INVALID_STMT_ID;
+    StmtId else_if = INVALID_STMT_ID;
+    StmtId body = INVALID_STMT_ID;
+    StmtId for_init = INVALID_STMT_ID;
+    StmtId for_update = INVALID_STMT_ID;
+    ExprId return_value = INVALID_EXPR_ID;
     std::vector<StmtId> statements;
 };
 
 struct ParamDecl {
     std::string_view name;
-    TypeId type = invalid_type_id;
+    TypeId type = INVALID_TYPE_ID;
     base::SourceRange range {};
 };
 
 struct FieldDecl {
     std::string_view name;
-    TypeId type = invalid_type_id;
+    TypeId type = INVALID_TYPE_ID;
     base::SourceRange range {};
     Visibility visibility = Visibility::public_;
 };
 
 struct EnumCaseDecl {
     std::string_view name;
-    TypeId payload_type = invalid_type_id;
+    TypeId payload_type = INVALID_TYPE_ID;
     std::string_view value_text;
     base::SourceRange range {};
 };
@@ -267,16 +267,16 @@ struct ItemNode {
     Visibility visibility = Visibility::public_;
     std::vector<std::string_view> generic_params;
     base::usize impl_generic_param_count = 0;
-    TypeId const_type = invalid_type_id;
-    ExprId const_value = invalid_expr_id;
-    TypeId alias_type = invalid_type_id;
+    TypeId const_type = INVALID_TYPE_ID;
+    ExprId const_value = INVALID_EXPR_ID;
+    TypeId alias_type = INVALID_TYPE_ID;
     std::vector<FieldDecl> fields;
-    TypeId enum_base_type = invalid_type_id;
+    TypeId enum_base_type = INVALID_TYPE_ID;
     std::vector<EnumCaseDecl> enum_cases;
     std::vector<ParamDecl> params;
-    TypeId return_type = invalid_type_id;
-    StmtId body = invalid_stmt_id;
-    TypeId impl_type = invalid_type_id;
+    TypeId return_type = INVALID_TYPE_ID;
+    StmtId body = INVALID_STMT_ID;
+    TypeId impl_type = INVALID_TYPE_ID;
     bool is_export_c = false;
     bool is_extern_c = false;
     bool is_variadic = false;
@@ -300,7 +300,7 @@ struct ImportDecl {
 };
 
 struct ResolvedImport {
-    ModuleId module = invalid_module_id;
+    ModuleId module = INVALID_MODULE_ID;
     std::string_view alias;
     base::SourceRange alias_range {};
     Visibility visibility = Visibility::private_;
@@ -326,11 +326,11 @@ struct AstModule {
     std::vector<ModuleId> item_modules;
 
     AstModule() {
-        types.reserve(base::config::initial_ast_node_capacity);
-        exprs.reserve(base::config::initial_ast_node_capacity);
-        patterns.reserve(base::config::initial_ast_node_capacity);
-        stmts.reserve(base::config::initial_ast_node_capacity);
-        items.reserve(base::config::initial_ast_node_capacity);
+        types.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        exprs.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        patterns.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        stmts.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        items.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
     }
 
     [[nodiscard]] TypeId push_type(TypeNode node) {
@@ -360,7 +360,7 @@ struct AstModule {
     [[nodiscard]] ItemId push_item(ItemNode node) {
         const ItemId id {static_cast<base::u32>(items.size())};
         items.push_back(std::move(node));
-        item_modules.push_back(invalid_module_id);
+        item_modules.push_back(INVALID_MODULE_ID);
         return id;
     }
 };

@@ -10,14 +10,14 @@
 namespace aurex::sema {
 
 struct TypeHandle {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr TypeHandle invalid_type_handle {TypeHandle::invalid_value};
+inline constexpr TypeHandle INVALID_TYPE_HANDLE {TypeHandle::INVALID_VALUE};
 
 [[nodiscard]] inline constexpr bool is_valid(const TypeHandle handle) noexcept {
-    return handle.value != TypeHandle::invalid_value;
+    return handle.value != TypeHandle::INVALID_VALUE;
 }
 
 enum class BuiltinType {
@@ -56,11 +56,11 @@ struct TypeInfo {
     TypeKind kind = TypeKind::builtin;
     BuiltinType builtin = BuiltinType::void_;
     PointerMutability pointer_mutability = PointerMutability::const_;
-    TypeHandle pointee = invalid_type_handle;
+    TypeHandle pointee = INVALID_TYPE_HANDLE;
     base::u64 array_count = 0;
-    TypeHandle array_element = invalid_type_handle;
-    TypeHandle enum_underlying = invalid_type_handle;
-    TypeHandle enum_payload_storage = invalid_type_handle;
+    TypeHandle array_element = INVALID_TYPE_HANDLE;
+    TypeHandle enum_underlying = INVALID_TYPE_HANDLE;
+    TypeHandle enum_payload_storage = INVALID_TYPE_HANDLE;
     base::u64 enum_payload_size = 0;
     base::u64 enum_payload_align = 1;
     std::string name;
@@ -100,7 +100,7 @@ public:
 
 private:
     struct PointerKey {
-        base::u32 pointee = TypeHandle::invalid_value;
+        base::u32 pointee = TypeHandle::INVALID_VALUE;
         PointerMutability mutability = PointerMutability::const_;
 
         [[nodiscard]] bool operator==(const PointerKey& other) const noexcept {
@@ -110,7 +110,7 @@ private:
 
     struct ArrayKey {
         base::u64 count = 0;
-        base::u32 element = TypeHandle::invalid_value;
+        base::u32 element = TypeHandle::INVALID_VALUE;
 
         [[nodiscard]] bool operator==(const ArrayKey& other) const noexcept {
             return count == other.count && element == other.element;

@@ -8,8 +8,8 @@
 namespace aurex::parse {
 
 enum class AngleListFollower {
-    type_scope,
-    struct_literal,
+    TYPE_SCOPE,
+    STRUCT_LITERAL,
 };
 
 [[nodiscard]] bool next_angle_list_has_follower(

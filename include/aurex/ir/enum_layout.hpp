@@ -6,8 +6,8 @@
 
 namespace aurex::ir {
 
-inline constexpr std::string_view enum_tag_field_name = "tag";
-inline constexpr std::string_view enum_payload_field_name = "payload";
+inline constexpr std::string_view IR_ENUM_TAG_FIELD_NAME = "tag";
+inline constexpr std::string_view IR_ENUM_PAYLOAD_FIELD_NAME = "payload";
 
 [[nodiscard]] bool is_payload_enum(const sema::TypeTable& types, sema::TypeHandle type) noexcept;
 [[nodiscard]] sema::TypeHandle enum_tag_type(const sema::TypeTable& types, sema::TypeHandle enum_type) noexcept;

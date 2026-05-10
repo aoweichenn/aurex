@@ -7,64 +7,64 @@
 namespace aurex::syntax {
 
 struct TypeId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct ExprId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct PatternId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct StmtId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct ItemId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
 struct ModuleId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr TypeId invalid_type_id {TypeId::invalid_value};
-inline constexpr ExprId invalid_expr_id {ExprId::invalid_value};
-inline constexpr PatternId invalid_pattern_id {PatternId::invalid_value};
-inline constexpr StmtId invalid_stmt_id {StmtId::invalid_value};
-inline constexpr ItemId invalid_item_id {ItemId::invalid_value};
-inline constexpr ModuleId invalid_module_id {ModuleId::invalid_value};
+inline constexpr TypeId INVALID_TYPE_ID {TypeId::INVALID_VALUE};
+inline constexpr ExprId INVALID_EXPR_ID {ExprId::INVALID_VALUE};
+inline constexpr PatternId INVALID_PATTERN_ID {PatternId::INVALID_VALUE};
+inline constexpr StmtId INVALID_STMT_ID {StmtId::INVALID_VALUE};
+inline constexpr ItemId INVALID_ITEM_ID {ItemId::INVALID_VALUE};
+inline constexpr ModuleId INVALID_MODULE_ID {ModuleId::INVALID_VALUE};
 
 [[nodiscard]] inline constexpr bool is_valid(const TypeId id) noexcept {
-    return id.value != TypeId::invalid_value;
+    return id.value != TypeId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const ExprId id) noexcept {
-    return id.value != ExprId::invalid_value;
+    return id.value != ExprId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const PatternId id) noexcept {
-    return id.value != PatternId::invalid_value;
+    return id.value != PatternId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const StmtId id) noexcept {
-    return id.value != StmtId::invalid_value;
+    return id.value != StmtId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const ItemId id) noexcept {
-    return id.value != ItemId::invalid_value;
+    return id.value != ItemId::INVALID_VALUE;
 }
 
 [[nodiscard]] inline constexpr bool is_valid(const ModuleId id) noexcept {
-    return id.value != ModuleId::invalid_value;
+    return id.value != ModuleId::INVALID_VALUE;
 }
 
 } // namespace aurex::syntax

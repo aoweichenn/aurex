@@ -21,8 +21,8 @@ private:
     };
 
     struct BlockBody {
-        syntax::StmtId block = syntax::invalid_stmt_id;
-        syntax::ExprId result = syntax::invalid_expr_id;
+        syntax::StmtId block = syntax::INVALID_STMT_ID;
+        syntax::ExprId result = syntax::INVALID_EXPR_ID;
     };
 
     [[nodiscard]] BlockBody parse_block_body(

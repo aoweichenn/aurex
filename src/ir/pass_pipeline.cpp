@@ -310,7 +310,7 @@ void mark_reachable(const Function& function, const BlockId block, std::vector<b
 
 void rewrite_block_id(BlockId& id, const BlockMap& block_map) {
     if (!is_valid(id) || id.value >= block_map.size()) {
-        id = invalid_block_id;
+        id = INVALID_BLOCK_ID;
         return;
     }
     id = block_map[id.value];
@@ -350,7 +350,7 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
         return false;
     }
 
-    BlockMap block_map(function.blocks.size(), invalid_block_id);
+    BlockMap block_map(function.blocks.size(), INVALID_BLOCK_ID);
     std::vector<BasicBlock> kept;
     kept.reserve(function.blocks.size());
     for (base::u32 i = 0; i < function.blocks.size(); ++i) {
@@ -439,9 +439,9 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
             if (block.terminator.then_target.value == block.terminator.else_target.value) {
                 block.terminator.kind = TerminatorKind::branch;
                 block.terminator.target = block.terminator.then_target;
-                block.terminator.condition = invalid_value_id;
-                block.terminator.then_target = invalid_block_id;
-                block.terminator.else_target = invalid_block_id;
+                block.terminator.condition = INVALID_VALUE_ID;
+                block.terminator.then_target = INVALID_BLOCK_ID;
+                block.terminator.else_target = INVALID_BLOCK_ID;
             }
         }
     }
@@ -462,9 +462,9 @@ void run_cfg_cleanup(Module& module) {
                     block.terminator.then_target.value == block.terminator.else_target.value) {
                     block.terminator.kind = TerminatorKind::branch;
                     block.terminator.target = block.terminator.then_target;
-                    block.terminator.condition = invalid_value_id;
-                    block.terminator.then_target = invalid_block_id;
-                    block.terminator.else_target = invalid_block_id;
+                    block.terminator.condition = INVALID_VALUE_ID;
+                    block.terminator.then_target = INVALID_BLOCK_ID;
+                    block.terminator.else_target = INVALID_BLOCK_ID;
                     changed = true;
                 }
             }

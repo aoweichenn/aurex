@@ -65,8 +65,8 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     match_expr.kind = syntax::ExprKind::match_expr;
     match_expr.match_value = syntax::ExprId {3};
     match_expr.match_arms = {
-        syntax::MatchArm {syntax::PatternId {0}, syntax::invalid_expr_id, syntax::ExprId {1}, {}},
-        syntax::MatchArm {syntax::invalid_pattern_id, syntax::invalid_expr_id, syntax::ExprId {99}, {}},
+        syntax::MatchArm {syntax::PatternId {0}, syntax::INVALID_EXPR_ID, syntax::ExprId {1}, {}},
+        syntax::MatchArm {syntax::INVALID_PATTERN_ID, syntax::INVALID_EXPR_ID, syntax::ExprId {99}, {}},
     };
     module.exprs.push_back(match_expr);
 
@@ -101,7 +101,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     syntax::ItemNode broken_struct;
     broken_struct.kind = syntax::ItemKind::struct_decl;
     broken_struct.name = "Broken";
-    broken_struct.fields.push_back(syntax::FieldDecl {"bad", syntax::invalid_type_id, {}, syntax::Visibility::public_});
+    broken_struct.fields.push_back(syntax::FieldDecl {"bad", syntax::INVALID_TYPE_ID, {}, syntax::Visibility::public_});
     module.items.push_back(broken_struct);
 
     syntax::ItemNode function;
@@ -112,7 +112,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
 
     syntax::ItemNode extern_block;
     extern_block.kind = syntax::ItemKind::extern_block;
-    extern_block.extern_items = {syntax::invalid_item_id, syntax::ItemId {99}};
+    extern_block.extern_items = {syntax::INVALID_ITEM_ID, syntax::ItemId {99}};
     module.items.push_back(extern_block);
 
     syntax::ItemNode unknown_item;

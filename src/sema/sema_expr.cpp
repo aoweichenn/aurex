@@ -115,7 +115,7 @@ constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
 }
 
 struct IntegerLiteralExpr {
-    syntax::ExprId literal = syntax::invalid_expr_id;
+    syntax::ExprId literal = syntax::INVALID_EXPR_ID;
     bool negated = false;
 };
 
@@ -166,12 +166,12 @@ struct IntegerLiteralExpr {
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
-    return this->analyze_expr(expr_id, invalid_type_handle);
+    return this->analyze_expr(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const TypeHandle expected_type) {
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
 
     const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
@@ -193,7 +193,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(
     case syntax::ExprKind::null_literal:
         return this->record_expr_type(
             expr_id,
-            this->checked_.types.is_pointer(expected_type) ? expected_type : invalid_type_handle
+            this->checked_.types.is_pointer(expected_type) ? expected_type : INVALID_TYPE_HANDLE
         );
     case syntax::ExprKind::string_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
@@ -243,9 +243,9 @@ TypeHandle SemanticAnalyzer::analyze_expr(
     case syntax::ExprKind::str_from_bytes_unchecked:
         return this->analyze_str_from_bytes_unchecked_expr(expr_id, expr);
     case syntax::ExprKind::invalid:
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    return this->record_expr_type(expr_id, invalid_type_handle);
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_name_expr(
@@ -256,18 +256,18 @@ TypeHandle SemanticAnalyzer::analyze_name_expr(
     if (!expr.scope_name.empty()) {
         const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range);
         if (!syntax::is_valid(module)) {
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         symbol = this->find_symbol_in_module(module, expr.text, expr.range);
     } else {
         symbol = this->find_symbol(expr.text, expr.range);
     }
     if (symbol == nullptr) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (symbol->kind == SymbolKind::function) {
         this->report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->record_expr_c_name(expr_id, symbol->c_name);
     return this->record_expr_type(expr_id, symbol->type);
@@ -301,7 +301,7 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
           (this->checked_.types.is_integer(expected_type) || this->checked_.types.is_float(expected_type))) ||
          (expr.unary_op == syntax::UnaryOp::bitwise_not && this->checked_.types.is_integer(expected_type)))
             ? expected_type
-            : invalid_type_handle;
+            : INVALID_TYPE_HANDLE;
     const TypeHandle operand = this->analyze_expr(expr.unary_operand, operand_expected);
     if (expr.unary_op == syntax::UnaryOp::logical_not && !this->checked_.types.is_bool(operand)) {
         this->report(expr.range, "logical not requires bool operand");
@@ -317,12 +317,12 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
     if (expr.unary_op == syntax::UnaryOp::dereference) {
         if (!this->checked_.types.is_pointer(operand)) {
             this->report(expr.range, "dereference requires pointer operand");
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         const TypeHandle pointee = this->checked_.types.get(operand).pointee;
         if (!this->is_valid_storage_type(pointee)) {
             this->report(expr.range, "dereference requires pointer to valid storage");
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         return this->record_expr_type(expr_id, pointee);
     }
@@ -347,9 +347,9 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
         binary_result_uses_operand_type(expr.binary_op) &&
         (this->checked_.types.is_integer(expected_type) || this->checked_.types.is_float(expected_type))
             ? expected_type
-            : invalid_type_handle;
-    TypeHandle lhs = invalid_type_handle;
-    TypeHandle rhs = invalid_type_handle;
+            : INVALID_TYPE_HANDLE;
+    TypeHandle lhs = INVALID_TYPE_HANDLE;
+    TypeHandle rhs = INVALID_TYPE_HANDLE;
     if (!is_valid(operand_expected) &&
         is_contextual_integer_expr(this->module_, expr.binary_lhs) &&
         !is_contextual_integer_expr(this->module_, expr.binary_rhs)) {
@@ -509,11 +509,11 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
                 enum_case = this->instantiate_generic_enum_constructor(expr_id, {}, expected_type, true);
             }
             if (enum_case == nullptr) {
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             if (is_valid(enum_case->payload_type)) {
                 this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             this->record_expr_c_name(expr_id, enum_case->c_name);
             return this->record_expr_type(expr_id, enum_case->type);
@@ -524,11 +524,11 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
                 const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
                 if (enum_case == nullptr) {
                     this->report(expr.range, "unknown enum case: " + std::string(object.text) + "." + std::string(expr.field_name));
-                    return this->record_expr_type(expr_id, invalid_type_handle);
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                 }
                 if (is_valid(enum_case->payload_type)) {
                     this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                    return this->record_expr_type(expr_id, invalid_type_handle);
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                 }
                 this->record_expr_c_name(expr_id, enum_case->c_name);
                 return this->record_expr_type(expr_id, enum_case->type);
@@ -539,7 +539,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
                 enum_case != nullptr) {
                 if (is_valid(enum_case->payload_type)) {
                     this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                    return this->record_expr_type(expr_id, invalid_type_handle);
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                 }
                 this->record_expr_c_name(expr_id, enum_case->c_name);
                 return this->record_expr_type(expr_id, enum_case->type);
@@ -554,19 +554,19 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
     const StructInfo* info = this->find_struct(object);
     if (info == nullptr || info->is_opaque) {
         this->report(expr.range, "field access requires a non-opaque struct value");
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     for (const StructFieldInfo& field : info->fields) {
         if (field.name == expr.field_name) {
             if (!this->can_access(info->module, field.visibility)) {
                 this->report(expr.range, "field is private: " + std::string(expr.field_name));
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             return this->record_expr_type(expr_id, field.type);
         }
     }
     this->report(expr.range, "unknown field: " + std::string(expr.field_name));
-    return this->record_expr_type(expr_id, invalid_type_handle);
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_index_expr(
@@ -579,7 +579,7 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
         this->report(this->module_.exprs[expr.index.value].range, "array index must be an integer");
     }
     if (!is_valid(object)) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (this->checked_.types.is_array(object)) {
         return this->record_expr_type(expr_id, this->checked_.types.get(object).array_element);
@@ -588,16 +588,16 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
         const TypeHandle pointee = this->checked_.types.get(object).pointee;
         if (this->checked_.types.is_array(pointee)) {
             this->report(expr.range, "indexing pointer to array requires explicit dereference");
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         if (!this->is_valid_storage_type(pointee)) {
             this->report(expr.range, "indexing pointer requires pointer to valid storage");
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         return this->record_expr_type(expr_id, pointee);
     }
     this->report(expr.range, "indexing requires array or pointer value");
-    return this->record_expr_type(expr_id, invalid_type_handle);
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
@@ -605,13 +605,13 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
     const syntax::ExprNode& expr,
     const TypeHandle expected_type
 ) {
-    TypeHandle struct_type = invalid_type_handle;
+    TypeHandle struct_type = INVALID_TYPE_HANDLE;
     const bool qualified = !expr.scope_name.empty();
-    syntax::ModuleId scope_module = syntax::invalid_module_id;
+    syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
     if (qualified) {
         scope_module = this->resolve_import_alias(expr.scope_name, expr.scope_range);
         if (!syntax::is_valid(scope_module)) {
-            return this->record_expr_type(expr_id, invalid_type_handle);
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
     if (!expr.struct_type_args.empty()) {
@@ -648,7 +648,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
                             ? std::string(expr.scope_name) + "::" + template_info->name
                             : template_info->name)
                 );
-                return this->record_expr_type(expr_id, invalid_type_handle);
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
         } else {
             struct_type = qualified
@@ -657,12 +657,12 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         }
     }
     if (!is_valid(struct_type)) {
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const StructInfo* info = this->find_struct(struct_type);
     if (info == nullptr || info->is_opaque) {
         this->report(expr.range, "struct literal requires a non-opaque struct type");
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     std::unordered_set<std::string> initialized_fields;
     for (const syntax::FieldInit& init : expr.field_inits) {
@@ -794,7 +794,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
     const GenericEnumInstanceInfo* const source_instance = generic_enum_instance(source_type);
     if (source_instance == nullptr) {
         report(expr.range, "try expression requires Result<T, E> or Option<T>");
-        return record_expr_type(expr_id, invalid_type_handle);
+        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
     if (source_instance->name == "Result" && source_instance->args.size() == 2) {
@@ -802,7 +802,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
         const EnumCaseInfo* const err_case = find_enum_case_by_type_and_case(source_type, "err");
         if (ok_case == nullptr || err_case == nullptr || !is_valid(ok_case->payload_type) || !is_valid(err_case->payload_type)) {
             report(expr.range, "try expression Result type must define ok(T) and err(E) cases");
-            return record_expr_type(expr_id, invalid_type_handle);
+            return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
 
         const GenericEnumInstanceInfo* const return_instance = generic_enum_instance(current_function_return_type_);
@@ -830,7 +830,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
         const EnumCaseInfo* const none_case = find_enum_case_by_type_and_case(source_type, "none");
         if (some_case == nullptr || none_case == nullptr || !is_valid(some_case->payload_type) || is_valid(none_case->payload_type)) {
             report(expr.range, "try expression Option type must define some(T) and none cases");
-            return record_expr_type(expr_id, invalid_type_handle);
+            return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
 
         const GenericEnumInstanceInfo* const return_instance = generic_enum_instance(current_function_return_type_);
@@ -849,7 +849,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
     }
 
     report(expr.range, "try expression requires Result<T, E> or Option<T>");
-    return record_expr_type(expr_id, invalid_type_handle);
+    return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_if_expr(
@@ -873,8 +873,8 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
         return candidate_expr.kind == syntax::ExprKind::null_literal ||
             (candidate_expr.kind == syntax::ExprKind::block_expr && is_null_literal(candidate_expr.block_result));
     };
-    TypeHandle then_type = invalid_type_handle;
-    TypeHandle else_type = invalid_type_handle;
+    TypeHandle then_type = INVALID_TYPE_HANDLE;
+    TypeHandle else_type = INVALID_TYPE_HANDLE;
     if (!is_valid(expected_type) && is_null_result_expr(expr.then_expr) && !is_null_result_expr(expr.else_expr)) {
         else_type = analyze_expr(expr.else_expr);
         then_type = analyze_expr(expr.then_expr, else_type);
@@ -890,11 +890,11 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
     }
     if (!checked_.types.same(then_type, else_type)) {
         report(expr.range, "if expression branches must have the same type");
-        return record_expr_type(expr_id, invalid_type_handle);
+        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (is_valid(then_type) && checked_.types.is_void(then_type)) {
         report(expr.range, "if expression branches cannot be void");
-        return record_expr_type(expr_id, invalid_type_handle);
+        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     return record_expr_type(expr_id, then_type);
 }
@@ -909,7 +909,7 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
     }
     if (!syntax::is_valid(expr.block_result)) {
         report(expr.range, "block expression requires a final expression");
-        return record_expr_type(expr_id, invalid_type_handle);
+        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
     symbols_.push_scope();
@@ -921,11 +921,11 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
     symbols_.pop_scope();
 
     if (!is_valid(result)) {
-        return record_expr_type(expr_id, invalid_type_handle);
+        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (checked_.types.is_void(result)) {
         report(expr.range, "block expression result cannot be void");
-        return record_expr_type(expr_id, invalid_type_handle);
+        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     return record_expr_type(expr_id, result);
 }

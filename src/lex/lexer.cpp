@@ -16,21 +16,21 @@ namespace aurex::lex {
 
 namespace {
 
-constexpr base::usize estimated_bytes_per_token = 2;
-constexpr base::usize max_estimated_token_capacity = 262'144;
+constexpr base::usize LEXER_ESTIMATED_BYTES_PER_TOKEN = 2;
+constexpr base::usize LEXER_MAX_ESTIMATED_TOKEN_CAPACITY = 262'144;
 
 enum class TokenStartAction : std::uint8_t {
-    invalid,
-    identifier,
-    number,
-    string,
-    punctuator,
-    c_string_or_identifier,
-    byte_or_identifier,
+    INVALID,
+    IDENTIFIER,
+    NUMBER,
+    STRING,
+    PUNCTUATOR,
+    C_STRING_OR_IDENTIFIER,
+    BYTE_OR_IDENTIFIER,
 };
 
 constexpr void mark_token_start(
-    std::array<TokenStartAction, byte_char_class_count>& table,
+    std::array<TokenStartAction, LEX_BYTE_CHAR_CLASS_COUNT>& table,
     const char c,
     const TokenStartAction action
 ) noexcept {
@@ -38,7 +38,7 @@ constexpr void mark_token_start(
 }
 
 constexpr void mark_token_start_range(
-    std::array<TokenStartAction, byte_char_class_count>& table,
+    std::array<TokenStartAction, LEX_BYTE_CHAR_CLASS_COUNT>& table,
     const char first,
     const char last,
     const TokenStartAction action
@@ -50,53 +50,53 @@ constexpr void mark_token_start_range(
     }
 }
 
-[[nodiscard]] consteval std::array<TokenStartAction, byte_char_class_count> build_token_start_actions() noexcept {
-    std::array<TokenStartAction, byte_char_class_count> table {};
+[[nodiscard]] consteval std::array<TokenStartAction, LEX_BYTE_CHAR_CLASS_COUNT> build_token_start_actions() noexcept {
+    std::array<TokenStartAction, LEX_BYTE_CHAR_CLASS_COUNT> table {};
 
-    mark_token_start_range(table, ascii_uppercase_first, ascii_uppercase_last, TokenStartAction::identifier);
-    mark_token_start_range(table, ascii_lowercase_first, ascii_lowercase_last, TokenStartAction::identifier);
-    mark_token_start(table, identifier_joiner, TokenStartAction::identifier);
-    mark_token_start_range(table, ascii_digit_first, ascii_digit_last, TokenStartAction::number);
+    mark_token_start_range(table, LEX_ASCII_UPPERCASE_FIRST, LEX_ASCII_UPPERCASE_LAST, TokenStartAction::IDENTIFIER);
+    mark_token_start_range(table, LEX_ASCII_LOWERCASE_FIRST, LEX_ASCII_LOWERCASE_LAST, TokenStartAction::IDENTIFIER);
+    mark_token_start(table, LEX_IDENTIFIER_JOINER, TokenStartAction::IDENTIFIER);
+    mark_token_start_range(table, LEX_ASCII_DIGIT_FIRST, LEX_ASCII_DIGIT_LAST, TokenStartAction::NUMBER);
 
-    mark_token_start(table, c_string_prefix.front(), TokenStartAction::c_string_or_identifier);
-    mark_token_start(table, byte_literal_prefix.front(), TokenStartAction::byte_or_identifier);
-    mark_token_start(table, lexeme_double_quote, TokenStartAction::string);
+    mark_token_start(table, LEXEME_C_STRING_PREFIX.front(), TokenStartAction::C_STRING_OR_IDENTIFIER);
+    mark_token_start(table, LEXEME_BYTE_LITERAL_PREFIX.front(), TokenStartAction::BYTE_OR_IDENTIFIER);
+    mark_token_start(table, LEXEME_DOUBLE_QUOTE, TokenStartAction::STRING);
 
-    mark_token_start(table, lexeme_dot, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_colon, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_minus, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_equal, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_bang, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_less, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_greater, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_amp, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_pipe, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_l_paren, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_r_paren, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_l_brace, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_r_brace, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_l_bracket, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_r_bracket, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_comma, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_semicolon, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_plus, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_star, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_slash, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_percent, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_caret, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_tilde, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_at, TokenStartAction::punctuator);
-    mark_token_start(table, lexeme_question, TokenStartAction::punctuator);
+    mark_token_start(table, LEXEME_DOT, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_COLON, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_MINUS, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_EQUAL, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_BANG, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_LESS, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_GREATER, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_AMP, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_PIPE, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_L_PAREN, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_R_PAREN, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_L_BRACE, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_R_BRACE, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_L_BRACKET, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_R_BRACKET, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_COMMA, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_SEMICOLON, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_PLUS, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_STAR, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_SLASH, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_PERCENT, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_CARET, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_TILDE, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_AT, TokenStartAction::PUNCTUATOR);
+    mark_token_start(table, LEXEME_QUESTION, TokenStartAction::PUNCTUATOR);
 
     return table;
 }
 
-inline constexpr std::array token_start_actions = build_token_start_actions();
+inline constexpr std::array TOKEN_START_ACTIONS = build_token_start_actions();
 
 [[nodiscard]] base::usize initial_token_capacity(const base::usize source_size) noexcept {
-    const base::usize configured_minimum = base::config::initial_token_capacity;
-    const base::usize estimated_capacity = (source_size / estimated_bytes_per_token) + 1;
-    return std::min(std::max(configured_minimum, estimated_capacity), max_estimated_token_capacity);
+    const base::usize configured_minimum = base::config::AUREX_INITIAL_TOKEN_CAPACITY;
+    const base::usize estimated_capacity = (source_size / LEXER_ESTIMATED_BYTES_PER_TOKEN) + 1;
+    return std::min(std::max(configured_minimum, estimated_capacity), LEXER_MAX_ESTIMATED_TOKEN_CAPACITY);
 }
 
 } // namespace
@@ -125,7 +125,7 @@ base::Result<std::vector<syntax::Token>> Lexer::tokenize() {
     this->add_token(syntax::TokenKind::eof, this->cursor_.source_size(), this->cursor_.source_size());
     if (this->diagnostics_.has_error()) {
         return base::Result<std::vector<syntax::Token>>::fail(
-            {base::ErrorCode::lex_error, std::string(lexing_failed_message)}
+            {base::ErrorCode::lex_error, std::string(LEXEME_LEXING_FAILED_MESSAGE)}
         );
     }
     return base::Result<std::vector<syntax::Token>>::ok(std::move(this->tokens_));
@@ -163,42 +163,42 @@ void Lexer::scan_token() {
     const base::usize begin = this->cursor_.offset();
     const char first = this->peek();
 
-    switch (token_start_actions[char_class_index(first)]) {
-    case TokenStartAction::identifier:
+    switch (TOKEN_START_ACTIONS[char_class_index(first)]) {
+    case TokenStartAction::IDENTIFIER:
         this->scan_identifier();
         return;
-    case TokenStartAction::number:
+    case TokenStartAction::NUMBER:
         this->scan_number();
         return;
-    case TokenStartAction::string:
+    case TokenStartAction::STRING:
         this->advance();
         this->scan_string(begin);
         return;
-    case TokenStartAction::punctuator:
+    case TokenStartAction::PUNCTUATOR:
         if (this->scan_punctuator(begin, first)) {
             return;
         }
         break;
-    case TokenStartAction::c_string_or_identifier:
-        if (this->peek_next() == c_string_prefix.back()) {
+    case TokenStartAction::C_STRING_OR_IDENTIFIER:
+        if (this->peek_next() == LEXEME_C_STRING_PREFIX.back()) {
             this->scan_c_string(begin);
             return;
         }
         this->scan_identifier();
         return;
-    case TokenStartAction::byte_or_identifier:
-        if (this->peek_next() == byte_literal_prefix.back()) {
+    case TokenStartAction::BYTE_OR_IDENTIFIER:
+        if (this->peek_next() == LEXEME_BYTE_LITERAL_PREFIX.back()) {
             this->scan_byte(begin);
             return;
         }
         this->scan_identifier();
         return;
-    case TokenStartAction::invalid:
+    case TokenStartAction::INVALID:
         break;
     }
 
     this->advance();
-    this->report_current(begin, invalid_character_message);
+    this->report_current(begin, LEXEME_INVALID_CHARACTER_MESSAGE);
     this->finish_invalid_token(begin);
 }
 
@@ -206,7 +206,7 @@ bool Lexer::scan_punctuator(const base::usize begin, const char first) {
     const auto match = match_punctuator(
         first,
         this->peek_next(),
-        this->cursor_.peek_at(detail::punctuator_third_byte_offset)
+        this->cursor_.peek_at(detail::PUNCTUATOR_THIRD_BYTE_OFFSET)
     );
     if (!match.matched()) {
         return false;

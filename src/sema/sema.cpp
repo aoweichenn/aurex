@@ -16,12 +16,12 @@ SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::Diagno
     : module_(module), diagnostics_(diagnostics) {}
 
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
-    checked_.expr_types.assign(module_.exprs.size(), invalid_type_handle);
+    checked_.expr_types.assign(module_.exprs.size(), INVALID_TYPE_HANDLE);
     checked_.expr_c_names.assign(module_.exprs.size(), {});
     checked_.pattern_c_names.assign(module_.patterns.size(), {});
     checked_.pattern_case_sets.assign(module_.patterns.size(), {});
-    checked_.syntax_type_handles.assign(module_.types.size(), invalid_type_handle);
-    checked_.stmt_local_types.assign(module_.stmts.size(), invalid_type_handle);
+    checked_.syntax_type_handles.assign(module_.types.size(), INVALID_TYPE_HANDLE);
+    checked_.stmt_local_types.assign(module_.stmts.size(), INVALID_TYPE_HANDLE);
     checked_.item_c_names.assign(module_.items.size(), {});
     register_type_names();
     resolve_type_alias_decls();

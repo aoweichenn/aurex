@@ -24,22 +24,22 @@ enum class SymbolKind {
 };
 
 struct SymbolId {
-    base::u32 value = invalid_value;
-    static constexpr base::u32 invalid_value = std::numeric_limits<base::u32>::max();
+    base::u32 value = INVALID_VALUE;
+    static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr SymbolId invalid_symbol_id {SymbolId::invalid_value};
+inline constexpr SymbolId INVALID_SYMBOL_ID {SymbolId::INVALID_VALUE};
 
 [[nodiscard]] inline constexpr bool is_valid(const SymbolId id) noexcept {
-    return id.value != SymbolId::invalid_value;
+    return id.value != SymbolId::INVALID_VALUE;
 }
 
 struct Symbol {
     SymbolKind kind = SymbolKind::local;
     std::string name;
     std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    TypeHandle type = INVALID_TYPE_HANDLE;
     base::SourceRange range {};
     bool is_mutable = false;
     syntax::Visibility visibility = syntax::Visibility::public_;

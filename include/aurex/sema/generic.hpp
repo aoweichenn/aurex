@@ -14,8 +14,8 @@ namespace aurex::sema {
 
 struct GenericEnumTemplateInfo {
     std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    syntax::ItemId item = syntax::invalid_item_id;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
     std::vector<std::string> params;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
@@ -23,8 +23,8 @@ struct GenericEnumTemplateInfo {
 
 struct GenericStructTemplateInfo {
     std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    syntax::ItemId item = syntax::invalid_item_id;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
     std::vector<std::string> params;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
@@ -32,9 +32,9 @@ struct GenericStructTemplateInfo {
 
 struct GenericFunctionTemplateInfo {
     std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    syntax::ItemId item = syntax::invalid_item_id;
-    syntax::TypeId impl_type = syntax::invalid_type_id;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::TypeId impl_type = syntax::INVALID_TYPE_ID;
     std::vector<std::string> params;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
@@ -48,24 +48,24 @@ struct GenericTypeSubstitution {
 
 struct GenericEnumInstanceInfo {
     std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     std::vector<TypeHandle> args;
 };
 
 struct GenericStructInstanceInfo {
     std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     std::vector<TypeHandle> args;
 };
 
 struct GenericFunctionInstanceInfo {
     std::string name;
     std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    syntax::ItemId item = syntax::invalid_item_id;
-    TypeHandle method_owner_type = invalid_type_handle;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
     std::vector<TypeHandle> args;
-    TypeHandle return_type = invalid_type_handle;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::vector<TypeHandle> param_types;
     syntax::Visibility visibility = syntax::Visibility::public_;
     bool is_method = false;

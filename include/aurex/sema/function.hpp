@@ -13,9 +13,9 @@ namespace aurex::sema {
 struct FunctionSignature {
     std::string name;
     std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle method_owner_type = invalid_type_handle;
-    TypeHandle return_type = invalid_type_handle;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::vector<TypeHandle> param_types;
     base::SourceRange range {};
     bool is_extern_c = false;
@@ -27,8 +27,8 @@ struct FunctionSignature {
     bool is_method = false;
     bool has_self_param = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
-    syntax::ItemId prototype_item = syntax::invalid_item_id;
-    syntax::ItemId definition_item = syntax::invalid_item_id;
+    syntax::ItemId prototype_item = syntax::INVALID_ITEM_ID;
+    syntax::ItemId definition_item = syntax::INVALID_ITEM_ID;
 };
 
 } // namespace aurex::sema

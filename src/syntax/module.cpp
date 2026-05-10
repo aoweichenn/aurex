@@ -39,7 +39,7 @@ bool module_paths_equal(const ModulePath& lhs, const ModulePath& rhs) noexcept {
 }
 
 std::string mangle_c_symbol(const ModulePath& module, const std::string_view name) {
-    std::string result(aurex::base::abi::internal_symbol_prefix);
+    std::string result(aurex::base::abi::AUREX_INTERNAL_SYMBOL_PREFIX);
     for (std::string_view part : module.parts) {
         result += "_";
         for (const char c : part) {

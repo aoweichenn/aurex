@@ -12,14 +12,14 @@ namespace {
 
 using syntax::TokenKind;
 
-constexpr base::usize kStringDelimiterSize = 1;
-constexpr base::usize kStringDelimiterPairSize = kStringDelimiterSize * 2;
+constexpr base::usize PARSER_FN_STRING_DELIMITER_SIZE = 1;
+constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DELIMITER_SIZE * 2;
 
 [[nodiscard]] std::string_view unquote_string_literal(const std::string_view text) noexcept {
-    if (text.size() < kStringDelimiterPairSize) {
+    if (text.size() < PARSER_FN_STRING_DELIMITER_PAIR_SIZE) {
         return {};
     }
-    return text.substr(kStringDelimiterSize, text.size() - kStringDelimiterPairSize);
+    return text.substr(PARSER_FN_STRING_DELIMITER_SIZE, text.size() - PARSER_FN_STRING_DELIMITER_PAIR_SIZE);
 }
 
 } // namespace
@@ -148,7 +148,7 @@ bool ItemParser::recover_param_separator(bool& is_variadic) {
 
 syntax::TypeId ItemParser::parse_optional_return_type() {
     if (!this->match(TokenKind::arrow)) {
-        return syntax::invalid_type_id;
+        return syntax::INVALID_TYPE_ID;
     }
     return this->parse_type();
 }

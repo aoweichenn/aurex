@@ -18,17 +18,17 @@ struct PunctuatorMatch final {
 
 namespace detail {
 
-inline constexpr base::usize punctuator_second_byte_offset = 1;
-inline constexpr base::usize punctuator_third_byte_offset = 2;
-inline constexpr base::usize double_byte_punctuator_width = 2;
-inline constexpr base::usize ellipsis_punctuator_width = 3;
+inline constexpr base::usize PUNCTUATOR_SECOND_BYTE_OFFSET = 1;
+inline constexpr base::usize PUNCTUATOR_THIRD_BYTE_OFFSET = 2;
+inline constexpr base::usize PUNCTUATOR_DOUBLE_BYTE_WIDTH = 2;
+inline constexpr base::usize PUNCTUATOR_ELLIPSIS_WIDTH = 3;
 
 [[nodiscard]] inline PunctuatorMatch single_char_match(const syntax::TokenKind kind) noexcept {
-    return PunctuatorMatch {single_byte_lexeme_width, kind};
+    return PunctuatorMatch {LEXEME_SINGLE_BYTE_WIDTH, kind};
 }
 
 [[nodiscard]] inline PunctuatorMatch double_char_match(const syntax::TokenKind kind) noexcept {
-    return PunctuatorMatch {double_byte_punctuator_width, kind};
+    return PunctuatorMatch {PUNCTUATOR_DOUBLE_BYTE_WIDTH, kind};
 }
 
 [[nodiscard]] inline PunctuatorMatch match_two_or_one(
@@ -51,135 +51,135 @@ inline constexpr base::usize ellipsis_punctuator_width = 3;
     const char third
 ) noexcept {
     switch (first) {
-    case lexeme_dot:
-        if (second == lexeme_dot && third == lexeme_dot) {
-            return PunctuatorMatch {detail::ellipsis_punctuator_width, syntax::TokenKind::ellipsis};
+    case LEXEME_DOT:
+        if (second == LEXEME_DOT && third == LEXEME_DOT) {
+            return PunctuatorMatch {detail::PUNCTUATOR_ELLIPSIS_WIDTH, syntax::TokenKind::ellipsis};
         }
         return detail::single_char_match(syntax::TokenKind::dot);
-    case lexeme_colon:
+    case LEXEME_COLON:
         return detail::match_two_or_one(
             second,
-            lexeme_colon,
+            LEXEME_COLON,
             syntax::TokenKind::colon_colon,
             syntax::TokenKind::colon
         );
-    case lexeme_minus:
-        if (second == lexeme_greater) {
+    case LEXEME_MINUS:
+        if (second == LEXEME_GREATER) {
             return detail::double_char_match(syntax::TokenKind::arrow);
         }
-        if (second == lexeme_minus) {
+        if (second == LEXEME_MINUS) {
             return detail::double_char_match(syntax::TokenKind::minus_minus);
         }
-        if (second == lexeme_equal) {
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::minus_equal);
         }
         return detail::single_char_match(syntax::TokenKind::minus);
-    case lexeme_equal:
-        if (second == lexeme_greater) {
+    case LEXEME_EQUAL:
+        if (second == LEXEME_GREATER) {
             return detail::double_char_match(syntax::TokenKind::fat_arrow);
         }
-        if (second == lexeme_equal) {
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::equal_equal);
         }
         return detail::single_char_match(syntax::TokenKind::equal);
-    case lexeme_bang:
+    case LEXEME_BANG:
         return detail::match_two_or_one(
             second,
-            lexeme_equal,
+            LEXEME_EQUAL,
             syntax::TokenKind::bang_equal,
             syntax::TokenKind::bang
         );
-    case lexeme_less:
-        if (second == lexeme_equal) {
+    case LEXEME_LESS:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::less_equal);
         }
-        if (second == lexeme_less) {
-            if (third == lexeme_equal) {
-                return PunctuatorMatch {detail::ellipsis_punctuator_width, syntax::TokenKind::less_less_equal};
+        if (second == LEXEME_LESS) {
+            if (third == LEXEME_EQUAL) {
+                return PunctuatorMatch {detail::PUNCTUATOR_ELLIPSIS_WIDTH, syntax::TokenKind::less_less_equal};
             }
             return detail::double_char_match(syntax::TokenKind::less_less);
         }
         return detail::single_char_match(syntax::TokenKind::less);
-    case lexeme_greater:
-        if (second == lexeme_equal) {
+    case LEXEME_GREATER:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::greater_equal);
         }
-        if (second == lexeme_greater) {
-            if (third == lexeme_equal) {
-                return PunctuatorMatch {detail::ellipsis_punctuator_width, syntax::TokenKind::greater_greater_equal};
+        if (second == LEXEME_GREATER) {
+            if (third == LEXEME_EQUAL) {
+                return PunctuatorMatch {detail::PUNCTUATOR_ELLIPSIS_WIDTH, syntax::TokenKind::greater_greater_equal};
             }
             return detail::double_char_match(syntax::TokenKind::greater_greater);
         }
         return detail::single_char_match(syntax::TokenKind::greater);
-    case lexeme_amp:
-        if (second == lexeme_equal) {
+    case LEXEME_AMP:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::amp_equal);
         }
         return detail::match_two_or_one(
             second,
-            lexeme_amp,
+            LEXEME_AMP,
             syntax::TokenKind::amp_amp,
             syntax::TokenKind::amp
         );
-    case lexeme_pipe:
-        if (second == lexeme_equal) {
+    case LEXEME_PIPE:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::pipe_equal);
         }
         return detail::match_two_or_one(
             second,
-            lexeme_pipe,
+            LEXEME_PIPE,
             syntax::TokenKind::pipe_pipe,
             syntax::TokenKind::pipe
         );
-    case lexeme_l_paren:
+    case LEXEME_L_PAREN:
         return detail::single_char_match(syntax::TokenKind::l_paren);
-    case lexeme_r_paren:
+    case LEXEME_R_PAREN:
         return detail::single_char_match(syntax::TokenKind::r_paren);
-    case lexeme_l_brace:
+    case LEXEME_L_BRACE:
         return detail::single_char_match(syntax::TokenKind::l_brace);
-    case lexeme_r_brace:
+    case LEXEME_R_BRACE:
         return detail::single_char_match(syntax::TokenKind::r_brace);
-    case lexeme_l_bracket:
+    case LEXEME_L_BRACKET:
         return detail::single_char_match(syntax::TokenKind::l_bracket);
-    case lexeme_r_bracket:
+    case LEXEME_R_BRACKET:
         return detail::single_char_match(syntax::TokenKind::r_bracket);
-    case lexeme_comma:
+    case LEXEME_COMMA:
         return detail::single_char_match(syntax::TokenKind::comma);
-    case lexeme_semicolon:
+    case LEXEME_SEMICOLON:
         return detail::single_char_match(syntax::TokenKind::semicolon);
-    case lexeme_plus:
-        if (second == lexeme_plus) {
+    case LEXEME_PLUS:
+        if (second == LEXEME_PLUS) {
             return detail::double_char_match(syntax::TokenKind::plus_plus);
         }
-        if (second == lexeme_equal) {
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::plus_equal);
         }
         return detail::single_char_match(syntax::TokenKind::plus);
-    case lexeme_star:
-        if (second == lexeme_equal) {
+    case LEXEME_STAR:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::star_equal);
         }
         return detail::single_char_match(syntax::TokenKind::star);
-    case lexeme_slash:
-        if (second == lexeme_equal) {
+    case LEXEME_SLASH:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::slash_equal);
         }
         return detail::single_char_match(syntax::TokenKind::slash);
-    case lexeme_percent:
-        if (second == lexeme_equal) {
+    case LEXEME_PERCENT:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::percent_equal);
         }
         return detail::single_char_match(syntax::TokenKind::percent);
-    case lexeme_caret:
-        if (second == lexeme_equal) {
+    case LEXEME_CARET:
+        if (second == LEXEME_EQUAL) {
             return detail::double_char_match(syntax::TokenKind::caret_equal);
         }
         return detail::single_char_match(syntax::TokenKind::caret);
-    case lexeme_tilde:
+    case LEXEME_TILDE:
         return detail::single_char_match(syntax::TokenKind::tilde);
-    case lexeme_at:
+    case LEXEME_AT:
         return detail::single_char_match(syntax::TokenKind::at);
-    case lexeme_question:
+    case LEXEME_QUESTION:
         return detail::single_char_match(syntax::TokenKind::question);
     default:
         return {};

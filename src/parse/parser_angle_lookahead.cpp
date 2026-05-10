@@ -5,20 +5,20 @@ namespace {
 
 using syntax::TokenKind;
 
-constexpr int kGreaterGreaterTokenArity = 2;
-constexpr int kSingleGreaterTokenArity = 1;
-constexpr int kInitialAngleListDepth = 1;
-constexpr int kClosedAngleListDepth = 0;
-constexpr base::usize kNextTokenOffset = 1;
+constexpr int PARSER_ANGLE_GREATER_GREATER_TOKEN_ARITY = 2;
+constexpr int PARSER_ANGLE_SINGLE_GREATER_TOKEN_ARITY = 1;
+constexpr int PARSER_ANGLE_INITIAL_LIST_DEPTH = 1;
+constexpr int PARSER_ANGLE_CLOSED_LIST_DEPTH = 0;
+constexpr base::usize PARSER_ANGLE_NEXT_TOKEN_OFFSET = 1;
 
 [[nodiscard]] bool angle_list_follower_matches(
     const TokenKind kind,
     const AngleListFollower follower
 ) noexcept {
     switch (follower) {
-    case AngleListFollower::type_scope:
+    case AngleListFollower::TYPE_SCOPE:
         return kind == TokenKind::dot || kind == TokenKind::l_paren;
-    case AngleListFollower::struct_literal:
+    case AngleListFollower::STRUCT_LITERAL:
         return kind == TokenKind::l_brace;
     }
     return false;
@@ -34,7 +34,7 @@ constexpr base::usize kNextTokenOffset = 1;
     case TokenKind::fat_arrow:
         return true;
     case TokenKind::l_brace:
-        return follower == AngleListFollower::type_scope;
+        return follower == AngleListFollower::TYPE_SCOPE;
     default:
         return false;
     }
@@ -51,20 +51,20 @@ bool next_angle_list_has_follower(
         return false;
     }
 
-    base::usize index = less_position + kNextTokenOffset;
-    int depth = kInitialAngleListDepth;
+    base::usize index = less_position + PARSER_ANGLE_NEXT_TOKEN_OFFSET;
+    int depth = PARSER_ANGLE_INITIAL_LIST_DEPTH;
     while (index < tokens.size()) {
         const TokenKind kind = tokens[index].kind;
         if (kind == TokenKind::less) {
             ++depth;
         } else if (kind == TokenKind::greater || kind == TokenKind::greater_greater) {
             const int close_count = kind == TokenKind::greater_greater
-                ? kGreaterGreaterTokenArity
-                : kSingleGreaterTokenArity;
+                ? PARSER_ANGLE_GREATER_GREATER_TOKEN_ARITY
+                : PARSER_ANGLE_SINGLE_GREATER_TOKEN_ARITY;
             for (int i = 0; i < close_count; ++i) {
                 --depth;
-                if (depth == kClosedAngleListDepth) {
-                    const base::usize after = index + kNextTokenOffset;
+                if (depth == PARSER_ANGLE_CLOSED_LIST_DEPTH) {
+                    const base::usize after = index + PARSER_ANGLE_NEXT_TOKEN_OFFSET;
                     return after < tokens.size() && angle_list_follower_matches(tokens[after].kind, follower);
                 }
             }

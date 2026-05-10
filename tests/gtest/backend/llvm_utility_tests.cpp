@@ -75,4 +75,143 @@ TEST(CoreUnit, LlvmBackendUtilityHelpersCoverLiteralVariants) {
     EXPECT_EQ(backend::parse_byte_literal("b''"), 0U);
 }
 
+TEST(CoreUnit, BaseStringLiteralHelpersCoverUtf8AndEscapes) {
+    constexpr base::u32 BASE_STRING_LITERAL_UNICODE_NULL_TEST_VALUE = 0U;
+    constexpr base::u32 BASE_STRING_LITERAL_UNICODE_MAX_TEST_VALUE = 0x10FFFFU;
+    constexpr base::u32 BASE_STRING_LITERAL_UNICODE_SURROGATE_TEST_VALUE = 0xD800U;
+    constexpr base::u32 BASE_STRING_LITERAL_UNICODE_ABOVE_MAX_TEST_VALUE = 0x110000U;
+    constexpr base::usize BASE_STRING_LITERAL_UTF8_TWO_BYTE_WIDTH = 2;
+    constexpr base::usize BASE_STRING_LITERAL_UTF8_THREE_BYTE_WIDTH = 3;
+    constexpr base::usize BASE_STRING_LITERAL_UTF8_FOUR_BYTE_WIDTH = 4;
+    constexpr unsigned char BASE_STRING_LITERAL_INVALID_UTF8_LEAD_BYTE = 0xC3U;
+    constexpr unsigned char BASE_STRING_LITERAL_OVERLONG_UTF8_LEAD_BYTE = 0xC0U;
+    constexpr unsigned char BASE_STRING_LITERAL_OVERLONG_UTF8_TRAIL_BYTE = 0x80U;
+
+    const std::string BASE_STRING_LITERAL_UTF8_TWO_BYTE {"\xC2\xA9", BASE_STRING_LITERAL_UTF8_TWO_BYTE_WIDTH};
+    const std::string BASE_STRING_LITERAL_UTF8_THREE_BYTE {"\xE2\x82\xAC", BASE_STRING_LITERAL_UTF8_THREE_BYTE_WIDTH};
+    const std::string BASE_STRING_LITERAL_UTF8_FOUR_BYTE {"\xF0\x9F\x98\x80", BASE_STRING_LITERAL_UTF8_FOUR_BYTE_WIDTH};
+
+    EXPECT_TRUE(base::is_unicode_scalar(BASE_STRING_LITERAL_UNICODE_NULL_TEST_VALUE));
+    EXPECT_TRUE(base::is_unicode_scalar(BASE_STRING_LITERAL_UNICODE_MAX_TEST_VALUE));
+    EXPECT_FALSE(base::is_unicode_scalar(BASE_STRING_LITERAL_UNICODE_SURROGATE_TEST_VALUE));
+    EXPECT_FALSE(base::is_unicode_scalar(BASE_STRING_LITERAL_UNICODE_ABOVE_MAX_TEST_VALUE));
+
+    EXPECT_TRUE(base::is_valid_utf8("plain"));
+    EXPECT_TRUE(base::is_valid_utf8(BASE_STRING_LITERAL_UTF8_TWO_BYTE));
+    EXPECT_TRUE(base::is_valid_utf8(BASE_STRING_LITERAL_UTF8_THREE_BYTE));
+    EXPECT_TRUE(base::is_valid_utf8(BASE_STRING_LITERAL_UTF8_FOUR_BYTE));
+
+    std::string invalid_utf8;
+    invalid_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_INVALID_UTF8_LEAD_BYTE));
+    invalid_utf8.push_back('(');
+    EXPECT_FALSE(base::is_valid_utf8(invalid_utf8));
+
+    std::string overlong_utf8;
+    overlong_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_OVERLONG_UTF8_LEAD_BYTE));
+    overlong_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_OVERLONG_UTF8_TRAIL_BYTE));
+    EXPECT_FALSE(base::is_valid_utf8(overlong_utf8));
+
+    const base::StringLiteralDecode plain = base::decode_string_literal("\"plain\"", base::StringLiteralKind::string);
+    ASSERT_TRUE(plain.ok());
+    EXPECT_EQ(plain.decoded, "plain");
+
+    const base::StringLiteralDecode escapes =
+        base::decode_string_literal("\"\\0\\n\\r\\t\\\\\\\"\"", base::StringLiteralKind::string);
+    ASSERT_TRUE(escapes.ok());
+    ASSERT_EQ(escapes.decoded.size(), 6U);
+    EXPECT_EQ(escapes.decoded[0], '\0');
+    EXPECT_EQ(escapes.decoded[1], '\n');
+    EXPECT_EQ(escapes.decoded[2], '\r');
+    EXPECT_EQ(escapes.decoded[3], '\t');
+    EXPECT_EQ(escapes.decoded[4], '\\');
+    EXPECT_EQ(escapes.decoded[5], '"');
+
+    const base::StringLiteralDecode unicode_two =
+        base::decode_string_literal("\"\\u{00A9}\"", base::StringLiteralKind::string);
+    ASSERT_TRUE(unicode_two.ok());
+    EXPECT_EQ(unicode_two.decoded, BASE_STRING_LITERAL_UTF8_TWO_BYTE);
+
+    const base::StringLiteralDecode unicode_three =
+        base::decode_string_literal("\"\\u{20AC}\"", base::StringLiteralKind::string);
+    ASSERT_TRUE(unicode_three.ok());
+    EXPECT_EQ(unicode_three.decoded, BASE_STRING_LITERAL_UTF8_THREE_BYTE);
+
+    const base::StringLiteralDecode unicode_four =
+        base::decode_string_literal("\"\\u{1F600}\"", base::StringLiteralKind::string);
+    ASSERT_TRUE(unicode_four.ok());
+    EXPECT_EQ(unicode_four.decoded, BASE_STRING_LITERAL_UTF8_FOUR_BYTE);
+
+    const base::StringLiteralDecode c_string = base::decode_string_literal("c\"abc\"", base::StringLiteralKind::c_string);
+    ASSERT_TRUE(c_string.ok());
+    EXPECT_EQ(c_string.decoded, "abc");
+
+    const base::StringLiteralDecode invalid_escape = base::decode_string_literal("\"\\q\"", base::StringLiteralKind::string);
+    ASSERT_FALSE(invalid_escape.ok());
+    ASSERT_FALSE(invalid_escape.errors.empty());
+    expect_contains(invalid_escape.errors.front().message, "invalid escape sequence");
+
+    const base::StringLiteralDecode missing_digits = base::decode_string_literal("\"\\u{}\"", base::StringLiteralKind::string);
+    ASSERT_FALSE(missing_digits.ok());
+    ASSERT_FALSE(missing_digits.errors.empty());
+    expect_contains(missing_digits.errors.front().message, "has no digits");
+
+    const base::StringLiteralDecode non_hex_digit = base::decode_string_literal("\"\\u{12G}\"", base::StringLiteralKind::string);
+    ASSERT_FALSE(non_hex_digit.ok());
+    ASSERT_FALSE(non_hex_digit.errors.empty());
+    expect_contains(non_hex_digit.errors.front().message, "non-hex digit");
+
+    const base::StringLiteralDecode unterminated_unicode = base::decode_string_literal("\"\\u{12", base::StringLiteralKind::string);
+    ASSERT_FALSE(unterminated_unicode.ok());
+    ASSERT_FALSE(unterminated_unicode.errors.empty());
+    expect_contains(unterminated_unicode.errors.front().message, "unterminated unicode escape");
+
+    const base::StringLiteralDecode overflow_unicode =
+        base::decode_string_literal("\"\\u{110000}\"", base::StringLiteralKind::string);
+    ASSERT_FALSE(overflow_unicode.ok());
+    ASSERT_FALSE(overflow_unicode.errors.empty());
+    expect_contains(overflow_unicode.errors.front().message, "not a valid Unicode scalar");
+
+    const base::StringLiteralDecode c_nul = base::decode_string_literal("c\"a\\0b\"", base::StringLiteralKind::c_string);
+    ASSERT_FALSE(c_nul.ok());
+    ASSERT_FALSE(c_nul.errors.empty());
+    expect_contains(c_nul.errors.front().message, "interior NUL");
+
+    std::string truncated_escape = "\"abc";
+    truncated_escape.push_back('\\');
+    const base::StringLiteralDecode unterminated_escape =
+        base::decode_string_literal(truncated_escape, base::StringLiteralKind::string);
+    ASSERT_FALSE(unterminated_escape.ok());
+    ASSERT_FALSE(unterminated_escape.errors.empty());
+    expect_contains(unterminated_escape.errors.front().message, "unterminated escape sequence");
+}
+
+TEST(CoreUnit, BaseStringLiteralHelpersCoverUnicodeEscapeEdges) {
+    constexpr unsigned char BASE_STRING_LITERAL_UTF8_SINGLE_BYTE_MAX_TEST_VALUE = 0x7FU;
+    constexpr base::usize BASE_STRING_LITERAL_SINGLE_BYTE_WIDTH = 1;
+
+    const std::string single_byte_expected(
+        BASE_STRING_LITERAL_SINGLE_BYTE_WIDTH,
+        static_cast<char>(BASE_STRING_LITERAL_UTF8_SINGLE_BYTE_MAX_TEST_VALUE)
+    );
+    const base::StringLiteralDecode lowercase_hex =
+        base::decode_string_literal("\"\\u{7f}\"", base::StringLiteralKind::string);
+    ASSERT_TRUE(lowercase_hex.ok());
+    EXPECT_EQ(lowercase_hex.decoded, single_byte_expected);
+
+    const base::StringLiteralDecode missing_brace =
+        base::decode_string_literal("\"\\u1\"", base::StringLiteralKind::string);
+    ASSERT_FALSE(missing_brace.ok());
+    ASSERT_FALSE(missing_brace.errors.empty());
+    EXPECT_EQ(missing_brace.decoded, "u1");
+    expect_contains(missing_brace.errors.front().message, "unicode escape must use");
+
+    const base::StringLiteralDecode c_unicode_nul =
+        base::decode_string_literal("c\"\\u{0}\"", base::StringLiteralKind::c_string);
+    ASSERT_FALSE(c_unicode_nul.ok());
+    ASSERT_FALSE(c_unicode_nul.errors.empty());
+    ASSERT_EQ(c_unicode_nul.decoded.size(), BASE_STRING_LITERAL_SINGLE_BYTE_WIDTH);
+    EXPECT_EQ(c_unicode_nul.decoded.front(), '\0');
+    expect_contains(c_unicode_nul.errors.front().message, "interior NUL");
+}
+
 } // namespace aurex::test

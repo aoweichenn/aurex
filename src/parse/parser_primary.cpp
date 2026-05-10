@@ -10,12 +10,12 @@ namespace {
 using syntax::TokenKind;
 
 enum class BuiltinExprShape {
-    cast,
-    type,
-    ptr_addr,
-    ptr_from_addr,
-    str_unary,
-    str_from_bytes_unchecked,
+    CAST,
+    TYPE,
+    PTR_ADDR,
+    PTR_FROM_ADDR,
+    STR_UNARY,
+    STR_FROM_BYTES_UNCHECKED,
 };
 
 struct BuiltinExprSyntax {
@@ -24,29 +24,29 @@ struct BuiltinExprSyntax {
     syntax::ExprKind expr_kind;
 };
 
-constexpr BuiltinExprSyntax kBuiltinExprSyntax[] = {
-    {TokenKind::kw_cast, BuiltinExprShape::cast, syntax::ExprKind::cast},
-    {TokenKind::kw_ptr_cast, BuiltinExprShape::cast, syntax::ExprKind::ptr_cast},
-    {TokenKind::kw_bit_cast, BuiltinExprShape::cast, syntax::ExprKind::bit_cast},
-    {TokenKind::kw_size_of, BuiltinExprShape::type, syntax::ExprKind::size_of},
-    {TokenKind::kw_align_of, BuiltinExprShape::type, syntax::ExprKind::align_of},
-    {TokenKind::kw_ptr_addr, BuiltinExprShape::ptr_addr, syntax::ExprKind::ptr_addr},
+constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
+    {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
+    {TokenKind::kw_ptr_cast, BuiltinExprShape::CAST, syntax::ExprKind::ptr_cast},
+    {TokenKind::kw_bit_cast, BuiltinExprShape::CAST, syntax::ExprKind::bit_cast},
+    {TokenKind::kw_size_of, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
+    {TokenKind::kw_align_of, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},
+    {TokenKind::kw_ptr_addr, BuiltinExprShape::PTR_ADDR, syntax::ExprKind::ptr_addr},
     {
         TokenKind::kw_ptr_from_addr,
-        BuiltinExprShape::ptr_from_addr,
+        BuiltinExprShape::PTR_FROM_ADDR,
         syntax::ExprKind::ptr_from_addr,
     },
-    {TokenKind::kw_str_data, BuiltinExprShape::str_unary, syntax::ExprKind::str_data},
-    {TokenKind::kw_str_byte_len, BuiltinExprShape::str_unary, syntax::ExprKind::str_byte_len},
+    {TokenKind::kw_str_data, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
+    {TokenKind::kw_str_byte_len, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
     {
         TokenKind::kw_str_from_bytes_unchecked,
-        BuiltinExprShape::str_from_bytes_unchecked,
+        BuiltinExprShape::STR_FROM_BYTES_UNCHECKED,
         syntax::ExprKind::str_from_bytes_unchecked,
     },
 };
 
 [[nodiscard]] const BuiltinExprSyntax* builtin_expr_for(const TokenKind kind) noexcept {
-    for (const BuiltinExprSyntax& builtin : kBuiltinExprSyntax) {
+    for (const BuiltinExprSyntax& builtin : PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX) {
         if (builtin.token == kind) {
             return &builtin;
         }
@@ -101,26 +101,26 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
 syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) {
     const BuiltinExprSyntax* builtin = builtin_expr_for(this->peek().kind);
     if (builtin == nullptr) {
-        return syntax::invalid_expr_id;
+        return syntax::INVALID_EXPR_ID;
     }
 
     this->advance();
     BuiltinExprParser parser(this->parser_);
     switch (builtin->shape) {
-    case BuiltinExprShape::cast:
+    case BuiltinExprShape::CAST:
         return parser.parse_cast(builtin->expr_kind, context);
-    case BuiltinExprShape::type:
+    case BuiltinExprShape::TYPE:
         return parser.parse_type_builtin(builtin->expr_kind);
-    case BuiltinExprShape::ptr_addr:
+    case BuiltinExprShape::PTR_ADDR:
         return parser.parse_ptr_addr(context);
-    case BuiltinExprShape::ptr_from_addr:
+    case BuiltinExprShape::PTR_FROM_ADDR:
         return parser.parse_ptr_from_addr(context);
-    case BuiltinExprShape::str_unary:
+    case BuiltinExprShape::STR_UNARY:
         return parser.parse_str_unary(context);
-    case BuiltinExprShape::str_from_bytes_unchecked:
+    case BuiltinExprShape::STR_FROM_BYTES_UNCHECKED:
         return parser.parse_str_from_bytes_unchecked(context);
     }
-    return syntax::invalid_expr_id;
+    return syntax::INVALID_EXPR_ID;
 }
 
 void PrimaryExprParser::expect_grouped_expression_end() {

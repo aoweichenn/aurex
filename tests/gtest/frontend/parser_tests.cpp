@@ -256,7 +256,7 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
 }
 
 TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
-    constexpr base::SourceId kRecoverySourceId {8};
+    constexpr base::SourceId PARSER_TEST_RECOVERY_SOURCE_ID {8};
     constexpr std::string_view source =
         "module parser.recovery_boundary;\n"
         "let top_level = 1\n"
@@ -266,7 +266,7 @@ TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -367,7 +367,7 @@ TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
-    constexpr base::SourceId kTypeArgRecoverySourceId {9};
+    constexpr base::SourceId PARSER_TEST_TYPE_ARG_RECOVERY_SOURCE_ID {9};
     constexpr std::string_view source =
         "module parser.type_arg_recovery;\n"
         "type Broken = Pair<i32 bool, str>;\n"
@@ -377,7 +377,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kTypeArgRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_TYPE_ARG_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -396,7 +396,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
-    constexpr base::SourceId kMatchArmRecoverySourceId {10};
+    constexpr base::SourceId PARSER_TEST_MATCH_ARM_RECOVERY_SOURCE_ID {10};
     constexpr std::string_view source =
         "module parser.match_arm_recovery;\n"
         "fn recovered(value: i32) -> i32 {\n"
@@ -409,7 +409,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kMatchArmRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_MATCH_ARM_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -428,7 +428,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
-    constexpr base::SourceId kCallArgRecoverySourceId {11};
+    constexpr base::SourceId PARSER_TEST_CALL_ARG_RECOVERY_SOURCE_ID {11};
     constexpr std::string_view source =
         "module parser.call_arg_recovery;\n"
         "fn recovered() -> i32 {\n"
@@ -438,7 +438,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kCallArgRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_CALL_ARG_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -457,7 +457,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
-    constexpr base::SourceId kStructFieldRecoverySourceId {12};
+    constexpr base::SourceId PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID {12};
     constexpr std::string_view source =
         "module parser.struct_field_recovery;\n"
         "struct Pair { a: i32; b: i32; }\n"
@@ -468,7 +468,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kStructFieldRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -487,7 +487,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators) {
-    constexpr base::SourceId kParamRecoverySourceId {13};
+    constexpr base::SourceId PARSER_TEST_PARAM_RECOVERY_SOURCE_ID {13};
     constexpr std::string_view source =
         "module parser.parameter_recovery;\n"
         "fn recovered(a: i32 @ b: i32) -> i32 {\n"
@@ -496,7 +496,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kParamRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_PARAM_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -515,7 +515,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
-    constexpr base::SourceId kStructDeclFieldRecoverySourceId {14};
+    constexpr base::SourceId PARSER_TEST_STRUCT_DECL_FIELD_RECOVERY_SOURCE_ID {14};
     constexpr std::string_view source =
         "module parser.struct_decl_field_recovery;\n"
         "struct Pair { a: i32 @ b: i32; }\n"
@@ -525,7 +525,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kStructDeclFieldRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_STRUCT_DECL_FIELD_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -544,7 +544,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
-    constexpr base::SourceId kEnumCaseRecoverySourceId {15};
+    constexpr base::SourceId PARSER_TEST_ENUM_CASE_RECOVERY_SOURCE_ID {15};
     constexpr std::string_view source =
         "module parser.enum_case_recovery;\n"
         "enum Code: u8 { a = 1 @ b = 2, }\n"
@@ -554,7 +554,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kEnumCaseRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_ENUM_CASE_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -573,7 +573,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericParameterSeparators) {
-    constexpr base::SourceId kGenericParamRecoverySourceId {16};
+    constexpr base::SourceId PARSER_TEST_GENERIC_PARAM_RECOVERY_SOURCE_ID {16};
     constexpr std::string_view source =
         "module parser.generic_param_recovery;\n"
         "struct Box<T @ U> { value: T; }\n"
@@ -583,7 +583,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericParameterSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kGenericParamRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_GENERIC_PARAM_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -602,7 +602,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericParameterSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments) {
-    constexpr base::SourceId kAbiArgumentRecoverySourceId {17};
+    constexpr base::SourceId PARSER_TEST_ABI_ARGUMENT_RECOVERY_SOURCE_ID {17};
     constexpr std::string_view source =
         "module parser.abi_argument_recovery;\n"
         "extern c { fn puts(s: *const u8) -> i32 @name(\"puts\" @); }\n"
@@ -612,7 +612,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kAbiArgumentRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_ABI_ARGUMENT_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -631,7 +631,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments) {
-    constexpr base::SourceId kPathRecoverySourceId {18};
+    constexpr base::SourceId PARSER_TEST_PATH_RECOVERY_SOURCE_ID {18};
     constexpr std::string_view source =
         "module parser.path_recovery;\n"
         "import c.@;\n"
@@ -641,7 +641,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kPathRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_PATH_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -660,7 +660,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
-    constexpr base::SourceId kBuiltinArgRecoverySourceId {19};
+    constexpr base::SourceId PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID {19};
     constexpr std::string_view source =
         "module parser.builtin_arg_recovery;\n"
         "fn recovered(argc: i32) -> i32 {\n"
@@ -670,7 +670,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kBuiltinArgRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -689,7 +689,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases) {
-    constexpr base::SourceId kImportAliasRecoverySourceId {20};
+    constexpr base::SourceId PARSER_TEST_IMPORT_ALIAS_RECOVERY_SOURCE_ID {20};
     constexpr std::string_view source =
         "module parser.import_alias_recovery;\n"
         "import c.host as @;\n"
@@ -699,7 +699,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kImportAliasRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_IMPORT_ALIAS_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -718,7 +718,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators) {
-    constexpr base::SourceId kStatementTerminatorRecoverySourceId {21};
+    constexpr base::SourceId PARSER_TEST_STATEMENT_TERMINATOR_RECOVERY_SOURCE_ID {21};
     constexpr std::string_view source =
         "module parser.statement_terminator_recovery;\n"
         "fn recovered() -> i32 {\n"
@@ -729,7 +729,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kStatementTerminatorRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_STATEMENT_TERMINATOR_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -750,7 +750,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators) {
-    constexpr base::SourceId kForClauseRecoverySourceId {22};
+    constexpr base::SourceId PARSER_TEST_FOR_CLAUSE_RECOVERY_SOURCE_ID {22};
     constexpr std::string_view source =
         "module parser.for_clause_recovery;\n"
         "fn recovered() -> i32 {\n"
@@ -761,7 +761,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kForClauseRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_FOR_CLAUSE_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -780,7 +780,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners) {
-    constexpr base::SourceId kBlockOpenerRecoverySourceId {23};
+    constexpr base::SourceId PARSER_TEST_BLOCK_OPENER_RECOVERY_SOURCE_ID {23};
     constexpr std::string_view source =
         "module parser.block_opener_recovery;\n"
         "fn recovered(value: i32) -> i32 {\n"
@@ -792,7 +792,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kBlockOpenerRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_BLOCK_OPENER_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -811,7 +811,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners) {
 }
 
 TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem) {
-    constexpr base::SourceId kBlockEndRecoverySourceId {24};
+    constexpr base::SourceId PARSER_TEST_BLOCK_END_RECOVERY_SOURCE_ID {24};
     constexpr std::string_view source =
         "module parser.block_end_recovery;\n"
         "fn first() -> i32 {\n"
@@ -822,7 +822,7 @@ TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kBlockEndRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_BLOCK_END_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -841,7 +841,7 @@ TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
-    constexpr base::SourceId kExpressionDelimiterRecoverySourceId {25};
+    constexpr base::SourceId PARSER_TEST_EXPRESSION_DELIMITER_RECOVERY_SOURCE_ID {25};
     constexpr std::string_view source =
         "module parser.expression_delimiter_recovery;\n"
         "fn recovered(values: *mut i32) -> i32 {\n"
@@ -854,7 +854,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kExpressionDelimiterRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_EXPRESSION_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -876,7 +876,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters) {
-    constexpr base::SourceId kTypePatternDelimiterRecoverySourceId {26};
+    constexpr base::SourceId PARSER_TEST_TYPE_PATTERN_DELIMITER_RECOVERY_SOURCE_ID {26};
     constexpr std::string_view source =
         "module parser.type_pattern_delimiter_recovery;\n"
         "type Bytes = [4 @]u8;\n"
@@ -891,7 +891,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kTypePatternDelimiterRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_TYPE_PATTERN_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -912,7 +912,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters) {
-    constexpr base::SourceId kDeclarationDelimiterRecoverySourceId {27};
+    constexpr base::SourceId PARSER_TEST_DECLARATION_DELIMITER_RECOVERY_SOURCE_ID {27};
     constexpr std::string_view source =
         "module parser.declaration_delimiter_recovery;\n"
         "import c.host @;\n"
@@ -932,7 +932,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kDeclarationDelimiterRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_DECLARATION_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -959,7 +959,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
-    constexpr base::SourceId kCoreSeparatorRecoverySourceId {28};
+    constexpr base::SourceId PARSER_TEST_CORE_SEPARATOR_RECOVERY_SOURCE_ID {28};
     constexpr std::string_view source =
         "module parser.core_separator_recovery @;\n"
         "const Broken: i32 @= 1;\n"
@@ -973,7 +973,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kCoreSeparatorRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_CORE_SEPARATOR_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -999,7 +999,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
-    constexpr base::SourceId kControlSeparatorRecoverySourceId {29};
+    constexpr base::SourceId PARSER_TEST_CONTROL_SEPARATOR_RECOVERY_SOURCE_ID {29};
     constexpr std::string_view source =
         "module parser.control_separator_recovery;\n"
         "fn recovered(value: i32) -> i32 {\n"
@@ -1013,7 +1013,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kControlSeparatorRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_CONTROL_SEPARATOR_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -1033,7 +1033,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
-    constexpr base::SourceId kOpeningDelimiterRecoverySourceId {30};
+    constexpr base::SourceId PARSER_TEST_OPENING_DELIMITER_RECOVERY_SOURCE_ID {30};
     constexpr std::string_view source =
         "module parser.opening_delimiter_recovery;\n"
         "extern c {\n"
@@ -1048,7 +1048,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kOpeningDelimiterRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_OPENING_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -1070,7 +1070,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedIdentifiers) {
-    constexpr base::SourceId kIdentifierRecoverySourceId {31};
+    constexpr base::SourceId PARSER_TEST_IDENTIFIER_RECOVERY_SOURCE_ID {31};
     constexpr std::string_view source =
         "module parser.identifier_recovery;\n"
         "import c.host as @host;\n"
@@ -1087,7 +1087,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedIdentifiers) {
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(kIdentifierRecoverySourceId, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_IDENTIFIER_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 

@@ -46,8 +46,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(module.types.display_name(record_type), "unit.Pair");
     EXPECT_EQ(module.types.display_name(enum_type), "unit.Tag");
     EXPECT_EQ(module.types.display_name(opaque), "unit.Opaque");
-    EXPECT_EQ(module.types.display_name(sema::invalid_type_handle), "<invalid>");
-    EXPECT_EQ(module.types.c_name(sema::invalid_type_handle), "void");
+    EXPECT_EQ(module.types.display_name(sema::INVALID_TYPE_HANDLE), "<invalid>");
+    EXPECT_EQ(module.types.c_name(sema::INVALID_TYPE_HANDLE), "void");
     EXPECT_EQ(module.types.c_name(record_type), "unit_Pair");
     EXPECT_EQ(module.types.c_name(enum_type), "unit_Tag");
     EXPECT_EQ(module.types.c_name(opaque), "unit_Opaque");
@@ -68,7 +68,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     module.records.push_back(record);
 
     EXPECT_NE(ir::find_record(module, record_type), nullptr);
-    EXPECT_EQ(ir::find_record(module, sema::invalid_type_handle), nullptr);
+    EXPECT_EQ(ir::find_record(module, sema::INVALID_TYPE_HANDLE), nullptr);
     EXPECT_NE(ir::find_record_field(module, record_type, "right"), nullptr);
     EXPECT_EQ(ir::find_record_field(module, record_type, "missing"), nullptr);
     EXPECT_EQ(ir::record_field_index(record, "left"), 0U);
@@ -79,12 +79,12 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(is_valid(literal));
     EXPECT_TRUE(is_valid(constant));
     EXPECT_NE(ir::find_global_constant(module, constant), nullptr);
-    EXPECT_EQ(ir::find_global_constant(module, invalid_global_constant_id), nullptr);
+    EXPECT_EQ(ir::find_global_constant(module, INVALID_GLOBAL_CONSTANT_ID), nullptr);
 
     Function function = make_function(module, "helper", i32);
     const BlockId entry = add_block(function, "entry");
     EXPECT_TRUE(is_valid(entry));
-    EXPECT_FALSE(is_valid(invalid_block_id));
+    EXPECT_FALSE(is_valid(INVALID_BLOCK_ID));
 }
 
 TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {

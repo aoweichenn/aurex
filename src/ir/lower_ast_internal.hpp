@@ -15,42 +15,42 @@ namespace aurex::ir::detail {
     const syntax::ExprId expr
 ) noexcept {
     if (!syntax::is_valid(expr) || expr.value >= checked.expr_types.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return checked.expr_types[expr.value];
 }
 
 struct CallTarget {
-    FunctionId function = invalid_function_id;
+    FunctionId function = INVALID_FUNCTION_ID;
     std::string symbol;
 };
 
 struct PlaceAddress {
-    ValueId address = invalid_value_id;
+    ValueId address = INVALID_VALUE_ID;
     bool is_mutable = true;
 };
 
 struct LocalBinding {
-    ValueId slot = invalid_value_id;
+    ValueId slot = INVALID_VALUE_ID;
     bool is_mutable = false;
 };
 
 struct LoopContext {
-    BlockId break_target = invalid_block_id;
-    BlockId continue_target = invalid_block_id;
+    BlockId break_target = INVALID_BLOCK_ID;
+    BlockId continue_target = INVALID_BLOCK_ID;
     base::usize defer_depth = 0;
 };
 
 struct PendingConstant {
-    GlobalConstantId id = invalid_global_constant_id;
-    syntax::ExprId initializer = syntax::invalid_expr_id;
-    sema::TypeHandle type = sema::invalid_type_handle;
+    GlobalConstantId id = INVALID_GLOBAL_CONSTANT_ID;
+    syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     std::string literal_text;
     bool is_literal = false;
 };
 
 struct EnumCaseTypeKey {
-    base::u32 type = sema::TypeHandle::invalid_value;
+    base::u32 type = sema::TypeHandle::INVALID_VALUE;
     std::string_view case_name;
 
     [[nodiscard]] bool operator==(const EnumCaseTypeKey& other) const noexcept {
@@ -189,7 +189,7 @@ private:
     Module module_;
     Function* current_function_ = nullptr;
     const sema::GenericFunctionInstanceInfo* current_generic_function_instance_ = nullptr;
-    BlockId current_block_ = invalid_block_id;
+    BlockId current_block_ = INVALID_BLOCK_ID;
     bool lowering_constant_initializer_ = false;
     std::unordered_map<std::string, LocalBinding> locals_;
     std::unordered_map<std::string, FunctionId> function_symbols_;

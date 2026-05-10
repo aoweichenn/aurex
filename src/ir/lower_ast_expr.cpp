@@ -81,7 +81,7 @@ ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const sy
 
 ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
     if (current_function_ == nullptr || !is_valid(current_block_)) {
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
     const ValueId condition = lower_expr(expr.condition);
     const BlockId then_block = add_block(*current_function_, "if.expr.then" + std::to_string(current_function_->blocks.size()));
@@ -129,12 +129,12 @@ ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const syntax::Ex
 }
 
 ValueId Lowerer::lower_expr(const syntax::ExprId expr_id) {
-    return this->lower_expr(expr_id, sema::invalid_type_handle);
+    return this->lower_expr(expr_id, sema::INVALID_TYPE_HANDLE);
 }
 
 ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle expected_type) {
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
     const syntax::ExprNode& expr = this->ast_.exprs[expr_id.value];
     switch (expr.kind) {
@@ -166,7 +166,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::field:
         if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(this->value_symbol(expr_id, expr)); enum_case != nullptr) {
             if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(this->module_.types, enum_case->type)) {
-                return this->lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
+                return this->lower_enum_constructor(*enum_case, syntax::INVALID_EXPR_ID);
             }
             return this->append_enum_case_ref(enum_case->c_name, enum_case->type);
         }
@@ -190,9 +190,9 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::str_from_bytes_unchecked:
         return this->lower_str_from_bytes_unchecked_expr(expr_id, expr);
     case syntax::ExprKind::invalid:
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
-    return invalid_value_id;
+    return INVALID_VALUE_ID;
 }
 
 ValueId Lowerer::lower_literal_expr(
@@ -239,7 +239,7 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode
         enum_case != nullptr &&
         !sema::is_valid(enum_case->payload_type) &&
         is_payload_enum(this->module_.types, enum_case->type)) {
-        return this->lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
+        return this->lower_enum_constructor(*enum_case, syntax::INVALID_EXPR_ID);
     }
     if (const auto constant = this->constant_symbols_.find(symbol); constant != this->constant_symbols_.end()) {
         Value value;
@@ -252,7 +252,7 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode
     Value value;
     value.kind = ValueKind::load;
     value.name = expr.text.empty() ? "<global>" : std::string(expr.text);
-    value.type = sema::invalid_type_handle;
+    value.type = sema::INVALID_TYPE_HANDLE;
     return this->append_value(value);
 }
 
@@ -294,10 +294,10 @@ ValueId Lowerer::lower_binary_expr(
     const sema::TypeHandle rhs_type = this->expr_type(expr.binary_rhs);
     const sema::TypeHandle lhs_expected = !sema::is_valid(lhs_type) && this->module_.types.is_pointer(rhs_type)
         ? rhs_type
-        : sema::invalid_type_handle;
+        : sema::INVALID_TYPE_HANDLE;
     const sema::TypeHandle rhs_expected = !sema::is_valid(rhs_type) && this->module_.types.is_pointer(lhs_type)
         ? lhs_type
-        : sema::invalid_type_handle;
+        : sema::INVALID_TYPE_HANDLE;
     value.lhs = this->lower_expr(expr.binary_lhs, lhs_expected);
     value.rhs = this->lower_expr(expr.binary_rhs, rhs_expected);
     return this->append_value(value);
@@ -310,7 +310,7 @@ ValueId Lowerer::lower_call_expr(
     const std::string symbol = this->call_symbol(expr.callee);
     if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
         enum_case != nullptr && sema::is_valid(enum_case->payload_type)) {
-        return this->lower_enum_constructor(*enum_case, expr.args.empty() ? syntax::invalid_expr_id : expr.args.front());
+        return this->lower_enum_constructor(*enum_case, expr.args.empty() ? syntax::INVALID_EXPR_ID : expr.args.front());
     }
     Value value;
     value.kind = ValueKind::call;
@@ -328,7 +328,7 @@ ValueId Lowerer::lower_call_expr(
         const syntax::ExprNode& callee = this->ast_.exprs[expr.callee.value];
         const sema::TypeHandle receiver_type = this->expr_type(callee.object);
         const sema::TypeHandle param_type = this->call_param_type(target.function, 0);
-        ValueId receiver = invalid_value_id;
+        ValueId receiver = INVALID_VALUE_ID;
         if (sema::is_valid(param_type) &&
             this->module_.types.is_pointer(param_type) &&
             (!sema::is_valid(receiver_type) || !this->module_.types.is_pointer(receiver_type))) {
@@ -525,7 +525,7 @@ CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
     if (found != function_symbols_.end()) {
         return CallTarget {found->second, symbol};
     }
-    return CallTarget {invalid_function_id, symbol};
+    return CallTarget {INVALID_FUNCTION_ID, symbol};
 }
 
 std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
@@ -566,11 +566,11 @@ std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const syntax::Ex
 
 sema::TypeHandle Lowerer::call_param_type(const FunctionId function_id, const base::usize index) const noexcept {
     if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     const Function& function = module_.functions[function_id.value];
     if (index >= function.signature_params.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return function.signature_params[index].type;
 }
@@ -605,7 +605,7 @@ sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
         }
     }
     if (!syntax::is_valid(expr) || expr.value >= checked_.expr_types.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return checked_.expr_types[expr.value];
 }
@@ -618,7 +618,7 @@ sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept 
         }
     }
     if (!syntax::is_valid(type) || type.value >= checked_.syntax_type_handles.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return checked_.syntax_type_handles[type.value];
 }
@@ -631,7 +631,7 @@ sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexc
         }
     }
     if (!syntax::is_valid(stmt) || stmt.value >= checked_.stmt_local_types.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return checked_.stmt_local_types[stmt.value];
 }
@@ -641,16 +641,16 @@ sema::TypeHandle Lowerer::aggregate_field_type(
     const std::string_view name
 ) const noexcept {
     const RecordField* field = find_record_field(module_, aggregate_type, std::string(name));
-    return field == nullptr ? sema::invalid_type_handle : field->type;
+    return field == nullptr ? sema::INVALID_TYPE_HANDLE : field->type;
 }
 
 sema::TypeHandle Lowerer::local_load_type(const ValueId slot) const noexcept {
     if (!is_valid(slot) || slot.value >= module_.values.size()) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     const sema::TypeHandle slot_type = module_.values[slot.value].type;
     if (!sema::is_valid(slot_type) || !module_.types.is_pointer(slot_type)) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return module_.types.get(slot_type).pointee;
 }

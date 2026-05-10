@@ -38,8 +38,8 @@ namespace {
 Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked)
     : ast_(ast), checked_(checked) {
     module_.types = checked_.types;
-    item_functions_.assign(ast_.items.size(), invalid_function_id);
-    generic_function_instance_functions_.assign(checked_.generic_function_instances.size(), invalid_function_id);
+    item_functions_.assign(ast_.items.size(), INVALID_FUNCTION_ID);
+    generic_function_instance_functions_.assign(checked_.generic_function_instances.size(), INVALID_FUNCTION_ID);
     index_enum_cases();
 }
 
@@ -155,7 +155,7 @@ void Lowerer::declare_global_constants() {
             constant_symbols_[module_.constants[id.value].symbol] = id;
             pending_constants_.push_back(PendingConstant {
                 id,
-                syntax::invalid_expr_id,
+                syntax::INVALID_EXPR_ID,
                 module_.constants[id.value].type,
                 std::string(enum_case.value_text),
                 true,
@@ -179,7 +179,7 @@ void Lowerer::declare_global_constants() {
         constant_symbols_[module_.constants[id.value].symbol] = id;
         pending_constants_.push_back(PendingConstant {
             id,
-            syntax::invalid_expr_id,
+            syntax::INVALID_EXPR_ID,
             module_.constants[id.value].type,
             enum_case.value_text,
             true,
@@ -250,7 +250,7 @@ void Lowerer::lower_global_constant_initializers() {
         if (!is_valid(pending.id) || pending.id.value >= this->module_.constants.size()) {
             continue;
         }
-        ValueId initializer = invalid_value_id;
+        ValueId initializer = INVALID_VALUE_ID;
         if (pending.is_literal) {
             Value value;
             value.kind = ValueKind::integer_literal;
@@ -290,7 +290,7 @@ sema::TypeHandle Lowerer::enum_case_type(const std::string& symbol) const noexce
             return entry.second.type;
         }
     }
-    return sema::invalid_type_handle;
+    return sema::INVALID_TYPE_HANDLE;
 }
 
 sema::TypeHandle Lowerer::function_return_type(const base::u32 index, const syntax::ItemNode& item) const noexcept {

@@ -7,9 +7,9 @@
 
 namespace aurex::lex::detail {
 
-inline constexpr char cursor_eof_sentinel = '\0';
-inline constexpr base::usize cursor_current_lookahead = 0;
-inline constexpr base::usize cursor_next_lookahead = 1;
+inline constexpr char LEXER_CURSOR_EOF_SENTINEL = '\0';
+inline constexpr base::usize LEXER_CURSOR_CURRENT_LOOKAHEAD = 0;
+inline constexpr base::usize LEXER_CURSOR_NEXT_LOOKAHEAD = 1;
 
 class LexerCursor final {
 public:
@@ -53,29 +53,26 @@ public:
     [[nodiscard]] char peek_at(const base::usize lookahead) const noexcept {
         const base::usize target = offset_ + lookahead;
         if (target >= source_text_.size()) {
-            return cursor_eof_sentinel;
+            return LEXER_CURSOR_EOF_SENTINEL;
         }
         return source_text_[target];
     }
 
     [[nodiscard]] char peek() const noexcept {
-        if (offset_ >= source_text_.size()) {
-            return cursor_eof_sentinel;
-        }
-        return source_text_[offset_];
+        return peek_at(LEXER_CURSOR_CURRENT_LOOKAHEAD);
     }
 
     [[nodiscard]] char peek_next() const noexcept {
-        const base::usize target = offset_ + cursor_next_lookahead;
+        const base::usize target = offset_ + LEXER_CURSOR_NEXT_LOOKAHEAD;
         if (target >= source_text_.size()) {
-            return cursor_eof_sentinel;
+            return LEXER_CURSOR_EOF_SENTINEL;
         }
         return source_text_[target];
     }
 
     char advance() noexcept {
         if (is_at_end()) {
-            return cursor_eof_sentinel;
+            return LEXER_CURSOR_EOF_SENTINEL;
         }
         const char c = source_text_[offset_];
         ++offset_;

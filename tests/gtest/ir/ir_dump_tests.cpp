@@ -24,7 +24,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         {RecordField {"value", i32}},
     });
 
-    module.constants.push_back(GlobalConstant {"broken", "dump_broken", i32, invalid_value_id});
+    module.constants.push_back(GlobalConstant {"broken", "dump_broken", i32, INVALID_VALUE_ID});
 
     Function exported = make_function(module, "exported", void_type, Linkage::export_c, AbiCallConv::c);
     exported.symbol = "dump_exported";
@@ -51,7 +51,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     missing_constant.kind = ValueKind::constant_ref;
     missing_constant.type = i32;
     missing_constant.name = "fallback_constant";
-    missing_constant.constant = invalid_global_constant_id;
+    missing_constant.constant = INVALID_GLOBAL_CONSTANT_ID;
     const ValueId fallback_constant = builder.add(missing_constant);
 
     std::vector<ValueId> values {lhs, rhs, flag, ptr_value, text, fallback_constant};

@@ -9,7 +9,7 @@ namespace aurex::ir::detail {
 GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const noexcept {
     const std::string symbol = enum_case_symbol(name);
     const auto found = constant_symbols_.find(symbol);
-    return found == constant_symbols_.end() ? invalid_global_constant_id : found->second;
+    return found == constant_symbols_.end() ? INVALID_GLOBAL_CONSTANT_ID : found->second;
 }
 
 std::string Lowerer::enum_case_symbol(const std::string_view name) const noexcept {
@@ -79,10 +79,10 @@ ValueId Lowerer::append_match_pattern_condition(
 ) {
     const syntax::PatternNode* pattern = pattern_node(id);
     if (pattern == nullptr) {
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
     if (pattern->kind == syntax::PatternKind::or_pattern) {
-        ValueId condition = invalid_value_id;
+        ValueId condition = INVALID_VALUE_ID;
         for (syntax::PatternId alternative : pattern->alternatives) {
             const ValueId alternative_condition = append_match_pattern_condition(alternative, matched_tag, matched_type, payload_enum);
             if (!is_valid(condition)) {
@@ -133,19 +133,19 @@ ValueId Lowerer::append_match_pattern_condition(
 
 ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
     if (current_function_ == nullptr || !is_valid(current_block_) || expr.match_arms.empty()) {
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
 
     const sema::TypeHandle matched_type = expr_type(expr.match_value);
     const bool payload_enum = is_payload_enum(module_.types, matched_type);
     const ValueId matched = lower_expr(expr.match_value);
-    ValueId matched_slot = invalid_value_id;
+    ValueId matched_slot = INVALID_VALUE_ID;
     ValueId matched_tag = matched;
     if (payload_enum) {
         matched_slot = append_temp_alloca("match.value", matched_type);
         append_store(matched_slot, matched);
         matched_tag = append_load(
-            enum_field_addr(matched_slot, std::string(enum_tag_field_name)),
+            enum_field_addr(matched_slot, std::string(IR_ENUM_TAG_FIELD_NAME)),
             enum_tag_type(module_.types, matched_type),
             "match.tag"
         );
@@ -160,7 +160,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
         const syntax::PatternNode* pattern = pattern_node(arm.pattern);
         const bool fallback = is_fallback_match_pattern(arm.pattern);
         const BlockId arm_block = add_block(*current_function_, "match.arm" + std::to_string(current_function_->blocks.size()));
-        BlockId next_test_block = invalid_block_id;
+        BlockId next_test_block = INVALID_BLOCK_ID;
         const bool guarded = syntax::is_valid(arm.guard);
         const bool implicit_fallback = !guarded && (fallback || i + 1 == expr.match_arms.size());
         if (implicit_fallback) {
@@ -214,7 +214,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
 
 ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
     if (current_function_ == nullptr || !is_valid(current_block_)) {
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
 
     const sema::TypeHandle source_type = expr_type(expr.unary_operand);
@@ -230,7 +230,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::Expr
         return_failure_case = enum_case_by_type_and_case(return_type, "none");
     }
     if (success_case == nullptr || failure_case == nullptr || return_failure_case == nullptr) {
-        return invalid_value_id;
+        return INVALID_VALUE_ID;
     }
 
     const ValueId source_value = lower_expr(expr.unary_operand);
@@ -238,7 +238,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::Expr
     append_store(source_slot, source_value);
 
     const sema::TypeHandle tag_type = enum_tag_type(module_.types, source_type);
-    const ValueId tag = append_load(enum_field_addr(source_slot, std::string(enum_tag_field_name)), tag_type, "try.tag");
+    const ValueId tag = append_load(enum_field_addr(source_slot, std::string(IR_ENUM_TAG_FIELD_NAME)), tag_type, "try.tag");
     const ValueId success_tag = append_enum_tag_literal(success_case->c_name, tag_type);
 
     Value condition;
@@ -261,7 +261,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::Expr
     set_terminator(current_block_, branch);
 
     current_block_ = failure_block;
-    ValueId return_payload = invalid_value_id;
+    ValueId return_payload = INVALID_VALUE_ID;
     if (sema::is_valid(failure_case->payload_type)) {
         return_payload = append_enum_payload_load(source_slot, failure_case->payload_type, "try.err");
     }
@@ -303,7 +303,7 @@ ValueId Lowerer::append_enum_tag_literal(const std::string_view case_name, const
 ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, const syntax::ExprId payload_expr) {
     const ValueId payload_value = syntax::is_valid(payload_expr)
         ? lower_expr(payload_expr, enum_case.payload_type)
-        : invalid_value_id;
+        : INVALID_VALUE_ID;
     return append_enum_constructor(enum_case, payload_value);
 }
 
@@ -343,8 +343,8 @@ ValueId Lowerer::append_enum_constructor(const sema::EnumCaseInfo& enum_case, co
     Value result;
     result.kind = ValueKind::aggregate;
     result.type = enum_case.type;
-    result.fields.push_back(FieldValue {std::string(enum_tag_field_name), tag_id});
-    result.fields.push_back(FieldValue {std::string(enum_payload_field_name), payload_id});
+    result.fields.push_back(FieldValue {std::string(IR_ENUM_TAG_FIELD_NAME), tag_id});
+    result.fields.push_back(FieldValue {std::string(IR_ENUM_PAYLOAD_FIELD_NAME), payload_id});
     return append_value(result);
 }
 
@@ -353,7 +353,7 @@ ValueId Lowerer::append_enum_payload_load(
     const sema::TypeHandle payload_type,
     const std::string& name
 ) {
-    const ValueId storage_addr = enum_field_addr(enum_slot, std::string(enum_payload_field_name));
+    const ValueId storage_addr = enum_field_addr(enum_slot, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
     Value cast;
     cast.kind = ValueKind::cast;
     cast.type = module_.types.pointer(sema::PointerMutability::mut, payload_type);
@@ -395,7 +395,7 @@ void Lowerer::bind_payload_arm(const syntax::PatternNode& pattern, const sema::E
     if (!sema::is_valid(info.payload_type)) {
         return;
     }
-    const ValueId storage_addr = enum_field_addr(matched_slot, std::string(enum_payload_field_name));
+    const ValueId storage_addr = enum_field_addr(matched_slot, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
     Value cast;
     cast.kind = ValueKind::cast;
     cast.type = module_.types.pointer(sema::PointerMutability::mut, info.payload_type);

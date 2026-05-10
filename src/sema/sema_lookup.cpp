@@ -23,11 +23,11 @@ syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) con
     const auto* const begin = module_.items.data();
     const auto* const end = begin + module_.items.size();
     if (&item < begin || &item >= end) {
-        return syntax::invalid_module_id;
+        return syntax::INVALID_MODULE_ID;
     }
     const base::usize index = static_cast<base::usize>(&item - begin);
     if (index >= module_.item_modules.size()) {
-        return syntax::invalid_module_id;
+        return syntax::INVALID_MODULE_ID;
     }
     return module_.item_modules[index];
 }
@@ -41,9 +41,9 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
         if (report_unknown) {
             report(range, "unknown import alias: " + std::string(alias));
         }
-        return syntax::invalid_module_id;
+        return syntax::INVALID_MODULE_ID;
     }
-    syntax::ModuleId resolved = syntax::invalid_module_id;
+    syntax::ModuleId resolved = syntax::INVALID_MODULE_ID;
     for (const syntax::ResolvedImport& import : module_.modules[current_module_.value].imports) {
         if (import.alias != alias) {
             continue;
@@ -52,7 +52,7 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
             if (report_unknown) {
                 report(range, "ambiguous import alias: " + std::string(alias));
             }
-            return syntax::invalid_module_id;
+            return syntax::INVALID_MODULE_ID;
         }
         resolved = import.module;
     }
@@ -154,7 +154,7 @@ std::string SemanticAnalyzer::function_key(const syntax::ItemNode& function) con
     const TypeHandle owner_type =
         function.impl_type.value < checked_.syntax_type_handles.size()
             ? checked_.syntax_type_handles[function.impl_type.value]
-            : invalid_type_handle;
+            : INVALID_TYPE_HANDLE;
     return method_key(module, owner_type, function.name);
 }
 
@@ -183,7 +183,7 @@ bool SemanticAnalyzer::can_access(const syntax::ModuleId owner, const syntax::Vi
 
 syntax::ModuleId SemanticAnalyzer::owner_module(const TypeHandle owner_type) const noexcept {
     if (!is_valid(owner_type)) {
-        return syntax::invalid_module_id;
+        return syntax::INVALID_MODULE_ID;
     }
     if (const StructInfo* info = find_struct(owner_type); info != nullptr) {
         return info->module;
@@ -196,7 +196,7 @@ syntax::ModuleId SemanticAnalyzer::owner_module(const TypeHandle owner_type) con
         !found->second.empty()) {
         return found->second.front()->module;
     }
-    return syntax::invalid_module_id;
+    return syntax::INVALID_MODULE_ID;
 }
 
 const FunctionSignature* SemanticAnalyzer::find_method_in_owner_module(
@@ -307,7 +307,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
 ) {
     const FunctionSignature* imported_result = nullptr;
     const FunctionSignature* inaccessible_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         const auto found = checked_.functions.find(method_key(module, owner_type, name));
         if (found == checked_.functions.end()) {
@@ -361,14 +361,14 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
         return resolve_type_alias(found->second, opaque_allowed_as_pointee);
     }
 
-    TypeHandle imported_result = invalid_type_handle;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    TypeHandle imported_result = INVALID_TYPE_HANDLE;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;
         }
         const auto found = named_types_.find(module_key(module, name));
-        TypeHandle candidate = invalid_type_handle;
+        TypeHandle candidate = INVALID_TYPE_HANDLE;
         if (found != named_types_.end()) {
             const auto visibility = type_visibilities_.find(module_key(module, name));
             if (visibility != type_visibilities_.end() && !can_access(module, visibility->second)) {
@@ -387,7 +387,7 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
         }
         if (is_valid(imported_result)) {
             report(range, "ambiguous type name '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
-            return invalid_type_handle;
+            return INVALID_TYPE_HANDLE;
         }
         imported_result = candidate;
         result_module = module;
@@ -409,7 +409,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
         if (report_unknown) {
             report(range, "unknown type: " + std::string(name));
         }
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
 
     const std::string key = module_key(module, name);
@@ -419,7 +419,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
             if (report_unknown) {
                 report(range, "type is private: " + module_name(module) + "." + std::string(name));
             }
-            return invalid_type_handle;
+            return INVALID_TYPE_HANDLE;
         }
         return found->second;
     }
@@ -428,7 +428,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
             if (report_unknown) {
                 report(range, "type is private: " + module_name(module) + "." + std::string(name));
             }
-            return invalid_type_handle;
+            return INVALID_TYPE_HANDLE;
         }
         return resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
     }
@@ -436,7 +436,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
     if (report_unknown) {
         report(range, "unknown type in module " + module_name(module) + ": " + std::string(name));
     }
-    return invalid_type_handle;
+    return INVALID_TYPE_HANDLE;
 }
 
 const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
@@ -449,7 +449,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
     }
 
     const FunctionSignature* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;
@@ -506,7 +506,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
     }
 
     const EnumCaseInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;
@@ -680,7 +680,7 @@ const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const b
     }
 
     const Symbol* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;

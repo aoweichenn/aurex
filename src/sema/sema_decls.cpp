@@ -94,7 +94,7 @@ struct ConstDependencyFrame {
 };
 
 struct ConstEvalFrame {
-    syntax::ExprId expr_id = syntax::invalid_expr_id;
+    syntax::ExprId expr_id = syntax::INVALID_EXPR_ID;
     ConstEvalStage stage = ConstEvalStage::ENTER;
     base::usize child_count = 0;
     bool lhs_result = true;
@@ -102,7 +102,7 @@ struct ConstEvalFrame {
 
 struct AbiFunctionInfo {
     std::string name;
-    TypeHandle return_type = invalid_type_handle;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::vector<TypeHandle> param_types;
     base::SourceRange range {};
     bool is_extern_c = false;
@@ -124,7 +124,7 @@ void SemanticAnalyzer::register_type_names() {
         const std::string key = module_key(owner, item.name);
         const std::string qualified = qualified_name(owner, item.name);
         const std::string c_name = c_symbol_name(owner, item.name);
-        TypeHandle handle = invalid_type_handle;
+        TypeHandle handle = INVALID_TYPE_HANDLE;
         if (item.kind == syntax::ItemKind::type_alias) {
             TypeAliasInfo alias;
             alias.name = std::string(item.name);
@@ -296,7 +296,7 @@ void SemanticAnalyzer::register_value_names() {
                 }
                 continue;
             }
-            TypeHandle method_owner_type = invalid_type_handle;
+            TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
             if (item.is_variadic && !item.is_extern_c) {
                 report(item.range, "variadic functions are only supported for extern c declarations");
             }
@@ -317,7 +317,7 @@ void SemanticAnalyzer::register_value_names() {
                 report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
-            TypeHandle return_type = invalid_type_handle;
+            TypeHandle return_type = INVALID_TYPE_HANDLE;
             if (has_explicit_return) {
                 return_type = resolve_type(item.return_type);
             } else if (item.is_extern_c || item.is_export_c) {
@@ -327,7 +327,7 @@ void SemanticAnalyzer::register_value_names() {
                 report(item.range, "function prototype return type must be explicit");
                 return_type = checked_.types.builtin(BuiltinType::void_);
             } else {
-                return_type = invalid_type_handle;
+                return_type = INVALID_TYPE_HANDLE;
             }
             std::vector<TypeHandle> param_types;
             for (const syntax::ParamDecl& param : item.params) {
@@ -423,7 +423,7 @@ void SemanticAnalyzer::register_value_names() {
             if (is_valid(named_enum_type)) {
                 checked_.types.set_enum_underlying(named_enum_type, enum_type);
             }
-            TypeHandle payload_storage = invalid_type_handle;
+            TypeHandle payload_storage = INVALID_TYPE_HANDLE;
             base::u64 payload_size = 0;
             base::u64 payload_align = 1;
             bool contains_array_payload = false;
@@ -432,7 +432,7 @@ void SemanticAnalyzer::register_value_names() {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
                 const std::string enum_case_key = module_key(current_module_, full_name);
                 const bool has_payload = syntax::is_valid(enum_case.payload_type);
-                const TypeHandle payload_type = has_payload ? resolve_type(enum_case.payload_type) : invalid_type_handle;
+                const TypeHandle payload_type = has_payload ? resolve_type(enum_case.payload_type) : INVALID_TYPE_HANDLE;
                 base::u64 discriminant = 0;
                 const bool parsed_discriminant = parse_integer_literal_text(enum_case.value_text, discriminant);
                 if (!parsed_discriminant) {
@@ -513,7 +513,7 @@ void SemanticAnalyzer::register_value_names() {
             }
         }
     }
-    current_module_ = syntax::invalid_module_id;
+    current_module_ = syntax::INVALID_MODULE_ID;
 }
 
 void SemanticAnalyzer::validate_function_prototypes() {
@@ -698,7 +698,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
                 struct_found->second.fields.push_back(StructFieldInfo {
                     std::string(field.name),
                     {},
-                    syntax::invalid_module_id,
+                    syntax::INVALID_MODULE_ID,
                     field_type,
                     field.range,
                     field.visibility,
@@ -719,7 +719,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
             checked_.types.set_record_properties(found->second, contains_array, copyable && !contains_array);
         }
     }
-    current_module_ = syntax::invalid_module_id;
+    current_module_ = syntax::INVALID_MODULE_ID;
 }
 
 void SemanticAnalyzer::analyze_const_decls() {
@@ -799,7 +799,7 @@ void SemanticAnalyzer::analyze_const_decls() {
             }
         }
     }
-    this->current_module_ = syntax::invalid_module_id;
+    this->current_module_ = syntax::INVALID_MODULE_ID;
 }
 
 bool SemanticAnalyzer::is_const_evaluable_expr(

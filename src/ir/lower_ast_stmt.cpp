@@ -141,7 +141,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         }
         Terminator term;
         term.kind = TerminatorKind::branch;
-        term.target = loop_contexts_.empty() ? invalid_block_id : loop_contexts_.back().break_target;
+        term.target = loop_contexts_.empty() ? INVALID_BLOCK_ID : loop_contexts_.back().break_target;
         set_terminator(current_block_, term);
         break;
     }
@@ -151,7 +151,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         }
         Terminator term;
         term.kind = TerminatorKind::branch;
-        term.target = loop_contexts_.empty() ? invalid_block_id : loop_contexts_.back().continue_target;
+        term.target = loop_contexts_.empty() ? INVALID_BLOCK_ID : loop_contexts_.back().continue_target;
         set_terminator(current_block_, term);
         break;
     }
@@ -183,7 +183,7 @@ void Lowerer::lower_if(const syntax::StmtNode& stmt) {
     const ValueId condition = lower_expr(stmt.condition);
     const BlockId then_block = add_block(*current_function_, "if.then" + std::to_string(current_function_->blocks.size()));
     const BlockId else_block = add_block(*current_function_, "if.else" + std::to_string(current_function_->blocks.size()));
-    BlockId join_block = invalid_block_id;
+    BlockId join_block = INVALID_BLOCK_ID;
     const auto ensure_join_block = [&]() -> BlockId {
         if (!is_valid(join_block)) {
             join_block = add_block(*current_function_, "if.join" + std::to_string(current_function_->blocks.size()));
@@ -217,7 +217,7 @@ void Lowerer::lower_if(const syntax::StmtNode& stmt) {
         append_branch_if_open(ensure_join_block());
     }
 
-    current_block_ = is_valid(join_block) ? join_block : invalid_block_id;
+    current_block_ = is_valid(join_block) ? join_block : INVALID_BLOCK_ID;
 }
 
 void Lowerer::lower_while(const syntax::StmtNode& stmt) {

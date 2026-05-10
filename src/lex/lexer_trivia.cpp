@@ -15,13 +15,13 @@ void Lexer::skip_trivia() {
             ++trivia_width;
         }
         this->advance_bytes(trivia_width);
-        if (this->peek() == lexeme_slash) {
+        if (this->peek() == LEXEME_SLASH) {
             const char next = this->peek_next();
-            if (next == lexeme_slash) {
+            if (next == LEXEME_SLASH) {
                 this->scan_line_comment();
                 continue;
             }
-            if (next == lexeme_star) {
+            if (next == LEXEME_STAR) {
                 this->scan_block_comment();
                 continue;
             }
@@ -32,24 +32,24 @@ void Lexer::skip_trivia() {
 
 void Lexer::scan_line_comment() {
     const std::string_view remaining = this->cursor_.remaining_text();
-    const base::usize line_end = remaining.find(lexeme_line_feed);
+    const base::usize line_end = remaining.find(LEXEME_LINE_FEED);
     if (line_end == std::string_view::npos) {
         this->advance_bytes(remaining.size());
         return;
     }
-    this->advance_bytes(line_end + single_byte_lexeme_width);
+    this->advance_bytes(line_end + LEXEME_SINGLE_BYTE_WIDTH);
 }
 
 void Lexer::scan_block_comment() {
     const base::usize begin = this->cursor_.offset();
     const std::string_view remaining = this->cursor_.remaining_text();
-    const base::usize suffix_offset = remaining.find(block_comment_suffix, block_comment_prefix.size());
+    const base::usize suffix_offset = remaining.find(LEXEME_BLOCK_COMMENT_SUFFIX, LEXEME_BLOCK_COMMENT_PREFIX.size());
     if (suffix_offset != std::string_view::npos) {
-        this->advance_bytes(suffix_offset + block_comment_suffix.size());
+        this->advance_bytes(suffix_offset + LEXEME_BLOCK_COMMENT_SUFFIX.size());
         return;
     }
     this->advance_bytes(remaining.size());
-    this->report_current(begin, unterminated_block_comment_message);
+    this->report_current(begin, LEXEME_UNTERMINATED_BLOCK_COMMENT_MESSAGE);
 }
 
 } // namespace aurex::lex

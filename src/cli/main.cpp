@@ -68,7 +68,7 @@ int main(const int argc, char** argv) {
             print_usage(std::cout, argv[0]);
             return 0;
         } else if (arg == "--version") {
-            std::cout << aurex::base::config::version_string << "\n";
+            std::cout << aurex::base::config::AUREX_VERSION_STRING << "\n";
             return 0;
         } else if (arg == "-o") {
             if (i + 1 >= argc) {

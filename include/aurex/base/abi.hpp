@@ -4,6 +4,6 @@
 
 namespace aurex::base::abi {
 
-inline constexpr std::string_view internal_symbol_prefix = "m0";
+inline constexpr std::string_view AUREX_INTERNAL_SYMBOL_PREFIX = "m0";
 
 } // namespace aurex::base::abi

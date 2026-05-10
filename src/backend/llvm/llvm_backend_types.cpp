@@ -113,7 +113,7 @@ llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type) 
 sema::TypeHandle LlvmEmitter::pointee_type(const ValueId value) const noexcept {
     const sema::TypeHandle type = this->source_.values[value.value].type;
     if (!this->source_.types.is_pointer(type)) {
-        return sema::invalid_type_handle;
+        return sema::INVALID_TYPE_HANDLE;
     }
     return this->source_.types.get(type).pointee;
 }

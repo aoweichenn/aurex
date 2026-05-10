@@ -87,7 +87,7 @@ std::string dump_checked_module(const CheckedModule& checked) {
     out << "  type_aliases " << alias_names.size() << "\n";
     for (const std::string& name : alias_names) {
         const TypeAliasInfo& alias = checked.type_aliases.at(name);
-        TypeHandle resolved = invalid_type_handle;
+        TypeHandle resolved = INVALID_TYPE_HANDLE;
         if (alias.target.value < checked.syntax_type_handles.size()) {
             resolved = checked.syntax_type_handles[alias.target.value];
         }

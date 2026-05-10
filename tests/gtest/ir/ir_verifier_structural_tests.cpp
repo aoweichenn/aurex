@@ -148,7 +148,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     }
     {
         Module module = make_simple_module();
-        module.functions[0].blocks[0].terminator.value = invalid_value_id;
+        module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
         expect_error_contains(ir::verify_module(module), "return value value id is invalid");
     }
     {
@@ -488,8 +488,8 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
-        const ValueId first = add_value(module, Value {ValueKind::constant_ref, i32, "", "", invalid_function_id, invalid_value_id, invalid_value_id, invalid_value_id, invalid_value_id, {}, {}, {}, GlobalConstantId {1}});
-        const ValueId second = add_value(module, Value {ValueKind::constant_ref, i32, "", "", invalid_function_id, invalid_value_id, invalid_value_id, invalid_value_id, invalid_value_id, {}, {}, {}, GlobalConstantId {0}});
+        const ValueId first = add_value(module, Value {ValueKind::constant_ref, i32, "", "", INVALID_FUNCTION_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, {}, {}, {}, GlobalConstantId {1}});
+        const ValueId second = add_value(module, Value {ValueKind::constant_ref, i32, "", "", INVALID_FUNCTION_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, {}, {}, {}, GlobalConstantId {0}});
         [[maybe_unused]] const GlobalConstantId first_constant =
             add_global_constant(module, GlobalConstant {"a", "unit_a", i32, first});
         [[maybe_unused]] const GlobalConstantId second_constant =
@@ -499,7 +499,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
-        const ValueId invalid_ref = add_value(module, Value {ValueKind::constant_ref, i32, "", "", invalid_function_id, invalid_value_id, invalid_value_id, invalid_value_id, invalid_value_id, {}, {}, {}, GlobalConstantId {42}});
+        const ValueId invalid_ref = add_value(module, Value {ValueKind::constant_ref, i32, "", "", INVALID_FUNCTION_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, INVALID_VALUE_ID, {}, {}, {}, GlobalConstantId {42}});
         [[maybe_unused]] const GlobalConstantId constant =
             add_global_constant(module, GlobalConstant {"bad", "unit_bad", i32, invalid_ref});
         expect_error_contains(ir::verify_module(module), "constant reference id is invalid");
@@ -897,7 +897,7 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
     const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
     const TypeHandle array_i32 = module.types.array(IR_VERIFIER_NESTED_ARRAY_INNER_COUNT, i32);
     const TypeHandle const_ptr_i32 = ptr(module, PointerMutability::const_, i32);
-    const TypeHandle mut_ptr_invalid = ptr(module, PointerMutability::mut, sema::invalid_type_handle);
+    const TypeHandle mut_ptr_invalid = ptr(module, PointerMutability::mut, sema::INVALID_TYPE_HANDLE);
     const TypeHandle mut_ptr_opaque = ptr(module, PointerMutability::mut, opaque_type);
     const TypeHandle const_array_ptr = ptr(module, PointerMutability::const_, array_i32);
     const TypeHandle mut_bool_ptr = ptr(module, PointerMutability::mut, bool_type);
@@ -919,7 +919,7 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
     const ValueId i32_two = builder.add(integer_value(i32, IR_VERIFIER_LITERAL_TWO));
     const ValueId usize_one = builder.add(integer_value(usize, IR_VERIFIER_LITERAL_ONE));
     const ValueId invalid_typed_literal =
-        builder.add(typed_value(ValueKind::integer_literal, sema::invalid_type_handle, IR_VERIFIER_LITERAL_ONE));
+        builder.add(typed_value(ValueKind::integer_literal, sema::INVALID_TYPE_HANDLE, IR_VERIFIER_LITERAL_ONE));
     const ValueId record_value = builder.add(typed_value(ValueKind::undef, record_type));
 
     const ValueId alloca_not_pointer = builder.add(alloca_value(i32));
@@ -970,7 +970,7 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
 
     Value unary_missing_operand = typed_value(ValueKind::unary, i32);
     unary_missing_operand.unary_op = UnaryOp::logical_not;
-    unary_missing_operand.lhs = invalid_value_id;
+    unary_missing_operand.lhs = INVALID_VALUE_ID;
     const ValueId unary_missing_operand_id = builder.add(unary_missing_operand);
 
     Value unary_invalid_operand = typed_value(ValueKind::unary, i32);

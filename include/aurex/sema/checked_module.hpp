@@ -15,8 +15,8 @@ namespace aurex::sema {
 struct StructFieldInfo {
     std::string name;
     std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    TypeHandle type = INVALID_TYPE_HANDLE;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
@@ -24,8 +24,8 @@ struct StructFieldInfo {
 struct StructInfo {
     std::string name;
     std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    TypeHandle type = INVALID_TYPE_HANDLE;
     std::vector<StructFieldInfo> fields;
     bool is_opaque = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
@@ -34,9 +34,9 @@ struct StructInfo {
 struct EnumCaseInfo {
     std::string name;
     std::string c_name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    TypeHandle type = invalid_type_handle;
-    TypeHandle payload_type = invalid_type_handle;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    TypeHandle payload_type = INVALID_TYPE_HANDLE;
     std::string value_text;
     base::SourceRange range {};
     std::string enum_name;
@@ -46,8 +46,8 @@ struct EnumCaseInfo {
 
 struct TypeAliasInfo {
     std::string name;
-    syntax::ModuleId module = syntax::invalid_module_id;
-    syntax::TypeId target = syntax::invalid_type_id;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::TypeId target = syntax::INVALID_TYPE_ID;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
 };

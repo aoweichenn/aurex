@@ -32,16 +32,16 @@ using ir::ValueId;
 using ir::ValueKind;
 using ir::add_block;
 using ir::detail::Lowerer;
-using ir::invalid_block_id;
-using ir::invalid_function_id;
-using ir::invalid_value_id;
+using ir::INVALID_BLOCK_ID;
+using ir::INVALID_FUNCTION_ID;
+using ir::INVALID_VALUE_ID;
 using ir::is_valid;
 using sema::BuiltinType;
 using sema::CheckedModule;
 using sema::EnumCaseInfo;
 using sema::PointerMutability;
 using sema::TypeHandle;
-using sema::invalid_type_handle;
+using sema::INVALID_TYPE_HANDLE;
 using syntax::ExprId;
 using syntax::ExprKind;
 using syntax::ItemId;
@@ -70,7 +70,7 @@ using syntax::TypeId;
 
 void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle type) {
     if (checked.expr_types.size() <= expr.value) {
-        checked.expr_types.resize(expr.value + 1, invalid_type_handle);
+        checked.expr_types.resize(expr.value + 1, INVALID_TYPE_HANDLE);
     }
     if (checked.expr_c_names.size() <= expr.value) {
         checked.expr_c_names.resize(expr.value + 1);
@@ -115,23 +115,23 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     const ExprId integer = push_integer(ast);
     const ExprId invalid_expr = push_invalid_expr(ast);
 
-    set_expr_type(checked, missing_name, invalid_type_handle);
+    set_expr_type(checked, missing_name, INVALID_TYPE_HANDLE);
     set_expr_type(checked, none_name, enum_type);
     set_expr_type(checked, integer, i32);
-    set_expr_type(checked, invalid_expr, invalid_type_handle);
+    set_expr_type(checked, invalid_expr, INVALID_TYPE_HANDLE);
 
     Lowerer lowerer(ast, checked);
 
-    EXPECT_FALSE(sema::is_valid(lowerer.expr_type(syntax::invalid_expr_id)));
+    EXPECT_FALSE(sema::is_valid(lowerer.expr_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(sema::is_valid(lowerer.expr_type(ExprId {999})));
-    EXPECT_FALSE(sema::is_valid(lowerer.syntax_type(syntax::invalid_type_id)));
+    EXPECT_FALSE(sema::is_valid(lowerer.syntax_type(syntax::INVALID_TYPE_ID)));
     EXPECT_FALSE(sema::is_valid(lowerer.syntax_type(TypeId {999})));
-    EXPECT_FALSE(sema::is_valid(lowerer.stmt_local_type(syntax::invalid_stmt_id)));
+    EXPECT_FALSE(sema::is_valid(lowerer.stmt_local_type(syntax::INVALID_STMT_ID)));
     EXPECT_FALSE(sema::is_valid(lowerer.stmt_local_type(StmtId {999})));
 
-    EXPECT_EQ(lowerer.lower_expr(syntax::invalid_expr_id).value, invalid_value_id.value);
-    EXPECT_EQ(lowerer.lower_expr(invalid_expr).value, invalid_value_id.value);
-    EXPECT_EQ(lowerer.lower_if_expr(integer, ast.exprs[integer.value]).value, invalid_value_id.value);
+    EXPECT_EQ(lowerer.lower_expr(syntax::INVALID_EXPR_ID).value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_expr(invalid_expr).value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_if_expr(integer, ast.exprs[integer.value]).value, INVALID_VALUE_ID.value);
 
     const ValueId unknown_value = lowerer.lower_name(missing_name, ast.exprs[missing_name.value]);
     ASSERT_TRUE(is_valid(unknown_value));
@@ -147,25 +147,25 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     EXPECT_TRUE(lowerer.module_.types.same(lowerer.module_.values[enum_value.value].type, enum_type));
 
     EXPECT_EQ(lowerer.call_symbol(missing_name), "missing");
-    EXPECT_EQ(lowerer.call_symbol(syntax::invalid_expr_id), "<invalid>");
+    EXPECT_EQ(lowerer.call_symbol(syntax::INVALID_EXPR_ID), "<invalid>");
     const ir::detail::CallTarget missing_target = lowerer.call_target(missing_name);
     EXPECT_FALSE(is_valid(missing_target.function));
     EXPECT_EQ(missing_target.symbol, "missing");
     EXPECT_EQ(lowerer.value_symbol(missing_name, ast.exprs[missing_name.value]), "missing");
 
-    EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(invalid_function_id, 0)));
+    EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(INVALID_FUNCTION_ID, 0)));
     EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(FunctionId {999}, 0)));
-    EXPECT_FALSE(sema::is_valid(lowerer.variadic_argument_type(invalid_type_handle)));
+    EXPECT_FALSE(sema::is_valid(lowerer.variadic_argument_type(INVALID_TYPE_HANDLE)));
 
-    EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(invalid_value_id)));
+    EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(INVALID_VALUE_ID)));
     const ValueId str_value = lowerer.append_value(typed_value(ValueKind::string_literal, str, "text"));
     ASSERT_TRUE(is_valid(str_value));
     EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(str_value)));
 
-    EXPECT_EQ(lowerer.coerce_value(invalid_value_id, i32).value, invalid_value_id.value);
+    EXPECT_EQ(lowerer.coerce_value(INVALID_VALUE_ID, i32).value, INVALID_VALUE_ID.value);
     Value null_value;
     null_value.kind = ValueKind::null_literal;
-    null_value.type = invalid_type_handle;
+    null_value.type = INVALID_TYPE_HANDLE;
     const ValueId null_id = lowerer.append_value(null_value);
     EXPECT_EQ(lowerer.coerce_value(null_id, ptr_i32).value, null_id.value);
     ASSERT_LT(null_id.value, lowerer.module_.values.size());
@@ -202,10 +202,10 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
 
     Lowerer lowerer(ast, checked);
 
-    EXPECT_EQ(lowerer.lower_place_address(syntax::invalid_expr_id).address.value, invalid_value_id.value);
-    EXPECT_EQ(lowerer.lower_place_address(ExprId {999}).address.value, invalid_value_id.value);
-    EXPECT_EQ(lowerer.lower_place_address(missing_place).address.value, invalid_value_id.value);
-    EXPECT_EQ(lowerer.lower_place_address(integer).address.value, invalid_value_id.value);
+    EXPECT_EQ(lowerer.lower_place_address(syntax::INVALID_EXPR_ID).address.value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_place_address(ExprId {999}).address.value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_place_address(missing_place).address.value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_place_address(integer).address.value, INVALID_VALUE_ID.value);
 
     Value slot_value;
     slot_value.kind = ValueKind::alloca;
@@ -326,7 +326,7 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
     static_cast<void>(ast.push_item(exported));
     ast.item_modules[0] = syntax::ModuleId {0};
 
-    checked.syntax_type_handles.resize(return_type.value + 1, invalid_type_handle);
+    checked.syntax_type_handles.resize(return_type.value + 1, INVALID_TYPE_HANDLE);
     checked.syntax_type_handles[return_type.value] = checked.types.builtin(BuiltinType::i32);
 
     sema::GenericFunctionInstanceInfo invalid_instance;

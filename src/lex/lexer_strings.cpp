@@ -9,10 +9,10 @@ namespace aurex::lex {
 
 namespace {
 
-constexpr unsigned char ascii_single_byte_max = 0x7F;
+constexpr unsigned char LEXER_ASCII_SINGLE_BYTE_MAX = 0x7F;
 
 [[nodiscard]] bool is_non_ascii_byte(const char c) noexcept {
-    return static_cast<unsigned char>(c) > ascii_single_byte_max;
+    return static_cast<unsigned char>(c) > LEXER_ASCII_SINGLE_BYTE_MAX;
 }
 
 } // namespace
@@ -22,17 +22,17 @@ void Lexer::scan_string(const base::usize begin) {
         begin,
         syntax::TokenKind::string_literal,
         base::StringLiteralKind::string,
-        unterminated_string_message
+        LEXEME_UNTERMINATED_STRING_MESSAGE
     );
 }
 
 void Lexer::scan_c_string(const base::usize begin) {
-    this->advance_bytes(c_string_prefix.size());
+    this->advance_bytes(LEXEME_C_STRING_PREFIX.size());
     this->scan_string_body(
         begin,
         syntax::TokenKind::c_string_literal,
         base::StringLiteralKind::c_string,
-        unterminated_c_string_message
+        LEXEME_UNTERMINATED_C_STRING_MESSAGE
     );
 }
 
@@ -51,12 +51,12 @@ void Lexer::scan_string_body(
             needs_decode_validation = true;
             continue;
         }
-        if (c == lexeme_escape) {
+        if (c == LEXEME_ESCAPE) {
             escaped = true;
             needs_decode_validation = true;
             continue;
         }
-        if (c == lexeme_double_quote) {
+        if (c == LEXEME_DOUBLE_QUOTE) {
             if (!needs_decode_validation) {
                 this->add_nonempty_token(token_kind, begin, this->cursor_.offset());
                 return;
@@ -76,10 +76,10 @@ void Lexer::scan_string_body(
             return;
         }
         if (is_non_ascii_byte(c) ||
-            (literal_kind == base::StringLiteralKind::c_string && c == lexeme_nul)) {
+            (literal_kind == base::StringLiteralKind::c_string && c == LEXEME_NUL)) {
             needs_decode_validation = true;
         }
-        if (c == lexeme_line_feed) {
+        if (c == LEXEME_LINE_FEED) {
             this->report_current(begin, unterminated_message);
             this->finish_invalid_token(begin);
             return;
@@ -90,15 +90,15 @@ void Lexer::scan_string_body(
 }
 
 void Lexer::scan_byte(const base::usize begin) {
-    this->advance_bytes(byte_literal_prefix.size());
+    this->advance_bytes(LEXEME_BYTE_LITERAL_PREFIX.size());
 
-    if (this->is_at_end() || this->peek() == lexeme_line_feed) {
-        this->report_current(begin, unterminated_byte_message);
+    if (this->is_at_end() || this->peek() == LEXEME_LINE_FEED) {
+        this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
         this->finish_invalid_token(begin);
         return;
     }
 
-    if (this->peek() == lexeme_escape) {
+    if (this->peek() == LEXEME_ESCAPE) {
         this->advance();
         if (!this->is_at_end()) {
             this->advance();
@@ -107,18 +107,18 @@ void Lexer::scan_byte(const base::usize begin) {
         this->advance();
     }
 
-    if (!this->match(lexeme_single_quote)) {
+    if (!this->match(LEXEME_SINGLE_QUOTE)) {
         const std::string_view remaining = this->cursor_.remaining_text();
-        const base::usize recovery_offset = remaining.find_first_of(byte_literal_recovery_chars);
+        const base::usize recovery_offset = remaining.find_first_of(LEXEME_BYTE_LITERAL_RECOVERY_CHARS);
         if (recovery_offset == std::string_view::npos) {
             this->advance_bytes(remaining.size());
-            this->report_current(begin, unterminated_byte_message);
-        } else if (remaining[recovery_offset] == lexeme_single_quote) {
-            this->advance_bytes(recovery_offset + single_byte_lexeme_width);
-            this->report_current(begin, oversized_byte_message);
+            this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
+        } else if (remaining[recovery_offset] == LEXEME_SINGLE_QUOTE) {
+            this->advance_bytes(recovery_offset + LEXEME_SINGLE_BYTE_WIDTH);
+            this->report_current(begin, LEXEME_OVERSIZED_BYTE_MESSAGE);
         } else {
             this->advance_bytes(recovery_offset);
-            this->report_current(begin, unterminated_byte_message);
+            this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
         }
         this->finish_invalid_token(begin);
         return;

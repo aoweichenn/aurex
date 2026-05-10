@@ -34,7 +34,7 @@ bool Parser::next_angle_list_is_type_scope() const noexcept {
     return next_angle_list_has_follower(
         this->session_.cursor.tokens(),
         this->session_.cursor.position(),
-        AngleListFollower::type_scope
+        AngleListFollower::TYPE_SCOPE
     );
 }
 
@@ -42,7 +42,7 @@ bool Parser::next_angle_list_is_struct_literal() const noexcept {
     return next_angle_list_has_follower(
         this->session_.cursor.tokens(),
         this->session_.cursor.position(),
-        AngleListFollower::struct_literal
+        AngleListFollower::STRUCT_LITERAL
     );
 }
 

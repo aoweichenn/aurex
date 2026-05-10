@@ -76,7 +76,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
     }
     {
         Module module = make_simple_module();
-        module.functions[0].blocks[0].terminator.value = invalid_value_id;
+        module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
         PassPipelineOptions options;
         expect_error_contains(ir::run_pass_pipeline(module, options), "return value value id is invalid");
     }

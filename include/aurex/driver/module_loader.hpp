@@ -34,7 +34,7 @@ public:
 private:
     struct LoadedModule {
         std::filesystem::path path;
-        syntax::ModuleId id = syntax::invalid_module_id;
+        syntax::ModuleId id = syntax::INVALID_MODULE_ID;
         base::SourceRange range {};
     };
 

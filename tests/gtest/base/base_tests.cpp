@@ -16,7 +16,7 @@ using base::Severity;
 } // namespace
 
 TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
-    EXPECT_EQ(base::abi::internal_symbol_prefix, "m0");
+    EXPECT_EQ(base::abi::AUREX_INTERNAL_SYMBOL_PREFIX, "m0");
 
     base::SourceRange forward {{7}, 3, 9};
     EXPECT_EQ(forward.length(), 6U);

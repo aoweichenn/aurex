@@ -118,7 +118,7 @@ bool ItemParser::recover_struct_field_decl_separator() {
 
 std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
     const syntax::Token& case_name = this->expect_identifier_recovered("expected enum case name");
-    syntax::TypeId payload_type = syntax::invalid_type_id;
+    syntax::TypeId payload_type = syntax::INVALID_TYPE_ID;
     if (this->match(TokenKind::l_paren)) {
         payload_type = this->parse_type();
         this->expect_recovered(

@@ -59,7 +59,7 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
 ) {
     const syntax::Token& begin = this->advance();
     const syntax::Token& name = this->expect_identifier_recovered("expected local name");
-    syntax::TypeId type = syntax::invalid_type_id;
+    syntax::TypeId type = syntax::INVALID_TYPE_ID;
     if (this->match(TokenKind::colon)) {
         type = this->parse_type();
     }

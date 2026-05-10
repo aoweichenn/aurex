@@ -19,8 +19,8 @@ enum class MatchPatternActionKind {
 
 struct MatchPatternAction {
     MatchPatternActionKind kind = MatchPatternActionKind::analyze;
-    syntax::PatternId pattern = syntax::invalid_pattern_id;
-    syntax::PatternId parent = syntax::invalid_pattern_id;
+    syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+    syntax::PatternId parent = syntax::INVALID_PATTERN_ID;
 };
 
 } // namespace
@@ -39,15 +39,15 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         (this->checked_.types.is_integer(matched) || this->checked_.types.is_bool(matched));
     if (!enum_match && !literal_match) {
         this->report(expr.range, "match expression requires an enum, integer, or bool value");
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (expr.match_arms.empty()) {
         this->report(expr.range, "match expression requires at least one arm");
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
     std::vector<std::string> covered;
-    TypeHandle result = invalid_type_handle;
+    TypeHandle result = INVALID_TYPE_HANDLE;
     std::vector<base::SourceRange> pending_null_arm_ranges;
     const auto is_null_result_expr = [&](const syntax::ExprId candidate) {
         if (!syntax::is_valid(candidate) || candidate.value >= this->module_.exprs.size()) {
@@ -90,7 +90,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 guarded ? arm_covered_false : covered_false,
                 guarded ? arm_saw_wildcard : saw_wildcard
             );
-        TypeHandle arm_type = invalid_type_handle;
+        TypeHandle arm_type = INVALID_TYPE_HANDLE;
         if (pattern != nullptr && !pattern->binding_name.empty()) {
             if (case_info == nullptr) {
                 const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
@@ -103,7 +103,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                     SymbolKind::local,
                     std::string(pattern->binding_name),
                     {},
-                    syntax::invalid_module_id,
+                    syntax::INVALID_MODULE_ID,
                     case_info->payload_type,
                     arm.range,
                     false,
@@ -169,7 +169,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     }
     if (is_valid(result) && this->checked_.types.is_void(result)) {
         this->report(expr.range, "match expression result cannot be void");
-        return this->record_expr_type(expr_id, invalid_type_handle);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     return this->record_expr_type(expr_id, result);
 }
@@ -188,7 +188,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
     actions.push_back(MatchPatternAction {
         MatchPatternActionKind::analyze,
         pattern_id,
-        syntax::invalid_pattern_id,
+        syntax::INVALID_PATTERN_ID,
     });
     while (!actions.empty()) {
         const MatchPatternAction action = actions.back();
@@ -223,7 +223,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
                 actions.push_back(MatchPatternAction {
                     MatchPatternActionKind::analyze,
                     *alternative,
-                    syntax::invalid_pattern_id,
+                    syntax::INVALID_PATTERN_ID,
                 });
             }
             continue;

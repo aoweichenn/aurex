@@ -37,8 +37,8 @@ constexpr std::string_view SEMA_GENERIC_ITEM_KEY_SEPARATOR = ":";
 constexpr std::string_view SEMA_GENERIC_METHOD_DISPLAY_SEPARATOR = ".";
 
 struct GenericTypeInferenceFrame {
-    syntax::TypeId pattern_type = syntax::invalid_type_id;
-    TypeHandle actual = invalid_type_handle;
+    syntax::TypeId pattern_type = syntax::INVALID_TYPE_ID;
+    TypeHandle actual = INVALID_TYPE_HANDLE;
 };
 
 [[nodiscard]] std::optional<base::usize> generic_parameter_index(
@@ -119,7 +119,7 @@ const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_v
     }
 
     const GenericEnumTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;
@@ -154,7 +154,7 @@ const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_
     }
 
     const GenericStructTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;
@@ -189,7 +189,7 @@ const GenericFunctionTemplateInfo* SemanticAnalyzer::find_generic_function_templ
     }
 
     const GenericFunctionTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (syntax::ModuleId module : visible_modules(current_module_)) {
         if (module.value == current_module_.value) {
             continue;
@@ -291,7 +291,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
     const bool report_unknown
 ) {
     const GenericFunctionInstanceInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::invalid_module_id;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     bool inaccessible_result = false;
     bool uninferred_method_params = false;
     bool type_arg_count_mismatch = false;
@@ -314,7 +314,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
                 continue;
             }
 
-            std::vector<TypeHandle> inferred(info.params.size(), invalid_type_handle);
+            std::vector<TypeHandle> inferred(info.params.size(), INVALID_TYPE_HANDLE);
             if (!infer_generic_args_from_type_pattern(
                     info.impl_type,
                     owner_type,
@@ -546,7 +546,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum_from_syntax(
 ) {
     if (args.size() != info.params.size()) {
         report(range, "generic enum type argument count mismatch for " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
     std::vector<TypeHandle> resolved_args;
     resolved_args.reserve(args.size());
@@ -563,11 +563,11 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
 ) {
     if (args.size() != info.params.size()) {
         report(range, "generic enum type argument count mismatch for " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
     for (TypeHandle arg : args) {
         if (!is_valid(arg)) {
-            return invalid_type_handle;
+            return INVALID_TYPE_HANDLE;
         }
     }
     const std::string instance_key = generic_instance_key(info, args);
@@ -578,7 +578,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     const syntax::ItemNode* item = item_from_id(module_, info.item);
     if (item == nullptr) {
         report(range, "invalid generic enum template: " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
 
     TypeHandle enum_type = checked_.types.named_enum(generic_display_name(info, args), generic_c_name(info, args));
@@ -602,7 +602,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     }
     checked_.types.set_enum_underlying(enum_type, underlying);
 
-    TypeHandle payload_storage = invalid_type_handle;
+    TypeHandle payload_storage = INVALID_TYPE_HANDLE;
     base::u64 payload_size = SEMA_GENERIC_EMPTY_PAYLOAD_SIZE;
     base::u64 payload_align = SEMA_GENERIC_MIN_PAYLOAD_ALIGNMENT;
     bool contains_array_payload = false;
@@ -626,7 +626,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
         const bool has_payload = syntax::is_valid(enum_case.payload_type);
         const TypeHandle payload_type = has_payload
             ? resolve_type_with_substitution(enum_case.payload_type, &substitution, false)
-            : invalid_type_handle;
+            : INVALID_TYPE_HANDLE;
         if (has_payload) {
             if (!is_valid_storage_type(payload_type)) {
                 report(enum_case.range, "enum payload type is not valid storage");
@@ -688,7 +688,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct_from_syntax(
 ) {
     if (args.size() != info.params.size()) {
         report(range, "generic struct type argument count mismatch for " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
     std::vector<TypeHandle> resolved_args;
     resolved_args.reserve(args.size());
@@ -705,11 +705,11 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
 ) {
     if (args.size() != info.params.size()) {
         report(range, "generic struct type argument count mismatch for " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
     for (TypeHandle arg : args) {
         if (!is_valid(arg)) {
-            return invalid_type_handle;
+            return INVALID_TYPE_HANDLE;
         }
     }
     const std::string instance_key = generic_instance_key(info, args);
@@ -720,7 +720,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     const syntax::ItemNode* item = item_from_id(module_, info.item);
     if (item == nullptr) {
         report(range, "invalid generic struct template: " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
 
     TypeHandle struct_type = checked_.types.named_struct(generic_display_name(info, args), generic_c_name(info, args), false);
@@ -760,7 +760,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
         instance_info.fields.push_back(StructFieldInfo {
             std::string(field.name),
             {},
-            syntax::invalid_module_id,
+            syntax::INVALID_MODULE_ID,
             field_type,
             field.range,
             field.visibility,
@@ -850,7 +850,7 @@ bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
         switch (pattern.kind) {
         case syntax::TypeKind::primitive: {
             const TypeHandle expected = this->resolve_type(frame.pattern_type);
-            result = this->can_assign(expected, frame.actual, syntax::invalid_expr_id);
+            result = this->can_assign(expected, frame.actual, syntax::INVALID_EXPR_ID);
             break;
         }
         case syntax::TypeKind::pointer: {
@@ -885,7 +885,7 @@ bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
         case syntax::TypeKind::named: {
             if (!pattern.type_args.empty()) {
                 const bool qualified = !pattern.scope_name.empty();
-                syntax::ModuleId scope_module = syntax::invalid_module_id;
+                syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
                 if (qualified) {
                     scope_module = this->resolve_import_alias(pattern.scope_name, pattern.scope_range, false);
                     if (!syntax::is_valid(scope_module)) {
@@ -932,7 +932,7 @@ bool SemanticAnalyzer::infer_generic_args_from_type_pattern(
             }
 
             const TypeHandle expected = this->resolve_type(frame.pattern_type);
-            result = this->can_assign(expected, frame.actual, syntax::invalid_expr_id);
+            result = this->can_assign(expected, frame.actual, syntax::INVALID_EXPR_ID);
             break;
         }
         }
@@ -958,10 +958,10 @@ TypeHandle SemanticAnalyzer::infer_generic_struct_literal_type(
     const syntax::ItemNode* item = item_from_id(module_, info.item);
     if (item == nullptr) {
         report(expr.range, "invalid generic struct template: " + info.name);
-        return invalid_type_handle;
+        return INVALID_TYPE_HANDLE;
     }
 
-    std::vector<TypeHandle> type_args(info.params.size(), invalid_type_handle);
+    std::vector<TypeHandle> type_args(info.params.size(), INVALID_TYPE_HANDLE);
     for (const syntax::FieldInit& init : expr.field_inits) {
         const syntax::FieldDecl* field_decl = nullptr;
         for (const syntax::FieldDecl& candidate : item->fields) {
@@ -988,7 +988,7 @@ TypeHandle SemanticAnalyzer::infer_generic_struct_literal_type(
 
     for (TypeHandle arg : type_args) {
         if (!is_valid(arg)) {
-            return invalid_type_handle;
+            return INVALID_TYPE_HANDLE;
         }
     }
     return instantiate_generic_struct(info, type_args, expr.range);
@@ -1067,7 +1067,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
         }
         param_types.push_back(param_type);
     }
-    TypeHandle method_owner_type = invalid_type_handle;
+    TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
     bool has_self_param = false;
     if (info.is_method) {
         method_owner_type = resolve_type(item->impl_type);
@@ -1321,7 +1321,7 @@ const EnumCaseInfo* SemanticAnalyzer::instantiate_generic_enum_constructor(
             type_args.push_back(resolve_type(arg));
         }
     } else {
-        type_args.assign(info->params.size(), invalid_type_handle);
+        type_args.assign(info->params.size(), INVALID_TYPE_HANDLE);
         if (const GenericEnumInstanceInfo* expected = generic_enum_instance(expected_type);
             expected != nullptr &&
             expected->name == info->name &&

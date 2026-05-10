@@ -70,19 +70,6 @@ syntax::ExprId BuiltinExprParser::parse_ptr_from_addr(const ExprContext context)
     return this->session_.module.push_expr(std::move(expr));
 }
 
-syntax::ExprId BuiltinExprParser::parse_move(const ExprContext context) {
-    const syntax::Token& begin = this->previous();
-    this->expect_builtin_arg_list_start("expected '(' after move");
-    const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after move argument");
-
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::move_expr;
-    expr.range = this->merge(begin.range, end.range);
-    expr.unary_operand = value;
-    return this->session_.module.push_expr(std::move(expr));
-}
-
 syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     const syntax::Token& begin = this->previous();
     const syntax::ExprKind kind = begin.kind == TokenKind::kw_str_data

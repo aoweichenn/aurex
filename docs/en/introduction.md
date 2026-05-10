@@ -18,9 +18,9 @@ Aurex std wrappers.
 
 Near-term goals:
 
-- Continue refining `for`, `defer`, `?`, match payloads, and noncopy ownership.
-- Replace temporary ownership special cases with language-level capability
-  predicates such as `copy T` and `drop T`.
-- Design borrow checking, move-out, partial move, drop order, and destructor
-  rules.
+- Continue refining `for`, `defer`, `?`, and match payload semantics.
+- Remove the M1 `move(...)` / `noncopy struct` experiment from the M2 baseline
+  and stabilize ordinary value semantics first.
+- Redesign ownership, borrow checking, move-out, partial move, drop order,
+  destructor rules, and capability predicates such as `T: Copy` and `T: Drop`.
 - Avoid expanding the standard library before syntax and semantics settle.

@@ -104,9 +104,8 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
                 report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
             }
             if (checked_.types.contains_array(enum_case->payload_type)) {
-                report(module_.exprs[expr.args.front().value].range, "non-copyable array storage cannot be used as enum payload");
+                report(module_.exprs[expr.args.front().value].range, "array-containing type cannot be used as enum payload");
             }
-            consume_ownership_transfer(expr.args.front(), enum_case->payload_type, "enum payload");
         }
         record_expr_c_name(expr.callee, enum_case->c_name);
         return record_expr_type(expr_id, enum_case->type);
@@ -132,9 +131,8 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
                 report(module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
             }
             if (checked_.types.contains_array(enum_case->payload_type)) {
-                report(module_.exprs[expr.args.front().value].range, "non-copyable array storage cannot be used as enum payload");
+                report(module_.exprs[expr.args.front().value].range, "array-containing type cannot be used as enum payload");
             }
-            consume_ownership_transfer(expr.args.front(), enum_case->payload_type, "enum payload");
         }
         record_expr_c_name(expr.callee, enum_case->c_name);
         return record_expr_type(expr_id, enum_case->type);
@@ -317,17 +315,16 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
                 report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
             }
             if (checked_.types.contains_array(expected)) {
-                report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                report(module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
             }
-            consume_ownership_transfer(expr.args[i], expected, "function argument");
         }
         if (signature->is_variadic) {
             for (base::usize i = count; i < expr.args.size(); ++i) {
                 const TypeHandle actual = analyze_expr(expr.args[i]);
                 if (!is_valid(actual)) {
                     report(module_.exprs[expr.args[i].value].range, "variadic argument type cannot be inferred in call to " + name);
-                } else if (is_copy_forbidden_value(actual)) {
-                    report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                } else if (this->is_array_containing_value_type(actual)) {
+                    report(module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
                 }
             }
         }
@@ -424,9 +421,8 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
                 report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
             }
             if (checked_.types.contains_array(instance->param_types[i])) {
-                report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+                report(module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
             }
-            consume_ownership_transfer(expr.args[i], instance->param_types[i], "function argument");
         }
         return record_expr_type(expr_id, instance->return_type);
     }
@@ -449,17 +445,16 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
             report(module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + name);
         }
         if (checked_.types.contains_array(signature->param_types[i])) {
-            report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+            report(module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
         }
-        consume_ownership_transfer(expr.args[i], signature->param_types[i], "function argument");
     }
     if (signature->is_variadic) {
         for (base::usize i = count; i < expr.args.size(); ++i) {
             const TypeHandle actual = analyze_expr(expr.args[i]);
             if (!is_valid(actual)) {
                 report(module_.exprs[expr.args[i].value].range, "variadic argument type cannot be inferred in call to " + name);
-            } else if (is_copy_forbidden_value(actual)) {
-                report(module_.exprs[expr.args[i].value].range, "non-copyable array storage cannot be passed by value");
+            } else if (this->is_array_containing_value_type(actual)) {
+                report(module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
             }
         }
     }

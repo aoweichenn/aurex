@@ -121,7 +121,7 @@ TEST_F(AurexIntegrationTest, DeferScopes) {
     expect_contains(require_failure(aurexc() + " --check " + q(non_call)).output, "defer statement must be a function call");
 }
 
-TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
+TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     const fs::path for_source = positive_sample("control_flow", "for_loop.ax");
 
     const std::string for_ast = require_success(aurexc() + " --emit=ast " + q(for_source)).output;
@@ -143,58 +143,26 @@ TEST_F(AurexIntegrationTest, ForStatementAndOwnershipSemantics) {
         "unknown name: i"
     );
 
-    const fs::path owner_source = positive_sample("types", "ownership_move.ax");
-    const std::string checked = require_success(aurexc() + " --emit=checked " + q(owner_source)).output;
+    const fs::path value_source = positive_sample("types", "value_flow.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(value_source)).output;
     expect_contains_all(checked, {
-        "struct Owner noncopy",
-        "fn forward -> ownership_move.Owner",
+        "struct Owner",
+        "fn forward -> value_flow.Owner",
         "fn consume -> i32",
     });
+    require_success(aurexc() + " --emit=llvm-ir " + q(value_source));
 
-    const std::string owner_ast = require_success(aurexc() + " --emit=ast " + q(owner_source)).output;
-    expect_contains(owner_ast, "move_expr");
-    require_success(aurexc() + " --emit=llvm-ir " + q(owner_source));
-
-    const fs::path owner_result_source = positive_sample("types", "ownership_result.ax");
-    const std::string owner_result_checked = require_success(aurexc() + " --emit=checked " + q(owner_result_source)).output;
-    expect_contains_all(owner_result_checked, {
-        "struct Owner noncopy",
+    const fs::path result_value_source = positive_sample("types", "result_value_flow.ax");
+    const std::string result_value_checked = require_success(aurexc() + " --emit=checked " + q(result_value_source)).output;
+    expect_contains_all(result_value_checked, {
+        "struct Owner",
         "fn check_result_ref_status -> bool",
         "fn check_option_ref_status -> bool",
-        "fn wrap -> ownership_result.Result<ownership_result.Owner, i32>",
-        "fn unwrap_local_try -> ownership_result.Result<i32, i32>",
+        "fn wrap -> result_value_flow.Result<result_value_flow.Owner, i32>",
+        "fn unwrap_local_try -> result_value_flow.Result<i32, i32>",
     });
-    require_success(aurexc() + " --emit=llvm-ir " + q(owner_result_source));
-
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_implicit_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_use_after_move.ax"))).output,
-        "use of moved value: first"
-    );
-    require_success(aurexc() + " --check " + q(positive_sample("types", "move_copyable.ax")));
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "move_non_place.ax"))).output,
-        "move requires a local or parameter"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_conditional_move_use.ax"))).output,
-        "use of moved value: owner"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_enum_payload_copy.ax"))).output,
-        "non-copyable value must be moved explicitly"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_match_without_move.ax"))).output,
-        "non-copyable value must be moved explicitly in match value"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "noncopy_try_without_move.ax"))).output,
-        "non-copyable value must be moved explicitly in try expression"
-    );
+    require_success(aurexc() + " --emit=llvm-ir " + q(result_value_source));
+    require_success(aurexc() + " --check " + q(positive_sample("types", "copyable_value.ax")));
 }
 
 TEST_F(AurexIntegrationTest, RecursiveFunctions) {

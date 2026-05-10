@@ -7,8 +7,8 @@
    directory and explicit `-I` entries.
 3. The lexer produces tokens and the parser builds the AST.
 4. The semantic analyzer performs name resolution, type checking, generic
-   instantiation, ownership checks, and control-flow checks over the combined
-   module.
+   instantiation, value-semantics checks, and control-flow checks over the
+   combined module.
 5. Dump/check modes return at their requested stage.
 6. IR lowering produces Aurex IR and the pass pipeline runs according to
    `--opt-level`.

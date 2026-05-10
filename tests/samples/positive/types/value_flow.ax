@@ -1,6 +1,6 @@
-module ownership_move;
+module value_flow;
 
-noncopy struct Owner {
+struct Owner {
     value: i32;
 }
 
@@ -13,28 +13,28 @@ fn consume(owner: Owner) -> i32 {
 }
 
 fn forward(owner: Owner) -> Owner {
-    return move(owner);
+    return owner;
 }
 
-fn return_after_branch_move(flag: bool) -> i32 {
+fn return_after_branch(flag: bool) -> i32 {
     var owner: Owner = make_owner(8);
     if flag {
-        return consume(move(owner));
+        return consume(owner);
     }
-    return consume(move(owner));
+    return consume(owner);
 }
 
 fn main() -> i32 {
     let first: Owner = make_owner(3);
     let second: Owner = Owner { value: 4 };
-    let moved: Owner = move(second);
-    let forwarded: Owner = forward(move(first));
+    let copied: Owner = second;
+    let forwarded: Owner = forward(first);
 
     var slot: Owner = make_owner(10);
-    let consumed: i32 = consume(move(slot));
+    let consumed: i32 = consume(slot);
     slot = make_owner(20);
 
-    let total: i32 = consume(move(moved)) + consume(move(forwarded)) + consumed + consume(move(slot)) + return_after_branch_move(false);
+    let total: i32 = consume(copied) + consume(forwarded) + consumed + consume(slot) + return_after_branch(false);
     if total == 45 {
         return 0;
     }

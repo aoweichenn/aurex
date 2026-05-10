@@ -29,7 +29,7 @@ notes are design input only, not current progress.
 - Handwritten lexer/parser with ID-backed AST and dump paths for tokens, AST,
   modules, checked summaries, Aurex IR, and LLVM IR.
 - Semantic analysis for types, symbols, functions, ABI names, structs, enums,
-  generics, expression types, visibility, pattern matching, and ownership MVP.
+  generics, expression types, visibility, and pattern matching.
 - Ordinary root-module `fn main` entry points.
 - Typed Aurex IR, IR verifier, conservative pass pipeline, LLVM lowering, and
   native asm/object/executable output through clang.
@@ -59,7 +59,7 @@ tools/bench.py
 
 The test suite covers lexer/parser behavior, CLI/driver behavior, positive and
 negative samples, modules, visibility, generics, functions, methods, pattern
-matching, error handling, ownership diagnostics, IR lowering, IR verification,
+matching, error handling, type-system diagnostics, IR lowering, IR verification,
 LLVM lowering, native execution, and installed compiler execution.
 
 ## M2 Gaps
@@ -70,7 +70,10 @@ LLVM lowering, native execution, and installed compiler execution.
 - Top-level items and struct fields still default to public.
 - Enum syntax still behaves more like explicit C enums than ergonomic ADTs.
 - Generics have no `where`, trait, or capability predicates.
-- `noncopy` / `move` is an MVP, not a complete ownership/drop/borrow model.
+- The M1 language-level `noncopy` / `move` MVP has been removed from the M2
+  baseline. M2 keeps ordinary value semantics plus the current array-containing
+  value restrictions; copy/drop/borrow/ownership need a new capability, trait,
+  and `where` design.
 - Raw pointers currently carry FFI, receiver, address, and temporary-borrow
   roles that should eventually be separated by safe references and `unsafe`.
 

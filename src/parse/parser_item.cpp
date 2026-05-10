@@ -30,7 +30,7 @@ syntax::ItemId ItemParser::parse_item() {
         }
         return id;
     }
-    if (this->check(TokenKind::kw_struct) || this->check(TokenKind::kw_noncopy)) {
+    if (this->check(TokenKind::kw_struct)) {
         const syntax::ItemId id = this->parse_struct_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items[id.value].visibility = visibility;

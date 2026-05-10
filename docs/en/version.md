@@ -23,6 +23,8 @@ Completed:
 - Reworked `Result` / `Option` language samples to define local enums.
 - Reworked defer/variadic samples to declare local `extern c` boundaries.
 - Removed sema hardcodes for `std.core.vec/map/result` ownership constraints.
+- Removed the M1 language-level `move(...)`, `noncopy struct`, and
+  use-after-move tracking.
 - Reduced the sample suite back to language-core coverage.
 
 Current valid baseline:
@@ -35,8 +37,8 @@ Current valid baseline:
 
 Risk controls:
 
-- Keep language-level positive/negative tests for noncopy enums, match payloads,
-  `?`, `for`, and `defer`.
+- Keep language-level positive/negative tests for match payloads, `?`, `for`,
+  `defer`, and the basic type system.
 - Keep native hello, IR/LLVM lowering, and installed compiler execution checks.
 - Future copy/drop constraints should be implemented through capability, trait,
   and `where` design rather than std hardcodes.
@@ -48,5 +50,5 @@ Deferred:
 - Restoring M1 build-tool/system examples.
 - Restoring automatic host support linking.
 
-These should be revisited only after M2 syntax, ownership, borrow/drop, and
-generic constraints are stable.
+These should be revisited only after M2 syntax, value semantics, ownership,
+borrow/drop, and generic constraints are stable.

@@ -41,8 +41,6 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_continue: return "kw_continue";
     case TokenKind::kw_defer: return "kw_defer";
     case TokenKind::kw_return: return "kw_return";
-    case TokenKind::kw_noncopy: return "kw_noncopy";
-    case TokenKind::kw_move: return "kw_move";
     case TokenKind::kw_true: return "kw_true";
     case TokenKind::kw_false: return "kw_false";
     case TokenKind::kw_null: return "kw_null";
@@ -267,7 +265,6 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::binary: return "binary";
     case ExprKind::call: return "call";
     case ExprKind::try_expr: return "try_expr";
-    case ExprKind::move_expr: return "move_expr";
     case ExprKind::if_expr: return "if_expr";
     case ExprKind::block_expr: return "block_expr";
     case ExprKind::match_expr: return "match_expr";
@@ -510,9 +507,6 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (item.is_prototype) {
         out << " prototype";
-    }
-    if (item.is_noncopy) {
-        out << " noncopy";
     }
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;

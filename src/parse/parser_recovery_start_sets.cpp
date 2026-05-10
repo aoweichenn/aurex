@@ -20,7 +20,6 @@ bool token_starts_item(const TokenKind kind) noexcept {
     case TokenKind::kw_priv:
     case TokenKind::kw_extern:
     case TokenKind::kw_export:
-    case TokenKind::kw_noncopy:
     case TokenKind::kw_import:
         return true;
     default:
@@ -38,7 +37,6 @@ bool token_starts_expression(const TokenKind kind) noexcept {
     case TokenKind::byte_literal:
     case TokenKind::kw_if:
     case TokenKind::kw_match:
-    case TokenKind::kw_move:
     case TokenKind::kw_true:
     case TokenKind::kw_false:
     case TokenKind::kw_null:

@@ -308,7 +308,6 @@ parser 能解析：
 foo();
 bar()?;
 x + y;
-move(value);
 ```
 
 补齐前 sema 中 expression statement 只允许 `call`，否则报：
@@ -340,7 +339,7 @@ expr_stmt =
 - `foo()?;` 允许。
 - `object.method()?;` 允许。
 - `x + y;` 仍然诊断。
-- `move(x);` 暂不作为普通 expression statement 允许，除非未来定义“显式丢弃/销毁”语法。
+- M1 的 `move(x);` 不再是 M2 当前语法；未来如果需要“显式丢弃/销毁”，应重新设计独立语法。
 
 状态：已补。普通无效表达式语句仍然诊断。
 
@@ -591,7 +590,7 @@ fn contains<K>(key: K) -> bool where K: Eq
 
 问题：
 
-- 当前 copyability、noncopy、destructor、Result/Option payload 消费等规则无法通过函数签名表达。
+- 当前 copyability、destructor、Result/Option payload 消费等规则无法通过函数签名表达。
 - 泛型函数的错误常常只能在实例化体内报出，API 用户看不到约束。
 - 恢复核心库后，`Vec<T>`、`Map<K,V>`、`Result<T,E>`、`Option<T>` 都需要 copy/drop/eq/hash 这类基础约束。
 

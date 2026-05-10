@@ -82,7 +82,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  fn printf(format: *const u8, ...) -> i32 @name(\"printf\");\n"
         "}\n"
         "struct Counter { value: i32; }\n"
-        "noncopy struct Owner { value: i32; }\n"
+        "struct Owner { value: i32; }\n"
         "impl Counter {\n"
         "  pub fn inc(self: *mut Counter) -> i32 {\n"
         "    self.value = self.value + 1;\n"
@@ -92,7 +92,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name(\"exported\") {\n"
         "  var i: i32 = 0;\n"
         "  let owner: Owner = Owner { value: 1 };\n"
-        "  let moved_owner: Owner = move(owner);\n"
+        "  let copied_owner: Owner = owner;\n"
         "  for var f: i32 = 0; f < 2; f = f + 1 {\n"
         "    if f == 1 { continue; }\n"
         "  }\n"
@@ -128,8 +128,6 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_opaque",
         "kw_while",
         "kw_for",
-        "kw_noncopy",
-        "kw_move",
         "kw_break",
         "kw_continue",
         "kw_defer",
@@ -150,7 +148,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "opaque_struct Handle extern_c",
         "fn printf extern_c variadic @name=printf",
         "impl for Counter",
-        "struct Owner noncopy",
+        "struct Owner",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
         "stmt #",
@@ -159,7 +157,6 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "break",
         "continue",
         "defer",
-        "move_expr",
         "expr #",
         "null_literal",
         "string_literal",
@@ -963,9 +960,9 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
         "fn opened @(a: i32) -> i32 { return a; }\n"
         "fn recovered(value: i32) -> i32 {\n"
         "  let casted = cast @(i32, value);\n"
-        "  let moved = move @(casted);\n"
+        "  let broken_builtin = ptr_from_addr @(*mut i32, casted);\n"
         "  let broken = ;\n"
-        "  return moved;\n"
+        "  return casted;\n"
         "}\n";
 
     DiagnosticSink diagnostics;
@@ -986,7 +983,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
     expect_contains(messages, "expected '(' after ABI attribute");
     expect_contains(messages, "expected '(' after function name");
     expect_contains(messages, "expected '(' after cast builtin");
-    expect_contains(messages, "expected '(' after move");
+    expect_contains(messages, "expected '(' after ptr_from_addr");
     expect_contains(messages, "expected expression");
 }
 

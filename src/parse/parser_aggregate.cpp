@@ -14,9 +14,7 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::ItemId ItemParser::parse_struct_decl() {
-    const bool is_noncopy = this->match(TokenKind::kw_noncopy);
-    const syntax::Token& begin = is_noncopy ? this->previous() : this->peek();
-    this->expect(TokenKind::kw_struct, is_noncopy ? "expected 'struct' after 'noncopy'" : "expected 'struct'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_struct, "expected 'struct'");
     const syntax::Token& name = this->expect_identifier_recovered("expected struct name");
     std::vector<std::string_view> generic_params;
     if (this->check(TokenKind::less)) {
@@ -28,7 +26,6 @@ syntax::ItemId ItemParser::parse_struct_decl() {
     item.kind = syntax::ItemKind::struct_decl;
     item.name = name.text;
     item.generic_params = std::move(generic_params);
-    item.is_noncopy = is_noncopy;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         if (std::optional<syntax::FieldDecl> field = this->parse_struct_field_decl()) {

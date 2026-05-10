@@ -6,13 +6,13 @@
 
 ## 优先路线
 
-1. 所有权模型收口
+1. 值语义与资源模型重新设计
 
-   明确 copy / move / noncopy enum payload / match payload / `?` 的统一规则。补齐 partial move、字段 move-out、move 后不可访问、条件控制流合流和 loop 中 moved-state 的诊断。
+   M2 当前先删除 M1 的 `move(...)` / `noncopy struct`，避免把失败的 move-only MVP 继续当作语言地基。下一步要先写清普通值传递、struct/enum payload、match payload、`?` 和数组/含数组类型限制的统一规则，再决定 copy/drop/ownership 如何重新进入类型系统。
 
 2. Drop / destructor 设计
 
-   把当前 `destroy(self: *mut T) -> void` 识别推进为语言级 drop capability。需要确定 drop order、early return / break / continue / defer 的交互、泛型 `drop T` 约束，以及没有 destructor 的 noncopy 类型如何诊断。
+   设计语言级 drop capability，而不是复用 M1 的 destructor 约定。需要确定 drop order、early return / break / continue / defer 的交互、泛型 `T: Drop` 约束，以及拥有资源但没有释放能力的类型如何诊断。
 
 3. Borrow 语义
 

@@ -41,8 +41,6 @@ enum class TokenKind {
     kw_continue,
     kw_defer,
     kw_return,
-    kw_noncopy,
-    kw_move,
     kw_true,
     kw_false,
     kw_null,

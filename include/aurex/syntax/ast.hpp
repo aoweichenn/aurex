@@ -72,7 +72,6 @@ enum class ExprKind {
     binary,
     call,
     try_expr,
-    move_expr,
     if_expr,
     block_expr,
     match_expr,
@@ -263,7 +262,6 @@ struct ItemNode {
     TypeId return_type = invalid_type_id;
     StmtId body = invalid_stmt_id;
     TypeId impl_type = invalid_type_id;
-    bool is_noncopy = false;
     bool is_export_c = false;
     bool is_extern_c = false;
     bool is_variadic = false;

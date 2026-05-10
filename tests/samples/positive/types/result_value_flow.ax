@@ -1,4 +1,4 @@
-module ownership_result;
+module result_value_flow;
 
 enum Option<T>: u8 {
     some(T) = 1,
@@ -67,7 +67,7 @@ impl<T, E> Result<T, E> {
     }
 }
 
-noncopy struct Owner {
+struct Owner {
     value: i32;
 }
 
@@ -80,36 +80,36 @@ fn consume(owner: Owner) -> i32 {
 }
 
 fn wrap(owner: Owner) -> Result<Owner, i32> {
-    return Result.ok(move(owner));
+    return Result.ok(owner);
 }
 
 fn forward_result(value: i32) -> Result<Owner, i32> {
     var wrapped: Result<Owner, i32> = wrap(make_owner(value));
-    return move(wrapped);
+    return wrapped;
 }
 
 fn unwrap_or_code(input: Result<Owner, i32>) -> i32 {
-    return match move(input) {
-        .ok(owner) => consume(move(owner)),
+    return match input {
+        .ok(owner) => consume(owner),
         .err(code) => code,
     };
 }
 
 fn unwrap_local_try(value: i32) -> Result<i32, i32> {
     var wrapped: Result<Owner, i32> = forward_result(value);
-    var owner: Owner = move(wrapped)?;
-    let result: i32 = consume(move(owner));
+    var owner: Owner = wrapped?;
+    let result: i32 = consume(owner);
     return Result.ok(result);
 }
 
 fn check_result_ref_status() -> bool {
     var ok_result: Result<Owner, i32> = forward_result(13);
     let ok_status: bool = ok_result.is_ok_ref() && !ok_result.is_err_ref();
-    let ok_value: i32 = unwrap_or_code(move(ok_result));
+    let ok_value: i32 = unwrap_or_code(ok_result);
 
     var err_result: Result<Owner, i32> = Result.err(17);
     let err_status: bool = err_result.is_err_ref() && !err_result.is_ok_ref();
-    let err_value: i32 = unwrap_or_code(move(err_result));
+    let err_value: i32 = unwrap_or_code(err_result);
 
     return ok_status && ok_value == 13 && err_status && err_value == 17;
 }
@@ -117,15 +117,15 @@ fn check_result_ref_status() -> bool {
 fn check_option_ref_status() -> bool {
     var some_owner: Option<Owner> = Option.some(make_owner(19));
     let some_status: bool = some_owner.is_some_ref() && !some_owner.is_none_ref();
-    let some_value: i32 = match move(some_owner) {
-        .some(owner) => consume(move(owner)),
+    let some_value: i32 = match some_owner {
+        .some(owner) => consume(owner),
         .none => 0,
     };
 
     var no_owner: Option<Owner> = Option.none;
     let none_status: bool = no_owner.is_none_ref() && !no_owner.is_some_ref();
-    let none_value: i32 = match move(no_owner) {
-        .some(owner) => consume(move(owner)),
+    let none_value: i32 = match no_owner {
+        .some(owner) => consume(owner),
         .none => 23,
     };
 

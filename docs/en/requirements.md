@@ -19,7 +19,9 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 - Primitive types, structs, enums, generic structs/enums/functions/methods.
 - Pattern matching, guards, and or-patterns.
 - `if` expressions, block expressions, `while`, `for`, `break`, and `continue`.
-- `defer`, `move`, noncopy ownership, and `?`.
+- `defer` and `?`.
+- Ordinary value semantics, with the current by-value restrictions for arrays
+  and array-containing types preserved.
 - Aurex IR, pass pipeline, LLVM IR, and clang native output.
 
 ## Deferred Capabilities
@@ -28,5 +30,6 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 - M1 frontend/build-tool examples.
 - std host support and installed std lookup.
 
-These return after language-level ownership, borrow/drop, trait/where, and
-capability rules are stable.
+The M1 language-level `move(...)` and `noncopy struct` syntax is no longer part
+of the current M2 requirements. Resource semantics should be redesigned after
+ownership, borrow/drop, trait/where, and capability rules are stable.

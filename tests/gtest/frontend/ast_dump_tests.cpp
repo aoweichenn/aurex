@@ -70,11 +70,6 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     };
     module.exprs.push_back(match_expr);
 
-    syntax::ExprNode move_expr;
-    move_expr.kind = syntax::ExprKind::move_expr;
-    move_expr.unary_operand = syntax::ExprId {2};
-    module.exprs.push_back(move_expr);
-
     syntax::StmtNode unknown_stmt;
     unknown_stmt.kind = static_cast<syntax::StmtKind>(255);
     unknown_stmt.init = syntax::ExprId {2};
@@ -98,14 +93,9 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     for_stmt.for_update = syntax::StmtId {0};
     module.stmts.push_back(for_stmt);
 
-    syntax::StmtNode move_stmt;
-    move_stmt.kind = syntax::StmtKind::expr;
-    move_stmt.init = syntax::ExprId {5};
-    module.stmts.push_back(move_stmt);
-
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
-    block.statements = {syntax::StmtId {99}, syntax::StmtId {1}, syntax::StmtId {2}, syntax::StmtId {3}, syntax::StmtId {4}};
+    block.statements = {syntax::StmtId {99}, syntax::StmtId {1}, syntax::StmtId {2}, syntax::StmtId {3}};
     module.stmts.push_back(block);
 
     syntax::ItemNode broken_struct;
@@ -117,7 +107,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     syntax::ItemNode function;
     function.kind = syntax::ItemKind::fn_decl;
     function.name = "body";
-    function.body = syntax::StmtId {5};
+    function.body = syntax::StmtId {4};
     module.items.push_back(function);
 
     syntax::ItemNode extern_block;
@@ -139,7 +129,6 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
         "expr #1 unknown",
         "name `Generic`<i32, bool>",
         "struct_literal Pair<i32, bool>",
-        "move_expr",
         "match_arm Color.red(value)",
         "match_arm <invalid-pattern>",
         "expr <invalid>",

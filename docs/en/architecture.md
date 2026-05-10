@@ -6,7 +6,7 @@
 - `src/parse`: recursive-descent parser.
 - `src/syntax`: AST, tokens, module paths, and dumps.
 - `src/sema`: name resolution, types, generic instantiation, pattern
-  exhaustiveness, and ownership/move checks.
+  exhaustiveness, value-semantics checks, and control-flow checks.
 - `src/ir`: Aurex IR, lowering, verification, and pass pipeline.
 - `src/backend/llvm`: LLVM IR emission.
 - `src/driver`: file reads, module loading, compile pipeline, and clang calls.
@@ -34,7 +34,7 @@ Before restoring std, the language needs:
 - Destructor/drop model: destructor shape, automatic drop order, early-return
   behavior.
 - Borrow model: shared/mutable borrow, regions, borrowed returns.
-- Move-out model: explicit extraction from fields and containers, partial move
-  state.
+- Resource transfer model: explicit extraction from fields and containers,
+  later ownership state, and diagnostics.
 - Trait/where: move generic constraints out of hardcoded checks and into a
   diagnosable language mechanism.

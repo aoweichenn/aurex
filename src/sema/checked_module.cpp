@@ -75,9 +75,6 @@ std::string dump_checked_module(const CheckedModule& checked) {
         if (info.is_opaque) {
             out << " opaque";
         }
-        if (info.is_noncopy) {
-            out << " noncopy";
-        }
         out << " fields=" << info.fields.size() << "\n";
     }
 

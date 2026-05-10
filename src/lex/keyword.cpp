@@ -40,7 +40,6 @@ inline constexpr std::array keyword_entries {
     KeywordEntry {"type", syntax::TokenKind::kw_type},
     KeywordEntry {"impl", syntax::TokenKind::kw_impl},
     KeywordEntry {"else", syntax::TokenKind::kw_else},
-    KeywordEntry {"move", syntax::TokenKind::kw_move},
     KeywordEntry {"true", syntax::TokenKind::kw_true},
     KeywordEntry {"null", syntax::TokenKind::kw_null},
     KeywordEntry {"void", syntax::TokenKind::kw_void},
@@ -64,7 +63,6 @@ inline constexpr std::array keyword_entries {
     KeywordEntry {"opaque", syntax::TokenKind::kw_opaque},
     KeywordEntry {"return", syntax::TokenKind::kw_return},
 
-    KeywordEntry {"noncopy", syntax::TokenKind::kw_noncopy},
     KeywordEntry {"size_of", syntax::TokenKind::kw_size_of},
 
     KeywordEntry {"continue", syntax::TokenKind::kw_continue},

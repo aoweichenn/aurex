@@ -214,7 +214,7 @@ let p: *const u8 = c"hello";
 未来 `String` 应重新定义为拥有型 UTF-8 buffer：
 
 - 内部可继续使用 `Vec<u8>`。
-- 它是 `noncopy` 拥有型资源，不能隐式浅拷贝。
+- 它是拥有型资源，不能隐式浅拷贝；M2 当前还没有语言级 non-copyable 关键字，后续应通过 `Drop` / `Copy` capability 表达。
 - 必须保持 UTF-8 validity。
 - 可以维护尾随 NUL 作为优化，但这不是公开语义。
 - `as_str(self: *const String) -> str`。
@@ -231,7 +231,7 @@ let p: *const u8 = c"hello";
 
 未来应明确使用：
 
-- `Bytes` / `Vec<u8>`：拥有原始 bytes，均为 `noncopy` owner。
+- `Bytes` / `Vec<u8>`：拥有原始 bytes，未来应通过资源 capability 标记为不可隐式浅拷贝的 owner。
 - `Span<u8>`：借用原始 bytes。
 - `Bytes` 不承诺 UTF-8。
 - `Bytes.as_mut_span()` 是 raw byte mutation 的 safe surface；它不会影响 `String` / `str` 的 UTF-8 不变量。
@@ -243,7 +243,7 @@ let p: *const u8 = c"hello";
 FFI 层应有单独类型：
 
 - `CStr`：借用 NUL-terminated C string，不拥有。
-- `CString`：`noncopy` 拥有 NUL-terminated C string，不允许内部 NUL。
+- `CString`：拥有 NUL-terminated C string，不允许内部 NUL，未来应按资源 capability 管理复制和释放。
 - `CStr.as_str_utf8() -> Result<str, Utf8Error>`。
 - `CString.from_str(str) -> Result<CString, InteriorNulError | AllocError>`。
 - `CString.as_c() -> *const u8`。

@@ -17,11 +17,15 @@ Sema currently handles:
 - Type resolution, const checks, and layout checks.
 - Generic function/struct/enum/method instantiation.
 - Pattern matching and exhaustiveness.
-- Noncopy ownership, `move`, use-after-move, match/try payload ownership.
+- Ordinary value-semantics checks, plus the current restriction that arrays and
+  array-containing types cannot be used as by-value storage or assignment
+  targets.
 - Control-flow constraints for `for`, `defer`, `break`, and `continue`.
 
-std-specific ownership hardcodes have been removed. Future constraints should
-be expressed through language-level capability, trait, and `where` mechanisms.
+The M1 `noncopy` / `move` / use-after-move semantics have been removed from the
+current M2 implementation. std-specific ownership hardcodes have also been
+removed. Future resource constraints should be expressed through language-level
+capability, trait, and `where` mechanisms.
 
 ## Backend
 

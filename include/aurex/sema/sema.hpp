@@ -115,20 +115,7 @@ private:
     [[nodiscard]] bool is_null_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_place_expr(syntax::ExprId expr);
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
-    [[nodiscard]] bool is_copy_forbidden_value(TypeHandle type) const noexcept;
-    [[nodiscard]] bool is_move_only_value(TypeHandle type) const noexcept;
-    [[nodiscard]] bool is_explicit_move_expr(syntax::ExprId expr) const noexcept;
-    [[nodiscard]] bool is_fresh_owned_expr(syntax::ExprId expr) const noexcept;
-    [[nodiscard]] std::string move_source_name(syntax::ExprId expr);
-    void push_ownership_scope();
-    void pop_ownership_scope();
-    void register_ownership_binding(std::string_view name);
-    void mark_ownership_initialized(std::string_view name);
-    void mark_ownership_moved(std::string_view name);
-    [[nodiscard]] bool is_ownership_moved(std::string_view name) const;
-    void report_moved_value_use(std::string_view name, base::SourceRange range);
-    void consume_ownership_transfer(syntax::ExprId expr, TypeHandle type, std::string_view context);
-    void merge_ownership_states(const std::unordered_set<std::string>& lhs, const std::unordered_set<std::string>& rhs);
+    [[nodiscard]] bool is_array_containing_value_type(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
     [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
@@ -230,14 +217,7 @@ private:
     [[nodiscard]] const GenericFunctionInstanceInfo* instantiate_generic_function(
         const GenericFunctionTemplateInfo& info,
         const std::vector<TypeHandle>& args,
-        base::SourceRange range,
-        bool report_ownership_diagnostics = true
-    );
-    [[nodiscard]] bool validate_generic_function_ownership_constraints(
-        const GenericFunctionTemplateInfo& info,
-        const std::vector<TypeHandle>& args,
-        base::SourceRange range,
-        bool report_diagnostics = true
+        base::SourceRange range
     );
     [[nodiscard]] bool infer_generic_function_args(
         const GenericFunctionTemplateInfo& info,
@@ -325,8 +305,6 @@ private:
     std::unordered_map<base::u32, std::string>* current_generic_pattern_c_names_ = nullptr;
     std::unordered_map<base::u32, std::unordered_set<std::string>>* current_generic_pattern_case_sets_ = nullptr;
     std::unordered_map<base::u32, TypeHandle>* current_generic_stmt_local_types_ = nullptr;
-    std::unordered_set<std::string> moved_bindings_;
-    std::vector<std::vector<std::string>> ownership_scopes_;
     int loop_depth_ = 0;
     bool in_const_initializer_ = false;
 };

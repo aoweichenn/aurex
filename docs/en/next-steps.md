@@ -9,18 +9,20 @@ ownership, borrow, and drop rules stabilize.
 
 ## Priority Route
 
-1. Ownership closure
+1. Value semantics and resource-model redesign
 
-   Unify rules for copy, move, noncopy enum payloads, match payloads, and `?`.
-   Add coverage for partial move, field move-out, use-after-move, conditional
-   control-flow joins, and loop moved-state diagnostics.
+   M2 now removes the M1 `move(...)` / `noncopy struct` experiment instead of
+   treating that move-only MVP as the language foundation. First define unified
+   rules for ordinary value passing, struct/enum payloads, match payloads, `?`,
+   and the current array-containing type restrictions. Then decide how
+   copy/drop/ownership re-enter the type system.
 
 2. Drop / destructor design
 
-   Turn `destroy(self: *mut T) -> void` recognition into a language-level drop
-   capability. Decide drop order, interaction with early return / break /
-   continue / defer, generic `drop T` constraints, and diagnostics for noncopy
-   types without destructors.
+   Design a language-level drop capability instead of reusing the M1 destructor
+   convention. Decide drop order, interaction with early return / break /
+   continue / defer, generic `T: Drop` constraints, and diagnostics for owned
+   resource types without a release capability.
 
 3. Borrow semantics
 

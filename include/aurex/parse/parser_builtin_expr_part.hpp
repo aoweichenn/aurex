@@ -13,7 +13,6 @@ public:
     [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);
     [[nodiscard]] syntax::ExprId parse_ptr_addr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_ptr_from_addr(ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_move(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_str_unary(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_str_from_bytes_unchecked(ExprContext context);
 

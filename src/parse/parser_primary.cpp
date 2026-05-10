@@ -14,7 +14,6 @@ enum class BuiltinExprShape {
     type,
     ptr_addr,
     ptr_from_addr,
-    move,
     str_unary,
     str_from_bytes_unchecked,
 };
@@ -37,7 +36,6 @@ constexpr BuiltinExprSyntax kBuiltinExprSyntax[] = {
         BuiltinExprShape::ptr_from_addr,
         syntax::ExprKind::ptr_from_addr,
     },
-    {TokenKind::kw_move, BuiltinExprShape::move, syntax::ExprKind::move_expr},
     {TokenKind::kw_str_data, BuiltinExprShape::str_unary, syntax::ExprKind::str_data},
     {TokenKind::kw_str_byte_len, BuiltinExprShape::str_unary, syntax::ExprKind::str_byte_len},
     {
@@ -117,8 +115,6 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
         return parser.parse_ptr_addr(context);
     case BuiltinExprShape::ptr_from_addr:
         return parser.parse_ptr_from_addr(context);
-    case BuiltinExprShape::move:
-        return parser.parse_move(context);
     case BuiltinExprShape::str_unary:
         return parser.parse_str_unary(context);
     case BuiltinExprShape::str_from_bytes_unchecked:

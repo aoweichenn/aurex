@@ -68,7 +68,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "  let f32_value: f32 = 9;\n"
         "  let f64_value: f64 = 10;\n"
         "  let span_value: text::SpanU8 = text::span_u8(c\"hi\", cast(usize, 2));\n"
-        "  let moved_value: i32 = move(i8_value);\n"
+        "  let copied_value: i32 = i8_value;\n"
         "  let try_token: i32 = 1?;\n"
         "  extern c fn printf(format: *const u8, ...) -> i32;\n"
         "  defer printf(c\"cleanup\");\n"
@@ -113,7 +113,6 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "kw_impl",
         "kw_defer",
         "kw_for",
-        "kw_move",
         "float_literal",
         "slash",
         "percent",
@@ -160,7 +159,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
         "module import as pub priv extern export c fn struct opaque enum const type impl match "
-        "let var if else for while break continue defer return noncopy move true false null "
+        "let var if else for while break continue defer return true false null "
         "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
         "ptr_cast bit_cast size_of align_of ptr_addr ptr_from_addr str_data str_byte_len "
         "str_from_bytes_unchecked";
@@ -196,8 +195,6 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
         TokenKind::kw_continue,
         TokenKind::kw_defer,
         TokenKind::kw_return,
-        TokenKind::kw_noncopy,
-        TokenKind::kw_move,
         TokenKind::kw_true,
         TokenKind::kw_false,
         TokenKind::kw_null,

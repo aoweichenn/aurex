@@ -70,6 +70,6 @@ tools/run_tests.sh
 ```
 
 The suite covers lexer/parser, modules, visibility, generics, sum types,
-pattern matching, `?`, `defer`, `for`, ownership, IR, LLVM lowering, native
-execution, and installed compiler execution. Standard-library APIs, std host
-support, and M1 system/build-tool examples are out of scope for M2.
+pattern matching, `?`, `defer`, `for`, value semantics, IR, LLVM lowering,
+native execution, and installed compiler execution. Standard-library APIs, std
+host support, and M1 system/build-tool examples are out of scope for M2.

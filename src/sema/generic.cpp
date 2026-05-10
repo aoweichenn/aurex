@@ -298,7 +298,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::find_generic_method_in_visi
                     "' from modules " + module_name(result_module) + " and " + module_name(module));
                 return nullptr;
             }
-            imported_result = instantiate_generic_function(info, inferred, range, report_unknown);
+            imported_result = this->instantiate_generic_function(info, inferred, range);
             result_module = module;
         }
     }
@@ -679,7 +679,6 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     instance_info.module = info.module;
     instance_info.type = struct_type;
     instance_info.is_opaque = false;
-    instance_info.is_noncopy = info.is_noncopy;
 
     GenericTypeSubstitution substitution;
     for (base::usize i = 0; i < info.params.size(); ++i) {
@@ -689,7 +688,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     const syntax::ModuleId previous_module = current_module_;
     current_module_ = info.module;
     bool contains_array = false;
-    bool copyable = !info.is_noncopy;
+    bool copyable = true;
     std::unordered_set<std::string> seen_fields;
     for (const syntax::FieldDecl& field : item->fields) {
         if (!seen_fields.insert(std::string(field.name)).second) {
@@ -988,8 +987,7 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
 const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_function(
     const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange range,
-    const bool report_ownership_diagnostics
+    const base::SourceRange range
 ) {
     if (args.size() != info.params.size()) {
         report(range, "generic function type argument count mismatch for " + info.name);
@@ -999,9 +997,6 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
         if (!is_valid(arg)) {
             return nullptr;
         }
-    }
-    if (!validate_generic_function_ownership_constraints(info, args, range, report_ownership_diagnostics)) {
-        return nullptr;
     }
 
     const std::string instance_key = generic_instance_key(info, args);
@@ -1180,19 +1175,6 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
     stored.pattern_case_sets = std::move(pattern_case_sets);
     stored.stmt_local_types = std::move(stmt_local_types);
     return &stored;
-}
-
-bool SemanticAnalyzer::validate_generic_function_ownership_constraints(
-    const GenericFunctionTemplateInfo& info,
-    const std::vector<TypeHandle>& args,
-    const base::SourceRange range,
-    const bool report_diagnostics
-) {
-    static_cast<void>(info);
-    static_cast<void>(args);
-    static_cast<void>(range);
-    static_cast<void>(report_diagnostics);
-    return true;
 }
 
 bool SemanticAnalyzer::infer_generic_function_args(

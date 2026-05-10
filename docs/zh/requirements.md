@@ -17,7 +17,8 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 - 基础类型、struct、enum、generic struct/enum/function/method。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
-- `defer`、`move`、noncopy、`?`。
+- `defer` 和 `?`。
+- 普通值语义；数组和含数组类型的 by-value 存储/赋值限制暂时保留。
 - Aurex IR、pass pipeline、LLVM IR、clang native 输出。
 
 ## 暂缓能力
@@ -26,4 +27,4 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
 
-这些能力等语言级 ownership、borrow/drop、trait/where/capability 规则稳定后再恢复。
+M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求；ownership、borrow/drop、trait/where/capability 规则稳定后再重新设计资源语义。

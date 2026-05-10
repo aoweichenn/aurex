@@ -25,7 +25,7 @@ the narrowest parser part that owns the relevant grammar surface.
 | `PrimaryExprParser` | Primary expression dispatch, literals, grouped expressions, block expressions, and builtin keyword dispatch. |
 | `NameExprParser` | Identifier expressions, scoped names, and struct literals. |
 | `PostfixExprParser` | Postfix expression suffixes: type arguments, field access, indexing, calls, and `?`. |
-| `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, move, and string helpers. |
+| `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, and string helpers. |
 | `PatternParser` | Match patterns. |
 
 Parser part declarations are split by responsibility under

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aurex/parse/parser_part_router.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/parse/parser_part_router.hpp>
+#include <aurex/syntax/ast.hpp>
 
 namespace aurex::parse {
 

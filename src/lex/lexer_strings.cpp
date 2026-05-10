@@ -1,7 +1,7 @@
-#include "aurex/lex/lexer.hpp"
+#include <aurex/lex/lexer.hpp>
 
-#include "aurex/base/string_literal.hpp"
-#include "lexeme.hpp"
+#include <aurex/base/string_literal.hpp>
+#include <lex/lexeme.hpp>
 
 #include <string_view>
 

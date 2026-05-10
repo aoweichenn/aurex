@@ -1,10 +1,10 @@
 #pragma once
 
-#include "aurex/base/result.hpp"
-#include "aurex/ir/ir.hpp"
-#include "aurex/ir/pass_pipeline.hpp"
-#include "aurex/sema/type.hpp"
-#include "support/test_support.hpp"
+#include <aurex/base/result.hpp>
+#include <aurex/ir/ir.hpp>
+#include <aurex/ir/pass_pipeline.hpp>
+#include <aurex/sema/type.hpp>
+#include <support/test_support.hpp>
 
 #include <string>
 #include <string_view>

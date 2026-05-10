@@ -1,9 +1,9 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/parse/parse_diagnostics.hpp"
-#include "aurex/parse/token_cursor.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/parse/parse_diagnostics.hpp>
+#include <aurex/parse/token_cursor.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <span>
 

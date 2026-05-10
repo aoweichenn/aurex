@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aurex/base/config.hpp"
-#include "aurex/syntax/token.hpp"
+#include <aurex/base/config.hpp>
+#include <aurex/syntax/token.hpp>
 
 #include <span>
 

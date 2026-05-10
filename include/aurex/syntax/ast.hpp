@@ -1,8 +1,8 @@
 #pragma once
 
-#include "aurex/base/config.hpp"
-#include "aurex/base/source.hpp"
-#include "aurex/syntax/ast_ids.hpp"
+#include <aurex/base/config.hpp>
+#include <aurex/base/source.hpp>
+#include <aurex/syntax/ast_ids.hpp>
 
 #include <string_view>
 #include <vector>

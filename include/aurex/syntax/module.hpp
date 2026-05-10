@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/syntax/ast.hpp"
+#include <aurex/syntax/ast.hpp>
 
 #include <filesystem>
 #include <string>

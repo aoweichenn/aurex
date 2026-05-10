@@ -1,12 +1,12 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/result.hpp"
-#include "aurex/parse/expr_context.hpp"
-#include "aurex/parse/parse_session.hpp"
-#include "aurex/parse/recovery_context.hpp"
-#include "aurex/syntax/ast.hpp"
-#include "aurex/syntax/token.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/result.hpp>
+#include <aurex/parse/expr_context.hpp>
+#include <aurex/parse/parse_session.hpp>
+#include <aurex/parse/recovery_context.hpp>
+#include <aurex/syntax/ast.hpp>
+#include <aurex/syntax/token.hpp>
 
 #include <span>
 #include <string>

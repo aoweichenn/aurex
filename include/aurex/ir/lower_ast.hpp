@@ -1,9 +1,9 @@
 #pragma once
 
-#include "aurex/base/result.hpp"
-#include "aurex/ir/ir.hpp"
-#include "aurex/sema/sema.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/base/result.hpp>
+#include <aurex/ir/ir.hpp>
+#include <aurex/sema/sema.hpp>
+#include <aurex/syntax/ast.hpp>
 
 namespace aurex::ir {
 

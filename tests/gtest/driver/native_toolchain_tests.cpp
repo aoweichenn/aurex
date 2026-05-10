@@ -1,6 +1,6 @@
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/driver/native_toolchain.hpp"
-#include "support/test_support.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/driver/native_toolchain.hpp>
+#include <support/test_support.hpp>
 
 namespace aurex::test {
 namespace {

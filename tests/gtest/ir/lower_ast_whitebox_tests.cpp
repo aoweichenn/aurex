@@ -1,4 +1,4 @@
-#include "aurex/ir/lower_ast.hpp"
+#include <aurex/ir/lower_ast.hpp>
 
 #include <string>
 #include <vector>
@@ -8,7 +8,7 @@
 #pragma clang diagnostic ignored "-Wkeyword-macro"
 #endif
 #define private public
-#include "../../../src/ir/lower_ast_internal.hpp"
+#include <ir/lower_ast_internal.hpp>
 #undef private
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -249,6 +249,64 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     EXPECT_EQ(phi.kind, ValueKind::phi);
     EXPECT_EQ(phi.incoming.size(), 2U);
     EXPECT_EQ(lowerer.current_function_->blocks[entry.value].terminator.kind, TerminatorKind::cond_branch);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle u8 = checked.types.builtin(BuiltinType::u8);
+    const TypeHandle usize = checked.types.builtin(BuiltinType::usize);
+    const TypeHandle str = checked.types.builtin(BuiltinType::str);
+    const TypeHandle const_u8_ptr = checked.types.pointer(PointerMutability::const_, u8);
+
+    syntax::ExprNode str_value;
+    str_value.kind = ExprKind::string_literal;
+    str_value.text = "\"bytes\"";
+    const ExprId str_value_id = ast.push_expr(str_value);
+    syntax::ExprNode length_value;
+    length_value.kind = ExprKind::integer_literal;
+    length_value.text = "5";
+    const ExprId length_value_id = ast.push_expr(length_value);
+
+    syntax::ExprNode str_data;
+    str_data.kind = ExprKind::str_data;
+    str_data.cast_expr = str_value_id;
+    const ExprId str_data_id = ast.push_expr(str_data);
+    syntax::ExprNode str_byte_len = str_data;
+    str_byte_len.kind = ExprKind::str_byte_len;
+    const ExprId str_byte_len_id = ast.push_expr(str_byte_len);
+    syntax::ExprNode str_from_bytes;
+    str_from_bytes.kind = ExprKind::str_from_bytes_unchecked;
+    str_from_bytes.args = {str_data_id, length_value_id};
+    const ExprId str_from_bytes_id = ast.push_expr(str_from_bytes);
+    syntax::ExprNode malformed_str_from_bytes = str_from_bytes;
+    malformed_str_from_bytes.args = {str_data_id};
+    const ExprId malformed_str_from_bytes_id = ast.push_expr(malformed_str_from_bytes);
+
+    set_expr_type(checked, str_value_id, str);
+    set_expr_type(checked, length_value_id, usize);
+    set_expr_type(checked, str_data_id, const_u8_ptr);
+    set_expr_type(checked, str_byte_len_id, usize);
+    set_expr_type(checked, str_from_bytes_id, str);
+    set_expr_type(checked, malformed_str_from_bytes_id, str);
+
+    Lowerer lowerer(ast, checked);
+    const ValueId data = lowerer.lower_expr(str_data_id);
+    const ValueId byte_len = lowerer.lower_expr(str_byte_len_id);
+    const ValueId from_bytes = lowerer.lower_expr(str_from_bytes_id);
+    const ValueId malformed = lowerer.lower_expr(malformed_str_from_bytes_id);
+
+    ASSERT_TRUE(is_valid(data));
+    ASSERT_TRUE(is_valid(byte_len));
+    ASSERT_TRUE(is_valid(from_bytes));
+    ASSERT_TRUE(is_valid(malformed));
+    EXPECT_EQ(lowerer.module_.values[data.value].kind, ValueKind::str_data);
+    EXPECT_EQ(lowerer.module_.values[byte_len.value].kind, ValueKind::str_byte_len);
+    EXPECT_EQ(lowerer.module_.values[from_bytes.value].kind, ValueKind::str_from_bytes_unchecked);
+    EXPECT_EQ(lowerer.module_.values[from_bytes.value].args.size(), 2U);
+    EXPECT_EQ(lowerer.module_.values[malformed.value].kind, ValueKind::str_from_bytes_unchecked);
+    EXPECT_TRUE(lowerer.module_.values[malformed.value].args.empty());
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {

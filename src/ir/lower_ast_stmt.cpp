@@ -1,4 +1,4 @@
-#include "lower_ast_internal.hpp"
+#include <ir/lower_ast_internal.hpp>
 
 namespace aurex::ir::detail {
 

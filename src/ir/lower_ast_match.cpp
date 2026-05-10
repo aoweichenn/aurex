@@ -1,6 +1,6 @@
-#include "lower_ast_internal.hpp"
+#include <ir/lower_ast_internal.hpp>
 
-#include "aurex/ir/enum_layout.hpp"
+#include <aurex/ir/enum_layout.hpp>
 
 #include <utility>
 

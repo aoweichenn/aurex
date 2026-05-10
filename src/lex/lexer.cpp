@@ -1,10 +1,10 @@
-#include "aurex/lex/lexer.hpp"
+#include <aurex/lex/lexer.hpp>
 
-#include "aurex/base/config.hpp"
-#include "char_class.hpp"
-#include "keyword.hpp"
-#include "lexeme.hpp"
-#include "punctuator.hpp"
+#include <aurex/base/config.hpp>
+#include <lex/char_class.hpp>
+#include <lex/keyword.hpp>
+#include <lex/lexeme.hpp>
+#include <lex/punctuator.hpp>
 
 #include <algorithm>
 #include <array>

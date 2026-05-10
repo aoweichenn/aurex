@@ -1,4 +1,4 @@
-#include "aurex/sema/type.hpp"
+#include <aurex/sema/type.hpp>
 
 #include <cassert>
 #include <cstddef>

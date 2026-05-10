@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/base/integer.hpp"
+#include <aurex/base/integer.hpp>
 
 #include <string>
 #include <string_view>

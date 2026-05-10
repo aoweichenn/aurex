@@ -1,6 +1,6 @@
-#include "aurex/sema/sema.hpp"
+#include <aurex/sema/sema.hpp>
 
-#include "aurex/syntax/module.hpp"
+#include <aurex/syntax/module.hpp>
 
 namespace aurex::sema {
 
@@ -96,16 +96,22 @@ void SemanticAnalyzer::append_public_reexports(
     std::vector<syntax::ModuleId>& result,
     std::unordered_set<base::u32>& seen
 ) const {
-    if (!syntax::is_valid(module) || module.value >= module_.modules.size()) {
-        return;
-    }
-    for (const syntax::ResolvedImport& import : module_.modules[module.value].imports) {
-        if (import.visibility != syntax::Visibility::public_ || !syntax::is_valid(import.module)) {
+    std::vector<syntax::ModuleId> pending;
+    pending.push_back(module);
+    while (!pending.empty()) {
+        const syntax::ModuleId current = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(current) || current.value >= this->module_.modules.size()) {
             continue;
         }
-        if (seen.insert(import.module.value).second) {
-            result.push_back(import.module);
-            append_public_reexports(import.module, result, seen);
+        for (const syntax::ResolvedImport& import : this->module_.modules[current.value].imports) {
+            if (import.visibility != syntax::Visibility::public_ || !syntax::is_valid(import.module)) {
+                continue;
+            }
+            if (seen.insert(import.module.value).second) {
+                result.push_back(import.module);
+                pending.push_back(import.module);
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
-#include "aurex/base/abi.hpp"
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/result.hpp"
-#include "aurex/base/source.hpp"
+#include <aurex/base/abi.hpp>
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/result.hpp>
+#include <aurex/base/source.hpp>
 
 #include <gtest/gtest.h>
 

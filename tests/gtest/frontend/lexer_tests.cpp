@@ -1,7 +1,7 @@
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/lex/lexer.hpp"
-#include "aurex/syntax/ast_dump.hpp"
-#include "aurex/syntax/token.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/lex/lexer.hpp>
+#include <aurex/syntax/ast_dump.hpp>
+#include <aurex/syntax/token.hpp>
 
 #include <gtest/gtest.h>
 

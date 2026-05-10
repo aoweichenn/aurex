@@ -1,6 +1,6 @@
-#include "aurex/backend/llvm_backend.hpp"
-#include "aurex/base/string_literal.hpp"
-#include "gtest/support/ir_test_helpers.hpp"
+#include <aurex/backend/llvm_backend.hpp>
+#include <aurex/base/string_literal.hpp>
+#include <gtest/support/ir_test_helpers.hpp>
 
 #include <cstdint>
 #include <string>

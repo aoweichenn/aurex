@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/ir/lower_ast.hpp"
+#include <aurex/ir/lower_ast.hpp>
 
 #include <functional>
 #include <string>
@@ -142,7 +142,17 @@ private:
 
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);
+    [[nodiscard]] ValueId lower_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);
+    [[nodiscard]] ValueId lower_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_size_or_align_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
 
     void emit_deferred_scopes(base::usize keep_depth);
     [[nodiscard]] ValueId lower_place_addr(syntax::ExprId expr_id);

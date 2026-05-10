@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/parse/parser_part_ranges.hpp"
+#include <aurex/parse/parser_part_ranges.hpp>
 
 namespace aurex::parse {
 

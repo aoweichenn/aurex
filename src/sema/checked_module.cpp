@@ -1,4 +1,4 @@
-#include "aurex/sema/checked_module.hpp"
+#include <aurex/sema/checked_module.hpp>
 
 #include <algorithm>
 #include <sstream>

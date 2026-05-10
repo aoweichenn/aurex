@@ -1,11 +1,20 @@
-#include "aurex/sema/sema.hpp"
+#include <aurex/sema/sema.hpp>
 
 #include <algorithm>
 #include <unordered_set>
+#include <vector>
 
 namespace aurex::sema {
 
 namespace {
+
+constexpr base::u32 SEMA_INTEGER_BITS_PER_BYTE = 8;
+constexpr base::u32 SEMA_I8_BIT_WIDTH = 8;
+constexpr base::u32 SEMA_I16_BIT_WIDTH = 16;
+constexpr base::u32 SEMA_I32_BIT_WIDTH = 32;
+constexpr base::u32 SEMA_I64_BIT_WIDTH = 64;
+constexpr base::u32 SEMA_I64_SIGN_BIT_INDEX = 63;
+constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
 
 [[nodiscard]] bool binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
     switch (op) {
@@ -28,21 +37,31 @@ namespace {
 [[nodiscard]] bool is_contextual_integer_expr(
     const syntax::AstModule& module,
     const syntax::ExprId candidate
-) noexcept {
-    if (!syntax::is_valid(candidate) || candidate.value >= module.exprs.size()) {
+) {
+    std::vector<syntax::ExprId> pending;
+    pending.push_back(candidate);
+    while (!pending.empty()) {
+        const syntax::ExprId current = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(current) || current.value >= module.exprs.size()) {
+            return false;
+        }
+        const syntax::ExprNode& node = module.exprs[current.value];
+        if (node.kind == syntax::ExprKind::integer_literal) {
+            continue;
+        }
+        if (node.kind == syntax::ExprKind::unary && node.unary_op == syntax::UnaryOp::numeric_negate) {
+            pending.push_back(node.unary_operand);
+            continue;
+        }
+        if (node.kind == syntax::ExprKind::binary && binary_result_uses_operand_type(node.binary_op)) {
+            pending.push_back(node.binary_lhs);
+            pending.push_back(node.binary_rhs);
+            continue;
+        }
         return false;
     }
-    const syntax::ExprNode& node = module.exprs[candidate.value];
-    if (node.kind == syntax::ExprKind::integer_literal) {
-        return true;
-    }
-    if (node.kind == syntax::ExprKind::unary && node.unary_op == syntax::UnaryOp::numeric_negate) {
-        return is_contextual_integer_expr(module, node.unary_operand);
-    }
-    return node.kind == syntax::ExprKind::binary &&
-           binary_result_uses_operand_type(node.binary_op) &&
-           is_contextual_integer_expr(module, node.binary_lhs) &&
-           is_contextual_integer_expr(module, node.binary_rhs);
+    return true;
 }
 
 [[nodiscard]] bool is_signed_integer_type(const TypeTable& types, const TypeHandle type) noexcept {
@@ -76,20 +95,20 @@ namespace {
     switch (info.builtin) {
     case BuiltinType::i8:
     case BuiltinType::u8:
-        return 8;
+        return SEMA_I8_BIT_WIDTH;
     case BuiltinType::i16:
     case BuiltinType::u16:
-        return 16;
+        return SEMA_I16_BIT_WIDTH;
     case BuiltinType::i32:
     case BuiltinType::u32:
-        return 32;
+        return SEMA_I32_BIT_WIDTH;
     case BuiltinType::i64:
     case BuiltinType::u64:
-        return 64;
+        return SEMA_I64_BIT_WIDTH;
     case BuiltinType::isize:
-        return static_cast<base::u32>(sizeof(base::isize) * 8);
+        return static_cast<base::u32>(sizeof(base::isize) * SEMA_INTEGER_BITS_PER_BYTE);
     case BuiltinType::usize:
-        return static_cast<base::u32>(sizeof(base::usize) * 8);
+        return static_cast<base::u32>(sizeof(base::usize) * SEMA_INTEGER_BITS_PER_BYTE);
     default:
         return 0;
     }
@@ -129,9 +148,9 @@ struct IntegerLiteralExpr {
     if (!literal.negated || bit_width == 0) {
         return false;
     }
-    const base::u64 min_magnitude = bit_width >= 64
-        ? (base::u64 {1} << 63)
-        : (base::u64 {1} << (bit_width - 1));
+    const base::u64 min_magnitude = bit_width >= SEMA_I64_BIT_WIDTH
+        ? (base::u64 {1} << SEMA_I64_SIGN_BIT_INDEX)
+        : (base::u64 {1} << (bit_width - SEMA_SIGN_BIT_OFFSET));
     return value == min_magnitude;
 }
 
@@ -147,16 +166,16 @@ struct IntegerLiteralExpr {
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
-    return analyze_expr(expr_id, invalid_type_handle);
+    return this->analyze_expr(expr_id, invalid_type_handle);
 }
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const TypeHandle expected_type) {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return invalid_type_handle;
     }
 
-    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
-    return analyze_expr(expr_id, expr, expected_type);
+    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
+    return this->analyze_expr(expr_id, expr, expected_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_expr(
@@ -166,522 +185,604 @@ TypeHandle SemanticAnalyzer::analyze_expr(
 ) {
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
-        return analyze_integer_literal(expr_id, expr, expected_type);
+        return this->analyze_integer_literal(expr_id, expr, expected_type);
     case syntax::ExprKind::float_literal:
-        return analyze_float_literal(expr_id, expr, expected_type);
+        return this->analyze_float_literal(expr_id, expr, expected_type);
     case syntax::ExprKind::bool_literal:
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
     case syntax::ExprKind::null_literal:
-        return record_expr_type(
+        return this->record_expr_type(
             expr_id,
-            checked_.types.is_pointer(expected_type) ? expected_type : invalid_type_handle
+            this->checked_.types.is_pointer(expected_type) ? expected_type : invalid_type_handle
         );
     case syntax::ExprKind::string_literal:
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::str));
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     case syntax::ExprKind::c_string_literal:
-        return record_expr_type(expr_id, checked_.types.pointer(PointerMutability::const_, checked_.types.builtin(BuiltinType::u8)));
+        return this->record_expr_type(
+            expr_id,
+            this->checked_.types.pointer(PointerMutability::const_, this->checked_.types.builtin(BuiltinType::u8))
+        );
     case syntax::ExprKind::byte_literal:
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::u8));
-    case syntax::ExprKind::name: {
-        const Symbol* symbol = nullptr;
-        if (!expr.scope_name.empty()) {
-            const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range);
-            if (!syntax::is_valid(module)) {
-                return record_expr_type(expr_id, invalid_type_handle);
-            }
-            symbol = find_symbol_in_module(module, expr.text, expr.range);
-        } else {
-            symbol = find_symbol(expr.text, expr.range);
-        }
-        if (symbol == nullptr) {
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
-        if (symbol->kind == SymbolKind::function) {
-            report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
-        record_expr_c_name(expr_id, symbol->c_name);
-        return record_expr_type(expr_id, symbol->type);
-    }
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::u8));
+    case syntax::ExprKind::name:
+        return this->analyze_name_expr(expr_id, expr);
     case syntax::ExprKind::call:
-        return analyze_call_expr(expr_id, expr, expected_type);
+        return this->analyze_call_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::try_expr:
-        return analyze_try_expr(expr_id, expr);
+        return this->analyze_try_expr(expr_id, expr);
     case syntax::ExprKind::if_expr:
-        return analyze_if_expr(expr_id, expr, expected_type);
+        return this->analyze_if_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::block_expr:
-        return analyze_block_expr(expr_id, expr, expected_type);
+        return this->analyze_block_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::match_expr:
-        return analyze_match_expr(expr_id, expr, expected_type);
-    case syntax::ExprKind::unary: {
-        if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
-            syntax::is_valid(expr.unary_operand) &&
-            expr.unary_operand.value < module_.exprs.size() &&
-            module_.exprs[expr.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
-            const syntax::ExprNode& operand_expr = module_.exprs[expr.unary_operand.value];
-            const TypeHandle literal_type = checked_.types.is_integer(expected_type)
-                ? expected_type
-                : checked_.types.builtin(BuiltinType::i32);
-            if (!negative_integer_literal_fits_type(literal_type, operand_expr.text)) {
-                report(
-                    expr.range,
-                    "integer literal out of range for " + checked_.types.display_name(literal_type)
-                );
-            }
-            static_cast<void>(record_expr_type(expr.unary_operand, literal_type));
-            return record_expr_type(expr_id, literal_type);
-        }
-        const TypeHandle operand_expected =
-            ((expr.unary_op == syntax::UnaryOp::numeric_negate &&
-              (checked_.types.is_integer(expected_type) || checked_.types.is_float(expected_type))) ||
-             (expr.unary_op == syntax::UnaryOp::bitwise_not && checked_.types.is_integer(expected_type)))
-                ? expected_type
-                : invalid_type_handle;
-        const TypeHandle operand = analyze_expr(expr.unary_operand, operand_expected);
-        if (expr.unary_op == syntax::UnaryOp::logical_not && !checked_.types.is_bool(operand)) {
-            report(expr.range, "logical not requires bool operand");
-        }
-        if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
-            !is_signed_integer_type(checked_.types, operand) &&
-            !checked_.types.is_float(operand)) {
-            report(expr.range, "numeric unary operator requires signed integer or float operand");
-        }
-        if (expr.unary_op == syntax::UnaryOp::bitwise_not && !checked_.types.is_integer(operand)) {
-            report(expr.range, "bitwise not requires integer operand");
-        }
-        if (expr.unary_op == syntax::UnaryOp::dereference) {
-            if (!checked_.types.is_pointer(operand)) {
-                report(expr.range, "dereference requires pointer operand");
-                return record_expr_type(expr_id, invalid_type_handle);
-            }
-            const TypeHandle pointee = checked_.types.get(operand).pointee;
-            if (!is_valid_storage_type(pointee)) {
-                report(expr.range, "dereference requires pointer to valid storage");
-                return record_expr_type(expr_id, invalid_type_handle);
-            }
-            return record_expr_type(expr_id, pointee);
-        }
-        if (expr.unary_op == syntax::UnaryOp::address_of) {
-            if (!is_place_expr(expr.unary_operand)) {
-                report(expr.range, "address-of requires a place expression");
-            }
-            const PointerMutability mutability = is_writable_place(expr.unary_operand)
-                ? PointerMutability::mut
-                : PointerMutability::const_;
-            return record_expr_type(expr_id, checked_.types.pointer(mutability, operand));
-        }
-        return record_expr_type(expr_id, operand);
-    }
-    case syntax::ExprKind::binary: {
-        const TypeHandle operand_expected =
-            binary_result_uses_operand_type(expr.binary_op) &&
-            (checked_.types.is_integer(expected_type) || checked_.types.is_float(expected_type))
-                ? expected_type
-                : invalid_type_handle;
-        TypeHandle lhs = invalid_type_handle;
-        TypeHandle rhs = invalid_type_handle;
-        if (!is_valid(operand_expected) &&
-            is_contextual_integer_expr(module_, expr.binary_lhs) &&
-            !is_contextual_integer_expr(module_, expr.binary_rhs)) {
-            rhs = analyze_expr(expr.binary_rhs);
-            lhs = analyze_expr(expr.binary_lhs, rhs);
-        } else {
-            lhs = analyze_expr(expr.binary_lhs, operand_expected);
-            rhs = analyze_expr(expr.binary_rhs, is_valid(lhs) ? lhs : operand_expected);
-        }
-        const bool is_equality =
-            expr.binary_op == syntax::BinaryOp::equal ||
-            expr.binary_op == syntax::BinaryOp::not_equal;
-        const bool is_null_pointer_comparison =
-            is_equality &&
-            ((checked_.types.is_pointer(lhs) && is_null_literal(expr.binary_rhs)) ||
-             (checked_.types.is_pointer(rhs) && is_null_literal(expr.binary_lhs)));
-        if (!checked_.types.same(lhs, rhs) && !is_null_pointer_comparison) {
-            report(expr.range, "binary operands must have the same type");
-        }
-        const IntegerLiteralExpr rhs_integer_literal = integer_literal_expr(module_, expr.binary_rhs);
-        if (syntax::is_valid(rhs_integer_literal.literal)) {
-            base::u64 rhs_literal_value = 0;
-            const syntax::ExprNode& literal_expr = module_.exprs[rhs_integer_literal.literal.value];
-            const base::SourceRange rhs_range =
-                syntax::is_valid(expr.binary_rhs) && expr.binary_rhs.value < module_.exprs.size()
-                    ? module_.exprs[expr.binary_rhs.value].range
-                    : literal_expr.range;
-            if (parse_integer_literal_text(literal_expr.text, rhs_literal_value)) {
-                if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
-                    checked_.types.is_integer(lhs) &&
-                    rhs_literal_value == 0) {
-                    report(
-                        rhs_range,
-                        expr.binary_op == syntax::BinaryOp::div
-                            ? "integer division by zero"
-                            : "integer modulo by zero"
-                    );
-                }
-                if (expr.binary_op == syntax::BinaryOp::shl || expr.binary_op == syntax::BinaryOp::shr) {
-                    const base::u32 bit_width = integer_bit_width(checked_.types, lhs);
-                    if (rhs_integer_literal.negated && rhs_literal_value != 0) {
-                        report(rhs_range, "shift amount cannot be negative");
-                    } else if (!rhs_integer_literal.negated &&
-                               bit_width != 0 &&
-                               rhs_literal_value >= bit_width) {
-                        report(rhs_range, "shift amount is out of range");
-                    }
-                }
-            }
-        }
-        if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
-            is_signed_integer_type(checked_.types, lhs)) {
-            const IntegerLiteralExpr lhs_integer_literal = integer_literal_expr(module_, expr.binary_lhs);
-            if (syntax::is_valid(lhs_integer_literal.literal) &&
-                syntax::is_valid(rhs_integer_literal.literal)) {
-                base::u64 lhs_literal_value = 0;
-                base::u64 rhs_literal_value = 0;
-                const syntax::ExprNode& lhs_literal_expr = module_.exprs[lhs_integer_literal.literal.value];
-                const syntax::ExprNode& rhs_literal_expr = module_.exprs[rhs_integer_literal.literal.value];
-                if (parse_integer_literal_text(lhs_literal_expr.text, lhs_literal_value) &&
-                    parse_integer_literal_text(rhs_literal_expr.text, rhs_literal_value) &&
-                    is_signed_min_integer_literal(
-                        lhs_integer_literal,
-                        lhs_literal_value,
-                        integer_bit_width(checked_.types, lhs)
-                    ) &&
-                    rhs_integer_literal.negated &&
-                    rhs_literal_value == 1) {
-                    report(
-                        expr.range,
-                        expr.binary_op == syntax::BinaryOp::div
-                            ? "signed integer division overflows"
-                            : "signed integer modulo overflows"
-                    );
-                }
-            }
-        }
-        switch (expr.binary_op) {
-        case syntax::BinaryOp::less:
-        case syntax::BinaryOp::less_equal:
-        case syntax::BinaryOp::greater:
-        case syntax::BinaryOp::greater_equal:
-            if (!checked_.types.is_integer(lhs) && !checked_.types.is_float(lhs)) {
-                report(expr.range, "comparison operator requires numeric operands");
-            }
-            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
-        case syntax::BinaryOp::equal:
-        case syntax::BinaryOp::not_equal: {
-            const bool scalar =
-                checked_.types.is_bool(lhs) ||
-                checked_.types.is_integer(lhs) ||
-                checked_.types.is_float(lhs) ||
-                checked_.types.is_pointer(lhs) ||
-                (is_valid(lhs) &&
-                 checked_.types.get(lhs).kind == TypeKind::enum_ &&
-                 !is_valid(checked_.types.get(lhs).enum_payload_storage));
-            if (!scalar && !is_null_pointer_comparison) {
-                report(expr.range, "equality operator requires scalar operands");
-            }
-            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
-        }
-        case syntax::BinaryOp::logical_and:
-        case syntax::BinaryOp::logical_or:
-            if (!checked_.types.is_bool(lhs) || !checked_.types.is_bool(rhs)) {
-                report(expr.range, "logical operator requires bool operands");
-            }
-            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::bool_));
-        case syntax::BinaryOp::bit_and:
-        case syntax::BinaryOp::bit_xor:
-        case syntax::BinaryOp::bit_or:
-        case syntax::BinaryOp::shl:
-        case syntax::BinaryOp::shr:
-        case syntax::BinaryOp::mod:
-            if (!checked_.types.is_integer(lhs)) {
-                report(expr.range, "integer operator requires integer operands");
-            }
-            return record_expr_type(expr_id, lhs);
-        default:
-            if (!checked_.types.is_integer(lhs) && !checked_.types.is_float(lhs)) {
-                report(expr.range, "binary operator requires numeric operands");
-            }
-            return record_expr_type(expr_id, lhs);
-        }
-    }
-    case syntax::ExprKind::field: {
-        if (syntax::is_valid(expr.object) &&
-            expr.object.value < module_.exprs.size() &&
-            module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
-            const syntax::ExprNode& object = module_.exprs[expr.object.value];
-            const GenericEnumTemplateInfo* enum_template = nullptr;
-            if (object.scope_name.empty()) {
-                enum_template = find_generic_enum_template_in_visible_modules(object.text, expr.range, false);
-            } else {
-                const syntax::ModuleId scope_module = resolve_import_alias(object.scope_name, object.scope_range, false);
-                if (syntax::is_valid(scope_module)) {
-                    enum_template = find_generic_enum_template_in_module(scope_module, object.text, expr.range, false);
-                }
-            }
-            if (enum_template != nullptr) {
-                const EnumCaseInfo* enum_case = nullptr;
-                if (const GenericEnumInstanceInfo* expected_instance = generic_enum_instance(expected_type);
-                    expected_instance != nullptr &&
-                    expected_instance->name == enum_template->name &&
-                    expected_instance->module.value == enum_template->module.value) {
-                    enum_case = find_enum_case_by_type_and_case(expected_type, expr.field_name);
-                }
-                if (enum_case == nullptr) {
-                    enum_case = instantiate_generic_enum_constructor(expr_id, {}, expected_type, true);
-                }
-                if (enum_case == nullptr) {
-                    return record_expr_type(expr_id, invalid_type_handle);
-                }
-                if (is_valid(enum_case->payload_type)) {
-                    report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                    return record_expr_type(expr_id, invalid_type_handle);
-                }
-                record_expr_c_name(expr_id, enum_case->c_name);
-                return record_expr_type(expr_id, enum_case->type);
-            }
-            if (!object.scope_name.empty() || !object.type_args.empty()) {
-                const TypeHandle enum_type = resolve_associated_type_owner(object, false);
-                if (is_valid(enum_type) && checked_.types.get(enum_type).kind == TypeKind::enum_) {
-                    const EnumCaseInfo* enum_case = find_enum_case_by_type_and_case(enum_type, expr.field_name);
-                    if (enum_case == nullptr) {
-                        report(expr.range, "unknown enum case: " + std::string(object.text) + "." + std::string(expr.field_name));
-                        return record_expr_type(expr_id, invalid_type_handle);
-                    }
-                    if (is_valid(enum_case->payload_type)) {
-                        report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                        return record_expr_type(expr_id, invalid_type_handle);
-                    }
-                    record_expr_c_name(expr_id, enum_case->c_name);
-                    return record_expr_type(expr_id, enum_case->type);
-                }
-            }
-            if (object.scope_name.empty()) {
-                if (const EnumCaseInfo* enum_case = find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
-                    enum_case != nullptr) {
-                    if (is_valid(enum_case->payload_type)) {
-                        report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                        return record_expr_type(expr_id, invalid_type_handle);
-                    }
-                    record_expr_c_name(expr_id, enum_case->c_name);
-                    return record_expr_type(expr_id, enum_case->type);
-                }
-            }
-        }
-        TypeHandle object = analyze_expr(expr.object);
-        if (checked_.types.is_pointer(object)) {
-            object = checked_.types.get(object).pointee;
-        }
-        const StructInfo* info = find_struct(object);
-        if (info == nullptr || info->is_opaque) {
-            report(expr.range, "field access requires a non-opaque struct value");
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
-        for (const StructFieldInfo& field : info->fields) {
-            if (field.name == expr.field_name) {
-                if (!can_access(info->module, field.visibility)) {
-                    report(expr.range, "field is private: " + std::string(expr.field_name));
-                    return record_expr_type(expr_id, invalid_type_handle);
-                }
-                return record_expr_type(expr_id, field.type);
-            }
-        }
-        report(expr.range, "unknown field: " + std::string(expr.field_name));
-        return record_expr_type(expr_id, invalid_type_handle);
-    }
-    case syntax::ExprKind::index: {
-        const TypeHandle object = analyze_expr(expr.object);
-        const TypeHandle index = analyze_expr(expr.index);
-        if (!checked_.types.is_integer(index)) {
-            report(module_.exprs[expr.index.value].range, "array index must be an integer");
-        }
-        if (!is_valid(object)) {
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
-        if (checked_.types.is_array(object)) {
-            return record_expr_type(expr_id, checked_.types.get(object).array_element);
-        }
-        if (checked_.types.is_pointer(object)) {
-            const TypeHandle pointee = checked_.types.get(object).pointee;
-            if (checked_.types.is_array(pointee)) {
-                report(expr.range, "indexing pointer to array requires explicit dereference");
-                return record_expr_type(expr_id, invalid_type_handle);
-            }
-            if (!is_valid_storage_type(pointee)) {
-                report(expr.range, "indexing pointer requires pointer to valid storage");
-                return record_expr_type(expr_id, invalid_type_handle);
-            }
-            return record_expr_type(expr_id, pointee);
-        }
-        report(expr.range, "indexing requires array or pointer value");
-        return record_expr_type(expr_id, invalid_type_handle);
-    }
-    case syntax::ExprKind::struct_literal: {
-        TypeHandle struct_type = invalid_type_handle;
-        const bool qualified = !expr.scope_name.empty();
-        syntax::ModuleId scope_module = syntax::invalid_module_id;
-        if (qualified) {
-            scope_module = resolve_import_alias(expr.scope_name, expr.scope_range);
-            if (!syntax::is_valid(scope_module)) {
-                return record_expr_type(expr_id, invalid_type_handle);
-            }
-        }
-        if (!expr.struct_type_args.empty()) {
-            const GenericStructTemplateInfo* template_info = qualified
-                ? find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
-                : find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
-            if (template_info != nullptr) {
-                struct_type = instantiate_generic_struct_from_syntax(
-                    *template_info,
-                    expr.struct_type_args,
-                    expr.range,
-                    false
-                );
-            } else {
-                report(
-                    expr.range,
-                    "type arguments require a generic struct: " +
-                        (qualified
-                            ? std::string(expr.scope_name) + "::" + std::string(expr.struct_name)
-                            : std::string(expr.struct_name))
-                );
-            }
-        } else {
-            const GenericStructTemplateInfo* template_info = qualified
-                ? find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
-                : find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
-            if (template_info != nullptr) {
-                struct_type = infer_generic_struct_literal_type(*template_info, expr, expected_type);
-                if (!is_valid(struct_type)) {
-                    report(
-                        expr.range,
-                        "generic struct literal requires explicit type arguments: " +
-                            (qualified
-                                ? std::string(expr.scope_name) + "::" + template_info->name
-                                : template_info->name)
-                    );
-                    return record_expr_type(expr_id, invalid_type_handle);
-                }
-            } else {
-                struct_type = qualified
-                    ? find_type_in_module(scope_module, expr.struct_name, expr.range, false)
-                    : find_type_in_visible_modules(expr.struct_name, expr.range, false);
-            }
-        }
-        if (!is_valid(struct_type)) {
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
-        const StructInfo* info = find_struct(struct_type);
-        if (info == nullptr || info->is_opaque) {
-            report(expr.range, "struct literal requires a non-opaque struct type");
-            return record_expr_type(expr_id, invalid_type_handle);
-        }
-        std::unordered_set<std::string> initialized_fields;
-        for (const syntax::FieldInit& init : expr.field_inits) {
-            if (!initialized_fields.insert(std::string(init.name)).second) {
-                report(init.range, "duplicate struct literal field: " + std::string(init.name));
-                continue;
-            }
-            const StructFieldInfo* field_info = nullptr;
-            for (const StructFieldInfo& field : info->fields) {
-                if (field.name == init.name) {
-                    field_info = &field;
-                    break;
-                }
-            }
-            if (field_info == nullptr) {
-                report(init.range, "unknown field in struct literal: " + std::string(init.name));
-                continue;
-            }
-            if (!can_access(info->module, field_info->visibility)) {
-                report(init.range, "field is private: " + std::string(init.name));
-                continue;
-            }
-            const TypeHandle actual = analyze_expr(init.value, field_info->type);
-            if (!can_assign(field_info->type, actual, init.value)) {
-                report(init.range, "struct literal field type mismatch");
-            }
-        }
-        for (const StructFieldInfo& field : info->fields) {
-            if (!initialized_fields.contains(field.name)) {
-                report(expr.range, "struct literal is missing field: " + field.name);
-            }
-        }
-        return record_expr_type(expr_id, struct_type);
-    }
+        return this->analyze_match_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::unary:
+        return this->analyze_unary_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::binary:
+        return this->analyze_binary_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::field:
+        return this->analyze_field_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::index:
+        return this->analyze_index_expr(expr_id, expr);
+    case syntax::ExprKind::struct_literal:
+        return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::cast:
     case syntax::ExprKind::ptr_cast:
-    case syntax::ExprKind::bit_cast: {
-        const TypeHandle source = analyze_expr(expr.cast_expr);
-        const TypeHandle target = resolve_type(expr.cast_type);
-        if (!is_valid_cast(expr.kind, target, source)) {
-            report(expr.range, "invalid explicit conversion");
-        }
-        return record_expr_type(expr_id, target);
-    }
+    case syntax::ExprKind::bit_cast:
+        return this->analyze_cast_expr(expr_id, expr);
     case syntax::ExprKind::size_of:
-    case syntax::ExprKind::align_of: {
-        const TypeHandle queried = resolve_type(expr.cast_type);
-        if (is_valid(queried) && checked_.types.get(queried).kind == TypeKind::opaque_struct) {
-            report(expr.range, "opaque struct cannot be queried by size_of or align_of directly");
-        } else if (is_valid(queried) && !is_valid_storage_type(queried)) {
-            report(expr.range, "size_of and align_of require a valid storage type");
-        }
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
+    case syntax::ExprKind::align_of:
+        return this->analyze_size_or_align_expr(expr_id, expr);
+    case syntax::ExprKind::ptr_addr:
+        return this->analyze_ptr_addr_expr(expr_id, expr);
+    case syntax::ExprKind::ptr_from_addr:
+        return this->analyze_ptr_from_addr_expr(expr_id, expr);
+    case syntax::ExprKind::str_data:
+    case syntax::ExprKind::str_byte_len:
+        return this->analyze_str_projection_expr(expr_id, expr);
+    case syntax::ExprKind::str_from_bytes_unchecked:
+        return this->analyze_str_from_bytes_unchecked_expr(expr_id, expr);
+    case syntax::ExprKind::invalid:
+        return this->record_expr_type(expr_id, invalid_type_handle);
     }
-    case syntax::ExprKind::ptr_addr: {
-        const TypeHandle value = analyze_expr(expr.cast_expr);
-        if (!checked_.types.is_pointer(value)) {
-            report(expr.range, "ptr_addr requires a pointer value");
+    return this->record_expr_type(expr_id, invalid_type_handle);
+}
+
+TypeHandle SemanticAnalyzer::analyze_name_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const Symbol* symbol = nullptr;
+    if (!expr.scope_name.empty()) {
+        const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range);
+        if (!syntax::is_valid(module)) {
+            return this->record_expr_type(expr_id, invalid_type_handle);
         }
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
+        symbol = this->find_symbol_in_module(module, expr.text, expr.range);
+    } else {
+        symbol = this->find_symbol(expr.text, expr.range);
     }
-    case syntax::ExprKind::ptr_from_addr: {
-        const TypeHandle target = resolve_type(expr.cast_type);
-        const TypeHandle address = analyze_expr(expr.cast_expr, checked_.types.builtin(BuiltinType::usize));
-        if (!checked_.types.is_pointer(target)) {
-            report(expr.range, "ptr_from_addr target type must be a pointer");
-        }
-        if (!checked_.types.is_integer(address)) {
-            report(module_.exprs[expr.cast_expr.value].range, "ptr_from_addr address must be an integer");
-        }
-        return record_expr_type(expr_id, target);
+    if (symbol == nullptr) {
+        return this->record_expr_type(expr_id, invalid_type_handle);
     }
-    case syntax::ExprKind::str_data: {
-        const TypeHandle value = analyze_expr(expr.cast_expr);
-        if (!checked_.types.is_str(value)) {
-            report(expr.range, "str_data requires a str value");
+    if (symbol->kind == SymbolKind::function) {
+        this->report(expr.range, "function name cannot be used as a value: " + std::string(expr.text));
+        return this->record_expr_type(expr_id, invalid_type_handle);
+    }
+    this->record_expr_c_name(expr_id, symbol->c_name);
+    return this->record_expr_type(expr_id, symbol->type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_unary_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
+        syntax::is_valid(expr.unary_operand) &&
+        expr.unary_operand.value < this->module_.exprs.size() &&
+        this->module_.exprs[expr.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
+        const syntax::ExprNode& operand_expr = this->module_.exprs[expr.unary_operand.value];
+        const TypeHandle literal_type = this->checked_.types.is_integer(expected_type)
+            ? expected_type
+            : this->checked_.types.builtin(BuiltinType::i32);
+        if (!this->negative_integer_literal_fits_type(literal_type, operand_expr.text)) {
+            this->report(
+                expr.range,
+                "integer literal out of range for " + this->checked_.types.display_name(literal_type)
+            );
         }
-        return record_expr_type(
+        static_cast<void>(this->record_expr_type(expr.unary_operand, literal_type));
+        return this->record_expr_type(expr_id, literal_type);
+    }
+
+    const TypeHandle operand_expected =
+        ((expr.unary_op == syntax::UnaryOp::numeric_negate &&
+          (this->checked_.types.is_integer(expected_type) || this->checked_.types.is_float(expected_type))) ||
+         (expr.unary_op == syntax::UnaryOp::bitwise_not && this->checked_.types.is_integer(expected_type)))
+            ? expected_type
+            : invalid_type_handle;
+    const TypeHandle operand = this->analyze_expr(expr.unary_operand, operand_expected);
+    if (expr.unary_op == syntax::UnaryOp::logical_not && !this->checked_.types.is_bool(operand)) {
+        this->report(expr.range, "logical not requires bool operand");
+    }
+    if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
+        !is_signed_integer_type(this->checked_.types, operand) &&
+        !this->checked_.types.is_float(operand)) {
+        this->report(expr.range, "numeric unary operator requires signed integer or float operand");
+    }
+    if (expr.unary_op == syntax::UnaryOp::bitwise_not && !this->checked_.types.is_integer(operand)) {
+        this->report(expr.range, "bitwise not requires integer operand");
+    }
+    if (expr.unary_op == syntax::UnaryOp::dereference) {
+        if (!this->checked_.types.is_pointer(operand)) {
+            this->report(expr.range, "dereference requires pointer operand");
+            return this->record_expr_type(expr_id, invalid_type_handle);
+        }
+        const TypeHandle pointee = this->checked_.types.get(operand).pointee;
+        if (!this->is_valid_storage_type(pointee)) {
+            this->report(expr.range, "dereference requires pointer to valid storage");
+            return this->record_expr_type(expr_id, invalid_type_handle);
+        }
+        return this->record_expr_type(expr_id, pointee);
+    }
+    if (expr.unary_op == syntax::UnaryOp::address_of) {
+        if (!this->is_place_expr(expr.unary_operand)) {
+            this->report(expr.range, "address-of requires a place expression");
+        }
+        const PointerMutability mutability = this->is_writable_place(expr.unary_operand)
+            ? PointerMutability::mut
+            : PointerMutability::const_;
+        return this->record_expr_type(expr_id, this->checked_.types.pointer(mutability, operand));
+    }
+    return this->record_expr_type(expr_id, operand);
+}
+
+TypeHandle SemanticAnalyzer::analyze_binary_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    const TypeHandle operand_expected =
+        binary_result_uses_operand_type(expr.binary_op) &&
+        (this->checked_.types.is_integer(expected_type) || this->checked_.types.is_float(expected_type))
+            ? expected_type
+            : invalid_type_handle;
+    TypeHandle lhs = invalid_type_handle;
+    TypeHandle rhs = invalid_type_handle;
+    if (!is_valid(operand_expected) &&
+        is_contextual_integer_expr(this->module_, expr.binary_lhs) &&
+        !is_contextual_integer_expr(this->module_, expr.binary_rhs)) {
+        rhs = this->analyze_expr(expr.binary_rhs);
+        lhs = this->analyze_expr(expr.binary_lhs, rhs);
+    } else {
+        lhs = this->analyze_expr(expr.binary_lhs, operand_expected);
+        rhs = this->analyze_expr(expr.binary_rhs, is_valid(lhs) ? lhs : operand_expected);
+    }
+
+    const bool is_equality =
+        expr.binary_op == syntax::BinaryOp::equal ||
+        expr.binary_op == syntax::BinaryOp::not_equal;
+    const bool is_null_pointer_comparison =
+        is_equality &&
+        ((this->checked_.types.is_pointer(lhs) && this->is_null_literal(expr.binary_rhs)) ||
+         (this->checked_.types.is_pointer(rhs) && this->is_null_literal(expr.binary_lhs)));
+    if (!this->checked_.types.same(lhs, rhs) && !is_null_pointer_comparison) {
+        this->report(expr.range, "binary operands must have the same type");
+    }
+
+    const IntegerLiteralExpr rhs_integer_literal = integer_literal_expr(this->module_, expr.binary_rhs);
+    if (syntax::is_valid(rhs_integer_literal.literal)) {
+        base::u64 rhs_literal_value = 0;
+        const syntax::ExprNode& literal_expr = this->module_.exprs[rhs_integer_literal.literal.value];
+        const base::SourceRange rhs_range =
+            syntax::is_valid(expr.binary_rhs) && expr.binary_rhs.value < this->module_.exprs.size()
+                ? this->module_.exprs[expr.binary_rhs.value].range
+                : literal_expr.range;
+        if (this->parse_integer_literal_text(literal_expr.text, rhs_literal_value)) {
+            if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
+                this->checked_.types.is_integer(lhs) &&
+                rhs_literal_value == 0) {
+                this->report(
+                    rhs_range,
+                    expr.binary_op == syntax::BinaryOp::div
+                        ? "integer division by zero"
+                        : "integer modulo by zero"
+                );
+            }
+            if (expr.binary_op == syntax::BinaryOp::shl || expr.binary_op == syntax::BinaryOp::shr) {
+                const base::u32 bit_width = integer_bit_width(this->checked_.types, lhs);
+                if (rhs_integer_literal.negated && rhs_literal_value != 0) {
+                    this->report(rhs_range, "shift amount cannot be negative");
+                } else if (!rhs_integer_literal.negated &&
+                           bit_width != 0 &&
+                           rhs_literal_value >= bit_width) {
+                    this->report(rhs_range, "shift amount is out of range");
+                }
+            }
+        }
+    }
+
+    if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
+        is_signed_integer_type(this->checked_.types, lhs)) {
+        const IntegerLiteralExpr lhs_integer_literal = integer_literal_expr(this->module_, expr.binary_lhs);
+        if (syntax::is_valid(lhs_integer_literal.literal) &&
+            syntax::is_valid(rhs_integer_literal.literal)) {
+            base::u64 lhs_literal_value = 0;
+            base::u64 rhs_literal_value = 0;
+            const syntax::ExprNode& lhs_literal_expr = this->module_.exprs[lhs_integer_literal.literal.value];
+            const syntax::ExprNode& rhs_literal_expr = this->module_.exprs[rhs_integer_literal.literal.value];
+            if (this->parse_integer_literal_text(lhs_literal_expr.text, lhs_literal_value) &&
+                this->parse_integer_literal_text(rhs_literal_expr.text, rhs_literal_value) &&
+                is_signed_min_integer_literal(
+                    lhs_integer_literal,
+                    lhs_literal_value,
+                    integer_bit_width(this->checked_.types, lhs)
+                ) &&
+                rhs_integer_literal.negated &&
+                rhs_literal_value == 1) {
+                this->report(
+                    expr.range,
+                    expr.binary_op == syntax::BinaryOp::div
+                        ? "signed integer division overflows"
+                        : "signed integer modulo overflows"
+                );
+            }
+        }
+    }
+
+    switch (expr.binary_op) {
+    case syntax::BinaryOp::less:
+    case syntax::BinaryOp::less_equal:
+    case syntax::BinaryOp::greater:
+    case syntax::BinaryOp::greater_equal:
+        if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
+            this->report(expr.range, "comparison operator requires numeric operands");
+        }
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
+    case syntax::BinaryOp::equal:
+    case syntax::BinaryOp::not_equal: {
+        const bool scalar =
+            this->checked_.types.is_bool(lhs) ||
+            this->checked_.types.is_integer(lhs) ||
+            this->checked_.types.is_float(lhs) ||
+            this->checked_.types.is_pointer(lhs) ||
+            (is_valid(lhs) &&
+             this->checked_.types.get(lhs).kind == TypeKind::enum_ &&
+             !is_valid(this->checked_.types.get(lhs).enum_payload_storage));
+        if (!scalar && !is_null_pointer_comparison) {
+            this->report(expr.range, "equality operator requires scalar operands");
+        }
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
+    }
+    case syntax::BinaryOp::logical_and:
+    case syntax::BinaryOp::logical_or:
+        if (!this->checked_.types.is_bool(lhs) || !this->checked_.types.is_bool(rhs)) {
+            this->report(expr.range, "logical operator requires bool operands");
+        }
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
+    case syntax::BinaryOp::bit_and:
+    case syntax::BinaryOp::bit_xor:
+    case syntax::BinaryOp::bit_or:
+    case syntax::BinaryOp::shl:
+    case syntax::BinaryOp::shr:
+    case syntax::BinaryOp::mod:
+        if (!this->checked_.types.is_integer(lhs)) {
+            this->report(expr.range, "integer operator requires integer operands");
+        }
+        return this->record_expr_type(expr_id, lhs);
+    default:
+        if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
+            this->report(expr.range, "binary operator requires numeric operands");
+        }
+        return this->record_expr_type(expr_id, lhs);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_field_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    if (syntax::is_valid(expr.object) &&
+        expr.object.value < this->module_.exprs.size() &&
+        this->module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
+        const syntax::ExprNode& object = this->module_.exprs[expr.object.value];
+        const GenericEnumTemplateInfo* enum_template = nullptr;
+        if (object.scope_name.empty()) {
+            enum_template = this->find_generic_enum_template_in_visible_modules(object.text, expr.range, false);
+        } else {
+            const syntax::ModuleId scope_module = this->resolve_import_alias(object.scope_name, object.scope_range, false);
+            if (syntax::is_valid(scope_module)) {
+                enum_template = this->find_generic_enum_template_in_module(scope_module, object.text, expr.range, false);
+            }
+        }
+        if (enum_template != nullptr) {
+            const EnumCaseInfo* enum_case = nullptr;
+            if (const GenericEnumInstanceInfo* expected_instance = this->generic_enum_instance(expected_type);
+                expected_instance != nullptr &&
+                expected_instance->name == enum_template->name &&
+                expected_instance->module.value == enum_template->module.value) {
+                enum_case = this->find_enum_case_by_type_and_case(expected_type, expr.field_name);
+            }
+            if (enum_case == nullptr) {
+                enum_case = this->instantiate_generic_enum_constructor(expr_id, {}, expected_type, true);
+            }
+            if (enum_case == nullptr) {
+                return this->record_expr_type(expr_id, invalid_type_handle);
+            }
+            if (is_valid(enum_case->payload_type)) {
+                this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                return this->record_expr_type(expr_id, invalid_type_handle);
+            }
+            this->record_expr_c_name(expr_id, enum_case->c_name);
+            return this->record_expr_type(expr_id, enum_case->type);
+        }
+        if (!object.scope_name.empty() || !object.type_args.empty()) {
+            const TypeHandle enum_type = this->resolve_associated_type_owner(object, false);
+            if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
+                const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
+                if (enum_case == nullptr) {
+                    this->report(expr.range, "unknown enum case: " + std::string(object.text) + "." + std::string(expr.field_name));
+                    return this->record_expr_type(expr_id, invalid_type_handle);
+                }
+                if (is_valid(enum_case->payload_type)) {
+                    this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                    return this->record_expr_type(expr_id, invalid_type_handle);
+                }
+                this->record_expr_c_name(expr_id, enum_case->c_name);
+                return this->record_expr_type(expr_id, enum_case->type);
+            }
+        }
+        if (object.scope_name.empty()) {
+            if (const EnumCaseInfo* enum_case = this->find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
+                enum_case != nullptr) {
+                if (is_valid(enum_case->payload_type)) {
+                    this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
+                    return this->record_expr_type(expr_id, invalid_type_handle);
+                }
+                this->record_expr_c_name(expr_id, enum_case->c_name);
+                return this->record_expr_type(expr_id, enum_case->type);
+            }
+        }
+    }
+
+    TypeHandle object = this->analyze_expr(expr.object);
+    if (this->checked_.types.is_pointer(object)) {
+        object = this->checked_.types.get(object).pointee;
+    }
+    const StructInfo* info = this->find_struct(object);
+    if (info == nullptr || info->is_opaque) {
+        this->report(expr.range, "field access requires a non-opaque struct value");
+        return this->record_expr_type(expr_id, invalid_type_handle);
+    }
+    for (const StructFieldInfo& field : info->fields) {
+        if (field.name == expr.field_name) {
+            if (!this->can_access(info->module, field.visibility)) {
+                this->report(expr.range, "field is private: " + std::string(expr.field_name));
+                return this->record_expr_type(expr_id, invalid_type_handle);
+            }
+            return this->record_expr_type(expr_id, field.type);
+        }
+    }
+    this->report(expr.range, "unknown field: " + std::string(expr.field_name));
+    return this->record_expr_type(expr_id, invalid_type_handle);
+}
+
+TypeHandle SemanticAnalyzer::analyze_index_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle object = this->analyze_expr(expr.object);
+    const TypeHandle index = this->analyze_expr(expr.index);
+    if (!this->checked_.types.is_integer(index)) {
+        this->report(this->module_.exprs[expr.index.value].range, "array index must be an integer");
+    }
+    if (!is_valid(object)) {
+        return this->record_expr_type(expr_id, invalid_type_handle);
+    }
+    if (this->checked_.types.is_array(object)) {
+        return this->record_expr_type(expr_id, this->checked_.types.get(object).array_element);
+    }
+    if (this->checked_.types.is_pointer(object)) {
+        const TypeHandle pointee = this->checked_.types.get(object).pointee;
+        if (this->checked_.types.is_array(pointee)) {
+            this->report(expr.range, "indexing pointer to array requires explicit dereference");
+            return this->record_expr_type(expr_id, invalid_type_handle);
+        }
+        if (!this->is_valid_storage_type(pointee)) {
+            this->report(expr.range, "indexing pointer requires pointer to valid storage");
+            return this->record_expr_type(expr_id, invalid_type_handle);
+        }
+        return this->record_expr_type(expr_id, pointee);
+    }
+    this->report(expr.range, "indexing requires array or pointer value");
+    return this->record_expr_type(expr_id, invalid_type_handle);
+}
+
+TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    TypeHandle struct_type = invalid_type_handle;
+    const bool qualified = !expr.scope_name.empty();
+    syntax::ModuleId scope_module = syntax::invalid_module_id;
+    if (qualified) {
+        scope_module = this->resolve_import_alias(expr.scope_name, expr.scope_range);
+        if (!syntax::is_valid(scope_module)) {
+            return this->record_expr_type(expr_id, invalid_type_handle);
+        }
+    }
+    if (!expr.struct_type_args.empty()) {
+        const GenericStructTemplateInfo* template_info = qualified
+            ? this->find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
+            : this->find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
+        if (template_info != nullptr) {
+            struct_type = this->instantiate_generic_struct_from_syntax(
+                *template_info,
+                expr.struct_type_args,
+                expr.range,
+                false
+            );
+        } else {
+            this->report(
+                expr.range,
+                "type arguments require a generic struct: " +
+                    (qualified
+                        ? std::string(expr.scope_name) + "::" + std::string(expr.struct_name)
+                        : std::string(expr.struct_name))
+            );
+        }
+    } else {
+        const GenericStructTemplateInfo* template_info = qualified
+            ? this->find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
+            : this->find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
+        if (template_info != nullptr) {
+            struct_type = this->infer_generic_struct_literal_type(*template_info, expr, expected_type);
+            if (!is_valid(struct_type)) {
+                this->report(
+                    expr.range,
+                    "generic struct literal requires explicit type arguments: " +
+                        (qualified
+                            ? std::string(expr.scope_name) + "::" + template_info->name
+                            : template_info->name)
+                );
+                return this->record_expr_type(expr_id, invalid_type_handle);
+            }
+        } else {
+            struct_type = qualified
+                ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false)
+                : this->find_type_in_visible_modules(expr.struct_name, expr.range, false);
+        }
+    }
+    if (!is_valid(struct_type)) {
+        return this->record_expr_type(expr_id, invalid_type_handle);
+    }
+    const StructInfo* info = this->find_struct(struct_type);
+    if (info == nullptr || info->is_opaque) {
+        this->report(expr.range, "struct literal requires a non-opaque struct type");
+        return this->record_expr_type(expr_id, invalid_type_handle);
+    }
+    std::unordered_set<std::string> initialized_fields;
+    for (const syntax::FieldInit& init : expr.field_inits) {
+        if (!initialized_fields.insert(std::string(init.name)).second) {
+            this->report(init.range, "duplicate struct literal field: " + std::string(init.name));
+            continue;
+        }
+        const StructFieldInfo* field_info = nullptr;
+        for (const StructFieldInfo& field : info->fields) {
+            if (field.name == init.name) {
+                field_info = &field;
+                break;
+            }
+        }
+        if (field_info == nullptr) {
+            this->report(init.range, "unknown field in struct literal: " + std::string(init.name));
+            continue;
+        }
+        if (!this->can_access(info->module, field_info->visibility)) {
+            this->report(init.range, "field is private: " + std::string(init.name));
+            continue;
+        }
+        const TypeHandle actual = this->analyze_expr(init.value, field_info->type);
+        if (!this->can_assign(field_info->type, actual, init.value)) {
+            this->report(init.range, "struct literal field type mismatch");
+        }
+    }
+    for (const StructFieldInfo& field : info->fields) {
+        if (!initialized_fields.contains(field.name)) {
+            this->report(expr.range, "struct literal is missing field: " + field.name);
+        }
+    }
+    return this->record_expr_type(expr_id, struct_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_cast_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle source = this->analyze_expr(expr.cast_expr);
+    const TypeHandle target = this->resolve_type(expr.cast_type);
+    if (!this->is_valid_cast(expr.kind, target, source)) {
+        this->report(expr.range, "invalid explicit conversion");
+    }
+    return this->record_expr_type(expr_id, target);
+}
+
+TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle queried = this->resolve_type(expr.cast_type);
+    if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
+        this->report(expr.range, "opaque struct cannot be queried by size_of or align_of directly");
+    } else if (is_valid(queried) && !this->is_valid_storage_type(queried)) {
+        this->report(expr.range, "size_of and align_of require a valid storage type");
+    }
+    return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
+}
+
+TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle value = this->analyze_expr(expr.cast_expr);
+    if (!this->checked_.types.is_pointer(value)) {
+        this->report(expr.range, "ptr_addr requires a pointer value");
+    }
+    return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
+}
+
+TypeHandle SemanticAnalyzer::analyze_ptr_from_addr_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle target = this->resolve_type(expr.cast_type);
+    const TypeHandle address = this->analyze_expr(expr.cast_expr, this->checked_.types.builtin(BuiltinType::usize));
+    if (!this->checked_.types.is_pointer(target)) {
+        this->report(expr.range, "ptr_from_addr target type must be a pointer");
+    }
+    if (!this->checked_.types.is_integer(address)) {
+        this->report(this->module_.exprs[expr.cast_expr.value].range, "ptr_from_addr address must be an integer");
+    }
+    return this->record_expr_type(expr_id, target);
+}
+
+TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle value = this->analyze_expr(expr.cast_expr);
+    if (!this->checked_.types.is_str(value)) {
+        this->report(expr.range, expr.kind == syntax::ExprKind::str_data ? "str_data requires a str value" : "str_byte_len requires a str value");
+    }
+    if (expr.kind == syntax::ExprKind::str_data) {
+        return this->record_expr_type(
             expr_id,
-            checked_.types.pointer(PointerMutability::const_, checked_.types.builtin(BuiltinType::u8))
+            this->checked_.types.pointer(PointerMutability::const_, this->checked_.types.builtin(BuiltinType::u8))
         );
     }
-    case syntax::ExprKind::str_byte_len: {
-        const TypeHandle value = analyze_expr(expr.cast_expr);
-        if (!checked_.types.is_str(value)) {
-            report(expr.range, "str_byte_len requires a str value");
-        }
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::usize));
+    return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
+}
+
+TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    if (expr.args.size() != 2) {
+        this->report(expr.range, "str_from_bytes_unchecked requires data and length arguments");
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     }
-    case syntax::ExprKind::str_from_bytes_unchecked: {
-        if (expr.args.size() != 2) {
-            report(expr.range, "str_from_bytes_unchecked requires data and length arguments");
-            return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::str));
-        }
-        const TypeHandle data = analyze_expr(expr.args[0]);
-        const TypeHandle len = analyze_expr(expr.args[1], checked_.types.builtin(BuiltinType::usize));
-        if (!is_const_u8_pointer(checked_.types, data)) {
-            report(module_.exprs[expr.args[0].value].range, "str_from_bytes_unchecked data must be *const u8");
-        }
-        if (!checked_.types.is_integer(len)) {
-            report(module_.exprs[expr.args[1].value].range, "str_from_bytes_unchecked length must be an integer");
-        }
-        return record_expr_type(expr_id, checked_.types.builtin(BuiltinType::str));
+    const TypeHandle data = this->analyze_expr(expr.args[0]);
+    const TypeHandle len = this->analyze_expr(expr.args[1], this->checked_.types.builtin(BuiltinType::usize));
+    if (!is_const_u8_pointer(this->checked_.types, data)) {
+        this->report(this->module_.exprs[expr.args[0].value].range, "str_from_bytes_unchecked data must be *const u8");
     }
-    case syntax::ExprKind::invalid:
-        return record_expr_type(expr_id, invalid_type_handle);
+    if (!this->checked_.types.is_integer(len)) {
+        this->report(this->module_.exprs[expr.args[1].value].range, "str_from_bytes_unchecked length must be an integer");
     }
-    return record_expr_type(expr_id, invalid_type_handle);
+    return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
 }
 
 TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {

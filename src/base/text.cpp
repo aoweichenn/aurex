@@ -1,4 +1,4 @@
-#include "aurex/base/text.hpp"
+#include <aurex/base/text.hpp>
 
 namespace aurex::base {
 

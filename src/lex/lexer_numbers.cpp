@@ -1,7 +1,7 @@
-#include "aurex/lex/lexer.hpp"
+#include <aurex/lex/lexer.hpp>
 
-#include "char_class.hpp"
-#include "lexeme.hpp"
+#include <lex/char_class.hpp>
+#include <lex/lexeme.hpp>
 
 #include <string>
 

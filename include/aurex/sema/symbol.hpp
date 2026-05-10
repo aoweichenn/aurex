@@ -1,10 +1,10 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/result.hpp"
-#include "aurex/sema/type.hpp"
-#include "aurex/syntax/ast.hpp"
-#include "aurex/syntax/ast_ids.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/result.hpp>
+#include <aurex/sema/type.hpp>
+#include <aurex/syntax/ast.hpp>
+#include <aurex/syntax/ast_ids.hpp>
 
 #include <limits>
 #include <string>

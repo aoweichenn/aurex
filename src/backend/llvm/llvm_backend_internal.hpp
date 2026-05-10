@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/backend/llvm_backend.hpp"
+#include <aurex/backend/llvm_backend.hpp>
 
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>

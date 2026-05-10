@@ -1,10 +1,10 @@
-#include "aurex/parse/parser_part_router.hpp"
+#include <aurex/parse/parser_part_router.hpp>
 
-#include "aurex/parse/parser_block_part.hpp"
-#include "aurex/parse/parser_expr_part.hpp"
-#include "aurex/parse/parser_pattern_part.hpp"
-#include "aurex/parse/parser_stmt_part.hpp"
-#include "aurex/parse/parser_type_part.hpp"
+#include <aurex/parse/parser_block_part.hpp>
+#include <aurex/parse/parser_expr_part.hpp>
+#include <aurex/parse/parser_pattern_part.hpp>
+#include <aurex/parse/parser_stmt_part.hpp>
+#include <aurex/parse/parser_type_part.hpp>
 
 namespace aurex::parse {
 

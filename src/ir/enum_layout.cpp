@@ -1,4 +1,4 @@
-#include "aurex/ir/enum_layout.hpp"
+#include <aurex/ir/enum_layout.hpp>
 
 namespace aurex::ir {
 

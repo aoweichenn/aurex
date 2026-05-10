@@ -1,10 +1,10 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/result.hpp"
-#include "aurex/base/source.hpp"
-#include "aurex/lex/lexer_cursor.hpp"
-#include "aurex/syntax/token.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/result.hpp>
+#include <aurex/base/source.hpp>
+#include <aurex/lex/lexer_cursor.hpp>
+#include <aurex/syntax/token.hpp>
 
 #include <string_view>
 #include <vector>

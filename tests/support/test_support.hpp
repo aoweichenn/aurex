@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/driver/invocation.hpp"
+#include <aurex/driver/invocation.hpp>
 
 #include <gtest/gtest.h>
 

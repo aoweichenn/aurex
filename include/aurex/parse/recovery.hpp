@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aurex/parse/recovery_context.hpp"
-#include "aurex/syntax/token.hpp"
+#include <aurex/parse/recovery_context.hpp>
+#include <aurex/syntax/token.hpp>
 
 namespace aurex::parse {
 

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "aurex/sema/function.hpp"
-#include "aurex/sema/generic.hpp"
-#include "aurex/sema/type.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/sema/function.hpp>
+#include <aurex/sema/generic.hpp>
+#include <aurex/sema/type.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <string>
 #include <unordered_map>

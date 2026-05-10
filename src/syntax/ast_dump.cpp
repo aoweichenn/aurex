@@ -1,4 +1,4 @@
-#include "aurex/syntax/ast_dump.hpp"
+#include <aurex/syntax/ast_dump.hpp>
 
 #include <sstream>
 #include <unordered_set>

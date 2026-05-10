@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/ir/ir.hpp"
+#include <aurex/ir/ir.hpp>
 
 #include <string_view>
 

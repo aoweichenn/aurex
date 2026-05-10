@@ -1,4 +1,4 @@
-#include "aurex/base/diagnostic.hpp"
+#include <aurex/base/diagnostic.hpp>
 
 #include <utility>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/parse/parser_part_base.hpp"
+#include <aurex/parse/parser_part_base.hpp>
 
 #include <optional>
 #include <vector>

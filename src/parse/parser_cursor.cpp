@@ -1,6 +1,6 @@
-#include "aurex/parse/parser.hpp"
+#include <aurex/parse/parser.hpp>
 
-#include "parser_angle_lookahead.hpp"
+#include <parse/parser_angle_lookahead.hpp>
 
 namespace aurex::parse {
 

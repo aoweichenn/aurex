@@ -1,5 +1,5 @@
-#include "aurex/backend/llvm_backend.hpp"
-#include "gtest/support/ir_test_helpers.hpp"
+#include <aurex/backend/llvm_backend.hpp>
+#include <gtest/support/ir_test_helpers.hpp>
 
 #include <cstdint>
 #include <string>

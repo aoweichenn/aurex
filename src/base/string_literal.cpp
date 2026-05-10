@@ -1,4 +1,4 @@
-#include "aurex/base/string_literal.hpp"
+#include <aurex/base/string_literal.hpp>
 
 #include <algorithm>
 #include <cstdint>

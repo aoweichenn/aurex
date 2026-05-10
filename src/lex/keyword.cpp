@@ -1,4 +1,4 @@
-#include "keyword.hpp"
+#include <lex/keyword.hpp>
 
 #include <array>
 

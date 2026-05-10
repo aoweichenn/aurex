@@ -1,29 +1,37 @@
-#include "llvm_backend_internal.hpp"
+#include <backend/llvm/llvm_backend_internal.hpp>
 
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Target/TargetMachine.h>
 
+#include <vector>
+
 namespace aurex::backend {
 
+namespace {
+
+constexpr unsigned LLVM_DEFAULT_ADDRESS_SPACE = 0U;
+
+} // namespace
+
 void LlvmEmitter::declare_records() {
-    for (const RecordLayout& record : source_.records) {
+    for (const RecordLayout& record : this->source_.records) {
         if (!sema::is_valid(record.type)) {
             continue;
         }
-        llvm::StructType* type = llvm::StructType::create(context_, record.symbol.empty() ? record.name : record.symbol);
-        records_[record.type.value] = type;
+        llvm::StructType* type = llvm::StructType::create(this->context_, record.symbol.empty() ? record.name : record.symbol);
+        this->records_[record.type.value] = type;
     }
-    for (const RecordLayout& record : source_.records) {
-        auto found = records_.find(record.type.value);
-        if (found == records_.end() || record.is_opaque) {
+    for (const RecordLayout& record : this->source_.records) {
+        auto found = this->records_.find(record.type.value);
+        if (found == this->records_.end() || record.is_opaque) {
             continue;
         }
         std::vector<llvm::Type*> fields;
         fields.reserve(record.fields.size());
         for (const RecordField& field : record.fields) {
-            fields.push_back(llvm_type(field.type));
+            fields.push_back(this->llvm_type(field.type));
         }
         found->second->setBody(fields, false);
     }
@@ -31,90 +39,112 @@ void LlvmEmitter::declare_records() {
 
 llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
     if (!sema::is_valid(type)) {
-        return llvm::Type::getVoidTy(context_);
+        return llvm::Type::getVoidTy(this->context_);
     }
-    const sema::TypeInfo& info = source_.types.get(type);
-    switch (info.kind) {
-    case sema::TypeKind::builtin:
-        switch (info.builtin) {
-        case sema::BuiltinType::void_: return llvm::Type::getVoidTy(context_);
-        case sema::BuiltinType::bool_: return llvm::Type::getInt1Ty(context_);
-        case sema::BuiltinType::i8:
-        case sema::BuiltinType::u8: return llvm::Type::getInt8Ty(context_);
-        case sema::BuiltinType::i16:
-        case sema::BuiltinType::u16: return llvm::Type::getInt16Ty(context_);
-        case sema::BuiltinType::i32:
-        case sema::BuiltinType::u32: return llvm::Type::getInt32Ty(context_);
-        case sema::BuiltinType::i64:
-        case sema::BuiltinType::u64: return llvm::Type::getInt64Ty(context_);
-        case sema::BuiltinType::isize:
-        case sema::BuiltinType::usize: return data_layout().getIntPtrType(context_);
-        case sema::BuiltinType::f32: return llvm::Type::getFloatTy(context_);
-        case sema::BuiltinType::f64: return llvm::Type::getDoubleTy(context_);
-        case sema::BuiltinType::str:
-            return llvm::StructType::get(
-                llvm::PointerType::get(context_, 0),
-                data_layout().getIntPtrType(context_)
-            );
+
+    std::vector<base::u64> array_counts;
+    sema::TypeHandle current = type;
+    llvm::Type* result = nullptr;
+    while (sema::is_valid(current)) {
+        const sema::TypeInfo& info = this->source_.types.get(current);
+        switch (info.kind) {
+        case sema::TypeKind::builtin:
+            switch (info.builtin) {
+            case sema::BuiltinType::void_: result = llvm::Type::getVoidTy(this->context_); break;
+            case sema::BuiltinType::bool_: result = llvm::Type::getInt1Ty(this->context_); break;
+            case sema::BuiltinType::i8:
+            case sema::BuiltinType::u8: result = llvm::Type::getInt8Ty(this->context_); break;
+            case sema::BuiltinType::i16:
+            case sema::BuiltinType::u16: result = llvm::Type::getInt16Ty(this->context_); break;
+            case sema::BuiltinType::i32:
+            case sema::BuiltinType::u32: result = llvm::Type::getInt32Ty(this->context_); break;
+            case sema::BuiltinType::i64:
+            case sema::BuiltinType::u64: result = llvm::Type::getInt64Ty(this->context_); break;
+            case sema::BuiltinType::isize:
+            case sema::BuiltinType::usize: result = this->data_layout().getIntPtrType(this->context_); break;
+            case sema::BuiltinType::f32: result = llvm::Type::getFloatTy(this->context_); break;
+            case sema::BuiltinType::f64: result = llvm::Type::getDoubleTy(this->context_); break;
+            case sema::BuiltinType::str:
+                result = llvm::StructType::get(
+                    llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE),
+                    this->data_layout().getIntPtrType(this->context_)
+                );
+                break;
+            }
+            break;
+        case sema::TypeKind::pointer:
+            result = llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE);
+            break;
+        case sema::TypeKind::array:
+            array_counts.push_back(info.array_count);
+            current = info.array_element;
+            continue;
+        case sema::TypeKind::struct_:
+        case sema::TypeKind::opaque_struct:
+            result = this->records_.at(current.value);
+            break;
+        case sema::TypeKind::enum_:
+            if (sema::is_valid(info.enum_payload_storage)) {
+                result = this->records_.at(current.value);
+                break;
+            }
+            current = info.enum_underlying;
+            continue;
         }
-        return llvm::Type::getVoidTy(context_);
-    case sema::TypeKind::pointer:
-        return llvm::PointerType::get(context_, 0);
-    case sema::TypeKind::array:
-        return llvm::ArrayType::get(llvm_type(info.array_element), info.array_count);
-    case sema::TypeKind::struct_:
-    case sema::TypeKind::opaque_struct:
-        return records_.at(type.value);
-    case sema::TypeKind::enum_:
-        if (sema::is_valid(info.enum_payload_storage)) {
-            return records_.at(type.value);
-        }
-        return llvm_type(info.enum_underlying);
+        break;
     }
-    return llvm::Type::getVoidTy(context_);
+
+    if (result == nullptr) {
+        result = llvm::Type::getVoidTy(this->context_);
+    }
+    for (auto count = array_counts.rbegin(); count != array_counts.rend(); ++count) {
+        result = llvm::ArrayType::get(result, *count);
+    }
+    return result;
 }
 
 llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type) {
-    if (!source_.types.is_pointer(pointer_type)) {
-        return llvm::Type::getVoidTy(context_);
+    if (!this->source_.types.is_pointer(pointer_type)) {
+        return llvm::Type::getVoidTy(this->context_);
     }
-    return llvm_type(source_.types.get(pointer_type).pointee);
+    return this->llvm_type(this->source_.types.get(pointer_type).pointee);
 }
 
 sema::TypeHandle LlvmEmitter::pointee_type(const ValueId value) const noexcept {
-    const sema::TypeHandle type = source_.values[value.value].type;
-    if (!source_.types.is_pointer(type)) {
+    const sema::TypeHandle type = this->source_.values[value.value].type;
+    if (!this->source_.types.is_pointer(type)) {
         return sema::invalid_type_handle;
     }
-    return source_.types.get(type).pointee;
+    return this->source_.types.get(type).pointee;
 }
 
 bool LlvmEmitter::is_unsigned_integer(const sema::TypeHandle type) const noexcept {
-    if (!sema::is_valid(type)) {
-        return false;
+    sema::TypeHandle current = type;
+    while (sema::is_valid(current)) {
+        const sema::TypeInfo& info = this->source_.types.get(current);
+        if (info.kind != sema::TypeKind::enum_) {
+            if (info.kind != sema::TypeKind::builtin) {
+                return false;
+            }
+            switch (info.builtin) {
+            case sema::BuiltinType::bool_:
+            case sema::BuiltinType::u8:
+            case sema::BuiltinType::u16:
+            case sema::BuiltinType::u32:
+            case sema::BuiltinType::u64:
+            case sema::BuiltinType::usize:
+                return true;
+            default:
+                return false;
+            }
+        }
+        current = info.enum_underlying;
     }
-    const sema::TypeInfo& info = source_.types.get(type);
-    if (info.kind == sema::TypeKind::enum_) {
-        return is_unsigned_integer(info.enum_underlying);
-    }
-    if (info.kind != sema::TypeKind::builtin) {
-        return false;
-    }
-    switch (info.builtin) {
-    case sema::BuiltinType::bool_:
-    case sema::BuiltinType::u8:
-    case sema::BuiltinType::u16:
-    case sema::BuiltinType::u32:
-    case sema::BuiltinType::u64:
-    case sema::BuiltinType::usize:
-        return true;
-    default:
-        return false;
-    }
+    return false;
 }
 
 const llvm::DataLayout& LlvmEmitter::data_layout() const {
-    return module_->getDataLayout();
+    return this->module_->getDataLayout();
 }
 
 } // namespace aurex::backend

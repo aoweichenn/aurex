@@ -1,6 +1,6 @@
-#include "aurex/syntax/module.hpp"
+#include <aurex/syntax/module.hpp>
 
-#include "aurex/base/abi.hpp"
+#include <aurex/base/abi.hpp>
 
 #include <sstream>
 

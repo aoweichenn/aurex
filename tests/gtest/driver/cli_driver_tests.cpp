@@ -1,5 +1,5 @@
-#include "aurex/driver/compiler.hpp"
-#include "support/test_support.hpp"
+#include <aurex/driver/compiler.hpp>
+#include <support/test_support.hpp>
 
 #include <fstream>
 #include <string>

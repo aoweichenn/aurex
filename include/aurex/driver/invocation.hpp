@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/ir/pass_pipeline.hpp"
+#include <aurex/ir/pass_pipeline.hpp>
 
 #include <filesystem>
 #include <string>

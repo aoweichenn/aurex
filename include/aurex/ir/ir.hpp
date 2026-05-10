@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aurex/base/integer.hpp"
-#include "aurex/sema/type.hpp"
+#include <aurex/base/integer.hpp>
+#include <aurex/sema/type.hpp>
 
 #include <limits>
 #include <string>

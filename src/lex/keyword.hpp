@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/syntax/token.hpp"
+#include <aurex/syntax/token.hpp>
 
 #include <string_view>
 

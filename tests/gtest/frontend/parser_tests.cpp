@@ -1,8 +1,8 @@
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/lex/lexer.hpp"
-#include "aurex/parse/parser.hpp"
-#include "aurex/syntax/ast_dump.hpp"
-#include "support/test_support.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/lex/lexer.hpp>
+#include <aurex/parse/parser.hpp>
+#include <aurex/syntax/ast_dump.hpp>
+#include <support/test_support.hpp>
 
 #include <string>
 #include <string_view>

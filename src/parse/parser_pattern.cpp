@@ -1,4 +1,4 @@
-#include "aurex/parse/parser_pattern_part.hpp"
+#include <aurex/parse/parser_pattern_part.hpp>
 
 namespace aurex::parse {
 

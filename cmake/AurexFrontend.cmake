@@ -6,7 +6,10 @@ add_library(aurex_lex
     src/lex/lexer_trivia.cpp
 )
 target_link_libraries(aurex_lex PUBLIC aurex_base aurex_syntax)
-target_include_directories(aurex_lex PUBLIC include)
+target_include_directories(aurex_lex
+    PUBLIC include
+    PRIVATE src
+)
 
 add_library(aurex_parse
     src/parse/parser_aggregate.cpp
@@ -38,4 +41,7 @@ add_library(aurex_parse
     src/parse/parser_type.cpp
 )
 target_link_libraries(aurex_parse PUBLIC aurex_base aurex_syntax)
-target_include_directories(aurex_parse PUBLIC include)
+target_include_directories(aurex_parse
+    PUBLIC include
+    PRIVATE src
+)

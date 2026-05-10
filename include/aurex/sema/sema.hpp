@@ -1,13 +1,13 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/result.hpp"
-#include "aurex/sema/checked_module.hpp"
-#include "aurex/sema/function.hpp"
-#include "aurex/sema/generic.hpp"
-#include "aurex/sema/symbol.hpp"
-#include "aurex/sema/type.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/result.hpp>
+#include <aurex/sema/checked_module.hpp>
+#include <aurex/sema/function.hpp>
+#include <aurex/sema/generic.hpp>
+#include <aurex/sema/symbol.hpp>
+#include <aurex/sema/type.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <string>
 #include <string_view>
@@ -67,7 +67,43 @@ private:
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_field_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_index_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_size_or_align_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_ptr_addr_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_ptr_from_addr_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] bool is_generic_enum_constructor_call(const syntax::ExprNode& callee);
+    [[nodiscard]] TypeHandle analyze_enum_constructor_call(syntax::ExprId expr_id, const syntax::ExprNode& expr, const EnumCaseInfo& enum_case);
+    [[nodiscard]] TypeHandle analyze_generic_enum_constructor_call(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_field_call_expr(
+        syntax::ExprId expr_id,
+        const syntax::ExprNode& expr,
+        const syntax::ExprNode& callee,
+        std::string_view name,
+        TypeHandle expected_type
+    );
+    [[nodiscard]] TypeHandle analyze_function_call_expr(
+        syntax::ExprId expr_id,
+        const syntax::ExprNode& expr,
+        const syntax::ExprNode& callee,
+        std::string_view name,
+        TypeHandle expected_type
+    );
+    void validate_call_arguments(
+        const syntax::ExprNode& expr,
+        std::string_view name,
+        const std::vector<TypeHandle>& param_types,
+        base::usize receiver_count,
+        bool is_variadic
+    );
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);

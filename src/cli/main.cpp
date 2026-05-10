@@ -1,6 +1,6 @@
-#include "aurex/driver/compiler.hpp"
+#include <aurex/driver/compiler.hpp>
 
-#include "aurex/base/config.hpp"
+#include <aurex/base/config.hpp>
 
 #include <iostream>
 #include <string_view>

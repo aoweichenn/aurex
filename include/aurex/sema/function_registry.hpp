@@ -1,8 +1,8 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/sema/function.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/sema/function.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <string>
 #include <unordered_map>

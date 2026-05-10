@@ -1,18 +1,18 @@
-#include "aurex/driver/compiler.hpp"
+#include <aurex/driver/compiler.hpp>
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/source.hpp"
-#include "aurex/base/text.hpp"
-#include "aurex/backend/llvm_backend.hpp"
-#include "aurex/driver/module_loader.hpp"
-#include "aurex/driver/file_cache.hpp"
-#include "aurex/driver/native_toolchain.hpp"
-#include "aurex/ir/ir_dump.hpp"
-#include "aurex/ir/lower_ast.hpp"
-#include "aurex/ir/pass_pipeline.hpp"
-#include "aurex/lex/lexer.hpp"
-#include "aurex/sema/sema.hpp"
-#include "aurex/syntax/ast_dump.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/source.hpp>
+#include <aurex/base/text.hpp>
+#include <aurex/backend/llvm_backend.hpp>
+#include <aurex/driver/module_loader.hpp>
+#include <aurex/driver/file_cache.hpp>
+#include <aurex/driver/native_toolchain.hpp>
+#include <aurex/ir/ir_dump.hpp>
+#include <aurex/ir/lower_ast.hpp>
+#include <aurex/ir/pass_pipeline.hpp>
+#include <aurex/lex/lexer.hpp>
+#include <aurex/sema/sema.hpp>
+#include <aurex/syntax/ast_dump.hpp>
 
 #include <chrono>
 #include <filesystem>

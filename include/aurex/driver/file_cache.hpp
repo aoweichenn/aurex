@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aurex/base/result.hpp"
+#include <aurex/base/result.hpp>
 
 #include <filesystem>
 #include <string>

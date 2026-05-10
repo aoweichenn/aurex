@@ -1,6 +1,6 @@
-#include "aurex/sema/sema.hpp"
+#include <aurex/sema/sema.hpp>
 
-#include "aurex/sema/function_registry.hpp"
+#include <aurex/sema/function_registry.hpp>
 
 #include <algorithm>
 #include <cstddef>

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "aurex/base/source.hpp"
-#include "aurex/sema/type.hpp"
-#include "aurex/syntax/ast.hpp"
-#include "aurex/syntax/ast_ids.hpp"
+#include <aurex/base/source.hpp>
+#include <aurex/sema/type.hpp>
+#include <aurex/syntax/ast.hpp>
+#include <aurex/syntax/ast_ids.hpp>
 
 #include <string>
 #include <vector>

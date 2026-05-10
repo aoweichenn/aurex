@@ -1,8 +1,8 @@
 #pragma once
 
-#include "aurex/parse/expr_context.hpp"
-#include "aurex/parse/parser_part_core.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/parse/expr_context.hpp>
+#include <aurex/parse/parser_part_core.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <vector>
 

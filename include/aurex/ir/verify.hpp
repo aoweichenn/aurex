@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aurex/base/result.hpp"
-#include "aurex/ir/ir.hpp"
+#include <aurex/base/result.hpp>
+#include <aurex/ir/ir.hpp>
 
 namespace aurex::ir {
 

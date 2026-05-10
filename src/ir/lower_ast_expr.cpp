@@ -1,10 +1,13 @@
-#include "lower_ast_internal.hpp"
+#include <ir/lower_ast_internal.hpp>
 
-#include "aurex/ir/enum_layout.hpp"
+#include <aurex/ir/enum_layout.hpp>
 
 namespace aurex::ir::detail {
 
 namespace {
+
+constexpr base::usize IR_METHOD_RECEIVER_PARAM_COUNT = 1;
+constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
 
 [[nodiscard]] UnaryOp map_unary(const syntax::UnaryOp op) noexcept {
     switch (op) {
@@ -126,258 +129,314 @@ ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const syntax::Ex
 }
 
 ValueId Lowerer::lower_expr(const syntax::ExprId expr_id) {
-    return lower_expr(expr_id, sema::invalid_type_handle);
+    return this->lower_expr(expr_id, sema::invalid_type_handle);
 }
 
 ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle expected_type) {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= ast_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return invalid_value_id;
     }
-    const syntax::ExprNode& expr = ast_.exprs[expr_id.value];
+    const syntax::ExprNode& expr = this->ast_.exprs[expr_id.value];
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
     case syntax::ExprKind::float_literal:
     case syntax::ExprKind::bool_literal:
-    case syntax::ExprKind::byte_literal: {
-        Value value;
-        if (expr.kind == syntax::ExprKind::byte_literal) {
-            value.kind = ValueKind::byte_literal;
-        } else if (expr.kind == syntax::ExprKind::bool_literal) {
-            value.kind = ValueKind::bool_literal;
-        } else if (expr.kind == syntax::ExprKind::float_literal) {
-            value.kind = ValueKind::float_literal;
-        } else {
-            value.kind = ValueKind::integer_literal;
-        }
-        value.type = expr_type(expr_id);
-        value.text = std::string(expr.text);
-        return append_value(value);
-    }
-    case syntax::ExprKind::null_literal: {
-        Value value;
-        value.kind = ValueKind::null_literal;
-        value.type = sema::is_valid(expected_type) ? expected_type : expr_type(expr_id);
-        return append_value(value);
-    }
+    case syntax::ExprKind::byte_literal:
+    case syntax::ExprKind::null_literal:
+        return this->lower_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::string_literal:
-    case syntax::ExprKind::c_string_literal: {
-        Value value;
-        value.kind = expr.kind == syntax::ExprKind::string_literal ? ValueKind::string_literal : ValueKind::c_string_literal;
-        value.type = expr_type(expr_id);
-        value.text = std::string(expr.text);
-        return append_value(value);
-    }
+    case syntax::ExprKind::c_string_literal:
+        return this->lower_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::name:
-        return lower_name(expr_id, expr);
-    case syntax::ExprKind::unary: {
-        if (expr.unary_op == syntax::UnaryOp::address_of) {
-            return coerce_value(lower_place_addr(expr.unary_operand), expr_type(expr_id));
-        }
-        if (expr.unary_op == syntax::UnaryOp::dereference) {
-            Value value;
-            value.kind = ValueKind::load;
-            value.type = expr_type(expr_id);
-            value.object = lower_expr(expr.unary_operand);
-            return append_value(value);
-        }
-        Value value;
-        value.kind = ValueKind::unary;
-        value.type = expr_type(expr_id);
-        value.unary_op = map_unary(expr.unary_op);
-        value.lhs = lower_expr(expr.unary_operand);
-        return append_value(value);
-    }
-    case syntax::ExprKind::binary: {
-        if (!this->lowering_constant_initializer_ &&
-            (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or)) {
-            return this->lower_short_circuit_expr(expr_id, expr);
-        }
-        Value value;
-        value.kind = ValueKind::binary;
-        value.type = expr_type(expr_id);
-        value.binary_op = map_binary(expr.binary_op);
-        const sema::TypeHandle lhs_type = expr_type(expr.binary_lhs);
-        const sema::TypeHandle rhs_type = expr_type(expr.binary_rhs);
-        const sema::TypeHandle lhs_expected = !sema::is_valid(lhs_type) && module_.types.is_pointer(rhs_type)
-            ? rhs_type
-            : sema::invalid_type_handle;
-        const sema::TypeHandle rhs_expected = !sema::is_valid(rhs_type) && module_.types.is_pointer(lhs_type)
-            ? lhs_type
-            : sema::invalid_type_handle;
-        value.lhs = lower_expr(expr.binary_lhs, lhs_expected);
-        value.rhs = lower_expr(expr.binary_rhs, rhs_expected);
-        return append_value(value);
-    }
-    case syntax::ExprKind::call: {
-        const std::string symbol = call_symbol(expr.callee);
-        if (const sema::EnumCaseInfo* enum_case = enum_case_info(symbol);
-            enum_case != nullptr && sema::is_valid(enum_case->payload_type)) {
-            return lower_enum_constructor(*enum_case, expr.args.empty() ? syntax::invalid_expr_id : expr.args.front());
-        }
-        Value value;
-        value.kind = ValueKind::call;
-        value.type = expr_type(expr_id);
-        const CallTarget target = call_target(expr.callee);
-        value.name = target.symbol;
-        value.call_target = target.function;
-        base::usize param_offset = 0;
-        if (syntax::is_valid(expr.callee) &&
-            expr.callee.value < ast_.exprs.size() &&
-            ast_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
-            is_valid(target.function) &&
-            target.function.value < module_.functions.size() &&
-            module_.functions[target.function.value].signature_params.size() == expr.args.size() + 1) {
-            const syntax::ExprNode& callee = ast_.exprs[expr.callee.value];
-            const sema::TypeHandle receiver_type = expr_type(callee.object);
-            const sema::TypeHandle param_type = call_param_type(target.function, 0);
-            ValueId receiver = invalid_value_id;
-            if (sema::is_valid(param_type) &&
-                module_.types.is_pointer(param_type) &&
-                (!sema::is_valid(receiver_type) || !module_.types.is_pointer(receiver_type))) {
-                const sema::TypeInfo& param_info = module_.types.get(param_type);
-                receiver = param_info.pointer_mutability == sema::PointerMutability::mut
-                    ? lower_place_addr(callee.object)
-                    : lower_object_place_or_value(callee.object).address;
-            } else {
-                receiver = lower_expr(callee.object, param_type);
-            }
-            value.args.push_back(coerce_value(receiver, param_type));
-            param_offset = 1;
-        }
-        const bool variadic_call =
-            is_valid(target.function) &&
-            target.function.value < module_.functions.size() &&
-            module_.functions[target.function.value].is_variadic;
-        for (base::usize i = 0; i < expr.args.size(); ++i) {
-            sema::TypeHandle param_type = call_param_type(target.function, i + param_offset);
-            ValueId arg = lower_expr(expr.args[i], param_type);
-            if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < module_.values.size()) {
-                param_type = variadic_argument_type(module_.values[arg.value].type);
-            }
-            value.args.push_back(coerce_value(arg, param_type));
-        }
-        return append_value(value);
-    }
+        return this->lower_name(expr_id, expr);
+    case syntax::ExprKind::unary:
+        return this->lower_unary_expr(expr_id, expr);
+    case syntax::ExprKind::binary:
+        return this->lower_binary_expr(expr_id, expr);
+    case syntax::ExprKind::call:
+        return this->lower_call_expr(expr_id, expr);
     case syntax::ExprKind::try_expr:
-        return lower_try_expr(expr_id, expr);
+        return this->lower_try_expr(expr_id, expr);
     case syntax::ExprKind::if_expr:
-        return lower_if_expr(expr_id, expr);
+        return this->lower_if_expr(expr_id, expr);
     case syntax::ExprKind::block_expr:
-        return lower_block_expr(expr_id, expr);
+        return this->lower_block_expr(expr_id, expr);
     case syntax::ExprKind::match_expr:
-        return lower_match_expr(expr_id, expr);
+        return this->lower_match_expr(expr_id, expr);
     case syntax::ExprKind::field:
-        if (const sema::EnumCaseInfo* enum_case = enum_case_info(value_symbol(expr_id, expr)); enum_case != nullptr) {
-            if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(module_.types, enum_case->type)) {
-                return lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
+        if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(this->value_symbol(expr_id, expr)); enum_case != nullptr) {
+            if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(this->module_.types, enum_case->type)) {
+                return this->lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
             }
-            return append_enum_case_ref(enum_case->c_name, enum_case->type);
+            return this->append_enum_case_ref(enum_case->c_name, enum_case->type);
         }
         [[fallthrough]];
-    case syntax::ExprKind::index: {
-        Value value;
-        value.kind = ValueKind::load;
-        value.type = expr_type(expr_id);
-        value.object = lower_place_address(expr_id).address;
-        return append_value(value);
-    }
-    case syntax::ExprKind::struct_literal: {
-        Value value;
-        value.kind = ValueKind::aggregate;
-        value.type = expr_type(expr_id);
-        for (const syntax::FieldInit& init : expr.field_inits) {
-            const sema::TypeHandle field_type = aggregate_field_type(value.type, init.name);
-            value.fields.push_back(FieldValue {
-                std::string(init.name),
-                coerce_value(lower_expr(init.value, field_type), field_type),
-            });
-        }
-        return append_value(value);
-    }
+    case syntax::ExprKind::index:
+        return this->lower_load_expr(expr_id);
+    case syntax::ExprKind::struct_literal:
+        return this->lower_struct_literal_expr(expr_id, expr);
     case syntax::ExprKind::cast:
     case syntax::ExprKind::ptr_cast:
     case syntax::ExprKind::bit_cast:
     case syntax::ExprKind::ptr_addr:
-    case syntax::ExprKind::ptr_from_addr: {
-        Value value;
-        value.kind = ValueKind::cast;
-        value.type = expr_type(expr_id);
-        value.target_type = expr_type(expr_id);
-        value.lhs = lower_expr(expr.cast_expr, expr_type(expr.cast_expr));
-        if (expr.kind == syntax::ExprKind::ptr_cast) {
-            value.cast_kind = CastKind::pointer;
-        } else if (expr.kind == syntax::ExprKind::bit_cast) {
-            value.cast_kind = CastKind::bitcast;
-        } else if (expr.kind == syntax::ExprKind::ptr_addr) {
-            value.cast_kind = CastKind::ptr_addr;
-        } else if (expr.kind == syntax::ExprKind::ptr_from_addr) {
-            value.cast_kind = CastKind::ptr_from_addr;
-        }
-        return append_value(value);
-    }
+    case syntax::ExprKind::ptr_from_addr:
+        return this->lower_cast_expr(expr_id, expr);
     case syntax::ExprKind::size_of:
-    case syntax::ExprKind::align_of: {
-        Value value;
-        value.kind = expr.kind == syntax::ExprKind::size_of ? ValueKind::size_of : ValueKind::align_of;
-        value.type = expr_type(expr_id);
-        value.target_type = syntax_type(expr.cast_type);
-        return append_value(value);
-    }
+    case syntax::ExprKind::align_of:
+        return this->lower_size_or_align_expr(expr_id, expr);
     case syntax::ExprKind::str_data:
-    case syntax::ExprKind::str_byte_len: {
-        Value value;
-        value.kind = expr.kind == syntax::ExprKind::str_data ? ValueKind::str_data : ValueKind::str_byte_len;
-        value.type = expr_type(expr_id);
-        value.object = lower_expr(expr.cast_expr, expr_type(expr.cast_expr));
-        return append_value(value);
-    }
-    case syntax::ExprKind::str_from_bytes_unchecked: {
-        Value value;
-        value.kind = ValueKind::str_from_bytes_unchecked;
-        value.type = expr_type(expr_id);
-        if (expr.args.size() == 2) {
-            value.args.push_back(lower_expr(expr.args[0], expr_type(expr.args[0])));
-            value.args.push_back(lower_expr(expr.args[1], expr_type(expr.args[1])));
-        }
-        return append_value(value);
-    }
+    case syntax::ExprKind::str_byte_len:
+        return this->lower_str_projection_expr(expr_id, expr);
+    case syntax::ExprKind::str_from_bytes_unchecked:
+        return this->lower_str_from_bytes_unchecked_expr(expr_id, expr);
     case syntax::ExprKind::invalid:
         return invalid_value_id;
     }
     return invalid_value_id;
 }
 
+ValueId Lowerer::lower_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const sema::TypeHandle expected_type
+) {
+    Value value;
+    if (expr.kind == syntax::ExprKind::byte_literal) {
+        value.kind = ValueKind::byte_literal;
+    } else if (expr.kind == syntax::ExprKind::bool_literal) {
+        value.kind = ValueKind::bool_literal;
+    } else if (expr.kind == syntax::ExprKind::float_literal) {
+        value.kind = ValueKind::float_literal;
+    } else if (expr.kind == syntax::ExprKind::null_literal) {
+        value.kind = ValueKind::null_literal;
+        value.type = sema::is_valid(expected_type) ? expected_type : this->expr_type(expr_id);
+        return this->append_value(value);
+    } else if (expr.kind == syntax::ExprKind::string_literal) {
+        value.kind = ValueKind::string_literal;
+    } else if (expr.kind == syntax::ExprKind::c_string_literal) {
+        value.kind = ValueKind::c_string_literal;
+    } else {
+        value.kind = ValueKind::integer_literal;
+    }
+    value.type = this->expr_type(expr_id);
+    value.text = std::string(expr.text);
+    return this->append_value(value);
+}
+
 ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
     const std::string name(expr.text);
-    const auto local = expr.scope_name.empty() ? locals_.find(name) : locals_.end();
-    if (local != locals_.end()) {
+    const auto local = expr.scope_name.empty() ? this->locals_.find(name) : this->locals_.end();
+    if (local != this->locals_.end()) {
         Value value;
         value.kind = ValueKind::load;
         value.name = name;
-        value.type = local_load_type(local->second.slot);
+        value.type = this->local_load_type(local->second.slot);
         value.object = local->second.slot;
-        return append_value(value);
+        return this->append_value(value);
     }
-    const std::string symbol = value_symbol(expr_id, expr);
-    if (const sema::EnumCaseInfo* enum_case = enum_case_info(symbol);
+    const std::string symbol = this->value_symbol(expr_id, expr);
+    if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
         enum_case != nullptr &&
         !sema::is_valid(enum_case->payload_type) &&
-        is_payload_enum(module_.types, enum_case->type)) {
-        return lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
+        is_payload_enum(this->module_.types, enum_case->type)) {
+        return this->lower_enum_constructor(*enum_case, syntax::invalid_expr_id);
     }
-    if (const auto constant = constant_symbols_.find(symbol); constant != constant_symbols_.end()) {
+    if (const auto constant = this->constant_symbols_.find(symbol); constant != this->constant_symbols_.end()) {
         Value value;
         value.kind = ValueKind::constant_ref;
         value.name = symbol;
         value.constant = constant->second;
-        value.type = module_.constants[constant->second.value].type;
-        return append_value(value);
+        value.type = this->module_.constants[constant->second.value].type;
+        return this->append_value(value);
     }
     Value value;
     value.kind = ValueKind::load;
     value.name = expr.text.empty() ? "<global>" : std::string(expr.text);
     value.type = sema::invalid_type_handle;
-    return append_value(value);
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_unary_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    if (expr.unary_op == syntax::UnaryOp::address_of) {
+        return this->coerce_value(this->lower_place_addr(expr.unary_operand), this->expr_type(expr_id));
+    }
+    if (expr.unary_op == syntax::UnaryOp::dereference) {
+        Value value;
+        value.kind = ValueKind::load;
+        value.type = this->expr_type(expr_id);
+        value.object = this->lower_expr(expr.unary_operand);
+        return this->append_value(value);
+    }
+    Value value;
+    value.kind = ValueKind::unary;
+    value.type = this->expr_type(expr_id);
+    value.unary_op = map_unary(expr.unary_op);
+    value.lhs = this->lower_expr(expr.unary_operand);
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_binary_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    if (!this->lowering_constant_initializer_ &&
+        (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or)) {
+        return this->lower_short_circuit_expr(expr_id, expr);
+    }
+    Value value;
+    value.kind = ValueKind::binary;
+    value.type = this->expr_type(expr_id);
+    value.binary_op = map_binary(expr.binary_op);
+    const sema::TypeHandle lhs_type = this->expr_type(expr.binary_lhs);
+    const sema::TypeHandle rhs_type = this->expr_type(expr.binary_rhs);
+    const sema::TypeHandle lhs_expected = !sema::is_valid(lhs_type) && this->module_.types.is_pointer(rhs_type)
+        ? rhs_type
+        : sema::invalid_type_handle;
+    const sema::TypeHandle rhs_expected = !sema::is_valid(rhs_type) && this->module_.types.is_pointer(lhs_type)
+        ? lhs_type
+        : sema::invalid_type_handle;
+    value.lhs = this->lower_expr(expr.binary_lhs, lhs_expected);
+    value.rhs = this->lower_expr(expr.binary_rhs, rhs_expected);
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_call_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const std::string symbol = this->call_symbol(expr.callee);
+    if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
+        enum_case != nullptr && sema::is_valid(enum_case->payload_type)) {
+        return this->lower_enum_constructor(*enum_case, expr.args.empty() ? syntax::invalid_expr_id : expr.args.front());
+    }
+    Value value;
+    value.kind = ValueKind::call;
+    value.type = this->expr_type(expr_id);
+    const CallTarget target = this->call_target(expr.callee);
+    value.name = target.symbol;
+    value.call_target = target.function;
+    base::usize param_offset = 0;
+    if (syntax::is_valid(expr.callee) &&
+        expr.callee.value < this->ast_.exprs.size() &&
+        this->ast_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
+        is_valid(target.function) &&
+        target.function.value < this->module_.functions.size() &&
+        this->module_.functions[target.function.value].signature_params.size() == expr.args.size() + IR_METHOD_RECEIVER_PARAM_COUNT) {
+        const syntax::ExprNode& callee = this->ast_.exprs[expr.callee.value];
+        const sema::TypeHandle receiver_type = this->expr_type(callee.object);
+        const sema::TypeHandle param_type = this->call_param_type(target.function, 0);
+        ValueId receiver = invalid_value_id;
+        if (sema::is_valid(param_type) &&
+            this->module_.types.is_pointer(param_type) &&
+            (!sema::is_valid(receiver_type) || !this->module_.types.is_pointer(receiver_type))) {
+            const sema::TypeInfo& param_info = this->module_.types.get(param_type);
+            receiver = param_info.pointer_mutability == sema::PointerMutability::mut
+                ? this->lower_place_addr(callee.object)
+                : this->lower_object_place_or_value(callee.object).address;
+        } else {
+            receiver = this->lower_expr(callee.object, param_type);
+        }
+        value.args.push_back(this->coerce_value(receiver, param_type));
+        param_offset = IR_METHOD_RECEIVER_PARAM_COUNT;
+    }
+    const bool variadic_call =
+        is_valid(target.function) &&
+        target.function.value < this->module_.functions.size() &&
+        this->module_.functions[target.function.value].is_variadic;
+    for (base::usize i = 0; i < expr.args.size(); ++i) {
+        sema::TypeHandle param_type = this->call_param_type(target.function, i + param_offset);
+        const ValueId arg = this->lower_expr(expr.args[i], param_type);
+        if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < this->module_.values.size()) {
+            param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
+        }
+        value.args.push_back(this->coerce_value(arg, param_type));
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id) {
+    Value value;
+    value.kind = ValueKind::load;
+    value.type = this->expr_type(expr_id);
+    value.object = this->lower_place_address(expr_id).address;
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_struct_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = ValueKind::aggregate;
+    value.type = this->expr_type(expr_id);
+    for (const syntax::FieldInit& init : expr.field_inits) {
+        const sema::TypeHandle field_type = this->aggregate_field_type(value.type, init.name);
+        value.fields.push_back(FieldValue {
+            std::string(init.name),
+            this->coerce_value(this->lower_expr(init.value, field_type), field_type),
+        });
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_cast_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = ValueKind::cast;
+    value.type = this->expr_type(expr_id);
+    value.target_type = this->expr_type(expr_id);
+    value.lhs = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
+    if (expr.kind == syntax::ExprKind::ptr_cast) {
+        value.cast_kind = CastKind::pointer;
+    } else if (expr.kind == syntax::ExprKind::bit_cast) {
+        value.cast_kind = CastKind::bitcast;
+    } else if (expr.kind == syntax::ExprKind::ptr_addr) {
+        value.cast_kind = CastKind::ptr_addr;
+    } else if (expr.kind == syntax::ExprKind::ptr_from_addr) {
+        value.cast_kind = CastKind::ptr_from_addr;
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_size_or_align_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = expr.kind == syntax::ExprKind::size_of ? ValueKind::size_of : ValueKind::align_of;
+    value.type = this->expr_type(expr_id);
+    value.target_type = this->syntax_type(expr.cast_type);
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_str_projection_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = expr.kind == syntax::ExprKind::str_data ? ValueKind::str_data : ValueKind::str_byte_len;
+    value.type = this->expr_type(expr_id);
+    value.object = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_str_from_bytes_unchecked_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = ValueKind::str_from_bytes_unchecked;
+    value.type = this->expr_type(expr_id);
+    if (expr.args.size() == IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT) {
+        value.args.push_back(this->lower_expr(expr.args[0], this->expr_type(expr.args[0])));
+        value.args.push_back(this->lower_expr(expr.args[1], this->expr_type(expr.args[1])));
+    }
+    return this->append_value(value);
 }
 
 ValueId Lowerer::lower_place_addr(const syntax::ExprId expr_id) {

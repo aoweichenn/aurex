@@ -1,10 +1,10 @@
-#include "aurex/driver/module_loader.hpp"
+#include <aurex/driver/module_loader.hpp>
 
-#include "aurex/base/config.hpp"
-#include "aurex/driver/file_cache.hpp"
-#include "aurex/lex/lexer.hpp"
-#include "aurex/parse/parser.hpp"
-#include "aurex/syntax/module.hpp"
+#include <aurex/base/config.hpp>
+#include <aurex/driver/file_cache.hpp>
+#include <aurex/lex/lexer.hpp>
+#include <aurex/parse/parser.hpp>
+#include <aurex/syntax/module.hpp>
 
 #include <filesystem>
 #include <optional>

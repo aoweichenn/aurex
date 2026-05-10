@@ -1,8 +1,8 @@
 #pragma once
 
-#include "aurex/parse/parse_session.hpp"
-#include "aurex/parse/recovery_context.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/parse/parse_session.hpp>
+#include <aurex/parse/recovery_context.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <string>
 

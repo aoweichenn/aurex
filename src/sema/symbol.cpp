@@ -1,4 +1,4 @@
-#include "aurex/sema/symbol.hpp"
+#include <aurex/sema/symbol.hpp>
 
 #include <cassert>
 #include <utility>

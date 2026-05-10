@@ -76,7 +76,10 @@ if(BUILD_TESTING)
         aurex_backend_llvm
         aurex_driver
     )
-    target_include_directories(aurex_tests PRIVATE tests)
+    target_include_directories(aurex_tests PRIVATE
+        tests
+        src
+    )
     target_compile_definitions(aurex_tests PRIVATE
         AUREX_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"
         AUREX_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"

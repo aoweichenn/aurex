@@ -1,10 +1,10 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/result.hpp"
-#include "aurex/base/source.hpp"
-#include "aurex/driver/invocation.hpp"
-#include "aurex/syntax/ast.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/result.hpp>
+#include <aurex/base/source.hpp>
+#include <aurex/driver/invocation.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <filesystem>
 #include <span>

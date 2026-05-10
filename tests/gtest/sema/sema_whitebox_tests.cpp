@@ -10,7 +10,7 @@
 #pragma clang diagnostic ignored "-Wkeyword-macro"
 #endif
 #define private public
-#include "aurex/sema/sema.hpp"
+#include <aurex/sema/sema.hpp>
 #undef private
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -664,6 +664,71 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceAndGenericPatternEdges) {
 
     static_cast<void>(bool_type_id);
     static_cast<void>(bool_type);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    syntax::TypeNode u8_type;
+    u8_type.kind = syntax::TypeKind::primitive;
+    u8_type.primitive = syntax::PrimitiveTypeKind::u8;
+    const TypeId u8_type_id = module.push_type(u8_type);
+    syntax::TypeNode const_u8_ptr_type;
+    const_u8_ptr_type.kind = syntax::TypeKind::pointer;
+    const_u8_ptr_type.pointer_mutability = syntax::PointerMutability::const_;
+    const_u8_ptr_type.pointee = u8_type_id;
+    const TypeId const_u8_ptr_type_id = module.push_type(const_u8_ptr_type);
+
+    const ExprId str_value = push_name(module, "text");
+    const ExprId data_value = push_name(module, "data");
+    const ExprId length_value = push_name(module, "len");
+    syntax::ExprNode str_data;
+    str_data.kind = syntax::ExprKind::str_data;
+    str_data.cast_expr = str_value;
+    const ExprId str_data_id = module.push_expr(str_data);
+    syntax::ExprNode str_byte_len = str_data;
+    str_byte_len.kind = syntax::ExprKind::str_byte_len;
+    const ExprId str_byte_len_id = module.push_expr(str_byte_len);
+    syntax::ExprNode str_from_bytes;
+    str_from_bytes.kind = syntax::ExprKind::str_from_bytes_unchecked;
+    str_from_bytes.args = {data_value, length_value};
+    const ExprId str_from_bytes_id = module.push_expr(str_from_bytes);
+    syntax::ExprNode malformed = str_from_bytes;
+    malformed.args = {data_value};
+    const ExprId malformed_id = module.push_expr(malformed);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), invalid_type_handle);
+    analyzer.checked_.expr_c_names.assign(module.exprs.size(), {});
+    analyzer.checked_.syntax_type_handles.assign(module.types.size(), invalid_type_handle);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle str = types.builtin(BuiltinType::str);
+    const TypeHandle u8 = types.builtin(BuiltinType::u8);
+    const TypeHandle usize = types.builtin(BuiltinType::usize);
+    const TypeHandle const_u8_ptr = types.pointer(PointerMutability::const_, u8);
+    analyzer.checked_.syntax_type_handles[u8_type_id.value] = u8;
+    analyzer.checked_.syntax_type_handles[const_u8_ptr_type_id.value] = const_u8_ptr;
+    analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "text"), symbol(SymbolKind::local, "text", module_id(0), str));
+    analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "data"), symbol(SymbolKind::local, "data", module_id(0), const_u8_ptr));
+    analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "len"), symbol(SymbolKind::local, "len", module_id(0), usize));
+
+    EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_data_id, module.exprs[str_data_id.value]), const_u8_ptr));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_byte_len_id, module.exprs[str_byte_len_id.value]), usize));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, module.exprs[str_from_bytes_id.value]), str));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(malformed_id, module.exprs[malformed_id.value]), str));
+
+    analyzer.global_values_[analyzer.module_key(module_id(0), "text")].type = usize;
+    analyzer.global_values_[analyzer.module_key(module_id(0), "data")].type = usize;
+    analyzer.global_values_[analyzer.module_key(module_id(0), "len")].type = str;
+    static_cast<void>(analyzer.analyze_str_projection_expr(str_data_id, module.exprs[str_data_id.value]));
+    static_cast<void>(analyzer.analyze_str_projection_expr(str_byte_len_id, module.exprs[str_byte_len_id.value]));
+    static_cast<void>(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, module.exprs[str_from_bytes_id.value]));
+
+    EXPECT_GT(diagnostics.diagnostics().size(), 0U);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {

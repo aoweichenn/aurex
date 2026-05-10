@@ -1,6 +1,6 @@
-#include "aurex/ir/pass_pipeline.hpp"
+#include <aurex/ir/pass_pipeline.hpp>
 
-#include "aurex/ir/verify.hpp"
+#include <aurex/ir/verify.hpp>
 
 #include <algorithm>
 #include <optional>
@@ -283,22 +283,28 @@ void run_local_mem2reg(Module& module) {
 }
 
 void mark_reachable(const Function& function, const BlockId block, std::vector<bool>& reachable) {
-    if (!is_valid(block) || block.value >= function.blocks.size() || reachable[block.value]) {
-        return;
-    }
-    reachable[block.value] = true;
-    const Terminator& term = function.blocks[block.value].terminator;
-    switch (term.kind) {
-    case TerminatorKind::branch:
-        mark_reachable(function, term.target, reachable);
-        break;
-    case TerminatorKind::cond_branch:
-        mark_reachable(function, term.then_target, reachable);
-        mark_reachable(function, term.else_target, reachable);
-        break;
-    case TerminatorKind::none:
-    case TerminatorKind::return_:
-        break;
+    std::vector<BlockId> pending;
+    pending.push_back(block);
+    while (!pending.empty()) {
+        const BlockId current = pending.back();
+        pending.pop_back();
+        if (!is_valid(current) || current.value >= function.blocks.size() || reachable[current.value]) {
+            continue;
+        }
+        reachable[current.value] = true;
+        const Terminator& term = function.blocks[current.value].terminator;
+        switch (term.kind) {
+        case TerminatorKind::branch:
+            pending.push_back(term.target);
+            break;
+        case TerminatorKind::cond_branch:
+            pending.push_back(term.then_target);
+            pending.push_back(term.else_target);
+            break;
+        case TerminatorKind::none:
+        case TerminatorKind::return_:
+            break;
+        }
     }
 }
 

@@ -1,5 +1,5 @@
-#include "aurex/backend/llvm_backend.hpp"
-#include "gtest/support/ir_test_helpers.hpp"
+#include <aurex/backend/llvm_backend.hpp>
+#include <gtest/support/ir_test_helpers.hpp>
 
 #include <cstdint>
 #include <string>
@@ -42,6 +42,9 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         const TypeHandle str_type = builtin(module, BuiltinType::str);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         const TypeHandle array_i32 = module.types.array(2, i32);
+        const TypeHandle nested_array_i32 = module.types.array(3, array_i32);
+        const TypeHandle tag_enum_type = module.types.named_enum("unit.Tag", "unit_Tag");
+        module.types.set_enum_underlying(tag_enum_type, u8);
         const TypeHandle pair_type = module.types.named_struct("unit.Pair", "unit_Pair", false);
         module.records.push_back(RecordLayout {
             pair_type,
@@ -129,6 +132,8 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             add_cast_constant("u32_to_f32_bits", "unit_u32_to_f32_bits", f32, add_value(module, integer_value(u32, "0")), CastKind::bitcast);
         [[maybe_unused]] const GlobalConstantId ptr_from_addr_constant =
             add_cast_constant("ptr_from_addr", "unit_ptr_from_addr", ptr_i32, add_value(module, integer_value(usize, "4096")), CastKind::ptr_from_addr);
+        [[maybe_unused]] const GlobalConstantId tag_constant =
+            add_global_constant(module, GlobalConstant {"tag", "unit_tag", tag_enum_type, add_value(module, integer_value(tag_enum_type, "1"))});
 
         Value aggregate;
         aggregate.kind = ValueKind::aggregate;
@@ -143,7 +148,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         Value sizeof_value;
         sizeof_value.kind = ValueKind::size_of;
         sizeof_value.type = builtin(module, BuiltinType::usize);
-        sizeof_value.target_type = array_i32;
+        sizeof_value.target_type = nested_array_i32;
         const ValueId size_id = add_value(module, sizeof_value);
         [[maybe_unused]] const GlobalConstantId size_constant =
             add_global_constant(module, GlobalConstant {"size", "unit_size", sizeof_value.type, size_id});
@@ -264,6 +269,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             "@unit_pair",
             "@unit_size",
             "@unit_align",
+            "@unit_tag",
             "@unit_same_i32",
             "@unit_trunc_i8",
             "@unit_zext_u64",

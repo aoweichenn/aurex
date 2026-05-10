@@ -1,7 +1,7 @@
 #pragma once
 
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/parse/token_cursor.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/parse/token_cursor.hpp>
 
 #include <string>
 #include <utility>

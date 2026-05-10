@@ -1,6 +1,6 @@
-#include "aurex/base/diagnostic.hpp"
-#include "aurex/base/integer.hpp"
-#include "aurex/lex/lexer.hpp"
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/base/integer.hpp>
+#include <aurex/lex/lexer.hpp>
 
 #include <algorithm>
 #include <chrono>

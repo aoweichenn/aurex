@@ -1,6 +1,6 @@
-#include "support/test_support.hpp"
+#include <support/test_support.hpp>
 
-#include "aurex/driver/compiler.hpp"
+#include <aurex/driver/compiler.hpp>
 
 #include <algorithm>
 #include <array>

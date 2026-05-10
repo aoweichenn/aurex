@@ -1,0 +1,8 @@
+module for_range_arity;
+
+fn main() -> i32 {
+    for i in range() {
+        return i;
+    }
+    return 0;
+}

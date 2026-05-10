@@ -79,7 +79,7 @@ enum class ExprKind {
     index,
     struct_literal,
     cast,
-    ptr_cast,
+    pcast,
     bit_cast,
     size_of,
     align_of,
@@ -200,6 +200,7 @@ enum class StmtKind {
     assign,
     if_,
     for_,
+    for_range,
     while_,
     break_,
     continue_,
@@ -219,6 +220,8 @@ struct StmtNode {
     ExprId lhs = INVALID_EXPR_ID;
     ExprId rhs = INVALID_EXPR_ID;
     ExprId condition = INVALID_EXPR_ID;
+    ExprId range_start = INVALID_EXPR_ID;
+    ExprId range_end = INVALID_EXPR_ID;
     StmtId then_block = INVALID_STMT_ID;
     StmtId else_block = INVALID_STMT_ID;
     StmtId else_if = INVALID_STMT_ID;

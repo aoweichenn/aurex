@@ -214,7 +214,7 @@ bool BlockParser::token_starts_tail_expression() const noexcept {
     case TokenKind::kw_false:
     case TokenKind::kw_null:
     case TokenKind::kw_cast:
-    case TokenKind::kw_ptr_cast:
+    case TokenKind::kw_pcast:
     case TokenKind::kw_bit_cast:
     case TokenKind::kw_size_of:
     case TokenKind::kw_align_of:

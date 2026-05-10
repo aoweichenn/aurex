@@ -36,6 +36,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_if: return "kw_if";
     case TokenKind::kw_else: return "kw_else";
     case TokenKind::kw_for: return "kw_for";
+    case TokenKind::kw_in: return "kw_in";
     case TokenKind::kw_while: return "kw_while";
     case TokenKind::kw_break: return "kw_break";
     case TokenKind::kw_continue: return "kw_continue";
@@ -61,7 +62,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_str: return "kw_str";
     case TokenKind::kw_mut: return "kw_mut";
     case TokenKind::kw_cast: return "kw_cast";
-    case TokenKind::kw_ptr_cast: return "kw_ptr_cast";
+    case TokenKind::kw_pcast: return "kw_pcast";
     case TokenKind::kw_bit_cast: return "kw_bit_cast";
     case TokenKind::kw_size_of: return "kw_size_of";
     case TokenKind::kw_align_of: return "kw_align_of";
@@ -251,6 +252,7 @@ std::string_view stmt_kind_name(const StmtKind kind) {
     case StmtKind::assign: return "assign";
     case StmtKind::if_: return "if";
     case StmtKind::for_: return "for";
+    case StmtKind::for_range: return "for_range";
     case StmtKind::while_: return "while";
     case StmtKind::break_: return "break";
     case StmtKind::continue_: return "continue";
@@ -284,7 +286,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::index: return "index";
     case ExprKind::struct_literal: return "struct_literal";
     case ExprKind::cast: return "cast";
-    case ExprKind::ptr_cast: return "ptr_cast";
+    case ExprKind::pcast: return "pcast";
     case ExprKind::bit_cast: return "bit_cast";
     case ExprKind::size_of: return "size_of";
     case ExprKind::align_of: return "align_of";
@@ -326,6 +328,12 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     }
     if (is_valid(stmt.condition)) {
         dump_expr(out, module, stmt.condition, depth + 1);
+    }
+    if (is_valid(stmt.range_start)) {
+        dump_expr(out, module, stmt.range_start, depth + 1);
+    }
+    if (is_valid(stmt.range_end)) {
+        dump_expr(out, module, stmt.range_end, depth + 1);
     }
     if (is_valid(stmt.then_block)) {
         dump_stmt(out, module, stmt.then_block, depth + 1);

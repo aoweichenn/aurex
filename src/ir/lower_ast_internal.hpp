@@ -107,6 +107,7 @@ private:
     void lower_stmt(syntax::StmtId stmt_id);
     void lower_if(const syntax::StmtNode& stmt);
     void lower_for(const syntax::StmtNode& stmt);
+    void lower_for_range(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void lower_while(const syntax::StmtNode& stmt);
 
     [[nodiscard]] ValueId lower_short_circuit_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
@@ -126,6 +127,8 @@ private:
     ) const noexcept;
 
     [[nodiscard]] ValueId append_temp_alloca(const std::string& name, sema::TypeHandle value_type);
+    [[nodiscard]] ValueId append_integer_literal(std::string_view text, sema::TypeHandle value_type);
+    [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_load(
         ValueId address,
         sema::TypeHandle value_type,

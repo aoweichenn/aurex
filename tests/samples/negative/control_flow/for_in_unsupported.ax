@@ -1,0 +1,8 @@
+module for_in_unsupported;
+
+fn main() -> i32 {
+    for i in items() {
+        return i;
+    }
+    return 0;
+}

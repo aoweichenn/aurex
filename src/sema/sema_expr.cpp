@@ -227,7 +227,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(
     case syntax::ExprKind::struct_literal:
         return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::cast:
-    case syntax::ExprKind::ptr_cast:
+    case syntax::ExprKind::pcast:
     case syntax::ExprKind::bit_cast:
         return this->analyze_cast_expr(expr_id, expr);
     case syntax::ExprKind::size_of:

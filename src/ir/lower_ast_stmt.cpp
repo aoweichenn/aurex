@@ -1,8 +1,13 @@
 #include <ir/lower_ast_internal.hpp>
 
+#include <string_view>
+
 namespace aurex::ir::detail {
 
 namespace {
+
+constexpr std::string_view IR_FOR_RANGE_ZERO_LITERAL = "0";
+constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
 
 [[nodiscard]] BinaryOp map_compound_assignment(const syntax::AssignOp op) noexcept {
     switch (op) {
@@ -131,6 +136,9 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         break;
     case syntax::StmtKind::for_:
         lower_for(stmt);
+        break;
+    case syntax::StmtKind::for_range:
+        lower_for_range(stmt_id, stmt);
         break;
     case syntax::StmtKind::while_:
         lower_while(stmt);
@@ -281,6 +289,65 @@ void Lowerer::lower_for(const syntax::StmtNode& stmt) {
     if (syntax::is_valid(stmt.for_update)) {
         lower_stmt(stmt.for_update);
     }
+    append_branch_if_open(condition_block);
+    loop_contexts_.pop_back();
+
+    defer_scopes_.resize(scope_depth);
+    locals_ = previous_locals;
+    current_block_ = exit_block;
+}
+
+void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt) {
+    const auto previous_locals = locals_;
+    const base::usize scope_depth = defer_scopes_.size();
+    defer_scopes_.push_back({});
+
+    const sema::TypeHandle range_type = stmt_local_type(stmt_id);
+    const ValueId start_value = syntax::is_valid(stmt.range_start)
+        ? lower_expr(stmt.range_start, range_type)
+        : append_integer_literal(IR_FOR_RANGE_ZERO_LITERAL, range_type);
+    const ValueId end_value = lower_expr(stmt.range_end, range_type);
+    const ValueId cursor_slot = append_temp_alloca("for.range.cursor", range_type);
+    const ValueId end_slot = append_temp_alloca("for.range.end", range_type);
+    append_store(cursor_slot, start_value);
+    append_store(end_slot, end_value);
+
+    const BlockId condition_block = add_block(*current_function_, "for.range.cond" + std::to_string(current_function_->blocks.size()));
+    const BlockId body_block = add_block(*current_function_, "for.range.body" + std::to_string(current_function_->blocks.size()));
+    const BlockId update_block = add_block(*current_function_, "for.range.update" + std::to_string(current_function_->blocks.size()));
+    const BlockId exit_block = add_block(*current_function_, "for.range.exit" + std::to_string(current_function_->blocks.size()));
+
+    append_branch_if_open(condition_block);
+    current_block_ = condition_block;
+    const ValueId cursor_condition = append_load(cursor_slot, range_type, "for.range.cursor");
+    const ValueId end_condition = append_load(end_slot, range_type, "for.range.end");
+    const ValueId condition = append_binary_value(
+        BinaryOp::less,
+        module_.types.builtin(sema::BuiltinType::bool_),
+        cursor_condition,
+        end_condition
+    );
+    Terminator cond;
+    cond.kind = TerminatorKind::cond_branch;
+    cond.condition = condition;
+    cond.then_target = body_block;
+    cond.else_target = exit_block;
+    set_terminator(current_block_, cond);
+
+    loop_contexts_.push_back(LoopContext {exit_block, update_block, defer_scopes_.size()});
+    current_block_ = body_block;
+    const ValueId loop_value = append_load(cursor_slot, range_type, std::string(stmt.name));
+    const ValueId loop_slot = append_temp_alloca(std::string(stmt.name), range_type);
+    locals_[std::string(stmt.name)] = LocalBinding {loop_slot, false};
+    append_store(loop_slot, loop_value);
+    lower_block(stmt.body);
+    append_branch_if_open(update_block);
+
+    current_block_ = update_block;
+    const ValueId current = append_load(cursor_slot, range_type, "for.range.cursor");
+    const ValueId one = append_integer_literal(IR_FOR_RANGE_ONE_LITERAL, range_type);
+    const ValueId next = append_binary_value(BinaryOp::add, range_type, current, one);
+    append_store(cursor_slot, next);
     append_branch_if_open(condition_block);
     loop_contexts_.pop_back();
 

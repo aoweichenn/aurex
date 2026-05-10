@@ -8,7 +8,7 @@
 
 1. 基础语法冻结
 
-   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。const initializer 纯标量运算、compound assignment、trailing separator、expression statement 规则和 block statement / block expression 主体统一已经补齐，`++` / `--` 已按 Rust/Zig 风格从语法层移除。接下来优先收口 default private、`unsafe`、`str` 安全边界和 enum ADT 语法。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
+   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。const initializer 纯标量运算、compound assignment、trailing separator、expression statement 规则、block statement / block expression 主体统一、基础 `for i in range(end)` / `for i in range(start, end)` 都已经补齐，`++` / `--` 已按 Rust/Zig 风格从语法层移除。接下来优先收口 default private、`unsafe`、`str` 安全边界和 enum ADT 语法；容器迭代、slice 迭代和 iterator protocol 继续暂缓。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
 2. enum ADT 与 pattern 地基
 
@@ -16,7 +16,7 @@
 
 3. unsafe 与 `str` 安全边界
 
-   raw pointer、`ptr_cast`、`bit_cast`、`ptr_from_addr`、`str_from_bytes_unchecked` 当前都在普通表达式层。M2 应先设计最小 `unsafe` block / `unsafe fn` 和 unchecked builtin 诊断框架，同时冻结 `str` 的 UTF-8 / slice / FFI 边界。
+   raw pointer、`pcast`、`bit_cast`、`ptr_from_addr`、`str_from_bytes_unchecked` 当前都在普通表达式层。M2 应先设计最小 `unsafe` block / `unsafe fn` 和 unchecked builtin 诊断框架，同时冻结 `str` 的 UTF-8 / slice / FFI 边界。
 
 4. 值语义与资源模型重新设计
 

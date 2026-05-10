@@ -125,7 +125,11 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     const fs::path for_source = positive_sample("control_flow", "for_loop.ax");
 
     const std::string for_ast = require_success(aurexc() + " --emit=ast " + q(for_source)).output;
-    expect_contains(for_ast, "for");
+    expect_contains_all(for_ast, {
+        "for",
+        "for_range i",
+        "for_range k",
+    });
 
     const std::string for_ir = require_success(aurexc() + " --emit=ir " + q(for_source)).output;
     expect_contains_all(for_ir, {
@@ -133,6 +137,10 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
         "for.body",
         "for.update",
         "for.exit",
+        "for.range.cond",
+        "for.range.body",
+        "for.range.update",
+        "for.range.exit",
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(for_source));
 
@@ -141,6 +149,30 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_init_scope.ax"))).output,
         "unknown name: i"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_non_integer.ax"))).output,
+        "range bounds must be integer"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_start_non_integer.ax"))).output,
+        "range bounds must be integer"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_type_mismatch.ax"))).output,
+        "range bounds must have the same type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_scope.ax"))).output,
+        "unknown name: i"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_range_arity.ax"))).output,
+        "range expects 1 or 2 arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,
+        "for-in currently supports range(...) only"
     );
 
     const fs::path value_source = positive_sample("types", "value_flow.ax");

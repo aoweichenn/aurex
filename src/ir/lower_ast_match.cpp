@@ -372,6 +372,29 @@ ValueId Lowerer::append_temp_alloca(const std::string& name, const sema::TypeHan
     return append_value(slot);
 }
 
+ValueId Lowerer::append_integer_literal(const std::string_view text, const sema::TypeHandle value_type) {
+    Value value;
+    value.kind = ValueKind::integer_literal;
+    value.type = value_type;
+    value.text = std::string(text);
+    return append_value(value);
+}
+
+ValueId Lowerer::append_binary_value(
+    const BinaryOp op,
+    const sema::TypeHandle type,
+    const ValueId lhs,
+    const ValueId rhs
+) {
+    Value value;
+    value.kind = ValueKind::binary;
+    value.type = type;
+    value.binary_op = op;
+    value.lhs = lhs;
+    value.rhs = rhs;
+    return append_value(value);
+}
+
 ValueId Lowerer::append_load(const ValueId address, const sema::TypeHandle value_type, const std::string& name) {
     Value value;
     value.kind = ValueKind::load;

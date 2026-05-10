@@ -1748,7 +1748,7 @@ Counter.new(7).read()
 验证：
 
 - 普通方法和泛型方法正例 `--check`、`--dump-ir`、单文件编译运行均通过。
-- IR 中 rvalue receiver 先 `alloca field.object`，再 `ptr_cast` 为 `*const Counter` / `*const Box<i32>`。
+- IR 中 rvalue receiver 先 `alloca field.object`，再 `pcast` 为 `*const Counter` / `*const Box<i32>`。
 - `Counter.new(1).add(2)` 仍报 `method receiver must be a place expression`。
 - immutable local 调 `*mut self` 仍报 `mutable method receiver requires writable storage`。
 

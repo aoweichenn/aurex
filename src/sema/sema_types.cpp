@@ -1025,7 +1025,7 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
         return (this->checked_.types.is_integer(dst) || this->checked_.types.is_float(dst) || this->checked_.types.is_bool(dst)) &&
                (this->checked_.types.is_integer(src) || this->checked_.types.is_float(src) || this->checked_.types.is_bool(src));
     }
-    if (kind == syntax::ExprKind::ptr_cast) {
+    if (kind == syntax::ExprKind::pcast) {
         return this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src);
     }
     if (kind == syntax::ExprKind::bit_cast) {

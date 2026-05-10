@@ -19,7 +19,7 @@ fn option_is_some_ref<T>(value: *const Option<T>) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = ptr_cast(*const u8, value);
+    let tag: *const u8 = pcast(*const u8, value);
     return *tag == OPTION_TAG_SOME;
 }
 
@@ -27,7 +27,7 @@ fn option_is_none_ref<T>(value: *const Option<T>) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = ptr_cast(*const u8, value);
+    let tag: *const u8 = pcast(*const u8, value);
     return *tag == OPTION_TAG_NONE;
 }
 
@@ -35,7 +35,7 @@ fn result_is_ok_ref<T, E>(value: *const Result<T, E>) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = ptr_cast(*const u8, value);
+    let tag: *const u8 = pcast(*const u8, value);
     return *tag == RESULT_TAG_OK;
 }
 
@@ -43,7 +43,7 @@ fn result_is_err_ref<T, E>(value: *const Result<T, E>) -> bool {
     if value == null {
         return false;
     }
-    let tag: *const u8 = ptr_cast(*const u8, value);
+    let tag: *const u8 = pcast(*const u8, value);
     return *tag == RESULT_TAG_ERR;
 }
 

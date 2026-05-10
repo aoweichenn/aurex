@@ -1,6 +1,0 @@
-module invalid_ptr_cast_numeric;
-
-fn main() -> i32 {
-    let ptr: *mut i32 = ptr_cast(*mut i32, 1);
-    return 0;
-}

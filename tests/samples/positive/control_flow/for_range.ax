@@ -1,0 +1,16 @@
+module for_range;
+
+fn contextual_start(limit: i64) -> i64 {
+    var total: i64 = 0;
+    for i in range(-(1 + 1), limit) {
+        total += i;
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    if contextual_start(2) == -2 {
+        return 0;
+    }
+    return 1;
+}

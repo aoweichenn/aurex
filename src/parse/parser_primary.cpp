@@ -26,7 +26,7 @@ struct BuiltinExprSyntax {
 
 constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
-    {TokenKind::kw_ptr_cast, BuiltinExprShape::CAST, syntax::ExprKind::ptr_cast},
+    {TokenKind::kw_pcast, BuiltinExprShape::CAST, syntax::ExprKind::pcast},
     {TokenKind::kw_bit_cast, BuiltinExprShape::CAST, syntax::ExprKind::bit_cast},
     {TokenKind::kw_size_of, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
     {TokenKind::kw_align_of, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},

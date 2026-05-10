@@ -132,7 +132,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let raw: str = str_from_bytes_unchecked(data, len);\n"
         "  let b: u8 = b'\\n';\n"
         "  let a: i32 = cast(i32, argc) + bit_cast(i32, argc) + align_of(*mut i32);\n"
-        "  let q: *mut i32 = ptr_cast(*mut i32, p);\n"
+        "  let q: *mut i32 = pcast(*mut i32, p);\n"
         "  let idx: u8 = argv[0][0];\n"
         "  return a;\n"
         "}\n";
@@ -158,7 +158,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_continue",
         "kw_defer",
         "kw_null",
-        "kw_ptr_cast",
+        "kw_pcast",
         "kw_bit_cast",
         "kw_align_of",
         "kw_ptr_addr",
@@ -188,7 +188,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "string_literal",
         "byte_literal",
         "index",
-        "ptr_cast",
+        "pcast",
         "bit_cast",
         "align_of",
         "ptr_addr",
@@ -1280,6 +1280,63 @@ TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {
     EXPECT_EQ(update.assign_op, syntax::AssignOp::add);
 }
 
+TEST(CoreUnit, ParserParsesForRangeStatements) {
+    constexpr std::string_view source =
+        "module parser.for_range;\n"
+        "fn main(limit: i32) -> i32 {\n"
+        "  var total: i32 = 0;\n"
+        "  for i in range(limit) {\n"
+        "    total += i;\n"
+        "  }\n"
+        "  for j in range(1, limit) {\n"
+        "    total += j;\n"
+        "  }\n"
+        "  return total;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 4U);
+
+    const syntax::StmtNode& end_loop = module.stmts[body.statements[1].value];
+    ASSERT_EQ(end_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(end_loop.name, "i");
+    EXPECT_FALSE(syntax::is_valid(end_loop.range_start));
+    EXPECT_TRUE(syntax::is_valid(end_loop.range_end));
+    EXPECT_TRUE(syntax::is_valid(end_loop.body));
+
+    const syntax::StmtNode& start_end_loop = module.stmts[body.statements[2].value];
+    ASSERT_EQ(start_end_loop.kind, syntax::StmtKind::for_range);
+    EXPECT_EQ(start_end_loop.name, "j");
+    EXPECT_TRUE(syntax::is_valid(start_end_loop.range_start));
+    EXPECT_TRUE(syntax::is_valid(start_end_loop.range_end));
+    EXPECT_TRUE(syntax::is_valid(start_end_loop.body));
+}
+
+TEST(CoreUnit, ParserReportsMalformedForRangeSyntax) {
+    expect_parse_error(
+        "module parser.for_range_separator;\n"
+        "fn main() -> i32 {\n"
+        "  for i in range(0 3) {\n"
+        "  }\n"
+        "  return 0;\n"
+        "}\n",
+        "expected ',' or ')' after range argument"
+    );
+    expect_parse_error(
+        "module parser.for_range_missing_args;\n"
+        "fn main() -> i32 {\n"
+        "  for i in range {\n"
+        "  }\n"
+        "  return 0;\n"
+        "}\n",
+        "expected '(' after range"
+    );
+}
+
 TEST(CoreUnit, ParserRejectsIncrementAndDecrementSyntax) {
     expect_parse_error(
         "module parser.increment_syntax;\n"
@@ -1489,7 +1546,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_false,
             TokenKind::kw_null,
             TokenKind::kw_cast,
-            TokenKind::kw_ptr_cast,
+            TokenKind::kw_pcast,
             TokenKind::kw_bit_cast,
             TokenKind::kw_size_of,
             TokenKind::kw_align_of,

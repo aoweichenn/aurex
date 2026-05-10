@@ -17,6 +17,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"as", syntax::TokenKind::kw_as},
     KeywordEntry {"fn", syntax::TokenKind::kw_fn},
     KeywordEntry {"if", syntax::TokenKind::kw_if},
+    KeywordEntry {"in", syntax::TokenKind::kw_in},
     KeywordEntry {"i8", syntax::TokenKind::kw_i8},
     KeywordEntry {"u8", syntax::TokenKind::kw_u8},
 
@@ -45,6 +46,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"void", syntax::TokenKind::kw_void},
     KeywordEntry {"bool", syntax::TokenKind::kw_bool},
     KeywordEntry {"cast", syntax::TokenKind::kw_cast},
+    KeywordEntry {"pcast", syntax::TokenKind::kw_pcast},
 
     KeywordEntry {"const", syntax::TokenKind::kw_const},
     KeywordEntry {"match", syntax::TokenKind::kw_match},
@@ -66,7 +68,6 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"size_of", syntax::TokenKind::kw_size_of},
 
     KeywordEntry {"continue", syntax::TokenKind::kw_continue},
-    KeywordEntry {"ptr_cast", syntax::TokenKind::kw_ptr_cast},
     KeywordEntry {"bit_cast", syntax::TokenKind::kw_bit_cast},
     KeywordEntry {"align_of", syntax::TokenKind::kw_align_of},
     KeywordEntry {"ptr_addr", syntax::TokenKind::kw_ptr_addr},

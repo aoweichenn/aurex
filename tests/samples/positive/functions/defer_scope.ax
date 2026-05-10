@@ -7,11 +7,11 @@ extern c {
 }
 
 fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {
-    return ptr_cast(*mut u8, calloc(count, size));
+    return pcast(*mut u8, calloc(count, size));
 }
 
 fn free_bytes(ptr: *mut u8) -> void {
-    free(ptr_cast(*mut void, ptr));
+    free(pcast(*mut void, ptr));
 }
 
 fn c_string_equal(left: *const u8, right: *const u8) -> bool {
@@ -85,7 +85,7 @@ fn main() -> i32 {
     loop_paths(log, &index);
     for_paths(log, &index);
 
-    if !c_string_equal(ptr_cast(*const u8, log), c"CBDAFELLZQQR") {
+    if !c_string_equal(pcast(*const u8, log), c"CBDAFELLZQQR") {
         return 3;
     }
     return 0;

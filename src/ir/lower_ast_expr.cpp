@@ -176,7 +176,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::struct_literal:
         return this->lower_struct_literal_expr(expr_id, expr);
     case syntax::ExprKind::cast:
-    case syntax::ExprKind::ptr_cast:
+    case syntax::ExprKind::pcast:
     case syntax::ExprKind::bit_cast:
     case syntax::ExprKind::ptr_addr:
     case syntax::ExprKind::ptr_from_addr:
@@ -391,7 +391,7 @@ ValueId Lowerer::lower_cast_expr(
     value.type = this->expr_type(expr_id);
     value.target_type = this->expr_type(expr_id);
     value.lhs = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
-    if (expr.kind == syntax::ExprKind::ptr_cast) {
+    if (expr.kind == syntax::ExprKind::pcast) {
         value.cast_kind = CastKind::pointer;
     } else if (expr.kind == syntax::ExprKind::bit_cast) {
         value.cast_kind = CastKind::bitcast;

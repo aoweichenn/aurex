@@ -55,6 +55,55 @@ struct ControlFlowFrame {
     return module.exprs[expr.value].range;
 }
 
+[[nodiscard]] bool statement_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
+    switch (op) {
+    case syntax::BinaryOp::add:
+    case syntax::BinaryOp::sub:
+    case syntax::BinaryOp::mul:
+    case syntax::BinaryOp::div:
+    case syntax::BinaryOp::mod:
+    case syntax::BinaryOp::shl:
+    case syntax::BinaryOp::shr:
+    case syntax::BinaryOp::bit_and:
+    case syntax::BinaryOp::bit_xor:
+    case syntax::BinaryOp::bit_or:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool statement_contextual_integer_expr(
+    const syntax::AstModule& module,
+    const syntax::ExprId candidate
+) {
+    std::vector<syntax::ExprId> pending;
+    pending.push_back(candidate);
+    while (!pending.empty()) {
+        const syntax::ExprId current = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(current) || current.value >= module.exprs.size()) {
+            return false;
+        }
+        const syntax::ExprNode& node = module.exprs[current.value];
+        if (node.kind == syntax::ExprKind::integer_literal) {
+            continue;
+        }
+        if (node.kind == syntax::ExprKind::unary && node.unary_op == syntax::UnaryOp::numeric_negate) {
+            pending.push_back(node.unary_operand);
+            continue;
+        }
+        if (node.kind == syntax::ExprKind::binary &&
+            statement_binary_result_uses_operand_type(node.binary_op)) {
+            pending.push_back(node.binary_lhs);
+            pending.push_back(node.binary_rhs);
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
 [[nodiscard]] bool default_control_flow_result(const ControlFlowQuery query) noexcept {
     return query == ControlFlowQuery::may_fallthrough;
 }
@@ -513,6 +562,62 @@ void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
     }
 }
 
+TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
+    const syntax::StmtId stmt_id,
+    const syntax::StmtNode& stmt
+) {
+    TypeHandle start = INVALID_TYPE_HANDLE;
+    TypeHandle end = INVALID_TYPE_HANDLE;
+    if (!syntax::is_valid(stmt.range_end)) {
+        this->record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
+        this->report(stmt.range, "range expects 1 or 2 arguments");
+        return INVALID_TYPE_HANDLE;
+    }
+
+    if (syntax::is_valid(stmt.range_start)) {
+        const bool start_contextual = statement_contextual_integer_expr(this->module_, stmt.range_start);
+        const bool end_contextual = statement_contextual_integer_expr(this->module_, stmt.range_end);
+        if (start_contextual && !end_contextual) {
+            end = this->analyze_expr(stmt.range_end);
+            start = this->analyze_expr(stmt.range_start, end);
+        } else {
+            start = this->analyze_expr(stmt.range_start);
+            end = this->analyze_expr(stmt.range_end, start);
+        }
+    } else {
+        end = this->analyze_expr(stmt.range_end);
+        start = end;
+    }
+
+    if (syntax::is_valid(stmt.range_start) && !this->checked_.types.is_integer(start)) {
+        this->report(expr_range_or(this->module_, stmt.range_start, stmt.range), "range bounds must be integer");
+    }
+    if (!this->checked_.types.is_integer(end)) {
+        this->report(expr_range_or(this->module_, stmt.range_end, stmt.range), "range bounds must be integer");
+    }
+    if (is_valid(start) && is_valid(end) && !this->checked_.types.same(start, end)) {
+        this->report(stmt.range, "range bounds must have the same type");
+    }
+
+    const TypeHandle local_type = this->checked_.types.is_integer(start) ? start : end;
+    this->record_stmt_local_type(stmt_id, local_type);
+    return local_type;
+}
+
+void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type) {
+    const auto inserted = this->symbols_.insert(Symbol {
+        SymbolKind::local,
+        std::string(stmt.name),
+        {},
+        syntax::INVALID_MODULE_ID,
+        type,
+        stmt.range,
+        false,
+        syntax::Visibility::private_,
+    }, this->diagnostics_);
+    static_cast<void>(inserted);
+}
+
 void SemanticAnalyzer::analyze_statement_node(
     const syntax::StmtId stmt_id,
     std::vector<StatementAnalysisAction>& stack,
@@ -619,6 +724,16 @@ void SemanticAnalyzer::analyze_statement_node(
         if (syntax::is_valid(stmt.for_init)) {
             stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.for_init});
         }
+        break;
+    }
+    case syntax::StmtKind::for_range: {
+        const TypeHandle range_type = this->analyze_for_range_bounds(stmt_id, stmt);
+        this->symbols_.push_scope();
+        this->define_for_range_local(stmt, range_type);
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
+        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
         break;
     }
     case syntax::StmtKind::return_: {

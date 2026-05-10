@@ -36,7 +36,15 @@ fn main() -> i32 {
         sum = sum + 10;
     }
 
-    if sum == 27 && for_defer_continue() == 11 {
+    var range_sum: i32 = 0;
+    for i in range(4) {
+        range_sum += i;
+    }
+    for k in range(2, 5) {
+        range_sum += k;
+    }
+
+    if sum == 27 && range_sum == 15 && for_defer_continue() == 11 {
         return 0;
     }
     return sum;

@@ -53,7 +53,7 @@ fn distance2(p: *const Point) -> i32 {
 
 fn main() -> i32 {
     var total: i32 = 0;
-    for var i: i32 = 0; i < 10; i = i + 1 {
+    for i in range(10) {
         total = total + i;
     }
     return total;
@@ -69,10 +69,11 @@ fn main() -> i32 {
 - parser 能生成任意 expression statement；sema 当前只允许函数调用和 `?` try expression 作为 expression statement。
 - 顶层 item 和 struct field 默认 public，import 默认 private。
 - 整数字面量允许 `_`，规则已收紧为只能出现在两个合法数字之间。
+- `for i in range(end)` / `for i in range(start, end)` 已作为基础计数循环补齐；当前只支持整数半开区间，不支持 step 或容器迭代。
 
 ## 总体判断
 
-Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` / `var`、无隐式数值转换、表达式优先级清楚、C-style `for`、`defer`、模块限定 `alias::item`，这些都适合系统语言。
+Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` / `var`、无隐式数值转换、表达式优先级清楚、C-style `for`、基础 `for i in range(...)`、`defer`、模块限定 `alias::item`，这些都适合系统语言。
 
 现在最主要的问题不是“缺高级特性”，而是基础语法里有几处不一致：
 
@@ -359,7 +360,7 @@ expr_stmt =
 - enum case。
 - `!`、`-`、`~`。
 - `+`、`-`、`*`、`/`、`%`、`<<`、`>>`、比较、相等、bitwise `&` / `^` / `|`、logical `&&` / `||`。
-- `cast`、`ptr_cast`、`bit_cast`、`ptr_addr`、`ptr_from_addr`。
+- `cast`、`pcast`、`bit_cast`、`ptr_addr`、`ptr_from_addr`。
 - `size_of`、`align_of`。
 
 当前仍不允许：
@@ -609,7 +610,7 @@ where T: Drop
 现状这些操作是普通表达式：
 
 ```aurex
-ptr_cast(*mut T, p)
+pcast(*mut T, p)
 bit_cast(U, value)
 ptr_from_addr(*mut T, address)
 str_from_bytes_unchecked(data, len)
@@ -958,7 +959,7 @@ pub fn classify(value: i32) -> i32 {
 
 pub fn run() -> i32 {
     var counter = Counter.new(0);
-    for var i: i32 = 0; i < 10; i += 1 {
+    for i in range(10) {
         counter.add(i);
     }
     return counter.value;

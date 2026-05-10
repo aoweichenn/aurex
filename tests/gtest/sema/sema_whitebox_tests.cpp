@@ -355,7 +355,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
 
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::cast, INVALID_TYPE_HANDLE, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::cast, f64, i32));
-    EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::ptr_cast, const_ptr_i32, ptr_i32));
+    EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::pcast, const_ptr_i32, ptr_i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, i32, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, u32, i32));
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::bit_cast, bool_type, i8));

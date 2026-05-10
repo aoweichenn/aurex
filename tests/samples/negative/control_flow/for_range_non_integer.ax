@@ -1,0 +1,8 @@
+module for_range_non_integer;
+
+fn main() -> i32 {
+    for i in range(true) {
+        return i;
+    }
+    return 0;
+}

@@ -164,6 +164,8 @@ void remap_stmt_node(syntax::StmtNode& node, const IdMap& map) {
     node.lhs = remap_expr(node.lhs, map);
     node.rhs = remap_expr(node.rhs, map);
     node.condition = remap_expr(node.condition, map);
+    node.range_start = remap_expr(node.range_start, map);
+    node.range_end = remap_expr(node.range_end, map);
     node.then_block = remap_stmt(node.then_block, map);
     node.else_block = remap_stmt(node.else_block, map);
     node.else_if = remap_stmt(node.else_if, map);

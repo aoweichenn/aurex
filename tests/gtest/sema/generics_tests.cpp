@@ -25,7 +25,7 @@ TEST_F(AurexIntegrationTest, GenericEnumOption) {
         "record generic_enum_option.Option<i32>",
         "@m0_generic_enum_option_Option__i32",
         "aggregate {.tag",
-        "ptr_cast",
+        "pcast",
         "field_addr",
     });
 
@@ -55,7 +55,7 @@ TEST_F(AurexIntegrationTest, GenericEnumResultExpectedType) {
         "record generic_enum_result.Result<i32, bool>",
         "@m0_generic_enum_result_Result__i32__bool",
         "aggregate {.tag",
-        "ptr_cast",
+        "pcast",
     });
 
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
@@ -355,7 +355,7 @@ TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
     expect_contains_all(enum_ir, {
         "record generic_enum_small_payload.SmallSlot<u16>",
         ".payload: u16",
-        "ptr_cast",
+        "pcast",
     });
 
     const std::string enum_llvm = require_success(aurexc() + " --emit=llvm-ir " + q(enum_source)).output;

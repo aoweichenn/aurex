@@ -2,6 +2,8 @@
 
 #include <aurex/parse/parser_part_base.hpp>
 
+#include <vector>
+
 namespace aurex::parse {
 
 class ControlStmtParser final : private ParserPartBase {
@@ -18,6 +20,10 @@ public:
     [[nodiscard]] syntax::StmtId parse_return_stmt();
 
 private:
+    [[nodiscard]] bool next_for_is_range_loop() const noexcept;
+    [[nodiscard]] syntax::StmtId parse_for_range_stmt(const syntax::Token& begin);
+    void parse_range_args(std::vector<syntax::ExprId>& args);
+    [[nodiscard]] bool recover_range_arg_separator();
     [[nodiscard]] syntax::StmtId parse_for_init_clause();
     [[nodiscard]] syntax::StmtId parse_for_update_clause();
 };

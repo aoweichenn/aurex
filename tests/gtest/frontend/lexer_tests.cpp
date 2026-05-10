@@ -159,9 +159,9 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
         "module import as pub priv extern export c fn struct opaque enum const type impl match "
-        "let var if else for while break continue defer return true false null "
+        "let var if else for in while break continue defer return true false null "
         "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
-        "ptr_cast bit_cast size_of align_of ptr_addr ptr_from_addr str_data str_byte_len "
+        "pcast bit_cast size_of align_of ptr_addr ptr_from_addr str_data str_byte_len "
         "str_from_bytes_unchecked";
     lex::Lexer lexer({8}, source, diagnostics);
     auto result = lexer.tokenize();
@@ -190,6 +190,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
         TokenKind::kw_if,
         TokenKind::kw_else,
         TokenKind::kw_for,
+        TokenKind::kw_in,
         TokenKind::kw_while,
         TokenKind::kw_break,
         TokenKind::kw_continue,
@@ -215,7 +216,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
         TokenKind::kw_str,
         TokenKind::kw_mut,
         TokenKind::kw_cast,
-        TokenKind::kw_ptr_cast,
+        TokenKind::kw_pcast,
         TokenKind::kw_bit_cast,
         TokenKind::kw_size_of,
         TokenKind::kw_align_of,

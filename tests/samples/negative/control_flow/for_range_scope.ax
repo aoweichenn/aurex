@@ -1,0 +1,7 @@
+module for_range_scope;
+
+fn main() -> i32 {
+    for i in range(3) {
+    }
+    return i;
+}

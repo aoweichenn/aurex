@@ -2,6 +2,7 @@
 
 #include <aurex/parse/parser_stmt_part.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::parse {
@@ -9,6 +10,10 @@ namespace aurex::parse {
 namespace {
 
 using syntax::TokenKind;
+
+constexpr std::string_view PARSER_FOR_RANGE_CALLEE = "range";
+constexpr base::usize PARSER_FOR_RANGE_MIN_ARG_COUNT = 1;
+constexpr base::usize PARSER_FOR_RANGE_MAX_ARG_COUNT = 2;
 
 } // namespace
 
@@ -57,6 +62,10 @@ syntax::StmtId ControlStmtParser::parse_while_stmt() {
 
 syntax::StmtId ControlStmtParser::parse_for_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_for, "expected 'for'");
+    if (this->next_for_is_range_loop()) {
+        return this->parse_for_range_stmt(begin);
+    }
+
     const syntax::StmtId init = this->parse_for_init_clause();
     syntax::ExprId condition = syntax::INVALID_EXPR_ID;
     if (!this->check(TokenKind::semicolon)) {
@@ -79,6 +88,78 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
     stmt.for_update = update;
     stmt.body = body;
     return this->session_.module.push_stmt(std::move(stmt));
+}
+
+bool ControlStmtParser::next_for_is_range_loop() const noexcept {
+    return this->check(TokenKind::identifier) && this->check_next(TokenKind::kw_in);
+}
+
+syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begin) {
+    const syntax::Token& name = this->expect(TokenKind::identifier, "expected loop variable after 'for'");
+    this->expect(TokenKind::kw_in, "expected 'in' after loop variable");
+    const syntax::Token& callee = this->expect_identifier_recovered("expected range after 'in'");
+    if (callee.text != PARSER_FOR_RANGE_CALLEE) {
+        this->report_at(callee, "for-in currently supports range(...) only");
+    }
+    std::vector<syntax::ExprId> args;
+    const bool has_range_arguments = this->check(TokenKind::l_paren);
+    this->expect(TokenKind::l_paren, "expected '(' after range");
+    const syntax::Token* end = &callee;
+    if (has_range_arguments) {
+        this->parse_range_args(args);
+        end = &this->expect_recovered(
+            TokenKind::r_paren,
+            "expected ')' after range arguments",
+            RecoveryContext::call_argument
+        );
+    }
+    if (args.size() < PARSER_FOR_RANGE_MIN_ARG_COUNT || args.size() > PARSER_FOR_RANGE_MAX_ARG_COUNT) {
+        this->report_at(callee, "range expects 1 or 2 arguments");
+    }
+
+    const syntax::StmtId body = this->parse_block();
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::for_range;
+    stmt.range = this->merge(begin.range, this->stmt_range_or(body, end->range));
+    stmt.name = name.text;
+    if (args.size() == PARSER_FOR_RANGE_MIN_ARG_COUNT) {
+        stmt.range_end = args[0];
+    } else if (args.size() >= PARSER_FOR_RANGE_MAX_ARG_COUNT) {
+        stmt.range_start = args[0];
+        stmt.range_end = args[1];
+    }
+    stmt.body = body;
+    return this->session_.module.push_stmt(std::move(stmt));
+}
+
+void ControlStmtParser::parse_range_args(std::vector<syntax::ExprId>& args) {
+    while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+        args.push_back(this->parse_expr(ExprContext::no_struct_literal));
+        this->reset_panic();
+        if (!this->recover_range_arg_separator()) {
+            break;
+        }
+    }
+}
+
+bool ControlStmtParser::recover_range_arg_separator() {
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here("expected ',' or ')' after range argument");
+    this->synchronize(RecoveryContext::call_argument);
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return false;
 }
 
 syntax::StmtId ControlStmtParser::parse_break_stmt() {

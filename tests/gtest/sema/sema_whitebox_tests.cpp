@@ -59,6 +59,12 @@ constexpr base::u64 SEMA_TEST_INVALID_ARRAY_COUNT = 2;
 constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
 constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
+constexpr std::string_view SEMA_TEST_IMPORT_ALIAS_ONE = "one";
+constexpr std::string_view SEMA_TEST_CONST_VALUE_NAME = "VALUE";
+constexpr std::string_view SEMA_TEST_LOCAL_VALUE_NAME = "LOCAL_VALUE";
+constexpr std::string_view SEMA_TEST_ENUM_VALUE_NAME = "ENUM_VALUE";
+constexpr std::string_view SEMA_TEST_MISSING_VALUE_NAME = "MISSING_VALUE";
+constexpr std::string_view SEMA_TEST_ENUM_CASE_C_NAME = "Choice_some";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_HEX_UPPER = "0X2A";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_HEX_LOWER = "0xa";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_BIN_LOWER = "0b1010";
@@ -72,6 +78,7 @@ constexpr syntax::PrimitiveTypeKind SEMA_TEST_INVALID_PRIMITIVE_KIND = static_ca
 constexpr std::string_view SEMA_TEST_FLOAT_OVERFLOW_LITERAL = "1e999999999";
 constexpr std::string_view SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL = "1_2.5";
 constexpr std::string_view SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL = "1.0x";
+constexpr syntax::BinaryOp SEMA_TEST_INVALID_BINARY_OP = static_cast<syntax::BinaryOp>(99);
 
 [[nodiscard]] ModuleId module_id(const u32 value) noexcept {
     return ModuleId {value};
@@ -1449,6 +1456,116 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
         covered_false,
         value_saw_wildcard
     ), nullptr);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal) {
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib", "one"}),
+    };
+    module.modules[0].imports = {
+        resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), SEMA_TEST_IMPORT_ALIAS_ONE),
+    };
+
+    const ExprId scoped_value_expr = push_name(module, SEMA_TEST_CONST_VALUE_NAME, SEMA_TEST_IMPORT_ALIAS_ONE);
+
+    syntax::ExprNode field_expr;
+    field_expr.kind = syntax::ExprKind::field;
+    const ExprId field_expr_id = module.push_expr(field_expr);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_c_names.assign(module.exprs.size(), {});
+    analyzer.checked_.enum_cases.clear();
+    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), SEMA_TEST_CONST_VALUE_NAME),
+        symbol(SymbolKind::const_, SEMA_TEST_CONST_VALUE_NAME, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32)
+    );
+
+    std::unordered_set<std::string> dependencies;
+    EXPECT_TRUE(analyzer.is_const_evaluable_expr(scoped_value_expr, dependencies));
+    EXPECT_EQ(
+        dependencies.count(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), SEMA_TEST_CONST_VALUE_NAME)),
+        1u
+    );
+
+    sema::EnumCaseInfo case_info;
+    case_info.c_name = SEMA_TEST_ENUM_CASE_C_NAME;
+    analyzer.checked_.enum_cases.emplace(std::string(SEMA_TEST_ENUM_CASE_C_NAME), case_info);
+    analyzer.checked_.expr_c_names[field_expr_id.value] = std::string(SEMA_TEST_ENUM_CASE_C_NAME);
+
+    dependencies.clear();
+    EXPECT_TRUE(analyzer.is_const_evaluable_expr(field_expr_id, dependencies));
+    EXPECT_TRUE(dependencies.empty());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxConstEvaluationRejectsUnsupportedShapes) {
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+    };
+
+    const ExprId missing_name = push_name(module, SEMA_TEST_MISSING_VALUE_NAME);
+    const ExprId local_name = push_name(module, SEMA_TEST_LOCAL_VALUE_NAME);
+    const ExprId enum_name = push_name(module, SEMA_TEST_ENUM_VALUE_NAME);
+    const ExprId integer_literal = push_integer(module);
+
+    syntax::ExprNode unsupported_unary;
+    unsupported_unary.kind = syntax::ExprKind::unary;
+    unsupported_unary.unary_op = syntax::UnaryOp::address_of;
+    unsupported_unary.unary_operand = integer_literal;
+    const ExprId unsupported_unary_id = module.push_expr(unsupported_unary);
+
+    syntax::ExprNode invalid_child_cast;
+    invalid_child_cast.kind = syntax::ExprKind::cast;
+    invalid_child_cast.cast_expr = syntax::invalid_expr_id;
+    const ExprId invalid_child_cast_id = module.push_expr(invalid_child_cast);
+
+    syntax::ExprNode empty_struct_literal;
+    empty_struct_literal.kind = syntax::ExprKind::struct_literal;
+    const ExprId empty_struct_literal_id = module.push_expr(empty_struct_literal);
+
+    syntax::ExprNode invalid_binary;
+    invalid_binary.kind = syntax::ExprKind::binary;
+    invalid_binary.binary_op = SEMA_TEST_INVALID_BINARY_OP;
+    invalid_binary.binary_lhs = integer_literal;
+    invalid_binary.binary_rhs = integer_literal;
+    const ExprId invalid_binary_id = module.push_expr(invalid_binary);
+
+    syntax::ExprNode plain_field;
+    plain_field.kind = syntax::ExprKind::field;
+    const ExprId plain_field_id = module.push_expr(plain_field);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_c_names.assign(module.exprs.size(), {});
+    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_LOCAL_VALUE_NAME),
+        symbol(SymbolKind::local, SEMA_TEST_LOCAL_VALUE_NAME, module_id(SEMA_TEST_ROOT_MODULE_INDEX), i32)
+    );
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_ENUM_VALUE_NAME),
+        symbol(SymbolKind::enum_case, SEMA_TEST_ENUM_VALUE_NAME, module_id(SEMA_TEST_ROOT_MODULE_INDEX), i32)
+    );
+
+    std::unordered_set<std::string> dependencies;
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(syntax::invalid_expr_id, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(missing_name, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(local_name, dependencies));
+    EXPECT_TRUE(analyzer.is_const_evaluable_expr(enum_name, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(unsupported_unary_id, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(invalid_child_cast_id, dependencies));
+    EXPECT_TRUE(analyzer.is_const_evaluable_expr(empty_struct_literal_id, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(invalid_binary_id, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(plain_field_id, dependencies));
+    EXPECT_TRUE(dependencies.empty());
 }
 
 } // namespace aurex::test

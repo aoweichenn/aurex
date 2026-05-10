@@ -5,9 +5,10 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace aurex::sema {
 
@@ -72,6 +73,33 @@ namespace {
     return false;
 }
 
+enum class ConstDependencyState : base::u8 {
+    UNVISITED = 0,
+    VISITING = 1,
+    VISITED = 2,
+};
+
+enum class ConstEvalStage : base::u8 {
+    ENTER = 0,
+    AFTER_UNARY = 1,
+    AFTER_BINARY_LHS = 2,
+    AFTER_BINARY_RHS = 3,
+    AFTER_STRUCT_LITERAL = 4,
+    AFTER_CAST = 5,
+};
+
+struct ConstDependencyFrame {
+    std::string key;
+    bool entered = false;
+};
+
+struct ConstEvalFrame {
+    syntax::ExprId expr_id = syntax::invalid_expr_id;
+    ConstEvalStage stage = ConstEvalStage::ENTER;
+    base::usize child_count = 0;
+    bool lhs_result = true;
+};
+
 struct AbiFunctionInfo {
     std::string name;
     TypeHandle return_type = invalid_type_handle;
@@ -118,7 +146,7 @@ void SemanticAnalyzer::register_type_names() {
             info.name = std::string(item.name);
             info.module = owner;
             const auto* const begin = module_.items.data();
-            const base::usize item_index = static_cast<base::usize>(&item - begin);
+            const auto item_index = static_cast<base::usize>(&item - begin);
             info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
             info.range = item.range;
             info.visibility = item.visibility;
@@ -699,156 +727,245 @@ void SemanticAnalyzer::analyze_const_decls() {
     std::unordered_map<std::string, base::SourceRange> const_ranges;
     std::unordered_map<std::string, std::string> const_names;
 
-    for (const syntax::ItemNode& item : module_.items) {
+    for (const syntax::ItemNode& item : this->module_.items) {
         if (item.kind != syntax::ItemKind::const_decl) {
             continue;
         }
-        current_module_ = item_module(item);
-        const std::string const_key = module_key(current_module_, item.name);
+        this->current_module_ = this->item_module(item);
+        const std::string const_key = this->module_key(this->current_module_, item.name);
         const_ranges[const_key] = item.range;
-        const_names[const_key] = qualified_name(current_module_, item.name);
-        const TypeHandle declared = resolve_type(item.const_type);
-        const bool previous_const_initializer = in_const_initializer_;
-        in_const_initializer_ = true;
-        const TypeHandle actual = analyze_expr(item.const_value, declared);
-        in_const_initializer_ = previous_const_initializer;
+        const_names[const_key] = this->qualified_name(this->current_module_, item.name);
+        const TypeHandle declared = this->resolve_type(item.const_type);
+        const bool previous_const_initializer = this->in_const_initializer_;
+        this->in_const_initializer_ = true;
+        const TypeHandle actual = this->analyze_expr(item.const_value, declared);
+        this->in_const_initializer_ = previous_const_initializer;
         std::unordered_set<std::string> dependencies;
-        if (!is_const_evaluable_expr(item.const_value, dependencies)) {
+        if (!this->is_const_evaluable_expr(item.const_value, dependencies)) {
             const base::SourceRange range =
-                syntax::is_valid(item.const_value) && item.const_value.value < module_.exprs.size()
-                    ? module_.exprs[item.const_value.value].range
+                syntax::is_valid(item.const_value) && item.const_value.value < this->module_.exprs.size()
+                    ? this->module_.exprs[item.const_value.value].range
                     : item.range;
-            report(range, "const initializer is not compile-time constant");
+            this->report(range, "const initializer is not compile-time constant");
         }
         dependencies_by_const[const_key] = std::vector<std::string>(dependencies.begin(), dependencies.end());
-        if (!is_valid_storage_type(declared)) {
-            report(item.range, "const type is not valid storage");
+        if (!this->is_valid_storage_type(declared)) {
+            this->report(item.range, "const type is not valid storage");
         }
-        if (!can_assign(declared, actual, item.const_value)) {
-            report(item.range, "const initializer type does not match declared type");
+        if (!this->can_assign(declared, actual, item.const_value)) {
+            this->report(item.range, "const initializer type does not match declared type");
         }
     }
 
+    constexpr base::u8 SEMA_CONST_DEP_STATE_VISITING = static_cast<base::u8>(ConstDependencyState::VISITING);
+    constexpr base::u8 SEMA_CONST_DEP_STATE_VISITED = static_cast<base::u8>(ConstDependencyState::VISITED);
+
     std::unordered_map<std::string, base::u8> states;
-    const auto visit = [&](const auto& self, const std::string& key) -> void {
-        const base::u8 state = states[key];
-        if (state == 2) {
-            return;
+    std::vector<ConstDependencyFrame> stack;
+    for (const auto& entry : dependencies_by_const) {
+        if (states[entry.first] == SEMA_CONST_DEP_STATE_VISITED) {
+            continue;
         }
-        if (state == 1) {
-            const auto range = const_ranges.find(key);
-            report(
-                range == const_ranges.end() ? base::SourceRange {} : range->second,
-                "cyclic const initializer: " + (const_names.contains(key) ? const_names[key] : key)
-            );
-            states[key] = 2;
-            return;
-        }
-        states[key] = 1;
-        if (const auto found = dependencies_by_const.find(key); found != dependencies_by_const.end()) {
-            for (const std::string& dependency : found->second) {
-                if (dependencies_by_const.contains(dependency)) {
-                    self(self, dependency);
+        stack.push_back(ConstDependencyFrame {entry.first, false});
+        while (!stack.empty()) {
+            ConstDependencyFrame frame = std::move(stack.back());
+            stack.pop_back();
+
+            base::u8& state = states[frame.key];
+            if (frame.entered) {
+                state = SEMA_CONST_DEP_STATE_VISITED;
+                continue;
+            }
+            if (state == SEMA_CONST_DEP_STATE_VISITED) {
+                continue;
+            }
+            if (state == SEMA_CONST_DEP_STATE_VISITING) {
+                const auto range = const_ranges.find(frame.key);
+                this->report(
+                    range == const_ranges.end() ? base::SourceRange {} : range->second,
+                    "cyclic const initializer: " + (const_names.contains(frame.key) ? const_names[frame.key] : frame.key)
+                );
+                state = SEMA_CONST_DEP_STATE_VISITED;
+                continue;
+            }
+            state = SEMA_CONST_DEP_STATE_VISITING;
+            stack.push_back(ConstDependencyFrame {frame.key, true});
+            if (const auto found = dependencies_by_const.find(frame.key); found != dependencies_by_const.end()) {
+                for (auto it = found->second.rbegin(); it != found->second.rend(); ++it) {
+                    if (dependencies_by_const.contains(*it)) {
+                        stack.push_back(ConstDependencyFrame {*it, false});
+                    }
                 }
             }
         }
-        states[key] = 2;
-    };
-    for (const auto& entry : dependencies_by_const) {
-        visit(visit, entry.first);
     }
-    current_module_ = syntax::invalid_module_id;
+    this->current_module_ = syntax::invalid_module_id;
 }
 
 bool SemanticAnalyzer::is_const_evaluable_expr(
     const syntax::ExprId expr_id,
     std::unordered_set<std::string>& dependencies
 ) {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= module_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return false;
     }
-    const syntax::ExprNode& expr = module_.exprs[expr_id.value];
-    switch (expr.kind) {
-    case syntax::ExprKind::integer_literal:
-    case syntax::ExprKind::float_literal:
-    case syntax::ExprKind::bool_literal:
-    case syntax::ExprKind::null_literal:
-    case syntax::ExprKind::string_literal:
-    case syntax::ExprKind::c_string_literal:
-    case syntax::ExprKind::byte_literal:
-    case syntax::ExprKind::size_of:
-    case syntax::ExprKind::align_of:
-        return true;
-    case syntax::ExprKind::name: {
-        const Symbol* symbol = nullptr;
-        if (!expr.scope_name.empty()) {
-            const syntax::ModuleId module = resolve_import_alias(expr.scope_name, expr.scope_range, false);
-            symbol = syntax::is_valid(module) ? find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
-        } else {
-            if (const Symbol* local = symbols_.find(expr.text); local != nullptr) {
-                symbol = local;
-            } else if (const auto found = global_values_.find(module_key(current_module_, expr.text)); found != global_values_.end()) {
-                symbol = &found->second;
-            } else {
-                for (syntax::ModuleId module : visible_modules(current_module_)) {
-                    if (module.value == current_module_.value) {
-                        continue;
-                    }
-                    const auto imported = global_values_.find(module_key(module, expr.text));
-                    if (imported != global_values_.end() && can_access(module, imported->second.visibility)) {
-                        symbol = &imported->second;
-                        break;
+    std::vector<ConstEvalFrame> stack;
+    std::vector<bool> values;
+    stack.push_back(ConstEvalFrame {expr_id, ConstEvalStage::ENTER, 0});
+    while (!stack.empty()) {
+        ConstEvalFrame frame = stack.back();
+        stack.pop_back();
+
+        if (!syntax::is_valid(frame.expr_id) || frame.expr_id.value >= this->module_.exprs.size()) {
+            values.push_back(false);
+            continue;
+        }
+        const syntax::ExprNode& expr = this->module_.exprs[frame.expr_id.value];
+        switch (frame.stage) {
+        case ConstEvalStage::ENTER:
+            switch (expr.kind) {
+            case syntax::ExprKind::integer_literal:
+            case syntax::ExprKind::float_literal:
+            case syntax::ExprKind::bool_literal:
+            case syntax::ExprKind::null_literal:
+            case syntax::ExprKind::string_literal:
+            case syntax::ExprKind::c_string_literal:
+            case syntax::ExprKind::byte_literal:
+            case syntax::ExprKind::size_of:
+            case syntax::ExprKind::align_of:
+                values.push_back(true);
+                break;
+            case syntax::ExprKind::name: {
+                const Symbol* symbol = nullptr;
+                if (!expr.scope_name.empty()) {
+                    const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range, false);
+                    symbol = syntax::is_valid(module) ? this->find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
+                } else {
+                    if (const Symbol* local = this->symbols_.find(expr.text); local != nullptr) {
+                        symbol = local;
+                    } else if (const auto found = this->global_values_.find(this->module_key(this->current_module_, expr.text));
+                               found != this->global_values_.end()) {
+                        symbol = &found->second;
+                    } else {
+                        for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
+                            if (module.value == this->current_module_.value) {
+                                continue;
+                            }
+                            const auto imported = this->global_values_.find(this->module_key(module, expr.text));
+                            if (imported != this->global_values_.end() && this->can_access(module, imported->second.visibility)) {
+                                symbol = &imported->second;
+                                break;
+                            }
+                        }
                     }
                 }
-            }
-        }
-        if (symbol == nullptr) {
-            return false;
-        }
-        if (symbol->kind == SymbolKind::enum_case) {
-            return true;
-        }
-        if (symbol->kind != SymbolKind::const_) {
-            return false;
-        }
-        dependencies.insert(module_key(symbol->module, symbol->name));
-        return true;
-    }
-    case syntax::ExprKind::field: {
-        if (expr_id.value < checked_.expr_c_names.size() && !checked_.expr_c_names[expr_id.value].empty()) {
-            for (const auto& entry : checked_.enum_cases) {
-                if (entry.second.c_name == checked_.expr_c_names[expr_id.value]) {
-                    return true;
+                if (symbol == nullptr) {
+                    values.push_back(false);
+                    break;
                 }
+                if (symbol->kind == SymbolKind::enum_case) {
+                    values.push_back(true);
+                    break;
+                }
+                if (symbol->kind != SymbolKind::const_) {
+                    values.push_back(false);
+                    break;
+                }
+                dependencies.insert(this->module_key(symbol->module, symbol->name));
+                values.push_back(true);
+                break;
             }
+            case syntax::ExprKind::field: {
+                bool const_evaluable = false;
+                if (frame.expr_id.value < this->checked_.expr_c_names.size() && !this->checked_.expr_c_names[frame.expr_id.value].empty()) {
+                    for (const auto& entry : this->checked_.enum_cases) {
+                        if (entry.second.c_name == this->checked_.expr_c_names[frame.expr_id.value]) {
+                            const_evaluable = true;
+                            break;
+                        }
+                    }
+                }
+                values.push_back(const_evaluable);
+                break;
+            }
+            case syntax::ExprKind::struct_literal:
+                if (expr.field_inits.empty()) {
+                    values.push_back(true);
+                    break;
+                }
+                stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_STRUCT_LITERAL, expr.field_inits.size()});
+                for (auto it = expr.field_inits.rbegin(); it != expr.field_inits.rend(); ++it) {
+                    stack.push_back(ConstEvalFrame {it->value, ConstEvalStage::ENTER, 0});
+                }
+                break;
+            case syntax::ExprKind::unary:
+                if (expr.unary_op != syntax::UnaryOp::logical_not &&
+                    expr.unary_op != syntax::UnaryOp::numeric_negate &&
+                    expr.unary_op != syntax::UnaryOp::bitwise_not) {
+                    values.push_back(false);
+                    break;
+                }
+                stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_UNARY, 0});
+                stack.push_back(ConstEvalFrame {expr.unary_operand, ConstEvalStage::ENTER, 0});
+                break;
+            case syntax::ExprKind::binary:
+                if (!is_const_evaluable_binary_op(expr.binary_op)) {
+                    values.push_back(false);
+                    break;
+                }
+                stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_BINARY_LHS, 0});
+                stack.push_back(ConstEvalFrame {expr.binary_lhs, ConstEvalStage::ENTER, 0});
+                break;
+            case syntax::ExprKind::cast:
+            case syntax::ExprKind::ptr_cast:
+            case syntax::ExprKind::bit_cast:
+            case syntax::ExprKind::ptr_addr:
+            case syntax::ExprKind::ptr_from_addr:
+                stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_CAST, 0});
+                stack.push_back(ConstEvalFrame {expr.cast_expr, ConstEvalStage::ENTER, 0});
+                break;
+            default:
+                values.push_back(false);
+                break;
+            }
+            break;
+        case ConstEvalStage::AFTER_UNARY: {
+            const bool child = values.back();
+            values.pop_back();
+            values.push_back(child);
+            break;
         }
-        return false;
-    }
-    case syntax::ExprKind::struct_literal: {
-        bool ok = true;
-        for (const syntax::FieldInit& init : expr.field_inits) {
-            ok = is_const_evaluable_expr(init.value, dependencies) && ok;
+        case ConstEvalStage::AFTER_BINARY_LHS: {
+            const bool lhs = values.back();
+            values.pop_back();
+            stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_BINARY_RHS, 0, lhs});
+            stack.push_back(ConstEvalFrame {expr.binary_rhs, ConstEvalStage::ENTER, 0});
+            break;
         }
-        return ok;
+        case ConstEvalStage::AFTER_BINARY_RHS: {
+            const bool rhs = values.back();
+            values.pop_back();
+            values.push_back(frame.lhs_result && rhs);
+            break;
+        }
+        case ConstEvalStage::AFTER_STRUCT_LITERAL: {
+            bool ok = true;
+            for (base::usize index = 0; index < frame.child_count; ++index) {
+                ok = values.back() && ok;
+                values.pop_back();
+            }
+            values.push_back(ok);
+            break;
+        }
+        case ConstEvalStage::AFTER_CAST: {
+            const bool child = values.back();
+            values.pop_back();
+            values.push_back(child);
+            break;
+        }
+        }
     }
-    case syntax::ExprKind::unary:
-        return (expr.unary_op == syntax::UnaryOp::logical_not ||
-                expr.unary_op == syntax::UnaryOp::numeric_negate ||
-                expr.unary_op == syntax::UnaryOp::bitwise_not) &&
-               is_const_evaluable_expr(expr.unary_operand, dependencies);
-    case syntax::ExprKind::binary:
-        return is_const_evaluable_binary_op(expr.binary_op) &&
-               is_const_evaluable_expr(expr.binary_lhs, dependencies) &&
-               is_const_evaluable_expr(expr.binary_rhs, dependencies);
-    case syntax::ExprKind::cast:
-    case syntax::ExprKind::ptr_cast:
-    case syntax::ExprKind::bit_cast:
-    case syntax::ExprKind::ptr_addr:
-    case syntax::ExprKind::ptr_from_addr:
-        return is_const_evaluable_expr(expr.cast_expr, dependencies);
-    default:
-        return false;
-    }
+    return !values.empty() && values.back();
 }
 
 } // namespace aurex::sema

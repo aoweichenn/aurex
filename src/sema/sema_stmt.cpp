@@ -7,6 +7,7 @@ namespace aurex::sema {
 namespace {
 
 constexpr base::usize SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY = 16;
+constexpr base::usize SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX = 0;
 
 enum class ControlFlowQuery {
     guarantees_return,
@@ -29,7 +30,7 @@ enum class ControlFlowIfStage {
 struct ControlFlowFrame {
     ControlFlowFrameKind kind = ControlFlowFrameKind::statement;
     syntax::StmtId stmt = syntax::invalid_stmt_id;
-    base::usize next_child = 0;
+    base::usize next_child = SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX;
     ControlFlowIfStage if_stage = ControlFlowIfStage::evaluate_then;
 };
 
@@ -137,7 +138,7 @@ void evaluate_control_flow_statement(
         break;
     case syntax::StmtKind::block:
         frame.kind = ControlFlowFrameKind::block;
-        frame.next_child = 0;
+        frame.next_child = SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX;
         break;
     case syntax::StmtKind::if_:
         frame.kind = ControlFlowFrameKind::if_statement;
@@ -336,7 +337,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         return;
     }
     state = FunctionBodyState::analyzing;
-    this->loop_depth_ = 0;
+    this->loop_depth_ = SEMA_NO_LOOP_DEPTH;
     const bool infer_return_type = !syntax::is_valid(function.return_type);
     ReturnTypeInference return_inference;
     TypeHandle expected_return = signature.return_type;
@@ -646,7 +647,7 @@ void SemanticAnalyzer::analyze_statement_node(
         break;
     case syntax::StmtKind::break_:
     case syntax::StmtKind::continue_:
-        if (this->loop_depth_ == 0) {
+        if (this->loop_depth_ == SEMA_NO_LOOP_DEPTH) {
             this->report(stmt.range, "break and continue are only valid inside loops");
         }
         break;

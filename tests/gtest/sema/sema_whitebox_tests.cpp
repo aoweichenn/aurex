@@ -42,10 +42,33 @@ using syntax::ExprId;
 using syntax::ModuleId;
 using syntax::TypeId;
 
+constexpr u32 SEMA_TEST_ROOT_MODULE_INDEX = 0;
+constexpr u32 SEMA_TEST_LIB_ONE_MODULE_INDEX = 1;
+constexpr u32 SEMA_TEST_MISSING_MODULE_INDEX = 99;
+constexpr base::u32 SEMA_TEST_PATTERN_FIRST_INDEX = 0;
+constexpr base::u32 SEMA_TEST_PATTERN_SECOND_INDEX = 1;
+constexpr base::u32 SEMA_TEST_PATTERN_THIRD_INDEX = 2;
+constexpr base::u32 SEMA_TEST_PATTERN_TRACKED_COUNT = 3;
+constexpr base::u64 SEMA_TEST_ABI_INVALID_SIZE = 0;
+constexpr base::u64 SEMA_TEST_ABI_MIN_ALIGNMENT = 1;
+constexpr base::u64 SEMA_TEST_RECORD_ABI_SIZE = 16;
+constexpr base::u64 SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_SIZE = 1;
+constexpr base::u64 SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_ALIGN = 0;
 constexpr base::u64 SEMA_TEST_NESTED_ARRAY_COUNT = 5;
 constexpr base::u64 SEMA_TEST_INVALID_ARRAY_COUNT = 2;
 constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
 constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_HEX_UPPER = "0X2A";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_HEX_LOWER = "0xa";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_BIN_LOWER = "0b1010";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_BIN_UPPER = "0B1010";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_INVALID_BINARY = "0b2";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_INVALID_CHAR = "12g";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_EMPTY = "";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_UNSIGNED_OVERFLOW = "18446744073709551616";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_SIGNED_OVERFLOW = "9223372036854775808";
+constexpr syntax::PrimitiveTypeKind SEMA_TEST_INVALID_PRIMITIVE_KIND = static_cast<syntax::PrimitiveTypeKind>(99);
 constexpr std::string_view SEMA_TEST_FLOAT_OVERFLOW_LITERAL = "1e999999999";
 constexpr std::string_view SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL = "1_2.5";
 constexpr std::string_view SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL = "1.0x";
@@ -140,7 +163,7 @@ constexpr std::string_view SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL = "1.0x";
 [[nodiscard]] ExprId push_integer(syntax::AstModule& module) {
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::integer_literal;
-    expr.text = "1";
+    expr.text = SEMA_TEST_INTEGER_LITERAL_ONE;
     return module.push_expr(expr);
 }
 
@@ -275,10 +298,10 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     };
     analyzer.checked_.structs.emplace(analyzer.module_key(module_id(1), "Record"), record);
 
-    EXPECT_EQ(analyzer.abi_size(invalid_type_handle), 0U);
-    EXPECT_EQ(analyzer.abi_align(invalid_type_handle), 1U);
-    EXPECT_EQ(analyzer.abi_size(void_type), 0U);
-    EXPECT_EQ(analyzer.abi_align(void_type), 1U);
+    EXPECT_EQ(analyzer.abi_size(invalid_type_handle), SEMA_TEST_ABI_INVALID_SIZE);
+    EXPECT_EQ(analyzer.abi_align(invalid_type_handle), SEMA_TEST_ABI_MIN_ALIGNMENT);
+    EXPECT_EQ(analyzer.abi_size(void_type), SEMA_TEST_ABI_INVALID_SIZE);
+    EXPECT_EQ(analyzer.abi_align(void_type), SEMA_TEST_ABI_MIN_ALIGNMENT);
     EXPECT_EQ(analyzer.abi_size(bool_type), sizeof(bool));
     EXPECT_EQ(analyzer.abi_align(bool_type), alignof(bool));
     EXPECT_EQ(analyzer.abi_size(i8), sizeof(std::uint8_t));
@@ -305,16 +328,16 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_EQ(analyzer.abi_align(ptr_i32), alignof(void*));
     EXPECT_EQ(analyzer.abi_size(array_i16), SEMA_TEST_SMALL_ARRAY_COUNT * sizeof(std::uint16_t));
     EXPECT_EQ(analyzer.abi_align(array_i16), alignof(std::uint16_t));
-    EXPECT_EQ(analyzer.abi_size(missing_struct), 0U);
-    EXPECT_EQ(analyzer.abi_align(missing_struct), 1U);
-    EXPECT_EQ(analyzer.abi_size(record_type), 16U);
+    EXPECT_EQ(analyzer.abi_size(missing_struct), SEMA_TEST_ABI_INVALID_SIZE);
+    EXPECT_EQ(analyzer.abi_align(missing_struct), SEMA_TEST_ABI_MIN_ALIGNMENT);
+    EXPECT_EQ(analyzer.abi_size(record_type), SEMA_TEST_RECORD_ABI_SIZE);
     EXPECT_EQ(analyzer.abi_align(record_type), alignof(std::uint64_t));
     EXPECT_EQ(analyzer.abi_size(enum_type), sizeof(std::uint16_t));
     EXPECT_EQ(analyzer.abi_align(enum_type), alignof(std::uint16_t));
     EXPECT_GT(analyzer.abi_size(payload_enum_type), sizeof(std::uint8_t));
     EXPECT_EQ(analyzer.abi_align(payload_enum_type), alignof(std::uint64_t));
-    EXPECT_EQ(analyzer.abi_size(opaque_type), 0U);
-    EXPECT_EQ(analyzer.abi_align(opaque_type), 1U);
+    EXPECT_EQ(analyzer.abi_size(opaque_type), SEMA_TEST_ABI_INVALID_SIZE);
+    EXPECT_EQ(analyzer.abi_align(opaque_type), SEMA_TEST_ABI_MIN_ALIGNMENT);
 
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::cast, invalid_type_handle, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::cast, f64, i32));
@@ -368,7 +391,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("missing", {})));
 
     EXPECT_TRUE(analyzer.visible_modules(syntax::invalid_module_id).empty());
-    EXPECT_EQ(analyzer.visible_modules(module_id(99)).size(), 1U);
+    EXPECT_EQ(analyzer.visible_modules(module_id(SEMA_TEST_MISSING_MODULE_INDEX)).size(), 1U);
     const std::vector<ModuleId> visible = analyzer.visible_modules(module_id(0));
     ASSERT_GE(visible.size(), 4U);
     EXPECT_EQ(analyzer.module_name(syntax::invalid_module_id), "<unknown>");
@@ -502,7 +525,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericHelperEdges) {
         module_info({"root"}),
         module_info({"lib", "one"}),
     };
-    module.modules[0].imports = {resolved_import(module_id(1), "one")};
+    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "one")};
 
     const TypeId i32_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
     const TypeId bool_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::bool_));
@@ -861,7 +884,7 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutAndGenericInference) {
         module_info({"root"}),
         module_info({"lib", "one"}),
     };
-    module.modules[0].imports = {resolved_import(module_id(1), "one")};
+    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "one")};
 
     const TypeId t_type_id = module.push_type(named_node("T"));
     const TypeId e_type_id = module.push_type(named_node("E"));
@@ -1009,20 +1032,20 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
         module_info({"root"}),
         module_info({"lib", "one"}),
     };
-    module.modules[0].imports = {resolved_import(module_id(1), "one")};
+    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "one")};
 
     const TypeId u8_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::u8));
     const TypeId i32_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
-    const ExprId hex_expr = push_integer_text(module, "0x2A");
-    const ExprId lower_hex_expr = push_integer_text(module, "0xa");
-    const ExprId upper_hex_expr = push_integer_text(module, "0X2A");
-    const ExprId bin_expr = push_integer_text(module, "0b1010");
-    const ExprId upper_bin_expr = push_integer_text(module, "0B1010");
-    const ExprId invalid_digit_expr = push_integer_text(module, "0b2");
-    const ExprId invalid_char_expr = push_integer_text(module, "12g");
-    const ExprId empty_expr = push_integer_text(module, "");
-    const ExprId overflow_expr = push_integer_text(module, "18446744073709551616");
-    const ExprId signed_overflow_expr = push_integer_text(module, "9223372036854775808");
+    const ExprId hex_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_HEX_UPPER);
+    const ExprId lower_hex_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_HEX_LOWER);
+    const ExprId upper_hex_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_HEX_UPPER);
+    const ExprId bin_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_BIN_LOWER);
+    const ExprId upper_bin_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_BIN_UPPER);
+    const ExprId invalid_digit_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_INVALID_BINARY);
+    const ExprId invalid_char_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_INVALID_CHAR);
+    const ExprId empty_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_EMPTY);
+    const ExprId overflow_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_UNSIGNED_OVERFLOW);
+    const ExprId signed_overflow_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_SIGNED_OVERFLOW);
     syntax::ExprNode float_overflow_expr;
     float_overflow_expr.kind = syntax::ExprKind::float_literal;
     float_overflow_expr.text = SEMA_TEST_FLOAT_OVERFLOW_LITERAL;
@@ -1042,7 +1065,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     const TypeId scoped_choice_missing_args_type_id = module.push_type(scoped_choice_missing_args_type);
     syntax::TypeNode invalid_primitive_type;
     invalid_primitive_type.kind = syntax::TypeKind::primitive;
-    invalid_primitive_type.primitive = static_cast<syntax::PrimitiveTypeKind>(99);
+    invalid_primitive_type.primitive = SEMA_TEST_INVALID_PRIMITIVE_KIND;
     const TypeId invalid_primitive_type_id = module.push_type(invalid_primitive_type);
     syntax::TypeNode scoped_opaque_type = named_node("ScopedOpaque");
     scoped_opaque_type.scope_name = "one";
@@ -1068,19 +1091,19 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     enum_item.generic_params = {"T"};
     enum_item.enum_base_type = u8_type_id;
     enum_item.enum_cases = {
-        syntax::EnumCaseDecl {"none", syntax::invalid_type_id, "1", {}},
+        syntax::EnumCaseDecl {"none", syntax::invalid_type_id, SEMA_TEST_INTEGER_LITERAL_ONE, {}},
     };
     const syntax::ItemId enum_item_id = module.push_item(enum_item);
-    module.item_modules[enum_item_id.value] = module_id(1);
+    module.item_modules[enum_item_id.value] = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
     analyzer.checked_.expr_types.assign(module.exprs.size(), invalid_type_handle);
     analyzer.checked_.expr_c_names.assign(module.exprs.size(), {});
-    analyzer.checked_.pattern_c_names.assign(3, {});
-    analyzer.checked_.pattern_case_sets.assign(3, {});
+    analyzer.checked_.pattern_c_names.assign(SEMA_TEST_PATTERN_TRACKED_COUNT, {});
+    analyzer.checked_.pattern_case_sets.assign(SEMA_TEST_PATTERN_TRACKED_COUNT, {});
     analyzer.checked_.syntax_type_handles.assign(module.types.size(), invalid_type_handle);
-    analyzer.current_module_ = module_id(0);
+    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
     sema::TypeTable& types = analyzer.checked_.types;
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
@@ -1124,24 +1147,35 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
 
     const TypeHandle zero_align_enum = types.named_enum("ZeroAlign", "ZeroAlign");
     types.set_enum_underlying(zero_align_enum, u8);
-    types.set_enum_payload_layout(zero_align_enum, u8, 1, 0);
-    EXPECT_GE(analyzer.abi_size(zero_align_enum), 1U);
+    types.set_enum_payload_layout(
+        zero_align_enum,
+        u8,
+        SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_SIZE,
+        SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_ALIGN
+    );
+    EXPECT_GE(analyzer.abi_size(zero_align_enum), SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_SIZE);
 
     analyzer.record_pattern_c_name(syntax::invalid_pattern_id, "ignored");
-    analyzer.record_pattern_c_name(syntax::PatternId {0}, {});
+    analyzer.record_pattern_c_name(syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX}, {});
     analyzer.record_pattern_case_name(syntax::invalid_pattern_id, "ignored");
-    analyzer.record_pattern_case_name(syntax::PatternId {0}, {});
-    analyzer.merge_pattern_case_names(syntax::invalid_pattern_id, syntax::PatternId {0});
+    analyzer.record_pattern_case_name(syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX}, {});
+    analyzer.merge_pattern_case_names(syntax::invalid_pattern_id, syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX});
 
     std::unordered_map<base::u32, std::unordered_set<std::string>> generic_case_sets;
-    generic_case_sets[1].insert("from_generic");
+    generic_case_sets[SEMA_TEST_PATTERN_SECOND_INDEX].insert("from_generic");
     analyzer.current_generic_pattern_case_sets_ = &generic_case_sets;
-    analyzer.merge_pattern_case_names(syntax::PatternId {0}, syntax::PatternId {1});
-    EXPECT_TRUE(generic_case_sets[0].contains("from_generic"));
-    analyzer.current_generic_pattern_case_sets_->erase(1);
-    analyzer.checked_.pattern_case_sets[1].insert("from_checked");
-    analyzer.merge_pattern_case_names(syntax::PatternId {2}, syntax::PatternId {1});
-    EXPECT_TRUE(generic_case_sets[2].contains("from_checked"));
+    analyzer.merge_pattern_case_names(
+        syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX},
+        syntax::PatternId {SEMA_TEST_PATTERN_SECOND_INDEX}
+    );
+    EXPECT_TRUE(generic_case_sets[SEMA_TEST_PATTERN_FIRST_INDEX].contains("from_generic"));
+    analyzer.current_generic_pattern_case_sets_->erase(SEMA_TEST_PATTERN_SECOND_INDEX);
+    analyzer.checked_.pattern_case_sets[SEMA_TEST_PATTERN_SECOND_INDEX].insert("from_checked");
+    analyzer.merge_pattern_case_names(
+        syntax::PatternId {SEMA_TEST_PATTERN_THIRD_INDEX},
+        syntax::PatternId {SEMA_TEST_PATTERN_SECOND_INDEX}
+    );
+    EXPECT_TRUE(generic_case_sets[SEMA_TEST_PATTERN_THIRD_INDEX].contains("from_checked"));
     analyzer.current_generic_pattern_case_sets_ = nullptr;
 
     syntax::ExprNode unqualified_missing_generic;
@@ -1156,29 +1190,29 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
 
     GenericEnumTemplateInfo enum_info;
     enum_info.name = "Choice";
-    enum_info.module = module_id(1);
+    enum_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     enum_info.params = {"T"};
     enum_info.item = enum_item_id;
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(1), "Choice"), enum_info);
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice"), enum_info);
     GenericStructTemplateInfo bad_box_info;
     bad_box_info.name = "BadBox";
-    bad_box_info.module = module_id(1);
+    bad_box_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     bad_box_info.params = {"T", "E"};
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(1), "BadBox"), bad_box_info);
+    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "BadBox"), bad_box_info);
     GenericEnumTemplateInfo bad_enum_info;
     bad_enum_info.name = "BadEnum";
-    bad_enum_info.module = module_id(1);
+    bad_enum_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     bad_enum_info.params = {"T", "E"};
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(1), "BadEnum"), bad_enum_info);
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "BadEnum"), bad_enum_info);
     GenericStructTemplateInfo local_bad_box_info = bad_box_info;
     local_bad_box_info.name = "LocalBadBox";
-    local_bad_box_info.module = module_id(0);
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(0), "LocalBadBox"), local_bad_box_info);
+    local_bad_box_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "LocalBadBox"), local_bad_box_info);
     GenericEnumTemplateInfo local_bad_enum_info = bad_enum_info;
     local_bad_enum_info.name = "LocalBadEnum";
-    local_bad_enum_info.module = module_id(0);
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(0), "LocalBadEnum"), local_bad_enum_info);
-    analyzer.named_types_.emplace(analyzer.module_key(module_id(1), "ScopedOpaque"), scoped_opaque);
+    local_bad_enum_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "LocalBadEnum"), local_bad_enum_info);
+    analyzer.named_types_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "ScopedOpaque"), scoped_opaque);
 
     syntax::ExprNode scoped_enum = unqualified_missing_generic;
     scoped_enum.text = "Choice";

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -13,6 +14,27 @@ namespace aurex::sema {
 namespace {
 
 constexpr base::usize SEMA_GENERIC_INFERENCE_INITIAL_STACK_CAPACITY = 16;
+constexpr base::u64 SEMA_GENERIC_EMPTY_PAYLOAD_SIZE = 0;
+constexpr base::u64 SEMA_GENERIC_INITIAL_DISCRIMINANT_VALUE = 0;
+constexpr base::u64 SEMA_GENERIC_MIN_PAYLOAD_ALIGNMENT = 1;
+constexpr base::u64 SEMA_GENERIC_PAYLOAD_MIN_UNIT_SIZE = 1;
+constexpr base::u64 SEMA_GENERIC_PAYLOAD_MIN_COUNT = 1;
+constexpr base::usize SEMA_GENERIC_ENUM_CONSTRUCTOR_PAYLOAD_ARITY = 1;
+constexpr char SEMA_GENERIC_ASCII_LOWER_FIRST_CHAR = 'a';
+constexpr char SEMA_GENERIC_ASCII_LOWER_LAST_CHAR = 'z';
+constexpr char SEMA_GENERIC_ASCII_UPPER_FIRST_CHAR = 'A';
+constexpr char SEMA_GENERIC_ASCII_UPPER_LAST_CHAR = 'Z';
+constexpr char SEMA_GENERIC_ASCII_DIGIT_FIRST_CHAR = '0';
+constexpr char SEMA_GENERIC_ASCII_DIGIT_LAST_CHAR = '9';
+constexpr char SEMA_GENERIC_IDENTIFIER_REPLACEMENT_CHAR = '_';
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_OPEN = "<";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_CLOSE = ">";
+constexpr std::string_view SEMA_GENERIC_KEY_SEPARATOR = ",";
+constexpr std::string_view SEMA_GENERIC_ARGUMENT_SEPARATOR = ", ";
+constexpr std::string_view SEMA_GENERIC_C_NAME_ARGUMENT_SEPARATOR = "__";
+constexpr std::string_view SEMA_GENERIC_C_NAME_CASE_SEPARATOR = "_";
+constexpr std::string_view SEMA_GENERIC_ITEM_KEY_SEPARATOR = ":";
+constexpr std::string_view SEMA_GENERIC_METHOD_DISPLAY_SEPARATOR = ".";
 
 struct GenericTypeInferenceFrame {
     syntax::TypeId pattern_type = syntax::invalid_type_id;
@@ -31,9 +53,36 @@ struct GenericTypeInferenceFrame {
     return std::nullopt;
 }
 
+[[nodiscard]] bool generic_ascii_alphanumeric(const char ch) noexcept {
+    return (ch >= SEMA_GENERIC_ASCII_LOWER_FIRST_CHAR && ch <= SEMA_GENERIC_ASCII_LOWER_LAST_CHAR) ||
+           (ch >= SEMA_GENERIC_ASCII_UPPER_FIRST_CHAR && ch <= SEMA_GENERIC_ASCII_UPPER_LAST_CHAR) ||
+           (ch >= SEMA_GENERIC_ASCII_DIGIT_FIRST_CHAR && ch <= SEMA_GENERIC_ASCII_DIGIT_LAST_CHAR);
+}
+
+void append_sanitized_c_name_fragment(std::string& target, const std::string_view fragment) {
+    for (const char ch : fragment) {
+        target.push_back(generic_ascii_alphanumeric(ch) ? ch : SEMA_GENERIC_IDENTIFIER_REPLACEMENT_CHAR);
+    }
+}
+
+template <typename AppendArgument>
+void append_joined_type_arguments(
+    std::string& target,
+    const std::vector<TypeHandle>& args,
+    const std::string_view separator,
+    AppendArgument append_argument
+) {
+    for (base::usize i = 0; i < args.size(); ++i) {
+        if (i != 0) {
+            target.append(separator);
+        }
+        append_argument(target, args[i]);
+    }
+}
+
 [[nodiscard]] TypeHandle payload_storage_type(TypeTable& types, const base::u64 size, const base::u64 alignment) {
     TypeHandle unit = types.builtin(BuiltinType::u8);
-    base::u64 unit_size = 1;
+    base::u64 unit_size = SEMA_GENERIC_PAYLOAD_MIN_UNIT_SIZE;
     if (alignment >= alignof(std::uint64_t)) {
         unit = types.builtin(BuiltinType::u64);
         unit_size = sizeof(std::uint64_t);
@@ -44,8 +93,11 @@ struct GenericTypeInferenceFrame {
         unit = types.builtin(BuiltinType::u16);
         unit_size = sizeof(std::uint16_t);
     }
-    const base::u64 count = std::max<base::u64>(1, (size + unit_size - 1) / unit_size);
-    return count == 1 ? unit : types.array(count, unit);
+    const base::u64 count = std::max<base::u64>(
+        SEMA_GENERIC_PAYLOAD_MIN_COUNT,
+        (size + unit_size - SEMA_GENERIC_PAYLOAD_MIN_COUNT) / unit_size
+    );
+    return count == SEMA_GENERIC_PAYLOAD_MIN_COUNT ? unit : types.array(count, unit);
 }
 
 [[nodiscard]] const syntax::ItemNode* item_from_id(const syntax::AstModule& module, const syntax::ItemId id) noexcept {
@@ -72,19 +124,19 @@ const GenericEnumTemplateInfo* SemanticAnalyzer::find_generic_enum_template_in_v
         if (module.value == current_module_.value) {
             continue;
         }
-            const auto found = generic_enum_templates_.find(module_key(module, name));
-            if (found == generic_enum_templates_.end()) {
-                continue;
-            }
-            if (!can_access(module, found->second.visibility)) {
-                continue;
-            }
-            if (imported_result != nullptr) {
-                report(range, "ambiguous generic enum '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
-                return nullptr;
-            }
-            imported_result = &found->second;
-            result_module = module;
+        const auto found = generic_enum_templates_.find(module_key(module, name));
+        if (found == generic_enum_templates_.end()) {
+            continue;
+        }
+        if (!can_access(module, found->second.visibility)) {
+            continue;
+        }
+        if (imported_result != nullptr) {
+            report(range, "ambiguous generic enum '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+            return nullptr;
+        }
+        imported_result = &found->second;
+        result_module = module;
     }
     if (imported_result == nullptr && report_unknown) {
         report(range, "unknown generic enum: " + std::string(name));
@@ -107,19 +159,19 @@ const GenericStructTemplateInfo* SemanticAnalyzer::find_generic_struct_template_
         if (module.value == current_module_.value) {
             continue;
         }
-            const auto found = generic_struct_templates_.find(module_key(module, name));
-            if (found == generic_struct_templates_.end()) {
-                continue;
-            }
-            if (!can_access(module, found->second.visibility)) {
-                continue;
-            }
-            if (imported_result != nullptr) {
-                report(range, "ambiguous generic struct '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
-                return nullptr;
-            }
-            imported_result = &found->second;
-            result_module = module;
+        const auto found = generic_struct_templates_.find(module_key(module, name));
+        if (found == generic_struct_templates_.end()) {
+            continue;
+        }
+        if (!can_access(module, found->second.visibility)) {
+            continue;
+        }
+        if (imported_result != nullptr) {
+            report(range, "ambiguous generic struct '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+            return nullptr;
+        }
+        imported_result = &found->second;
+        result_module = module;
     }
     if (imported_result == nullptr && report_unknown) {
         report(range, "unknown generic struct: " + std::string(name));
@@ -142,19 +194,19 @@ const GenericFunctionTemplateInfo* SemanticAnalyzer::find_generic_function_templ
         if (module.value == current_module_.value) {
             continue;
         }
-            const auto found = generic_function_templates_.find(module_key(module, name));
-            if (found == generic_function_templates_.end()) {
-                continue;
-            }
-            if (!can_access(module, found->second.visibility)) {
-                continue;
-            }
-            if (imported_result != nullptr) {
-                report(range, "ambiguous generic function '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
-                return nullptr;
-            }
-            imported_result = &found->second;
-            result_module = module;
+        const auto found = generic_function_templates_.find(module_key(module, name));
+        if (found == generic_function_templates_.end()) {
+            continue;
+        }
+        if (!can_access(module, found->second.visibility)) {
+            continue;
+        }
+        if (imported_result != nullptr) {
+            report(range, "ambiguous generic function '" + std::string(name) + "' from modules " + module_name(result_module) + " and " + module_name(module));
+            return nullptr;
+        }
+        imported_result = &found->second;
+        result_module = module;
     }
     if (imported_result == nullptr && report_unknown) {
         report(range, "unknown generic function: " + std::string(name));
@@ -345,14 +397,12 @@ std::string SemanticAnalyzer::generic_instance_key(
     const GenericEnumTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string key = module_key(info.module, info.name) + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            key += ",";
-        }
-        key += std::to_string(args[i].value);
-    }
-    key += ">";
+    std::string key = module_key(info.module, info.name);
+    key.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(key, args, SEMA_GENERIC_KEY_SEPARATOR, [](std::string& target, const TypeHandle arg) {
+        target += std::to_string(arg.value);
+    });
+    key.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     return key;
 }
 
@@ -360,14 +410,12 @@ std::string SemanticAnalyzer::generic_display_name(
     const GenericEnumTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string name = qualified_name(info.module, info.name) + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            name += ", ";
-        }
-        name += checked_.types.display_name(args[i]);
-    }
-    name += ">";
+    std::string name = qualified_name(info.module, info.name);
+    name.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(name, args, SEMA_GENERIC_ARGUMENT_SEPARATOR, [&](std::string& target, const TypeHandle arg) {
+        target += this->checked_.types.display_name(arg);
+    });
+    name.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     return name;
 }
 
@@ -377,11 +425,8 @@ std::string SemanticAnalyzer::generic_c_name(
 ) const {
     std::string suffix = info.name;
     for (TypeHandle arg : args) {
-        suffix += "__";
-        for (const char ch : checked_.types.c_name(arg)) {
-            const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
-            suffix += alnum ? ch : '_';
-        }
+        suffix.append(SEMA_GENERIC_C_NAME_ARGUMENT_SEPARATOR);
+        append_sanitized_c_name_fragment(suffix, this->checked_.types.c_name(arg));
     }
     return c_symbol_name(info.module, suffix);
 }
@@ -390,14 +435,12 @@ std::string SemanticAnalyzer::generic_instance_key(
     const GenericStructTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string key = module_key(info.module, info.name) + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            key += ",";
-        }
-        key += std::to_string(args[i].value);
-    }
-    key += ">";
+    std::string key = module_key(info.module, info.name);
+    key.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(key, args, SEMA_GENERIC_KEY_SEPARATOR, [](std::string& target, const TypeHandle arg) {
+        target += std::to_string(arg.value);
+    });
+    key.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     return key;
 }
 
@@ -405,14 +448,12 @@ std::string SemanticAnalyzer::generic_display_name(
     const GenericStructTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string name = qualified_name(info.module, info.name) + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            name += ", ";
-        }
-        name += checked_.types.display_name(args[i]);
-    }
-    name += ">";
+    std::string name = qualified_name(info.module, info.name);
+    name.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(name, args, SEMA_GENERIC_ARGUMENT_SEPARATOR, [&](std::string& target, const TypeHandle arg) {
+        target += this->checked_.types.display_name(arg);
+    });
+    name.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     return name;
 }
 
@@ -422,11 +463,8 @@ std::string SemanticAnalyzer::generic_c_name(
 ) const {
     std::string suffix = info.name;
     for (TypeHandle arg : args) {
-        suffix += "__";
-        for (const char ch : checked_.types.c_name(arg)) {
-            const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
-            suffix += alnum ? ch : '_';
-        }
+        suffix.append(SEMA_GENERIC_C_NAME_ARGUMENT_SEPARATOR);
+        append_sanitized_c_name_fragment(suffix, this->checked_.types.c_name(arg));
     }
     return c_symbol_name(info.module, suffix);
 }
@@ -435,14 +473,16 @@ std::string SemanticAnalyzer::generic_instance_key(
     const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string key = module_key(info.module, std::to_string(info.item.value) + ":" + info.name) + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            key += ",";
-        }
-        key += std::to_string(args[i].value);
-    }
-    key += ">";
+    std::string item_key = std::to_string(info.item.value);
+    item_key.append(SEMA_GENERIC_ITEM_KEY_SEPARATOR);
+    item_key += info.name;
+
+    std::string key = module_key(info.module, item_key);
+    key.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(key, args, SEMA_GENERIC_KEY_SEPARATOR, [](std::string& target, const TypeHandle arg) {
+        target += std::to_string(arg.value);
+    });
+    key.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     return key;
 }
 
@@ -450,14 +490,12 @@ std::string SemanticAnalyzer::generic_display_name(
     const GenericFunctionTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    std::string name = qualified_name(info.module, info.name) + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            name += ", ";
-        }
-        name += checked_.types.display_name(args[i]);
-    }
-    name += ">";
+    std::string name = qualified_name(info.module, info.name);
+    name.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(name, args, SEMA_GENERIC_ARGUMENT_SEPARATOR, [&](std::string& target, const TypeHandle arg) {
+        target += this->checked_.types.display_name(arg);
+    });
+    name.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     return name;
 }
 
@@ -467,11 +505,8 @@ std::string SemanticAnalyzer::generic_c_name(
 ) const {
     std::string suffix = info.name;
     for (TypeHandle arg : args) {
-        suffix += "__";
-        for (const char ch : checked_.types.c_name(arg)) {
-            const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
-            suffix += alnum ? ch : '_';
-        }
+        suffix.append(SEMA_GENERIC_C_NAME_ARGUMENT_SEPARATOR);
+        append_sanitized_c_name_fragment(suffix, this->checked_.types.c_name(arg));
     }
     return c_symbol_name(info.module, suffix);
 }
@@ -481,15 +516,14 @@ std::string SemanticAnalyzer::generic_case_name(
     const std::vector<TypeHandle>& args,
     const std::string_view case_name
 ) const {
-    std::string name = info.name + "<";
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            name += ", ";
-        }
-        name += checked_.types.display_name(args[i]);
-    }
-    name += ">_";
-    name += std::string(case_name);
+    std::string name = info.name;
+    name.append(SEMA_GENERIC_TEMPLATE_OPEN);
+    append_joined_type_arguments(name, args, SEMA_GENERIC_ARGUMENT_SEPARATOR, [&](std::string& target, const TypeHandle arg) {
+        target += this->checked_.types.display_name(arg);
+    });
+    name.append(SEMA_GENERIC_TEMPLATE_CLOSE);
+    name.append(SEMA_GENERIC_C_NAME_CASE_SEPARATOR);
+    name.append(case_name);
     return name;
 }
 
@@ -498,7 +532,10 @@ std::string SemanticAnalyzer::generic_case_c_name(
     const std::vector<TypeHandle>& args,
     const std::string_view case_name
 ) const {
-    return generic_c_name(info, args) + "_" + std::string(case_name);
+    std::string name = generic_c_name(info, args);
+    name.append(SEMA_GENERIC_C_NAME_CASE_SEPARATOR);
+    name.append(case_name);
+    return name;
 }
 
 TypeHandle SemanticAnalyzer::instantiate_generic_enum_from_syntax(
@@ -566,8 +603,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     checked_.types.set_enum_underlying(enum_type, underlying);
 
     TypeHandle payload_storage = invalid_type_handle;
-    base::u64 payload_size = 0;
-    base::u64 payload_align = 1;
+    base::u64 payload_size = SEMA_GENERIC_EMPTY_PAYLOAD_SIZE;
+    base::u64 payload_align = SEMA_GENERIC_MIN_PAYLOAD_ALIGNMENT;
     bool contains_array_payload = false;
     bool copyable = true;
     std::unordered_set<std::string> seen_cases;
@@ -577,7 +614,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
             continue;
         }
-        base::u64 discriminant = 0;
+        base::u64 discriminant = SEMA_GENERIC_INITIAL_DISCRIMINANT_VALUE;
         const bool parsed_discriminant = parse_integer_literal_text(enum_case.value_text, discriminant);
         if (!parsed_discriminant) {
             report(enum_case.range, "enum discriminant literal is out of range");
@@ -1073,30 +1110,31 @@ const GenericFunctionInstanceInfo* SemanticAnalyzer::instantiate_generic_functio
     }
 
     std::string c_name = info.is_method
-        ? method_c_symbol_name(method_owner_type, info.name)
-        : generic_c_name(info, args);
+        ? this->method_c_symbol_name(method_owner_type, info.name)
+        : this->generic_c_name(info, args);
     if (info.is_method) {
         for (base::usize i = info.impl_generic_param_count; i < args.size(); ++i) {
-            c_name += "__";
-            for (const char ch : checked_.types.c_name(args[i])) {
-                const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
-                c_name += alnum ? ch : '_';
-            }
+            c_name.append(SEMA_GENERIC_C_NAME_ARGUMENT_SEPARATOR);
+            append_sanitized_c_name_fragment(c_name, this->checked_.types.c_name(args[i]));
         }
     }
 
     std::string instance_name = info.is_method
-        ? checked_.types.display_name(method_owner_type) + "." + info.name
-        : generic_display_name(info, args);
+        ? this->checked_.types.display_name(method_owner_type)
+        : this->generic_display_name(info, args);
+    if (info.is_method) {
+        instance_name.append(SEMA_GENERIC_METHOD_DISPLAY_SEPARATOR);
+        instance_name += info.name;
+    }
     if (info.is_method && args.size() > info.impl_generic_param_count) {
-        instance_name += "<";
+        instance_name.append(SEMA_GENERIC_TEMPLATE_OPEN);
         for (base::usize i = info.impl_generic_param_count; i < args.size(); ++i) {
             if (i != info.impl_generic_param_count) {
-                instance_name += ", ";
+                instance_name.append(SEMA_GENERIC_ARGUMENT_SEPARATOR);
             }
-            instance_name += checked_.types.display_name(args[i]);
+            instance_name += this->checked_.types.display_name(args[i]);
         }
-        instance_name += ">";
+        instance_name.append(SEMA_GENERIC_TEMPLATE_CLOSE);
     }
 
     FunctionSignature signature;
@@ -1291,7 +1329,7 @@ const EnumCaseInfo* SemanticAnalyzer::instantiate_generic_enum_constructor(
             expected->args.size() == info->params.size()) {
             type_args = expected->args;
         }
-        if (syntax::is_valid(case_decl->payload_type) && arg_types.size() == 1) {
+        if (syntax::is_valid(case_decl->payload_type) && arg_types.size() == SEMA_GENERIC_ENUM_CONSTRUCTOR_PAYLOAD_ARITY) {
             static_cast<void>(infer_generic_enum_args(case_decl->payload_type, arg_types.front(), *info, type_args, callee.range));
         }
         for (base::usize i = 0; i < type_args.size(); ++i) {

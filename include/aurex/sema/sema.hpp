@@ -35,6 +35,10 @@ private:
         std::vector<syntax::StmtId> returns;
     };
 
+    static constexpr base::u64 SEMA_TYPE_ABI_INVALID_SIZE = 0;
+    static constexpr base::u64 SEMA_TYPE_ABI_MIN_ALIGNMENT = 1;
+    static constexpr int SEMA_NO_LOOP_DEPTH = 0;
+
     enum class StatementAnalysisRootKind {
         statement,
         scoped_block,
@@ -57,8 +61,8 @@ private:
     };
 
     struct TypeAbiLayout {
-        base::u64 size = 0;
-        base::u64 align = 1;
+        base::u64 size = SEMA_TYPE_ABI_INVALID_SIZE;
+        base::u64 align = SEMA_TYPE_ABI_MIN_ALIGNMENT;
     };
 
     void register_type_names();
@@ -391,7 +395,7 @@ private:
     std::unordered_map<base::u32, std::unordered_set<std::string>>* current_generic_pattern_case_sets_ = nullptr;
     std::unordered_map<base::u32, TypeHandle>* current_generic_stmt_local_types_ = nullptr;
     ReturnTypeInference* current_return_inference_ = nullptr;
-    int loop_depth_ = 0;
+    int loop_depth_ = SEMA_NO_LOOP_DEPTH;
     bool in_const_initializer_ = false;
 };
 

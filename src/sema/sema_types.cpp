@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,6 +19,26 @@ namespace {
 constexpr base::usize SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY = 16;
 constexpr base::u64 SEMA_ABI_INVALID_SIZE = 0;
 constexpr base::u64 SEMA_ABI_MIN_ALIGNMENT = 1;
+constexpr int SEMA_INTEGER_LITERAL_DECIMAL_BASE = 10;
+constexpr int SEMA_INTEGER_LITERAL_HEX_BASE = 16;
+constexpr int SEMA_INTEGER_LITERAL_BINARY_BASE = 2;
+constexpr base::usize SEMA_INTEGER_LITERAL_PREFIX_LENGTH = 2;
+constexpr char SEMA_INTEGER_LITERAL_ZERO_CHAR = '0';
+constexpr char SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR = 'x';
+constexpr char SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR = 'X';
+constexpr char SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR = 'b';
+constexpr char SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR = 'B';
+constexpr char SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR = '_';
+constexpr char SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR = '0';
+constexpr char SEMA_INTEGER_LITERAL_DECIMAL_LAST_CHAR = '9';
+constexpr char SEMA_INTEGER_LITERAL_HEX_LOWER_FIRST_CHAR = 'a';
+constexpr char SEMA_INTEGER_LITERAL_HEX_LOWER_LAST_CHAR = 'f';
+constexpr char SEMA_INTEGER_LITERAL_HEX_UPPER_FIRST_CHAR = 'A';
+constexpr char SEMA_INTEGER_LITERAL_HEX_UPPER_LAST_CHAR = 'F';
+constexpr base::u64 SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET = 10;
+constexpr base::u32 SEMA_INTEGER_LITERAL_MAX_BITS = std::numeric_limits<base::u64>::digits;
+constexpr base::u32 SEMA_INTEGER_LITERAL_SIGN_BIT_SHIFT = SEMA_INTEGER_LITERAL_MAX_BITS - 1;
+constexpr base::u32 SEMA_INTEGER_LITERAL_INVALID_BITS = 0;
 
 enum class TypeLayoutFrameStage {
     enter,
@@ -48,10 +69,10 @@ struct TypeResolveAction {
     syntax::TypeId type = syntax::invalid_type_id;
     bool opaque_allowed_as_pointee = false;
     syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
-    base::u64 array_count = 0;
+    std::optional<base::u64> array_count {};
     const GenericStructTemplateInfo* struct_template = nullptr;
     const GenericEnumTemplateInfo* enum_template = nullptr;
-    base::usize argument_count = 0;
+    std::optional<base::usize> argument_count {};
     base::SourceRange range {};
 };
 
@@ -96,56 +117,68 @@ struct TypeResolveAction {
 [[nodiscard]] base::u32 builtin_integer_bits(const BuiltinType type) noexcept {
     switch (type) {
     case BuiltinType::i8:
-    case BuiltinType::u8: return 8;
+    case BuiltinType::u8: return std::numeric_limits<std::uint8_t>::digits;
     case BuiltinType::i16:
-    case BuiltinType::u16: return 16;
+    case BuiltinType::u16: return std::numeric_limits<std::uint16_t>::digits;
     case BuiltinType::i32:
-    case BuiltinType::u32: return 32;
+    case BuiltinType::u32: return std::numeric_limits<std::uint32_t>::digits;
     case BuiltinType::i64:
-    case BuiltinType::u64: return 64;
-    case BuiltinType::isize: return static_cast<base::u32>(sizeof(std::ptrdiff_t) * 8);
-    case BuiltinType::usize: return static_cast<base::u32>(sizeof(std::size_t) * 8);
-    default: return 0;
+    case BuiltinType::u64: return std::numeric_limits<std::uint64_t>::digits;
+    case BuiltinType::isize: return std::numeric_limits<std::ptrdiff_t>::digits;
+    case BuiltinType::usize: return std::numeric_limits<std::size_t>::digits;
+    default: return SEMA_INTEGER_LITERAL_INVALID_BITS;
     }
 }
 
+[[nodiscard]] bool parse_integer_literal_digit(const char c, const int radix, base::u64& digit) noexcept {
+    if (c >= SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_DECIMAL_LAST_CHAR) {
+        digit = static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR);
+        return digit < static_cast<base::u64>(radix);
+    }
+    if (c >= SEMA_INTEGER_LITERAL_HEX_LOWER_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_HEX_LOWER_LAST_CHAR) {
+        digit = static_cast<base::u64>(SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET +
+            static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_HEX_LOWER_FIRST_CHAR));
+        return digit < static_cast<base::u64>(radix);
+    }
+    if (c >= SEMA_INTEGER_LITERAL_HEX_UPPER_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_HEX_UPPER_LAST_CHAR) {
+        digit = static_cast<base::u64>(SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET +
+            static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_HEX_UPPER_FIRST_CHAR));
+        return digit < static_cast<base::u64>(radix);
+    }
+    return false;
+}
+
 [[nodiscard]] bool parse_u64_literal_checked(const std::string_view text, base::u64& value) noexcept {
-    int base = 10;
+    int radix = SEMA_INTEGER_LITERAL_DECIMAL_BASE;
     base::usize index = 0;
-    if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
-        base = 16;
-        index = 2;
-    } else if (text.size() > 2 && text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) {
-        base = 2;
-        index = 2;
+    if (text.size() > SEMA_INTEGER_LITERAL_PREFIX_LENGTH && text[0] == SEMA_INTEGER_LITERAL_ZERO_CHAR) {
+        if (text[1] == SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR || text[1] == SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR) {
+            radix = SEMA_INTEGER_LITERAL_HEX_BASE;
+            index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
+        } else if (text[1] == SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR ||
+            text[1] == SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR) {
+            radix = SEMA_INTEGER_LITERAL_BINARY_BASE;
+            index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
+        }
     }
 
-    value = 0;
+    value = SEMA_ABI_INVALID_SIZE;
     bool saw_digit = false;
     for (; index < text.size(); ++index) {
         const char c = text[index];
-        if (c == '_') {
+        if (c == SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR) {
             continue;
         }
 
-        base::u64 digit = 0;
-        if (c >= '0' && c <= '9') {
-            digit = static_cast<base::u64>(c - '0');
-        } else if (c >= 'a' && c <= 'f') {
-            digit = static_cast<base::u64>(10 + c - 'a');
-        } else if (c >= 'A' && c <= 'F') {
-            digit = static_cast<base::u64>(10 + c - 'A');
-        } else {
-            return false;
-        }
-        if (digit >= static_cast<base::u64>(base)) {
+        base::u64 digit = SEMA_ABI_INVALID_SIZE;
+        if (!parse_integer_literal_digit(c, radix, digit)) {
             return false;
         }
         saw_digit = true;
-        if (value > (std::numeric_limits<base::u64>::max() - digit) / static_cast<base::u64>(base)) {
+        if (value > (std::numeric_limits<base::u64>::max() - digit) / static_cast<base::u64>(radix)) {
             return false;
         }
-        value = value * static_cast<base::u64>(base) + digit;
+        value = value * static_cast<base::u64>(radix) + digit;
     }
     return saw_digit;
 }
@@ -155,7 +188,7 @@ template <typename Float>
     std::string digits;
     digits.reserve(text.size());
     for (const char c : text) {
-        if (c != '_') {
+        if (c != SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR) {
             digits.push_back(c);
         }
     }
@@ -176,7 +209,7 @@ template <typename Float>
     }
     const TypeInfo& info = types.get(destination);
     const base::u32 bits = builtin_integer_bits(info.builtin);
-    if (bits == 0) {
+    if (bits == SEMA_INTEGER_LITERAL_INVALID_BITS) {
         return false;
     }
 
@@ -185,12 +218,12 @@ template <typename Float>
         return false;
     }
     if (builtin_is_unsigned(info.builtin)) {
-        if (bits >= 64) {
+        if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
             return true;
         }
         return value <= ((base::u64 {1} << bits) - 1);
     }
-    if (bits >= 64) {
+    if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
         return value <= static_cast<base::u64>(std::numeric_limits<std::int64_t>::max());
     }
     return value <= ((base::u64 {1} << (bits - 1)) - 1);
@@ -206,7 +239,7 @@ template <typename Float>
     }
     const TypeInfo& info = types.get(destination);
     const base::u32 bits = builtin_integer_bits(info.builtin);
-    if (bits == 0 || builtin_is_unsigned(info.builtin)) {
+    if (bits == SEMA_INTEGER_LITERAL_INVALID_BITS || builtin_is_unsigned(info.builtin)) {
         return false;
     }
 
@@ -214,8 +247,8 @@ template <typename Float>
     if (!parse_u64_literal_checked(text, value)) {
         return false;
     }
-    if (bits >= 64) {
-        return value <= (base::u64 {1} << 63);
+    if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
+        return value <= (base::u64 {1} << SEMA_INTEGER_LITERAL_SIGN_BIT_SHIFT);
     }
     return value <= (base::u64 {1} << (bits - 1));
 }
@@ -268,13 +301,13 @@ template <typename Float>
 }
 
 [[nodiscard]] base::u64 add_saturating(const base::u64 lhs, const base::u64 rhs) noexcept {
-    base::u64 result = 0;
+    base::u64 result = SEMA_ABI_INVALID_SIZE;
     static_cast<void>(checked_add_u64(lhs, rhs, result));
     return result;
 }
 
 [[nodiscard]] base::u64 mul_saturating(const base::u64 lhs, const base::u64 rhs) noexcept {
-    base::u64 result = 0;
+    base::u64 result = SEMA_ABI_INVALID_SIZE;
     static_cast<void>(checked_mul_u64(lhs, rhs, result));
     return result;
 }
@@ -422,16 +455,16 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                             values.push_back(invalid_type_handle);
                             break;
                         }
-                        actions.push_back(TypeResolveAction {
-                            TypeResolveActionKind::build_generic_struct,
-                            action.type,
-                            action.opaque_allowed_as_pointee,
-                            syntax::PointerMutability::const_,
-                            0,
-                            struct_info,
-                            nullptr,
-                            type.type_args.size(),
-                            type.range,
+                actions.push_back(TypeResolveAction {
+                    TypeResolveActionKind::build_generic_struct,
+                    action.type,
+                    action.opaque_allowed_as_pointee,
+                    syntax::PointerMutability::const_,
+                    std::nullopt,
+                    struct_info,
+                    nullptr,
+                    type.type_args.size(),
+                    type.range,
                         });
                         for (base::usize i = type.type_args.size(); i > 0; --i) {
                             actions.push_back(TypeResolveAction {
@@ -453,15 +486,15 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                             values.push_back(invalid_type_handle);
                             break;
                         }
-                        actions.push_back(TypeResolveAction {
-                            TypeResolveActionKind::build_generic_enum,
-                            action.type,
-                            action.opaque_allowed_as_pointee,
-                            syntax::PointerMutability::const_,
-                            0,
-                            nullptr,
-                            enum_info,
-                            type.type_args.size(),
+                actions.push_back(TypeResolveAction {
+                    TypeResolveActionKind::build_generic_enum,
+                    action.type,
+                    action.opaque_allowed_as_pointee,
+                    syntax::PointerMutability::const_,
+                    std::nullopt,
+                    nullptr,
+                    enum_info,
+                    type.type_args.size(),
                             type.range,
                         });
                         for (base::usize i = type.type_args.size(); i > 0; --i) {
@@ -567,14 +600,15 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
         case TypeResolveActionKind::build_array: {
             const TypeHandle element = values.back();
             values.pop_back();
-            const TypeHandle resolved = this->checked_.types.array(action.array_count, element);
+            const TypeHandle resolved = this->checked_.types.array(*action.array_count, element);
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;
         }
         case TypeResolveActionKind::build_generic_struct: {
-            std::vector<TypeHandle> args(action.argument_count, invalid_type_handle);
-            for (base::usize i = action.argument_count; i > 0; --i) {
+            const base::usize argument_count = *action.argument_count;
+            std::vector<TypeHandle> args(argument_count, invalid_type_handle);
+            for (base::usize i = argument_count; i > 0; --i) {
                 args[i - 1] = values.back();
                 values.pop_back();
             }
@@ -584,8 +618,9 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
             break;
         }
         case TypeResolveActionKind::build_generic_enum: {
-            std::vector<TypeHandle> args(action.argument_count, invalid_type_handle);
-            for (base::usize i = action.argument_count; i > 0; --i) {
+            const base::usize argument_count = *action.argument_count;
+            std::vector<TypeHandle> args(argument_count, invalid_type_handle);
+            for (base::usize i = argument_count; i > 0; --i) {
                 args[i - 1] = values.back();
                 values.pop_back();
             }

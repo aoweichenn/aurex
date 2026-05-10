@@ -11,12 +11,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: brew install llvm googletest
+      - name: Configure dependency paths
+        run: |
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          GTEST_PREFIX="$(brew --prefix googletest)"
+          {
+            echo "LLVM_COV=${LLVM_PREFIX}/bin/llvm-cov"
+            echo "LLVM_PROFDATA=${LLVM_PREFIX}/bin/llvm-profdata"
+            echo "CC=${LLVM_PREFIX}/bin/clang"
+            echo "CXX=${LLVM_PREFIX}/bin/clang++"
+            echo "LLVM_DIR=${LLVM_PREFIX}/lib/cmake/llvm"
+            echo "GTest_DIR=${GTEST_PREFIX}/lib/cmake/GTest"
+            echo "CMAKE_PREFIX_PATH=${LLVM_PREFIX};${GTEST_PREFIX}"
+          } >> "${GITHUB_ENV}"
       - name: Check coverage
         env:
-          LLVM_COV: /opt/homebrew/opt/llvm/bin/llvm-cov
-          LLVM_PROFDATA: /opt/homebrew/opt/llvm/bin/llvm-profdata
-          CC: /opt/homebrew/opt/llvm/bin/clang
-          CXX: /opt/homebrew/opt/llvm/bin/clang++
           AUREX_COVERAGE_LINE_THRESHOLD: "90"
           AUREX_COVERAGE_FUNCTION_THRESHOLD: "90"
           AUREX_COVERAGE_REGION_THRESHOLD: "90"

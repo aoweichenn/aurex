@@ -77,7 +77,7 @@ Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` /
 现在最主要的问题不是“缺高级特性”，而是基础语法里有几处不一致：
 
 - 有表达式块，但普通块和表达式块不是同一套语法。
-- const initializer 支持的基础运算比运行时表达式少太多。
+- const initializer 已补齐基础纯标量运算，但还没有函数调用、控制流表达式或完整 comptime。
 - 目前没有 `unsafe` 边界，unchecked 字符串、raw pointer、bit cast 等破坏不变量的操作仍在普通表达式层。
 - `str` 已是语言内建，但还缺 slice/UTF-8 boundary/check-vs-unchecked 的最小安全 API。
 - 可见性默认值对长期模块 API 不友好。
@@ -345,7 +345,7 @@ expr_stmt =
 
 状态：已补。普通无效表达式语句仍然诊断。
 
-## P0 缺陷：const initializer 的基础运算不完整
+## P0 已补：const initializer 的基础纯标量运算
 
 现状允许部分纯表达式：
 
@@ -354,26 +354,21 @@ expr_stmt =
 - struct literal。
 - enum case。
 - `!`、`-`、`~`。
-- `+`、`-`、`*`、比较、相等、bitwise `&` / `^` / `|`。
+- `+`、`-`、`*`、`/`、`%`、`<<`、`>>`、比较、相等、bitwise `&` / `^` / `|`、logical `&&` / `||`。
 - `cast`、`ptr_cast`、`bit_cast`、`ptr_addr`、`ptr_from_addr`。
 - `size_of`、`align_of`。
 
-但不允许：
+当前仍不允许：
 
-- `/`
-- `%`
-- `<<`
-- `>>`
-- `&&`
-- `||`
+- 函数调用。
+- `if` / block / match / `?`。
+- `str_data` / `str_byte_len` / `str_from_bytes_unchecked`。
 
-问题：
+已补内容：
 
-- 这些都是基础、纯、可静态求值的标量操作。
-- runtime 已经支持，部分 literal 诊断也已经存在。
-- 对系统语言来说，常量 mask、alignment、flag、size 计算非常常见。
-
-建议 const initializer 第一阶段补齐所有纯标量运算：
+- `/`、`%`、`<<`、`>>`、`&&`、`||` 已进入 const initializer 允许集合。
+- IR lowering 在全局常量 initializer 中把逻辑运算降成普通 bool constant binary，避免走运行时短路 CFG。
+- 正向样例覆盖 division、modulo、shift、logical const；负向样例保留函数调用仍不能作为 const initializer。
 
 ```aurex
 const PAGE_SIZE: usize = 1 << 12;
@@ -382,22 +377,21 @@ const HALF: i32 = 100 / 2;
 const HAS_FLAG: bool = (MASK != 0) && true;
 ```
 
-诊断必须覆盖：
+现有 literal 诊断继续覆盖：
 
 - integer division by zero。
 - integer modulo by zero。
 - signed min / -1 overflow。
 - shift amount negative。
 - shift amount out of range。
-- bool short-circuit 的常量求值顺序。
 
-优先级：高。
+状态：已补。
 
-M2 判断：这是语言地基问题，不是优化器问题。系统语言的常量计算至少要覆盖 page size、alignment、mask、flag、tag 和数组长度推导所需的纯标量表达式。当前 runtime 能表达但 const 不能表达，会迫使用户把本该静态化的值搬到运行期。
+M2 判断：这是语言地基问题，不是优化器问题。系统语言的常量计算至少要覆盖 page size、alignment、mask、flag、tag 和数组长度推导所需的纯标量表达式。当前已补齐这层纯标量能力，避免用户把本该静态化的值搬到运行期。
 
-第一阶段不必引入完整 comptime，也不必允许函数调用；只需把已有纯表达式规则补齐，并确保 sema、IR constant、LLVM constant folding 三层一致。
+第一阶段没有引入完整 comptime，也不允许函数调用。后续如果要让 `false && BAD` 这类表达式按常量短路跳过未求值分支，需要单独实现值级 const evaluator；这不属于本次基础语法补齐。
 
-## P1 缺陷：基础赋值语法太薄
+## P1 已补：基础赋值语法太薄
 
 现状：
 
@@ -406,23 +400,25 @@ i = i + 1;
 flags = flags | mask;
 ```
 
-没有：
+已支持：
 
 ```aurex
 i += 1;
 flags |= mask;
+i++;
+i--;
 ```
 
-问题：
+`++` / `--` 的规则：
 
-- 复合赋值是基础语法，不是高级特性。
-- 系统代码里计数、flag、mask、pointer offset 会频繁出现。
-- 如果不支持，代码会显得比 C、Rust、Zig、Go 都更啰嗦。
-
-建议加入：
+- 只允许 statement-only postfix update。
+- `x++;` 等价于 `x += 1;`，`x--;` 等价于 `x -= 1;`。
+- 没有 prefix `++x` / `--x`。
+- 没有表达式值语义，不能写 `let old = x++;`、`foo(x++)`、`x = y++`。
 
 ```text
 += -= *= /= %= <<= >>= &= ^= |=
+++ --
 ```
 
 语义：
@@ -430,9 +426,8 @@ flags |= mask;
 - 左侧只求值一次。
 - 左侧必须 writable place。
 - 类型规则等价于 `lhs = lhs op rhs`，但诊断应落在 compound assignment 本身。
-- 不建议加入 `++` / `--`。它们的前置/后置值语义容易制造歧义，现代系统语言没必要依赖它们。
 
-优先级：中高。
+状态：已补。
 
 ## P1 缺陷：默认 public 不适合作为长期模块地基
 
@@ -863,18 +858,16 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 3. 统一 block statement / block expression 语法。
 4. 让 `if` expression 支持 `else if`。已补。
 5. 明确 expression statement 规则，至少允许 `foo()?;`。已补。
-6. 补齐 const initializer 的纯标量运算。
-7. 为 `unsafe` block / `unsafe fn` 定最小语法。
-8. 固定 `str` 的 safe/unsafe API 边界。
+6. 为 `unsafe` block / `unsafe fn` 定最小语法。
+7. 固定 `str` 的 safe/unsafe API 边界。
 9. 给 enum ADT 语法写正式草案。
 
 第二批再做：
 
-1. 增加 compound assignment。
-2. 设计 default private 迁移。
-3. 收紧 public 函数返回类型推导。
-4. 冻结 namespace `.` / `::` 规则。
-5. 统一 trailing separator。
+1. 设计 default private 迁移。
+2. 收紧 public 函数返回类型推导。
+3. 冻结 namespace `.` / `::` 规则。
+4. 统一 trailing separator。
 6. 设计 capability / `where` 约束语法。
 7. 设计 safe reference `&T` / `&mut T`。
 

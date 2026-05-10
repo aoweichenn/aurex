@@ -65,6 +65,7 @@ private:
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);

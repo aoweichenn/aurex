@@ -1,10 +1,11 @@
 module const_initializer_binary_expr;
 
-const VALUE: bool = true && false;
+fn runtime() -> i32 {
+  return 1;
+}
+
+const VALUE: i32 = runtime() + 1;
 
 fn main() -> i32 {
-  if VALUE {
-    return 1;
-  }
-  return 0;
+  return VALUE;
 }

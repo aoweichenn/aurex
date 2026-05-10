@@ -1,6 +1,7 @@
 #include "aurex/parse/parser_block_part.hpp"
 
 #include "aurex/parse/recovery.hpp"
+#include "aurex/parse/parser_stmt_part.hpp"
 
 #include <utility>
 
@@ -51,33 +52,37 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
             continue;
         }
 
-        const syntax::ExprId expr = this->parse_expr(context);
-        if (this->match(TokenKind::equal)) {
-            syntax::StmtNode stmt;
-            stmt.kind = syntax::StmtKind::assign;
-            stmt.lhs = expr;
-            stmt.rhs = this->parse_expr(context);
+        const syntax::StmtId stmt = StmtParser(this->parser_).parse_expr_or_assign_stmt(context, false);
+        if (syntax::is_valid(stmt) &&
+            stmt.value < this->session_.module.stmts.size() &&
+            this->session_.module.stmts[stmt.value].kind == syntax::StmtKind::assign) {
             const syntax::Token& end = this->expect_recovered(
                 TokenKind::semicolon,
                 "expected ';' after assignment",
                 RecoveryContext::statement_terminator
             );
-            stmt.range = this->merge(this->expr_range_or(expr, end.range), end.range);
-            block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
+            this->session_.module.stmts[stmt.value].range =
+                this->merge(this->stmt_range_or(stmt, end.range), end.range);
+            block.statements.push_back(stmt);
             this->reset_panic();
             continue;
         }
         if (this->match(TokenKind::semicolon)) {
-            syntax::StmtNode stmt;
-            stmt.kind = syntax::StmtKind::expr;
-            stmt.init = expr;
-            stmt.range = this->merge(this->expr_range_or(expr, this->previous().range), this->previous().range);
-            block.statements.push_back(this->session_.module.push_stmt(std::move(stmt)));
+            if (syntax::is_valid(stmt) &&
+                stmt.value < this->session_.module.stmts.size()) {
+                this->session_.module.stmts[stmt.value].range =
+                    this->merge(this->stmt_range_or(stmt, this->previous().range), this->previous().range);
+                block.statements.push_back(stmt);
+            }
             this->reset_panic();
             continue;
         }
 
-        result = expr;
+        if (syntax::is_valid(stmt) &&
+            stmt.value < this->session_.module.stmts.size() &&
+            this->session_.module.stmts[stmt.value].kind == syntax::StmtKind::expr) {
+            result = this->session_.module.stmts[stmt.value].init;
+        }
         break;
     }
 

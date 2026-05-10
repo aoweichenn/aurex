@@ -2,6 +2,27 @@
 
 namespace aurex::ir::detail {
 
+namespace {
+
+[[nodiscard]] BinaryOp map_compound_assignment(const syntax::AssignOp op) noexcept {
+    switch (op) {
+    case syntax::AssignOp::add: return BinaryOp::add;
+    case syntax::AssignOp::sub: return BinaryOp::sub;
+    case syntax::AssignOp::mul: return BinaryOp::mul;
+    case syntax::AssignOp::div: return BinaryOp::div;
+    case syntax::AssignOp::mod: return BinaryOp::mod;
+    case syntax::AssignOp::shl: return BinaryOp::shl;
+    case syntax::AssignOp::shr: return BinaryOp::shr;
+    case syntax::AssignOp::bit_and: return BinaryOp::bit_and;
+    case syntax::AssignOp::bit_xor: return BinaryOp::bit_xor;
+    case syntax::AssignOp::bit_or: return BinaryOp::bit_or;
+    case syntax::AssignOp::assign: return BinaryOp::add;
+    }
+    return BinaryOp::add;
+}
+
+} // namespace
+
 void Lowerer::lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
     if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
         return;
@@ -88,9 +109,23 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         append_store(slot_id, lower_expr(stmt.init, local_type));
         break;
     }
-    case syntax::StmtKind::assign:
-        append_store(lower_place_addr(stmt.lhs), lower_expr(stmt.rhs, expr_type(stmt.lhs)));
+    case syntax::StmtKind::assign: {
+        const sema::TypeHandle lhs_type = this->expr_type(stmt.lhs);
+        const ValueId target = this->lower_place_addr(stmt.lhs);
+        ValueId source = this->lower_expr(stmt.rhs, lhs_type);
+        if (stmt.assign_op != syntax::AssignOp::assign) {
+            const ValueId current = this->append_load(target, lhs_type);
+            Value value;
+            value.kind = ValueKind::binary;
+            value.type = lhs_type;
+            value.binary_op = map_compound_assignment(stmt.assign_op);
+            value.lhs = current;
+            value.rhs = source;
+            source = this->append_value(value);
+        }
+        this->append_store(target, source);
         break;
+    }
     case syntax::StmtKind::if_:
         lower_if(stmt);
         break;

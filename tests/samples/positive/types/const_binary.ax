@@ -3,8 +3,14 @@ module const_binary;
 const SUM: i32 = 1 + 2;
 const PRODUCT: i32 = SUM * 7;
 const MASK: i32 = (PRODUCT - 1) & 15;
+const HALF: i32 = PRODUCT / 3;
+const REMAINDER: i32 = PRODUCT % 5;
+const PAGE_SIZE: i32 = 1 << 12;
+const PAGE_QUARTERS: i32 = PAGE_SIZE >> 10;
 const ORDERED: bool = PRODUCT > SUM;
 const DIFFERENT: bool = PRODUCT != SUM;
+const HAS_MASK: bool = (MASK != 0) && true;
+const FALLBACK: bool = false || HAS_MASK;
 
 fn main() -> i32 {
     if SUM != 3 {
@@ -16,11 +22,29 @@ fn main() -> i32 {
     if MASK != 4 {
         return 3;
     }
-    if !ORDERED {
+    if HALF != 7 {
         return 4;
     }
-    if !DIFFERENT {
+    if REMAINDER != 1 {
         return 5;
+    }
+    if PAGE_SIZE != 4096 {
+        return 6;
+    }
+    if PAGE_QUARTERS != 4 {
+        return 7;
+    }
+    if !ORDERED {
+        return 8;
+    }
+    if !DIFFERENT {
+        return 9;
+    }
+    if !HAS_MASK {
+        return 10;
+    }
+    if !FALLBACK {
+        return 11;
     }
     return 0;
 }

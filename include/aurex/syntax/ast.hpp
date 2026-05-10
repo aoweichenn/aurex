@@ -119,6 +119,20 @@ enum class BinaryOp {
     logical_or,
 };
 
+enum class AssignOp {
+    assign,
+    add,
+    sub,
+    mul,
+    div,
+    mod,
+    shl,
+    shr,
+    bit_and,
+    bit_xor,
+    bit_or,
+};
+
 enum class PatternKind {
     wildcard,
     enum_case,
@@ -201,6 +215,7 @@ struct StmtNode {
     std::string_view name;
     TypeId declared_type = invalid_type_id;
     ExprId init = invalid_expr_id;
+    AssignOp assign_op = AssignOp::assign;
     ExprId lhs = invalid_expr_id;
     ExprId rhs = invalid_expr_id;
     ExprId condition = invalid_expr_id;

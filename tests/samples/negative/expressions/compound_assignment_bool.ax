@@ -1,0 +1,7 @@
+module compound_assignment_bool;
+
+fn main() -> i32 {
+    var flag: bool = true;
+    flag += 1;
+    return 0;
+}

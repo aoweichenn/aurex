@@ -269,8 +269,8 @@ TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings) {
 TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
-        "... . :: : -> - => == = != ! <= << < >= >> > && & || | "
-        "( ) { } [ ] , ; + * / % ^ ~ @ ?";
+        "... . :: : -> -= -- - => == = != ! <= <<= << < >= >>= >> > && &= & || |= | "
+        "( ) { } [ ] , ; ++ += + *= * /= / %= % ^= ^ ~ @ ?";
     lex::Lexer lexer({9}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
@@ -282,6 +282,8 @@ TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
         TokenKind::colon_colon,
         TokenKind::colon,
         TokenKind::arrow,
+        TokenKind::minus_equal,
+        TokenKind::minus_minus,
         TokenKind::minus,
         TokenKind::fat_arrow,
         TokenKind::equal_equal,
@@ -289,14 +291,18 @@ TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
         TokenKind::bang_equal,
         TokenKind::bang,
         TokenKind::less_equal,
+        TokenKind::less_less_equal,
         TokenKind::less_less,
         TokenKind::less,
         TokenKind::greater_equal,
+        TokenKind::greater_greater_equal,
         TokenKind::greater_greater,
         TokenKind::greater,
         TokenKind::amp_amp,
+        TokenKind::amp_equal,
         TokenKind::amp,
         TokenKind::pipe_pipe,
+        TokenKind::pipe_equal,
         TokenKind::pipe,
         TokenKind::l_paren,
         TokenKind::r_paren,
@@ -306,10 +312,16 @@ TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
         TokenKind::r_bracket,
         TokenKind::comma,
         TokenKind::semicolon,
+        TokenKind::plus_plus,
+        TokenKind::plus_equal,
         TokenKind::plus,
+        TokenKind::star_equal,
         TokenKind::star,
+        TokenKind::slash_equal,
         TokenKind::slash,
+        TokenKind::percent_equal,
         TokenKind::percent,
+        TokenKind::caret_equal,
         TokenKind::caret,
         TokenKind::tilde,
         TokenKind::at,

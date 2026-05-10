@@ -24,8 +24,28 @@ public:
         bool require_semicolon,
         StatementTerminatorRecovery recovery = StatementTerminatorRecovery::direct
     );
+    [[nodiscard]] syntax::StmtId parse_expr_or_assign_stmt(
+        ExprContext context,
+        bool require_semicolon,
+        StatementTerminatorRecovery recovery = StatementTerminatorRecovery::direct
+    );
 
 private:
+    [[nodiscard]] bool match_assignment_operator(syntax::AssignOp& op) noexcept;
+    [[nodiscard]] syntax::StmtId parse_assignment_tail(
+        syntax::ExprId lhs,
+        ExprContext context,
+        syntax::AssignOp op,
+        bool require_semicolon,
+        StatementTerminatorRecovery recovery
+    );
+    [[nodiscard]] syntax::StmtId parse_postfix_update_stmt(
+        syntax::ExprId lhs,
+        syntax::AssignOp op,
+        bool require_semicolon,
+        StatementTerminatorRecovery recovery
+    );
+    [[nodiscard]] syntax::ExprId make_integer_literal_one(const base::SourceRange range);
     [[nodiscard]] const syntax::Token& expect_statement_semicolon(
         std::string message,
         StatementTerminatorRecovery recovery

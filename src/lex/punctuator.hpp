@@ -64,12 +64,16 @@ inline constexpr base::usize ellipsis_punctuator_width = 3;
             syntax::TokenKind::colon
         );
     case lexeme_minus:
-        return detail::match_two_or_one(
-            second,
-            lexeme_greater,
-            syntax::TokenKind::arrow,
-            syntax::TokenKind::minus
-        );
+        if (second == lexeme_greater) {
+            return detail::double_char_match(syntax::TokenKind::arrow);
+        }
+        if (second == lexeme_minus) {
+            return detail::double_char_match(syntax::TokenKind::minus_minus);
+        }
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::minus_equal);
+        }
+        return detail::single_char_match(syntax::TokenKind::minus);
     case lexeme_equal:
         if (second == lexeme_greater) {
             return detail::double_char_match(syntax::TokenKind::fat_arrow);
@@ -90,6 +94,9 @@ inline constexpr base::usize ellipsis_punctuator_width = 3;
             return detail::double_char_match(syntax::TokenKind::less_equal);
         }
         if (second == lexeme_less) {
+            if (third == lexeme_equal) {
+                return PunctuatorMatch {detail::ellipsis_punctuator_width, syntax::TokenKind::less_less_equal};
+            }
             return detail::double_char_match(syntax::TokenKind::less_less);
         }
         return detail::single_char_match(syntax::TokenKind::less);
@@ -98,10 +105,16 @@ inline constexpr base::usize ellipsis_punctuator_width = 3;
             return detail::double_char_match(syntax::TokenKind::greater_equal);
         }
         if (second == lexeme_greater) {
+            if (third == lexeme_equal) {
+                return PunctuatorMatch {detail::ellipsis_punctuator_width, syntax::TokenKind::greater_greater_equal};
+            }
             return detail::double_char_match(syntax::TokenKind::greater_greater);
         }
         return detail::single_char_match(syntax::TokenKind::greater);
     case lexeme_amp:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::amp_equal);
+        }
         return detail::match_two_or_one(
             second,
             lexeme_amp,
@@ -109,6 +122,9 @@ inline constexpr base::usize ellipsis_punctuator_width = 3;
             syntax::TokenKind::amp
         );
     case lexeme_pipe:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::pipe_equal);
+        }
         return detail::match_two_or_one(
             second,
             lexeme_pipe,
@@ -132,14 +148,32 @@ inline constexpr base::usize ellipsis_punctuator_width = 3;
     case lexeme_semicolon:
         return detail::single_char_match(syntax::TokenKind::semicolon);
     case lexeme_plus:
+        if (second == lexeme_plus) {
+            return detail::double_char_match(syntax::TokenKind::plus_plus);
+        }
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::plus_equal);
+        }
         return detail::single_char_match(syntax::TokenKind::plus);
     case lexeme_star:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::star_equal);
+        }
         return detail::single_char_match(syntax::TokenKind::star);
     case lexeme_slash:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::slash_equal);
+        }
         return detail::single_char_match(syntax::TokenKind::slash);
     case lexeme_percent:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::percent_equal);
+        }
         return detail::single_char_match(syntax::TokenKind::percent);
     case lexeme_caret:
+        if (second == lexeme_equal) {
+            return detail::double_char_match(syntax::TokenKind::caret_equal);
+        }
         return detail::single_char_match(syntax::TokenKind::caret);
     case lexeme_tilde:
         return detail::single_char_match(syntax::TokenKind::tilde);

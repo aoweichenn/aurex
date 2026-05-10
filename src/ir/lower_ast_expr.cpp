@@ -188,8 +188,9 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return append_value(value);
     }
     case syntax::ExprKind::binary: {
-        if (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or) {
-            return lower_short_circuit_expr(expr_id, expr);
+        if (!this->lowering_constant_initializer_ &&
+            (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or)) {
+            return this->lower_short_circuit_expr(expr_id, expr);
         }
         Value value;
         value.kind = ValueKind::binary;

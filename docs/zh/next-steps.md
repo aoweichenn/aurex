@@ -8,7 +8,7 @@
 
 1. 基础语法冻结
 
-   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。优先完成：统一 block statement / block expression、补齐 const initializer 纯标量运算、增加 compound assignment、统一 trailing separator、冻结 expression statement 规则。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
+   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。const initializer 纯标量运算、compound assignment、statement-only `++` / `--` 已补齐，接下来优先完成：统一 block statement / block expression、统一 trailing separator、冻结 expression statement 规则。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
 2. enum ADT 与 pattern 地基
 

@@ -15,6 +15,47 @@ namespace {
     return kind == syntax::ExprKind::call || kind == syntax::ExprKind::try_expr;
 }
 
+[[nodiscard]] bool compound_assignment_binary_op(
+    const syntax::AssignOp op,
+    syntax::BinaryOp& binary_op
+) noexcept {
+    switch (op) {
+    case syntax::AssignOp::add:
+        binary_op = syntax::BinaryOp::add;
+        return true;
+    case syntax::AssignOp::sub:
+        binary_op = syntax::BinaryOp::sub;
+        return true;
+    case syntax::AssignOp::mul:
+        binary_op = syntax::BinaryOp::mul;
+        return true;
+    case syntax::AssignOp::div:
+        binary_op = syntax::BinaryOp::div;
+        return true;
+    case syntax::AssignOp::mod:
+        binary_op = syntax::BinaryOp::mod;
+        return true;
+    case syntax::AssignOp::shl:
+        binary_op = syntax::BinaryOp::shl;
+        return true;
+    case syntax::AssignOp::shr:
+        binary_op = syntax::BinaryOp::shr;
+        return true;
+    case syntax::AssignOp::bit_and:
+        binary_op = syntax::BinaryOp::bit_and;
+        return true;
+    case syntax::AssignOp::bit_xor:
+        binary_op = syntax::BinaryOp::bit_xor;
+        return true;
+    case syntax::AssignOp::bit_or:
+        binary_op = syntax::BinaryOp::bit_or;
+        return true;
+    case syntax::AssignOp::assign:
+        return false;
+    }
+    return false;
+}
+
 } // namespace
 
 void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
@@ -192,9 +233,23 @@ void SemanticAnalyzer::analyze_stmt(
             report(module_.exprs[stmt.lhs.value].range, "left side of assignment must be writable");
         }
         const TypeHandle lhs = analyze_assignment_target(stmt.lhs);
-        const TypeHandle rhs = analyze_expr(stmt.rhs, lhs);
-        if (!can_assign(lhs, rhs, stmt.rhs)) {
-            report(stmt.range, "assignment type mismatch");
+        syntax::BinaryOp binary_op = syntax::BinaryOp::add;
+        if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
+            syntax::ExprNode binary;
+            binary.kind = syntax::ExprKind::binary;
+            binary.range = stmt.range;
+            binary.binary_op = binary_op;
+            binary.binary_lhs = stmt.lhs;
+            binary.binary_rhs = stmt.rhs;
+            const TypeHandle result = analyze_expr(syntax::invalid_expr_id, binary, lhs);
+            if (!can_assign(lhs, result, stmt.rhs)) {
+                report(stmt.range, "compound assignment type mismatch");
+            }
+        } else {
+            const TypeHandle rhs = analyze_expr(stmt.rhs, lhs);
+            if (!can_assign(lhs, rhs, stmt.rhs)) {
+                report(stmt.range, "assignment type mismatch");
+            }
         }
         if (checked_.types.contains_array(lhs)) {
             report(stmt.range, "array or array-containing type cannot be assigned");

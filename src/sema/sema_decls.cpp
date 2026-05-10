@@ -61,14 +61,13 @@ namespace {
     case syntax::BinaryOp::bit_and:
     case syntax::BinaryOp::bit_xor:
     case syntax::BinaryOp::bit_or:
-        return true;
     case syntax::BinaryOp::div:
     case syntax::BinaryOp::mod:
     case syntax::BinaryOp::shl:
     case syntax::BinaryOp::shr:
     case syntax::BinaryOp::logical_and:
     case syntax::BinaryOp::logical_or:
-        return false;
+        return true;
     }
     return false;
 }

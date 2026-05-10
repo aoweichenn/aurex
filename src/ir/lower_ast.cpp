@@ -244,8 +244,10 @@ void Lowerer::lower_generic_function_declarations() {
 }
 
 void Lowerer::lower_global_constant_initializers() {
-    for (const PendingConstant& pending : pending_constants_) {
-        if (!is_valid(pending.id) || pending.id.value >= module_.constants.size()) {
+    const bool previous_constant_initializer = this->lowering_constant_initializer_;
+    this->lowering_constant_initializer_ = true;
+    for (const PendingConstant& pending : this->pending_constants_) {
+        if (!is_valid(pending.id) || pending.id.value >= this->module_.constants.size()) {
             continue;
         }
         ValueId initializer = invalid_value_id;
@@ -254,13 +256,14 @@ void Lowerer::lower_global_constant_initializers() {
             value.kind = ValueKind::integer_literal;
             value.type = pending.type;
             value.text = pending.literal_text;
-            initializer = append_value(value);
+            initializer = this->append_value(value);
         } else {
-            initializer = lower_expr(pending.initializer, pending.type);
-            initializer = coerce_value(initializer, pending.type);
+            initializer = this->lower_expr(pending.initializer, pending.type);
+            initializer = this->coerce_value(initializer, pending.type);
         }
-        module_.constants[pending.id.value].initializer = initializer;
+        this->module_.constants[pending.id.value].initializer = initializer;
     }
+    this->lowering_constant_initializer_ = previous_constant_initializer;
 }
 
 std::string Lowerer::item_symbol(const base::u32 index, const syntax::ItemNode& item) const {

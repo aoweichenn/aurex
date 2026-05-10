@@ -1131,6 +1131,56 @@ TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
     EXPECT_EQ(multiplication.binary_op, syntax::BinaryOp::mul);
 }
 
+TEST(CoreUnit, ParserCoversCompoundAssignmentAndPostfixUpdateStatements) {
+    constexpr std::string_view source =
+        "module parser.assign_ops;\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 1;\n"
+        "  value += 2;\n"
+        "  value <<= 1;\n"
+        "  value++;\n"
+        "  value--;\n"
+        "  for var i: i32 = 0; i < 2; i++ {\n"
+        "    value |= i;\n"
+        "  }\n"
+        "  return value;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 6U);
+
+    const syntax::StmtNode& add_assign = module.stmts[body.statements[1].value];
+    ASSERT_EQ(add_assign.kind, syntax::StmtKind::assign);
+    EXPECT_EQ(add_assign.assign_op, syntax::AssignOp::add);
+
+    const syntax::StmtNode& shl_assign = module.stmts[body.statements[2].value];
+    ASSERT_EQ(shl_assign.kind, syntax::StmtKind::assign);
+    EXPECT_EQ(shl_assign.assign_op, syntax::AssignOp::shl);
+
+    const syntax::StmtNode& increment = module.stmts[body.statements[3].value];
+    ASSERT_EQ(increment.kind, syntax::StmtKind::assign);
+    EXPECT_EQ(increment.assign_op, syntax::AssignOp::add);
+    ASSERT_TRUE(syntax::is_valid(increment.rhs));
+    const syntax::ExprNode& increment_amount = module.exprs[increment.rhs.value];
+    EXPECT_EQ(increment_amount.kind, syntax::ExprKind::integer_literal);
+    EXPECT_EQ(increment_amount.text, "1");
+
+    const syntax::StmtNode& decrement = module.stmts[body.statements[4].value];
+    ASSERT_EQ(decrement.kind, syntax::StmtKind::assign);
+    EXPECT_EQ(decrement.assign_op, syntax::AssignOp::sub);
+
+    const syntax::StmtNode& loop = module.stmts[body.statements[5].value];
+    ASSERT_EQ(loop.kind, syntax::StmtKind::for_);
+    ASSERT_TRUE(syntax::is_valid(loop.for_update));
+    const syntax::StmtNode& update = module.stmts[loop.for_update.value];
+    EXPECT_EQ(update.kind, syntax::StmtKind::assign);
+    EXPECT_EQ(update.assign_op, syntax::AssignOp::add);
+}
+
 TEST(CoreUnit, ParserRejectsStructLiteralInControlConditions) {
     expect_parse_error(
         "module parser.condition_struct_literal;\n"

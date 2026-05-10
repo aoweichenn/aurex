@@ -180,6 +180,7 @@ private:
     Function* current_function_ = nullptr;
     const sema::GenericFunctionInstanceInfo* current_generic_function_instance_ = nullptr;
     BlockId current_block_ = invalid_block_id;
+    bool lowering_constant_initializer_ = false;
     std::unordered_map<std::string, LocalBinding> locals_;
     std::unordered_map<std::string, FunctionId> function_symbols_;
     std::unordered_map<std::string, GlobalConstantId> constant_symbols_;

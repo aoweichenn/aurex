@@ -156,6 +156,14 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     }
 
     const syntax::ExprNode& expr = module_.exprs[expr_id.value];
+    return analyze_expr(expr_id, expr, expected_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
         return analyze_integer_literal(expr_id, expr, expected_type);

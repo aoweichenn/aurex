@@ -72,8 +72,8 @@ tools/bench.py
 M2 的核心短板集中在语言地基，不在标准库规模：
 
 - block statement 和 block expression 仍是两套 parser 入口，用户心智模型和实现模型不统一。
-- const initializer 支持的纯标量运算不完整，`/`、`%`、shift 和逻辑短路仍被排除。
-- 没有 compound assignment，计数、flag、mask 代码偏啰嗦。
+- const initializer 已补齐纯标量运算；当前仍没有函数调用、控制流表达式或完整 comptime。
+- compound assignment 和 statement-only `++` / `--` 已补齐。
 - 顶层 item 和 struct field 默认 public，不适合作为长期模块 API 基线。
 - enum 仍偏 C enum 语法，base type 和 discriminant 必填，不适合作为主力 ADT 表达。
 - 泛型没有 `where`、trait 或 capability predicate，不能表达 `T: Copy`、`T: Drop`、`K: Eq + Hash` 这类基础约束。
@@ -87,4 +87,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是冻结 M2 语法基线：统一 block、补齐 const 运算、决定 default private 迁移、设计 `unsafe`、设计 capability/trait/where，并把 enum/pattern matching 从“能用”推进到“适合作为语言核心表达状态空间”。
+下一步最重要的是冻结 M2 语法基线：统一 block、统一 trailing separator、决定 default private 迁移、设计 `unsafe`、设计 capability/trait/where，并把 enum/pattern matching 从“能用”推进到“适合作为语言核心表达状态空间”。

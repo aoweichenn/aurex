@@ -90,16 +90,29 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
     const bool require_semicolon,
     const StatementTerminatorRecovery recovery
 ) {
-    const syntax::ExprId lhs = this->parse_expr();
-    syntax::StmtNode stmt;
-    if (this->match(TokenKind::equal)) {
-        stmt.kind = syntax::StmtKind::assign;
-        stmt.lhs = lhs;
-        stmt.rhs = this->parse_expr();
-    } else {
-        stmt.kind = syntax::StmtKind::expr;
-        stmt.init = lhs;
+    return this->parse_expr_or_assign_stmt(ExprContext::normal, require_semicolon, recovery);
+}
+
+syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
+    const ExprContext context,
+    const bool require_semicolon,
+    const StatementTerminatorRecovery recovery
+) {
+    const syntax::ExprId lhs = this->parse_expr(context);
+    syntax::AssignOp op = syntax::AssignOp::assign;
+    if (this->match_assignment_operator(op)) {
+        return this->parse_assignment_tail(lhs, context, op, require_semicolon, recovery);
     }
+    if (this->match(TokenKind::plus_plus)) {
+        return this->parse_postfix_update_stmt(lhs, syntax::AssignOp::add, require_semicolon, recovery);
+    }
+    if (this->match(TokenKind::minus_minus)) {
+        return this->parse_postfix_update_stmt(lhs, syntax::AssignOp::sub, require_semicolon, recovery);
+    }
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::expr;
+    stmt.init = lhs;
     base::SourceRange end_range = this->expr_range_or(lhs, this->peek().range);
     if (require_semicolon) {
         const syntax::Token& end = this->expect_statement_semicolon(
@@ -107,13 +120,116 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
             recovery
         );
         end_range = end.range;
-    } else if (stmt.kind == syntax::StmtKind::assign) {
-        end_range = this->expr_range_or(stmt.rhs, end_range);
-    } else if (stmt.kind == syntax::StmtKind::expr) {
+    } else {
         end_range = this->expr_range_or(stmt.init, end_range);
     }
     stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
     return this->session_.module.push_stmt(std::move(stmt));
+}
+
+bool StmtParser::match_assignment_operator(syntax::AssignOp& op) noexcept {
+    if (this->match(TokenKind::equal)) {
+        op = syntax::AssignOp::assign;
+        return true;
+    }
+    if (this->match(TokenKind::plus_equal)) {
+        op = syntax::AssignOp::add;
+        return true;
+    }
+    if (this->match(TokenKind::minus_equal)) {
+        op = syntax::AssignOp::sub;
+        return true;
+    }
+    if (this->match(TokenKind::star_equal)) {
+        op = syntax::AssignOp::mul;
+        return true;
+    }
+    if (this->match(TokenKind::slash_equal)) {
+        op = syntax::AssignOp::div;
+        return true;
+    }
+    if (this->match(TokenKind::percent_equal)) {
+        op = syntax::AssignOp::mod;
+        return true;
+    }
+    if (this->match(TokenKind::less_less_equal)) {
+        op = syntax::AssignOp::shl;
+        return true;
+    }
+    if (this->match(TokenKind::greater_greater_equal)) {
+        op = syntax::AssignOp::shr;
+        return true;
+    }
+    if (this->match(TokenKind::amp_equal)) {
+        op = syntax::AssignOp::bit_and;
+        return true;
+    }
+    if (this->match(TokenKind::caret_equal)) {
+        op = syntax::AssignOp::bit_xor;
+        return true;
+    }
+    if (this->match(TokenKind::pipe_equal)) {
+        op = syntax::AssignOp::bit_or;
+        return true;
+    }
+    return false;
+}
+
+syntax::StmtId StmtParser::parse_assignment_tail(
+    const syntax::ExprId lhs,
+    const ExprContext context,
+    const syntax::AssignOp op,
+    const bool require_semicolon,
+    const StatementTerminatorRecovery recovery
+) {
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::assign;
+    stmt.assign_op = op;
+    stmt.lhs = lhs;
+    stmt.rhs = this->parse_expr(context);
+
+    base::SourceRange end_range = this->expr_range_or(stmt.rhs, this->expr_range_or(lhs, this->peek().range));
+    if (require_semicolon) {
+        const syntax::Token& end = this->expect_statement_semicolon(
+            "expected ';' after assignment",
+            recovery
+        );
+        end_range = end.range;
+    }
+    stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
+    return this->session_.module.push_stmt(std::move(stmt));
+}
+
+syntax::StmtId StmtParser::parse_postfix_update_stmt(
+    const syntax::ExprId lhs,
+    const syntax::AssignOp op,
+    const bool require_semicolon,
+    const StatementTerminatorRecovery recovery
+) {
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::assign;
+    stmt.assign_op = op;
+    stmt.lhs = lhs;
+    stmt.rhs = this->make_integer_literal_one(this->previous().range);
+
+    base::SourceRange end_range = this->expr_range_or(stmt.rhs, this->expr_range_or(lhs, this->peek().range));
+    if (require_semicolon) {
+        const syntax::Token& end = this->expect_statement_semicolon(
+            "expected ';' after update statement",
+            recovery
+        );
+        end_range = end.range;
+    }
+    stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
+    return this->session_.module.push_stmt(std::move(stmt));
+}
+
+syntax::ExprId StmtParser::make_integer_literal_one(const base::SourceRange range) {
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::integer_literal;
+    expr.range = range;
+    expr.text = "1";
+    return this->session_.module.push_expr(std::move(expr));
 }
 
 const syntax::Token& StmtParser::expect_statement_semicolon(

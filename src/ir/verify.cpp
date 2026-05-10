@@ -4,10 +4,50 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace aurex::ir {
 
 namespace {
+
+enum class ConstantWorkItemKind {
+    value,
+    constant_exit,
+};
+
+struct ConstantWorkItem {
+    ConstantWorkItemKind kind = ConstantWorkItemKind::value;
+    ValueId value_id = invalid_value_id;
+    sema::TypeHandle expected_type = sema::invalid_type_handle;
+    GlobalConstantId constant_id = invalid_global_constant_id;
+};
+
+[[nodiscard]] ConstantWorkItem make_constant_value_work_item(
+    const ValueId value_id,
+    const sema::TypeHandle expected_type
+) noexcept {
+    return ConstantWorkItem {
+        ConstantWorkItemKind::value,
+        value_id,
+        expected_type,
+        invalid_global_constant_id,
+    };
+}
+
+[[nodiscard]] ConstantWorkItem make_constant_exit_work_item(const GlobalConstantId constant_id) noexcept {
+    return ConstantWorkItem {
+        ConstantWorkItemKind::constant_exit,
+        invalid_value_id,
+        sema::invalid_type_handle,
+        constant_id,
+    };
+}
+
+struct StorageTypeWorkItem {
+    sema::TypeHandle type = sema::invalid_type_handle;
+    std::string context;
+};
 
 class Verifier final {
 public:
@@ -15,16 +55,16 @@ public:
 
     [[nodiscard]] base::Result<void> run() {
         std::unordered_set<base::u32> constant_stack;
-        for (base::u32 i = 0; i < module_.constants.size(); ++i) {
-            verify_constant(GlobalConstantId {i}, constant_stack);
+        for (base::u32 i = 0; i < this->module_.constants.size(); ++i) {
+            this->verify_constant(GlobalConstantId {i}, constant_stack);
         }
-        for (base::usize i = 0; i < module_.functions.size(); ++i) {
-            verify_function(FunctionId {static_cast<base::u32>(i)}, module_.functions[i]);
+        for (base::usize i = 0; i < this->module_.functions.size(); ++i) {
+            this->verify_function(FunctionId {static_cast<base::u32>(i)}, this->module_.functions[i]);
         }
-        if (!errors_.empty()) {
+        if (!this->errors_.empty()) {
             std::ostringstream out;
             out << "IR verification failed:";
-            for (const std::string& error : errors_) {
+            for (const std::string& error : this->errors_) {
                 out << "\n  - " << error;
             }
             return base::Result<void>::fail({base::ErrorCode::internal_error, out.str()});
@@ -34,17 +74,17 @@ public:
 
 private:
     void verify_constant(const GlobalConstantId id, std::unordered_set<base::u32>& constant_stack) {
-        const GlobalConstant* constant = find_global_constant(module_, id);
+        const GlobalConstant* constant = find_global_constant(this->module_, id);
         if (constant == nullptr) {
-            fail("constant id is invalid");
+            this->fail("constant id is invalid");
             return;
         }
         if (!constant_stack.insert(id.value).second) {
-            fail("cyclic constant definition");
+            this->fail("cyclic constant definition");
             return;
         }
-        verify_type(constant->type, "constant type");
-        verify_constant_value(constant->initializer, constant->type, constant_stack);
+        this->verify_type(constant->type, "constant type");
+        this->verify_constant_value(constant->initializer, constant->type, constant_stack);
         constant_stack.erase(id.value);
     }
 
@@ -53,13 +93,33 @@ private:
         const sema::TypeHandle expected_type,
         std::unordered_set<base::u32>& constant_stack
     ) {
-        const Value* value = get(initializer);
+        // Use an explicit worklist so nested constant initializers stay iterative.
+        std::vector<ConstantWorkItem> worklist;
+        worklist.push_back(make_constant_value_work_item(initializer, expected_type));
+        while (!worklist.empty()) {
+            const ConstantWorkItem item = worklist.back();
+            worklist.pop_back();
+            if (item.kind == ConstantWorkItemKind::constant_exit) {
+                constant_stack.erase(item.constant_id.value);
+                continue;
+            }
+            this->verify_constant_value_item(item.value_id, item.expected_type, constant_stack, worklist);
+        }
+    }
+
+    void verify_constant_value_item(
+        const ValueId value_id,
+        const sema::TypeHandle expected_type,
+        std::unordered_set<base::u32>& constant_stack,
+        std::vector<ConstantWorkItem>& worklist
+    ) {
+        const Value* value = this->get(value_id);
         if (value == nullptr) {
-            fail("constant initializer value id is invalid");
+            this->fail("constant initializer value id is invalid");
             return;
         }
-        if (!module_.types.same(value->type, expected_type)) {
-            fail("constant initializer type mismatch");
+        if (!this->module_.types.same(value->type, expected_type)) {
+            this->fail("constant initializer type mismatch");
         }
         switch (value->kind) {
         case ValueKind::integer_literal:
@@ -73,92 +133,90 @@ private:
         case ValueKind::size_of:
         case ValueKind::align_of:
             if (value->kind == ValueKind::size_of || value->kind == ValueKind::align_of) {
-                verify_size_or_align(*value);
+                this->verify_size_or_align(*value);
             } else {
-                verify_literal_value(*value);
+                this->verify_literal_value(*value);
             }
             break;
         case ValueKind::constant_ref: {
-            verify_constant_ref(*value);
-            const GlobalConstant* constant = find_global_constant(module_, value->constant);
+            const GlobalConstant* constant = this->verify_constant_ref(*value);
             if (constant == nullptr) {
-                fail("constant reference id is invalid");
                 return;
             }
             if (!constant_stack.insert(value->constant.value).second) {
-                fail("cyclic constant reference");
+                this->fail("cyclic constant reference");
                 return;
             }
-            verify_constant_value(constant->initializer, constant->type, constant_stack);
-            constant_stack.erase(value->constant.value);
+            worklist.push_back(make_constant_exit_work_item(value->constant));
+            worklist.push_back(make_constant_value_work_item(constant->initializer, constant->type));
             break;
         }
         case ValueKind::aggregate: {
-            verify_constant_aggregate(*value, constant_stack);
+            this->verify_constant_aggregate(*value, worklist);
             break;
         }
         case ValueKind::unary: {
-            verify_value_id(value->lhs, "constant unary operand");
-            verify_type(value->type, "constant unary result");
+            this->verify_value_id(value->lhs, "constant unary operand");
+            this->verify_type(value->type, "constant unary result");
             if (value->unary_op == UnaryOp::address_of || value->unary_op == UnaryOp::dereference) {
-                fail("constant initializer contains a runtime-only unary operator");
+                this->fail("constant initializer contains a runtime-only unary operator");
                 break;
             }
-            const Value* operand = get(value->lhs);
+            const Value* operand = this->get(value->lhs);
             if (operand != nullptr) {
-                verify_constant_value(value->lhs, operand->type, constant_stack);
+                worklist.push_back(make_constant_value_work_item(value->lhs, operand->type));
             }
             break;
         }
         case ValueKind::binary: {
-            verify_binary(*value);
-            const Value* lhs = get(value->lhs);
-            if (lhs != nullptr) {
-                verify_constant_value(value->lhs, lhs->type, constant_stack);
-            }
-            const Value* rhs = get(value->rhs);
+            this->verify_binary(*value);
+            const Value* rhs = this->get(value->rhs);
             if (rhs != nullptr) {
-                verify_constant_value(value->rhs, rhs->type, constant_stack);
+                worklist.push_back(make_constant_value_work_item(value->rhs, rhs->type));
+            }
+            const Value* lhs = this->get(value->lhs);
+            if (lhs != nullptr) {
+                worklist.push_back(make_constant_value_work_item(value->lhs, lhs->type));
             }
             break;
         }
         case ValueKind::cast: {
-            verify_value_id(value->lhs, "cast operand");
-            verify_type(value->type, "cast result");
-            verify_type(value->target_type, "cast target");
-            const Value* operand = get(value->lhs);
+            this->verify_value_id(value->lhs, "cast operand");
+            this->verify_type(value->type, "cast result");
+            this->verify_type(value->target_type, "cast target");
+            const Value* operand = this->get(value->lhs);
             if (operand != nullptr) {
-                verify_constant_value(value->lhs, operand->type, constant_stack);
+                worklist.push_back(make_constant_value_work_item(value->lhs, operand->type));
             }
             break;
         }
         default:
-            fail("constant initializer is not compile-time constant");
+            this->fail("constant initializer is not compile-time constant");
             break;
         }
     }
 
-    void verify_constant_aggregate(const Value& value, std::unordered_set<base::u32>& constant_stack) {
-        verify_type(value.type, "aggregate result");
-        const RecordLayout* record = find_record(module_, value.type);
+    void verify_constant_aggregate(const Value& value, std::vector<ConstantWorkItem>& worklist) {
+        this->verify_type(value.type, "aggregate result");
+        const RecordLayout* record = find_record(this->module_, value.type);
         if (record == nullptr) {
-            fail("aggregate result is not a record");
+            this->fail("aggregate result is not a record");
             return;
         }
         std::unordered_set<std::string> seen;
-        for (const FieldValue& field : value.fields) {
-            if (!seen.insert(field.name).second) {
-                fail("duplicate aggregate field " + field.name);
+        for (auto field = value.fields.rbegin(); field != value.fields.rend(); ++field) {
+            if (!seen.insert(field->name).second) {
+                this->fail("duplicate aggregate field " + field->name);
             }
-            const RecordField* expected = find_record_field(module_, value.type, field.name);
+            const RecordField* expected = find_record_field(this->module_, value.type, field->name);
             if (expected == nullptr) {
-                fail("unknown aggregate field " + field.name);
+                this->fail("unknown aggregate field " + field->name);
                 continue;
             }
-            verify_constant_value(field.value, expected->type, constant_stack);
+            worklist.push_back(make_constant_value_work_item(field->value, expected->type));
         }
         if (seen.size() != record->fields.size()) {
-            fail("aggregate constant does not initialize every field");
+            this->fail("aggregate constant does not initialize every field");
         }
     }
 
@@ -321,7 +379,7 @@ private:
             verify_str_from_bytes_unchecked(*value);
             break;
         case ValueKind::constant_ref:
-            verify_constant_ref(*value);
+            static_cast<void>(this->verify_constant_ref(*value));
             break;
         case ValueKind::load:
             verify_load(*value);
@@ -616,16 +674,16 @@ private:
     }
 
     void verify_alloca(const Value& value) {
-        verify_type(value.type, "alloca result");
-        if (!module_.types.is_pointer(value.type)) {
-            fail("alloca result must be a pointer");
+        this->verify_type(value.type, "alloca result");
+        if (!this->module_.types.is_pointer(value.type)) {
+            this->fail("alloca result must be a pointer");
             return;
         }
-        const sema::TypeInfo& pointer = module_.types.get(value.type);
+        const sema::TypeInfo& pointer = this->module_.types.get(value.type);
         if (pointer.pointer_mutability != sema::PointerMutability::mut) {
-            fail("alloca result must be a mutable pointer");
+            this->fail("alloca result must be a mutable pointer");
         }
-        verify_storage_type(pointer.pointee, "alloca pointee");
+        this->verify_storage_type(pointer.pointee, "alloca pointee");
     }
 
     void verify_load(const Value& value) {
@@ -642,12 +700,12 @@ private:
 
     void verify_size_or_align(const Value& value) {
         const std::string op = value.kind == ValueKind::size_of ? "size_of" : "align_of";
-        verify_type(value.type, op + " result");
-        if (!module_.types.same(value.type, module_.types.builtin(sema::BuiltinType::usize))) {
-            fail(op + " result must be usize");
+        this->verify_type(value.type, op + " result");
+        if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
+            this->fail(op + " result must be usize");
         }
-        verify_type(value.target_type, op + " target");
-        verify_storage_type(value.target_type, op + " target");
+        this->verify_type(value.target_type, op + " target");
+        this->verify_storage_type(value.target_type, op + " target");
     }
 
     void verify_str_data(const Value& value) {
@@ -682,16 +740,17 @@ private:
         verify_value_type(value.args[1], module_.types.builtin(sema::BuiltinType::usize), "str_from_bytes_unchecked length");
     }
 
-    void verify_constant_ref(const Value& value) {
-        verify_type(value.type, "constant reference type");
-        const GlobalConstant* constant = find_global_constant(module_, value.constant);
+    [[nodiscard]] const GlobalConstant* verify_constant_ref(const Value& value) {
+        this->verify_type(value.type, "constant reference type");
+        const GlobalConstant* constant = find_global_constant(this->module_, value.constant);
         if (constant == nullptr) {
-            fail("constant reference id is invalid");
-            return;
+            this->fail("constant reference id is invalid");
+            return nullptr;
         }
-        if (!module_.types.same(value.type, constant->type)) {
-            fail("constant reference type mismatch");
+        if (!this->module_.types.same(value.type, constant->type)) {
+            this->fail("constant reference type mismatch");
         }
+        return constant;
     }
 
     void verify_field_addr(const Value& value) {
@@ -777,20 +836,30 @@ private:
     }
 
     void verify_storage_type(const sema::TypeHandle type, const std::string& context) {
-        if (!sema::is_valid(type)) {
-            fail(context + " type is invalid");
-            return;
-        }
-        if (module_.types.is_void(type)) {
-            fail(context + " type is not valid storage");
-            return;
-        }
-        if (module_.types.is_array(type)) {
-            verify_storage_type(module_.types.get(type).array_element, context + " element");
-            return;
-        }
-        if (module_.types.get(type).kind == sema::TypeKind::opaque_struct) {
-            fail(context + " type is not valid storage");
+        // Use an explicit stack so nested array storage checks stay iterative.
+        std::vector<StorageTypeWorkItem> worklist;
+        worklist.push_back(StorageTypeWorkItem {type, context});
+        while (!worklist.empty()) {
+            StorageTypeWorkItem item = std::move(worklist.back());
+            worklist.pop_back();
+            if (!sema::is_valid(item.type)) {
+                this->fail(item.context + " type is invalid");
+                continue;
+            }
+            if (this->module_.types.is_void(item.type)) {
+                this->fail(item.context + " type is not valid storage");
+                continue;
+            }
+            if (this->module_.types.is_array(item.type)) {
+                worklist.push_back(StorageTypeWorkItem {
+                    this->module_.types.get(item.type).array_element,
+                    item.context + " element",
+                });
+                continue;
+            }
+            if (this->module_.types.get(item.type).kind == sema::TypeKind::opaque_struct) {
+                this->fail(item.context + " type is not valid storage");
+            }
         }
     }
 

@@ -6,11 +6,50 @@ namespace {
 
 using namespace irtest;
 
+constexpr const char* IR_VERIFIER_LITERAL_ZERO = "0";
+constexpr const char* IR_VERIFIER_LITERAL_ONE = "1";
+constexpr const char* IR_VERIFIER_LITERAL_TWO = "2";
+constexpr base::u64 IR_VERIFIER_NESTED_ARRAY_INNER_COUNT = 3;
+constexpr base::u64 IR_VERIFIER_NESTED_ARRAY_OUTER_COUNT = 2;
+
 } // namespace
 
 TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module = make_simple_module();
+        EXPECT_TRUE(ir::verify_module(module));
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const ValueId unary_operand = add_value(module, integer_value(i32, IR_VERIFIER_LITERAL_ONE));
+        Value unary;
+        unary.kind = ValueKind::unary;
+        unary.type = i32;
+        unary.unary_op = UnaryOp::numeric_negate;
+        unary.lhs = unary_operand;
+        const ValueId unary_id = add_value(module, unary);
+        const ValueId binary_rhs = add_value(module, integer_value(i32, IR_VERIFIER_LITERAL_TWO));
+        Value binary;
+        binary.kind = ValueKind::binary;
+        binary.type = i32;
+        binary.binary_op = BinaryOp::add;
+        binary.lhs = unary_id;
+        binary.rhs = binary_rhs;
+        const ValueId binary_id = add_value(module, binary);
+        Value cast;
+        cast.kind = ValueKind::cast;
+        cast.type = i32;
+        cast.target_type = i32;
+        cast.lhs = binary_id;
+        cast.cast_kind = CastKind::numeric;
+        const ValueId cast_id = add_value(module, cast);
+        [[maybe_unused]] const GlobalConstantId unary_constant =
+            add_global_constant(module, GlobalConstant {"unary", "unit_unary", i32, unary_id});
+        [[maybe_unused]] const GlobalConstantId binary_constant =
+            add_global_constant(module, GlobalConstant {"binary", "unit_binary", i32, binary_id});
+        [[maybe_unused]] const GlobalConstantId cast_constant =
+            add_global_constant(module, GlobalConstant {"cast", "unit_cast", i32, cast_id});
         EXPECT_TRUE(ir::verify_module(module));
     }
     {
@@ -275,6 +314,28 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
             "bool literal type must be bool",
             "size_of target type is not valid storage",
         });
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle usize = builtin(module, BuiltinType::usize);
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle inner_array = module.types.array(IR_VERIFIER_NESTED_ARRAY_INNER_COUNT, void_type);
+        const TypeHandle nested_array = module.types.array(IR_VERIFIER_NESTED_ARRAY_OUTER_COUNT, inner_array);
+        Function function = make_function(module, "nested_storage", i32);
+        FunctionBuilder builder {module, function};
+        Value sizeof_value;
+        sizeof_value.kind = ValueKind::size_of;
+        sizeof_value.type = usize;
+        sizeof_value.target_type = nested_array;
+        const ValueId sizeof_id = builder.add(sizeof_value);
+        const ValueId result = builder.add(integer_value(i32, IR_VERIFIER_LITERAL_ZERO));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {sizeof_id, result};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "size_of target element element type is not valid storage");
     }
     {
         Module module;

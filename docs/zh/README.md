@@ -10,6 +10,7 @@
 - [运行流程文档](runtime-flow.md)
 - [API 接口文档](api.md)
 - [字符串基础类型设计草案](string-primitive-design.md)
+- [Aurex 当前语法与特性清单](language-feature-inventory.md)
 - [Aurex 基础语法地基评估](basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](language-syntax-and-design-review.md)
 - [设计实现文档](implementation.md)

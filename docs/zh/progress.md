@@ -81,6 +81,8 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - raw pointer 同时承担 FFI、method receiver、临时借用和地址操作，长期需要 safe reference 与 `unsafe` 边界分层。
 - `str` 已有语言级雏形，但还缺稳定的 slice、UTF-8 边界和安全/unsafe API 分层。
 
+当前完整语法库存、已支持高级能力、未完成特性和基础语法优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
+
 ## 当前结论
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。

@@ -14,10 +14,16 @@ jobs:
       - name: Install dependencies
         run: |
           dnf install -y clang cmake gcc-c++ git gtest-devel llvm llvm-devel make
+      - name: Configure tool paths
+        run: |
+          {
+            echo "LLVM_COV=$(command -v llvm-cov)"
+            echo "LLVM_PROFDATA=$(command -v llvm-profdata)"
+            echo "CC=$(command -v clang)"
+            echo "CXX=$(command -v clang++)"
+          } >> "${GITHUB_ENV}"
       - name: Check coverage
         env:
-          CC: clang
-          CXX: clang++
           AUREX_COVERAGE_LINE_THRESHOLD: "90"
           AUREX_COVERAGE_FUNCTION_THRESHOLD: "90"
           AUREX_COVERAGE_REGION_THRESHOLD: "90"

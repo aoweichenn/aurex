@@ -1,8 +1,16 @@
 cmake_minimum_required(VERSION 3.24)
 
+if(NOT DEFINED CMAKE_C_COMPILER)
+    set(CMAKE_C_COMPILER clang CACHE FILEPATH "C compiler")
+endif()
+if(NOT DEFINED CMAKE_CXX_COMPILER)
+    set(CMAKE_CXX_COMPILER clang++ CACHE FILEPATH "CXX compiler")
+endif()
+
 project(aurex LANGUAGES C CXX)
 
 option(AUREX_ENABLE_COVERAGE "Build Aurex with LLVM source-based coverage instrumentation" OFF)
+option(AUREX_BUILD_FUZZERS "Build Aurex libFuzzer targets" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

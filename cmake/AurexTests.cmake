@@ -44,11 +44,13 @@ if(BUILD_TESTING)
         tests/gtest/driver/install_and_import_tests.cpp
         tests/gtest/driver/native_toolchain_tests.cpp
         tests/gtest/frontend/ast_dump_tests.cpp
+        tests/gtest/frontend/randomized_frontend_tests.cpp
         tests/gtest/frontend/lexer_tests.cpp
         tests/gtest/frontend/parser_tests.cpp
         tests/gtest/integration/documentation_tests.cpp
         tests/gtest/integration/examples_tests.cpp
         tests/gtest/integration/native_execution_tests.cpp
+        tests/gtest/integration/randomized_integration_tests.cpp
         tests/gtest/integration/regression_tests.cpp
         tests/gtest/integration/sample_suite_tests.cpp
         tests/gtest/ir/ir_dump_tests.cpp
@@ -100,7 +102,7 @@ if(BUILD_TESTING)
         "CoreUnit.*"
     )
     aurex_add_gtest(aurex_tests_driver_and_regressions
-        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.GenericEnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedGenericStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName"
+        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.GenericEnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedGenericStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.Randomized*"
     )
     aurex_add_gtest(aurex_tests_functions
         "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndValueSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
@@ -146,4 +148,26 @@ if(BUILD_TESTING)
         LABELS "slow;sample-suite"
         TIMEOUT 300
     )
+
+    if(AUREX_BUILD_FUZZERS)
+        if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            message(FATAL_ERROR "AUREX_BUILD_FUZZERS requires Clang for -fsanitize=fuzzer")
+        endif()
+
+        add_executable(aurex_frontend_fuzzer
+            tests/fuzz/frontend_fuzzer.cpp
+        )
+        target_link_libraries(aurex_frontend_fuzzer PRIVATE
+            aurex_base
+            aurex_lex
+            aurex_parse
+            aurex_sema
+            aurex_ir
+        )
+        target_include_directories(aurex_frontend_fuzzer PRIVATE
+            tests
+        )
+        target_compile_options(aurex_frontend_fuzzer PRIVATE -fsanitize=fuzzer,address,undefined)
+        target_link_options(aurex_frontend_fuzzer PRIVATE -fsanitize=fuzzer,address,undefined)
+    endif()
 endif()

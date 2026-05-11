@@ -1,5 +1,6 @@
 build/
 build-coverage/
+build-*/
 cmake-build-*/
 *.profraw
 *.profdata

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build"
 CTEST_JOBS="${AUREX_CTEST_JOBS:-}"
+CC="${CC:-clang}"
+CXX="${CXX:-clang++}"
 
 if [[ -z "${CTEST_JOBS}" ]]; then
     if command -v nproc >/dev/null 2>&1; then
@@ -21,6 +23,8 @@ elif [[ -z "${AUREX_CTEST_JOBS:-}" && "${CTEST_JOBS}" -gt 4 ]]; then
     CTEST_JOBS="4"
 fi
 
-cmake -S "${ROOT}" -B "${BUILD_DIR}"
+cmake -S "${ROOT}" -B "${BUILD_DIR}" \
+    -DCMAKE_C_COMPILER="${CC}" \
+    -DCMAKE_CXX_COMPILER="${CXX}"
 cmake --build "${BUILD_DIR}" -j
 ctest --test-dir "${BUILD_DIR}" --parallel "${CTEST_JOBS}" --output-on-failure "$@"

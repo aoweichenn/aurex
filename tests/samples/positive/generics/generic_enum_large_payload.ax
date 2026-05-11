@@ -12,11 +12,11 @@ enum Slot<T>: u8 {
 
 fn main() -> i32 {
     let value: Slot<Big> = Slot.full(Big {
-        left: cast(u64, 1),
-        right: cast(u64, 2),
+        left: cast[u64](1),
+        right: cast[u64](2),
     });
     return match value {
         .empty => 1,
-        .full(payload) => if payload.right == cast(u64, 2) { 0 } else { 2 },
+        .full(payload) => if payload.right == cast[u64](2) { 0 } else { 2 },
     };
 }

@@ -345,7 +345,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         expect_contains_all(verify.error().message, {
             "null literal type must be pointer",
             "bool literal type must be bool",
-            "size_of target type is not valid storage",
+            "sizeof target type is not valid storage",
         });
     }
     {
@@ -368,7 +368,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = result;
         module.functions.push_back(function);
-        expect_error_contains(ir::verify_module(module), "size_of target element element type is not valid storage");
+        expect_error_contains(ir::verify_module(module), "sizeof target element element type is not valid storage");
     }
     {
         Module module;
@@ -876,14 +876,14 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
         "c string literal type must be *const u8",
         "byte literal type must be u8",
         "undef value cannot have void type",
-        "str_data result must be *const u8",
-        "str_data operand type mismatch",
-        "str_byte_len result must be usize",
-        "str_byte_len operand type mismatch",
-        "str_from_bytes_unchecked requires data and length arguments",
-        "str_from_bytes_unchecked result must be str",
-        "str_from_bytes_unchecked data must be *const u8",
-        "str_from_bytes_unchecked length type mismatch",
+        "strptr result must be *const u8",
+        "strptr operand type mismatch",
+        "strlen result must be usize",
+        "strlen operand type mismatch",
+        "strraw requires data and length arguments",
+        "strraw result must be str",
+        "strraw data must be *const u8",
+        "strraw length type mismatch",
     });
 }
 

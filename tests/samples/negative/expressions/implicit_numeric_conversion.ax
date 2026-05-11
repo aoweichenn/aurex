@@ -1,7 +1,7 @@
 module implicit_numeric_conversion;
 
 fn main() -> i32 {
-    let x: u32 = cast(u32, 1);
+    let x: u32 = cast[u32](1);
     let y: u64 = x;
-    return cast(i32, y);
+    return cast[i32](y);
 }

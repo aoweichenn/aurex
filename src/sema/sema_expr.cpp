@@ -716,9 +716,9 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
 ) {
     const TypeHandle queried = this->resolve_type(expr.cast_type);
     if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
-        this->report(expr.range, "opaque struct cannot be queried by size_of or align_of directly");
+        this->report(expr.range, "opaque struct cannot be queried by sizeof or alignof directly");
     } else if (is_valid(queried) && !this->is_valid_storage_type(queried)) {
-        this->report(expr.range, "size_of and align_of require a valid storage type");
+        this->report(expr.range, "sizeof and alignof require a valid storage type");
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
 }
@@ -729,7 +729,7 @@ TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!this->checked_.types.is_pointer(value)) {
-        this->report(expr.range, "ptr_addr requires a pointer value");
+        this->report(expr.range, "ptraddr requires a pointer value");
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
 }
@@ -741,10 +741,10 @@ TypeHandle SemanticAnalyzer::analyze_paddr_expr(
     const TypeHandle target = this->resolve_type(expr.cast_type);
     const TypeHandle address = this->analyze_expr(expr.cast_expr, this->checked_.types.builtin(BuiltinType::usize));
     if (!this->checked_.types.is_pointer(target)) {
-        this->report(expr.range, "paddr target type must be a pointer");
+        this->report(expr.range, "ptrat target type must be a pointer");
     }
     if (!this->checked_.types.is_integer(address)) {
-        this->report(this->module_.exprs[expr.cast_expr.value].range, "paddr address must be an integer");
+        this->report(this->module_.exprs[expr.cast_expr.value].range, "ptrat address must be an integer");
     }
     return this->record_expr_type(expr_id, target);
 }
@@ -755,7 +755,7 @@ TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!this->checked_.types.is_str(value)) {
-        this->report(expr.range, expr.kind == syntax::ExprKind::str_data ? "str_data requires a str value" : "str_byte_len requires a str value");
+        this->report(expr.range, expr.kind == syntax::ExprKind::str_data ? "strptr requires a str value" : "strlen requires a str value");
     }
     if (expr.kind == syntax::ExprKind::str_data) {
         return this->record_expr_type(
@@ -771,16 +771,16 @@ TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
     const syntax::ExprNode& expr
 ) {
     if (expr.args.size() != 2) {
-        this->report(expr.range, "str_from_bytes_unchecked requires data and length arguments");
+        this->report(expr.range, "strraw requires data and length arguments");
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     }
     const TypeHandle data = this->analyze_expr(expr.args[0]);
     const TypeHandle len = this->analyze_expr(expr.args[1], this->checked_.types.builtin(BuiltinType::usize));
     if (!is_const_u8_pointer(this->checked_.types, data)) {
-        this->report(this->module_.exprs[expr.args[0].value].range, "str_from_bytes_unchecked data must be *const u8");
+        this->report(this->module_.exprs[expr.args[0].value].range, "strraw data must be *const u8");
     }
     if (!this->checked_.types.is_integer(len)) {
-        this->report(this->module_.exprs[expr.args[1].value].range, "str_from_bytes_unchecked length must be an integer");
+        this->report(this->module_.exprs[expr.args[1].value].range, "strraw length must be an integer");
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
 }

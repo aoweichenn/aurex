@@ -56,7 +56,7 @@ fn main() -> i32 {
     var source: i32 = 8;
     let from_ptr = ptr_identity(&source);
     let array_expected: *mut [2]i32 = array_ptr();
-    if ptr_addr(array_expected) != cast(usize, 0) {
+    if ptraddr(array_expected) != cast[usize](0) {
         return 2;
     }
     let from_option = unwrap_or(Option.some(7), 0);

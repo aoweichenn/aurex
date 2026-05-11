@@ -4,13 +4,13 @@ fn main() -> i32 {
   let small: i8 = -128;
   let default_min = -2147483648;
   let wide: i64 = -9223372036854775808;
-  if cast(i32, small) != -128 {
+  if cast[i32](small) != -128 {
     return 1;
   }
   if default_min != -2147483648 {
     return 2;
   }
-  if wide == cast(i64, 0) {
+  if wide == cast[i64](0) {
     return 3;
   }
   return 0;

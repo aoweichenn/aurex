@@ -41,15 +41,15 @@ bool token_starts_expression(const TokenKind kind) noexcept {
     case TokenKind::kw_false:
     case TokenKind::kw_null:
     case TokenKind::kw_cast:
-    case TokenKind::kw_pcast:
-    case TokenKind::kw_bcast:
-    case TokenKind::kw_size_of:
-    case TokenKind::kw_align_of:
-    case TokenKind::kw_ptr_addr:
-    case TokenKind::kw_paddr:
-    case TokenKind::kw_str_data:
-    case TokenKind::kw_str_byte_len:
-    case TokenKind::kw_str_from_bytes_unchecked:
+    case TokenKind::kw_ptrcast:
+    case TokenKind::kw_bitcast:
+    case TokenKind::kw_sizeof:
+    case TokenKind::kw_alignof:
+    case TokenKind::kw_ptraddr:
+    case TokenKind::kw_ptrat:
+    case TokenKind::kw_strptr:
+    case TokenKind::kw_strlen:
+    case TokenKind::kw_strraw:
     case TokenKind::l_paren:
     case TokenKind::l_brace:
     case TokenKind::minus:

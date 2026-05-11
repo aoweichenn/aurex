@@ -68,6 +68,7 @@ bool token_matches_abi_attribute_start_boundary(const TokenKind kind) noexcept {
 bool token_matches_builtin_argument_list_start_boundary(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::l_paren:
+    case TokenKind::l_bracket:
     case TokenKind::r_paren:
     case TokenKind::comma:
     case TokenKind::semicolon:

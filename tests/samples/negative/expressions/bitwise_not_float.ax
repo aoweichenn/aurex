@@ -1,6 +1,6 @@
 module bitwise_not_float;
 
 fn main() -> i32 {
-  let value: f64 = cast(f64, 1);
-  return cast(i32, ~value);
+  let value: f64 = cast[f64](1);
+  return cast[i32](~value);
 }

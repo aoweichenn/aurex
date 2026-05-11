@@ -41,8 +41,8 @@ fn struct opaque enum const type impl match
 let var if else for in while break continue defer return
 true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str
-mut cast pcast bcast size_of align_of
-ptr_addr paddr str_data str_byte_len str_from_bytes_unchecked
+mut cast ptrcast bitcast sizeof alignof
+ptraddr ptrat strptr strlen strraw
 ```
 
 当前标点和操作符：
@@ -585,16 +585,16 @@ let value = result?;
 内建表达式：
 
 ```aurex
-cast(i32, value)
-pcast(*const u8, ptr)
-bcast(u32, value)
-size_of(T)
-align_of(T)
-ptr_addr(ptr)
-paddr(*mut T, address)
-str_data(text)
-str_byte_len(text)
-str_from_bytes_unchecked(data, len)
+cast[i32](value)
+ptrcast[*const u8](ptr)
+bitcast[u32](value)
+sizeof[T]
+alignof[T]
+ptraddr(ptr)
+ptrat[*mut T](address)
+strptr(text)
+strlen(text)
+strraw(data, len)
 ```
 
 当前这些内建都在普通表达式层，没有 `unsafe` 语法保护。
@@ -633,14 +633,14 @@ p1 | p2 | p3
 - struct literal，只要字段 initializer 都是 const evaluable。
 - `!`、`-`、`~`。
 - `+`、`-`、`*`、`/`、`%`、`<<`、`>>`、比较、相等、bitwise `&` / `^` / `|`、logical `&&` / `||`。
-- `cast`、`pcast`、`bcast`、`ptr_addr`、`paddr`。
-- `size_of`、`align_of`。
+- `cast`、`ptrcast`、`bitcast`、`ptraddr`、`ptrat`。
+- `sizeof`、`alignof`。
 
 当前不允许：
 
 - 函数调用。
 - `if` / block / match / `?`。
-- `str_data` / `str_byte_len` / `str_from_bytes_unchecked`。
+- `strptr` / `strlen` / `strraw`。
 
 ## 已支持的高级特性
 
@@ -763,16 +763,16 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 
 1. 最小 `unsafe` block / `unsafe fn`
 
-   当前 raw pointer dereference、`pcast`、`bcast`、`paddr`、`str_from_bytes_unchecked` 都能出现在普通表达式层。它们可能破坏 aliasing、layout、UTF-8、pointer validity 等语言不变量，必须先被语法显式圈起来：
+   当前 raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 都能出现在普通表达式层。它们可能破坏 aliasing、layout、UTF-8、pointer validity 等语言不变量，必须先被语法显式圈起来：
 
    ```aurex
    unsafe {
-       let p = paddr(*mut Header, address);
+       let p = ptrat[*mut Header](address);
        (*p).len = 4;
    }
 
    unsafe fn from_raw(data: *const u8, len: usize) -> str {
-       return str_from_bytes_unchecked(data, len);
+       return strraw(data, len);
    }
    ```
 

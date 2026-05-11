@@ -12,10 +12,10 @@ using syntax::TokenKind;
 enum class BuiltinExprShape {
     CAST,
     TYPE,
-    PTR_ADDR,
-    PTR_FROM_ADDR,
+    PTRADDR,
+    PTRAT,
     STR_UNARY,
-    STR_FROM_BYTES_UNCHECKED,
+    STRRAW,
 };
 
 struct BuiltinExprSyntax {
@@ -26,21 +26,21 @@ struct BuiltinExprSyntax {
 
 constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
-    {TokenKind::kw_pcast, BuiltinExprShape::CAST, syntax::ExprKind::pcast},
-    {TokenKind::kw_bcast, BuiltinExprShape::CAST, syntax::ExprKind::bcast},
-    {TokenKind::kw_size_of, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
-    {TokenKind::kw_align_of, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},
-    {TokenKind::kw_ptr_addr, BuiltinExprShape::PTR_ADDR, syntax::ExprKind::ptr_addr},
+    {TokenKind::kw_ptrcast, BuiltinExprShape::CAST, syntax::ExprKind::pcast},
+    {TokenKind::kw_bitcast, BuiltinExprShape::CAST, syntax::ExprKind::bcast},
+    {TokenKind::kw_sizeof, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
+    {TokenKind::kw_alignof, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},
+    {TokenKind::kw_ptraddr, BuiltinExprShape::PTRADDR, syntax::ExprKind::ptr_addr},
     {
-        TokenKind::kw_paddr,
-        BuiltinExprShape::PTR_FROM_ADDR,
+        TokenKind::kw_ptrat,
+        BuiltinExprShape::PTRAT,
         syntax::ExprKind::paddr,
     },
-    {TokenKind::kw_str_data, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
-    {TokenKind::kw_str_byte_len, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
+    {TokenKind::kw_strptr, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
+    {TokenKind::kw_strlen, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
     {
-        TokenKind::kw_str_from_bytes_unchecked,
-        BuiltinExprShape::STR_FROM_BYTES_UNCHECKED,
+        TokenKind::kw_strraw,
+        BuiltinExprShape::STRRAW,
         syntax::ExprKind::str_from_bytes_unchecked,
     },
 };
@@ -111,14 +111,14 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
         return parser.parse_cast(builtin->expr_kind, context);
     case BuiltinExprShape::TYPE:
         return parser.parse_type_builtin(builtin->expr_kind);
-    case BuiltinExprShape::PTR_ADDR:
-        return parser.parse_ptr_addr(context);
-    case BuiltinExprShape::PTR_FROM_ADDR:
-        return parser.parse_paddr(context);
+    case BuiltinExprShape::PTRADDR:
+        return parser.parse_ptraddr(context);
+    case BuiltinExprShape::PTRAT:
+        return parser.parse_ptrat(context);
     case BuiltinExprShape::STR_UNARY:
         return parser.parse_str_unary(context);
-    case BuiltinExprShape::STR_FROM_BYTES_UNCHECKED:
-        return parser.parse_str_from_bytes_unchecked(context);
+    case BuiltinExprShape::STRRAW:
+        return parser.parse_strraw(context);
     }
     return syntax::INVALID_EXPR_ID;
 }

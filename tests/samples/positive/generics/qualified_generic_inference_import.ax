@@ -10,7 +10,7 @@ fn read_box<T>(box: ga::Box<T>) -> T {
 fn unwrap_choice<T>(choice: ga::Choice<T>) -> T {
     return match choice {
         .some(value) => value,
-        .none => cast(T, 0),
+        .none => cast[T](0),
     };
 }
 

@@ -1,7 +1,7 @@
 module deref_void_pointer;
 
 fn bad() -> void {
-    let pointer: *mut void = paddr(*mut void, 0);
+    let pointer: *mut void = ptrat[*mut void](0);
     return *pointer;
 }
 

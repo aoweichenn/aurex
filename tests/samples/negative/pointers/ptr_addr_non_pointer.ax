@@ -2,6 +2,6 @@ module ptr_addr_non_pointer;
 
 fn main() -> i32 {
     let value: i32 = 1;
-    let addr: usize = ptr_addr(value);
-    return cast(i32, addr);
+    let addr: usize = ptraddr(value);
+    return cast[i32](addr);
 }

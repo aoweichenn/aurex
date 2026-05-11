@@ -123,16 +123,16 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "    if i == 1 { continue; } else { break; }\n"
         "  }\n"
         "  defer puts(c\"cleanup\");\n"
-        "  let p: *mut i32 = paddr(*mut i32, ptr_addr(argv));\n"
+        "  let p: *mut i32 = ptrat[*mut i32](ptraddr(argv));\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
-        "  let size: usize = size_of(*mut i32);\n"
-        "  let data: *const u8 = str_data(s);\n"
-        "  let len: usize = str_byte_len(s);\n"
-        "  let raw: str = str_from_bytes_unchecked(data, len);\n"
+        "  let size: usize = sizeof[*mut i32];\n"
+        "  let data: *const u8 = strptr(s);\n"
+        "  let len: usize = strlen(s);\n"
+        "  let raw: str = strraw(data, len);\n"
         "  let b: u8 = b'\\n';\n"
-        "  let a: i32 = cast(i32, argc) + bcast(i32, argc) + align_of(*mut i32);\n"
-        "  let q: *mut i32 = pcast(*mut i32, p);\n"
+        "  let a: i32 = cast[i32](argc) + bitcast[i32](argc) + alignof[*mut i32];\n"
+        "  let q: *mut i32 = ptrcast[*mut i32](p);\n"
         "  let idx: u8 = argv[0][0];\n"
         "  return a;\n"
         "}\n";
@@ -158,11 +158,11 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_continue",
         "kw_defer",
         "kw_null",
-        "kw_pcast",
-        "kw_bcast",
-        "kw_align_of",
-        "kw_ptr_addr",
-        "kw_paddr",
+        "kw_ptrcast",
+        "kw_bitcast",
+        "kw_alignof",
+        "kw_ptraddr",
+        "kw_ptrat",
         "ellipsis",
         "byte_literal",
         "string_literal",
@@ -188,11 +188,11 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "string_literal",
         "byte_literal",
         "index",
-        "pcast",
-        "bcast",
-        "align_of",
-        "ptr_addr",
-        "paddr",
+        "ptrcast",
+        "bitcast",
+        "alignof",
+        "ptraddr",
+        "ptrat",
     });
 }
 
@@ -690,7 +690,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
     constexpr std::string_view source =
         "module parser.builtin_arg_recovery;\n"
         "fn recovered(argc: i32) -> i32 {\n"
-        "  let value = cast(i32 @ argc);\n"
+        "  let value = cast[i32 @](argc);\n"
         "  let broken = ;\n"
         "  return 0;\n"
         "}\n";
@@ -710,7 +710,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ',' after cast type");
+    expect_contains(messages, "expected ']' after cast type");
     expect_contains(messages, "expected expression");
 }
 
@@ -873,7 +873,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
         "fn recovered(values: *mut i32) -> i32 {\n"
         "  let grouped = (1 @);\n"
         "  let indexed = values[0 @];\n"
-        "  let builtin = ptr_addr(values @);\n"
+        "  let builtin = ptraddr(values @);\n"
         "  let called = id(1 @);\n"
         "  let broken = ;\n"
         "  return 0;\n"
@@ -896,7 +896,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
     }
     expect_contains(messages, "expected ')' after expression");
     expect_contains(messages, "expected ']' after index");
-    expect_contains(messages, "expected ')' after ptr_addr argument");
+    expect_contains(messages, "expected ')' after ptraddr argument");
     expect_contains(messages, "expected ',' or ')' after argument");
     expect_contains(messages, "expected expression");
 }
@@ -1067,8 +1067,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
         "}\n"
         "fn opened @(a: i32) -> i32 { return a; }\n"
         "fn recovered(value: i32) -> i32 {\n"
-        "  let casted = cast @(i32, value);\n"
-        "  let broken_builtin = paddr @(*mut i32, casted);\n"
+        "  let casted = cast @[i32](value);\n"
+        "  let broken_builtin = ptrat @[*mut i32](casted);\n"
         "  let broken = ;\n"
         "  return casted;\n"
         "}\n";
@@ -1090,8 +1090,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
     }
     expect_contains(messages, "expected '(' after ABI attribute");
     expect_contains(messages, "expected '(' after function name");
-    expect_contains(messages, "expected '(' after cast builtin");
-    expect_contains(messages, "expected '(' after paddr");
+    expect_contains(messages, "expected '[' after cast builtin");
+    expect_contains(messages, "expected '[' after ptrat");
     expect_contains(messages, "expected expression");
 }
 
@@ -1568,15 +1568,15 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_false,
             TokenKind::kw_null,
             TokenKind::kw_cast,
-            TokenKind::kw_pcast,
-            TokenKind::kw_bcast,
-            TokenKind::kw_size_of,
-            TokenKind::kw_align_of,
-            TokenKind::kw_ptr_addr,
-            TokenKind::kw_paddr,
-            TokenKind::kw_str_data,
-            TokenKind::kw_str_byte_len,
-            TokenKind::kw_str_from_bytes_unchecked,
+            TokenKind::kw_ptrcast,
+            TokenKind::kw_bitcast,
+            TokenKind::kw_sizeof,
+            TokenKind::kw_alignof,
+            TokenKind::kw_ptraddr,
+            TokenKind::kw_ptrat,
+            TokenKind::kw_strptr,
+            TokenKind::kw_strlen,
+            TokenKind::kw_strraw,
             TokenKind::l_paren,
             TokenKind::l_brace,
             TokenKind::minus,
@@ -1883,10 +1883,10 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
         "module parser.builtin_recovery;\n"
         "fn main() -> i32 {\n"
         "  let text: str = \"hello\";\n"
-        "  let data: *const u8 = str_data(text);\n"
-        "  let len: usize = str_byte_len(text);\n"
-        "  let broken_cast: i32 = cast(i32 1);\n"
-        "  let broken_str: str = str_from_bytes_unchecked(data len);\n"
+        "  let data: *const u8 = strptr(text);\n"
+        "  let len: usize = strlen(text);\n"
+        "  let broken_cast: i32 = cast[i32](1 @);\n"
+        "  let broken_str: str = strraw(data len);\n"
         "  return 0;\n"
         "}\n";
 
@@ -1905,8 +1905,8 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
         messages += diagnostic.message;
         messages.push_back('\n');
     }
-    expect_contains(messages, "expected ',' after cast type");
-    expect_contains(messages, "expected ',' after str_from_bytes_unchecked data");
+    expect_contains(messages, "expected ')' after cast expression");
+    expect_contains(messages, "expected ',' after strraw data");
 }
 
 } // namespace aurex::test

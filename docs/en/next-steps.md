@@ -9,7 +9,15 @@ ownership, borrow, and drop rules stabilize.
 
 ## Priority Route
 
-1. Value semantics and resource-model redesign
+1. Modern builtin spelling
+
+   Source-level builtin spellings are normalized to `sizeof[T]`,
+   `alignof[T]`, `cast[T](x)`, `ptrcast[T](p)`, `bitcast[T](x)`,
+   `ptraddr(p)`, `ptrat[T](addr)`, `strptr(s)`, `strlen(s)`, and
+   `strraw(data, len)`. The old function-like names are no longer the language
+   surface.
+
+2. Value semantics and resource-model redesign
 
    M2 now removes the M1 `move(...)` / `noncopy struct` experiment instead of
    treating that move-only MVP as the language foundation. First define unified
@@ -17,20 +25,20 @@ ownership, borrow, and drop rules stabilize.
    and the current array-containing type restrictions. Then decide how
    copy/drop/ownership re-enter the type system.
 
-2. Drop / destructor design
+3. Drop / destructor design
 
    Design a language-level drop capability instead of reusing the M1 destructor
    convention. Decide drop order, interaction with early return / break /
    continue / defer, generic `T: Drop` constraints, and diagnostics for owned
    resource types without a release capability.
 
-3. Borrow semantics
+4. Borrow semantics
 
    Design shared borrow, mutable borrow, borrowed returns, aliasing rules, and
    lifetime regions. Start with local borrow checking, then expand across
    function signatures.
 
-4. Capability / trait / where
+5. Capability / trait / where
 
    Replace temporary hardcodes with language mechanisms. Start with `copy T` and
    `drop T`; later add `eq T`, `ord T`, and `hash T`. Candidate syntax:
@@ -40,13 +48,20 @@ ownership, borrow, and drop rules stabilize.
    fn destroy_all<T>(items: *mut T, len: usize) -> void where T: Drop
    ```
 
-5. String primitive
+6. String primitive
 
    Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
    restore `String`/`Bytes` std implementations yet. First settle type identity,
    ABI, literals, slice boundaries, and builtin operation boundaries.
 
-6. Test performance
+7. Unsafe boundary
+
+   Raw pointer dereference, `ptrcast`, `bitcast`, `ptrat`, and `strraw` remain
+   ordinary expressions today. M2 should introduce minimal `unsafe` block /
+   `unsafe fn` syntax and diagnostics before these operations become part of the
+   stable safe surface.
+
+8. Test performance
 
    Keep the test harness on direct C++ driver calls for cacheable compiler work.
    Separate check/IR/native tests, and only build/run binaries when runtime

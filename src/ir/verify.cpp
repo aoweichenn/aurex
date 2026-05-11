@@ -702,7 +702,7 @@ private:
     }
 
     void verify_size_or_align(const Value& value) {
-        const std::string op = value.kind == ValueKind::size_of ? "size_of" : "align_of";
+        const std::string op = value.kind == ValueKind::size_of ? "sizeof" : "alignof";
         this->verify_type(value.type, op + " result");
         if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
             this->fail(op + " result must be usize");
@@ -712,35 +712,35 @@ private:
     }
 
     void verify_str_data(const Value& value) {
-        this->verify_type(value.type, "str_data result");
+        this->verify_type(value.type, "strptr result");
         if (!this->is_const_u8_pointer(value.type)) {
-            this->fail("str_data result must be *const u8");
+            this->fail("strptr result must be *const u8");
         }
-        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "str_data operand");
+        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strptr operand");
     }
 
     void verify_str_byte_len(const Value& value) {
-        this->verify_type(value.type, "str_byte_len result");
+        this->verify_type(value.type, "strlen result");
         if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
-            this->fail("str_byte_len result must be usize");
+            this->fail("strlen result must be usize");
         }
-        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "str_byte_len operand");
+        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strlen operand");
     }
 
     void verify_str_from_bytes_unchecked(const Value& value) {
-        this->verify_type(value.type, "str_from_bytes_unchecked result");
+        this->verify_type(value.type, "strraw result");
         if (!this->module_.types.is_str(value.type)) {
-            this->fail("str_from_bytes_unchecked result must be str");
+            this->fail("strraw result must be str");
         }
         if (value.args.size() != IR_VERIFIER_STR_FROM_BYTES_UNCHECKED_ARGUMENT_COUNT) {
-            this->fail("str_from_bytes_unchecked requires data and length arguments");
+            this->fail("strraw requires data and length arguments");
             return;
         }
-        this->verify_value_id(value.args[0], "str_from_bytes_unchecked data");
+        this->verify_value_id(value.args[0], "strraw data");
         if (const Value* data = this->get(value.args[0]); data != nullptr && !this->is_const_u8_pointer(data->type)) {
-            this->fail("str_from_bytes_unchecked data must be *const u8");
+            this->fail("strraw data must be *const u8");
         }
-        this->verify_value_type(value.args[1], this->module_.types.builtin(sema::BuiltinType::usize), "str_from_bytes_unchecked length");
+        this->verify_value_type(value.args[1], this->module_.types.builtin(sema::BuiltinType::usize), "strraw length");
     }
 
     [[nodiscard]] const GlobalConstant* verify_constant_ref(const Value& value) {

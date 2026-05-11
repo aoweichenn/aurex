@@ -17,5 +17,5 @@ fn main() -> i32 {
     var count: Count = 41;
     let ptr: CountPtr = &count;
     let packet: PacketAlias = Packet { len: read_count(ptr) + 1 };
-    return packet.len - cast(i32, size_of(Bytes4)) - 38;
+    return packet.len - cast[i32](sizeof[Bytes4]) - 38;
 }

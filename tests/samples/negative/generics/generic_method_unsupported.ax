@@ -6,7 +6,7 @@ struct Box {
 
 impl Box {
     fn id<T>() -> T {
-        return cast(T, 0);
+        return cast[T](0);
     }
 }
 

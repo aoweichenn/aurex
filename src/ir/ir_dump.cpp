@@ -75,10 +75,10 @@ namespace {
 [[nodiscard]] std::string cast_name(const CastKind kind) {
     switch (kind) {
     case CastKind::numeric: return "cast";
-    case CastKind::pointer: return "pcast";
-    case CastKind::bcast: return "bcast";
-    case CastKind::ptr_addr: return "ptr_addr";
-    case CastKind::paddr: return "paddr";
+    case CastKind::pointer: return "ptrcast";
+    case CastKind::bcast: return "bitcast";
+    case CastKind::ptr_addr: return "ptraddr";
+    case CastKind::paddr: return "ptrat";
     }
     return "cast";
 }
@@ -168,19 +168,19 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         out << cast_name(value.cast_kind) << " " << value_ref(value.lhs) << " to " << module.types.display_name(value.target_type);
         break;
     case ValueKind::size_of:
-        out << "size_of " << module.types.display_name(value.target_type);
+        out << "sizeof " << module.types.display_name(value.target_type);
         break;
     case ValueKind::align_of:
-        out << "align_of " << module.types.display_name(value.target_type);
+        out << "alignof " << module.types.display_name(value.target_type);
         break;
     case ValueKind::str_data:
-        out << "str_data " << value_ref(value.object);
+        out << "strptr " << value_ref(value.object);
         break;
     case ValueKind::str_byte_len:
-        out << "str_byte_len " << value_ref(value.object);
+        out << "strlen " << value_ref(value.object);
         break;
     case ValueKind::str_from_bytes_unchecked:
-        out << "str_from_bytes_unchecked(";
+        out << "strraw(";
         for (base::usize i = 0; i < value.args.size(); ++i) {
             if (i != 0) {
                 out << ", ";

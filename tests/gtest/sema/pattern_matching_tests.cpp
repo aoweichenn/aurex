@@ -209,12 +209,12 @@ TEST_F(AurexIntegrationTest, LayoutAlignment) {
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
     expect_contains_all(ir, {
-        "size_of layout_alignment.Padded",
-        "align_of layout_alignment.Padded",
-        "size_of layout_alignment.Tag",
-        "align_of layout_alignment.Tag",
-        "size_of layout_alignment.Payload",
-        "align_of layout_alignment.Payload",
+        "sizeof layout_alignment.Padded",
+        "alignof layout_alignment.Padded",
+        "sizeof layout_alignment.Tag",
+        "alignof layout_alignment.Tag",
+        "sizeof layout_alignment.Payload",
+        "alignof layout_alignment.Payload",
     });
 
     require_success(aurexc() + " --emit=llvm-ir " + q(source));

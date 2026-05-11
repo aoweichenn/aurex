@@ -7,11 +7,11 @@ struct Pair {
 
 fn main() -> i32 {
     var pair: Pair = Pair { a: 1, b: 2 };
-    let addr: usize = ptr_addr(&pair);
-    let pair_ptr: *mut Pair = paddr(*mut Pair, addr);
-    let pointer_size: usize = size_of(*mut Pair);
-    let pointer_align: usize = align_of(*mut Pair);
-    if pointer_size == cast(usize, 0) || pointer_align == cast(usize, 0) {
+    let addr: usize = ptraddr(&pair);
+    let pair_ptr: *mut Pair = ptrat[*mut Pair](addr);
+    let pointer_size: usize = sizeof[*mut Pair];
+    let pointer_align: usize = alignof[*mut Pair];
+    if pointer_size == cast[usize](0) || pointer_align == cast[usize](0) {
         return 1;
     }
     return pair_ptr.a + pair_ptr.b - 3;

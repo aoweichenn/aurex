@@ -7,11 +7,11 @@ extern c {
 }
 
 fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {
-    return pcast(*mut u8, calloc(count, size));
+    return ptrcast[*mut u8](calloc(count, size));
 }
 
 fn free_bytes(ptr: *mut u8) -> void {
-    free(pcast(*mut void, ptr));
+    free(ptrcast[*mut void](ptr));
 }
 
 fn c_string_equal(left: *const u8, right: *const u8) -> bool {
@@ -20,7 +20,7 @@ fn c_string_equal(left: *const u8, right: *const u8) -> bool {
 
 fn push(log: *mut u8, index: *mut usize, value: u8) -> void {
     log[*index] = value;
-    *index = *index + cast(usize, 1);
+    *index = *index + cast[usize](1);
 }
 
 fn normal_scope(log: *mut u8, index: *mut usize) -> void {
@@ -71,7 +71,7 @@ fn for_paths(log: *mut u8, index: *mut usize) -> void {
 }
 
 fn main() -> i32 {
-    let log: *mut u8 = alloc_zeroed_bytes(cast(usize, 32), cast(usize, 1));
+    let log: *mut u8 = alloc_zeroed_bytes(cast[usize](32), cast[usize](1));
     if log == null {
         return 1;
     }
@@ -85,7 +85,7 @@ fn main() -> i32 {
     loop_paths(log, &index);
     for_paths(log, &index);
 
-    if !c_string_equal(pcast(*const u8, log), c"CBDAFELLZQQR") {
+    if !c_string_equal(ptrcast[*const u8](log), c"CBDAFELLZQQR") {
         return 3;
     }
     return 0;

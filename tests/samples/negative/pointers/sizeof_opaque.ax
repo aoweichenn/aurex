@@ -5,6 +5,6 @@ extern c {
 }
 
 fn main() -> i32 {
-    let size: usize = size_of(File);
-    return cast(i32, size);
+    let size: usize = sizeof[File];
+    return cast[i32](size);
 }

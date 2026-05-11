@@ -12,7 +12,8 @@
 
    第一批 P0 基础语法按这个顺序推进：
 
-   - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`pcast`、`bcast`、`paddr`、`str_from_bytes_unchecked` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
+   - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strlen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
+   - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
    - ADT-first enum：让普通 `enum Option<T> { some(T), none }` / `enum Result<T, E> { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
    - array literal / repeat literal：数组类型 `[N]T` 已存在，但还缺 `[1, 2, 3]` / `[0; 128]` 这类基础值语法。
 
@@ -22,7 +23,7 @@
 
 2. unsafe 与 `str` 安全边界
 
-   raw pointer、`pcast`、`bcast`、`paddr`、`str_from_bytes_unchecked` 当前都在普通表达式层。M2 应先设计最小 `unsafe` block / `unsafe fn` 和 unchecked builtin 诊断框架，同时冻结 `str` 的 UTF-8 / slice / FFI 边界。
+   raw pointer、`ptrcast`、`bitcast`、`ptrat`、`strraw` 当前都在普通表达式层。M2 应先设计最小 `unsafe` block / `unsafe fn` 和 unchecked builtin 诊断框架，同时冻结 `str` 的 UTF-8 / slice / FFI 边界。
 
 3. enum ADT 与 pattern 地基
 

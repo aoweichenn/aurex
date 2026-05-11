@@ -130,8 +130,8 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             add_cast_constant("f64_to_f32", "unit_f64_to_f32", f32, add_value(module, f64_ref));
         [[maybe_unused]] const GlobalConstantId bcast_constant =
             add_cast_constant("u32_to_f32_bits", "unit_u32_to_f32_bits", f32, add_value(module, integer_value(u32, "0")), CastKind::bcast);
-        [[maybe_unused]] const GlobalConstantId paddr_constant =
-            add_cast_constant("paddr", "unit_paddr", ptr_i32, add_value(module, integer_value(usize, "4096")), CastKind::paddr);
+        [[maybe_unused]] const GlobalConstantId ptrat_constant =
+            add_cast_constant("ptrat", "unit_ptrat", ptr_i32, add_value(module, integer_value(usize, "4096")), CastKind::paddr);
         [[maybe_unused]] const GlobalConstantId tag_constant =
             add_global_constant(module, GlobalConstant {"tag", "unit_tag", tag_enum_type, add_value(module, integer_value(tag_enum_type, "1"))});
 
@@ -278,7 +278,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             "@unit_f64_to_u32",
             "@unit_f64_to_f32",
             "@unit_u32_to_f32_bits",
-            "@unit_paddr",
+            "@unit_ptrat",
             "%unit_Pair = type",
             "and",
             "xor",

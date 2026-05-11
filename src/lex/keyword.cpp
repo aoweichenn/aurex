@@ -46,7 +46,6 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"void", syntax::TokenKind::kw_void},
     KeywordEntry {"bool", syntax::TokenKind::kw_bool},
     KeywordEntry {"cast", syntax::TokenKind::kw_cast},
-    KeywordEntry {"pcast", syntax::TokenKind::kw_pcast},
 
     KeywordEntry {"const", syntax::TokenKind::kw_const},
     KeywordEntry {"match", syntax::TokenKind::kw_match},
@@ -64,20 +63,18 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"struct", syntax::TokenKind::kw_struct},
     KeywordEntry {"opaque", syntax::TokenKind::kw_opaque},
     KeywordEntry {"return", syntax::TokenKind::kw_return},
+    KeywordEntry {"strlen", syntax::TokenKind::kw_strlen},
+    KeywordEntry {"strptr", syntax::TokenKind::kw_strptr},
+    KeywordEntry {"strraw", syntax::TokenKind::kw_strraw},
 
-    KeywordEntry {"size_of", syntax::TokenKind::kw_size_of},
+    KeywordEntry {"sizeof", syntax::TokenKind::kw_sizeof},
 
     KeywordEntry {"continue", syntax::TokenKind::kw_continue},
-    KeywordEntry {"bcast", syntax::TokenKind::kw_bcast},
-    KeywordEntry {"align_of", syntax::TokenKind::kw_align_of},
-    KeywordEntry {"ptr_addr", syntax::TokenKind::kw_ptr_addr},
-    KeywordEntry {"str_data", syntax::TokenKind::kw_str_data},
-
-    KeywordEntry {"str_byte_len", syntax::TokenKind::kw_str_byte_len},
-
-    KeywordEntry {"paddr", syntax::TokenKind::kw_paddr},
-
-    KeywordEntry {"str_from_bytes_unchecked", syntax::TokenKind::kw_str_from_bytes_unchecked},
+    KeywordEntry {"alignof", syntax::TokenKind::kw_alignof},
+    KeywordEntry {"bitcast", syntax::TokenKind::kw_bitcast},
+    KeywordEntry {"ptrat", syntax::TokenKind::kw_ptrat},
+    KeywordEntry {"ptraddr", syntax::TokenKind::kw_ptraddr},
+    KeywordEntry {"ptrcast", syntax::TokenKind::kw_ptrcast},
 };
 
 struct KeywordBucket final {

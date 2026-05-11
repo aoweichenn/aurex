@@ -1,7 +1,7 @@
 module bcast_bool_from_u8;
 
 fn main() -> i32 {
-    let value: bool = bcast(bool, cast(u8, 2));
+    let value: bool = bitcast[bool](cast[u8](2));
     if value {
         return 1;
     }

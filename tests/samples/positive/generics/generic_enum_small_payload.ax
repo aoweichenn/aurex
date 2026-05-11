@@ -6,9 +6,9 @@ enum SmallSlot<T>: u8 {
 }
 
 fn main() -> i32 {
-    let value: SmallSlot<u16> = SmallSlot.full(cast(u16, 7));
+    let value: SmallSlot<u16> = SmallSlot.full(cast[u16](7));
     return match value {
         .empty => 1,
-        .full(payload) => if payload == cast(u16, 7) { 0 } else { 2 },
+        .full(payload) => if payload == cast[u16](7) { 0 } else { 2 },
     };
 }

@@ -2,6 +2,6 @@ module invalid_cast_pointer;
 
 fn main() -> i32 {
     var value: i32 = 1;
-    let number: usize = cast(usize, &value);
-    return cast(i32, number);
+    let number: usize = cast[usize](&value);
+    return cast[i32](number);
 }

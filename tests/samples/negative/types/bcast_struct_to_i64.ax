@@ -7,6 +7,6 @@ struct Pair {
 
 fn main() -> i32 {
   let pair: Pair = Pair { lo: 1, hi: 2 };
-  let bits: i64 = bcast(i64, pair);
-  return cast(i32, bits);
+  let bits: i64 = bitcast[i64](pair);
+  return cast[i32](bits);
 }

@@ -112,7 +112,7 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
         "module overflow;\n"
         "fn main() -> i32 {\n"
         "  let value: u8 = 300;\n"
-        "  return cast(i32, value);\n"
+        "  return cast[i32](value);\n"
         "}\n"
     );
     expect_contains(

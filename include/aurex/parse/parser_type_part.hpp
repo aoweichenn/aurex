@@ -13,6 +13,7 @@ public:
     [[nodiscard]] std::vector<syntax::TypeId> parse_type_arg_list();
 
 private:
+    [[nodiscard]] syntax::TypeId parse_type_atom();
     [[nodiscard]] syntax::TypeId parse_primitive_type();
     void expect_array_length_end();
     [[nodiscard]] bool recover_type_arg_separator();

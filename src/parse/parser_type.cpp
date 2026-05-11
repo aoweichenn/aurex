@@ -4,6 +4,7 @@
 
 #include <limits>
 #include <string_view>
+#include <vector>
 
 namespace aurex::parse {
 
@@ -29,6 +30,7 @@ constexpr char PARSER_TYPE_ASCII_HEX_LOWER_LAST = 'f';
 constexpr char PARSER_TYPE_ASCII_HEX_UPPER_FIRST = 'A';
 constexpr char PARSER_TYPE_ASCII_HEX_UPPER_LAST = 'F';
 constexpr char PARSER_TYPE_DIGIT_SEPARATOR = '_';
+constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
 
 [[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
     switch (kind) {
@@ -154,6 +156,79 @@ bool TypeParser::recover_type_arg_separator() {
 
 syntax::TypeId TypeParser::parse_type() {
     this->reset_panic();
+    enum class TypeConstructorKind {
+        pointer,
+        array,
+    };
+
+    struct TypeConstructor {
+        TypeConstructorKind kind = TypeConstructorKind::pointer;
+        base::SourceRange begin_range {};
+        syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
+        base::u64 array_count = 0;
+    };
+
+    std::vector<TypeConstructor> constructors;
+    constructors.reserve(PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY);
+    while (true) {
+        if (this->match(TokenKind::star)) {
+            const syntax::Token& begin = this->previous();
+            syntax::PointerMutability mutability = syntax::PointerMutability::const_;
+            if (this->match(TokenKind::kw_mut)) {
+                mutability = syntax::PointerMutability::mut;
+            } else if (this->match(TokenKind::kw_const)) {
+                mutability = syntax::PointerMutability::const_;
+            } else {
+                this->report_here("expected 'mut' or 'const' after '*'");
+            }
+            constructors.push_back(TypeConstructor {
+                TypeConstructorKind::pointer,
+                begin.range,
+                mutability,
+                0,
+            });
+            continue;
+        }
+
+        if (this->match(TokenKind::l_bracket)) {
+            const syntax::Token& begin = this->previous();
+            const syntax::Token& count = this->expect(TokenKind::integer_literal, "expected array length");
+            this->expect_array_length_end();
+            base::u64 array_count = 0;
+            if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
+                this->report_at(count, "array length literal is out of range");
+            }
+            constructors.push_back(TypeConstructor {
+                TypeConstructorKind::array,
+                begin.range,
+                syntax::PointerMutability::const_,
+                array_count,
+            });
+            continue;
+        }
+        break;
+    }
+
+    syntax::TypeId type = this->parse_type_atom();
+    for (base::usize index = constructors.size(); index > 0; --index) {
+        const TypeConstructor& constructor = constructors[index - 1];
+        syntax::TypeNode node;
+        node.range = this->merge(constructor.begin_range, this->type_range_or(type, constructor.begin_range));
+        if (constructor.kind == TypeConstructorKind::pointer) {
+            node.kind = syntax::TypeKind::pointer;
+            node.pointer_mutability = constructor.pointer_mutability;
+            node.pointee = type;
+        } else {
+            node.kind = syntax::TypeKind::array;
+            node.array_count = constructor.array_count;
+            node.array_element = type;
+        }
+        type = this->session_.module.push_type(node);
+    }
+    return type;
+}
+
+syntax::TypeId TypeParser::parse_type_atom() {
     if (is_primitive_type_token(this->peek().kind)) {
         return this->parse_primitive_type();
     }
@@ -175,40 +250,6 @@ syntax::TypeId TypeParser::parse_type() {
             type.type_args = this->parse_type_arg_list();
             type.range = this->merge(type.range, this->previous().range);
         }
-        return this->session_.module.push_type(type);
-    }
-    if (this->match(TokenKind::star)) {
-        const syntax::Token& begin = this->previous();
-        syntax::PointerMutability mutability = syntax::PointerMutability::const_;
-        if (this->match(TokenKind::kw_mut)) {
-            mutability = syntax::PointerMutability::mut;
-        } else if (this->match(TokenKind::kw_const)) {
-            mutability = syntax::PointerMutability::const_;
-        } else {
-            this->report_here("expected 'mut' or 'const' after '*'");
-        }
-        const syntax::TypeId pointee = this->parse_type();
-        syntax::TypeNode type;
-        type.kind = syntax::TypeKind::pointer;
-        type.range = this->merge(begin.range, this->type_range_or(pointee, begin.range));
-        type.pointer_mutability = mutability;
-        type.pointee = pointee;
-        return this->session_.module.push_type(type);
-    }
-    if (this->match(TokenKind::l_bracket)) {
-        const syntax::Token& begin = this->previous();
-        const syntax::Token& count = this->expect(TokenKind::integer_literal, "expected array length");
-        this->expect_array_length_end();
-        const syntax::TypeId element = this->parse_type();
-        base::u64 array_count = 0;
-        if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
-            this->report_at(count, "array length literal is out of range");
-        }
-        syntax::TypeNode type;
-        type.kind = syntax::TypeKind::array;
-        type.range = this->merge(begin.range, this->type_range_or(element, begin.range));
-        type.array_count = array_count;
-        type.array_element = element;
         return this->session_.module.push_type(type);
     }
 

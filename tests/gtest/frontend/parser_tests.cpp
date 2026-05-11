@@ -20,6 +20,8 @@ namespace {
 
 using base::DiagnosticSink;
 
+constexpr base::usize PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH = 8;
+
 void expect_parse_error(const std::string_view source, const std::string_view message) {
     DiagnosticSink diagnostics;
     lex::Lexer lexer({6}, source, diagnostics);
@@ -1237,6 +1239,65 @@ TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
     const syntax::ExprNode& multiplication = module.exprs[addition.binary_rhs.value];
     ASSERT_EQ(multiplication.kind, syntax::ExprKind::binary);
     EXPECT_EQ(multiplication.binary_op, syntax::BinaryOp::mul);
+}
+
+TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
+    constexpr std::string_view source =
+        "module parser.deep_prefix_chains;\n"
+        "type DeepPtr = *mut *const *mut *const *mut *const *mut *const i32;\n"
+        "type DeepArray = [1][2][3][4][5][6][7][8]u8;\n"
+        "fn main() -> i32 {\n"
+        "  let unary: i32 = - - - - - - - -1;\n"
+        "  let binary: i32 = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9;\n"
+        "  return unary + binary;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* deep_ptr = find_item(module, "DeepPtr");
+    ASSERT_NE(deep_ptr, nullptr);
+    ASSERT_TRUE(syntax::is_valid(deep_ptr->alias_type));
+    syntax::TypeId type = deep_ptr->alias_type;
+    for (base::usize depth = 0; depth < PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH; ++depth) {
+        ASSERT_TRUE(syntax::is_valid(type));
+        const syntax::TypeNode& node = module.types[type.value];
+        ASSERT_EQ(node.kind, syntax::TypeKind::pointer);
+        type = node.pointee;
+    }
+    ASSERT_TRUE(syntax::is_valid(type));
+    EXPECT_EQ(module.types[type.value].kind, syntax::TypeKind::primitive);
+    EXPECT_EQ(module.types[type.value].primitive, syntax::PrimitiveTypeKind::i32);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 2U);
+
+    const syntax::StmtNode& unary_stmt = module.stmts[body.statements[0].value];
+    ASSERT_TRUE(syntax::is_valid(unary_stmt.init));
+    syntax::ExprId unary = unary_stmt.init;
+    for (base::usize depth = 0; depth < PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH; ++depth) {
+        ASSERT_TRUE(syntax::is_valid(unary));
+        const syntax::ExprNode& node = module.exprs[unary.value];
+        ASSERT_EQ(node.kind, syntax::ExprKind::unary);
+        EXPECT_EQ(node.unary_op, syntax::UnaryOp::numeric_negate);
+        unary = node.unary_operand;
+    }
+    ASSERT_TRUE(syntax::is_valid(unary));
+    EXPECT_EQ(module.exprs[unary.value].kind, syntax::ExprKind::integer_literal);
+
+    const syntax::StmtNode& binary_stmt = module.stmts[body.statements[1].value];
+    ASSERT_TRUE(syntax::is_valid(binary_stmt.init));
+    syntax::ExprId binary = binary_stmt.init;
+    for (base::usize depth = 0; depth < PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH; ++depth) {
+        ASSERT_TRUE(syntax::is_valid(binary));
+        const syntax::ExprNode& node = module.exprs[binary.value];
+        ASSERT_EQ(node.kind, syntax::ExprKind::binary);
+        EXPECT_EQ(node.binary_op, syntax::BinaryOp::add);
+        binary = node.binary_lhs;
+    }
+    ASSERT_TRUE(syntax::is_valid(binary));
+    EXPECT_EQ(module.exprs[binary.value].kind, syntax::ExprKind::integer_literal);
 }
 
 TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {

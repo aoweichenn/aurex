@@ -212,6 +212,15 @@ syntax::TypeId TypeParser::parse_type_atom() {
             type.name = scoped_name.text;
             type.range = this->merge(name.range, scoped_name.range);
         }
+        if (this->match(TokenKind::l_bracket)) {
+            this->parse_generic_type_args(type.type_args);
+            const syntax::Token& end = this->expect_recovered(
+                TokenKind::r_bracket,
+                "expected ']' after generic type arguments",
+                RecoveryContext::generic_type_argument
+            );
+            type.range = this->merge(type.range, end.range);
+        }
         return this->session_.module.push_type(type);
     }
 
@@ -221,6 +230,37 @@ syntax::TypeId TypeParser::parse_type_atom() {
     type.primitive = syntax::PrimitiveTypeKind::void_;
     type.range = this->peek().range;
     return this->session_.module.push_type(type);
+}
+
+void TypeParser::parse_generic_type_args(std::vector<syntax::TypeId>& args) {
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        args.push_back(this->parse_type());
+        this->reset_panic();
+        if (!this->recover_generic_type_arg_separator()) {
+            break;
+        }
+    }
+}
+
+bool TypeParser::recover_generic_type_arg_separator() {
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here("expected ',' or ']' after generic type argument");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
+        this->synchronize(RecoveryContext::generic_type_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
 }
 
 void TypeParser::expect_array_length_end() {

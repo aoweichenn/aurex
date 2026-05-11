@@ -1,0 +1,9 @@
+module non_generic_fn_type_args;
+
+fn plain(value: i32) -> i32 {
+    return value;
+}
+
+fn main() -> i32 {
+    return plain::[i32](1);
+}

@@ -101,7 +101,7 @@ if(BUILD_TESTING)
         "CoreUnit.*"
     )
     aurex_add_gtest(aurex_tests_driver_and_regressions
-        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.Randomized*"
+        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.M2Generic*:AurexIntegrationTest.Randomized*"
     )
     aurex_add_gtest(aurex_tests_functions
         "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndValueSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"

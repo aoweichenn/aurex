@@ -59,6 +59,9 @@ std::string dump_checked_module(const CheckedModule& checked) {
         if (info.is_opaque) {
             out << " opaque";
         }
+        if (info.is_generic_placeholder) {
+            out << " generic_placeholder";
+        }
         out << " fields=" << info.fields.size() << "\n";
     }
 

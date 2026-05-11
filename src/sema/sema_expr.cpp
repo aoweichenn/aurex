@@ -175,6 +175,10 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     }
 
     const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
+    std::vector<TypeHandle>& expr_types = this->active_expr_types();
+    if (expr_id.value < expr_types.size() && is_valid(expr_types[expr_id.value])) {
+        return expr_types[expr_id.value];
+    }
     return this->analyze_expr(expr_id, expr, expected_type);
 }
 
@@ -436,6 +440,10 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::less_equal:
     case syntax::BinaryOp::greater:
     case syntax::BinaryOp::greater_equal:
+        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+            this->report(expr.range, "generic type parameter `" + this->checked_.types.display_name(lhs) + "` has no known comparison operator");
+            return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
+        }
         if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
             this->report(expr.range, "comparison operator requires numeric operands");
         }
@@ -450,7 +458,9 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
             (is_valid(lhs) &&
              this->checked_.types.get(lhs).kind == TypeKind::enum_ &&
              !is_valid(this->checked_.types.get(lhs).enum_payload_storage));
-        if (!scalar && !is_null_pointer_comparison) {
+        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+            this->report(expr.range, "generic type parameter `" + this->checked_.types.display_name(lhs) + "` has no known operator `==`");
+        } else if (!scalar && !is_null_pointer_comparison) {
             this->report(expr.range, "equality operator requires scalar operands");
         }
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
@@ -467,11 +477,19 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::shl:
     case syntax::BinaryOp::shr:
     case syntax::BinaryOp::mod:
+        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+            this->report(expr.range, "generic type parameter `" + this->checked_.types.display_name(lhs) + "` has no known integer operator");
+            return this->record_expr_type(expr_id, lhs);
+        }
         if (!this->checked_.types.is_integer(lhs)) {
             this->report(expr.range, "integer operator requires integer operands");
         }
         return this->record_expr_type(expr_id, lhs);
     default:
+        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+            this->report(expr.range, "generic type parameter `" + this->checked_.types.display_name(lhs) + "` has no known operator");
+            return this->record_expr_type(expr_id, lhs);
+        }
         if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
             this->report(expr.range, "binary operator requires numeric operands");
         }
@@ -584,9 +602,47 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
-    struct_type = qualified
-        ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false)
-        : this->find_type_in_visible_modules(expr.struct_name, expr.range, false);
+    if (!expr.type_args.empty()) {
+        std::vector<TypeHandle> args;
+        args.reserve(expr.type_args.size());
+        for (const syntax::TypeId arg : expr.type_args) {
+            args.push_back(this->resolve_type(arg));
+        }
+        const GenericTemplateInfo* generic_struct = qualified
+            ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, false)
+            : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, false);
+        if (generic_struct != nullptr) {
+            syntax::TypeNode use_type;
+            use_type.kind = syntax::TypeKind::named;
+            use_type.scope_name = expr.scope_name;
+            use_type.scope_range = expr.scope_range;
+            use_type.name = expr.struct_name;
+            use_type.range = expr.range;
+            struct_type = this->instantiate_generic_struct(*generic_struct, use_type, syntax::INVALID_TYPE_ID, args);
+        } else {
+            struct_type = qualified
+                ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false, false)
+                : this->find_type_in_visible_modules(expr.struct_name, expr.range, false, false);
+            if (is_valid(struct_type)) {
+                this->report(expr.range, "non-generic type cannot take type arguments: " + std::string(expr.struct_name));
+            } else {
+                static_cast<void>(qualified
+                    ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, true)
+                    : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, true));
+            }
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+    } else if (const GenericTemplateInfo* generic_struct = qualified
+            ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, false)
+            : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, false);
+        generic_struct != nullptr) {
+        this->report(expr.range, "generic type requires type arguments: " + std::string(expr.struct_name));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    } else {
+        struct_type = qualified
+            ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false)
+            : this->find_type_in_visible_modules(expr.struct_name, expr.range, false);
+    }
     if (!is_valid(struct_type)) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
@@ -646,7 +702,9 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
     const syntax::ExprNode& expr
 ) {
     const TypeHandle queried = this->resolve_type(expr.cast_type);
-    if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
+    if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::generic_param) {
+        this->report(expr.range, "generic type parameter cannot be queried by sizeof or alignof");
+    } else if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
         this->report(expr.range, "opaque struct cannot be queried by sizeof or alignof directly");
     } else if (is_valid(queried) && !this->is_valid_storage_type(queried)) {
         this->report(expr.range, "sizeof and alignof require a valid storage type");

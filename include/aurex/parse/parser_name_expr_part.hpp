@@ -18,8 +18,17 @@ private:
         std::string_view scope_name,
         base::SourceRange scope_range,
         const syntax::Token& name,
+        std::vector<syntax::TypeId> type_args,
+        base::SourceRange type_name_range,
         ExprContext context
     );
+    [[nodiscard]] bool try_parse_struct_literal_type_args(
+        std::vector<syntax::TypeId>& type_args,
+        base::SourceRange& end_range
+    );
+    [[nodiscard]] bool bracketed_type_args_followed_by_struct_body() const noexcept;
+    void parse_struct_literal_type_args(std::vector<syntax::TypeId>& type_args);
+    [[nodiscard]] bool recover_struct_literal_type_arg_separator();
     void parse_struct_fields(std::vector<syntax::FieldInit>& fields, ExprContext context);
     [[nodiscard]] syntax::FieldInit parse_struct_field(ExprContext context);
     [[nodiscard]] bool recover_struct_field_separator();

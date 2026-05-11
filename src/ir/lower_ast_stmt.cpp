@@ -68,6 +68,26 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
     current_function_ = nullptr;
 }
 
+void Lowerer::lower_generic_function_body(
+    const FunctionId function_id,
+    const sema::GenericFunctionInstanceInfo& instance
+) {
+    if (!syntax::is_valid(instance.item) || instance.item.value >= this->ast_.items.size()) {
+        return;
+    }
+    const ActiveSideTables previous_tables = this->active_side_tables_;
+    this->active_side_tables_ = ActiveSideTables {
+        &instance.side_tables.expr_types,
+        &instance.side_tables.expr_c_names,
+        &instance.side_tables.pattern_c_names,
+        &instance.side_tables.pattern_case_sets,
+        &instance.side_tables.syntax_type_handles,
+        &instance.side_tables.stmt_local_types,
+    };
+    this->lower_function_body(function_id, this->ast_.items[instance.item.value]);
+    this->active_side_tables_ = previous_tables;
+}
+
 void Lowerer::lower_block(const syntax::StmtId block_id) {
     const auto previous_locals = locals_;
     const base::usize scope_depth = defer_scopes_.size();

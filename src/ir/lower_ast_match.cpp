@@ -52,9 +52,10 @@ const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) con
 
 std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
     if (syntax::is_valid(id) &&
-        id.value < checked_.pattern_c_names.size() &&
-        !checked_.pattern_c_names[id.value].empty()) {
-        return checked_.pattern_c_names[id.value];
+        this->active_side_tables_.pattern_c_names != nullptr &&
+        id.value < this->active_side_tables_.pattern_c_names->size() &&
+        !(*this->active_side_tables_.pattern_c_names)[id.value].empty()) {
+        return (*this->active_side_tables_.pattern_c_names)[id.value];
     }
     const syntax::PatternNode* pattern = pattern_node(id);
     return pattern == nullptr ? "<invalid>" : std::string(pattern->case_name);

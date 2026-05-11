@@ -26,6 +26,7 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
 syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
     const syntax::Token& begin = this->expect(TokenKind::kw_fn, "expected 'fn'");
     const syntax::Token& name = this->expect_identifier_recovered("expected function name");
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     this->expect_param_list_start("expected '(' after function name");
     std::vector<syntax::ParamDecl> params;
     bool is_variadic = false;
@@ -42,6 +43,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::fn_decl;
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
     item.params = std::move(params);
     item.return_type = return_type;
     item.is_export_c = is_export_c;
@@ -65,6 +67,67 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
 
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));
+}
+
+std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params() {
+    std::vector<syntax::GenericParamDecl> params;
+    if (!this->match(TokenKind::l_bracket)) {
+        return params;
+    }
+    this->parse_generic_params(params);
+    this->expect_recovered(
+        TokenKind::r_bracket,
+        "expected ']' after generic parameter list",
+        RecoveryContext::generic_parameter
+    );
+    return params;
+}
+
+void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& params) {
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        if (std::optional<syntax::GenericParamDecl> param = this->parse_generic_param()) {
+            params.push_back(param.value());
+        }
+        this->reset_panic();
+        if (!this->recover_generic_param_separator()) {
+            break;
+        }
+    }
+}
+
+std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param() {
+    const syntax::Token& name = this->expect_identifier_recovered("expected generic type parameter name");
+    if (name.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+    if (this->check(TokenKind::colon)) {
+        this->report_here("generic bounds are not supported in M2");
+    }
+    return syntax::GenericParamDecl {
+        name.text,
+        name.range,
+    };
+}
+
+bool ItemParser::recover_generic_param_separator() {
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here("expected ',' or ']' after generic parameter");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_parameter)) {
+        this->synchronize(RecoveryContext::generic_parameter);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
 }
 
 void ItemParser::expect_param_list_start(std::string message) {

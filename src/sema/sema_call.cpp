@@ -148,6 +148,52 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
+    if (!callee.type_args.empty()) {
+        const GenericTemplateInfo* generic = qualified_callee
+            ? this->find_generic_function_in_module(callee_module, name, callee_range, false)
+            : this->find_generic_function_in_visible_modules(name, callee_range, false);
+        if (generic == nullptr) {
+            signature = qualified_callee
+                ? this->find_function_in_module(callee_module, name, callee_range, false)
+                : this->find_function_in_visible_modules(name, callee_range, false);
+            if (signature != nullptr) {
+                this->report(callee_range, "non-generic function cannot take type arguments: " + std::string(name));
+            } else {
+                static_cast<void>(qualified_callee
+                    ? this->find_generic_function_in_module(callee_module, name, callee_range, true)
+                    : this->find_generic_function_in_visible_modules(name, callee_range, true));
+            }
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        std::vector<TypeHandle> args;
+        args.reserve(callee.type_args.size());
+        for (const syntax::TypeId arg : callee.type_args) {
+            args.push_back(this->resolve_type(arg));
+        }
+        signature = this->instantiate_generic_function(*generic, args, callee_range);
+        if (signature == nullptr) {
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        this->record_expr_c_name(expr.callee, signature->c_name);
+        this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
+        return this->record_expr_type(expr_id, signature->return_type);
+    }
+    if (const GenericTemplateInfo* generic = qualified_callee
+            ? this->find_generic_function_in_module(callee_module, name, callee_range, false)
+            : this->find_generic_function_in_visible_modules(name, callee_range, false);
+        generic != nullptr) {
+        std::vector<TypeHandle> args;
+        if (!this->infer_generic_arguments(*generic, expr, args)) {
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        signature = this->instantiate_generic_function(*generic, args, callee_range);
+        if (signature == nullptr) {
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        this->record_expr_c_name(expr.callee, signature->c_name);
+        this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
+        return this->record_expr_type(expr_id, signature->return_type);
+    }
     if (qualified_callee) {
         signature = this->find_function_in_module(callee_module, name, callee_range, true);
     } else {

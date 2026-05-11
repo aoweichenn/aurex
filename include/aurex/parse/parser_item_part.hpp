@@ -29,6 +29,10 @@ private:
     void parse_import_alias(syntax::ImportDecl& import);
     void recover_import_alias();
     [[nodiscard]] ParsedVisibility parse_visibility();
+    [[nodiscard]] std::vector<syntax::GenericParamDecl> parse_optional_generic_params();
+    void parse_generic_params(std::vector<syntax::GenericParamDecl>& params);
+    [[nodiscard]] std::optional<syntax::GenericParamDecl> parse_generic_param();
+    [[nodiscard]] bool recover_generic_param_separator();
     [[nodiscard]] syntax::ItemId parse_const_decl();
     [[nodiscard]] syntax::ItemId parse_type_alias_decl();
     [[nodiscard]] syntax::ItemId parse_struct_decl();

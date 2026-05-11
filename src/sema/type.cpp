@@ -133,6 +133,19 @@ TypeHandle TypeTable::opaque_struct(std::string name, std::string c_name) {
     return this->push(std::move(info));
 }
 
+TypeHandle TypeTable::generic_param(std::string name) {
+    if (const auto found = this->generic_param_types_.find(name); found != this->generic_param_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info;
+    info.kind = TypeKind::generic_param;
+    info.name = name;
+    const TypeHandle handle = this->push(std::move(info));
+    this->generic_param_types_.emplace(std::move(name), handle);
+    return handle;
+}
+
 void TypeTable::set_record_contains_array(const TypeHandle handle, const bool contains_array) noexcept {
     assert(handle.value < this->types_.size());
     this->types_[handle.value].contains_array = contains_array;
@@ -153,6 +166,16 @@ void TypeTable::set_enum_payload_layout(
     this->types_[handle.value].enum_payload_storage = storage;
     this->types_[handle.value].enum_payload_size = payload_size;
     this->types_[handle.value].enum_payload_align = payload_align;
+}
+
+void TypeTable::set_generic_instance(
+    const TypeHandle handle,
+    std::string origin_key,
+    std::vector<TypeHandle> args
+) {
+    assert(handle.value < this->types_.size());
+    this->types_[handle.value].generic_origin_key = std::move(origin_key);
+    this->types_[handle.value].generic_args = std::move(args);
 }
 
 bool TypeTable::same(const TypeHandle lhs, const TypeHandle rhs) const noexcept {
@@ -236,6 +259,7 @@ std::string TypeTable::display_name(const TypeHandle type) const {
         case TypeKind::struct_:
         case TypeKind::enum_:
         case TypeKind::opaque_struct:
+        case TypeKind::generic_param:
             name += info.name;
             return name;
         default:

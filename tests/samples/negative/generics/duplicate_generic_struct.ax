@@ -1,0 +1,13 @@
+module duplicate_generic_struct;
+
+struct Box[T] {
+    value: T;
+}
+
+struct Box[U] {
+    value: U;
+}
+
+fn main() -> i32 {
+    return 0;
+}

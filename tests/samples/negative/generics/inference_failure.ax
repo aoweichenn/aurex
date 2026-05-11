@@ -1,0 +1,10 @@
+module inference_failure;
+
+fn make[T]() -> T {
+    return 0;
+}
+
+fn main() -> i32 {
+    let value = make();
+    return value;
+}

@@ -37,9 +37,9 @@ constexpr base::usize RANDOM_SOURCE_SMALL_INTEGER_SPAN = 23;
 constexpr base::usize RANDOM_SOURCE_MAX_ARRAY_LENGTH = 5;
 constexpr base::usize RANDOM_SOURCE_LITERAL_FORMAT_COUNT = 3;
 constexpr base::usize RANDOM_SOURCE_TYPE_SHAPE_COUNT = 5;
-constexpr base::usize RANDOM_SOURCE_I32_EXPR_SHAPE_COUNT = 8;
+constexpr base::usize RANDOM_SOURCE_I32_EXPR_SHAPE_COUNT = 11;
 constexpr base::usize RANDOM_SOURCE_BOOL_EXPR_SHAPE_COUNT = 5;
-constexpr base::usize RANDOM_SOURCE_STATEMENT_SHAPE_COUNT = 8;
+constexpr base::usize RANDOM_SOURCE_STATEMENT_SHAPE_COUNT = 11;
 constexpr base::usize RANDOM_SOURCE_BINARY_DIGIT_SPAN = 2;
 constexpr base::usize RANDOM_SOURCE_FUZZ_GENERATOR_KIND_COUNT = 3;
 constexpr int RANDOM_SOURCE_BITS_PER_BYTE = 8;
@@ -140,6 +140,12 @@ template <base::usize Size>
         return "cast[i32](alignof[" + type_name(random) + "])";
     case 5:
         return "- " + integer_literal(random);
+    case 6:
+        return "id(" + integer_literal(random) + ")";
+    case 7:
+        return "id::[i32](" + integer_literal(random) + ")";
+    case 8:
+        return "first(Holder[i32] { value: " + integer_literal(random) + " })";
     default:
         return "(" + integer_literal(random) + std::string(choose(random, BINARY_OPS)) +
                integer_literal(random) + ")";
@@ -208,6 +214,18 @@ inline void append_statement(
         out << "  let " << local << ": i32 = match Mode_a { Mode_a => "
             << i32_expr(random) << ", Mode_b => " << i32_expr(random) << ", };\n";
         break;
+    case 7:
+        out << "  let " << local << ": Holder[i32] = Holder[i32] { value: " << i32_expr(random) << " };\n"
+            << "  total += first(" << local << ");\n";
+        break;
+    case 8:
+        out << "  let " << local << " = make_holder(" << i32_expr(random) << ");\n"
+            << "  total += " << local << ".value;\n";
+        break;
+    case 9:
+        out << "  let " << local << ": Holder[bool] = Holder[bool] { value: id::[bool]("
+            << (random.coin() ? "true" : "false") << ") };\n";
+        break;
     default:
         out << "  { total += " << i32_expr(random) << "; }\n";
         break;
@@ -219,7 +237,14 @@ inline void append_statement(
     out << "module randomized.case_" << case_index << ";\n"
         << "type Count = i32;\n"
         << "struct Pair { left: i32; right: i32; }\n"
+        << "struct Holder[T] { value: T; }\n"
         << "enum Mode: u8 { a = 1, b = 2, }\n";
+
+    out << "fn id[T](value: T) -> T { return value; }\n"
+        << "fn first[T](holder: Holder[T]) -> T { return holder.value; }\n"
+        << "fn make_holder[T](value: T) -> Holder[T] {\n"
+        << "  return Holder[T] { value: id(value) };\n"
+        << "}\n";
 
     const base::usize helper_count =
         RANDOM_SOURCE_MIN_EXTRA_HELPERS + random.index(RANDOM_SOURCE_MAX_EXTRA_HELPERS);

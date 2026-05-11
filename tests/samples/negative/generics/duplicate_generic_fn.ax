@@ -1,0 +1,13 @@
+module duplicate_generic_fn;
+
+fn id[T](value: T) -> T {
+    return value;
+}
+
+fn id[U](value: U) -> U {
+    return value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

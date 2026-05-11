@@ -16,11 +16,13 @@ using syntax::TokenKind;
 syntax::ItemId ItemParser::parse_struct_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_struct, "expected 'struct'");
     const syntax::Token& name = this->expect_identifier_recovered("expected struct name");
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     this->expect_item_container_start("expected '{' after struct name");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::struct_decl;
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         if (std::optional<syntax::FieldDecl> field = this->parse_struct_field_decl()) {

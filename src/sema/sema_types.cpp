@@ -351,9 +351,10 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 break;
             }
 
-            if (action.type.value < this->checked_.syntax_type_handles.size() &&
-                is_valid(this->checked_.syntax_type_handles[action.type.value])) {
-                const TypeHandle cached = this->checked_.syntax_type_handles[action.type.value];
+            std::vector<TypeHandle>& syntax_type_handles = this->active_syntax_type_handles();
+            if (action.type.value < syntax_type_handles.size() &&
+                is_valid(syntax_type_handles[action.type.value])) {
+                const TypeHandle cached = syntax_type_handles[action.type.value];
                 if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct &&
                     !action.opaque_allowed_as_pointee) {
                     this->report(
@@ -401,44 +402,11 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 });
                 break;
             case syntax::TypeKind::named: {
-                const bool qualified = !type.scope_name.empty();
-                syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
-                if (qualified) {
-                    scope_module = this->resolve_import_alias(type.scope_name, type.scope_range);
-                    if (!syntax::is_valid(scope_module)) {
-                        this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                        values.push_back(INVALID_TYPE_HANDLE);
-                        break;
-                    }
-                }
-
-                if (qualified) {
-                    const TypeHandle resolved = this->find_type_in_module(
-                        scope_module,
-                        type.name,
-                        type.range,
-                        action.opaque_allowed_as_pointee
-                    );
-                    if (is_valid(resolved) &&
-                        this->checked_.types.get(resolved).kind == TypeKind::opaque_struct &&
-                        !action.opaque_allowed_as_pointee) {
-                        this->report(type.range, "opaque struct can only be used as a pointer target");
-                    }
-                    this->record_syntax_type_handle(action.type, resolved);
-                    values.push_back(resolved);
-                    break;
-                }
-
-                const TypeHandle resolved = this->find_type_in_visible_modules(
-                    type.name,
-                    type.range,
+                const TypeHandle resolved = this->resolve_named_type(
+                    action.type,
+                    type,
                     action.opaque_allowed_as_pointee
                 );
-                if (is_valid(resolved) &&
-                    this->checked_.types.get(resolved).kind == TypeKind::opaque_struct &&
-                    !action.opaque_allowed_as_pointee) {
-                    this->report(type.range, "opaque struct can only be used as a pointer target");
-                }
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -470,6 +438,77 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
     return resolved;
 }
 
+TypeHandle SemanticAnalyzer::resolve_named_type(
+    const syntax::TypeId type_id,
+    const syntax::TypeNode& type,
+    const bool opaque_allowed_as_pointee
+) {
+    if (type.scope_name.empty() && this->current_generic_context_ != nullptr) {
+        if (const auto found = this->current_generic_context_->params.find(std::string(type.name));
+            found != this->current_generic_context_->params.end()) {
+            if (!type.type_args.empty()) {
+                this->report(type.range, "generic type parameter cannot take type arguments: " + std::string(type.name));
+                return INVALID_TYPE_HANDLE;
+            }
+            return found->second;
+        }
+    }
+
+    std::vector<TypeHandle> args;
+    args.reserve(type.type_args.size());
+    for (const syntax::TypeId arg : type.type_args) {
+        args.push_back(this->resolve_type(arg, false));
+    }
+
+    const bool qualified = !type.scope_name.empty();
+    syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
+    if (qualified) {
+        scope_module = this->resolve_import_alias(type.scope_name, type.scope_range);
+        if (!syntax::is_valid(scope_module)) {
+            return INVALID_TYPE_HANDLE;
+        }
+    }
+
+    if (!args.empty()) {
+        const GenericTemplateInfo* const generic_struct = qualified
+            ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
+            : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
+        if (generic_struct != nullptr) {
+            return this->instantiate_generic_struct(*generic_struct, type, type_id, args);
+        }
+
+        const TypeHandle concrete = qualified
+            ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee, false)
+            : this->find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee, false);
+        if (is_valid(concrete)) {
+            this->report(type.range, "non-generic type cannot take type arguments: " + std::string(type.name));
+        } else {
+            static_cast<void>(qualified
+                ? this->find_generic_struct_in_module(scope_module, type.name, type.range, true)
+                : this->find_generic_struct_in_visible_modules(type.name, type.range, true));
+        }
+        return INVALID_TYPE_HANDLE;
+    }
+
+    const GenericTemplateInfo* const generic_struct = qualified
+        ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
+        : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
+    if (generic_struct != nullptr) {
+        this->report(type.range, "generic type requires type arguments: " + std::string(type.name));
+        return INVALID_TYPE_HANDLE;
+    }
+
+    const TypeHandle resolved = qualified
+        ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee)
+        : this->find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee);
+    if (is_valid(resolved) &&
+        this->checked_.types.get(resolved).kind == TypeKind::opaque_struct &&
+        !opaque_allowed_as_pointee) {
+        this->report(type.range, "opaque struct can only be used as a pointer target");
+    }
+    return resolved;
+}
+
 TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee) {
     const std::string key = module_key(alias.module, alias.name);
     if (const auto found = resolved_type_aliases_.find(key); found != resolved_type_aliases_.end()) {
@@ -492,22 +531,26 @@ TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, cons
 
 bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept {
     if (!is_valid(dst) || !is_valid(src)) {
-        return is_valid(dst) && is_null_literal(value) && checked_.types.is_pointer(dst);
+        return is_valid(dst) && this->is_null_literal(value) && this->checked_.types.is_pointer(dst);
     }
-    if (checked_.types.is_integer(dst) && checked_.types.is_integer(src) && is_integer_literal(value)) {
+    if (this->checked_.types.get(dst).kind == TypeKind::generic_param ||
+        this->checked_.types.get(src).kind == TypeKind::generic_param) {
+        return this->checked_.types.same(dst, src);
+    }
+    if (this->checked_.types.is_integer(dst) && this->checked_.types.is_integer(src) && this->is_integer_literal(value)) {
         return syntax::is_valid(value) &&
-               value.value < module_.exprs.size() &&
-               integer_literal_fits_type(dst, module_.exprs[value.value].text);
+               value.value < this->module_.exprs.size() &&
+               this->integer_literal_fits_type(dst, this->module_.exprs[value.value].text);
     }
-    if (checked_.types.is_pointer(dst) && checked_.types.is_pointer(src)) {
-        const TypeInfo& dst_info = checked_.types.get(dst);
-        const TypeInfo& src_info = checked_.types.get(src);
+    if (this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src)) {
+        const TypeInfo& dst_info = this->checked_.types.get(dst);
+        const TypeInfo& src_info = this->checked_.types.get(src);
         if (dst_info.pointer_mutability == PointerMutability::const_ &&
-            checked_.types.same(dst_info.pointee, src_info.pointee)) {
+            this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
             return true;
         }
     }
-    return checked_.types.same(dst, src);
+    return this->checked_.types.same(dst, src);
 }
 
 bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
@@ -517,6 +560,9 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
             return false;
         }
         const TypeInfo& info = this->checked_.types.get(current);
+        if (info.kind == TypeKind::generic_param) {
+            return true;
+        }
         if (this->checked_.types.is_void(current) || info.kind == TypeKind::opaque_struct) {
             return false;
         }
@@ -555,7 +601,7 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer) {
+        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -685,6 +731,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         const TypeInfo& dependency_info = this->checked_.types.get(dependency);
         if (dependency_info.kind == TypeKind::builtin ||
             dependency_info.kind == TypeKind::pointer ||
+            dependency_info.kind == TypeKind::generic_param ||
             dependency_info.kind == TypeKind::opaque_struct ||
             results.contains(dependency.value)) {
             return;
@@ -738,7 +785,7 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer) {
+        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -853,6 +900,10 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
     if (!is_valid(dst) || !is_valid(src)) {
         return false;
     }
+    if (this->checked_.types.get(dst).kind == TypeKind::generic_param ||
+        this->checked_.types.get(src).kind == TypeKind::generic_param) {
+        return false;
+    }
 
     if (kind == syntax::ExprKind::cast) {
         return (this->checked_.types.is_integer(dst) || this->checked_.types.is_float(dst) || this->checked_.types.is_bool(dst)) &&
@@ -949,6 +1000,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
             return TypeAbiLayout {align_forward(offset, max_align), max_align};
         }
         case TypeKind::opaque_struct:
+        case TypeKind::generic_param:
             return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
         }
         return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
@@ -964,7 +1016,10 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
             return;
         }
         const TypeInfo& info = this->checked_.types.get(dependency);
-        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::opaque_struct) {
+        if (info.kind == TypeKind::builtin ||
+            info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::generic_param ||
+            info.kind == TypeKind::opaque_struct) {
             stack.push_back(TypeLayoutFrame {dependency, {}, TypeLayoutFrameStage::enter});
             return;
         }
@@ -1001,6 +1056,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         }
         case TypeKind::builtin:
         case TypeKind::pointer:
+        case TypeKind::generic_param:
         case TypeKind::opaque_struct:
             break;
         }
@@ -1027,7 +1083,10 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
             states[frame.type.value] = TypeLayoutVisitState::done;
             continue;
         }
-        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::opaque_struct) {
+        if (info.kind == TypeKind::builtin ||
+            info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::generic_param ||
+            info.kind == TypeKind::opaque_struct) {
             layouts[frame.type.value] = finish_type(frame.type, layouts);
             states[frame.type.value] = TypeLayoutVisitState::done;
             continue;

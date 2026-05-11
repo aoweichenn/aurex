@@ -44,6 +44,11 @@ enum class TypeKind {
     array,
 };
 
+struct GenericParamDecl {
+    std::string_view name;
+    base::SourceRange range {};
+};
+
 struct TypeNode {
     TypeKind kind = TypeKind::named;
     base::SourceRange range {};
@@ -51,6 +56,7 @@ struct TypeNode {
     std::string_view scope_name;
     base::SourceRange scope_range {};
     std::string_view name;
+    std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
     TypeId pointee = INVALID_TYPE_ID;
     base::u64 array_count = 0;
@@ -186,6 +192,7 @@ struct ExprNode {
     std::string_view field_name;
     ExprId index = INVALID_EXPR_ID;
     std::string_view struct_name;
+    std::vector<TypeId> type_args;
     std::vector<FieldInit> field_inits;
     TypeId cast_type = INVALID_TYPE_ID;
     ExprId cast_expr = INVALID_EXPR_ID;
@@ -265,6 +272,7 @@ struct ItemNode {
     ItemKind kind = ItemKind::fn_decl;
     base::SourceRange range {};
     std::string_view name;
+    std::vector<GenericParamDecl> generic_params;
     Visibility visibility = Visibility::private_;
     TypeId const_type = INVALID_TYPE_ID;
     ExprId const_value = INVALID_EXPR_ID;

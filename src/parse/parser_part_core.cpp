@@ -29,6 +29,18 @@ bool ParserPartCore::check_next(const syntax::TokenKind kind) const noexcept {
     return this->parser_.check_next(kind);
 }
 
+const syntax::Token& ParserPartCore::peek_at(const base::usize offset) const noexcept {
+    return this->parser_.peek_at(offset);
+}
+
+base::usize ParserPartCore::mark() const noexcept {
+    return this->parser_.mark();
+}
+
+void ParserPartCore::rewind(const base::usize position) noexcept {
+    this->parser_.rewind(position);
+}
+
 bool ParserPartCore::match(const syntax::TokenKind kind) noexcept {
     return this->parser_.match(kind);
 }

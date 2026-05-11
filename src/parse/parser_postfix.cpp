@@ -27,6 +27,9 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
     const syntax::ExprId expr,
     const ExprContext context
 ) {
+    if (this->check(TokenKind::colon_colon) && this->peek_at(1).kind == TokenKind::l_bracket) {
+        return this->parse_generic_apply_suffix(expr);
+    }
     if (this->match(TokenKind::dot)) {
         return this->parse_field_suffix(expr);
     }
@@ -54,6 +57,70 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
         );
     }
     return std::nullopt;
+}
+
+syntax::ExprId PostfixExprParser::parse_generic_apply_suffix(const syntax::ExprId expr) {
+    const syntax::Token& begin = this->expect(TokenKind::colon_colon, "expected '::' before generic type arguments");
+    this->expect_recovered(
+        TokenKind::l_bracket,
+        "expected '[' after '::'",
+        RecoveryContext::generic_type_argument
+    );
+    std::vector<syntax::TypeId> type_args;
+    this->parse_generic_type_args(type_args);
+    const syntax::Token& end = this->expect_recovered(
+        TokenKind::r_bracket,
+        "expected ']' after generic type arguments",
+        RecoveryContext::generic_type_argument
+    );
+
+    syntax::ExprNode node;
+    node.kind = syntax::ExprKind::name;
+    node.range = this->merge(this->expr_range_or(expr, begin.range), end.range);
+    node.type_args = std::move(type_args);
+    if (syntax::is_valid(expr) && expr.value < this->session_.module.exprs.size()) {
+        const syntax::ExprNode& callee = this->session_.module.exprs[expr.value];
+        if (callee.kind == syntax::ExprKind::name) {
+            node.scope_name = callee.scope_name;
+            node.scope_range = callee.scope_range;
+            node.text = callee.text;
+        } else {
+            this->report_at(begin, "explicit generic arguments require a function name");
+            node.kind = syntax::ExprKind::invalid;
+        }
+    }
+    return this->session_.module.push_expr(std::move(node));
+}
+
+void PostfixExprParser::parse_generic_type_args(std::vector<syntax::TypeId>& args) {
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        args.push_back(this->parse_type());
+        this->reset_panic();
+        if (!this->recover_generic_type_arg_separator()) {
+            break;
+        }
+    }
+}
+
+bool PostfixExprParser::recover_generic_type_arg_separator() {
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here("expected ',' or ']' after generic type argument");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
+        this->synchronize(RecoveryContext::generic_type_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
 }
 
 syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) {
@@ -101,10 +168,10 @@ syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId expr, c
 
 void PostfixExprParser::parse_call_args(
     std::vector<syntax::ExprId>& args,
-    const ExprContext context
+    const ExprContext
 ) {
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
-        args.push_back(this->parse_expr(context));
+        args.push_back(this->parse_expr(ExprContext::normal));
         this->reset_panic();
         if (!this->recover_call_arg_separator()) {
             break;

@@ -208,4 +208,503 @@ TEST_F(AurexIntegrationTest, SymlinkedImportStillValidatesExpectedModuleName) {
     );
 }
 
+TEST_F(AurexIntegrationTest, M2GenericRegressions) {
+    const fs::path source = positive_sample("generics", "basic_m2.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "struct priv Box[i32]",
+        "struct priv Pair[i32,bool]",
+        "id[i32] -> i32",
+        "id[bool] -> bool",
+        "make_pair[i32,bool]",
+        "first[i32,bool]",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn id[i32](x: i32)",
+        "fn id[bool](x: bool)",
+        "fn make_pair[i32,bool](a: i32, b: bool)",
+        "fn first[i32,bool](p: basic_m2.Pair[i32,bool])",
+    });
+
+    const fs::path binary = test_bin_root() / "basic_m2_generics";
+    require_success(aurexc() + " " + q(source) + " -o " + q(binary));
+    require_success(q(binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_param.ax"))).output,
+        "duplicate generic parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "type_arity_mismatch.ax"))).output,
+        "generic type argument count mismatch"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "non_generic_type_args.ax"))).output,
+        "non-generic type cannot take type arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "missing_type_args.ax"))).output,
+        "generic type requires type arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "inference_failure.ax"))).output,
+        "cannot infer generic type argument"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "operator_unconstrained.ax"))).output,
+        "generic type parameter `T` has no known operator"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "non_generic_fn_type_args.ax"))).output,
+        "non-generic function cannot take type arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_with_plain_struct.ax"))).output,
+        "duplicate type definition"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_generic_struct.ax"))).output,
+        "duplicate type definition"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_with_plain_fn.ax"))).output,
+        "duplicate function definition"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_generic_fn.ax"))).output,
+        "duplicate function definition"
+    );
+}
+
+TEST_F(AurexIntegrationTest, M2NestedGenericInstantiationRegressions) {
+    const fs::path source = write_source_file(
+        tmp_root() / "nested_m2_generics.ax",
+        "module nested_m2_generics;\n"
+        "struct Holder[T] { value: T; }\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn make_holder[T](value: T) -> Holder[T] {\n"
+        "  return Holder[T] { value: id(value) };\n"
+        "}\n"
+        "fn unwrap_holder[T](holder: Holder[T]) -> T {\n"
+        "  return id(holder.value);\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let holder = make_holder(7);\n"
+        "  return unwrap_holder(holder) - id::[i32](7);\n"
+        "}\n"
+    );
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked, {
+        "id[i32] -> i32",
+        "make_holder[i32]",
+        "unwrap_holder[i32]",
+        "Holder[i32]",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "fn id[i32](value: i32)",
+        "fn make_holder[i32](value: i32)",
+        "fn unwrap_holder[i32]",
+    });
+
+    const fs::path binary = test_bin_root() / "nested_m2_generics";
+    require_success(aurexc() + " " + q(source) + " -o " + q(binary));
+    require_success(q(binary));
+}
+
+TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
+    const fs::path import_dir = tmp_root() / "generic_imports";
+    fs::create_directories(import_dir);
+    static_cast<void>(write_source_file(
+        import_dir / "generic_a.ax",
+        "module generic_a;\n"
+        "pub struct RemoteBox[T] { pub value: T; }\n"
+        "priv struct SecretBox[T] { pub value: T; }\n"
+        "pub fn remote_id[T](value: T) -> T { return value; }\n"
+        "priv fn secret_id[T](value: T) -> T { return value; }\n"
+        "pub fn make_box[T](value: T) -> RemoteBox[T] {\n"
+        "  return RemoteBox[T] { value: value };\n"
+        "}\n"
+    ));
+    static_cast<void>(write_source_file(
+        import_dir / "generic_b.ax",
+        "module generic_b;\n"
+        "pub struct RemoteBox[T] { pub value: T; }\n"
+        "pub fn remote_id[T](value: T) -> T { return value; }\n"
+    ));
+
+    const fs::path use_imported = write_source_file(
+        tmp_root() / "use_imported_generics.ax",
+        "module use_imported_generics;\n"
+        "import generic_a as ga;\n"
+        "fn main() -> i32 {\n"
+        "  let box: ga::RemoteBox[i32] = ga::make_box::[i32](ga::remote_id(5));\n"
+        "  let ptr: *const i32 = &box.value;\n"
+        "  return ga::remote_id(*ptr) - 5;\n"
+        "}\n"
+    );
+    require_success(aurexc() + " -I " + q(import_dir) + " --check " + q(use_imported));
+
+    const fs::path imported_checked_source = write_source_file(
+        tmp_root() / "imported_checked_generics.ax",
+        "module imported_checked_generics;\n"
+        "import generic_a;\n"
+        "fn main() -> i32 {\n"
+        "  let box: RemoteBox[i32] = make_box(9);\n"
+        "  return remote_id(box.value) - 9;\n"
+        "}\n"
+    );
+    const std::string checked = require_success(aurexc() + " -I " + q(import_dir) + " --emit=checked " + q(imported_checked_source)).output;
+    expect_contains_all(checked, {
+        "RemoteBox[i32]",
+        "remote_id[i32]",
+        "make_box[i32]",
+    });
+
+    const fs::path private_generic_type = write_source_file(
+        tmp_root() / "private_generic_type.ax",
+        "module private_generic_type;\n"
+        "import generic_a as ga;\n"
+        "fn main() -> i32 {\n"
+        "  let box: ga::SecretBox[i32] = ga::SecretBox[i32] { value: 1 };\n"
+        "  return box.value;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_type)).output,
+        "generic type is private: generic_a.SecretBox"
+    );
+
+    const fs::path private_generic_fn = write_source_file(
+        tmp_root() / "private_generic_fn.ax",
+        "module private_generic_fn;\n"
+        "import generic_a as ga;\n"
+        "fn main() -> i32 { return ga::secret_id::[i32](1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_generic_fn)).output,
+        "generic function is private: generic_a.secret_id"
+    );
+
+    const fs::path ambiguous_generic = write_source_file(
+        tmp_root() / "ambiguous_generic.ax",
+        "module ambiguous_generic;\n"
+        "import generic_a;\n"
+        "import generic_b;\n"
+        "fn main() -> i32 {\n"
+        "  let box: RemoteBox[i32] = RemoteBox[i32] { value: 1 };\n"
+        "  return remote_id(box.value);\n"
+        "}\n"
+    );
+    const std::string ambiguous_output = require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(ambiguous_generic)).output;
+    expect_contains(ambiguous_output, "ambiguous generic type name");
+    expect_contains(ambiguous_output, "ambiguous generic function name");
+
+    const fs::path unqualified_private_generics = write_source_file(
+        tmp_root() / "unqualified_private_generics.ax",
+        "module unqualified_private_generics;\n"
+        "import generic_a;\n"
+        "fn main() -> i32 {\n"
+        "  let box: SecretBox[i32] = SecretBox[i32] { value: 1 };\n"
+        "  return box.value;\n"
+        "}\n"
+    );
+    const std::string unqualified_private_output =
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(unqualified_private_generics)).output;
+    expect_contains(unqualified_private_output, "unknown generic type: SecretBox");
+
+    const fs::path unqualified_private_generic_fn = write_source_file(
+        tmp_root() / "unqualified_private_generic_fn.ax",
+        "module unqualified_private_generic_fn;\n"
+        "import generic_a;\n"
+        "fn main() -> i32 { return secret_id::[i32](1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(unqualified_private_generic_fn)).output,
+        "unknown generic function: secret_id"
+    );
+
+    const fs::path generic_inference_edges = write_source_file(
+        tmp_root() / "generic_inference_edges.ax",
+        "module generic_inference_edges;\n"
+        "struct Box[T] { value: T; }\n"
+        "struct ArrayBox[T] { data: [2]T; }\n"
+        "fn pick[T](lhs: T, rhs: T) -> T { return lhs; }\n"
+        "fn ptr_id[T](value: *const T) -> *const T { return value; }\n"
+        "fn array_ptr_id[T](value: *mut [2]T) -> *mut [2]T { return value; }\n"
+        "fn main() -> i32 {\n"
+        "  let b: Box[i32] = Box[i32] { value: 1 };\n"
+        "  let chosen: Box[i32] = pick(b, Box[i32] { value: 2 });\n"
+        "  let ptr: *const i32 = &chosen.value;\n"
+        "  let same_ptr = ptr_id(ptr);\n"
+        "  let values: *mut [2]i32 = null;\n"
+        "  let same_values = array_ptr_id(values);\n"
+        "  let size: usize = sizeof[ArrayBox[i32]];\n"
+        "  return *same_ptr + (*same_values)[0] + cast[i32](size) - 9;\n"
+        "}\n"
+    );
+    require_success(aurexc() + " --check " + q(generic_inference_edges));
+
+    const fs::path generic_placeholder_edges = write_source_file(
+        tmp_root() / "generic_placeholder_edges.ax",
+        "module generic_placeholder_edges;\n"
+        "struct Box[T] { value: T; }\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn ptr_box[T](value: *const T) -> Box[*const T] {\n"
+        "  return Box[*const T] { value: id::[*const T](value) };\n"
+        "}\n"
+        "fn array_ptr_box[T](value: *mut [2]T) -> Box[*mut [2]T] {\n"
+        "  return Box[*mut [2]T] { value: id::[*mut [2]T](value) };\n"
+        "}\n"
+        "fn wrap_ptr[U](value: *const U) -> Box[*const U] {\n"
+        "  return ptr_box::[U](value);\n"
+        "}\n"
+        "fn wrap_array[V](value: *mut [2]V) -> Box[*mut [2]V] {\n"
+        "  return array_ptr_box::[V](value);\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let ptr: *const i32 = null;\n"
+        "  let boxed = wrap_ptr(ptr);\n"
+        "  let values: *mut [2]i32 = null;\n"
+        "  let array_boxed = wrap_array(values);\n"
+        "  let size: usize = sizeof[Box[*const i32]] + sizeof[Box[*mut [2]i32]];\n"
+        "  return cast[i32](size) - cast[i32](sizeof[Box[*const i32]] + sizeof[Box[*mut [2]i32]]);\n"
+        "}\n"
+    );
+    require_success(aurexc() + " --check " + q(generic_placeholder_edges));
+
+    const fs::path missing_visible_generic_type = write_source_file(
+        tmp_root() / "missing_visible_generic_type.ax",
+        "module missing_visible_generic_type;\n"
+        "fn main() -> i32 {\n"
+        "  let value: Missing[i32] = Missing[i32] { value: 1 };\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(missing_visible_generic_type)).output,
+        "unknown generic type: Missing"
+    );
+
+    const fs::path missing_qualified_generic_type = write_source_file(
+        tmp_root() / "missing_qualified_generic_type.ax",
+        "module missing_qualified_generic_type;\n"
+        "import generic_a as ga;\n"
+        "fn main() -> i32 {\n"
+        "  let value: ga::Missing[i32] = ga::Missing[i32] { value: 1 };\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(missing_qualified_generic_type)).output,
+        "unknown generic type in module generic_a: Missing"
+    );
+
+    const fs::path missing_visible_generic_fn = write_source_file(
+        tmp_root() / "missing_visible_generic_fn.ax",
+        "module missing_visible_generic_fn;\n"
+        "fn main() -> i32 { return missing::[i32](1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(missing_visible_generic_fn)).output,
+        "unknown generic function: missing"
+    );
+
+    const fs::path invalid_generic_type_arg = write_source_file(
+        tmp_root() / "invalid_generic_type_arg.ax",
+        "module invalid_generic_type_arg;\n"
+        "struct Box[T] { value: T; }\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 {\n"
+        "  let value: Box[Missing] = Box[Missing] { value: 1 };\n"
+        "  return id::[Missing](1);\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(invalid_generic_type_arg)).output,
+        "unknown type: Missing"
+    );
+
+    const fs::path missing_qualified_generic_fn = write_source_file(
+        tmp_root() / "missing_qualified_generic_fn.ax",
+        "module missing_qualified_generic_fn;\n"
+        "import generic_a as ga;\n"
+        "fn main() -> i32 { return ga::missing::[i32](1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(missing_qualified_generic_fn)).output,
+        "unknown generic function in module generic_a: missing"
+    );
+
+    const fs::path generic_struct_duplicate_field = write_source_file(
+        tmp_root() / "generic_struct_duplicate_field.ax",
+        "module generic_struct_duplicate_field;\n"
+        "struct Bad[T] { value: T; value: T; }\n"
+        "fn main() -> i32 {\n"
+        "  let size: usize = sizeof[Bad[i32]];\n"
+        "  return cast[i32](size);\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_struct_duplicate_field)).output,
+        "duplicate struct field: value"
+    );
+
+    const fs::path generic_struct_invalid_field = write_source_file(
+        tmp_root() / "generic_struct_invalid_field.ax",
+        "module generic_struct_invalid_field;\n"
+        "struct Bad[T] { value: void; }\n"
+        "fn main() -> i32 {\n"
+        "  let size: usize = sizeof[Bad[i32]];\n"
+        "  return cast[i32](size);\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_struct_invalid_field)).output,
+        "field type is not valid storage"
+    );
+
+    const fs::path mismatched_inference = write_source_file(
+        tmp_root() / "mismatched_inference.ax",
+        "module mismatched_inference;\n"
+        "fn pick[T](lhs: T, rhs: T) -> T { return lhs; }\n"
+        "fn main() -> i32 { return pick(1, true); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(mismatched_inference)).output,
+        "cannot infer generic type argument for call to pick"
+    );
+
+    const fs::path pointer_inference_mutability_mismatch = write_source_file(
+        tmp_root() / "pointer_inference_mutability_mismatch.ax",
+        "module pointer_inference_mutability_mismatch;\n"
+        "fn ptr_id[T](value: *mut T) -> *mut T { return value; }\n"
+        "fn main() -> i32 {\n"
+        "  let ptr: *const i32 = null;\n"
+        "  let same = ptr_id(ptr);\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(pointer_inference_mutability_mismatch)).output,
+        "cannot infer generic type argument for call to ptr_id"
+    );
+
+    const fs::path array_inference_count_mismatch = write_source_file(
+        tmp_root() / "array_inference_count_mismatch.ax",
+        "module array_inference_count_mismatch;\n"
+        "fn array_ptr_id[T](value: *mut [2]T) -> *mut [2]T { return value; }\n"
+        "fn main() -> i32 {\n"
+        "  let values: *mut [3]i32 = null;\n"
+        "  let same = array_ptr_id(values);\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(array_inference_count_mismatch)).output,
+        "cannot infer generic type argument for call to array_ptr_id"
+    );
+
+    const fs::path builtin_inference_mismatch = write_source_file(
+        tmp_root() / "builtin_inference_mismatch.ax",
+        "module builtin_inference_mismatch;\n"
+        "fn require_i32[T](value: i32, payload: T) -> T { return payload; }\n"
+        "fn main() -> i32 { return require_i32(true, 1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(builtin_inference_mismatch)).output,
+        "cannot infer generic type argument for call to require_i32"
+    );
+
+    const fs::path struct_origin_inference_mismatch = write_source_file(
+        tmp_root() / "struct_origin_inference_mismatch.ax",
+        "module struct_origin_inference_mismatch;\n"
+        "struct Box[T] { value: T; }\n"
+        "struct Wrap[T] { value: T; }\n"
+        "fn take_box[T](value: Box[T]) -> T { return value.value; }\n"
+        "fn main() -> i32 { return take_box(Wrap[i32] { value: 1 }); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(struct_origin_inference_mismatch)).output,
+        "cannot infer generic type argument for call to take_box"
+    );
+
+    const fs::path generic_arity = write_source_file(
+        tmp_root() / "generic_arity.ax",
+        "module generic_arity;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id::[i32, bool](1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_arity)).output,
+        "generic function argument count mismatch"
+    );
+
+    const fs::path generic_prototype = write_source_file(
+        tmp_root() / "generic_prototype.ax",
+        "module generic_prototype;\n"
+        "fn id[T](value: T) -> T;\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_prototype)).output,
+        "generic functions cannot use C ABI or prototypes in M2"
+    );
+
+    const fs::path generic_export = write_source_file(
+        tmp_root() / "generic_export.ax",
+        "module generic_export;\n"
+        "export c fn id[T](value: T) -> T @name(\"id\") { return value; }\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_export)).output,
+        "generic functions cannot use C ABI or prototypes in M2"
+    );
+
+    const fs::path generic_method = write_source_file(
+        tmp_root() / "generic_method.ax",
+        "module generic_method;\n"
+        "struct Box { value: i32; }\n"
+        "impl Box {\n"
+        "  fn id[T](self: *const Box, value: T) -> T { return value; }\n"
+        "}\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_method)).output,
+        "generic methods are not supported in M2"
+    );
+
+    const fs::path generic_method_call = write_source_file(
+        tmp_root() / "generic_method_call.ax",
+        "module generic_method_call;\n"
+        "struct Box { value: i32; }\n"
+        "impl Box {\n"
+        "  fn read(self: *const Box) -> i32 { return self.value; }\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let box: Box = Box { value: 1 };\n"
+        "  return box.read::[i32]();\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(generic_method_call)).output,
+        "explicit generic arguments require a function name"
+    );
+
+    const fs::path generic_return_inference = write_source_file(
+        tmp_root() / "generic_return_inference.ax",
+        "module generic_return_inference;\n"
+        "fn identity[T](value: T) { return value; }\n"
+        "fn main() -> i32 { return identity(1); }\n"
+    );
+    const std::string inferred_return_checked = require_success(aurexc() + " --emit=checked " + q(generic_return_inference)).output;
+    expect_contains(inferred_return_checked, "identity[i32] -> i32");
+}
+
 } // namespace aurex::test

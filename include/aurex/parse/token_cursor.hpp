@@ -50,6 +50,22 @@ public:
         return this->tokens_[next].kind == kind;
     }
 
+    [[nodiscard]] const syntax::Token& peek_at(const base::usize offset) const noexcept {
+        const base::usize index = this->current_ + offset;
+        if (index >= this->tokens_.size()) {
+            return this->tokens_.back();
+        }
+        return this->tokens_[index];
+    }
+
+    [[nodiscard]] base::usize mark() const noexcept {
+        return this->current_;
+    }
+
+    void rewind(const base::usize position) noexcept {
+        this->current_ = position < this->tokens_.size() ? position : this->tokens_.size() - 1;
+    }
+
     bool match(const syntax::TokenKind kind) noexcept {
         if (!this->check(kind)) {
             return false;

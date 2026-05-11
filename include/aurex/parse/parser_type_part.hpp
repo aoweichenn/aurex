@@ -14,6 +14,8 @@ public:
 private:
     [[nodiscard]] syntax::TypeId parse_type_atom();
     [[nodiscard]] syntax::TypeId parse_primitive_type();
+    void parse_generic_type_args(std::vector<syntax::TypeId>& args);
+    [[nodiscard]] bool recover_generic_type_arg_separator();
     void expect_array_length_end();
 };
 

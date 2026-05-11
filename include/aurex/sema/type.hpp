@@ -45,6 +45,7 @@ enum class TypeKind {
     struct_,
     enum_,
     opaque_struct,
+    generic_param,
 };
 
 enum class PointerMutability {
@@ -65,6 +66,8 @@ struct TypeInfo {
     base::u64 enum_payload_align = 1;
     std::string name;
     std::string c_name;
+    std::string generic_origin_key;
+    std::vector<TypeHandle> generic_args;
     bool contains_array = false;
 };
 
@@ -78,10 +81,12 @@ public:
     [[nodiscard]] TypeHandle named_struct(std::string name, std::string c_name, bool contains_array);
     [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
+    [[nodiscard]] TypeHandle generic_param(std::string name);
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
     void set_enum_payload_layout(TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
+    void set_generic_instance(TypeHandle handle, std::string origin_key, std::vector<TypeHandle> args);
 
     [[nodiscard]] bool same(TypeHandle lhs, TypeHandle rhs) const noexcept;
     [[nodiscard]] bool is_integer(TypeHandle type) const noexcept;
@@ -128,6 +133,7 @@ private:
     std::vector<TypeInfo> types_;
     std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
     std::unordered_map<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
+    std::unordered_map<std::string, TypeHandle> generic_param_types_;
 };
 
 } // namespace aurex::sema

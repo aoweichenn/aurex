@@ -1022,6 +1022,34 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
     expect_contains(messages, "expected expression");
 }
 
+TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators) {
+    expect_parse_error(
+        "module parser.generic_bound_recovery;\n"
+        "struct Box[T: Copy] { value: T; }\n",
+        "generic bounds are not supported in M2"
+    );
+    expect_parse_error(
+        "module parser.generic_param_recovery;\n"
+        "fn id[T U](value: T) -> T { return value; }\n",
+        "expected ',' or ']' after generic parameter"
+    );
+    expect_parse_error(
+        "module parser.generic_type_arg_recovery;\n"
+        "type Bad = Pair[i32 bool];\n",
+        "expected ',' or ']' after generic type argument"
+    );
+    expect_parse_error(
+        "module parser.generic_expr_arg_recovery;\n"
+        "fn main() -> i32 { return id::[i32 bool](1); }\n",
+        "expected ',' or ']' after generic type argument"
+    );
+    expect_parse_error(
+        "module parser.generic_struct_literal_arg_recovery;\n"
+        "fn main() -> i32 { let value = Pair[i32 bool] { first: 1, second: true }; return value.first; }\n",
+        "expected ',' or ']' after generic type argument"
+    );
+}
+
 TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
     constexpr base::SourceId PARSER_TEST_CONTROL_SEPARATOR_RECOVERY_SOURCE_ID {29};
     constexpr std::string_view source =
@@ -1816,6 +1844,32 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
         }
     );
     expect_false_on(parse::detail::token_ends_builtin_argument, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_generic_type_argument,
+        {
+            TokenKind::comma,
+            TokenKind::r_bracket,
+            TokenKind::r_paren,
+            TokenKind::l_brace,
+            TokenKind::r_brace,
+            TokenKind::semicolon,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_generic_type_argument, TokenKind::identifier);
+
+    expect_true_all(
+        parse::detail::token_ends_generic_parameter,
+        {
+            TokenKind::comma,
+            TokenKind::r_bracket,
+            TokenKind::l_paren,
+            TokenKind::l_brace,
+            TokenKind::r_brace,
+            TokenKind::semicolon,
+        }
+    );
+    expect_false_on(parse::detail::token_ends_generic_parameter, TokenKind::identifier);
 }
 
 TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
@@ -1930,6 +1984,36 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
     }
     expect_contains(messages, "expected ')' after cast expression");
     expect_contains(messages, "expected ',' after strraw data");
+}
+
+TEST(CoreUnit, ParserM2GenericSyntax) {
+    constexpr std::string_view source =
+        "module parser.generics;\n"
+        "struct Box[T] { value: T; }\n"
+        "struct Pair[A, B] { first: A; second: B; }\n"
+        "fn id[T](x: T) -> T { return x; }\n"
+        "fn main() -> i32 {\n"
+        "  let a: Box[i32] = Box[i32] { value: id::[i32](1) };\n"
+        "  let p: Pair[i32, bool] = Pair[i32, bool] { first: a.value, second: true };\n"
+        "  let i: i32 = 0;\n"
+        "  let f = id[i](1);\n"
+        "  return p.first;\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "struct Box[T]",
+        "field priv value : T",
+        "struct Pair[A, B]",
+        "fn id[T]",
+        "param x : T",
+        "return T",
+        "Box[i32]",
+        "Pair[i32, bool]",
+        "id`[i32]",
+        "index",
+    });
 }
 
 } // namespace aurex::test

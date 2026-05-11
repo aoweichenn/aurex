@@ -147,15 +147,18 @@ std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const st
 }
 
 std::string SemanticAnalyzer::function_key(const syntax::ItemNode& function) const {
-    const syntax::ModuleId module = item_module(function);
+    const syntax::ModuleId module = this->item_module(function);
+    if (this->has_generic_params(function)) {
+        return this->module_key(module, function.name);
+    }
     if (!syntax::is_valid(function.impl_type)) {
-        return module_key(module, function.name);
+        return this->module_key(module, function.name);
     }
     const TypeHandle owner_type =
-        function.impl_type.value < checked_.syntax_type_handles.size()
-            ? checked_.syntax_type_handles[function.impl_type.value]
+        function.impl_type.value < this->checked_.syntax_type_handles.size()
+            ? this->checked_.syntax_type_handles[function.impl_type.value]
             : INVALID_TYPE_HANDLE;
-    return method_key(module, owner_type, function.name);
+    return this->method_key(module, owner_type, function.name);
 }
 
 std::string SemanticAnalyzer::method_key(

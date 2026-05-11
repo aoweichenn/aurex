@@ -530,9 +530,10 @@ CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
 
 std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
     if (syntax::is_valid(callee) &&
-        callee.value < checked_.expr_c_names.size() &&
-        !checked_.expr_c_names[callee.value].empty()) {
-        return checked_.expr_c_names[callee.value];
+        this->active_side_tables_.expr_c_names != nullptr &&
+        callee.value < this->active_side_tables_.expr_c_names->size() &&
+        !(*this->active_side_tables_.expr_c_names)[callee.value].empty()) {
+        return (*this->active_side_tables_.expr_c_names)[callee.value];
     }
     if (syntax::is_valid(callee) && callee.value < ast_.exprs.size()) {
         return std::string(ast_.exprs[callee.value].text);
@@ -542,9 +543,10 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
 
 std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const syntax::ExprNode& expr) const {
     if (syntax::is_valid(expr_id) &&
-        expr_id.value < checked_.expr_c_names.size() &&
-        !checked_.expr_c_names[expr_id.value].empty()) {
-        return checked_.expr_c_names[expr_id.value];
+        this->active_side_tables_.expr_c_names != nullptr &&
+        expr_id.value < this->active_side_tables_.expr_c_names->size() &&
+        !(*this->active_side_tables_.expr_c_names)[expr_id.value].empty()) {
+        return (*this->active_side_tables_.expr_c_names)[expr_id.value];
     }
     if (expr.kind == syntax::ExprKind::field) {
         return std::string(expr.field_name);
@@ -586,24 +588,30 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
 }
 
 sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
-    if (!syntax::is_valid(expr) || expr.value >= checked_.expr_types.size()) {
+    if (!syntax::is_valid(expr) ||
+        this->active_side_tables_.expr_types == nullptr ||
+        expr.value >= this->active_side_tables_.expr_types->size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
-    return checked_.expr_types[expr.value];
+    return (*this->active_side_tables_.expr_types)[expr.value];
 }
 
 sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept {
-    if (!syntax::is_valid(type) || type.value >= checked_.syntax_type_handles.size()) {
+    if (!syntax::is_valid(type) ||
+        this->active_side_tables_.syntax_type_handles == nullptr ||
+        type.value >= this->active_side_tables_.syntax_type_handles->size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
-    return checked_.syntax_type_handles[type.value];
+    return (*this->active_side_tables_.syntax_type_handles)[type.value];
 }
 
 sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexcept {
-    if (!syntax::is_valid(stmt) || stmt.value >= checked_.stmt_local_types.size()) {
+    if (!syntax::is_valid(stmt) ||
+        this->active_side_tables_.stmt_local_types == nullptr ||
+        stmt.value >= this->active_side_tables_.stmt_local_types->size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
-    return checked_.stmt_local_types[stmt.value];
+    return (*this->active_side_tables_.stmt_local_types)[stmt.value];
 }
 
 sema::TypeHandle Lowerer::aggregate_field_type(

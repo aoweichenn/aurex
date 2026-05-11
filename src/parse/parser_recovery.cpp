@@ -84,6 +84,16 @@ bool token_matches_recovery_context(
         return detail::token_matches_array_type_length_boundary(kind) ||
                detail::token_starts_item(kind) ||
                detail::token_starts_non_expression_statement(kind);
+    case RecoveryContext::generic_type_argument:
+        return detail::token_ends_generic_type_argument(kind) ||
+               detail::token_starts_type(kind) ||
+               detail::token_starts_item(kind) ||
+               detail::token_starts_non_expression_statement(kind);
+    case RecoveryContext::generic_parameter:
+        return detail::token_ends_generic_parameter(kind) ||
+               kind == TokenKind::identifier ||
+               detail::token_starts_item(kind) ||
+               detail::token_starts_non_expression_statement(kind);
     case RecoveryContext::pattern_payload:
         return detail::token_matches_pattern_payload_boundary(kind) ||
                detail::token_starts_item(kind) ||

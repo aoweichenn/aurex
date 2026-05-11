@@ -20,6 +20,15 @@ namespace aurex::ir::detail {
     return checked.expr_types[expr.value];
 }
 
+struct ActiveSideTables {
+    const std::vector<sema::TypeHandle>* expr_types = nullptr;
+    const std::vector<std::string>* expr_c_names = nullptr;
+    const std::vector<std::string>* pattern_c_names = nullptr;
+    const std::vector<std::unordered_set<std::string>>* pattern_case_sets = nullptr;
+    const std::vector<sema::TypeHandle>* syntax_type_handles = nullptr;
+    const std::vector<sema::TypeHandle>* stmt_local_types = nullptr;
+};
+
 struct CallTarget {
     FunctionId function = INVALID_FUNCTION_ID;
     std::string symbol;
@@ -101,6 +110,7 @@ private:
     );
 
     void lower_function_body(FunctionId function_id, const syntax::ItemNode& item);
+    void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceInfo& instance);
     void lower_block(syntax::StmtId block_id);
     void lower_block_contents(syntax::StmtId block_id);
     void lower_stmt(syntax::StmtId stmt_id);
@@ -194,6 +204,7 @@ private:
 
     const syntax::AstModule& ast_;
     const sema::CheckedModule& checked_;
+    ActiveSideTables active_side_tables_;
     Module module_;
     Function* current_function_ = nullptr;
     BlockId current_block_ = INVALID_BLOCK_ID;
@@ -206,6 +217,7 @@ private:
     std::unordered_map<EnumCaseTypeKey, const sema::EnumCaseInfo*, EnumCaseTypeKeyHash> enum_cases_by_type_and_case_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
+    std::vector<FunctionId> generic_instance_functions_;
     std::vector<LoopContext> loop_contexts_;
     std::vector<std::vector<syntax::ExprId>> defer_scopes_;
 };

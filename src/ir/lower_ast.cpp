@@ -37,29 +37,44 @@ namespace {
 
 Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked)
     : ast_(ast), checked_(checked) {
-    module_.types = checked_.types;
-    item_functions_.assign(ast_.items.size(), INVALID_FUNCTION_ID);
-    index_enum_cases();
+    this->module_.types = this->checked_.types;
+    this->item_functions_.assign(this->ast_.items.size(), INVALID_FUNCTION_ID);
+    this->generic_instance_functions_.assign(this->checked_.generic_function_instances.size(), INVALID_FUNCTION_ID);
+    this->active_side_tables_ = ActiveSideTables {
+        &this->checked_.expr_types,
+        &this->checked_.expr_c_names,
+        &this->checked_.pattern_c_names,
+        &this->checked_.pattern_case_sets,
+        &this->checked_.syntax_type_handles,
+        &this->checked_.stmt_local_types,
+    };
+    this->index_enum_cases();
 }
 
 Module Lowerer::lower() {
-    lower_record_layouts();
-    declare_global_constants();
-    lower_function_declarations();
-    lower_global_constant_initializers();
-    for (base::u32 index = 0; index < ast_.items.size(); ++index) {
-        const syntax::ItemNode& item = ast_.items[index];
+    this->lower_record_layouts();
+    this->declare_global_constants();
+    this->lower_function_declarations();
+    this->lower_global_constant_initializers();
+    for (base::u32 index = 0; index < this->ast_.items.size(); ++index) {
+        const syntax::ItemNode& item = this->ast_.items[index];
         if (item.kind != syntax::ItemKind::fn_decl || item.is_extern_c || !syntax::is_valid(item.body)) {
             continue;
         }
-        lower_function_body(item_functions_[index], item);
+        this->lower_function_body(this->item_functions_[index], item);
     }
-    return std::move(module_);
+    for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
+        this->lower_generic_function_body(this->generic_instance_functions_[index], this->checked_.generic_function_instances[index]);
+    }
+    return std::move(this->module_);
 }
 
 void Lowerer::lower_record_layouts() {
-    for (const auto& entry : checked_.structs) {
+    for (const auto& entry : this->checked_.structs) {
         const sema::StructInfo& info = entry.second;
+        if (info.is_generic_placeholder) {
+            continue;
+        }
         RecordLayout record;
         record.type = info.type;
         record.name = info.name;
@@ -72,25 +87,25 @@ void Lowerer::lower_record_layouts() {
             });
         }
         if (sema::is_valid(record.type)) {
-            module_.record_indices[record.type.value] = static_cast<base::u32>(module_.records.size());
+            this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
         }
-        module_.records.push_back(std::move(record));
+        this->module_.records.push_back(std::move(record));
     }
 
     std::unordered_set<base::u32> lowered_enum_types;
-    for (const auto& entry : checked_.enum_cases) {
+    for (const auto& entry : this->checked_.enum_cases) {
         const sema::EnumCaseInfo& enum_case = entry.second;
         if (sema::is_valid(enum_case.type) && !lowered_enum_types.insert(enum_case.type.value).second) {
             continue;
         }
-        if (!is_payload_enum(module_.types, enum_case.type)) {
+        if (!is_payload_enum(this->module_.types, enum_case.type)) {
             continue;
         }
-        RecordLayout record = make_payload_enum_record(module_.types, enum_case.type);
+        RecordLayout record = make_payload_enum_record(this->module_.types, enum_case.type);
         if (sema::is_valid(record.type)) {
-            module_.record_indices[record.type.value] = static_cast<base::u32>(module_.records.size());
+            this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
         }
-        module_.records.push_back(std::move(record));
+        this->module_.records.push_back(std::move(record));
     }
 }
 
@@ -174,31 +189,59 @@ void Lowerer::declare_global_constants() {
 }
 
 void Lowerer::lower_function_declarations() {
-    for (base::u32 index = 0; index < ast_.items.size(); ++index) {
-        const syntax::ItemNode& item = ast_.items[index];
-        if (item.kind != syntax::ItemKind::fn_decl || item.is_prototype) {
+    for (base::u32 index = 0; index < this->ast_.items.size(); ++index) {
+        const syntax::ItemNode& item = this->ast_.items[index];
+        if (item.kind != syntax::ItemKind::fn_decl || item.is_prototype || !item.generic_params.empty()) {
             continue;
         }
         Function function;
         function.name = std::string(item.name);
-        function.symbol = item_symbol(index, item);
+        function.symbol = this->item_symbol(index, item);
         function.linkage = item_linkage(item);
         function.call_conv = item.is_extern_c || item.is_export_c
             ? AbiCallConv::c
             : AbiCallConv::aurex;
-        function.is_entry = is_root_aurex_entry(ast_, index, item);
+        function.is_entry = is_root_aurex_entry(this->ast_, index, item);
         function.is_variadic = item.is_variadic;
-        function.return_type = function_return_type(index, item);
+        function.return_type = this->function_return_type(index, item);
         for (const syntax::ParamDecl& param : item.params) {
             function.signature_params.push_back(FunctionParam {
                 std::string(param.name),
-                syntax_type(param.type),
+                this->syntax_type(param.type),
             });
         }
-        const FunctionId function_id {static_cast<base::u32>(module_.functions.size())};
-        item_functions_[index] = function_id;
-        function_symbols_[function.symbol] = function_id;
-        module_.functions.push_back(std::move(function));
+        const FunctionId function_id {static_cast<base::u32>(this->module_.functions.size())};
+        this->item_functions_[index] = function_id;
+        this->function_symbols_[function.symbol] = function_id;
+        this->module_.functions.push_back(std::move(function));
+    }
+
+    for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
+        const sema::GenericFunctionInstanceInfo& instance = this->checked_.generic_function_instances[index];
+        Function function;
+        function.name = instance.signature.name;
+        function.symbol = instance.signature.c_name;
+        function.linkage = Linkage::internal;
+        function.call_conv = AbiCallConv::aurex;
+        function.is_entry = false;
+        function.is_variadic = false;
+        function.return_type = instance.signature.return_type;
+        if (syntax::is_valid(instance.item) && instance.item.value < this->ast_.items.size()) {
+            const syntax::ItemNode& item = this->ast_.items[instance.item.value];
+            for (base::usize param_index = 0; param_index < item.params.size(); ++param_index) {
+                const sema::TypeHandle param_type = param_index < instance.signature.param_types.size()
+                    ? instance.signature.param_types[param_index]
+                    : sema::INVALID_TYPE_HANDLE;
+                function.signature_params.push_back(FunctionParam {
+                    std::string(item.params[param_index].name),
+                    param_type,
+                });
+            }
+        }
+        const FunctionId function_id {static_cast<base::u32>(this->module_.functions.size())};
+        this->generic_instance_functions_[index] = function_id;
+        this->function_symbols_[function.symbol] = function_id;
+        this->module_.functions.push_back(std::move(function));
     }
 }
 

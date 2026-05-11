@@ -1,0 +1,38 @@
+module basic_m2;
+
+struct Box[T] {
+    value: T;
+}
+
+struct Pair[A, B] {
+    first: A;
+    second: B;
+}
+
+fn id[T](x: T) -> T {
+    return x;
+}
+
+fn first[A, B](p: Pair[A, B]) -> A {
+    return p.first;
+}
+
+fn make_pair[A, B](a: A, b: B) -> Pair[A, B] {
+    return Pair[A, B] {
+        first: a,
+        second: b,
+    };
+}
+
+fn main() -> i32 {
+    let a: Box[i32] = Box[i32] { value: 1 };
+    let p: Pair[i32, bool] = Pair[i32, bool] {
+        first: id(41),
+        second: id::[bool](true),
+    };
+    let q = make_pair(1, false);
+    if first(p) == 41 && q.first == 1 && a.value == 1 {
+        return id::[i32](0);
+    }
+    return 1;
+}

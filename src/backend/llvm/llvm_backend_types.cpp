@@ -90,6 +90,9 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
             }
             current = info.enum_underlying;
             continue;
+        case sema::TypeKind::generic_param:
+            result = llvm::Type::getVoidTy(this->context_);
+            break;
         }
         break;
     }

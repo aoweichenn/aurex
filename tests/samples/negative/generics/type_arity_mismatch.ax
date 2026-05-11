@@ -1,0 +1,11 @@
+module type_arity_mismatch;
+
+struct Pair[A, B] {
+    first: A;
+    second: B;
+}
+
+fn main() -> i32 {
+    let value: Pair[i32] = Pair[i32] { first: 1, second: 2 };
+    return value.first;
+}

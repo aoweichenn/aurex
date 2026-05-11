@@ -37,6 +37,10 @@ enum class RecoveryContext {
     index_expression,
     // Array type length boundary after a malformed length expression.
     array_type_length,
+    // Generic type argument list boundary after a malformed type argument.
+    generic_type_argument,
+    // Generic type parameter list boundary after a malformed parameter name.
+    generic_parameter,
     // Match/enum pattern payload boundary after a malformed payload binding.
     pattern_payload,
     // Enum declaration payload type boundary after a malformed payload type.

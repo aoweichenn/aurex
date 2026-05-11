@@ -118,11 +118,17 @@ struct AbiSymbolInfo {
 } // namespace
 
 void SemanticAnalyzer::register_type_names() {
-    for (const syntax::ItemNode& item : module_.items) {
-        const syntax::ModuleId owner = item_module(item);
-        const std::string key = module_key(owner, item.name);
-        const std::string qualified = qualified_name(owner, item.name);
-        const std::string c_name = c_symbol_name(owner, item.name);
+    for (const syntax::ItemNode& item : this->module_.items) {
+        const auto* const begin = this->module_.items.data();
+        const base::usize item_index = static_cast<base::usize>(&item - begin);
+        if (this->has_generic_params(item)) {
+            this->register_generic_template(item, syntax::ItemId {static_cast<base::u32>(item_index)});
+            continue;
+        }
+        const syntax::ModuleId owner = this->item_module(item);
+        const std::string key = this->module_key(owner, item.name);
+        const std::string qualified = this->qualified_name(owner, item.name);
+        const std::string c_name = this->c_symbol_name(owner, item.name);
         TypeHandle handle = INVALID_TYPE_HANDLE;
         if (item.kind == syntax::ItemKind::type_alias) {
             TypeAliasInfo alias;
@@ -131,39 +137,44 @@ void SemanticAnalyzer::register_type_names() {
             alias.target = item.alias_type;
             alias.range = item.range;
             alias.visibility = item.visibility;
-            auto alias_inserted = checked_.type_aliases.emplace(key, std::move(alias));
+            auto alias_inserted = this->checked_.type_aliases.emplace(key, std::move(alias));
             if (!alias_inserted.second) {
-                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
             }
-            if (named_types_.contains(key)) {
-                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            if (this->named_types_.contains(key)) {
+                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+            }
+            if (this->generic_struct_templates_.contains(key)) {
+                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
             }
             continue;
         }
         if (item.kind == syntax::ItemKind::struct_decl) {
-            handle = checked_.types.named_struct(qualified, c_name, false);
+            if (this->generic_struct_templates_.contains(key)) {
+                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+                continue;
+            }
+            handle = this->checked_.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
-            handle = checked_.types.named_enum(qualified, c_name);
+            handle = this->checked_.types.named_enum(qualified, c_name);
         } else if (item.kind == syntax::ItemKind::opaque_struct_decl) {
-            handle = checked_.types.opaque_struct(qualified, c_name);
+            handle = this->checked_.types.opaque_struct(qualified, c_name);
         }
 
         if (!is_valid(handle)) {
             continue;
         }
-        const auto* const begin = module_.items.data();
-        const base::usize item_index = static_cast<base::usize>(&item - begin);
-        if (item_index < checked_.item_c_names.size()) {
-            checked_.item_c_names[item_index] = c_name;
+        if (item_index < this->checked_.item_c_names.size()) {
+            this->checked_.item_c_names[item_index] = c_name;
         }
-        auto inserted = named_types_.emplace(key, handle);
+        auto inserted = this->named_types_.emplace(key, handle);
         if (!inserted.second) {
-            report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+            this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
             continue;
         }
-        type_visibilities_[key] = item.visibility;
-        if (checked_.type_aliases.contains(key)) {
-            report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
+        this->type_visibilities_[key] = item.visibility;
+        if (this->checked_.type_aliases.contains(key)) {
+            this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
             continue;
         }
 
@@ -175,11 +186,11 @@ void SemanticAnalyzer::register_type_names() {
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
             info.visibility = item.visibility;
-            auto struct_inserted = checked_.structs.emplace(key, std::move(info));
+            auto struct_inserted = this->checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
-                report(item.range, "duplicate struct definition in module " + module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, "duplicate struct definition in module " + this->module_name(owner) + ": " + std::string(item.name));
             } else {
-                struct_infos_by_type_[handle.value] = &struct_inserted.first->second;
+                this->struct_infos_by_type_[handle.value] = &struct_inserted.first->second;
             }
         }
     }
@@ -192,54 +203,61 @@ void SemanticAnalyzer::resolve_type_alias_decls() {
 }
 
 void SemanticAnalyzer::register_value_names() {
-    FunctionRegistry functions(checked_, global_values_, diagnostics_);
-    for (const syntax::ItemNode& item : module_.items) {
-        current_module_ = item_module(item);
-        std::string key = module_key(current_module_, item.name);
-        std::string c_name = c_symbol_name(current_module_, item.name);
+    FunctionRegistry functions(this->checked_, this->global_values_, this->diagnostics_);
+    for (const syntax::ItemNode& item : this->module_.items) {
+        if (this->has_generic_params(item)) {
+            continue;
+        }
+        this->current_module_ = this->item_module(item);
+        std::string key = this->module_key(this->current_module_, item.name);
+        std::string c_name = this->c_symbol_name(this->current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
+            if (!is_method && this->generic_function_templates_.contains(key)) {
+                this->report(item.range, "duplicate function definition in module " + this->module_name(this->current_module_) + ": " + std::string(item.name));
+                continue;
+            }
             if (item.is_variadic && !item.is_extern_c) {
-                report(item.range, "variadic functions are only supported for extern c declarations");
+                this->report(item.range, "variadic functions are only supported for extern c declarations");
             }
             if (is_method) {
-                method_owner_type = resolve_type(item.impl_type);
+                method_owner_type = this->resolve_type(item.impl_type);
                 if (is_valid(method_owner_type)) {
-                    const TypeKind owner_kind = checked_.types.get(method_owner_type).kind;
+                    const TypeKind owner_kind = this->checked_.types.get(method_owner_type).kind;
                     if (owner_kind != TypeKind::struct_ &&
                         owner_kind != TypeKind::enum_ &&
                         owner_kind != TypeKind::opaque_struct) {
-                        report(item.range, "impl target must be a named type");
+                        this->report(item.range, "impl target must be a named type");
                     }
                 }
-                key = method_key(current_module_, method_owner_type, item.name);
-                c_name = method_c_symbol_name(method_owner_type, item.name);
+                key = this->method_key(this->current_module_, method_owner_type, item.name);
+                c_name = this->method_c_symbol_name(method_owner_type, item.name);
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
             TypeHandle return_type = INVALID_TYPE_HANDLE;
             if (has_explicit_return) {
-                return_type = resolve_type(item.return_type);
+                return_type = this->resolve_type(item.return_type);
             } else if (item.is_extern_c || item.is_export_c) {
-                report(item.range, "C ABI function return type must be explicit");
-                return_type = checked_.types.builtin(BuiltinType::void_);
+                this->report(item.range, "C ABI function return type must be explicit");
+                return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else if (item.is_prototype) {
-                report(item.range, "function prototype return type must be explicit");
-                return_type = checked_.types.builtin(BuiltinType::void_);
+                this->report(item.range, "function prototype return type must be explicit");
+                return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else {
                 return_type = INVALID_TYPE_HANDLE;
             }
             std::vector<TypeHandle> param_types;
             for (const syntax::ParamDecl& param : item.params) {
-                TypeHandle param_type = resolve_type(param.type);
-                if (!is_valid_storage_type(param_type)) {
-                    report(param.range, "function parameter type is not valid storage");
+                TypeHandle param_type = this->resolve_type(param.type);
+                if (!this->is_valid_storage_type(param_type)) {
+                    this->report(param.range, "function parameter type is not valid storage");
                 }
-                if (checked_.types.is_array(param_type)) {
-                    report(param.range, "array type cannot be used as a function parameter");
+                if (this->checked_.types.is_array(param_type)) {
+                    this->report(param.range, "array type cannot be used as a function parameter");
                 }
-                if (checked_.types.contains_array(param_type)) {
-                    report(param.range, "struct containing array cannot be passed by value");
+                if (this->checked_.types.contains_array(param_type)) {
+                    this->report(param.range, "struct containing array cannot be passed by value");
                 }
                 param_types.push_back(param_type);
             }
@@ -250,28 +268,28 @@ void SemanticAnalyzer::register_value_names() {
                         continue;
                     }
                     if (i != 0) {
-                        report(item.params[i].range, "method self parameter must be first");
+                        this->report(item.params[i].range, "method self parameter must be first");
                     }
                     saw_self = true;
                 }
                 if (saw_self && !param_types.empty() && is_valid(method_owner_type)) {
                     TypeHandle self_type = param_types.front();
-                    if (checked_.types.is_pointer(self_type)) {
-                        self_type = checked_.types.get(self_type).pointee;
+                    if (this->checked_.types.is_pointer(self_type)) {
+                        self_type = this->checked_.types.get(self_type).pointee;
                     }
-                    if (!checked_.types.same(self_type, method_owner_type)) {
-                        report(item.params.front().range, "method self parameter must use the impl type or a pointer to it");
+                    if (!this->checked_.types.same(self_type, method_owner_type)) {
+                        this->report(item.params.front().range, "method self parameter must use the impl type or a pointer to it");
                     }
                 }
             }
             if (has_explicit_return && is_valid(return_type)) {
-                validate_function_return_type(item, return_type);
+                this->validate_function_return_type(item, return_type);
             }
-            const auto* const begin = module_.items.data();
+            const auto* const begin = this->module_.items.data();
             const base::usize item_index = static_cast<base::usize>(&item - begin);
             functions.register_function(
                 item,
-                current_module_,
+                this->current_module_,
                 key,
                 c_name,
                 method_owner_type,
@@ -280,34 +298,34 @@ void SemanticAnalyzer::register_value_names() {
                 syntax::ItemId {static_cast<base::u32>(item_index)}
             );
             if (!item.is_prototype && !item.is_extern_c) {
-                function_definition_items_[key] = syntax::ItemId {static_cast<base::u32>(item_index)};
+                this->function_definition_items_[key] = syntax::ItemId {static_cast<base::u32>(item_index)};
             }
-            function_body_states_[key] = FunctionBodyState::not_started;
+            this->function_body_states_[key] = FunctionBodyState::not_started;
         } else if (item.kind == syntax::ItemKind::const_decl) {
-            TypeHandle type = resolve_type(item.const_type);
-            const auto* const begin = module_.items.data();
+            TypeHandle type = this->resolve_type(item.const_type);
+            const auto* const begin = this->module_.items.data();
             const base::usize item_index = static_cast<base::usize>(&item - begin);
-            if (item_index < checked_.item_c_names.size()) {
-                checked_.item_c_names[item_index] = c_name;
+            if (item_index < this->checked_.item_c_names.size()) {
+                this->checked_.item_c_names[item_index] = c_name;
             }
-            const auto inserted = global_values_.emplace(key, Symbol {
+            const auto inserted = this->global_values_.emplace(key, Symbol {
                 SymbolKind::const_,
                 std::string(item.name),
                 c_name,
-                current_module_,
+                this->current_module_,
                 type,
                 item.range,
                 false,
                 item.visibility,
             });
             if (!inserted.second) {
-                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
+                this->report(item.range, "duplicate value definition in module " + this->module_name(this->current_module_) + ": " + std::string(item.name));
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
             std::unordered_set<std::string> seen_cases;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 if (!seen_cases.insert(std::string(enum_case.name)).second) {
-                    report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
+                    this->report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
                 }
             }
             const TypeHandle enum_type = this->resolve_type(item.enum_base_type);
@@ -555,7 +573,7 @@ void SemanticAnalyzer::analyze_entry_points() {
 
 void SemanticAnalyzer::analyze_struct_properties() {
     for (const syntax::ItemNode& item : this->module_.items) {
-        if (item.kind != syntax::ItemKind::struct_decl) {
+        if (item.kind != syntax::ItemKind::struct_decl || this->has_generic_params(item)) {
             continue;
         }
         this->current_module_ = this->item_module(item);

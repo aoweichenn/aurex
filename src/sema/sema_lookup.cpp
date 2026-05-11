@@ -222,32 +222,6 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_owner_module(
     return &signature;
 }
 
-bool SemanticAnalyzer::is_destructor_signature(
-    const FunctionSignature& signature,
-    const TypeHandle owner_type
-) const {
-    if (!signature.is_method ||
-        !signature.has_self_param ||
-        signature.name != "destroy" ||
-        signature.param_types.size() != 1 ||
-        !checked_.types.same(signature.method_owner_type, owner_type) ||
-        !checked_.types.is_void(signature.return_type)) {
-        return false;
-    }
-    const TypeHandle self_type = signature.param_types.front();
-    if (!checked_.types.is_pointer(self_type)) {
-        return false;
-    }
-    const TypeInfo& self = checked_.types.get(self_type);
-    return self.pointer_mutability == PointerMutability::mut &&
-           checked_.types.same(self.pointee, owner_type);
-}
-
-bool SemanticAnalyzer::has_destructor(const TypeHandle owner_type) const {
-    const FunctionSignature* signature = find_method_in_owner_module(owner_type, "destroy", true);
-    return signature != nullptr && is_destructor_signature(*signature, owner_type);
-}
-
 bool SemanticAnalyzer::method_receiver_matches(
     const FunctionSignature& signature,
     const TypeHandle receiver_type,

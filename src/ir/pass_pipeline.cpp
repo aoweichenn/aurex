@@ -63,7 +63,7 @@ void rewrite_terminator(Terminator& terminator, const ValueReplacementMap& repla
         return false;
     }
     const sema::TypeHandle pointee = module.types.get(type).pointee;
-    if (!sema::is_valid(pointee) || !module.types.is_copyable(pointee)) {
+    if (!sema::is_valid(pointee)) {
         return false;
     }
     return module.types.is_bool(pointee) ||

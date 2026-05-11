@@ -25,10 +25,10 @@ M2 `language-core-no-std` 移除了标准库层：
 
 ## 后续架构方向
 
-标准库恢复前应先完成语言级抽象：
+标准库恢复前应先完成当前基础抽象：
 
-- capability predicate：`copy T`、`drop T`，之后扩展 `eq K`、`hash K`。
-- destructor/drop model：显式析构形状、自动 drop order、panic/early-return 语义。
-- borrow model：shared/mutable borrow、生命周期区域、借用返回。
-- move-out model：容器或字段的显式取出、partial move 状态。
-- trait/where：把泛型约束从 hardcode 迁到可解释、可诊断的语言机制。
+- `unsafe` 边界：raw pointer、unchecked string 和 bit-level cast 不能长期留在 safe surface。
+- ADT enum 与 pattern matching：让 Result/Option/AST 状态空间成为主力表达。
+- array/slice/string/function type：补齐不依赖 std 的基础值和 ABI 表达。
+- trait/where：先把非资源类泛型约束迁到可解释、可诊断的语言机制。
+- 资源语义：`Copy` / `Drop` / borrow / move-out 暂缓为后续专题，不作为当前架构前置条件。

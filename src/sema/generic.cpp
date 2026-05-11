@@ -532,7 +532,7 @@ std::string SemanticAnalyzer::generic_case_c_name(
     const std::vector<TypeHandle>& args,
     const std::string_view case_name
 ) const {
-    std::string name = generic_c_name(info, args);
+    std::string name = this->generic_c_name(info, args);
     name.append(SEMA_GENERIC_C_NAME_CASE_SEPARATOR);
     name.append(case_name);
     return name;
@@ -545,15 +545,15 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum_from_syntax(
     const bool opaque_allowed_as_pointee
 ) {
     if (args.size() != info.params.size()) {
-        report(range, "generic enum type argument count mismatch for " + info.name);
+        this->report(range, "generic enum type argument count mismatch for " + info.name);
         return INVALID_TYPE_HANDLE;
     }
     std::vector<TypeHandle> resolved_args;
     resolved_args.reserve(args.size());
     for (syntax::TypeId arg : args) {
-        resolved_args.push_back(resolve_type(arg, opaque_allowed_as_pointee));
+        resolved_args.push_back(this->resolve_type(arg, opaque_allowed_as_pointee));
     }
-    return instantiate_generic_enum(info, resolved_args, range);
+    return this->instantiate_generic_enum(info, resolved_args, range);
 }
 
 TypeHandle SemanticAnalyzer::instantiate_generic_enum(
@@ -562,7 +562,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     const base::SourceRange range
 ) {
     if (args.size() != info.params.size()) {
-        report(range, "generic enum type argument count mismatch for " + info.name);
+        this->report(range, "generic enum type argument count mismatch for " + info.name);
         return INVALID_TYPE_HANDLE;
     }
     for (TypeHandle arg : args) {
@@ -570,20 +570,20 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             return INVALID_TYPE_HANDLE;
         }
     }
-    const std::string instance_key = generic_instance_key(info, args);
-    if (const auto found = generic_enum_instances_.find(instance_key); found != generic_enum_instances_.end()) {
+    const std::string instance_key = this->generic_instance_key(info, args);
+    if (const auto found = this->generic_enum_instances_.find(instance_key); found != this->generic_enum_instances_.end()) {
         return found->second;
     }
 
-    const syntax::ItemNode* item = item_from_id(module_, info.item);
+    const syntax::ItemNode* item = item_from_id(this->module_, info.item);
     if (item == nullptr) {
-        report(range, "invalid generic enum template: " + info.name);
+        this->report(range, "invalid generic enum template: " + info.name);
         return INVALID_TYPE_HANDLE;
     }
 
-    TypeHandle enum_type = checked_.types.named_enum(generic_display_name(info, args), generic_c_name(info, args));
-    generic_enum_instances_[instance_key] = enum_type;
-    generic_enum_instance_infos_[enum_type.value] = GenericEnumInstanceInfo {
+    TypeHandle enum_type = this->checked_.types.named_enum(this->generic_display_name(info, args), this->generic_c_name(info, args));
+    this->generic_enum_instances_[instance_key] = enum_type;
+    this->generic_enum_instance_infos_[enum_type.value] = GenericEnumInstanceInfo {
         info.name,
         info.module,
         args,
@@ -594,45 +594,44 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
         substitution.types.emplace(info.params[i], args[i]);
     }
 
-    const syntax::ModuleId previous_module = current_module_;
-    current_module_ = info.module;
-    const TypeHandle underlying = resolve_type_with_substitution(item->enum_base_type, &substitution, false);
-    if (!checked_.types.is_integer(underlying)) {
-        report(item->range, "enum base type must be an integer type");
+    const syntax::ModuleId previous_module = this->current_module_;
+    this->current_module_ = info.module;
+    const TypeHandle underlying = this->resolve_type_with_substitution(item->enum_base_type, &substitution, false);
+    if (!this->checked_.types.is_integer(underlying)) {
+        this->report(item->range, "enum base type must be an integer type");
     }
-    checked_.types.set_enum_underlying(enum_type, underlying);
+    this->checked_.types.set_enum_underlying(enum_type, underlying);
 
     TypeHandle payload_storage = INVALID_TYPE_HANDLE;
     base::u64 payload_size = SEMA_GENERIC_EMPTY_PAYLOAD_SIZE;
     base::u64 payload_align = SEMA_GENERIC_MIN_PAYLOAD_ALIGNMENT;
     bool contains_array_payload = false;
-    bool copyable = true;
     std::unordered_set<std::string> seen_cases;
     std::unordered_set<base::u64> seen_values;
     for (const syntax::EnumCaseDecl& enum_case : item->enum_cases) {
         if (!seen_cases.insert(std::string(enum_case.name)).second) {
-            report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
+            this->report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
             continue;
         }
         base::u64 discriminant = SEMA_GENERIC_INITIAL_DISCRIMINANT_VALUE;
-        const bool parsed_discriminant = parse_integer_literal_text(enum_case.value_text, discriminant);
+        const bool parsed_discriminant = this->parse_integer_literal_text(enum_case.value_text, discriminant);
         if (!parsed_discriminant) {
-            report(enum_case.range, "enum discriminant literal is out of range");
-        } else if (!integer_literal_fits_type(underlying, enum_case.value_text)) {
-            report(enum_case.range, "enum discriminant does not fit enum base type");
+            this->report(enum_case.range, "enum discriminant literal is out of range");
+        } else if (!this->integer_literal_fits_type(underlying, enum_case.value_text)) {
+            this->report(enum_case.range, "enum discriminant does not fit enum base type");
         } else if (!seen_values.insert(discriminant).second) {
-            report(enum_case.range, "duplicate enum discriminant value in " + info.name);
+            this->report(enum_case.range, "duplicate enum discriminant value in " + info.name);
         }
         const bool has_payload = syntax::is_valid(enum_case.payload_type);
         const TypeHandle payload_type = has_payload
-            ? resolve_type_with_substitution(enum_case.payload_type, &substitution, false)
+            ? this->resolve_type_with_substitution(enum_case.payload_type, &substitution, false)
             : INVALID_TYPE_HANDLE;
         if (has_payload) {
-            if (!is_valid_storage_type(payload_type)) {
-                report(enum_case.range, "enum payload type is not valid storage");
+            if (!this->is_valid_storage_type(payload_type)) {
+                this->report(enum_case.range, "enum payload type is not valid storage");
             }
-            const base::u64 case_size = abi_size(payload_type);
-            const base::u64 case_align = abi_align(payload_type);
+            const base::u64 case_size = this->abi_size(payload_type);
+            const base::u64 case_align = this->abi_align(payload_type);
             if (!is_valid(payload_storage) ||
                 case_size > payload_size ||
                 (case_size == payload_size && case_align > payload_align)) {
@@ -640,17 +639,14 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             }
             payload_size = std::max(payload_size, case_size);
             payload_align = std::max(payload_align, case_align);
-            if (checked_.types.contains_array(payload_type)) {
+            if (this->checked_.types.contains_array(payload_type)) {
                 contains_array_payload = true;
-                report(enum_case.range, "enum payload cannot contain array storage");
-            }
-            if (!checked_.types.is_copyable(payload_type)) {
-                copyable = false;
+                this->report(enum_case.range, "enum payload cannot contain array storage");
             }
         }
-        const std::string case_c_name = generic_case_c_name(info, args, enum_case.name);
-        const auto inserted = checked_.enum_cases.emplace(module_key(info.module, case_c_name), EnumCaseInfo {
-            generic_case_name(info, args, enum_case.name),
+        const std::string case_c_name = this->generic_case_c_name(info, args, enum_case.name);
+        const auto inserted = this->checked_.enum_cases.emplace(this->module_key(info.module, case_c_name), EnumCaseInfo {
+            this->generic_case_name(info, args, enum_case.name),
             case_c_name,
             info.module,
             enum_type,
@@ -662,21 +658,21 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
             info.visibility,
         });
         if (!inserted.second) {
-            report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
+            this->report(enum_case.range, "duplicate enum case: " + info.name + "." + std::string(enum_case.name));
         } else {
-            index_enum_case(inserted.first->second);
+            this->index_enum_case(inserted.first->second);
         }
     }
     if (is_valid(payload_storage)) {
-        checked_.types.set_enum_payload_layout(
+        this->checked_.types.set_enum_payload_layout(
             enum_type,
-            payload_storage_type(checked_.types, payload_size, payload_align),
+            payload_storage_type(this->checked_.types, payload_size, payload_align),
             payload_size,
             payload_align
         );
     }
-    checked_.types.set_record_properties(enum_type, contains_array_payload, copyable && !contains_array_payload);
-    current_module_ = previous_module;
+    this->checked_.types.set_record_contains_array(enum_type, contains_array_payload);
+    this->current_module_ = previous_module;
     return enum_type;
 }
 
@@ -687,15 +683,15 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct_from_syntax(
     const bool opaque_allowed_as_pointee
 ) {
     if (args.size() != info.params.size()) {
-        report(range, "generic struct type argument count mismatch for " + info.name);
+        this->report(range, "generic struct type argument count mismatch for " + info.name);
         return INVALID_TYPE_HANDLE;
     }
     std::vector<TypeHandle> resolved_args;
     resolved_args.reserve(args.size());
     for (syntax::TypeId arg : args) {
-        resolved_args.push_back(resolve_type(arg, opaque_allowed_as_pointee));
+        resolved_args.push_back(this->resolve_type(arg, opaque_allowed_as_pointee));
     }
-    return instantiate_generic_struct(info, resolved_args, range);
+    return this->instantiate_generic_struct(info, resolved_args, range);
 }
 
 TypeHandle SemanticAnalyzer::instantiate_generic_struct(
@@ -704,7 +700,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     const base::SourceRange range
 ) {
     if (args.size() != info.params.size()) {
-        report(range, "generic struct type argument count mismatch for " + info.name);
+        this->report(range, "generic struct type argument count mismatch for " + info.name);
         return INVALID_TYPE_HANDLE;
     }
     for (TypeHandle arg : args) {
@@ -712,28 +708,28 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
             return INVALID_TYPE_HANDLE;
         }
     }
-    const std::string instance_key = generic_instance_key(info, args);
-    if (const auto found = generic_struct_instances_.find(instance_key); found != generic_struct_instances_.end()) {
+    const std::string instance_key = this->generic_instance_key(info, args);
+    if (const auto found = this->generic_struct_instances_.find(instance_key); found != this->generic_struct_instances_.end()) {
         return found->second;
     }
 
-    const syntax::ItemNode* item = item_from_id(module_, info.item);
+    const syntax::ItemNode* item = item_from_id(this->module_, info.item);
     if (item == nullptr) {
-        report(range, "invalid generic struct template: " + info.name);
+        this->report(range, "invalid generic struct template: " + info.name);
         return INVALID_TYPE_HANDLE;
     }
 
-    TypeHandle struct_type = checked_.types.named_struct(generic_display_name(info, args), generic_c_name(info, args), false);
-    generic_struct_instances_[instance_key] = struct_type;
-    generic_struct_instance_infos_[struct_type.value] = GenericStructInstanceInfo {
+    TypeHandle struct_type = this->checked_.types.named_struct(this->generic_display_name(info, args), this->generic_c_name(info, args), false);
+    this->generic_struct_instances_[instance_key] = struct_type;
+    this->generic_struct_instance_infos_[struct_type.value] = GenericStructInstanceInfo {
         info.name,
         info.module,
         args,
     };
 
     StructInfo instance_info;
-    instance_info.name = generic_display_name(info, args);
-    instance_info.c_name = generic_c_name(info, args);
+    instance_info.name = this->generic_display_name(info, args);
+    instance_info.c_name = this->generic_c_name(info, args);
     instance_info.module = info.module;
     instance_info.type = struct_type;
     instance_info.is_opaque = false;
@@ -744,19 +740,18 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
         substitution.types.emplace(info.params[i], args[i]);
     }
 
-    const syntax::ModuleId previous_module = current_module_;
-    current_module_ = info.module;
+    const syntax::ModuleId previous_module = this->current_module_;
+    this->current_module_ = info.module;
     bool contains_array = false;
-    bool copyable = true;
     std::unordered_set<std::string> seen_fields;
     for (const syntax::FieldDecl& field : item->fields) {
         if (!seen_fields.insert(std::string(field.name)).second) {
-            report(field.range, "duplicate struct field: " + std::string(field.name));
+            this->report(field.range, "duplicate struct field: " + std::string(field.name));
             continue;
         }
-        const TypeHandle field_type = resolve_type_with_substitution(field.type, &substitution, false);
-        if (!is_valid_storage_type(field_type)) {
-            report(field.range, "field type is not valid storage");
+        const TypeHandle field_type = this->resolve_type_with_substitution(field.type, &substitution, false);
+        if (!this->is_valid_storage_type(field_type)) {
+            this->report(field.range, "field type is not valid storage");
         }
         instance_info.fields.push_back(StructFieldInfo {
             std::string(field.name),
@@ -766,19 +761,16 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
             field.range,
             field.visibility,
         });
-        if (checked_.types.contains_array(field_type)) {
+        if (this->checked_.types.contains_array(field_type)) {
             contains_array = true;
         }
-        if (!checked_.types.is_copyable(field_type)) {
-            copyable = false;
-        }
     }
-    checked_.types.set_record_properties(struct_type, contains_array, copyable && !contains_array);
-    current_module_ = previous_module;
+    this->checked_.types.set_record_contains_array(struct_type, contains_array);
+    this->current_module_ = previous_module;
 
-    const auto inserted = checked_.structs.emplace(module_key(info.module, instance_info.c_name), std::move(instance_info));
+    const auto inserted = this->checked_.structs.emplace(this->module_key(info.module, instance_info.c_name), std::move(instance_info));
     if (inserted.second) {
-        struct_infos_by_type_[struct_type.value] = &inserted.first->second;
+        this->struct_infos_by_type_[struct_type.value] = &inserted.first->second;
     }
     return struct_type;
 }

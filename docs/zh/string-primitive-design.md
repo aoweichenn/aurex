@@ -115,7 +115,7 @@ Rope 论文指出传统连续字符串不适合大文本编辑、频繁拼接和
 
 ### 类型与布局
 
-`str` 是内建 copyable 值类型，运行时语义等价于：
+`str` 是内建普通值类型，运行时语义等价于：
 
 - `data: *const u8`
 - `len: usize`
@@ -214,7 +214,7 @@ let p: *const u8 = c"hello";
 未来 `String` 应重新定义为拥有型 UTF-8 buffer：
 
 - 内部可继续使用 `Vec<u8>`。
-- 它是拥有型资源，不能隐式浅拷贝；M2 当前还没有语言级 non-copyable 关键字，后续应通过 `Drop` / `Copy` capability 表达。
+- 它是拥有型资源，不能隐式浅拷贝；M2 当前不设计拥有型字符串资源语义，后续需要单独的资源模型承接。
 - 必须保持 UTF-8 validity。
 - 可以维护尾随 NUL 作为优化，但这不是公开语义。
 - `as_str(self: *const String) -> str`。
@@ -332,10 +332,10 @@ unsafe {
 
 状态：M2 后置。
 
-`String`、`Bytes`、`CStr`、`CString`、`Path` 应等 ownership、borrow/drop、capability/where 和 default visibility 收口后再恢复。原因是这些类型会立刻触发：
+`String`、`Bytes`、`CStr`、`CString`、`Path` 应等基础语法、`unsafe`、slice/string 边界和后续资源语义收口后再恢复。原因是这些类型会立刻触发：
 
-- owner 是否 copyable。
-- destructor / drop 如何表达。
+- owner 如何转移、借用和释放。
+- 自动释放如何表达。
 - borrowed `str` 能否安全指向 owned `String`。
 - `Bytes.as_mut_span()` 和 `String` UTF-8 不变量如何隔离。
 - `Path` 是否按平台分层，而不是把所有路径伪装成 UTF-8 文本。
@@ -390,7 +390,7 @@ M2 当前 language-core 至少要覆盖：
 - `Bytes` 覆盖 raw mutable bytes 和自别名 append。
 - `Path.from_span` 接受非 UTF-8 bytes 并拒绝内部 NUL。
 - 文件、目录、进程和 console API 优先接收 `Path`、`str`、`CStr` / `CString` 等边界类型，不再要求业务代码直接传 `c"..."`。
-- 拥有型 std 值的 copy/drop/borrow 约束必须通过语言能力表达，而不是通过标准库名字特判。
+- 拥有型 std 值的资源约束必须通过后续资源语义表达，而不是通过标准库名字特判。
 
 ## 参考资料
 

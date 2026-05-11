@@ -3,8 +3,7 @@
 Aurex is a systems-language compiler project. The current stage is **M2
 language-core-no-std**. M2 freezes the standard library and moves the active
 work back to the language core: syntax, type checking, generics, sum types,
-pattern matching, control flow, ownership, future
-borrow/drop/capability/trait/where design, and the IR/LLVM backend.
+pattern matching, control flow, `unsafe` boundaries, and the IR/LLVM backend.
 
 M1 has been discarded. It advanced the standard library, host support,
 build-tool examples, selfhost experiments, and language semantics at the same
@@ -21,6 +20,6 @@ Near-term goals:
 - Continue refining `for`, `defer`, `?`, and match payload semantics.
 - Remove the M1 `move(...)` / `noncopy struct` experiment from the M2 baseline
   and stabilize ordinary value semantics first.
-- Redesign ownership, borrow checking, move-out, partial move, drop order,
-  destructor rules, and capability predicates such as `T: Copy` and `T: Drop`.
+- Defer ownership, borrow checking, move-out, partial move, drop order,
+  destructor rules, and resource capabilities to a separate later design.
 - Avoid expanding the standard library before syntax and semantics settle.

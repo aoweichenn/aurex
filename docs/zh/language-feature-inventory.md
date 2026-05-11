@@ -11,7 +11,7 @@ M2 当前原则：
 - M1 已舍弃，不再沿着 std/selfhost/build-tool 路线修补。
 - 标准库不在当前树中，语言样例必须自包含。
 - 语言级 `move(...)`、`noncopy struct` 和 use-after-move 追踪已从 M2 基线删除。
-- 当前先稳定普通值语义；ownership、borrow、drop、capability/trait/where 后续重新设计。
+- 当前先稳定普通值语义；ownership、borrow、drop、move-out 等资源语义后续单独重新设计。
 
 ## 总体判断
 
@@ -676,7 +676,7 @@ M2 已删除：
 - `noncopy struct`。
 - use-after-move 追踪。
 
-这些不是永久禁止，而是不能作为当前语言地基继续推进。资源语义必须等 `Drop` / borrow / capability / trait / where 重新设计后再进入。
+这些不是永久禁止，而是不能作为当前语言地基继续推进。资源语义已从当前阶段移除，后续需要作为独立专题重新设计。
 
 ## 未完成特性总清单
 
@@ -699,7 +699,7 @@ M2 已删除：
 - slice type。
 - `where` 约束。
 - trait / interface / protocol。
-- capability predicate：`Copy`、`Drop`、`Sized`、`Eq`、`Hash` 等。
+- capability predicate：`Sized`、`Eq`、`Hash` 等；`Copy` / `Drop` 暂缓到资源语义专题。
 - associated type / type member。
 - safe reference：`&T` / `&mut T`。
 - const generic。
@@ -709,7 +709,7 @@ M2 已删除：
 
 - `unsafe` block / `unsafe fn`。
 - raw pointer dereference 和 unchecked builtin 的 unsafe-only 诊断。
-- Drop / destructor / automatic scope drop。
+- resource cleanup / destructor / automatic scope cleanup。
 - borrow checker。
 - lifetime / region。
 - partial move / field move-out。
@@ -918,8 +918,8 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 - match/switch statement context。
 - literal suffix / octal / hex float。
 - doc comment。
-- `where` / capability / trait。
-- Drop / destructor。
+- `where` / non-resource capability / trait。
+- resource semantics。
 - borrow checker。
 - package。
 - std/core 恢复。
@@ -937,7 +937,7 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 5. 设计 slice type/expression 与 `str` 的 safe/unsafe 边界。
 6. 设计 raw/multiline/bytes string、Unicode scalar `char`。
 7. 设计 function pointer / function type。
-8. 再进入 tuple/destructuring、pattern 扩展、`where` / capability / Drop / borrow。
+8. 再进入 tuple/destructuring、pattern 扩展、`where` / 非资源类 capability；资源语义暂缓。
 
 ## 参考
 

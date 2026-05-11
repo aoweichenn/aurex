@@ -221,7 +221,7 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
         "fn priv unwrap_local_try -> result_value_flow.Result<i32, i32>",
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(result_value_source));
-    require_success(aurexc() + " --check " + q(positive_sample("types", "copyable_value.ax")));
+    require_success(aurexc() + " --check " + q(positive_sample("types", "plain_value.ax")));
 }
 
 TEST_F(AurexIntegrationTest, RecursiveFunctions) {

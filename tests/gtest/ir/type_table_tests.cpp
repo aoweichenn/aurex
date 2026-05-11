@@ -42,7 +42,6 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.is_pointer(ptr_i32));
     EXPECT_TRUE(module.types.is_array(array_i32));
     EXPECT_TRUE(module.types.contains_array(array_i32));
-    EXPECT_FALSE(module.types.is_copyable(array_i32));
     EXPECT_EQ(module.types.display_name(ptr_i32), "*mut i32");
     EXPECT_EQ(module.types.display_name(array_i32), array_display + "i32");
     EXPECT_EQ(module.types.display_name(array_ptr_i32), array_display + "*mut i32");
@@ -56,7 +55,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(module.types.c_name(enum_type), "unit_Tag");
     EXPECT_EQ(module.types.c_name(opaque), "unit_Opaque");
 
-    module.types.set_record_properties(record_type, true, false);
+    module.types.set_record_contains_array(record_type, true);
     module.types.set_enum_underlying(enum_type, u32);
     module.types.set_enum_payload_layout(
         enum_type,
@@ -65,9 +64,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
         TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT
     );
     EXPECT_TRUE(module.types.contains_array(record_type));
-    EXPECT_FALSE(module.types.is_copyable(record_type));
     EXPECT_EQ(module.types.get(enum_type).enum_payload_size, TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE);
-    EXPECT_FALSE(module.types.is_copyable(opaque));
     EXPECT_TRUE(ir::is_payload_enum(module.types, enum_type));
     EXPECT_FALSE(ir::is_payload_enum(module.types, record_type));
     EXPECT_EQ(ir::enum_tag_type(module.types, enum_type).value, u32.value);
@@ -153,7 +150,6 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
         EXPECT_EQ(module.types.c_name(type), display);
     }
 
-    EXPECT_FALSE(module.types.is_copyable(void_type));
     EXPECT_TRUE(module.types.is_bool(bool_type));
     EXPECT_TRUE(module.types.is_integer(i8));
     EXPECT_TRUE(module.types.is_integer(u8));

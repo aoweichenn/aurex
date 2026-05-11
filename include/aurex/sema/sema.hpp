@@ -241,8 +241,6 @@ private:
         bool require_self,
         bool report_unknown = true
     );
-    [[nodiscard]] bool is_destructor_signature(const FunctionSignature& signature, TypeHandle owner_type) const;
-    [[nodiscard]] bool has_destructor(TypeHandle owner_type) const;
     [[nodiscard]] const GenericFunctionInstanceInfo* find_generic_method_in_visible_modules(
         TypeHandle owner_type,
         std::string_view name,

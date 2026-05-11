@@ -51,7 +51,7 @@ constexpr std::string_view identifier_benchmark_snippet =
     "  if true { return mutable_state; } else { return alpha_value; }\n"
     "}\n"
     "module import as pub priv extern export c fn struct opaque enum const type impl match "
-    "let var if else for while break continue defer return noncopy move true false null "
+    "let var if else for while break continue defer return true false null "
     "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
     "ptrcast bitcast sizeof alignof ptraddr ptrat strptr strblen strraw\n";
 

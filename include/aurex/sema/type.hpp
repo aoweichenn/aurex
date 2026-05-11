@@ -66,7 +66,6 @@ struct TypeInfo {
     std::string name;
     std::string c_name;
     bool contains_array = false;
-    bool is_copyable = true;
 };
 
 class TypeTable final {
@@ -80,7 +79,7 @@ public:
     [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
 
-    void set_record_properties(TypeHandle handle, bool contains_array, bool is_copyable) noexcept;
+    void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
     void set_enum_payload_layout(TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
 
@@ -92,7 +91,6 @@ public:
     [[nodiscard]] bool is_void(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_pointer(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;
-    [[nodiscard]] bool is_copyable(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
     [[nodiscard]] std::string c_name(TypeHandle type) const;

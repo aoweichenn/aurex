@@ -85,7 +85,6 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
         const TypeHandle ptr_record = ptr(module, PointerMutability::mut, record_type);
-        module.types.set_record_properties(record_type, false, true);
         module.records.push_back(RecordLayout {
             record_type,
             "unit.Record",
@@ -298,7 +297,6 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle record_type = module.types.named_struct("unit.Box", "unit_Box", false);
-    module.types.set_record_properties(record_type, false, true);
     module.records.push_back(RecordLayout {
         record_type,
         "unit.Box",

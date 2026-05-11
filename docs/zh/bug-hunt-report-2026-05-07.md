@@ -1319,7 +1319,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 修复：
 
 - `src/sema/sema_types.cpp`：`is_builtin_scalar_bcast_type` 排除 `bool`。
-- 同类型 `bcast(T, value: T)` 作为 no-op 仍允许，但要求类型 copyable。
+- 后续 M2 清理已移除语言级 copyability；当前同类型 `bitcast[T](value: T)` 只允许数值标量和指针这类可位级重解释类型。
 
 回归：
 

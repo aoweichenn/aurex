@@ -10,7 +10,7 @@ track. It recenters the project on the language core by removing the standard
 library and M1 system examples from the active tree.
 
 M1 was discarded because too many concerns expanded at once: standard library
-APIs, host support, build-tool examples, selfhost experiments, ownership rules,
+APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from
 the language, the library, or the tooling. M2 keeps only the active C++ Stage0
 compiler, Aurex IR, LLVM backend, and self-contained language samples as the
@@ -42,11 +42,12 @@ notes are design input only, not current progress.
 - `--stdlib`, `--std-backend`, and `--no-stdlib`.
 - Install rules for `share/aurex/std`.
 - std/M1/system/build-tool examples and std-specific tests.
-- std-name ownership hardcodes.
+- std-name resource-semantics hardcodes.
 - The previous selfhost / Stage1 / AIR snapshot implementation in this tree.
 
-These can return only after ownership, borrow/drop, capability/trait/where,
-module/package rules, and the basic syntax baseline are stable.
+These can return only after core syntax, module/package rules, `unsafe`,
+slices/strings, and generic constraints are stable. Owned resource libraries
+also require the deferred resource-semantics design.
 
 ## Quality Gates
 
@@ -72,8 +73,8 @@ LLVM lowering, native execution, and installed compiler execution.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing
-  value restrictions; copy/drop/borrow/ownership need a new capability, trait,
-  and `where` design.
+  value restrictions; copy/drop/borrow/ownership are deferred to a later
+  resource-semantics design.
 - Raw pointers currently carry FFI, receiver, address, and temporary-borrow
   roles that should eventually be separated by safe references and `unsafe`.
 

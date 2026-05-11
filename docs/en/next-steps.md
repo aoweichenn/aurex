@@ -4,8 +4,8 @@
 
 The standard library is frozen and removed from the current M2 tree. Do not expand std
 or use std samples to prove language features. New features should be validated
-with self-contained `.ax` samples first. Restore std only after syntax, types,
-ownership, borrow, and drop rules stabilize.
+with self-contained `.ax` samples first. Restore std only after core syntax,
+types, modules, and ABI boundaries stabilize.
 
 ## Priority Route
 
@@ -17,36 +17,32 @@ ownership, borrow, and drop rules stabilize.
    `strraw(data, len)`. The old function-like names are no longer the language
    surface.
 
-2. Value semantics and resource-model redesign
+2. Value semantics boundary
 
    M2 now removes the M1 `move(...)` / `noncopy struct` experiment instead of
-   treating that move-only MVP as the language foundation. First define unified
+   treating that move-only MVP as the language foundation. For now, define unified
    rules for ordinary value passing, struct/enum payloads, match payloads, `?`,
-   and the current array-containing type restrictions. Then decide how
-   copy/drop/ownership re-enter the type system.
+   and the current array-containing type restrictions without reintroducing a
+   resource model.
 
-3. Drop / destructor design
+3. Resource semantics deferred
 
-   Design a language-level drop capability instead of reusing the M1 destructor
-   convention. Decide drop order, interaction with early return / break /
-   continue / defer, generic `T: Drop` constraints, and diagnostics for owned
-   resource types without a release capability.
+   `Copy`, `Drop`, destructors, borrow checking, lifetimes, and move-out are not
+   near-term M2 tasks. Reopen them as a separate resource-semantics design only
+   after `unsafe`, ADTs, arrays/slices/strings, function types, and patterns have
+   settled.
 
-4. Borrow semantics
+4. Safe reference direction
 
-   Design shared borrow, mutable borrow, borrowed returns, aliasing rules, and
-   lifetime regions. Start with local borrow checking, then expand across
-   function signatures.
+   Keep `&T` / `&mut T` as the documented direction for separating safe
+   references from raw pointers. Borrow checking, lifetimes, and borrowed returns
+   remain deferred.
 
 5. Capability / trait / where
 
-   Replace temporary hardcodes with language mechanisms. Start with `copy T` and
-   `drop T`; later add `eq T`, `ord T`, and `hash T`. Candidate syntax:
-
-   ```aurex
-   fn clone_or<T>(value: T, fallback: T) -> T where T: Copy
-   fn destroy_all<T>(items: *mut T, len: usize) -> void where T: Drop
-   ```
+   Replace temporary hardcodes with language mechanisms. For this stage, only
+   evaluate non-resource constraints such as `Eq`, `Ord`, `Hash`, and `Sized`;
+   resource constraints belong to the deferred resource-semantics design.
 
 6. String primitive
 
@@ -75,5 +71,6 @@ ownership, borrow, and drop rules stabilize.
 - host support C shims.
 - Installed std lookup.
 
-These return only after ownership, borrow/drop, capability, trait, and `where`
-have stable language-level design and test matrices.
+These return only after core syntax, modules, `unsafe`, ADTs, slices/strings, and
+generic constraints have stable language-level design and test matrices. Owned
+resource libraries additionally require the deferred resource-semantics design.

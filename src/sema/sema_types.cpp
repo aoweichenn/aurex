@@ -323,6 +323,13 @@ template <typename Float>
            info.builtin != BuiltinType::str;
 }
 
+[[nodiscard]] bool is_bitcast_type(const TypeTable& types, const TypeHandle type) noexcept {
+    if (!is_valid(type)) {
+        return false;
+    }
+    return is_builtin_scalar_bcast_type(types, type) || types.is_pointer(type);
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {
@@ -1030,9 +1037,11 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
     }
     if (kind == syntax::ExprKind::bcast) {
         if (this->checked_.types.same(dst, src)) {
-            return this->checked_.types.is_copyable(dst);
+            return is_bitcast_type(this->checked_.types, dst);
         }
-        if (!this->checked_.types.is_copyable(dst) || !this->checked_.types.is_copyable(src) || this->abi_size(dst) != this->abi_size(src)) {
+        if (!is_bitcast_type(this->checked_.types, dst) ||
+            !is_bitcast_type(this->checked_.types, src) ||
+            this->abi_size(dst) != this->abi_size(src)) {
             return false;
         }
         if (is_builtin_scalar_bcast_type(this->checked_.types, dst) &&

@@ -26,7 +26,7 @@ M2 背景：M1 阶段已经舍弃。M1 的失败点在于标准库、host suppor
 - `where` / 泛型约束。
 - borrow checker、lifetime、安全引用。
 - `unsafe` 体系。
-- Drop / destructor / 自动资源释放。
+- 资源语义、自动释放和析构规则。
 - class / inheritance / dynamic dispatch。
 - macro、async、effect、comptime。
 - pattern matching 的深层增强。
@@ -321,7 +321,7 @@ let value = {
 };
 ```
 
-状态：已补。后续 `unsafe {}`、`defer`、Drop、borrow scope、`if let`、`let ... else` 可以基于同一套 block body 规则扩展，不需要再为 expression block 单独补 statement 子集。
+状态：已补。后续 `unsafe {}`、`defer`、`if let`、`let ... else` 可以基于同一套 block body 规则扩展；资源语义如果重启，也不需要再为 expression block 单独补 statement 子集。
 
 ## P0 已补：`if` 表达式不支持 `else if`
 
@@ -651,25 +651,21 @@ fn identity<T>(value: T) -> T {
 当前能表达“有一个类型参数 T”，但不能表达：
 
 ```aurex
-fn clone<T>(value: T) -> T where T: Copy
-fn destroy<T>(value: *mut T) -> void where T: Drop
 fn contains<K>(key: K) -> bool where K: Eq
+fn hash_key<K>(key: K) -> usize where K: Hash
 ```
 
 问题：
 
-- 当前 copyability、destructor、Result/Option payload 消费等规则无法通过函数签名表达。
+- 当前 equality、hash、ordering 等通用约束无法通过函数签名表达。
 - 泛型函数的错误常常只能在实例化体内报出，API 用户看不到约束。
-- 恢复核心库后，`Vec<T>`、`Map<K,V>`、`Result<T,E>`、`Option<T>` 都需要 copy/drop/eq/hash 这类基础约束。
+- 恢复核心库后，`Vec<T>`、`Map<K,V>`、`Result<T,E>`、`Option<T>` 都需要一套可诊断的泛型约束；资源相关约束等资源语义专题再定。
 
-建议 M2 先设计最小 capability 语法，不急着实现完整 trait：
+建议 M2 先设计非资源类 `where` 语法，不急着实现完整 trait：
 
 ```aurex
-fn get<T>(items: *const Vec<T>, index: usize) -> T
-where T: Copy
-
-fn destroy_all<T>(items: *mut Vec<T>) -> void
-where T: Drop
+fn contains<K>(items: *const Map<K, V>, key: K) -> bool
+where K: Eq + Hash
 ```
 
 优先级：中高。没有约束语法，泛型越多，诊断越晚，库设计越依赖文档约定。
@@ -712,7 +708,7 @@ unsafe fn from_raw(data: *const u8, len: usize) -> str {
 - unsafe fn 的调用也必须在 unsafe context。
 - `strraw` 必须被纳入 unsafe-only 清单，避免 safe 代码直接伪造 `str` 的 UTF-8 不变量。
 
-优先级：中高。它是 borrow/drop/optimizer 合约的前置地基。
+优先级：中高。它是 optimizer 合约和未来资源语义专题的前置地基。
 
 ## P1 缺陷：`str` 已是内建，但安全 API 边界还没形成
 
@@ -881,7 +877,7 @@ let value = normalize(value); // 当前不允许
 建议暂不急着改。等基础 block 统一后再决策：
 
 - 至少可以考虑“只允许内层 scope shadow 外层，不允许同一 scope 重名”。
-- 如果引入 move-only / borrow 更强规则，shadowing 需要和所有权诊断一起设计。
+- 如果后续重启资源语义或 safe borrow，shadowing 需要和对应诊断一起设计。
 
 优先级：低到中。不是当前最卡的基础缺陷。
 

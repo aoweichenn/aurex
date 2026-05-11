@@ -413,41 +413,40 @@ void SemanticAnalyzer::register_value_names() {
             if (!item.generic_params.empty()) {
                 continue;
             }
-            const TypeHandle enum_type = resolve_type(item.enum_base_type);
-            if (!checked_.types.is_integer(enum_type)) {
-                report(item.range, "enum base type must be an integer type");
+            const TypeHandle enum_type = this->resolve_type(item.enum_base_type);
+            if (!this->checked_.types.is_integer(enum_type)) {
+                this->report(item.range, "enum base type must be an integer type");
             }
             std::unordered_set<base::u64> seen_values;
-            const auto type_found = named_types_.find(key);
-            const TypeHandle named_enum_type = type_found == named_types_.end() ? enum_type : type_found->second;
+            const auto type_found = this->named_types_.find(key);
+            const TypeHandle named_enum_type = type_found == this->named_types_.end() ? enum_type : type_found->second;
             if (is_valid(named_enum_type)) {
-                checked_.types.set_enum_underlying(named_enum_type, enum_type);
+                this->checked_.types.set_enum_underlying(named_enum_type, enum_type);
             }
             TypeHandle payload_storage = INVALID_TYPE_HANDLE;
             base::u64 payload_size = 0;
             base::u64 payload_align = 1;
             bool contains_array_payload = false;
-            bool copyable = true;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
-                const std::string enum_case_key = module_key(current_module_, full_name);
+                const std::string enum_case_key = this->module_key(this->current_module_, full_name);
                 const bool has_payload = syntax::is_valid(enum_case.payload_type);
-                const TypeHandle payload_type = has_payload ? resolve_type(enum_case.payload_type) : INVALID_TYPE_HANDLE;
+                const TypeHandle payload_type = has_payload ? this->resolve_type(enum_case.payload_type) : INVALID_TYPE_HANDLE;
                 base::u64 discriminant = 0;
-                const bool parsed_discriminant = parse_integer_literal_text(enum_case.value_text, discriminant);
+                const bool parsed_discriminant = this->parse_integer_literal_text(enum_case.value_text, discriminant);
                 if (!parsed_discriminant) {
-                    report(enum_case.range, "enum discriminant literal is out of range");
-                } else if (!integer_literal_fits_type(enum_type, enum_case.value_text)) {
-                    report(enum_case.range, "enum discriminant does not fit enum base type");
+                    this->report(enum_case.range, "enum discriminant literal is out of range");
+                } else if (!this->integer_literal_fits_type(enum_type, enum_case.value_text)) {
+                    this->report(enum_case.range, "enum discriminant does not fit enum base type");
                 } else if (!seen_values.insert(discriminant).second) {
-                    report(enum_case.range, "duplicate enum discriminant value in " + std::string(item.name));
+                    this->report(enum_case.range, "duplicate enum discriminant value in " + std::string(item.name));
                 }
                 if (has_payload) {
-                    if (!is_valid_storage_type(payload_type)) {
-                        report(enum_case.range, "enum payload type is not valid storage");
+                    if (!this->is_valid_storage_type(payload_type)) {
+                        this->report(enum_case.range, "enum payload type is not valid storage");
                     }
-                    const base::u64 case_size = abi_size(payload_type);
-                    const base::u64 case_align = abi_align(payload_type);
+                    const base::u64 case_size = this->abi_size(payload_type);
+                    const base::u64 case_align = this->abi_align(payload_type);
                     if (!is_valid(payload_storage) ||
                         case_size > payload_size ||
                         (case_size == payload_size && case_align > payload_align)) {
@@ -455,18 +454,15 @@ void SemanticAnalyzer::register_value_names() {
                     }
                     payload_size = std::max(payload_size, case_size);
                     payload_align = std::max(payload_align, case_align);
-                    if (checked_.types.contains_array(payload_type)) {
+                    if (this->checked_.types.contains_array(payload_type)) {
                         contains_array_payload = true;
-                        report(enum_case.range, "enum payload cannot contain array storage");
-                    }
-                    if (!checked_.types.is_copyable(payload_type)) {
-                        copyable = false;
+                        this->report(enum_case.range, "enum payload cannot contain array storage");
                     }
                 }
-                const auto case_inserted = checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
+                const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
                     full_name,
-                    c_symbol_name(current_module_, full_name),
-                    current_module_,
+                    this->c_symbol_name(this->current_module_, full_name),
+                    this->current_module_,
                     named_enum_type,
                     payload_type,
                     std::string(enum_case.value_text),
@@ -476,44 +472,43 @@ void SemanticAnalyzer::register_value_names() {
                     item.visibility,
                 });
                 if (!case_inserted.second) {
-                    report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
+                    this->report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
                     continue;
                 }
-                index_enum_case(case_inserted.first->second);
+                this->index_enum_case(case_inserted.first->second);
                 if (!has_payload) {
-                    const auto value_inserted = global_values_.emplace(enum_case_key, Symbol {
+                    const auto value_inserted = this->global_values_.emplace(enum_case_key, Symbol {
                         SymbolKind::enum_case,
                         full_name,
-                        c_symbol_name(current_module_, full_name),
-                        current_module_,
+                        this->c_symbol_name(this->current_module_, full_name),
+                        this->current_module_,
                         named_enum_type,
                         enum_case.range,
                         false,
                         item.visibility,
                     });
                     if (!value_inserted.second) {
-                        report(enum_case.range, "duplicate value definition in module " + module_name(current_module_) + ": " + full_name);
+                        this->report(
+                            enum_case.range,
+                            "duplicate value definition in module " + this->module_name(this->current_module_) + ": " + full_name
+                        );
                     }
                 }
             }
             if (is_valid(named_enum_type) && is_valid(payload_storage)) {
-                checked_.types.set_enum_payload_layout(
+                this->checked_.types.set_enum_payload_layout(
                     named_enum_type,
-                    payload_storage_type(checked_.types, payload_size, payload_align),
+                    payload_storage_type(this->checked_.types, payload_size, payload_align),
                     payload_size,
                     payload_align
                 );
             }
             if (is_valid(named_enum_type)) {
-                checked_.types.set_record_properties(
-                    named_enum_type,
-                    contains_array_payload,
-                    copyable && !contains_array_payload
-                );
+                this->checked_.types.set_record_contains_array(named_enum_type, contains_array_payload);
             }
         }
     }
-    current_module_ = syntax::INVALID_MODULE_ID;
+    this->current_module_ = syntax::INVALID_MODULE_ID;
 }
 
 void SemanticAnalyzer::validate_function_prototypes() {
@@ -673,28 +668,27 @@ void SemanticAnalyzer::analyze_entry_points() {
 }
 
 void SemanticAnalyzer::analyze_struct_properties() {
-    for (const syntax::ItemNode& item : module_.items) {
+    for (const syntax::ItemNode& item : this->module_.items) {
         if (item.kind != syntax::ItemKind::struct_decl) {
             continue;
         }
-        current_module_ = item_module(item);
-        const std::string key = module_key(current_module_, item.name);
+        this->current_module_ = this->item_module(item);
+        const std::string key = this->module_key(this->current_module_, item.name);
         bool contains_array = false;
-        bool copyable = true;
         std::unordered_set<std::string> seen_fields;
         for (const syntax::FieldDecl& field : item.fields) {
             if (!seen_fields.insert(std::string(field.name)).second) {
-                report(field.range, "duplicate struct field: " + std::string(field.name));
+                this->report(field.range, "duplicate struct field: " + std::string(field.name));
                 continue;
             }
             if (!item.generic_params.empty()) {
                 continue;
             }
-            const TypeHandle field_type = resolve_type(field.type);
-            if (!is_valid_storage_type(field_type)) {
-                report(field.range, "field type is not valid storage");
+            const TypeHandle field_type = this->resolve_type(field.type);
+            if (!this->is_valid_storage_type(field_type)) {
+                this->report(field.range, "field type is not valid storage");
             }
-            if (const auto struct_found = checked_.structs.find(key); struct_found != checked_.structs.end()) {
+            if (const auto struct_found = this->checked_.structs.find(key); struct_found != this->checked_.structs.end()) {
                 struct_found->second.fields.push_back(StructFieldInfo {
                     std::string(field.name),
                     {},
@@ -704,22 +698,19 @@ void SemanticAnalyzer::analyze_struct_properties() {
                     field.visibility,
                 });
             }
-            if (checked_.types.contains_array(field_type)) {
+            if (this->checked_.types.contains_array(field_type)) {
                 contains_array = true;
-            }
-            if (!checked_.types.is_copyable(field_type)) {
-                copyable = false;
             }
         }
         if (!item.generic_params.empty()) {
             continue;
         }
-        const auto found = named_types_.find(key);
-        if (found != named_types_.end()) {
-            checked_.types.set_record_properties(found->second, contains_array, copyable && !contains_array);
+        const auto found = this->named_types_.find(key);
+        if (found != this->named_types_.end()) {
+            this->checked_.types.set_record_contains_array(found->second, contains_array);
         }
     }
-    current_module_ = syntax::INVALID_MODULE_ID;
+    this->current_module_ = syntax::INVALID_MODULE_ID;
 }
 
 void SemanticAnalyzer::analyze_const_decls() {

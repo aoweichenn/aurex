@@ -9,7 +9,8 @@ Stage0 now compiles through Aurex IR -> LLVM IR -> clang by default.
 M2 is a deliberate reset after the M1 design track. The M1 standard-library,
 selfhost, and system/build-tool experiments are no longer active in this tree.
 M2 focuses on stabilizing the language core first: syntax, type checking,
-generics, ownership, pattern matching, Aurex IR, and LLVM/native output.
+generics, pattern matching, `unsafe` boundaries, Aurex IR, and LLVM/native
+output.
 
 ## Quick Start
 
@@ -86,8 +87,8 @@ lowering, native execution, import paths, and install-tree compiler execution.
 The previous M1/selfhost/bootstrap experiment has been removed from the active
 tree. Active work is on the C++ Stage0 compiler, Aurex IR, and the LLVM backend.
 A new bootstrap track should wait until the M2 language core has stable module
-isolation, visibility, generics, sum types, pattern matching, ownership,
-borrow/drop, capability/trait/where, and IR contracts.
+isolation, visibility, generics, sum types, pattern matching, `unsafe`,
+non-resource capability/trait/where, and IR contracts.
 
 ## Documentation
 

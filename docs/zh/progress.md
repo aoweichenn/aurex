@@ -5,13 +5,13 @@
 
 ## 总体状态
 
-当前仓库已经进入 M2 阶段。M2 的目标不是继续修补 M1，而是重新收口语言核心：冻结并删除标准库和 M1 系统样例，把注意力放回基础语法、类型系统、所有权、模式匹配、IR 和 LLVM 后端。
+当前仓库已经进入 M2 阶段。M2 的目标不是继续修补 M1，而是重新收口语言核心：冻结并删除标准库和 M1 系统样例，把注意力放回基础语法、类型系统、模式匹配、`unsafe` 边界、IR 和 LLVM 后端。
 
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。
-- 部分能力依赖标准库名字或样例约定，而不是语言级规则，例如 copy/drop 约束、资源释放、`Result` / `Option` 形状。
-- 语法地基还没有冻结时就推进 selfhost/build-tool 路线，造成前端、库 API、所有权模型互相牵制。
+- 部分能力依赖标准库名字或样例约定，而不是语言级规则，例如资源释放、容器 API 约束、`Result` / `Option` 形状。
+- 语法地基还没有冻结时就推进 selfhost/build-tool 路线，造成前端、库 API、资源模型互相牵制。
 - M1 的很多样例验证的是“能跑通当前 demo”，不是验证语言核心是否稳定、可解释、可长期扩展。
 
 因此 M2 只承认当前 C++ Stage0 编译器、Aurex IR、LLVM backend 和自包含语言样例作为有效基线。当前仓库没有 `std/` 目录，也没有 `selfhost/` 目录；相关旧路线只作为历史输入，不再代表当前进度。
@@ -42,10 +42,10 @@ M2 明确删除并暂缓这些 M1 内容：
 - CLI 的 `--stdlib`、`--std-backend`、`--no-stdlib`。
 - 安装规则中的 `share/aurex/std`。
 - std/M1/system/build-tool 样例。
-- 依赖标准库名字的 ownership 特判。
+- 依赖标准库名字的资源语义特判。
 - selfhost / Stage1 / AIR snapshot 路线在当前仓库中的实现。
 
-这些内容不是永远不能回来，而是必须等语言级 ownership、borrow/drop、capability/trait/where、module/package 和基础语法稳定后再恢复。
+这些内容不是永远不能回来，而是必须等基础语法、module/package、`unsafe`、slice/string 和泛型约束稳定后再恢复；拥有型资源库还要等后续资源语义专题完成。
 
 ## 质量门
 
@@ -80,8 +80,8 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - default private 已完成：顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public。
 - enum 仍偏 C enum 语法，base type 和 discriminant 必填，不适合作为主力 ADT 表达。
 - 数组类型已存在，但还缺 array literal / repeat literal；slice type/expression、function pointer / function type、raw/multiline/bytes string、Unicode scalar `char` 也属于下一批基础语法缺口。
-- 泛型没有 `where`、trait 或 capability predicate，不能表达 `T: Copy`、`T: Drop`、`K: Eq + Hash` 这类基础约束。
-- M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 需要重新设计成 capability / trait / where 能表达的语言模型。
+- 泛型没有 `where`、trait 或 capability predicate，不能表达 `K: Eq + Hash` 这类基础约束；资源类约束暂缓。
+- M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 暂缓为后续资源语义专题。
 - raw pointer 同时承担 FFI、method receiver、临时借用和地址操作，长期需要 safe reference 与 `unsafe` 边界分层。
 - `str` 已有语言级雏形，但还缺稳定的 slice、UTF-8 边界和安全/unsafe API 分层。
 
@@ -91,4 +91,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。第一优先级是最小 `unsafe` block / `unsafe fn`、ADT-first enum、array literal / repeat literal；随后补 slice type/expression、`str` safe/unsafe 边界、raw/multiline/bytes string、Unicode scalar `char`、function pointer / function type，再进入 tuple/destructuring、pattern 扩展、capability/trait/where、Drop 和 borrow。
+下一步最重要的是继续冻结 M2 语法基线。第一优先级是最小 `unsafe` block / `unsafe fn`、ADT-first enum、array literal / repeat literal；随后补 slice type/expression、`str` safe/unsafe 边界、raw/multiline/bytes string、Unicode scalar `char`、function pointer / function type，再进入 tuple/destructuring、pattern 扩展和非资源类 capability/trait/where。

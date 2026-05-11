@@ -28,13 +28,13 @@ performance.
 
 ## Next Architecture Direction
 
-Before restoring std, the language needs:
+Before restoring std, the language needs the current core abstractions:
 
-- Capability predicates: `copy T`, `drop T`, then `eq K`, `hash K`.
-- Destructor/drop model: destructor shape, automatic drop order, early-return
-  behavior.
-- Borrow model: shared/mutable borrow, regions, borrowed returns.
-- Resource transfer model: explicit extraction from fields and containers,
-  later ownership state, and diagnostics.
-- Trait/where: move generic constraints out of hardcoded checks and into a
-  diagnosable language mechanism.
+- `unsafe` boundaries for raw pointers, unchecked strings, and bit-level casts.
+- ADT enums and pattern matching as the main way to model Result/Option and AST
+  state spaces.
+- Arrays, slices, strings, and function types as std-independent value and ABI
+  foundations.
+- Trait/where for non-resource generic constraints.
+- Resource semantics: `Copy`, `Drop`, borrow checking, and move-out remain a
+  later design track, not a current architecture prerequisite.

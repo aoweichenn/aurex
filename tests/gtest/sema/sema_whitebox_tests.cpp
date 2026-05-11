@@ -436,7 +436,7 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers) {
     const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
     const TypeHandle record_type = types.named_struct("Record", "Record", false);
     const TypeHandle array_record = types.named_struct("ArrayRecord", "ArrayRecord", true);
-    types.set_record_properties(array_record, true, false);
+    types.set_record_contains_array(array_record, true);
     const TypeHandle ptr_record = types.pointer(PointerMutability::mut, record_type);
     const TypeHandle const_ptr_record = types.pointer(PointerMutability::const_, record_type);
     const TypeHandle enum_type = types.named_enum("Choice", "Choice");
@@ -1257,7 +1257,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
 
     const TypeHandle record_type = types.named_struct("Record", "Record", false);
     const TypeHandle array_record = types.named_struct("ArrayRecord", "ArrayRecord", true);
-    types.set_record_properties(array_record, true, false);
+    types.set_record_contains_array(array_record, true);
     analyzer.named_types_.emplace(analyzer.module_key(module_id(0), "Record"), record_type);
     analyzer.global_values_.emplace(
         analyzer.module_key(module_id(0), "array_value"),
@@ -1596,7 +1596,6 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
     EXPECT_FALSE(kind_table.is_void(out_of_range_type));
     EXPECT_FALSE(kind_table.is_pointer(out_of_range_type));
     EXPECT_FALSE(kind_table.is_array(out_of_range_type));
-    EXPECT_FALSE(kind_table.is_copyable(out_of_range_type));
     EXPECT_FALSE(kind_table.contains_array(out_of_range_type));
     EXPECT_EQ(kind_table.display_name(out_of_range_type), SEMA_TEST_INVALID_TYPE_DISPLAY);
     EXPECT_EQ(kind_table.c_name(out_of_range_type), "void");
@@ -1608,7 +1607,6 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
     EXPECT_FALSE(kind_table.is_void(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_pointer(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_array(INVALID_TYPE_HANDLE));
-    EXPECT_FALSE(kind_table.is_copyable(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.contains_array(INVALID_TYPE_HANDLE));
 
     EXPECT_FALSE(kind_table.is_integer(builtin_type));

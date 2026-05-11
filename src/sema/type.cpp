@@ -40,10 +40,6 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
     return type == BuiltinType::f32 || type == BuiltinType::f64;
 }
 
-[[nodiscard]] bool builtin_is_copyable(const BuiltinType type) noexcept {
-    return type != BuiltinType::void_;
-}
-
 [[nodiscard]] std::string builtin_display_name(const BuiltinType type) {
     switch (type) {
     case BuiltinType::void_: return "void";
@@ -73,7 +69,6 @@ TypeTable::TypeTable() {
         TypeInfo info;
         info.kind = TypeKind::builtin;
         info.builtin = static_cast<BuiltinType>(i);
-        info.is_copyable = builtin_is_copyable(info.builtin);
         this->types_.push_back(std::move(info));
     }
 }
@@ -92,7 +87,6 @@ TypeHandle TypeTable::pointer(const PointerMutability mutability, const TypeHand
     info.kind = TypeKind::pointer;
     info.pointer_mutability = mutability;
     info.pointee = pointee;
-    info.is_copyable = true;
     const TypeHandle handle = this->push(std::move(info));
     this->pointer_types_.emplace(key, handle);
     return handle;
@@ -109,7 +103,6 @@ TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element) {
     info.array_count = count;
     info.array_element = element;
     info.contains_array = true;
-    info.is_copyable = false;
     const TypeHandle handle = this->push(std::move(info));
     this->array_types_.emplace(key, handle);
     return handle;
@@ -121,7 +114,6 @@ TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const b
     info.name = std::move(name);
     info.c_name = std::move(c_name);
     info.contains_array = contains_array;
-    info.is_copyable = !contains_array;
     return this->push(std::move(info));
 }
 
@@ -130,7 +122,6 @@ TypeHandle TypeTable::named_enum(std::string name, std::string c_name) {
     info.kind = TypeKind::enum_;
     info.name = std::move(name);
     info.c_name = std::move(c_name);
-    info.is_copyable = true;
     return this->push(std::move(info));
 }
 
@@ -139,14 +130,12 @@ TypeHandle TypeTable::opaque_struct(std::string name, std::string c_name) {
     info.kind = TypeKind::opaque_struct;
     info.name = std::move(name);
     info.c_name = std::move(c_name);
-    info.is_copyable = false;
     return this->push(std::move(info));
 }
 
-void TypeTable::set_record_properties(const TypeHandle handle, const bool contains_array, const bool is_copyable) noexcept {
+void TypeTable::set_record_contains_array(const TypeHandle handle, const bool contains_array) noexcept {
     assert(handle.value < this->types_.size());
     this->types_[handle.value].contains_array = contains_array;
-    this->types_[handle.value].is_copyable = is_copyable;
 }
 
 void TypeTable::set_enum_underlying(const TypeHandle handle, const TypeHandle underlying) noexcept {
@@ -213,10 +202,6 @@ bool TypeTable::is_pointer(const TypeHandle type) const noexcept {
 
 bool TypeTable::is_array(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::array;
-}
-
-bool TypeTable::is_copyable(const TypeHandle type) const noexcept {
-    return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].is_copyable;
 }
 
 bool TypeTable::contains_array(const TypeHandle type) const noexcept {

@@ -1,4 +1,4 @@
-module copyable_value;
+module plain_value;
 
 fn main() -> i32 {
     let value: i32 = 1;

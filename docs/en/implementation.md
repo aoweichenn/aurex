@@ -24,8 +24,9 @@ Sema currently handles:
 
 The M1 `noncopy` / `move` / use-after-move semantics have been removed from the
 current M2 implementation. std-specific ownership hardcodes have also been
-removed. Future resource constraints should be expressed through language-level
-capability, trait, and `where` mechanisms.
+removed. The current implementation does not track language-level copy/drop/move
+state; future resource constraints should be redesigned as a separate
+resource-semantics track.
 
 ## Backend
 

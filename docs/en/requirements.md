@@ -32,4 +32,5 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 
 The M1 language-level `move(...)` and `noncopy struct` syntax is no longer part
 of the current M2 requirements. Resource semantics should be redesigned after
-ownership, borrow/drop, trait/where, and capability rules are stable.
+core syntax, `unsafe`, slices/strings, the safe-reference direction, and
+non-resource trait/where rules are stable.

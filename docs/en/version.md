@@ -40,8 +40,8 @@ Risk controls:
 - Keep language-level positive/negative tests for match payloads, `?`, `for`,
   `defer`, and the basic type system.
 - Keep native hello, IR/LLVM lowering, and installed compiler execution checks.
-- Future copy/drop constraints should be implemented through capability, trait,
-  and `where` design rather than std hardcodes.
+- Future resource constraints should be redesigned as a separate
+  resource-semantics track rather than std hardcodes.
 
 Deferred:
 
@@ -50,5 +50,6 @@ Deferred:
 - Restoring M1 build-tool/system examples.
 - Restoring automatic host support linking.
 
-These should be revisited only after M2 syntax, value semantics, ownership,
-borrow/drop, and generic constraints are stable.
+These should be revisited only after M2 syntax, value semantics, `unsafe`,
+slices/strings, and generic constraints are stable. Owned resource libraries
+also require the deferred resource-semantics design.

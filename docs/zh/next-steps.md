@@ -2,7 +2,7 @@
 
 ## 当前分支原则
 
-标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证，等语法、类型系统、ownership/borrow/drop 规则稳定后再恢复标准库。
+标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证，等基础语法、类型系统和模块边界稳定后再恢复标准库。
 
 ## 优先路线
 
@@ -33,26 +33,21 @@
 
    Aurex 已有数组类型、`str`、C string、byte literal、函数声明和 C FFI，但还缺数组值语法、slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function pointer / function type。现代系统语言和 ML-family 语言都说明这些属于基础表达能力，不应等到 std 恢复后再补。
 
-5. 值语义与资源模型重新设计
+5. 值语义边界
 
-   M2 当前先删除 M1 的 `move(...)` / `noncopy struct`，避免把失败的 move-only MVP 继续当作语言地基。下一步要写清普通值传递、struct/enum payload、match payload、`?` 和数组/含数组类型限制的统一规则，再决定 copy/drop/ownership 如何重新进入类型系统。
+   M2 当前已经删除 M1 的 `move(...)` / `noncopy struct`，避免把失败的 move-only MVP 继续当作语言地基。当前阶段不继续推进资源模型；只写清普通值传递、struct/enum payload、match payload、`?` 和数组/含数组类型限制的统一规则。
 
-6. Drop / destructor 设计
+6. 资源语义暂缓
 
-   设计语言级 drop capability，而不是复用 M1 的 destructor 约定。需要确定 drop order、early return / break / continue / defer 的交互、泛型 `T: Drop` 约束，以及拥有资源但没有释放能力的类型如何诊断。
+   `Copy` / `Drop` / destructor / borrow / move-out 不作为当前 M2 近期任务。等 `unsafe`、ADT、array/slice/string、function type 和 pattern 地基稳定后，再重新开资源语义专题。
 
-7. Borrow 语义
+7. safe reference 方向
 
-   设计 shared borrow、mutable borrow、borrowed return、aliasing 规则和生命周期区域。短期可先做局部 borrow checker，再扩展跨函数签名。
+   文档层面保留 `&T` / `&mut T` 作为 safe reference 方向，用于和 raw pointer 分层；borrow checker、lifetime 和 borrowed return 暂缓。
 
 8. Capability / trait / where
 
-   用语言机制替代临时 hardcode。第一批能力建议从 `copy T`、`drop T` 开始，后续再扩展 `eq T`、`ord T`、`hash T`。语法上需要评估：
-
-   ```aurex
-   fn clone_or<T>(value: T, fallback: T) -> T where T: Copy
-   fn destroy_all<T>(items: *mut T, len: usize) -> void where T: Drop
-   ```
+   用语言机制替代临时 hardcode。当前只评估非资源类约束，例如 `Eq`、`Ord`、`Hash`、`Sized`；资源相关能力等资源语义专题再定。
 
 9. 字符串基础类型
 
@@ -69,4 +64,4 @@
 - host support C shim。
 - 安装后 std 查找。
 
-恢复这些内容的前置条件是：ownership、borrow/drop、capability/trait/where 已有稳定语言级设计和测试矩阵。
+恢复这些内容的前置条件是：基础语法、模块边界、`unsafe`、ADT、slice/string 和泛型约束已有稳定语言级设计和测试矩阵；拥有型资源库还需要后续资源语义专题完成。

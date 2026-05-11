@@ -42,7 +42,7 @@ builtin str = {
 - LLVM 后端把 `str` 降低为 `{ ptr, usize }`，普通字符串字面量降低为全局字节数据加长度。
 - 测试已经锁住 `sizeof[str] == 16`、`alignof[str] == 8` 这一 64-bit ABI 事实。
 - 字符串字面量解码已经集中到共享实现，普通字符串会做 UTF-8 / Unicode scalar / escape 诊断，C 字符串会拒绝内部 NUL。
-- 编译器内建已经有 `strptr`、`strlen`、`strraw`，但这些还没有被正式 `unsafe` 体系约束。
+- 编译器内建已经有 `strptr`、`strblen`、`strraw`，但这些还没有被正式 `unsafe` 体系约束。
 - 当前仓库根目录没有 `std/` 或 `selfhost/`。不存在当前有效的 `std.core.string.String`、`std.core.bytes.Bytes`、`std.fs.path.Path`、`std.ffi.c.string.CString` 实现。
 
 因此 M2 的判断是：`str` 的 ABI 方向已经接近正确；真正要补的是语言级安全边界和未来库类型边界。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span<u8>` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为恢复标准库时的设计素材。
@@ -302,7 +302,7 @@ unsafe {
 
 - safe context 下调用 unchecked 构造必须诊断。
 - `unsafe fn` 调用必须发生在 unsafe context。
-- `strptr` / `strlen` 可以继续是 safe 只读观察操作。
+- `strptr` / `strblen` 可以继续是 safe 只读观察操作。
 - 文档要明确：任何构造 `str` 的入口都必须证明 UTF-8 有效，或者被标记为 unsafe。
 
 ### Phase 3：恢复 `core.str` 最小 API
@@ -378,7 +378,7 @@ M2 当前 language-core 至少要覆盖：
 - 普通字符串字面量允许内部 `\0`，C 字符串字面量拒绝内部 NUL。
 - 非 ASCII 文本如 `"ƒ"` 按 UTF-8 byte length 表达，不能被截断成单字节字符。
 - invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
-- `strptr`、`strlen`、`strraw` 的类型检查稳定。
+- `strptr`、`strblen`、`strraw` 的类型检查稳定。
 - 在引入 `unsafe` 后，`strraw` 不能继续暴露在 safe context。
 
 恢复标准库后再补这些验收项：

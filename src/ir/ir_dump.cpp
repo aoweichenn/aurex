@@ -177,7 +177,7 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         out << "strptr " << value_ref(value.object);
         break;
     case ValueKind::str_byte_len:
-        out << "strlen " << value_ref(value.object);
+        out << "strblen " << value_ref(value.object);
         break;
     case ValueKind::str_from_bytes_unchecked:
         out << "strraw(";

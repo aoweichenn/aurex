@@ -13,7 +13,7 @@ ownership, borrow, and drop rules stabilize.
 
    Source-level builtin spellings are normalized to `sizeof[T]`,
    `alignof[T]`, `cast[T](x)`, `ptrcast[T](p)`, `bitcast[T](x)`,
-   `ptraddr(p)`, `ptrat[T](addr)`, `strptr(s)`, `strlen(s)`, and
+   `ptraddr(p)`, `ptrat[T](addr)`, `strptr(s)`, `strblen(s)`, and
    `strraw(data, len)`. The old function-like names are no longer the language
    surface.
 

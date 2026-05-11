@@ -37,7 +37,7 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
         syntax::ExprKind::paddr,
     },
     {TokenKind::kw_strptr, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
-    {TokenKind::kw_strlen, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
+    {TokenKind::kw_strblen, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
     {
         TokenKind::kw_strraw,
         BuiltinExprShape::STRRAW,

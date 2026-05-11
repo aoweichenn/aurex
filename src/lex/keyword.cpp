@@ -63,7 +63,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"struct", syntax::TokenKind::kw_struct},
     KeywordEntry {"opaque", syntax::TokenKind::kw_opaque},
     KeywordEntry {"return", syntax::TokenKind::kw_return},
-    KeywordEntry {"strlen", syntax::TokenKind::kw_strlen},
+    KeywordEntry {"strblen", syntax::TokenKind::kw_strblen},
     KeywordEntry {"strptr", syntax::TokenKind::kw_strptr},
     KeywordEntry {"strraw", syntax::TokenKind::kw_strraw},
 

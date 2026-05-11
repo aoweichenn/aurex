@@ -63,7 +63,7 @@ let var if else for in while break continue defer return
 true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str
 mut cast ptrcast bitcast sizeof alignof
-ptraddr ptrat strptr strlen strraw
+ptraddr ptrat strptr strblen strraw
 ```
 
 字面量：
@@ -489,7 +489,7 @@ alignof[T]
 ptraddr(pointer)
 ptrat[*mut T](addr)
 strptr(text)
-strlen(text)
+strblen(text)
 strraw(data, len)
 ```
 
@@ -500,7 +500,7 @@ strraw(data, len)
 - `bitcast` 要求源/目标 copyable，尺寸相同，并限制在标量或 pointer 形态。
 - `ptraddr` 要求参数是 pointer，返回 `usize`。
 - `ptrat` 目标类型必须是 pointer，地址参数是整数。
-- `strptr` / `strlen` / `strraw` 是当前 `str` ABI 支撑点。
+- `strptr` / `strblen` / `strraw` 是当前 `str` ABI 支撑点。
 
 `if` 表达式：
 

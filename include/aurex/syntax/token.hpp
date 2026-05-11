@@ -69,7 +69,7 @@ enum class TokenKind {
     kw_ptraddr,
     kw_ptrat,
     kw_strptr,
-    kw_strlen,
+    kw_strblen,
     kw_strraw,
     l_paren,
     r_paren,

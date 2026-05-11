@@ -720,11 +720,11 @@ private:
     }
 
     void verify_str_byte_len(const Value& value) {
-        this->verify_type(value.type, "strlen result");
+        this->verify_type(value.type, "strblen result");
         if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
-            this->fail("strlen result must be usize");
+            this->fail("strblen result must be usize");
         }
-        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strlen operand");
+        this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strblen operand");
     }
 
     void verify_str_from_bytes_unchecked(const Value& value) {

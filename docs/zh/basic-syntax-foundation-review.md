@@ -439,7 +439,7 @@ expr_stmt =
 
 - 函数调用。
 - `if` / block / match / `?`。
-- `strptr` / `strlen` / `strraw`。
+- `strptr` / `strblen` / `strraw`。
 
 已补内容：
 
@@ -721,7 +721,7 @@ unsafe fn from_raw(data: *const u8, len: usize) -> str {
 - 普通字符串字面量类型是 `str`。
 - `str` 在 LLVM 后端降低为 `{ ptr, usize }`。
 - `sizeof[str]` / `alignof[str]` 已有 64-bit ABI 测试。
-- 编译器内建已有 `strptr`、`strlen`、`strraw`。
+- 编译器内建已有 `strptr`、`strblen`、`strraw`。
 
 问题：
 
@@ -734,7 +734,7 @@ M2 最小方向：
 
 ```aurex
 let text: str = "hello";
-let n: usize = strlen(text);
+let n: usize = strblen(text);
 
 unsafe {
     let borrowed = strraw(data, n);
@@ -744,7 +744,7 @@ unsafe {
 建议：
 
 - `str` 继续作为语言内建，不依赖标准库存在。
-- `strlen` 可以保持 O(1) 基础观察能力。
+- `strblen` 可以保持 O(1) 基础观察能力。
 - checked UTF-8 构造和 checked slice 可以先设计语义，再决定是 compiler builtin、core intrinsic 还是未来 `core.str` API。
 - unchecked 构造必须进入 `unsafe`。
 - `c"..."` 只用于 FFI，不能隐式转 `str`。

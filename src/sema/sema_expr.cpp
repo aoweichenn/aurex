@@ -755,7 +755,7 @@ TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!this->checked_.types.is_str(value)) {
-        this->report(expr.range, expr.kind == syntax::ExprKind::str_data ? "strptr requires a str value" : "strlen requires a str value");
+        this->report(expr.range, expr.kind == syntax::ExprKind::str_data ? "strptr requires a str value" : "strblen requires a str value");
     }
     if (expr.kind == syntax::ExprKind::str_data) {
         return this->record_expr_type(

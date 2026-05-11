@@ -42,7 +42,7 @@ let var if else for in while break continue defer return
 true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str
 mut cast ptrcast bitcast sizeof alignof
-ptraddr ptrat strptr strlen strraw
+ptraddr ptrat strptr strblen strraw
 ```
 
 当前标点和操作符：
@@ -593,7 +593,7 @@ alignof[T]
 ptraddr(ptr)
 ptrat[*mut T](address)
 strptr(text)
-strlen(text)
+strblen(text)
 strraw(data, len)
 ```
 
@@ -640,7 +640,7 @@ p1 | p2 | p3
 
 - 函数调用。
 - `if` / block / match / `?`。
-- `strptr` / `strlen` / `strraw`。
+- `strptr` / `strblen` / `strraw`。
 
 ## 已支持的高级特性
 

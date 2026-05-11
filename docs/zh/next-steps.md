@@ -12,7 +12,7 @@
 
    第一批 P0 基础语法按这个顺序推进：
 
-   - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strlen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
+   - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strblen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
    - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
    - ADT-first enum：让普通 `enum Option<T> { some(T), none }` / `enum Result<T, E> { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
    - array literal / repeat literal：数组类型 `[N]T` 已存在，但还缺 `[1, 2, 3]` / `[0; 128]` 这类基础值语法。

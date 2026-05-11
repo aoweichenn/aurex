@@ -128,7 +128,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let s: str = \"hello\";\n"
         "  let size: usize = sizeof[*mut i32];\n"
         "  let data: *const u8 = strptr(s);\n"
-        "  let len: usize = strlen(s);\n"
+        "  let len: usize = strblen(s);\n"
         "  let raw: str = strraw(data, len);\n"
         "  let b: u8 = b'\\n';\n"
         "  let a: i32 = cast[i32](argc) + bitcast[i32](argc) + alignof[*mut i32];\n"
@@ -1575,7 +1575,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_ptraddr,
             TokenKind::kw_ptrat,
             TokenKind::kw_strptr,
-            TokenKind::kw_strlen,
+            TokenKind::kw_strblen,
             TokenKind::kw_strraw,
             TokenKind::l_paren,
             TokenKind::l_brace,
@@ -1884,7 +1884,7 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
         "fn main() -> i32 {\n"
         "  let text: str = \"hello\";\n"
         "  let data: *const u8 = strptr(text);\n"
-        "  let len: usize = strlen(text);\n"
+        "  let len: usize = strblen(text);\n"
         "  let broken_cast: i32 = cast[i32](1 @);\n"
         "  let broken_str: str = strraw(data len);\n"
         "  return 0;\n"

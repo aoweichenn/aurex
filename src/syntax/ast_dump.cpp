@@ -69,7 +69,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_ptraddr: return "kw_ptraddr";
     case TokenKind::kw_ptrat: return "kw_ptrat";
     case TokenKind::kw_strptr: return "kw_strptr";
-    case TokenKind::kw_strlen: return "kw_strlen";
+    case TokenKind::kw_strblen: return "kw_strblen";
     case TokenKind::kw_strraw: return "kw_strraw";
     case TokenKind::l_paren: return "l_paren";
     case TokenKind::r_paren: return "r_paren";
@@ -295,7 +295,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::ptr_addr: return "ptraddr";
     case ExprKind::paddr: return "ptrat";
     case ExprKind::str_data: return "strptr";
-    case ExprKind::str_byte_len: return "strlen";
+    case ExprKind::str_byte_len: return "strblen";
     case ExprKind::str_from_bytes_unchecked: return "strraw";
     }
     return "unknown";

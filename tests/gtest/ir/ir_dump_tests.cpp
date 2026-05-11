@@ -143,7 +143,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "null",
         "string \"dump\"",
         "strptr",
-        "strlen",
+        "strblen",
         "strraw",
         "const_ref @fallback_constant",
         "bitnot",

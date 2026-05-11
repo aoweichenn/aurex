@@ -737,6 +737,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     instance_info.module = info.module;
     instance_info.type = struct_type;
     instance_info.is_opaque = false;
+    instance_info.visibility = info.visibility;
 
     GenericTypeSubstitution substitution;
     for (base::usize i = 0; i < info.params.size(); ++i) {

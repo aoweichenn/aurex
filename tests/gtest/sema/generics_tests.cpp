@@ -85,14 +85,14 @@ TEST_F(AurexIntegrationTest, GenericStructPair) {
     expect_contains_all(ast, {
         "struct Pair<T>",
         "struct_literal Pair<i32>",
-        "field left",
-        "field right",
+        "field priv left",
+        "field priv right",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "structs 1",
-        "struct generic_struct_pair.Pair<i32> fields=2",
+        "struct priv generic_struct_pair.Pair<i32> fields=2",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
@@ -120,8 +120,8 @@ TEST_F(AurexIntegrationTest, GenericStructLiteralInference) {
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "structs 2",
-        "struct generic_struct_literal_inference.Pair<i32> fields=2",
-        "struct generic_struct_literal_inference.PairBox<i32> fields=1",
+        "struct priv generic_struct_literal_inference.Pair<i32> fields=2",
+        "struct priv generic_struct_literal_inference.PairBox<i32> fields=1",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
@@ -152,14 +152,14 @@ TEST_F(AurexIntegrationTest, GenericFunctionIdentity) {
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "generic_functions 8",
-        "fn generic_function_identity.identity<i32> -> i32",
-        "fn generic_function_identity.identity<bool> -> bool",
-        "fn generic_function_identity.twice<bool> -> bool",
-        "fn generic_function_identity.make_pair<i32> -> generic_function_identity.Pair<i32>",
-        "fn generic_function_identity.ptr_identity<i32> -> i32",
-        "fn generic_function_identity.array_ptr<i32> -> *mut [2]i32",
-        "fn generic_function_identity.unwrap_or<i32> -> i32",
-        "fn generic_function_identity.first<i32, bool> -> i32",
+        "fn priv generic_function_identity.identity<i32> -> i32",
+        "fn priv generic_function_identity.identity<bool> -> bool",
+        "fn priv generic_function_identity.twice<bool> -> bool",
+        "fn priv generic_function_identity.make_pair<i32> -> generic_function_identity.Pair<i32>",
+        "fn priv generic_function_identity.ptr_identity<i32> -> i32",
+        "fn priv generic_function_identity.array_ptr<i32> -> *mut [2]i32",
+        "fn priv generic_function_identity.unwrap_or<i32> -> i32",
+        "fn priv generic_function_identity.first<i32, bool> -> i32",
         "case Option<i32>_some : generic_function_identity.Option<i32>(i32)",
     });
 
@@ -233,19 +233,19 @@ TEST_F(AurexIntegrationTest, GenericImplMethods) {
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "generic_functions 9",
-        "fn method generic_impl_methods.Box<i32>.make -> generic_impl_methods.Box<i32>",
-        "fn method generic_impl_methods.Box<i32>.read -> i32",
-        "fn method generic_impl_methods.Box<i32>.replace -> i32",
-        "fn method generic_impl_methods.Box<i32>.pair_with<bool> -> generic_impl_methods.Pair<i32, bool>",
-        "fn method generic_impl_methods.Box<i32>.passthrough<u64> -> u64",
-        "fn method generic_impl_methods.Box<i32>.make_pair<u8> -> generic_impl_methods.Pair<i32, u8>",
-        "fn method generic_impl_methods.Choice<i32>.wrap -> generic_impl_methods.Choice<i32>",
-        "fn method generic_impl_methods.Plain.identity<i32> -> i32",
-        "fn method generic_impl_methods.Plain.identity<u16> -> u16",
-        "struct generic_impl_methods.Box<i32> fields=1",
-        "struct Plain fields=1",
-        "struct generic_impl_methods.Pair<i32, bool> fields=2",
-        "struct generic_impl_methods.Pair<i32, u8> fields=2",
+        "fn priv method generic_impl_methods.Box<i32>.make -> generic_impl_methods.Box<i32>",
+        "fn priv method generic_impl_methods.Box<i32>.read -> i32",
+        "fn priv method generic_impl_methods.Box<i32>.replace -> i32",
+        "fn priv method generic_impl_methods.Box<i32>.pair_with<bool> -> generic_impl_methods.Pair<i32, bool>",
+        "fn priv method generic_impl_methods.Box<i32>.passthrough<u64> -> u64",
+        "fn priv method generic_impl_methods.Box<i32>.make_pair<u8> -> generic_impl_methods.Pair<i32, u8>",
+        "fn priv method generic_impl_methods.Choice<i32>.wrap -> generic_impl_methods.Choice<i32>",
+        "fn priv method generic_impl_methods.Plain.identity<i32> -> i32",
+        "fn priv method generic_impl_methods.Plain.identity<u16> -> u16",
+        "struct priv generic_impl_methods.Box<i32> fields=1",
+        "struct priv Plain fields=1",
+        "struct priv generic_impl_methods.Pair<i32, bool> fields=2",
+        "struct priv generic_impl_methods.Pair<i32, u8> fields=2",
         "case Choice<i32>_some : generic_impl_methods.Choice<i32>(i32)",
     });
 
@@ -280,8 +280,8 @@ TEST_F(AurexIntegrationTest, QualifiedGenericSubstitutionImport) {
 
     const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn qualified_generic_substitution.wrap_box<i32> -> samplelib.generic_a.Box<i32>",
-        "fn qualified_generic_substitution.wrap_choice<i32> -> samplelib.generic_a.Choice<i32>",
+        "fn priv qualified_generic_substitution.wrap_box<i32> -> samplelib.generic_a.Box<i32>",
+        "fn priv qualified_generic_substitution.wrap_choice<i32> -> samplelib.generic_a.Choice<i32>",
         "struct samplelib.generic_a.Box<i32> fields=1",
         "case Choice<i32>_some : samplelib.generic_a.Choice<i32>(i32)",
     });
@@ -303,8 +303,8 @@ TEST_F(AurexIntegrationTest, QualifiedGenericInferenceUsesAliasScope) {
 
     const std::string checked = require_success(aurexc() + " " + import_flags + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn qualified_generic_inference_import.read_box<i32> -> i32",
-        "fn qualified_generic_inference_import.unwrap_choice<i32> -> i32",
+        "fn priv qualified_generic_inference_import.read_box<i32> -> i32",
+        "fn priv qualified_generic_inference_import.unwrap_choice<i32> -> i32",
         "struct samplelib.generic_a.Box<i32> fields=1",
         "struct samplelib.generic_b.Box<i32> fields=1",
         "case Choice<i32>_some : samplelib.generic_a.Choice<i32>(i32)",
@@ -327,7 +327,7 @@ TEST_F(AurexIntegrationTest, GenericStructArrayFieldAndSmallPayloadEnum) {
     const std::string struct_checked = require_success(aurexc() + " --emit=checked " + q(struct_source)).output;
     expect_contains_all(struct_checked, {
         "structs 1",
-        "struct generic_struct_array_field.Holder<[2]i32> fields=1",
+        "struct priv generic_struct_array_field.Holder<[2]i32> fields=1",
     });
 
     const std::string struct_ir = require_success(aurexc() + " --emit=ir " + q(struct_source)).output;

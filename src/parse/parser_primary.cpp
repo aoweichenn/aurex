@@ -27,14 +27,14 @@ struct BuiltinExprSyntax {
 constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
     {TokenKind::kw_pcast, BuiltinExprShape::CAST, syntax::ExprKind::pcast},
-    {TokenKind::kw_bit_cast, BuiltinExprShape::CAST, syntax::ExprKind::bit_cast},
+    {TokenKind::kw_bcast, BuiltinExprShape::CAST, syntax::ExprKind::bcast},
     {TokenKind::kw_size_of, BuiltinExprShape::TYPE, syntax::ExprKind::size_of},
     {TokenKind::kw_align_of, BuiltinExprShape::TYPE, syntax::ExprKind::align_of},
     {TokenKind::kw_ptr_addr, BuiltinExprShape::PTR_ADDR, syntax::ExprKind::ptr_addr},
     {
-        TokenKind::kw_ptr_from_addr,
+        TokenKind::kw_paddr,
         BuiltinExprShape::PTR_FROM_ADDR,
-        syntax::ExprKind::ptr_from_addr,
+        syntax::ExprKind::paddr,
     },
     {TokenKind::kw_str_data, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
     {TokenKind::kw_str_byte_len, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
@@ -114,7 +114,7 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
     case BuiltinExprShape::PTR_ADDR:
         return parser.parse_ptr_addr(context);
     case BuiltinExprShape::PTR_FROM_ADDR:
-        return parser.parse_ptr_from_addr(context);
+        return parser.parse_paddr(context);
     case BuiltinExprShape::STR_UNARY:
         return parser.parse_str_unary(context);
     case BuiltinExprShape::STR_FROM_BYTES_UNCHECKED:

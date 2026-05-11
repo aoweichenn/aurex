@@ -8,6 +8,11 @@
 
 namespace aurex::parse {
 
+struct ParsedVisibility {
+    syntax::Visibility visibility = syntax::Visibility::private_;
+    bool explicit_visibility = false;
+};
+
 class ItemParser final : private ParserPartBase {
 public:
     explicit ItemParser(Parser& parser) noexcept
@@ -24,7 +29,7 @@ private:
     [[nodiscard]] std::optional<syntax::Token> parse_path_segment(std::string message);
     void parse_import_alias(syntax::ImportDecl& import);
     void recover_import_alias();
-    [[nodiscard]] syntax::Visibility parse_visibility();
+    [[nodiscard]] ParsedVisibility parse_visibility();
     [[nodiscard]] syntax::ItemId parse_const_decl();
     [[nodiscard]] syntax::ItemId parse_type_alias_decl();
     [[nodiscard]] syntax::ItemId parse_struct_decl();

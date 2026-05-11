@@ -9,23 +9,23 @@ TEST_F(AurexIntegrationTest, TypeAlias) {
 
     const std::string alias_ast = require_success(aurexc() + " --emit=ast " + q(alias)).output;
     expect_contains_all(alias_ast, {
-        "item #0 type_alias Count",
+        "item #0 priv type_alias Count",
         "alias i32",
-        "item #1 type_alias CountPtr",
+        "item #1 priv type_alias CountPtr",
         "alias *mut Count",
-        "item #2 type_alias Bytes4",
+        "item #2 priv type_alias Bytes4",
         "alias [4]u8",
-        "item #3 type_alias PacketAlias",
+        "item #3 priv type_alias PacketAlias",
         "alias Packet",
     });
 
     const std::string alias_checked = require_success(aurexc() + " --emit=checked " + q(alias)).output;
     expect_contains_all(alias_checked, {
         "type_aliases 4",
-        "type Count = i32",
-        "type CountPtr = *mut i32",
-        "type Bytes4 = [4]u8",
-        "type PacketAlias = type_alias.Packet",
+        "type priv Count = i32",
+        "type priv CountPtr = *mut i32",
+        "type priv Bytes4 = [4]u8",
+        "type priv PacketAlias = type_alias.Packet",
     });
 
     const std::string alias_ir = require_success(aurexc() + " --emit=ir " + q(alias)).output;
@@ -45,7 +45,7 @@ TEST_F(AurexIntegrationTest, TypeAlias) {
     expect_contains_all(imported_checked, {
         "type ImportedInt = i32",
         "type ImportedIntPtr = *mut i32",
-        "fn main -> i32",
+        "fn priv main -> i32",
     });
     const std::string imported_llvm =
         require_success(aurexc() + " -I " + q(imports_root()) + " --emit=llvm-ir " + q(imported)).output;

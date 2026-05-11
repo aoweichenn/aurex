@@ -1,4 +1,4 @@
 module samplelib.aliases;
 
-type ImportedInt = i32;
-type ImportedIntPtr = *mut ImportedInt;
+pub type ImportedInt = i32;
+pub type ImportedIntPtr = *mut ImportedInt;

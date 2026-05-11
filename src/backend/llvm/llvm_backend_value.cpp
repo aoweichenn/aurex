@@ -326,13 +326,13 @@ llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
         return operand;
     case CastKind::pointer:
         return operand;
-    case CastKind::bitcast:
+    case CastKind::bcast:
         opcode = llvm::Instruction::BitCast;
         break;
     case CastKind::ptr_addr:
         opcode = llvm::Instruction::PtrToInt;
         break;
-    case CastKind::ptr_from_addr:
+    case CastKind::paddr:
         opcode = llvm::Instruction::IntToPtr;
         break;
     }
@@ -528,11 +528,11 @@ llvm::Value* LlvmEmitter::emit_cast(const Value& value) {
         }
         return operand;
     case CastKind::pointer:
-    case CastKind::bitcast:
+    case CastKind::bcast:
         return this->builder_.CreateBitCast(operand, target);
     case CastKind::ptr_addr:
         return this->builder_.CreatePtrToInt(operand, target);
-    case CastKind::ptr_from_addr:
+    case CastKind::paddr:
         return this->builder_.CreateIntToPtr(operand, target);
     }
 }

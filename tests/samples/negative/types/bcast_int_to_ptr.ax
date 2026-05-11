@@ -1,8 +1,8 @@
-module bit_cast_int_to_ptr;
+module bcast_int_to_ptr;
 
 fn main() -> i32 {
   let address: usize = cast(usize, 0);
-  let pointer: *const i32 = bit_cast(*const i32, address);
+  let pointer: *const i32 = bcast(*const i32, address);
   if pointer == null {
     return 0;
   }

@@ -25,7 +25,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
     block.impl_type = impl_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
-        const syntax::Visibility visibility = this->parse_visibility();
+        const ParsedVisibility visibility = this->parse_visibility();
         if (!this->check(TokenKind::kw_fn)) {
             this->report_here("expected function declaration in impl block");
             this->synchronize(RecoveryContext::item);
@@ -40,7 +40,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
                 this->session_.module.items[method.value].generic_params.begin(),
                 this->session_.module.items[method.value].generic_params.end()
             );
-            this->session_.module.items[method.value].visibility = visibility;
+            this->session_.module.items[method.value].visibility = visibility.visibility;
             this->session_.module.items[method.value].generic_params = std::move(method_params);
             this->session_.module.items[method.value].impl_generic_param_count = generic_params.size();
             this->session_.module.items[method.value].impl_type = impl_type;

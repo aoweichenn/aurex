@@ -63,11 +63,11 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_mut: return "kw_mut";
     case TokenKind::kw_cast: return "kw_cast";
     case TokenKind::kw_pcast: return "kw_pcast";
-    case TokenKind::kw_bit_cast: return "kw_bit_cast";
+    case TokenKind::kw_bcast: return "kw_bcast";
     case TokenKind::kw_size_of: return "kw_size_of";
     case TokenKind::kw_align_of: return "kw_align_of";
     case TokenKind::kw_ptr_addr: return "kw_ptr_addr";
-    case TokenKind::kw_ptr_from_addr: return "kw_ptr_from_addr";
+    case TokenKind::kw_paddr: return "kw_paddr";
     case TokenKind::kw_str_data: return "kw_str_data";
     case TokenKind::kw_str_byte_len: return "kw_str_byte_len";
     case TokenKind::kw_str_from_bytes_unchecked: return "kw_str_from_bytes_unchecked";
@@ -239,10 +239,12 @@ std::string_view item_kind_name(const ItemKind kind) {
     return "unknown";
 }
 
-void dump_private_visibility(std::ostringstream& out, const Visibility visibility) {
-    if (visibility == Visibility::private_) {
-        out << "priv ";
+void dump_visibility(std::ostringstream& out, const Visibility visibility) {
+    if (visibility == Visibility::public_) {
+        out << "pub ";
+        return;
     }
+    out << "priv ";
 }
 
 std::string_view stmt_kind_name(const StmtKind kind) {
@@ -287,11 +289,11 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::struct_literal: return "struct_literal";
     case ExprKind::cast: return "cast";
     case ExprKind::pcast: return "pcast";
-    case ExprKind::bit_cast: return "bit_cast";
+    case ExprKind::bcast: return "bcast";
     case ExprKind::size_of: return "size_of";
     case ExprKind::align_of: return "align_of";
     case ExprKind::ptr_addr: return "ptr_addr";
-    case ExprKind::ptr_from_addr: return "ptr_from_addr";
+    case ExprKind::paddr: return "paddr";
     case ExprKind::str_data: return "str_data";
     case ExprKind::str_byte_len: return "str_byte_len";
     case ExprKind::str_from_bytes_unchecked: return "str_from_bytes_unchecked";
@@ -492,7 +494,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     const ItemNode& item = module.items[id.value];
     indent(out, depth);
     out << "item #" << id.value << " ";
-    dump_private_visibility(out, item.visibility);
+    dump_visibility(out, item.visibility);
     out << item_kind_name(item.kind);
     if (!item.name.empty()) {
         out << " " << item.name;
@@ -538,7 +540,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     for (const FieldDecl& field : item.fields) {
         indent(out, depth + 1);
         out << "field ";
-        dump_private_visibility(out, field.visibility);
+        dump_visibility(out, field.visibility);
         out << field.name << " : " << type_label(module, field.type) << "\n";
     }
     for (const EnumCaseDecl& enum_case : item.enum_cases) {
@@ -618,11 +620,7 @@ std::string dump_ast(const AstModule& module) {
     }
     out << "\n";
     for (const ImportDecl& import : module.imports) {
-        if (import.visibility == Visibility::public_) {
-            out << "pub ";
-        } else if (import.explicit_visibility) {
-            out << "priv ";
-        }
+        dump_visibility(out, import.visibility);
         out << "import";
         for (base::usize i = 0; i < import.path.parts.size(); ++i) {
             out << (i == 0 ? " " : ".") << import.path.parts[i];

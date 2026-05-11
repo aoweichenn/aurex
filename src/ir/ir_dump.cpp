@@ -76,9 +76,9 @@ namespace {
     switch (kind) {
     case CastKind::numeric: return "cast";
     case CastKind::pointer: return "pcast";
-    case CastKind::bitcast: return "bit_cast";
+    case CastKind::bcast: return "bcast";
     case CastKind::ptr_addr: return "ptr_addr";
-    case CastKind::ptr_from_addr: return "ptr_from_addr";
+    case CastKind::paddr: return "paddr";
     }
     return "cast";
 }

@@ -80,11 +80,11 @@ enum class ExprKind {
     struct_literal,
     cast,
     pcast,
-    bit_cast,
+    bcast,
     size_of,
     align_of,
     ptr_addr,
-    ptr_from_addr,
+    paddr,
     str_data,
     str_byte_len,
     str_from_bytes_unchecked,
@@ -243,7 +243,7 @@ struct FieldDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
     base::SourceRange range {};
-    Visibility visibility = Visibility::public_;
+    Visibility visibility = Visibility::private_;
 };
 
 struct EnumCaseDecl {
@@ -268,7 +268,7 @@ struct ItemNode {
     ItemKind kind = ItemKind::fn_decl;
     base::SourceRange range {};
     std::string_view name;
-    Visibility visibility = Visibility::public_;
+    Visibility visibility = Visibility::private_;
     std::vector<std::string_view> generic_params;
     base::usize impl_generic_param_count = 0;
     TypeId const_type = INVALID_TYPE_ID;

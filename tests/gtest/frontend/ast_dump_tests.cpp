@@ -122,7 +122,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
 
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast, {
-        "field bad : <invalid-type>",
+        "field pub bad : <invalid-type>",
         "stmt <invalid>",
         "stmt #0 unknown",
         "expr #0 invalid",
@@ -133,7 +133,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
         "match_arm <invalid-pattern>",
         "expr <invalid>",
         "item <invalid>",
-        "item #3 unknown mystery",
+        "item #3 priv unknown mystery",
         "for",
     });
 }

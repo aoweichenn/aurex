@@ -15,37 +15,37 @@ using syntax::TokenKind;
 
 syntax::ItemId ItemParser::parse_item() {
     this->reset_panic();
-    const syntax::Visibility visibility = this->parse_visibility();
+    const ParsedVisibility visibility = this->parse_visibility();
     if (this->check(TokenKind::kw_const)) {
         const syntax::ItemId id = this->parse_const_decl();
         if (syntax::is_valid(id)) {
-            this->session_.module.items[id.value].visibility = visibility;
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }
     if (this->check(TokenKind::kw_type)) {
         const syntax::ItemId id = this->parse_type_alias_decl();
         if (syntax::is_valid(id)) {
-            this->session_.module.items[id.value].visibility = visibility;
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }
     if (this->check(TokenKind::kw_struct)) {
         const syntax::ItemId id = this->parse_struct_decl();
         if (syntax::is_valid(id)) {
-            this->session_.module.items[id.value].visibility = visibility;
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }
     if (this->check(TokenKind::kw_enum)) {
         const syntax::ItemId id = this->parse_enum_decl();
         if (syntax::is_valid(id)) {
-            this->session_.module.items[id.value].visibility = visibility;
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }
     if (this->check(TokenKind::kw_impl)) {
-        if (visibility == syntax::Visibility::private_) {
+        if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
             this->report_here("impl block cannot be private");
         }
         return this->parse_impl_block();
@@ -53,18 +53,18 @@ syntax::ItemId ItemParser::parse_item() {
     if (this->check(TokenKind::kw_opaque)) {
         const syntax::ItemId id = this->parse_opaque_struct_decl();
         if (syntax::is_valid(id)) {
-            this->session_.module.items[id.value].visibility = visibility;
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }
     if (this->check(TokenKind::kw_extern)) {
-        if (visibility == syntax::Visibility::private_) {
+        if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
             this->report_here("extern block cannot be private");
         }
         return this->parse_extern_block();
     }
     if (this->check(TokenKind::kw_export)) {
-        if (visibility == syntax::Visibility::private_) {
+        if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
             this->report_here("exported C function cannot be private");
         }
         const syntax::Token& begin = this->advance();
@@ -83,7 +83,7 @@ syntax::ItemId ItemParser::parse_item() {
     if (this->check(TokenKind::kw_fn)) {
         const syntax::ItemId id = this->parse_fn_decl(false, false);
         if (syntax::is_valid(id)) {
-            this->session_.module.items[id.value].visibility = visibility;
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }

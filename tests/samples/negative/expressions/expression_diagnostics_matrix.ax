@@ -44,7 +44,7 @@ fn main() -> i32 {
     let bad_payload_field = Payload.item;
     let bad_payload_arity = Payload.item(1, 2);
     let addr_bad = ptr_addr(1);
-    let from_bad = ptr_from_addr(i32, true);
+    let from_bad = paddr(i32, true);
     let bad_if_void = if true { touch() } else { touch() };
     return 0;
 }

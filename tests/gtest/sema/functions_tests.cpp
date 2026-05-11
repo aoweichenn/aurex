@@ -7,17 +7,17 @@ TEST_F(AurexIntegrationTest, FunctionPrototypes) {
 
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
-        "item #1 fn add_one prototype",
-        "item #2 fn choose prototype",
-        "item #4 fn add_one",
-        "item #5 fn choose",
+        "item #1 priv fn add_one prototype",
+        "item #2 priv fn choose prototype",
+        "item #4 priv fn add_one",
+        "item #5 priv fn choose",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn add_one -> i32",
-        "fn choose -> i32",
-        "fn main -> i32",
+        "fn priv add_one -> i32",
+        "fn priv choose -> i32",
+        "fn priv main -> i32",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
@@ -77,7 +77,7 @@ TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
     expect_contains(ast, "fn snprintf extern_c variadic @name=snprintf");
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
-    expect_contains(checked, "fn snprintf -> i32 extern_c variadic");
+    expect_contains(checked, "fn priv snprintf -> i32 extern_c variadic");
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
     expect_contains_all(ir, {
@@ -205,20 +205,20 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     const fs::path value_source = positive_sample("types", "value_flow.ax");
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(value_source)).output;
     expect_contains_all(checked, {
-        "struct Owner",
-        "fn forward -> value_flow.Owner",
-        "fn consume -> i32",
+        "struct priv Owner",
+        "fn priv forward -> value_flow.Owner",
+        "fn priv consume -> i32",
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(value_source));
 
     const fs::path result_value_source = positive_sample("types", "result_value_flow.ax");
     const std::string result_value_checked = require_success(aurexc() + " --emit=checked " + q(result_value_source)).output;
     expect_contains_all(result_value_checked, {
-        "struct Owner",
-        "fn check_result_ref_status -> bool",
-        "fn check_option_ref_status -> bool",
-        "fn wrap -> result_value_flow.Result<result_value_flow.Owner, i32>",
-        "fn unwrap_local_try -> result_value_flow.Result<i32, i32>",
+        "struct priv Owner",
+        "fn priv check_result_ref_status -> bool",
+        "fn priv check_option_ref_status -> bool",
+        "fn priv wrap -> result_value_flow.Result<result_value_flow.Owner, i32>",
+        "fn priv unwrap_local_try -> result_value_flow.Result<i32, i32>",
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(result_value_source));
     require_success(aurexc() + " --check " + q(positive_sample("types", "copyable_value.ax")));
@@ -229,9 +229,9 @@ TEST_F(AurexIntegrationTest, RecursiveFunctions) {
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn countdown -> i32",
-        "fn even -> bool",
-        "fn odd -> bool",
+        "fn priv countdown -> i32",
+        "fn priv even -> bool",
+        "fn priv odd -> bool",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;

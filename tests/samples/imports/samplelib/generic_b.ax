@@ -1,7 +1,7 @@
 module samplelib.generic_b;
 
 pub struct Box<T> {
-    value: T;
+    pub value: T;
 }
 
 pub enum Choice<T>: u8 {

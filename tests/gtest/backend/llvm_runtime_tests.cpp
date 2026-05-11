@@ -327,13 +327,13 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     pointer_from_address.kind = ValueKind::cast;
     pointer_from_address.type = ptr_i32;
     pointer_from_address.target_type = ptr_i32;
-    pointer_from_address.cast_kind = CastKind::ptr_from_addr;
+    pointer_from_address.cast_kind = CastKind::paddr;
     pointer_from_address.lhs = address;
     add_and_keep(pointer_from_address);
-    Value pointer_bitcast = pointer_from_address;
-    pointer_bitcast.cast_kind = CastKind::bitcast;
-    pointer_bitcast.lhs = op_pointer;
-    add_and_keep(pointer_bitcast);
+    Value pointer_bcast = pointer_from_address;
+    pointer_bcast.cast_kind = CastKind::bcast;
+    pointer_bcast.lhs = op_pointer;
+    add_and_keep(pointer_bcast);
 
     Value pointer_slot;
     pointer_slot.kind = ValueKind::alloca;

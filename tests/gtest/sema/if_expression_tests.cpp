@@ -15,9 +15,9 @@ TEST_F(AurexIntegrationTest, IfExpression) {
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn pick -> i32",
-        "fn normalize -> i32",
-        "fn main -> i32",
+        "fn priv pick -> i32",
+        "fn priv normalize -> i32",
+        "fn priv main -> i32",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;

@@ -77,7 +77,7 @@ syntax::ItemId ItemParser::parse_enum_decl() {
 }
 
 std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
-    const syntax::Visibility field_visibility = this->parse_visibility();
+    const ParsedVisibility field_visibility = this->parse_visibility();
     const syntax::Token& field_name = this->expect_identifier_recovered("expected field name");
     this->expect_type_annotation_colon("expected ':' after field name");
     const syntax::TypeId field_type = this->parse_type();
@@ -91,7 +91,7 @@ std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
         field_name.text,
         field_type,
         this->merge(field_name.range, end_range),
-        field_visibility,
+        field_visibility.visibility,
     };
 }
 

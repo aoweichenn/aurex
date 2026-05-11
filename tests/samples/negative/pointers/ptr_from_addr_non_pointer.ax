@@ -1,6 +1,0 @@
-module ptr_from_addr_non_pointer;
-
-fn main() -> i32 {
-    let value: i32 = ptr_from_addr(i32, 0);
-    return value;
-}

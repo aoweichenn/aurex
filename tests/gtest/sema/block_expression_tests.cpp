@@ -17,9 +17,9 @@ TEST_F(AurexIntegrationTest, BlockExpression) {
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn adjust -> i32",
-        "fn inferred_return -> i32",
-        "fn main -> i32",
+        "fn priv adjust -> i32",
+        "fn priv inferred_return -> i32",
+        "fn priv main -> i32",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;

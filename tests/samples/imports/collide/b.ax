@@ -1,9 +1,9 @@
 module collide.b;
 
-fn helper(value: i32) -> i32 {
+pub fn helper(value: i32) -> i32 {
     return value + 10;
 }
 
-fn b_value(value: i32) -> i32 {
+pub fn b_value(value: i32) -> i32 {
     return helper(value);
 }

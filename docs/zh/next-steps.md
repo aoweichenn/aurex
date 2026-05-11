@@ -12,16 +12,17 @@
 
    第一批 P0 基础语法按这个顺序推进：
 
-   - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`pcast`、`bit_cast`、`ptr_from_addr`、`str_from_bytes_unchecked` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
+   - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`pcast`、`bcast`、`paddr`、`str_from_bytes_unchecked` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
    - ADT-first enum：让普通 `enum Option<T> { some(T), none }` / `enum Result<T, E> { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
-   - default private：顶层 item 和 struct field 默认 public 是 API surface 风险，应迁移到默认 private、显式 `pub`。
    - array literal / repeat literal：数组类型 `[N]T` 已存在，但还缺 `[1, 2, 3]` / `[0; 128]` 这类基础值语法。
+
+   已完成的第一优先级基础项：default private 已切换完成。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。
 
    第二批 P1 基础语法继续补 slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function type / `extern c fn` type、tuple/destructuring，以及 `if let` / `let ... else` / struct pattern。容器迭代、完整 closure 捕获、trait/interface/protocol、package manager、macro、async 继续暂缓。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
 2. unsafe 与 `str` 安全边界
 
-   raw pointer、`pcast`、`bit_cast`、`ptr_from_addr`、`str_from_bytes_unchecked` 当前都在普通表达式层。M2 应先设计最小 `unsafe` block / `unsafe fn` 和 unchecked builtin 诊断框架，同时冻结 `str` 的 UTF-8 / slice / FFI 边界。
+   raw pointer、`pcast`、`bcast`、`paddr`、`str_from_bytes_unchecked` 当前都在普通表达式层。M2 应先设计最小 `unsafe` block / `unsafe fn` 和 unchecked builtin 诊断框架，同时冻结 `str` 的 UTF-8 / slice / FFI 边界。
 
 3. enum ADT 与 pattern 地基
 

@@ -177,9 +177,9 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_struct_literal_expr(expr_id, expr);
     case syntax::ExprKind::cast:
     case syntax::ExprKind::pcast:
-    case syntax::ExprKind::bit_cast:
+    case syntax::ExprKind::bcast:
     case syntax::ExprKind::ptr_addr:
-    case syntax::ExprKind::ptr_from_addr:
+    case syntax::ExprKind::paddr:
         return this->lower_cast_expr(expr_id, expr);
     case syntax::ExprKind::size_of:
     case syntax::ExprKind::align_of:
@@ -393,12 +393,12 @@ ValueId Lowerer::lower_cast_expr(
     value.lhs = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
     if (expr.kind == syntax::ExprKind::pcast) {
         value.cast_kind = CastKind::pointer;
-    } else if (expr.kind == syntax::ExprKind::bit_cast) {
-        value.cast_kind = CastKind::bitcast;
+    } else if (expr.kind == syntax::ExprKind::bcast) {
+        value.cast_kind = CastKind::bcast;
     } else if (expr.kind == syntax::ExprKind::ptr_addr) {
         value.cast_kind = CastKind::ptr_addr;
-    } else if (expr.kind == syntax::ExprKind::ptr_from_addr) {
-        value.cast_kind = CastKind::ptr_from_addr;
+    } else if (expr.kind == syntax::ExprKind::paddr) {
+        value.cast_kind = CastKind::paddr;
     }
     return this->append_value(value);
 }

@@ -1,5 +1,7 @@
 #include <support/test_support.hpp>
 
+#include <fstream>
+
 namespace aurex::test {
 
 TEST_F(AurexIntegrationTest, ModuleVisibility) {
@@ -15,10 +17,10 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
 
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(library)).output;
     expect_contains_all(ast, {
-        "item #0 const answer",
+        "item #0 pub const answer",
         "item #1 priv const hidden_answer",
-        "item #4 struct PublicBox",
-        "field value : i32",
+        "item #4 pub struct PublicBox",
+        "field pub value : i32",
         "field priv secret : i32",
     });
 
@@ -207,6 +209,106 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
 
     const fs::path private_enum = negative_sample("visibility", "private_reexport_enum.ax");
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: SecretMode_hidden");
+}
+
+TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
+    const fs::path import_dir = tmp_root() / "default_private_imports";
+    fs::create_directories(import_dir);
+    const fs::path library = import_dir / "default_private_lib.ax";
+    {
+        std::ofstream out(library, std::ios::binary);
+        out <<
+            "module default_private_lib;\n"
+            "const hidden_value: i32 = 7;\n"
+            "fn hidden_fn() -> i32 { return hidden_value; }\n"
+            "pub struct Box { value: i32; }\n"
+            "pub fn make_box() -> Box { return Box { value: hidden_fn() }; }\n"
+            "impl Box {\n"
+            "  fn hidden_method(self: *const Box) -> i32 { return self.value; }\n"
+            "  pub fn read(self: *const Box) -> i32 { return self.hidden_method(); }\n"
+            "}\n";
+    }
+
+    const std::string library_ast = require_success(aurexc() + " --emit=ast " + q(library)).output;
+    expect_contains_all(library_ast, {
+        "item #0 priv const hidden_value",
+        "item #1 priv fn hidden_fn",
+        "item #2 pub struct Box",
+        "field priv value : i32",
+        "item #4 priv fn hidden_method",
+        "item #5 pub fn read",
+    });
+
+    const fs::path use_public = tmp_root() / "default_private_public_use.ax";
+    {
+        std::ofstream out(use_public, std::ios::binary);
+        out <<
+            "module default_private_public_use;\n"
+            "import default_private_lib as lib;\n"
+            "fn main() -> i32 {\n"
+            "  let box: lib::Box = lib::make_box();\n"
+            "  return box.read() - 7;\n"
+            "}\n";
+    }
+    require_success(aurexc() + " -I " + q(import_dir) + " --check " + q(use_public));
+
+    const fs::path private_value = tmp_root() / "default_private_value.ax";
+    {
+        std::ofstream out(private_value, std::ios::binary);
+        out <<
+            "module default_private_value;\n"
+            "import default_private_lib as lib;\n"
+            "fn main() -> i32 { return lib::hidden_value; }\n";
+    }
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_value)).output,
+        "name is private: default_private_lib.hidden_value"
+    );
+
+    const fs::path private_function = tmp_root() / "default_private_function.ax";
+    {
+        std::ofstream out(private_function, std::ios::binary);
+        out <<
+            "module default_private_function;\n"
+            "import default_private_lib as lib;\n"
+            "fn main() -> i32 { return lib::hidden_fn(); }\n";
+    }
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_function)).output,
+        "function is private: default_private_lib.hidden_fn"
+    );
+
+    const fs::path private_field = tmp_root() / "default_private_field.ax";
+    {
+        std::ofstream out(private_field, std::ios::binary);
+        out <<
+            "module default_private_field;\n"
+            "import default_private_lib as lib;\n"
+            "fn main() -> i32 {\n"
+            "  let box: lib::Box = lib::make_box();\n"
+            "  return box.value;\n"
+            "}\n";
+    }
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_field)).output,
+        "field is private: value"
+    );
+
+    const fs::path private_method = tmp_root() / "default_private_method.ax";
+    {
+        std::ofstream out(private_method, std::ios::binary);
+        out <<
+            "module default_private_method;\n"
+            "import default_private_lib as lib;\n"
+            "fn main() -> i32 {\n"
+            "  let box: lib::Box = lib::make_box();\n"
+            "  return box.hidden_method();\n"
+            "}\n";
+    }
+    expect_contains(
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_method)).output,
+        "method is private: default_private_lib.Box.hidden_method"
+    );
 }
 
 } // namespace aurex::test

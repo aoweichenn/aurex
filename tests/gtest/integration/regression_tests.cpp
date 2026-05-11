@@ -155,7 +155,7 @@ TEST_F(AurexIntegrationTest, QualifiedGenericStaticMethodRegressions) {
     static_cast<void>(write_source_file(
         tmp_root() / "box.ax",
         "module box;\n"
-        "pub struct Box<T> { value: T; }\n"
+        "pub struct Box<T> { pub value: T; }\n"
         "impl<T> Box<T> {\n"
         "  pub fn new(value: T) -> Box<T> { return Box<T> { value: value }; }\n"
         "}\n"

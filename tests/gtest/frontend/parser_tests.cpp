@@ -123,7 +123,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "    if i == 1 { continue; } else { break; }\n"
         "  }\n"
         "  defer puts(c\"cleanup\");\n"
-        "  let p: *mut i32 = ptr_from_addr(*mut i32, ptr_addr(argv));\n"
+        "  let p: *mut i32 = paddr(*mut i32, ptr_addr(argv));\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
         "  let size: usize = size_of(*mut i32);\n"
@@ -131,7 +131,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let len: usize = str_byte_len(s);\n"
         "  let raw: str = str_from_bytes_unchecked(data, len);\n"
         "  let b: u8 = b'\\n';\n"
-        "  let a: i32 = cast(i32, argc) + bit_cast(i32, argc) + align_of(*mut i32);\n"
+        "  let a: i32 = cast(i32, argc) + bcast(i32, argc) + align_of(*mut i32);\n"
         "  let q: *mut i32 = pcast(*mut i32, p);\n"
         "  let idx: u8 = argv[0][0];\n"
         "  return a;\n"
@@ -159,10 +159,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_defer",
         "kw_null",
         "kw_pcast",
-        "kw_bit_cast",
+        "kw_bcast",
         "kw_align_of",
         "kw_ptr_addr",
-        "kw_ptr_from_addr",
+        "kw_paddr",
         "ellipsis",
         "byte_literal",
         "string_literal",
@@ -189,10 +189,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "byte_literal",
         "index",
         "pcast",
-        "bit_cast",
+        "bcast",
         "align_of",
         "ptr_addr",
-        "ptr_from_addr",
+        "paddr",
     });
 }
 
@@ -1068,7 +1068,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
         "fn opened @(a: i32) -> i32 { return a; }\n"
         "fn recovered(value: i32) -> i32 {\n"
         "  let casted = cast @(i32, value);\n"
-        "  let broken_builtin = ptr_from_addr @(*mut i32, casted);\n"
+        "  let broken_builtin = paddr @(*mut i32, casted);\n"
         "  let broken = ;\n"
         "  return casted;\n"
         "}\n";
@@ -1091,7 +1091,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
     expect_contains(messages, "expected '(' after ABI attribute");
     expect_contains(messages, "expected '(' after function name");
     expect_contains(messages, "expected '(' after cast builtin");
-    expect_contains(messages, "expected '(' after ptr_from_addr");
+    expect_contains(messages, "expected '(' after paddr");
     expect_contains(messages, "expected expression");
 }
 
@@ -1569,11 +1569,11 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_null,
             TokenKind::kw_cast,
             TokenKind::kw_pcast,
-            TokenKind::kw_bit_cast,
+            TokenKind::kw_bcast,
             TokenKind::kw_size_of,
             TokenKind::kw_align_of,
             TokenKind::kw_ptr_addr,
-            TokenKind::kw_ptr_from_addr,
+            TokenKind::kw_paddr,
             TokenKind::kw_str_data,
             TokenKind::kw_str_byte_len,
             TokenKind::kw_str_from_bytes_unchecked,

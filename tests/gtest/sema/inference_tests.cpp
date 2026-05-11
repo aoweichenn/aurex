@@ -37,10 +37,10 @@ TEST_F(AurexIntegrationTest, FunctionReturnInference) {
 
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
-        "item #2 fn make_count\n",
-        "item #3 fn make_pair\n",
-        "item #4 fn touch\n",
-        "item #5 fn choose\n",
+        "item #2 priv fn make_count\n",
+        "item #3 priv fn make_pair\n",
+        "item #4 priv fn touch\n",
+        "item #5 priv fn choose\n",
     });
     expect_not_contains(ast, "fn make_count\n    return");
     expect_not_contains(ast, "fn make_pair\n    return");
@@ -49,10 +49,10 @@ TEST_F(AurexIntegrationTest, FunctionReturnInference) {
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn make_count -> i32",
-        "fn make_pair -> return_inference.Pair",
-        "fn touch -> void",
-        "fn choose -> i32",
+        "fn priv make_count -> i32",
+        "fn priv make_pair -> return_inference.Pair",
+        "fn priv touch -> void",
+        "fn priv choose -> i32",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;

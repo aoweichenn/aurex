@@ -54,16 +54,16 @@ syntax::ExprId BuiltinExprParser::parse_ptr_addr(const ExprContext context) {
     return this->session_.module.push_expr(std::move(expr));
 }
 
-syntax::ExprId BuiltinExprParser::parse_ptr_from_addr(const ExprContext context) {
+syntax::ExprId BuiltinExprParser::parse_paddr(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect_builtin_arg_list_start("expected '(' after ptr_from_addr");
+    this->expect_builtin_arg_list_start("expected '(' after paddr");
     const syntax::TypeId type = this->parse_type();
-    this->recover_builtin_arg_separator("expected ',' after ptr_from_addr type");
+    this->recover_builtin_arg_separator("expected ',' after paddr type");
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after ptr_from_addr argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after paddr argument");
 
     syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::ptr_from_addr;
+    expr.kind = syntax::ExprKind::paddr;
     expr.range = this->merge(begin.range, end.range);
     expr.cast_type = type;
     expr.cast_expr = value;

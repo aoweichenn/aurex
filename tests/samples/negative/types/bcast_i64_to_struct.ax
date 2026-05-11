@@ -1,4 +1,4 @@
-module bit_cast_i64_to_struct;
+module bcast_i64_to_struct;
 
 struct Pair {
   lo: i32;
@@ -7,6 +7,6 @@ struct Pair {
 
 fn main() -> i32 {
   let bits: i64 = 1;
-  let pair: Pair = bit_cast(Pair, bits);
+  let pair: Pair = bcast(Pair, bits);
   return pair.lo;
 }

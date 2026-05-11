@@ -118,13 +118,13 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     cast.kind = ValueKind::cast;
     cast.type = ptr_i32;
     cast.target_type = ptr_i32;
-    cast.cast_kind = CastKind::bitcast;
+    cast.cast_kind = CastKind::bcast;
     cast.lhs = ptr_value;
     values.push_back(builder.add(cast));
-    Value ptr_from_addr = cast;
-    ptr_from_addr.cast_kind = CastKind::ptr_from_addr;
-    ptr_from_addr.lhs = lhs;
-    values.push_back(builder.add(ptr_from_addr));
+    Value paddr = cast;
+    paddr.cast_kind = CastKind::paddr;
+    paddr.lhs = lhs;
+    values.push_back(builder.add(paddr));
 
     const BlockId entry = builder.block("entry");
     const BlockId dead = builder.block("dead");
@@ -160,8 +160,8 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "bitxor",
         "bitor",
         "and",
-        "bit_cast",
-        "ptr_from_addr",
+        "bcast",
+        "paddr",
         "unreachable",
         "br ^invalid",
     });

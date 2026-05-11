@@ -20,8 +20,8 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
-        "fn score -> i32",
-        "fn main -> i32",
+        "fn priv score -> i32",
+        "fn priv main -> i32",
         "enum_cases 2",
     });
 

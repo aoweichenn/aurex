@@ -1,7 +1,7 @@
-module ptr_from_addr_wide_literal;
+module paddr_wide_literal;
 
 fn main() -> i32 {
-    let pointer: *const i32 = ptr_from_addr(*const i32, 4294967296);
+    let pointer: *const i32 = paddr(*const i32, 4294967296);
     if ptr_addr(pointer) == cast(usize, 0) {
         return 1;
     }

@@ -123,9 +123,9 @@ enum class BinaryOp {
 enum class CastKind {
     numeric,
     pointer,
-    bitcast,
+    bcast,
     ptr_addr,
-    ptr_from_addr,
+    paddr,
 };
 
 struct FieldValue {

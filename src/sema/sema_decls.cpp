@@ -918,9 +918,9 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                 break;
             case syntax::ExprKind::cast:
             case syntax::ExprKind::pcast:
-            case syntax::ExprKind::bit_cast:
+            case syntax::ExprKind::bcast:
             case syntax::ExprKind::ptr_addr:
-            case syntax::ExprKind::ptr_from_addr:
+            case syntax::ExprKind::paddr:
                 stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_CAST, 0});
                 stack.push_back(ConstEvalFrame {expr.cast_expr, ConstEvalStage::ENTER, 0});
                 break;

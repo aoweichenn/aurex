@@ -228,15 +228,15 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::cast:
     case syntax::ExprKind::pcast:
-    case syntax::ExprKind::bit_cast:
+    case syntax::ExprKind::bcast:
         return this->analyze_cast_expr(expr_id, expr);
     case syntax::ExprKind::size_of:
     case syntax::ExprKind::align_of:
         return this->analyze_size_or_align_expr(expr_id, expr);
     case syntax::ExprKind::ptr_addr:
         return this->analyze_ptr_addr_expr(expr_id, expr);
-    case syntax::ExprKind::ptr_from_addr:
-        return this->analyze_ptr_from_addr_expr(expr_id, expr);
+    case syntax::ExprKind::paddr:
+        return this->analyze_paddr_expr(expr_id, expr);
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
         return this->analyze_str_projection_expr(expr_id, expr);
@@ -734,17 +734,17 @@ TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
 }
 
-TypeHandle SemanticAnalyzer::analyze_ptr_from_addr_expr(
+TypeHandle SemanticAnalyzer::analyze_paddr_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
 ) {
     const TypeHandle target = this->resolve_type(expr.cast_type);
     const TypeHandle address = this->analyze_expr(expr.cast_expr, this->checked_.types.builtin(BuiltinType::usize));
     if (!this->checked_.types.is_pointer(target)) {
-        this->report(expr.range, "ptr_from_addr target type must be a pointer");
+        this->report(expr.range, "paddr target type must be a pointer");
     }
     if (!this->checked_.types.is_integer(address)) {
-        this->report(this->module_.exprs[expr.cast_expr.value].range, "ptr_from_addr address must be an integer");
+        this->report(this->module_.exprs[expr.cast_expr.value].range, "paddr address must be an integer");
     }
     return this->record_expr_type(expr_id, target);
 }

@@ -111,14 +111,14 @@ void ItemParser::recover_import_alias() {
     }
 }
 
-syntax::Visibility ItemParser::parse_visibility() {
+ParsedVisibility ItemParser::parse_visibility() {
     if (this->match(syntax::TokenKind::kw_pub)) {
-        return syntax::Visibility::public_;
+        return ParsedVisibility {syntax::Visibility::public_, true};
     }
     if (this->match(syntax::TokenKind::kw_priv)) {
-        return syntax::Visibility::private_;
+        return ParsedVisibility {syntax::Visibility::private_, true};
     }
-    return syntax::Visibility::public_;
+    return {};
 }
 
 } // namespace aurex::parse

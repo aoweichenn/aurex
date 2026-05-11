@@ -1,11 +1,11 @@
 module qualified_literal.remote;
 
 pub struct Box {
-  value: bool;
+  pub value: bool;
 }
 
 pub struct Pair<T> {
-  value: T;
+  pub value: T;
 }
 
 pub enum Result<T, E>: u8 {

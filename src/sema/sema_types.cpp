@@ -312,7 +312,7 @@ template <typename Float>
     return result;
 }
 
-[[nodiscard]] bool is_builtin_scalar_bitcast_type(const TypeTable& types, const TypeHandle type) noexcept {
+[[nodiscard]] bool is_builtin_scalar_bcast_type(const TypeTable& types, const TypeHandle type) noexcept {
     if (!is_valid(type)) {
         return false;
     }
@@ -1028,15 +1028,15 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
     if (kind == syntax::ExprKind::pcast) {
         return this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src);
     }
-    if (kind == syntax::ExprKind::bit_cast) {
+    if (kind == syntax::ExprKind::bcast) {
         if (this->checked_.types.same(dst, src)) {
             return this->checked_.types.is_copyable(dst);
         }
         if (!this->checked_.types.is_copyable(dst) || !this->checked_.types.is_copyable(src) || this->abi_size(dst) != this->abi_size(src)) {
             return false;
         }
-        if (is_builtin_scalar_bitcast_type(this->checked_.types, dst) &&
-            is_builtin_scalar_bitcast_type(this->checked_.types, src)) {
+        if (is_builtin_scalar_bcast_type(this->checked_.types, dst) &&
+            is_builtin_scalar_bcast_type(this->checked_.types, src)) {
             return true;
         }
         return this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src);

@@ -68,14 +68,14 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"size_of", syntax::TokenKind::kw_size_of},
 
     KeywordEntry {"continue", syntax::TokenKind::kw_continue},
-    KeywordEntry {"bit_cast", syntax::TokenKind::kw_bit_cast},
+    KeywordEntry {"bcast", syntax::TokenKind::kw_bcast},
     KeywordEntry {"align_of", syntax::TokenKind::kw_align_of},
     KeywordEntry {"ptr_addr", syntax::TokenKind::kw_ptr_addr},
     KeywordEntry {"str_data", syntax::TokenKind::kw_str_data},
 
     KeywordEntry {"str_byte_len", syntax::TokenKind::kw_str_byte_len},
 
-    KeywordEntry {"ptr_from_addr", syntax::TokenKind::kw_ptr_from_addr},
+    KeywordEntry {"paddr", syntax::TokenKind::kw_paddr},
 
     KeywordEntry {"str_from_bytes_unchecked", syntax::TokenKind::kw_str_from_bytes_unchecked},
 };

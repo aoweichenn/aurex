@@ -3,7 +3,6 @@
 #include <aurex/parse/recovery.hpp>
 
 #include <optional>
-#include <string_view>
 #include <utility>
 
 namespace aurex::parse {
@@ -27,10 +26,6 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
 syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
     const syntax::Token& begin = this->expect(TokenKind::kw_fn, "expected 'fn'");
     const syntax::Token& name = this->expect_identifier_recovered("expected function name");
-    std::vector<std::string_view> generic_params;
-    if (this->check(TokenKind::less)) {
-        generic_params = this->parse_generic_param_list();
-    }
     this->expect_param_list_start("expected '(' after function name");
     std::vector<syntax::ParamDecl> params;
     bool is_variadic = false;
@@ -47,7 +42,6 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::fn_decl;
     item.name = name.text;
-    item.generic_params = std::move(generic_params);
     item.params = std::move(params);
     item.return_type = return_type;
     item.is_export_c = is_export_c;

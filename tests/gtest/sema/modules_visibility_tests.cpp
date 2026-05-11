@@ -181,7 +181,7 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
     expect_contains_all(checked, {
         "fn add_two -> i32",
         "fn add_base -> i32",
-        "struct samplelib.reexport_inner.Pair<i32> fields=2",
+        "struct PairI32 fields=2",
         "type Count = i32",
         "case Mode_ready : samplelib.reexport_inner.Mode",
     });
@@ -191,7 +191,7 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
     expect_contains_all(ir, {
         "call m0_samplelib_reexport_facade_add_two",
         "call m0_samplelib_reexport_inner_add_base",
-        "record samplelib.reexport_inner.Pair<i32>",
+        "record PairI32 @m0_samplelib_reexport_inner_PairI32",
         "const base @m0_samplelib_reexport_inner_base",
         "const_ref @m0_samplelib_reexport_inner_base",
     });

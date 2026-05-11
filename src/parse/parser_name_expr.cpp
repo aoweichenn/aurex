@@ -24,24 +24,12 @@ syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext co
         name = &this->expect_identifier_recovered("expected item name after '::'");
     }
 
-    std::vector<syntax::TypeId> struct_type_args;
-    if (context == ExprContext::normal && this->next_angle_list_is_struct_literal()) {
-        struct_type_args = this->parse_type_arg_list();
-    }
     if (context == ExprContext::normal && this->check(TokenKind::l_brace)) {
         return this->parse_struct_literal(
             scope_name,
             scope_range,
             *name,
-            std::move(struct_type_args),
             context
-        );
-    }
-    if (!struct_type_args.empty()) {
-        this->report_at(
-            *name,
-            "type arguments in expressions are only supported on struct literals, "
-            "function calls, or scoped enum constructors"
         );
     }
 
@@ -52,7 +40,6 @@ syntax::ExprId NameExprParser::parse_struct_literal(
     const std::string_view scope_name,
     const base::SourceRange scope_range,
     const syntax::Token& name,
-    std::vector<syntax::TypeId> struct_type_args,
     const ExprContext context
 ) {
     this->advance();
@@ -61,7 +48,6 @@ syntax::ExprId NameExprParser::parse_struct_literal(
     node.scope_name = scope_name;
     node.scope_range = scope_range;
     node.struct_name = name.text;
-    node.struct_type_args = std::move(struct_type_args);
     node.range = scope_name.empty() ? name.range : this->merge(scope_range, name.range);
     this->parse_struct_fields(node.field_inits, context);
     const syntax::Token& end = this->expect_recovered(

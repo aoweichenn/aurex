@@ -29,18 +29,6 @@ bool ParserPartCore::check_next(const syntax::TokenKind kind) const noexcept {
     return this->parser_.check_next(kind);
 }
 
-bool ParserPartCore::check_type_arg_list_end() const noexcept {
-    return this->parser_.check_type_arg_list_end();
-}
-
-bool ParserPartCore::next_angle_list_is_type_scope() const noexcept {
-    return this->parser_.next_angle_list_is_type_scope();
-}
-
-bool ParserPartCore::next_angle_list_is_struct_literal() const noexcept {
-    return this->parser_.next_angle_list_is_struct_literal();
-}
-
 bool ParserPartCore::match(const syntax::TokenKind kind) noexcept {
     return this->parser_.match(kind);
 }
@@ -83,10 +71,6 @@ const syntax::Token& ParserPartCore::expect_initializer_equal(std::string messag
         std::move(message),
         RecoveryContext::initializer
     );
-}
-
-const syntax::Token& ParserPartCore::expect_type_arg_list_end(std::string message) {
-    return this->parser_.expect_type_arg_list_end(std::move(message));
 }
 
 void ParserPartCore::synchronize(const RecoveryContext context) {

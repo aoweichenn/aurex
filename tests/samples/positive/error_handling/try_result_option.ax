@@ -1,37 +1,37 @@
 module try_result_option;
 
-enum Option<T>: u8 {
-    some(T) = 1,
+enum OptionI32: u8 {
+    some(i32) = 1,
     none = 2,
 }
 
-enum Result<T, E>: u8 {
-    ok(T) = 1,
-    err(E) = 2,
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
 }
 
-fn parse_digit(value: i32) -> Result<i32, i32> {
+fn parse_digit(value: i32) -> ResultI32I32 {
     if value < 0 {
-        return Result.err(7);
+        return ResultI32I32.err(7);
     }
-    return Result.ok(value + 1);
+    return ResultI32I32.ok(value + 1);
 }
 
-fn add_one_result(value: i32) -> Result<i32, i32> {
+fn add_one_result(value: i32) -> ResultI32I32 {
     let parsed: i32 = parse_digit(value)?;
-    return Result.ok(parsed + 1);
+    return ResultI32I32.ok(parsed + 1);
 }
 
-fn maybe_even(value: i32) -> Option<i32> {
+fn maybe_even(value: i32) -> OptionI32 {
     if (value % 2) == 0 {
-        return Option.some(value);
+        return OptionI32.some(value);
     }
-    return Option.none;
+    return OptionI32.none;
 }
 
-fn unwrap_even(value: i32) -> Option<i32> {
+fn unwrap_even(value: i32) -> OptionI32 {
     let even: i32 = maybe_even(value)?;
-    return Option.some(even + 2);
+    return OptionI32.some(even + 2);
 }
 
 fn main() -> i32 {

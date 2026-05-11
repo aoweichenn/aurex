@@ -34,8 +34,8 @@ TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly) {
         << "import common.status;\n"
         << "fn main() -> i32 {\n"
         << "    let health: Health = Health.from_errors(2);\n"
-        << "    let counter: Counter<Count> = counter_i32(5, default_limit);\n"
-        << "    let result: Outcome<i32> = Outcome.ok(counter_delta(counter));\n"
+        << "    let counter: CounterI32 = counter_i32(5, default_limit);\n"
+        << "    let result: OutcomeI32 = OutcomeI32.ok(counter_delta(counter));\n"
         << "    if is_even(4) && health.code() == 1 && outcome_code_i32(result) == 3 {\n"
         << "        return 0;\n"
         << "    }\n"
@@ -46,8 +46,8 @@ TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly) {
     const std::string checked = require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked, {
         "case Health_degraded : common.status.Health",
-        "struct common.metrics.Counter<i32>",
-        "case Outcome<i32>_ok",
+        "struct CounterI32 fields=3",
+        "case OutcomeI32_ok",
         "fn is_even -> bool",
     });
 

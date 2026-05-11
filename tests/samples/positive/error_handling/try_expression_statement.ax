@@ -1,20 +1,20 @@
 module try_expression_statement;
 
-enum Result<T, E>: u8 {
-    ok(T) = 1,
-    err(E) = 2,
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
 }
 
-fn fail_if(value: i32) -> Result<i32, i32> {
+fn fail_if(value: i32) -> ResultI32I32 {
     if value < 0 {
-        return Result.err(7);
+        return ResultI32I32.err(7);
     }
-    return Result.ok(value);
+    return ResultI32I32.ok(value);
 }
 
-fn check(value: i32) -> Result<i32, i32> {
+fn check(value: i32) -> ResultI32I32 {
     fail_if(value)?;
-    return Result.ok(0);
+    return ResultI32I32.ok(0);
 }
 
 fn main() -> i32 {

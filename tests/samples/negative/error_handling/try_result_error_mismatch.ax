@@ -1,17 +1,22 @@
 module try_result_error_mismatch;
 
-enum Result<T, E>: u8 {
-    ok(T) = 1,
-    err(E) = 2,
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
 }
 
-fn parse() -> Result<i32, i32> {
-    return Result.ok(1);
+enum ResultI32Bool: u8 {
+    ok(i32) = 1,
+    err(bool) = 2,
 }
 
-fn use_value() -> Result<i32, bool> {
+fn parse() -> ResultI32I32 {
+    return ResultI32I32.ok(1);
+}
+
+fn use_value() -> ResultI32Bool {
     let value: i32 = parse()?;
-    return Result.ok(value);
+    return ResultI32Bool.ok(value);
 }
 
 fn main() -> i32 {

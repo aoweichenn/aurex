@@ -4,7 +4,6 @@
 
 #include <limits>
 #include <string_view>
-#include <vector>
 
 namespace aurex::parse {
 
@@ -121,39 +120,6 @@ constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
 
 } // namespace
 
-std::vector<syntax::TypeId> TypeParser::parse_type_arg_list() {
-    std::vector<syntax::TypeId> args;
-    this->expect(TokenKind::less, "expected '<' before type argument list");
-    while (!this->is_eof() && !this->check_type_arg_list_end()) {
-        args.push_back(this->parse_type());
-        this->reset_panic();
-        if (!this->recover_type_arg_separator()) {
-            break;
-        }
-    }
-    this->expect_type_arg_list_end("expected '>' after type argument list");
-    this->reset_panic();
-    return args;
-}
-
-bool TypeParser::recover_type_arg_separator() {
-    if (this->check_type_arg_list_end()) {
-        return false;
-    }
-    if (this->match(TokenKind::comma)) {
-        return !this->check_type_arg_list_end();
-    }
-
-    this->report_here("expected ',' or '>' after type argument");
-    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::type_argument)) {
-        this->synchronize(RecoveryContext::type_argument);
-    }
-    if (this->match(TokenKind::comma)) {
-        return !this->check_type_arg_list_end();
-    }
-    return false;
-}
-
 syntax::TypeId TypeParser::parse_type() {
     this->reset_panic();
     enum class TypeConstructorKind {
@@ -245,10 +211,6 @@ syntax::TypeId TypeParser::parse_type_atom() {
             type.scope_range = name.range;
             type.name = scoped_name.text;
             type.range = this->merge(name.range, scoped_name.range);
-        }
-        if (this->check(TokenKind::less)) {
-            type.type_args = this->parse_type_arg_list();
-            type.range = this->merge(type.range, this->previous().range);
         }
         return this->session_.module.push_type(type);
     }

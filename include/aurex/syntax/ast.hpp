@@ -51,7 +51,6 @@ struct TypeNode {
     std::string_view scope_name;
     base::SourceRange scope_range {};
     std::string_view name;
-    std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
     TypeId pointee = INVALID_TYPE_ID;
     base::u64 array_count = 0;
@@ -187,11 +186,9 @@ struct ExprNode {
     std::string_view field_name;
     ExprId index = INVALID_EXPR_ID;
     std::string_view struct_name;
-    std::vector<TypeId> struct_type_args;
     std::vector<FieldInit> field_inits;
     TypeId cast_type = INVALID_TYPE_ID;
     ExprId cast_expr = INVALID_EXPR_ID;
-    std::vector<TypeId> type_args;
 };
 
 enum class StmtKind {
@@ -269,8 +266,6 @@ struct ItemNode {
     base::SourceRange range {};
     std::string_view name;
     Visibility visibility = Visibility::private_;
-    std::vector<std::string_view> generic_params;
-    base::usize impl_generic_param_count = 0;
     TypeId const_type = INVALID_TYPE_ID;
     ExprId const_value = INVALID_EXPR_ID;
     TypeId alias_type = INVALID_TYPE_ID;

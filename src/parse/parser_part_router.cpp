@@ -12,10 +12,6 @@ syntax::TypeId ParserPartRouter::parse_type() {
     return TypeParser(this->parser_).parse_type();
 }
 
-std::vector<syntax::TypeId> ParserPartRouter::parse_type_arg_list() {
-    return TypeParser(this->parser_).parse_type_arg_list();
-}
-
 syntax::StmtId ParserPartRouter::parse_block() {
     return BlockParser(this->parser_).parse_block();
 }

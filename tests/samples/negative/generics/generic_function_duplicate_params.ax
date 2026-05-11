@@ -1,9 +1,0 @@
-module generic_function_duplicate_params;
-
-fn bad<T, T>(value: T) -> T {
-    return value;
-}
-
-fn main() -> i32 {
-    return 0;
-}

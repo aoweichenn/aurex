@@ -4,7 +4,7 @@ import samplelib.reexport_facade;
 
 fn main() -> i32 {
     let value: Count = add_two(0);
-    let pair: Pair<i32> = Pair<i32> {
+    let pair: PairI32 = PairI32 {
         left: value,
         right: base,
     };
@@ -14,4 +14,3 @@ fn main() -> i32 {
     }
     return pair.left + pair.right - 82;
 }
-

@@ -1,12 +1,12 @@
 module try_result_return_mismatch;
 
-enum Result<T, E>: u8 {
-    ok(T) = 1,
-    err(E) = 2,
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
 }
 
-fn parse() -> Result<i32, i32> {
-    return Result.ok(1);
+fn parse() -> ResultI32I32 {
+    return ResultI32I32.ok(1);
 }
 
 fn main() -> i32 {

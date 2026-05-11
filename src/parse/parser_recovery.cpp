@@ -19,10 +19,6 @@ bool token_matches_recovery_context(
         return detail::token_starts_item(kind);
     case RecoveryContext::statement:
         return detail::token_starts_statement(kind);
-    case RecoveryContext::type_argument:
-        return detail::token_ends_type_argument(kind) ||
-               detail::token_starts_item(kind) ||
-               detail::token_starts_non_expression_statement(kind);
     case RecoveryContext::match_arm:
         return detail::token_ends_match_arm(kind) ||
                token_starts_match_arm(kind) ||
@@ -50,11 +46,6 @@ bool token_matches_recovery_context(
     case RecoveryContext::enum_case:
         return detail::token_ends_enum_case(kind) ||
                token_starts_enum_case(kind) ||
-               detail::token_starts_item(kind) ||
-               detail::token_starts_non_expression_statement(kind);
-    case RecoveryContext::generic_parameter:
-        return detail::token_ends_generic_parameter(kind) ||
-               token_starts_generic_parameter(kind) ||
                detail::token_starts_item(kind) ||
                detail::token_starts_non_expression_statement(kind);
     case RecoveryContext::parameter_list_start:

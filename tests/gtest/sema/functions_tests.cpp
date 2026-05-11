@@ -217,8 +217,8 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
         "struct priv Owner",
         "fn priv check_result_ref_status -> bool",
         "fn priv check_option_ref_status -> bool",
-        "fn priv wrap -> result_value_flow.Result<result_value_flow.Owner, i32>",
-        "fn priv unwrap_local_try -> result_value_flow.Result<i32, i32>",
+        "fn priv wrap -> result_value_flow.ResultOwnerI32",
+        "fn priv unwrap_local_try -> result_value_flow.ResultI32I32",
     });
     require_success(aurexc() + " --emit=llvm-ir " + q(result_value_source));
     require_success(aurexc() + " --check " + q(positive_sample("types", "plain_value.ax")));

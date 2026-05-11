@@ -4,7 +4,6 @@
 #include <aurex/base/result.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/sema/function.hpp>
-#include <aurex/sema/generic.hpp>
 #include <aurex/sema/symbol.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -79,8 +78,7 @@ private:
         const syntax::ItemNode& function,
         const std::string& key,
         const FunctionSignature& signature,
-        FunctionBodyState& state,
-        const GenericTypeSubstitution* substitution
+        FunctionBodyState& state
     );
     void analyze_block(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
     void analyze_block_statements(syntax::StmtId block, TypeHandle expected_return, ReturnTypeInference* return_inference);
@@ -132,9 +130,7 @@ private:
     [[nodiscard]] TypeHandle analyze_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] bool is_generic_enum_constructor_call(const syntax::ExprNode& callee);
     [[nodiscard]] TypeHandle analyze_enum_constructor_call(syntax::ExprId expr_id, const syntax::ExprNode& expr, const EnumCaseInfo& enum_case);
-    [[nodiscard]] TypeHandle analyze_generic_enum_constructor_call(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_field_call_expr(
         syntax::ExprId expr_id,
         const syntax::ExprNode& expr,
@@ -188,7 +184,6 @@ private:
     );
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
-    [[nodiscard]] TypeHandle resolve_type_with_substitution(syntax::TypeId type, const GenericTypeSubstitution* substitution, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
@@ -241,93 +236,6 @@ private:
         bool require_self,
         bool report_unknown = true
     );
-    [[nodiscard]] const GenericFunctionInstanceInfo* find_generic_method_in_visible_modules(
-        TypeHandle owner_type,
-        std::string_view name,
-        base::SourceRange range,
-        bool require_self,
-        const std::vector<TypeHandle>* arg_types,
-        TypeHandle expected_type,
-        const std::vector<syntax::TypeId>* explicit_type_args,
-        bool report_unknown = true
-    );
-    [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const GenericFunctionTemplateInfo* find_generic_function_template_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const GenericEnumTemplateInfo* find_generic_enum_template_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const GenericStructTemplateInfo* find_generic_struct_template_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const GenericFunctionTemplateInfo* find_generic_function_template_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] TypeHandle instantiate_generic_enum(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
-    [[nodiscard]] TypeHandle instantiate_generic_enum_from_syntax(
-        const GenericEnumTemplateInfo& info,
-        const std::vector<syntax::TypeId>& args,
-        base::SourceRange range,
-        bool opaque_allowed_as_pointee
-    );
-    [[nodiscard]] TypeHandle instantiate_generic_struct(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args, base::SourceRange range);
-    [[nodiscard]] TypeHandle instantiate_generic_struct_from_syntax(
-        const GenericStructTemplateInfo& info,
-        const std::vector<syntax::TypeId>& args,
-        base::SourceRange range,
-        bool opaque_allowed_as_pointee
-    );
-    [[nodiscard]] const EnumCaseInfo* instantiate_generic_enum_constructor(
-        syntax::ExprId callee,
-        const std::vector<TypeHandle>& arg_types,
-        TypeHandle expected_type,
-        bool report_unknown
-    );
-    [[nodiscard]] bool infer_generic_enum_args(
-        syntax::TypeId pattern_type,
-        TypeHandle actual,
-        const GenericEnumTemplateInfo& info,
-        std::vector<TypeHandle>& inferred,
-        base::SourceRange range
-    );
-    [[nodiscard]] bool infer_generic_args_from_type_pattern(
-        syntax::TypeId pattern_type,
-        TypeHandle actual,
-        const std::vector<std::string>& params,
-        std::vector<TypeHandle>& inferred,
-        base::SourceRange range,
-        std::string_view context,
-        syntax::ModuleId pattern_module
-    );
-    [[nodiscard]] TypeHandle infer_generic_struct_literal_type(
-        const GenericStructTemplateInfo& info,
-        const syntax::ExprNode& expr,
-        TypeHandle expected_type
-    );
-    [[nodiscard]] const GenericFunctionInstanceInfo* instantiate_generic_function_from_syntax(
-        const GenericFunctionTemplateInfo& info,
-        const std::vector<syntax::TypeId>& args,
-        base::SourceRange range
-    );
-    [[nodiscard]] const GenericFunctionInstanceInfo* instantiate_generic_function(
-        const GenericFunctionTemplateInfo& info,
-        const std::vector<TypeHandle>& args,
-        base::SourceRange range
-    );
-    [[nodiscard]] bool infer_generic_function_args(
-        const GenericFunctionTemplateInfo& info,
-        const std::vector<TypeHandle>& arg_types,
-        TypeHandle expected_type,
-        std::vector<TypeHandle>& inferred,
-        base::SourceRange range
-    );
-    [[nodiscard]] const GenericEnumInstanceInfo* generic_enum_instance(TypeHandle type) const noexcept;
-    [[nodiscard]] const GenericStructInstanceInfo* generic_struct_instance(TypeHandle type) const noexcept;
-    [[nodiscard]] std::string generic_instance_key(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_display_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_c_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_case_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, std::string_view case_name) const;
-    [[nodiscard]] std::string generic_case_c_name(const GenericEnumTemplateInfo& info, const std::vector<TypeHandle>& args, std::string_view case_name) const;
-    [[nodiscard]] std::string generic_instance_key(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_display_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_c_name(const GenericStructTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_instance_key(const GenericFunctionTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_display_name(const GenericFunctionTemplateInfo& info, const std::vector<TypeHandle>& args) const;
-    [[nodiscard]] std::string generic_c_name(const GenericFunctionTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] TypeHandle find_type_in_visible_modules(
         std::string_view name,
         base::SourceRange range,
@@ -365,17 +273,6 @@ private:
     SymbolTable symbols_;
     std::unordered_map<std::string, TypeHandle> named_types_;
     std::unordered_map<std::string, syntax::Visibility> type_visibilities_;
-    std::unordered_map<std::string, GenericEnumTemplateInfo> generic_enum_templates_;
-    std::unordered_map<std::string, TypeHandle> generic_enum_instances_;
-    std::unordered_map<base::u32, GenericEnumInstanceInfo> generic_enum_instance_infos_;
-    std::unordered_map<std::string, GenericStructTemplateInfo> generic_struct_templates_;
-    std::unordered_map<std::string, TypeHandle> generic_struct_instances_;
-    std::unordered_map<base::u32, GenericStructInstanceInfo> generic_struct_instance_infos_;
-    std::unordered_map<std::string, GenericFunctionTemplateInfo> generic_function_templates_;
-    std::vector<GenericFunctionTemplateInfo> generic_method_templates_;
-    std::unordered_multimap<std::string, base::u32> generic_method_template_indices_;
-    std::unordered_map<std::string, base::u32> generic_function_instances_;
-    std::unordered_map<std::string, FunctionBodyState> generic_function_body_states_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
     std::vector<std::string> resolving_type_aliases_;
     std::unordered_map<std::string, Symbol> global_values_;
@@ -387,13 +284,6 @@ private:
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;
     syntax::ModuleId current_module_ = syntax::INVALID_MODULE_ID;
     TypeHandle current_function_return_type_ = INVALID_TYPE_HANDLE;
-    const GenericTypeSubstitution* current_type_substitution_ = nullptr;
-    std::unordered_map<base::u32, TypeHandle>* current_generic_syntax_type_handles_ = nullptr;
-    std::unordered_map<base::u32, TypeHandle>* current_generic_expr_types_ = nullptr;
-    std::unordered_map<base::u32, std::string>* current_generic_expr_c_names_ = nullptr;
-    std::unordered_map<base::u32, std::string>* current_generic_pattern_c_names_ = nullptr;
-    std::unordered_map<base::u32, std::unordered_set<std::string>>* current_generic_pattern_case_sets_ = nullptr;
-    std::unordered_map<base::u32, TypeHandle>* current_generic_stmt_local_types_ = nullptr;
     ReturnTypeInference* current_return_inference_ = nullptr;
     int loop_depth_ = SEMA_NO_LOOP_DEPTH;
     bool in_const_initializer_ = false;

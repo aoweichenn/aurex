@@ -2,7 +2,6 @@
 
 #include <aurex/parse/recovery.hpp>
 
-#include <optional>
 #include <utility>
 
 namespace aurex::parse {
@@ -125,60 +124,6 @@ syntax::ItemId ItemParser::parse_type_alias_decl() {
     item.alias_type = target;
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));
-}
-
-std::vector<std::string_view> ItemParser::parse_generic_param_list() {
-    std::vector<std::string_view> params;
-    this->expect(TokenKind::less, "expected '<' before generic parameter list");
-    while (!this->is_eof() && !this->check(TokenKind::greater)) {
-        if (std::optional<std::string_view> param = this->parse_generic_param()) {
-            params.push_back(param.value());
-        }
-        this->reset_panic();
-        if (!this->recover_generic_param_separator()) {
-            break;
-        }
-    }
-    this->expect_generic_param_list_end();
-    this->reset_panic();
-    return params;
-}
-
-std::optional<std::string_view> ItemParser::parse_generic_param() {
-    const syntax::Token& name = this->expect_identifier_recovered("expected generic parameter name");
-    if (name.kind != TokenKind::identifier) {
-        return std::nullopt;
-    }
-    return name.text;
-}
-
-bool ItemParser::recover_generic_param_separator() {
-    if (this->check(TokenKind::greater)) {
-        return false;
-    }
-    if (this->match(TokenKind::comma)) {
-        this->reset_panic();
-        return !this->check(TokenKind::greater);
-    }
-
-    this->report_here("expected ',' or '>' after generic parameter");
-    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_parameter)) {
-        this->synchronize(RecoveryContext::generic_parameter);
-    }
-    if (this->match(TokenKind::comma)) {
-        this->reset_panic();
-        return !this->check(TokenKind::greater);
-    }
-    this->reset_panic();
-    return token_starts_generic_parameter(this->peek().kind);
-}
-
-void ItemParser::expect_generic_param_list_end() {
-    this->expect_recovered(
-        TokenKind::greater,
-        "expected '>' after generic parameter list",
-        RecoveryContext::generic_parameter
-    );
 }
 
 } // namespace aurex::parse

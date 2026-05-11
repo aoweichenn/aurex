@@ -3,7 +3,6 @@
 #include <aurex/parse/parser_part_base.hpp>
 
 #include <string_view>
-#include <vector>
 
 namespace aurex::parse {
 
@@ -19,7 +18,6 @@ private:
         std::string_view scope_name,
         base::SourceRange scope_range,
         const syntax::Token& name,
-        std::vector<syntax::TypeId> struct_type_args,
         ExprContext context
     );
     void parse_struct_fields(std::vector<syntax::FieldInit>& fields, ExprContext context);

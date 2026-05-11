@@ -42,22 +42,6 @@ std::string dump_checked_module(const CheckedModule& checked) {
         out << "\n";
     }
 
-    out << "  generic_functions " << checked.generic_function_instances.size() << "\n";
-    for (const GenericFunctionInstanceInfo& fn : checked.generic_function_instances) {
-        out << "    fn ";
-        if (fn.visibility == syntax::Visibility::private_) {
-            out << "priv ";
-        }
-        if (fn.is_method) {
-            out << "method " << checked.types.display_name(fn.method_owner_type) << ".";
-        }
-        out << (fn.is_method ? fn.name.substr(fn.name.rfind('.') + 1) : fn.name) << " -> " << checked.types.display_name(fn.return_type);
-        if (!fn.c_name.empty()) {
-            out << " @c_name=" << fn.c_name;
-        }
-        out << "\n";
-    }
-
     std::vector<std::string> struct_names;
     struct_names.reserve(checked.structs.size());
     for (const auto& entry : checked.structs) {

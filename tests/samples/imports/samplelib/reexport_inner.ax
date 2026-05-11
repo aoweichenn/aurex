@@ -6,9 +6,9 @@ priv const hidden_base: i32 = 99;
 pub type Count = i32;
 priv type SecretCount = i32;
 
-pub struct Pair<T> {
-    pub left: T;
-    pub right: T;
+pub struct PairI32 {
+    pub left: i32;
+    pub right: i32;
 }
 
 pub enum Mode: u8 {
@@ -23,4 +23,3 @@ priv enum SecretMode: u8 {
 pub fn add_base(value: Count) -> Count {
     return value + base;
 }
-

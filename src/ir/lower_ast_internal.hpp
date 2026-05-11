@@ -76,7 +76,6 @@ private:
     void lower_record_layouts();
     void declare_global_constants();
     void lower_function_declarations();
-    void lower_generic_function_declarations();
     void lower_global_constant_initializers();
     void index_enum_cases();
 
@@ -197,7 +196,6 @@ private:
     const sema::CheckedModule& checked_;
     Module module_;
     Function* current_function_ = nullptr;
-    const sema::GenericFunctionInstanceInfo* current_generic_function_instance_ = nullptr;
     BlockId current_block_ = INVALID_BLOCK_ID;
     bool lowering_constant_initializer_ = false;
     std::unordered_map<std::string, LocalBinding> locals_;
@@ -208,7 +206,6 @@ private:
     std::unordered_map<EnumCaseTypeKey, const sema::EnumCaseInfo*, EnumCaseTypeKeyHash> enum_cases_by_type_and_case_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
-    std::vector<FunctionId> generic_function_instance_functions_;
     std::vector<LoopContext> loop_contexts_;
     std::vector<std::vector<syntax::ExprId>> defer_scopes_;
 };

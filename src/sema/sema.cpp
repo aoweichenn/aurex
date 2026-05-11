@@ -31,7 +31,6 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
 
     for (const syntax::ItemNode& item : module_.items) {
         if (is_function_item(item) &&
-            item.generic_params.empty() &&
             !item.is_extern_c &&
             !item.is_prototype &&
             syntax::is_valid(item.body)) {

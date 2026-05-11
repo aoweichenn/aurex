@@ -16,7 +16,6 @@ public:
 
 private:
     [[nodiscard]] std::optional<syntax::ExprId> parse_next_suffix(syntax::ExprId expr, ExprContext context);
-    [[nodiscard]] syntax::ExprId parse_type_args_suffix(syntax::ExprId expr);
     [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId expr);
     [[nodiscard]] syntax::ExprId parse_index_suffix(syntax::ExprId expr, ExprContext context);
     [[nodiscard]] const syntax::Token& expect_index_suffix_end();

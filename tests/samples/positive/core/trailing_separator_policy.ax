@@ -1,28 +1,28 @@
 module trailing_separator_policy;
 
-struct Pair<T, U,> {
-    left: T;
-    right: U;
+struct PairI32Bool {
+    left: i32;
+    right: bool;
 }
 
-enum Choice<T, E>: u8 {
+enum ChoiceBool: u8 {
     ok = 1,
-    err(E) = 2
+    err(bool) = 2
 }
 
-fn choose<T, E,>(first: T, second: E,) -> Choice<T, E> {
-    let pair = Pair<T, E> {
+fn choose(first: i32, second: bool,) -> ChoiceBool {
+    let pair = PairI32Bool {
         left: first,
         right: second,
     };
     if pair.left == first {
-        return Choice<T, E>.ok;
+        return ChoiceBool.ok;
     }
-    return Choice<T, E>.err(pair.right);
+    return ChoiceBool.err(pair.right);
 }
 
 fn main() -> i32 {
-    let value = choose<i32, bool>(41, false,);
+    let value = choose(41, false,);
     return match value {
         .ok => 0,
         .err(flag) => if flag { 1 } else { 2 }

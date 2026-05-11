@@ -60,8 +60,6 @@ enum class TypeResolveActionKind {
     resolve,
     build_pointer,
     build_array,
-    build_generic_struct,
-    build_generic_enum,
 };
 
 struct TypeResolveAction {
@@ -70,10 +68,6 @@ struct TypeResolveAction {
     bool opaque_allowed_as_pointee = false;
     syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
     std::optional<base::u64> array_count {};
-    const GenericStructTemplateInfo* struct_template = nullptr;
-    const GenericEnumTemplateInfo* enum_template = nullptr;
-    std::optional<base::usize> argument_count {};
-    base::SourceRange range {};
 };
 
 [[nodiscard]] BuiltinType map_builtin(const syntax::PrimitiveTypeKind kind) noexcept {
@@ -337,14 +331,6 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {
 }
 
 TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee) {
-    return this->resolve_type_with_substitution(type_id, this->current_type_substitution_, opaque_allowed_as_pointee);
-}
-
-TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
-    const syntax::TypeId type_id,
-    const GenericTypeSubstitution* const substitution,
-    const bool opaque_allowed_as_pointee
-) {
     std::vector<TypeResolveAction> actions;
     std::vector<TypeHandle> values;
     actions.reserve(SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY);
@@ -365,24 +351,7 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                 break;
             }
 
-            if (substitution != nullptr && this->current_generic_syntax_type_handles_ != nullptr) {
-                if (const auto found = this->current_generic_syntax_type_handles_->find(action.type.value);
-                    found != this->current_generic_syntax_type_handles_->end() &&
-                    is_valid(found->second)) {
-                    if (this->checked_.types.get(found->second).kind == TypeKind::opaque_struct &&
-                        !action.opaque_allowed_as_pointee) {
-                        this->report(
-                            this->module_.types[action.type.value].range,
-                            "opaque struct can only be used as a pointer target"
-                        );
-                    }
-                    values.push_back(found->second);
-                    break;
-                }
-            }
-
-            if (substitution == nullptr &&
-                action.type.value < this->checked_.syntax_type_handles.size() &&
+            if (action.type.value < this->checked_.syntax_type_handles.size() &&
                 is_valid(this->checked_.syntax_type_handles[action.type.value])) {
                 const TypeHandle cached = this->checked_.syntax_type_handles[action.type.value];
                 if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct &&
@@ -443,109 +412,7 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                     }
                 }
 
-                if (substitution != nullptr && type.type_args.empty() && !qualified) {
-                    if (const auto found = substitution->types.find(std::string(type.name)); found != substitution->types.end()) {
-                        this->record_syntax_type_handle(action.type, found->second);
-                        values.push_back(found->second);
-                        break;
-                    }
-                }
-
-                if (!type.type_args.empty()) {
-                    const GenericStructTemplateInfo* struct_info = qualified
-                        ? this->find_generic_struct_template_in_module(scope_module, type.name, type.range, false)
-                        : this->find_generic_struct_template_in_visible_modules(type.name, type.range, false);
-                    if (struct_info != nullptr) {
-                        if (type.type_args.size() != struct_info->params.size()) {
-                            this->report(type.range, "generic struct type argument count mismatch for " + struct_info->name);
-                            this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                            values.push_back(INVALID_TYPE_HANDLE);
-                            break;
-                        }
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::build_generic_struct,
-                    action.type,
-                    action.opaque_allowed_as_pointee,
-                    syntax::PointerMutability::const_,
-                    std::nullopt,
-                    struct_info,
-                    nullptr,
-                    type.type_args.size(),
-                    type.range,
-                        });
-                        for (base::usize i = type.type_args.size(); i > 0; --i) {
-                            actions.push_back(TypeResolveAction {
-                                TypeResolveActionKind::resolve,
-                                type.type_args[i - 1],
-                                action.opaque_allowed_as_pointee,
-                            });
-                        }
-                        break;
-                    }
-
-                    const GenericEnumTemplateInfo* enum_info = qualified
-                        ? this->find_generic_enum_template_in_module(scope_module, type.name, type.range, false)
-                        : this->find_generic_enum_template_in_visible_modules(type.name, type.range, false);
-                    if (enum_info != nullptr) {
-                        if (type.type_args.size() != enum_info->params.size()) {
-                            this->report(type.range, "generic enum type argument count mismatch for " + enum_info->name);
-                            this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                            values.push_back(INVALID_TYPE_HANDLE);
-                            break;
-                        }
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::build_generic_enum,
-                    action.type,
-                    action.opaque_allowed_as_pointee,
-                    syntax::PointerMutability::const_,
-                    std::nullopt,
-                    nullptr,
-                    enum_info,
-                    type.type_args.size(),
-                            type.range,
-                        });
-                        for (base::usize i = type.type_args.size(); i > 0; --i) {
-                            actions.push_back(TypeResolveAction {
-                                TypeResolveActionKind::resolve,
-                                type.type_args[i - 1],
-                                action.opaque_allowed_as_pointee,
-                            });
-                        }
-                        break;
-                    }
-
-                    const std::string qualifier = qualified
-                        ? std::string(type.scope_name) + "::"
-                        : std::string {};
-                    this->report(type.range, "type arguments require a generic type: " + qualifier + std::string(type.name));
-                    this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                    values.push_back(INVALID_TYPE_HANDLE);
-                    break;
-                }
-
                 if (qualified) {
-                    if (const GenericStructTemplateInfo* info =
-                            this->find_generic_struct_template_in_module(scope_module, type.name, type.range, false);
-                        info != nullptr) {
-                        this->report(
-                            type.range,
-                            "generic struct type requires type arguments: " + std::string(type.scope_name) + "::" + info->name
-                        );
-                        this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                        values.push_back(INVALID_TYPE_HANDLE);
-                        break;
-                    }
-                    if (const GenericEnumTemplateInfo* info =
-                            this->find_generic_enum_template_in_module(scope_module, type.name, type.range, false);
-                        info != nullptr) {
-                        this->report(
-                            type.range,
-                            "generic enum type requires type arguments: " + std::string(type.scope_name) + "::" + info->name
-                        );
-                        this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                        values.push_back(INVALID_TYPE_HANDLE);
-                        break;
-                    }
                     const TypeHandle resolved = this->find_type_in_module(
                         scope_module,
                         type.name,
@@ -559,23 +426,6 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
                     }
                     this->record_syntax_type_handle(action.type, resolved);
                     values.push_back(resolved);
-                    break;
-                }
-
-                if (const GenericStructTemplateInfo* info =
-                        this->find_generic_struct_template_in_visible_modules(type.name, type.range, false);
-                    info != nullptr) {
-                    this->report(type.range, "generic struct type requires type arguments: " + info->name);
-                    this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                    values.push_back(INVALID_TYPE_HANDLE);
-                    break;
-                }
-                if (const GenericEnumTemplateInfo* info =
-                        this->find_generic_enum_template_in_visible_modules(type.name, type.range, false);
-                    info != nullptr) {
-                    this->report(type.range, "generic enum type requires type arguments: " + info->name);
-                    this->record_syntax_type_handle(action.type, INVALID_TYPE_HANDLE);
-                    values.push_back(INVALID_TYPE_HANDLE);
                     break;
                 }
 
@@ -608,30 +458,6 @@ TypeHandle SemanticAnalyzer::resolve_type_with_substitution(
             const TypeHandle element = values.back();
             values.pop_back();
             const TypeHandle resolved = this->checked_.types.array(*action.array_count, element);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_generic_struct: {
-            const base::usize argument_count = *action.argument_count;
-            std::vector<TypeHandle> args(argument_count, INVALID_TYPE_HANDLE);
-            for (base::usize i = argument_count; i > 0; --i) {
-                args[i - 1] = values.back();
-                values.pop_back();
-            }
-            const TypeHandle resolved = this->instantiate_generic_struct(*action.struct_template, args, action.range);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_generic_enum: {
-            const base::usize argument_count = *action.argument_count;
-            std::vector<TypeHandle> args(argument_count, INVALID_TYPE_HANDLE);
-            for (base::usize i = argument_count; i > 0; --i) {
-                args[i - 1] = values.back();
-                values.pop_back();
-            }
-            const TypeHandle resolved = this->instantiate_generic_enum(*action.enum_template, args, action.range);
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;

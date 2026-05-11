@@ -482,43 +482,13 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
 TypeHandle SemanticAnalyzer::analyze_field_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr,
-    const TypeHandle expected_type
+    const TypeHandle
 ) {
     if (syntax::is_valid(expr.object) &&
         expr.object.value < this->module_.exprs.size() &&
         this->module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
         const syntax::ExprNode& object = this->module_.exprs[expr.object.value];
-        const GenericEnumTemplateInfo* enum_template = nullptr;
-        if (object.scope_name.empty()) {
-            enum_template = this->find_generic_enum_template_in_visible_modules(object.text, expr.range, false);
-        } else {
-            const syntax::ModuleId scope_module = this->resolve_import_alias(object.scope_name, object.scope_range, false);
-            if (syntax::is_valid(scope_module)) {
-                enum_template = this->find_generic_enum_template_in_module(scope_module, object.text, expr.range, false);
-            }
-        }
-        if (enum_template != nullptr) {
-            const EnumCaseInfo* enum_case = nullptr;
-            if (const GenericEnumInstanceInfo* expected_instance = this->generic_enum_instance(expected_type);
-                expected_instance != nullptr &&
-                expected_instance->name == enum_template->name &&
-                expected_instance->module.value == enum_template->module.value) {
-                enum_case = this->find_enum_case_by_type_and_case(expected_type, expr.field_name);
-            }
-            if (enum_case == nullptr) {
-                enum_case = this->instantiate_generic_enum_constructor(expr_id, {}, expected_type, true);
-            }
-            if (enum_case == nullptr) {
-                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-            }
-            if (is_valid(enum_case->payload_type)) {
-                this->report(expr.range, "enum payload constructor requires a call: " + enum_case->name);
-                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-            }
-            this->record_expr_c_name(expr_id, enum_case->c_name);
-            return this->record_expr_type(expr_id, enum_case->type);
-        }
-        if (!object.scope_name.empty() || !object.type_args.empty()) {
+        if (!object.scope_name.empty()) {
             const TypeHandle enum_type = this->resolve_associated_type_owner(object, false);
             if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
                 const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
@@ -603,7 +573,7 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
 TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr,
-    const TypeHandle expected_type
+    const TypeHandle
 ) {
     TypeHandle struct_type = INVALID_TYPE_HANDLE;
     const bool qualified = !expr.scope_name.empty();
@@ -614,48 +584,9 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
-    if (!expr.struct_type_args.empty()) {
-        const GenericStructTemplateInfo* template_info = qualified
-            ? this->find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
-            : this->find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
-        if (template_info != nullptr) {
-            struct_type = this->instantiate_generic_struct_from_syntax(
-                *template_info,
-                expr.struct_type_args,
-                expr.range,
-                false
-            );
-        } else {
-            this->report(
-                expr.range,
-                "type arguments require a generic struct: " +
-                    (qualified
-                        ? std::string(expr.scope_name) + "::" + std::string(expr.struct_name)
-                        : std::string(expr.struct_name))
-            );
-        }
-    } else {
-        const GenericStructTemplateInfo* template_info = qualified
-            ? this->find_generic_struct_template_in_module(scope_module, expr.struct_name, expr.range, false)
-            : this->find_generic_struct_template_in_visible_modules(expr.struct_name, expr.range, false);
-        if (template_info != nullptr) {
-            struct_type = this->infer_generic_struct_literal_type(*template_info, expr, expected_type);
-            if (!is_valid(struct_type)) {
-                this->report(
-                    expr.range,
-                    "generic struct literal requires explicit type arguments: " +
-                        (qualified
-                            ? std::string(expr.scope_name) + "::" + template_info->name
-                            : template_info->name)
-                );
-                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-            }
-        } else {
-            struct_type = qualified
-                ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false)
-                : this->find_type_in_visible_modules(expr.struct_name, expr.range, false);
-        }
-    }
+    struct_type = qualified
+        ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false)
+        : this->find_type_in_visible_modules(expr.struct_name, expr.range, false);
     if (!is_valid(struct_type)) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
@@ -791,64 +722,42 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
     }
 
     const TypeHandle source_type = analyze_expr(expr.unary_operand);
-    const GenericEnumInstanceInfo* const source_instance = generic_enum_instance(source_type);
-    if (source_instance == nullptr) {
-        report(expr.range, "try expression requires Result<T, E> or Option<T>");
-        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-
-    if (source_instance->name == "Result" && source_instance->args.size() == 2) {
-        const EnumCaseInfo* const ok_case = find_enum_case_by_type_and_case(source_type, "ok");
-        const EnumCaseInfo* const err_case = find_enum_case_by_type_and_case(source_type, "err");
+    const EnumCaseInfo* const ok_case = find_enum_case_by_type_and_case(source_type, "ok");
+    const EnumCaseInfo* const err_case = find_enum_case_by_type_and_case(source_type, "err");
+    if (ok_case != nullptr || err_case != nullptr) {
         if (ok_case == nullptr || err_case == nullptr || !is_valid(ok_case->payload_type) || !is_valid(err_case->payload_type)) {
-            report(expr.range, "try expression Result type must define ok(T) and err(E) cases");
+            report(expr.range, "try expression result-like enum must define ok(payload) and err(payload) cases");
             return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
 
-        const GenericEnumInstanceInfo* const return_instance = generic_enum_instance(current_function_return_type_);
-        if (return_instance == nullptr ||
-            return_instance->name != "Result" ||
-            return_instance->module.value != source_instance->module.value ||
-            return_instance->args.size() != 2) {
-            report(expr.range, "try expression on Result<T, E> requires enclosing function to return Result<U, E>");
-            return record_expr_type(expr_id, ok_case->payload_type);
-        }
-        if (!checked_.types.same(return_instance->args[1], source_instance->args[1])) {
-            report(expr.range, "try expression Result error type must match enclosing Result error type");
-        }
         const EnumCaseInfo* const return_err_case = find_enum_case_by_type_and_case(current_function_return_type_, "err");
         if (return_err_case == nullptr || !is_valid(return_err_case->payload_type)) {
-            report(expr.range, "enclosing Result return type must define err(E)");
-        } else if (!checked_.types.same(return_err_case->payload_type, err_case->payload_type)) {
-            report(expr.range, "try expression Result error payload type must match enclosing Result error payload type");
+            report(expr.range, "try expression on result-like enum requires enclosing function to return result-like enum with err payload");
+            return record_expr_type(expr_id, ok_case->payload_type);
+        }
+        if (!checked_.types.same(return_err_case->payload_type, err_case->payload_type)) {
+            report(expr.range, "try expression result-like enum err payload type must match enclosing result-like enum err payload type");
         }
         return record_expr_type(expr_id, ok_case->payload_type);
     }
 
-    if (source_instance->name == "Option" && source_instance->args.size() == 1) {
-        const EnumCaseInfo* const some_case = find_enum_case_by_type_and_case(source_type, "some");
-        const EnumCaseInfo* const none_case = find_enum_case_by_type_and_case(source_type, "none");
+    const EnumCaseInfo* const some_case = find_enum_case_by_type_and_case(source_type, "some");
+    const EnumCaseInfo* const none_case = find_enum_case_by_type_and_case(source_type, "none");
+    if (some_case != nullptr || none_case != nullptr) {
         if (some_case == nullptr || none_case == nullptr || !is_valid(some_case->payload_type) || is_valid(none_case->payload_type)) {
-            report(expr.range, "try expression Option type must define some(T) and none cases");
+            report(expr.range, "try expression option-like enum must define some(payload) and none cases");
             return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
 
-        const GenericEnumInstanceInfo* const return_instance = generic_enum_instance(current_function_return_type_);
-        if (return_instance == nullptr ||
-            return_instance->name != "Option" ||
-            return_instance->module.value != source_instance->module.value ||
-            return_instance->args.size() != 1) {
-            report(expr.range, "try expression on Option<T> requires enclosing function to return Option<U>");
-            return record_expr_type(expr_id, some_case->payload_type);
-        }
         const EnumCaseInfo* const return_none_case = find_enum_case_by_type_and_case(current_function_return_type_, "none");
         if (return_none_case == nullptr || is_valid(return_none_case->payload_type)) {
-            report(expr.range, "enclosing Option return type must define none");
+            report(expr.range, "try expression on option-like enum requires enclosing function to return option-like enum with none case");
+            return record_expr_type(expr_id, some_case->payload_type);
         }
         return record_expr_type(expr_id, some_case->payload_type);
     }
 
-    report(expr.range, "try expression requires Result<T, E> or Option<T>");
+    report(expr.range, "try expression requires result-like ok/err enum or option-like some/none enum");
     return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 

@@ -345,32 +345,28 @@ void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
     if (found == this->checked_.functions.end()) {
         return;
     }
-    this->analyze_function_body_with_signature(function, key, found->second, this->function_body_states_[key], nullptr);
+    this->analyze_function_body_with_signature(function, key, found->second, this->function_body_states_[key]);
 }
 
 void SemanticAnalyzer::analyze_function_body_with_signature(
     const syntax::ItemNode& function,
     const std::string& key,
     const FunctionSignature& signature,
-    FunctionBodyState& state,
-    const GenericTypeSubstitution* const substitution
+    FunctionBodyState& state
 ) {
     const syntax::ModuleId previous_module = this->current_module_;
     const TypeHandle previous_function_return_type = this->current_function_return_type_;
-    const GenericTypeSubstitution* const previous_type_substitution = this->current_type_substitution_;
     ReturnTypeInference* const previous_return_inference = this->current_return_inference_;
     const int previous_loop_depth = this->loop_depth_;
     const SymbolTable previous_symbols = this->symbols_;
     const auto restore_context = [&]() {
         this->current_module_ = previous_module;
         this->current_function_return_type_ = previous_function_return_type;
-        this->current_type_substitution_ = previous_type_substitution;
         this->current_return_inference_ = previous_return_inference;
         this->loop_depth_ = previous_loop_depth;
         this->symbols_ = previous_symbols;
     };
     this->current_module_ = signature.module;
-    this->current_type_substitution_ = substitution;
     this->symbols_ = SymbolTable {};
     if (signature.has_conflict) {
         restore_context();

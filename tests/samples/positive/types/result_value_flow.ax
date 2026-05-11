@@ -1,13 +1,18 @@
 module result_value_flow;
 
-enum Option<T>: u8 {
-    some(T) = 1,
+enum OptionOwner: u8 {
+    some(Owner) = 1,
     none = 2,
 }
 
-enum Result<T, E>: u8 {
-    ok(T) = 1,
-    err(E) = 2,
+enum ResultOwnerI32: u8 {
+    ok(Owner) = 1,
+    err(i32) = 2,
+}
+
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
 }
 
 const OPTION_TAG_SOME: u8 = 1;
@@ -15,7 +20,7 @@ const OPTION_TAG_NONE: u8 = 2;
 const RESULT_TAG_OK: u8 = 1;
 const RESULT_TAG_ERR: u8 = 2;
 
-fn option_is_some_ref<T>(value: *const Option<T>) -> bool {
+fn option_owner_is_some_ref(value: *const OptionOwner) -> bool {
     if value == null {
         return false;
     }
@@ -23,7 +28,7 @@ fn option_is_some_ref<T>(value: *const Option<T>) -> bool {
     return *tag == OPTION_TAG_SOME;
 }
 
-fn option_is_none_ref<T>(value: *const Option<T>) -> bool {
+fn option_owner_is_none_ref(value: *const OptionOwner) -> bool {
     if value == null {
         return false;
     }
@@ -31,7 +36,7 @@ fn option_is_none_ref<T>(value: *const Option<T>) -> bool {
     return *tag == OPTION_TAG_NONE;
 }
 
-fn result_is_ok_ref<T, E>(value: *const Result<T, E>) -> bool {
+fn result_owner_i32_is_ok_ref(value: *const ResultOwnerI32) -> bool {
     if value == null {
         return false;
     }
@@ -39,7 +44,7 @@ fn result_is_ok_ref<T, E>(value: *const Result<T, E>) -> bool {
     return *tag == RESULT_TAG_OK;
 }
 
-fn result_is_err_ref<T, E>(value: *const Result<T, E>) -> bool {
+fn result_owner_i32_is_err_ref(value: *const ResultOwnerI32) -> bool {
     if value == null {
         return false;
     }
@@ -47,23 +52,23 @@ fn result_is_err_ref<T, E>(value: *const Result<T, E>) -> bool {
     return *tag == RESULT_TAG_ERR;
 }
 
-impl<T> Option<T> {
-    fn is_some_ref(self: *const Option<T>) -> bool {
-        return option_is_some_ref<T>(self);
+impl OptionOwner {
+    fn is_some_ref(self: *const OptionOwner) -> bool {
+        return option_owner_is_some_ref(self);
     }
 
-    fn is_none_ref(self: *const Option<T>) -> bool {
-        return option_is_none_ref<T>(self);
+    fn is_none_ref(self: *const OptionOwner) -> bool {
+        return option_owner_is_none_ref(self);
     }
 }
 
-impl<T, E> Result<T, E> {
-    fn is_ok_ref(self: *const Result<T, E>) -> bool {
-        return result_is_ok_ref<T, E>(self);
+impl ResultOwnerI32 {
+    fn is_ok_ref(self: *const ResultOwnerI32) -> bool {
+        return result_owner_i32_is_ok_ref(self);
     }
 
-    fn is_err_ref(self: *const Result<T, E>) -> bool {
-        return result_is_err_ref<T, E>(self);
+    fn is_err_ref(self: *const ResultOwnerI32) -> bool {
+        return result_owner_i32_is_err_ref(self);
     }
 }
 
@@ -79,35 +84,35 @@ fn consume(owner: Owner) -> i32 {
     return owner.value;
 }
 
-fn wrap(owner: Owner) -> Result<Owner, i32> {
-    return Result.ok(owner);
+fn wrap(owner: Owner) -> ResultOwnerI32 {
+    return ResultOwnerI32.ok(owner);
 }
 
-fn forward_result(value: i32) -> Result<Owner, i32> {
-    var wrapped: Result<Owner, i32> = wrap(make_owner(value));
+fn forward_result(value: i32) -> ResultOwnerI32 {
+    var wrapped: ResultOwnerI32 = wrap(make_owner(value));
     return wrapped;
 }
 
-fn unwrap_or_code(input: Result<Owner, i32>) -> i32 {
+fn unwrap_or_code(input: ResultOwnerI32) -> i32 {
     return match input {
         .ok(owner) => consume(owner),
         .err(code) => code,
     };
 }
 
-fn unwrap_local_try(value: i32) -> Result<i32, i32> {
-    var wrapped: Result<Owner, i32> = forward_result(value);
+fn unwrap_local_try(value: i32) -> ResultI32I32 {
+    var wrapped: ResultOwnerI32 = forward_result(value);
     var owner: Owner = wrapped?;
     let result: i32 = consume(owner);
-    return Result.ok(result);
+    return ResultI32I32.ok(result);
 }
 
 fn check_result_ref_status() -> bool {
-    var ok_result: Result<Owner, i32> = forward_result(13);
+    var ok_result: ResultOwnerI32 = forward_result(13);
     let ok_status: bool = ok_result.is_ok_ref() && !ok_result.is_err_ref();
     let ok_value: i32 = unwrap_or_code(ok_result);
 
-    var err_result: Result<Owner, i32> = Result.err(17);
+    var err_result: ResultOwnerI32 = ResultOwnerI32.err(17);
     let err_status: bool = err_result.is_err_ref() && !err_result.is_ok_ref();
     let err_value: i32 = unwrap_or_code(err_result);
 
@@ -115,14 +120,14 @@ fn check_result_ref_status() -> bool {
 }
 
 fn check_option_ref_status() -> bool {
-    var some_owner: Option<Owner> = Option.some(make_owner(19));
+    var some_owner: OptionOwner = OptionOwner.some(make_owner(19));
     let some_status: bool = some_owner.is_some_ref() && !some_owner.is_none_ref();
     let some_value: i32 = match some_owner {
         .some(owner) => consume(owner),
         .none => 0,
     };
 
-    var no_owner: Option<Owner> = Option.none;
+    var no_owner: OptionOwner = OptionOwner.none;
     let none_status: bool = no_owner.is_none_ref() && !no_owner.is_some_ref();
     let none_value: i32 = match no_owner {
         .some(owner) => consume(owner),

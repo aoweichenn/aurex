@@ -3,7 +3,6 @@
 #include <aurex/parse/parser_part_base.hpp>
 
 #include <optional>
-#include <string_view>
 #include <vector>
 
 namespace aurex::parse {
@@ -42,10 +41,6 @@ private:
     [[nodiscard]] syntax::ItemId parse_extern_block();
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
     [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);
-    [[nodiscard]] std::vector<std::string_view> parse_generic_param_list();
-    [[nodiscard]] std::optional<std::string_view> parse_generic_param();
-    [[nodiscard]] bool recover_generic_param_separator();
-    void expect_generic_param_list_end();
     void expect_param_list_start(std::string message);
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_param();

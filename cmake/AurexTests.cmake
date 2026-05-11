@@ -62,7 +62,6 @@ if(BUILD_TESTING)
         tests/gtest/sema/block_expression_tests.cpp
         tests/gtest/sema/error_handling_tests.cpp
         tests/gtest/sema/functions_tests.cpp
-        tests/gtest/sema/generics_tests.cpp
         tests/gtest/sema/if_expression_tests.cpp
         tests/gtest/sema/inference_tests.cpp
         tests/gtest/sema/modules_visibility_tests.cpp
@@ -102,13 +101,10 @@ if(BUILD_TESTING)
         "CoreUnit.*"
     )
     aurex_add_gtest(aurex_tests_driver_and_regressions
-        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.GenericEnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedGenericStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.Randomized*"
+        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.Randomized*"
     )
     aurex_add_gtest(aurex_tests_functions
         "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndValueSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
-    )
-    aurex_add_gtest(aurex_tests_generics
-        "AurexIntegrationTest.GenericEnumOption:AurexIntegrationTest.GenericEnumResultExpectedType:AurexIntegrationTest.GenericEnumDiagnostics:AurexIntegrationTest.GenericStructPair:AurexIntegrationTest.GenericStructLiteralInference:AurexIntegrationTest.GenericFunctionIdentity:AurexIntegrationTest.GenericFunctionImport:AurexIntegrationTest.GenericImplMethods:AurexIntegrationTest.QualifiedGenericSubstitutionImport:AurexIntegrationTest.QualifiedGenericInferenceUsesAliasScope:AurexIntegrationTest.GenericStructArrayFieldAndSmallPayloadEnum:AurexIntegrationTest.GenericStructDiagnostics:AurexIntegrationTest.GenericFunctionDiagnostics:AurexIntegrationTest.GenericImportVisibilityAndAmbiguityDiagnostics"
     )
     aurex_add_gtest(aurex_tests_control_and_modules
         "AurexIntegrationTest.IfExpression:AurexIntegrationTest.LocalTypeInference:AurexIntegrationTest.FunctionReturnInference:AurexIntegrationTest.ModuleVisibility:AurexIntegrationTest.PublicImportReexport"
@@ -128,7 +124,6 @@ if(BUILD_TESTING)
         aurex_tests_core_unit
         aurex_tests_driver_and_regressions
         aurex_tests_functions
-        aurex_tests_generics
         aurex_tests_control_and_modules
         aurex_tests_pattern_and_types
         PROPERTIES

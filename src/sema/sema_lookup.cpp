@@ -188,9 +188,6 @@ syntax::ModuleId SemanticAnalyzer::owner_module(const TypeHandle owner_type) con
     if (const StructInfo* info = find_struct(owner_type); info != nullptr) {
         return info->module;
     }
-    if (const GenericEnumInstanceInfo* info = generic_enum_instance(owner_type); info != nullptr) {
-        return info->module;
-    }
     if (const auto found = enum_cases_by_type_.find(owner_type.value);
         found != enum_cases_by_type_.end() &&
         !found->second.empty()) {
@@ -610,19 +607,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
         return nullptr;
     }
     const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
-    const GenericEnumTemplateInfo* generic_template = nullptr;
-    if (enum_name.scope_name.empty()) {
-        generic_template = find_generic_enum_template_in_visible_modules(enum_name.text, callee.range, false);
-    } else {
-        const syntax::ModuleId scope_module = resolve_import_alias(enum_name.scope_name, enum_name.scope_range, false);
-        if (syntax::is_valid(scope_module)) {
-            generic_template = find_generic_enum_template_in_module(scope_module, enum_name.text, callee.range, false);
-        }
-    }
-    if (generic_template != nullptr) {
-        return nullptr;
-    }
-    if (!enum_name.scope_name.empty() || !enum_name.type_args.empty()) {
+    if (!enum_name.scope_name.empty()) {
         const TypeHandle enum_type = resolve_associated_type_owner(enum_name, report_unknown);
         if (!is_valid(enum_type)) {
             return nullptr;

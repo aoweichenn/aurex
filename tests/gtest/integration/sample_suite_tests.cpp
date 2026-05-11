@@ -10,11 +10,8 @@ const std::set<std::string>& skip_regular_samples() {
     static const std::set<std::string> value = {
         "import_alias_qualified_call",
         "import_path",
-        "generic_function_import",
         "math",
         "module_name_collision",
-        "qualified_generic_inference_import",
-        "qualified_generic_substitution",
         "reexport_import",
         "type_alias_import",
         "visibility_import",

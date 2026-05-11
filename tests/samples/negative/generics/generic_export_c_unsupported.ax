@@ -1,5 +1,0 @@
-module generic_export_c_unsupported;
-
-export c fn identity<T>(value: T) -> T {
-    return value;
-}

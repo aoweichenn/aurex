@@ -111,9 +111,6 @@ struct IdMap {
 }
 
 void remap_type_node(syntax::TypeNode& node, const IdMap& map) {
-    for (syntax::TypeId& arg : node.type_args) {
-        arg = remap_type(arg, map);
-    }
     node.pointee = remap_type(node.pointee, map);
     node.array_element = remap_type(node.array_element, map);
 }
@@ -139,17 +136,11 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
     }
     node.object = remap_expr(node.object, map);
     node.index = remap_expr(node.index, map);
-    for (syntax::TypeId& arg : node.struct_type_args) {
-        arg = remap_type(arg, map);
-    }
     for (syntax::FieldInit& init : node.field_inits) {
         init.value = remap_expr(init.value, map);
     }
     node.cast_type = remap_type(node.cast_type, map);
     node.cast_expr = remap_expr(node.cast_expr, map);
-    for (syntax::TypeId& arg : node.type_args) {
-        arg = remap_type(arg, map);
-    }
 }
 
 void remap_pattern_node(syntax::PatternNode& node, const IdMap& map) {

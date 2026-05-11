@@ -1,6 +1,0 @@
-module unknown_generic_function;
-
-fn main() -> i32 {
-    let value = missing<i32>(1);
-    return value;
-}

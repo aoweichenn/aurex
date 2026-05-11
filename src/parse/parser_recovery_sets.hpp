@@ -11,14 +11,12 @@ namespace aurex::parse::detail {
 [[nodiscard]] bool token_starts_type(syntax::TokenKind kind) noexcept;
 
 [[nodiscard]] bool token_matches_identifier_boundary(syntax::TokenKind kind) noexcept;
-[[nodiscard]] bool token_ends_type_argument(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_match_arm(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_call_argument(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_struct_field(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_parameter(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_struct_decl_field(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_enum_case(syntax::TokenKind kind) noexcept;
-[[nodiscard]] bool token_ends_generic_parameter(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_matches_parameter_list_start_boundary(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_matches_abi_attribute_argument(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_matches_abi_attribute_start_boundary(syntax::TokenKind kind) noexcept;

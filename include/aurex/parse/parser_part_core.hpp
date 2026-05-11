@@ -19,9 +19,6 @@ protected:
     [[nodiscard]] const syntax::Token& previous() const noexcept;
     [[nodiscard]] bool check(syntax::TokenKind kind) const noexcept;
     [[nodiscard]] bool check_next(syntax::TokenKind kind) const noexcept;
-    [[nodiscard]] bool check_type_arg_list_end() const noexcept;
-    [[nodiscard]] bool next_angle_list_is_type_scope() const noexcept;
-    [[nodiscard]] bool next_angle_list_is_struct_literal() const noexcept;
     bool match(syntax::TokenKind kind) noexcept;
     const syntax::Token& advance() noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
@@ -33,7 +30,6 @@ protected:
     const syntax::Token& expect_identifier_recovered(std::string message);
     const syntax::Token& expect_type_annotation_colon(std::string message);
     const syntax::Token& expect_initializer_equal(std::string message);
-    const syntax::Token& expect_type_arg_list_end(std::string message);
     void synchronize(RecoveryContext context);
     void report_here(std::string message);
     void report_at(const syntax::Token& token, std::string message);

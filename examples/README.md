@@ -6,7 +6,7 @@ the language-core layer.
 ## Layout
 
 - `hello.ax`: minimal native ABI smoke example.
-- `libs/common`: small reusable modules for imports, visibility, generic enums,
+- `libs/common`: small reusable modules for imports, visibility, concrete enums,
   methods, aliases, recursion, and match guards.
 
 Build the native hello example:

@@ -1,11 +1,11 @@
 module common.result;
 
-pub enum Outcome<T>: u8 {
-    ok(T) = 1,
+pub enum OutcomeI32: u8 {
+    ok(i32) = 1,
     err(i32) = 2,
 }
 
-pub fn outcome_code_i32(value: Outcome<i32>) -> i32 {
+pub fn outcome_code_i32(value: OutcomeI32) -> i32 {
     return match value {
         .ok(code) if code >= 0 => code,
         .ok(code) => -code,
@@ -13,7 +13,7 @@ pub fn outcome_code_i32(value: Outcome<i32>) -> i32 {
     };
 }
 
-pub fn outcome_is_ok_i32(value: Outcome<i32>) -> bool {
+pub fn outcome_is_ok_i32(value: OutcomeI32) -> bool {
     return match value {
         .ok(_) => true,
         .err(_) => false,

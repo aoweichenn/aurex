@@ -44,7 +44,6 @@ using sema::TypeHandle;
 using sema::INVALID_TYPE_HANDLE;
 using syntax::ExprId;
 using syntax::ExprKind;
-using syntax::ItemId;
 using syntax::StmtId;
 using syntax::TypeId;
 
@@ -329,13 +328,8 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
     checked.syntax_type_handles.resize(return_type.value + 1, INVALID_TYPE_HANDLE);
     checked.syntax_type_handles[return_type.value] = checked.types.builtin(BuiltinType::i32);
 
-    sema::GenericFunctionInstanceInfo invalid_instance;
-    invalid_instance.item = ItemId {999};
-    checked.generic_function_instances.push_back(invalid_instance);
-
     Lowerer lowerer(ast, checked);
     lowerer.lower_function_declarations();
-    lowerer.lower_generic_function_declarations();
 
     ASSERT_EQ(lowerer.module_.functions.size(), 1U);
     EXPECT_EQ(lowerer.module_.functions[0].name, "exported");

@@ -60,20 +60,6 @@ TEST_F(AurexIntegrationTest, StructAndEnumValidationRegressions) {
         "duplicate struct field: left"
     );
 
-    const fs::path generic_duplicate_decl = write_source_file(
-        tmp_root() / "generic_duplicate_decl.ax",
-        "module generic_duplicate_decl;\n"
-        "struct Pair<T> { left: T; left: T; }\n"
-        "fn main() -> i32 {\n"
-        "  let value = Pair<i32> { left: 1 };\n"
-        "  return value.left;\n"
-        "}\n"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(generic_duplicate_decl)).output,
-        "duplicate struct field: left"
-    );
-
     const fs::path duplicate_case = write_source_file(
         tmp_root() / "duplicate_case.ax",
         "module duplicate_case;\n"
@@ -88,22 +74,6 @@ TEST_F(AurexIntegrationTest, StructAndEnumValidationRegressions) {
         "duplicate enum case: Payload.some"
     );
 
-    const fs::path generic_duplicate_case = write_source_file(
-        tmp_root() / "generic_duplicate_case.ax",
-        "module generic_duplicate_case;\n"
-        "enum Payload<T>: u8 {\n"
-        "  some(T) = 1,\n"
-        "  some(T) = 2,\n"
-        "}\n"
-        "fn main() -> i32 {\n"
-        "  let value = Payload<i32>.some(1);\n"
-        "  return 0;\n"
-        "}\n"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(generic_duplicate_case)).output,
-        "duplicate enum case: Payload.some"
-    );
 }
 
 TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
@@ -129,21 +99,21 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
     expect_contains(llvm_ir, "ret i32 1000");
 }
 
-TEST_F(AurexIntegrationTest, GenericEnumConstructorMatchArmRegressions) {
+TEST_F(AurexIntegrationTest, EnumConstructorMatchArmRegressions) {
     const fs::path source = write_source_file(
-        tmp_root() / "generic_enum_match_arm.ax",
-        "module generic_enum_match_arm;\n"
-        "enum Option<T>: u8 { some(T) = 1, none = 2, }\n"
-        "fn copy(input: Option<i32>) -> Option<i32> {\n"
+        tmp_root() / "enum_match_arm.ax",
+        "module enum_match_arm;\n"
+        "enum OptionI32: u8 { some(i32) = 1, none = 2, }\n"
+        "fn copy(input: OptionI32) -> OptionI32 {\n"
         "  return match input {\n"
-        "    .some(value) => Option.some(value),\n"
-        "    .none => Option.none,\n"
+        "    .some(value) => OptionI32.some(value),\n"
+        "    .none => OptionI32.none,\n"
         "  };\n"
         "}\n"
-        "fn copy_none_first(input: Option<i32>) -> Option<i32> {\n"
+        "fn copy_none_first(input: OptionI32) -> OptionI32 {\n"
         "  return match input {\n"
-        "    .none => Option.none,\n"
-        "    .some(value) => Option.some(value),\n"
+        "    .none => OptionI32.none,\n"
+        "    .some(value) => OptionI32.some(value),\n"
         "  };\n"
         "}\n"
         "fn main() -> i32 { return 0; }\n"
@@ -151,21 +121,21 @@ TEST_F(AurexIntegrationTest, GenericEnumConstructorMatchArmRegressions) {
     require_success(aurexc() + " --check " + q(source));
 }
 
-TEST_F(AurexIntegrationTest, QualifiedGenericStaticMethodRegressions) {
+TEST_F(AurexIntegrationTest, QualifiedStaticMethodRegressions) {
     static_cast<void>(write_source_file(
         tmp_root() / "box.ax",
         "module box;\n"
-        "pub struct Box<T> { pub value: T; }\n"
-        "impl<T> Box<T> {\n"
-        "  pub fn new(value: T) -> Box<T> { return Box<T> { value: value }; }\n"
+        "pub struct BoxI32 { pub value: i32; }\n"
+        "impl BoxI32 {\n"
+        "  pub fn new(value: i32) -> BoxI32 { return BoxI32 { value: value }; }\n"
         "}\n"
     ));
     const fs::path source = write_source_file(
-        tmp_root() / "qualified_generic_static_method.ax",
-        "module qualified_generic_static_method;\n"
+        tmp_root() / "qualified_static_method.ax",
+        "module qualified_static_method;\n"
         "import box as box;\n"
         "fn main() -> i32 {\n"
-        "  let value: box::Box<i32> = box::Box<i32>.new(7);\n"
+        "  let value: box::BoxI32 = box::BoxI32.new(7);\n"
         "  return value.value;\n"
         "}\n"
     );

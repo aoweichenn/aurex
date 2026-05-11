@@ -1,7 +1,0 @@
-module generic_prototype_unsupported;
-
-fn id<T>(value: T) -> T;
-
-fn main() -> i32 {
-    return 0;
-}

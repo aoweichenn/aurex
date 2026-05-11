@@ -4,13 +4,13 @@ pub struct Box {
   pub value: bool;
 }
 
-pub struct Pair<T> {
-  pub value: T;
+pub struct PairI32 {
+  pub value: i32;
 }
 
-pub enum Result<T, E>: u8 {
-  ok(T) = 1,
-  err(E) = 2,
+pub enum ResultI32I32: u8 {
+  ok(i32) = 1,
+  err(i32) = 2,
 }
 
 pub enum Mode: u8 {
@@ -18,7 +18,7 @@ pub enum Mode: u8 {
   slow = 2,
 }
 
-pub enum Maybe<T>: u8 {
+pub enum MaybeI32: u8 {
   none = 0,
-  some(T) = 1,
+  some(i32) = 1,
 }

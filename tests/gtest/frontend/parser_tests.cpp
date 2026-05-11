@@ -198,7 +198,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     });
 }
 
-TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
+TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
     {
         DiagnosticSink diagnostics;
         constexpr std::string_view source =
@@ -238,12 +238,12 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "type BinBytes = [0b1010]u8;\n"
             "type DecBytes = [1_000]u8;\n"
             "enum Code: u16 { hex = 0x2A, bin = 0b1010, dec = 1_000, }\n"
-            "struct Wrap<T> { value: T; }\n"
-            "enum Result<T, E>: u8 { ok(T) = 1, err(E) = 2, }\n"
+            "struct Wrap { value: i32; }\n"
+            "struct Outer { value: Wrap; }\n"
+            "enum ResultI32Bool: u8 { ok(i32) = 1, err(bool) = 2, }\n"
             "fn main() -> i32 {\n"
-            "  let nested: Wrap<Wrap<i32>> = Wrap<Wrap<i32>> { value: Wrap<i32> { value: 1 } };\n"
-            "  let triple: Wrap<Wrap<Wrap<i32>>> = Wrap<Wrap<Wrap<i32>>> { value: Wrap<Wrap<i32>> { value: Wrap<i32> { value: 2 } } };\n"
-            "  let ok = Result<Wrap<Wrap<i32>>, bool>.err(false)?;\n"
+            "  let nested: Outer = Outer { value: Wrap { value: 1 } };\n"
+            "  let ok = ResultI32Bool.err(false)?;\n"
             "  let shifted: i32 = 8 >> 1;\n"
             "  return 0;\n"
             "}\n";
@@ -274,9 +274,8 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndNestedGenericLookahead) {
             "alias [42]u8",
             "alias [10]u8",
             "alias [1000]u8",
-            "struct_literal Wrap<Wrap<i32>>",
-            "struct_literal Wrap<Wrap<Wrap<i32>>>",
-            "name `Result`<Wrap<Wrap<i32>>, bool>",
+            "struct_literal Outer",
+            "struct_literal Wrap",
             "try_expr",
             "binary",
         });
@@ -315,15 +314,15 @@ TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
 TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
     constexpr std::string_view source =
         "module parser.trailing_separators;\n"
-        "struct Pair<T, U,> { left: T; right: U; }\n"
-        "enum Choice<T, E>: u8 { ok = 1, err(E) = 2 }\n"
-        "fn choose<T, E,>(first: T, second: E,) -> Choice<T, E> {\n"
-        "  let pair = Pair<T, E> { left: first, right: second, };\n"
-        "  if pair.left == first { return Choice<T, E>.ok; }\n"
-        "  return Choice<T, E>.err(pair.right);\n"
+        "struct Pair { left: i32; right: bool; }\n"
+        "enum Choice: u8 { ok = 1, err(bool) = 2 }\n"
+        "fn choose(first: i32, second: bool,) -> Choice {\n"
+        "  let pair = Pair { left: first, right: second, };\n"
+        "  if pair.left == first { return Choice.ok; }\n"
+        "  return Choice.err(pair.right);\n"
         "}\n"
         "fn score() -> i32 {\n"
-        "  let value = choose<i32, bool>(41, false,);\n"
+        "  let value = choose(41, false,);\n"
         "  return match value {\n"
         "    .ok => 41,\n"
         "    .err(flag) => if flag { 1 } else { 0 }\n"
@@ -333,17 +332,14 @@ TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
 
     const syntax::ItemNode* pair = find_item(module, "Pair");
     ASSERT_NE(pair, nullptr);
-    EXPECT_EQ(pair->generic_params.size(), 2U);
     EXPECT_EQ(pair->fields.size(), 2U);
 
     const syntax::ItemNode* choice = find_item(module, "Choice");
     ASSERT_NE(choice, nullptr);
-    EXPECT_EQ(choice->generic_params.size(), 2U);
     EXPECT_EQ(choice->enum_cases.size(), 2U);
 
     const syntax::ItemNode* choose = find_item(module, "choose");
     ASSERT_NE(choose, nullptr);
-    EXPECT_EQ(choose->generic_params.size(), 2U);
     EXPECT_EQ(choose->params.size(), 2U);
 }
 
@@ -394,18 +390,18 @@ TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
     EXPECT_EQ(module.exprs[block_expr.block_result.value].kind, syntax::ExprKind::if_expr);
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
-    constexpr base::SourceId PARSER_TEST_TYPE_ARG_RECOVERY_SOURCE_ID {9};
+TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayTypeSeparators) {
+    constexpr base::SourceId PARSER_TEST_ARRAY_TYPE_RECOVERY_SOURCE_ID {9};
     constexpr std::string_view source =
-        "module parser.type_arg_recovery;\n"
-        "type Broken = Pair<i32 bool, str>;\n"
+        "module parser.array_type_recovery;\n"
+        "type Broken = [2 i32;\n"
         "fn recovered() -> i32 {\n"
         "  let broken = ;\n"
         "  return 0;\n"
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(PARSER_TEST_TYPE_ARG_RECOVERY_SOURCE_ID, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_ARRAY_TYPE_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -419,7 +415,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeArgumentSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ',' or '>' after type argument");
+    expect_contains(messages, "expected ']' after array length");
     expect_contains(messages, "expected expression");
 }
 
@@ -600,18 +596,18 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericParameterSeparators) {
-    constexpr base::SourceId PARSER_TEST_GENERIC_PARAM_RECOVERY_SOURCE_ID {16};
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStructFieldSeparators) {
+    constexpr base::SourceId PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID {16};
     constexpr std::string_view source =
-        "module parser.generic_param_recovery;\n"
-        "struct Box<T @ U> { value: T; }\n"
+        "module parser.struct_field_recovery;\n"
+        "struct Box { value: i32 @ other: bool; }\n"
         "fn recovered() -> i32 {\n"
         "  let broken = ;\n"
         "  return 0;\n"
         "}\n";
 
     DiagnosticSink diagnostics;
-    lex::Lexer lexer(PARSER_TEST_GENERIC_PARAM_RECOVERY_SOURCE_ID, source, diagnostics);
+    lex::Lexer lexer(PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     ASSERT_TRUE(tokens) << tokens.error().message;
 
@@ -625,7 +621,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericParameterSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ',' or '>' after generic parameter");
+    expect_contains(messages, "expected ';' or '}' after field declaration");
     expect_contains(messages, "expected expression");
 }
 
@@ -1142,14 +1138,14 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedIdentifiers) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
+TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
     constexpr std::string_view source =
-        "module parser.angle;\n"
-        "struct Wrap<T> { value: T; }\n"
-        "enum Result<T, E>: u8 { ok(T) = 1, err(E) = 2, }\n"
+        "module parser.shift_enum;\n"
+        "struct Wrap { value: i32; }\n"
+        "enum ResultI32: u8 { ok(i32) = 1, err(i32) = 2, }\n"
         "fn main() -> i32 {\n"
-        "  let call = Result<Wrap<Wrap<i32>>, bool>.ok(Wrap<Wrap<i32>> { value: Wrap<i32> { value: 1 } })?;\n"
-        "  let literal: Wrap<Wrap<i32>> = Wrap<Wrap<i32>> { value: Wrap<i32> { value: 2 } };\n"
+        "  let call = ResultI32.ok(1)?;\n"
+        "  let literal: Wrap = Wrap { value: 2 };\n"
         "  let shifted: i32 = 16 >> 2;\n"
         "  return shifted;\n"
         "}\n";
@@ -1175,15 +1171,13 @@ TEST(CoreUnit, ParserCoversFocusedAngleListLookaheadRegressions) {
     ASSERT_TRUE(syntax::is_valid(field_expr.object));
     const syntax::ExprNode& result_name = module.exprs[field_expr.object.value];
     ASSERT_EQ(result_name.kind, syntax::ExprKind::name);
-    EXPECT_EQ(result_name.text, "Result");
-    EXPECT_EQ(result_name.type_args.size(), 2U);
+    EXPECT_EQ(result_name.text, "ResultI32");
 
     const syntax::StmtNode& literal_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(literal_stmt.init));
     const syntax::ExprNode& literal = module.exprs[literal_stmt.init.value];
     ASSERT_EQ(literal.kind, syntax::ExprKind::struct_literal);
     EXPECT_EQ(literal.struct_name, "Wrap");
-    EXPECT_EQ(literal.struct_type_args.size(), 1U);
 
     const syntax::StmtNode& shifted_stmt = module.stmts[body.statements[2].value];
     ASSERT_TRUE(syntax::is_valid(shifted_stmt.init));
@@ -1733,28 +1727,11 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
     expect_true_all(parse::token_starts_enum_case, {TokenKind::identifier});
     expect_false_on(parse::token_starts_enum_case, TokenKind::kw_fn);
 
-    expect_true_all(parse::token_starts_generic_parameter, {TokenKind::identifier});
-    expect_false_on(parse::token_starts_generic_parameter, TokenKind::kw_fn);
-
     expect_true_all(
         parse::token_starts_path_segment,
         {TokenKind::identifier, TokenKind::kw_c, TokenKind::kw_str}
     );
     expect_false_on(parse::token_starts_path_segment, TokenKind::kw_fn);
-
-    expect_true_all(
-        parse::detail::token_ends_type_argument,
-        {
-            TokenKind::greater,
-            TokenKind::greater_greater,
-            TokenKind::comma,
-            TokenKind::semicolon,
-            TokenKind::r_paren,
-            TokenKind::r_bracket,
-            TokenKind::r_brace,
-        }
-    );
-    expect_false_on(parse::detail::token_ends_type_argument, TokenKind::identifier);
 
     expect_true_all(parse::detail::token_ends_match_arm, {TokenKind::comma, TokenKind::r_brace});
     expect_false_on(parse::detail::token_ends_match_arm, TokenKind::identifier);
@@ -1827,21 +1804,6 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
         }
     );
     expect_false_on(parse::detail::token_ends_enum_case, TokenKind::identifier);
-
-    expect_true_all(
-        parse::detail::token_ends_generic_parameter,
-        {
-            TokenKind::greater,
-            TokenKind::comma,
-            TokenKind::l_paren,
-            TokenKind::r_paren,
-            TokenKind::l_brace,
-            TokenKind::colon,
-            TokenKind::semicolon,
-            TokenKind::r_brace,
-        }
-    );
-    expect_false_on(parse::detail::token_ends_generic_parameter, TokenKind::identifier);
 
     expect_true_all(
         parse::detail::token_ends_builtin_argument,

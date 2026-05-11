@@ -2,7 +2,6 @@
 
 #include <aurex/sema/function_registry.hpp>
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
@@ -141,56 +140,6 @@ void SemanticAnalyzer::register_type_names() {
             }
             continue;
         }
-        if (item.kind == syntax::ItemKind::struct_decl && !item.generic_params.empty()) {
-            GenericStructTemplateInfo info;
-            info.name = std::string(item.name);
-            info.module = owner;
-            const auto* const begin = module_.items.data();
-            const auto item_index = static_cast<base::usize>(&item - begin);
-            info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
-            info.range = item.range;
-            info.visibility = item.visibility;
-            for (std::string_view param : item.generic_params) {
-                const std::string param_name(param);
-                if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
-                    report(item.range, "duplicate generic parameter in struct " + std::string(item.name) + ": " + param_name);
-                }
-                info.params.push_back(param_name);
-            }
-            auto inserted = generic_struct_templates_.emplace(key, std::move(info));
-            if (!inserted.second) {
-                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
-            }
-            if (named_types_.contains(key) || checked_.type_aliases.contains(key)) {
-                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
-            }
-            continue;
-        }
-        if (item.kind == syntax::ItemKind::enum_decl && !item.generic_params.empty()) {
-            GenericEnumTemplateInfo info;
-            info.name = std::string(item.name);
-            info.module = owner;
-            const auto* const begin = module_.items.data();
-            const base::usize item_index = static_cast<base::usize>(&item - begin);
-            info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
-            info.range = item.range;
-            info.visibility = item.visibility;
-            for (std::string_view param : item.generic_params) {
-                const std::string param_name(param);
-                if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
-                    report(item.range, "duplicate generic parameter in enum " + std::string(item.name) + ": " + param_name);
-                }
-                info.params.push_back(param_name);
-            }
-            auto inserted = generic_enum_templates_.emplace(key, std::move(info));
-            if (!inserted.second) {
-                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
-            }
-            if (named_types_.contains(key) || checked_.type_aliases.contains(key)) {
-                report(item.range, "duplicate type definition in module " + module_name(owner) + ": " + std::string(item.name));
-            }
-            continue;
-        }
         if (item.kind == syntax::ItemKind::struct_decl) {
             handle = checked_.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
@@ -250,52 +199,6 @@ void SemanticAnalyzer::register_value_names() {
         std::string c_name = c_symbol_name(current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
-            if (!item.generic_params.empty()) {
-                if (item.is_extern_c) {
-                    report(item.range, "generic extern c functions are not supported");
-                }
-                if (item.is_export_c) {
-                    report(item.range, "generic export c functions are not supported");
-                }
-                if (item.is_prototype) {
-                    report(item.range, "generic function prototypes are not supported");
-                }
-                if (item.is_variadic) {
-                    report(item.range, "generic variadic functions are not supported");
-                }
-                if (!syntax::is_valid(item.return_type)) {
-                    report(item.range, "generic function return type must be explicit: " + std::string(item.name));
-                }
-                GenericFunctionTemplateInfo info;
-                info.name = std::string(item.name);
-                info.module = current_module_;
-                const auto* const begin = module_.items.data();
-                const base::usize item_index = static_cast<base::usize>(&item - begin);
-                info.item = syntax::ItemId {static_cast<base::u32>(item_index)};
-                info.impl_type = item.impl_type;
-                info.range = item.range;
-                info.visibility = item.visibility;
-                info.is_method = is_method;
-                info.impl_generic_param_count = item.impl_generic_param_count;
-                for (std::string_view param : item.generic_params) {
-                    const std::string param_name(param);
-                    if (std::find(info.params.begin(), info.params.end(), param_name) != info.params.end()) {
-                        report(item.range, "duplicate generic parameter in function " + std::string(item.name) + ": " + param_name);
-                    }
-                    info.params.push_back(param_name);
-                }
-                if (is_method) {
-                    const base::u32 method_index = static_cast<base::u32>(generic_method_templates_.size());
-                    generic_method_templates_.push_back(std::move(info));
-                    generic_method_template_indices_.emplace(std::string(item.name), method_index);
-                    continue;
-                }
-                const auto inserted = generic_function_templates_.emplace(key, std::move(info));
-                if (!inserted.second || global_values_.contains(key)) {
-                    report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
-                }
-                continue;
-            }
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
             if (item.is_variadic && !item.is_extern_c) {
                 report(item.range, "variadic functions are only supported for extern c declarations");
@@ -312,9 +215,6 @@ void SemanticAnalyzer::register_value_names() {
                 }
                 key = method_key(current_module_, method_owner_type, item.name);
                 c_name = method_c_symbol_name(method_owner_type, item.name);
-            }
-            if (generic_function_templates_.contains(key)) {
-                report(item.range, "duplicate value definition in module " + module_name(current_module_) + ": " + std::string(item.name));
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
             TypeHandle return_type = INVALID_TYPE_HANDLE;
@@ -409,9 +309,6 @@ void SemanticAnalyzer::register_value_names() {
                 if (!seen_cases.insert(std::string(enum_case.name)).second) {
                     report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
                 }
-            }
-            if (!item.generic_params.empty()) {
-                continue;
             }
             const TypeHandle enum_type = this->resolve_type(item.enum_base_type);
             if (!this->checked_.types.is_integer(enum_type)) {
@@ -583,17 +480,6 @@ void SemanticAnalyzer::validate_abi_symbols() {
         });
     }
 
-    for (const GenericFunctionInstanceInfo& instance : checked_.generic_function_instances) {
-        insert_function(instance.c_name, AbiFunctionInfo {
-            instance.name,
-            instance.return_type,
-            instance.param_types,
-            instance.item.value < module_.items.size() ? module_.items[instance.item.value].range : base::SourceRange {},
-            false,
-            false,
-        });
-    }
-
     for (const auto& entry : global_values_) {
         const Symbol& symbol = entry.second;
         if (symbol.kind == SymbolKind::function || symbol.c_name.empty()) {
@@ -681,9 +567,6 @@ void SemanticAnalyzer::analyze_struct_properties() {
                 this->report(field.range, "duplicate struct field: " + std::string(field.name));
                 continue;
             }
-            if (!item.generic_params.empty()) {
-                continue;
-            }
             const TypeHandle field_type = this->resolve_type(field.type);
             if (!this->is_valid_storage_type(field_type)) {
                 this->report(field.range, "field type is not valid storage");
@@ -701,9 +584,6 @@ void SemanticAnalyzer::analyze_struct_properties() {
             if (this->checked_.types.contains_array(field_type)) {
                 contains_array = true;
             }
-        }
-        if (!item.generic_params.empty()) {
-            continue;
         }
         const auto found = this->named_types_.find(key);
         if (found != this->named_types_.end()) {

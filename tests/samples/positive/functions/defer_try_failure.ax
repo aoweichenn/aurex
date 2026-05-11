@@ -1,27 +1,27 @@
 module defer_try_failure;
 
-enum Result<T, E>: u8 {
-  ok(T) = 1,
-  err(E) = 2,
+enum ResultI32I32: u8 {
+  ok(i32) = 1,
+  err(i32) = 2,
 }
 
 fn mark(log: *mut i32) -> void {
   *log = *log + 1;
 }
 
-fn fail() -> Result<i32, i32> {
-  return Result<i32, i32>.err(5);
+fn fail() -> ResultI32I32 {
+  return ResultI32I32.err(5);
 }
 
-fn use_try(log: *mut i32) -> Result<i32, i32> {
+fn use_try(log: *mut i32) -> ResultI32I32 {
   defer mark(log);
   let value: i32 = fail()?;
-  return Result<i32, i32>.ok(value);
+  return ResultI32I32.ok(value);
 }
 
 fn main() -> i32 {
   var log: i32 = 0;
-  let result: Result<i32, i32> = use_try(&log);
+  let result: ResultI32I32 = use_try(&log);
   if log != 1 {
     return 1;
   }

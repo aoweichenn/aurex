@@ -1,8 +1,0 @@
-module private_generic_struct_import;
-
-import samplelib.generic_private;
-
-fn main() -> i32 {
-    let hidden: Hidden<i32> = Hidden<i32> { value: 1 };
-    return hidden.value;
-}

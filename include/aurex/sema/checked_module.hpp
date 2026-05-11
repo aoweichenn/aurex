@@ -1,7 +1,6 @@
 #pragma once
 
 #include <aurex/sema/function.hpp>
-#include <aurex/sema/generic.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
 
@@ -67,7 +66,6 @@ struct CheckedModule {
     std::unordered_map<std::string, StructInfo> structs;
     std::unordered_map<std::string, EnumCaseInfo> enum_cases;
     std::unordered_map<std::string, TypeAliasInfo> type_aliases;
-    std::vector<GenericFunctionInstanceInfo> generic_function_instances;
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);

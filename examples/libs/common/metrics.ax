@@ -6,27 +6,27 @@ pub type Count = i32;
 
 pub const default_limit: Count = 8;
 
-pub struct Counter<T> {
-    pub current: T;
-    pub limit: T;
+pub struct CounterI32 {
+    pub current: Count;
+    pub limit: Count;
     priv reserved: i32;
 }
 
-pub fn counter_i32(current: Count, limit: Count) -> Counter<Count> {
-    return Counter<Count> {
+pub fn counter_i32(current: Count, limit: Count) -> CounterI32 {
+    return CounterI32 {
         current: current,
         limit: limit,
         reserved: 0,
     };
 }
 
-pub fn counter_health(counter: Counter<Count>) -> Health {
+pub fn counter_health(counter: CounterI32) -> Health {
     if counter.current <= counter.limit {
         return Health.ok;
     }
     return classify_errors(counter.current - counter.limit);
 }
 
-pub fn counter_delta(counter: Counter<Count>) -> Count {
+pub fn counter_delta(counter: CounterI32) -> Count {
     return counter.current - counter.limit;
 }

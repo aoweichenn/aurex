@@ -1,8 +1,0 @@
-module qualified_private_generic_enum;
-
-import samplelib.generic_private as gp;
-
-fn main() -> i32 {
-    let value: gp::Secret<i32> = gp::Secret.some(1);
-    return 0;
-}

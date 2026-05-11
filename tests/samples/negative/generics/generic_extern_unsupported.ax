@@ -1,9 +1,0 @@
-module generic_extern_unsupported;
-
-extern c {
-    fn c_id<T>(value: i32) -> i32;
-}
-
-fn main() -> i32 {
-    return 0;
-}

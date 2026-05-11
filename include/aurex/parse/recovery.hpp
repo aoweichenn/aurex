@@ -10,7 +10,6 @@ namespace aurex::parse {
 [[nodiscard]] bool token_starts_parameter(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_starts_struct_decl_field(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_starts_enum_case(syntax::TokenKind kind) noexcept;
-[[nodiscard]] bool token_starts_generic_parameter(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_starts_path_segment(syntax::TokenKind kind) noexcept;
 
 [[nodiscard]] bool token_matches_recovery_context(

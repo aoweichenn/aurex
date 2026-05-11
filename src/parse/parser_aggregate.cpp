@@ -16,16 +16,11 @@ using syntax::TokenKind;
 syntax::ItemId ItemParser::parse_struct_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_struct, "expected 'struct'");
     const syntax::Token& name = this->expect_identifier_recovered("expected struct name");
-    std::vector<std::string_view> generic_params;
-    if (this->check(TokenKind::less)) {
-        generic_params = this->parse_generic_param_list();
-    }
     this->expect_item_container_start("expected '{' after struct name");
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::struct_decl;
     item.name = name.text;
-    item.generic_params = std::move(generic_params);
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         if (std::optional<syntax::FieldDecl> field = this->parse_struct_field_decl()) {
@@ -46,10 +41,6 @@ syntax::ItemId ItemParser::parse_struct_decl() {
 syntax::ItemId ItemParser::parse_enum_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_enum, "expected 'enum'");
     const syntax::Token& name = this->expect_identifier_recovered("expected enum name");
-    std::vector<std::string_view> generic_params;
-    if (this->check(TokenKind::less)) {
-        generic_params = this->parse_generic_param_list();
-    }
     this->expect_type_annotation_colon("expected ':' after enum name");
     const syntax::TypeId base_type = this->parse_type();
     this->expect_item_container_start("expected '{' after enum base type");
@@ -57,7 +48,6 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::enum_decl;
     item.name = name.text;
-    item.generic_params = std::move(generic_params);
     item.enum_base_type = base_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {

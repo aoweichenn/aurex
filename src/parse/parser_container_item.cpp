@@ -12,16 +12,11 @@ using syntax::TokenKind;
 
 syntax::ItemId ItemParser::parse_impl_block() {
     const syntax::Token& begin = this->expect(TokenKind::kw_impl, "expected 'impl'");
-    std::vector<std::string_view> generic_params;
-    if (this->check(TokenKind::less)) {
-        generic_params = this->parse_generic_param_list();
-    }
     const syntax::TypeId impl_type = this->parse_type();
     this->expect_item_container_start("expected '{' after impl type");
 
     syntax::ItemNode block;
     block.kind = syntax::ItemKind::impl_block;
-    block.generic_params = generic_params;
     block.impl_type = impl_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
@@ -34,15 +29,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
         }
         const syntax::ItemId method = this->parse_fn_decl(false, false);
         if (syntax::is_valid(method)) {
-            std::vector<std::string_view> method_params = generic_params;
-            method_params.insert(
-                method_params.end(),
-                this->session_.module.items[method.value].generic_params.begin(),
-                this->session_.module.items[method.value].generic_params.end()
-            );
             this->session_.module.items[method.value].visibility = visibility.visibility;
-            this->session_.module.items[method.value].generic_params = std::move(method_params);
-            this->session_.module.items[method.value].impl_generic_param_count = generic_params.size();
             this->session_.module.items[method.value].impl_type = impl_type;
             block.impl_items.push_back(method);
         }

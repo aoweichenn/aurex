@@ -1,7 +1,0 @@
-module qualified_plain_function_type_args;
-
-import samplelib.visibility as vis;
-
-fn main() -> i32 {
-    return vis::exported<i32>(1);
-}

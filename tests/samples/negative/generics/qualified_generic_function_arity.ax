@@ -1,7 +1,0 @@
-module qualified_generic_function_arity;
-
-import samplelib.generic_a as ga;
-
-fn main() -> i32 {
-    return ga::pick<i32, bool>(1);
-}

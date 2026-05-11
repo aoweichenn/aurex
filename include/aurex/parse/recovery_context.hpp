@@ -9,8 +9,6 @@ enum class RecoveryContext {
     item,
     // Block statement boundary, including expression statements.
     statement,
-    // Type argument list boundary after a malformed argument or separator.
-    type_argument,
     // Match arm boundary after a malformed arm body or separator.
     match_arm,
     // Call argument list boundary after a malformed argument or separator.
@@ -23,8 +21,6 @@ enum class RecoveryContext {
     struct_decl_field,
     // Enum case list boundary after a malformed case or separator.
     enum_case,
-    // Generic parameter list boundary after a malformed parameter or separator.
-    generic_parameter,
     // Function parameter-list opener boundary after a malformed function header.
     parameter_list_start,
     // ABI attribute argument boundary after a malformed attribute argument.

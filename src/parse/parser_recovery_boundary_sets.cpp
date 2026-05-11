@@ -4,21 +4,6 @@ namespace aurex::parse::detail {
 
 using syntax::TokenKind;
 
-bool token_ends_type_argument(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::greater:
-    case TokenKind::greater_greater:
-    case TokenKind::comma:
-    case TokenKind::semicolon:
-    case TokenKind::r_paren:
-    case TokenKind::r_bracket:
-    case TokenKind::r_brace:
-        return true;
-    default:
-        return false;
-    }
-}
-
 bool token_ends_match_arm(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::comma:
@@ -97,22 +82,6 @@ bool token_ends_enum_case(const TokenKind kind) noexcept {
     case TokenKind::kw_impl:
     case TokenKind::kw_extern:
     case TokenKind::kw_export:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool token_ends_generic_parameter(const TokenKind kind) noexcept {
-    switch (kind) {
-    case TokenKind::greater:
-    case TokenKind::comma:
-    case TokenKind::l_paren:
-    case TokenKind::r_paren:
-    case TokenKind::l_brace:
-    case TokenKind::colon:
-    case TokenKind::semicolon:
-    case TokenKind::r_brace:
         return true;
     default:
         return false;

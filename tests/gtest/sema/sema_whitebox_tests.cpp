@@ -26,9 +26,6 @@ using base::u32;
 using sema::BuiltinType;
 using sema::EnumCaseInfo;
 using sema::FunctionSignature;
-using sema::GenericEnumTemplateInfo;
-using sema::GenericFunctionTemplateInfo;
-using sema::GenericStructTemplateInfo;
 using sema::PointerMutability;
 using sema::StructFieldInfo;
 using sema::StructInfo;
@@ -47,7 +44,6 @@ constexpr u32 SEMA_TEST_LIB_ONE_MODULE_INDEX = 1;
 constexpr u32 SEMA_TEST_MISSING_MODULE_INDEX = 99;
 constexpr base::u32 SEMA_TEST_PATTERN_FIRST_INDEX = 0;
 constexpr base::u32 SEMA_TEST_PATTERN_SECOND_INDEX = 1;
-constexpr base::u32 SEMA_TEST_PATTERN_THIRD_INDEX = 2;
 constexpr base::u32 SEMA_TEST_PATTERN_TRACKED_COUNT = 3;
 constexpr base::u64 SEMA_TEST_ABI_INVALID_SIZE = 0;
 constexpr base::u64 SEMA_TEST_ABI_MIN_ALIGNMENT = 1;
@@ -533,121 +529,9 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers) {
     EXPECT_EQ(analyzer.find_method_in_visible_modules(record_type, "missing", {}, true), nullptr);
 }
 
-TEST(CoreUnit, SemanticWhiteBoxGenericHelperEdges) {
-    syntax::AstModule module;
-    module.modules = {
-        module_info({"root"}),
-        module_info({"lib", "one"}),
-    };
-    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "one")};
-
-    const TypeId i32_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
-    const TypeId bool_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::bool_));
-    syntax::TypeNode generic_t = named_node("T");
-    const TypeId t_type_id = module.push_type(generic_t);
-    syntax::ItemNode missing_return;
-    missing_return.kind = syntax::ItemKind::fn_decl;
-    missing_return.name = "missing_return";
-    missing_return.generic_params = {"T"};
-    missing_return.params = {syntax::ParamDecl {"value", t_type_id}};
-    const syntax::ItemId missing_return_item = module.push_item(missing_return);
-    module.item_modules[missing_return_item.value] = module_id(1);
-
-    base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
-    const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
-    const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-
-    GenericEnumTemplateInfo private_enum;
-    private_enum.name = "Secret";
-    private_enum.module = module_id(1);
-    private_enum.params = {"T"};
-    private_enum.visibility = syntax::Visibility::private_;
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(1), "Secret"), private_enum);
-    EXPECT_EQ(analyzer.find_generic_enum_template_in_module(module_id(1), "Missing", {}, true), nullptr);
-    EXPECT_EQ(analyzer.find_generic_enum_template_in_module(module_id(1), "Secret", {}, true), nullptr);
-
-    GenericStructTemplateInfo private_struct;
-    private_struct.name = "Hidden";
-    private_struct.module = module_id(1);
-    private_struct.params = {"T"};
-    private_struct.visibility = syntax::Visibility::private_;
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(1), "Hidden"), private_struct);
-    EXPECT_EQ(analyzer.find_generic_struct_template_in_module(module_id(1), "Missing", {}, true), nullptr);
-    EXPECT_EQ(analyzer.find_generic_struct_template_in_module(module_id(1), "Hidden", {}, true), nullptr);
-
-    GenericFunctionTemplateInfo private_function;
-    private_function.name = "hidden";
-    private_function.module = module_id(1);
-    private_function.params = {"T"};
-    private_function.visibility = syntax::Visibility::private_;
-    analyzer.generic_function_templates_.emplace(analyzer.module_key(module_id(1), "hidden"), private_function);
-    EXPECT_EQ(analyzer.find_generic_function_template_in_module(module_id(1), "Missing", {}, true), nullptr);
-    EXPECT_EQ(analyzer.find_generic_function_template_in_module(module_id(1), "hidden", {}, true), nullptr);
-
-    GenericEnumTemplateInfo enum_info;
-    enum_info.name = "Option";
-    enum_info.module = module_id(1);
-    enum_info.params = {"T", "E"};
-    enum_info.item = syntax::INVALID_ITEM_ID;
-    EXPECT_FALSE(is_valid(analyzer.instantiate_generic_enum_from_syntax(enum_info, {i32_type_id}, {}, false)));
-    EXPECT_FALSE(is_valid(analyzer.instantiate_generic_enum(enum_info, {i32}, {})));
-    enum_info.params = {"T"};
-    EXPECT_FALSE(is_valid(analyzer.instantiate_generic_enum(enum_info, {i32}, {})));
-
-    GenericStructTemplateInfo struct_info;
-    struct_info.name = "Box";
-    struct_info.module = module_id(1);
-    struct_info.params = {"T", "E"};
-    struct_info.item = syntax::INVALID_ITEM_ID;
-    EXPECT_FALSE(is_valid(analyzer.instantiate_generic_struct_from_syntax(struct_info, {i32_type_id}, {}, false)));
-    EXPECT_FALSE(is_valid(analyzer.instantiate_generic_struct(struct_info, {i32}, {})));
-    struct_info.params = {"T"};
-    EXPECT_FALSE(is_valid(analyzer.instantiate_generic_struct(struct_info, {i32}, {})));
-
-    std::vector<TypeHandle> inferred = {INVALID_TYPE_HANDLE};
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(syntax::INVALID_TYPE_ID, i32, {"T"}, inferred, {}, "test", module_id(0)));
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(i32_type_id, INVALID_TYPE_HANDLE, {"T"}, inferred, {}, "test", module_id(0)));
-    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(i32_type_id, i32, {"T"}, inferred, {}, "test", module_id(0)));
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(bool_type_id, i32, {"T"}, inferred, {}, "test", module_id(0)));
-
-    GenericFunctionTemplateInfo function_info;
-    function_info.name = "identity";
-    function_info.module = module_id(1);
-    function_info.params = {"T", "E"};
-    function_info.item = syntax::INVALID_ITEM_ID;
-    EXPECT_EQ(analyzer.instantiate_generic_function_from_syntax(function_info, {i32_type_id}, {}), nullptr);
-    EXPECT_EQ(analyzer.instantiate_generic_function(function_info, {i32}, {}), nullptr);
-    function_info.params = {"T"};
-    EXPECT_EQ(analyzer.instantiate_generic_function(function_info, {INVALID_TYPE_HANDLE}, {}), nullptr);
-    EXPECT_EQ(analyzer.instantiate_generic_function(function_info, {i32}, {}), nullptr);
-
-    function_info.item = missing_return_item;
-    EXPECT_EQ(analyzer.instantiate_generic_function(function_info, {i32}, {}), nullptr);
-    module.items[missing_return_item.value].return_type = t_type_id;
-    std::vector<TypeHandle> function_inferred = {INVALID_TYPE_HANDLE};
-    EXPECT_FALSE(analyzer.infer_generic_function_args(function_info, {bool_type}, i32, function_inferred, {}));
-}
-
-TEST(CoreUnit, SemanticWhiteBoxBodyInferenceAndGenericPatternEdges) {
+TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};
-    const TypeId void_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::void_));
-    const TypeId i32_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
-    const TypeId bool_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::bool_));
-    const TypeId t_type_id = module.push_type(named_node("T"));
-    syntax::TypeNode pointer_t;
-    pointer_t.kind = syntax::TypeKind::pointer;
-    pointer_t.pointer_mutability = syntax::PointerMutability::mut;
-    pointer_t.pointee = t_type_id;
-    const TypeId pointer_t_id = module.push_type(pointer_t);
-    syntax::TypeNode array_t;
-    array_t.kind = syntax::TypeKind::array;
-    array_t.array_count = 2;
-    array_t.array_element = t_type_id;
-    const TypeId array_t_id = module.push_type(array_t);
     const TypeId plain_type_id = module.push_type(named_node("Plain"));
 
     syntax::StmtNode expr_stmt;
@@ -671,20 +555,17 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceAndGenericPatternEdges) {
     analyzer.checked_.stmt_local_types.assign(module.stmts.size(), INVALID_TYPE_HANDLE);
     analyzer.current_module_ = module_id(0);
     const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
-    const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-    const TypeHandle const_ptr_i32 = analyzer.checked_.types.pointer(PointerMutability::const_, i32);
-    const TypeHandle array_i32_3 = analyzer.checked_.types.array(3, i32);
     const TypeHandle plain_type = analyzer.checked_.types.named_struct("Plain", "Plain", false);
     analyzer.named_types_.emplace(analyzer.module_key(module_id(0), "Plain"), plain_type);
 
     FunctionSignature conflict_signature = function_signature("infer", module_id(0), INVALID_TYPE_HANDLE);
     sema::SemanticAnalyzer::FunctionBodyState state = sema::SemanticAnalyzer::FunctionBodyState::analyzing;
-    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state, nullptr);
+    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state);
     state = sema::SemanticAnalyzer::FunctionBodyState::analyzed;
-    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state, nullptr);
+    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state);
     state = sema::SemanticAnalyzer::FunctionBodyState::not_started;
     conflict_signature.has_conflict = true;
-    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state, nullptr);
+    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state);
 
     analyzer.analyze_block(syntax::INVALID_STMT_ID, i32, nullptr);
     analyzer.analyze_stmt(syntax::INVALID_STMT_ID, i32, nullptr);
@@ -702,58 +583,6 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceAndGenericPatternEdges) {
     analyzer.checked_.syntax_type_handles[plain_type_id.value] = opaque;
     EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type(plain_type_id), opaque));
     analyzer.checked_.syntax_type_handles[plain_type_id.value] = INVALID_TYPE_HANDLE;
-
-    std::vector<TypeHandle> inferred = {INVALID_TYPE_HANDLE};
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(pointer_t_id, i32, {"T"}, inferred, {}, "pattern", module_id(0)));
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(pointer_t_id, const_ptr_i32, {"T"}, inferred, {}, "pattern", module_id(0)));
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(array_t_id, i32, {"T"}, inferred, {}, "pattern", module_id(0)));
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(array_t_id, array_i32_3, {"T"}, inferred, {}, "pattern", module_id(0)));
-    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(plain_type_id, plain_type, {"T"}, inferred, {}, "pattern", module_id(0)));
-
-    GenericStructTemplateInfo struct_info;
-    struct_info.name = "BrokenStruct";
-    struct_info.module = module_id(0);
-    struct_info.params = {"T"};
-    struct_info.item = syntax::INVALID_ITEM_ID;
-    syntax::ExprNode literal;
-    literal.kind = syntax::ExprKind::struct_literal;
-    EXPECT_FALSE(is_valid(analyzer.infer_generic_struct_literal_type(struct_info, literal, INVALID_TYPE_HANDLE)));
-
-    syntax::ItemNode void_param_function;
-    void_param_function.kind = syntax::ItemKind::fn_decl;
-    void_param_function.name = "void_param";
-    void_param_function.generic_params = {"T"};
-    void_param_function.params = {syntax::ParamDecl {"value", void_type_id}};
-    void_param_function.return_type = i32_type_id;
-    const syntax::ItemId void_param_item = module.push_item(void_param_function);
-    module.item_modules[void_param_item.value] = module_id(0);
-    GenericFunctionTemplateInfo void_param_info;
-    void_param_info.name = "void_param";
-    void_param_info.module = module_id(0);
-    void_param_info.params = {"T"};
-    void_param_info.item = void_param_item;
-    EXPECT_NE(analyzer.instantiate_generic_function(void_param_info, {i32}, {}), nullptr);
-
-    syntax::ExprNode name_expr;
-    name_expr.kind = syntax::ExprKind::name;
-    name_expr.text = "Option";
-    const ExprId option_name = module.push_expr(name_expr);
-    syntax::ExprNode field_expr;
-    field_expr.kind = syntax::ExprKind::field;
-    field_expr.object = option_name;
-    field_expr.field_name = "missing";
-    const ExprId missing_case = module.push_expr(field_expr);
-    GenericEnumTemplateInfo enum_info;
-    enum_info.name = "Option";
-    enum_info.module = module_id(0);
-    enum_info.params = {"T"};
-    enum_info.item = syntax::INVALID_ITEM_ID;
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(0), "Option"), enum_info);
-    EXPECT_EQ(analyzer.instantiate_generic_enum_constructor(missing_case, {i32}, INVALID_TYPE_HANDLE, true), nullptr);
-    EXPECT_EQ(analyzer.instantiate_generic_enum_constructor(syntax::INVALID_EXPR_ID, {i32}, INVALID_TYPE_HANDLE, true), nullptr);
-
-    static_cast<void>(bool_type_id);
-    static_cast<void>(bool_type);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
@@ -892,119 +721,17 @@ TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {
     EXPECT_TRUE(analyzer.block_may_fallthrough(fallthrough_block));
 }
 
-TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutAndGenericInference) {
+TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges) {
     syntax::AstModule module;
-    module.modules = {
-        module_info({"root"}),
-        module_info({"lib", "one"}),
-    };
-    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "one")};
-
-    const TypeId t_type_id = module.push_type(named_node("T"));
-    const TypeId e_type_id = module.push_type(named_node("E"));
-
-    syntax::TypeNode pointer_t;
-    pointer_t.kind = syntax::TypeKind::pointer;
-    pointer_t.pointer_mutability = syntax::PointerMutability::mut;
-    pointer_t.pointee = t_type_id;
-    const TypeId pointer_t_id = module.push_type(pointer_t);
-
-    syntax::TypeNode array_pointer_t;
-    array_pointer_t.kind = syntax::TypeKind::array;
-    array_pointer_t.array_count = SEMA_TEST_SMALL_ARRAY_COUNT;
-    array_pointer_t.array_element = pointer_t_id;
-    const TypeId array_pointer_t_id = module.push_type(array_pointer_t);
-
-    syntax::TypeNode pair_pattern = named_node("Pair");
-    pair_pattern.type_args = {array_pointer_t_id, e_type_id};
-    const TypeId pair_pattern_id = module.push_type(pair_pattern);
-
-    syntax::TypeNode qualified_pair_pattern = pair_pattern;
-    qualified_pair_pattern.scope_name = "one";
-    const TypeId qualified_pair_pattern_id = module.push_type(qualified_pair_pattern);
+    module.modules = {module_info({"root"})};
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
     analyzer.current_module_ = module_id(0);
 
     sema::TypeTable& types = analyzer.checked_.types;
-    const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
     const TypeHandle u64 = types.builtin(BuiltinType::u64);
-    const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
-    const TypeHandle mut_ptr_i32 = types.pointer(PointerMutability::mut, i32);
-    const TypeHandle array_mut_ptr_i32 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, mut_ptr_i32);
-    const TypeHandle pair_instance = types.named_struct("Pair<i32,u64>", "Pair_i32_u64", false);
-    const TypeHandle scoped_pair_instance = types.named_struct("one.Pair<i32,u64>", "one_Pair_i32_u64", false);
-    const TypeHandle option_instance = types.named_enum("Option<i32>", "Option_i32");
-
-    GenericStructTemplateInfo pair_info;
-    pair_info.name = "Pair";
-    pair_info.module = module_id(0);
-    pair_info.params = {"T", "E"};
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(0), "Pair"), pair_info);
-
-    GenericStructTemplateInfo scoped_pair_info = pair_info;
-    scoped_pair_info.module = module_id(1);
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(1), "Pair"), scoped_pair_info);
-
-    sema::GenericStructInstanceInfo pair_instance_info;
-    pair_instance_info.name = "Pair";
-    pair_instance_info.module = module_id(0);
-    pair_instance_info.args = {array_mut_ptr_i32, u64};
-    analyzer.generic_struct_instances_.emplace("Pair:i32:u64", pair_instance);
-    analyzer.generic_struct_instance_infos_.emplace(pair_instance.value, pair_instance_info);
-
-    sema::GenericStructInstanceInfo scoped_pair_instance_info = pair_instance_info;
-    scoped_pair_instance_info.module = module_id(1);
-    analyzer.generic_struct_instances_.emplace("one.Pair:i32:u64", scoped_pair_instance);
-    analyzer.generic_struct_instance_infos_.emplace(scoped_pair_instance.value, scoped_pair_instance_info);
-
-    GenericEnumTemplateInfo option_info;
-    option_info.name = "Option";
-    option_info.module = module_id(0);
-    option_info.params = {"T"};
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(0), "Option"), option_info);
-
-    sema::GenericEnumInstanceInfo option_instance_info;
-    option_instance_info.name = "Option";
-    option_instance_info.module = module_id(0);
-    option_instance_info.args = {i32};
-    analyzer.generic_enum_instances_.emplace("Option:i32", option_instance);
-    analyzer.generic_enum_instance_infos_.emplace(option_instance.value, option_instance_info);
-
-    std::vector<TypeHandle> inferred = {INVALID_TYPE_HANDLE, INVALID_TYPE_HANDLE};
-    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(pair_pattern_id, pair_instance, {"T", "E"}, inferred, {}, "pattern", module_id(0)));
-    EXPECT_TRUE(types.same(inferred[0], i32));
-    EXPECT_TRUE(types.same(inferred[1], u64));
-
-    std::vector<TypeHandle> scoped_inferred = {INVALID_TYPE_HANDLE, INVALID_TYPE_HANDLE};
-    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(
-        qualified_pair_pattern_id,
-        scoped_pair_instance,
-        {"T", "E"},
-        scoped_inferred,
-        {},
-        "pattern",
-        module_id(0)
-    ));
-    EXPECT_TRUE(types.same(scoped_inferred[0], i32));
-    EXPECT_TRUE(types.same(scoped_inferred[1], u64));
-
-    std::vector<TypeHandle> too_small_inferred;
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(t_type_id, i32, {"T"}, too_small_inferred, {}, "pattern", module_id(0)));
-
-    std::vector<TypeHandle> conflicting_inferred = {bool_type};
-    EXPECT_FALSE(analyzer.infer_generic_args_from_type_pattern(t_type_id, i32, {"T"}, conflicting_inferred, {}, "pattern", module_id(0)));
-
-    syntax::TypeNode option_pattern = named_node("Option");
-    option_pattern.type_args = {t_type_id};
-    const TypeId option_pattern_id = module.push_type(option_pattern);
-    analyzer.checked_.syntax_type_handles.resize(module.types.size(), INVALID_TYPE_HANDLE);
-    std::vector<TypeHandle> enum_inferred = {INVALID_TYPE_HANDLE};
-    EXPECT_TRUE(analyzer.infer_generic_args_from_type_pattern(option_pattern_id, option_instance, {"T"}, enum_inferred, {}, "pattern", module_id(0)));
-    EXPECT_TRUE(types.same(enum_inferred[0], i32));
 
     const TypeHandle max_array_u8 = types.array(SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT, u8);
     EXPECT_EQ(analyzer.abi_size(max_array_u8), SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT);
@@ -1084,25 +811,10 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     syntax::TypeNode scoped_opaque_type = named_node("ScopedOpaque");
     scoped_opaque_type.scope_name = "one";
     const TypeId scoped_opaque_type_id = module.push_type(scoped_opaque_type);
-    syntax::TypeNode scoped_bad_box_type = named_node("BadBox");
-    scoped_bad_box_type.scope_name = "one";
-    scoped_bad_box_type.type_args = {i32_type_id};
-    const TypeId scoped_bad_box_type_id = module.push_type(scoped_bad_box_type);
-    syntax::TypeNode scoped_bad_enum_type = named_node("BadEnum");
-    scoped_bad_enum_type.scope_name = "one";
-    scoped_bad_enum_type.type_args = {i32_type_id};
-    const TypeId scoped_bad_enum_type_id = module.push_type(scoped_bad_enum_type);
-    syntax::TypeNode unqualified_bad_box_type = named_node("LocalBadBox");
-    unqualified_bad_box_type.type_args = {i32_type_id};
-    const TypeId unqualified_bad_box_type_id = module.push_type(unqualified_bad_box_type);
-    syntax::TypeNode unqualified_bad_enum_type = named_node("LocalBadEnum");
-    unqualified_bad_enum_type.type_args = {i32_type_id};
-    const TypeId unqualified_bad_enum_type_id = module.push_type(unqualified_bad_enum_type);
 
     syntax::ItemNode enum_item;
     enum_item.kind = syntax::ItemKind::enum_decl;
     enum_item.name = "Choice";
-    enum_item.generic_params = {"T"};
     enum_item.enum_base_type = u8_type_id;
     enum_item.enum_cases = {
         syntax::EnumCaseDecl {"none", syntax::INVALID_TYPE_ID, SEMA_TEST_INTEGER_LITERAL_ONE, {}},
@@ -1174,86 +886,60 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     analyzer.record_pattern_case_name(syntax::INVALID_PATTERN_ID, "ignored");
     analyzer.record_pattern_case_name(syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX}, {});
     analyzer.merge_pattern_case_names(syntax::INVALID_PATTERN_ID, syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX});
-
-    std::unordered_map<base::u32, std::unordered_set<std::string>> generic_case_sets;
-    generic_case_sets[SEMA_TEST_PATTERN_SECOND_INDEX].insert("from_generic");
-    analyzer.current_generic_pattern_case_sets_ = &generic_case_sets;
+    analyzer.checked_.pattern_case_sets[SEMA_TEST_PATTERN_SECOND_INDEX].insert("from_checked");
     analyzer.merge_pattern_case_names(
         syntax::PatternId {SEMA_TEST_PATTERN_FIRST_INDEX},
         syntax::PatternId {SEMA_TEST_PATTERN_SECOND_INDEX}
     );
-    EXPECT_TRUE(generic_case_sets[SEMA_TEST_PATTERN_FIRST_INDEX].contains("from_generic"));
-    analyzer.current_generic_pattern_case_sets_->erase(SEMA_TEST_PATTERN_SECOND_INDEX);
-    analyzer.checked_.pattern_case_sets[SEMA_TEST_PATTERN_SECOND_INDEX].insert("from_checked");
-    analyzer.merge_pattern_case_names(
-        syntax::PatternId {SEMA_TEST_PATTERN_THIRD_INDEX},
-        syntax::PatternId {SEMA_TEST_PATTERN_SECOND_INDEX}
+    EXPECT_TRUE(analyzer.checked_.pattern_case_sets[SEMA_TEST_PATTERN_FIRST_INDEX].contains("from_checked"));
+
+    syntax::ExprNode unqualified_missing_type;
+    unqualified_missing_type.kind = syntax::ExprKind::name;
+    unqualified_missing_type.text = "Missing";
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(unqualified_missing_type, false)));
+
+    syntax::ExprNode missing_alias_type = unqualified_missing_type;
+    missing_alias_type.scope_name = "missing";
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(missing_alias_type, false)));
+
+    const TypeHandle choice_type = types.named_enum("lib.one.Choice", "lib_one_Choice");
+    types.set_enum_underlying(choice_type, u8);
+    analyzer.named_types_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice"), choice_type);
+    analyzer.type_visibilities_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice"),
+        syntax::Visibility::public_
     );
-    EXPECT_TRUE(generic_case_sets[SEMA_TEST_PATTERN_THIRD_INDEX].contains("from_checked"));
-    analyzer.current_generic_pattern_case_sets_ = nullptr;
-
-    syntax::ExprNode unqualified_missing_generic;
-    unqualified_missing_generic.kind = syntax::ExprKind::name;
-    unqualified_missing_generic.text = "Missing";
-    unqualified_missing_generic.type_args = {i32_type_id};
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(unqualified_missing_generic, false)));
-
-    syntax::ExprNode missing_alias_generic = unqualified_missing_generic;
-    missing_alias_generic.scope_name = "missing";
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(missing_alias_generic, false)));
-
-    GenericEnumTemplateInfo enum_info;
-    enum_info.name = "Choice";
-    enum_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    enum_info.params = {"T"};
-    enum_info.item = enum_item_id;
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice"), enum_info);
-    GenericStructTemplateInfo bad_box_info;
-    bad_box_info.name = "BadBox";
-    bad_box_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    bad_box_info.params = {"T", "E"};
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "BadBox"), bad_box_info);
-    GenericEnumTemplateInfo bad_enum_info;
-    bad_enum_info.name = "BadEnum";
-    bad_enum_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    bad_enum_info.params = {"T", "E"};
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "BadEnum"), bad_enum_info);
-    GenericStructTemplateInfo local_bad_box_info = bad_box_info;
-    local_bad_box_info.name = "LocalBadBox";
-    local_bad_box_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
-    analyzer.generic_struct_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "LocalBadBox"), local_bad_box_info);
-    GenericEnumTemplateInfo local_bad_enum_info = bad_enum_info;
-    local_bad_enum_info.name = "LocalBadEnum";
-    local_bad_enum_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
-    analyzer.generic_enum_templates_.emplace(analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "LocalBadEnum"), local_bad_enum_info);
     analyzer.named_types_.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "ScopedOpaque"), scoped_opaque);
+    EnumCaseInfo none_case;
+    none_case.name = "Choice_none";
+    none_case.c_name = "Choice_none";
+    none_case.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    none_case.type = choice_type;
+    none_case.case_name = "none";
+    analyzer.checked_.enum_cases.emplace(analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice_none"), none_case);
+    analyzer.index_enum_case(analyzer.checked_.enum_cases.find(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice_none")
+    )->second);
 
-    syntax::ExprNode scoped_enum = unqualified_missing_generic;
+    syntax::ExprNode scoped_enum = unqualified_missing_type;
     scoped_enum.text = "Choice";
     scoped_enum.scope_name = "one";
     const TypeHandle choice_i32 = analyzer.resolve_associated_type_owner(scoped_enum, false);
     EXPECT_TRUE(is_valid(choice_i32));
 
-    syntax::ExprNode scoped_missing_generic = unqualified_missing_generic;
-    scoped_missing_generic.text = "MissingScoped";
-    scoped_missing_generic.scope_name = "one";
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(scoped_missing_generic, false)));
+    syntax::ExprNode scoped_missing_type = unqualified_missing_type;
+    scoped_missing_type.text = "MissingScoped";
+    scoped_missing_type.scope_name = "one";
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(scoped_missing_type, false)));
 
-    sema::GenericTypeSubstitution substitution;
-    std::unordered_map<base::u32, TypeHandle> generic_type_cache;
     const TypeHandle opaque = types.opaque_struct("Opaque", "Opaque");
-    generic_type_cache[i32_type_id.value] = opaque;
-    analyzer.current_generic_syntax_type_handles_ = &generic_type_cache;
-    EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type_with_substitution(i32_type_id, &substitution, false), opaque));
-    analyzer.current_generic_syntax_type_handles_ = nullptr;
+    analyzer.checked_.syntax_type_handles[i32_type_id.value] = opaque;
+    EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type(i32_type_id), opaque));
+    analyzer.checked_.syntax_type_handles[i32_type_id.value] = INVALID_TYPE_HANDLE;
     EXPECT_TRUE(types.is_void(analyzer.resolve_type(invalid_primitive_type_id)));
     EXPECT_TRUE(types.same(analyzer.resolve_type(scoped_opaque_type_id), scoped_opaque));
     EXPECT_FALSE(is_valid(analyzer.resolve_type(scoped_missing_alias_type_id)));
-    EXPECT_FALSE(is_valid(analyzer.resolve_type(scoped_choice_missing_args_type_id)));
-    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(scoped_bad_box_type_id, &substitution, false)));
-    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(scoped_bad_enum_type_id, &substitution, false)));
-    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(unqualified_bad_box_type_id, &substitution, false)));
-    EXPECT_FALSE(is_valid(analyzer.resolve_type_with_substitution(unqualified_bad_enum_type_id, &substitution, false)));
+    EXPECT_TRUE(types.same(analyzer.resolve_type(scoped_choice_missing_args_type_id), choice_type));
 
     const TypeHandle record_type = types.named_struct("Record", "Record", false);
     const TypeHandle array_record = types.named_struct("ArrayRecord", "ArrayRecord", true);
@@ -1280,22 +966,20 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     analyzer.checked_.functions.emplace(analyzer.method_key(module_id(0), record_type, "takes_array"), takes_array);
 
     const ExprId record_name = push_name(module, "Record");
-    syntax::ExprNode type_arg_field;
-    type_arg_field.kind = syntax::ExprKind::field;
-    type_arg_field.object = record_name;
-    type_arg_field.field_name = "needs";
-    type_arg_field.type_args = {i32_type_id};
-    const ExprId type_arg_field_id = module.push_expr(type_arg_field);
-    syntax::ExprNode type_arg_call;
-    type_arg_call.kind = syntax::ExprKind::call;
-    type_arg_call.callee = type_arg_field_id;
-    const ExprId type_arg_call_id = module.push_expr(type_arg_call);
+    syntax::ExprNode static_method_field;
+    static_method_field.kind = syntax::ExprKind::field;
+    static_method_field.object = record_name;
+    static_method_field.field_name = "needs";
+    const ExprId static_method_field_id = module.push_expr(static_method_field);
+    syntax::ExprNode static_method_call;
+    static_method_call.kind = syntax::ExprKind::call;
+    static_method_call.callee = static_method_field_id;
+    const ExprId static_method_call_id = module.push_expr(static_method_call);
 
-    syntax::ExprNode missing_arg_field = type_arg_field;
+    syntax::ExprNode missing_arg_field = static_method_field;
     missing_arg_field.field_name = "needs_arg";
-    missing_arg_field.type_args = {};
     const ExprId missing_arg_field_id = module.push_expr(missing_arg_field);
-    syntax::ExprNode missing_arg_call = type_arg_call;
+    syntax::ExprNode missing_arg_call = static_method_call;
     missing_arg_call.callee = missing_arg_field_id;
     const ExprId missing_arg_call_id = module.push_expr(missing_arg_call);
 
@@ -1303,7 +987,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     syntax::ExprNode array_arg_field = missing_arg_field;
     array_arg_field.field_name = "takes_array";
     const ExprId array_arg_field_id = module.push_expr(array_arg_field);
-    syntax::ExprNode array_arg_call = type_arg_call;
+    syntax::ExprNode array_arg_call = static_method_call;
     array_arg_call.callee = array_arg_field_id;
     array_arg_call.args = {array_value};
     const ExprId array_arg_call_id = module.push_expr(array_arg_call);
@@ -1321,7 +1005,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
 
     analyzer.checked_.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_c_names.resize(module.exprs.size());
-    static_cast<void>(analyzer.analyze_call_expr(type_arg_call_id, module.exprs[type_arg_call_id.value], INVALID_TYPE_HANDLE));
+    static_cast<void>(analyzer.analyze_call_expr(static_method_call_id, module.exprs[static_method_call_id.value], INVALID_TYPE_HANDLE));
     static_cast<void>(analyzer.analyze_call_expr(missing_arg_call_id, module.exprs[missing_arg_call_id.value], INVALID_TYPE_HANDLE));
     static_cast<void>(analyzer.analyze_call_expr(array_arg_call_id, module.exprs[array_arg_call_id.value], INVALID_TYPE_HANDLE));
     static_cast<void>(analyzer.analyze_call_expr(none_call_id, module.exprs[none_call_id.value], choice_i32));

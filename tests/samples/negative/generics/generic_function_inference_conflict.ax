@@ -1,9 +1,0 @@
-module generic_function_inference_conflict;
-
-fn choose<T>(left: T, right: T) -> T {
-    return left;
-}
-
-fn main() -> i32 {
-    return choose(1, true);
-}

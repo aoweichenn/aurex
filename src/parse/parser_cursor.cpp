@@ -1,7 +1,5 @@
 #include <aurex/parse/parser.hpp>
 
-#include <parse/parser_angle_lookahead.hpp>
-
 namespace aurex::parse {
 
 using syntax::TokenKind;
@@ -24,26 +22,6 @@ bool Parser::check(const TokenKind kind) const noexcept {
 
 bool Parser::check_next(const TokenKind kind) const noexcept {
     return this->session_.cursor.check_next(kind);
-}
-
-bool Parser::check_type_arg_list_end() const noexcept {
-    return this->session_.cursor.check_type_arg_list_end();
-}
-
-bool Parser::next_angle_list_is_type_scope() const noexcept {
-    return next_angle_list_has_follower(
-        this->session_.cursor.tokens(),
-        this->session_.cursor.position(),
-        AngleListFollower::TYPE_SCOPE
-    );
-}
-
-bool Parser::next_angle_list_is_struct_literal() const noexcept {
-    return next_angle_list_has_follower(
-        this->session_.cursor.tokens(),
-        this->session_.cursor.position(),
-        AngleListFollower::STRUCT_LITERAL
-    );
 }
 
 bool Parser::match(const TokenKind kind) noexcept {

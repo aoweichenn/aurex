@@ -40,15 +40,6 @@ const syntax::Token& Parser::expect_recovered(
     return fallback;
 }
 
-const syntax::Token& Parser::expect_type_arg_list_end(std::string message) {
-    if (this->check_type_arg_list_end()) {
-        return this->session_.cursor.consume_type_arg_list_end();
-    }
-    this->report_here(std::move(message));
-    static const syntax::Token fallback {};
-    return fallback;
-}
-
 void Parser::synchronize(const RecoveryContext context) {
     this->reset_panic();
     if (this->is_eof()) {

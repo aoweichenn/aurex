@@ -49,21 +49,14 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     unknown_expr.kind = static_cast<syntax::ExprKind>(255);
     module.exprs.push_back(unknown_expr);
 
-    syntax::ExprNode typed_name;
-    typed_name.kind = syntax::ExprKind::name;
-    typed_name.text = "Generic";
-    typed_name.type_args = {syntax::TypeId {0}, syntax::TypeId {1}};
-    module.exprs.push_back(typed_name);
-
     syntax::ExprNode struct_literal;
     struct_literal.kind = syntax::ExprKind::struct_literal;
     struct_literal.struct_name = "Pair";
-    struct_literal.struct_type_args = {syntax::TypeId {0}, syntax::TypeId {1}};
     module.exprs.push_back(struct_literal);
 
     syntax::ExprNode match_expr;
     match_expr.kind = syntax::ExprKind::match_expr;
-    match_expr.match_value = syntax::ExprId {3};
+    match_expr.match_value = syntax::ExprId {2};
     match_expr.match_arms = {
         syntax::MatchArm {syntax::PatternId {0}, syntax::INVALID_EXPR_ID, syntax::ExprId {1}, {}},
         syntax::MatchArm {syntax::INVALID_PATTERN_ID, syntax::INVALID_EXPR_ID, syntax::ExprId {99}, {}},
@@ -77,7 +70,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
 
     syntax::StmtNode expr_stmt;
     expr_stmt.kind = syntax::StmtKind::expr;
-    expr_stmt.init = syntax::ExprId {4};
+    expr_stmt.init = syntax::ExprId {3};
     module.stmts.push_back(expr_stmt);
 
     syntax::StmtNode if_stmt;
@@ -127,8 +120,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
         "stmt #0 unknown",
         "expr #0 invalid",
         "expr #1 unknown",
-        "name `Generic`<i32, bool>",
-        "struct_literal Pair<i32, bool>",
+        "struct_literal Pair",
         "match_arm Color.red(value)",
         "match_arm <invalid-pattern>",
         "expr <invalid>",

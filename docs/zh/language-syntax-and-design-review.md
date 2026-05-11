@@ -964,9 +964,9 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 
 ## 建议的特性路线图
 
-### P0：立刻整理和冻结当前语法
+### P0：现代基础语法第一优先级
 
-目标：停止语义漂移，让后续讨论有共同基线。
+目标：停止语义漂移，并优先补齐现代语言和类型系统研究共同证明过的基础表达能力。对照范围不只限 Rust、Go、Zig、Kotlin、C++，也包括 Swift、C#、TypeScript/JavaScript、Python、Dart、Scala、OCaml/F#、Haskell、Julia、Nim、D、V，以及 ML/ADT、pattern matching exhaustiveness、null safety、type soundness、unsafe boundary 相关研究。
 
 任务：
 
@@ -974,10 +974,24 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 2. 给当前 grammar 写一份 EBNF。
 3. 把所有 parser 可接受的语法都做 syntax sample。
 4. 给“当前没有”的语法做 negative tests。
-5. 决定默认可见性是否在 M2 收口期切到 private。
-6. 为 `unsafe` 设计最小语法，不一定立刻改所有 lowering。
-7. 浮点字面量已补齐基础形式；后续只需决定是否增加后缀方案。
-8. 明确 byte / text / C string 的字面量边界。
+5. 为 `unsafe` block / `unsafe fn` 设计最小语法和 unsafe-only 诊断清单，不一定立刻改所有 lowering。
+6. 把 enum 改成 ADT-first：普通 enum 的 base type 和 discriminant 可选，显式 C-like/repr enum 保留 `enum Status: u8 { ok = 0, err = 1 }` 形态。
+7. 决定默认可见性在 M2 收口期迁移到 private，并制定 warning 到 hard switch 的迁移策略。
+8. 补 array literal / repeat literal，让已有 `[N]T` 数组类型具备基础值语法。
+9. 浮点字面量已补齐基础形式；后续只需决定是否增加后缀方案。
+
+### P1：基础值语法与 pattern 人体工程学
+
+目标：补齐数组、slice、字符串/bytes、函数类型和 ADT destructuring 的基础表达能力，但不提前引入完整 closure、iterator protocol 或 std 容器。
+
+任务：
+
+1. 设计 slice type / slice expression，并和 `str` 的 UTF-8 boundary 规则对齐。
+2. 明确 raw string、multiline string、bytes string、Unicode scalar `char` 的字面量边界；`b'a'` 继续是 `u8`。
+3. 增加 function pointer / function type，包括 `extern c fn` type，用于 callback 和 FFI table。
+4. 设计 tuple / destructuring declaration 的有限形态。
+5. 支持 struct pattern、`if let`、`let ... else`。
+6. 改进 exhaustiveness 和 unreachable diagnostics，避免 pattern 扩展后退化为 ad-hoc 检查。
 
 ### P1：类型系统主线
 
@@ -991,7 +1005,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 4. 固化 destructor 形状，短期兼容 `destroy(self: *mut T) -> void`。
 5. 设计 `drop(self: &mut Self)` 或 `Drop` trait 的长期语法。
 6. 引入 safe reference 类型 `&T` / `&mut T` 的语法草案。
-7. raw pointer 操作进入 `unsafe`。
+7. raw pointer 操作进入 `unsafe`。这是 P0 语法边界的类型系统落地，而不是独立高级特性。
 
 ### P1：ADT 与 pattern matching
 
@@ -999,9 +1013,9 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 
 任务：
 
-1. enum base type 和 discriminant 改为可选。
+1. enum base type 和 discriminant 改为可选。这已经提升为 P0 语法工作。
 2. 支持多字段 payload 或 tuple payload。
-3. 支持 struct pattern。
+3. 支持 struct pattern。这和 P1 pattern 人体工程学同步推进。
 4. 支持 `if let` / `let ... else`。
 5. 改进 exhaustiveness 和 unreachable diagnostics。
 6. 明确 payload move / borrow / drop 规则。
@@ -1030,7 +1044,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 2. `Vec<T>` 增加 move-out API，例如 `take_at` / `swap_take`。
 3. `Map<K,V>` 增加 borrowed-key 查询和 entry API。
 4. 如果恢复文件、目录、进程 API，它们应全部迁到 `Result` 和 owned resource。
-5. iterator / slice 语法和容器 `for item in container` 在 borrow/slice 基线后再定；当前只承认基础整数 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`。
+5. 容器 `for item in container` 和 iterator protocol 在 borrow/slice 基线后再定；slice type/expression 本身已经提升为 P1 基础语法，当前循环仍只承认基础整数 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`。
 
 ### P3：高级能力
 
@@ -1050,7 +1064,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别泛型 `Result<T,E>` / `O
 为了降低困惑，下面这些应明确推迟：
 
 - 异常系统。先把 `Result` / `?` / Drop 做稳。
-- 复杂 class 继承。先做 trait。
+- 复杂 class 继承。先把 ADT、method、capability/trait 路线做清楚，再评估动态分发。
 - GC 语义。当前语言定位不是托管语言。
 - operator overloading。会显著增加 type checking 和诊断复杂度。
 - 隐式 numeric conversion。会破坏当前强类型边界。

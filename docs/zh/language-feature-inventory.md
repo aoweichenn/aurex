@@ -682,8 +682,11 @@ M2 已删除：
 
 ### 基础语法未完成
 
+- 最小 `unsafe` block / `unsafe fn`，以及 unsafe-only 诊断清单。
 - enum base type / discriminant 可选。
 - 多字段 enum payload。
+- array literal / repeat array literal。
+- slice expression。
 - raw string、bytes string、Unicode scalar `char`。
 - literal suffix 策略：整数/浮点类型后缀。
 - 嵌套块注释。
@@ -692,14 +695,14 @@ M2 已删除：
 
 ### 类型系统未完成
 
+- function pointer / function type。
+- tuple / tuple struct / anonymous record。
+- slice type。
 - `where` 约束。
 - trait / interface / protocol。
 - capability predicate：`Copy`、`Drop`、`Sized`、`Eq`、`Hash` 等。
 - associated type / type member。
-- function pointer type。
-- tuple / tuple struct / anonymous record。
 - safe reference：`&T` / `&mut T`。
-- slice type。
 - const generic。
 - never type。
 
@@ -755,7 +758,142 @@ M2 已删除：
 
 M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class、macro、async 或 std。
 
-### P0：必须先做
+### P0：现代基础语法第一优先级
+
+这一组是下一阶段第一优先级。对照面不只限 Rust、Go、Zig、Kotlin、C++，还包括 Swift、C#、TypeScript/JavaScript、Python、Dart、Scala、OCaml/F#、Haskell、Julia、Nim、D、V，以及 ML/ADT、pattern matching exhaustiveness、null safety、type soundness、unsafe boundary 相关研究。共同结论是：Aurex 的函数、block、if/while/for、module/import、struct、method、match、C FFI 这些大语法骨架已经具备；真正需要先补的是现代语言共同证明过的基础表达能力，而不是 trait、borrow checker、macro、async、std 或 iterator protocol。
+
+1. 最小 `unsafe` block / `unsafe fn`
+
+   当前 raw pointer dereference、`pcast`、`bit_cast`、`ptr_from_addr`、`str_from_bytes_unchecked` 都能出现在普通表达式层。它们可能破坏 aliasing、layout、UTF-8、pointer validity 等语言不变量，必须先被语法显式圈起来：
+
+   ```aurex
+   unsafe {
+       let p = ptr_from_addr(*mut Header, address);
+       (*p).len = 4;
+   }
+
+   unsafe fn from_raw(data: *const u8, len: usize) -> str {
+       return str_from_bytes_unchecked(data, len);
+   }
+   ```
+
+   第一阶段只需要语法、AST、sema 诊断和 lowering 透传，不需要一次实现 borrow checker。规则先冻结为：unsafe-only builtin 和 raw pointer dereference 在 safe context 下诊断；调用 `unsafe fn` 必须处于 unsafe context。
+
+2. ADT-first enum 语法
+
+   当前 enum 强制 base type 和 discriminant，偏 C-like。现代 ML-family、Rust、Swift、Kotlin、Scala、Dart 等都证明 sum type 是基础表达能力。Aurex 应让普通 ADT 成为默认形态：
+
+   ```aurex
+   enum Option<T> {
+       some(T),
+       none,
+   }
+
+   enum Result<T, E> {
+       ok(T),
+       err(E),
+   }
+   ```
+
+   保留 `enum Status: u8 { ok = 0, err = 1 }` 作为 ABI/repr enum。
+
+3. default private 迁移
+
+   顶层 item 和 struct field 默认 public 是长期 API surface 风险。建议迁移到默认 private、显式 `pub`：
+
+   ```aurex
+   fn helper() -> i32 { return 1; }
+   pub fn api() -> i32 { return helper(); }
+
+   struct User {
+       id: i32;
+       pub name: str;
+   }
+   ```
+
+   迁移顺序：先文档冻结长期方向，再给跨模块 public 但未写 `pub` 的 item/field 加 warning，最后切换默认值。
+
+4. array literal / repeat literal
+
+   数组类型 `[N]T` 已经存在，但数组值语法缺失。Rust、Zig、Go、Swift、Dart、Python、TypeScript 等都把数组/列表字面量放在基础层。Aurex 应先补固定长度数组：
+
+   ```aurex
+   let bytes: [4]u8 = [1, 2, 3, 4];
+   let zeroes: [128]u8 = [0; 128];
+   let matrix: [2][2]i32 = [[1, 2], [3, 4]];
+   ```
+
+   这不需要 std 容器，也不等同于 iterator protocol。
+
+### P1：基础可用性补齐
+
+1. slice type / slice expression
+
+   slice 是数组、`str`、buffer、FFI wrapper 的共同地基。建议先设计 borrowed slice，不急着做容器迭代：
+
+   ```aurex
+   []const u8
+   []mut T
+
+   let part = bytes[start:end];
+   let tail = bytes[start:];
+   let head = bytes[:end];
+   ```
+
+2. raw string / multiline string / bytes string / Unicode scalar `char`
+
+   当前已有 `"..." -> str`、`c"..." -> *const u8`、`b'a' -> u8`，但缺现代基础字面量：
+
+   ```aurex
+   r"c:\tmp\file.txt"
+   """
+   line 1
+   line 2
+   """
+   b"abc"
+   'λ'
+   ```
+
+   `char` 应表示 Unicode scalar value，不是 `u8` 或 C `char`。`b"abc"` 的结果类型需要和 array literal / slice 设计一起冻结。
+
+3. function pointer / function type
+
+   完整 closure 捕获可以暂缓，但非捕获函数类型和 C callback 是基础系统能力：
+
+   ```aurex
+   type Cmp = fn(a: *const void, b: *const void) -> i32;
+   type Callback = extern c fn(ctx: *mut void) -> void;
+   ```
+
+4. tuple / destructuring declaration
+
+   tuple 和 destructuring 是 Rust、Swift、Python、Dart、Scala、ML-family、C++ structured binding 等共同采用的基础人体工程学。Aurex 可以先做有限形态：
+
+   ```aurex
+   let pair = (1, true);
+   let (count, ok) = parse_count(text);
+   ```
+
+5. pattern 扩展到 `let` / `if let` / `let ... else` / struct pattern
+
+   ADT 如果没有轻量 destructuring，使用成本会过高：
+
+   ```aurex
+   if let .some(value) = opt {
+       return value;
+   }
+
+   let .ok(value) = result else {
+       return 1;
+   };
+
+   match point {
+       Point { x: 0, y } => y,
+       Point { x, y } => x + y,
+   }
+   ```
+
+### P2：已冻结或中等优先级
 
 1. 统一 block 语法：已补
 
@@ -771,28 +909,9 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 
    当前语义已收口到 call / try expression，并已有负例保持 `x + y;` 这类无效语句的诊断。
 
-### P1：基础语言形态收口
-
-1. enum ADT 语法
-
-   让 base type 和 discriminant 可选：
-
-   ```aurex
-   enum Option<T> {
-       some(T),
-       none,
-   }
-   ```
-
-   保留 `enum Status: u8 { ok = 0, err = 1 }` 作为 ABI/repr enum。
-
-2. trailing separator 策略已冻结
+3. trailing separator 策略已冻结
 
    当前规则：圆括号列表和角括号列表允许 trailing comma；comma 分隔的花括号列表允许 trailing comma，但最后一个元素不强制 comma；struct field declaration 继续使用 `;`，最后一个 field 仍按 statement-like 风格保留 `;`。这条已由 parser 单测和 `tests/samples/positive/core/trailing_separator_policy.ax` 覆盖。
-
-3. default private 迁移
-
-   顶层 item 和 field 默认 public 是长期 API 风险。建议先文档固定长期方向，再增加 warning，最后切换。
 
 4. public 函数返回类型显式化
 
@@ -802,41 +921,41 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 
    `.` 只用于 module path、field、method；`::` 只用于 import alias 下的 item/type/const/function/enum constructor。不要引入混合长路径表达式。
 
-### P2：基础安全边界
-
-1. 最小 `unsafe`
-
-   raw pointer dereference、`pcast`、`bit_cast`、`ptr_from_addr`、`str_from_bytes_unchecked` 应进入 unsafe-only 清单。先做语法和诊断框架，不必一次完成 borrow checker。
-
-2. `str` 安全边界
+6. `str` 安全边界
 
    保留 `str` 语言内建，但把 unchecked 构造放入 unsafe。checked UTF-8 构造和 checked slicing 可先设计语义，再决定 builtin 还是未来 core API。
 
-3. safe reference 草案
+7. safe reference 草案
 
    文档先冻结 `&T` / `&mut T` 方向，让 raw pointer 回到 FFI/unsafe 内部实现的位置。
 
 ### P3：基础层稳定后再做
 
+- labeled break/continue。
+- match/switch statement context。
+- literal suffix / octal / hex float。
+- doc comment。
 - `where` / capability / trait。
 - Drop / destructor。
 - borrow checker。
-- struct pattern / `if let` / `let ... else`。
 - package。
 - std/core 恢复。
 
-这些都重要，但不应抢在 block、const、assignment、enum ADT 和 unsafe 边界之前。
+这些都重要，但不应抢在 `unsafe`、ADT-first enum、default private、array literal、slice/string/function type 这些基础语法之前。
 
 ## 近期执行建议
 
 建议按这个顺序开工：
 
 1. 写当前 grammar 的 EBNF，并用 parser tests 锁住。
-2. 合并 block statement / block expression。
-3. 统一 trailing separator 策略。
-4. 设计 enum ADT 的最小语法。
-5. 给 `unsafe` 设计最小 AST/语义框架。
-6. 再进入 `where` / capability / Drop / borrow。
+2. 给 `unsafe` 设计最小 AST/语义框架和 unsafe-only 诊断清单。
+3. 设计 ADT-first enum 的最小语法，同时保留显式 C-like/repr enum。
+4. 制定 default private 迁移策略。
+5. 实现 array literal / repeat literal。
+6. 设计 slice type/expression 与 `str` 的 safe/unsafe 边界。
+7. 设计 raw/multiline/bytes string、Unicode scalar `char`。
+8. 设计 function pointer / function type。
+9. 再进入 tuple/destructuring、pattern 扩展、`where` / capability / Drop / borrow。
 
 ## 参考
 
@@ -848,3 +967,14 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 - Zig Language Reference: https://ziglang.org/documentation/master/
 - Go Language Specification: https://go.dev/ref/spec
 - Swift API Design Guidelines: https://www.swift.org/documentation/api-design-guidelines/
+- Swift Programming Language: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/
+- Microsoft C# Language Reference: https://learn.microsoft.com/dotnet/csharp/language-reference/
+- TypeScript Handbook: https://www.typescriptlang.org/docs/handbook/intro.html
+- Python Language Reference: https://docs.python.org/3/reference/
+- Dart Language: https://dart.dev/language
+- Scala 3 Reference: https://docs.scala-lang.org/scala3/reference/
+- OCaml Manual: https://ocaml.org/manual/
+- F# Language Reference: https://learn.microsoft.com/dotnet/fsharp/language-reference/
+- Luc Maranget, Warnings for pattern matching.
+- Robin Milner, A Theory of Type Polymorphism in Programming.
+- Wright and Felleisen, A Syntactic Approach to Type Soundness.

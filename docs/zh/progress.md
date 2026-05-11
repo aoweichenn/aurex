@@ -76,8 +76,10 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - compound assignment 已补齐；`++` / `--` 自增自减语法已从 M2 基础语法移除，统一使用 `+= 1` / `-= 1`。
 - 基础 range-for 已补齐为 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`；当前仍没有容器迭代、slice 迭代或 iterator protocol。
 - trailing separator 策略已冻结：括号/角括号列表允许 trailing comma，comma 分隔花括号列表允许但不强制最后一个 comma。
+- 下一阶段第一优先级已经调整为现代基础语法收口：最小 `unsafe` block / `unsafe fn`、ADT-first enum、default private、array literal / repeat literal。
 - 顶层 item 和 struct field 默认 public，不适合作为长期模块 API 基线。
 - enum 仍偏 C enum 语法，base type 和 discriminant 必填，不适合作为主力 ADT 表达。
+- 数组类型已存在，但还缺 array literal / repeat literal；slice type/expression、function pointer / function type、raw/multiline/bytes string、Unicode scalar `char` 也属于下一批基础语法缺口。
 - 泛型没有 `where`、trait 或 capability predicate，不能表达 `T: Copy`、`T: Drop`、`K: Eq + Hash` 这类基础约束。
 - M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 需要重新设计成 capability / trait / where 能表达的语言模型。
 - raw pointer 同时承担 FFI、method receiver、临时借用和地址操作，长期需要 safe reference 与 `unsafe` 边界分层。
@@ -89,4 +91,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线：决定 default private 迁移、设计 `unsafe`、设计 capability/trait/where，并把 enum/pattern matching 从“能用”推进到“适合作为语言核心表达状态空间”。
+下一步最重要的是继续冻结 M2 语法基线。第一优先级是最小 `unsafe` block / `unsafe fn`、ADT-first enum、default private 迁移、array literal / repeat literal；随后补 slice type/expression、`str` safe/unsafe 边界、raw/multiline/bytes string、Unicode scalar `char`、function pointer / function type，再进入 tuple/destructuring、pattern 扩展、capability/trait/where、Drop 和 borrow。

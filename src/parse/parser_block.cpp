@@ -98,8 +98,8 @@ syntax::StmtId BlockParser::parse_block() {
     return this->parse_block_body(
         BlockBodyMode::statement,
         ExprContext::normal,
-        "expected block",
-        "expected '}' after block"
+        PARSER_EXPECT_BLOCK,
+        PARSER_EXPECT_BLOCK_END
     ).block;
 }
 
@@ -107,8 +107,8 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
     const BlockBody body = this->parse_block_body(
         BlockBodyMode::expression,
         context,
-        "expected block expression",
-        "expected '}' after block expression"
+        PARSER_EXPECT_BLOCK_EXPR,
+        PARSER_EXPECT_BLOCK_EXPR_END
     );
 
     const base::SourceRange block_range = this->stmt_range_or(body.block, this->previous().range);

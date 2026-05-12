@@ -1,6 +1,7 @@
 #include <aurex/sema/function_registry.hpp>
 
 #include <aurex/base/abi.hpp>
+#include <aurex/sema/sema_messages.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/sema/symbol.hpp>
 
@@ -81,23 +82,23 @@ void FunctionRegistry::merge_function(
     FunctionSignature& prior = existing->second;
     if (!this->same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
         prior.has_conflict = true;
-        this->report(signature.range, "function prototype and definition signatures do not match: " + signature.name);
+        this->report(signature.range, sema_function_signature_mismatch_message(signature.name));
         return;
     }
     if (prior.is_extern_c || signature.is_extern_c || prior.is_export_c != signature.is_export_c || prior.c_name != signature.c_name) {
         prior.has_conflict = true;
-        this->report(signature.range, "function declaration conflicts with existing function: " + signature.name);
+        this->report(signature.range, sema_function_declaration_conflict_message(signature.name));
         return;
     }
     if (is_prototype) {
         if (prior.has_prototype) {
             prior.has_conflict = true;
-            this->report(signature.range, "duplicate function prototype: " + signature.name);
+            this->report(signature.range, sema_duplicate_function_prototype_message(signature.name));
             return;
         }
         if (prior.has_definition) {
             prior.has_conflict = true;
-            this->report(signature.range, "function prototype must appear before definition: " + signature.name);
+            this->report(signature.range, sema_function_prototype_order_message(signature.name));
             return;
         }
         prior.has_prototype = true;
@@ -109,7 +110,7 @@ void FunctionRegistry::merge_function(
     }
     if (prior.has_definition) {
         prior.has_conflict = true;
-        this->report(signature.range, "duplicate function definition: " + signature.name);
+        this->report(signature.range, sema_duplicate_function_definition_simple_message(signature.name));
         return;
     }
     prior.has_definition = true;
@@ -155,7 +156,7 @@ void FunctionRegistry::insert_function_value(const std::string& key, const Funct
         signature.visibility,
     });
     if (!value_inserted.second) {
-        this->report(signature.range, "duplicate value definition in module: " + signature.name);
+        this->report(signature.range, sema_duplicate_value_definition_in_module_message(signature.name));
     }
 }
 

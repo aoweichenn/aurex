@@ -1,5 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <utility>
 
 namespace aurex::sema {
@@ -49,7 +51,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->validate_abi_symbols();
 
     if (this->diagnostics_.has_error()) {
-        return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, "semantic analysis failed"});
+        return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, std::string(SEMA_ANALYSIS_FAILED)});
     }
     return base::Result<CheckedModule>::ok(std::move(this->checked_));
 }

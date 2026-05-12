@@ -1,6 +1,7 @@
 #include <aurex/parse/parser_primary_expr_part.hpp>
 
 #include <aurex/parse/parser_builtin_expr_part.hpp>
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_name_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -100,7 +101,7 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
         return builtin;
     }
 
-    this->report_here("expected expression");
+    this->report_here(std::string(PARSER_EXPECT_EXPRESSION));
     return this->make_invalid_expr();
 }
 
@@ -130,7 +131,7 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
 }
 
 syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
-    const syntax::Token& begin = this->expect(TokenKind::l_bracket, "expected '['");
+    const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ARRAY_LITERAL_START));
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::array_literal;
 
@@ -144,7 +145,7 @@ syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
     if (this->match(TokenKind::semicolon)) {
         expr.array_repeat_value = first;
         if (this->check(TokenKind::r_bracket)) {
-            this->report_here("expected array repeat count");
+            this->report_here(std::string(PARSER_EXPECT_ARRAY_REPEAT_COUNT));
         } else {
             expr.array_repeat_count = this->parse_expr(ExprContext::normal);
         }
@@ -171,7 +172,7 @@ bool PrimaryExprParser::recover_array_literal_separator() {
         return !this->check(TokenKind::r_bracket);
     }
 
-    this->report_here("expected ',' or ']' after array element");
+    this->report_here(std::string(PARSER_EXPECT_ARRAY_ELEMENT_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::array_literal)) {
         this->synchronize(RecoveryContext::array_literal);
     }
@@ -186,7 +187,7 @@ bool PrimaryExprParser::recover_array_literal_separator() {
 const syntax::Token& PrimaryExprParser::expect_array_literal_end() {
     return this->expect_recovered(
         TokenKind::r_bracket,
-        "expected ']' after array literal",
+        std::string(PARSER_EXPECT_ARRAY_LITERAL_END),
         RecoveryContext::array_literal
     );
 }
@@ -194,7 +195,7 @@ const syntax::Token& PrimaryExprParser::expect_array_literal_end() {
 void PrimaryExprParser::expect_grouped_expression_end() {
     this->expect_recovered(
         TokenKind::r_paren,
-        "expected ')' after expression",
+        std::string(PARSER_EXPECT_GROUPED_EXPR_END),
         RecoveryContext::grouped_expression
     );
 }

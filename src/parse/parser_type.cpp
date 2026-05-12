@@ -146,7 +146,7 @@ syntax::TypeId TypeParser::parse_type() {
             } else if (this->match(TokenKind::kw_const)) {
                 mutability = syntax::PointerMutability::const_;
             } else {
-                this->report_here("expected 'mut' or 'const' after '*'");
+                this->report_here(std::string(PARSER_EXPECT_TYPE_POINTER_MUTABILITY));
             }
             constructors.push_back(TypeConstructor {
                 TypeConstructorKind::pointer,
@@ -159,11 +159,11 @@ syntax::TypeId TypeParser::parse_type() {
 
         if (this->match(TokenKind::l_bracket)) {
             const syntax::Token& begin = this->previous();
-            const syntax::Token& count = this->expect(TokenKind::integer_literal, "expected array length");
+            const syntax::Token& count = this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ARRAY_LENGTH));
             this->expect_array_length_end();
             base::u64 array_count = 0;
             if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
-                this->report_at(count, "array length literal is out of range");
+                this->report_at(count, std::string(PARSER_ARRAY_LENGTH_OUT_OF_RANGE));
             }
             constructors.push_back(TypeConstructor {
                 TypeConstructorKind::array,
@@ -207,7 +207,7 @@ syntax::TypeId TypeParser::parse_type_atom() {
         type.name = name.text;
         if (this->match(TokenKind::colon_colon)) {
             const syntax::Token& scoped_name =
-                this->expect_identifier_recovered("expected type name after '::'");
+                this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE));
             type.scope_name = name.text;
             type.scope_range = name.range;
             type.name = scoped_name.text;
@@ -215,12 +215,12 @@ syntax::TypeId TypeParser::parse_type_atom() {
         }
         if (this->match(TokenKind::l_bracket)) {
             if (this->check(TokenKind::r_bracket)) {
-                this->report_here("expected generic type argument");
+                this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
             }
             this->parse_generic_type_args(type.type_args);
             const syntax::Token& end = this->expect_recovered(
                 TokenKind::r_bracket,
-                "expected ']' after generic type arguments",
+                std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
                 RecoveryContext::generic_type_argument
             );
             type.range = this->merge(type.range, end.range);
@@ -230,7 +230,7 @@ syntax::TypeId TypeParser::parse_type_atom() {
         return this->session_.module.push_type(type);
     }
 
-    this->report_here("expected type");
+    this->report_here(std::string(PARSER_EXPECT_TYPE));
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::primitive;
     type.primitive = syntax::PrimitiveTypeKind::void_;
@@ -257,7 +257,7 @@ bool TypeParser::recover_generic_type_arg_separator() {
         return !this->check(TokenKind::r_bracket);
     }
 
-    this->report_here("expected ',' or ']' after generic type argument");
+    this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
         this->synchronize(RecoveryContext::generic_type_argument);
     }
@@ -270,7 +270,7 @@ bool TypeParser::recover_generic_type_arg_separator() {
 }
 
 void TypeParser::reject_legacy_angle_type_args() {
-    const syntax::Token& begin = this->expect(TokenKind::less, "expected '<'");
+    const syntax::Token& begin = this->expect(TokenKind::less, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
     this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
         if (this->match(TokenKind::greater)) {
@@ -292,7 +292,7 @@ void TypeParser::reject_legacy_angle_type_args() {
 void TypeParser::expect_array_length_end() {
     this->expect_recovered(
         TokenKind::r_bracket,
-        "expected ']' after array length",
+        std::string(PARSER_EXPECT_ARRAY_LENGTH_END),
         RecoveryContext::array_type_length
     );
 }

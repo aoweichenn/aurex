@@ -4,6 +4,7 @@
 #include <aurex/base/source.hpp>
 #include <aurex/base/text.hpp>
 #include <aurex/backend/llvm_backend.hpp>
+#include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/module_loader.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/native_toolchain.hpp>
@@ -27,11 +28,11 @@ namespace {
 [[nodiscard]] base::Result<void> write_file(const std::filesystem::path& path, const std::string_view text) {
     std::ofstream output(path, std::ios::binary);
     if (!output) {
-        return base::Result<void>::fail({base::ErrorCode::io_error, "failed to open output file"});
+        return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_OUTPUT_OPEN_FAILED)});
     }
     output << text;
     if (!output) {
-        return base::Result<void>::fail({base::ErrorCode::io_error, "failed to write output file"});
+        return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_OUTPUT_WRITE_FAILED)});
     }
     return base::Result<void>::ok();
 }
@@ -176,7 +177,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         invocation.emit_kind == EmitKind::object ||
         invocation.emit_kind == EmitKind::executable) {
         if (invocation.output_path.empty()) {
-            return base::Result<void>::fail({base::ErrorCode::io_error, "native output requires -o"});
+            return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_NATIVE_OUTPUT_REQUIRES_OUTPUT_PATH)});
         }
         auto ir_result = ir::lower_ast(ast_result.value(), checked_result.value());
         if (!ir_result) {
@@ -219,7 +220,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         return base::Result<void>::ok();
     }
 
-    return base::Result<void>::fail({base::ErrorCode::codegen_error, "unsupported emission mode"});
+    return base::Result<void>::fail({base::ErrorCode::codegen_error, std::string(DRIVER_UNSUPPORTED_EMISSION_MODE)});
 }
 
 } // namespace aurex::driver

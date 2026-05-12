@@ -1,5 +1,7 @@
 #include <aurex/sema/symbol.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <cassert>
 #include <utility>
 
@@ -24,9 +26,9 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
         diagnostics.push(base::Diagnostic {
             base::Severity::error,
             symbol.range,
-            "duplicate definition or shadowing is not allowed: " + symbol.name,
+            std::string(SEMA_DUPLICATE_DEFINITION_OR_SHADOWING) + symbol.name,
         });
-        return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, "duplicate symbol"});
+        return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, std::string(SEMA_DUPLICATE_SYMBOL)});
     }
 
     const SymbolId id {static_cast<base::u32>(this->symbols_.size())};

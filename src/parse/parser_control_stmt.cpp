@@ -18,12 +18,11 @@ constexpr base::usize PARSER_FOR_RANGE_MIN_ARG_COUNT = 1;
 constexpr base::usize PARSER_FOR_RANGE_START_END_ARG_COUNT = 2;
 constexpr base::usize PARSER_FOR_RANGE_STEP_ARG_COUNT = 3;
 constexpr base::usize PARSER_FOR_RANGE_MAX_ARG_COUNT = PARSER_FOR_RANGE_STEP_ARG_COUNT;
-constexpr std::string_view PARSER_FOR_RANGE_ARITY_MESSAGE = "range expects 1 to 3 arguments";
 
 } // namespace
 
 syntax::StmtId ControlStmtParser::parse_if_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_if, "expected 'if'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_if, std::string(PARSER_EXPECT_IF));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
     const syntax::StmtId then_block = this->parse_block();
     syntax::StmtId else_block = syntax::INVALID_STMT_ID;
@@ -53,7 +52,7 @@ syntax::StmtId ControlStmtParser::parse_if_stmt() {
 }
 
 syntax::StmtId ControlStmtParser::parse_while_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_while, "expected 'while'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_while, std::string(PARSER_EXPECT_WHILE));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
     const syntax::StmtId body = this->parse_block();
 
@@ -66,7 +65,7 @@ syntax::StmtId ControlStmtParser::parse_while_stmt() {
 }
 
 syntax::StmtId ControlStmtParser::parse_for_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_for, "expected 'for'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_for, std::string(PARSER_EXPECT_FOR));
     if (this->next_for_is_range_loop()) {
         return this->parse_for_range_stmt(begin);
     }
@@ -78,7 +77,7 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
     }
     this->expect_recovered(
         TokenKind::semicolon,
-        "expected ';' after for condition",
+        std::string(PARSER_EXPECT_FOR_CONDITION_TERMINATOR),
         RecoveryContext::for_clause_separator
     );
 
@@ -100,26 +99,26 @@ bool ControlStmtParser::next_for_is_range_loop() const noexcept {
 }
 
 syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begin) {
-    const syntax::Token& name = this->expect(TokenKind::identifier, "expected loop variable after 'for'");
-    this->expect(TokenKind::kw_in, "expected 'in' after loop variable");
-    const syntax::Token& callee = this->expect_identifier_recovered("expected range after 'in'");
+    const syntax::Token& name = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_FOR_RANGE_VARIABLE));
+    this->expect(TokenKind::kw_in, std::string(PARSER_EXPECT_IN_AFTER_LOOP_VARIABLE));
+    const syntax::Token& callee = this->expect_identifier_recovered(std::string(PARSER_EXPECT_RANGE_AFTER_IN));
     if (callee.text != PARSER_FOR_RANGE_CALLEE) {
         this->report_at(callee, std::string(PARSER_M2_RANGE_FOR_ONLY_RANGE));
     }
     std::vector<syntax::ExprId> args;
     const bool has_range_arguments = this->check(TokenKind::l_paren);
-    this->expect(TokenKind::l_paren, "expected '(' after range");
+    this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_RANGE_CALL_START));
     const syntax::Token* end = &callee;
     if (has_range_arguments) {
         this->parse_range_args(args);
         end = &this->expect_recovered(
             TokenKind::r_paren,
-            "expected ')' after range arguments",
+            std::string(PARSER_EXPECT_RANGE_ARGUMENTS_END),
             RecoveryContext::call_argument
         );
     }
     if (args.size() < PARSER_FOR_RANGE_MIN_ARG_COUNT || args.size() > PARSER_FOR_RANGE_MAX_ARG_COUNT) {
-        this->report_at(callee, std::string(PARSER_FOR_RANGE_ARITY_MESSAGE));
+        this->report_at(callee, std::string(PARSER_FOR_RANGE_ARITY));
     }
 
     const syntax::StmtId body = this->parse_block();
@@ -160,7 +159,7 @@ bool ControlStmtParser::recover_range_arg_separator() {
         return !this->check(TokenKind::r_paren);
     }
 
-    this->report_here("expected ',' or ')' after range argument");
+    this->report_here(std::string(PARSER_EXPECT_RANGE_ARGUMENT_SEPARATOR));
     this->synchronize(RecoveryContext::call_argument);
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
@@ -171,10 +170,10 @@ bool ControlStmtParser::recover_range_arg_separator() {
 }
 
 syntax::StmtId ControlStmtParser::parse_break_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_break, "expected 'break'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_break, std::string(PARSER_EXPECT_BREAK));
     const syntax::Token& end = this->expect_recovered(
         TokenKind::semicolon,
-        "expected ';' after break",
+        std::string(PARSER_EXPECT_BREAK_TERMINATOR),
         RecoveryContext::statement_terminator
     );
     syntax::StmtNode stmt;
@@ -184,10 +183,10 @@ syntax::StmtId ControlStmtParser::parse_break_stmt() {
 }
 
 syntax::StmtId ControlStmtParser::parse_continue_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_continue, "expected 'continue'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_continue, std::string(PARSER_EXPECT_CONTINUE));
     const syntax::Token& end = this->expect_recovered(
         TokenKind::semicolon,
-        "expected ';' after continue",
+        std::string(PARSER_EXPECT_CONTINUE_TERMINATOR),
         RecoveryContext::statement_terminator
     );
     syntax::StmtNode stmt;
@@ -197,11 +196,11 @@ syntax::StmtId ControlStmtParser::parse_continue_stmt() {
 }
 
 syntax::StmtId ControlStmtParser::parse_defer_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_defer, "expected 'defer'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_defer, std::string(PARSER_EXPECT_DEFER));
     const syntax::ExprId value = this->parse_expr();
     const syntax::Token& end = this->expect_recovered(
         TokenKind::semicolon,
-        "expected ';' after defer statement",
+        std::string(PARSER_EXPECT_DEFER_TERMINATOR),
         RecoveryContext::statement_terminator
     );
 
@@ -213,14 +212,14 @@ syntax::StmtId ControlStmtParser::parse_defer_stmt() {
 }
 
 syntax::StmtId ControlStmtParser::parse_return_stmt() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_return, "expected 'return'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_return, std::string(PARSER_EXPECT_RETURN));
     syntax::ExprId value = syntax::INVALID_EXPR_ID;
     if (!this->check(TokenKind::semicolon)) {
         value = this->parse_expr();
     }
     const syntax::Token& end = this->expect_recovered(
         TokenKind::semicolon,
-        "expected ';' after return",
+        std::string(PARSER_EXPECT_RETURN_TERMINATOR),
         RecoveryContext::statement_terminator
     );
     syntax::StmtNode stmt;

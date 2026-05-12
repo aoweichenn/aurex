@@ -64,5 +64,9 @@ inline constexpr std::string_view LEXEME_UNTERMINATED_BYTE_MESSAGE = "unterminat
 inline constexpr std::string_view LEXEME_OVERSIZED_BYTE_MESSAGE = "byte literal must contain one byte";
 inline constexpr std::string_view LEXEME_INVALID_BINARY_DIGIT_MESSAGE = "invalid digit in binary literal";
 inline constexpr std::string_view LEXEME_INVALID_HEXADECIMAL_DIGIT_MESSAGE = "invalid digit in hexadecimal literal";
+inline constexpr std::string_view LEXEME_INTEGER_LITERAL_KIND = "integer";
+inline constexpr std::string_view LEXEME_FLOAT_LITERAL_KIND = "float";
+inline constexpr std::string_view LEXEME_FLOAT_EXPONENT_LITERAL_KIND = "float exponent";
+inline constexpr std::string_view LEXEME_LITERAL_NO_DIGITS_SUFFIX = " literal has no digits";
 
 } // namespace aurex::lex

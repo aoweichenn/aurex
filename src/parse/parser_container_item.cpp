@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_item_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <utility>
 
 namespace aurex::parse {
@@ -11,9 +12,9 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::ItemId ItemParser::parse_impl_block() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_impl, "expected 'impl'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_impl, std::string(PARSER_EXPECT_IMPL_KEYWORD));
     const syntax::TypeId impl_type = this->parse_type();
-    this->expect_item_container_start("expected '{' after impl type");
+    this->expect_item_container_start(std::string(PARSER_EXPECT_IMPL_BODY));
 
     syntax::ItemNode block;
     block.kind = syntax::ItemKind::impl_block;
@@ -22,7 +23,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         const ParsedVisibility visibility = this->parse_visibility();
         if (!this->check(TokenKind::kw_fn)) {
-            this->report_here("expected function declaration in impl block");
+            this->report_here(std::string(PARSER_EXPECT_IMPL_FN));
             this->synchronize(RecoveryContext::item);
             this->reset_panic();
             continue;
@@ -36,16 +37,16 @@ syntax::ItemId ItemParser::parse_impl_block() {
         this->reset_panic();
     }
 
-    const syntax::Token& end = this->expect_item_container_end("expected '}' after impl block");
+    const syntax::Token& end = this->expect_item_container_end(std::string(PARSER_EXPECT_IMPL_END));
     block.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_item(std::move(block));
 }
 
 syntax::ItemId ItemParser::parse_extern_block() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_extern, "expected 'extern'");
-    this->expect(TokenKind::kw_c, "expected 'c' after 'extern'");
-    this->expect_item_container_start("expected '{' after 'extern c'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_extern, std::string(PARSER_EXPECT_EXTERN_KEYWORD));
+    this->expect(TokenKind::kw_c, std::string(PARSER_EXPECT_C_AFTER_EXTERN));
+    this->expect_item_container_start(std::string(PARSER_EXPECT_EXTERN_BODY));
 
     syntax::ItemNode block;
     block.kind = syntax::ItemKind::extern_block;
@@ -63,13 +64,13 @@ syntax::ItemId ItemParser::parse_extern_block() {
                 block.extern_items.push_back(item);
             }
         } else {
-            this->report_here("expected extern item");
+            this->report_here(std::string(PARSER_EXPECT_EXTERN_ITEM));
             this->synchronize(RecoveryContext::item);
         }
         this->reset_panic();
     }
 
-    const syntax::Token& end = this->expect_item_container_end("expected '}' after extern block");
+    const syntax::Token& end = this->expect_item_container_end(std::string(PARSER_EXPECT_EXTERN_END));
     block.range = this->merge(begin.range, end.range);
     this->reset_panic();
     return this->session_.module.push_item(std::move(block));

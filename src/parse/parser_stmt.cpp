@@ -1,6 +1,7 @@
 #include <aurex/parse/parser_stmt_part.hpp>
 
 #include <aurex/parse/parser_control_stmt_part.hpp>
+#include <aurex/parse/parser_messages.hpp>
 
 #include <utility>
 
@@ -58,15 +59,15 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     const StatementTerminatorRecovery recovery
 ) {
     const syntax::Token& begin = this->advance();
-    const syntax::Token& name = this->expect_identifier_recovered("expected local name");
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_LOCAL_NAME));
     syntax::TypeId type = syntax::INVALID_TYPE_ID;
     if (this->match(TokenKind::colon)) {
         type = this->parse_type();
     }
-    this->expect_initializer_equal("expected initializer");
+    this->expect_initializer_equal(std::string(PARSER_EXPECT_INITIALIZER));
     const syntax::ExprId init = this->parse_expr();
     const syntax::Token& end = this->expect_statement_semicolon(
-        "expected ';' after local declaration",
+        std::string(PARSER_EXPECT_LOCAL_DECL_TERMINATOR),
         recovery
     );
 
@@ -110,7 +111,7 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
     base::SourceRange end_range = this->expr_range_or(lhs, this->peek().range);
     if (require_semicolon) {
         const syntax::Token& end = this->expect_statement_semicolon(
-            "expected ';' after expression statement",
+            std::string(PARSER_EXPECT_EXPR_STMT_TERMINATOR),
             recovery
         );
         end_range = end.range;
@@ -185,7 +186,7 @@ syntax::StmtId StmtParser::parse_assignment_tail(
     base::SourceRange end_range = this->expr_range_or(stmt.rhs, this->expr_range_or(lhs, this->peek().range));
     if (require_semicolon) {
         const syntax::Token& end = this->expect_statement_semicolon(
-            "expected ';' after assignment",
+            std::string(PARSER_EXPECT_ASSIGNMENT_TERMINATOR),
             recovery
         );
         end_range = end.range;

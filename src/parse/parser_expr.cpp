@@ -103,7 +103,7 @@ syntax::ExprId ExprParser::parse_expr(const ExprContext context) {
 }
 
 syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
-    const syntax::Token& begin = this->expect(TokenKind::kw_if, "expected 'if'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_if, std::string(PARSER_EXPECT_IF));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
 
     const syntax::ExprId then_expr = this->parse_block_expr(context);
@@ -126,11 +126,11 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
 }
 
 syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
-    const syntax::Token& begin = this->expect(TokenKind::kw_match, "expected 'match'");
+    const syntax::Token& begin = this->expect(TokenKind::kw_match, std::string(PARSER_EXPECT_MATCH));
     const syntax::ExprId value = this->parse_expr(ExprContext::no_struct_literal);
     this->expect_recovered(
         TokenKind::l_brace,
-        "expected '{' after match value",
+        std::string(PARSER_EXPECT_MATCH_BODY),
         RecoveryContext::block_start
     );
 
@@ -147,7 +147,7 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
 
     const syntax::Token& end = this->expect_recovered(
         TokenKind::r_brace,
-        "expected '}' after match expression",
+        std::string(PARSER_EXPECT_MATCH_END),
         RecoveryContext::match_arm
     );
     expr.range = this->merge(begin.range, end.range);
@@ -166,7 +166,7 @@ syntax::MatchArm ExprParser::parse_match_arm(
     }
     this->expect_recovered(
         TokenKind::fat_arrow,
-        "expected '=>' after match case",
+        std::string(PARSER_EXPECT_MATCH_ARM_ARROW),
         RecoveryContext::match_arm_arrow
     );
     const syntax::ExprId arm_value = this->parse_expr(context);
@@ -191,7 +191,7 @@ bool ExprParser::recover_match_arm_separator() {
         return !this->check(TokenKind::r_brace);
     }
 
-    this->report_here("expected ',' or '}' after match arm");
+    this->report_here(std::string(PARSER_EXPECT_MATCH_ARM_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::match_arm)) {
         this->synchronize(RecoveryContext::match_arm);
     }
@@ -254,8 +254,8 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
             this->report_at(
                 op,
                 increment
-                    ? "increment operator is not supported; use '+= 1'"
-                    : "decrement operator is not supported; use '-= 1'"
+                    ? std::string(PARSER_INCREMENT_UNSUPPORTED)
+                    : std::string(PARSER_DECREMENT_UNSUPPORTED)
             );
             prefixes.push_back(PrefixOperator {
                 op.kind,

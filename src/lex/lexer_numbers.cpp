@@ -79,7 +79,7 @@ Lexer::DigitScanResult Lexer::scan_digits_matching(
         this->report(
             begin + width,
             begin + width,
-            std::string(literal_kind) + " literal has no digits"
+            std::string(literal_kind) + std::string(LEXEME_LITERAL_NO_DIGITS_SUFFIX)
         );
     }
     return result;
@@ -121,7 +121,7 @@ bool Lexer::scan_fraction_part(bool& had_error) {
     this->advance();
     const DigitScanResult digits = this->scan_digits_matching(
         [](const char c) noexcept { return is_decimal_digit(c); },
-        "float"
+        LEXEME_FLOAT_LITERAL_KIND
     );
     had_error = had_error || digits.had_error;
     return true;
@@ -141,7 +141,7 @@ bool Lexer::scan_exponent_part(bool& had_error) {
         this->advance();
         const DigitScanResult digits = this->scan_digits_matching(
             [](const char c) noexcept { return is_decimal_digit(c); },
-            "float exponent"
+            LEXEME_FLOAT_EXPONENT_LITERAL_KIND
         );
         had_error = had_error || digits.had_error;
         return true;
@@ -153,7 +153,7 @@ bool Lexer::scan_exponent_part(bool& had_error) {
     }
     const DigitScanResult digits = this->scan_digits_matching(
         [](const char c) noexcept { return is_decimal_digit(c); },
-        "float exponent"
+        LEXEME_FLOAT_EXPONENT_LITERAL_KIND
     );
     had_error = had_error || digits.had_error;
     return true;
@@ -172,7 +172,7 @@ void Lexer::scan_number() {
         this->advance_bytes(LEXEME_HEX_INTEGER_PREFIX_LOWER.size());
         const DigitScanResult digits = this->scan_digits_matching(
             [](const char c) noexcept { return is_hex_digit(c); },
-            "integer"
+            LEXEME_INTEGER_LITERAL_KIND
         );
         had_error = digits.had_error;
         had_error = this->scan_invalid_radix_tail_matching(
@@ -185,7 +185,7 @@ void Lexer::scan_number() {
         this->advance_bytes(LEXEME_BINARY_INTEGER_PREFIX_LOWER.size());
         const DigitScanResult digits = this->scan_digits_matching(
             [](const char c) noexcept { return is_binary_digit(c); },
-            "integer"
+            LEXEME_INTEGER_LITERAL_KIND
         );
         had_error = digits.had_error;
         had_error = this->scan_invalid_radix_tail_matching(
@@ -195,7 +195,7 @@ void Lexer::scan_number() {
     } else {
         const DigitScanResult digits = this->scan_digits_matching(
             [](const char c) noexcept { return is_decimal_digit(c); },
-            "integer"
+            LEXEME_INTEGER_LITERAL_KIND
         );
         had_error = digits.had_error;
         if (this->scan_fraction_part(had_error)) {

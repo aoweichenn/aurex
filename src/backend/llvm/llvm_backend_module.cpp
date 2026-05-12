@@ -1,5 +1,6 @@
 #include <backend/llvm/llvm_backend_internal.hpp>
 
+#include <aurex/backend/backend_messages.hpp>
 #include <aurex/ir/verify.hpp>
 
 #include <llvm/IR/BasicBlock.h>
@@ -69,7 +70,10 @@ base::Result<void> LlvmEmitter::configure_target() {
     std::string error;
     const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, error);
     if (target == nullptr) {
-        return base::Result<void>::fail({base::ErrorCode::codegen_error, "LLVM target lookup failed for " + triple_text + ": " + error});
+        return base::Result<void>::fail({
+            base::ErrorCode::codegen_error,
+            backend_llvm_target_lookup_failed_message(triple_text, error)
+        });
     }
 
     target_machine_.reset(target->createTargetMachine(
@@ -80,7 +84,10 @@ base::Result<void> LlvmEmitter::configure_target() {
         std::nullopt
     ));
     if (target_machine_ == nullptr) {
-        return base::Result<void>::fail({base::ErrorCode::codegen_error, "LLVM target machine creation failed for " + triple_text});
+        return base::Result<void>::fail({
+            base::ErrorCode::codegen_error,
+            backend_llvm_target_machine_creation_failed_message(triple_text)
+        });
     }
     module_->setDataLayout(target_machine_->createDataLayout());
     return base::Result<void>::ok();

@@ -1,5 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -447,7 +449,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         if (const auto found = this->current_generic_context_->params.find(std::string(type.name));
             found != this->current_generic_context_->params.end()) {
             if (!type.type_args.empty()) {
-                this->report(type.range, "generic type parameter cannot take type arguments: " + std::string(type.name));
+                this->report(type.range, sema_generic_param_type_args_message(type.name));
                 return INVALID_TYPE_HANDLE;
             }
             return found->second;
@@ -481,7 +483,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
             ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee, false)
             : this->find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee, false);
         if (is_valid(concrete)) {
-            this->report(type.range, "type " + std::string(type.name) + " is not generic");
+            this->report(type.range, sema_type_not_generic_message(type.name));
         } else {
             static_cast<void>(qualified
                 ? this->find_generic_struct_in_module(scope_module, type.name, type.range, true)
@@ -494,7 +496,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
         : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
     if (generic_struct != nullptr) {
-        this->report(type.range, "generic type " + std::string(type.name) + " requires type arguments");
+        this->report(type.range, sema_generic_type_requires_args_message(type.name));
         return INVALID_TYPE_HANDLE;
     }
 
@@ -504,7 +506,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     if (is_valid(resolved) &&
         this->checked_.types.get(resolved).kind == TypeKind::opaque_struct &&
         !opaque_allowed_as_pointee) {
-        this->report(type.range, "opaque struct can only be used as a pointer target");
+        this->report(type.range, std::string(SEMA_OPAQUE_POINTER_ONLY));
     }
     return resolved;
 }
@@ -515,7 +517,7 @@ TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, cons
         return found->second;
     }
     if (std::find(resolving_type_aliases_.begin(), resolving_type_aliases_.end(), key) != resolving_type_aliases_.end()) {
-        report(alias.range, "cyclic type alias: " + alias.name);
+        report(alias.range, sema_cyclic_type_alias_message(alias.name));
         resolved_type_aliases_[key] = INVALID_TYPE_HANDLE;
         return INVALID_TYPE_HANDLE;
     }
@@ -627,7 +629,7 @@ void SemanticAnalyzer::validate_type_layouts() {
             }
             base::u64 size = SEMA_ABI_INVALID_SIZE;
             if (!checked_mul_u64(info.array_count, element.size, size)) {
-                this->report(range, "array storage size overflows ABI size");
+                this->report(range, std::string(SEMA_ARRAY_STORAGE_OVERFLOW));
                 result = LayoutResult {size, element.align, false};
                 return result;
             }
@@ -650,19 +652,19 @@ void SemanticAnalyzer::validate_type_layouts() {
                     max_align = std::max(max_align, field_layout.align);
                     base::u64 aligned_offset = SEMA_ABI_INVALID_SIZE;
                     if (!checked_align_forward(offset, field_layout.align, aligned_offset)) {
-                        this->report(field.range, "struct storage size overflows ABI size");
+                        this->report(field.range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                         result.ok = false;
                     }
                     base::u64 next_offset = SEMA_ABI_INVALID_SIZE;
                     if (!checked_add_u64(aligned_offset, field_layout.size, next_offset)) {
-                        this->report(field.range, "struct storage size overflows ABI size");
+                        this->report(field.range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                         result.ok = false;
                     }
                     offset = next_offset;
                 }
                 base::u64 size = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(offset, max_align, size)) {
-                    this->report(range, "struct storage size overflows ABI size");
+                    this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 result.size = size;
@@ -699,17 +701,17 @@ void SemanticAnalyzer::validate_type_layouts() {
                 const base::u64 max_align = std::max(result.align, payload_align);
                 base::u64 storage_offset = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(result.size, payload_align, storage_offset)) {
-                    this->report(range, "enum storage size overflows ABI size");
+                    this->report(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 base::u64 total = SEMA_ABI_INVALID_SIZE;
                 if (!checked_add_u64(storage_offset, payload_size, total)) {
-                    this->report(range, "enum storage size overflows ABI size");
+                    this->report(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 base::u64 size = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(total, max_align, size)) {
-                    this->report(range, "enum storage size overflows ABI size");
+                    this->report(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 result.size = size;
@@ -870,7 +872,7 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
     if (!integer_literal_fits_type(literal_type, expr.text)) {
         report(
             expr.range,
-            "integer literal out of range for " + checked_.types.display_name(literal_type)
+            sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
     }
     return record_expr_type(expr_id, literal_type);
@@ -890,7 +892,7 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
     if (!fits) {
         report(
             expr.range,
-            "float literal out of range for " + checked_.types.display_name(literal_type)
+            sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
     }
     return record_expr_type(expr_id, literal_type);

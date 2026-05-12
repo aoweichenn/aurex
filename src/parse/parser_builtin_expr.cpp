@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_builtin_expr_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <utility>
@@ -10,18 +11,52 @@ namespace {
 
 using syntax::TokenKind;
 
+[[nodiscard]] std::string parser_builtin_type_start_message(const std::string& name) {
+    return std::string(PARSER_EXPECT_BUILTIN_TYPE_START_PREFIX) +
+           name +
+           std::string(PARSER_EXPECT_BUILTIN_TYPE_START_SUFFIX);
+}
+
+[[nodiscard]] std::string parser_builtin_type_end_message(const std::string& name) {
+    return std::string(PARSER_EXPECT_BUILTIN_TYPE_END_PREFIX) +
+           name +
+           std::string(PARSER_EXPECT_BUILTIN_TYPE_END_SUFFIX);
+}
+
+[[nodiscard]] std::string parser_builtin_expr_start_message(const std::string& name) {
+    return std::string(PARSER_EXPECT_BUILTIN_EXPR_START_PREFIX) +
+           name +
+           std::string(PARSER_EXPECT_BUILTIN_EXPR_START_SUFFIX);
+}
+
+[[nodiscard]] std::string parser_builtin_expr_end_message(const std::string& name) {
+    return std::string(PARSER_EXPECT_BUILTIN_EXPR_END_PREFIX) +
+           name +
+           std::string(PARSER_EXPECT_BUILTIN_EXPR_END_SUFFIX);
+}
+
+[[nodiscard]] std::string parser_builtin_arg_start_message(const std::string& name) {
+    return std::string(PARSER_EXPECT_BUILTIN_ARG_START_PREFIX) + name;
+}
+
+[[nodiscard]] std::string parser_builtin_arg_end_message(const std::string& name) {
+    return std::string(PARSER_EXPECT_BUILTIN_ARG_END_PREFIX) +
+           name +
+           std::string(PARSER_EXPECT_BUILTIN_ARG_END_SUFFIX);
+}
+
 } // namespace
 
 syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const ExprContext context) {
     const syntax::Token& begin = this->previous();
     const std::string name {begin.text};
-    this->expect_builtin_type_arg_list_start("expected '[' after " + name + " builtin");
+    this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
     const syntax::TypeId type = this->parse_type();
     [[maybe_unused]] const syntax::Token& type_end =
-        this->expect_builtin_type_arg_list_end("expected ']' after " + name + " type");
-    this->expect_builtin_arg_list_start("expected '(' after " + name + " expression");
+        this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name));
+    this->expect_builtin_arg_list_start(parser_builtin_expr_start_message(name));
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after " + name + " expression");
+    const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_expr_end_message(name));
 
     syntax::ExprNode expr;
     expr.kind = kind;
@@ -34,9 +69,9 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
 syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind) {
     const syntax::Token& begin = this->previous();
     const std::string name {begin.text};
-    this->expect_builtin_type_arg_list_start("expected '[' after " + name + " builtin");
+    this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
     const syntax::TypeId type = this->parse_type();
-    const syntax::Token& end = this->expect_builtin_type_arg_list_end("expected ']' after " + name + " type");
+    const syntax::Token& end = this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name));
 
     syntax::ExprNode expr;
     expr.kind = kind;
@@ -47,9 +82,9 @@ syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind
 
 syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect_builtin_arg_list_start("expected '(' after ptraddr");
+    this->expect_builtin_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_PTRADDR_START));
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after ptraddr argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRADDR_END));
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::ptr_addr;
@@ -60,13 +95,13 @@ syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context) {
 
 syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect_builtin_type_arg_list_start("expected '[' after ptrat");
+    this->expect_builtin_type_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_PTRAT_TYPE_START));
     const syntax::TypeId type = this->parse_type();
     [[maybe_unused]] const syntax::Token& type_end =
-        this->expect_builtin_type_arg_list_end("expected ']' after ptrat type");
-    this->expect_builtin_arg_list_start("expected '(' after ptrat address");
+        this->expect_builtin_type_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRAT_TYPE_END));
+    this->expect_builtin_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_PTRAT_START));
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after ptrat address");
+    const syntax::Token& end = this->expect_builtin_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRAT_END));
 
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::paddr;
@@ -82,9 +117,9 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     const syntax::ExprKind kind = begin.kind == TokenKind::kw_strptr
         ? syntax::ExprKind::str_data
         : syntax::ExprKind::str_byte_len;
-    this->expect_builtin_arg_list_start("expected '(' after " + name);
+    this->expect_builtin_arg_list_start(parser_builtin_arg_start_message(name));
     const syntax::ExprId value = this->parse_expr(context);
-    const syntax::Token& end = this->expect_builtin_arg_list_end("expected ')' after " + name + " argument");
+    const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_arg_end_message(name));
 
     syntax::ExprNode expr;
     expr.kind = kind;
@@ -95,12 +130,12 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
 
 syntax::ExprId BuiltinExprParser::parse_strraw(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    this->expect_builtin_arg_list_start("expected '(' after strraw");
+    this->expect_builtin_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_STRRAW_START));
     const syntax::ExprId data = this->parse_expr(context);
-    this->recover_builtin_arg_separator("expected ',' after strraw data");
+    this->recover_builtin_arg_separator(std::string(PARSER_EXPECT_BUILTIN_STRRAW_DATA_SEPARATOR));
     const syntax::ExprId len = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(
-        "expected ')' after strraw length"
+        std::string(PARSER_EXPECT_BUILTIN_STRRAW_END)
     );
 
     syntax::ExprNode expr;

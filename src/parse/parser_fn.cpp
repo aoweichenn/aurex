@@ -25,10 +25,10 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
 } // namespace
 
 syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
-    const syntax::Token& begin = this->expect(TokenKind::kw_fn, "expected 'fn'");
-    const syntax::Token& name = this->expect_identifier_recovered("expected function name");
+    const syntax::Token& begin = this->expect(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_KEYWORD));
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FN_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
-    this->expect_param_list_start("expected '(' after function name");
+    this->expect_param_list_start(std::string(PARSER_EXPECT_FN_PARAM_LIST));
     std::vector<syntax::ParamDecl> params;
     bool is_variadic = false;
     if (!this->check(TokenKind::r_paren)) {
@@ -36,7 +36,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     }
     this->expect_recovered(
         TokenKind::r_paren,
-        "expected ')' after parameter list",
+        std::string(PARSER_EXPECT_FN_PARAM_LIST_END),
         RecoveryContext::parameter
     );
     const syntax::TypeId return_type = this->parse_optional_return_type();
@@ -56,7 +56,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
 
     if (is_extern_c) {
         const syntax::Token& end = this->expect_item_terminator(
-            "expected ';' after extern function declaration"
+            std::string(PARSER_EXPECT_EXTERN_FN_TERMINATOR)
         );
         item.range = this->merge(begin.range, end.range);
     } else if (this->match(TokenKind::semicolon)) {
@@ -81,19 +81,19 @@ std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params(
         return params;
     }
     if (this->check(TokenKind::r_bracket)) {
-        this->report_here("expected generic type parameter");
+        this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_PARAMETER));
     }
     this->parse_generic_params(params);
     this->expect_recovered(
         TokenKind::r_bracket,
-        "expected ']' after generic parameter list",
+        std::string(PARSER_EXPECT_GENERIC_PARAM_LIST_END),
         RecoveryContext::generic_parameter
     );
     return params;
 }
 
 void ItemParser::reject_legacy_angle_generic_params() {
-    const syntax::Token& begin = this->expect(TokenKind::less, "expected '<'");
+    const syntax::Token& begin = this->expect(TokenKind::less, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
     this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
         if (this->match(TokenKind::greater)) {
@@ -124,7 +124,9 @@ void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& par
 }
 
 std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param() {
-    const syntax::Token& name = this->expect_identifier_recovered("expected generic type parameter name");
+    const syntax::Token& name = this->expect_identifier_recovered(
+        std::string(PARSER_EXPECT_GENERIC_TYPE_PARAMETER_NAME)
+    );
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
@@ -146,7 +148,7 @@ bool ItemParser::recover_generic_param_separator() {
         return !this->check(TokenKind::r_bracket);
     }
 
-    this->report_here("expected ',' or ']' after generic parameter");
+    this->report_here(std::string(PARSER_EXPECT_GENERIC_PARAM_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_parameter)) {
         this->synchronize(RecoveryContext::generic_parameter);
     }
@@ -172,7 +174,7 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
         if (this->match(TokenKind::ellipsis)) {
             is_variadic = true;
             if (!this->check(TokenKind::r_paren)) {
-                this->report_here("variadic marker must be last in parameter list");
+                this->report_here(std::string(PARSER_VARIADIC_MARKER_MUST_BE_LAST));
                 this->synchronize(RecoveryContext::parameter);
             }
             break;
@@ -189,8 +191,8 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
 }
 
 std::optional<syntax::ParamDecl> ItemParser::parse_param() {
-    const syntax::Token& name = this->expect_identifier_recovered("expected parameter name");
-    this->expect_type_annotation_colon("expected ':' after parameter name");
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_PARAMETER_NAME));
+    this->expect_type_annotation_colon(std::string(PARSER_EXPECT_PARAMETER_TYPE_COLON));
     const syntax::TypeId type = this->parse_type();
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
@@ -211,7 +213,7 @@ bool ItemParser::recover_param_separator(bool& is_variadic) {
         if (this->match(TokenKind::ellipsis)) {
             is_variadic = true;
             if (!this->check(TokenKind::r_paren)) {
-                this->report_here("variadic marker must be last in parameter list");
+                this->report_here(std::string(PARSER_VARIADIC_MARKER_MUST_BE_LAST));
                 this->synchronize(RecoveryContext::parameter);
             }
             return false;
@@ -219,7 +221,7 @@ bool ItemParser::recover_param_separator(bool& is_variadic) {
         return !this->check(TokenKind::r_paren);
     }
 
-    this->report_here("expected ',' or ')' after parameter");
+    this->report_here(std::string(PARSER_EXPECT_PARAMETER_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::parameter)) {
         this->synchronize(RecoveryContext::parameter);
     }
@@ -242,9 +244,9 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
     if (!this->match(TokenKind::at)) {
         return;
     }
-    const syntax::Token& attr = this->expect_identifier_recovered("expected ABI attribute name");
+    const syntax::Token& attr = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ABI_NAME_ATTRIBUTE));
     if (attr.text != "name") {
-        this->report_at(attr, "expected ABI attribute 'name'");
+        this->report_at(attr, std::string(PARSER_EXPECT_ABI_NAME_ATTRIBUTE));
     }
     this->expect_abi_attribute_argument_start();
     this->parse_abi_name_argument(item);
@@ -265,13 +267,13 @@ void ItemParser::reject_optional_where_clause() {
 void ItemParser::expect_abi_attribute_argument_start() {
     this->expect_recovered(
         TokenKind::l_paren,
-        "expected '(' after ABI attribute",
+        std::string(PARSER_EXPECT_ABI_ATTRIBUTE_START),
         RecoveryContext::abi_attribute_start
     );
 }
 
 void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) {
-    const syntax::Token& value = this->expect(TokenKind::string_literal, "expected string literal in ABI name");
+    const syntax::Token& value = this->expect(TokenKind::string_literal, std::string(PARSER_EXPECT_ABI_NAME_STRING));
     if (value.kind == TokenKind::string_literal) {
         item.abi_name = unquote_string_literal(value.text);
     }
@@ -282,7 +284,7 @@ void ItemParser::recover_abi_attribute_argument_end() {
         return;
     }
 
-    this->report_here("expected ')' after ABI attribute");
+    this->report_here(std::string(PARSER_EXPECT_ABI_ATTRIBUTE_END));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::abi_attribute_argument)) {
         this->synchronize(RecoveryContext::abi_attribute_argument);
     }

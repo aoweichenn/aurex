@@ -1,5 +1,7 @@
 #include <aurex/ir/verify.hpp>
 
+#include <aurex/ir/ir_messages.hpp>
+
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -66,7 +68,7 @@ public:
         }
         if (!this->errors_.empty()) {
             std::ostringstream out;
-            out << "IR verification failed:";
+            out << IR_VERIFY_FAILED_HEADER;
             for (const std::string& error : this->errors_) {
                 out << "\n  - " << error;
             }
@@ -79,11 +81,11 @@ private:
     void verify_constant(const GlobalConstantId id, std::unordered_set<base::u32>& constant_stack) {
         const GlobalConstant* constant = find_global_constant(this->module_, id);
         if (constant == nullptr) {
-            this->fail("constant id is invalid");
+            this->fail(std::string(IR_VERIFY_CONSTANT_ID_INVALID));
             return;
         }
         if (!constant_stack.insert(id.value).second) {
-            this->fail("cyclic constant definition");
+            this->fail(std::string(IR_VERIFY_CYCLIC_CONSTANT_DEFINITION));
             return;
         }
         this->verify_type(constant->type, "constant type");
@@ -118,11 +120,11 @@ private:
     ) {
         const Value* value = this->get(value_id);
         if (value == nullptr) {
-            this->fail("constant initializer value id is invalid");
+            this->fail(std::string(IR_VERIFY_CONSTANT_INITIALIZER_VALUE_ID_INVALID));
             return;
         }
         if (!this->module_.types.same(value->type, expected_type)) {
-            this->fail("constant initializer type mismatch");
+            this->fail(std::string(IR_VERIFY_CONSTANT_INITIALIZER_TYPE_MISMATCH));
         }
         switch (value->kind) {
         case ValueKind::integer_literal:
@@ -147,7 +149,7 @@ private:
                 return;
             }
             if (!constant_stack.insert(value->constant.value).second) {
-                this->fail("cyclic constant reference");
+                this->fail(std::string(IR_VERIFY_CYCLIC_CONSTANT_REFERENCE));
                 return;
             }
             worklist.push_back(make_constant_exit_work_item(value->constant));
@@ -162,7 +164,7 @@ private:
             this->verify_value_id(value->lhs, "constant unary operand");
             this->verify_type(value->type, "constant unary result");
             if (value->unary_op == UnaryOp::address_of || value->unary_op == UnaryOp::dereference) {
-                this->fail("constant initializer contains a runtime-only unary operator");
+                this->fail(std::string(IR_VERIFY_CONSTANT_INITIALIZER_RUNTIME_UNARY));
                 break;
             }
             const Value* operand = this->get(value->lhs);
@@ -194,7 +196,7 @@ private:
             break;
         }
         default:
-            this->fail("constant initializer is not compile-time constant");
+            this->fail(std::string(IR_VERIFY_CONSTANT_INITIALIZER_NOT_CONSTANT));
             break;
         }
     }
@@ -207,36 +209,36 @@ private:
         }
         const RecordLayout* record = find_record(this->module_, value.type);
         if (record == nullptr) {
-            this->fail("aggregate result is not a record");
+            this->fail(std::string(IR_VERIFY_AGGREGATE_RESULT_RECORD));
             return;
         }
         std::unordered_set<std::string> seen;
         for (auto field = value.fields.rbegin(); field != value.fields.rend(); ++field) {
             if (!seen.insert(field->name).second) {
-                this->fail("duplicate aggregate field " + field->name);
+                this->fail(ir_verify_duplicate_aggregate_field_message(field->name));
             }
             const RecordField* expected = find_record_field(this->module_, value.type, field->name);
             if (expected == nullptr) {
-                this->fail("unknown aggregate field " + field->name);
+                this->fail(ir_verify_unknown_aggregate_field_message(field->name));
                 continue;
             }
             worklist.push_back(make_constant_value_work_item(field->value, expected->type));
         }
         if (seen.size() != record->fields.size()) {
-            this->fail("aggregate constant does not initialize every field");
+            this->fail(std::string(IR_VERIFY_AGGREGATE_CONSTANT_MISSING_FIELD));
         }
         if (!value.elements.empty()) {
-            this->fail("record aggregate constant cannot contain array elements");
+            this->fail(std::string(IR_VERIFY_RECORD_AGGREGATE_CONSTANT_ARRAY_ELEMENTS));
         }
     }
 
     void verify_constant_array_aggregate(const Value& value, std::vector<ConstantWorkItem>& worklist) {
         if (!value.fields.empty()) {
-            this->fail("array aggregate constant cannot contain named fields");
+            this->fail(std::string(IR_VERIFY_ARRAY_AGGREGATE_CONSTANT_NAMED_FIELDS));
         }
         const sema::TypeInfo& array = this->module_.types.get(value.type);
         if (value.elements.size() != array.array_count) {
-            this->fail("array aggregate constant element count mismatch");
+            this->fail(std::string(IR_VERIFY_ARRAY_AGGREGATE_CONSTANT_ELEMENT_COUNT));
             return;
         }
         for (auto element = value.elements.rbegin(); element != value.elements.rend(); ++element) {
@@ -247,17 +249,17 @@ private:
     void verify_function(const FunctionId function_id, const Function& function) {
         this->verify_function_symbol(function_id, function);
         if (function.linkage == Linkage::extern_c && function.call_conv != AbiCallConv::c) {
-            this->fail("extern function @" + function.symbol + " must use C ABI");
+            this->fail(ir_verify_extern_function_c_abi_message(function.symbol));
         }
         if (function.linkage == Linkage::export_c && function.call_conv != AbiCallConv::c) {
-            this->fail("exported function @" + function.symbol + " must use C ABI");
+            this->fail(ir_verify_exported_function_c_abi_message(function.symbol));
         }
         if (function.is_entry) {
             if (function.linkage != Linkage::internal) {
-                this->fail("entry function @" + function.symbol + " must use internal linkage");
+                this->fail(ir_verify_entry_function_internal_linkage_message(function.symbol));
             }
             if (function.call_conv != AbiCallConv::aurex) {
-                this->fail("entry function @" + function.symbol + " must use Aurex ABI");
+                this->fail(ir_verify_entry_function_aurex_abi_message(function.symbol));
             }
             const bool no_params = function.signature_params.empty();
             bool argc_argv_params = false;
@@ -274,30 +276,30 @@ private:
                 }
             }
             if (!no_params && !argc_argv_params) {
-                this->fail("entry function @" + function.symbol + " must use no parameters or argc/argv parameters");
+                this->fail(ir_verify_entry_function_parameters_message(function.symbol));
             }
             if (!this->module_.types.same(function.return_type, this->module_.types.builtin(sema::BuiltinType::i32)) &&
                 !this->module_.types.same(function.return_type, this->module_.types.builtin(sema::BuiltinType::void_))) {
-                this->fail("entry function @" + function.symbol + " must return i32 or void");
+                this->fail(ir_verify_entry_function_return_message(function.symbol));
             }
         }
         if (function.linkage != Linkage::extern_c && function.blocks.empty()) {
-            this->fail("function @" + function.symbol + " has no blocks");
+            this->fail(ir_verify_function_no_blocks_message(function.symbol));
         }
         if (function.linkage == Linkage::extern_c && !function.blocks.empty()) {
-            this->fail("extern function @" + function.symbol + " must not have blocks");
+            this->fail(ir_verify_extern_function_blocks_message(function.symbol));
         }
         if (function.signature_params.size() != function.param_values.size() && !function.blocks.empty()) {
-            this->fail("function @" + function.symbol + " parameter signature/value count mismatch");
+            this->fail(ir_verify_function_parameter_count_message(function.symbol));
         }
         for (base::usize i = 0; i < function.param_values.size(); ++i) {
             const Value* value = this->get(function.param_values[i]);
             if (value == nullptr || value->kind != ValueKind::param) {
-                this->fail("function @" + function.symbol + " has a non-param value in parameter list");
+                this->fail(ir_verify_function_non_param_message(function.symbol));
                 continue;
             }
             if (!this->module_.types.same(value->type, function.signature_params[i].type)) {
-                this->fail("function @" + function.symbol + " parameter type mismatch");
+                this->fail(ir_verify_function_parameter_type_message(function.symbol));
             }
         }
 
@@ -308,7 +310,7 @@ private:
 
     void verify_function_symbol(const FunctionId function_id, const Function& function) {
         if (function.symbol.empty()) {
-            this->fail("function has an empty ABI symbol");
+            this->fail(std::string(IR_VERIFY_FUNCTION_EMPTY_ABI_SYMBOL));
             return;
         }
         const auto existing = this->function_symbols_.find(function.symbol);
@@ -325,11 +327,11 @@ private:
         const Function& other = this->module_.functions[other_id.value];
         if (other.symbol == function.symbol) {
             if (function.linkage != Linkage::extern_c || other.linkage != Linkage::extern_c) {
-                this->fail("duplicate non-extern function ABI symbol @" + function.symbol);
+                this->fail(ir_verify_duplicate_non_extern_symbol_message(function.symbol));
                 return;
             }
             if (!this->same_signature(function, other)) {
-                this->fail("extern function @" + function.symbol + " has inconsistent declarations");
+                this->fail(ir_verify_extern_function_inconsistent_message(function.symbol));
                 return;
             }
         }
@@ -341,7 +343,7 @@ private:
         }
         switch (block.terminator.kind) {
         case TerminatorKind::none:
-            this->fail("block ^" + block.name + " has no terminator");
+            this->fail(ir_verify_block_terminator_message(block.name));
             break;
         case TerminatorKind::branch:
             this->verify_block_id(function, block.terminator.target, "branch target");
@@ -354,7 +356,7 @@ private:
         case TerminatorKind::return_: {
             if (this->module_.types.is_void(function.return_type)) {
                 if (is_valid(block.terminator.value)) {
-                    this->fail("void function @" + function.symbol + " returns a value");
+                    this->fail(ir_verify_void_function_returns_value_message(function.symbol));
                 }
             } else {
                 this->verify_value_type(block.terminator.value, function.return_type, "return value");
@@ -368,7 +370,7 @@ private:
         static_cast<void>(block_id);
         const Value* value = this->get(value_id);
         if (value == nullptr) {
-            this->fail("invalid value in block");
+            this->fail(std::string(IR_VERIFY_INVALID_VALUE_IN_BLOCK));
             return;
         }
 
@@ -413,13 +415,13 @@ private:
             this->verify_value_id(value->lhs, "store source");
             this->verify_type(value->type, "store result");
             if (!this->module_.types.is_void(value->type)) {
-                this->fail("store result must be void");
+                this->fail(std::string(IR_VERIFY_STORE_RESULT_VOID));
             }
             if (const Value* object = this->get(value->object);
                 object != nullptr &&
                 this->module_.types.is_pointer(object->type) &&
                 this->module_.types.get(object->type).pointer_mutability != sema::PointerMutability::mut) {
-                this->fail("store target must be mutable");
+                this->fail(std::string(IR_VERIFY_STORE_TARGET_MUTABLE));
             }
             if (const sema::TypeHandle target = this->pointee_type(value->object);
                 sema::is_valid(target)) {
@@ -452,7 +454,7 @@ private:
             this->verify_type(value->type, "cast result");
             this->verify_type(value->target_type, "cast target");
             if (!this->module_.types.same(value->type, value->target_type)) {
-                this->fail("cast result type must match cast target type");
+                this->fail(std::string(IR_VERIFY_CAST_RESULT_TARGET));
             }
             break;
         }
@@ -466,30 +468,30 @@ private:
             return;
         }
         if (!sema::is_valid(operand->type)) {
-            this->fail("unary operand type is invalid");
+            this->fail(std::string(IR_VERIFY_UNARY_OPERAND_INVALID));
             return;
         }
         switch (value.unary_op) {
         case UnaryOp::logical_not:
             if (!this->module_.types.is_bool(operand->type) || !this->module_.types.is_bool(value.type)) {
-                this->fail("logical unary operator requires bool operand and result");
+                this->fail(std::string(IR_VERIFY_LOGICAL_UNARY_BOOL));
             }
             break;
         case UnaryOp::numeric_negate:
             if (!this->module_.types.same(operand->type, value.type) ||
                 (!this->module_.types.is_integer(value.type) && !this->module_.types.is_float(value.type))) {
-                this->fail("numeric unary operator requires matching numeric operand and result");
+                this->fail(std::string(IR_VERIFY_NUMERIC_UNARY_OPERAND));
             }
             break;
         case UnaryOp::bitwise_not:
             if (!this->module_.types.same(operand->type, value.type) || !this->module_.types.is_integer(value.type)) {
-                this->fail("bitwise unary operator requires matching integer operand and result");
+                this->fail(std::string(IR_VERIFY_BITWISE_UNARY_OPERAND));
             }
             break;
         case UnaryOp::address_of:
         case UnaryOp::dereference:
             if (!this->module_.types.same(operand->type, value.type)) {
-                this->fail("address/dereference unary passthrough type mismatch");
+                this->fail(std::string(IR_VERIFY_UNARY_PASSTHROUGH_TYPE));
             }
             break;
         }
@@ -505,13 +507,13 @@ private:
             return;
         }
         if (!this->module_.types.same(lhs->type, rhs->type)) {
-            this->fail("binary operand type mismatch");
+            this->fail(std::string(IR_VERIFY_BINARY_OPERAND_TYPE_MISMATCH));
             return;
         }
 
         const sema::TypeHandle operand_type = lhs->type;
         if (!sema::is_valid(operand_type)) {
-            this->fail("binary operand type is invalid");
+            this->fail(std::string(IR_VERIFY_BINARY_OPERAND_TYPE_INVALID));
             return;
         }
         switch (value.binary_op) {
@@ -520,16 +522,16 @@ private:
         case BinaryOp::greater:
         case BinaryOp::greater_equal:
             if (!this->module_.types.is_bool(value.type)) {
-                this->fail("comparison binary result must be bool");
+                this->fail(std::string(IR_VERIFY_COMPARISON_RESULT_BOOL));
             }
             if (!this->module_.types.is_integer(operand_type) && !this->module_.types.is_float(operand_type)) {
-                this->fail("comparison binary operands must be numeric");
+                this->fail(std::string(IR_VERIFY_COMPARISON_OPERANDS_NUMERIC));
             }
             break;
         case BinaryOp::equal:
         case BinaryOp::not_equal:
             if (!this->module_.types.is_bool(value.type)) {
-                this->fail("equality binary result must be bool");
+                this->fail(std::string(IR_VERIFY_EQUALITY_RESULT_BOOL));
             }
             if (!this->module_.types.is_bool(operand_type) &&
                 !this->module_.types.is_integer(operand_type) &&
@@ -538,14 +540,14 @@ private:
                 const sema::TypeInfo& info = this->module_.types.get(operand_type);
                 if (info.kind != sema::TypeKind::enum_ ||
                     sema::is_valid(info.enum_payload_storage)) {
-                    this->fail("equality binary operands must be scalar");
+                    this->fail(std::string(IR_VERIFY_EQUALITY_OPERANDS_SCALAR));
                 }
             }
             break;
         case BinaryOp::logical_and:
         case BinaryOp::logical_or:
             if (!this->module_.types.is_bool(value.type) || !this->module_.types.is_bool(operand_type)) {
-                this->fail("logical binary operator requires bool operands and result");
+                this->fail(std::string(IR_VERIFY_LOGICAL_BINARY_BOOL));
             }
             break;
         case BinaryOp::bit_and:
@@ -555,10 +557,10 @@ private:
         case BinaryOp::shr:
         case BinaryOp::mod:
             if (!this->module_.types.same(value.type, operand_type)) {
-                this->fail("integer binary result must match operand type");
+                this->fail(std::string(IR_VERIFY_INTEGER_BINARY_RESULT));
             }
             if (!this->module_.types.is_integer(operand_type)) {
-                this->fail("integer binary operator requires integer operands");
+                this->fail(std::string(IR_VERIFY_INTEGER_BINARY_OPERANDS));
             }
             break;
         case BinaryOp::add:
@@ -566,10 +568,10 @@ private:
         case BinaryOp::mul:
         case BinaryOp::div:
             if (!this->module_.types.same(value.type, operand_type)) {
-                this->fail("numeric binary result must match operand type");
+                this->fail(std::string(IR_VERIFY_NUMERIC_BINARY_RESULT));
             }
             if (!this->module_.types.is_integer(operand_type) && !this->module_.types.is_float(operand_type)) {
-                this->fail("numeric binary operator requires numeric operands");
+                this->fail(std::string(IR_VERIFY_NUMERIC_BINARY_OPERANDS));
             }
             break;
         }
@@ -578,7 +580,7 @@ private:
     void verify_phi(const Function& function, const BlockId block_id, const Value& value) {
         this->verify_type(value.type, "phi result");
         if (value.incoming.empty()) {
-            this->fail("phi has no incoming values");
+            this->fail(std::string(IR_VERIFY_PHI_INCOMING_REQUIRED));
         }
         std::unordered_set<base::u32> incoming_predecessors;
         for (const PhiInput& incoming : value.incoming) {
@@ -587,18 +589,18 @@ private:
             if (is_valid(incoming.predecessor) &&
                 incoming.predecessor.value < function.blocks.size() &&
                 !incoming_predecessors.insert(incoming.predecessor.value).second) {
-                this->fail("phi has duplicate incoming predecessor");
+                this->fail(std::string(IR_VERIFY_PHI_DUPLICATE_PREDECESSOR));
             }
             if (is_valid(incoming.predecessor) &&
                 incoming.predecessor.value < function.blocks.size() &&
                 !this->block_has_edge_to(function.blocks[incoming.predecessor.value], block_id)) {
-                this->fail("phi predecessor has no edge to block");
+                this->fail(std::string(IR_VERIFY_PHI_PREDECESSOR_EDGE));
             }
         }
         for (base::u32 predecessor = 0; predecessor < function.blocks.size(); ++predecessor) {
             if (this->block_has_edge_to(function.blocks[predecessor], block_id) &&
                 !incoming_predecessors.contains(predecessor)) {
-                this->fail("phi is missing incoming predecessor");
+                this->fail(std::string(IR_VERIFY_PHI_MISSING_PREDECESSOR));
             }
         }
     }
@@ -606,16 +608,18 @@ private:
     void verify_call(const Value& value) {
         this->verify_type(value.type, "call result");
         if (!is_valid(value.call_target)) {
-            this->fail(value.name.empty() ? "call has no target symbol" : "call target @" + value.name + " is unresolved");
+            this->fail(value.name.empty()
+                ? std::string(IR_VERIFY_CALL_NO_TARGET)
+                : ir_verify_unresolved_call_target_message(value.name));
             return;
         }
         if (value.call_target.value >= this->module_.functions.size()) {
-            this->fail("call target out of range");
+            this->fail(std::string(IR_VERIFY_CALL_TARGET_OUT_OF_RANGE));
             return;
         }
         const Function& target = this->module_.functions[value.call_target.value];
         if (target.is_variadic ? value.args.size() < target.signature_params.size() : value.args.size() != target.signature_params.size()) {
-            this->fail("call to @" + target.symbol + " has wrong argument count");
+            this->fail(ir_verify_call_argument_count_message(target.symbol));
             return;
         }
         for (base::usize i = 0; i < target.signature_params.size(); ++i) {
@@ -624,13 +628,13 @@ private:
         for (base::usize i = target.signature_params.size(); i < value.args.size(); ++i) {
             const Value* arg = this->get(value.args[i]);
             if (arg == nullptr) {
-                this->fail("call argument out of range");
+                this->fail(std::string(IR_VERIFY_CALL_ARGUMENT_OUT_OF_RANGE));
                 continue;
             }
             this->verify_type(arg->type, "variadic call argument");
         }
         if (!this->module_.types.same(value.type, target.return_type)) {
-            this->fail("call to @" + target.symbol + " result type mismatch");
+            this->fail(ir_verify_call_result_type_message(target.symbol));
         }
     }
 
@@ -654,42 +658,42 @@ private:
         switch (value.kind) {
         case ValueKind::integer_literal:
             if (!this->is_integer_literal_type(value.type)) {
-                this->fail("integer literal type must be integer, got " + this->module_.types.display_name(value.type));
+                this->fail(ir_verify_literal_integer_type_message(this->module_.types.display_name(value.type)));
             }
             break;
         case ValueKind::float_literal:
             if (!this->module_.types.is_float(value.type)) {
-                this->fail("float literal type must be float, got " + this->module_.types.display_name(value.type));
+                this->fail(ir_verify_literal_float_type_message(this->module_.types.display_name(value.type)));
             }
             break;
         case ValueKind::bool_literal:
             if (!this->module_.types.is_bool(value.type)) {
-                this->fail("bool literal type must be bool");
+                this->fail(std::string(IR_VERIFY_BOOL_LITERAL_TYPE));
             }
             break;
         case ValueKind::null_literal:
             if (!this->module_.types.is_pointer(value.type)) {
-                this->fail("null literal type must be pointer");
+                this->fail(std::string(IR_VERIFY_NULL_LITERAL_TYPE));
             }
             break;
         case ValueKind::string_literal:
             if (!this->module_.types.is_str(value.type)) {
-                this->fail("string literal type must be str");
+                this->fail(std::string(IR_VERIFY_STRING_LITERAL_TYPE));
             }
             break;
         case ValueKind::c_string_literal:
             if (!this->is_const_u8_pointer(value.type)) {
-                this->fail("c string literal type must be *const u8");
+                this->fail(std::string(IR_VERIFY_C_STRING_LITERAL_TYPE));
             }
             break;
         case ValueKind::byte_literal:
             if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::u8))) {
-                this->fail("byte literal type must be u8");
+                this->fail(std::string(IR_VERIFY_BYTE_LITERAL_TYPE));
             }
             break;
         case ValueKind::undef:
             if (this->module_.types.is_void(value.type)) {
-                this->fail("undef value cannot have void type");
+                this->fail(std::string(IR_VERIFY_UNDEF_VOID));
             }
             break;
         default:
@@ -700,12 +704,12 @@ private:
     void verify_alloca(const Value& value) {
         this->verify_type(value.type, "alloca result");
         if (!this->module_.types.is_pointer(value.type)) {
-            this->fail("alloca result must be a pointer");
+            this->fail(std::string(IR_VERIFY_ALLOCA_POINTER));
             return;
         }
         const sema::TypeInfo& pointer = this->module_.types.get(value.type);
         if (pointer.pointer_mutability != sema::PointerMutability::mut) {
-            this->fail("alloca result must be a mutable pointer");
+            this->fail(std::string(IR_VERIFY_ALLOCA_MUT_POINTER));
         }
         this->verify_storage_type(pointer.pointee, "alloca pointee");
     }
@@ -714,11 +718,11 @@ private:
         this->verify_pointer_value(value.object, "load object");
         this->verify_type(value.type, "load result");
         if (this->module_.types.is_void(value.type)) {
-            this->fail("load result must not be void");
+            this->fail(std::string(IR_VERIFY_LOAD_RESULT_NONVOID));
         }
         if (const sema::TypeHandle source = this->pointee_type(value.object);
             sema::is_valid(source) && !this->module_.types.same(value.type, source)) {
-            this->fail("load result type mismatch");
+            this->fail(std::string(IR_VERIFY_LOAD_RESULT_TYPE));
         }
     }
 
@@ -726,7 +730,7 @@ private:
         const std::string op = value.kind == ValueKind::size_of ? "sizeof" : "alignof";
         this->verify_type(value.type, op + " result");
         if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
-            this->fail(op + " result must be usize");
+            this->fail(ir_verify_size_or_align_result_message(op));
         }
         this->verify_type(value.target_type, op + " target");
         this->verify_storage_type(value.target_type, op + " target");
@@ -735,7 +739,7 @@ private:
     void verify_str_data(const Value& value) {
         this->verify_type(value.type, "strptr result");
         if (!this->is_const_u8_pointer(value.type)) {
-            this->fail("strptr result must be *const u8");
+            this->fail(std::string(IR_VERIFY_STRPTR_RESULT));
         }
         this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strptr operand");
     }
@@ -743,7 +747,7 @@ private:
     void verify_str_byte_len(const Value& value) {
         this->verify_type(value.type, "strblen result");
         if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
-            this->fail("strblen result must be usize");
+            this->fail(std::string(IR_VERIFY_STRBLEN_RESULT));
         }
         this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strblen operand");
     }
@@ -751,15 +755,15 @@ private:
     void verify_str_from_bytes_unchecked(const Value& value) {
         this->verify_type(value.type, "strraw result");
         if (!this->module_.types.is_str(value.type)) {
-            this->fail("strraw result must be str");
+            this->fail(std::string(IR_VERIFY_STRRAW_RESULT));
         }
         if (value.args.size() != IR_VERIFIER_STR_FROM_BYTES_UNCHECKED_ARGUMENT_COUNT) {
-            this->fail("strraw requires data and length arguments");
+            this->fail(std::string(IR_VERIFY_STRRAW_ARITY));
             return;
         }
         this->verify_value_id(value.args[0], "strraw data");
         if (const Value* data = this->get(value.args[0]); data != nullptr && !this->is_const_u8_pointer(data->type)) {
-            this->fail("strraw data must be *const u8");
+            this->fail(std::string(IR_VERIFY_STRRAW_DATA));
         }
         this->verify_value_type(value.args[1], this->module_.types.builtin(sema::BuiltinType::usize), "strraw length");
     }
@@ -768,11 +772,11 @@ private:
         this->verify_type(value.type, "constant reference type");
         const GlobalConstant* constant = find_global_constant(this->module_, value.constant);
         if (constant == nullptr) {
-            this->fail("constant reference id is invalid");
+            this->fail(std::string(IR_VERIFY_CONSTANT_REF_ID));
             return nullptr;
         }
         if (!this->module_.types.same(value.type, constant->type)) {
-            this->fail("constant reference type mismatch");
+            this->fail(std::string(IR_VERIFY_CONSTANT_REF_TYPE));
         }
         return constant;
     }
@@ -781,7 +785,7 @@ private:
         this->verify_pointer_value(value.object, "field object");
         this->verify_type(value.type, "field address type");
         if (!this->module_.types.is_pointer(value.type)) {
-            this->fail("field address result is not a pointer");
+            this->fail(std::string(IR_VERIFY_FIELD_ADDRESS_POINTER));
             return;
         }
         const sema::TypeHandle object_type = this->pointee_type(value.object);
@@ -790,19 +794,19 @@ private:
             : object_type;
         const RecordField* field = find_record_field(this->module_, record_type, value.name);
         if (field == nullptr) {
-            this->fail("unknown field '" + value.name + "'");
+            this->fail(ir_verify_unknown_field_message(value.name));
             return;
         }
         const sema::TypeInfo& address = this->module_.types.get(value.type);
         if (!this->module_.types.same(address.pointee, field->type)) {
-            this->fail("field address result type mismatch");
+            this->fail(std::string(IR_VERIFY_FIELD_ADDRESS_TYPE));
         }
         const Value* object = this->get(value.object);
         if (object != nullptr &&
             this->module_.types.is_pointer(object->type) &&
             this->module_.types.get(object->type).pointer_mutability == sema::PointerMutability::const_ &&
             address.pointer_mutability == sema::PointerMutability::mut) {
-            this->fail("field address cannot be mutable through const object");
+            this->fail(std::string(IR_VERIFY_FIELD_ADDRESS_CONST_MUTABLE));
         }
     }
 
@@ -811,12 +815,12 @@ private:
         this->verify_value_id(value.index, "index");
         this->verify_type(value.type, "index result");
         if (!this->module_.types.is_pointer(value.type)) {
-            this->fail("index address result is not a pointer");
+            this->fail(std::string(IR_VERIFY_INDEX_ADDRESS_POINTER));
             return;
         }
         const Value* index = this->get(value.index);
         if (index != nullptr && !this->module_.types.is_integer(index->type)) {
-            this->fail("index must be an integer");
+            this->fail(std::string(IR_VERIFY_INDEX_INTEGER));
         }
         const sema::TypeHandle object_type = this->pointee_type(value.object);
         const sema::TypeHandle element_type = this->module_.types.is_array(object_type)
@@ -824,14 +828,14 @@ private:
             : object_type;
         const sema::TypeInfo& address = this->module_.types.get(value.type);
         if (sema::is_valid(element_type) && !this->module_.types.same(address.pointee, element_type)) {
-            this->fail("index address result type mismatch");
+            this->fail(std::string(IR_VERIFY_INDEX_ADDRESS_TYPE));
         }
         const Value* object = this->get(value.object);
         if (object != nullptr &&
             this->module_.types.is_pointer(object->type) &&
             this->module_.types.get(object->type).pointer_mutability == sema::PointerMutability::const_ &&
             address.pointer_mutability == sema::PointerMutability::mut) {
-            this->fail("index address cannot be mutable through const object");
+            this->fail(std::string(IR_VERIFY_INDEX_ADDRESS_CONST_MUTABLE));
         }
     }
 
@@ -843,36 +847,36 @@ private:
         }
         const RecordLayout* record = find_record(this->module_, value.type);
         if (record == nullptr) {
-            this->fail("aggregate result is not a record");
+            this->fail(std::string(IR_VERIFY_AGGREGATE_RESULT_RECORD));
             return;
         }
         std::unordered_set<std::string> seen;
         for (const FieldValue& field : value.fields) {
             if (!seen.insert(field.name).second) {
-                this->fail("duplicate aggregate field " + field.name);
+                this->fail(ir_verify_duplicate_aggregate_field_message(field.name));
             }
             const RecordField* expected = find_record_field(this->module_, value.type, field.name);
             if (expected == nullptr) {
-                this->fail("unknown aggregate field " + field.name);
+                this->fail(ir_verify_unknown_aggregate_field_message(field.name));
                 continue;
             }
             this->verify_value_type(field.value, expected->type, "aggregate field");
         }
         if (seen.size() != record->fields.size()) {
-            this->fail("aggregate does not initialize every field");
+            this->fail(std::string(IR_VERIFY_AGGREGATE_MISSING_FIELD));
         }
         if (!value.elements.empty()) {
-            this->fail("record aggregate cannot contain array elements");
+            this->fail(std::string(IR_VERIFY_RECORD_AGGREGATE_ARRAY_ELEMENTS));
         }
     }
 
     void verify_array_aggregate(const Value& value) {
         if (!value.fields.empty()) {
-            this->fail("array aggregate cannot contain named fields");
+            this->fail(std::string(IR_VERIFY_ARRAY_AGGREGATE_NAMED_FIELDS));
         }
         const sema::TypeInfo& array = this->module_.types.get(value.type);
         if (value.elements.size() != array.array_count) {
-            this->fail("array aggregate element count mismatch");
+            this->fail(std::string(IR_VERIFY_ARRAY_AGGREGATE_ELEMENT_COUNT));
             return;
         }
         for (const ValueId element : value.elements) {
@@ -888,11 +892,11 @@ private:
             StorageTypeWorkItem item = std::move(worklist.back());
             worklist.pop_back();
             if (!sema::is_valid(item.type)) {
-                this->fail(item.context + " type is invalid");
+                this->fail(ir_verify_invalid_type_message(item.context));
                 continue;
             }
             if (this->module_.types.is_void(item.type)) {
-                this->fail(item.context + " type is not valid storage");
+                this->fail(ir_verify_storage_type_message(item.context));
                 continue;
             }
             if (this->module_.types.is_array(item.type)) {
@@ -903,7 +907,7 @@ private:
                 continue;
             }
             if (this->module_.types.get(item.type).kind == sema::TypeKind::opaque_struct) {
-                this->fail(item.context + " type is not valid storage");
+                this->fail(ir_verify_storage_type_message(item.context));
             }
         }
     }
@@ -931,7 +935,7 @@ private:
 
     void verify_block_id(const Function& function, const BlockId block, const std::string& context) {
         if (!is_valid(block) || block.value >= function.blocks.size()) {
-            this->fail(context + " block id is invalid");
+            this->fail(ir_verify_block_id_message(context));
         }
     }
 
@@ -951,35 +955,35 @@ private:
 
     void verify_value_id(const ValueId value, const std::string& context) {
         if (this->get(value) == nullptr) {
-            this->fail(context + " value id is invalid");
+            this->fail(ir_verify_value_id_message(context));
         }
     }
 
     void verify_type(const sema::TypeHandle type, const std::string& context) {
         if (!sema::is_valid(type)) {
-            this->fail(context + " is invalid");
+            this->fail(ir_verify_type_invalid_message(context));
         }
     }
 
     void verify_value_type(const ValueId value_id, const sema::TypeHandle expected, const std::string& context) {
         const Value* value = this->get(value_id);
         if (value == nullptr) {
-            this->fail(context + " value id is invalid");
+            this->fail(ir_verify_value_id_message(context));
             return;
         }
         if (!this->module_.types.same(value->type, expected)) {
-            this->fail(context + " type mismatch");
+            this->fail(ir_verify_type_mismatch_message(context));
         }
     }
 
     void verify_pointer_value(const ValueId value_id, const std::string& context) {
         const Value* value = this->get(value_id);
         if (value == nullptr) {
-            this->fail(context + " value id is invalid");
+            this->fail(ir_verify_value_id_message(context));
             return;
         }
         if (!this->module_.types.is_pointer(value->type)) {
-            this->fail(context + " is not a pointer");
+            this->fail(ir_verify_not_pointer_message(context));
         }
     }
 

@@ -1,5 +1,7 @@
 #include <aurex/driver/native_toolchain.hpp>
 
+#include <aurex/driver/driver_messages.hpp>
+
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
@@ -35,7 +37,7 @@ namespace {
     if (error) {
         return base::Result<void>::fail({
             base::ErrorCode::io_error,
-            "failed to create native output directory: " + parent.string()
+            driver_native_output_directory_failed_message(parent.string())
         });
     }
     return base::Result<void>::ok();
@@ -45,7 +47,10 @@ namespace {
 
 base::Result<void> invoke_clang(const NativeCompileRequest& request) {
     if (!request.support_source_paths.empty() && request.emit_kind != EmitKind::executable) {
-        return base::Result<void>::fail({base::ErrorCode::codegen_error, "native support sources are only supported for executable output"});
+        return base::Result<void>::fail({
+            base::ErrorCode::codegen_error,
+            std::string(DRIVER_NATIVE_SUPPORT_SOURCES_EXECUTABLE_ONLY)
+        });
     }
     auto output_parent_result = ensure_output_parent_exists(request.output_path);
     if (!output_parent_result) {
@@ -86,7 +91,7 @@ base::Result<void> invoke_clang(const NativeCompileRequest& request) {
 
     const pid_t child = fork();
     if (child < 0) {
-        return base::Result<void>::fail({base::ErrorCode::io_error, "failed to fork clang process"});
+        return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_CLANG_FORK_FAILED)});
     }
     if (child == 0) {
         execvp(argv[0], argv.data());
@@ -95,14 +100,14 @@ base::Result<void> invoke_clang(const NativeCompileRequest& request) {
 
     int status = 0;
     if (waitpid(child, &status, 0) < 0) {
-        return base::Result<void>::fail({base::ErrorCode::io_error, "failed to wait for clang process"});
+        return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_CLANG_WAIT_FAILED)});
     }
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
         return base::Result<void>::ok();
     }
 
     std::ostringstream message;
-    message << "clang invocation failed";
+    message << DRIVER_CLANG_INVOCATION_FAILED;
     if (WIFEXITED(status)) {
         message << " with exit code " << WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {

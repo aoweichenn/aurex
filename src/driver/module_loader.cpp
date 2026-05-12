@@ -1,5 +1,7 @@
 #include <aurex/driver/module_loader.hpp>
 
+#include <aurex/driver/driver_messages.hpp>
+
 #include <aurex/base/config.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/lex/lexer.hpp>
@@ -304,14 +306,21 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     const syntax::ModulePath* expected_module
 ) {
     if (depth > base::config::AUREX_MAX_INCLUDE_DEPTH) {
-        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::invalid_source, "maximum import depth exceeded"});
+        return base::Result<syntax::ModuleId>::fail({
+            base::ErrorCode::invalid_source,
+            std::string(DRIVER_IMPORT_DEPTH_EXCEEDED)
+        });
     }
 
     const std::filesystem::path canonical = canonical_or_absolute(path);
     const std::string key = canonical.string();
     if (this->loading_files_.contains(key)) {
-        push_error(this->diagnostics_, expected_module != nullptr ? expected_module->range : base::SourceRange {}, "cyclic import involving: " + key);
-        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
+        push_error(
+            this->diagnostics_,
+            expected_module != nullptr ? expected_module->range : base::SourceRange {},
+            driver_cyclic_import_message(key)
+        );
+        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
     }
     if (const auto loaded = this->loaded_file_modules_.find(key); loaded != this->loaded_file_modules_.end()) {
         const syntax::ModuleId module_id = loaded->second;
@@ -322,10 +331,12 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
             push_error(
                 this->diagnostics_,
                 expected_module->range,
-                "module declaration '" + syntax::module_path_to_string(combined.modules[module_id.value].path) +
-                    "' does not match import '" + syntax::module_path_to_string(*expected_module) + "'"
+                driver_module_import_mismatch_message(
+                    syntax::module_path_to_string(combined.modules[module_id.value].path),
+                    syntax::module_path_to_string(*expected_module)
+                )
             );
-            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
         }
         return base::Result<syntax::ModuleId>::ok(loaded->second);
     }
@@ -353,19 +364,25 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
 
     syntax::AstModule module = std::move(ast_result.value());
     if (module.module_path.parts.empty()) {
-        push_error(this->diagnostics_, base::SourceRange {source_id, 0, 0}, "module declaration is required for importable files");
+        push_error(
+            this->diagnostics_,
+            base::SourceRange {source_id, 0, 0},
+            std::string(DRIVER_IMPORTABLE_MODULE_DECL_REQUIRED)
+        );
         this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
+        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
     }
     if (expected_module != nullptr && !syntax::module_paths_equal(module.module_path, *expected_module)) {
         push_error(
             this->diagnostics_,
             module.module_path.range,
-            "module declaration '" + syntax::module_path_to_string(module.module_path) +
-                "' does not match import '" + syntax::module_path_to_string(*expected_module) + "'"
+            driver_module_import_mismatch_message(
+                syntax::module_path_to_string(module.module_path),
+                syntax::module_path_to_string(*expected_module)
+            )
         );
         this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
+        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
     }
     const std::string module_name = syntax::module_path_to_string(module.module_path);
     const auto module_inserted = this->loaded_modules_.emplace(module_name, LoadedModule {canonical, syntax::INVALID_MODULE_ID, module.module_path.range});
@@ -373,10 +390,10 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         push_error(
             this->diagnostics_,
             module.module_path.range,
-            "duplicate module name '" + module_name + "' already loaded from " + module_inserted.first->second.path.string()
+            driver_duplicate_module_name_message(module_name, module_inserted.first->second.path.string())
         );
         this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, "module loading failed"});
+        return base::Result<syntax::ModuleId>::fail({base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
     }
 
     syntax::ModuleId module_id = module_inserted.first->second.id;
@@ -400,11 +417,13 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
             push_error(
                 this->diagnostics_,
                 import.path.range,
-                "failed to resolve import: " + syntax::module_path_to_string(import.path) +
-                    " (searched: " + format_import_candidates(candidates) + ")"
+                driver_import_resolve_failed_message(
+                    syntax::module_path_to_string(import.path),
+                    format_import_candidates(candidates)
+                )
             );
             this->loading_files_.erase(key);
-            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::io_error, "module loading failed"});
+            return base::Result<syntax::ModuleId>::fail({base::ErrorCode::io_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
         }
         auto import_result = this->load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import.path);
         if (!import_result) {

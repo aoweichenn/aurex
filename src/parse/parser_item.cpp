@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_item_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <utility>
@@ -45,7 +46,7 @@ syntax::ItemId ItemParser::parse_item() {
     }
     if (this->check(TokenKind::kw_impl)) {
         if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
-            this->report_here("impl block cannot be private");
+            this->report_here(std::string(PARSER_IMPL_PRIVATE_UNSUPPORTED));
         }
         return this->parse_impl_block();
     }
@@ -58,18 +59,18 @@ syntax::ItemId ItemParser::parse_item() {
     }
     if (this->check(TokenKind::kw_extern)) {
         if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
-            this->report_here("extern block cannot be private");
+            this->report_here(std::string(PARSER_EXTERN_PRIVATE_UNSUPPORTED));
         }
         return this->parse_extern_block();
     }
     if (this->check(TokenKind::kw_export)) {
         if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
-            this->report_here("exported C function cannot be private");
+            this->report_here(std::string(PARSER_EXPORT_C_PRIVATE_UNSUPPORTED));
         }
         const syntax::Token& begin = this->advance();
-        this->expect(TokenKind::kw_c, "expected 'c' after 'export'");
+        this->expect(TokenKind::kw_c, std::string(PARSER_EXPECT_EXPORT_C_KEYWORD));
         if (!this->check(TokenKind::kw_fn)) {
-            this->report_here("expected function declaration after 'export c'");
+            this->report_here(std::string(PARSER_EXPECT_EXPORT_C_FN));
             return syntax::INVALID_ITEM_ID;
         }
         syntax::ItemId id = this->parse_fn_decl(true, false);
@@ -87,18 +88,18 @@ syntax::ItemId ItemParser::parse_item() {
         return id;
     }
 
-    this->report_here("expected item declaration");
+    this->report_here(std::string(PARSER_EXPECT_ITEM_DECLARATION));
     return syntax::INVALID_ITEM_ID;
 }
 
 syntax::ItemId ItemParser::parse_const_decl() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_const, "expected 'const'");
-    const syntax::Token& name = this->expect_identifier_recovered("expected const name");
-    this->expect_type_annotation_colon("expected ':' after const name");
+    const syntax::Token& begin = this->expect(TokenKind::kw_const, std::string(PARSER_EXPECT_CONST_KEYWORD));
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
+    this->expect_type_annotation_colon(std::string(PARSER_EXPECT_CONST_TYPE_COLON));
     const syntax::TypeId type = this->parse_type();
-    this->expect_initializer_equal("expected '=' in const declaration");
+    this->expect_initializer_equal(std::string(PARSER_EXPECT_CONST_INITIALIZER_EQUAL));
     const syntax::ExprId value = this->parse_expr();
-    const syntax::Token& end = this->expect_item_terminator("expected ';' after const declaration");
+    const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_CONST_TERMINATOR));
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::const_decl;
@@ -111,12 +112,12 @@ syntax::ItemId ItemParser::parse_const_decl() {
 }
 
 syntax::ItemId ItemParser::parse_type_alias_decl() {
-    const syntax::Token& begin = this->expect(TokenKind::kw_type, "expected 'type'");
-    const syntax::Token& name = this->expect_identifier_recovered("expected type alias name");
+    const syntax::Token& begin = this->expect(TokenKind::kw_type, std::string(PARSER_EXPECT_TYPE_KEYWORD));
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_ALIAS_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
-    this->expect_initializer_equal("expected '=' in type alias declaration");
+    this->expect_initializer_equal(std::string(PARSER_EXPECT_TYPE_ALIAS_INITIALIZER_EQUAL));
     const syntax::TypeId target = this->parse_type();
-    const syntax::Token& end = this->expect_item_terminator("expected ';' after type alias declaration");
+    const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_TYPE_ALIAS_TERMINATOR));
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::type_alias;

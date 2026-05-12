@@ -1,6 +1,7 @@
 #include <aurex/parse/parser.hpp>
 
 #include <aurex/parse/parser_item_part.hpp>
+#include <aurex/parse/parser_messages.hpp>
 
 #include <utility>
 
@@ -25,7 +26,7 @@ base::Result<syntax::AstModule> Parser::parse_module() {
         this->session_.module.module_path = items.parse_path();
         this->expect_recovered(
             TokenKind::semicolon,
-            "expected ';' after module declaration",
+            std::string(PARSER_EXPECT_MODULE_TERMINATOR),
             RecoveryContext::module_terminator
         );
     }
@@ -44,7 +45,7 @@ base::Result<syntax::AstModule> Parser::parse_module() {
 
     if (this->session_.diagnostics.has_error()) {
         return base::Result<syntax::AstModule>::fail(
-            {base::ErrorCode::parse_error, "parsing failed"}
+            {base::ErrorCode::parse_error, std::string(PARSER_PARSE_FAILED)}
         );
     }
     return base::Result<syntax::AstModule>::ok(std::move(this->session_.module));

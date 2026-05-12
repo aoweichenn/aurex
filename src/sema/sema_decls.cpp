@@ -1,6 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
 #include <aurex/sema/function_registry.hpp>
+#include <aurex/sema/sema_messages.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -14,7 +15,6 @@ namespace aurex::sema {
 
 namespace {
 
-constexpr char SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE[] = "public function return type must be explicit";
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX[] = ".payload";
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX[] = "_payload";
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
@@ -146,19 +146,19 @@ void SemanticAnalyzer::register_type_names() {
             alias.visibility = item.visibility;
             auto alias_inserted = this->checked_.type_aliases.emplace(key, std::move(alias));
             if (!alias_inserted.second) {
-                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             }
             if (this->named_types_.contains(key)) {
-                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             }
             if (this->generic_struct_templates_.contains(key)) {
-                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             }
             continue;
         }
         if (item.kind == syntax::ItemKind::struct_decl) {
             if (this->generic_struct_templates_.contains(key)) {
-                this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
                 continue;
             }
             handle = this->checked_.types.named_struct(qualified, c_name, false);
@@ -176,12 +176,12 @@ void SemanticAnalyzer::register_type_names() {
         }
         auto inserted = this->named_types_.emplace(key, handle);
         if (!inserted.second) {
-            this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             continue;
         }
         this->type_visibilities_[key] = item.visibility;
         if (this->checked_.type_aliases.contains(key)) {
-            this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             continue;
         }
 
@@ -195,7 +195,7 @@ void SemanticAnalyzer::register_type_names() {
             info.visibility = item.visibility;
             auto struct_inserted = this->checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
-                this->report(item.range, "duplicate struct definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+                this->report(item.range, sema_duplicate_struct_definition_message(this->module_name(owner), item.name));
             } else {
                 this->struct_infos_by_type_[handle.value] = &struct_inserted.first->second;
             }
@@ -222,11 +222,14 @@ void SemanticAnalyzer::register_value_names() {
             const bool is_method = syntax::is_valid(item.impl_type);
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
             if (!is_method && this->generic_function_templates_.contains(key)) {
-                this->report(item.range, "duplicate function definition in module " + this->module_name(this->current_module_) + ": " + std::string(item.name));
+                this->report(
+                    item.range,
+                    sema_duplicate_function_definition_message(this->module_name(this->current_module_), item.name)
+                );
                 continue;
             }
             if (item.is_variadic && !item.is_extern_c) {
-                this->report(item.range, "variadic functions are only supported for extern c declarations");
+                this->report(item.range, std::string(SEMA_VARIADIC_EXTERN_C_ONLY));
             }
             if (is_method) {
                 method_owner_type = this->resolve_type(item.impl_type);
@@ -235,7 +238,7 @@ void SemanticAnalyzer::register_value_names() {
                     if (owner_kind != TypeKind::struct_ &&
                         owner_kind != TypeKind::enum_ &&
                         owner_kind != TypeKind::opaque_struct) {
-                        this->report(item.range, "impl target must be a named type");
+                        this->report(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
                     }
                 }
                 key = this->method_key(this->current_module_, method_owner_type, item.name);
@@ -246,13 +249,13 @@ void SemanticAnalyzer::register_value_names() {
             if (has_explicit_return) {
                 return_type = this->resolve_type(item.return_type);
             } else if (item.is_extern_c || item.is_export_c) {
-                this->report(item.range, "C ABI function return type must be explicit");
+                this->report(item.range, std::string(SEMA_C_ABI_RETURN_TYPE_EXPLICIT));
                 return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else if (item.is_prototype) {
-                this->report(item.range, "function prototype return type must be explicit");
+                this->report(item.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
                 return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else if (item.visibility == syntax::Visibility::public_) {
-                this->report(item.range, SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE);
+                this->report(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
                 return_type = INVALID_TYPE_HANDLE;
             } else {
                 return_type = INVALID_TYPE_HANDLE;
@@ -261,13 +264,13 @@ void SemanticAnalyzer::register_value_names() {
             for (const syntax::ParamDecl& param : item.params) {
                 TypeHandle param_type = this->resolve_type(param.type);
                 if (!this->is_valid_storage_type(param_type)) {
-                    this->report(param.range, "function parameter type is not valid storage");
+                    this->report(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
                 }
                 if (this->checked_.types.is_array(param_type)) {
-                    this->report(param.range, "array type cannot be used as a function parameter");
+                    this->report(param.range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
                 }
                 if (this->checked_.types.contains_array(param_type)) {
-                    this->report(param.range, "struct containing array cannot be passed by value");
+                    this->report(param.range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
                 }
                 param_types.push_back(param_type);
             }
@@ -278,7 +281,7 @@ void SemanticAnalyzer::register_value_names() {
                         continue;
                     }
                     if (i != 0) {
-                        this->report(item.params[i].range, "method self parameter must be first");
+                        this->report(item.params[i].range, std::string(SEMA_METHOD_SELF_FIRST));
                     }
                     saw_self = true;
                 }
@@ -288,7 +291,7 @@ void SemanticAnalyzer::register_value_names() {
                         self_type = this->checked_.types.get(self_type).pointee;
                     }
                     if (!this->checked_.types.same(self_type, method_owner_type)) {
-                        this->report(item.params.front().range, "method self parameter must use the impl type or a pointer to it");
+                        this->report(item.params.front().range, std::string(SEMA_METHOD_SELF_TYPE));
                     }
                 }
             }
@@ -329,20 +332,23 @@ void SemanticAnalyzer::register_value_names() {
                 item.visibility,
             });
             if (!inserted.second) {
-                this->report(item.range, "duplicate value definition in module " + this->module_name(this->current_module_) + ": " + std::string(item.name));
+                this->report(
+                    item.range,
+                    sema_duplicate_value_definition_message(this->module_name(this->current_module_), item.name)
+                );
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
             std::unordered_set<std::string> seen_cases;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 if (!seen_cases.insert(std::string(enum_case.name)).second) {
-                    this->report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
+                    this->report(enum_case.range, sema_duplicate_enum_case_message(item.name, enum_case.name));
                 }
             }
             const TypeHandle enum_type = syntax::is_valid(item.enum_base_type)
                 ? this->resolve_type(item.enum_base_type)
                 : this->checked_.types.builtin(BuiltinType::u32);
             if (syntax::is_valid(item.enum_base_type) && !this->checked_.types.is_integer(enum_type)) {
-                this->report(item.range, "enum base type must be an integer type");
+                this->report(item.range, std::string(SEMA_ENUM_BASE_INTEGER));
             }
             std::unordered_set<base::u64> seen_values;
             const auto type_found = this->named_types_.find(key);
@@ -424,11 +430,11 @@ void SemanticAnalyzer::register_value_names() {
                 base::u64 discriminant = next_discriminant;
                 const bool parsed_discriminant = this->parse_integer_literal_text(value_text, discriminant);
                 if (!parsed_discriminant) {
-                    this->report(enum_case.range, "enum discriminant literal is out of range");
+                    this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_OUT_OF_RANGE));
                 } else if (!this->integer_literal_fits_type(enum_type, value_text)) {
-                    this->report(enum_case.range, "enum discriminant does not fit enum base type");
+                    this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_DOES_NOT_FIT));
                 } else if (!seen_values.insert(discriminant).second) {
-                    this->report(enum_case.range, "duplicate enum discriminant value in " + std::string(item.name));
+                    this->report(enum_case.range, sema_duplicate_enum_discriminant_message(item.name));
                 }
                 next_discriminant = discriminant == std::numeric_limits<base::u64>::max()
                     ? discriminant
@@ -436,11 +442,11 @@ void SemanticAnalyzer::register_value_names() {
                 if (has_payload) {
                     for (const TypeHandle payload_field_type : payload_types) {
                         if (!this->is_valid_storage_type(payload_field_type)) {
-                            this->report(enum_case.range, "enum payload type is not valid storage");
+                            this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_STORAGE));
                         }
                         if (this->checked_.types.contains_array(payload_field_type)) {
                             contains_array_payload = true;
-                            this->report(enum_case.range, "enum payload cannot contain array storage");
+                            this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
                         }
                     }
                     const base::u64 case_size = this->abi_size(payload_type);
@@ -467,7 +473,7 @@ void SemanticAnalyzer::register_value_names() {
                     item.visibility,
                 });
                 if (!case_inserted.second) {
-                    this->report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
+                    this->report(enum_case.range, sema_duplicate_enum_case_message(item.name, enum_case.name));
                     continue;
                 }
                 this->index_enum_case(case_inserted.first->second);
@@ -485,7 +491,7 @@ void SemanticAnalyzer::register_value_names() {
                     if (!value_inserted.second) {
                         this->report(
                             enum_case.range,
-                            "duplicate value definition in module " + this->module_name(this->current_module_) + ": " + full_name
+                            sema_duplicate_value_definition_message(this->module_name(this->current_module_), full_name)
                         );
                     }
                 }
@@ -516,7 +522,7 @@ void SemanticAnalyzer::validate_function_prototypes() {
             continue;
         }
         if (signature.has_prototype && !signature.has_definition) {
-            report(signature.range, "function prototype has no definition: " + signature.name);
+            report(signature.range, sema_function_prototype_missing_definition_message(signature.name));
         }
     }
 }
@@ -556,11 +562,11 @@ void SemanticAnalyzer::validate_abi_symbols() {
         const AbiSymbolInfo& prior = found->second;
         if (prior.is_function && prior.function.is_extern_c && function.is_extern_c) {
             if (!same_function_type(prior.function, function)) {
-                report(function.range, "extern C ABI symbol redeclared with incompatible signature: " + symbol);
+                report(function.range, sema_extern_c_abi_conflict_message(symbol));
             }
             return;
         }
-        report(function.range, "duplicate ABI symbol: " + symbol);
+        report(function.range, sema_duplicate_abi_symbol_message(symbol));
     };
 
     for (const auto& entry : checked_.functions) {
@@ -592,7 +598,7 @@ void SemanticAnalyzer::validate_abi_symbols() {
             symbols.emplace(symbol.c_name, std::move(info));
             continue;
         }
-        report(symbol.range, "duplicate ABI symbol: " + symbol.c_name);
+        report(symbol.range, sema_duplicate_abi_symbol_message(symbol.c_name));
     }
 }
 
@@ -627,11 +633,11 @@ void SemanticAnalyzer::analyze_entry_points() {
     if (c_entry != nullptr) {
         report(
             aurex_entry->range,
-            "ordinary fn main cannot be combined with an exported C main entry"
+            std::string(SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN)
         );
     }
     if (aurex_entry->c_name == "main") {
-        report(aurex_entry->range, "ordinary fn main cannot use ABI name 'main'");
+        report(aurex_entry->range, std::string(SEMA_ORDINARY_MAIN_ABI_NAME));
     }
     const TypeHandle i32_type = checked_.types.builtin(BuiltinType::i32);
     const TypeHandle void_type = checked_.types.builtin(BuiltinType::void_);
@@ -640,14 +646,14 @@ void SemanticAnalyzer::analyze_entry_points() {
     } else if (aurex_entry->param_types.size() == 2) {
         if (!checked_.types.same(aurex_entry->param_types[0], i32_type) ||
             !is_main_argv_type(checked_.types, aurex_entry->param_types[1])) {
-            report(aurex_entry->range, "ordinary fn main parameters must be (argc: i32, argv: *mut *mut u8)");
+            report(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS_EXACT));
         }
     } else {
-        report(aurex_entry->range, "ordinary fn main must use either no parameters or (argc: i32, argv: *mut *mut u8)");
+        report(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS));
     }
     if (!checked_.types.same(aurex_entry->return_type, i32_type) &&
         !checked_.types.same(aurex_entry->return_type, void_type)) {
-        report(aurex_entry->range, "ordinary fn main must return i32 or void");
+        report(aurex_entry->range, std::string(SEMA_MAIN_RETURN));
     }
 }
 
@@ -662,12 +668,12 @@ void SemanticAnalyzer::analyze_struct_properties() {
         std::unordered_set<std::string> seen_fields;
         for (const syntax::FieldDecl& field : item.fields) {
             if (!seen_fields.insert(std::string(field.name)).second) {
-                this->report(field.range, "duplicate struct field: " + std::string(field.name));
+                this->report(field.range, sema_duplicate_struct_field_message(field.name));
                 continue;
             }
             const TypeHandle field_type = this->resolve_type(field.type);
             if (!this->is_valid_storage_type(field_type)) {
-                this->report(field.range, "field type is not valid storage");
+                this->report(field.range, std::string(SEMA_FIELD_STORAGE));
             }
             if (const auto struct_found = this->checked_.structs.find(key); struct_found != this->checked_.structs.end()) {
                 struct_found->second.fields.push_back(StructFieldInfo {
@@ -715,14 +721,14 @@ void SemanticAnalyzer::analyze_const_decls() {
                 syntax::is_valid(item.const_value) && item.const_value.value < this->module_.exprs.size()
                     ? this->module_.exprs[item.const_value.value].range
                     : item.range;
-            this->report(range, "const initializer is not compile-time constant");
+            this->report(range, std::string(SEMA_CONST_NOT_COMPILE_TIME));
         }
         dependencies_by_const[const_key] = std::vector<std::string>(dependencies.begin(), dependencies.end());
         if (!this->is_valid_storage_type(declared)) {
-            this->report(item.range, "const type is not valid storage");
+            this->report(item.range, std::string(SEMA_CONST_TYPE_STORAGE));
         }
         if (!this->can_assign(declared, actual, item.const_value)) {
-            this->report(item.range, "const initializer type does not match declared type");
+            this->report(item.range, std::string(SEMA_CONST_TYPE_MISMATCH));
         }
     }
 
@@ -752,7 +758,9 @@ void SemanticAnalyzer::analyze_const_decls() {
                 const auto range = const_ranges.find(frame.key);
                 this->report(
                     range == const_ranges.end() ? base::SourceRange {} : range->second,
-                    "cyclic const initializer: " + (const_names.contains(frame.key) ? const_names[frame.key] : frame.key)
+                    sema_cyclic_const_initializer_message(
+                        const_names.contains(frame.key) ? const_names[frame.key] : frame.key
+                    )
                 );
                 state = SEMA_CONST_DEP_STATE_VISITED;
                 continue;

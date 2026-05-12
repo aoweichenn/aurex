@@ -1,5 +1,7 @@
 #include <aurex/driver/file_cache.hpp>
 
+#include <aurex/driver/driver_messages.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -45,7 +47,7 @@ struct FileCacheEntry {
 [[nodiscard]] base::Result<std::string> read_text_file_uncached(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
-        return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to open input file"});
+        return base::Result<std::string>::fail({base::ErrorCode::io_error, std::string(DRIVER_INPUT_OPEN_FAILED)});
     }
 
     std::string text;
@@ -56,7 +58,7 @@ struct FileCacheEntry {
         if (!text.empty()) {
             input.read(text.data(), static_cast<std::streamsize>(text.size()));
             if (!input) {
-                return base::Result<std::string>::fail({base::ErrorCode::io_error, "failed to read input file"});
+                return base::Result<std::string>::fail({base::ErrorCode::io_error, std::string(DRIVER_INPUT_READ_FAILED)});
             }
         }
         return base::Result<std::string>::ok(std::move(text));

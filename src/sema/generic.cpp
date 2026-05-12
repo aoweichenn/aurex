@@ -1,5 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -14,24 +16,6 @@ constexpr std::string_view SEMA_GENERIC_ARG_LIST_OPEN = "[";
 constexpr std::string_view SEMA_GENERIC_ARG_LIST_CLOSE = "]";
 constexpr std::string_view SEMA_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr char SEMA_GENERIC_MANGLE_FALLBACK_CHAR = '_';
-constexpr char SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE[] = "public function return type must be explicit";
-
-[[nodiscard]] std::string generic_argument_count_message(
-    const std::string_view subject,
-    const std::string_view name,
-    const base::usize actual,
-    const base::usize expected
-) {
-    std::string message = actual < expected ? "too few " : "too many ";
-    message += std::string(subject);
-    message += " for ";
-    message += std::string(name);
-    message += ": expected ";
-    message += std::to_string(expected);
-    message += ", got ";
-    message += std::to_string(actual);
-    return message;
-}
 
 [[nodiscard]] GenericSideTables make_generic_side_tables(const syntax::AstModule& module) {
     GenericSideTables side_tables;
@@ -68,11 +52,11 @@ void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& i
         const std::string name(param.name);
         const auto [first, inserted] = seen.emplace(name, param.range);
         if (!inserted) {
-            this->report(param.range, "duplicate generic parameter `" + std::string(param.name) + "`");
+            this->report(param.range, sema_duplicate_generic_parameter_message(param.name));
             this->diagnostics_.push(base::Diagnostic {
                 base::Severity::note,
                 first->second,
-                "first declaration of generic parameter `" + std::string(param.name) + "`",
+                sema_first_generic_parameter_message(param.name),
             });
         }
     }
@@ -99,7 +83,7 @@ void SemanticAnalyzer::register_generic_template(
         if (this->named_types_.contains(info.key) ||
             this->checked_.type_aliases.contains(info.key) ||
             this->generic_struct_templates_.contains(info.key)) {
-            this->report(item.range, "duplicate type definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
         this->generic_struct_templates_.emplace(info.key, std::move(info));
@@ -107,31 +91,31 @@ void SemanticAnalyzer::register_generic_template(
     }
 
     if (item.kind == syntax::ItemKind::enum_decl) {
-        this->report(item.range, "generic enums are not supported by M2 semantic analysis");
+        this->report(item.range, std::string(SEMA_GENERIC_ENUMS_UNSUPPORTED));
         return;
     }
 
     if (item.kind == syntax::ItemKind::type_alias) {
-        this->report(item.range, "generic type aliases are not supported by M2 semantic analysis");
+        this->report(item.range, std::string(SEMA_GENERIC_TYPE_ALIASES_UNSUPPORTED));
         return;
     }
 
     if (item.kind != syntax::ItemKind::fn_decl) {
-        this->report(item.range, "generic parameters outside structs and functions are not supported by M2 semantic analysis");
+        this->report(item.range, std::string(SEMA_GENERIC_PARAMS_OUTSIDE_STRUCTS_FUNCTIONS_UNSUPPORTED));
         return;
     }
 
     if (item.visibility == syntax::Visibility::public_ && !syntax::is_valid(item.return_type)) {
-        this->report(item.range, SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE);
+        this->report(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
     }
     if (item.is_extern_c || item.is_export_c || item.is_prototype) {
-        this->report(item.range, "generic functions with C ABI or prototypes are not supported by M2 semantic analysis");
+        this->report(item.range, std::string(SEMA_GENERIC_C_ABI_OR_PROTOTYPE_UNSUPPORTED));
     }
     if (syntax::is_valid(item.impl_type)) {
-        this->report(item.range, "generic methods are not supported by M2 semantic analysis");
+        this->report(item.range, std::string(SEMA_GENERIC_METHODS_UNSUPPORTED));
     }
     if (this->checked_.functions.contains(info.key) || this->generic_function_templates_.contains(info.key)) {
-        this->report(item.range, "duplicate function definition in module " + this->module_name(owner) + ": " + std::string(item.name));
+        this->report(item.range, sema_duplicate_function_definition_message(this->module_name(owner), item.name));
         return;
     }
     this->generic_function_templates_.emplace(info.key, std::move(info));
@@ -188,15 +172,21 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
             continue;
         }
         if (imported_result != nullptr) {
-            this->report(range, "ambiguous generic type name '" + std::string(name) + "' from modules " +
-                this->module_name(result_module) + " and " + this->module_name(module));
+            this->report(
+                range,
+                sema_ambiguous_generic_type_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(module)
+                )
+            );
             return nullptr;
         }
         imported_result = &found->second;
         result_module = module;
     }
     if (imported_result == nullptr && report_unknown) {
-        this->report(range, "unknown generic type: " + std::string(name));
+        this->report(range, sema_unknown_generic_type_message(name));
     }
     return imported_result;
 }
@@ -209,20 +199,20 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, "unknown generic type: " + std::string(name));
+            this->report(range, sema_unknown_generic_type_message(name));
         }
         return nullptr;
     }
     const auto found = this->generic_struct_templates_.find(this->module_key(module, name));
     if (found == this->generic_struct_templates_.end()) {
         if (report_unknown) {
-            this->report(range, "unknown generic type in module " + this->module_name(module) + ": " + std::string(name));
+            this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
         }
         return nullptr;
     }
     if (!this->can_access(module, found->second.visibility)) {
         if (report_unknown) {
-            this->report(range, "generic type is private: " + this->module_name(module) + "." + std::string(name));
+            this->report(range, sema_private_generic_type_message(this->module_name(module), name));
         }
         return nullptr;
     }
@@ -253,15 +243,21 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
             continue;
         }
         if (imported_result != nullptr) {
-            this->report(range, "ambiguous generic function name '" + std::string(name) + "' from modules " +
-                this->module_name(result_module) + " and " + this->module_name(module));
+            this->report(
+                range,
+                sema_ambiguous_generic_function_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(module)
+                )
+            );
             return nullptr;
         }
         imported_result = &found->second;
         result_module = module;
     }
     if (imported_result == nullptr && report_unknown) {
-        this->report(range, "unknown generic function: " + std::string(name));
+        this->report(range, sema_unknown_generic_function_message(name));
     }
     return imported_result;
 }
@@ -274,20 +270,20 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, "unknown generic function: " + std::string(name));
+            this->report(range, sema_unknown_generic_function_message(name));
         }
         return nullptr;
     }
     const auto found = this->generic_function_templates_.find(this->module_key(module, name));
     if (found == this->generic_function_templates_.end()) {
         if (report_unknown) {
-            this->report(range, "unknown generic function in module " + this->module_name(module) + ": " + std::string(name));
+            this->report(range, sema_unknown_generic_function_in_module_message(this->module_name(module), name));
         }
         return nullptr;
     }
     if (!this->can_access(module, found->second.visibility)) {
         if (report_unknown) {
-            this->report(range, "generic function is private: " + this->module_name(module) + "." + std::string(name));
+            this->report(range, sema_private_generic_function_message(this->module_name(module), name));
         }
         return nullptr;
     }
@@ -303,7 +299,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     if (args.size() != info.params.size()) {
         this->report(
             use_type.range,
-            generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size())
+            sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size())
         );
         return INVALID_TYPE_HANDLE;
     }
@@ -362,12 +358,12 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     std::unordered_set<std::string> seen_fields;
     for (const syntax::FieldDecl& field : item.fields) {
         if (!seen_fields.insert(std::string(field.name)).second) {
-            this->report(field.range, "duplicate struct field: " + std::string(field.name));
+            this->report(field.range, sema_duplicate_struct_field_message(field.name));
             continue;
         }
         const TypeHandle field_type = this->resolve_type(field.type);
         if (!this->is_valid_storage_type(field_type)) {
-            this->report(field.range, "field type is not valid storage");
+            this->report(field.range, std::string(SEMA_FIELD_STORAGE));
         }
         if (this->checked_.types.contains_array(field_type)) {
             contains_array = true;
@@ -474,7 +470,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
 ) {
     const syntax::ItemNode& function = this->module_.items[info.item.value];
     if (call.args.size() != function.params.size()) {
-        this->report(call.range, "argument count mismatch in call to " + info.name);
+        this->report(call.range, sema_argument_count_message(info.name));
         return false;
     }
 
@@ -504,7 +500,10 @@ bool SemanticAnalyzer::infer_generic_arguments(
     for (base::usize i = 0; i < call.args.size(); ++i) {
         const TypeHandle actual = this->analyze_expr(call.args[i]);
         if (!this->unify_generic_type(pattern_param_types[i], actual, inferred)) {
-            this->report(this->module_.exprs[call.args[i].value].range, "cannot infer generic type argument for call to " + info.name);
+            this->report(
+                this->module_.exprs[call.args[i].value].range,
+                sema_generic_call_argument_unify_message(info.name)
+            );
             return false;
         }
     }
@@ -514,7 +513,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     for (const std::string& param : info.params) {
         const auto found = inferred.find(param);
         if (found == inferred.end() || !is_valid(found->second)) {
-            this->report(call.range, "cannot infer generic type argument `" + param + "` for call to " + info.name);
+            this->report(call.range, sema_generic_call_argument_infer_message(param, info.name));
             return false;
         }
         args.push_back(found->second);
@@ -530,7 +529,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     if (args.size() != info.params.size()) {
         this->report(
             use_range,
-            generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
+            sema_generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
         );
         return nullptr;
     }
@@ -621,7 +620,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     if (args.size() != info.params.size()) {
         this->report(
             use_range,
-            generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
+            sema_generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
         );
         return nullptr;
     }

@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_name_expr_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <string_view>
@@ -14,7 +15,7 @@ using syntax::TokenKind;
 } // namespace
 
 syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext context) {
-    const syntax::Token& first = this->expect(TokenKind::identifier, "expected expression name");
+    const syntax::Token& first = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_EXPRESSION_NAME));
     const syntax::Token* name = &first;
     std::string_view scope_name;
     base::SourceRange scope_range {};
@@ -22,7 +23,7 @@ syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext co
         this->advance();
         scope_name = first.text;
         scope_range = first.range;
-        name = &this->expect_identifier_recovered("expected item name after '::'");
+        name = &this->expect_identifier_recovered(std::string(PARSER_EXPECT_ITEM_NAME_AFTER_SCOPE));
     }
 
     std::vector<syntax::TypeId> type_args;
@@ -73,7 +74,7 @@ syntax::ExprId NameExprParser::parse_struct_literal(
     this->parse_struct_fields(node.field_inits, context);
     const syntax::Token& end = this->expect_recovered(
         TokenKind::r_brace,
-        "expected '}' after struct literal",
+        std::string(PARSER_EXPECT_STRUCT_LITERAL_END),
         RecoveryContext::struct_field
     );
     node.range = this->merge(node.range, end.range);
@@ -133,7 +134,7 @@ bool NameExprParser::bracketed_type_args_followed_by_struct_body() const noexcep
 
 void NameExprParser::parse_struct_literal_type_args(std::vector<syntax::TypeId>& type_args) {
     if (this->check(TokenKind::r_bracket)) {
-        this->report_here("expected generic type argument");
+        this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
     }
     while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
         type_args.push_back(this->parse_type());
@@ -153,7 +154,7 @@ bool NameExprParser::recover_struct_literal_type_arg_separator() {
         return !this->check(TokenKind::r_bracket);
     }
 
-    this->report_here("expected ',' or ']' after generic type argument");
+    this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
         this->synchronize(RecoveryContext::generic_type_argument);
     }
@@ -180,8 +181,8 @@ void NameExprParser::parse_struct_fields(
 
 syntax::FieldInit NameExprParser::parse_struct_field(const ExprContext context) {
     const syntax::Token& field =
-        this->expect_identifier_recovered("expected field name in struct literal");
-    this->expect_type_annotation_colon("expected ':' after field name");
+        this->expect_identifier_recovered(std::string(PARSER_EXPECT_STRUCT_LITERAL_FIELD));
+    this->expect_type_annotation_colon(std::string(PARSER_EXPECT_FIELD_TYPE_COLON));
     const syntax::ExprId value = this->parse_expr(context);
     return syntax::FieldInit {
         field.text,
@@ -199,7 +200,7 @@ bool NameExprParser::recover_struct_field_separator() {
         return !this->check(TokenKind::r_brace);
     }
 
-    this->report_here("expected ',' or '}' after struct literal field");
+    this->report_here(std::string(PARSER_EXPECT_STRUCT_LITERAL_FIELD_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::struct_field)) {
         this->synchronize(RecoveryContext::struct_field);
     }

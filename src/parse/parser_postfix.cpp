@@ -47,34 +47,34 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
         return this->parse_rejected_update_suffix(
             expr,
             TokenKind::plus_plus,
-            "increment operator is not supported; use '+= 1'"
+            std::string(PARSER_INCREMENT_UNSUPPORTED)
         );
     }
     if (this->check(TokenKind::minus_minus)) {
         return this->parse_rejected_update_suffix(
             expr,
             TokenKind::minus_minus,
-            "decrement operator is not supported; use '-= 1'"
+            std::string(PARSER_DECREMENT_UNSUPPORTED)
         );
     }
     return std::nullopt;
 }
 
 syntax::ExprId PostfixExprParser::parse_generic_apply_suffix(const syntax::ExprId expr) {
-    const syntax::Token& begin = this->expect(TokenKind::colon_colon, "expected '::' before generic type arguments");
+    const syntax::Token& begin = this->expect(TokenKind::colon_colon, std::string(PARSER_EXPECT_GENERIC_APPLY_SCOPE));
     this->expect_recovered(
         TokenKind::l_bracket,
-        "expected '[' after '::'",
+        std::string(PARSER_EXPECT_GENERIC_APPLY_START),
         RecoveryContext::generic_type_argument
     );
     std::vector<syntax::TypeId> type_args;
     if (this->check(TokenKind::r_bracket)) {
-        this->report_here("expected generic type argument");
+        this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
     }
     this->parse_generic_type_args(type_args);
     const syntax::Token& end = this->expect_recovered(
         TokenKind::r_bracket,
-        "expected ']' after generic type arguments",
+        std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
         RecoveryContext::generic_type_argument
     );
 
@@ -114,7 +114,7 @@ bool PostfixExprParser::recover_generic_type_arg_separator() {
         return !this->check(TokenKind::r_bracket);
     }
 
-    this->report_here("expected ',' or ']' after generic type argument");
+    this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
         this->synchronize(RecoveryContext::generic_type_argument);
     }
@@ -127,7 +127,7 @@ bool PostfixExprParser::recover_generic_type_arg_separator() {
 }
 
 syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) {
-    const syntax::Token& field = this->expect_identifier_recovered("expected field name after '.'");
+    const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::field;
     node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
@@ -150,7 +150,7 @@ syntax::ExprId PostfixExprParser::parse_index_suffix(const syntax::ExprId expr, 
 const syntax::Token& PostfixExprParser::expect_index_suffix_end() {
     return this->expect_recovered(
         TokenKind::r_bracket,
-        "expected ']' after index",
+        std::string(PARSER_EXPECT_INDEX_END),
         RecoveryContext::index_expression
     );
 }
@@ -162,7 +162,7 @@ syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId expr, c
     this->parse_call_args(node.args, context);
     const syntax::Token& end = this->expect_recovered(
         TokenKind::r_paren,
-        "expected ')' after argument list",
+        std::string(PARSER_EXPECT_CALL_ARGUMENTS_END),
         RecoveryContext::call_argument
     );
     node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
@@ -191,7 +191,7 @@ bool PostfixExprParser::recover_call_arg_separator() {
         return !this->check(TokenKind::r_paren);
     }
 
-    this->report_here("expected ',' or ')' after argument");
+    this->report_here(std::string(PARSER_EXPECT_CALL_ARGUMENT_SEPARATOR));
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::call_argument)) {
         this->synchronize(RecoveryContext::call_argument);
     }
@@ -217,7 +217,7 @@ syntax::ExprId PostfixExprParser::parse_rejected_update_suffix(
     const TokenKind kind,
     std::string message
 ) {
-    const syntax::Token& op = this->expect(kind, "expected unsupported update operator");
+    const syntax::Token& op = this->expect(kind, std::string(PARSER_EXPECT_UNSUPPORTED_UPDATE));
     this->report_at(op, std::move(message));
 
     syntax::ExprNode node;

@@ -1,5 +1,7 @@
 #include <aurex/base/string_literal.hpp>
 
+#include <aurex/base/string_literal_messages.hpp>
+
 #include <algorithm>
 #include <cstdint>
 #include <utility>
@@ -183,7 +185,7 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
         const char c = literal[i];
         if (c != STRING_LITERAL_ESCAPE_BACKSLASH) {
             if (is_c_string && c == STRING_LITERAL_NULL_CHAR) {
-                add_error(result, i, i + 1, "c string literal cannot contain interior NUL");
+                add_error(result, i, i + 1, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
             }
             result.decoded.push_back(c);
             ++i;
@@ -193,7 +195,7 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
         const usize escape_begin = i;
         ++i;
         if (i >= content_end) {
-            add_error(result, escape_begin, content_end, "unterminated escape sequence");
+            add_error(result, escape_begin, content_end, std::string(STRING_LITERAL_UNTERMINATED_ESCAPE));
             break;
         }
 
@@ -202,7 +204,7 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
         switch (escaped) {
         case STRING_LITERAL_ESCAPE_NULL:
             if (is_c_string) {
-                add_error(result, escape_begin, i, "c string literal cannot contain interior NUL");
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
             }
             result.decoded.push_back(STRING_LITERAL_NULL_CHAR);
             break;
@@ -223,7 +225,7 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
             break;
         case STRING_LITERAL_ESCAPE_UNICODE: {
             if (i >= content_end || literal[i] != STRING_LITERAL_ESCAPE_LEFT_BRACE) {
-                add_error(result, escape_begin, i, "unicode escape must use \\u{...}");
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_BRACES));
                 result.decoded.push_back(STRING_LITERAL_ESCAPE_UNICODE);
                 break;
             }
@@ -247,37 +249,37 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
                 ++i;
             }
             if (i >= content_end || literal[i] != STRING_LITERAL_ESCAPE_RIGHT_BRACE) {
-                add_error(result, escape_begin, content_end, "unterminated unicode escape");
+                add_error(result, escape_begin, content_end, std::string(STRING_LITERAL_UNTERMINATED_UNICODE_ESCAPE));
                 break;
             }
             ++i;
             if (digit_begin == i - 1) {
-                add_error(result, escape_begin, i, "unicode escape has no digits");
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_NO_DIGITS));
                 break;
             }
             if (invalid_digit) {
-                add_error(result, escape_begin, i, "unicode escape contains non-hex digit");
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_NON_HEX));
                 break;
             }
             if (overflow || !is_unicode_scalar(value)) {
-                add_error(result, escape_begin, i, "unicode escape is not a valid Unicode scalar value");
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_INVALID_SCALAR));
                 break;
             }
             if (is_c_string && value == STRING_LITERAL_UNICODE_NULL_VALUE) {
-                add_error(result, escape_begin, i, "c string literal cannot contain interior NUL");
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
             }
             append_utf8(result.decoded, value);
             break;
         }
         default:
-            add_error(result, escape_begin, i, "invalid escape sequence");
+            add_error(result, escape_begin, i, std::string(STRING_LITERAL_INVALID_ESCAPE));
             result.decoded.push_back(escaped);
             break;
         }
     }
 
     if (kind == StringLiteralKind::string && !is_valid_utf8(result.decoded)) {
-        add_error(result, content_begin, content_end, "string literal must contain valid UTF-8");
+        add_error(result, content_begin, content_end, std::string(STRING_LITERAL_INVALID_UTF8));
     }
 
     return result;

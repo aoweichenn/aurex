@@ -1,6 +1,7 @@
 #include <aurex/driver/compiler.hpp>
 
 #include <aurex/base/config.hpp>
+#include <aurex/driver/driver_messages.hpp>
 
 #include <iostream>
 #include <string_view>
@@ -109,7 +110,7 @@ int main(const int argc, char** argv) {
             } else if (level == "3" || level == "O3") {
                 invocation.optimization_level = aurex::ir::OptimizationLevel::aggressive;
             } else {
-                std::cerr << "invalid optimization level: " << level << "\n";
+                std::cerr << aurex::driver::driver_invalid_optimization_level_message(level) << "\n";
                 return 2;
             }
         } else if ((arg == "-O0" || arg == "-O1" || arg == "-O2" || arg == "-O3") && arg.size() == 3) {
@@ -121,7 +122,7 @@ int main(const int argc, char** argv) {
             return 2;
         } else {
             if (!invocation.input_path.empty()) {
-                std::cerr << "multiple input files are not supported\n";
+                std::cerr << aurex::driver::DRIVER_MULTIPLE_INPUT_FILES_UNSUPPORTED << "\n";
                 print_usage(std::cerr, argv[0]);
                 return 2;
             }
@@ -137,7 +138,7 @@ int main(const int argc, char** argv) {
     aurex::driver::Compiler compiler;
     auto result = compiler.run(invocation);
     if (!result) {
-        std::cerr << "aurexc: " << result.error().message << "\n";
+        std::cerr << aurex::driver::DRIVER_ERROR_PREFIX << result.error().message << "\n";
         return 1;
     }
     return 0;

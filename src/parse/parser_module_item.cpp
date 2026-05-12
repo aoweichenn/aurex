@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_item_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <optional>
@@ -14,13 +15,15 @@ using syntax::TokenKind;
 
 syntax::ModulePath ItemParser::parse_path() {
     syntax::ModulePath path;
-    std::optional<syntax::Token> first = this->parse_path_segment("expected identifier in path");
+    std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER));
     base::SourceRange range = first.has_value() ? first->range : this->peek().range;
     if (first.has_value()) {
         path.parts.push_back(first->text);
     }
     while (this->match(TokenKind::dot)) {
-        std::optional<syntax::Token> part = this->parse_path_segment("expected identifier after '.'");
+        std::optional<syntax::Token> part = this->parse_path_segment(
+            std::string(PARSER_EXPECT_PATH_IDENTIFIER_AFTER_DOT)
+        );
         if (part.has_value()) {
             path.parts.push_back(part->text);
             range = this->merge(range, part->range);
@@ -40,13 +43,13 @@ syntax::ImportDecl ItemParser::parse_import_decl() {
         import.visibility = syntax::Visibility::private_;
         import.explicit_visibility = true;
     }
-    this->expect(TokenKind::kw_import, "expected 'import'");
+    this->expect(TokenKind::kw_import, std::string(PARSER_EXPECT_IMPORT_KEYWORD));
     import.path = this->parse_path();
     if (this->match(TokenKind::kw_as)) {
         this->parse_import_alias(import);
     }
     [[maybe_unused]] const syntax::Token& terminator =
-        this->expect_item_terminator("expected ';' after import declaration");
+        this->expect_item_terminator(std::string(PARSER_EXPECT_IMPORT_TERMINATOR));
     this->reset_panic();
     return import;
 }
@@ -96,7 +99,7 @@ std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message)
 
 void ItemParser::parse_import_alias(syntax::ImportDecl& import) {
     const syntax::Token& alias =
-        this->expect_identifier_recovered("expected import alias after 'as'");
+        this->expect_identifier_recovered(std::string(PARSER_EXPECT_IMPORT_ALIAS));
     if (alias.kind == TokenKind::identifier) {
         import.alias = alias.text;
         import.alias_range = alias.range;

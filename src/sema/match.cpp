@@ -1,5 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -54,18 +56,18 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
-        this->report(expr.range, "match expression cannot be used in const initializer");
+        this->report(expr.range, std::string(SEMA_MATCH_CONST_INITIALIZER));
     }
     const TypeHandle matched = this->analyze_expr(expr.match_value);
     const bool enum_match = is_valid(matched) && this->checked_.types.get(matched).kind == TypeKind::enum_;
     const bool literal_match = is_valid(matched) &&
         (this->checked_.types.is_integer(matched) || this->checked_.types.is_bool(matched));
     if (!enum_match && !literal_match) {
-        this->report(expr.range, "match expression requires an enum, integer, or bool value");
+        this->report(expr.range, std::string(SEMA_MATCH_VALUE_TYPE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (expr.match_arms.empty()) {
-        this->report(expr.range, "match expression requires at least one arm");
+        this->report(expr.range, std::string(SEMA_MATCH_ARM_REQUIRED));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
@@ -86,7 +88,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
         if (!this->checked_.types.is_pointer(result)) {
             for (const base::SourceRange range : pending_null_arm_ranges) {
-                this->report(range, "match expression arms must have the same type");
+                this->report(range, std::string(SEMA_MATCH_ARM_TYPE));
             }
         }
         pending_null_arm_ranges.clear();
@@ -117,7 +119,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             if (guarded) {
                 const TypeHandle guard_type = this->analyze_expr(arm.guard);
                 if (!this->checked_.types.is_bool(guard_type)) {
-                    this->report(this->module_.exprs[arm.guard.value].range, "match guard must be bool");
+                    this->report(this->module_.exprs[arm.guard.value].range, std::string(SEMA_MATCH_GUARD_BOOL));
                 }
             }
             const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
@@ -128,16 +130,13 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             if (case_info == nullptr) {
                 arm_type = analyze_guard_and_arm_value();
             } else if (enum_case_payload_field_count(*case_info) == 0) {
-                this->report(arm.range, "match arm payload binding requires a payload enum case");
+                this->report(arm.range, std::string(SEMA_MATCH_PAYLOAD_CASE));
                 arm_type = analyze_guard_and_arm_value();
             } else if (const base::usize binding_count = pattern_payload_binding_count(*pattern);
                        binding_count != enum_case_payload_field_count(*case_info)) {
                 this->report(
                     pattern->range,
-                    "enum payload pattern requires " +
-                        std::to_string(enum_case_payload_field_count(*case_info)) +
-                        " binding" +
-                        (enum_case_payload_field_count(*case_info) == 1 ? "" : "s")
+                    sema_enum_payload_pattern_binding_count_message(enum_case_payload_field_count(*case_info))
                 );
                 arm_type = analyze_guard_and_arm_value();
             } else {
@@ -173,14 +172,14 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             result = arm_type;
             resolve_pending_null_arms();
         } else if (!this->checked_.types.same(result, arm_type)) {
-            this->report(arm.range, "match expression arms must have the same type");
+            this->report(arm.range, std::string(SEMA_MATCH_ARM_TYPE));
         }
     }
 
     if (enum_match) {
         const auto check_case = [&](const EnumCaseInfo& case_info) {
             if (!saw_wildcard && std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
-                this->report(expr.range, "match expression is not exhaustive for enum case: " + case_info.name);
+                this->report(expr.range, sema_match_missing_enum_case_message(case_info.name));
             }
         };
         if (const std::vector<const EnumCaseInfo*>* cases = this->find_enum_cases_by_type(matched); cases != nullptr) {
@@ -196,10 +195,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             }
         }
     } else if (!saw_wildcard && (!this->checked_.types.is_bool(matched) || !covered_true || !covered_false)) {
-        this->report(expr.range, "match expression over integer or bool requires a wildcard arm");
+        this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
     }
     if (is_valid(result) && this->checked_.types.is_void(result)) {
-        this->report(expr.range, "match expression result cannot be void");
+        this->report(expr.range, std::string(SEMA_MATCH_RESULT_VOID));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     return this->record_expr_type(expr_id, result);
@@ -241,7 +240,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
                         ? &this->module_.patterns[alternative.value]
                         : nullptr;
                 if (alternative_pattern != nullptr && pattern_has_payload_bindings(*alternative_pattern)) {
-                    this->report(alternative_pattern->range, "or-pattern alternatives cannot bind payloads");
+                    this->report(alternative_pattern->range, std::string(SEMA_OR_PATTERN_PAYLOAD_UNSUPPORTED));
                 }
             }
 
@@ -280,14 +279,14 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_enum_case_pattern(
     }
     const syntax::PatternNode& pattern = this->module_.patterns[pattern_id.value];
     if (saw_wildcard) {
-        this->report(pattern.range, "match arm is unreachable after wildcard pattern");
+        this->report(pattern.range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
     }
     if (pattern.kind == syntax::PatternKind::wildcard) {
         saw_wildcard = true;
         return nullptr;
     }
     if (pattern.kind == syntax::PatternKind::literal) {
-        this->report(pattern.range, "enum match pattern must be an enum case or wildcard");
+        this->report(pattern.range, std::string(SEMA_ENUM_MATCH_PATTERN));
         return nullptr;
     }
 
@@ -298,7 +297,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_enum_case_pattern(
         } else {
             case_info = this->find_enum_case_by_type_and_case(matched, pattern.case_name);
             if (case_info == nullptr) {
-                this->report(pattern.range, "unknown enum case for matched enum: " + std::string(pattern.case_name));
+                this->report(pattern.range, sema_unknown_matched_enum_case_message(pattern.case_name));
             }
         }
     } else {
@@ -308,10 +307,10 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_enum_case_pattern(
         return nullptr;
     }
     if (!this->checked_.types.same(case_info->type, matched)) {
-        this->report(pattern.range, "match arm case does not belong to matched enum");
+        this->report(pattern.range, std::string(SEMA_MATCH_CASE_WRONG_ENUM));
     }
     if (std::find(covered.begin(), covered.end(), case_info->c_name) != covered.end()) {
-        this->report(pattern.range, "duplicate match arm for enum case: " + case_info->name);
+        this->report(pattern.range, sema_duplicate_match_enum_case_message(case_info->name));
     } else {
         covered.push_back(case_info->c_name);
     }
@@ -371,19 +370,19 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
     }
     const syntax::PatternNode& pattern = this->module_.patterns[pattern_id.value];
     if (saw_wildcard) {
-        this->report(pattern.range, "match arm is unreachable after wildcard pattern");
+        this->report(pattern.range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
     }
     if (pattern.kind == syntax::PatternKind::wildcard) {
         saw_wildcard = true;
         return nullptr;
     }
     if (pattern.kind != syntax::PatternKind::literal) {
-        this->report(pattern.range, "match pattern for integer or bool value must be a literal or wildcard");
+        this->report(pattern.range, std::string(SEMA_INTEGER_BOOL_PATTERN));
         return nullptr;
     }
     if (this->checked_.types.is_bool(matched)) {
         if (pattern.case_name != SEMA_MATCH_BOOL_TRUE_NAME && pattern.case_name != SEMA_MATCH_BOOL_FALSE_NAME) {
-            this->report(pattern.range, "bool match pattern must be true or false");
+            this->report(pattern.range, std::string(SEMA_BOOL_PATTERN));
         } else if (pattern.case_name == SEMA_MATCH_BOOL_TRUE_NAME) {
             covered_true = true;
         } else {
@@ -393,13 +392,13 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
     }
     if (this->checked_.types.is_integer(matched)) {
         if (pattern.case_name == SEMA_MATCH_BOOL_TRUE_NAME || pattern.case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
-            this->report(pattern.range, "integer match pattern must be an integer literal");
+            this->report(pattern.range, std::string(SEMA_INTEGER_PATTERN));
         } else if (!this->integer_literal_fits_type(matched, pattern.case_name)) {
-            this->report(pattern.range, "integer match pattern literal is out of range for matched type");
+            this->report(pattern.range, std::string(SEMA_INTEGER_PATTERN_RANGE));
         }
         return nullptr;
     }
-    this->report(pattern.range, "unsupported literal match pattern");
+    this->report(pattern.range, std::string(SEMA_UNSUPPORTED_LITERAL_PATTERN));
     return nullptr;
 }
 

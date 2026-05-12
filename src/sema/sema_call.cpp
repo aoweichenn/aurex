@@ -1,5 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <algorithm>
 
 namespace aurex::sema {
@@ -38,7 +40,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         (this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::name &&
          this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::field &&
          this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::generic_apply)) {
-        this->report(expr.range, "callee must be a function name; explicit generic calls use '::[...]', for example id::[i32](...)");
+        this->report(expr.range, std::string(SEMA_CALLEE_FUNCTION_NAME));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const syntax::ExprNode& callee = this->module_.exprs[expr.callee.value];
@@ -46,7 +48,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         if (!syntax::is_valid(callee.callee) ||
             callee.callee.value >= this->module_.exprs.size() ||
             this->module_.exprs[callee.callee.value].kind != syntax::ExprKind::name) {
-            this->report(callee.range, "explicit generic calls use '::[...]', for example id::[i32](...)");
+            this->report(callee.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         const syntax::ExprNode& generic_callee = this->module_.exprs[callee.callee.value];
@@ -96,7 +98,7 @@ TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
             ? this->find_function_in_module(callee_module, name, callee_range, false)
             : this->find_function_in_visible_modules(name, callee_range, false);
         if (signature != nullptr) {
-            this->report(callee_range, "function " + std::string(name) + " is not generic");
+            this->report(callee_range, sema_function_not_generic_message(name));
         } else {
             static_cast<void>(qualified_callee
                 ? this->find_generic_function_in_module(callee_module, name, callee_range, true)
@@ -125,17 +127,16 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
     const EnumCaseInfo& enum_case
 ) {
     if (enum_case.payload_types.empty()) {
-        this->report(expr.range, "enum case constructor requires a payload case: " + enum_case.name);
+        this->report(expr.range, sema_enum_payload_constructor_case_message(enum_case.name));
     }
     if (expr.args.size() != enum_case.payload_types.size()) {
         if (enum_case.payload_types.size() == 1) {
-            this->report(expr.range, "enum payload constructor requires exactly one argument: " + enum_case.name);
+            this->report(expr.range, sema_enum_payload_constructor_arity_message(enum_case.name));
         } else {
-            this->report(
-                expr.range,
-                "enum payload constructor requires " + std::to_string(enum_case.payload_types.size()) +
-                    " arguments: " + enum_case.name
-            );
+            this->report(expr.range, sema_enum_payload_constructor_argument_count_message(
+                enum_case.name,
+                enum_case.payload_types.size()
+            ));
         }
     }
     const base::usize checked_arg_count = std::min(expr.args.size(), enum_case.payload_types.size());
@@ -143,10 +144,16 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
         const TypeHandle expected = enum_case.payload_types[i];
         const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
         if (!this->can_assign(expected, actual, expr.args[i])) {
-            this->report(this->module_.exprs[expr.args[i].value].range, "enum payload constructor argument type mismatch");
+            this->report(
+                this->module_.exprs[expr.args[i].value].range,
+                std::string(SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH)
+            );
         }
         if (this->checked_.types.contains_array(expected)) {
-            this->report(this->module_.exprs[expr.args[i].value].range, "array-containing type cannot be used as enum payload");
+            this->report(
+                this->module_.exprs[expr.args[i].value].range,
+                std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED)
+            );
         }
     }
     this->record_expr_c_name(expr.callee, enum_case.c_name);
@@ -177,7 +184,10 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
                 return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             if (signature->has_self_param) {
-                this->report(callee.range, "method requires a receiver: " + this->checked_.types.display_name(associated_owner) + "." + std::string(name));
+                this->report(
+                    callee.range,
+                    sema_method_requires_receiver_message(this->checked_.types.display_name(associated_owner), name)
+                );
                 receiver_valid = false;
             }
         }
@@ -265,26 +275,29 @@ void SemanticAnalyzer::validate_call_arguments(
             ? param_types.size() - receiver_count
             : 0;
     if (is_variadic ? expr.args.size() < expected_count : expected_count != expr.args.size()) {
-        this->report(expr.range, "argument count mismatch in call to " + std::string(name));
+        this->report(expr.range, sema_argument_count_message(name));
     }
     const base::usize count = expr.args.size() < expected_count ? expr.args.size() : expected_count;
     for (base::usize i = 0; i < count; ++i) {
         const TypeHandle expected = param_types[i + receiver_count];
         const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
         if (!this->can_assign(expected, actual, expr.args[i])) {
-            this->report(this->module_.exprs[expr.args[i].value].range, "argument type mismatch in call to " + std::string(name));
+            this->report(this->module_.exprs[expr.args[i].value].range, sema_argument_type_message(name));
         }
         if (this->checked_.types.contains_array(expected)) {
-            this->report(this->module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
+            this->report(this->module_.exprs[expr.args[i].value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
         }
     }
     if (is_variadic) {
         for (base::usize i = count; i < expr.args.size(); ++i) {
             const TypeHandle actual = this->analyze_expr(expr.args[i]);
             if (!is_valid(actual)) {
-                this->report(this->module_.exprs[expr.args[i].value].range, "variadic argument type cannot be inferred in call to " + std::string(name));
+                this->report(
+                    this->module_.exprs[expr.args[i].value].range,
+                    sema_variadic_argument_type_infer_message(name)
+                );
             } else if (this->is_array_containing_value_type(actual)) {
-                this->report(this->module_.exprs[expr.args[i].value].range, "array-containing type cannot be passed by value");
+                this->report(this->module_.exprs[expr.args[i].value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
             }
         }
     }

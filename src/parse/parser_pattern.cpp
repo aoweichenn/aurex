@@ -1,5 +1,7 @@
 #include <aurex/parse/parser_pattern_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
+
 namespace aurex::parse {
 
 namespace {
@@ -43,7 +45,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
         pattern.range = first.range;
         if (this->match(TokenKind::dot)) {
             const syntax::Token& case_name =
-                this->expect_identifier_recovered("expected enum case name after '.'");
+                this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
             pattern.enum_name = first.text;
             pattern.case_name = case_name.text;
             pattern.scoped = true;
@@ -65,7 +67,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     if (this->match(TokenKind::dot)) {
         const syntax::Token& dot = this->previous();
         const syntax::Token& case_name =
-            this->expect_identifier_recovered("expected enum case name after '.'");
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::enum_case;
         pattern.case_name = case_name.text;
@@ -76,7 +78,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
         }
         return this->session_.module.push_pattern(pattern);
     }
-    this->report_here("expected match pattern");
+    this->report_here(std::string(PARSER_EXPECT_MATCH_PATTERN));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::wildcard;
     pattern.range = this->peek().range;
@@ -86,7 +88,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
 
 void PatternParser::parse_payload_bindings(syntax::PatternNode& pattern) {
     if (this->check(TokenKind::r_paren)) {
-        this->report_here("expected payload binding name");
+        this->report_here(std::string(PARSER_EXPECT_PAYLOAD_BINDING));
     } else {
         while (!this->is_eof()) {
             const syntax::Token& binding = this->expect_payload_binding_name();
@@ -108,7 +110,7 @@ void PatternParser::parse_payload_bindings(syntax::PatternNode& pattern) {
 const syntax::Token& PatternParser::expect_payload_binding_name() {
     return this->expect_recovered(
         TokenKind::identifier,
-        "expected payload binding name",
+        std::string(PARSER_EXPECT_PAYLOAD_BINDING),
         RecoveryContext::pattern_payload
     );
 }
@@ -116,7 +118,7 @@ const syntax::Token& PatternParser::expect_payload_binding_name() {
 const syntax::Token& PatternParser::expect_payload_binding_end() {
     return this->expect_recovered(
         TokenKind::r_paren,
-        "expected ')' after payload binding",
+        std::string(PARSER_EXPECT_PAYLOAD_BINDING_END),
         RecoveryContext::pattern_payload
     );
 }

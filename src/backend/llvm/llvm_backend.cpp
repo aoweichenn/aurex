@@ -1,5 +1,7 @@
 #include <aurex/backend/llvm_backend.hpp>
 
+#include <aurex/backend/backend_messages.hpp>
+
 #include <backend/llvm/llvm_backend_internal.hpp>
 
 #include <utility>
@@ -8,7 +10,7 @@ namespace aurex::backend {
 
 base::Result<LlvmIrOutput> emit_llvm_ir(const LlvmEmitRequest& request) {
     if (request.module == nullptr) {
-        return base::Result<LlvmIrOutput>::fail({base::ErrorCode::internal_error, "LLVM backend received a null IR module"});
+        return base::Result<LlvmIrOutput>::fail({base::ErrorCode::internal_error, std::string(BACKEND_LLVM_NULL_MODULE)});
     }
     LlvmEmitter emitter(*request.module, request.module_name);
     return emitter.run();

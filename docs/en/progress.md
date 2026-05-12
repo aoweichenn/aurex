@@ -79,7 +79,10 @@ LLVM lowering, native execution, and installed compiler execution.
   explicit `enum Status: u8 { ok = 0, err = 1 }` remains available for C-like
   repr enums. Generic enums are still intentionally unsupported in M2.
 - There is no `unsafe` block / `unsafe fn` boundary yet.
-- Slices, function types, raw/multiline/byte strings, and Unicode scalar
+- Slices and function pointer types are implemented in the M2 core. Function
+  types are non-capturing function pointer values, including
+  `fn(...) -> T` and `extern c fn(...) -> T`; capturing closures are still
+  intentionally out of scope. Raw/multiline/byte strings and Unicode scalar
   `char` literals are not implemented yet.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2

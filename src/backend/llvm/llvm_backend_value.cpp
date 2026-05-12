@@ -67,6 +67,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         return this->emit_string_literal(value.text, true);
     case ValueKind::constant_ref:
         return this->emit_constant_ref(value);
+    case ValueKind::function_ref:
+        return this->emit_function_ref(value);
     case ValueKind::alloca:
         return this->builder_.CreateAlloca(this->pointee_llvm_type(value.type), nullptr, value.name);
     case ValueKind::load:
@@ -159,6 +161,10 @@ llvm::Value* LlvmEmitter::emit_constant_ref(const Value& value) {
     );
 }
 
+llvm::Value* LlvmEmitter::emit_function_ref(const Value& value) {
+    return this->functions_.at(value.call_target.value);
+}
+
 llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
     switch (value.kind) {
     case ValueKind::integer_literal:
@@ -187,6 +193,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
         const GlobalConstant* constant = find_global_constant(this->source_, value.constant);
         return this->emit_constant_initializer(this->source_.values[constant->initializer.value]);
     }
+    case ValueKind::function_ref:
+        return llvm::cast<llvm::Constant>(this->emit_function_ref(value));
     case ValueKind::unary:
         return this->emit_constant_unary(value);
     case ValueKind::binary:
@@ -472,12 +480,26 @@ llvm::Value* LlvmEmitter::emit_binary(const Value& value) {
 }
 
 llvm::Value* LlvmEmitter::emit_call(const Value& value) {
-    llvm::Function* target = this->functions_.at(value.call_target.value);
     std::vector<llvm::Value*> args;
     args.reserve(value.args.size());
     for (const ValueId arg : value.args) {
         args.push_back(this->get(arg));
     }
+    if (!is_valid(value.call_target)) {
+        llvm::Value* callee = this->get(value.object);
+        llvm::FunctionType* type = this->llvm_function_type(this->source_.values[value.object.value].type);
+        if (this->source_.types.is_void(value.type)) {
+            return this->builder_.CreateCall(type, callee, args);
+        }
+        return this->builder_.CreateCall(
+            type,
+            callee,
+            args,
+            value.name.empty() ? "" : value.name + LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX
+        );
+    }
+
+    llvm::Function* target = this->functions_.at(value.call_target.value);
     if (this->source_.types.is_void(value.type)) {
         return this->builder_.CreateCall(target, args);
     }

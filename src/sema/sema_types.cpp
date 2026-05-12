@@ -63,6 +63,7 @@ enum class TypeResolveActionKind {
     build_pointer,
     build_array,
     build_slice,
+    build_function,
 };
 
 struct TypeResolveAction {
@@ -70,7 +71,10 @@ struct TypeResolveAction {
     syntax::TypeId type = syntax::INVALID_TYPE_ID;
     bool opaque_allowed_as_pointee = false;
     syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
+    syntax::FunctionCallConv function_call_conv = syntax::FunctionCallConv::aurex;
+    bool function_is_variadic = false;
     std::optional<base::u64> array_count {};
+    base::usize function_param_count = 0;
 };
 
 [[nodiscard]] BuiltinType map_builtin(const syntax::PrimitiveTypeKind kind) noexcept {
@@ -96,6 +100,10 @@ struct TypeResolveAction {
 
 [[nodiscard]] PointerMutability map_mutability(const syntax::PointerMutability mutability) noexcept {
     return mutability == syntax::PointerMutability::mut ? PointerMutability::mut : PointerMutability::const_;
+}
+
+[[nodiscard]] FunctionCallConv map_function_call_conv(const syntax::FunctionCallConv call_conv) noexcept {
+    return call_conv == syntax::FunctionCallConv::c ? FunctionCallConv::c : FunctionCallConv::aurex;
 }
 
 [[nodiscard]] bool builtin_is_unsigned(const BuiltinType type) noexcept {
@@ -338,11 +346,11 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
     std::vector<TypeHandle> values;
     actions.reserve(SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY);
     values.reserve(SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY);
-    actions.push_back(TypeResolveAction {
-        TypeResolveActionKind::resolve,
-        type_id,
-        opaque_allowed_as_pointee,
-    });
+    TypeResolveAction root;
+    root.kind = TypeResolveActionKind::resolve;
+    root.type = type_id;
+    root.opaque_allowed_as_pointee = opaque_allowed_as_pointee;
+    actions.push_back(root);
 
     while (!actions.empty()) {
         const TypeResolveAction action = actions.back();
@@ -378,45 +386,70 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 break;
             }
             case syntax::TypeKind::pointer:
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::build_pointer,
-                    action.type,
-                    action.opaque_allowed_as_pointee,
-                    type.pointer_mutability,
-                });
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::resolve,
-                    type.pointee,
-                    true,
-                });
+            {
+                TypeResolveAction build;
+                build.kind = TypeResolveActionKind::build_pointer;
+                build.type = action.type;
+                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                build.pointer_mutability = type.pointer_mutability;
+                actions.push_back(build);
+                TypeResolveAction resolve_pointee;
+                resolve_pointee.kind = TypeResolveActionKind::resolve;
+                resolve_pointee.type = type.pointee;
+                resolve_pointee.opaque_allowed_as_pointee = true;
+                actions.push_back(resolve_pointee);
                 break;
+            }
             case syntax::TypeKind::array:
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::build_array,
-                    action.type,
-                    action.opaque_allowed_as_pointee,
-                    syntax::PointerMutability::const_,
-                    type.array_count,
-                });
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::resolve,
-                    type.array_element,
-                    false,
-                });
+            {
+                TypeResolveAction build;
+                build.kind = TypeResolveActionKind::build_array;
+                build.type = action.type;
+                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                build.array_count = type.array_count;
+                actions.push_back(build);
+                TypeResolveAction resolve_element;
+                resolve_element.kind = TypeResolveActionKind::resolve;
+                resolve_element.type = type.array_element;
+                actions.push_back(resolve_element);
                 break;
+            }
             case syntax::TypeKind::slice:
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::build_slice,
-                    action.type,
-                    action.opaque_allowed_as_pointee,
-                    type.slice_mutability,
-                });
-                actions.push_back(TypeResolveAction {
-                    TypeResolveActionKind::resolve,
-                    type.slice_element,
-                    false,
-                });
+            {
+                TypeResolveAction build;
+                build.kind = TypeResolveActionKind::build_slice;
+                build.type = action.type;
+                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                build.pointer_mutability = type.slice_mutability;
+                actions.push_back(build);
+                TypeResolveAction resolve_element;
+                resolve_element.kind = TypeResolveActionKind::resolve;
+                resolve_element.type = type.slice_element;
+                actions.push_back(resolve_element);
                 break;
+            }
+            case syntax::TypeKind::function:
+            {
+                TypeResolveAction build;
+                build.kind = TypeResolveActionKind::build_function;
+                build.type = action.type;
+                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                build.function_call_conv = type.function_call_conv;
+                build.function_is_variadic = type.function_is_variadic;
+                build.function_param_count = type.function_params.size();
+                actions.push_back(build);
+                TypeResolveAction resolve_return;
+                resolve_return.kind = TypeResolveActionKind::resolve;
+                resolve_return.type = type.function_return;
+                actions.push_back(resolve_return);
+                for (base::usize index = type.function_params.size(); index > 0; --index) {
+                    TypeResolveAction resolve_param;
+                    resolve_param.kind = TypeResolveActionKind::resolve;
+                    resolve_param.type = type.function_params[index - 1];
+                    actions.push_back(resolve_param);
+                }
+                break;
+            }
             case syntax::TypeKind::named: {
                 const TypeHandle resolved = this->resolve_named_type(
                     action.type,
@@ -450,6 +483,53 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             const TypeHandle element = values.back();
             values.pop_back();
             const TypeHandle resolved = this->checked_.types.slice(map_mutability(action.pointer_mutability), element);
+            this->record_syntax_type_handle(action.type, resolved);
+            values.push_back(resolved);
+            break;
+        }
+        case TypeResolveActionKind::build_function: {
+            std::vector<TypeHandle> params(action.function_param_count, INVALID_TYPE_HANDLE);
+            TypeHandle return_type = INVALID_TYPE_HANDLE;
+            if (!values.empty()) {
+                return_type = values.back();
+                values.pop_back();
+            }
+            for (base::usize index = action.function_param_count; index > 0; --index) {
+                if (values.empty()) {
+                    break;
+                }
+                params[index - 1] = values.back();
+                values.pop_back();
+            }
+            if (action.function_is_variadic &&
+                action.function_call_conv != syntax::FunctionCallConv::c) {
+                this->report(
+                    this->module_.types[action.type.value].range,
+                    std::string(SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY)
+                );
+            }
+            for (const TypeHandle param : params) {
+                if (!this->is_valid_storage_type(param)) {
+                    this->report(this->module_.types[action.type.value].range, std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE));
+                }
+                if (this->checked_.types.is_array(param) || this->checked_.types.contains_array(param)) {
+                    this->report(this->module_.types[action.type.value].range, std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED));
+                }
+            }
+            if (is_valid(return_type) &&
+                !this->checked_.types.is_void(return_type) &&
+                !this->is_valid_storage_type(return_type)) {
+                this->report(this->module_.types[action.type.value].range, std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE));
+            }
+            if (this->checked_.types.is_array(return_type) || this->checked_.types.contains_array(return_type)) {
+                this->report(this->module_.types[action.type.value].range, std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED));
+            }
+            const TypeHandle resolved = this->checked_.types.function(
+                map_function_call_conv(action.function_call_conv),
+                action.function_is_variadic,
+                std::move(params),
+                return_type
+            );
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;
@@ -641,6 +721,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
             info.kind == TypeKind::slice ||
+            info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
@@ -772,6 +853,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         if (dependency_info.kind == TypeKind::builtin ||
             dependency_info.kind == TypeKind::pointer ||
             dependency_info.kind == TypeKind::slice ||
+            dependency_info.kind == TypeKind::function ||
             dependency_info.kind == TypeKind::generic_param ||
             dependency_info.kind == TypeKind::opaque_struct ||
             results.contains(dependency.value)) {
@@ -829,6 +911,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
             info.kind == TypeKind::slice ||
+            info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
@@ -1008,6 +1091,8 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
             return builtin_layout(info.builtin);
         case TypeKind::pointer:
             return TypeAbiLayout {sizeof(void*), alignof(void*)};
+        case TypeKind::function:
+            return TypeAbiLayout {sizeof(void*), alignof(void*)};
         case TypeKind::slice:
             return TypeAbiLayout {sizeof(void*) + sizeof(std::size_t), alignof(void*)};
         case TypeKind::array: {
@@ -1065,6 +1150,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
             info.kind == TypeKind::slice ||
+            info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param ||
             info.kind == TypeKind::opaque_struct) {
             stack.push_back(TypeLayoutFrame {dependency, {}, TypeLayoutFrameStage::enter});
@@ -1104,6 +1190,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         case TypeKind::builtin:
         case TypeKind::pointer:
         case TypeKind::slice:
+        case TypeKind::function:
         case TypeKind::generic_param:
         case TypeKind::opaque_struct:
             break;
@@ -1134,6 +1221,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
             info.kind == TypeKind::slice ||
+            info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param ||
             info.kind == TypeKind::opaque_struct) {
             layouts[frame.type.value] = finish_type(frame.type, layouts);

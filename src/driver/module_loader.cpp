@@ -119,6 +119,10 @@ void remap_type_node(syntax::TypeNode& node, const IdMap& map) {
     node.pointee = remap_type(node.pointee, map);
     node.array_element = remap_type(node.array_element, map);
     node.slice_element = remap_type(node.slice_element, map);
+    for (syntax::TypeId& param : node.function_params) {
+        param = remap_type(param, map);
+    }
+    node.function_return = remap_type(node.function_return, map);
 }
 
 void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {

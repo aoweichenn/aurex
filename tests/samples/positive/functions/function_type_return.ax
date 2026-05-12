@@ -1,0 +1,15 @@
+module function_type_return;
+
+type UnaryOp = fn(i32) -> i32;
+
+fn inc(value: i32) -> i32 {
+    return value + 1;
+}
+
+fn choose() -> UnaryOp {
+    return inc;
+}
+
+fn main() -> i32 {
+    return choose()(41) - 42;
+}

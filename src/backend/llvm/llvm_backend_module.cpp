@@ -118,12 +118,7 @@ void LlvmEmitter::declare_functions() {
 }
 
 llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, const Function& function) {
-    std::vector<llvm::Type*> params;
-    params.reserve(function.signature_params.size());
-    for (const FunctionParam& param : function.signature_params) {
-        params.push_back(llvm_type(param.type));
-    }
-    llvm::FunctionType* function_type = llvm::FunctionType::get(llvm_type(function.return_type), params, function.is_variadic);
+    llvm::FunctionType* function_type = this->llvm_function_type(function);
 
     if (function.linkage == Linkage::extern_c) {
         if (const auto found = extern_functions_.find(function.symbol); found != extern_functions_.end()) {

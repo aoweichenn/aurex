@@ -15,6 +15,7 @@ namespace llvm {
 class BasicBlock;
 class DataLayout;
 class Function;
+class FunctionType;
 class GlobalVariable;
 class PHINode;
 class Type;
@@ -69,6 +70,7 @@ private:
     [[nodiscard]] llvm::Value* emit_value(ValueId id);
     [[nodiscard]] llvm::Value* emit_runtime_value(const Value& value);
     [[nodiscard]] llvm::Value* emit_constant_ref(const Value& value);
+    [[nodiscard]] llvm::Value* emit_function_ref(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_initializer(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_unary(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_binary(const Value& value);
@@ -90,6 +92,8 @@ private:
     [[nodiscard]] llvm::Value* float_constant(sema::TypeHandle type, const std::string& text);
     [[nodiscard]] llvm::Value* emit_string_literal(const std::string& literal, bool c_string);
     [[nodiscard]] llvm::Value* global_string_pointer(const std::string& text, const std::string& name, bool add_null);
+    [[nodiscard]] llvm::FunctionType* llvm_function_type(const Function& function);
+    [[nodiscard]] llvm::FunctionType* llvm_function_type(sema::TypeHandle function_type);
     [[nodiscard]] llvm::Type* llvm_type(sema::TypeHandle type);
     [[nodiscard]] llvm::Type* pointee_llvm_type(sema::TypeHandle pointer_type);
     [[nodiscard]] sema::TypeHandle pointee_type(ValueId value) const noexcept;

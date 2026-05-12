@@ -73,6 +73,7 @@ void rewrite_terminator(Terminator& terminator, const ValueReplacementMap& repla
            module.types.is_integer(pointee) ||
            module.types.is_float(pointee) ||
            module.types.is_pointer(pointee) ||
+           module.types.is_function(pointee) ||
            module.types.get(pointee).kind == sema::TypeKind::enum_;
 }
 
@@ -151,6 +152,7 @@ struct FunctionUseInfo {
                 }
                 break;
             case ValueKind::call:
+                record_slot_use(value.object, block_index, false);
                 for (const ValueId arg : value.args) {
                     record_slot_use(arg, block_index, false);
                 }
@@ -200,6 +202,7 @@ struct FunctionUseInfo {
             case ValueKind::byte_literal:
             case ValueKind::undef:
             case ValueKind::constant_ref:
+            case ValueKind::function_ref:
             case ValueKind::alloca:
             case ValueKind::size_of:
             case ValueKind::align_of:

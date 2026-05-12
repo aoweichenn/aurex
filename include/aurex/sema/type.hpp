@@ -43,6 +43,7 @@ enum class TypeKind {
     pointer,
     array,
     slice,
+    function,
     struct_,
     enum_,
     opaque_struct,
@@ -54,6 +55,11 @@ enum class PointerMutability {
     const_,
 };
 
+enum class FunctionCallConv {
+    aurex,
+    c,
+};
+
 struct TypeInfo {
     TypeKind kind = TypeKind::builtin;
     BuiltinType builtin = BuiltinType::void_;
@@ -63,6 +69,10 @@ struct TypeInfo {
     TypeHandle array_element = INVALID_TYPE_HANDLE;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeHandle slice_element = INVALID_TYPE_HANDLE;
+    FunctionCallConv function_call_conv = FunctionCallConv::aurex;
+    bool function_is_variadic = false;
+    std::vector<TypeHandle> function_params;
+    TypeHandle function_return = INVALID_TYPE_HANDLE;
     TypeHandle enum_underlying = INVALID_TYPE_HANDLE;
     TypeHandle enum_payload_storage = INVALID_TYPE_HANDLE;
     base::u64 enum_payload_size = 0;
@@ -82,6 +92,12 @@ public:
     [[nodiscard]] TypeHandle pointer(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
     [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
+    [[nodiscard]] TypeHandle function(
+        FunctionCallConv call_conv,
+        bool is_variadic,
+        std::vector<TypeHandle> params,
+        TypeHandle return_type
+    );
     [[nodiscard]] TypeHandle named_struct(std::string name, std::string c_name, bool contains_array);
     [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
@@ -101,6 +117,7 @@ public:
     [[nodiscard]] bool is_pointer(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_slice(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_function(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
     [[nodiscard]] std::string c_name(TypeHandle type) const;
@@ -134,6 +151,20 @@ private:
         }
     };
 
+    struct FunctionKey {
+        FunctionCallConv call_conv = FunctionCallConv::aurex;
+        bool is_variadic = false;
+        std::vector<base::u32> params;
+        base::u32 return_type = TypeHandle::INVALID_VALUE;
+
+        [[nodiscard]] bool operator==(const FunctionKey& other) const noexcept {
+            return call_conv == other.call_conv &&
+                   is_variadic == other.is_variadic &&
+                   params == other.params &&
+                   return_type == other.return_type;
+        }
+    };
+
     struct PointerKeyHash {
         [[nodiscard]] std::size_t operator()(const PointerKey& key) const noexcept;
     };
@@ -146,12 +177,17 @@ private:
         [[nodiscard]] std::size_t operator()(const SliceKey& key) const noexcept;
     };
 
+    struct FunctionKeyHash {
+        [[nodiscard]] std::size_t operator()(const FunctionKey& key) const noexcept;
+    };
+
     [[nodiscard]] TypeHandle push(TypeInfo info);
 
     std::vector<TypeInfo> types_;
     std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
     std::unordered_map<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
     std::unordered_map<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
+    std::unordered_map<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
     std::unordered_map<std::string, TypeHandle> generic_param_types_;
 };
 

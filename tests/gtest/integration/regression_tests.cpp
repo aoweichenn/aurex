@@ -456,7 +456,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "expression_index_not_generic_call.ax"))).output,
-        "callee must be a function name"
+        "callee must be a function value"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_bound_rejected_m2.ax"))).output,

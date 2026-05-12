@@ -40,6 +40,7 @@ if(BUILD_TESTING)
         tests/support/test_support.cpp
         tests/gtest/backend/llvm_constants_tests.cpp
         tests/gtest/backend/llvm_runtime_tests.cpp
+        tests/gtest/backend/llvm_types_whitebox_tests.cpp
         tests/gtest/backend/llvm_utility_tests.cpp
         tests/gtest/base/base_tests.cpp
         tests/gtest/driver/cli_argument_tests.cpp

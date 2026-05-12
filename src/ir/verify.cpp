@@ -156,6 +156,9 @@ private:
             worklist.push_back(make_constant_value_work_item(constant->initializer, constant->type));
             break;
         }
+        case ValueKind::function_ref:
+            this->verify_function_ref(*value);
+            break;
         case ValueKind::aggregate: {
             this->verify_constant_aggregate(*value, worklist);
             break;
@@ -407,6 +410,9 @@ private:
         case ValueKind::constant_ref:
             static_cast<void>(this->verify_constant_ref(*value));
             break;
+        case ValueKind::function_ref:
+            this->verify_function_ref(*value);
+            break;
         case ValueKind::load:
             this->verify_load(*value);
             break;
@@ -617,9 +623,7 @@ private:
     void verify_call(const Value& value) {
         this->verify_type(value.type, "call result");
         if (!is_valid(value.call_target)) {
-            this->fail(value.name.empty()
-                ? std::string(IR_VERIFY_CALL_NO_TARGET)
-                : ir_verify_unresolved_call_target_message(value.name));
+            this->verify_indirect_call(value);
             return;
         }
         if (value.call_target.value >= this->module_.functions.size()) {
@@ -645,6 +649,87 @@ private:
         if (!this->module_.types.same(value.type, target.return_type)) {
             this->fail(ir_verify_call_result_type_message(target.symbol));
         }
+    }
+
+    void verify_indirect_call(const Value& value) {
+        if (!is_valid(value.object)) {
+            this->fail(value.name.empty()
+                ? std::string(IR_VERIFY_CALL_NO_TARGET)
+                : ir_verify_unresolved_call_target_message(value.name));
+            return;
+        }
+        this->verify_value_id(value.object, "indirect call callee");
+        const Value* callee = this->get(value.object);
+        if (callee == nullptr) {
+            return;
+        }
+        if (!this->module_.types.is_function(callee->type)) {
+            this->fail(std::string(IR_VERIFY_INDIRECT_CALL_CALLEE_FUNCTION));
+            return;
+        }
+        const sema::TypeInfo& function = this->module_.types.get(callee->type);
+        if (function.function_is_variadic
+                ? value.args.size() < function.function_params.size()
+                : value.args.size() != function.function_params.size()) {
+            this->fail(std::string(IR_VERIFY_INDIRECT_CALL_ARGUMENT_COUNT));
+            return;
+        }
+        for (base::usize i = 0; i < function.function_params.size(); ++i) {
+            this->verify_value_type(value.args[i], function.function_params[i], "indirect call argument");
+        }
+        for (base::usize i = function.function_params.size(); i < value.args.size(); ++i) {
+            const Value* arg = this->get(value.args[i]);
+            if (arg == nullptr) {
+                this->fail(std::string(IR_VERIFY_CALL_ARGUMENT_OUT_OF_RANGE));
+                continue;
+            }
+            this->verify_type(arg->type, "variadic indirect call argument");
+        }
+        if (!this->module_.types.same(value.type, function.function_return)) {
+            this->fail(std::string(IR_VERIFY_INDIRECT_CALL_RESULT_TYPE));
+        }
+    }
+
+    void verify_function_ref(const Value& value) {
+        this->verify_type(value.type, "function reference type");
+        if (!this->module_.types.is_function(value.type)) {
+            this->fail(std::string(IR_VERIFY_FUNCTION_REF_TYPE));
+            return;
+        }
+        if (!is_valid(value.call_target)) {
+            this->fail(value.name.empty()
+                ? std::string(IR_VERIFY_CALL_NO_TARGET)
+                : ir_verify_unresolved_call_target_message(value.name));
+            return;
+        }
+        if (value.call_target.value >= this->module_.functions.size()) {
+            this->fail(std::string(IR_VERIFY_CALL_TARGET_OUT_OF_RANGE));
+            return;
+        }
+        if (!this->function_type_matches_target(value.type, this->module_.functions[value.call_target.value])) {
+            this->fail(std::string(IR_VERIFY_FUNCTION_REF_SIGNATURE));
+        }
+    }
+
+    [[nodiscard]] bool function_type_matches_target(const sema::TypeHandle type, const Function& target) const noexcept {
+        if (!this->module_.types.is_function(type)) {
+            return false;
+        }
+        const sema::TypeInfo& function = this->module_.types.get(type);
+        const bool target_is_c = target.call_conv == AbiCallConv::c;
+        const bool type_is_c = function.function_call_conv == sema::FunctionCallConv::c;
+        if (target_is_c != type_is_c ||
+            function.function_is_variadic != target.is_variadic ||
+            function.function_params.size() != target.signature_params.size() ||
+            !this->module_.types.same(function.function_return, target.return_type)) {
+            return false;
+        }
+        for (base::usize i = 0; i < function.function_params.size(); ++i) {
+            if (!this->module_.types.same(function.function_params[i], target.signature_params[i].type)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     [[nodiscard]] bool same_signature(const Function& lhs, const Function& rhs) const noexcept {

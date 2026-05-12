@@ -77,6 +77,7 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
             }
             break;
         case sema::TypeKind::pointer:
+        case sema::TypeKind::function:
             result = llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE);
             break;
         case sema::TypeKind::slice:
@@ -111,6 +112,32 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
         result = llvm::ArrayType::get(result, *count);
     }
     return result;
+}
+
+llvm::FunctionType* LlvmEmitter::llvm_function_type(const Function& function) {
+    std::vector<llvm::Type*> params;
+    params.reserve(function.signature_params.size());
+    for (const FunctionParam& param : function.signature_params) {
+        params.push_back(this->llvm_type(param.type));
+    }
+    return llvm::FunctionType::get(this->llvm_type(function.return_type), params, function.is_variadic);
+}
+
+llvm::FunctionType* LlvmEmitter::llvm_function_type(const sema::TypeHandle function_type) {
+    if (!this->source_.types.is_function(function_type)) {
+        return llvm::FunctionType::get(llvm::Type::getVoidTy(this->context_), false);
+    }
+    const sema::TypeInfo& function = this->source_.types.get(function_type);
+    std::vector<llvm::Type*> params;
+    params.reserve(function.function_params.size());
+    for (const sema::TypeHandle param : function.function_params) {
+        params.push_back(this->llvm_type(param));
+    }
+    return llvm::FunctionType::get(
+        this->llvm_type(function.function_return),
+        params,
+        function.function_is_variadic
+    );
 }
 
 llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type) {

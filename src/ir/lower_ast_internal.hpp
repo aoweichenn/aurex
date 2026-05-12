@@ -169,6 +169,7 @@ private:
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_indirect_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, sema::TypeHandle callee_type);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);

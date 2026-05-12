@@ -1430,4 +1430,88 @@ TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
     });
 }
 
+TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls) {
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle callback = module.types.function(sema::FunctionCallConv::c, false, {}, i32);
+        Function target = make_function(module, "target", i32, Linkage::extern_c, AbiCallConv::c);
+        module.functions.push_back(target);
+
+        Value function_ref;
+        function_ref.kind = ValueKind::function_ref;
+        function_ref.type = callback;
+        function_ref.name = module.functions[0].symbol;
+        function_ref.call_target = FunctionId {0};
+        const ValueId ref_id = add_value(module, function_ref);
+        [[maybe_unused]] const GlobalConstantId constant =
+            add_global_constant(module, GlobalConstant {"target", "test_target_ref", callback, ref_id});
+        EXPECT_TRUE(ir::verify_module(module));
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle callback = module.types.function(sema::FunctionCallConv::aurex, false, {}, i32);
+        Function caller = make_function(module, "caller", i32);
+        FunctionBuilder builder {module, caller};
+        const ValueId callee = builder.add(typed_value(ValueKind::undef, callback));
+        Value call;
+        call.kind = ValueKind::call;
+        call.type = i32;
+        call.object = callee;
+        const ValueId call_id = builder.add(call);
+        append_return_block(builder, caller, {callee, call_id}, call_id);
+        module.functions.push_back(caller);
+        EXPECT_TRUE(ir::verify_module(module));
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle callback = module.types.function(sema::FunctionCallConv::c, false, {i32}, i32);
+        Function target = make_function(module, "target", i32, Linkage::extern_c, AbiCallConv::c);
+        module.functions.push_back(target);
+
+        Value function_ref;
+        function_ref.kind = ValueKind::function_ref;
+        function_ref.type = callback;
+        function_ref.name = module.functions[0].symbol;
+        function_ref.call_target = FunctionId {0};
+        const ValueId ref_id = add_value(module, function_ref);
+        [[maybe_unused]] const GlobalConstantId constant =
+            add_global_constant(module, GlobalConstant {"target", "test_bad_target_ref", callback, ref_id});
+        expect_error_contains(ir::verify_module(module), "function reference result type does not match target signature");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function caller = make_function(module, "caller", i32);
+        FunctionBuilder builder {module, caller};
+        const ValueId callee = builder.add(integer_value(i32, IR_VERIFIER_LITERAL_ONE));
+        Value call;
+        call.kind = ValueKind::call;
+        call.type = i32;
+        call.object = callee;
+        const ValueId call_id = builder.add(call);
+        append_return_block(builder, caller, {callee, call_id}, call_id);
+        module.functions.push_back(caller);
+        expect_error_contains(ir::verify_module(module), "indirect call callee must be a function value");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle callback = module.types.function(sema::FunctionCallConv::aurex, false, {i32}, i32);
+        Function caller = make_function(module, "caller", i32);
+        FunctionBuilder builder {module, caller};
+        const ValueId callee = builder.add(typed_value(ValueKind::undef, callback));
+        Value call;
+        call.kind = ValueKind::call;
+        call.type = i32;
+        call.object = callee;
+        const ValueId call_id = builder.add(call);
+        append_return_block(builder, caller, {callee, call_id}, call_id);
+        module.functions.push_back(caller);
+        expect_error_contains(ir::verify_module(module), "indirect call has wrong argument count");
+    }
+}
+
 } // namespace aurex::test

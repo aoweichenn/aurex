@@ -212,11 +212,18 @@ result::ResultI32I32
 当前没有：
 
 - tuple。
-- slice 类型。
 - safe reference `&T` / `&mut T`。
-- function pointer 类型。
 - never type。
 - type-level const generic。
+
+函数指针类型已作为 M2 基础类型落地：
+
+```aurex
+type BinaryOp = fn(i32, i32) -> i32;
+type CCallback = extern c fn(*mut void, ...) -> i32;
+```
+
+当前语义是非捕获函数指针：函数名可以作为值赋给 `fn(...) -> T` / `extern c fn(...) -> T`，局部变量、参数和 struct 字段中的函数指针可以用普通调用语法间接调用。调用约定、参数类型、variadic 标记和返回类型都是类型身份的一部分；variadic 函数类型只允许 `extern c fn`。完整 closure/lambda 捕获仍不属于 M2。
 
 ### 顶层 item
 
@@ -722,7 +729,6 @@ M2 已删除：
 
 ### 类型系统未完成
 
-- function pointer / function type。
 - tuple / tuple struct / anonymous record。
 - `where` 约束。
 - trait / interface / protocol。
@@ -868,14 +874,16 @@ let all = bytes[:];
 
    `char` 应表示 Unicode scalar value，不是 `u8` 或 C `char`。`b"abc"` 的结果类型需要和 array literal / slice 设计一起冻结。
 
-2. function pointer / function type
+2. function pointer / function type（已补入 M2 基线）
 
-   完整 closure 捕获可以暂缓，但非捕获函数类型和 C callback 是基础系统能力：
+   完整 closure 捕获继续暂缓；非捕获函数类型和 C callback 已作为基础系统能力落地：
 
    ```aurex
    type Cmp = fn(a: *const void, b: *const void) -> i32;
    type Callback = extern c fn(ctx: *mut void) -> void;
    ```
+
+   函数名可作为函数指针值，局部变量、参数和 struct 字段里的函数指针可直接调用；`...` variadic 只允许出现在 `extern c fn` 类型中。
 
 3. tuple / destructuring declaration
 
@@ -953,7 +961,7 @@ let all = bytes[:];
 - package。
 - 库层重建。
 
-这些都重要，但不应抢在 string/function type 这些基础语法之前。default private、ADT-first enum、array literal / repeat literal 和 slice type/expression 已完成，不再作为未完成前置项。
+这些都重要，但不应抢在 string、function type 这些基础语法之前。default private、ADT-first enum、array literal / repeat literal、slice type/expression 和 function pointer / function type 已完成，不再作为未完成前置项。
 
 ## 近期执行建议
 
@@ -963,8 +971,7 @@ let all = bytes[:];
 2. 给 `unsafe` 设计最小 AST/语义框架和 unsafe-only 诊断清单。
 3. 冻结 `str` 的 safe/unsafe 边界，并明确和普通 slice 的关系。
 4. 设计 raw/multiline/bytes string、Unicode scalar `char`。
-5. 设计 function pointer / function type。
-6. 再进入 tuple/destructuring、pattern 扩展、`where` / 非资源类 capability；资源语义暂缓。
+5. 再进入 tuple/destructuring、pattern 扩展、`where` / 非资源类 capability；资源语义暂缓。
 
 ## 参考
 

@@ -5,6 +5,7 @@
 
 #include <limits>
 #include <string_view>
+#include <utility>
 
 namespace aurex::parse {
 
@@ -218,6 +219,9 @@ syntax::TypeId TypeParser::parse_type() {
 }
 
 syntax::TypeId TypeParser::parse_type_atom() {
+    if (this->check(TokenKind::kw_fn) || this->check(TokenKind::kw_extern)) {
+        return this->parse_function_type();
+    }
     if (is_primitive_type_token(this->peek().kind)) {
         return this->parse_primitive_type();
     }
@@ -286,6 +290,116 @@ bool TypeParser::recover_generic_type_arg_separator() {
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
         return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
+}
+
+syntax::TypeId TypeParser::parse_function_type() {
+    syntax::FunctionCallConv call_conv = syntax::FunctionCallConv::aurex;
+    base::SourceRange begin_range = this->peek().range;
+    if (this->match(TokenKind::kw_extern)) {
+        begin_range = this->previous().range;
+        call_conv = syntax::FunctionCallConv::c;
+        this->expect_recovered(
+            TokenKind::kw_c,
+            std::string(PARSER_EXPECT_C_AFTER_EXTERN_FUNCTION_TYPE),
+            RecoveryContext::type_annotation
+        );
+        this->expect_recovered(
+            TokenKind::kw_fn,
+            std::string(PARSER_EXPECT_FN_AFTER_EXTERN_C_FUNCTION_TYPE),
+            RecoveryContext::parameter_list_start
+        );
+        return this->parse_function_type_after_fn(begin_range, call_conv);
+    }
+
+    const syntax::Token& begin = this->expect(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_KEYWORD));
+    return this->parse_function_type_after_fn(begin.range, call_conv);
+}
+
+syntax::TypeId TypeParser::parse_function_type_after_fn(
+    const base::SourceRange begin_range,
+    const syntax::FunctionCallConv call_conv
+) {
+    this->expect_recovered(
+        TokenKind::l_paren,
+        std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST),
+        RecoveryContext::parameter_list_start
+    );
+    std::vector<syntax::TypeId> params;
+    bool is_variadic = false;
+    if (!this->check(TokenKind::r_paren)) {
+        this->parse_function_type_params(params, is_variadic);
+    }
+    this->expect_recovered(
+        TokenKind::r_paren,
+        std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST_END),
+        RecoveryContext::parameter
+    );
+    const syntax::Token& arrow = this->expect_recovered(
+        TokenKind::arrow,
+        std::string(PARSER_EXPECT_FUNCTION_TYPE_RETURN_ARROW),
+        RecoveryContext::type_annotation
+    );
+    const syntax::TypeId return_type = this->parse_type();
+
+    syntax::TypeNode type;
+    type.kind = syntax::TypeKind::function;
+    type.range = this->merge(begin_range, this->type_range_or(return_type, arrow.range));
+    type.function_call_conv = call_conv;
+    type.function_is_variadic = is_variadic;
+    type.function_params = std::move(params);
+    type.function_return = return_type;
+    return this->session_.module.push_type(std::move(type));
+}
+
+void TypeParser::parse_function_type_params(std::vector<syntax::TypeId>& params, bool& is_variadic) {
+    while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+        if (this->match(TokenKind::ellipsis)) {
+            is_variadic = true;
+            if (!this->check(TokenKind::r_paren)) {
+                this->report_here(std::string(PARSER_VARIADIC_MARKER_MUST_BE_LAST));
+                this->synchronize(RecoveryContext::parameter);
+            }
+            break;
+        }
+        if (this->check(TokenKind::identifier) && this->check_next(TokenKind::colon)) {
+            this->advance();
+            this->expect_type_annotation_colon(std::string(PARSER_EXPECT_PARAMETER_TYPE_COLON));
+        }
+        params.push_back(this->parse_type());
+        this->reset_panic();
+        if (!this->recover_function_type_param_separator(is_variadic)) {
+            break;
+        }
+    }
+}
+
+bool TypeParser::recover_function_type_param_separator(bool& is_variadic) {
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        if (this->match(TokenKind::ellipsis)) {
+            is_variadic = true;
+            if (!this->check(TokenKind::r_paren)) {
+                this->report_here(std::string(PARSER_VARIADIC_MARKER_MUST_BE_LAST));
+                this->synchronize(RecoveryContext::parameter);
+            }
+            return false;
+        }
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::parameter)) {
+        this->synchronize(RecoveryContext::parameter);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
     }
     this->reset_panic();
     return false;

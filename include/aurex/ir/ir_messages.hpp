@@ -194,6 +194,21 @@ inline constexpr std::string_view IR_VERIFY_CONSTANT_REF_ID =
 inline constexpr std::string_view IR_VERIFY_CONSTANT_REF_TYPE =
     "constant reference type mismatch";
 
+inline constexpr std::string_view IR_VERIFY_FUNCTION_REF_TYPE =
+    "function reference result must be a function type";
+
+inline constexpr std::string_view IR_VERIFY_FUNCTION_REF_SIGNATURE =
+    "function reference result type does not match target signature";
+
+inline constexpr std::string_view IR_VERIFY_INDIRECT_CALL_CALLEE_FUNCTION =
+    "indirect call callee must be a function value";
+
+inline constexpr std::string_view IR_VERIFY_INDIRECT_CALL_ARGUMENT_COUNT =
+    "indirect call has wrong argument count";
+
+inline constexpr std::string_view IR_VERIFY_INDIRECT_CALL_RESULT_TYPE =
+    "indirect call result type mismatch";
+
 inline constexpr std::string_view IR_VERIFY_FIELD_ADDRESS_POINTER =
     "field address result is not a pointer";
 

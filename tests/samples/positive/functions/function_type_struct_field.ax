@@ -1,0 +1,14 @@
+module function_type_struct_field;
+
+struct Ops {
+    add: fn(i32, i32) -> i32;
+}
+
+fn add(left: i32, right: i32) -> i32 {
+    return left + right;
+}
+
+fn main() -> i32 {
+    let ops: Ops = Ops { add: add };
+    return ops.add(40, 2) - 42;
+}

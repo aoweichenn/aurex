@@ -17,6 +17,9 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     const TypeHandle usize = builtin(module, BuiltinType::usize);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
+    const TypeHandle array_i32 = module.types.array(2, i32);
+    const TypeHandle slice_i32 = module.types.slice(PointerMutability::mut, i32);
+    const TypeHandle callback_type = module.types.function(sema::FunctionCallConv::aurex, false, {i32}, i32);
     const TypeHandle str_type = builtin(module, BuiltinType::str);
     const TypeHandle record_type = module.types.named_struct("dump.Record", "dump_Record", false);
     const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
@@ -45,6 +48,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     FunctionBuilder builder {module, function};
     const ValueId lhs = builder.add(integer_value(i32, "7"));
     const ValueId rhs = builder.add(integer_value(i32, "3"));
+    const ValueId len = builder.add(integer_value(usize, "2"));
     const ValueId flag = builder.add(bool_value(module, true));
 
     Value pointer;
@@ -81,7 +85,58 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     missing_constant.constant = INVALID_GLOBAL_CONSTANT_ID;
     const ValueId fallback_constant = builder.add(missing_constant);
 
-    std::vector<ValueId> values {lhs, rhs, flag, ptr_value, text, string_data, string_byte_len, rebuilt_string, fallback_constant};
+    Value function_ref;
+    function_ref.kind = ValueKind::function_ref;
+    function_ref.type = callback_type;
+    function_ref.name = "dump_callback";
+    const ValueId callback = builder.add(function_ref);
+    Value indirect_call;
+    indirect_call.kind = ValueKind::call;
+    indirect_call.type = i32;
+    indirect_call.object = callback;
+    indirect_call.args = {lhs};
+    const ValueId callback_call = builder.add(indirect_call);
+
+    Value array_aggregate;
+    array_aggregate.kind = ValueKind::aggregate;
+    array_aggregate.type = array_i32;
+    array_aggregate.elements = {lhs, rhs};
+    const ValueId array_value = builder.add(array_aggregate);
+    Value slice;
+    slice.kind = ValueKind::slice;
+    slice.type = slice_i32;
+    slice.lhs = ptr_value;
+    slice.rhs = len;
+    const ValueId slice_value = builder.add(slice);
+    Value slice_data;
+    slice_data.kind = ValueKind::slice_data;
+    slice_data.type = ptr_i32;
+    slice_data.object = slice_value;
+    const ValueId slice_data_value = builder.add(slice_data);
+    Value slice_len;
+    slice_len.kind = ValueKind::slice_len;
+    slice_len.type = usize;
+    slice_len.object = slice_value;
+    const ValueId slice_len_value = builder.add(slice_len);
+
+    std::vector<ValueId> values {
+        lhs,
+        rhs,
+        len,
+        flag,
+        ptr_value,
+        text,
+        string_data,
+        string_byte_len,
+        rebuilt_string,
+        fallback_constant,
+        callback,
+        callback_call,
+        array_value,
+        slice_value,
+        slice_data_value,
+        slice_len_value,
+    };
     for (const UnaryOp op : {UnaryOp::bitwise_not, UnaryOp::address_of, UnaryOp::dereference}) {
         Value unary;
         unary.kind = ValueKind::unary;
@@ -125,6 +180,12 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     paddr.cast_kind = CastKind::paddr;
     paddr.lhs = lhs;
     values.push_back(builder.add(paddr));
+    Value ptraddr = cast;
+    ptraddr.type = usize;
+    ptraddr.target_type = usize;
+    ptraddr.cast_kind = CastKind::ptr_addr;
+    ptraddr.lhs = ptr_value;
+    values.push_back(builder.add(ptraddr));
 
     const BlockId entry = builder.block("entry");
     const BlockId dead = builder.block("dead");
@@ -146,6 +207,12 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "strblen",
         "strraw",
         "const_ref @fallback_constant",
+        "function_ref @dump_callback",
+        "call %",
+        "aggregate [",
+        "slice ",
+        "slice_data",
+        "slice_len",
         "bitnot",
         "addr_of",
         "deref",
@@ -162,6 +229,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "and",
         "bitcast",
         "ptrat",
+        "ptraddr",
         "unreachable",
         "br ^invalid",
     });

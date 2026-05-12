@@ -32,6 +32,11 @@ enum class PointerMutability {
     const_,
 };
 
+enum class FunctionCallConv {
+    aurex,
+    c,
+};
+
 enum class Visibility {
     public_,
     private_,
@@ -43,6 +48,7 @@ enum class TypeKind {
     pointer,
     array,
     slice,
+    function,
 };
 
 struct GenericParamDecl {
@@ -64,6 +70,10 @@ struct TypeNode {
     TypeId array_element = INVALID_TYPE_ID;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeId slice_element = INVALID_TYPE_ID;
+    FunctionCallConv function_call_conv = FunctionCallConv::aurex;
+    bool function_is_variadic = false;
+    std::vector<TypeId> function_params;
+    TypeId function_return = INVALID_TYPE_ID;
 };
 
 enum class ExprKind {

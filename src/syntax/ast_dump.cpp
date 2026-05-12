@@ -190,6 +190,25 @@ std::string type_label(const AstModule& module, const TypeId id) {
         out << "[]" << (type.slice_mutability == PointerMutability::mut ? "mut " : "const ");
         out << type_label(module, type.slice_element);
         break;
+    case TypeKind::function:
+        if (type.function_call_conv == FunctionCallConv::c) {
+            out << "extern c ";
+        }
+        out << "fn(";
+        for (base::usize i = 0; i < type.function_params.size(); ++i) {
+            if (i > 0) {
+                out << ", ";
+            }
+            out << type_label(module, type.function_params[i]);
+        }
+        if (type.function_is_variadic) {
+            if (!type.function_params.empty()) {
+                out << ", ";
+            }
+            out << "...";
+        }
+        out << ") -> " << type_label(module, type.function_return);
+        break;
     }
     return out.str();
 }

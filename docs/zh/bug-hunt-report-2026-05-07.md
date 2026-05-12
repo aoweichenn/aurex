@@ -877,7 +877,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 
 现象：
 
-- `alias::Generic<T>` 在推断、pattern、literal 路径中没有稳定保留模块 alias。
+- `alias::Generic[T]` 在推断、pattern、literal 路径中没有稳定保留模块 alias。
 - 可能解析到本地同名泛型或另一个模块的同名泛型。
 
 预期：
@@ -1560,7 +1560,7 @@ IR verifier 过去只检查了一部分 value id / type 存在性，缺少几类
 
 问题：
 
-泛型函数参数类型模式中，`ga::Box<T>` / `ga::Choice<T>` 这类限定泛型类型在推断时仍走“可见模块查找 `Box` / `Choice`”路径。只要同一作用域同时 import 另一个模块的同名泛型类型，就会误报 ambiguous，甚至有绑定到错误模板的风险。
+泛型函数参数类型模式中，`ga::Box[T]` / `ga::Choice[T]` 这类限定泛型类型在推断时仍走“可见模块查找 `Box` / `Choice`”路径。只要同一作用域同时 import 另一个模块的同名泛型类型，就会误报 ambiguous，甚至有绑定到错误模板的风险。
 
 示例：
 
@@ -1568,12 +1568,12 @@ IR verifier 过去只检查了一部分 value id / type 存在性，缺少几类
 import samplelib.generic_a as ga;
 import samplelib.generic_b as gb;
 
-fn read_box<T>(box: ga::Box<T>) -> T {
+fn read_box[T](box: ga::Box[T]) -> T {
     return box.value;
 }
 ```
 
-旧逻辑会把 `ga::Box<T>` 当成未限定的 `Box<T>` 参与泛型推断，看到 `generic_a.Box` 和 `generic_b.Box` 后报 ambiguous。
+旧逻辑会把 `ga::Box[T]` 当成未限定的 `Box[T]` 参与泛型推断，看到 `generic_a.Box` 和 `generic_b.Box` 后报 ambiguous。
 
 修复：
 

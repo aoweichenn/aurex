@@ -107,6 +107,8 @@ bool token_starts_type(const TokenKind kind) noexcept {
     case TokenKind::identifier:
     case TokenKind::star:
     case TokenKind::l_bracket:
+    case TokenKind::kw_fn:
+    case TokenKind::kw_extern:
     case TokenKind::kw_void:
     case TokenKind::kw_bool:
     case TokenKind::kw_i8:

@@ -1,0 +1,7 @@
+module function_type_array_return;
+
+type Bad = fn() -> [4]i32;
+
+fn main() -> i32 {
+    return 0;
+}

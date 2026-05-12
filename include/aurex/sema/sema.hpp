@@ -175,6 +175,11 @@ private:
         std::string_view name,
         TypeHandle expected_type
     );
+    [[nodiscard]] TypeHandle analyze_function_value_call_expr(
+        syntax::ExprId expr_id,
+        const syntax::ExprNode& expr,
+        std::string_view name
+    );
     [[nodiscard]] TypeHandle analyze_explicit_generic_function_call_expr(
         syntax::ExprId expr_id,
         const syntax::ExprNode& expr,
@@ -299,6 +304,8 @@ private:
     [[nodiscard]] bool is_array_containing_value_type(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
     [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
+    [[nodiscard]] TypeHandle function_type_from_signature(const FunctionSignature& signature);
+    [[nodiscard]] TypeHandle function_type_from_symbol(const Symbol& symbol, base::SourceRange range);
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;

@@ -403,6 +403,24 @@ inline constexpr std::string_view PARSER_EXPECT_TYPE_POINTER_MUTABILITY =
 inline constexpr std::string_view PARSER_EXPECT_TYPE_SLICE_MUTABILITY =
     "expected 'mut' or 'const' after '[]'";
 
+inline constexpr std::string_view PARSER_EXPECT_C_AFTER_EXTERN_FUNCTION_TYPE =
+    "expected 'c' after 'extern' in function type";
+
+inline constexpr std::string_view PARSER_EXPECT_FN_AFTER_EXTERN_C_FUNCTION_TYPE =
+    "expected 'fn' after 'extern c' in function type";
+
+inline constexpr std::string_view PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST =
+    "expected '(' after function type";
+
+inline constexpr std::string_view PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST_END =
+    "expected ')' after function type parameter list";
+
+inline constexpr std::string_view PARSER_EXPECT_FUNCTION_TYPE_RETURN_ARROW =
+    "expected '->' after function type parameter list";
+
+inline constexpr std::string_view PARSER_EXPECT_FUNCTION_TYPE_PARAM_SEPARATOR =
+    "expected ',' or ')' after function type parameter";
+
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LENGTH =
     "expected array length";
 

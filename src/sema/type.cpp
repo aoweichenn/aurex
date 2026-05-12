@@ -19,6 +19,22 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX = "[]const ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_FN_PREFIX = "fn(";
+constexpr std::string_view SEMA_TYPE_DISPLAY_EXTERN_C_FN_PREFIX = "extern c fn(";
+constexpr std::string_view SEMA_TYPE_DISPLAY_FN_VARIADIC = "...";
+constexpr std::string_view SEMA_TYPE_DISPLAY_FN_RETURN = ") -> ";
+constexpr std::size_t SEMA_TYPE_HASH_MULTIPLIER = 1099511628211ULL;
+
+enum class TypeDisplayTaskKind {
+    type,
+    text,
+};
+
+struct TypeDisplayTask {
+    TypeDisplayTaskKind kind = TypeDisplayTaskKind::type;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    std::string text;
+};
 
 [[nodiscard]] bool builtin_is_integer(const BuiltinType type) noexcept {
     switch (type) {
@@ -122,6 +138,35 @@ TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle
     info.slice_element = element;
     const TypeHandle handle = this->push(std::move(info));
     this->slice_types_.emplace(key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::function(
+    const FunctionCallConv call_conv,
+    const bool is_variadic,
+    std::vector<TypeHandle> params,
+    const TypeHandle return_type
+) {
+    FunctionKey key;
+    key.call_conv = call_conv;
+    key.is_variadic = is_variadic;
+    key.params.reserve(params.size());
+    for (const TypeHandle param : params) {
+        key.params.push_back(param.value);
+    }
+    key.return_type = return_type.value;
+    if (const auto found = this->function_types_.find(key); found != this->function_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info;
+    info.kind = TypeKind::function;
+    info.function_call_conv = call_conv;
+    info.function_is_variadic = is_variadic;
+    info.function_params = std::move(params);
+    info.function_return = return_type;
+    const TypeHandle handle = this->push(std::move(info));
+    this->function_types_.emplace(std::move(key), handle);
     return handle;
 }
 
@@ -248,52 +293,105 @@ bool TypeTable::is_slice(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::slice;
 }
 
+bool TypeTable::is_function(const TypeHandle type) const noexcept {
+    return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::function;
+}
+
 bool TypeTable::contains_array(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].contains_array;
 }
 
 std::string TypeTable::display_name(const TypeHandle type) const {
     std::string name;
-    TypeHandle current = type;
-    while (true) {
+    std::vector<TypeDisplayTask> pending;
+    pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, type, {}});
+    while (!pending.empty()) {
+        TypeDisplayTask task = std::move(pending.back());
+        pending.pop_back();
+        if (task.kind == TypeDisplayTaskKind::text) {
+            name.append(task.text);
+            continue;
+        }
+        const TypeHandle current = task.type;
         if (!is_valid(current) || current.value >= this->types_.size()) {
             name.append(SEMA_TYPE_DISPLAY_INVALID_NAME);
-            return name;
+            continue;
         }
         const TypeInfo& info = this->types_[current.value];
         switch (info.kind) {
         case TypeKind::builtin:
             name += builtin_display_name(info.builtin);
-            return name;
+            break;
         case TypeKind::pointer:
             name.append(info.pointer_mutability == PointerMutability::mut
                 ? SEMA_TYPE_DISPLAY_POINTER_MUT_PREFIX
                 : SEMA_TYPE_DISPLAY_POINTER_CONST_PREFIX);
-            current = info.pointee;
+            pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.pointee, {}});
             break;
         case TypeKind::array:
             name.append(SEMA_TYPE_DISPLAY_ARRAY_OPEN);
             name += std::to_string(info.array_count);
             name.append(SEMA_TYPE_DISPLAY_ARRAY_CLOSE);
-            current = info.array_element;
+            pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.array_element, {}});
             break;
         case TypeKind::slice:
             name.append(info.slice_mutability == PointerMutability::mut
                 ? SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX
                 : SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX);
-            current = info.slice_element;
+            pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.slice_element, {}});
             break;
+        case TypeKind::function: {
+            name.append(info.function_call_conv == FunctionCallConv::c
+                ? SEMA_TYPE_DISPLAY_EXTERN_C_FN_PREFIX
+                : SEMA_TYPE_DISPLAY_FN_PREFIX);
+            pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.function_return, {}});
+            pending.push_back(TypeDisplayTask {
+                TypeDisplayTaskKind::text,
+                INVALID_TYPE_HANDLE,
+                std::string(SEMA_TYPE_DISPLAY_FN_RETURN),
+            });
+            if (info.function_is_variadic) {
+                pending.push_back(TypeDisplayTask {
+                    TypeDisplayTaskKind::text,
+                    INVALID_TYPE_HANDLE,
+                    std::string(SEMA_TYPE_DISPLAY_FN_VARIADIC),
+                });
+                if (!info.function_params.empty()) {
+                    pending.push_back(TypeDisplayTask {
+                        TypeDisplayTaskKind::text,
+                        INVALID_TYPE_HANDLE,
+                        ", ",
+                    });
+                }
+            }
+            for (base::usize index = info.function_params.size(); index > 0; --index) {
+                pending.push_back(TypeDisplayTask {
+                    TypeDisplayTaskKind::type,
+                    info.function_params[index - 1],
+                    {},
+                });
+                if (index > 1) {
+                    pending.push_back(TypeDisplayTask {
+                        TypeDisplayTaskKind::text,
+                        INVALID_TYPE_HANDLE,
+                        ", ",
+                    });
+                }
+            }
+            break;
+        }
         case TypeKind::struct_:
         case TypeKind::enum_:
         case TypeKind::opaque_struct:
         case TypeKind::generic_param:
             name += info.name;
-            return name;
+            break;
         default:
             name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
-            return name;
+            break;
         }
     }
+    return name;
 }
 
 std::string TypeTable::c_name(const TypeHandle type) const {
@@ -325,12 +423,22 @@ std::size_t TypeTable::PointerKeyHash::operator()(const PointerKey& key) const n
 
 std::size_t TypeTable::ArrayKeyHash::operator()(const ArrayKey& key) const noexcept {
     return static_cast<std::size_t>(key.element) ^
-           (static_cast<std::size_t>(key.count) * static_cast<std::size_t>(1099511628211ULL));
+           (static_cast<std::size_t>(key.count) * SEMA_TYPE_HASH_MULTIPLIER);
 }
 
 std::size_t TypeTable::SliceKeyHash::operator()(const SliceKey& key) const noexcept {
     return (static_cast<std::size_t>(key.element) << 1) ^
            static_cast<std::size_t>(key.mutability == PointerMutability::mut ? 1U : 0U);
+}
+
+std::size_t TypeTable::FunctionKeyHash::operator()(const FunctionKey& key) const noexcept {
+    std::size_t hash = static_cast<std::size_t>(key.return_type) ^
+        (static_cast<std::size_t>(key.call_conv == FunctionCallConv::c ? 1U : 0U) << 1) ^
+        (static_cast<std::size_t>(key.is_variadic ? 1U : 0U) << 2);
+    for (const base::u32 param : key.params) {
+        hash = (hash * SEMA_TYPE_HASH_MULTIPLIER) ^ static_cast<std::size_t>(param);
+    }
+    return hash;
 }
 
 } // namespace aurex::sema

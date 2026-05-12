@@ -460,8 +460,8 @@ TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (symbol->kind == SymbolKind::function) {
-        this->report(expr.range, sema_function_name_value_message(expr.text));
-        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        this->record_expr_c_name(expr_id, symbol->c_name);
+        return this->record_expr_type(expr_id, this->function_type_from_symbol(*symbol, expr.range));
     }
     this->record_expr_c_name(expr_id, symbol->c_name);
     return this->record_expr_type(expr_id, symbol->type);
@@ -875,9 +875,9 @@ void SemanticAnalyzer::finalize_inferred_return(
     this->validate_function_return_type(function, return_type);
     if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
         found->second.return_type = return_type;
-    }
-    if (const auto global = this->global_values_.find(key); global != this->global_values_.end()) {
-        global->second.type = return_type;
+        if (const auto global = this->global_values_.find(key); global != this->global_values_.end()) {
+            global->second.type = this->function_type_from_signature(found->second);
+        }
     }
 }
 

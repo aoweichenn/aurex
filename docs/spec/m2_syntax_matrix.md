@@ -36,6 +36,10 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `[]const i32` | yes | Immutable borrowed slice, fat pointer value |
 | Type | `[]mut i32` | yes | Mutable borrowed slice, fat pointer value |
 | Type | `[]i32` | no | Slice mutability is required |
+| Type | `fn(i32, i32) -> i32` | yes | Non-capturing Aurex function pointer type |
+| Type | `fn(a: i32, b: i32) -> i32` | yes | Names are accepted in function type params |
+| Type | `extern c fn(*const u8, ...) -> i32` | yes | C ABI function pointer; variadic only for `extern c fn` |
+| Type | `fn(i32, ...) -> i32` | no | Variadic function types require `extern c fn` |
 | Type | `Box[i32]` | yes | Generic type arguments |
 | Type | `Box[]` | no | Empty type arguments rejected |
 | Type | `Box<i32>` | no | `<>` are not generic delimiters |
@@ -46,6 +50,8 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `arr[:r]` | yes | Omitted start defaults to zero |
 | Expr | `arr[l:]` | yes | Omitted end defaults to array length or source slice length |
 | Expr | `arr[:]` | yes | Full slice |
+| Expr | `let op: fn(i32) -> i32 = f; op(1)` | yes | Function name as value and indirect call |
+| Expr | `table.callback(1)` | yes | Struct fields of function type can be called |
 | Expr | `id::[i32](1)` | yes | Explicit generic function call |
 | Expr | `id[i32](1)` | no | Use `id::[i32](...)` |
 | Expr | `Point { x: 1 }` | yes | Struct literal |

@@ -260,6 +260,83 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
     ASSERT_EQ(module.functions[0].blocks.size(), 1U);
 }
 
+TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses) {
+    Module module;
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle usize = builtin(module, BuiltinType::usize);
+    const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+    const TypeHandle array_i32 = module.types.array(2, i32);
+    const TypeHandle slice_i32 = module.types.slice(PointerMutability::mut, i32);
+
+    Function function = make_function(module, "slice_uses", i32);
+    FunctionBuilder builder {module, function};
+    Value pointer_slot;
+    pointer_slot.kind = ValueKind::alloca;
+    pointer_slot.type = ptr(module, PointerMutability::mut, ptr_i32);
+    const ValueId pointer_slot_id = builder.add(pointer_slot);
+    Value length_slot;
+    length_slot.kind = ValueKind::alloca;
+    length_slot.type = ptr(module, PointerMutability::mut, usize);
+    const ValueId length_slot_id = builder.add(length_slot);
+    Value loaded_pointer;
+    loaded_pointer.kind = ValueKind::load;
+    loaded_pointer.type = ptr_i32;
+    loaded_pointer.object = pointer_slot_id;
+    const ValueId loaded_pointer_id = builder.add(loaded_pointer);
+    Value loaded_length;
+    loaded_length.kind = ValueKind::load;
+    loaded_length.type = usize;
+    loaded_length.object = length_slot_id;
+    const ValueId loaded_length_id = builder.add(loaded_length);
+    Value slice_value;
+    slice_value.kind = ValueKind::slice;
+    slice_value.type = slice_i32;
+    slice_value.lhs = loaded_pointer_id;
+    slice_value.rhs = loaded_length_id;
+    const ValueId slice_id = builder.add(slice_value);
+    Value slice_data;
+    slice_data.kind = ValueKind::slice_data;
+    slice_data.type = ptr_i32;
+    slice_data.object = slice_id;
+    const ValueId slice_data_id = builder.add(slice_data);
+    Value slice_len;
+    slice_len.kind = ValueKind::slice_len;
+    slice_len.type = usize;
+    slice_len.object = slice_id;
+    const ValueId slice_len_id = builder.add(slice_len);
+    Value array_value;
+    array_value.kind = ValueKind::aggregate;
+    array_value.type = array_i32;
+    array_value.elements = {
+        builder.add(integer_value(i32, "1")),
+        builder.add(integer_value(i32, "2")),
+    };
+    const ValueId array_id = builder.add(array_value);
+    const ValueId result = builder.add(integer_value(i32, "0"));
+    const BlockId entry = builder.block("entry");
+    function.blocks[entry.value].values = {
+        pointer_slot_id,
+        length_slot_id,
+        loaded_pointer_id,
+        loaded_length_id,
+        slice_id,
+        slice_data_id,
+        slice_len_id,
+        array_value.elements[0],
+        array_value.elements[1],
+        array_id,
+        result,
+    };
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    function.blocks[entry.value].terminator.value = result;
+    module.functions.push_back(function);
+
+    PassPipelineOptions options;
+    options.optimization_level = ir::OptimizationLevel::basic;
+    ASSERT_TRUE(ir::run_pass_pipeline(module, options));
+    EXPECT_EQ(module.functions[0].blocks[0].values.size(), 9U);
+}
+
 TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch) {
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);

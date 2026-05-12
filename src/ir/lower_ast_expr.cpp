@@ -255,6 +255,14 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode
         value.type = this->module_.constants[constant->second.value].type;
         return this->append_value(value);
     }
+    if (const auto function = this->function_symbols_.find(symbol); function != this->function_symbols_.end()) {
+        Value value;
+        value.kind = ValueKind::function_ref;
+        value.name = symbol;
+        value.call_target = function->second;
+        value.type = this->expr_type(expr_id);
+        return this->append_value(value);
+    }
     Value value;
     value.kind = ValueKind::load;
     value.name = expr.text.empty() ? "<global>" : std::string(expr.text);
@@ -322,6 +330,12 @@ ValueId Lowerer::lower_call_expr(
     value.kind = ValueKind::call;
     value.type = this->expr_type(expr_id);
     const CallTarget target = this->call_target(expr.callee);
+    const sema::TypeHandle callee_type = this->expr_type(expr.callee);
+    if (!is_valid(target.function) &&
+        sema::is_valid(callee_type) &&
+        this->module_.types.is_function(callee_type)) {
+        return this->lower_indirect_call_expr(expr_id, expr, callee_type);
+    }
     value.name = target.symbol;
     value.call_target = target.function;
     base::usize param_offset = 0;
@@ -354,6 +368,31 @@ ValueId Lowerer::lower_call_expr(
         this->module_.functions[target.function.value].is_variadic;
     for (base::usize i = 0; i < expr.args.size(); ++i) {
         sema::TypeHandle param_type = this->call_param_type(target.function, i + param_offset);
+        const ValueId arg = this->lower_expr(expr.args[i], param_type);
+        if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < this->module_.values.size()) {
+            param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
+        }
+        value.args.push_back(this->coerce_value(arg, param_type));
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_indirect_call_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const sema::TypeHandle callee_type
+) {
+    const sema::TypeInfo& function = this->module_.types.get(callee_type);
+    Value value;
+    value.kind = ValueKind::call;
+    value.type = this->expr_type(expr_id);
+    value.object = this->lower_expr(expr.callee);
+    value.name = "<indirect>";
+    const bool variadic_call = function.function_is_variadic;
+    for (base::usize i = 0; i < expr.args.size(); ++i) {
+        sema::TypeHandle param_type = i < function.function_params.size()
+            ? function.function_params[i]
+            : sema::INVALID_TYPE_HANDLE;
         const ValueId arg = this->lower_expr(expr.args[i], param_type);
         if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < this->module_.values.size()) {
             param_type = this->variadic_argument_type(this->module_.values[arg.value].type);

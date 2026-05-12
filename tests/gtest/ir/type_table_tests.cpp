@@ -1,4 +1,5 @@
 #include <array>
+#include <vector>
 
 #include <aurex/ir/enum_layout.hpp>
 #include <gtest/support/ir_test_helpers.hpp>
@@ -18,6 +19,7 @@ constexpr base::usize TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT = 2;
 
 TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     Module module;
+    const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle u32 = builtin(module, BuiltinType::u32);
     const TypeHandle f64 = builtin(module, BuiltinType::f64);
@@ -31,6 +33,36 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     const TypeHandle const_slice_i32 = module.types.slice(PointerMutability::const_, i32);
     const TypeHandle const_slice_i32_again = module.types.slice(PointerMutability::const_, i32);
     const TypeHandle mut_slice_i32 = module.types.slice(PointerMutability::mut, i32);
+    const TypeHandle function_i32_u32 = module.types.function(
+        sema::FunctionCallConv::aurex,
+        false,
+        std::vector<TypeHandle> {i32, u32},
+        i32
+    );
+    const TypeHandle function_i32_u32_again = module.types.function(
+        sema::FunctionCallConv::aurex,
+        false,
+        std::vector<TypeHandle> {i32, u32},
+        i32
+    );
+    const TypeHandle extern_variadic_function = module.types.function(
+        sema::FunctionCallConv::c,
+        true,
+        std::vector<TypeHandle> {const_ptr_i32},
+        i32
+    );
+    const TypeHandle function_void = module.types.function(
+        sema::FunctionCallConv::aurex,
+        false,
+        std::vector<TypeHandle> {},
+        void_type
+    );
+    const TypeHandle extern_variadic_void = module.types.function(
+        sema::FunctionCallConv::c,
+        true,
+        std::vector<TypeHandle> {},
+        void_type
+    );
     const std::string array_display = "[" + std::to_string(TYPE_TABLE_TEST_ARRAY_COUNT) + "]";
     const TypeHandle record_type = module.types.named_struct("unit.Pair", "unit_Pair", false);
     const TypeHandle enum_type = module.types.named_enum("unit.Tag", "unit_Tag");
@@ -41,6 +73,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.same(array_i32, array_i32_again));
     EXPECT_TRUE(module.types.same(const_slice_i32, const_slice_i32_again));
     EXPECT_FALSE(module.types.same(const_slice_i32, mut_slice_i32));
+    EXPECT_TRUE(module.types.same(function_i32_u32, function_i32_u32_again));
+    EXPECT_FALSE(module.types.same(function_i32_u32, extern_variadic_function));
     EXPECT_TRUE(module.types.is_integer(i32));
     EXPECT_TRUE(module.types.is_integer(u32));
     EXPECT_TRUE(module.types.is_float(f64));
@@ -48,6 +82,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.is_array(array_i32));
     EXPECT_TRUE(module.types.is_slice(const_slice_i32));
     EXPECT_TRUE(module.types.is_slice(mut_slice_i32));
+    EXPECT_TRUE(module.types.is_function(function_i32_u32));
     EXPECT_TRUE(module.types.contains_array(array_i32));
     EXPECT_FALSE(module.types.contains_array(const_slice_i32));
     EXPECT_EQ(module.types.display_name(ptr_i32), "*mut i32");
@@ -56,6 +91,11 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(module.types.display_name(ptr_array_i32), std::string("*mut ") + array_display + "i32");
     EXPECT_EQ(module.types.display_name(const_slice_i32), "[]const i32");
     EXPECT_EQ(module.types.display_name(mut_slice_i32), "[]mut i32");
+    EXPECT_EQ(module.types.display_name(function_i32_u32), "fn(i32, u32) -> i32");
+    EXPECT_EQ(module.types.display_name(extern_variadic_function), "extern c fn(*const i32, ...) -> i32");
+    EXPECT_EQ(module.types.display_name(function_void), "fn() -> void");
+    EXPECT_EQ(module.types.display_name(extern_variadic_void), "extern c fn(...) -> void");
+    EXPECT_EQ(module.types.c_name(function_void), "fn() -> void");
     EXPECT_EQ(module.types.display_name(record_type), "unit.Pair");
     EXPECT_EQ(module.types.display_name(enum_type), "unit.Tag");
     EXPECT_EQ(module.types.display_name(opaque), "unit.Opaque");

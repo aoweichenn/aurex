@@ -18,6 +18,19 @@ namespace {
     return c_name;
 }
 
+[[nodiscard]] FunctionCallConv signature_call_conv(const FunctionSignature& signature) noexcept {
+    return signature.is_extern_c || signature.is_export_c ? FunctionCallConv::c : FunctionCallConv::aurex;
+}
+
+[[nodiscard]] TypeHandle signature_function_type(TypeTable& types, const FunctionSignature& signature) {
+    return types.function(
+        signature_call_conv(signature),
+        signature.is_variadic,
+        signature.param_types,
+        signature.return_type
+    );
+}
+
 } // namespace
 
 FunctionRegistry::FunctionRegistry(
@@ -150,7 +163,7 @@ void FunctionRegistry::insert_function_value(const std::string& key, const Funct
         signature.name,
         signature.c_name,
         signature.module,
-        signature.return_type,
+        signature_function_type(this->checked_.types, signature),
         signature.range,
         false,
         signature.visibility,
@@ -167,7 +180,7 @@ void FunctionRegistry::refresh_function_value(const std::string& key, const Func
         return;
     }
     found->second.c_name = signature.c_name;
-    found->second.type = signature.return_type;
+    found->second.type = signature_function_type(this->checked_.types, signature);
     found->second.range = signature.range;
 }
 

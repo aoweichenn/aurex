@@ -1,0 +1,12 @@
+module function_type_return_mismatch;
+
+type ToI32 = fn(i32) -> i32;
+
+fn is_positive(value: i32) -> bool {
+    return value > 0;
+}
+
+fn main() -> i32 {
+    let op: ToI32 = is_positive;
+    return op(1);
+}

@@ -25,16 +25,11 @@ fn add[T: Add](a: T, b: T) -> T {
 fn copy[T](value: T) -> T where T: Copy {
     return value;
 }
-
-fn id<T>(value: T) -> T {
-    return value;
-}
-
-type Bad = Box<i32>;
 ```
 
-M2 uses `[]` for generic parameters and arguments. `<` and `>` are comparison
-tokens, not generic delimiters.
+M2 uses `[]` for generic parameters and arguments. Legacy angle-bracket generic
+forms are rejected because `<` and `>` are comparison tokens, not generic
+delimiters.
 
 Generic methods and generic C ABI/prototype functions are not supported by M2
 semantic analysis.
@@ -52,7 +47,7 @@ Not part of M2:
 Box[]
 foo::bar::Baz
 a.b.C
-fn(i32) -> i32
+fn(i32, ...) -> i32
 ```
 
 Rules:
@@ -60,7 +55,8 @@ Rules:
 - Pointer types require `*mut` or `*const`.
 - Array type length is an integer literal token.
 - Type paths are currently plain names or one-level `scope::Name`.
-- Function types are not part of M2.
+- Variadic function types require `extern c fn`; plain `fn(..., ...) -> T`
+  cannot use `...`.
 
 ## Expression Syntax
 
@@ -139,7 +135,7 @@ safe references
 advanced RAII/drop
 macro system
 lambda/function literal
-function type/function pointer syntax
+capturing closure
 async/effects
 full const expression language
 standard library abstraction layer

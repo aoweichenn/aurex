@@ -1,0 +1,12 @@
+module function_type_callconv_mismatch;
+
+type Callback = extern c fn(i32) -> i32;
+
+fn local(value: i32) -> i32 {
+    return value;
+}
+
+fn main() -> i32 {
+    let callback: Callback = local;
+    return callback(1);
+}

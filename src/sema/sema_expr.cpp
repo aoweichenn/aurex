@@ -279,8 +279,8 @@ TypeHandle SemanticAnalyzer::analyze_name_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (symbol->kind == SymbolKind::function) {
-        this->report(expr.range, sema_function_name_value_message(expr.text));
-        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        this->record_expr_c_name(expr_id, symbol->c_name);
+        return this->record_expr_type(expr_id, this->function_type_from_symbol(*symbol, expr.range));
     }
     this->record_expr_c_name(expr_id, symbol->c_name);
     return this->record_expr_type(expr_id, symbol->type);

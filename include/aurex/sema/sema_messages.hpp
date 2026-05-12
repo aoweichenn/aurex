@@ -37,6 +37,9 @@ inline constexpr std::string_view SEMA_GENERIC_METHODS_UNSUPPORTED =
 inline constexpr std::string_view SEMA_VARIADIC_EXTERN_C_ONLY =
     "variadic functions are only supported for extern c declarations";
 
+inline constexpr std::string_view SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY =
+    "variadic function types are only supported for extern c fn";
+
 inline constexpr std::string_view SEMA_IMPL_TARGET_NAMED_TYPE =
     "impl target must be a named type";
 
@@ -49,8 +52,20 @@ inline constexpr std::string_view SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT =
 inline constexpr std::string_view SEMA_FUNCTION_PARAMETER_STORAGE =
     "function parameter type is not valid storage";
 
+inline constexpr std::string_view SEMA_FUNCTION_TYPE_PARAMETER_STORAGE =
+    "function type parameter type is not valid storage";
+
+inline constexpr std::string_view SEMA_FUNCTION_TYPE_RETURN_STORAGE =
+    "function type return type is not valid storage";
+
 inline constexpr std::string_view SEMA_ARRAY_PARAMETER_UNSUPPORTED =
     "array type cannot be used as a function parameter";
+
+inline constexpr std::string_view SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED =
+    "array type cannot be used as a function type parameter";
+
+inline constexpr std::string_view SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED =
+    "array type cannot be used as a function type return";
 
 inline constexpr std::string_view SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED =
     "struct containing array cannot be passed by value";
@@ -182,7 +197,7 @@ inline constexpr std::string_view SEMA_EXPLICIT_GENERIC_CALL_SYNTAX =
     "explicit generic calls use '::[...]', for example id::[i32](...)";
 
 inline constexpr std::string_view SEMA_CALLEE_FUNCTION_NAME =
-    "callee must be a function name; explicit generic calls use '::[...]', for example id::[i32](...)";
+    "callee must be a function value; explicit generic calls use '::[...]', for example id::[i32](...)";
 
 inline constexpr std::string_view SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH =
     "enum payload constructor argument type mismatch";

@@ -104,6 +104,9 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         out << "const_ref @" << (constant == nullptr ? value.name : constant->symbol);
         break;
     }
+    case ValueKind::function_ref:
+        out << "function_ref @" << value.name;
+        break;
     case ValueKind::null_literal:
         out << "null";
         break;
@@ -139,7 +142,11 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         }
         break;
     case ValueKind::call:
-        out << "call " << value.name << "(";
+        if (is_valid(value.call_target)) {
+            out << "call " << value.name << "(";
+        } else {
+            out << "call " << value_ref(value.object) << "(";
+        }
         for (base::usize i = 0; i < value.args.size(); ++i) {
             if (i != 0) {
                 out << ", ";

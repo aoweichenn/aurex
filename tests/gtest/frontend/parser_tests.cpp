@@ -231,6 +231,26 @@ TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions) {
     });
 }
 
+TEST(CoreUnit, ParserAcceptsFunctionTypes) {
+    constexpr std::string_view source =
+        "module parser.function_types;\n"
+        "type BinaryOp = fn(left: i32, right: i32) -> i32;\n"
+        "type Callback = extern c fn(*mut void, ...) -> void;\n"
+        "struct Ops { run: fn(i32) -> i32; }\n"
+        "fn apply(op: fn(i32, i32) -> i32, value: i32) -> i32 {\n"
+        "  return op(value, value);\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "alias fn(i32, i32) -> i32",
+        "alias extern c fn(*mut void, ...) -> void",
+        "field priv run : fn(i32) -> i32",
+        "param op : fn(i32, i32) -> i32",
+    });
+}
+
 TEST(CoreUnit, ParserRejectsBareSliceType) {
     expect_parse_error(
         "module parser.bad_slice_type;\n"
@@ -1781,6 +1801,8 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::identifier,
             TokenKind::star,
             TokenKind::l_bracket,
+            TokenKind::kw_fn,
+            TokenKind::kw_extern,
             TokenKind::kw_void,
             TokenKind::kw_bool,
             TokenKind::kw_i8,
@@ -1798,7 +1820,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_str,
         }
     );
-    expect_false_on(parse::detail::token_starts_type, TokenKind::kw_fn);
+    expect_false_on(parse::detail::token_starts_type, TokenKind::kw_module);
 
     expect_true_all(
         parse::token_starts_match_arm,

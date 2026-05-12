@@ -73,6 +73,7 @@ enum class ValueKind {
     byte_literal,
     undef,
     constant_ref,
+    function_ref,
     alloca,
     load,
     store,

@@ -100,7 +100,18 @@ SliceTypePrefix
 
 TypeAtom
   = PrimitiveType
+  | FunctionType
   | QualifiedType ;
+
+FunctionType
+  = [ "extern" "c" ] "fn" "(" [ FunctionTypeParamList ] ")" "->" Type ;
+
+FunctionTypeParamList
+  = FunctionTypeParam { "," FunctionTypeParam } [ "," ]
+  | FunctionTypeParam { "," FunctionTypeParam } "," "..." ;
+
+FunctionTypeParam
+  = [ Identifier ":" ] Type ;
 
 QualifiedType
   = Identifier [ "::" Identifier ] [ GenericTypeArgs ] ;
@@ -130,6 +141,8 @@ str
 []const i32
 []mut u8
 *mut [4]i32
+fn(i32, i32) -> i32
+extern c fn(*const u8, ...) -> i32
 Box[i32]
 Pair[i32, bool]
 foo::Box[i32]
@@ -143,6 +156,14 @@ Rules:
 - Slices are fat values represented as data pointer plus length. They can be
   produced from arrays or other slices. `[]mut T` is assignable to `[]const T`;
   `[]const T` is not assignable to `[]mut T`.
+- Function types are non-capturing function pointer types. `fn(...) -> T` uses
+  the Aurex function ABI, while `extern c fn(...) -> T` uses the C ABI. Calling
+  convention, fixed parameter types, variadic marker, and return type are part
+  of type identity. Function type parameters may omit names; optional names are
+  documentation only in the type syntax.
+- Variadic function types are only supported for `extern c fn`.
+- Function type parameters and return types cannot be by-value arrays or
+  array-containing types.
 - Generic type arguments use `[]`; empty `[]` is rejected.
 - `<` and `>` are not generic delimiters.
 - Type paths are currently unqualified or one-level `scope::Name`.
@@ -183,6 +204,9 @@ Rules:
 - Variadic `...` is only supported for `extern c` declarations.
 - Generic functions are supported only for normal non-C non-prototype
   functions.
+- Function names can be used as non-capturing function pointer values. Values
+  whose type is `fn(...) -> T` or `extern c fn(...) -> T` can be called with the
+  normal call syntax.
 
 ## 6. Struct Declarations
 
@@ -493,7 +517,6 @@ Examples:
 Box[]
 Box<i32>
 foo::bar::Baz
-fn(i32) -> i32
 type Alias[T] = T;
 enum Option[T] { none }
 impl[T] Box[T] {}

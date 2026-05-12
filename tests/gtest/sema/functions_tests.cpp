@@ -106,6 +106,76 @@ TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
     expect_contains(require_failure(aurexc() + " --check " + q(not_last)).output, "variadic marker must be last in parameter list");
 }
 
+TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls) {
+    const fs::path basic = positive_sample("functions", "function_type_basic.ax");
+    const std::string basic_checked = require_success(aurexc() + " --emit=checked " + q(basic)).output;
+    expect_contains(basic_checked, "type priv BinaryOp = fn(i32, i32) -> i32");
+    const std::string basic_ir = require_success(aurexc() + " --emit=ir " + q(basic)).output;
+    expect_contains_all(basic_ir, {
+        "function_ref @m0_function_type_basic_add",
+        "call %"
+    });
+    const fs::path basic_bin = test_bin_root() / "function_type_basic";
+    require_success(aurexc() + " " + q(basic) + " -o " + q(basic_bin));
+    require_success(q(basic_bin));
+
+    const fs::path field = positive_sample("functions", "function_type_struct_field.ax");
+    const std::string field_ir = require_success(aurexc() + " --emit=ir " + q(field)).output;
+    expect_contains_all(field_ir, {
+        ".add: fn(i32, i32) -> i32",
+        "function_ref @m0_function_type_struct_field_add",
+        "call %"
+    });
+    const fs::path field_bin = test_bin_root() / "function_type_struct_field";
+    require_success(aurexc() + " " + q(field) + " -o " + q(field_bin));
+    require_success(q(field_bin));
+
+    const fs::path returned = positive_sample("functions", "function_type_return.ax");
+    const std::string returned_ir = require_success(aurexc() + " --emit=ir " + q(returned)).output;
+    expect_contains_all(returned_ir, {
+        "fn choose()",
+        " -> fn(i32) -> i32",
+        "function_ref @m0_function_type_return_inc",
+        "call %"
+    });
+    const fs::path returned_bin = test_bin_root() / "function_type_return";
+    require_success(aurexc() + " " + q(returned) + " -o " + q(returned_bin));
+    require_success(q(returned_bin));
+
+    const fs::path extern_c = positive_sample("functions", "function_type_extern_c.ax");
+    const std::string extern_checked = require_success(aurexc() + " --emit=checked " + q(extern_c)).output;
+    expect_contains_all(extern_checked, {
+        "type priv Strlen = extern c fn(*const u8) -> usize",
+        "type priv Snprintf = extern c fn(*mut u8, usize, *const u8, ...) -> i32"
+    });
+    require_success(aurexc() + " --emit=llvm-ir " + q(extern_c));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_arg_mismatch.ax"))).output,
+        "argument type mismatch in call to op"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_return_mismatch.ax"))).output,
+        "initializer type does not match declared type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_callconv_mismatch.ax"))).output,
+        "initializer type does not match declared type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_array_param.ax"))).output,
+        "array type cannot be used as a function type parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_array_return.ax"))).output,
+        "array type cannot be used as a function type return"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_variadic_non_extern.ax"))).output,
+        "variadic function types are only supported for extern c fn"
+    );
+}
+
 TEST_F(AurexIntegrationTest, PublicFunctionsRequireExplicitReturnType) {
     const fs::path source = negative_sample("functions", "pub_inferred_return.ax");
     expect_contains(

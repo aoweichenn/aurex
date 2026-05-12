@@ -27,6 +27,8 @@ TEST(CoreUnit, LlvmBackendUtilityHelpersCoverLiteralVariants) {
     EXPECT_EQ(parsed, 42U);
     EXPECT_TRUE(backend::parse_u64("0b1010", parsed));
     EXPECT_EQ(parsed, 10U);
+    EXPECT_FALSE(backend::parse_u64("", parsed));
+    EXPECT_FALSE(backend::parse_u64("0x", parsed));
     EXPECT_FALSE(backend::parse_u64("not-a-number", parsed));
 
     const std::string decoded = backend::decode_string_literal("\"\\0\\r\\t\\\\\\\"x\"", false);
@@ -71,6 +73,9 @@ TEST(CoreUnit, LlvmBackendUtilityHelpersCoverLiteralVariants) {
 
     EXPECT_EQ(backend::parse_byte_literal("b'\\\\'"), static_cast<std::uint64_t>('\\'));
     EXPECT_EQ(backend::parse_byte_literal("b'\\''"), static_cast<std::uint64_t>('\''));
+    EXPECT_EQ(backend::parse_byte_literal("b'\\0'"), 0U);
+    EXPECT_EQ(backend::parse_byte_literal("b'\\r'"), static_cast<std::uint64_t>('\r'));
+    EXPECT_EQ(backend::parse_byte_literal("b'\\t'"), static_cast<std::uint64_t>('\t'));
     EXPECT_EQ(backend::parse_byte_literal("b'\\x'"), static_cast<std::uint64_t>('x'));
     EXPECT_EQ(backend::parse_byte_literal("b''"), 0U);
 }

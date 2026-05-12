@@ -3,14 +3,40 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <string_view>
 
 namespace aurex::sema {
 
 namespace {
 
 constexpr base::usize SEMA_RECEIVER_ARGUMENT_COUNT = 1;
+constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
+
+[[nodiscard]] FunctionCallConv signature_call_conv(const FunctionSignature& signature) noexcept {
+    return signature.is_extern_c || signature.is_export_c ? FunctionCallConv::c : FunctionCallConv::aurex;
+}
 
 } // namespace
+
+TypeHandle SemanticAnalyzer::function_type_from_signature(const FunctionSignature& signature) {
+    return this->checked_.types.function(
+        signature_call_conv(signature),
+        signature.is_variadic,
+        signature.param_types,
+        signature.return_type
+    );
+}
+
+TypeHandle SemanticAnalyzer::function_type_from_symbol(const Symbol& symbol, const base::SourceRange range) {
+    const FunctionSignature* signature = syntax::is_valid(symbol.module)
+        ? this->find_function_in_module(symbol.module, symbol.name, range, false)
+        : nullptr;
+    if (signature == nullptr) {
+        return symbol.type;
+    }
+    this->ensure_function_return_known(*signature, range);
+    return this->function_type_from_signature(*signature);
+}
 
 TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
     const syntax::ExprNode& object,
@@ -37,9 +63,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
     const TypeHandle expected_type
 ) {
     if (!syntax::is_valid(expr.callee) ||
-        (this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::name &&
-         this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::field &&
-         this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::generic_apply)) {
+        expr.callee.value >= this->module_.exprs.size()) {
         this->report(expr.range, std::string(SEMA_CALLEE_FUNCTION_NAME));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
@@ -59,6 +83,14 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
             generic_callee,
             generic_callee.text
         );
+    }
+    if (callee.kind == syntax::ExprKind::name && callee.scope_name.empty()) {
+        if (const Symbol* local = this->symbols_.find(callee.text); local != nullptr) {
+            return this->analyze_function_value_call_expr(expr_id, expr, callee.text);
+        }
+    }
+    if (callee.kind != syntax::ExprKind::name && callee.kind != syntax::ExprKind::field) {
+        return this->analyze_function_value_call_expr(expr_id, expr, SEMA_FUNCTION_VALUE_CALL_NAME);
     }
     const std::string name = callee.kind == syntax::ExprKind::field
         ? std::string(callee.field_name)
@@ -201,6 +233,10 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         }
         signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
         if (signature == nullptr) {
+            const TypeHandle callee_type = this->analyze_expr(expr.callee);
+            if (this->checked_.types.is_function(callee_type)) {
+                return this->analyze_function_value_call_expr(expr_id, expr, name);
+            }
             signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true);
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
@@ -214,6 +250,30 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
     }
     this->validate_call_arguments(expr, name, signature->param_types, receiver_count, signature->is_variadic);
     return this->record_expr_type(expr_id, signature->return_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_function_value_call_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const std::string_view name
+) {
+    const TypeHandle callee_type = this->analyze_expr(expr.callee);
+    if (!this->checked_.types.is_function(callee_type)) {
+        this->report(
+            expr.range,
+            std::string(SEMA_CALLEE_FUNCTION_NAME)
+        );
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    const TypeInfo& function = this->checked_.types.get(callee_type);
+    this->validate_call_arguments(
+        expr,
+        name.empty() ? SEMA_FUNCTION_VALUE_CALL_NAME : name,
+        function.function_params,
+        0,
+        function.function_is_variadic
+    );
+    return this->record_expr_type(expr_id, function.function_return);
 }
 
 TypeHandle SemanticAnalyzer::analyze_function_call_expr(

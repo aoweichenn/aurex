@@ -132,6 +132,9 @@ bool NameExprParser::bracketed_type_args_followed_by_struct_body() const noexcep
 }
 
 void NameExprParser::parse_struct_literal_type_args(std::vector<syntax::TypeId>& type_args) {
+    if (this->check(TokenKind::r_bracket)) {
+        this->report_here("expected generic type argument");
+    }
     while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
         type_args.push_back(this->parse_type());
         this->reset_panic();

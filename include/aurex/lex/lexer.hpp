@@ -39,7 +39,6 @@ private:
     };
 
     [[nodiscard]] bool is_at_end() const noexcept;
-    [[nodiscard]] bool starts_with(std::string_view text) const noexcept;
     [[nodiscard]] char peek() const noexcept;
     [[nodiscard]] char peek_next() const noexcept;
     char advance() noexcept;

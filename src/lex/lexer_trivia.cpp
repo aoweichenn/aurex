@@ -42,13 +42,23 @@ void Lexer::scan_line_comment() {
 
 void Lexer::scan_block_comment() {
     const base::usize begin = this->cursor_.offset();
-    const std::string_view remaining = this->cursor_.remaining_text();
-    const base::usize suffix_offset = remaining.find(LEXEME_BLOCK_COMMENT_SUFFIX, LEXEME_BLOCK_COMMENT_PREFIX.size());
-    if (suffix_offset != std::string_view::npos) {
-        this->advance_bytes(suffix_offset + LEXEME_BLOCK_COMMENT_SUFFIX.size());
-        return;
+    base::usize depth = 0;
+    while (!this->is_at_end()) {
+        if (this->peek() == LEXEME_SLASH && this->peek_next() == LEXEME_STAR) {
+            this->advance_bytes(LEXEME_BLOCK_COMMENT_PREFIX.size());
+            ++depth;
+            continue;
+        }
+        if (this->peek() == LEXEME_STAR && this->peek_next() == LEXEME_SLASH) {
+            this->advance_bytes(LEXEME_BLOCK_COMMENT_SUFFIX.size());
+            --depth;
+            if (depth == 0) {
+                return;
+            }
+            continue;
+        }
+        this->advance_bytes(LEXEME_SINGLE_BYTE_WIDTH);
     }
-    this->advance_bytes(remaining.size());
     this->report_current(begin, LEXEME_UNTERMINATED_BLOCK_COMMENT_MESSAGE);
 }
 

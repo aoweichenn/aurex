@@ -1,0 +1,9 @@
+module empty_generic_params_struct;
+
+struct Box[] {
+    value: i32;
+}
+
+fn main() -> i32 {
+    return 0;
+}

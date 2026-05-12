@@ -2,19 +2,19 @@
 
 ## 当前分支原则
 
-标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证，等基础语法、类型系统和模块边界稳定后再恢复标准库。
+旧标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证；库层必须等基础语法、类型系统和模块边界稳定后重新设计，不复用旧 std 路线。
 
 ## 优先路线
 
 1. 现代基础语法第一优先级
 
-   当前阶段先完善基础语法，而不是扩张高级特性或恢复 std。对照范围不只限 Rust、Go、Zig、Kotlin、C++，还要参考 Swift、C#、TypeScript/JavaScript、Python、Dart、Scala、OCaml/F#、Haskell、Julia、Nim、D、V 等现代语言，以及 ML/ADT、pattern matching exhaustiveness、null safety、type soundness 和 unsafe boundary 相关研究。结论是：Aurex 的大语法骨架已经具备，第一优先级应收口现代语言共同证明过的基础表达能力，而不是先做 trait、borrow checker、macro、async、std 或通用 iterator protocol。
+   当前阶段先完善基础语法，而不是扩张高级特性或重建库层。对照范围不只限 Rust、Go、Zig、Kotlin、C++，还要参考 Swift、C#、TypeScript/JavaScript、Python、Dart、Scala、OCaml/F#、Haskell、Julia、Nim、D、V 等现代语言，以及 ML/ADT、pattern matching exhaustiveness、null safety、type soundness 和 unsafe boundary 相关研究。结论是：Aurex 的大语法骨架已经具备，第一优先级应收口现代语言共同证明过的基础表达能力，而不是先做 trait、borrow checker、macro、async、std 或通用 iterator protocol。
 
    第一批 P0 基础语法按这个顺序推进：
 
    - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strblen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
    - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
-   - ADT-first enum：让普通 `enum Option<T> { some(T), none }` / `enum Result<T, E> { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
+   - ADT-first enum：让普通 `enum Option[T] { some(T), none }` / `enum Result[T, E] { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
    - array literal / repeat literal：数组类型 `[N]T` 已存在，但还缺 `[1, 2, 3]` / `[0; 128]` 这类基础值语法。
 
    已完成的第一优先级基础项：default private 已切换完成。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。
@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型、`str`、C string、byte literal、函数声明和 C FFI，但还缺数组值语法、slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function pointer / function type。现代系统语言和 ML-family 语言都说明这些属于基础表达能力，不应等到 std 恢复后再补。
+   Aurex 已有数组类型、`str`、C string、byte literal、函数声明和 C FFI，但还缺数组值语法、slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function pointer / function type。现代系统语言和 ML-family 语言都说明这些属于基础表达能力，不应等到未来库层重建后再补。
 
 5. 值语义边界
 
@@ -51,7 +51,7 @@
 
 9. 字符串基础类型
 
-   保留 `str` 作为语言级 borrowed UTF-8 slice 的设计方向，但不要恢复 `String`/`Bytes` 标准库实现。先完成 `str` 的类型、ABI、字面量、slice 边界和内建操作边界。
+   保留 `str` 作为语言级 borrowed UTF-8 slice 的设计方向，但不要复活旧 std 的 `String`/`Bytes` 实现。先完成 `str` 的类型、ABI、字面量、slice 边界和内建操作边界。
 
 10. 测试性能继续收口
 
@@ -64,4 +64,4 @@
 - host support C shim。
 - 安装后 std 查找。
 
-恢复这些内容的前置条件是：基础语法、模块边界、`unsafe`、ADT、slice/string 和泛型约束已有稳定语言级设计和测试矩阵；拥有型资源库还需要后续资源语义专题完成。
+重新设计或重新评估这些内容的前置条件是：基础语法、模块边界、`unsafe`、ADT、slice/string 和泛型约束已有稳定语言级设计和测试矩阵；拥有型资源库还需要后续资源语义专题完成。

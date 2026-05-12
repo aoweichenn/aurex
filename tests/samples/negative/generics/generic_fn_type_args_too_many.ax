@@ -1,0 +1,9 @@
+module generic_fn_type_args_too_many;
+
+fn id[T](value: T) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    return id::[i32, bool](1);
+}

@@ -28,7 +28,7 @@ performance.
 
 ## Next Architecture Direction
 
-Before restoring std, the language needs the current core abstractions:
+Before designing any future library layer, the language needs the current core abstractions:
 
 - `unsafe` boundaries for raw pointers, unchecked strings, and bit-level casts.
 - ADT enums and pattern matching as the main way to model Result/Option and AST

@@ -1,0 +1,9 @@
+module duplicate_generic_param_fn;
+
+fn id[T, T](value: T) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    return id(1);
+}

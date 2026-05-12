@@ -16,6 +16,7 @@ private:
     [[nodiscard]] syntax::TypeId parse_primitive_type();
     void parse_generic_type_args(std::vector<syntax::TypeId>& args);
     [[nodiscard]] bool recover_generic_type_arg_separator();
+    void reject_legacy_angle_type_args();
     void expect_array_length_end();
 };
 

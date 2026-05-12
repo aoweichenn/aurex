@@ -43,6 +43,7 @@ syntax::ItemId ItemParser::parse_struct_decl() {
 syntax::ItemId ItemParser::parse_enum_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_enum, "expected 'enum'");
     const syntax::Token& name = this->expect_identifier_recovered("expected enum name");
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     this->expect_type_annotation_colon("expected ':' after enum name");
     const syntax::TypeId base_type = this->parse_type();
     this->expect_item_container_start("expected '{' after enum base type");
@@ -50,6 +51,7 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::enum_decl;
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
     item.enum_base_type = base_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {

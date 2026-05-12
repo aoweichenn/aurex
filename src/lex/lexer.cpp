@@ -135,10 +135,6 @@ bool Lexer::is_at_end() const noexcept {
     return this->cursor_.is_at_end();
 }
 
-bool Lexer::starts_with(const std::string_view text) const noexcept {
-    return this->cursor_.starts_with(text);
-}
-
 char Lexer::peek() const noexcept {
     return this->cursor_.peek();
 }

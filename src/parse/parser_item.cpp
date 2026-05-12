@@ -113,6 +113,7 @@ syntax::ItemId ItemParser::parse_const_decl() {
 syntax::ItemId ItemParser::parse_type_alias_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_type, "expected 'type'");
     const syntax::Token& name = this->expect_identifier_recovered("expected type alias name");
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     this->expect_initializer_equal("expected '=' in type alias declaration");
     const syntax::TypeId target = this->parse_type();
     const syntax::Token& end = this->expect_item_terminator("expected ';' after type alias declaration");
@@ -121,6 +122,7 @@ syntax::ItemId ItemParser::parse_type_alias_decl() {
     item.kind = syntax::ItemKind::type_alias;
     item.range = this->merge(begin.range, end.range);
     item.name = name.text;
+    item.generic_params = std::move(generic_params);
     item.alias_type = target;
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));

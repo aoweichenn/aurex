@@ -96,8 +96,22 @@ TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
     const fs::path count = negative_sample("functions", "variadic_argument_count.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(count)).output, "argument count mismatch in call to printf");
 
+    const fs::path invalid_infer = negative_sample("functions", "variadic_argument_infer_invalid.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(invalid_infer)).output,
+        "variadic argument type cannot be inferred in call to printf"
+    );
+
     const fs::path not_last = negative_sample("functions", "variadic_not_last.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(not_last)).output, "variadic marker must be last in parameter list");
+}
+
+TEST_F(AurexIntegrationTest, PublicFunctionsRequireExplicitReturnType) {
+    const fs::path source = negative_sample("functions", "pub_inferred_return.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(source)).output,
+        "public function return type must be explicit"
+    );
 }
 
 TEST_F(AurexIntegrationTest, DeferScopes) {

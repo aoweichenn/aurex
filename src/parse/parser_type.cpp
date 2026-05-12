@@ -213,6 +213,9 @@ syntax::TypeId TypeParser::parse_type_atom() {
             type.range = this->merge(name.range, scoped_name.range);
         }
         if (this->match(TokenKind::l_bracket)) {
+            if (this->check(TokenKind::r_bracket)) {
+                this->report_here("expected generic type argument");
+            }
             this->parse_generic_type_args(type.type_args);
             const syntax::Token& end = this->expect_recovered(
                 TokenKind::r_bracket,
@@ -220,6 +223,8 @@ syntax::TypeId TypeParser::parse_type_atom() {
                 RecoveryContext::generic_type_argument
             );
             type.range = this->merge(type.range, end.range);
+        } else if (this->check(TokenKind::less)) {
+            this->reject_legacy_angle_type_args();
         }
         return this->session_.module.push_type(type);
     }
@@ -261,6 +266,26 @@ bool TypeParser::recover_generic_type_arg_separator() {
     }
     this->reset_panic();
     return false;
+}
+
+void TypeParser::reject_legacy_angle_type_args() {
+    const syntax::Token& begin = this->expect(TokenKind::less, "expected '<'");
+    this->report_at(begin, "generic type arguments use '[' and ']'; '<' and '>' are not generic delimiters");
+    while (!this->is_eof()) {
+        if (this->match(TokenKind::greater)) {
+            this->reset_panic();
+            return;
+        }
+        if (this->check(TokenKind::r_paren) ||
+            this->check(TokenKind::r_brace) ||
+            this->check(TokenKind::r_bracket) ||
+            this->check(TokenKind::equal) ||
+            this->check(TokenKind::semicolon)) {
+            this->reset_panic();
+            return;
+        }
+        this->advance();
+    }
 }
 
 void TypeParser::expect_array_length_end() {

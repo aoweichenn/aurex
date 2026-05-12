@@ -45,10 +45,10 @@ Risk controls:
 
 Deferred:
 
-- Restoring the standard library.
-- Restoring selfhost/Stage1.
-- Restoring M1 build-tool/system examples.
-- Restoring automatic host support linking.
+- Designing a future library layer.
+- Designing any future selfhost/Stage1 route.
+- Designing any future build-tool/system examples.
+- Designing automatic host support linking, if it is still needed.
 
 These should be revisited only after M2 syntax, value semantics, `unsafe`,
 slices/strings, and generic constraints are stable. Owned resource libraries

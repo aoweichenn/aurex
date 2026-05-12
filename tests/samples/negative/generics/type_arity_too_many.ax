@@ -1,0 +1,11 @@
+module type_arity_too_many;
+
+struct Pair[A, B] {
+    first: A;
+    second: B;
+}
+
+fn main() -> i32 {
+    let value: Pair[i32, bool, u8] = Pair[i32, bool, u8] { first: 1, second: true };
+    return value.first;
+}

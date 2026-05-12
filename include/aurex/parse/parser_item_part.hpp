@@ -30,6 +30,7 @@ private:
     void recover_import_alias();
     [[nodiscard]] ParsedVisibility parse_visibility();
     [[nodiscard]] std::vector<syntax::GenericParamDecl> parse_optional_generic_params();
+    void reject_legacy_angle_generic_params();
     void parse_generic_params(std::vector<syntax::GenericParamDecl>& params);
     [[nodiscard]] std::optional<syntax::GenericParamDecl> parse_generic_param();
     [[nodiscard]] bool recover_generic_param_separator();

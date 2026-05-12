@@ -45,7 +45,7 @@ M2 明确删除并暂缓这些 M1 内容：
 - 依赖标准库名字的资源语义特判。
 - selfhost / Stage1 / AIR snapshot 路线在当前仓库中的实现。
 
-这些内容不是永远不能回来，而是必须等基础语法、module/package、`unsafe`、slice/string 和泛型约束稳定后再恢复；拥有型资源库还要等后续资源语义专题完成。
+这些内容不是永远不能回来，而是必须等基础语法、module/package、`unsafe`、slice/string 和泛型约束稳定后再重新设计或重新评估；拥有型资源库还要等后续资源语义专题完成。
 
 ## 质量门
 
@@ -75,9 +75,11 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - const initializer 已补齐纯标量运算；当前仍没有函数调用、控制流表达式或完整 comptime。
 - compound assignment 已补齐；`++` / `--` 自增自减语法已从 M2 基础语法移除，统一使用 `+= 1` / `-= 1`。
 - 基础 range-for 已补齐为 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`；当前仍没有容器迭代、slice 迭代或 iterator protocol。
-- trailing separator 策略已冻结：括号/角括号列表允许 trailing comma，comma 分隔花括号列表允许但不强制最后一个 comma。
+- trailing separator 策略已冻结：圆括号/方括号列表允许 trailing comma，comma 分隔花括号列表允许但不强制最后一个 comma。
 - 下一阶段第一优先级已经调整为现代基础语法收口：最小 `unsafe` block / `unsafe fn`、ADT-first enum、array literal / repeat literal。
 - default private 已完成：顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public。
+- `pub fn` 返回类型已收紧为必须显式；private helper 仍可推导。
+- lexer 已支持嵌套 `/* ... */` 块注释。
 - enum 仍偏 C enum 语法，base type 和 discriminant 必填，不适合作为主力 ADT 表达。
 - 数组类型已存在，但还缺 array literal / repeat literal；slice type/expression、function pointer / function type、raw/multiline/bytes string、Unicode scalar `char` 也属于下一批基础语法缺口。
 - 泛型没有 `where`、trait 或 capability predicate，不能表达 `K: Eq + Hash` 这类基础约束；资源类约束暂缓。

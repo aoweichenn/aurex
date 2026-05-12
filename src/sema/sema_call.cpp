@@ -35,11 +35,28 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
 ) {
     if (!syntax::is_valid(expr.callee) ||
         (this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::name &&
-         this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::field)) {
+         this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::field &&
+         this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::generic_apply)) {
         this->report(expr.range, "callee must be a function name");
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const syntax::ExprNode& callee = this->module_.exprs[expr.callee.value];
+    if (callee.kind == syntax::ExprKind::generic_apply) {
+        if (!syntax::is_valid(callee.callee) ||
+            callee.callee.value >= this->module_.exprs.size() ||
+            this->module_.exprs[callee.callee.value].kind != syntax::ExprKind::name) {
+            this->report(callee.range, "explicit generic arguments require a function name");
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        const syntax::ExprNode& generic_callee = this->module_.exprs[callee.callee.value];
+        return this->analyze_explicit_generic_function_call_expr(
+            expr_id,
+            expr,
+            callee,
+            generic_callee,
+            generic_callee.text
+        );
+    }
     const std::string name = callee.kind == syntax::ExprKind::field
         ? std::string(callee.field_name)
         : std::string(callee.text);
@@ -51,6 +68,54 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         return this->analyze_field_call_expr(expr_id, expr, callee, name, expected_type);
     }
     return this->analyze_function_call_expr(expr_id, expr, callee, name, expected_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const syntax::ExprNode& apply,
+    const syntax::ExprNode& callee,
+    const std::string_view name
+) {
+    const base::SourceRange callee_range = apply.range;
+    const bool qualified_callee = !callee.scope_name.empty();
+    syntax::ModuleId callee_module = syntax::INVALID_MODULE_ID;
+    if (qualified_callee) {
+        callee_module = this->resolve_import_alias(callee.scope_name, callee.scope_range);
+        if (!syntax::is_valid(callee_module)) {
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+    }
+
+    const GenericTemplateInfo* generic = qualified_callee
+        ? this->find_generic_function_in_module(callee_module, name, callee_range, false)
+        : this->find_generic_function_in_visible_modules(name, callee_range, false);
+    if (generic == nullptr) {
+        const FunctionSignature* signature = qualified_callee
+            ? this->find_function_in_module(callee_module, name, callee_range, false)
+            : this->find_function_in_visible_modules(name, callee_range, false);
+        if (signature != nullptr) {
+            this->report(callee_range, "function " + std::string(name) + " is not generic");
+        } else {
+            static_cast<void>(qualified_callee
+                ? this->find_generic_function_in_module(callee_module, name, callee_range, true)
+                : this->find_generic_function_in_visible_modules(name, callee_range, true));
+        }
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    std::vector<TypeHandle> args;
+    args.reserve(apply.type_args.size());
+    for (const syntax::TypeId arg : apply.type_args) {
+        args.push_back(this->resolve_type(arg));
+    }
+    FunctionSignature* signature = this->instantiate_generic_function(*generic, args, callee_range);
+    if (signature == nullptr) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    this->record_expr_c_name(expr.callee, signature->c_name);
+    this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
+    return this->record_expr_type(expr_id, signature->return_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
@@ -147,36 +212,6 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
         if (!syntax::is_valid(callee_module)) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
-    }
-    if (!callee.type_args.empty()) {
-        const GenericTemplateInfo* generic = qualified_callee
-            ? this->find_generic_function_in_module(callee_module, name, callee_range, false)
-            : this->find_generic_function_in_visible_modules(name, callee_range, false);
-        if (generic == nullptr) {
-            signature = qualified_callee
-                ? this->find_function_in_module(callee_module, name, callee_range, false)
-                : this->find_function_in_visible_modules(name, callee_range, false);
-            if (signature != nullptr) {
-                this->report(callee_range, "non-generic function cannot take type arguments: " + std::string(name));
-            } else {
-                static_cast<void>(qualified_callee
-                    ? this->find_generic_function_in_module(callee_module, name, callee_range, true)
-                    : this->find_generic_function_in_visible_modules(name, callee_range, true));
-            }
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-        std::vector<TypeHandle> args;
-        args.reserve(callee.type_args.size());
-        for (const syntax::TypeId arg : callee.type_args) {
-            args.push_back(this->resolve_type(arg));
-        }
-        signature = this->instantiate_generic_function(*generic, args, callee_range);
-        if (signature == nullptr) {
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-        this->record_expr_c_name(expr.callee, signature->c_name);
-        this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
-        return this->record_expr_type(expr_id, signature->return_type);
     }
     if (const GenericTemplateInfo* generic = qualified_callee
             ? this->find_generic_function_in_module(callee_module, name, callee_range, false)

@@ -1,0 +1,10 @@
+module empty_type_args;
+
+struct Box[T] {
+    value: T;
+}
+
+fn main() -> i32 {
+    let value: Box[] = Box[i32] { value: 1 };
+    return value.value;
+}

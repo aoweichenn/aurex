@@ -1,0 +1,11 @@
+module expression_index_not_generic_call;
+
+fn id[T](value: T) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    let index: i32 = 0;
+    let value = id[index](1);
+    return value;
+}

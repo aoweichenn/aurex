@@ -25,6 +25,9 @@ if(BUILD_TESTING)
         GTest::gtest_main
         aurex_lex
     )
+    target_include_directories(aurex_lexer_tests PRIVATE
+        src
+    )
     set_target_properties(aurex_lexer_tests PROPERTIES
         BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
     )

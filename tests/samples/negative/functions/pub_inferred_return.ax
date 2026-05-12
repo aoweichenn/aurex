@@ -1,0 +1,5 @@
+module pub_inferred_return;
+
+pub fn answer() {
+    return 42;
+}

@@ -71,8 +71,15 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
 
 std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params() {
     std::vector<syntax::GenericParamDecl> params;
+    if (this->check(TokenKind::less)) {
+        this->reject_legacy_angle_generic_params();
+        return params;
+    }
     if (!this->match(TokenKind::l_bracket)) {
         return params;
+    }
+    if (this->check(TokenKind::r_bracket)) {
+        this->report_here("expected generic type parameter");
     }
     this->parse_generic_params(params);
     this->expect_recovered(
@@ -81,6 +88,25 @@ std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params(
         RecoveryContext::generic_parameter
     );
     return params;
+}
+
+void ItemParser::reject_legacy_angle_generic_params() {
+    const syntax::Token& begin = this->expect(TokenKind::less, "expected '<'");
+    this->report_at(begin, "generic parameter lists use '[' and ']'; '<' and '>' are not generic delimiters");
+    while (!this->is_eof()) {
+        if (this->match(TokenKind::greater)) {
+            this->reset_panic();
+            return;
+        }
+        if (this->check(TokenKind::l_paren) ||
+            this->check(TokenKind::l_brace) ||
+            this->check(TokenKind::equal) ||
+            this->check(TokenKind::semicolon)) {
+            this->reset_panic();
+            return;
+        }
+        this->advance();
+    }
 }
 
 void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& params) {

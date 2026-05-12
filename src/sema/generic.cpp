@@ -1,6 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
 #include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -13,6 +14,24 @@ constexpr std::string_view SEMA_GENERIC_ARG_LIST_OPEN = "[";
 constexpr std::string_view SEMA_GENERIC_ARG_LIST_CLOSE = "]";
 constexpr std::string_view SEMA_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr char SEMA_GENERIC_MANGLE_FALLBACK_CHAR = '_';
+constexpr char SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE[] = "public function return type must be explicit";
+
+[[nodiscard]] std::string generic_argument_count_message(
+    const std::string_view subject,
+    const std::string_view name,
+    const base::usize actual,
+    const base::usize expected
+) {
+    std::string message = actual < expected ? "too few " : "too many ";
+    message += std::string(subject);
+    message += " for ";
+    message += std::string(name);
+    message += ": expected ";
+    message += std::to_string(expected);
+    message += ", got ";
+    message += std::to_string(actual);
+    return message;
+}
 
 [[nodiscard]] GenericSideTables make_generic_side_tables(const syntax::AstModule& module) {
     GenericSideTables side_tables;
@@ -44,10 +63,17 @@ bool SemanticAnalyzer::has_generic_params(const syntax::ItemNode& item) const no
 }
 
 void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& item) {
-    std::unordered_set<std::string> seen;
+    std::unordered_map<std::string, base::SourceRange> seen;
     for (const syntax::GenericParamDecl& param : item.generic_params) {
-        if (!seen.insert(std::string(param.name)).second) {
+        const std::string name(param.name);
+        const auto [first, inserted] = seen.emplace(name, param.range);
+        if (!inserted) {
             this->report(param.range, "duplicate generic parameter `" + std::string(param.name) + "`");
+            this->diagnostics_.push(base::Diagnostic {
+                base::Severity::note,
+                first->second,
+                "first declaration of generic parameter `" + std::string(param.name) + "`",
+            });
         }
     }
 }
@@ -80,6 +106,24 @@ void SemanticAnalyzer::register_generic_template(
         return;
     }
 
+    if (item.kind == syntax::ItemKind::enum_decl) {
+        this->report(item.range, "generic enums are not supported in M2");
+        return;
+    }
+
+    if (item.kind == syntax::ItemKind::type_alias) {
+        this->report(item.range, "generic type aliases are not supported in M2");
+        return;
+    }
+
+    if (item.kind != syntax::ItemKind::fn_decl) {
+        this->report(item.range, "generic parameters are only supported on structs and functions in M2");
+        return;
+    }
+
+    if (item.visibility == syntax::Visibility::public_ && !syntax::is_valid(item.return_type)) {
+        this->report(item.range, SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE);
+    }
     if (item.is_extern_c || item.is_export_c || item.is_prototype) {
         this->report(item.range, "generic functions cannot use C ABI or prototypes in M2");
     }
@@ -257,7 +301,10 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     const std::vector<TypeHandle>& args
 ) {
     if (args.size() != info.params.size()) {
-        this->report(use_type.range, "generic type argument count mismatch for " + info.name);
+        this->report(
+            use_type.range,
+            generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size())
+        );
         return INVALID_TYPE_HANDLE;
     }
     for (const TypeHandle arg : args) {
@@ -481,7 +528,10 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     const base::SourceRange use_range
 ) {
     if (args.size() != info.params.size()) {
-        this->report(use_range, "generic function argument count mismatch for " + info.name);
+        this->report(
+            use_range,
+            generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
+        );
         return nullptr;
     }
     const syntax::ItemNode& function = this->module_.items[info.item.value];
@@ -569,7 +619,10 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     const base::SourceRange use_range
 ) {
     if (args.size() != info.params.size()) {
-        this->report(use_range, "generic function argument count mismatch for " + info.name);
+        this->report(
+            use_range,
+            generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
+        );
         return nullptr;
     }
     for (const TypeHandle arg : args) {

@@ -24,7 +24,7 @@ the narrowest parser part that owns the relevant grammar surface.
 | `ExprParser` | High-level expression dispatch, conditional/match expressions, unary operators, and table-driven binary precedence parsing. |
 | `PrimaryExprParser` | Primary expression dispatch, literals, grouped expressions, block expressions, and builtin keyword dispatch. |
 | `NameExprParser` | Identifier expressions, scoped names, and struct literals. |
-| `PostfixExprParser` | Postfix expression suffixes: type arguments, field access, indexing, calls, and `?`. |
+| `PostfixExprParser` | Postfix expression suffixes: explicit generic apply, field access, indexing, calls, and `?`. |
 | `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, and string helpers. |
 | `PatternParser` | Match patterns. |
 
@@ -49,13 +49,14 @@ The shared parser-part bridge is layered deliberately:
 `Parser` implementation is also split by infrastructure responsibility:
 
 - `parser.cpp` owns construction and top-level module flow only.
-- `parser_cursor.cpp` owns cursor forwarding and angle-list lookahead entry
-  points used by grammar parser parts.
+- `parser_cursor.cpp` owns cursor forwarding used by grammar parser parts.
 - `parser_diagnostics.cpp` owns `expect`, recovered `expect`, synchronization,
   and diagnostic forwarding.
 - `parser_source_ranges.cpp` owns source-range composition.
-- `parser_angle_lookahead.cpp` owns the angle-list scanner and related magic
-  constants such as token arity and scan offsets.
+- `[]` generic lookahead is local to the parser part that owns the ambiguous
+  grammar surface. Struct literal type-argument lookahead stays in
+  `parser_name_expr.cpp`; explicit generic function apply is handled in
+  `parser_postfix.cpp`; named type arguments are handled in `parser_type.cpp`.
 
 Recovery token sets are split into source-private start-token, list-boundary,
 and delimiter-boundary files. The public recovery API should stay limited to
@@ -79,7 +80,7 @@ Current contexts:
 - `RecoveryContext::statement` is used inside statement blocks and block
   expressions. It stops at statement starters, expression-statement starters,
   semicolons, and `}`.
-- `RecoveryContext::type_argument` is used inside `<...>` type argument lists.
+- `RecoveryContext::generic_type_argument` is used inside `[...]` type argument lists.
   It stops at list separators, list closers, enclosing delimiters, and obvious
   outer grammar starters so malformed generic arguments do not cascade into the
   next declaration or statement.
@@ -101,7 +102,7 @@ Current contexts:
 - `RecoveryContext::enum_case` is used inside enum case lists. It stops at case
   separators, `}`, declaration starters, and obvious outer grammar starters.
 - `RecoveryContext::generic_parameter` is used inside generic parameter lists.
-  It stops at parameter separators, `>`, declaration followers, valid generic
+  It stops at parameter separators, `]`, declaration followers, valid generic
   parameter starters, and obvious outer grammar starters.
 - `RecoveryContext::parameter_list_start` is used before function parameter
   lists. It stops at `(`, legal parameter starters, signature followers, and
@@ -202,17 +203,25 @@ it represents. Do not inline a long token switch into a grammar parser part.
 
 ## Ambiguous Syntax Guardrails
 
-Angle-list lookahead is intentionally isolated because `<...>` overlaps with
-comparison operators, generic type arguments, scoped constructors, and struct
-literals.
+Generic `[]` lookahead is intentionally isolated because the same delimiter is
+also used by array types, index expressions, and builtin type arguments.
 
 Protected cases:
 
-- Nested generic type arguments that lex as `>>`.
-- Shift expressions such as `a >> b`.
-- Qualified generic enum constructors such as `Result<T, E>.ok(...)`.
-- Generic struct literals such as `Wrap<Wrap<i32>> { ... }`.
+- Array types such as `[4]u8`.
+- Index expressions such as `items[index]`.
+- Builtin type arguments such as `cast[i32](value)` and `sizeof[T]`.
+- Explicit generic function calls such as `id::[i32](value)`. The `::[...]`
+  suffix is represented as a separate `generic_apply` expression whose callee is
+  the function name expression.
+- Generic struct literals such as `Wrap[Wrap[i32]] { ... }`.
 - Conditions where struct literals must not be parsed as the condition value.
+- Legacy `<...>` syntax is not a recovery target for generics. `<` and `>` are
+  comparison or shift-related tokens in the language grammar.
+
+Generic parameter lists and type argument lists are non-empty. `fn f[]`,
+`Box[]`, and `id::[](...)` are parser errors instead of recoverable shorthand
+for inference.
 
 Before changing lookahead or expression parsing, add a focused parser regression
 test for the ambiguous case. Binary operator changes should also preserve

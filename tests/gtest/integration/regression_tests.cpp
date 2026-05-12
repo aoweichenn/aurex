@@ -217,7 +217,11 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
         "id[i32] -> i32",
         "id[bool] -> bool",
         "make_pair[i32,bool]",
+        "make_box[basic_m2.Pair[i32,bool]]",
+        "unwrap[i32]",
+        "same_ptr[i32]",
         "first[i32,bool]",
+        "struct priv Box[basic_m2.Pair[i32,bool]]",
     });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
@@ -225,6 +229,9 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
         "fn id[i32](x: i32)",
         "fn id[bool](x: bool)",
         "fn make_pair[i32,bool](a: i32, b: bool)",
+        "fn make_box[basic_m2.Pair[i32,bool]](value: basic_m2.Pair[i32,bool])",
+        "fn unwrap[i32](box: basic_m2.Box[i32])",
+        "fn same_ptr[i32](value: *const i32)",
         "fn first[i32,bool](p: basic_m2.Pair[i32,bool])",
     });
 
@@ -238,15 +245,19 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "type_arity_mismatch.ax"))).output,
-        "generic type argument count mismatch"
+        "too few generic type arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "type_arity_too_many.ax"))).output,
+        "too many generic type arguments"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "non_generic_type_args.ax"))).output,
-        "non-generic type cannot take type arguments"
+        "type Plain is not generic"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "missing_type_args.ax"))).output,
-        "generic type requires type arguments"
+        "generic type Box requires type arguments"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "inference_failure.ax"))).output,
@@ -258,7 +269,43 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "non_generic_fn_type_args.ax"))).output,
-        "non-generic function cannot take type arguments"
+        "function plain is not generic"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_fn_type_args_too_many.ax"))).output,
+        "too many generic function type arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "empty_generic_params_fn.ax"))).output,
+        "expected generic type parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "empty_generic_params_struct.ax"))).output,
+        "expected generic type parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "empty_type_args.ax"))).output,
+        "expected generic type argument"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "empty_explicit_generic_call.ax"))).output,
+        "expected generic type argument"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_body_return_unknown.ax"))).output,
+        "return type mismatch"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_generic_param_fn.ax"))).output,
+        "duplicate generic parameter"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "expression_index_not_generic_call.ax"))).output,
+        "callee must be a function name"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_bound_rejected_m2.ax"))).output,
+        "generic bounds are not supported in M2"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_with_plain_struct.ax"))).output,
@@ -275,6 +322,22 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_generic_fn.ax"))).output,
         "duplicate function definition"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_enum_unsupported.ax"))).output,
+        "generic enums are not supported in M2"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_type_alias_unsupported.ax"))).output,
+        "generic type aliases are not supported in M2"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "public_generic_inferred_return.ax"))).output,
+        "public function return type must be explicit"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("generics", "qualified_explicit_generic_unknown_import.ax"))).output,
+        "unknown import alias: missing"
     );
 }
 
@@ -641,7 +704,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(generic_arity)).output,
-        "generic function argument count mismatch"
+        "too many generic function type arguments"
     );
 
     const fs::path generic_prototype = write_source_file(

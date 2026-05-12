@@ -277,6 +277,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::c_string_literal: return "c_string_literal";
     case ExprKind::byte_literal: return "byte_literal";
     case ExprKind::name: return "name";
+    case ExprKind::generic_apply: return "generic_apply";
     case ExprKind::unary: return "unary";
     case ExprKind::binary: return "binary";
     case ExprKind::call: return "call";
@@ -411,6 +412,16 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
             }
             out << "]";
         }
+    }
+    if (expr.kind == ExprKind::generic_apply && !expr.type_args.empty()) {
+        out << "[";
+        for (base::usize i = 0; i < expr.type_args.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << type_label(module, expr.type_args[i]);
+        }
+        out << "]";
     }
     if (is_valid(expr.cast_type)) {
         out << " to " << type_label(module, expr.cast_type);

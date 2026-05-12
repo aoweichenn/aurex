@@ -1,0 +1,5 @@
+module public_generic_inferred_return;
+
+pub fn id[T](value: T) {
+    return value;
+}

@@ -146,6 +146,7 @@ private:
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_field_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
@@ -172,6 +173,13 @@ private:
         const syntax::ExprNode& callee,
         std::string_view name,
         TypeHandle expected_type
+    );
+    [[nodiscard]] TypeHandle analyze_explicit_generic_function_call_expr(
+        syntax::ExprId expr_id,
+        const syntax::ExprNode& expr,
+        const syntax::ExprNode& apply,
+        const syntax::ExprNode& callee,
+        std::string_view name
     );
     void validate_call_arguments(
         const syntax::ExprNode& expr,

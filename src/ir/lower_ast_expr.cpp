@@ -149,6 +149,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::name:
         return this->lower_name(expr_id, expr);
+    case syntax::ExprKind::generic_apply:
+        return INVALID_VALUE_ID;
     case syntax::ExprKind::unary:
         return this->lower_unary_expr(expr_id, expr);
     case syntax::ExprKind::binary:

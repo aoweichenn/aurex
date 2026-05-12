@@ -67,6 +67,9 @@ syntax::ExprId PostfixExprParser::parse_generic_apply_suffix(const syntax::ExprI
         RecoveryContext::generic_type_argument
     );
     std::vector<syntax::TypeId> type_args;
+    if (this->check(TokenKind::r_bracket)) {
+        this->report_here("expected generic type argument");
+    }
     this->parse_generic_type_args(type_args);
     const syntax::Token& end = this->expect_recovered(
         TokenKind::r_bracket,
@@ -75,15 +78,14 @@ syntax::ExprId PostfixExprParser::parse_generic_apply_suffix(const syntax::ExprI
     );
 
     syntax::ExprNode node;
-    node.kind = syntax::ExprKind::name;
+    node.kind = syntax::ExprKind::generic_apply;
     node.range = this->merge(this->expr_range_or(expr, begin.range), end.range);
+    node.callee = expr;
     node.type_args = std::move(type_args);
     if (syntax::is_valid(expr) && expr.value < this->session_.module.exprs.size()) {
         const syntax::ExprNode& callee = this->session_.module.exprs[expr.value];
         if (callee.kind == syntax::ExprKind::name) {
-            node.scope_name = callee.scope_name;
-            node.scope_range = callee.scope_range;
-            node.text = callee.text;
+            return this->session_.module.push_expr(std::move(node));
         } else {
             this->report_at(begin, "explicit generic arguments require a function name");
             node.kind = syntax::ExprKind::invalid;

@@ -13,6 +13,8 @@ namespace aurex::sema {
 
 namespace {
 
+constexpr char SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE[] = "public function return type must be explicit";
+
 [[nodiscard]] bool is_main_argv_type(const TypeTable& types, const TypeHandle type) noexcept {
     if (!types.is_pointer(type)) {
         return false;
@@ -244,6 +246,9 @@ void SemanticAnalyzer::register_value_names() {
             } else if (item.is_prototype) {
                 this->report(item.range, "function prototype return type must be explicit");
                 return_type = this->checked_.types.builtin(BuiltinType::void_);
+            } else if (item.visibility == syntax::Visibility::public_) {
+                this->report(item.range, SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE);
+                return_type = INVALID_TYPE_HANDLE;
             } else {
                 return_type = INVALID_TYPE_HANDLE;
             }

@@ -210,6 +210,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::u8));
     case syntax::ExprKind::name:
         return this->analyze_name_expr(expr_id, expr);
+    case syntax::ExprKind::generic_apply:
+        return this->analyze_generic_apply_expr(expr_id, expr);
     case syntax::ExprKind::call:
         return this->analyze_call_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::try_expr:
@@ -275,6 +277,14 @@ TypeHandle SemanticAnalyzer::analyze_name_expr(
     }
     this->record_expr_c_name(expr_id, symbol->c_name);
     return this->record_expr_type(expr_id, symbol->type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_generic_apply_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    this->report(expr.range, "explicit generic arguments require a function call");
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_unary_expr(
@@ -624,7 +634,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
                 ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false, false)
                 : this->find_type_in_visible_modules(expr.struct_name, expr.range, false, false);
             if (is_valid(struct_type)) {
-                this->report(expr.range, "non-generic type cannot take type arguments: " + std::string(expr.struct_name));
+                this->report(expr.range, "type " + std::string(expr.struct_name) + " is not generic");
             } else {
                 static_cast<void>(qualified
                     ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, true)
@@ -636,7 +646,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
             ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, false)
             : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, false);
         generic_struct != nullptr) {
-        this->report(expr.range, "generic type requires type arguments: " + std::string(expr.struct_name));
+        this->report(expr.range, "generic type " + std::string(expr.struct_name) + " requires type arguments");
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     } else {
         struct_type = qualified

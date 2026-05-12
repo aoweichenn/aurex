@@ -1989,8 +1989,10 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
 TEST(CoreUnit, ParserM2GenericSyntax) {
     constexpr std::string_view source =
         "module parser.generics;\n"
+        "type Alias[T] = T;\n"
         "struct Box[T] { value: T; }\n"
         "struct Pair[A, B] { first: A; second: B; }\n"
+        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
         "fn id[T](x: T) -> T { return x; }\n"
         "fn main() -> i32 {\n"
         "  let a: Box[i32] = Box[i32] { value: id::[i32](1) };\n"
@@ -2003,17 +2005,66 @@ TEST(CoreUnit, ParserM2GenericSyntax) {
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
     expect_contains_all(ast, {
+        "type_alias Alias[T]",
+        "alias T",
         "struct Box[T]",
         "field priv value : T",
         "struct Pair[A, B]",
+        "enum Maybe[T]",
+        "case some(T) = 1",
         "fn id[T]",
         "param x : T",
         "return T",
         "Box[i32]",
         "Pair[i32, bool]",
-        "id`[i32]",
+        "generic_apply[i32]",
         "index",
     });
+}
+
+TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
+    expect_parse_error(
+        "module parser.empty_generic_fn;\n"
+        "fn f[]() -> i32 { return 0; }\n",
+        "expected generic type parameter"
+    );
+    expect_parse_error(
+        "module parser.empty_generic_struct;\n"
+        "struct Box[] { value: i32; }\n",
+        "expected generic type parameter"
+    );
+    expect_parse_error(
+        "module parser.empty_type_args;\n"
+        "struct Box[T] { value: T; }\n"
+        "fn main() -> i32 { let value: Box[] = Box[i32] { value: 1 }; return value.value; }\n",
+        "expected generic type argument"
+    );
+    expect_parse_error(
+        "module parser.empty_generic_call;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id::[](1); }\n",
+        "expected generic type argument"
+    );
+    expect_parse_error(
+        "module parser.empty_struct_literal_args;\n"
+        "struct Box[T] { value: T; }\n"
+        "fn main() -> i32 { let value = Box[] { value: 1 }; return value.value; }\n",
+        "expected generic type argument"
+    );
+}
+
+TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax) {
+    expect_parse_error(
+        "module parser.legacy_angle_generic_params;\n"
+        "fn id<T>(x: T) -> T { return x; }\n",
+        "generic parameter lists use '[' and ']'"
+    );
+    expect_parse_error(
+        "module parser.legacy_angle_type_args;\n"
+        "struct Pair[A, B] { first: A; second: B; }\n"
+        "type Bad = Pair<i32, bool>;\n",
+        "generic type arguments use '[' and ']'"
+    );
 }
 
 } // namespace aurex::test

@@ -1,0 +1,9 @@
+module generic_body_return_unknown;
+
+fn make[T]() -> T {
+    return 0;
+}
+
+fn main() -> i32 {
+    return 0;
+}

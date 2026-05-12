@@ -4,8 +4,8 @@
 
 The standard library is frozen and removed from the current M2 tree. Do not expand std
 or use std samples to prove language features. New features should be validated
-with self-contained `.ax` samples first. Restore std only after core syntax,
-types, modules, and ABI boundaries stabilize.
+with self-contained `.ax` samples first. Design any future library layer only
+after core syntax, types, modules, and ABI boundaries stabilize.
 
 ## Priority Route
 
@@ -47,8 +47,8 @@ types, modules, and ABI boundaries stabilize.
 6. String primitive
 
    Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
-   restore `String`/`Bytes` std implementations yet. First settle type identity,
-   ABI, literals, slice boundaries, and builtin operation boundaries.
+   recreate old `String`/`Bytes` std implementations. First settle type
+   identity, ABI, literals, slice boundaries, and builtin operation boundaries.
 
 7. Unsafe boundary
 

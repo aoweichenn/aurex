@@ -3,6 +3,8 @@
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/token.hpp>
 
+#include <lex/keyword.hpp>
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -153,6 +155,45 @@ TEST(CoreUnit, LexerTokenizesEmptySourceToEofOnly) {
     EXPECT_TRUE(result.value().front().text.empty());
     EXPECT_EQ(result.value().front().range.begin, 0U);
     EXPECT_EQ(result.value().front().range.end, 0U);
+}
+
+TEST(CoreUnit, LexerSkipsNestedBlockComments) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source =
+        "module nested.comments;\n"
+        "/* outer /* inner */ still outer */\n"
+        "fn main() -> i32 { return 0; }\n";
+    lex::Lexer lexer({14}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_TRUE(result) << result.error().message;
+    EXPECT_FALSE(diagnostics.has_error());
+
+    const std::string token_dump = syntax::dump_tokens(result.value());
+    expect_contains_all(token_dump, {
+        "kw_module",
+        "identifier `nested`",
+        "kw_fn",
+        "identifier `main`",
+        "integer_literal `0`",
+    });
+}
+
+TEST(CoreUnit, LexerSkipsLineCommentAtEndOfFile) {
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source = "// line comment without newline";
+    lex::Lexer lexer({15}, source, diagnostics);
+    auto result = lexer.tokenize();
+    ASSERT_TRUE(result) << result.error().message;
+    EXPECT_FALSE(diagnostics.has_error());
+    ASSERT_EQ(result.value().size(), 1U);
+    EXPECT_EQ(result.value().front().kind, TokenKind::eof);
+}
+
+TEST(CoreUnit, LexerKeywordLookupCoversIdentifierEdges) {
+    EXPECT_EQ(lex::keyword_kind(""), TokenKind::identifier);
+    EXPECT_EQ(lex::keyword_kind("identifier_name"), TokenKind::identifier);
+    EXPECT_EQ(lex::keyword_kind("\xFF"), TokenKind::identifier);
+    EXPECT_EQ(lex::keyword_kind("module"), TokenKind::kw_module);
 }
 
 TEST(CoreUnit, LexerRecognizesEveryKeyword) {

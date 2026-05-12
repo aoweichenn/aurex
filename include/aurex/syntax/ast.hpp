@@ -73,6 +73,7 @@ enum class ExprKind {
     c_string_literal,
     byte_literal,
     name,
+    generic_apply,
     unary,
     binary,
     call,

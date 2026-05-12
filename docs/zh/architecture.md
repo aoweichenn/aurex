@@ -25,7 +25,7 @@ M2 `language-core-no-std` 移除了标准库层：
 
 ## 后续架构方向
 
-标准库恢复前应先完成当前基础抽象：
+未来库层重新设计前应先完成当前基础抽象：
 
 - `unsafe` 边界：raw pointer、unchecked string 和 bit-level cast 不能长期留在 safe surface。
 - ADT enum 与 pattern matching：让 Result/Option/AST 状态空间成为主力表达。

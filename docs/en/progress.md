@@ -80,7 +80,8 @@ LLVM lowering, native execution, and installed compiler execution.
 
 ## Current Conclusion
 
-M2 should freeze the basic language surface before restoring std, selfhost, or
-build-tool work. The active compiler can already validate language-core samples
-and produce native output, but the next work should be syntax and semantic
-stabilization rather than expanding library surface area.
+M2 should freeze the basic language surface before any future library layer,
+selfhost, or build-tool work is designed again. The active compiler can already
+validate language-core samples and produce native output, but the next work
+should be syntax and semantic stabilization rather than expanding library
+surface area.

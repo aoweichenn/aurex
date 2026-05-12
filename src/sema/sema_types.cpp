@@ -481,7 +481,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
             ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee, false)
             : this->find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee, false);
         if (is_valid(concrete)) {
-            this->report(type.range, "non-generic type cannot take type arguments: " + std::string(type.name));
+            this->report(type.range, "type " + std::string(type.name) + " is not generic");
         } else {
             static_cast<void>(qualified
                 ? this->find_generic_struct_in_module(scope_module, type.name, type.range, true)
@@ -494,7 +494,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
         : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
     if (generic_struct != nullptr) {
-        this->report(type.range, "generic type requires type arguments: " + std::string(type.name));
+        this->report(type.range, "generic type " + std::string(type.name) + " requires type arguments");
         return INVALID_TYPE_HANDLE;
     }
 

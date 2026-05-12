@@ -1,0 +1,9 @@
+module empty_generic_params_fn;
+
+fn f[]() -> i32 {
+    return 0;
+}
+
+fn main() -> i32 {
+    return f();
+}

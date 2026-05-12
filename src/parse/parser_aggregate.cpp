@@ -44,9 +44,13 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_enum, "expected 'enum'");
     const syntax::Token& name = this->expect_identifier_recovered("expected enum name");
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
-    this->expect_type_annotation_colon("expected ':' after enum name");
-    const syntax::TypeId base_type = this->parse_type();
-    this->expect_item_container_start("expected '{' after enum base type");
+    syntax::TypeId base_type = syntax::INVALID_TYPE_ID;
+    if (this->match(TokenKind::colon)) {
+        base_type = this->parse_type();
+        this->expect_item_container_start("expected '{' after enum base type");
+    } else {
+        this->expect_item_container_start("expected '{' after enum name");
+    }
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::enum_decl;
@@ -113,26 +117,48 @@ bool ItemParser::recover_struct_field_decl_separator() {
 std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
     const syntax::Token& case_name = this->expect_identifier_recovered("expected enum case name");
     syntax::TypeId payload_type = syntax::INVALID_TYPE_ID;
+    std::vector<syntax::TypeId> payload_types;
+    base::SourceRange payload_end_range = case_name.range;
     if (this->match(TokenKind::l_paren)) {
-        payload_type = this->parse_type();
+        if (this->check(TokenKind::r_paren)) {
+            this->report_here("expected enum case payload type");
+        } else {
+            payload_type = this->parse_type();
+            payload_types.push_back(payload_type);
+            payload_end_range = this->type_range_or(payload_type, case_name.range);
+            while (this->match(TokenKind::comma)) {
+                if (this->check(TokenKind::r_paren)) {
+                    break;
+                }
+                const syntax::TypeId next_payload_type = this->parse_type();
+                payload_types.push_back(next_payload_type);
+                payload_end_range = this->type_range_or(next_payload_type, payload_end_range);
+            }
+        }
         this->expect_recovered(
             TokenKind::r_paren,
             "expected ')' after enum case payload type",
             RecoveryContext::enum_case_payload
         );
     }
-    this->expect_initializer_equal("expected '=' after enum case name");
-    const syntax::Token& value = this->expect(TokenKind::integer_literal, "expected integer literal enum value");
+    std::string_view value_text;
+    base::SourceRange value_range = payload_types.empty() ? case_name.range : payload_end_range;
+    if (this->match(TokenKind::equal)) {
+        const syntax::Token& value = this->expect(TokenKind::integer_literal, "expected integer literal enum value");
+        value_text = value.text;
+        value_range = value.range;
+    }
     if (case_name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
     const base::SourceRange end_range = this->check(TokenKind::comma) || this->check(TokenKind::semicolon)
         ? this->peek().range
-        : value.range;
+        : value_range;
     return syntax::EnumCaseDecl {
         case_name.text,
         payload_type,
-        value.text,
+        std::move(payload_types),
+        value_text,
         this->merge(case_name.range, end_range),
     };
 }

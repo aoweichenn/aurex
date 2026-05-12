@@ -137,6 +137,11 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
         arm.guard = remap_expr(arm.guard, map);
         arm.value = remap_expr(arm.value, map);
     }
+    for (syntax::ExprId& element : node.array_elements) {
+        element = remap_expr(element, map);
+    }
+    node.array_repeat_value = remap_expr(node.array_repeat_value, map);
+    node.array_repeat_count = remap_expr(node.array_repeat_count, map);
     node.object = remap_expr(node.object, map);
     node.index = remap_expr(node.index, map);
     for (syntax::FieldInit& init : node.field_inits) {
@@ -186,6 +191,9 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map) {
     node.enum_base_type = remap_type(node.enum_base_type, map);
     for (syntax::EnumCaseDecl& enum_case : node.enum_cases) {
         enum_case.payload_type = remap_type(enum_case.payload_type, map);
+        for (syntax::TypeId& payload_type : enum_case.payload_types) {
+            payload_type = remap_type(payload_type, map);
+        }
     }
     for (syntax::ParamDecl& param : node.params) {
         param.type = remap_type(param.type, map);

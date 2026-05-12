@@ -12,6 +12,9 @@ public:
     [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
 
 private:
+    [[nodiscard]] syntax::ExprId parse_array_literal(ExprContext context);
+    bool recover_array_literal_separator();
+    const syntax::Token& expect_array_literal_end();
     [[nodiscard]] syntax::ExprId parse_builtin_expr(ExprContext context);
     void expect_grouped_expression_end();
     [[nodiscard]] syntax::ExprId parse_literal(syntax::ExprKind kind);

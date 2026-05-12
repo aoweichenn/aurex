@@ -204,7 +204,7 @@ result::ResultI32I32
 
 当前限制：
 
-- 数组类型可以作为字段存在。
+- 数组类型可以作为字段、局部变量和 const 存在，并可用 `[1, 2, 3]` / `[0; 128]` 构造固定长度数组值。
 - 数组和含数组类型不能作为普通 by-value 参数、返回值、赋值目标或 enum payload。
 - 这些限制来自当前 ABI/lowering 能力，不是最终语言设计。
 
@@ -704,7 +704,6 @@ M2 已删除：
 - 最小 `unsafe` block / `unsafe fn`，以及 unsafe-only 诊断清单。
 - enum base type / discriminant 可选。
 - 多字段 enum payload。
-- array literal / repeat array literal。
 - slice expression。
 - raw string、bytes string、Unicode scalar `char`。
 - literal suffix 策略：整数/浮点类型后缀。
@@ -813,9 +812,9 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 
    保留 `enum Status: u8 { ok = 0, err = 1 }` 作为 ABI/repr enum。
 
-3. array literal / repeat literal
+3. array literal / repeat literal。已补
 
-   数组类型 `[N]T` 已经存在，但数组值语法缺失。Rust、Zig、Go、Swift、Dart、Python、TypeScript 等都把数组/列表字面量放在基础层。Aurex 应先补固定长度数组：
+   数组类型 `[N]T` 已经存在，现在固定长度数组值语法也已补齐：
 
    ```aurex
    let bytes: [4]u8 = [1, 2, 3, 4];
@@ -941,7 +940,7 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 - package。
 - 库层重建。
 
-这些都重要，但不应抢在 `unsafe`、ADT-first enum、array literal、slice/string/function type 这些基础语法之前。default private 已完成，不再作为未完成前置项。
+这些都重要，但不应抢在 `unsafe`、ADT-first enum、slice/string/function type 这些基础语法之前。default private 和 array literal / repeat literal 已完成，不再作为未完成前置项。
 
 ## 近期执行建议
 
@@ -950,11 +949,10 @@ M2 接下来应先完善基础语法。建议不要先做 trait、borrow、class
 1. 写当前 grammar 的 EBNF，并用 parser tests 锁住。
 2. 给 `unsafe` 设计最小 AST/语义框架和 unsafe-only 诊断清单。
 3. 设计 ADT-first enum 的最小语法，同时保留显式 C-like/repr enum。
-4. 实现 array literal / repeat literal。
-5. 设计 slice type/expression 与 `str` 的 safe/unsafe 边界。
-6. 设计 raw/multiline/bytes string、Unicode scalar `char`。
-7. 设计 function pointer / function type。
-8. 再进入 tuple/destructuring、pattern 扩展、`where` / 非资源类 capability；资源语义暂缓。
+4. 设计 slice type/expression 与 `str` 的 safe/unsafe 边界。
+5. 设计 raw/multiline/bytes string、Unicode scalar `char`。
+6. 设计 function pointer / function type。
+7. 再进入 tuple/destructuring、pattern 扩展、`where` / 非资源类 capability；资源语义暂缓。
 
 ## 参考
 

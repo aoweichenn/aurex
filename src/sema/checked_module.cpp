@@ -95,7 +95,16 @@ std::string dump_checked_module(const CheckedModule& checked) {
     for (const std::string& name : enum_case_names) {
         const EnumCaseInfo& info = checked.enum_cases.at(name);
         out << "    case " << info.name << " : " << checked.types.display_name(info.type);
-        if (is_valid(info.payload_type)) {
+        if (!info.payload_types.empty()) {
+            out << "(";
+            for (base::usize i = 0; i < info.payload_types.size(); ++i) {
+                if (i > 0) {
+                    out << ",";
+                }
+                out << checked.types.display_name(info.payload_types[i]);
+            }
+            out << ")";
+        } else if (is_valid(info.payload_type)) {
             out << "(" << checked.types.display_name(info.payload_type) << ")";
         }
         out << " @c_name=" << info.c_name << "\n";

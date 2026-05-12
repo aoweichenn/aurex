@@ -38,6 +38,7 @@ struct EnumCaseInfo {
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
     TypeHandle payload_type = INVALID_TYPE_HANDLE;
+    std::vector<TypeHandle> payload_types;
     std::string value_text;
     base::SourceRange range {};
     std::string enum_name;

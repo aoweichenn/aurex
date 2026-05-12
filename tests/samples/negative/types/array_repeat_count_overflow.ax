@@ -1,0 +1,6 @@
+module array_repeat_count_overflow;
+
+fn main() -> i32 {
+    let values: [1]i32 = [1; 18446744073709551616];
+    return values[0];
+}

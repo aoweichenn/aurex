@@ -14,11 +14,11 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 
 - 手写 lexer/parser。
 - 模块、import、可见性、re-export。
-- 基础类型、struct、enum、generic struct/enum/function/method。
+- 基础类型、struct、enum、generic struct/function。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。
-- 普通值语义；数组和含数组类型的 by-value 存储/赋值限制暂时保留。
+- 普通值语义；数组和含数组类型不能作为函数 by-value 参数/返回、赋值目标或 enum payload 的限制暂时保留。
 - Aurex IR、pass pipeline、LLVM IR、clang native 输出。
 
 ## 暂缓能力

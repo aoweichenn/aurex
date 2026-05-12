@@ -15,11 +15,11 @@ Sema currently handles:
 
 - Names, modules, visibility, and re-exports.
 - Type resolution, const checks, and layout checks.
-- Generic function/struct/enum/method instantiation.
+- Generic function/struct instantiation.
 - Pattern matching and exhaustiveness.
 - Ordinary value-semantics checks, plus the current restriction that arrays and
-  array-containing types cannot be used as by-value storage or assignment
-  targets.
+  array-containing types cannot be used as by-value function parameters,
+  returns, assignment targets, or enum payloads.
 - Control-flow constraints for `for`, `defer`, `break`, and `continue`.
 
 The M1 `noncopy` / `move` / use-after-move semantics have been removed from the

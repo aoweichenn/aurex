@@ -229,6 +229,19 @@ bool token_matches_index_expression_boundary(const TokenKind kind) noexcept {
     }
 }
 
+bool token_matches_array_literal_boundary(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::comma:
+    case TokenKind::semicolon:
+    case TokenKind::r_bracket:
+    case TokenKind::r_paren:
+    case TokenKind::r_brace:
+        return true;
+    default:
+        return false;
+    }
+}
+
 bool token_matches_array_type_length_boundary(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::r_bracket:

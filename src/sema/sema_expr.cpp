@@ -1,6 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
 #include <algorithm>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -222,6 +223,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_block_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::match_expr:
         return this->analyze_match_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::array_literal:
+        return this->analyze_array_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::unary:
         return this->analyze_unary_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::binary:
@@ -596,6 +599,103 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
     }
     this->report(expr.range, "indexing requires array or pointer value");
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+}
+
+TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    const bool has_expected_array = this->checked_.types.is_array(expected_type);
+    TypeHandle element_type = INVALID_TYPE_HANDLE;
+    base::u64 expected_count = 0;
+    if (is_valid(expected_type)) {
+        if (!has_expected_array) {
+            this->report(expr.range, "array literal requires an array expected type");
+        } else {
+            const TypeInfo& expected = this->checked_.types.get(expected_type);
+            element_type = expected.array_element;
+            expected_count = expected.array_count;
+        }
+    }
+
+    const bool is_repeat_literal =
+        syntax::is_valid(expr.array_repeat_value) ||
+        syntax::is_valid(expr.array_repeat_count);
+    base::u64 literal_count = static_cast<base::u64>(expr.array_elements.size());
+    bool count_known = !is_repeat_literal;
+    if (is_repeat_literal) {
+        count_known = false;
+        const bool count_expr_valid =
+            syntax::is_valid(expr.array_repeat_count) &&
+            expr.array_repeat_count.value < this->module_.exprs.size();
+        if (!count_expr_valid) {
+            this->report(expr.range, "array repeat count must be an integer literal");
+        } else {
+            const syntax::ExprNode& count_expr = this->module_.exprs[expr.array_repeat_count.value];
+            if (count_expr.kind != syntax::ExprKind::integer_literal) {
+                this->report(count_expr.range, "array repeat count must be an integer literal");
+            } else if (!this->parse_integer_literal_text(count_expr.text, literal_count)) {
+                this->report(count_expr.range, "array repeat count literal is out of range");
+            } else {
+                count_known = true;
+            }
+        }
+    }
+
+    if (has_expected_array && count_known && literal_count != expected_count) {
+        this->report(
+            expr.range,
+            "array literal length mismatch: expected " + std::to_string(expected_count) +
+                ", got " + std::to_string(literal_count)
+        );
+    }
+
+    if (!has_expected_array && !is_repeat_literal && expr.array_elements.empty()) {
+        this->report(expr.range, "empty array literal requires an array type context");
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    if (!has_expected_array) {
+        const syntax::ExprId first_value = is_repeat_literal
+            ? expr.array_repeat_value
+            : expr.array_elements.front();
+        element_type = this->analyze_expr(first_value);
+        if (!is_valid(element_type)) {
+            this->report(expr.range, "array literal element type cannot be inferred");
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+    }
+
+    if (is_repeat_literal) {
+        const TypeHandle actual = this->analyze_expr(expr.array_repeat_value, element_type);
+        if (!this->can_assign(element_type, actual, expr.array_repeat_value)) {
+            this->report(expr.range, "array repeat value type mismatch");
+        }
+    } else {
+        for (const syntax::ExprId element : expr.array_elements) {
+            const TypeHandle actual = this->analyze_expr(element, element_type);
+            if (!this->can_assign(element_type, actual, element)) {
+                this->report(
+                    syntax::is_valid(element) && element.value < this->module_.exprs.size()
+                        ? this->module_.exprs[element.value].range
+                        : expr.range,
+                    "array literal element type mismatch"
+                );
+            }
+        }
+    }
+
+    if (!is_valid(element_type) || !count_known) {
+        return this->record_expr_type(expr_id, has_expected_array ? expected_type : INVALID_TYPE_HANDLE);
+    }
+    const TypeHandle array_type = has_expected_array
+        ? expected_type
+        : this->checked_.types.array(literal_count, element_type);
+    if (!this->is_valid_storage_type(array_type)) {
+        this->report(expr.range, "array literal type is not valid storage");
+    }
+    return this->record_expr_type(expr_id, array_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(

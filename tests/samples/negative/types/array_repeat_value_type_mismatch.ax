@@ -1,0 +1,6 @@
+module array_repeat_value_type_mismatch;
+
+fn main() -> i32 {
+    let values: [2]u8 = [300; 2];
+    return cast[i32](values[0]);
+}

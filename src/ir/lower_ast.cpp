@@ -145,7 +145,10 @@ void Lowerer::declare_global_constants() {
         }
         for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
             const sema::TypeHandle case_type = enum_case_type(enum_case_symbol(index, item, enum_case));
-            if (is_payload_enum(module_.types, case_type) || syntax::is_valid(enum_case.payload_type)) {
+            if (enum_case.value_text.empty() ||
+                is_payload_enum(module_.types, case_type) ||
+                syntax::is_valid(enum_case.payload_type) ||
+                !enum_case.payload_types.empty()) {
                 continue;
             }
             GlobalConstant constant;

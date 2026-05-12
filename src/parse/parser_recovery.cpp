@@ -80,6 +80,11 @@ bool token_matches_recovery_context(
         return detail::token_matches_index_expression_boundary(kind) ||
                detail::token_starts_item(kind) ||
                detail::token_starts_non_expression_statement(kind);
+    case RecoveryContext::array_literal:
+        return detail::token_matches_array_literal_boundary(kind) ||
+               detail::token_starts_expression(kind) ||
+               detail::token_starts_item(kind) ||
+               detail::token_starts_non_expression_statement(kind);
     case RecoveryContext::array_type_length:
         return detail::token_matches_array_type_length_boundary(kind) ||
                detail::token_starts_item(kind) ||

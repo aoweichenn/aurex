@@ -2,6 +2,9 @@
 
 #include <aurex/parse/parser_builtin_expr_part.hpp>
 #include <aurex/parse/parser_name_expr_part.hpp>
+#include <aurex/parse/recovery.hpp>
+
+#include <utility>
 
 namespace aurex::parse {
 
@@ -86,6 +89,9 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
         this->expect_grouped_expression_end();
         return expr;
     }
+    if (this->check(TokenKind::l_bracket)) {
+        return this->parse_array_literal(context);
+    }
     if (this->check(TokenKind::l_brace)) {
         return this->parse_block_expr(context);
     }
@@ -121,6 +127,68 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
         return parser.parse_strraw(context);
     }
     return syntax::INVALID_EXPR_ID;
+}
+
+syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
+    const syntax::Token& begin = this->expect(TokenKind::l_bracket, "expected '['");
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::array_literal;
+
+    if (this->check(TokenKind::r_bracket)) {
+        const syntax::Token& end = this->expect_array_literal_end();
+        expr.range = this->merge(begin.range, end.range);
+        return this->session_.module.push_expr(std::move(expr));
+    }
+
+    const syntax::ExprId first = this->parse_expr(ExprContext::normal);
+    if (this->match(TokenKind::semicolon)) {
+        expr.array_repeat_value = first;
+        if (this->check(TokenKind::r_bracket)) {
+            this->report_here("expected array repeat count");
+        } else {
+            expr.array_repeat_count = this->parse_expr(ExprContext::normal);
+        }
+    } else {
+        expr.array_elements.push_back(first);
+        while (this->recover_array_literal_separator()) {
+            expr.array_elements.push_back(this->parse_expr(ExprContext::normal));
+            this->reset_panic();
+        }
+    }
+
+    const syntax::Token& end = this->expect_array_literal_end();
+    expr.range = this->merge(begin.range, end.range);
+    this->reset_panic();
+    return this->session_.module.push_expr(std::move(expr));
+}
+
+bool PrimaryExprParser::recover_array_literal_separator() {
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here("expected ',' or ']' after array element");
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::array_literal)) {
+        this->synchronize(RecoveryContext::array_literal);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
+}
+
+const syntax::Token& PrimaryExprParser::expect_array_literal_end() {
+    return this->expect_recovered(
+        TokenKind::r_bracket,
+        "expected ']' after array literal",
+        RecoveryContext::array_literal
+    );
 }
 
 void PrimaryExprParser::expect_grouped_expression_end() {

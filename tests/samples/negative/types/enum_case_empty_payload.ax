@@ -1,0 +1,9 @@
+module enum_case_empty_payload;
+
+enum Bad {
+    empty(),
+}
+
+fn main() -> i32 {
+    return 0;
+}

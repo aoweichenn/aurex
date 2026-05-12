@@ -209,6 +209,7 @@ also used by array types, index expressions, and builtin type arguments.
 Protected cases:
 
 - Array types such as `[4]u8`.
+- Array literals and repeat literals such as `[1, 2, 3]` and `[0; 128]`.
 - Index expressions such as `items[index]`.
 - Builtin type arguments such as `cast[i32](value)` and `sizeof[T]`.
 - Explicit generic function calls such as `id::[i32](value)`. The `::[...]`

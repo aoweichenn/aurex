@@ -285,6 +285,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::if_expr: return "if_expr";
     case ExprKind::block_expr: return "block_expr";
     case ExprKind::match_expr: return "match_expr";
+    case ExprKind::array_literal: return "array_literal";
     case ExprKind::field: return "field";
     case ExprKind::index: return "index";
     case ExprKind::struct_literal: return "struct_literal";
@@ -470,6 +471,21 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         }
         dump_expr(out, module, arm.value, depth + 2);
     }
+    for (ExprId element : expr.array_elements) {
+        indent(out, depth + 1);
+        out << "array_element\n";
+        dump_expr(out, module, element, depth + 2);
+    }
+    if (is_valid(expr.array_repeat_value)) {
+        indent(out, depth + 1);
+        out << "array_repeat_value\n";
+        dump_expr(out, module, expr.array_repeat_value, depth + 2);
+    }
+    if (is_valid(expr.array_repeat_count)) {
+        indent(out, depth + 1);
+        out << "array_repeat_count\n";
+        dump_expr(out, module, expr.array_repeat_count, depth + 2);
+    }
     if (is_valid(expr.object)) {
         dump_expr(out, module, expr.object, depth + 1);
     }
@@ -538,10 +554,22 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     for (const EnumCaseDecl& enum_case : item.enum_cases) {
         indent(out, depth + 1);
         out << "case " << enum_case.name;
-        if (is_valid(enum_case.payload_type)) {
+        if (!enum_case.payload_types.empty()) {
+            out << "(";
+            for (base::usize i = 0; i < enum_case.payload_types.size(); ++i) {
+                if (i > 0) {
+                    out << ", ";
+                }
+                out << type_label(module, enum_case.payload_types[i]);
+            }
+            out << ")";
+        } else if (is_valid(enum_case.payload_type)) {
             out << "(" << type_label(module, enum_case.payload_type) << ")";
         }
-        out << " = " << enum_case.value_text << "\n";
+        if (!enum_case.value_text.empty()) {
+            out << " = " << enum_case.value_text;
+        }
+        out << "\n";
     }
     for (const ParamDecl& param : item.params) {
         indent(out, depth + 1);

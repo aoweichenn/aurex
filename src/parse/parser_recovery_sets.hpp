@@ -34,6 +34,7 @@ namespace aurex::parse::detail {
 [[nodiscard]] bool token_matches_if_else_boundary(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_matches_grouped_expression_boundary(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_matches_index_expression_boundary(syntax::TokenKind kind) noexcept;
+[[nodiscard]] bool token_matches_array_literal_boundary(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_matches_array_type_length_boundary(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_generic_type_argument(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_ends_generic_parameter(syntax::TokenKind kind) noexcept;

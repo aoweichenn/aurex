@@ -1,0 +1,6 @@
+module array_literal_length_mismatch;
+
+fn main() -> i32 {
+    let values: [4]i32 = [1, 2, 3];
+    return values[0];
+}

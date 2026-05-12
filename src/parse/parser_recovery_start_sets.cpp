@@ -52,6 +52,7 @@ bool token_starts_expression(const TokenKind kind) noexcept {
     case TokenKind::kw_strraw:
     case TokenKind::l_paren:
     case TokenKind::l_brace:
+    case TokenKind::l_bracket:
     case TokenKind::minus:
     case TokenKind::star:
     case TokenKind::amp:

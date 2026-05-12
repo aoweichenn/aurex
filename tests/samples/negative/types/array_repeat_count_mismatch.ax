@@ -1,0 +1,6 @@
+module array_repeat_count_mismatch;
+
+fn main() -> i32 {
+    let values: [3]i32 = [1; 4];
+    return values[0];
+}

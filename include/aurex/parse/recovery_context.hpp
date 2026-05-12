@@ -35,6 +35,8 @@ enum class RecoveryContext {
     grouped_expression,
     // Index expression boundary after a malformed index.
     index_expression,
+    // Array literal boundary after a malformed element or repeat count.
+    array_literal,
     // Array type length boundary after a malformed length expression.
     array_type_length,
     // Generic type argument list boundary after a malformed type argument.

@@ -18,6 +18,10 @@ fn takes(value: i32, pair: Pair) -> i32 {
     return value;
 }
 
+fn id[T](value: T) -> T {
+    return value;
+}
+
 fn main() -> i32 {
     {
         let scoped: i32 = 1;
@@ -40,11 +44,20 @@ fn main() -> i32 {
     let bad_index_value = x[0];
     let bad_index_type = (&x)[true];
     let bad_struct = Pair { left: 1, missing: 2 };
+    let bad_struct_field_type = Pair { left: true, right: 2 };
     let bad_empty_payload = Payload.none(1);
     let bad_payload_field = Payload.item;
     let bad_payload_arity = Payload.item(1, 2);
     let addr_bad = ptraddr(1);
     let from_bad = ptrat[i32](true);
+    let bad_sizeof_void: usize = sizeof[void];
+    let bad_strptr = strptr(1);
+    let bad_strblen = strblen(1);
+    let bad_strraw_data = strraw(1, cast[usize](1));
+    let bad_strraw_len = strraw(c"bytes", true);
+    let bad_generic_apply = id::[i32];
+    let bad_array_unknown = [missing_name];
+    let bad_array_storage = [touch()];
     let bad_if_void = if true { touch() } else { touch() };
     return 0;
 }

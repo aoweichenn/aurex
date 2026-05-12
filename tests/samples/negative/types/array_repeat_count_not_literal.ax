@@ -1,0 +1,8 @@
+module array_repeat_count_not_literal;
+
+const COUNT: usize = 4;
+
+fn main() -> i32 {
+    let values: [4]i32 = [1; COUNT];
+    return values[0];
+}

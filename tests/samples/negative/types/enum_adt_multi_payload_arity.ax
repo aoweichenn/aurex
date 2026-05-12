@@ -1,0 +1,11 @@
+module enum_adt_multi_payload_arity;
+
+enum Token {
+    span(usize, usize),
+    eof,
+}
+
+fn main() -> i32 {
+    let token = Token.span(cast[usize](1));
+    return 0;
+}

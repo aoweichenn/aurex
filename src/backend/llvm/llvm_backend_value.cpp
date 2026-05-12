@@ -341,6 +341,16 @@ llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
 }
 
 llvm::Constant* LlvmEmitter::emit_constant_aggregate(const Value& value) {
+    if (this->source_.types.is_array(value.type)) {
+        llvm::ArrayType* type = llvm::cast<llvm::ArrayType>(this->llvm_type(value.type));
+        std::vector<llvm::Constant*> elements;
+        elements.reserve(value.elements.size());
+        for (const ValueId element : value.elements) {
+            elements.push_back(this->emit_constant_initializer(this->source_.values[element.value]));
+        }
+        return llvm::ConstantArray::get(type, elements);
+    }
+
     llvm::StructType* type = llvm::cast<llvm::StructType>(this->llvm_type(value.type));
     const RecordLayout* record = find_record(this->source_, value.type);
     std::vector<llvm::Constant*> fields(record->fields.size());
@@ -484,6 +494,17 @@ llvm::Value* LlvmEmitter::emit_index_addr(const Value& value) {
 
 llvm::Value* LlvmEmitter::emit_aggregate(const Value& value) {
     llvm::Value* aggregate = llvm::UndefValue::get(this->llvm_type(value.type));
+    if (this->source_.types.is_array(value.type)) {
+        for (base::usize index = 0; index < value.elements.size(); ++index) {
+            aggregate = this->builder_.CreateInsertValue(
+                aggregate,
+                this->get(value.elements[index]),
+                {static_cast<unsigned>(index)}
+            );
+        }
+        return aggregate;
+    }
+
     const RecordLayout* record = find_record(this->source_, value.type);
     for (const FieldValue& field : value.fields) {
         const base::usize index = record_field_index(*record, field.name);

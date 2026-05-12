@@ -565,6 +565,73 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle array_type = module.types.array(2, i32);
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = array_type;
+        aggregate.elements = {
+            add_value(module, integer_value(i32, "1")),
+            add_value(module, integer_value(i32, "2")),
+        };
+        const ValueId aggregate_id = add_value(module, aggregate);
+        [[maybe_unused]] const GlobalConstantId constant =
+            add_global_constant(module, GlobalConstant {"array", "unit_array", array_type, aggregate_id});
+        EXPECT_TRUE(ir::verify_module(module));
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle array_type = module.types.array(2, i32);
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = array_type;
+        aggregate.elements = {add_value(module, integer_value(i32, "1"))};
+        const ValueId aggregate_id = add_value(module, aggregate);
+        [[maybe_unused]] const GlobalConstantId constant =
+            add_global_constant(module, GlobalConstant {"bad_array", "unit_bad_array", array_type, aggregate_id});
+        expect_error_contains(ir::verify_module(module), "array aggregate constant element count mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle array_type = module.types.array(2, i32);
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = array_type;
+        aggregate.fields = {{"x", add_value(module, integer_value(i32, "1"))}};
+        const ValueId aggregate_id = add_value(module, aggregate);
+        [[maybe_unused]] const GlobalConstantId constant = add_global_constant(
+            module,
+            GlobalConstant {"bad_array_fields", "unit_bad_array_fields", array_type, aggregate_id}
+        );
+        expect_error_contains(ir::verify_module(module), "array aggregate constant cannot contain named fields");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
+        module.records.push_back(RecordLayout {
+            record_type,
+            "unit.Record",
+            "unit_Record",
+            false,
+            {RecordField {"x", i32}},
+        });
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = record_type;
+        aggregate.fields = {{"x", add_value(module, integer_value(i32, "1"))}};
+        aggregate.elements = {add_value(module, integer_value(i32, "2"))};
+        const ValueId aggregate_id = add_value(module, aggregate);
+        [[maybe_unused]] const GlobalConstantId constant = add_global_constant(
+            module,
+            GlobalConstant {"bad_record_elements", "unit_bad_record_elements", record_type, aggregate_id}
+        );
+        expect_error_contains(ir::verify_module(module), "record aggregate constant cannot contain array elements");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "extern_with_body", i32, Linkage::extern_c, AbiCallConv::c);
         FunctionBuilder builder {module, function};
         const ValueId result = builder.add(integer_value(i32, "0"));
@@ -660,6 +727,67 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
             "duplicate aggregate field x",
             "aggregate does not initialize every field",
         });
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle array_type = module.types.array(2, i32);
+        Function function = make_function(module, "bad_array_aggregate_fields", i32);
+        FunctionBuilder builder {module, function};
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = array_type;
+        aggregate.fields = {{"x", builder.add(integer_value(i32, "1"))}};
+        aggregate.elements = {
+            builder.add(integer_value(i32, "1")),
+            builder.add(integer_value(i32, "2")),
+        };
+        const ValueId aggregate_id = builder.add(aggregate);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {
+            aggregate.fields[0].value,
+            aggregate.elements[0],
+            aggregate.elements[1],
+            aggregate_id,
+            result,
+        };
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "array aggregate cannot contain named fields");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
+        module.records.push_back(RecordLayout {
+            record_type,
+            "unit.Record",
+            "unit_Record",
+            false,
+            {RecordField {"x", i32}},
+        });
+        Function function = make_function(module, "bad_record_aggregate_elements", i32);
+        FunctionBuilder builder {module, function};
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = record_type;
+        aggregate.fields = {{"x", builder.add(integer_value(i32, "1"))}};
+        aggregate.elements = {builder.add(integer_value(i32, "2"))};
+        const ValueId aggregate_id = builder.add(aggregate);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {
+            aggregate.fields[0].value,
+            aggregate.elements[0],
+            aggregate_id,
+            result,
+        };
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "record aggregate cannot contain array elements");
     }
     {
         Module module;

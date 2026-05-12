@@ -155,14 +155,25 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         out << "index_addr " << value_ref(value.object) << "[" << value_ref(value.index) << "]";
         break;
     case ValueKind::aggregate:
-        out << "aggregate {";
-        for (base::usize i = 0; i < value.fields.size(); ++i) {
-            if (i != 0) {
-                out << ", ";
+        if (module.types.is_array(value.type)) {
+            out << "aggregate [";
+            for (base::usize i = 0; i < value.elements.size(); ++i) {
+                if (i != 0) {
+                    out << ", ";
+                }
+                out << value_ref(value.elements[i]);
             }
-            out << "." << value.fields[i].name << " = " << value_ref(value.fields[i].value);
+            out << "]";
+        } else {
+            out << "aggregate {";
+            for (base::usize i = 0; i < value.fields.size(); ++i) {
+                if (i != 0) {
+                    out << ", ";
+                }
+                out << "." << value.fields[i].name << " = " << value_ref(value.fields[i].value);
+            }
+            out << "}";
         }
-        out << "}";
         break;
     case ValueKind::cast:
         out << cast_name(value.cast_kind) << " " << value_ref(value.lhs) << " to " << module.types.display_name(value.target_type);

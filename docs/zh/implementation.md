@@ -12,9 +12,9 @@
 
 - 名称、模块、可见性和 re-export。
 - 类型解析、const 检查、layout 检查。
-- generic function/struct/enum/method 实例化。
+- generic function/struct 实例化。
 - pattern matching 与 exhaustiveness。
-- 普通值语义检查，以及数组/含数组类型不能作为当前 by-value 存储或赋值目标的限制。
+- 普通值语义检查，以及数组/含数组类型不能作为函数 by-value 参数/返回、赋值目标或 enum payload 的限制。
 - `for`、`defer`、`break`、`continue` 的控制流和 lowering 前约束。
 
 M1 的 `noncopy` / `move` / use-after-move 语义已从 M2 当前实现删除。std 专用 ownership hardcode 也已移除。当前实现不维护语言级 copy/drop/move 状态；后续资源约束作为独立资源语义专题重新设计。

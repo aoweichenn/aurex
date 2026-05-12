@@ -201,6 +201,10 @@ private:
 
     void verify_constant_aggregate(const Value& value, std::vector<ConstantWorkItem>& worklist) {
         this->verify_type(value.type, "aggregate result");
+        if (this->module_.types.is_array(value.type)) {
+            this->verify_constant_array_aggregate(value, worklist);
+            return;
+        }
         const RecordLayout* record = find_record(this->module_, value.type);
         if (record == nullptr) {
             this->fail("aggregate result is not a record");
@@ -220,6 +224,23 @@ private:
         }
         if (seen.size() != record->fields.size()) {
             this->fail("aggregate constant does not initialize every field");
+        }
+        if (!value.elements.empty()) {
+            this->fail("record aggregate constant cannot contain array elements");
+        }
+    }
+
+    void verify_constant_array_aggregate(const Value& value, std::vector<ConstantWorkItem>& worklist) {
+        if (!value.fields.empty()) {
+            this->fail("array aggregate constant cannot contain named fields");
+        }
+        const sema::TypeInfo& array = this->module_.types.get(value.type);
+        if (value.elements.size() != array.array_count) {
+            this->fail("array aggregate constant element count mismatch");
+            return;
+        }
+        for (auto element = value.elements.rbegin(); element != value.elements.rend(); ++element) {
+            worklist.push_back(make_constant_value_work_item(*element, array.array_element));
         }
     }
 
@@ -816,6 +837,10 @@ private:
 
     void verify_aggregate(const Value& value) {
         this->verify_type(value.type, "aggregate result");
+        if (this->module_.types.is_array(value.type)) {
+            this->verify_array_aggregate(value);
+            return;
+        }
         const RecordLayout* record = find_record(this->module_, value.type);
         if (record == nullptr) {
             this->fail("aggregate result is not a record");
@@ -835,6 +860,23 @@ private:
         }
         if (seen.size() != record->fields.size()) {
             this->fail("aggregate does not initialize every field");
+        }
+        if (!value.elements.empty()) {
+            this->fail("record aggregate cannot contain array elements");
+        }
+    }
+
+    void verify_array_aggregate(const Value& value) {
+        if (!value.fields.empty()) {
+            this->fail("array aggregate cannot contain named fields");
+        }
+        const sema::TypeInfo& array = this->module_.types.get(value.type);
+        if (value.elements.size() != array.array_count) {
+            this->fail("array aggregate element count mismatch");
+            return;
+        }
+        for (const ValueId element : value.elements) {
+            this->verify_value_type(element, array.array_element, "array aggregate element");
         }
     }
 

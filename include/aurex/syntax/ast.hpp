@@ -81,6 +81,7 @@ enum class ExprKind {
     if_expr,
     block_expr,
     match_expr,
+    array_literal,
     field,
     index,
     struct_literal,
@@ -189,6 +190,9 @@ struct ExprNode {
     ExprId block_result = INVALID_EXPR_ID;
     ExprId match_value = INVALID_EXPR_ID;
     std::vector<MatchArm> match_arms;
+    std::vector<ExprId> array_elements;
+    ExprId array_repeat_value = INVALID_EXPR_ID;
+    ExprId array_repeat_count = INVALID_EXPR_ID;
     ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
     ExprId index = INVALID_EXPR_ID;
@@ -254,6 +258,7 @@ struct FieldDecl {
 struct EnumCaseDecl {
     std::string_view name;
     TypeId payload_type = INVALID_TYPE_ID;
+    std::vector<TypeId> payload_types;
     std::string_view value_text;
     base::SourceRange range {};
 };

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -14,6 +15,9 @@ namespace aurex::sema {
 namespace {
 
 constexpr char SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE[] = "public function return type must be explicit";
+constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX[] = ".payload";
+constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX[] = "_payload";
+constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
 
 [[nodiscard]] bool is_main_argv_type(const TypeTable& types, const TypeHandle type) noexcept {
     if (!types.is_pointer(type)) {
@@ -86,7 +90,8 @@ enum class ConstEvalStage : base::u8 {
     AFTER_BINARY_LHS = 2,
     AFTER_BINARY_RHS = 3,
     AFTER_STRUCT_LITERAL = 4,
-    AFTER_CAST = 5,
+    AFTER_ARRAY_LITERAL = 5,
+    AFTER_CAST = 6,
 };
 
 struct ConstDependencyFrame {
@@ -333,8 +338,10 @@ void SemanticAnalyzer::register_value_names() {
                     this->report(enum_case.range, "duplicate enum case: " + std::string(item.name) + "." + std::string(enum_case.name));
                 }
             }
-            const TypeHandle enum_type = this->resolve_type(item.enum_base_type);
-            if (!this->checked_.types.is_integer(enum_type)) {
+            const TypeHandle enum_type = syntax::is_valid(item.enum_base_type)
+                ? this->resolve_type(item.enum_base_type)
+                : this->checked_.types.builtin(BuiltinType::u32);
+            if (syntax::is_valid(item.enum_base_type) && !this->checked_.types.is_integer(enum_type)) {
                 this->report(item.range, "enum base type must be an integer type");
             }
             std::unordered_set<base::u64> seen_values;
@@ -347,23 +354,94 @@ void SemanticAnalyzer::register_value_names() {
             base::u64 payload_size = 0;
             base::u64 payload_align = 1;
             bool contains_array_payload = false;
+            base::u64 next_discriminant = 0;
             for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
                 const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
                 const std::string enum_case_key = this->module_key(this->current_module_, full_name);
-                const bool has_payload = syntax::is_valid(enum_case.payload_type);
-                const TypeHandle payload_type = has_payload ? this->resolve_type(enum_case.payload_type) : INVALID_TYPE_HANDLE;
-                base::u64 discriminant = 0;
-                const bool parsed_discriminant = this->parse_integer_literal_text(enum_case.value_text, discriminant);
+                const bool has_payload = !enum_case.payload_types.empty() || syntax::is_valid(enum_case.payload_type);
+                std::vector<TypeHandle> payload_types;
+                payload_types.reserve(enum_case.payload_types.empty() ? 1 : enum_case.payload_types.size());
+                if (enum_case.payload_types.empty()) {
+                    if (syntax::is_valid(enum_case.payload_type)) {
+                        payload_types.push_back(this->resolve_type(enum_case.payload_type));
+                    }
+                } else {
+                    for (const syntax::TypeId payload_syntax_type : enum_case.payload_types) {
+                        payload_types.push_back(this->resolve_type(payload_syntax_type));
+                    }
+                }
+                TypeHandle payload_type = INVALID_TYPE_HANDLE;
+                if (payload_types.size() == 1) {
+                    payload_type = payload_types.front();
+                } else if (payload_types.size() > 1) {
+                    const std::string payload_type_name = this->qualified_name(
+                        this->current_module_,
+                        full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX
+                    );
+                    const std::string payload_type_c_name = this->c_symbol_name(
+                        this->current_module_,
+                        full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX
+                    );
+                    bool payload_contains_array = false;
+                    for (const TypeHandle field_type : payload_types) {
+                        payload_contains_array = payload_contains_array || this->checked_.types.contains_array(field_type);
+                    }
+                    payload_type = this->checked_.types.named_struct(
+                        payload_type_name,
+                        payload_type_c_name,
+                        payload_contains_array
+                    );
+                    StructInfo payload_info;
+                    payload_info.name = payload_type_name;
+                    payload_info.c_name = payload_type_c_name;
+                    payload_info.module = this->current_module_;
+                    payload_info.type = payload_type;
+                    payload_info.visibility = syntax::Visibility::private_;
+                    payload_info.fields.reserve(payload_types.size());
+                    for (base::usize i = 0; i < payload_types.size(); ++i) {
+                        const std::string field_name =
+                            std::string(SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
+                        payload_info.fields.push_back(StructFieldInfo {
+                            field_name,
+                            field_name,
+                            this->current_module_,
+                            payload_types[i],
+                            enum_case.range,
+                            syntax::Visibility::public_,
+                        });
+                    }
+                    const auto payload_inserted = this->checked_.structs.emplace(
+                        this->module_key(this->current_module_, full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX),
+                        std::move(payload_info)
+                    );
+                    if (payload_inserted.second) {
+                        this->struct_infos_by_type_[payload_type.value] = &payload_inserted.first->second;
+                    }
+                }
+                const std::string value_text = enum_case.value_text.empty()
+                    ? std::to_string(next_discriminant)
+                    : std::string(enum_case.value_text);
+                base::u64 discriminant = next_discriminant;
+                const bool parsed_discriminant = this->parse_integer_literal_text(value_text, discriminant);
                 if (!parsed_discriminant) {
                     this->report(enum_case.range, "enum discriminant literal is out of range");
-                } else if (!this->integer_literal_fits_type(enum_type, enum_case.value_text)) {
+                } else if (!this->integer_literal_fits_type(enum_type, value_text)) {
                     this->report(enum_case.range, "enum discriminant does not fit enum base type");
                 } else if (!seen_values.insert(discriminant).second) {
                     this->report(enum_case.range, "duplicate enum discriminant value in " + std::string(item.name));
                 }
+                next_discriminant = discriminant == std::numeric_limits<base::u64>::max()
+                    ? discriminant
+                    : discriminant + 1;
                 if (has_payload) {
-                    if (!this->is_valid_storage_type(payload_type)) {
-                        this->report(enum_case.range, "enum payload type is not valid storage");
+                    for (const TypeHandle payload_field_type : payload_types) {
+                        if (!this->is_valid_storage_type(payload_field_type)) {
+                            this->report(enum_case.range, "enum payload type is not valid storage");
+                        }
+                        if (this->checked_.types.contains_array(payload_field_type)) {
+                            contains_array_payload = true;
+                            this->report(enum_case.range, "enum payload cannot contain array storage");
+                        }
                     }
                     const base::u64 case_size = this->abi_size(payload_type);
                     const base::u64 case_align = this->abi_align(payload_type);
@@ -374,10 +452,6 @@ void SemanticAnalyzer::register_value_names() {
                     }
                     payload_size = std::max(payload_size, case_size);
                     payload_align = std::max(payload_align, case_align);
-                    if (this->checked_.types.contains_array(payload_type)) {
-                        contains_array_payload = true;
-                        this->report(enum_case.range, "enum payload cannot contain array storage");
-                    }
                 }
                 const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
                     full_name,
@@ -385,7 +459,8 @@ void SemanticAnalyzer::register_value_names() {
                     this->current_module_,
                     named_enum_type,
                     payload_type,
-                    std::string(enum_case.value_text),
+                    std::move(payload_types),
+                    value_text,
                     enum_case.range,
                     std::string(item.name),
                     std::string(enum_case.name),
@@ -792,6 +867,30 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                     stack.push_back(ConstEvalFrame {it->value, ConstEvalStage::ENTER, 0});
                 }
                 break;
+            case syntax::ExprKind::array_literal:
+                if (syntax::is_valid(expr.array_repeat_value)) {
+                    if (!syntax::is_valid(expr.array_repeat_count)) {
+                        values.push_back(false);
+                        break;
+                    }
+                    stack.push_back(ConstEvalFrame {frame.expr_id, ConstEvalStage::AFTER_ARRAY_LITERAL, 2});
+                    stack.push_back(ConstEvalFrame {expr.array_repeat_count, ConstEvalStage::ENTER, 0});
+                    stack.push_back(ConstEvalFrame {expr.array_repeat_value, ConstEvalStage::ENTER, 0});
+                    break;
+                }
+                if (expr.array_elements.empty()) {
+                    values.push_back(true);
+                    break;
+                }
+                stack.push_back(ConstEvalFrame {
+                    frame.expr_id,
+                    ConstEvalStage::AFTER_ARRAY_LITERAL,
+                    expr.array_elements.size(),
+                });
+                for (auto it = expr.array_elements.rbegin(); it != expr.array_elements.rend(); ++it) {
+                    stack.push_back(ConstEvalFrame {*it, ConstEvalStage::ENTER, 0});
+                }
+                break;
             case syntax::ExprKind::unary:
                 if (expr.unary_op != syntax::UnaryOp::logical_not &&
                     expr.unary_op != syntax::UnaryOp::numeric_negate &&
@@ -843,6 +942,15 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
             break;
         }
         case ConstEvalStage::AFTER_STRUCT_LITERAL: {
+            bool ok = true;
+            for (base::usize index = 0; index < frame.child_count; ++index) {
+                ok = values.back() && ok;
+                values.pop_back();
+            }
+            values.push_back(ok);
+            break;
+        }
+        case ConstEvalStage::AFTER_ARRAY_LITERAL: {
             bool ok = true;
             for (base::usize index = 0; index < frame.child_count; ++index) {
                 ok = values.back() && ok;

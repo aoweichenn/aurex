@@ -650,6 +650,31 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     EXPECT_GT(diagnostics.diagnostics().size(), 0U);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId repeat_value = push_integer(module);
+    syntax::ExprNode repeat_literal;
+    repeat_literal.kind = syntax::ExprKind::array_literal;
+    repeat_literal.array_repeat_value = repeat_value;
+    const ExprId repeat_literal_id = module.push_expr(repeat_literal);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle expected_array = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i32);
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_array_literal_expr(repeat_literal_id, module.exprs[repeat_literal_id.value], expected_array),
+        expected_array
+    ));
+    EXPECT_TRUE(diagnostics.has_error());
+}
+
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};
@@ -817,7 +842,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     enum_item.name = "Choice";
     enum_item.enum_base_type = u8_type_id;
     enum_item.enum_cases = {
-        syntax::EnumCaseDecl {"none", syntax::INVALID_TYPE_ID, SEMA_TEST_INTEGER_LITERAL_ONE, {}},
+        syntax::EnumCaseDecl {"none", syntax::INVALID_TYPE_ID, {}, SEMA_TEST_INTEGER_LITERAL_ONE, {}},
     };
     const syntax::ItemId enum_item_id = module.push_item(enum_item);
     module.item_modules[enum_item_id.value] = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);

@@ -177,6 +177,7 @@ struct Value {
     std::vector<FieldValue> fields;
     std::vector<PhiInput> incoming;
     GlobalConstantId constant = INVALID_GLOBAL_CONSTANT_ID;
+    std::vector<ValueId> elements {};
     UnaryOp unary_op = UnaryOp::logical_not;
     BinaryOp binary_op = BinaryOp::add;
     CastKind cast_kind = CastKind::numeric;

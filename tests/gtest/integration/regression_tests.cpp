@@ -99,6 +99,61 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
     expect_contains(llvm_ir, "ret i32 1000");
 }
 
+TEST_F(AurexIntegrationTest, ArrayLiteralRegressions) {
+    const fs::path array_literal = positive_sample("types", "array_literal.ax");
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(array_literal)).output;
+    expect_contains_all(ir, {
+        "aggregate [",
+        "index_addr",
+    });
+
+    const fs::path array_binary = test_bin_root() / "array_literal";
+    require_success(aurexc() + " " + q(array_literal) + " -o " + q(array_binary));
+    require_success(q(array_binary));
+
+    const fs::path repeat_literal = positive_sample("types", "array_repeat_literal.ax");
+    const fs::path repeat_binary = test_bin_root() / "array_repeat_literal";
+    require_success(aurexc() + " " + q(repeat_literal) + " -o " + q(repeat_binary));
+    require_success(q(repeat_binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_literal_empty_infer.ax"))).output,
+        "empty array literal requires an array type context"
+    );
+    expect_contains(
+        require_failure(
+            aurexc() + " --check " + q(negative_sample("types", "array_literal_expected_non_array.ax"))
+        ).output,
+        "array literal requires an array expected type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_literal_element_type_mismatch.ax"))).output,
+        "array literal element type mismatch"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_literal_length_mismatch.ax"))).output,
+        "array literal length mismatch"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_repeat_count_mismatch.ax"))).output,
+        "array literal length mismatch"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_repeat_count_not_literal.ax"))).output,
+        "array repeat count must be an integer literal"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_repeat_count_overflow.ax"))).output,
+        "array repeat count literal is out of range"
+    );
+    expect_contains(
+        require_failure(
+            aurexc() + " --check " + q(negative_sample("types", "array_repeat_value_type_mismatch.ax"))
+        ).output,
+        "array repeat value type mismatch"
+    );
+}
+
 TEST_F(AurexIntegrationTest, EnumConstructorMatchArmRegressions) {
     const fs::path source = write_source_file(
         tmp_root() / "enum_match_arm.ax",
@@ -119,6 +174,38 @@ TEST_F(AurexIntegrationTest, EnumConstructorMatchArmRegressions) {
         "fn main() -> i32 { return 0; }\n"
     );
     require_success(aurexc() + " --check " + q(source));
+}
+
+TEST_F(AurexIntegrationTest, EnumAdtRegressions) {
+    const fs::path no_payload = positive_sample("types", "enum_adt_no_payload.ax");
+    const fs::path no_payload_binary = test_bin_root() / "enum_adt_no_payload";
+    require_success(aurexc() + " " + q(no_payload) + " -o " + q(no_payload_binary));
+    require_success(q(no_payload_binary));
+
+    const fs::path payload = positive_sample("pattern_matching", "enum_adt_payload.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(payload)).output;
+    expect_contains_all(checked, {
+        "struct priv enum_adt_payload.Token_span.payload fields=2",
+        "case OptionI32_some : enum_adt_payload.OptionI32(i32)",
+        "case Token_span : enum_adt_payload.Token(usize,usize)",
+    });
+
+    const fs::path payload_binary = test_bin_root() / "enum_adt_payload";
+    require_success(aurexc() + " " + q(payload) + " -o " + q(payload_binary));
+    require_success(q(payload_binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "enum_adt_duplicate_auto_discriminant.ax"))).output,
+        "duplicate enum discriminant value"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "enum_adt_multi_payload_arity.ax"))).output,
+        "enum payload constructor requires 2 arguments"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "enum_case_empty_payload.ax"))).output,
+        "expected enum case payload type"
+    );
 }
 
 TEST_F(AurexIntegrationTest, QualifiedStaticMethodRegressions) {

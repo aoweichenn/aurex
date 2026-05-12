@@ -45,6 +45,9 @@ void rewrite_value(Value& value, const ValueReplacementMap& replacements) {
     for (ValueId& arg : value.args) {
         rewrite_value_id(arg, replacements);
     }
+    for (ValueId& element : value.elements) {
+        rewrite_value_id(element, replacements);
+    }
     for (FieldValue& field : value.fields) {
         rewrite_value_id(field.value, replacements);
     }
@@ -160,6 +163,9 @@ struct FunctionUseInfo {
                 record_slot_use(value.index, block_index, false);
                 break;
             case ValueKind::aggregate:
+                for (const ValueId element : value.elements) {
+                    record_slot_use(element, block_index, false);
+                }
                 for (const FieldValue& field : value.fields) {
                     record_slot_use(field.value, block_index, false);
                 }

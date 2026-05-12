@@ -30,6 +30,13 @@ notes are design input only, not current progress.
   modules, checked summaries, Aurex IR, and LLVM IR.
 - Semantic analysis for types, symbols, functions, ABI names, structs, enums,
   generics, expression types, visibility, and pattern matching.
+- M2 baseline generics with `[]` syntax only, including explicit `id::[T](x)`
+  calls and non-empty generic parameter/type-argument lists.
+- Fixed array value syntax: array literals `[1, 2, 3]` and repeat literals
+  `[0; 128]`, including const, struct-field, IR, LLVM, and native paths.
+- Default-private visibility, explicit `pub fn` return types, compound
+  assignment, unified block-expression bodies, nested block comments, and
+  range-only `for i in range(...)`.
 - Ordinary root-module `fn main` entry points.
 - Typed Aurex IR, IR verifier, conservative pass pipeline, LLVM lowering, and
   native asm/object/executable output through clang.
@@ -65,11 +72,10 @@ LLVM lowering, native execution, and installed compiler execution.
 
 ## M2 Gaps
 
-- Block statements and block expressions still use different parser paths.
-- Const initializers do not cover all pure scalar operations.
-- There is no compound assignment.
-- Top-level items and struct fields still default to public.
 - Enum syntax still behaves more like explicit C enums than ergonomic ADTs.
+- There is no `unsafe` block / `unsafe fn` boundary yet.
+- Slices, function types, raw/multiline/byte strings, and Unicode scalar
+  `char` literals are not implemented yet.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing

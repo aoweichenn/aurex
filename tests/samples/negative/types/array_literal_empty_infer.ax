@@ -1,0 +1,6 @@
+module array_literal_empty_infer;
+
+fn main() -> i32 {
+    let values = [];
+    return 0;
+}

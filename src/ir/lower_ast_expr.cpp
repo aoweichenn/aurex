@@ -165,6 +165,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_block_expr(expr_id, expr);
     case syntax::ExprKind::match_expr:
         return this->lower_match_expr(expr_id, expr);
+    case syntax::ExprKind::array_literal:
+        return this->lower_array_literal_expr(expr_id, expr);
     case syntax::ExprKind::field:
         if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(this->value_symbol(expr_id, expr)); enum_case != nullptr) {
             if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(this->module_.types, enum_case->type)) {
@@ -311,8 +313,8 @@ ValueId Lowerer::lower_call_expr(
 ) {
     const std::string symbol = this->call_symbol(expr.callee);
     if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
-        enum_case != nullptr && sema::is_valid(enum_case->payload_type)) {
-        return this->lower_enum_constructor(*enum_case, expr.args.empty() ? syntax::INVALID_EXPR_ID : expr.args.front());
+        enum_case != nullptr && !enum_case->payload_types.empty()) {
+        return this->lower_enum_constructor_call(*enum_case, expr);
     }
     Value value;
     value.kind = ValueKind::call;
@@ -355,6 +357,43 @@ ValueId Lowerer::lower_call_expr(
             param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
         }
         value.args.push_back(this->coerce_value(arg, param_type));
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_array_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = ValueKind::aggregate;
+    value.type = this->expr_type(expr_id);
+    if (!sema::is_valid(value.type) || !this->module_.types.is_array(value.type)) {
+        return this->append_value(value);
+    }
+
+    const sema::TypeInfo& array = this->module_.types.get(value.type);
+    if (syntax::is_valid(expr.array_repeat_value)) {
+        if (array.array_count == 0) {
+            return this->append_value(value);
+        }
+        const ValueId repeated = this->coerce_value(
+            this->lower_expr(expr.array_repeat_value, array.array_element),
+            array.array_element
+        );
+        value.elements.reserve(static_cast<base::usize>(array.array_count));
+        for (base::u64 index = 0; index < array.array_count; ++index) {
+            value.elements.push_back(repeated);
+        }
+        return this->append_value(value);
+    }
+
+    value.elements.reserve(expr.array_elements.size());
+    for (const syntax::ExprId element : expr.array_elements) {
+        value.elements.push_back(this->coerce_value(
+            this->lower_expr(element, array.array_element),
+            array.array_element
+        ));
     }
     return this->append_value(value);
 }

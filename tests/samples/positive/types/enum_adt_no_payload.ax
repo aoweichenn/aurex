@@ -1,0 +1,22 @@
+module enum_adt_no_payload;
+
+enum Color {
+    red,
+    green,
+    blue,
+}
+
+fn score(color: Color) -> i32 {
+    return match color {
+        .red => 1,
+        .green => 2,
+        .blue => 3,
+    };
+}
+
+fn main() -> i32 {
+    if Color.green == Color.red {
+        return 1;
+    }
+    return score(Color.red) + score(Color.green) + score(Color.blue) - 6;
+}

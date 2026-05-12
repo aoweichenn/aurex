@@ -107,6 +107,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "}\n"
         "struct Counter { value: i32; }\n"
         "struct Owner { value: i32; }\n"
+        "enum Token { ident(str), span(usize, usize), eof }\n"
         "impl Counter {\n"
         "  pub fn inc(self: *mut Counter) -> i32 {\n"
         "    self.value = self.value + 1;\n"
@@ -133,6 +134,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let len: usize = strblen(s);\n"
         "  let raw: str = strraw(data, len);\n"
         "  let b: u8 = b'\\n';\n"
+        "  let nums: [3]i32 = [1, 2, 3];\n"
+        "  let reps: [2]u8 = [b'a'; 2];\n"
         "  let a: i32 = cast[i32](argc) + bitcast[i32](argc) + alignof[*mut i32];\n"
         "  let q: *mut i32 = ptrcast[*mut i32](p);\n"
         "  let idx: u8 = argv[0][0];\n"
@@ -177,6 +180,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "fn printf extern_c variadic @name=printf",
         "impl for Counter",
         "struct Owner",
+        "enum Token",
+        "case span(usize, usize)",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
         "stmt #",
@@ -189,6 +194,9 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "null_literal",
         "string_literal",
         "byte_literal",
+        "array_literal",
+        "array_repeat_value",
+        "array_repeat_count",
         "index",
         "ptrcast",
         "bitcast",
@@ -477,6 +485,35 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
         messages += '\n';
     }
     expect_contains(messages, "expected ',' or ')' after argument");
+    expect_contains(messages, "expected expression");
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayLiteralSeparators) {
+    constexpr base::SourceId PARSER_TEST_ARRAY_LITERAL_RECOVERY_SOURCE_ID {32};
+    constexpr std::string_view source =
+        "module parser.array_literal_recovery;\n"
+        "fn recovered() -> i32 {\n"
+        "  let value: [3]i32 = [1 @ 2, 3];\n"
+        "  let broken = ;\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(PARSER_TEST_ARRAY_LITERAL_RECOVERY_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' or ']' after array element");
     expect_contains(messages, "expected expression");
 }
 

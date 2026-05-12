@@ -1,0 +1,11 @@
+module enum_adt_duplicate_auto_discriminant;
+
+enum Bad {
+    a = 1,
+    b,
+    duplicate = 2,
+}
+
+fn main() -> i32 {
+    return 0;
+}

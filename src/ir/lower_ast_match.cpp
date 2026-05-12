@@ -2,9 +2,16 @@
 
 #include <aurex/ir/enum_layout.hpp>
 
+#include <algorithm>
 #include <utility>
 
 namespace aurex::ir::detail {
+
+namespace {
+
+constexpr char IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
+
+} // namespace
 
 GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const noexcept {
     const std::string symbol = enum_case_symbol(name);
@@ -296,10 +303,45 @@ ValueId Lowerer::append_enum_tag_literal(const std::string_view case_name, const
 }
 
 ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, const syntax::ExprId payload_expr) {
+    const sema::TypeHandle expected_payload_type = enum_case.payload_types.empty()
+        ? enum_case.payload_type
+        : enum_case.payload_types.front();
     const ValueId payload_value = syntax::is_valid(payload_expr)
-        ? lower_expr(payload_expr, enum_case.payload_type)
+        ? lower_expr(payload_expr, expected_payload_type)
         : INVALID_VALUE_ID;
     return append_enum_constructor(enum_case, payload_value);
+}
+
+ValueId Lowerer::lower_enum_constructor_call(
+    const sema::EnumCaseInfo& enum_case,
+    const syntax::ExprNode& expr
+) {
+    if (enum_case.payload_types.empty()) {
+        return this->append_enum_constructor(enum_case, INVALID_VALUE_ID);
+    }
+    if (enum_case.payload_types.size() == 1) {
+        return this->lower_enum_constructor(
+            enum_case,
+            expr.args.empty() ? syntax::INVALID_EXPR_ID : expr.args.front()
+        );
+    }
+
+    Value aggregate;
+    aggregate.kind = ValueKind::aggregate;
+    aggregate.type = enum_case.payload_type;
+    const base::usize field_count = std::min(expr.args.size(), enum_case.payload_types.size());
+    aggregate.fields.reserve(field_count);
+    for (base::usize i = 0; i < field_count; ++i) {
+        const ValueId value = this->coerce_value(
+            this->lower_expr(expr.args[i], enum_case.payload_types[i]),
+            enum_case.payload_types[i]
+        );
+        aggregate.fields.push_back(FieldValue {
+            std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i),
+            value,
+        });
+    }
+    return this->append_enum_constructor(enum_case, this->append_value(aggregate));
 }
 
 ValueId Lowerer::append_enum_constructor(const sema::EnumCaseInfo& enum_case, const ValueId payload_value) {

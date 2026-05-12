@@ -1,0 +1,8 @@
+module array_repeat_literal;
+
+fn main() -> i32 {
+    let zeroes: [128]u8 = [0; 128];
+    let fours: [4]i32 = [4; 4];
+    let inferred = [5; 2];
+    return cast[i32](zeroes[127]) + fours[0] + fours[3] + inferred[1] - 13;
+}

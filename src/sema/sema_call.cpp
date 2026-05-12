@@ -1,10 +1,11 @@
 #include <aurex/sema/sema.hpp>
 
+#include <algorithm>
+
 namespace aurex::sema {
 
 namespace {
 
-constexpr base::usize SEMA_ENUM_PAYLOAD_ARGUMENT_COUNT = 1;
 constexpr base::usize SEMA_RECEIVER_ARGUMENT_COUNT = 1;
 
 } // namespace
@@ -123,20 +124,29 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
     const syntax::ExprNode& expr,
     const EnumCaseInfo& enum_case
 ) {
-    if (!is_valid(enum_case.payload_type)) {
+    if (enum_case.payload_types.empty()) {
         this->report(expr.range, "enum case constructor requires a payload case: " + enum_case.name);
     }
-    if (expr.args.size() != SEMA_ENUM_PAYLOAD_ARGUMENT_COUNT) {
-        this->report(expr.range, "enum payload constructor requires exactly one argument: " + enum_case.name);
-    }
-    TypeHandle actual = INVALID_TYPE_HANDLE;
-    if (!expr.args.empty()) {
-        actual = this->analyze_expr(expr.args.front(), enum_case.payload_type);
-        if (!this->can_assign(enum_case.payload_type, actual, expr.args.front())) {
-            this->report(this->module_.exprs[expr.args.front().value].range, "enum payload constructor argument type mismatch");
+    if (expr.args.size() != enum_case.payload_types.size()) {
+        if (enum_case.payload_types.size() == 1) {
+            this->report(expr.range, "enum payload constructor requires exactly one argument: " + enum_case.name);
+        } else {
+            this->report(
+                expr.range,
+                "enum payload constructor requires " + std::to_string(enum_case.payload_types.size()) +
+                    " arguments: " + enum_case.name
+            );
         }
-        if (this->checked_.types.contains_array(enum_case.payload_type)) {
-            this->report(this->module_.exprs[expr.args.front().value].range, "array-containing type cannot be used as enum payload");
+    }
+    const base::usize checked_arg_count = std::min(expr.args.size(), enum_case.payload_types.size());
+    for (base::usize i = 0; i < checked_arg_count; ++i) {
+        const TypeHandle expected = enum_case.payload_types[i];
+        const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
+        if (!this->can_assign(expected, actual, expr.args[i])) {
+            this->report(this->module_.exprs[expr.args[i].value].range, "enum payload constructor argument type mismatch");
+        }
+        if (this->checked_.types.contains_array(expected)) {
+            this->report(this->module_.exprs[expr.args[i].value].range, "array-containing type cannot be used as enum payload");
         }
     }
     this->record_expr_c_name(expr.callee, enum_case.c_name);

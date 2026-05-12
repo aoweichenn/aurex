@@ -621,6 +621,7 @@ p1 | p2 | p3
 - 部分二元运算：`+`、`-`、`*`、比较、相等、bitwise `&` / `^` / `|`。
 - `cast` / `ptrcast` / `bitcast` / `ptraddr` / `ptrat`，前提是 operand 可 const eval。
 - `sizeof` / `alignof`。
+- array literal / repeat literal，只要元素 initializer 可 const eval 且 repeat count 是整数字面量。
 
 当前不允许：
 
@@ -651,7 +652,7 @@ M2 当前值语义：
 
 - M1 的 `noncopy struct`、`move(value)` 和 use-after-move 追踪已删除。
 - struct / enum 先按普通值语义处理；当前实现不维护语言级 `Copy` / `Drop` / move 状态。
-- 数组和含数组类型仍受当前后端/ABI 限制，不能作为普通 by-value 存储或赋值目标。
+- 数组和含数组类型仍受当前后端/ABI 限制，不能作为函数 by-value 参数/返回、赋值目标或 enum payload；数组可作为字段、局部变量和 const 存储，并可用数组字面量构造。
 - 当前还没有 borrow checker、partial move、lifetime、automatic drop 或正式 destructor。
 
 泛型约束缺口：
@@ -958,7 +959,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 4. 给“当前没有”的语法做 negative tests。
 5. 为 `unsafe` block / `unsafe fn` 设计最小语法和 unsafe-only 诊断清单，不一定立刻改所有 lowering。
 6. 把 enum 改成 ADT-first：普通 enum 的 base type 和 discriminant 可选，显式 C-like/repr enum 保留 `enum Status: u8 { ok = 0, err = 1 }` 形态。
-7. 补 array literal / repeat literal，让已有 `[N]T` 数组类型具备基础值语法。
+7. array literal / repeat literal 已补齐，让已有 `[N]T` 数组类型具备基础值语法。
 8. 浮点字面量已补齐基础形式；后续只需决定是否增加后缀方案。
 9. default private 已完成；后续只需要 public surface dump 和文档生成基于当前规则继续完善。
 
@@ -1169,20 +1170,19 @@ where T: Eq
 - `Result` / `?` 负责错误传播。
 - `unsafe` 负责低层逃生口。
 
-## 近期最应该做的 12 件事
+## 近期最应该做的 11 件事
 
 1. 把本文拆成正式 language reference 和 design notes 两份文档。
 2. 给 parser 写 EBNF，并用 tests 锁住每类语法。
 3. 加 `unsafe` block / `unsafe fn` 的语法和诊断框架。
 4. 冻结浮点字面量后缀策略。
 5. 让 enum base type / discriminant 可选。
-6. 补 array literal / repeat literal。
-7. 设计 slice type/expression 与 `str` 边界。
-8. 设计 function pointer / function type。
-9. 设计并实现最小非资源类 `where` 约束。
-10. 设计 `&T` / `&mut T`，先文档冻结。
-11. 增强 `match`：struct pattern、multi-payload、`let ... else`。
-12. 把 `Copy` / `Drop` / destructor / move-out 明确留给后续资源语义专题。
+6. 设计 slice type/expression 与 `str` 边界。
+7. 设计 function pointer / function type。
+8. 设计并实现最小非资源类 `where` 约束。
+9. 设计 `&T` / `&mut T`，先文档冻结。
+10. 增强 `match`：struct pattern、multi-payload、`let ... else`。
+11. 把 `Copy` / `Drop` / destructor / move-out 明确留给后续资源语义专题。
 
 ## 参考资料
 

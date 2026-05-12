@@ -15,9 +15,9 @@
    - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strblen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
    - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
    - ADT-first enum：让普通 `enum Option[T] { some(T), none }` / `enum Result[T, E] { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
-   - array literal / repeat literal：数组类型 `[N]T` 已存在，但还缺 `[1, 2, 3]` / `[0; 128]` 这类基础值语法。
+   - array literal / repeat literal 已完成：`[1, 2, 3]` 和 `[0; 128]` 现在能构造固定长度数组值。
 
-   已完成的第一优先级基础项：default private 已切换完成。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。
+   已完成的第一优先级基础项：default private 已切换完成；array literal / repeat literal 已完成。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。
 
    第二批 P1 基础语法继续补 slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function type / `extern c fn` type、tuple/destructuring，以及 `if let` / `let ... else` / struct pattern。容器迭代、完整 closure 捕获、trait/interface/protocol、package manager、macro、async 继续暂缓。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型、`str`、C string、byte literal、函数声明和 C FFI，但还缺数组值语法、slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function pointer / function type。现代系统语言和 ML-family 语言都说明这些属于基础表达能力，不应等到未来库层重建后再补。
+   Aurex 已有数组类型和值语法、`str`、C string、byte literal、函数声明和 C FFI，但还缺 slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function pointer / function type。现代系统语言和 ML-family 语言都说明这些属于基础表达能力，不应等到未来库层重建后再补。
 
 5. 值语义边界
 

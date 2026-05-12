@@ -38,7 +38,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     scoped_pattern.scoped = true;
     scoped_pattern.enum_name = "Color";
     scoped_pattern.case_name = "red";
-    scoped_pattern.binding_name = "value";
+    scoped_pattern.binding_names = {"value", "shade"};
     module.patterns.push_back(scoped_pattern);
 
     syntax::ExprNode invalid_expr;
@@ -121,7 +121,7 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
         "expr #0 invalid",
         "expr #1 unknown",
         "struct_literal Pair",
-        "match_arm Color.red(value)",
+        "match_arm Color.red(value, shade)",
         "match_arm <invalid-pattern>",
         "expr <invalid>",
         "item <invalid>",

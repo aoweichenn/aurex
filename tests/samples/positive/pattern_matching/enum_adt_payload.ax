@@ -21,7 +21,7 @@ fn value(opt: OptionI32) -> i32 {
 fn token_score(token: Token) -> i32 {
     return match token {
         .ident(name) => 1,
-        .span(payload) => 2,
+        .span(start, end) => cast[i32](end - start) + 1,
         .eof => 3,
     };
 }

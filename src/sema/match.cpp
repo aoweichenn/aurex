@@ -23,6 +23,29 @@ struct MatchPatternAction {
     syntax::PatternId parent = syntax::INVALID_PATTERN_ID;
 };
 
+[[nodiscard]] bool pattern_has_payload_bindings(const syntax::PatternNode& pattern) noexcept {
+    return !pattern.binding_names.empty();
+}
+
+[[nodiscard]] base::usize pattern_payload_binding_count(const syntax::PatternNode& pattern) noexcept {
+    return pattern.binding_names.size();
+}
+
+[[nodiscard]] std::string_view pattern_payload_binding_name(
+    const syntax::PatternNode& pattern,
+    const base::usize index
+) noexcept {
+    return pattern.binding_names[index];
+}
+
+[[nodiscard]] base::usize enum_case_payload_field_count(const EnumCaseInfo& info) noexcept {
+    return info.payload_types.size();
+}
+
+[[nodiscard]] TypeHandle enum_case_payload_field_type(const EnumCaseInfo& info, const base::usize index) noexcept {
+    return info.payload_types[index];
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_match_expr(
@@ -90,37 +113,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 guarded ? arm_covered_false : covered_false,
                 guarded ? arm_saw_wildcard : saw_wildcard
             );
-        TypeHandle arm_type = INVALID_TYPE_HANDLE;
-        if (pattern != nullptr && !pattern->binding_name.empty()) {
-            if (case_info == nullptr) {
-                const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
-                arm_type = this->analyze_expr(arm.value, arm_expected);
-            } else if (!is_valid(case_info->payload_type)) {
-                this->report(arm.range, "match arm payload binding requires a payload enum case");
-            } else {
-                this->symbols_.push_scope();
-                const auto inserted = this->symbols_.insert(Symbol {
-                    SymbolKind::local,
-                    std::string(pattern->binding_name),
-                    {},
-                    syntax::INVALID_MODULE_ID,
-                    case_info->payload_type,
-                    arm.range,
-                    false,
-                    syntax::Visibility::private_,
-                }, this->diagnostics_);
-                static_cast<void>(inserted);
-                if (guarded) {
-                    const TypeHandle guard_type = this->analyze_expr(arm.guard);
-                    if (!this->checked_.types.is_bool(guard_type)) {
-                        this->report(this->module_.exprs[arm.guard.value].range, "match guard must be bool");
-                    }
-                }
-                const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
-                arm_type = this->analyze_expr(arm.value, arm_expected);
-                this->symbols_.pop_scope();
-            }
-        } else {
+        const auto analyze_guard_and_arm_value = [&]() {
             if (guarded) {
                 const TypeHandle guard_type = this->analyze_expr(arm.guard);
                 if (!this->checked_.types.is_bool(guard_type)) {
@@ -128,7 +121,45 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 }
             }
             const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
-            arm_type = this->analyze_expr(arm.value, arm_expected);
+            return this->analyze_expr(arm.value, arm_expected);
+        };
+        TypeHandle arm_type = INVALID_TYPE_HANDLE;
+        if (pattern != nullptr && pattern_has_payload_bindings(*pattern)) {
+            if (case_info == nullptr) {
+                arm_type = analyze_guard_and_arm_value();
+            } else if (enum_case_payload_field_count(*case_info) == 0) {
+                this->report(arm.range, "match arm payload binding requires a payload enum case");
+                arm_type = analyze_guard_and_arm_value();
+            } else if (const base::usize binding_count = pattern_payload_binding_count(*pattern);
+                       binding_count != enum_case_payload_field_count(*case_info)) {
+                this->report(
+                    pattern->range,
+                    "enum payload pattern requires " +
+                        std::to_string(enum_case_payload_field_count(*case_info)) +
+                        " binding" +
+                        (enum_case_payload_field_count(*case_info) == 1 ? "" : "s")
+                );
+                arm_type = analyze_guard_and_arm_value();
+            } else {
+                this->symbols_.push_scope();
+                for (base::usize i = 0; i < binding_count; ++i) {
+                    const auto inserted = this->symbols_.insert(Symbol {
+                        SymbolKind::local,
+                        std::string(pattern_payload_binding_name(*pattern, i)),
+                        {},
+                        syntax::INVALID_MODULE_ID,
+                        enum_case_payload_field_type(*case_info, i),
+                        arm.range,
+                        false,
+                        syntax::Visibility::private_,
+                    }, this->diagnostics_);
+                    static_cast<void>(inserted);
+                }
+                arm_type = analyze_guard_and_arm_value();
+                this->symbols_.pop_scope();
+            }
+        } else {
+            arm_type = analyze_guard_and_arm_value();
         }
         const bool null_result_arm = is_null_result_expr(arm.value);
         if (!is_valid(arm_type) && null_result_arm && this->checked_.types.is_pointer(result)) {
@@ -209,7 +240,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_enum_case_pattern(
                     syntax::is_valid(alternative) && alternative.value < this->module_.patterns.size()
                         ? &this->module_.patterns[alternative.value]
                         : nullptr;
-                if (alternative_pattern != nullptr && !alternative_pattern->binding_name.empty()) {
+                if (alternative_pattern != nullptr && pattern_has_payload_bindings(*alternative_pattern)) {
                     this->report(alternative_pattern->range, "or-pattern alternatives cannot bind payloads");
                 }
             }

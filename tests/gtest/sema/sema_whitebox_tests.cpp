@@ -1051,13 +1051,13 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     payload_pattern.kind = syntax::PatternKind::enum_case;
     payload_pattern.scoped = true;
     payload_pattern.case_name = "some";
-    payload_pattern.binding_name = "payload";
+    payload_pattern.binding_names = {"payload"};
     const syntax::PatternId payload_pattern_id = module.push_pattern(payload_pattern);
 
     syntax::PatternNode true_binding_pattern;
     true_binding_pattern.kind = syntax::PatternKind::literal;
     true_binding_pattern.case_name = "true";
-    true_binding_pattern.binding_name = "flag";
+    true_binding_pattern.binding_names = {"flag"};
     const syntax::PatternId true_binding_pattern_id = module.push_pattern(true_binding_pattern);
 
     syntax::PatternNode wildcard_pattern;
@@ -1122,6 +1122,7 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     some_case.module = module_id(0);
     some_case.type = choice_type;
     some_case.payload_type = i32;
+    some_case.payload_types = {i32};
     some_case.enum_name = "Choice";
     some_case.case_name = "some";
     analyzer.checked_.enum_cases.emplace(analyzer.module_key(module_id(0), "some"), some_case);

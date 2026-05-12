@@ -34,6 +34,8 @@ notes are design input only, not current progress.
   calls and non-empty generic parameter/type-argument lists.
 - Fixed array value syntax: array literals `[1, 2, 3]` and repeat literals
   `[0; 128]`, including const, struct-field, IR, LLVM, and native paths.
+- ADT-first enum basics, including automatic tags, explicit C-like repr enums,
+  and multi-field payload destructuring in patterns.
 - Default-private visibility, explicit `pub fn` return types, compound
   assignment, unified block-expression bodies, nested block comments, and
   range-only `for i in range(...)`.
@@ -72,7 +74,10 @@ LLVM lowering, native execution, and installed compiler execution.
 
 ## M2 Gaps
 
-- Enum syntax still behaves more like explicit C enums than ergonomic ADTs.
+- Enum syntax now supports the M2 ADT-first form: ordinary enums may omit the
+  base type and case discriminants, tags are assigned automatically, and
+  explicit `enum Status: u8 { ok = 0, err = 1 }` remains available for C-like
+  repr enums. Generic enums are still intentionally unsupported in M2.
 - There is no `unsafe` block / `unsafe fn` boundary yet.
 - Slices, function types, raw/multiline/byte strings, and Unicode scalar
   `char` literals are not implemented yet.

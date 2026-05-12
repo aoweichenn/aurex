@@ -1,0 +1,13 @@
+module enum_single_payload_pattern_arity;
+
+enum OptionI32 {
+    some(i32),
+    none,
+}
+
+fn value(opt: OptionI32) -> i32 {
+    return match opt {
+        .some(value, extra) => value + extra,
+        .none => 0,
+    };
+}

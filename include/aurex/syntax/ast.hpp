@@ -152,7 +152,7 @@ struct PatternNode {
     base::SourceRange range {};
     std::string_view enum_name;
     std::string_view case_name;
-    std::string_view binding_name;
+    std::vector<std::string_view> binding_names;
     std::vector<PatternId> alternatives;
     bool scoped = false;
 };

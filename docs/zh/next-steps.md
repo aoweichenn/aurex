@@ -14,10 +14,10 @@
 
    - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strblen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
    - 最小 `unsafe` block / `unsafe fn`：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作不能继续留在普通安全表达式表面。
-   - ADT-first enum：让普通 `enum Option[T] { some(T), none }` / `enum Result[T, E] { ok(T), err(E) }` 成为主力形态；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
+   - ADT-first enum 已完成非泛型 M2 形态：普通 `enum OptionI32 { some(i32), none }` / `enum Token { span(usize, usize), eof }` 成为主力写法；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
    - array literal / repeat literal 已完成：`[1, 2, 3]` 和 `[0; 128]` 现在能构造固定长度数组值。
 
-   已完成的第一优先级基础项：default private 已切换完成；array literal / repeat literal 已完成。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。
+   已完成的第一优先级基础项：default private、ADT-first enum、enum multi-payload destructuring、array literal / repeat literal。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。
 
    第二批 P1 基础语法继续补 slice type/expression、raw/multiline/byte string、Unicode scalar `char`、function type / `extern c fn` type、tuple/destructuring，以及 `if let` / `let ... else` / struct pattern。容器迭代、完整 closure 捕获、trait/interface/protocol、package manager、macro、async 继续暂缓。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
@@ -27,7 +27,7 @@
 
 3. enum ADT 与 pattern 地基
 
-   当前 enum 偏 C-like，base type 和 discriminant 必填。M2 应先设计主力 ADT 语法，让 `Result` / `Option` / compiler AST 状态空间表达更轻，再扩展 multi-payload、struct pattern、`if let` / `let ... else`。
+   enum ADT-first 已落地到非泛型 M2 基线：base type / discriminant 可省略，tag 自动分配，多字段 payload 可构造，并且 pattern 侧支持 `.case(a, b)` 按字段解构。下一步是扩展 struct pattern、nested pattern、`if let` / `let ... else`。
 
 4. 数组、slice、字符串与函数类型基础语法
 

@@ -50,13 +50,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
             pattern.range = this->merge(first.range, case_name.range);
         }
         if (this->match(TokenKind::l_paren)) {
-            const syntax::Token& binding =
-                this->expect_identifier_recovered("expected payload binding name");
-            if (binding.kind == TokenKind::identifier) {
-                pattern.binding_name = binding.text;
-            }
-            const syntax::Token& end = this->expect_payload_binding_end();
-            pattern.range = this->merge(pattern.range, end.range);
+            this->parse_payload_bindings(pattern);
         }
         return this->session_.module.push_pattern(pattern);
     }
@@ -78,13 +72,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
         pattern.scoped = true;
         pattern.range = this->merge(dot.range, case_name.range);
         if (this->match(TokenKind::l_paren)) {
-            const syntax::Token& binding =
-                this->expect_identifier_recovered("expected payload binding name");
-            if (binding.kind == TokenKind::identifier) {
-                pattern.binding_name = binding.text;
-            }
-            const syntax::Token& end = this->expect_payload_binding_end();
-            pattern.range = this->merge(pattern.range, end.range);
+            this->parse_payload_bindings(pattern);
         }
         return this->session_.module.push_pattern(pattern);
     }
@@ -94,6 +82,35 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     pattern.range = this->peek().range;
     this->advance();
     return this->session_.module.push_pattern(pattern);
+}
+
+void PatternParser::parse_payload_bindings(syntax::PatternNode& pattern) {
+    if (this->check(TokenKind::r_paren)) {
+        this->report_here("expected payload binding name");
+    } else {
+        while (!this->is_eof()) {
+            const syntax::Token& binding = this->expect_payload_binding_name();
+            if (binding.kind == TokenKind::identifier) {
+                pattern.binding_names.push_back(binding.text);
+            }
+            if (!this->match(TokenKind::comma)) {
+                break;
+            }
+            if (this->check(TokenKind::r_paren)) {
+                break;
+            }
+        }
+    }
+    const syntax::Token& end = this->expect_payload_binding_end();
+    pattern.range = this->merge(pattern.range, end.range);
+}
+
+const syntax::Token& PatternParser::expect_payload_binding_name() {
+    return this->expect_recovered(
+        TokenKind::identifier,
+        "expected payload binding name",
+        RecoveryContext::pattern_payload
+    );
 }
 
 const syntax::Token& PatternParser::expect_payload_binding_end() {

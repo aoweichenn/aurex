@@ -219,8 +219,15 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
         label += ".";
     }
     label += std::string(pattern.case_name);
-    if (!pattern.binding_name.empty()) {
-        label += "(" + std::string(pattern.binding_name) + ")";
+    if (!pattern.binding_names.empty()) {
+        label += "(";
+        for (base::usize i = 0; i < pattern.binding_names.size(); ++i) {
+            if (i != 0) {
+                label += ", ";
+            }
+            label += std::string(pattern.binding_names[i]);
+        }
+        label += ")";
     }
     return label;
 }

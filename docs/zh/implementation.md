@@ -13,7 +13,7 @@
 - 名称、模块、可见性和 re-export。
 - 类型解析、const 检查、layout 检查。
 - generic function/struct 实例化。
-- pattern matching 与 exhaustiveness。
+- ADT-first enum、显式 C-like/repr enum，以及 pattern matching 与 exhaustiveness。
 - 普通值语义检查，以及数组/含数组类型不能作为函数 by-value 参数/返回、赋值目标或 enum payload 的限制。
 - `for`、`defer`、`break`、`continue` 的控制流和 lowering 前约束。
 

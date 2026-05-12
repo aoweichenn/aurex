@@ -76,11 +76,11 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - compound assignment 已补齐；`++` / `--` 自增自减语法已从 M2 基础语法移除，统一使用 `+= 1` / `-= 1`。
 - 基础 range-for 已补齐为 `for i in range(end)` / `for i in range(start, end)` / `for i in range(start, end, step)`；当前仍没有容器迭代、slice 迭代或 iterator protocol。
 - trailing separator 策略已冻结：圆括号/方括号列表允许 trailing comma，comma 分隔花括号列表允许但不强制最后一个 comma。
-- 下一阶段第一优先级继续收口现代基础语法：最小 `unsafe` block / `unsafe fn`、ADT-first enum 仍未完成；array literal / repeat literal 已完成。
+- 下一阶段继续收口现代基础语法：ADT-first enum、enum multi-payload destructuring、array literal / repeat literal 已完成；slice type/expression、function type 和字面量体系仍待补齐。
 - default private 已完成：顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public。
 - `pub fn` 返回类型已收紧为必须显式；private helper 仍可推导。
 - lexer 已支持嵌套 `/* ... */` 块注释。
-- enum 仍偏 C enum 语法，base type 和 discriminant 必填，不适合作为主力 ADT 表达。
+- enum 已支持 ADT-first 形态：普通 enum 可省略 base type 和 discriminant，tag 自动分配；多字段 payload 可用 `.case(a, b)` pattern 按字段解构；显式 `enum Status: u8 { ok = 0, err = 1 }` 仍作为 C-like/repr enum 形态保留。M2 仍不支持 generic enum。
 - 数组类型和值语法已闭合：支持 `[1, 2, 3]` 和 `[0; 128]`；slice type/expression、function pointer / function type、raw/multiline/bytes string、Unicode scalar `char` 仍属于下一批基础语法缺口。
 - 泛型没有 `where`、trait 或 capability predicate，不能表达 `K: Eq + Hash` 这类基础约束；资源类约束暂缓。
 - M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 暂缓为后续资源语义专题。
@@ -93,4 +93,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。第一优先级是最小 `unsafe` block / `unsafe fn` 和 ADT-first enum；随后补 slice type/expression、`str` safe/unsafe 边界、raw/multiline/bytes string、Unicode scalar `char`、function pointer / function type，再进入 tuple/destructuring、pattern 扩展和非资源类 capability/trait/where。
+下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring 和数组值语法已经落地；随后补 slice type/expression、`str` safe/unsafe 边界、raw/multiline/bytes string、Unicode scalar `char`、function pointer / function type，再进入 tuple/destructuring、struct/nested pattern 扩展和非资源类 capability/trait/where。

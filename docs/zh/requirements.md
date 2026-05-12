@@ -14,7 +14,7 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 
 - 手写 lexer/parser。
 - 模块、import、可见性、re-export。
-- 基础类型、struct、enum、generic struct/function。
+- 基础类型、struct、ADT-style enum、显式 C-like/repr enum、generic struct/function。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。

@@ -88,6 +88,12 @@ TEST_F(AurexIntegrationTest, EnumPayloadAndMatchBinding) {
     const fs::path empty_binding = negative_sample("pattern_matching", "enum_payload_binding_on_empty_case.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(empty_binding)).output, "match arm payload binding requires a payload enum case");
 
+    const fs::path multi_payload_arity = negative_sample("pattern_matching", "enum_multi_payload_pattern_arity.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(multi_payload_arity)).output, "enum payload pattern requires 2 bindings");
+
+    const fs::path single_payload_arity = negative_sample("pattern_matching", "enum_single_payload_pattern_arity.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(single_payload_arity)).output, "enum payload pattern requires 1 binding");
+
     const fs::path unknown_binding = negative_sample("pattern_matching", "enum_payload_unknown_binding.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(unknown_binding)).output, "unknown name: missing");
 

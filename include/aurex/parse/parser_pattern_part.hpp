@@ -13,6 +13,8 @@ public:
 
 private:
     [[nodiscard]] syntax::PatternId parse_pattern_atom();
+    void parse_payload_bindings(syntax::PatternNode& pattern);
+    [[nodiscard]] const syntax::Token& expect_payload_binding_name();
     [[nodiscard]] const syntax::Token& expect_payload_binding_end();
 };
 

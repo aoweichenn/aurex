@@ -11,6 +11,32 @@ namespace {
 
 constexpr char IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
 
+[[nodiscard]] bool pattern_has_payload_bindings(const syntax::PatternNode& pattern) noexcept {
+    return !pattern.binding_names.empty();
+}
+
+[[nodiscard]] base::usize pattern_payload_binding_count(const syntax::PatternNode& pattern) noexcept {
+    return pattern.binding_names.size();
+}
+
+[[nodiscard]] std::string_view pattern_payload_binding_name(
+    const syntax::PatternNode& pattern,
+    const base::usize index
+) noexcept {
+    return pattern.binding_names[index];
+}
+
+[[nodiscard]] base::usize enum_case_payload_field_count(const sema::EnumCaseInfo& info) noexcept {
+    return info.payload_types.size();
+}
+
+[[nodiscard]] sema::TypeHandle enum_case_payload_field_type(
+    const sema::EnumCaseInfo& info,
+    const base::usize index
+) noexcept {
+    return info.payload_types[index];
+}
+
 } // namespace
 
 GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const noexcept {
@@ -452,21 +478,52 @@ ValueId Lowerer::enum_field_addr(const ValueId object, const std::string& field_
 }
 
 void Lowerer::bind_payload_arm(const syntax::PatternNode& pattern, const sema::EnumCaseInfo& info, const ValueId matched_slot) {
-    if (!sema::is_valid(info.payload_type)) {
+    const base::usize binding_count = pattern_payload_binding_count(pattern);
+    const base::usize payload_field_count = enum_case_payload_field_count(info);
+    if (!sema::is_valid(info.payload_type) || binding_count == 0 || binding_count != payload_field_count) {
         return;
     }
-    const ValueId storage_addr = enum_field_addr(matched_slot, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
+    const ValueId storage_addr = this->enum_field_addr(matched_slot, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
     Value cast;
     cast.kind = ValueKind::cast;
-    cast.type = module_.types.pointer(sema::PointerMutability::mut, info.payload_type);
+    cast.type = this->module_.types.pointer(sema::PointerMutability::mut, info.payload_type);
     cast.target_type = cast.type;
     cast.lhs = storage_addr;
     cast.cast_kind = CastKind::pointer;
-    const ValueId payload_addr = append_value(cast);
-    const ValueId payload_value = append_load(payload_addr, info.payload_type, std::string(pattern.binding_name));
-    const ValueId slot = append_temp_alloca(std::string(pattern.binding_name), info.payload_type);
-    locals_[std::string(pattern.binding_name)] = LocalBinding {slot, false};
-    append_store(slot, payload_value);
+    const ValueId payload_addr = this->append_value(cast);
+
+    const auto bind_payload_value = [&](const std::string_view name, const sema::TypeHandle type, const ValueId value) {
+        const std::string local_name(name);
+        const ValueId slot = this->append_temp_alloca(local_name, type);
+        this->locals_[local_name] = LocalBinding {slot, false};
+        this->append_store(slot, value);
+    };
+
+    if (payload_field_count == 1) {
+        const std::string_view binding_name = pattern_payload_binding_name(pattern, 0);
+        bind_payload_value(
+            binding_name,
+            info.payload_type,
+            this->append_load(payload_addr, info.payload_type, std::string(binding_name))
+        );
+        return;
+    }
+
+    for (base::usize i = 0; i < payload_field_count; ++i) {
+        const sema::TypeHandle field_type = enum_case_payload_field_type(info, i);
+        const std::string field_name = std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
+        Value field_addr;
+        field_addr.kind = ValueKind::field_addr;
+        field_addr.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
+        field_addr.name = field_name;
+        field_addr.object = payload_addr;
+        const std::string_view binding_name = pattern_payload_binding_name(pattern, i);
+        bind_payload_value(
+            binding_name,
+            field_type,
+            this->append_load(this->append_value(field_addr), field_type, std::string(binding_name))
+        );
+    }
 }
 
 void Lowerer::bind_match_payload(
@@ -475,11 +532,11 @@ void Lowerer::bind_match_payload(
     const bool payload_enum,
     const ValueId matched_slot
 ) {
-    if (!payload_enum || pattern == nullptr || pattern->binding_name.empty()) {
+    if (!payload_enum || pattern == nullptr || !pattern_has_payload_bindings(*pattern)) {
         return;
     }
-    if (const sema::EnumCaseInfo* info = enum_case_info(pattern_case_symbol(pattern_id)); info != nullptr) {
-        bind_payload_arm(*pattern, *info, matched_slot);
+    if (const sema::EnumCaseInfo* info = this->enum_case_info(this->pattern_case_symbol(pattern_id)); info != nullptr) {
+        this->bind_payload_arm(*pattern, *info, matched_slot);
     }
 }
 

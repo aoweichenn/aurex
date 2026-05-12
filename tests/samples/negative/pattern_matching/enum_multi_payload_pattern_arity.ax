@@ -1,0 +1,13 @@
+module enum_multi_payload_pattern_arity;
+
+enum Token {
+    span(usize, usize),
+    eof,
+}
+
+fn score(token: Token) -> i32 {
+    return match token {
+        .span(start) => cast[i32](start),
+        .eof => 0,
+    };
+}

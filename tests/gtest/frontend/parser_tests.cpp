@@ -1052,8 +1052,6 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
     expect_contains(messages, "expected '=' in const declaration");
     expect_contains(messages, "expected '=' in type alias declaration");
     expect_contains(messages, "expected ':' after field name");
-    expect_contains(messages, "expected ':' after enum name");
-    expect_contains(messages, "expected '=' after enum case name");
     expect_contains(messages, "expected ':' after parameter name");
     expect_contains(messages, "expected initializer");
     expect_contains(messages, "expected expression");

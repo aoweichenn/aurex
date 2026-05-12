@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_postfix_expr_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_primary_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -87,7 +88,7 @@ syntax::ExprId PostfixExprParser::parse_generic_apply_suffix(const syntax::ExprI
         if (callee.kind == syntax::ExprKind::name) {
             return this->session_.module.push_expr(std::move(node));
         } else {
-            this->report_at(begin, "explicit generic arguments require a function name");
+            this->report_at(begin, std::string(PARSER_M2_EXPLICIT_GENERIC_CALL_SYNTAX));
             node.kind = syntax::ExprKind::invalid;
         }
     }

@@ -213,7 +213,7 @@ TEST_F(AurexIntegrationTest, ForStatementAndValueSemantics) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("control_flow", "for_in_unsupported.ax"))).output,
-        "for-in currently supports range(...) only"
+        "M2 range-for only supports range(...); generic iteration is not part of M2 syntax"
     );
 
     const fs::path value_source = positive_sample("types", "value_flow.ax");

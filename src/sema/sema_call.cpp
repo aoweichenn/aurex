@@ -38,7 +38,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         (this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::name &&
          this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::field &&
          this->module_.exprs[expr.callee.value].kind != syntax::ExprKind::generic_apply)) {
-        this->report(expr.range, "callee must be a function name");
+        this->report(expr.range, "callee must be a function name; explicit generic calls use '::[...]', for example id::[i32](...)");
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const syntax::ExprNode& callee = this->module_.exprs[expr.callee.value];
@@ -46,7 +46,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         if (!syntax::is_valid(callee.callee) ||
             callee.callee.value >= this->module_.exprs.size() ||
             this->module_.exprs[callee.callee.value].kind != syntax::ExprKind::name) {
-            this->report(callee.range, "explicit generic arguments require a function name");
+            this->report(callee.range, "explicit generic calls use '::[...]', for example id::[i32](...)");
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         const syntax::ExprNode& generic_callee = this->module_.exprs[callee.callee.value];

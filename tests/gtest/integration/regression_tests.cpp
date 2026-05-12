@@ -392,7 +392,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_bound_rejected_m2.ax"))).output,
-        "generic bounds are not supported in M2"
+        "generic bounds are not part of M2 syntax"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "duplicate_with_plain_struct.ax"))).output,
@@ -412,11 +412,11 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_enum_unsupported.ax"))).output,
-        "generic enums are not supported in M2"
+        "generic enums are not supported by M2 semantic analysis"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "generic_type_alias_unsupported.ax"))).output,
-        "generic type aliases are not supported in M2"
+        "generic type aliases are not supported by M2 semantic analysis"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "public_generic_inferred_return.ax"))).output,
@@ -802,7 +802,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(generic_prototype)).output,
-        "generic functions cannot use C ABI or prototypes in M2"
+        "generic functions with C ABI or prototypes are not supported by M2 semantic analysis"
     );
 
     const fs::path generic_export = write_source_file(
@@ -813,7 +813,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(generic_export)).output,
-        "generic functions cannot use C ABI or prototypes in M2"
+        "generic functions with C ABI or prototypes are not supported by M2 semantic analysis"
     );
 
     const fs::path generic_method = write_source_file(
@@ -827,7 +827,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(generic_method)).output,
-        "generic methods are not supported in M2"
+        "generic methods are not supported by M2 semantic analysis"
     );
 
     const fs::path generic_method_call = write_source_file(
@@ -844,7 +844,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(generic_method_call)).output,
-        "explicit generic arguments require a function name"
+        "explicit generic calls use '::[...]', for example id::[i32](...)"
     );
 
     const fs::path generic_return_inference = write_source_file(

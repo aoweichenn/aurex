@@ -38,7 +38,7 @@ TEST_F(AurexIntegrationTest, IfExpression) {
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "if expression branches must have the same type");
 
     const fs::path missing_else = negative_sample("expressions", "if_expression_missing_else.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(missing_else)).output, "if expression requires else branch");
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_else)).output, "if expression requires an else branch");
 
     const fs::path const_initializer = negative_sample("expressions", "if_expression_const_initializer.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(const_initializer)).output, "if expression cannot be used in const initializer");

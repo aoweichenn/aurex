@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_block_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 #include <aurex/parse/parser_stmt_part.hpp>
 
@@ -158,7 +159,7 @@ BlockParser::BlockBody BlockParser::parse_block_body(
         if (stmt_is_kind(this->session_.module, stmt, syntax::StmtKind::assign)) {
             const syntax::Token& end = this->expect_recovered(
                 TokenKind::semicolon,
-                "expected ';' after assignment",
+                std::string(PARSER_M2_BLOCK_RESULT_ASSIGNMENT),
                 RecoveryContext::statement_terminator
             );
             this->session_.module.stmts[stmt.value].range =

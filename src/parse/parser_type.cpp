@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_type_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <limits>
@@ -270,7 +271,7 @@ bool TypeParser::recover_generic_type_arg_separator() {
 
 void TypeParser::reject_legacy_angle_type_args() {
     const syntax::Token& begin = this->expect(TokenKind::less, "expected '<'");
-    this->report_at(begin, "generic type arguments use '[' and ']'; '<' and '>' are not generic delimiters");
+    this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
         if (this->match(TokenKind::greater)) {
             this->reset_panic();

@@ -1061,7 +1061,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators) {
     expect_parse_error(
         "module parser.generic_bound_recovery;\n"
         "struct Box[T: Copy] { value: T; }\n",
-        "generic bounds are not supported in M2"
+        "generic bounds are not part of M2 syntax"
     );
     expect_parse_error(
         "module parser.generic_param_recovery;\n"
@@ -1114,7 +1114,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "if expression requires else branch");
+    expect_contains(messages, "if expression requires an else branch");
     expect_contains(messages, "expected '=>' after match case");
     expect_contains(messages, "expected expression");
 }
@@ -2092,13 +2092,21 @@ TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax) {
     expect_parse_error(
         "module parser.legacy_angle_generic_params;\n"
         "fn id<T>(x: T) -> T { return x; }\n",
-        "generic parameter lists use '[' and ']'"
+        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters"
     );
     expect_parse_error(
         "module parser.legacy_angle_type_args;\n"
         "struct Pair[A, B] { first: A; second: B; }\n"
         "type Bad = Pair<i32, bool>;\n",
-        "generic type arguments use '[' and ']'"
+        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters"
+    );
+}
+
+TEST(CoreUnit, ParserRejectsWhereClausesWithM2Message) {
+    expect_parse_error(
+        "module parser.where_clause;\n"
+        "fn id[T](value: T) -> T where T: Copy { return value; }\n",
+        "where clauses are not part of M2 syntax"
     );
 }
 

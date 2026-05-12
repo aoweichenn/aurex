@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_expr_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_postfix_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -108,7 +109,7 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
     const syntax::ExprId then_expr = this->parse_block_expr(context);
     this->expect_recovered(
         TokenKind::kw_else,
-        "if expression requires else branch",
+        std::string(PARSER_M2_IF_EXPR_REQUIRES_ELSE),
         RecoveryContext::if_else
     );
     const syntax::ExprId else_expr = this->check(TokenKind::kw_if)

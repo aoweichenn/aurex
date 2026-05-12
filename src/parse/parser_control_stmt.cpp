@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_control_stmt_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_stmt_part.hpp>
 
 #include <string>
@@ -103,7 +104,7 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
     this->expect(TokenKind::kw_in, "expected 'in' after loop variable");
     const syntax::Token& callee = this->expect_identifier_recovered("expected range after 'in'");
     if (callee.text != PARSER_FOR_RANGE_CALLEE) {
-        this->report_at(callee, "for-in currently supports range(...) only");
+        this->report_at(callee, std::string(PARSER_M2_RANGE_FOR_ONLY_RANGE));
     }
     std::vector<syntax::ExprId> args;
     const bool has_range_arguments = this->check(TokenKind::l_paren);

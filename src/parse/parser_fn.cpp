@@ -1,5 +1,6 @@
 #include <aurex/parse/parser_item_part.hpp>
 
+#include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <optional>
@@ -51,6 +52,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     item.is_variadic = is_variadic;
 
     this->parse_optional_abi_name(item);
+    this->reject_optional_where_clause();
 
     if (is_extern_c) {
         const syntax::Token& end = this->expect_item_terminator(
@@ -92,7 +94,7 @@ std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params(
 
 void ItemParser::reject_legacy_angle_generic_params() {
     const syntax::Token& begin = this->expect(TokenKind::less, "expected '<'");
-    this->report_at(begin, "generic parameter lists use '[' and ']'; '<' and '>' are not generic delimiters");
+    this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
         if (this->match(TokenKind::greater)) {
             this->reset_panic();
@@ -127,7 +129,7 @@ std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param() {
         return std::nullopt;
     }
     if (this->check(TokenKind::colon)) {
-        this->report_here("generic bounds are not supported in M2");
+        this->report_here(std::string(PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED));
     }
     return syntax::GenericParamDecl {
         name.text,
@@ -247,6 +249,16 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
     this->expect_abi_attribute_argument_start();
     this->parse_abi_name_argument(item);
     this->recover_abi_attribute_argument_end();
+    this->reset_panic();
+}
+
+void ItemParser::reject_optional_where_clause() {
+    if (!this->check(TokenKind::identifier) || this->peek().text != "where") {
+        return;
+    }
+    const syntax::Token& begin = this->advance();
+    this->report_at(begin, std::string(PARSER_M2_GENERIC_WHERE_UNSUPPORTED));
+    this->synchronize(RecoveryContext::item);
     this->reset_panic();
 }
 

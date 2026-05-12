@@ -52,6 +52,7 @@ private:
     [[nodiscard]] bool recover_param_separator(bool& is_variadic);
     [[nodiscard]] syntax::TypeId parse_optional_return_type();
     void parse_optional_abi_name(syntax::ItemNode& item);
+    void reject_optional_where_clause();
     void expect_abi_attribute_argument_start();
     void parse_abi_name_argument(syntax::ItemNode& item);
     void recover_abi_attribute_argument_end();

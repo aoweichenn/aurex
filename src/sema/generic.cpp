@@ -107,17 +107,17 @@ void SemanticAnalyzer::register_generic_template(
     }
 
     if (item.kind == syntax::ItemKind::enum_decl) {
-        this->report(item.range, "generic enums are not supported in M2");
+        this->report(item.range, "generic enums are not supported by M2 semantic analysis");
         return;
     }
 
     if (item.kind == syntax::ItemKind::type_alias) {
-        this->report(item.range, "generic type aliases are not supported in M2");
+        this->report(item.range, "generic type aliases are not supported by M2 semantic analysis");
         return;
     }
 
     if (item.kind != syntax::ItemKind::fn_decl) {
-        this->report(item.range, "generic parameters are only supported on structs and functions in M2");
+        this->report(item.range, "generic parameters outside structs and functions are not supported by M2 semantic analysis");
         return;
     }
 
@@ -125,10 +125,10 @@ void SemanticAnalyzer::register_generic_template(
         this->report(item.range, SEMA_PUBLIC_FUNCTION_RETURN_TYPE_MESSAGE);
     }
     if (item.is_extern_c || item.is_export_c || item.is_prototype) {
-        this->report(item.range, "generic functions cannot use C ABI or prototypes in M2");
+        this->report(item.range, "generic functions with C ABI or prototypes are not supported by M2 semantic analysis");
     }
     if (syntax::is_valid(item.impl_type)) {
-        this->report(item.range, "generic methods are not supported in M2");
+        this->report(item.range, "generic methods are not supported by M2 semantic analysis");
     }
     if (this->checked_.functions.contains(info.key) || this->generic_function_templates_.contains(info.key)) {
         this->report(item.range, "duplicate function definition in module " + this->module_name(owner) + ": " + std::string(item.name));

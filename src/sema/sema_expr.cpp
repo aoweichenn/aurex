@@ -286,7 +286,7 @@ TypeHandle SemanticAnalyzer::analyze_generic_apply_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
 ) {
-    this->report(expr.range, "explicit generic arguments require a function call");
+    this->report(expr.range, "explicit generic calls use '::[...]', for example id::[i32](...)");
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 

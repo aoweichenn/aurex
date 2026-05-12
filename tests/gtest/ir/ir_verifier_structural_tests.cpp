@@ -45,6 +45,31 @@ void append_return_block(
     function.blocks[entry.value].terminator.value = return_value;
 }
 
+[[nodiscard]] Value slice_value(const TypeHandle type, const ValueId data, const ValueId length) {
+    Value value;
+    value.kind = ValueKind::slice;
+    value.type = type;
+    value.lhs = data;
+    value.rhs = length;
+    return value;
+}
+
+[[nodiscard]] Value slice_data_value(const TypeHandle type, const ValueId object) {
+    Value value;
+    value.kind = ValueKind::slice_data;
+    value.type = type;
+    value.object = object;
+    return value;
+}
+
+[[nodiscard]] Value slice_len_value(const TypeHandle type, const ValueId object) {
+    Value value;
+    value.kind = ValueKind::slice_len;
+    value.type = type;
+    value.object = object;
+    return value;
+}
+
 } // namespace
 
 TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
@@ -760,6 +785,31 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle array_type = module.types.array(2, i32);
+        Function function = make_function(module, "bad_array_aggregate_count", i32);
+        FunctionBuilder builder {module, function};
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = array_type;
+        aggregate.elements = {
+            builder.add(integer_value(i32, "1")),
+        };
+        const ValueId aggregate_id = builder.add(aggregate);
+        const ValueId result = builder.add(integer_value(i32, "0"));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {
+            aggregate.elements[0],
+            aggregate_id,
+            result,
+        };
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = result;
+        module.functions.push_back(function);
+        expect_error_contains(ir::verify_module(module), "array aggregate element count mismatch");
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
         module.records.push_back(RecordLayout {
             record_type,
@@ -1293,6 +1343,91 @@ TEST(CoreUnit, IrVerifierReportsExternDeclarationMismatches) {
             "extern function @unit_extern_param has inconsistent declarations"
         );
     }
+}
+
+TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
+    Module module;
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle usize = builtin(module, BuiltinType::usize);
+    const TypeHandle mut_ptr_i32 = ptr(module, PointerMutability::mut, i32);
+    const TypeHandle const_ptr_i32 = ptr(module, PointerMutability::const_, i32);
+    const TypeHandle mut_ptr_bool = ptr(module, PointerMutability::mut, bool_type);
+    const TypeHandle const_slice_i32 = module.types.slice(PointerMutability::const_, i32);
+    const TypeHandle mut_slice_i32 = module.types.slice(PointerMutability::mut, i32);
+
+    Function function = make_function(module, "bad_slices", i32);
+    FunctionBuilder builder {module, function};
+    const ValueId zero = builder.add(integer_value(i32, IR_VERIFIER_LITERAL_ZERO));
+    const ValueId length = builder.add(integer_value(usize, IR_VERIFIER_LITERAL_ONE));
+    const ValueId bool_length = builder.add(bool_value(module, true));
+    const ValueId mut_data = builder.add(alloca_value(mut_ptr_i32));
+    const ValueId const_data = builder.add(typed_value(ValueKind::undef, const_ptr_i32));
+    const ValueId bool_data = builder.add(alloca_value(mut_ptr_bool));
+    const ValueId const_slice = builder.add(typed_value(ValueKind::undef, const_slice_i32));
+    const ValueId mut_slice = builder.add(typed_value(ValueKind::undef, mut_slice_i32));
+
+    const ValueId bad_slice_result = builder.add(slice_value(i32, mut_data, length));
+    const ValueId bad_slice_data = builder.add(slice_value(const_slice_i32, bool_data, length));
+    const ValueId bad_slice_len = builder.add(slice_value(const_slice_i32, mut_data, bool_length));
+    const ValueId bad_mut_slice_const_data = builder.add(slice_value(mut_slice_i32, const_data, length));
+    const ValueId bad_slice_non_pointer_data = builder.add(slice_value(const_slice_i32, zero, length));
+    const ValueId bad_slice_missing_data = builder.add(slice_value(const_slice_i32, INVALID_VALUE_ID, length));
+    const ValueId bad_slice_missing_length = builder.add(slice_value(const_slice_i32, mut_data, INVALID_VALUE_ID));
+    const ValueId bad_data_object = builder.add(slice_data_value(const_ptr_i32, zero));
+    const ValueId bad_data_result = builder.add(slice_data_value(mut_ptr_i32, const_slice));
+    const ValueId bad_data_element = builder.add(slice_data_value(mut_ptr_bool, mut_slice));
+    const ValueId bad_data_result_non_pointer = builder.add(slice_data_value(i32, const_slice));
+    const ValueId bad_len_result = builder.add(slice_len_value(i32, const_slice));
+    const ValueId bad_len_object = builder.add(slice_len_value(usize, zero));
+    const ValueId missing_len_object = builder.add(slice_len_value(usize, INVALID_VALUE_ID));
+    const ValueId missing_data_object = builder.add(slice_data_value(const_ptr_i32, INVALID_VALUE_ID));
+
+    append_return_block(
+        builder,
+        function,
+        {
+            zero,
+            length,
+            bool_length,
+            mut_data,
+            const_data,
+            bool_data,
+            const_slice,
+            mut_slice,
+            bad_slice_result,
+            bad_slice_data,
+            bad_slice_len,
+            bad_mut_slice_const_data,
+            bad_slice_non_pointer_data,
+            bad_slice_missing_data,
+            bad_slice_missing_length,
+            bad_data_object,
+            bad_data_result,
+            bad_data_element,
+            bad_data_result_non_pointer,
+            bad_len_result,
+            bad_len_object,
+            missing_len_object,
+            missing_data_object,
+        },
+        zero
+    );
+    module.functions.push_back(function);
+
+    const auto result = ir::verify_module(module);
+    ASSERT_FALSE(result);
+    expect_contains_all(result.error().message, {
+        "slice value result must be a slice",
+        "slice data must be pointer to slice element",
+        "slice length must be usize",
+        "slice data value id is invalid",
+        "slice data result must be pointer to slice element",
+        "slice length result must be usize",
+        "slice length value id is invalid",
+        "slice_data object value id is invalid",
+        "slice_len object value id is invalid",
+    });
 }
 
 } // namespace aurex::test

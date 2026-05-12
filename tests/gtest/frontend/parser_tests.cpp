@@ -206,6 +206,39 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     });
 }
 
+TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions) {
+    constexpr std::string_view source =
+        "module parser.slices;\n"
+        "type ConstSlice = []const i32;\n"
+        "type MutSlice = []mut i32;\n"
+        "fn use(values: []const i32, mut_values: []mut i32) -> i32 {\n"
+        "  let all = values[:];\n"
+        "  let prefix = values[:2];\n"
+        "  let suffix = values[1:];\n"
+        "  let middle = mut_values[1:2];\n"
+        "  return all[0] + prefix[0] + suffix[0] + middle[0];\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "alias []const i32",
+        "alias []mut i32",
+        "slice",
+        "slice_start",
+        "slice_end",
+        "index",
+    });
+}
+
+TEST(CoreUnit, ParserRejectsBareSliceType) {
+    expect_parse_error(
+        "module parser.bad_slice_type;\n"
+        "type Bad = []i32;\n",
+        "expected 'mut' or 'const' after '[]'"
+    );
+}
+
 TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
     {
         DiagnosticSink diagnostics;
@@ -242,8 +275,10 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
             "type F32Alias = f32;\n"
             "type F64Alias = f64;\n"
             "type HexBytes = [0x2A]u8;\n"
+            "type UpperHexBytes = [0X2A]u8;\n"
             "type LowerHexBytes = [0x2a]u8;\n"
             "type BinBytes = [0b1010]u8;\n"
+            "type UpperBinBytes = [0B1010]u8;\n"
             "type DecBytes = [1_000]u8;\n"
             "enum Code: u16 { hex = 0x2A, bin = 0b1010, dec = 1_000, }\n"
             "struct Wrap { value: i32; }\n"
@@ -280,6 +315,8 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
             "alias f64",
             "alias [42]u8",
             "alias [42]u8",
+            "alias [42]u8",
+            "alias [10]u8",
             "alias [10]u8",
             "alias [1000]u8",
             "struct_literal Outer",

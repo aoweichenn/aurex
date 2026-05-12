@@ -126,6 +126,7 @@ syntax::TypeId TypeParser::parse_type() {
     enum class TypeConstructorKind {
         pointer,
         array,
+        slice,
     };
 
     struct TypeConstructor {
@@ -159,6 +160,23 @@ syntax::TypeId TypeParser::parse_type() {
 
         if (this->match(TokenKind::l_bracket)) {
             const syntax::Token& begin = this->previous();
+            if (this->match(TokenKind::r_bracket)) {
+                syntax::PointerMutability mutability = syntax::PointerMutability::const_;
+                if (this->match(TokenKind::kw_mut)) {
+                    mutability = syntax::PointerMutability::mut;
+                } else if (this->match(TokenKind::kw_const)) {
+                    mutability = syntax::PointerMutability::const_;
+                } else {
+                    this->report_here(std::string(PARSER_EXPECT_TYPE_SLICE_MUTABILITY));
+                }
+                constructors.push_back(TypeConstructor {
+                    TypeConstructorKind::slice,
+                    begin.range,
+                    mutability,
+                    0,
+                });
+                continue;
+            }
             const syntax::Token& count = this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ARRAY_LENGTH));
             this->expect_array_length_end();
             base::u64 array_count = 0;
@@ -185,10 +203,14 @@ syntax::TypeId TypeParser::parse_type() {
             node.kind = syntax::TypeKind::pointer;
             node.pointer_mutability = constructor.pointer_mutability;
             node.pointee = type;
-        } else {
+        } else if (constructor.kind == TypeConstructorKind::array) {
             node.kind = syntax::TypeKind::array;
             node.array_count = constructor.array_count;
             node.array_element = type;
+        } else {
+            node.kind = syntax::TypeKind::slice;
+            node.slice_mutability = constructor.pointer_mutability;
+            node.slice_element = type;
         }
         type = this->session_.module.push_type(node);
     }

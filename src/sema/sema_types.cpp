@@ -62,6 +62,7 @@ enum class TypeResolveActionKind {
     resolve,
     build_pointer,
     build_array,
+    build_slice,
 };
 
 struct TypeResolveAction {
@@ -403,6 +404,19 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                     false,
                 });
                 break;
+            case syntax::TypeKind::slice:
+                actions.push_back(TypeResolveAction {
+                    TypeResolveActionKind::build_slice,
+                    action.type,
+                    action.opaque_allowed_as_pointee,
+                    type.slice_mutability,
+                });
+                actions.push_back(TypeResolveAction {
+                    TypeResolveActionKind::resolve,
+                    type.slice_element,
+                    false,
+                });
+                break;
             case syntax::TypeKind::named: {
                 const TypeHandle resolved = this->resolve_named_type(
                     action.type,
@@ -428,6 +442,14 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             const TypeHandle element = values.back();
             values.pop_back();
             const TypeHandle resolved = this->checked_.types.array(*action.array_count, element);
+            this->record_syntax_type_handle(action.type, resolved);
+            values.push_back(resolved);
+            break;
+        }
+        case TypeResolveActionKind::build_slice: {
+            const TypeHandle element = values.back();
+            values.pop_back();
+            const TypeHandle resolved = this->checked_.types.slice(map_mutability(action.pointer_mutability), element);
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;
@@ -552,6 +574,15 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
             return true;
         }
     }
+    if (this->checked_.types.is_slice(dst) && this->checked_.types.is_slice(src)) {
+        const TypeInfo& dst_info = this->checked_.types.get(dst);
+        const TypeInfo& src_info = this->checked_.types.get(src);
+        if (!this->checked_.types.same(dst_info.slice_element, src_info.slice_element)) {
+            return false;
+        }
+        return dst_info.slice_mutability == PointerMutability::const_ ||
+               src_info.slice_mutability == PointerMutability::mut;
+    }
     return this->checked_.types.same(dst, src);
 }
 
@@ -567,6 +598,10 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
         }
         if (this->checked_.types.is_void(current) || info.kind == TypeKind::opaque_struct) {
             return false;
+        }
+        if (info.kind == TypeKind::slice) {
+            current = info.slice_element;
+            continue;
         }
         if (info.kind != TypeKind::array) {
             return true;
@@ -603,7 +638,10 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::generic_param) {
+        if (info.kind == TypeKind::builtin ||
+            info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::slice ||
+            info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -733,6 +771,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         const TypeInfo& dependency_info = this->checked_.types.get(dependency);
         if (dependency_info.kind == TypeKind::builtin ||
             dependency_info.kind == TypeKind::pointer ||
+            dependency_info.kind == TypeKind::slice ||
             dependency_info.kind == TypeKind::generic_param ||
             dependency_info.kind == TypeKind::opaque_struct ||
             results.contains(dependency.value)) {
@@ -787,7 +826,10 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::generic_param) {
+        if (info.kind == TypeKind::builtin ||
+            info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::slice ||
+            info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -966,6 +1008,8 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
             return builtin_layout(info.builtin);
         case TypeKind::pointer:
             return TypeAbiLayout {sizeof(void*), alignof(void*)};
+        case TypeKind::slice:
+            return TypeAbiLayout {sizeof(void*) + sizeof(std::size_t), alignof(void*)};
         case TypeKind::array: {
             const TypeAbiLayout element = cached(layouts, info.array_element);
             return TypeAbiLayout {
@@ -1020,6 +1064,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         const TypeInfo& info = this->checked_.types.get(dependency);
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::slice ||
             info.kind == TypeKind::generic_param ||
             info.kind == TypeKind::opaque_struct) {
             stack.push_back(TypeLayoutFrame {dependency, {}, TypeLayoutFrameStage::enter});
@@ -1058,6 +1103,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         }
         case TypeKind::builtin:
         case TypeKind::pointer:
+        case TypeKind::slice:
         case TypeKind::generic_param:
         case TypeKind::opaque_struct:
             break;
@@ -1087,6 +1133,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         }
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::slice ||
             info.kind == TypeKind::generic_param ||
             info.kind == TypeKind::opaque_struct) {
             layouts[frame.type.value] = finish_type(frame.type, layouts);
@@ -1179,6 +1226,9 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
             const TypeHandle object = this->analyze_expr(expr.object);
             if (this->checked_.types.is_pointer(object)) {
                 return this->checked_.types.get(object).pointer_mutability == PointerMutability::mut;
+            }
+            if (this->checked_.types.is_slice(object)) {
+                return this->checked_.types.get(object).slice_mutability == PointerMutability::mut;
             }
             current = expr.object;
             break;

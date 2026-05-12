@@ -1,0 +1,9 @@
+module slice_mut;
+
+fn main() -> i32 {
+    var values: [4]i32 = [1, 2, 3, 4];
+    let slice: []mut i32 = values[:];
+    slice[1] = 9;
+    let view: []const i32 = slice[:];
+    return values[1] + view[1] - 18;
+}

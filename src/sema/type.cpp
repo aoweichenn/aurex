@@ -17,6 +17,8 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_POINTER_MUT_PREFIX = "*mut ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_POINTER_CONST_PREFIX = "*const ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
+constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX = "[]const ";
 
 [[nodiscard]] bool builtin_is_integer(const BuiltinType type) noexcept {
     switch (type) {
@@ -105,6 +107,21 @@ TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element) {
     info.contains_array = true;
     const TypeHandle handle = this->push(std::move(info));
     this->array_types_.emplace(key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle element) {
+    const SliceKey key {element.value, mutability};
+    if (const auto found = this->slice_types_.find(key); found != this->slice_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info;
+    info.kind = TypeKind::slice;
+    info.slice_mutability = mutability;
+    info.slice_element = element;
+    const TypeHandle handle = this->push(std::move(info));
+    this->slice_types_.emplace(key, handle);
     return handle;
 }
 
@@ -227,6 +244,10 @@ bool TypeTable::is_array(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::array;
 }
 
+bool TypeTable::is_slice(const TypeHandle type) const noexcept {
+    return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::slice;
+}
+
 bool TypeTable::contains_array(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].contains_array;
 }
@@ -255,6 +276,12 @@ std::string TypeTable::display_name(const TypeHandle type) const {
             name += std::to_string(info.array_count);
             name.append(SEMA_TYPE_DISPLAY_ARRAY_CLOSE);
             current = info.array_element;
+            break;
+        case TypeKind::slice:
+            name.append(info.slice_mutability == PointerMutability::mut
+                ? SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX
+                : SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX);
+            current = info.slice_element;
             break;
         case TypeKind::struct_:
         case TypeKind::enum_:
@@ -299,6 +326,11 @@ std::size_t TypeTable::PointerKeyHash::operator()(const PointerKey& key) const n
 std::size_t TypeTable::ArrayKeyHash::operator()(const ArrayKey& key) const noexcept {
     return static_cast<std::size_t>(key.element) ^
            (static_cast<std::size_t>(key.count) * static_cast<std::size_t>(1099511628211ULL));
+}
+
+std::size_t TypeTable::SliceKeyHash::operator()(const SliceKey& key) const noexcept {
+    return (static_cast<std::size_t>(key.element) << 1) ^
+           static_cast<std::size_t>(key.mutability == PointerMutability::mut ? 1U : 0U);
 }
 
 } // namespace aurex::sema

@@ -1,0 +1,7 @@
+module slice_bound_non_integer;
+
+fn main() -> i32 {
+    let values: [4]i32 = [1, 2, 3, 4];
+    let bad = values[false:2];
+    return bad[0];
+}

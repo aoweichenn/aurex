@@ -87,13 +87,16 @@ contain function declarations and opaque struct declarations.
 
 ```ebnf
 Type
-  = { PointerTypePrefix | ArrayTypePrefix } TypeAtom ;
+  = { PointerTypePrefix | ArrayTypePrefix | SliceTypePrefix } TypeAtom ;
 
 PointerTypePrefix
   = "*" ( "mut" | "const" ) ;
 
 ArrayTypePrefix
   = "[" IntegerLiteral "]" ;
+
+SliceTypePrefix
+  = "[]" ( "const" | "mut" ) ;
 
 TypeAtom
   = PrimitiveType
@@ -124,6 +127,8 @@ str
 *mut i32
 *const u8
 [4]i32
+[]const i32
+[]mut u8
 *mut [4]i32
 Box[i32]
 Pair[i32, bool]
@@ -134,6 +139,10 @@ Rules:
 
 - Pointer types require `mut` or `const` after `*`.
 - Array type length is an integer literal, not a const expression.
+- Slice types require `const` or `mut` after `[]`; bare `[]T` is rejected.
+- Slices are fat values represented as data pointer plus length. They can be
+  produced from arrays or other slices. `[]mut T` is assignable to `[]const T`;
+  `[]const T` is not assignable to `[]mut T`.
 - Generic type arguments use `[]`; empty `[]` is rejected.
 - `<` and `>` are not generic delimiters.
 - Type paths are currently unqualified or one-level `scope::Name`.
@@ -334,6 +343,10 @@ Postfix forms:
 ```text
 value.field
 array[index]
+array[start:end]
+array[:end]
+array[start:]
+array[:]
 function(arg)
 generic_fn::[T](arg)
 expr?
@@ -344,6 +357,15 @@ Array expressions:
 ```aurex
 [1, 2, 3]
 [0; 4]
+```
+
+Slice expressions:
+
+```aurex
+let all: []const i32 = values[:];
+let prefix = values[:3];
+let suffix = values[1:];
+let middle = values[1:3];
 ```
 
 Struct literals:
@@ -370,6 +392,9 @@ Rules:
 - `return`, `break`, `continue`, and `defer` are statements, not tail
   expressions.
 - Empty blocks do not infer a value in value-required positions.
+- Slice expressions require an array or slice operand. Bounds must be integer
+  expressions. Current M2 does not add runtime bounds checks and does not add
+  container iteration.
 
 If expressions:
 
@@ -462,6 +487,7 @@ Examples:
 
 ```aurex
 *i32
+[]i32
 [N]i32
 [1 + 2]i32
 Box[]

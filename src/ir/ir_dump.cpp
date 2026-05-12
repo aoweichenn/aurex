@@ -175,6 +175,15 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             out << "}";
         }
         break;
+    case ValueKind::slice:
+        out << "slice " << value_ref(value.lhs) << ", " << value_ref(value.rhs);
+        break;
+    case ValueKind::slice_data:
+        out << "slice_data " << value_ref(value.object);
+        break;
+    case ValueKind::slice_len:
+        out << "slice_len " << value_ref(value.object);
+        break;
     case ValueKind::cast:
         out << cast_name(value.cast_kind) << " " << value_ref(value.lhs) << " to " << module.types.display_name(value.target_type);
         break;

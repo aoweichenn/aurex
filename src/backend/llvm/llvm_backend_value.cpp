@@ -19,12 +19,16 @@ constexpr char LLVM_BACKEND_VALUE_CONSTANT_C_STRING_NAME[] = "const.cstr";
 constexpr char LLVM_BACKEND_VALUE_C_STRING_NAME[] = "cstr";
 constexpr char LLVM_BACKEND_VALUE_STRING_DATA_NAME[] = "str.data";
 constexpr char LLVM_BACKEND_VALUE_STRING_LENGTH_NAME[] = "str.len";
+constexpr char LLVM_BACKEND_VALUE_SLICE_DATA_NAME[] = "slice.data";
+constexpr char LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME[] = "slice.len";
 constexpr char LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX[] = ".result";
 constexpr char LLVM_BACKEND_VALUE_FIELD_ADDRESS_SUFFIX[] = ".addr";
 constexpr char LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME[] = "index.addr";
 constexpr char LLVM_BACKEND_VALUE_GLOBAL_POINTER_SUFFIX[] = ".ptr";
 constexpr unsigned LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX = 1U;
+constexpr unsigned LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX = 0U;
+constexpr unsigned LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_ZERO_INTEGER = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER = 1U;
@@ -81,6 +85,32 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         return this->emit_index_addr(value);
     case ValueKind::aggregate:
         return this->emit_aggregate(value);
+    case ValueKind::slice: {
+        llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+        result = this->builder_.CreateInsertValue(
+            result,
+            this->get(value.lhs),
+            {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX}
+        );
+        result = this->builder_.CreateInsertValue(
+            result,
+            this->get(value.rhs),
+            {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX}
+        );
+        return result;
+    }
+    case ValueKind::slice_data:
+        return this->builder_.CreateExtractValue(
+            this->get(value.object),
+            {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX},
+            LLVM_BACKEND_VALUE_SLICE_DATA_NAME
+        );
+    case ValueKind::slice_len:
+        return this->builder_.CreateExtractValue(
+            this->get(value.object),
+            {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX},
+            LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME
+        );
     case ValueKind::cast:
         return this->emit_cast(value);
     case ValueKind::size_of:

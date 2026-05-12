@@ -42,6 +42,7 @@ enum class TypeKind {
     builtin,
     pointer,
     array,
+    slice,
     struct_,
     enum_,
     opaque_struct,
@@ -60,6 +61,8 @@ struct TypeInfo {
     TypeHandle pointee = INVALID_TYPE_HANDLE;
     base::u64 array_count = 0;
     TypeHandle array_element = INVALID_TYPE_HANDLE;
+    PointerMutability slice_mutability = PointerMutability::const_;
+    TypeHandle slice_element = INVALID_TYPE_HANDLE;
     TypeHandle enum_underlying = INVALID_TYPE_HANDLE;
     TypeHandle enum_payload_storage = INVALID_TYPE_HANDLE;
     base::u64 enum_payload_size = 0;
@@ -78,6 +81,7 @@ public:
     [[nodiscard]] TypeHandle builtin(BuiltinType type) const noexcept;
     [[nodiscard]] TypeHandle pointer(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
+    [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
     [[nodiscard]] TypeHandle named_struct(std::string name, std::string c_name, bool contains_array);
     [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
@@ -96,6 +100,7 @@ public:
     [[nodiscard]] bool is_void(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_pointer(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_slice(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
     [[nodiscard]] std::string c_name(TypeHandle type) const;
@@ -120,6 +125,15 @@ private:
         }
     };
 
+    struct SliceKey {
+        base::u32 element = TypeHandle::INVALID_VALUE;
+        PointerMutability mutability = PointerMutability::const_;
+
+        [[nodiscard]] bool operator==(const SliceKey& other) const noexcept {
+            return element == other.element && mutability == other.mutability;
+        }
+    };
+
     struct PointerKeyHash {
         [[nodiscard]] std::size_t operator()(const PointerKey& key) const noexcept;
     };
@@ -128,11 +142,16 @@ private:
         [[nodiscard]] std::size_t operator()(const ArrayKey& key) const noexcept;
     };
 
+    struct SliceKeyHash {
+        [[nodiscard]] std::size_t operator()(const SliceKey& key) const noexcept;
+    };
+
     [[nodiscard]] TypeHandle push(TypeInfo info);
 
     std::vector<TypeInfo> types_;
     std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
     std::unordered_map<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
+    std::unordered_map<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
     std::unordered_map<std::string, TypeHandle> generic_param_types_;
 };
 

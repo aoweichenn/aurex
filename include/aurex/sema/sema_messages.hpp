@@ -196,6 +196,9 @@ inline constexpr std::string_view SEMA_ARGUMENT_ARRAY_UNSUPPORTED =
 inline constexpr std::string_view SEMA_ARRAY_INDEX_INTEGER =
     "array index must be an integer";
 
+inline constexpr std::string_view SEMA_SLICE_BOUND_INTEGER =
+    "slice bound must be an integer";
+
 inline constexpr std::string_view SEMA_LOGICAL_NOT_BOOL =
     "logical not requires bool operand";
 
@@ -248,7 +251,13 @@ inline constexpr std::string_view SEMA_INDEX_POINTER_STORAGE =
     "indexing pointer requires pointer to valid storage";
 
 inline constexpr std::string_view SEMA_INDEX_ARRAY_OR_POINTER =
-    "indexing requires array or pointer value";
+    "indexing requires array, slice, or pointer value";
+
+inline constexpr std::string_view SEMA_SLICE_ARRAY_OR_SLICE =
+    "slicing requires array or slice value";
+
+inline constexpr std::string_view SEMA_SLICE_ELEMENT_STORAGE =
+    "slice element type is not valid storage";
 
 inline constexpr std::string_view SEMA_ARRAY_LITERAL_EXPECTED_TYPE =
     "array literal requires an array expected type";

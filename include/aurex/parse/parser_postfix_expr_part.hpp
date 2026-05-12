@@ -22,6 +22,7 @@ private:
     [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId expr);
     [[nodiscard]] syntax::ExprId parse_index_suffix(syntax::ExprId expr, ExprContext context);
     [[nodiscard]] const syntax::Token& expect_index_suffix_end();
+    [[nodiscard]] const syntax::Token& expect_slice_suffix_end();
     [[nodiscard]] syntax::ExprId parse_call_suffix(syntax::ExprId expr, ExprContext context);
     void parse_call_args(std::vector<syntax::ExprId>& args, ExprContext context);
     [[nodiscard]] bool recover_call_arg_separator();

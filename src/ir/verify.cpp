@@ -449,6 +449,15 @@ private:
         case ValueKind::aggregate:
             this->verify_aggregate(*value);
             break;
+        case ValueKind::slice:
+            this->verify_slice(*value);
+            break;
+        case ValueKind::slice_data:
+            this->verify_slice_data(*value);
+            break;
+        case ValueKind::slice_len:
+            this->verify_slice_len(*value);
+            break;
         case ValueKind::cast:
             this->verify_value_id(value->lhs, "cast operand");
             this->verify_type(value->type, "cast result");
@@ -884,6 +893,53 @@ private:
         }
     }
 
+    void verify_slice(const Value& value) {
+        this->verify_type(value.type, "slice result");
+        if (!this->module_.types.is_slice(value.type)) {
+            this->fail(std::string(IR_VERIFY_SLICE_RESULT));
+            return;
+        }
+        this->verify_value_id(value.lhs, "slice data");
+        const Value* data = this->get(value.lhs);
+        if (data != nullptr && !this->slice_data_input_compatible(data->type, value.type)) {
+            this->fail(std::string(IR_VERIFY_SLICE_DATA_POINTER));
+        }
+        this->verify_value_id(value.rhs, "slice length");
+        const Value* length = this->get(value.rhs);
+        if (length != nullptr &&
+            !this->module_.types.same(length->type, this->module_.types.builtin(sema::BuiltinType::usize))) {
+            this->fail(std::string(IR_VERIFY_SLICE_LEN));
+        }
+    }
+
+    void verify_slice_data(const Value& value) {
+        this->verify_type(value.type, "slice_data result");
+        this->verify_value_id(value.object, "slice_data object");
+        const Value* object = this->get(value.object);
+        if (object == nullptr) {
+            return;
+        }
+        if (!this->module_.types.is_slice(object->type)) {
+            this->fail(std::string(IR_VERIFY_SLICE_DATA_RESULT));
+            return;
+        }
+        if (!this->slice_data_result_compatible(value.type, object->type)) {
+            this->fail(std::string(IR_VERIFY_SLICE_DATA_RESULT));
+        }
+    }
+
+    void verify_slice_len(const Value& value) {
+        this->verify_type(value.type, "slice_len result");
+        this->verify_value_id(value.object, "slice_len object");
+        if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::usize))) {
+            this->fail(std::string(IR_VERIFY_SLICE_LEN_RESULT));
+        }
+        const Value* object = this->get(value.object);
+        if (object != nullptr && !this->module_.types.is_slice(object->type)) {
+            this->fail(std::string(IR_VERIFY_SLICE_LEN_RESULT));
+        }
+    }
+
     void verify_storage_type(const sema::TypeHandle type, const std::string& context) {
         // Use an explicit stack so nested array storage checks stay iterative.
         std::vector<StorageTypeWorkItem> worklist;
@@ -906,6 +962,13 @@ private:
                 });
                 continue;
             }
+            if (this->module_.types.is_slice(item.type)) {
+                worklist.push_back(StorageTypeWorkItem {
+                    this->module_.types.get(item.type).slice_element,
+                    item.context + " element",
+                });
+                continue;
+            }
             if (this->module_.types.get(item.type).kind == sema::TypeKind::opaque_struct) {
                 this->fail(ir_verify_storage_type_message(item.context));
             }
@@ -919,6 +982,38 @@ private:
         const sema::TypeInfo& pointer = this->module_.types.get(type);
         return pointer.pointer_mutability == sema::PointerMutability::const_ &&
                this->module_.types.same(pointer.pointee, this->module_.types.builtin(sema::BuiltinType::u8));
+    }
+
+    [[nodiscard]] bool slice_data_input_compatible(
+        const sema::TypeHandle pointer_type,
+        const sema::TypeHandle slice_type
+    ) const noexcept {
+        if (!this->module_.types.is_pointer(pointer_type) || !this->module_.types.is_slice(slice_type)) {
+            return false;
+        }
+        const sema::TypeInfo& pointer = this->module_.types.get(pointer_type);
+        const sema::TypeInfo& slice = this->module_.types.get(slice_type);
+        if (!this->module_.types.same(pointer.pointee, slice.slice_element)) {
+            return false;
+        }
+        return slice.slice_mutability == sema::PointerMutability::const_ ||
+               pointer.pointer_mutability == sema::PointerMutability::mut;
+    }
+
+    [[nodiscard]] bool slice_data_result_compatible(
+        const sema::TypeHandle pointer_type,
+        const sema::TypeHandle slice_type
+    ) const noexcept {
+        if (!this->module_.types.is_pointer(pointer_type) || !this->module_.types.is_slice(slice_type)) {
+            return false;
+        }
+        const sema::TypeInfo& pointer = this->module_.types.get(pointer_type);
+        const sema::TypeInfo& slice = this->module_.types.get(slice_type);
+        if (!this->module_.types.same(pointer.pointee, slice.slice_element)) {
+            return false;
+        }
+        return pointer.pointer_mutability == sema::PointerMutability::const_ ||
+               slice.slice_mutability == sema::PointerMutability::mut;
     }
 
     [[nodiscard]] bool is_integer_literal_type(const sema::TypeHandle type) const noexcept {

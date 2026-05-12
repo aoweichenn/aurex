@@ -167,6 +167,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_match_expr(expr_id, expr);
     case syntax::ExprKind::array_literal:
         return this->lower_array_literal_expr(expr_id, expr);
+    case syntax::ExprKind::slice:
+        return this->lower_slice_expr(expr_id, expr);
     case syntax::ExprKind::field:
         if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(this->value_symbol(expr_id, expr)); enum_case != nullptr) {
             if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(this->module_.types, enum_case->type)) {
@@ -398,6 +400,63 @@ ValueId Lowerer::lower_array_literal_expr(
     return this->append_value(value);
 }
 
+ValueId Lowerer::lower_slice_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const sema::TypeHandle result_type = this->expr_type(expr_id);
+    if (!sema::is_valid(result_type) || !this->module_.types.is_slice(result_type)) {
+        Value invalid;
+        invalid.kind = ValueKind::undef;
+        invalid.type = result_type;
+        return this->append_value(invalid);
+    }
+
+    const sema::TypeInfo& result_slice = this->module_.types.get(result_type);
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    const ValueId zero = this->append_integer_literal("0", usize_type);
+    const ValueId start = syntax::is_valid(expr.slice_start)
+        ? this->coerce_value(this->lower_expr(expr.slice_start, usize_type), usize_type)
+        : zero;
+
+    ValueId base_data = INVALID_VALUE_ID;
+    ValueId end_bound = INVALID_VALUE_ID;
+    const sema::TypeHandle object_type = this->expr_type(expr.object);
+    if (sema::is_valid(object_type) && this->module_.types.is_array(object_type)) {
+        const sema::TypeInfo& array = this->module_.types.get(object_type);
+        const PlaceAddress object = this->lower_object_place_or_value(expr.object);
+        Value data;
+        data.kind = ValueKind::index_addr;
+        data.type = this->module_.types.pointer(result_slice.slice_mutability, result_slice.slice_element);
+        data.object = object.address;
+        data.index = start;
+        base_data = this->append_value(data);
+        end_bound = syntax::is_valid(expr.slice_end)
+            ? this->coerce_value(this->lower_expr(expr.slice_end, usize_type), usize_type)
+            : this->append_integer_literal(std::to_string(array.array_count), usize_type);
+    } else if (sema::is_valid(object_type) && this->module_.types.is_slice(object_type)) {
+        const ValueId source = this->lower_expr(expr.object);
+        const ValueId source_data = this->append_slice_data(source, result_slice.slice_mutability, result_slice.slice_element);
+        Value data;
+        data.kind = ValueKind::index_addr;
+        data.type = this->module_.types.pointer(result_slice.slice_mutability, result_slice.slice_element);
+        data.object = source_data;
+        data.index = start;
+        base_data = this->append_value(data);
+        end_bound = syntax::is_valid(expr.slice_end)
+            ? this->coerce_value(this->lower_expr(expr.slice_end, usize_type), usize_type)
+            : this->append_slice_len(source);
+    }
+
+    const ValueId length = this->append_binary_value(BinaryOp::sub, usize_type, end_bound, start);
+    Value value;
+    value.kind = ValueKind::slice;
+    value.type = result_type;
+    value.lhs = base_data;
+    value.rhs = length;
+    return this->append_value(value);
+}
+
 ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id) {
     Value value;
     value.kind = ValueKind::load;
@@ -512,6 +571,18 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
         return PlaceAddress {append_value(value), object.is_mutable};
     }
     if (expr.kind == syntax::ExprKind::index) {
+        const sema::TypeHandle object_type = this->expr_type(expr.object);
+        if (sema::is_valid(object_type) && this->module_.types.is_slice(object_type)) {
+            const sema::TypeInfo& slice = this->module_.types.get(object_type);
+            const ValueId slice_value = this->lower_expr(expr.object);
+            const ValueId data_pointer = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
+            Value value;
+            value.kind = ValueKind::index_addr;
+            value.type = module_.types.pointer(slice.slice_mutability, expr_type(expr_id));
+            value.object = data_pointer;
+            value.index = lower_expr(expr.index);
+            return PlaceAddress {append_value(value), slice.slice_mutability == sema::PointerMutability::mut};
+        }
         const PlaceAddress object = lower_object_place_or_value(expr.object);
         const sema::PointerMutability mutability = object.is_mutable
             ? sema::PointerMutability::mut
@@ -558,6 +629,26 @@ bool Lowerer::pointee_is_mutable(const syntax::ExprId expr_id) const noexcept {
     return sema::is_valid(type) &&
            module_.types.is_pointer(type) &&
            module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
+}
+
+ValueId Lowerer::append_slice_data(
+    const ValueId slice_value,
+    const sema::PointerMutability mutability,
+    const sema::TypeHandle element_type
+) {
+    Value value;
+    value.kind = ValueKind::slice_data;
+    value.type = this->module_.types.pointer(mutability, element_type);
+    value.object = slice_value;
+    return this->append_value(value);
+}
+
+ValueId Lowerer::append_slice_len(const ValueId slice_value) {
+    Value value;
+    value.kind = ValueKind::slice_len;
+    value.type = this->module_.types.builtin(sema::BuiltinType::usize);
+    value.object = slice_value;
+    return this->append_value(value);
 }
 
 CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
@@ -686,8 +777,22 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
         module_.values[value_id.value].type = target_type;
         return value_id;
     }
-    if (!sema::is_valid(target_type) || !sema::is_valid(source_type) || module_.types.same(source_type, target_type)) {
+    if (!sema::is_valid(target_type) || !sema::is_valid(source_type) || this->module_.types.same(source_type, target_type)) {
         return value_id;
+    }
+    if (this->module_.types.is_slice(source_type) && this->module_.types.is_slice(target_type)) {
+        const sema::TypeInfo& source = this->module_.types.get(source_type);
+        const sema::TypeInfo& target = this->module_.types.get(target_type);
+        if (target.slice_mutability == sema::PointerMutability::const_ &&
+            source.slice_mutability == sema::PointerMutability::mut &&
+            this->module_.types.same(source.slice_element, target.slice_element)) {
+            Value value;
+            value.kind = ValueKind::slice;
+            value.type = target_type;
+            value.lhs = this->append_slice_data(value_id, sema::PointerMutability::const_, target.slice_element);
+            value.rhs = this->append_slice_len(value_id);
+            return this->append_value(value);
+        }
     }
     const bool source_numeric =
         module_.types.is_integer(source_type) ||

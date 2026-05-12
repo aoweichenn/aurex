@@ -154,6 +154,74 @@ TEST_F(AurexIntegrationTest, ArrayLiteralRegressions) {
     );
 }
 
+TEST_F(AurexIntegrationTest, SliceRegressions) {
+    const fs::path slice_basic = positive_sample("types", "slice_basic.ax");
+    const std::string basic_ir = require_success(aurexc() + " --emit=ir " + q(slice_basic)).output;
+    expect_contains_all(basic_ir, {
+        "[]const i32",
+        "slice ",
+        "slice_data",
+        "slice_len",
+        "index_addr",
+    });
+
+    const fs::path basic_binary = test_bin_root() / "slice_basic";
+    require_success(aurexc() + " " + q(slice_basic) + " -o " + q(basic_binary));
+    require_success(q(basic_binary));
+
+    const fs::path slice_mut = positive_sample("types", "slice_mut.ax");
+    const std::string mut_ir = require_success(aurexc() + " --emit=ir " + q(slice_mut)).output;
+    expect_contains_all(mut_ir, {
+        "[]mut i32",
+        "[]const i32",
+        "slice_data",
+    });
+
+    const fs::path mut_binary = test_bin_root() / "slice_mut";
+    require_success(aurexc() + " " + q(slice_mut) + " -o " + q(mut_binary));
+    require_success(q(mut_binary));
+
+    const fs::path slice_generic = positive_sample("types", "slice_generic.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(slice_generic)).output;
+    expect_contains_all(checked, {
+        "first[i32] -> i32",
+    });
+    const std::string generic_ir = require_success(aurexc() + " --emit=ir " + q(slice_generic)).output;
+    expect_contains_all(generic_ir, {
+        "fn first[i32](values: []const i32)",
+        "[]mut i32",
+    });
+
+    const fs::path generic_binary = test_bin_root() / "slice_generic";
+    require_success(aurexc() + " " + q(slice_generic) + " -o " + q(generic_binary));
+    require_success(q(generic_binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_non_slice.ax"))).output,
+        "slicing requires array or slice value"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_bound_non_integer.ax"))).output,
+        "slice bound must be an integer"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_const_write.ax"))).output,
+        "left side of assignment must be writable"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_mut_from_const.ax"))).output,
+        "initializer type does not match declared type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_invalid_object.ax"))).output,
+        "unknown name: missing"
+    );
+    const std::string invalid_element_output =
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_invalid_element.ax"))).output;
+    expect_contains(invalid_element_output, "function parameter type is not valid storage");
+    expect_contains(invalid_element_output, "slice element type is not valid storage");
+}
+
 TEST_F(AurexIntegrationTest, EnumConstructorMatchArmRegressions) {
     const fs::path source = write_source_file(
         tmp_root() / "enum_match_arm.ax",

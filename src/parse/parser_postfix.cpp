@@ -137,13 +137,30 @@ syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) 
 }
 
 syntax::ExprId PostfixExprParser::parse_index_suffix(const syntax::ExprId expr, const ExprContext context) {
-    const syntax::ExprId index = this->parse_expr(context);
+    syntax::ExprId first = syntax::INVALID_EXPR_ID;
+    if (!this->check(TokenKind::colon)) {
+        first = this->parse_expr(context);
+    }
+    if (this->match(TokenKind::colon)) {
+        syntax::ExprId end_bound = syntax::INVALID_EXPR_ID;
+        if (!this->check(TokenKind::r_bracket)) {
+            end_bound = this->parse_expr(context);
+        }
+        const syntax::Token& end = this->expect_slice_suffix_end();
+        syntax::ExprNode node;
+        node.kind = syntax::ExprKind::slice;
+        node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
+        node.object = expr;
+        node.slice_start = first;
+        node.slice_end = end_bound;
+        return this->session_.module.push_expr(std::move(node));
+    }
     const syntax::Token& end = this->expect_index_suffix_end();
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::index;
     node.range = this->merge(this->expr_range_or(expr, end.range), end.range);
     node.object = expr;
-    node.index = index;
+    node.index = first;
     return this->session_.module.push_expr(std::move(node));
 }
 
@@ -151,6 +168,14 @@ const syntax::Token& PostfixExprParser::expect_index_suffix_end() {
     return this->expect_recovered(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_INDEX_END),
+        RecoveryContext::index_expression
+    );
+}
+
+const syntax::Token& PostfixExprParser::expect_slice_suffix_end() {
+    return this->expect_recovered(
+        TokenKind::r_bracket,
+        std::string(PARSER_EXPECT_SLICE_END),
         RecoveryContext::index_expression
     );
 }

@@ -235,6 +235,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_field_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::index:
         return this->analyze_index_expr(expr_id, expr);
+    case syntax::ExprKind::slice:
+        return this->analyze_slice_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::struct_literal:
         return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::cast:
@@ -587,6 +589,9 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
     if (this->checked_.types.is_array(object)) {
         return this->record_expr_type(expr_id, this->checked_.types.get(object).array_element);
     }
+    if (this->checked_.types.is_slice(object)) {
+        return this->record_expr_type(expr_id, this->checked_.types.get(object).slice_element);
+    }
     if (this->checked_.types.is_pointer(object)) {
         const TypeHandle pointee = this->checked_.types.get(object).pointee;
         if (this->checked_.types.is_array(pointee)) {
@@ -601,6 +606,58 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
     }
     this->report(expr.range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+}
+
+TypeHandle SemanticAnalyzer::analyze_slice_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    const TypeHandle usize_type = this->checked_.types.builtin(BuiltinType::usize);
+    const auto analyze_bound = [&](const syntax::ExprId bound) {
+        if (!syntax::is_valid(bound)) {
+            return;
+        }
+        const TypeHandle bound_type = this->analyze_expr(bound, usize_type);
+        if (!this->checked_.types.is_integer(bound_type)) {
+            this->report(
+                bound.value < this->module_.exprs.size() ? this->module_.exprs[bound.value].range : expr.range,
+                std::string(SEMA_SLICE_BOUND_INTEGER)
+            );
+        }
+    };
+
+    const TypeHandle object = this->analyze_expr(expr.object);
+    analyze_bound(expr.slice_start);
+    analyze_bound(expr.slice_end);
+    if (!is_valid(object)) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    TypeHandle element = INVALID_TYPE_HANDLE;
+    PointerMutability mutability = PointerMutability::const_;
+    if (this->checked_.types.is_array(object)) {
+        element = this->checked_.types.get(object).array_element;
+        mutability = this->is_writable_place(expr.object) ? PointerMutability::mut : PointerMutability::const_;
+    } else if (this->checked_.types.is_slice(object)) {
+        const TypeInfo& slice = this->checked_.types.get(object);
+        element = slice.slice_element;
+        mutability = slice.slice_mutability;
+    } else {
+        this->report(expr.range, std::string(SEMA_SLICE_ARRAY_OR_SLICE));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    if (!this->is_valid_storage_type(element)) {
+        this->report(expr.range, std::string(SEMA_SLICE_ELEMENT_STORAGE));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    const TypeHandle natural_slice = this->checked_.types.slice(mutability, element);
+    if (this->checked_.types.is_slice(expected_type) &&
+        this->can_assign(expected_type, natural_slice, syntax::INVALID_EXPR_ID)) {
+        return this->record_expr_type(expr_id, expected_type);
+    }
+    return this->record_expr_type(expr_id, natural_slice);
 }
 
 TypeHandle SemanticAnalyzer::analyze_array_literal_expr(

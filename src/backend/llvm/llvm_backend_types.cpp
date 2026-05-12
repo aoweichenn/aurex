@@ -13,6 +13,13 @@ namespace {
 
 constexpr unsigned LLVM_DEFAULT_ADDRESS_SPACE = 0U;
 
+llvm::Type* llvm_fat_pointer_type(llvm::LLVMContext& context, const llvm::DataLayout& data_layout) {
+    return llvm::StructType::get(
+        llvm::PointerType::get(context, LLVM_DEFAULT_ADDRESS_SPACE),
+        data_layout.getIntPtrType(context)
+    );
+}
+
 } // namespace
 
 void LlvmEmitter::declare_records() {
@@ -65,15 +72,15 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
             case sema::BuiltinType::f32: result = llvm::Type::getFloatTy(this->context_); break;
             case sema::BuiltinType::f64: result = llvm::Type::getDoubleTy(this->context_); break;
             case sema::BuiltinType::str:
-                result = llvm::StructType::get(
-                    llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE),
-                    this->data_layout().getIntPtrType(this->context_)
-                );
+                result = llvm_fat_pointer_type(this->context_, this->data_layout());
                 break;
             }
             break;
         case sema::TypeKind::pointer:
             result = llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE);
+            break;
+        case sema::TypeKind::slice:
+            result = llvm_fat_pointer_type(this->context_, this->data_layout());
             break;
         case sema::TypeKind::array:
             array_counts.push_back(info.array_count);

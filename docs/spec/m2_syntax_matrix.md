@@ -33,12 +33,19 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `*i32` | no | Missing `mut`/`const` |
 | Type | `[4]i32` | yes | Integer literal length |
 | Type | `[N]i32` | no | Const expr lengths are not part of M2 |
+| Type | `[]const i32` | yes | Immutable borrowed slice, fat pointer value |
+| Type | `[]mut i32` | yes | Mutable borrowed slice, fat pointer value |
+| Type | `[]i32` | no | Slice mutability is required |
 | Type | `Box[i32]` | yes | Generic type arguments |
 | Type | `Box[]` | no | Empty type arguments rejected |
 | Type | `Box<i32>` | no | `<>` are not generic delimiters |
 | Type | `foo::Box[i32]` | yes | One-level scope |
 | Type | `foo::bar::Box` | no | Too deep for M2 type syntax |
 | Expr | `arr[i]` | yes | Index expression |
+| Expr | `arr[l:r]` | yes | Slice from array or slice |
+| Expr | `arr[:r]` | yes | Omitted start defaults to zero |
+| Expr | `arr[l:]` | yes | Omitted end defaults to array length or source slice length |
+| Expr | `arr[:]` | yes | Full slice |
 | Expr | `id::[i32](1)` | yes | Explicit generic function call |
 | Expr | `id[i32](1)` | no | Use `id::[i32](...)` |
 | Expr | `Point { x: 1 }` | yes | Struct literal |

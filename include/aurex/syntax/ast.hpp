@@ -42,6 +42,7 @@ enum class TypeKind {
     named,
     pointer,
     array,
+    slice,
 };
 
 struct GenericParamDecl {
@@ -61,6 +62,8 @@ struct TypeNode {
     TypeId pointee = INVALID_TYPE_ID;
     base::u64 array_count = 0;
     TypeId array_element = INVALID_TYPE_ID;
+    PointerMutability slice_mutability = PointerMutability::const_;
+    TypeId slice_element = INVALID_TYPE_ID;
 };
 
 enum class ExprKind {
@@ -84,6 +87,7 @@ enum class ExprKind {
     array_literal,
     field,
     index,
+    slice,
     struct_literal,
     cast,
     pcast,
@@ -196,6 +200,8 @@ struct ExprNode {
     ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
     ExprId index = INVALID_EXPR_ID;
+    ExprId slice_start = INVALID_EXPR_ID;
+    ExprId slice_end = INVALID_EXPR_ID;
     std::string_view struct_name;
     std::vector<TypeId> type_args;
     std::vector<FieldInit> field_inits;

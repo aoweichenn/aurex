@@ -186,6 +186,10 @@ std::string type_label(const AstModule& module, const TypeId id) {
     case TypeKind::array:
         out << "[" << type.array_count << "]" << type_label(module, type.array_element);
         break;
+    case TypeKind::slice:
+        out << "[]" << (type.slice_mutability == PointerMutability::mut ? "mut " : "const ");
+        out << type_label(module, type.slice_element);
+        break;
     }
     return out.str();
 }
@@ -295,6 +299,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::array_literal: return "array_literal";
     case ExprKind::field: return "field";
     case ExprKind::index: return "index";
+    case ExprKind::slice: return "slice";
     case ExprKind::struct_literal: return "struct_literal";
     case ExprKind::cast: return "cast";
     case ExprKind::pcast: return "ptrcast";
@@ -498,6 +503,16 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     if (is_valid(expr.index)) {
         dump_expr(out, module, expr.index, depth + 1);
+    }
+    if (is_valid(expr.slice_start)) {
+        indent(out, depth + 1);
+        out << "slice_start\n";
+        dump_expr(out, module, expr.slice_start, depth + 2);
+    }
+    if (is_valid(expr.slice_end)) {
+        indent(out, depth + 1);
+        out << "slice_end\n";
+        dump_expr(out, module, expr.slice_end, depth + 2);
     }
     for (const FieldInit& init : expr.field_inits) {
         indent(out, depth + 1);

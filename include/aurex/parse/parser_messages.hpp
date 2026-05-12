@@ -385,6 +385,9 @@ inline constexpr std::string_view PARSER_EXPECT_FIELD_AFTER_DOT =
 inline constexpr std::string_view PARSER_EXPECT_INDEX_END =
     "expected ']' after index";
 
+inline constexpr std::string_view PARSER_EXPECT_SLICE_END =
+    "expected ']' after slice expression";
+
 inline constexpr std::string_view PARSER_EXPECT_CALL_ARGUMENTS_END =
     "expected ')' after argument list";
 
@@ -396,6 +399,9 @@ inline constexpr std::string_view PARSER_EXPECT_UNSUPPORTED_UPDATE =
 
 inline constexpr std::string_view PARSER_EXPECT_TYPE_POINTER_MUTABILITY =
     "expected 'mut' or 'const' after '*'";
+
+inline constexpr std::string_view PARSER_EXPECT_TYPE_SLICE_MUTABILITY =
+    "expected 'mut' or 'const' after '[]'";
 
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LENGTH =
     "expected array length";

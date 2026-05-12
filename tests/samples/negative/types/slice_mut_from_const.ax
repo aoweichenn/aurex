@@ -1,0 +1,8 @@
+module slice_mut_from_const;
+
+fn main() -> i32 {
+    let values: [4]i32 = [1, 2, 3, 4];
+    let view: []const i32 = values[:];
+    let mutable_view: []mut i32 = view[:];
+    return mutable_view[0];
+}

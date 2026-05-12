@@ -173,6 +173,21 @@ inline constexpr std::string_view IR_VERIFY_STRRAW_ARITY =
 inline constexpr std::string_view IR_VERIFY_STRRAW_DATA =
     "strraw data must be *const u8";
 
+inline constexpr std::string_view IR_VERIFY_SLICE_RESULT =
+    "slice value result must be a slice";
+
+inline constexpr std::string_view IR_VERIFY_SLICE_DATA_POINTER =
+    "slice data must be pointer to slice element";
+
+inline constexpr std::string_view IR_VERIFY_SLICE_LEN =
+    "slice length must be usize";
+
+inline constexpr std::string_view IR_VERIFY_SLICE_DATA_RESULT =
+    "slice data result must be pointer to slice element";
+
+inline constexpr std::string_view IR_VERIFY_SLICE_LEN_RESULT =
+    "slice length result must be usize";
+
 inline constexpr std::string_view IR_VERIFY_CONSTANT_REF_ID =
     "constant reference id is invalid";
 

@@ -1,0 +1,6 @@
+module slice_non_slice;
+
+fn main() -> i32 {
+    let bad = 1[0:1];
+    return bad[0];
+}

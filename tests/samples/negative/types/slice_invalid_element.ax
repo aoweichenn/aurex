@@ -1,0 +1,10 @@
+module slice_invalid_element;
+
+fn bad(values: []const void) -> i32 {
+    let sliced = values[:];
+    return 0;
+}
+
+fn main() -> i32 {
+    return 0;
+}

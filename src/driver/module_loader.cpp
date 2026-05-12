@@ -118,6 +118,7 @@ void remap_type_node(syntax::TypeNode& node, const IdMap& map) {
     }
     node.pointee = remap_type(node.pointee, map);
     node.array_element = remap_type(node.array_element, map);
+    node.slice_element = remap_type(node.slice_element, map);
 }
 
 void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
@@ -146,6 +147,8 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
     node.array_repeat_count = remap_expr(node.array_repeat_count, map);
     node.object = remap_expr(node.object, map);
     node.index = remap_expr(node.index, map);
+    node.slice_start = remap_expr(node.slice_start, map);
+    node.slice_end = remap_expr(node.slice_end, map);
     for (syntax::FieldInit& init : node.field_inits) {
         init.value = remap_expr(init.value, map);
     }

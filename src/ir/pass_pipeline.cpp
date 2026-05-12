@@ -170,6 +170,14 @@ struct FunctionUseInfo {
                     record_slot_use(field.value, block_index, false);
                 }
                 break;
+            case ValueKind::slice:
+                record_slot_use(value.lhs, block_index, false);
+                record_slot_use(value.rhs, block_index, false);
+                break;
+            case ValueKind::slice_data:
+            case ValueKind::slice_len:
+                record_slot_use(value.object, block_index, false);
+                break;
             case ValueKind::cast:
                 record_slot_use(value.lhs, block_index, false);
                 break;

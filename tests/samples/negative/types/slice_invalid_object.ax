@@ -1,0 +1,6 @@
+module slice_invalid_object;
+
+fn main() -> i32 {
+    let bad = missing[:];
+    return 0;
+}

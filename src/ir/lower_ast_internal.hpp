@@ -170,6 +170,7 @@ private:
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
@@ -184,6 +185,8 @@ private:
 
     [[nodiscard]] bool is_local_slot_type(sema::TypeHandle type) const noexcept;
     [[nodiscard]] bool pointee_is_mutable(syntax::ExprId expr_id) const noexcept;
+    [[nodiscard]] ValueId append_slice_data(ValueId slice_value, sema::PointerMutability mutability, sema::TypeHandle element_type);
+    [[nodiscard]] ValueId append_slice_len(ValueId slice_value);
 
     [[nodiscard]] CallTarget call_target(syntax::ExprId callee) const;
     [[nodiscard]] std::string call_symbol(syntax::ExprId callee) const;

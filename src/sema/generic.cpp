@@ -437,6 +437,13 @@ bool SemanticAnalyzer::unify_generic_type(
             }
             pending.emplace_back(pattern_info.pointee, actual_info.pointee);
             break;
+        case TypeKind::slice:
+            if (pattern_info.slice_mutability == PointerMutability::mut &&
+                actual_info.slice_mutability != PointerMutability::mut) {
+                return false;
+            }
+            pending.emplace_back(pattern_info.slice_element, actual_info.slice_element);
+            break;
         case TypeKind::array:
             if (pattern_info.array_count != actual_info.array_count) {
                 return false;
@@ -594,6 +601,9 @@ bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const 
             return true;
         case TypeKind::pointer:
             pending.push_back(info.pointee);
+            break;
+        case TypeKind::slice:
+            pending.push_back(info.slice_element);
             break;
         case TypeKind::array:
             pending.push_back(info.array_element);

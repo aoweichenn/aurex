@@ -1,6 +1,0 @@
-module tuple_field_index_overflow;
-
-fn main() -> i32 {
-    let pair = (1, false);
-    return pair.999999999999999999999999999999999999999999;
-}

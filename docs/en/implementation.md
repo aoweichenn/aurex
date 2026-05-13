@@ -16,8 +16,8 @@ Sema currently handles:
 - Names, modules, visibility, and re-exports.
 - Type resolution, const checks, and layout checks.
 - Generic function/struct instantiation.
-- Tuple types, tuple literals, zero-based tuple field access, and local tuple
-  destructuring.
+- Tuple types, tuple literals, and tuple destructuring. Anonymous tuple field
+  access is intentionally rejected.
 - ADT-first enums with automatic tags, explicit C-like repr enums, multi-field
   payload destructuring in patterns, and pattern matching / exhaustiveness.
 - Ordinary value-semantics checks, plus the current restriction that arrays and

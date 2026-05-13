@@ -193,9 +193,10 @@ Rules:
 - Slices are fat values represented as data pointer plus length. They can be
   produced from arrays or other slices. `[]mut T` is assignable to `[]const T`;
   `[]const T` is not assignable to `[]mut T`.
-- Tuple types are anonymous product types. `(A, B)` has two fields, and
+- Tuple types are anonymous product types. `(A, B)` has two elements, and
   `(A,)` is the one-element tuple form. `()` is not part of M2 syntax.
-  Numeric fields are zero-based and accessed with `.0`, `.1`, and so on.
+  Anonymous tuple elements are not directly field-accessible; destructure a
+  tuple with a pattern, or use a named struct when field access is required.
 - Function types are non-capturing function pointer types. `fn(...) -> T` uses
   the Aurex function ABI, while `extern c fn(...) -> T` uses the C ABI.
   `unsafe fn(...) -> T` and `unsafe extern c fn(...) -> T` are distinct
@@ -434,7 +435,6 @@ Postfix forms:
 
 ```text
 value.field
-value.0
 array[index]
 array[start:end]
 array[:end]
@@ -513,11 +513,11 @@ Rules:
 - Tuple literals infer a tuple type from their element expressions unless an
   expected tuple type is present. Arity and element types must match the
   expected tuple type. Empty tuple literals are rejected.
-- Tuple field access uses zero-based numeric fields. Because `.5` remains a
-  valid leading-dot float literal in expression-start position, postfix parsing
-  treats `value.0` as tuple/field syntax only after an existing expression.
-- Tuple destructuring is supported in local `let` and `var` declarations:
-  `let (left, _) = pair;`. It is not a match-pattern syntax in M2.
+- Anonymous tuple field access is rejected. `value.0`, `value.1`,
+  `value.first`, and `value.second` are not tuple syntax in M2.
+- Tuple destructuring is supported in local `let` and `var` declarations and
+  in tuple patterns: `let (left, _) = pair;` and
+  `match pair { (left, right) => ... }`.
 
 If expressions:
 

@@ -54,8 +54,10 @@ after core syntax, types, modules, and ABI boundaries stabilize.
 6. Tuple and pattern boundary
 
    Tuple basics are now in M2: `(A, B)` / `(A,)` types, `(a, b)` / `(a,)`
-   literals, `value.0` numeric field access, and local tuple destructuring in
-   `let` / `var`. Pattern ergonomics now include tuple match patterns, slice
+   literals, and tuple destructuring in `let` / `var` and patterns. Anonymous
+   tuples do not support `.0` / `.1` or `.first` / `.second`; use a named
+   struct when field access is required. Pattern ergonomics now include tuple
+   match patterns, slice
    patterns, struct patterns, nested enum payload destructuring, local
    struct/slice/enum destructuring, binding or-pattern alternatives with
    same-name/same-type consistency, `let ... else`, and `if value is pattern` /

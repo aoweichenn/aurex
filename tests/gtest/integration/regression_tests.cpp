@@ -341,16 +341,16 @@ TEST_F(AurexIntegrationTest, TupleRegressions) {
         "empty tuple pattern is not part of M2 syntax"
     );
     expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_out_of_range.ax"))).output,
-        "tuple field index is out of range"
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_numeric_access.ax"))).output,
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
     );
     expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_non_numeric.ax"))).output,
-        "tuple field access requires a zero-based integer field"
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_spaced_numeric_access.ax"))).output,
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
     );
     expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_index_overflow.ax"))).output,
-        "tuple field access requires a zero-based integer field"
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_named_access.ax"))).output,
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_literal_arity_mismatch.ax"))).output,

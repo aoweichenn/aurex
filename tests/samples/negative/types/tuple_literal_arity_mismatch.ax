@@ -2,5 +2,5 @@ module tuple_literal_arity_mismatch;
 
 fn main() -> i32 {
     let pair: (i32, bool) = (1, false, 2);
-    return pair.0;
+    return 0;
 }

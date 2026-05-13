@@ -4,7 +4,6 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
-#include <limits>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -20,9 +19,6 @@ constexpr base::u32 SEMA_I32_BIT_WIDTH = 32;
 constexpr base::u32 SEMA_I64_BIT_WIDTH = 64;
 constexpr base::u32 SEMA_I64_SIGN_BIT_INDEX = 63;
 constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
-constexpr char SEMA_TUPLE_FIELD_FIRST_DIGIT = '0';
-constexpr char SEMA_TUPLE_FIELD_LAST_DIGIT = '9';
-constexpr base::usize SEMA_TUPLE_FIELD_DECIMAL_BASE = 10;
 
 [[nodiscard]] bool binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
     switch (op) {
@@ -174,25 +170,6 @@ struct IntegerLiteralExpr {
 [[nodiscard]] bool is_u8_slice(const TypeTable& types, const TypeHandle type) noexcept {
     return types.is_slice(type) &&
            types.same(types.get(type).slice_element, types.builtin(BuiltinType::u8));
-}
-
-[[nodiscard]] bool parse_tuple_field_index(const std::string_view text, base::usize& index) noexcept {
-    if (text.empty()) {
-        return false;
-    }
-    base::usize value = 0;
-    for (const char c : text) {
-        if (c < SEMA_TUPLE_FIELD_FIRST_DIGIT || c > SEMA_TUPLE_FIELD_LAST_DIGIT) {
-            return false;
-        }
-        const base::usize digit = static_cast<base::usize>(c - SEMA_TUPLE_FIELD_FIRST_DIGIT);
-        if (value > (std::numeric_limits<base::usize>::max() - digit) / SEMA_TUPLE_FIELD_DECIMAL_BASE) {
-            return false;
-        }
-        value = value * SEMA_TUPLE_FIELD_DECIMAL_BASE + digit;
-    }
-    index = value;
-    return true;
 }
 
 } // namespace
@@ -612,17 +589,8 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
         object = this->checked_.types.get(object).pointee;
     }
     if (this->checked_.types.is_tuple(object)) {
-        base::usize index = 0;
-        if (!parse_tuple_field_index(expr.field_name, index)) {
-            this->report(expr.range, std::string(SEMA_TUPLE_FIELD_INDEX));
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-        const TypeInfo& tuple = this->checked_.types.get(object);
-        if (index >= tuple.tuple_elements.size()) {
-            this->report(expr.range, std::string(SEMA_TUPLE_FIELD_RANGE));
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-        return this->record_expr_type(expr_id, tuple.tuple_elements[index]);
+        this->report(expr.range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const StructInfo* info = this->find_struct(object);
     if (info == nullptr || info->is_opaque) {

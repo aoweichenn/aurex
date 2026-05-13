@@ -400,6 +400,9 @@ inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGS_END =
 inline constexpr std::string_view PARSER_EXPECT_FIELD_AFTER_DOT =
     "expected field name after '.'";
 
+inline constexpr std::string_view PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED =
+    "tuple fields are not directly accessible; destructure the tuple or use a named struct";
+
 inline constexpr std::string_view PARSER_EXPECT_INDEX_END =
     "expected ']' after index";
 

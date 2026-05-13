@@ -465,7 +465,7 @@ TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
     EXPECT_EQ(choose->params.size(), 2U);
 }
 
-TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsFieldsAndDestructuring) {
+TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring) {
     constexpr std::string_view source =
         "module parser.tuples;\n"
         "type Pair = (i32, bool);\n"
@@ -478,7 +478,8 @@ TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsFieldsAndDestructuring) {
         "}\n"
         "fn main() -> i32 {\n"
         "  let pair = make_pair(1);\n"
-        "  return pair.0;\n"
+        "  let (value, _) = pair;\n"
+        "  return value;\n"
         "}\n";
     const syntax::AstModule module = parse_success(source);
 
@@ -727,6 +728,25 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
     expect_contains(messages, "expected ',' or ')' after tuple pattern element");
     expect_contains(messages, "expected ',' or ')' after function type parameter");
     expect_contains(messages, "variadic marker must be last in parameter list");
+}
+
+TEST(CoreUnit, ParserRejectsNumericTupleFieldAccess) {
+    expect_parse_error(
+        "module parser.numeric_tuple_field_boundary;\n"
+        "fn main() -> i32 {\n"
+        "  let pair = (1, false);\n"
+        "  return pair.0;\n"
+        "}\n",
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
+    );
+    expect_parse_error(
+        "module parser.spaced_numeric_tuple_field_boundary;\n"
+        "fn main() -> i32 {\n"
+        "  let pair = (1, false);\n"
+        "  return pair . 0;\n"
+        "}\n",
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
+    );
 }
 
 TEST(CoreUnit, ParserDoesNotTreatSuffixedFloatAsTupleField) {

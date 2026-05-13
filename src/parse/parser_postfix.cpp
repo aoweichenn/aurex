@@ -54,7 +54,7 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
         return this->parse_field_suffix(expr);
     }
     if (is_leading_dot_numeric_field_token(this->peek())) {
-        return this->parse_leading_dot_numeric_field_suffix(expr);
+        return this->parse_rejected_numeric_tuple_field_suffix(expr);
     }
     if (this->match(TokenKind::l_bracket)) {
         return this->parse_index_suffix(expr, context);
@@ -149,9 +149,10 @@ bool PostfixExprParser::recover_generic_type_arg_separator() {
 }
 
 syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) {
-    const syntax::Token& field = this->check(TokenKind::integer_literal)
-        ? this->advance()
-        : this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
+    if (this->check(TokenKind::integer_literal)) {
+        return this->parse_rejected_numeric_tuple_field_suffix(expr);
+    }
+    const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::field;
     node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
@@ -160,13 +161,12 @@ syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) 
     return this->session_.module.push_expr(std::move(node));
 }
 
-syntax::ExprId PostfixExprParser::parse_leading_dot_numeric_field_suffix(const syntax::ExprId expr) {
+syntax::ExprId PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(const syntax::ExprId expr) {
     const syntax::Token& field = this->advance();
+    this->report_at(field, std::string(PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED));
     syntax::ExprNode node;
-    node.kind = syntax::ExprKind::field;
+    node.kind = syntax::ExprKind::invalid;
     node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
-    node.object = expr;
-    node.field_name = field.text.substr(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH);
     return this->session_.module.push_expr(std::move(node));
 }
 

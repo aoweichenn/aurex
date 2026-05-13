@@ -1,4 +1,4 @@
-module tuple_field_non_numeric;
+module tuple_field_named_access;
 
 fn main() -> i32 {
     let pair = (1, false);

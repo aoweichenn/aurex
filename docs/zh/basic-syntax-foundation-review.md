@@ -938,7 +938,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 3. raw/multiline raw string、bytes string 和 Unicode scalar `char` 已补齐，后续只需保持文档和测试矩阵同步。
 4. function pointer / function type 已落地，后续只需保持 grammar、诊断和 ABI 文档同步。
 5. public 函数返回类型推导已收紧，后续只需保持诊断与 public surface dump 一致。
-6. tuple/destructuring/pattern ergonomics 已落地，当前支持 `(A, B)` / `(A,)`、`(a, b)` / `(a,)`、`value.0`、局部 `let (a, _) = value;`、局部 struct destructuring、match tuple/struct pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition，空 tuple 暂缓。
+6. tuple/destructuring/pattern ergonomics 已落地，当前支持 `(A, B)` / `(A,)`、`(a, b)` / `(a,)`、局部 `let (a, _) = value;`、局部 struct destructuring、match tuple/struct pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition；匿名 tuple 不支持直接字段访问，需要字段访问时使用 named struct；空 tuple 暂缓。
 7. 冻结 namespace `.` / `::` 规则。
 8. 设计 capability / `where` 约束语法。
 9. 设计 safe reference `&T` / `&mut T`。

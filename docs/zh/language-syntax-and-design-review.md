@@ -256,7 +256,7 @@ tuple 类型：
 (i32,)
 ```
 
-当前 tuple 是匿名 product type；支持 tuple literal、零基数字字段、局部解构和 match tuple pattern：
+当前 tuple 是匿名 product type；支持 tuple literal、局部解构和 match tuple pattern。匿名 tuple 不支持直接字段访问，需要字段访问时使用 named struct：
 
 ```aurex
 let pair: (i32, bool) = (1, true);

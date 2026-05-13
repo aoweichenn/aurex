@@ -83,11 +83,15 @@ TEST_F(AurexIntegrationTest, CliArgumentFormsCoverOptimizationAndNativeEmissionA
         " --emit=checked " + q(hello),
         " --emit=ir " + q(hello),
         " --emit=llvm-ir " + q(hello),
+        " --emit llvm-ir " + q(hello),
         " --emit=check " + q(hello),
         " --check " + q(hello),
+        " -fsyntax-only " + q(hello),
         " -I " + q(imports_root()) + " --emit=llvm-ir " + q(import_source),
         " -I" + q(imports_root()) + " --emit=llvm-ir " + q(import_source),
+        " --import-path " + q(imports_root()) + " --emit=llvm-ir " + q(import_source),
         " -O 2 --emit=check " + q(hello),
+        " --opt-level=2 --emit=check " + q(hello),
         " -O0 --emit=check " + q(hello),
         " -O1 --emit=check " + q(hello),
         " -O2 --emit=check " + q(hello),
@@ -112,9 +116,19 @@ TEST_F(AurexIntegrationTest, CliArgumentFormsCoverOptimizationAndNativeEmissionA
         " -o " + q(asm_output)
     );
     require_success(
+        aurexc() + " --clang=" + q(clang_script) +
+        " -S " + q(hello) +
+        " -o " + q(tmp_root() / "native_aliases" / "hello.driver.s")
+    );
+    require_success(
         aurexc() + " --clang " + q(clang_script) +
         " --emit=object " + q(hello) +
         " -o " + q(object_output)
+    );
+    require_success(
+        aurexc() + " --clang=" + q(clang_script) +
+        " --clang-arg=-fno-color-diagnostics -c " + q(hello) +
+        " -o " + q(tmp_root() / "native_aliases" / "hello.driver.o")
     );
     require_success(
         aurexc() + " --clang " + q(clang_script) +

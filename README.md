@@ -42,14 +42,19 @@ build/bin/aurexc -I examples/libs --emit=checked tests/samples/positive/modules/
 Stage0 can also produce assembly and object files through clang:
 
 ```sh
+build/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
+build/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
 build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
-`--emit=exe` is the default. `--clang <path>` selects a clang binary,
-`--opt-level O1` enables Aurex IR passes, and repeated `--clang-arg <arg>`
-options pass raw arguments such as `-O2` or `-g` to clang.
+`--emit=exe` is the default. `-fsyntax-only` is accepted as an alias for
+`--check`; `-S` and `-c` follow the usual compiler-driver spelling for assembly
+and object output. `--clang <path>` or `--clang=<path>` selects a clang binary,
+`--opt-level O1`, `--opt-level=O1`, or `-O1` enables Aurex IR passes, and
+repeated `--clang-arg <arg>` / `--clang-arg=<arg>` options pass raw arguments
+such as `-O2` or `-g` to clang.
 
 The IR path is visible with:
 

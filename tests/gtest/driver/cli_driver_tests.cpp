@@ -1,3 +1,4 @@
+#include <aurex/driver/cli.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <support/test_support.hpp>
@@ -5,10 +6,12 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <sys/stat.h>
 #include <thread>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aurex::test {
 namespace {
@@ -17,7 +20,113 @@ constexpr std::string_view DRIVER_FILE_CACHE_FIRST_TEXT = "cached-one";
 constexpr std::string_view DRIVER_FILE_CACHE_SECOND_TEXT = "cached-two";
 constexpr std::string_view DRIVER_FILE_CACHE_FIFO_TEXT = "fifo-stream";
 
+[[nodiscard]] driver::CliParseResult require_parse_cli(const std::vector<std::string_view>& args) {
+    auto result = driver::parse_cli_arguments(args);
+    EXPECT_TRUE(result) << result.error().message;
+    return result.value();
+}
+
 } // namespace
+
+TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
+    const std::vector<std::string_view> object_args {
+        "aurexc",
+        "-c",
+        "-Itests/samples/imports",
+        "--clang=/usr/bin/clang",
+        "--clang-arg=-fno-color-diagnostics",
+        "--opt-level=O2",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult object_parse = require_parse_cli(object_args);
+    EXPECT_EQ(object_parse.action, driver::CliAction::compile);
+    EXPECT_EQ(object_parse.invocation.emit_kind, driver::EmitKind::object);
+    EXPECT_EQ(object_parse.invocation.output_path, fs::path("hello.o"));
+    ASSERT_EQ(object_parse.invocation.import_paths.size(), 1U);
+    EXPECT_EQ(object_parse.invocation.import_paths.front(), fs::path("tests/samples/imports"));
+    EXPECT_EQ(object_parse.invocation.clang_path, "/usr/bin/clang");
+    ASSERT_EQ(object_parse.invocation.clang_args.size(), 1U);
+    EXPECT_EQ(object_parse.invocation.clang_args.front(), "-fno-color-diagnostics");
+    EXPECT_EQ(object_parse.invocation.optimization_level, ir::OptimizationLevel::standard);
+
+    const std::vector<std::string_view> assembly_args {
+        "aurexc",
+        "-S",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult assembly_parse = require_parse_cli(assembly_args);
+    EXPECT_EQ(assembly_parse.invocation.emit_kind, driver::EmitKind::assembly);
+    EXPECT_EQ(assembly_parse.invocation.output_path, fs::path("hello.s"));
+
+    const std::vector<std::string_view> separate_emit_args {
+        "aurexc",
+        "--emit",
+        "llvm-ir",
+        "-fsyntax-only",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult separate_emit_parse = require_parse_cli(separate_emit_args);
+    EXPECT_EQ(separate_emit_parse.invocation.emit_kind, driver::EmitKind::check);
+
+    const std::vector<std::string_view> dump_llvm_ir_args {
+        "aurexc",
+        "--dump-llvm-ir",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult dump_llvm_ir_parse = require_parse_cli(dump_llvm_ir_args);
+    EXPECT_EQ(dump_llvm_ir_parse.invocation.emit_kind, driver::EmitKind::llvm_ir);
+
+    const std::vector<std::string_view> option_end_args {
+        "aurexc",
+        "--",
+        "-strange.ax",
+    };
+    const driver::CliParseResult option_end_parse = require_parse_cli(option_end_args);
+    EXPECT_EQ(option_end_parse.invocation.input_path, fs::path("-strange.ax"));
+}
+
+TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
+    const std::vector<std::string_view> invalid_emit_args {
+        "aurexc",
+        "--emit=not-a-kind",
+        "examples/hello.ax",
+    };
+    const auto invalid_emit = driver::parse_cli_arguments(invalid_emit_args);
+    ASSERT_FALSE(invalid_emit);
+    expect_contains(invalid_emit.error().message, "invalid emit kind");
+
+    const std::vector<std::string_view> unexpected_value_args {
+        "aurexc",
+        "--help=true",
+    };
+    const auto unexpected_value = driver::parse_cli_arguments(unexpected_value_args);
+    ASSERT_FALSE(unexpected_value);
+    expect_contains(unexpected_value.error().message, "does not take a value");
+
+    const std::vector<std::string_view> unknown_equal_args {
+        "aurexc",
+        "--unknown=value",
+    };
+    const auto unknown_equal = driver::parse_cli_arguments(unknown_equal_args);
+    ASSERT_FALSE(unknown_equal);
+    expect_contains(unknown_equal.error().message, "unknown option: --unknown");
+
+    std::ostringstream out;
+    std::ostringstream err;
+    const std::vector<std::string_view> missing_file_args {
+        "aurexc",
+        "--check",
+        "missing.ax",
+    };
+    EXPECT_EQ(driver::run_cli(missing_file_args, out, err), 1);
+    expect_contains(err.str(), "aurexc: failed to open input file");
+
+    std::ostringstream empty_out;
+    std::ostringstream empty_err;
+    const std::vector<std::string_view> empty_args;
+    EXPECT_EQ(driver::run_cli(empty_args, empty_out, empty_err), 2);
+    expect_contains(empty_err.str(), "usage: aurexc");
+}
 
 TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
     expect_contains(require_success(aurexc() + " --version").output, "0.1.2");

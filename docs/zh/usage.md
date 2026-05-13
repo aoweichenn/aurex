@@ -30,12 +30,16 @@ build/bin/aurexc --emit=ast examples/hello.ax
 build/bin/aurexc --emit=checked examples/hello.ax
 build/bin/aurexc --emit=ir examples/hello.ax
 build/bin/aurexc --emit=llvm-ir examples/hello.ax
+build/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
+build/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
 build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
-`--emit=exe` 是默认模式。native 输出需要 `-o`。
+`--emit=exe` 是默认模式。`--emit=asm`、`--emit=obj` 和 `--emit=exe` 形式的
+native 输出需要 `-o`。driver 风格的 `-S` 和 `-c` 在省略 `-o` 时会推导
+`input.s` 和 `input.o`。
 
 ## import
 
@@ -48,6 +52,7 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 
 ```sh
 build/bin/aurexc -I tests/samples/imports --emit=checked tests/samples/positive/modules/import_path.ax
+build/bin/aurexc --import-path tests/samples/imports --emit checked tests/samples/positive/modules/import_path.ax
 ```
 
 ## C FFI

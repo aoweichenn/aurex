@@ -24,13 +24,17 @@ Common options:
 - `--dump-ir` / `--emit=ir`: print Aurex IR.
 - `--dump-llvm-ir` / `--emit=llvm-ir`: print LLVM IR.
 - `--check` / `--emit=check`: run through semantic analysis only.
+- `-fsyntax-only`: same as `--check`.
+- `-S`: emit assembly, defaulting to `input.s` when `-o` is omitted.
+- `-c`: emit object code, defaulting to `input.o` when `-o` is omitted.
 - `--emit=asm`: emit assembly.
 - `--emit=obj` / `--emit=object`: emit object file.
 - `--emit=exe`: emit executable, the default mode.
-- `--opt-level O0|O1|O2|O3` / `-O O0|O1|O2|O3` / `-O0`: control the IR pass pipeline.
-- `--clang path`: select clang executable.
-- `--clang-arg arg`: pass an argument to clang.
-- `-I path`: add import search path.
+- `--emit kind`: same as `--emit=kind`.
+- `--opt-level O0|O1|O2|O3` / `--opt-level=O0` / `-O O0|O1|O2|O3` / `-O0`: control the IR pass pipeline.
+- `--clang path` / `--clang=path`: select clang executable.
+- `--clang-arg arg` / `--clang-arg=arg`: pass an argument to clang.
+- `-I path` / `-Ipath` / `--import-path path`: add import search path.
 - `-o path`: set output path.
 
 Exit codes:

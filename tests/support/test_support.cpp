@@ -1,5 +1,6 @@
 #include <support/test_support.hpp>
 
+#include <aurex/driver/cli.hpp>
 #include <aurex/driver/compiler.hpp>
 
 #include <algorithm>
@@ -344,111 +345,23 @@ private:
     return words;
 }
 
-[[nodiscard]] bool parse_emit_kind(const std::string_view arg, driver::EmitKind& emit_kind) noexcept {
-    if (arg == "--dump-tokens" || arg == "--emit=tokens") {
-        emit_kind = driver::EmitKind::tokens;
-    } else if (arg == "--dump-ast" || arg == "--emit=ast") {
-        emit_kind = driver::EmitKind::ast;
-    } else if (arg == "--dump-modules" || arg == "--emit=modules") {
-        emit_kind = driver::EmitKind::modules;
-    } else if (arg == "--dump-checked" || arg == "--emit=checked") {
-        emit_kind = driver::EmitKind::checked;
-    } else if (arg == "--dump-ir" || arg == "--emit=ir") {
-        emit_kind = driver::EmitKind::ir;
-    } else if (arg == "--dump-llvm-ir" || arg == "--emit=llvm-ir") {
-        emit_kind = driver::EmitKind::llvm_ir;
-    } else if (arg == "--check" || arg == "--emit=check") {
-        emit_kind = driver::EmitKind::check;
-    } else if (arg == "--emit=asm") {
-        emit_kind = driver::EmitKind::assembly;
-    } else if (arg == "--emit=obj" || arg == "--emit=object") {
-        emit_kind = driver::EmitKind::object;
-    } else if (arg == "--emit=exe") {
-        emit_kind = driver::EmitKind::executable;
-    } else {
-        return false;
-    }
-    return true;
-}
-
-[[nodiscard]] bool parse_optimization_level(
-    const std::string_view level,
-    ir::OptimizationLevel& optimization_level
-) noexcept {
-    if (level == "0" || level == "O0") {
-        optimization_level = ir::OptimizationLevel::none;
-    } else if (level == "1" || level == "O1") {
-        optimization_level = ir::OptimizationLevel::basic;
-    } else if (level == "2" || level == "O2") {
-        optimization_level = ir::OptimizationLevel::standard;
-    } else if (level == "3" || level == "O3") {
-        optimization_level = ir::OptimizationLevel::aggressive;
-    } else {
-        return false;
-    }
-    return true;
-}
-
 [[nodiscard]] std::optional<CommandResult> try_run_aurexc_command(const std::string& command) {
     const std::optional<std::vector<std::string>> parsed = split_shell_words(command);
     if (!parsed || parsed->empty() || parsed->front() != aurexc_path().string()) {
         return std::nullopt;
     }
 
-    driver::CompilerInvocation invocation;
-    invocation.tool_path = aurexc_path();
-
-    for (base::usize i = 1; i < parsed->size(); ++i) {
-        const std::string& arg = (*parsed)[i];
-        if (parse_emit_kind(arg, invocation.emit_kind)) {
-            continue;
-        }
-        if (arg == "--help" || arg == "-h" || arg == "--version") {
-            return std::nullopt;
-        }
-        if (arg == "-o") {
-            if (++i >= parsed->size()) {
-                return std::nullopt;
-            }
-            invocation.output_path = (*parsed)[i];
-        } else if (arg == "-I") {
-            if (++i >= parsed->size()) {
-                return std::nullopt;
-            }
-            invocation.import_paths.push_back((*parsed)[i]);
-        } else if (arg.rfind("-I", 0) == 0 && arg.size() > 2) {
-            invocation.import_paths.push_back(arg.substr(2));
-        } else if (arg == "--clang") {
-            if (++i >= parsed->size()) {
-                return std::nullopt;
-            }
-            invocation.clang_path = (*parsed)[i];
-        } else if (arg == "--clang-arg") {
-            if (++i >= parsed->size()) {
-                return std::nullopt;
-            }
-            invocation.clang_args.push_back((*parsed)[i]);
-        } else if (arg == "--opt-level" || arg == "-O") {
-            if (++i >= parsed->size() ||
-                !parse_optimization_level((*parsed)[i], invocation.optimization_level)) {
-                return std::nullopt;
-            }
-        } else if ((arg == "-O0" || arg == "-O1" || arg == "-O2" || arg == "-O3") && arg.size() == 3) {
-            invocation.optimization_level = static_cast<ir::OptimizationLevel>(arg[2] - '0');
-        } else if (!arg.empty() && arg.front() == '-') {
-            return std::nullopt;
-        } else {
-            if (!invocation.input_path.empty()) {
-                return std::nullopt;
-            }
-            invocation.input_path = arg;
-        }
+    std::vector<std::string_view> arguments;
+    arguments.reserve(parsed->size());
+    for (const std::string& arg : *parsed) {
+        arguments.push_back(arg);
     }
 
-    if (invocation.input_path.empty()) {
+    auto parse_result = driver::parse_cli_arguments(arguments);
+    if (!parse_result || parse_result.value().action != driver::CliAction::compile) {
         return std::nullopt;
     }
-    return run_compiler(invocation);
+    return run_compiler(parse_result.value().invocation);
 }
 
 [[nodiscard]] bool command_may_need_shell_expansion(const std::string_view command) noexcept {

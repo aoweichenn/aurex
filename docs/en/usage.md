@@ -32,12 +32,16 @@ build/bin/aurexc --emit=ast examples/hello.ax
 build/bin/aurexc --emit=checked examples/hello.ax
 build/bin/aurexc --emit=ir examples/hello.ax
 build/bin/aurexc --emit=llvm-ir examples/hello.ax
+build/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
+build/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
 build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
 build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
-`--emit=exe` is the default mode. Native output requires `-o`.
+`--emit=exe` is the default mode. Native output from `--emit=asm`,
+`--emit=obj`, and `--emit=exe` requires `-o`. The driver-style `-S` and `-c`
+forms infer `input.s` and `input.o` when `-o` is omitted.
 
 ## Imports
 
@@ -50,6 +54,7 @@ There is no implicit standard-library path on this branch:
 
 ```sh
 build/bin/aurexc -I tests/samples/imports --emit=checked tests/samples/positive/modules/import_path.ax
+build/bin/aurexc --import-path tests/samples/imports --emit checked tests/samples/positive/modules/import_path.ax
 ```
 
 ## C FFI

@@ -18,6 +18,8 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 - Modules, imports, visibility, and re-exports.
 - Primitive types, structs, ADT-style enums, explicit C-like repr enums, and
   generic structs/functions.
+- Tuple types, tuple literals, numeric tuple fields, and local tuple
+  destructuring.
 - Pattern matching, multi-field enum payload destructuring, guards, and
   or-patterns.
 - `if` expressions, block expressions, `while`, `for`, `break`, and `continue`.

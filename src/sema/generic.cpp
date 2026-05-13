@@ -456,6 +456,14 @@ bool SemanticAnalyzer::unify_generic_type(
                 pending.emplace_back(pattern_info.function_params[i], actual_info.function_params[i]);
             }
             break;
+        case TypeKind::tuple:
+            if (pattern_info.tuple_elements.size() != actual_info.tuple_elements.size()) {
+                return false;
+            }
+            for (base::usize i = 0; i < pattern_info.tuple_elements.size(); ++i) {
+                pending.emplace_back(pattern_info.tuple_elements[i], actual_info.tuple_elements[i]);
+            }
+            break;
         case TypeKind::array:
             if (pattern_info.array_count != actual_info.array_count) {
                 return false;
@@ -622,6 +630,11 @@ bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const 
             pending.push_back(info.function_return);
             for (const TypeHandle param : info.function_params) {
                 pending.push_back(param);
+            }
+            break;
+        case TypeKind::tuple:
+            for (const TypeHandle element : info.tuple_elements) {
+                pending.push_back(element);
             }
             break;
         case TypeKind::array:

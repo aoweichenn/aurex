@@ -465,6 +465,195 @@ TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
     EXPECT_EQ(choose->params.size(), 2U);
 }
 
+TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsFieldsAndDestructuring) {
+    constexpr std::string_view source =
+        "module parser.tuples;\n"
+        "type Pair = (i32, bool);\n"
+        "type Single = (i32,);\n"
+        "fn make_pair(value: i32) -> (i32, bool) {\n"
+        "  let pair: Pair = (value, value > 0);\n"
+        "  let (x, ok) = pair;\n"
+        "  let (single,) = (x,);\n"
+        "  return (single, ok);\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let pair = make_pair(1);\n"
+        "  return pair.0;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* pair_alias = find_item(module, "Pair");
+    ASSERT_NE(pair_alias, nullptr);
+    ASSERT_TRUE(syntax::is_valid(pair_alias->alias_type));
+    const syntax::TypeNode& pair_type = module.types[pair_alias->alias_type.value];
+    ASSERT_EQ(pair_type.kind, syntax::TypeKind::tuple);
+    EXPECT_EQ(pair_type.tuple_elements.size(), 2U);
+
+    const syntax::ItemNode* single_alias = find_item(module, "Single");
+    ASSERT_NE(single_alias, nullptr);
+    ASSERT_TRUE(syntax::is_valid(single_alias->alias_type));
+    const syntax::TypeNode& single_type = module.types[single_alias->alias_type.value];
+    ASSERT_EQ(single_type.kind, syntax::TypeKind::tuple);
+    EXPECT_EQ(single_type.tuple_elements.size(), 1U);
+
+    const syntax::ItemNode* make_pair = find_item(module, "make_pair");
+    ASSERT_NE(make_pair, nullptr);
+    ASSERT_TRUE(syntax::is_valid(make_pair->return_type));
+    EXPECT_EQ(module.types[make_pair->return_type.value].kind, syntax::TypeKind::tuple);
+
+    ASSERT_TRUE(syntax::is_valid(make_pair->body));
+    const syntax::StmtNode& body = module.stmts[make_pair->body.value];
+    ASSERT_EQ(body.kind, syntax::StmtKind::block);
+    ASSERT_GE(body.statements.size(), 4U);
+
+    const syntax::StmtNode& pair_stmt = module.stmts[body.statements[0].value];
+    ASSERT_EQ(pair_stmt.kind, syntax::StmtKind::let);
+    ASSERT_TRUE(syntax::is_valid(pair_stmt.init));
+    const syntax::ExprNode& pair_init = module.exprs[pair_stmt.init.value];
+    ASSERT_EQ(pair_init.kind, syntax::ExprKind::tuple_literal);
+    EXPECT_EQ(pair_init.tuple_elements.size(), 2U);
+
+    const syntax::StmtNode& destructure_stmt = module.stmts[body.statements[1].value];
+    ASSERT_TRUE(syntax::is_valid(destructure_stmt.pattern));
+    const syntax::PatternNode& destructure = module.patterns[destructure_stmt.pattern.value];
+    ASSERT_EQ(destructure.kind, syntax::PatternKind::tuple);
+    EXPECT_EQ(destructure.elements.size(), 2U);
+
+    const syntax::StmtNode& single_stmt = module.stmts[body.statements[2].value];
+    ASSERT_TRUE(syntax::is_valid(single_stmt.pattern));
+    const syntax::PatternNode& single_pattern = module.patterns[single_stmt.pattern.value];
+    ASSERT_EQ(single_pattern.kind, syntax::PatternKind::tuple);
+    EXPECT_EQ(single_pattern.elements.size(), 1U);
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "alias (i32, bool)",
+        "alias (i32,)",
+        "tuple_literal",
+        "tuple_element",
+        "stmt #",
+        "(x, ok)",
+        "(single,)",
+    });
+}
+
+TEST(CoreUnit, ParserRejectsEmptyTupleForms) {
+    expect_parse_error(
+        "module parser.empty_tuple_type;\n"
+        "type Empty = ();\n",
+        "empty tuple type is not part of M2 syntax"
+    );
+    expect_parse_error(
+        "module parser.empty_tuple_literal;\n"
+        "fn main() -> i32 {\n"
+        "  let value = ();\n"
+        "  return 0;\n"
+        "}\n",
+        "empty tuple literal is not part of M2 syntax"
+    );
+    expect_parse_error(
+        "module parser.empty_tuple_pattern;\n"
+        "fn main() -> i32 {\n"
+        "  let () = 1;\n"
+        "  return 0;\n"
+        "}\n",
+        "empty tuple pattern is not part of M2 syntax"
+    );
+}
+
+TEST(CoreUnit, ParserRecoveryHandlesMalformedTupleSeparators) {
+    constexpr base::SourceId PARSER_TEST_TUPLE_RECOVERY_SOURCE_ID {33};
+    constexpr std::string_view source =
+        "module parser.tuple_recovery;\n"
+        "type Bad = (i32, bool i32);\n"
+        "fn recovered() -> i32 {\n"
+        "  let bad_literal = (1, true false);\n"
+        "  let (a, b extra) = (1, 2);\n"
+        "  return 0;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(PARSER_TEST_TUPLE_RECOVERY_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "expected ',' or ')' after tuple type element");
+    expect_contains(messages, "expected ',' or ')' after tuple element");
+    expect_contains(messages, "expected ',' or ')' after tuple pattern element");
+}
+
+TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics) {
+    constexpr base::SourceId PARSER_TEST_TUPLE_SYNC_RECOVERY_SOURCE_ID {34};
+    constexpr std::string_view source =
+        "module parser.tuple_sync_recovery;\n"
+        "type SizedA = [4usize]i32;\n"
+        "type SizedB = [0b10u8]u8;\n"
+        "type BadSize = [4bad]i32;\n"
+        "type BadGeneric = Pair[i32 +, bool];\n"
+        "type BadTuple = (i32, bool +, u8);\n"
+        "type BadFnA = fn(..., i32) -> i32;\n"
+        "type BadFnB = fn(i32, ..., bool) -> i32;\n"
+        "type BadFnC = fn(i32 +, bool) -> i32;\n"
+        "fn recovered(value: i32) -> i32 {\n"
+        "  let (only) = value;\n"
+        "  let missing_repeat = [0;];\n"
+        "  let bad_array = [1 ->, 2];\n"
+        "  let bad_literal = (1, true ->, 2);\n"
+        "  let (a, b +, c) = (1, 2, 3);\n"
+        "  let bad_apply = value::[i32 +, bool](1);\n"
+        "  let bad_payload = match value { .some() => 0, .some(name,) => 1, _ => 2 };\n"
+        "  return value;\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(PARSER_TEST_TUPLE_SYNC_RECOVERY_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    std::string messages;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages += diagnostic.message;
+        messages += '\n';
+    }
+    expect_contains(messages, "array length literal is out of range");
+    expect_contains(messages, "expected array repeat count");
+    expect_contains(messages, "expected payload binding name");
+    expect_contains(messages, "expected ',' or ']' after generic type argument");
+    expect_contains(messages, "expected ',' or ')' after tuple type element");
+    expect_contains(messages, "expected ',' or ')' after tuple element");
+    expect_contains(messages, "expected ',' or ')' after tuple pattern element");
+    expect_contains(messages, "expected ',' or ')' after function type parameter");
+    expect_contains(messages, "variadic marker must be last in parameter list");
+}
+
+TEST(CoreUnit, ParserDoesNotTreatSuffixedFloatAsTupleField) {
+    expect_parse_error(
+        "module parser.float_tuple_field_boundary;\n"
+        "fn main() -> i32 {\n"
+        "  let pair = (1, false);\n"
+        "  return pair.0f32;\n"
+        "}\n",
+        "expected ';' after return"
+    );
+}
+
 TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
     constexpr std::string_view source =
         "module parser.block_body;\n"

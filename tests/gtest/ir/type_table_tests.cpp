@@ -14,12 +14,14 @@ constexpr base::usize TYPE_TABLE_TEST_BUILTIN_COUNT = 16;
 constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE = 8;
 constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT = 4;
 constexpr base::usize TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT = 2;
+constexpr base::u32 TYPE_TABLE_TEST_OUT_OF_RANGE_TYPE = 9999;
 
 } // namespace
 
 TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     Module module;
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle u32 = builtin(module, BuiltinType::u32);
     const TypeHandle f64 = builtin(module, BuiltinType::f64);
@@ -33,6 +35,10 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     const TypeHandle const_slice_i32 = module.types.slice(PointerMutability::const_, i32);
     const TypeHandle const_slice_i32_again = module.types.slice(PointerMutability::const_, i32);
     const TypeHandle mut_slice_i32 = module.types.slice(PointerMutability::mut, i32);
+    const TypeHandle tuple_i32_bool = module.types.tuple(std::vector<TypeHandle> {i32, bool_type});
+    const TypeHandle tuple_i32_bool_again = module.types.tuple(std::vector<TypeHandle> {i32, bool_type});
+    const TypeHandle single_tuple_i32 = module.types.tuple(std::vector<TypeHandle> {i32});
+    const TypeHandle tuple_with_array = module.types.tuple(std::vector<TypeHandle> {array_i32, bool_type});
     const TypeHandle function_i32_u32 = module.types.function(
         sema::FunctionCallConv::aurex,
         false,
@@ -87,6 +93,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.same(array_i32, array_i32_again));
     EXPECT_TRUE(module.types.same(const_slice_i32, const_slice_i32_again));
     EXPECT_FALSE(module.types.same(const_slice_i32, mut_slice_i32));
+    EXPECT_TRUE(module.types.same(tuple_i32_bool, tuple_i32_bool_again));
+    EXPECT_FALSE(module.types.same(tuple_i32_bool, single_tuple_i32));
     EXPECT_TRUE(module.types.same(function_i32_u32, function_i32_u32_again));
     EXPECT_FALSE(module.types.same(function_i32_u32, unsafe_function_i32_u32));
     EXPECT_FALSE(module.types.same(function_i32_u32, extern_variadic_function));
@@ -97,15 +105,20 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.is_array(array_i32));
     EXPECT_TRUE(module.types.is_slice(const_slice_i32));
     EXPECT_TRUE(module.types.is_slice(mut_slice_i32));
+    EXPECT_TRUE(module.types.is_tuple(tuple_i32_bool));
     EXPECT_TRUE(module.types.is_function(function_i32_u32));
     EXPECT_TRUE(module.types.contains_array(array_i32));
     EXPECT_FALSE(module.types.contains_array(const_slice_i32));
+    EXPECT_TRUE(module.types.contains_array(tuple_with_array));
+    EXPECT_FALSE(module.types.contains_array(tuple_i32_bool));
     EXPECT_EQ(module.types.display_name(ptr_i32), "*mut i32");
     EXPECT_EQ(module.types.display_name(array_i32), array_display + "i32");
     EXPECT_EQ(module.types.display_name(array_ptr_i32), array_display + "*mut i32");
     EXPECT_EQ(module.types.display_name(ptr_array_i32), std::string("*mut ") + array_display + "i32");
     EXPECT_EQ(module.types.display_name(const_slice_i32), "[]const i32");
     EXPECT_EQ(module.types.display_name(mut_slice_i32), "[]mut i32");
+    EXPECT_EQ(module.types.display_name(tuple_i32_bool), "(i32, bool)");
+    EXPECT_EQ(module.types.display_name(single_tuple_i32), "(i32,)");
     EXPECT_EQ(module.types.display_name(function_i32_u32), "fn(i32, u32) -> i32");
     EXPECT_EQ(module.types.display_name(unsafe_function_i32_u32), "unsafe fn(i32, u32) -> i32");
     EXPECT_EQ(module.types.display_name(unsafe_extern_function), "unsafe extern c fn(*const i32) -> i32");
@@ -238,6 +251,30 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_FALSE(module.types.is_integer(bool_type));
     EXPECT_FALSE(module.types.is_integer(char_type));
     EXPECT_FALSE(module.types.is_float(i32));
+
+    const TypeHandle out_of_range {TYPE_TABLE_TEST_OUT_OF_RANGE_TYPE};
+    EXPECT_FALSE(module.types.is_bool(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_bool(out_of_range));
+    EXPECT_FALSE(module.types.is_str(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_str(out_of_range));
+    EXPECT_FALSE(module.types.is_char(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_char(out_of_range));
+    EXPECT_FALSE(module.types.is_void(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_void(out_of_range));
+    EXPECT_FALSE(module.types.is_pointer(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_pointer(out_of_range));
+    EXPECT_FALSE(module.types.is_array(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_array(out_of_range));
+    EXPECT_FALSE(module.types.is_slice(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_slice(out_of_range));
+    EXPECT_FALSE(module.types.is_tuple(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_tuple(out_of_range));
+    EXPECT_FALSE(module.types.is_function(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_function(out_of_range));
+    EXPECT_FALSE(module.types.contains_array(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.contains_array(out_of_range));
+    EXPECT_EQ(module.types.display_name(out_of_range), "<invalid>");
+    EXPECT_EQ(module.types.c_name(out_of_range), "void");
 }
 
 } // namespace aurex::test

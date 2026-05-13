@@ -275,6 +275,79 @@ TEST_F(AurexIntegrationTest, SliceRegressions) {
     expect_contains(invalid_element_output, "slice element type is not valid storage");
 }
 
+TEST_F(AurexIntegrationTest, TupleRegressions) {
+    const fs::path tuple_basic = positive_sample("types", "tuple_basic.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(tuple_basic)).output;
+    expect_contains_all(checked, {
+        "fn priv make_pair -> (i32, bool)",
+        "fn priv first[i32,bool] -> i32",
+        "fn priv second[i32,bool] -> bool",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(tuple_basic)).output;
+    expect_contains_all(ir, {
+        "record tuple.",
+        ".0: i32",
+        ".1: bool",
+        "fn make_pair(value: i32)",
+        "field_addr",
+        "aggregate {.0",
+    });
+
+    const fs::path binary = test_bin_root() / "tuple_basic";
+    require_success(aurexc() + " " + q(tuple_basic) + " -o " + q(binary));
+    require_success(q(binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "empty_tuple_type.ax"))).output,
+        "empty tuple type is not part of M2 syntax"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "empty_tuple_literal.ax"))).output,
+        "empty tuple literal is not part of M2 syntax"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "empty_tuple_pattern.ax"))).output,
+        "empty tuple pattern is not part of M2 syntax"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_out_of_range.ax"))).output,
+        "tuple field index is out of range"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_non_numeric.ax"))).output,
+        "tuple field access requires a zero-based integer field"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_field_index_overflow.ax"))).output,
+        "tuple field access requires a zero-based integer field"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_literal_arity_mismatch.ax"))).output,
+        "tuple literal arity does not match expected tuple type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_literal_expected_non_tuple.ax"))).output,
+        "tuple literal requires a tuple expected type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_destructure_arity_mismatch.ax"))).output,
+        "tuple destructuring pattern arity does not match tuple type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_destructure_non_tuple.ax"))).output,
+        "tuple destructuring requires a tuple value"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_invalid_storage.ax"))).output,
+        "tuple literal type is not valid storage"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "tuple_literal_infer_invalid.ax"))).output,
+        "local variable type cannot be inferred"
+    );
+}
+
 TEST_F(AurexIntegrationTest, EnumConstructorMatchArmRegressions) {
     const fs::path source = write_source_file(
         tmp_root() / "enum_match_arm.ax",

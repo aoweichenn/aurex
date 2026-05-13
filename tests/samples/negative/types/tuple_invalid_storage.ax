@@ -1,0 +1,6 @@
+module tuple_invalid_storage;
+
+fn main() -> i32 {
+    let bad: (void, i32) = (0, 1);
+    return 0;
+}

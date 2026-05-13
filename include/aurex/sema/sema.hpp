@@ -200,6 +200,8 @@ private:
     [[nodiscard]] TypeHandle analyze_unsafe_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    void define_local_pattern(syntax::PatternId pattern, TypeHandle type, bool is_mutable);
     [[nodiscard]] const EnumCaseInfo* analyze_enum_case_pattern(
         syntax::PatternId pattern,
         TypeHandle matched,

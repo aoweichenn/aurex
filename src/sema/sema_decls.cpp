@@ -91,7 +91,8 @@ enum class ConstEvalStage : base::u8 {
     AFTER_BINARY_RHS = 3,
     AFTER_STRUCT_LITERAL = 4,
     AFTER_ARRAY_LITERAL = 5,
-    AFTER_CAST = 6,
+    AFTER_TUPLE_LITERAL = 6,
+    AFTER_CAST = 7,
 };
 
 struct ConstDependencyFrame {
@@ -902,6 +903,16 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                     stack.push_back(ConstEvalFrame {*it, ConstEvalStage::ENTER, 0});
                 }
                 break;
+            case syntax::ExprKind::tuple_literal:
+                stack.push_back(ConstEvalFrame {
+                    frame.expr_id,
+                    ConstEvalStage::AFTER_TUPLE_LITERAL,
+                    expr.tuple_elements.size(),
+                });
+                for (auto it = expr.tuple_elements.rbegin(); it != expr.tuple_elements.rend(); ++it) {
+                    stack.push_back(ConstEvalFrame {*it, ConstEvalStage::ENTER, 0});
+                }
+                break;
             case syntax::ExprKind::unsafe_block:
                 values.push_back(false);
                 break;
@@ -965,6 +976,15 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
             break;
         }
         case ConstEvalStage::AFTER_ARRAY_LITERAL: {
+            bool ok = true;
+            for (base::usize index = 0; index < frame.child_count; ++index) {
+                ok = values.back() && ok;
+                values.pop_back();
+            }
+            values.push_back(ok);
+            break;
+        }
+        case ConstEvalStage::AFTER_TUPLE_LITERAL: {
             bool ok = true;
             for (base::usize index = 0; index < frame.child_count; ++index) {
                 ok = values.back() && ok;

@@ -114,6 +114,12 @@ private:
     void lower_block(syntax::StmtId block_id);
     void lower_block_contents(syntax::StmtId block_id);
     void lower_stmt(syntax::StmtId stmt_id);
+    void lower_local_pattern(
+        syntax::PatternId pattern,
+        ValueId source_address,
+        sema::TypeHandle source_type,
+        bool is_mutable
+    );
     void lower_if(const syntax::StmtNode& stmt);
     void lower_for(const syntax::StmtNode& stmt);
     void lower_for_range(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
@@ -171,6 +177,7 @@ private:
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_indirect_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, sema::TypeHandle callee_type);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);

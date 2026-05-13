@@ -376,6 +376,15 @@ inline constexpr std::string_view PARSER_EXPECT_ARRAY_ELEMENT_SEPARATOR =
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LITERAL_END =
     "expected ']' after array literal";
 
+inline constexpr std::string_view PARSER_EMPTY_TUPLE_LITERAL_UNSUPPORTED =
+    "empty tuple literal is not part of M2 syntax";
+
+inline constexpr std::string_view PARSER_EXPECT_TUPLE_ELEMENT_SEPARATOR =
+    "expected ',' or ')' after tuple element";
+
+inline constexpr std::string_view PARSER_EXPECT_TUPLE_LITERAL_END =
+    "expected ')' after tuple literal";
+
 inline constexpr std::string_view PARSER_EXPECT_GROUPED_EXPR_END =
     "expected ')' after expression";
 
@@ -430,6 +439,15 @@ inline constexpr std::string_view PARSER_EXPECT_FUNCTION_TYPE_RETURN_ARROW =
 inline constexpr std::string_view PARSER_EXPECT_FUNCTION_TYPE_PARAM_SEPARATOR =
     "expected ',' or ')' after function type parameter";
 
+inline constexpr std::string_view PARSER_EMPTY_TUPLE_TYPE_UNSUPPORTED =
+    "empty tuple type is not part of M2 syntax";
+
+inline constexpr std::string_view PARSER_EXPECT_TUPLE_TYPE_SEPARATOR =
+    "expected ',' or ')' after tuple type element";
+
+inline constexpr std::string_view PARSER_EXPECT_TUPLE_TYPE_END =
+    "expected ')' after tuple type";
+
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LENGTH =
     "expected array length";
 
@@ -462,6 +480,15 @@ inline constexpr std::string_view PARSER_EXPECT_ASSIGNMENT_TERMINATOR =
 
 inline constexpr std::string_view PARSER_EXPECT_MATCH_PATTERN =
     "expected match pattern";
+
+inline constexpr std::string_view PARSER_EMPTY_TUPLE_PATTERN_UNSUPPORTED =
+    "empty tuple pattern is not part of M2 syntax";
+
+inline constexpr std::string_view PARSER_EXPECT_TUPLE_PATTERN_SEPARATOR =
+    "expected ',' or ')' after tuple pattern element";
+
+inline constexpr std::string_view PARSER_EXPECT_TUPLE_PATTERN_END =
+    "expected ')' after tuple pattern";
 
 inline constexpr std::string_view PARSER_EXPECT_ENUM_CASE_AFTER_DOT =
     "expected enum case name after '.'";

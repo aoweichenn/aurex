@@ -48,6 +48,7 @@ Box[]
 foo::bar::Baz
 a.b.C
 fn(i32, ...) -> i32
+()
 ```
 
 Rules:
@@ -57,6 +58,7 @@ Rules:
 - Type paths are currently plain names or one-level `scope::Name`.
 - Variadic function types require `extern c fn`; plain `fn(..., ...) -> T`
   cannot use `...`.
+- Tuple types use `(A, B)` or `(A,)`. Empty tuple type `()` is rejected.
 
 ## Literal Syntax
 
@@ -91,6 +93,7 @@ Not part of M2:
 
 ```aurex
 id[i32](1)
+()
 value++
 value--
 let value = {
@@ -102,6 +105,7 @@ Rules:
 
 - `id[i32](1)` is not a generic call. Explicit generic calls use
   `id::[i32](1)`.
+- Tuple literals use `(a, b)` or `(a,)`. Empty tuple literal `()` is rejected.
 - Increment/decrement operators are not supported.
 - Assignment is a statement and cannot be used as a block result.
 
@@ -173,6 +177,14 @@ Current match syntax is enum/integer/bool oriented. Struct patterns, tuple
 patterns, slice patterns, guards with payload binding consistency across
 or-pattern alternatives, and destructuring beyond current enum payload binding
 rules are not part of M2.
+
+Local tuple destructuring is supported only in `let` / `var` declarations:
+
+```aurex
+let (left, _) = pair;
+```
+
+Empty tuple patterns such as `let () = value;` are rejected.
 
 ## Resource And Advanced Language Features
 

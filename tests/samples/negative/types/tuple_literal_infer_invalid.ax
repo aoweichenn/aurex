@@ -1,0 +1,6 @@
+module tuple_literal_infer_invalid;
+
+fn main() -> i32 {
+    let value = (null,);
+    return 0;
+}

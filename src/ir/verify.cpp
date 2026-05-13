@@ -1066,6 +1066,16 @@ private:
                 });
                 continue;
             }
+            if (this->module_.types.is_tuple(item.type)) {
+                const sema::TypeInfo& tuple = this->module_.types.get(item.type);
+                for (const sema::TypeHandle element : tuple.tuple_elements) {
+                    worklist.push_back(StorageTypeWorkItem {
+                        element,
+                        item.context + " element",
+                    });
+                }
+                continue;
+            }
             if (this->module_.types.get(item.type).kind == sema::TypeKind::opaque_struct) {
                 this->fail(ir_verify_storage_type_message(item.context));
             }

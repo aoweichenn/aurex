@@ -1,0 +1,6 @@
+module empty_tuple_literal;
+
+fn main() -> i32 {
+    let value = ();
+    return 0;
+}

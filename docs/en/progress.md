@@ -37,6 +37,9 @@ notes are design input only, not current progress.
   float type suffixes.
 - Fixed array value syntax: array literals `[1, 2, 3]` and repeat literals
   `[0; 128]`, including const, struct-field, IR, LLVM, and native paths.
+- Tuple basics: tuple types `(A, B)` / `(A,)`, tuple literals `(a, b)` /
+  `(a,)`, zero-based tuple field access `value.0`, and local `let` / `var`
+  tuple destructuring.
 - ADT-first enum basics, including automatic tags, explicit C-like repr enums,
   and multi-field payload destructuring in patterns.
 - Minimal M2 `unsafe` boundaries: `unsafe { ... }`, `unsafe fn`, unsafe
@@ -87,12 +90,12 @@ LLVM lowering, native execution, and installed compiler execution.
 - M2 `unsafe` is intentionally minimal. It is a semantic boundary only and does
   not include borrow checking, lifetimes, unsafe traits, unsafe impl blocks,
   unsafe extern blocks, or an ownership/resource model.
-- Slices and function pointer types are implemented in the M2 core. Function
-  types are non-capturing function pointer values, including
+- Slices, tuple basics, and function pointer types are implemented in the M2
+  core. Function types are non-capturing function pointer values, including
   `fn(...) -> T`, `unsafe fn(...) -> T`, `extern c fn(...) -> T`, and
   `unsafe extern c fn(...) -> T`; capturing closures are still intentionally
-  out of scope. The remaining value-syntax gaps are tuple / destructuring and
-  broader pattern forms.
+  out of scope. Remaining pattern gaps are struct patterns, tuple patterns in
+  `match`, nested enum payload patterns, and `if let` / `let ... else`.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing

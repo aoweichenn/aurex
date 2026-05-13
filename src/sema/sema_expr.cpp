@@ -4,6 +4,7 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -19,6 +20,9 @@ constexpr base::u32 SEMA_I32_BIT_WIDTH = 32;
 constexpr base::u32 SEMA_I64_BIT_WIDTH = 64;
 constexpr base::u32 SEMA_I64_SIGN_BIT_INDEX = 63;
 constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
+constexpr char SEMA_TUPLE_FIELD_FIRST_DIGIT = '0';
+constexpr char SEMA_TUPLE_FIELD_LAST_DIGIT = '9';
+constexpr base::usize SEMA_TUPLE_FIELD_DECIMAL_BASE = 10;
 
 [[nodiscard]] bool binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
     switch (op) {
@@ -167,6 +171,25 @@ struct IntegerLiteralExpr {
            types.same(pointer.pointee, types.builtin(BuiltinType::u8));
 }
 
+[[nodiscard]] bool parse_tuple_field_index(const std::string_view text, base::usize& index) noexcept {
+    if (text.empty()) {
+        return false;
+    }
+    base::usize value = 0;
+    for (const char c : text) {
+        if (c < SEMA_TUPLE_FIELD_FIRST_DIGIT || c > SEMA_TUPLE_FIELD_LAST_DIGIT) {
+            return false;
+        }
+        const base::usize digit = static_cast<base::usize>(c - SEMA_TUPLE_FIELD_FIRST_DIGIT);
+        if (value > (std::numeric_limits<base::usize>::max() - digit) / SEMA_TUPLE_FIELD_DECIMAL_BASE) {
+            return false;
+        }
+        value = value * SEMA_TUPLE_FIELD_DECIMAL_BASE + digit;
+    }
+    index = value;
+    return true;
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
@@ -255,6 +278,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_match_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::array_literal:
         return this->analyze_array_literal_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::tuple_literal:
+        return this->analyze_tuple_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::unary:
         return this->analyze_unary_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::binary:
@@ -578,6 +603,19 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
     if (this->checked_.types.is_pointer(object)) {
         object = this->checked_.types.get(object).pointee;
     }
+    if (this->checked_.types.is_tuple(object)) {
+        base::usize index = 0;
+        if (!parse_tuple_field_index(expr.field_name, index)) {
+            this->report(expr.range, std::string(SEMA_TUPLE_FIELD_INDEX));
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        const TypeInfo& tuple = this->checked_.types.get(object);
+        if (index >= tuple.tuple_elements.size()) {
+            this->report(expr.range, std::string(SEMA_TUPLE_FIELD_RANGE));
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        return this->record_expr_type(expr_id, tuple.tuple_elements[index]);
+    }
     const StructInfo* info = this->find_struct(object);
     if (info == nullptr || info->is_opaque) {
         this->report(expr.range, std::string(SEMA_FIELD_STRUCT_VALUE));
@@ -776,6 +814,69 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
         this->report(expr.range, std::string(SEMA_ARRAY_LITERAL_STORAGE));
     }
     return this->record_expr_type(expr_id, array_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    const bool has_expected_tuple = this->checked_.types.is_tuple(expected_type);
+    std::vector<TypeHandle> element_types;
+    if (is_valid(expected_type)) {
+        if (!has_expected_tuple) {
+            this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_EXPECTED_TYPE));
+        } else {
+            const TypeInfo& expected = this->checked_.types.get(expected_type);
+            if (expected.tuple_elements.size() != expr.tuple_elements.size()) {
+                this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_ARITY));
+            }
+            element_types = expected.tuple_elements;
+        }
+    }
+
+    if (!has_expected_tuple) {
+        element_types.assign(expr.tuple_elements.size(), INVALID_TYPE_HANDLE);
+    }
+
+    for (base::usize i = 0; i < expr.tuple_elements.size(); ++i) {
+        const TypeHandle expected_element = i < element_types.size()
+            ? element_types[i]
+            : INVALID_TYPE_HANDLE;
+        const TypeHandle actual = this->analyze_expr(expr.tuple_elements[i], expected_element);
+        if (i >= element_types.size()) {
+            continue;
+        }
+        if (has_expected_tuple) {
+            if (!this->can_assign(element_types[i], actual, expr.tuple_elements[i])) {
+                this->report(
+                    syntax::is_valid(expr.tuple_elements[i]) && expr.tuple_elements[i].value < this->module_.exprs.size()
+                        ? this->module_.exprs[expr.tuple_elements[i].value].range
+                        : expr.range,
+                    std::string(SEMA_TUPLE_LITERAL_ELEMENT_TYPE_MISMATCH)
+                );
+            }
+        } else {
+            element_types[i] = actual;
+        }
+    }
+
+    if (!has_expected_tuple) {
+        for (const TypeHandle element : element_types) {
+            if (!is_valid(element)) {
+                this->report(expr.range, std::string(SEMA_LOCAL_TYPE_INFER));
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
+        }
+    }
+
+    const TypeHandle tuple_type = has_expected_tuple
+        ? expected_type
+        : this->checked_.types.tuple(std::move(element_types));
+    if (is_valid(tuple_type) && !this->is_valid_storage_type(tuple_type)) {
+        this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_STORAGE));
+    }
+    return this->record_expr_type(expr_id, tuple_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(

@@ -89,6 +89,7 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
             current = info.array_element;
             continue;
         case sema::TypeKind::struct_:
+        case sema::TypeKind::tuple:
         case sema::TypeKind::opaque_struct:
             result = this->records_.at(current.value);
             break;

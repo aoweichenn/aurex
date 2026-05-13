@@ -1,0 +1,7 @@
+module empty_tuple_type;
+
+type Empty = ();
+
+fn main() -> i32 {
+    return 0;
+}

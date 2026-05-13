@@ -1,0 +1,6 @@
+module tuple_destructure_arity_mismatch;
+
+fn main() -> i32 {
+    let (a, b, extra) = (1, false);
+    return a;
+}

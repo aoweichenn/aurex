@@ -13,6 +13,25 @@ namespace {
 
 using syntax::TokenKind;
 
+constexpr base::usize PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH = 1;
+constexpr char PARSER_TUPLE_FIELD_DOT = '.';
+constexpr char PARSER_TUPLE_FIELD_FIRST_DIGIT = '0';
+constexpr char PARSER_TUPLE_FIELD_LAST_DIGIT = '9';
+
+[[nodiscard]] bool is_leading_dot_numeric_field_token(const syntax::Token& token) noexcept {
+    if (token.kind != TokenKind::float_literal ||
+        token.text.size() <= PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH ||
+        token.text.front() != PARSER_TUPLE_FIELD_DOT) {
+        return false;
+    }
+    for (const char c : token.text.substr(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH)) {
+        if (c < PARSER_TUPLE_FIELD_FIRST_DIGIT || c > PARSER_TUPLE_FIELD_LAST_DIGIT) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
@@ -33,6 +52,9 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
     }
     if (this->match(TokenKind::dot)) {
         return this->parse_field_suffix(expr);
+    }
+    if (is_leading_dot_numeric_field_token(this->peek())) {
+        return this->parse_leading_dot_numeric_field_suffix(expr);
     }
     if (this->match(TokenKind::l_bracket)) {
         return this->parse_index_suffix(expr, context);
@@ -127,12 +149,24 @@ bool PostfixExprParser::recover_generic_type_arg_separator() {
 }
 
 syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId expr) {
-    const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
+    const syntax::Token& field = this->check(TokenKind::integer_literal)
+        ? this->advance()
+        : this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
     syntax::ExprNode node;
     node.kind = syntax::ExprKind::field;
     node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
     node.object = expr;
     node.field_name = field.text;
+    return this->session_.module.push_expr(std::move(node));
+}
+
+syntax::ExprId PostfixExprParser::parse_leading_dot_numeric_field_suffix(const syntax::ExprId expr) {
+    const syntax::Token& field = this->advance();
+    syntax::ExprNode node;
+    node.kind = syntax::ExprKind::field;
+    node.range = this->merge(this->expr_range_or(expr, field.range), field.range);
+    node.object = expr;
+    node.field_name = field.text.substr(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH);
     return this->session_.module.push_expr(std::move(node));
 }
 

@@ -196,6 +196,19 @@ std::string type_label(const AstModule& module, const TypeId id) {
         out << "[]" << (type.slice_mutability == PointerMutability::mut ? "mut " : "const ");
         out << type_label(module, type.slice_element);
         break;
+    case TypeKind::tuple:
+        out << "(";
+        for (base::usize i = 0; i < type.tuple_elements.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << type_label(module, type.tuple_elements[i]);
+        }
+        if (type.tuple_elements.size() == 1) {
+            out << ",";
+        }
+        out << ")";
+        break;
     case TypeKind::function:
         if (type.function_is_unsafe) {
             out << "unsafe ";
@@ -229,6 +242,23 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
     const PatternNode& pattern = module.patterns[id.value];
     if (pattern.kind == PatternKind::wildcard) {
         return "_";
+    }
+    if (pattern.kind == PatternKind::binding) {
+        return std::string(pattern.binding_name);
+    }
+    if (pattern.kind == PatternKind::tuple) {
+        std::string label = "(";
+        for (base::usize i = 0; i < pattern.elements.size(); ++i) {
+            if (i != 0) {
+                label += ", ";
+            }
+            label += pattern_label(module, pattern.elements[i]);
+        }
+        if (pattern.elements.size() == 1) {
+            label += ",";
+        }
+        label += ")";
+        return label;
     }
     if (pattern.kind == PatternKind::literal) {
         return std::string(pattern.case_name);
@@ -329,6 +359,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::unsafe_block: return "unsafe_block";
     case ExprKind::match_expr: return "match_expr";
     case ExprKind::array_literal: return "array_literal";
+    case ExprKind::tuple_literal: return "tuple_literal";
     case ExprKind::field: return "field";
     case ExprKind::index: return "index";
     case ExprKind::slice: return "slice";
@@ -360,6 +391,9 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     out << "stmt #" << id.value << " " << stmt_kind_name(stmt.kind);
     if (!stmt.name.empty()) {
         out << " " << stmt.name;
+    }
+    if (is_valid(stmt.pattern)) {
+        out << " " << pattern_label(module, stmt.pattern);
     }
     if (is_valid(stmt.declared_type)) {
         out << " : " << type_label(module, stmt.declared_type);
@@ -518,6 +552,11 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     for (ExprId element : expr.array_elements) {
         indent(out, depth + 1);
         out << "array_element\n";
+        dump_expr(out, module, element, depth + 2);
+    }
+    for (ExprId element : expr.tuple_elements) {
+        indent(out, depth + 1);
+        out << "tuple_element\n";
         dump_expr(out, module, element, depth + 2);
     }
     if (is_valid(expr.array_repeat_value)) {

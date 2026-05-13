@@ -1,0 +1,6 @@
+module tuple_literal_expected_non_tuple;
+
+fn main() -> i32 {
+    let value: i32 = (1, 2);
+    return value;
+}

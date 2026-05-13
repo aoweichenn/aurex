@@ -47,6 +47,9 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `[]const i32` | yes | Immutable borrowed slice, fat pointer value |
 | Type | `[]mut i32` | yes | Mutable borrowed slice, fat pointer value |
 | Type | `[]i32` | no | Slice mutability is required |
+| Type | `(i32, bool)` | yes | Anonymous tuple/product type |
+| Type | `(i32,)` | yes | One-element tuple uses a trailing comma |
+| Type | `()` | no | Empty tuple type is not part of M2 |
 | Type | `fn(i32, i32) -> i32` | yes | Non-capturing Aurex function pointer type |
 | Type | `unsafe fn(*const i32) -> i32` | yes | Calls require unsafe context |
 | Type | `fn(a: i32, b: i32) -> i32` | yes | Names are accepted in function type params |
@@ -68,6 +71,10 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `table.callback(1)` | yes | Struct fields of function type can be called |
 | Expr | `id::[i32](1)` | yes | Explicit generic function call |
 | Expr | `id[i32](1)` | no | Use `id::[i32](...)` |
+| Expr | `(1, true)` | yes | Tuple literal, type inferred from elements unless expected type is present |
+| Expr | `(1,)` | yes | One-element tuple literal uses a trailing comma |
+| Expr | `()` | no | Empty tuple literal is not part of M2 |
+| Expr | `pair.0` | yes | Tuple field access is zero-based numeric field syntax |
 | Expr | `Point { x: 1 }` | yes | Struct literal |
 | Expr | `Box[i32] { value: 1 }` | yes | Generic struct literal |
 | Expr | `[1, 2, 3]` | yes | Array literal |
@@ -86,6 +93,9 @@ This matrix records whether a syntax position is supported by current M2.
 | Match | `match b { true => 1, false => 0 }` | yes | Bool match |
 | Pattern | `.span(a, b)` | yes | Binding count must match payload |
 | Pattern | `.some(x) | .none` | no | Or-pattern alternatives cannot bind payloads |
+| Local pattern | `let (a, _) = pair;` | yes | Tuple destructuring for local `let`/`var` only |
+| Local pattern | `let () = value;` | no | Empty tuple pattern is not part of M2 |
+| Match pattern | `match pair { (a, b) => a }` | no | Tuple match patterns are deferred |
 | For | `for var i: i32 = 0; i < 10; i += 1 {}` | yes | C-style loop |
 | Range-for | `for i in range(0, 10, 2) {}` | yes | `range` only |
 | For-in | `for x in values {}` | no | Generic iteration is not part of M2 |

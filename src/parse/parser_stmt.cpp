@@ -2,6 +2,7 @@
 
 #include <aurex/parse/parser_control_stmt_part.hpp>
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_pattern_part.hpp>
 
 #include <utility>
 
@@ -74,7 +75,13 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     const StatementTerminatorRecovery recovery
 ) {
     const syntax::Token& begin = this->advance();
-    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_LOCAL_NAME));
+    syntax::Token name;
+    syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+    if (this->check(TokenKind::l_paren)) {
+        pattern = PatternParser(this->parser_).parse_binding_pattern();
+    } else {
+        name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_LOCAL_NAME));
+    }
     syntax::TypeId type = syntax::INVALID_TYPE_ID;
     if (this->match(TokenKind::colon)) {
         type = this->parse_type();
@@ -90,6 +97,7 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     stmt.kind = kind;
     stmt.range = this->merge(begin.range, end.range);
     stmt.name = name.text;
+    stmt.pattern = pattern;
     stmt.declared_type = type;
     stmt.init = init;
     return this->session_.module.push_stmt(std::move(stmt));

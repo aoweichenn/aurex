@@ -1,0 +1,6 @@
+module tuple_field_out_of_range;
+
+fn main() -> i32 {
+    let pair = (1, false);
+    return pair.2;
+}

@@ -51,13 +51,20 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    references from raw pointers. Borrow checking, lifetimes, and borrowed returns
    remain deferred.
 
-6. Capability / trait / where
+6. Tuple and pattern boundary
+
+   Tuple basics are now in M2: `(A, B)` / `(A,)` types, `(a, b)` / `(a,)`
+   literals, `value.0` numeric field access, and local tuple destructuring in
+   `let` / `var`. Keep tuple match patterns, struct patterns, `if let`,
+   `while let`, and `let ... else` as the next pattern ergonomics topic.
+
+7. Capability / trait / where
 
    Replace temporary hardcodes with language mechanisms. For this stage, only
    evaluate non-resource constraints such as `Eq`, `Ord`, `Hash`, and `Sized`;
    resource constraints belong to the deferred resource-semantics design.
 
-7. String primitive
+8. String primitive
 
    Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
    recreate old `String`/`Bytes` std implementations. First settle type
@@ -65,7 +72,7 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    construction boundary. `strraw(data, len)` is already fenced by `unsafe`;
    checked UTF-8 construction remains a later API/design question.
 
-8. Test performance
+9. Test performance
 
    Keep the test harness on direct C++ driver calls for cacheable compiler work.
    Separate check/IR/native tests, and only build/run binaries when runtime

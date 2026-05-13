@@ -81,6 +81,7 @@ enum class TypeResolveActionKind {
     build_pointer,
     build_array,
     build_slice,
+    build_tuple,
     build_function,
 };
 
@@ -93,6 +94,7 @@ struct TypeResolveAction {
     bool function_is_unsafe = false;
     bool function_is_variadic = false;
     std::optional<base::u64> array_count {};
+    base::usize tuple_element_count = 0;
     base::usize function_param_count = 0;
 };
 
@@ -581,6 +583,22 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 actions.push_back(resolve_element);
                 break;
             }
+            case syntax::TypeKind::tuple:
+            {
+                TypeResolveAction build;
+                build.kind = TypeResolveActionKind::build_tuple;
+                build.type = action.type;
+                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                build.tuple_element_count = type.tuple_elements.size();
+                actions.push_back(build);
+                for (base::usize index = type.tuple_elements.size(); index > 0; --index) {
+                    TypeResolveAction resolve_element;
+                    resolve_element.kind = TypeResolveActionKind::resolve;
+                    resolve_element.type = type.tuple_elements[index - 1];
+                    actions.push_back(resolve_element);
+                }
+                break;
+            }
             case syntax::TypeKind::function:
             {
                 TypeResolveAction build;
@@ -637,6 +655,25 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             const TypeHandle element = values.back();
             values.pop_back();
             const TypeHandle resolved = this->checked_.types.slice(map_mutability(action.pointer_mutability), element);
+            this->record_syntax_type_handle(action.type, resolved);
+            values.push_back(resolved);
+            break;
+        }
+        case TypeResolveActionKind::build_tuple: {
+            std::vector<TypeHandle> elements(action.tuple_element_count, INVALID_TYPE_HANDLE);
+            for (base::usize index = action.tuple_element_count; index > 0; --index) {
+                if (values.empty()) {
+                    break;
+                }
+                elements[index - 1] = values.back();
+                values.pop_back();
+            }
+            for (const TypeHandle element : elements) {
+                if (!this->is_valid_storage_type(element)) {
+                    this->report(this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
+                }
+            }
+            const TypeHandle resolved = this->checked_.types.tuple(std::move(elements));
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;
@@ -822,8 +859,11 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
 }
 
 bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
-    TypeHandle current = type;
-    while (true) {
+    std::vector<TypeHandle> pending;
+    pending.push_back(type);
+    while (!pending.empty()) {
+        const TypeHandle current = pending.back();
+        pending.pop_back();
         if (!is_valid(current)) {
             return false;
         }
@@ -835,18 +875,25 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
             return false;
         }
         if (info.kind == TypeKind::slice) {
-            current = info.slice_element;
+            pending.push_back(info.slice_element);
+            continue;
+        }
+        if (info.kind == TypeKind::tuple) {
+            for (const TypeHandle element : info.tuple_elements) {
+                pending.push_back(element);
+            }
             continue;
         }
         if (info.kind != TypeKind::array) {
-            return true;
+            continue;
         }
         const base::u64 element_size = this->abi_size(info.array_element);
         if (element_size != 0 && info.array_count > std::numeric_limits<base::u64>::max() / element_size) {
             return false;
         }
-        current = info.array_element;
+        pending.push_back(info.array_element);
     }
+    return true;
 }
 
 void SemanticAnalyzer::validate_type_layouts() {
@@ -908,6 +955,37 @@ void SemanticAnalyzer::validate_type_layouts() {
                 return result;
             }
             result = LayoutResult {size, element.align, true};
+            return result;
+        }
+        if (info.kind == TypeKind::tuple) {
+            base::u64 offset = SEMA_ABI_INVALID_SIZE;
+            base::u64 max_align = SEMA_ABI_MIN_ALIGNMENT;
+            for (const TypeHandle element_type : info.tuple_elements) {
+                const LayoutResult element = cached_result(element_type);
+                if (!element.ok) {
+                    result.ok = false;
+                    continue;
+                }
+                max_align = std::max(max_align, element.align);
+                base::u64 aligned_offset = SEMA_ABI_INVALID_SIZE;
+                if (!checked_align_forward(offset, element.align, aligned_offset)) {
+                    this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    result.ok = false;
+                }
+                base::u64 next_offset = SEMA_ABI_INVALID_SIZE;
+                if (!checked_add_u64(aligned_offset, element.size, next_offset)) {
+                    this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    result.ok = false;
+                }
+                offset = next_offset;
+            }
+            base::u64 size = SEMA_ABI_INVALID_SIZE;
+            if (!checked_align_forward(offset, max_align, size)) {
+                this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                result.ok = false;
+            }
+            result.size = size;
+            result.align = max_align;
             return result;
         }
         if (info.kind == TypeKind::struct_) {
@@ -1035,6 +1113,12 @@ void SemanticAnalyzer::validate_type_layouts() {
         const TypeInfo& info = this->checked_.types.get(type);
         if (info.kind == TypeKind::array) {
             push_dependency(stack, info.array_element, range);
+            return;
+        }
+        if (info.kind == TypeKind::tuple) {
+            for (auto element = info.tuple_elements.rbegin(); element != info.tuple_elements.rend(); ++element) {
+                push_dependency(stack, *element, range);
+            }
             return;
         }
         if (info.kind == TypeKind::struct_) {
@@ -1340,6 +1424,17 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
                 element.align,
             };
         }
+        case TypeKind::tuple: {
+            base::u64 offset = SEMA_ABI_INVALID_SIZE;
+            base::u64 max_align = SEMA_ABI_MIN_ALIGNMENT;
+            for (const TypeHandle element_type : info.tuple_elements) {
+                const TypeAbiLayout element = cached(layouts, element_type);
+                max_align = std::max(max_align, element.align);
+                offset = align_forward(offset, element.align);
+                offset = add_saturating(offset, element.size);
+            }
+            return TypeAbiLayout {align_forward(offset, max_align), max_align};
+        }
         case TypeKind::enum_: {
             const TypeAbiLayout tag = cached(layouts, info.enum_underlying);
             if (!is_valid(info.enum_payload_storage)) {
@@ -1411,6 +1506,11 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         switch (info.kind) {
         case TypeKind::array:
             push_dependency(stack, info.array_element, states, layouts);
+            break;
+        case TypeKind::tuple:
+            for (auto element = info.tuple_elements.rbegin(); element != info.tuple_elements.rend(); ++element) {
+                push_dependency(stack, *element, states, layouts);
+            }
             break;
         case TypeKind::enum_:
             push_dependency(stack, info.enum_underlying, states, layouts);

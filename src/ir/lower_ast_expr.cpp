@@ -3,6 +3,8 @@
 #include <aurex/base/string_literal.hpp>
 #include <aurex/ir/enum_layout.hpp>
 
+#include <algorithm>
+
 namespace aurex::ir::detail {
 
 namespace {
@@ -176,6 +178,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_match_expr(expr_id, expr);
     case syntax::ExprKind::array_literal:
         return this->lower_array_literal_expr(expr_id, expr);
+    case syntax::ExprKind::tuple_literal:
+        return this->lower_tuple_literal_expr(expr_id, expr);
     case syntax::ExprKind::slice:
         return this->lower_slice_expr(expr_id, expr);
     case syntax::ExprKind::field:
@@ -466,6 +470,30 @@ ValueId Lowerer::lower_array_literal_expr(
             this->lower_expr(element, array.array_element),
             array.array_element
         ));
+    }
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_tuple_literal_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = ValueKind::aggregate;
+    value.type = this->expr_type(expr_id);
+    if (!sema::is_valid(value.type) || !this->module_.types.is_tuple(value.type)) {
+        return this->append_value(value);
+    }
+
+    const sema::TypeInfo& tuple = this->module_.types.get(value.type);
+    const base::usize count = std::min(tuple.tuple_elements.size(), expr.tuple_elements.size());
+    value.fields.reserve(count);
+    for (base::usize i = 0; i < count; ++i) {
+        const sema::TypeHandle element_type = tuple.tuple_elements[i];
+        value.fields.push_back(FieldValue {
+            std::to_string(i),
+            this->coerce_value(this->lower_expr(expr.tuple_elements[i], element_type), element_type),
+        });
     }
     return this->append_value(value);
 }

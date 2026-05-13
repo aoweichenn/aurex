@@ -2,6 +2,7 @@
 
 #include <aurex/sema/sema_messages.hpp>
 
+#include <algorithm>
 #include <vector>
 
 namespace aurex::sema {
@@ -664,6 +665,75 @@ void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, cons
     static_cast<void>(inserted);
 }
 
+void SemanticAnalyzer::define_local_pattern(
+    const syntax::PatternId pattern_id,
+    const TypeHandle type,
+    const bool is_mutable
+) {
+    struct PatternFrame {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+    };
+
+    std::vector<PatternFrame> pending;
+    pending.push_back(PatternFrame {pattern_id, type});
+    while (!pending.empty()) {
+        const PatternFrame frame = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(frame.pattern) || frame.pattern.value >= this->module_.patterns.size()) {
+            continue;
+        }
+        const syntax::PatternNode& pattern = this->module_.patterns[frame.pattern.value];
+        switch (pattern.kind) {
+        case syntax::PatternKind::wildcard:
+            break;
+        case syntax::PatternKind::binding: {
+            const auto inserted = this->symbols_.insert(Symbol {
+                SymbolKind::local,
+                std::string(pattern.binding_name),
+                {},
+                syntax::INVALID_MODULE_ID,
+                frame.type,
+                pattern.range,
+                is_mutable,
+                syntax::Visibility::private_,
+            }, this->diagnostics_);
+            static_cast<void>(inserted);
+            break;
+        }
+        case syntax::PatternKind::tuple: {
+            if (!this->checked_.types.is_tuple(frame.type)) {
+                this->report(pattern.range, std::string(SEMA_TUPLE_DESTRUCTURE_TYPE));
+                for (auto element = pattern.elements.rbegin(); element != pattern.elements.rend(); ++element) {
+                    pending.push_back(PatternFrame {*element, INVALID_TYPE_HANDLE});
+                }
+                break;
+            }
+            const TypeInfo& tuple = this->checked_.types.get(frame.type);
+            if (tuple.tuple_elements.size() != pattern.elements.size()) {
+                this->report(pattern.range, std::string(SEMA_TUPLE_DESTRUCTURE_ARITY));
+            }
+            const base::usize count = std::min(tuple.tuple_elements.size(), pattern.elements.size());
+            for (base::usize i = count; i > 0; --i) {
+                pending.push_back(PatternFrame {
+                    pattern.elements[i - 1],
+                    tuple.tuple_elements[i - 1],
+                });
+            }
+            for (base::usize i = pattern.elements.size(); i > count; --i) {
+                pending.push_back(PatternFrame {pattern.elements[i - 1], INVALID_TYPE_HANDLE});
+            }
+            break;
+        }
+        case syntax::PatternKind::enum_case:
+        case syntax::PatternKind::literal:
+        case syntax::PatternKind::or_pattern:
+            this->report(pattern.range, std::string(SEMA_TUPLE_DESTRUCTURE_TYPE));
+            break;
+        }
+    }
+}
+
 void SemanticAnalyzer::analyze_statement_node(
     const syntax::StmtId stmt_id,
     std::vector<StatementAnalysisAction>& stack,
@@ -691,6 +761,10 @@ void SemanticAnalyzer::analyze_statement_node(
         }
         if (has_declared_type && !this->can_assign(local_type, init, stmt.init)) {
             this->report(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH));
+        }
+        if (syntax::is_valid(stmt.pattern)) {
+            this->define_local_pattern(stmt.pattern, local_type, stmt.kind == syntax::StmtKind::var);
+            break;
         }
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,

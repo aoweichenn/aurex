@@ -19,6 +19,10 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX = "[]const ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_OPEN = "(";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_CLOSE = ")";
+constexpr std::string_view SEMA_TYPE_DISPLAY_TUPLE_SEPARATOR = ", ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_SINGLE_TUPLE_TRAILING = ",";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_PREFIX = "fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_EXTERN_C_FN_PREFIX = "extern c fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_FN_PREFIX = "unsafe fn(";
@@ -141,6 +145,30 @@ TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle
     info.slice_element = element;
     const TypeHandle handle = this->push(std::move(info));
     this->slice_types_.emplace(key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::tuple(std::vector<TypeHandle> elements) {
+    TupleKey key;
+    key.elements.reserve(elements.size());
+    for (const TypeHandle element : elements) {
+        key.elements.push_back(element.value);
+    }
+    if (const auto found = this->tuple_types_.find(key); found != this->tuple_types_.end()) {
+        return found->second;
+    }
+
+    bool contains_array = false;
+    for (const TypeHandle element : elements) {
+        contains_array = contains_array || this->contains_array(element);
+    }
+
+    TypeInfo info;
+    info.kind = TypeKind::tuple;
+    info.tuple_elements = std::move(elements);
+    info.contains_array = contains_array;
+    const TypeHandle handle = this->push(std::move(info));
+    this->tuple_types_.emplace(std::move(key), handle);
     return handle;
 }
 
@@ -315,6 +343,10 @@ bool TypeTable::is_slice(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::slice;
 }
 
+bool TypeTable::is_tuple(const TypeHandle type) const noexcept {
+    return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::tuple;
+}
+
 bool TypeTable::is_function(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::function;
 }
@@ -361,6 +393,35 @@ std::string TypeTable::display_name(const TypeHandle type) const {
                 ? SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX
                 : SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX);
             pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.slice_element, {}});
+            break;
+        case TypeKind::tuple:
+            name.append(SEMA_TYPE_DISPLAY_TUPLE_OPEN);
+            pending.push_back(TypeDisplayTask {
+                TypeDisplayTaskKind::text,
+                INVALID_TYPE_HANDLE,
+                std::string(SEMA_TYPE_DISPLAY_TUPLE_CLOSE),
+            });
+            if (info.tuple_elements.size() == 1) {
+                pending.push_back(TypeDisplayTask {
+                    TypeDisplayTaskKind::text,
+                    INVALID_TYPE_HANDLE,
+                    std::string(SEMA_TYPE_DISPLAY_SINGLE_TUPLE_TRAILING),
+                });
+            }
+            for (base::usize index = info.tuple_elements.size(); index > 0; --index) {
+                pending.push_back(TypeDisplayTask {
+                    TypeDisplayTaskKind::type,
+                    info.tuple_elements[index - 1],
+                    {},
+                });
+                if (index > 1) {
+                    pending.push_back(TypeDisplayTask {
+                        TypeDisplayTaskKind::text,
+                        INVALID_TYPE_HANDLE,
+                        std::string(SEMA_TYPE_DISPLAY_TUPLE_SEPARATOR),
+                    });
+                }
+            }
             break;
         case TypeKind::function: {
             if (info.function_is_unsafe && info.function_call_conv == FunctionCallConv::c) {
@@ -438,6 +499,10 @@ const TypeInfo& TypeTable::get(const TypeHandle handle) const noexcept {
     return this->types_[handle.value];
 }
 
+base::usize TypeTable::size() const noexcept {
+    return this->types_.size();
+}
+
 TypeHandle TypeTable::push(TypeInfo info) {
     const TypeHandle handle {static_cast<base::u32>(this->types_.size())};
     this->types_.push_back(std::move(info));
@@ -466,6 +531,14 @@ std::size_t TypeTable::FunctionKeyHash::operator()(const FunctionKey& key) const
         (static_cast<std::size_t>(key.is_variadic ? 1U : 0U) << 3);
     for (const base::u32 param : key.params) {
         hash = (hash * SEMA_TYPE_HASH_MULTIPLIER) ^ static_cast<std::size_t>(param);
+    }
+    return hash;
+}
+
+std::size_t TypeTable::TupleKeyHash::operator()(const TupleKey& key) const noexcept {
+    std::size_t hash = key.elements.size();
+    for (const base::u32 element : key.elements) {
+        hash = (hash * SEMA_TYPE_HASH_MULTIPLIER) ^ static_cast<std::size_t>(element);
     }
     return hash;
 }

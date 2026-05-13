@@ -316,6 +316,30 @@ inline constexpr std::string_view SEMA_ARRAY_LITERAL_STORAGE =
 inline constexpr std::string_view SEMA_ARRAY_LITERAL_ELEMENT_TYPE_MISMATCH =
     "array literal element type mismatch";
 
+inline constexpr std::string_view SEMA_TUPLE_LITERAL_EXPECTED_TYPE =
+    "tuple literal requires a tuple expected type";
+
+inline constexpr std::string_view SEMA_TUPLE_LITERAL_ARITY =
+    "tuple literal arity does not match expected tuple type";
+
+inline constexpr std::string_view SEMA_TUPLE_LITERAL_ELEMENT_TYPE_MISMATCH =
+    "tuple literal element type mismatch";
+
+inline constexpr std::string_view SEMA_TUPLE_LITERAL_STORAGE =
+    "tuple literal type is not valid storage";
+
+inline constexpr std::string_view SEMA_TUPLE_FIELD_INDEX =
+    "tuple field access requires a zero-based integer field";
+
+inline constexpr std::string_view SEMA_TUPLE_FIELD_RANGE =
+    "tuple field index is out of range";
+
+inline constexpr std::string_view SEMA_TUPLE_DESTRUCTURE_TYPE =
+    "tuple destructuring requires a tuple value";
+
+inline constexpr std::string_view SEMA_TUPLE_DESTRUCTURE_ARITY =
+    "tuple destructuring pattern arity does not match tuple type";
+
 inline constexpr std::string_view SEMA_STRUCT_LITERAL_TYPE =
     "struct literal requires a non-opaque struct type";
 

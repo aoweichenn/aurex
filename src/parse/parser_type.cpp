@@ -270,6 +270,9 @@ syntax::TypeId TypeParser::parse_type_atom() {
     if (this->check(TokenKind::kw_fn) || this->check(TokenKind::kw_extern) || this->check(TokenKind::kw_unsafe)) {
         return this->parse_function_type();
     }
+    if (this->check(TokenKind::l_paren)) {
+        return this->parse_tuple_or_parenthesized_type();
+    }
     if (is_primitive_type_token(this->peek().kind)) {
         return this->parse_primitive_type();
     }
@@ -310,6 +313,68 @@ syntax::TypeId TypeParser::parse_type_atom() {
     type.primitive = syntax::PrimitiveTypeKind::void_;
     type.range = this->peek().range;
     return this->session_.module.push_type(type);
+}
+
+syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type() {
+    const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_TUPLE_TYPE_END));
+    if (this->check(TokenKind::r_paren)) {
+        this->report_here(std::string(PARSER_EMPTY_TUPLE_TYPE_UNSUPPORTED));
+        const syntax::Token& end = this->expect_tuple_type_end();
+        syntax::TypeNode type;
+        type.kind = syntax::TypeKind::primitive;
+        type.primitive = syntax::PrimitiveTypeKind::void_;
+        type.range = this->merge(begin.range, end.range);
+        return this->session_.module.push_type(type);
+    }
+
+    const syntax::TypeId first = this->parse_type();
+    if (!this->match(TokenKind::comma)) {
+        static_cast<void>(this->expect_tuple_type_end());
+        return first;
+    }
+
+    syntax::TypeNode type;
+    type.kind = syntax::TypeKind::tuple;
+    type.tuple_elements.push_back(first);
+    while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+        type.tuple_elements.push_back(this->parse_type());
+        this->reset_panic();
+        if (!this->recover_tuple_type_separator()) {
+            break;
+        }
+    }
+    const syntax::Token& end = this->expect_tuple_type_end();
+    type.range = this->merge(begin.range, end.range);
+    return this->session_.module.push_type(std::move(type));
+}
+
+bool TypeParser::recover_tuple_type_separator() {
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_TUPLE_TYPE_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::type_annotation)) {
+        this->synchronize(RecoveryContext::type_annotation);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return false;
+}
+
+const syntax::Token& TypeParser::expect_tuple_type_end() {
+    return this->expect_recovered(
+        TokenKind::r_paren,
+        std::string(PARSER_EXPECT_TUPLE_TYPE_END),
+        RecoveryContext::type_annotation
+    );
 }
 
 void TypeParser::parse_generic_type_args(std::vector<syntax::TypeId>& args) {

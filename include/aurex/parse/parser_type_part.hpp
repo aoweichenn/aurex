@@ -13,6 +13,9 @@ public:
 
 private:
     [[nodiscard]] syntax::TypeId parse_type_atom();
+    [[nodiscard]] syntax::TypeId parse_tuple_or_parenthesized_type();
+    [[nodiscard]] bool recover_tuple_type_separator();
+    [[nodiscard]] const syntax::Token& expect_tuple_type_end();
     [[nodiscard]] syntax::TypeId parse_function_type();
     [[nodiscard]] syntax::TypeId parse_function_type_after_fn(
         base::SourceRange begin_range,

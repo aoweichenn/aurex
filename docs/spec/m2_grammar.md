@@ -125,7 +125,15 @@ SliceTypePrefix
 TypeAtom
   = PrimitiveType
   | FunctionType
+  | TupleType
+  | ParenthesizedType
   | QualifiedType ;
+
+TupleType
+  = "(" Type "," [ Type { "," Type } [ "," ] ] ")" ;
+
+ParenthesizedType
+  = "(" Type ")" ;
 
 FunctionType
   = [ "unsafe" ] [ "extern" "c" ] "fn" "(" [ FunctionTypeParamList ] ")" "->" Type ;
@@ -166,6 +174,8 @@ char
 []const i32
 []mut u8
 *mut [4]i32
+(i32, bool)
+(i32,)
 fn(i32, i32) -> i32
 unsafe fn(*const i32) -> i32
 extern c fn(*const u8, ...) -> i32
@@ -183,6 +193,9 @@ Rules:
 - Slices are fat values represented as data pointer plus length. They can be
   produced from arrays or other slices. `[]mut T` is assignable to `[]const T`;
   `[]const T` is not assignable to `[]mut T`.
+- Tuple types are anonymous product types. `(A, B)` has two fields, and
+  `(A,)` is the one-element tuple form. `()` is not part of M2 syntax.
+  Numeric fields are zero-based and accessed with `.0`, `.1`, and so on.
 - Function types are non-capturing function pointer types. `fn(...) -> T` uses
   the Aurex function ABI, while `extern c fn(...) -> T` uses the C ABI.
   `unsafe fn(...) -> T` and `unsafe extern c fn(...) -> T` are distinct
@@ -351,10 +364,22 @@ Stmt
   | Block ;
 
 LetStmt
-  = "let" Identifier [ ":" Type ] "=" Expr ";" ;
+  = "let" LocalBinding [ ":" Type ] "=" Expr ";" ;
 
 VarStmt
-  = "var" Identifier [ ":" Type ] "=" Expr ";" ;
+  = "var" LocalBinding [ ":" Type ] "=" Expr ";" ;
+
+LocalBinding
+  = Identifier
+  | TupleLocalBinding ;
+
+TupleLocalBinding
+  = "(" LocalPattern "," [ LocalPattern { "," LocalPattern } [ "," ] ] ")" ;
+
+LocalPattern
+  = Identifier
+  | "_"
+  | TupleLocalBinding ;
 
 ReturnStmt
   = "return" [ Expr ] ";" ;
@@ -404,6 +429,7 @@ Postfix forms:
 
 ```text
 value.field
+value.0
 array[index]
 array[start:end]
 array[:end]
@@ -419,6 +445,13 @@ Array expressions:
 ```aurex
 [1, 2, 3]
 [0; 4]
+```
+
+Tuple expressions:
+
+```aurex
+(1, true)
+(value,)
 ```
 
 Slice expressions:
@@ -472,6 +505,14 @@ Rules:
 - Slice expressions require an array or slice operand. Bounds must be integer
   expressions. Current M2 does not add runtime bounds checks and does not add
   container iteration.
+- Tuple literals infer a tuple type from their element expressions unless an
+  expected tuple type is present. Arity and element types must match the
+  expected tuple type. Empty tuple literals are rejected.
+- Tuple field access uses zero-based numeric fields. Because `.5` remains a
+  valid leading-dot float literal in expression-start position, postfix parsing
+  treats `value.0` as tuple/field syntax only after an existing expression.
+- Tuple destructuring is supported in local `let` and `var` declarations:
+  `let (left, _) = pair;`. It is not a match-pattern syntax in M2.
 
 If expressions:
 
@@ -540,6 +581,8 @@ Rules:
 - Or-pattern alternatives cannot bind payloads in current M2.
 - Integer/bool matches use literal patterns and require wildcard coverage where
   needed.
+- Tuple patterns are currently local-binding patterns only; `match` does not
+  destructure tuple values.
 
 ## 13. Basic Generics
 
@@ -588,6 +631,8 @@ Examples:
 [1 + 2]i32
 Box[]
 Box<i32>
+()
+let () = value;
 foo::bar::Baz
 type Alias[T] = T;
 enum Option[T] { none }

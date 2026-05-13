@@ -20,6 +20,7 @@ private:
     void parse_generic_type_args(std::vector<syntax::TypeId>& args);
     [[nodiscard]] bool recover_generic_type_arg_separator();
     [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId expr);
+    [[nodiscard]] syntax::ExprId parse_leading_dot_numeric_field_suffix(syntax::ExprId expr);
     [[nodiscard]] syntax::ExprId parse_index_suffix(syntax::ExprId expr, ExprContext context);
     [[nodiscard]] const syntax::Token& expect_index_suffix_end();
     [[nodiscard]] const syntax::Token& expect_slice_suffix_end();

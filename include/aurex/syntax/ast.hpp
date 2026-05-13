@@ -49,6 +49,7 @@ enum class TypeKind {
     pointer,
     array,
     slice,
+    tuple,
     function,
 };
 
@@ -71,6 +72,7 @@ struct TypeNode {
     TypeId array_element = INVALID_TYPE_ID;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeId slice_element = INVALID_TYPE_ID;
+    std::vector<TypeId> tuple_elements;
     FunctionCallConv function_call_conv = FunctionCallConv::aurex;
     bool function_is_unsafe = false;
     bool function_is_variadic = false;
@@ -101,6 +103,7 @@ enum class ExprKind {
     unsafe_block,
     match_expr,
     array_literal,
+    tuple_literal,
     field,
     index,
     slice,
@@ -162,6 +165,8 @@ enum class AssignOp {
 
 enum class PatternKind {
     wildcard,
+    binding,
+    tuple,
     enum_case,
     literal,
     or_pattern,
@@ -170,9 +175,11 @@ enum class PatternKind {
 struct PatternNode {
     PatternKind kind = PatternKind::wildcard;
     base::SourceRange range {};
+    std::string_view binding_name;
     std::string_view enum_name;
     std::string_view case_name;
     std::vector<std::string_view> binding_names;
+    std::vector<PatternId> elements;
     std::vector<PatternId> alternatives;
     bool scoped = false;
 };
@@ -211,6 +218,7 @@ struct ExprNode {
     ExprId match_value = INVALID_EXPR_ID;
     std::vector<MatchArm> match_arms;
     std::vector<ExprId> array_elements;
+    std::vector<ExprId> tuple_elements;
     ExprId array_repeat_value = INVALID_EXPR_ID;
     ExprId array_repeat_count = INVALID_EXPR_ID;
     ExprId object = INVALID_EXPR_ID;
@@ -245,6 +253,7 @@ struct StmtNode {
     StmtKind kind = StmtKind::expr;
     base::SourceRange range {};
     std::string_view name;
+    PatternId pattern = INVALID_PATTERN_ID;
     TypeId declared_type = INVALID_TYPE_ID;
     ExprId init = INVALID_EXPR_ID;
     AssignOp assign_op = AssignOp::assign;

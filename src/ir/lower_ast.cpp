@@ -2,8 +2,10 @@
 
 #include <aurex/ir/enum_layout.hpp>
 
+#include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace aurex::ir::detail {
 
@@ -31,6 +33,53 @@ namespace {
            !item.is_export_c &&
            index < ast.item_modules.size() &&
            ast.item_modules[index].value == 0;
+}
+
+[[nodiscard]] bool type_contains_generic_param(const sema::TypeTable& types, const sema::TypeHandle type) {
+    std::vector<sema::TypeHandle> pending;
+    pending.push_back(type);
+    while (!pending.empty()) {
+        const sema::TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!sema::is_valid(current)) {
+            continue;
+        }
+        const sema::TypeInfo& info = types.get(current);
+        switch (info.kind) {
+        case sema::TypeKind::generic_param:
+            return true;
+        case sema::TypeKind::pointer:
+            pending.push_back(info.pointee);
+            break;
+        case sema::TypeKind::array:
+            pending.push_back(info.array_element);
+            break;
+        case sema::TypeKind::slice:
+            pending.push_back(info.slice_element);
+            break;
+        case sema::TypeKind::tuple:
+            for (const sema::TypeHandle element : info.tuple_elements) {
+                pending.push_back(element);
+            }
+            break;
+        case sema::TypeKind::function:
+            pending.push_back(info.function_return);
+            for (const sema::TypeHandle param : info.function_params) {
+                pending.push_back(param);
+            }
+            break;
+        case sema::TypeKind::struct_:
+            for (const sema::TypeHandle arg : info.generic_args) {
+                pending.push_back(arg);
+            }
+            break;
+        case sema::TypeKind::builtin:
+        case sema::TypeKind::enum_:
+        case sema::TypeKind::opaque_struct:
+            break;
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -89,6 +138,27 @@ void Lowerer::lower_record_layouts() {
         if (sema::is_valid(record.type)) {
             this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
         }
+        this->module_.records.push_back(std::move(record));
+    }
+
+    for (base::usize i = 0; i < this->module_.types.size(); ++i) {
+        const sema::TypeHandle type {static_cast<base::u32>(i)};
+        const sema::TypeInfo& info = this->module_.types.get(type);
+        if (info.kind != sema::TypeKind::tuple || type_contains_generic_param(this->module_.types, type)) {
+            continue;
+        }
+        RecordLayout record;
+        record.type = type;
+        record.name = "tuple." + std::to_string(i);
+        record.symbol = "__aurex_tuple_" + std::to_string(i);
+        record.fields.reserve(info.tuple_elements.size());
+        for (base::usize field_index = 0; field_index < info.tuple_elements.size(); ++field_index) {
+            record.fields.push_back(RecordField {
+                std::to_string(field_index),
+                info.tuple_elements[field_index],
+            });
+        }
+        this->module_.record_indices[type.value] = static_cast<base::u32>(this->module_.records.size());
         this->module_.records.push_back(std::move(record));
     }
 

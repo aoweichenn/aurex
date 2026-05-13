@@ -94,10 +94,8 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
     if (this->match(TokenKind::char_literal)) {
         return this->parse_literal(syntax::ExprKind::char_literal);
     }
-    if (this->match(TokenKind::l_paren)) {
-        const syntax::ExprId expr = this->parse_expr(context);
-        this->expect_grouped_expression_end();
-        return expr;
+    if (this->check(TokenKind::l_paren)) {
+        return this->parse_tuple_or_grouped_expr(context);
     }
     if (this->check(TokenKind::kw_unsafe)) {
         return this->parse_unsafe_block_expr(context);
@@ -215,6 +213,69 @@ const syntax::Token& PrimaryExprParser::expect_array_literal_end() {
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_ARRAY_LITERAL_END),
         RecoveryContext::array_literal
+    );
+}
+
+syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext context) {
+    const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_GROUPED_EXPR_END));
+    if (this->check(TokenKind::r_paren)) {
+        this->report_here(std::string(PARSER_EMPTY_TUPLE_LITERAL_UNSUPPORTED));
+        const syntax::Token& end = this->expect_tuple_literal_end();
+        syntax::ExprNode expr;
+        expr.kind = syntax::ExprKind::invalid;
+        expr.range = this->merge(begin.range, end.range);
+        return this->session_.module.push_expr(std::move(expr));
+    }
+
+    const syntax::ExprId first = this->parse_expr(context);
+    if (!this->match(TokenKind::comma)) {
+        this->expect_grouped_expression_end();
+        return first;
+    }
+
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::tuple_literal;
+    expr.tuple_elements.push_back(first);
+    while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
+        expr.tuple_elements.push_back(this->parse_expr(ExprContext::normal));
+        this->reset_panic();
+        if (!this->recover_tuple_literal_separator()) {
+            break;
+        }
+    }
+
+    const syntax::Token& end = this->expect_tuple_literal_end();
+    expr.range = this->merge(begin.range, end.range);
+    this->reset_panic();
+    return this->session_.module.push_expr(std::move(expr));
+}
+
+bool PrimaryExprParser::recover_tuple_literal_separator() {
+    if (this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_TUPLE_ELEMENT_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::grouped_expression)) {
+        this->synchronize(RecoveryContext::grouped_expression);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return false;
+}
+
+const syntax::Token& PrimaryExprParser::expect_tuple_literal_end() {
+    return this->expect_recovered(
+        TokenKind::r_paren,
+        std::string(PARSER_EXPECT_TUPLE_LITERAL_END),
+        RecoveryContext::grouped_expression
     );
 }
 

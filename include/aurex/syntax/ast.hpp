@@ -167,6 +167,7 @@ enum class PatternKind {
     wildcard,
     binding,
     tuple,
+    slice,
     struct_,
     enum_case,
     literal,
@@ -191,6 +192,8 @@ struct PatternNode {
     std::vector<PatternId> elements;
     std::vector<FieldPattern> field_patterns;
     std::vector<PatternId> alternatives;
+    base::usize slice_rest_index = 0;
+    bool has_slice_rest = false;
     bool scoped = false;
 };
 

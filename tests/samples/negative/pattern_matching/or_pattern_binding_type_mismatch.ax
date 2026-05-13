@@ -1,0 +1,12 @@
+module or_pattern_binding_type_mismatch;
+
+enum Mixed {
+    int(i32),
+    flag(bool),
+}
+
+fn main() -> i32 {
+    return match Mixed.int(1) {
+        .int(value) | .flag(value) => 0,
+    };
+}

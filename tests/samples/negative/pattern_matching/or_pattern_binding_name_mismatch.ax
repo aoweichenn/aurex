@@ -1,0 +1,12 @@
+module or_pattern_binding_name_mismatch;
+
+enum Packet {
+    int(i32),
+    other(i32),
+}
+
+fn main() -> i32 {
+    return match Packet.int(1) {
+        .int(value) | .other(other) => value,
+    };
+}

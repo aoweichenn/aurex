@@ -33,13 +33,12 @@ syntax::PatternId PatternParser::parse_pattern() {
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-syntax::PatternId PatternParser::parse_binding_pattern() {
-    return this->parse_destructure_pattern_atom();
-}
-
 syntax::PatternId PatternParser::parse_pattern_atom() {
     if (this->check(TokenKind::l_paren)) {
         return this->parse_tuple_pattern(true);
+    }
+    if (this->check(TokenKind::l_bracket)) {
+        return this->parse_slice_pattern();
     }
     if (this->match(TokenKind::identifier)) {
         const syntax::Token& first = this->previous();
@@ -102,6 +101,9 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
 syntax::PatternId PatternParser::parse_destructure_pattern_atom() {
     if (this->check(TokenKind::l_paren)) {
         return this->parse_tuple_pattern(true);
+    }
+    if (this->check(TokenKind::l_bracket)) {
+        return this->parse_slice_pattern();
     }
     if (this->match(TokenKind::identifier)) {
         const syntax::Token& token = this->previous();
@@ -200,6 +202,40 @@ syntax::PatternId PatternParser::parse_tuple_pattern(const bool destructure_cont
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
+syntax::PatternId PatternParser::parse_slice_pattern() {
+    const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_SLICE_PATTERN_END));
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::slice;
+    pattern.range = begin.range;
+
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        if (this->match_slice_rest_marker()) {
+            if (pattern.has_slice_rest) {
+                this->report_at(this->previous(), std::string(PARSER_DUPLICATE_SLICE_PATTERN_REST));
+            } else {
+                pattern.has_slice_rest = true;
+                pattern.slice_rest_index = pattern.elements.size();
+            }
+        } else if (this->match(TokenKind::ellipsis)) {
+            this->report_at(this->previous(), std::string(PARSER_EXPECT_SLICE_PATTERN_REST));
+            if (!pattern.has_slice_rest) {
+                pattern.has_slice_rest = true;
+                pattern.slice_rest_index = pattern.elements.size();
+            }
+        } else {
+            pattern.elements.push_back(this->parse_destructure_pattern_atom());
+        }
+        this->reset_panic();
+        if (!this->recover_slice_pattern_separator()) {
+            break;
+        }
+    }
+
+    const syntax::Token& end = this->expect_slice_pattern_end();
+    pattern.range = this->merge(begin.range, end.range);
+    return this->session_.module.push_pattern(std::move(pattern));
+}
+
 syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name) {
     const syntax::Token& begin = this->expect(TokenKind::l_brace, std::string(PARSER_EXPECT_STRUCT_PATTERN_END));
     syntax::PatternNode pattern;
@@ -255,6 +291,27 @@ bool PatternParser::recover_tuple_pattern_separator() {
     return false;
 }
 
+bool PatternParser::recover_slice_pattern_separator() {
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_SLICE_PATTERN_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::pattern_payload)) {
+        this->synchronize(RecoveryContext::pattern_payload);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
+}
+
 bool PatternParser::recover_struct_pattern_separator() {
     if (this->check(TokenKind::r_brace)) {
         return false;
@@ -274,6 +331,15 @@ bool PatternParser::recover_struct_pattern_separator() {
     }
     this->reset_panic();
     return false;
+}
+
+bool PatternParser::match_slice_rest_marker() {
+    if (!this->check(TokenKind::dot) || !this->check_next(TokenKind::dot)) {
+        return false;
+    }
+    this->advance();
+    this->advance();
+    return true;
 }
 
 void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern) {
@@ -305,6 +371,14 @@ const syntax::Token& PatternParser::expect_tuple_pattern_end() {
     return this->expect_recovered(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_TUPLE_PATTERN_END),
+        RecoveryContext::pattern_payload
+    );
+}
+
+const syntax::Token& PatternParser::expect_slice_pattern_end() {
+    return this->expect_recovered(
+        TokenKind::r_bracket,
+        std::string(PARSER_EXPECT_SLICE_PATTERN_END),
         RecoveryContext::pattern_payload
     );
 }

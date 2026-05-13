@@ -1,0 +1,14 @@
+module let_else_binding_scope;
+
+enum Maybe {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let value = Maybe.none;
+    let .some(inner) = value else {
+        return inner;
+    };
+    return inner;
+}

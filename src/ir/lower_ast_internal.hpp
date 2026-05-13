@@ -44,6 +44,12 @@ struct LocalBinding {
     bool is_mutable = false;
 };
 
+struct PatternBindingSlot {
+    std::string name;
+    ValueId slot = INVALID_VALUE_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+};
+
 struct LoopContext {
     BlockId break_target = INVALID_BLOCK_ID;
     BlockId continue_target = INVALID_BLOCK_ID;
@@ -104,6 +110,13 @@ private:
     [[nodiscard]] bool is_irrefutable_pattern(syntax::PatternId id, sema::TypeHandle matched_type) const;
     [[nodiscard]] ValueId append_true_value();
     [[nodiscard]] ValueId append_pattern_condition(syntax::PatternId id, ValueId source_address, sema::TypeHandle source_type);
+    [[nodiscard]] ValueId append_pattern_element_address(
+        ValueId source_address,
+        sema::TypeHandle source_type,
+        ValueId index,
+        sema::TypeHandle element_type
+    );
+    [[nodiscard]] ValueId append_pattern_source_length(ValueId source_address, sema::TypeHandle source_type);
 
     void lower_function_body(FunctionId function_id, const syntax::ItemNode& item);
     void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceInfo& instance);
@@ -157,6 +170,24 @@ private:
     );
     [[nodiscard]] ValueId enum_field_addr(ValueId object, const std::string& field_name);
     void bind_pattern_locals(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type);
+    void bind_pattern_locals_with_mutability(
+        syntax::PatternId pattern,
+        ValueId source_address,
+        sema::TypeHandle source_type,
+        bool is_mutable
+    );
+    void collect_pattern_binding_slots(
+        syntax::PatternId pattern,
+        sema::TypeHandle source_type,
+        bool is_mutable,
+        std::unordered_map<std::string, PatternBindingSlot>& slots
+    );
+    void store_pattern_bindings(
+        syntax::PatternId pattern,
+        ValueId source_address,
+        sema::TypeHandle source_type,
+        const std::unordered_map<std::string, PatternBindingSlot>& slots
+    );
 
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);

@@ -32,6 +32,7 @@ public:
 
 private:
     [[nodiscard]] syntax::StmtId parse_unsafe_block_stmt();
+    [[nodiscard]] bool starts_local_pattern() const noexcept;
     [[nodiscard]] bool match_assignment_operator(syntax::AssignOp& op) noexcept;
     [[nodiscard]] syntax::StmtId parse_assignment_tail(
         syntax::ExprId lhs,

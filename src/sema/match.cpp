@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -23,38 +24,6 @@ constexpr std::string_view SEMA_MATCH_BOOL_FALSE_NAME = "false";
         return nullptr;
     }
     return &module.patterns[pattern.value];
-}
-
-[[nodiscard]] bool pattern_has_bindings(
-    const syntax::AstModule& module,
-    const syntax::PatternId pattern_id
-) {
-    std::vector<syntax::PatternId> pending;
-    pending.push_back(pattern_id);
-    while (!pending.empty()) {
-        const syntax::PatternId current = pending.back();
-        pending.pop_back();
-        const syntax::PatternNode* pattern = pattern_node(module, current);
-        if (pattern == nullptr) {
-            continue;
-        }
-        if (pattern->kind == syntax::PatternKind::binding) {
-            return true;
-        }
-        for (const syntax::PatternId child : pattern->payload_patterns) {
-            pending.push_back(child);
-        }
-        for (const syntax::PatternId child : pattern->elements) {
-            pending.push_back(child);
-        }
-        for (const syntax::FieldPattern& field : pattern->field_patterns) {
-            pending.push_back(field.pattern);
-        }
-        for (const syntax::PatternId child : pattern->alternatives) {
-            pending.push_back(child);
-        }
-    }
-    return false;
 }
 
 [[nodiscard]] base::usize enum_case_payload_field_count(const EnumCaseInfo& info) noexcept {
@@ -119,6 +88,26 @@ bool SemanticAnalyzer::pattern_is_irrefutable(
                         results[element.value];
                 }
                 break;
+            case syntax::PatternKind::slice: {
+                const bool array_type = this->checked_.types.is_array(frame.type);
+                const bool slice_type = this->checked_.types.is_slice(frame.type);
+                result = false;
+                if (array_type) {
+                    const TypeInfo& array = this->checked_.types.get(frame.type);
+                    result = pattern->has_slice_rest
+                        ? pattern->elements.size() <= array.array_count
+                        : pattern->elements.size() == array.array_count;
+                } else if (slice_type) {
+                    result = pattern->has_slice_rest && pattern->elements.empty();
+                }
+                for (const syntax::PatternId element : pattern->elements) {
+                    result = result &&
+                        syntax::is_valid(element) &&
+                        element.value < results.size() &&
+                        results[element.value];
+                }
+                break;
+            }
             case syntax::PatternKind::struct_:
                 result = this->find_struct(frame.type) != nullptr;
                 for (const syntax::FieldPattern& field : pattern->field_patterns) {
@@ -157,6 +146,19 @@ bool SemanticAnalyzer::pattern_is_irrefutable(
                     tuple.tuple_elements[i - 1],
                     false,
                 });
+            }
+            break;
+        }
+        case syntax::PatternKind::slice: {
+            if (!this->checked_.types.is_array(frame.type) && !this->checked_.types.is_slice(frame.type)) {
+                break;
+            }
+            const TypeInfo& info = this->checked_.types.get(frame.type);
+            const TypeHandle element_type = info.kind == TypeKind::array
+                ? info.array_element
+                : info.slice_element;
+            for (auto element = pattern->elements.rbegin(); element != pattern->elements.rend(); ++element) {
+                pending.push_back(IrrefutableFrame {*element, element_type, false});
             }
             break;
         }
@@ -200,154 +202,227 @@ bool SemanticAnalyzer::analyze_pattern(
         TypeHandle type = INVALID_TYPE_HANDLE;
     };
 
-    std::vector<PatternFrame> pending;
-    pending.push_back(PatternFrame {pattern_id, matched});
-    while (!pending.empty()) {
-        const PatternFrame frame = pending.back();
-        pending.pop_back();
-        const syntax::PatternNode* pattern = pattern_node(this->module_, frame.pattern);
-        if (pattern == nullptr) {
-            continue;
-        }
-        switch (pattern->kind) {
-        case syntax::PatternKind::wildcard:
-            break;
-        case syntax::PatternKind::binding:
-            bindings.push_back(PatternBinding {
-                std::string(pattern->binding_name),
-                frame.type,
-                pattern->range,
-            });
-            break;
-        case syntax::PatternKind::literal: {
-            if (is_valid(frame.type) && this->checked_.types.get(frame.type).kind == TypeKind::enum_) {
-                this->report(pattern->range, std::string(SEMA_ENUM_MATCH_PATTERN));
+    const auto analyze_pattern_tree = [&](const syntax::PatternId root, const TypeHandle root_type, std::vector<PatternBinding>& out) {
+        std::vector<PatternFrame> pending;
+        pending.push_back(PatternFrame {root, root_type});
+        while (!pending.empty()) {
+            const PatternFrame frame = pending.back();
+            pending.pop_back();
+            const syntax::PatternNode* pattern = pattern_node(this->module_, frame.pattern);
+            if (pattern == nullptr) {
+                continue;
+            }
+            switch (pattern->kind) {
+            case syntax::PatternKind::wildcard:
                 break;
-            }
-            bool covered_true = false;
-            bool covered_false = false;
-            bool saw_wildcard = false;
-            static_cast<void>(this->analyze_single_value_pattern(
-                frame.pattern,
-                frame.type,
-                covered_true,
-                covered_false,
-                saw_wildcard
-            ));
-            break;
-        }
-        case syntax::PatternKind::tuple: {
-            if (!this->checked_.types.is_tuple(frame.type)) {
-                this->report(pattern->range, std::string(SEMA_TUPLE_DESTRUCTURE_TYPE));
-                break;
-            }
-            const TypeInfo& tuple = this->checked_.types.get(frame.type);
-            if (tuple.tuple_elements.size() != pattern->elements.size()) {
-                this->report(pattern->range, std::string(SEMA_TUPLE_DESTRUCTURE_ARITY));
-            }
-            const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
-            for (base::usize i = count; i > 0; --i) {
-                pending.push_back(PatternFrame {
-                    pattern->elements[i - 1],
-                    tuple.tuple_elements[i - 1],
+            case syntax::PatternKind::binding:
+                out.push_back(PatternBinding {
+                    std::string(pattern->binding_name),
+                    frame.type,
+                    pattern->range,
                 });
-            }
-            for (base::usize i = pattern->elements.size(); i > count; --i) {
-                pending.push_back(PatternFrame {pattern->elements[i - 1], INVALID_TYPE_HANDLE});
-            }
-            break;
-        }
-        case syntax::PatternKind::struct_: {
-            const StructInfo* info = this->find_struct(frame.type);
-            if (info == nullptr) {
-                this->report(pattern->range, std::string(SEMA_STRUCT_PATTERN_TYPE));
+                break;
+            case syntax::PatternKind::literal: {
+                if (is_valid(frame.type) && this->checked_.types.get(frame.type).kind == TypeKind::enum_) {
+                    this->report(pattern->range, std::string(SEMA_ENUM_MATCH_PATTERN));
+                    break;
+                }
+                bool covered_true = false;
+                bool covered_false = false;
+                bool saw_wildcard = false;
+                static_cast<void>(this->analyze_single_value_pattern(
+                    frame.pattern,
+                    frame.type,
+                    covered_true,
+                    covered_false,
+                    saw_wildcard
+                ));
                 break;
             }
-            std::unordered_set<std::string_view> seen_fields;
-            for (auto field = pattern->field_patterns.rbegin(); field != pattern->field_patterns.rend(); ++field) {
-                if (!seen_fields.insert(field->name).second) {
-                    this->report(field->range, std::string(SEMA_STRUCT_PATTERN_DUPLICATE_FIELD));
-                    continue;
+            case syntax::PatternKind::tuple: {
+                if (!this->checked_.types.is_tuple(frame.type)) {
+                    this->report(pattern->range, std::string(SEMA_TUPLE_DESTRUCTURE_TYPE));
+                    break;
                 }
-                const StructFieldInfo* field_info = find_struct_field(*info, field->name);
-                if (field_info == nullptr) {
-                    this->report(field->range, std::string(SEMA_STRUCT_PATTERN_FIELD));
-                    pending.push_back(PatternFrame {field->pattern, INVALID_TYPE_HANDLE});
-                    continue;
+                const TypeInfo& tuple = this->checked_.types.get(frame.type);
+                if (tuple.tuple_elements.size() != pattern->elements.size()) {
+                    this->report(pattern->range, std::string(SEMA_TUPLE_DESTRUCTURE_ARITY));
                 }
-                pending.push_back(PatternFrame {field->pattern, field_info->type});
-            }
-            break;
-        }
-        case syntax::PatternKind::enum_case: {
-            if (!is_valid(frame.type) || this->checked_.types.get(frame.type).kind != TypeKind::enum_) {
-                this->report(pattern->range, std::string(SEMA_ENUM_PATTERN_TYPE));
-                for (auto payload = pattern->payload_patterns.rbegin(); payload != pattern->payload_patterns.rend(); ++payload) {
-                    pending.push_back(PatternFrame {*payload, INVALID_TYPE_HANDLE});
+                const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
+                for (base::usize i = count; i > 0; --i) {
+                    pending.push_back(PatternFrame {
+                        pattern->elements[i - 1],
+                        tuple.tuple_elements[i - 1],
+                    });
+                }
+                for (base::usize i = pattern->elements.size(); i > count; --i) {
+                    pending.push_back(PatternFrame {pattern->elements[i - 1], INVALID_TYPE_HANDLE});
                 }
                 break;
             }
-            const EnumCaseInfo* case_info = nullptr;
-            if (pattern->scoped) {
-                if (!pattern->enum_name.empty()) {
-                    case_info = this->find_enum_case_by_scoped_name(pattern->enum_name, pattern->case_name, pattern->range);
-                } else {
-                    case_info = this->find_enum_case_by_type_and_case(frame.type, pattern->case_name);
-                    if (case_info == nullptr) {
-                        this->report(pattern->range, sema_unknown_matched_enum_case_message(pattern->case_name));
+            case syntax::PatternKind::slice: {
+                if (!this->checked_.types.is_array(frame.type) && !this->checked_.types.is_slice(frame.type)) {
+                    this->report(pattern->range, std::string(SEMA_SLICE_PATTERN_TYPE));
+                    for (auto element = pattern->elements.rbegin(); element != pattern->elements.rend(); ++element) {
+                        pending.push_back(PatternFrame {*element, INVALID_TYPE_HANDLE});
+                    }
+                    break;
+                }
+                const TypeInfo& info = this->checked_.types.get(frame.type);
+                const bool array_type = info.kind == TypeKind::array;
+                const TypeHandle element_type = array_type ? info.array_element : info.slice_element;
+                if (array_type) {
+                    const bool length_ok = pattern->has_slice_rest
+                        ? pattern->elements.size() <= info.array_count
+                        : pattern->elements.size() == info.array_count;
+                    if (!length_ok) {
+                        this->report(pattern->range, std::string(SEMA_SLICE_PATTERN_LENGTH));
                     }
                 }
-            } else {
-                case_info = this->find_enum_case_in_visible_modules(pattern->case_name, pattern->range);
-            }
-            if (case_info == nullptr) {
-                for (auto payload = pattern->payload_patterns.rbegin(); payload != pattern->payload_patterns.rend(); ++payload) {
-                    pending.push_back(PatternFrame {*payload, INVALID_TYPE_HANDLE});
+                for (auto element = pattern->elements.rbegin(); element != pattern->elements.rend(); ++element) {
+                    pending.push_back(PatternFrame {*element, element_type});
                 }
                 break;
             }
-            if (!this->checked_.types.same(case_info->type, frame.type)) {
-                this->report(pattern->range, std::string(SEMA_MATCH_CASE_WRONG_ENUM));
-            }
-            this->record_pattern_c_name(frame.pattern, case_info->c_name);
-            this->record_pattern_case_name(frame.pattern, case_info->c_name);
-            if (pattern->payload_patterns.empty()) {
+            case syntax::PatternKind::struct_: {
+                const StructInfo* info = this->find_struct(frame.type);
+                if (info == nullptr) {
+                    this->report(pattern->range, std::string(SEMA_STRUCT_PATTERN_TYPE));
+                    break;
+                }
+                std::unordered_set<std::string_view> seen_fields;
+                for (auto field = pattern->field_patterns.rbegin(); field != pattern->field_patterns.rend(); ++field) {
+                    if (!seen_fields.insert(field->name).second) {
+                        this->report(field->range, std::string(SEMA_STRUCT_PATTERN_DUPLICATE_FIELD));
+                        continue;
+                    }
+                    const StructFieldInfo* field_info = find_struct_field(*info, field->name);
+                    if (field_info == nullptr) {
+                        this->report(field->range, std::string(SEMA_STRUCT_PATTERN_FIELD));
+                        pending.push_back(PatternFrame {field->pattern, INVALID_TYPE_HANDLE});
+                        continue;
+                    }
+                    pending.push_back(PatternFrame {field->pattern, field_info->type});
+                }
                 break;
             }
-            if (enum_case_payload_field_count(*case_info) == 0) {
-                this->report(pattern->range, std::string(SEMA_MATCH_PAYLOAD_CASE));
-                break;
-            }
-            if (pattern->payload_patterns.size() != enum_case_payload_field_count(*case_info)) {
-                this->report(
-                    pattern->range,
-                    sema_enum_payload_pattern_binding_count_message(enum_case_payload_field_count(*case_info))
-                );
-                break;
-            }
-            for (base::usize i = pattern->payload_patterns.size(); i > 0; --i) {
-                pending.push_back(PatternFrame {
-                    pattern->payload_patterns[i - 1],
-                    enum_case_payload_field_type(*case_info, i - 1),
-                });
-            }
-            break;
-        }
-        case syntax::PatternKind::or_pattern:
-            for (const syntax::PatternId alternative : pattern->alternatives) {
-                if (pattern_has_bindings(this->module_, alternative)) {
-                    const syntax::PatternNode* alternative_pattern = pattern_node(this->module_, alternative);
+            case syntax::PatternKind::enum_case: {
+                if (!is_valid(frame.type) || this->checked_.types.get(frame.type).kind != TypeKind::enum_) {
+                    this->report(pattern->range, std::string(SEMA_ENUM_PATTERN_TYPE));
+                    for (auto payload = pattern->payload_patterns.rbegin(); payload != pattern->payload_patterns.rend(); ++payload) {
+                        pending.push_back(PatternFrame {*payload, INVALID_TYPE_HANDLE});
+                    }
+                    break;
+                }
+                const EnumCaseInfo* case_info = nullptr;
+                if (pattern->scoped) {
+                    if (!pattern->enum_name.empty()) {
+                        case_info = this->find_enum_case_by_scoped_name(pattern->enum_name, pattern->case_name, pattern->range);
+                    } else {
+                        case_info = this->find_enum_case_by_type_and_case(frame.type, pattern->case_name);
+                        if (case_info == nullptr) {
+                            this->report(pattern->range, sema_unknown_matched_enum_case_message(pattern->case_name));
+                        }
+                    }
+                } else {
+                    case_info = this->find_enum_case_in_visible_modules(pattern->case_name, pattern->range);
+                }
+                if (case_info == nullptr) {
+                    for (auto payload = pattern->payload_patterns.rbegin(); payload != pattern->payload_patterns.rend(); ++payload) {
+                        pending.push_back(PatternFrame {*payload, INVALID_TYPE_HANDLE});
+                    }
+                    break;
+                }
+                if (!this->checked_.types.same(case_info->type, frame.type)) {
+                    this->report(pattern->range, std::string(SEMA_MATCH_CASE_WRONG_ENUM));
+                }
+                this->record_pattern_c_name(frame.pattern, case_info->c_name);
+                this->record_pattern_case_name(frame.pattern, case_info->c_name);
+                if (pattern->payload_patterns.empty()) {
+                    break;
+                }
+                if (enum_case_payload_field_count(*case_info) == 0) {
+                    this->report(pattern->range, std::string(SEMA_MATCH_PAYLOAD_CASE));
+                    break;
+                }
+                if (pattern->payload_patterns.size() != enum_case_payload_field_count(*case_info)) {
                     this->report(
-                        alternative_pattern == nullptr ? pattern->range : alternative_pattern->range,
-                        std::string(SEMA_OR_PATTERN_PAYLOAD_UNSUPPORTED)
+                        pattern->range,
+                        sema_enum_payload_pattern_binding_count_message(enum_case_payload_field_count(*case_info))
                     );
+                    break;
                 }
+                for (base::usize i = pattern->payload_patterns.size(); i > 0; --i) {
+                    pending.push_back(PatternFrame {
+                        pattern->payload_patterns[i - 1],
+                        enum_case_payload_field_type(*case_info, i - 1),
+                    });
+                }
+                break;
             }
-            for (auto alternative = pattern->alternatives.rbegin(); alternative != pattern->alternatives.rend(); ++alternative) {
-                pending.push_back(PatternFrame {*alternative, frame.type});
+            case syntax::PatternKind::or_pattern:
+                for (auto alternative = pattern->alternatives.rbegin(); alternative != pattern->alternatives.rend(); ++alternative) {
+                    pending.push_back(PatternFrame {*alternative, frame.type});
+                }
+                break;
             }
-            break;
         }
+    };
+
+    const syntax::PatternNode* root_pattern = pattern_node(this->module_, pattern_id);
+    if (root_pattern == nullptr || root_pattern->kind != syntax::PatternKind::or_pattern) {
+        analyze_pattern_tree(pattern_id, matched, bindings);
+        return this->pattern_is_irrefutable(pattern_id, matched);
+    }
+
+    std::vector<PatternBinding> unified_bindings;
+    std::unordered_map<std::string, PatternBinding> expected_bindings;
+    bool have_expected = false;
+    bool bindings_consistent = true;
+    for (const syntax::PatternId alternative : root_pattern->alternatives) {
+        std::vector<PatternBinding> alternative_bindings;
+        analyze_pattern_tree(alternative, matched, alternative_bindings);
+
+        std::unordered_map<std::string, PatternBinding> actual_bindings;
+        for (const PatternBinding& binding : alternative_bindings) {
+            actual_bindings.emplace(binding.name, binding);
+        }
+        if (!have_expected) {
+            expected_bindings = std::move(actual_bindings);
+            unified_bindings = std::move(alternative_bindings);
+            have_expected = true;
+            continue;
+        }
+        if (actual_bindings.size() != expected_bindings.size()) {
+            const syntax::PatternNode* alternative_pattern = pattern_node(this->module_, alternative);
+            this->report(
+                alternative_pattern == nullptr ? root_pattern->range : alternative_pattern->range,
+                std::string(SEMA_OR_PATTERN_BINDING_NAMES)
+            );
+            bindings_consistent = false;
+            continue;
+        }
+        for (const auto& [name, expected] : expected_bindings) {
+            const auto actual = actual_bindings.find(name);
+            if (actual == actual_bindings.end()) {
+                const syntax::PatternNode* alternative_pattern = pattern_node(this->module_, alternative);
+                this->report(
+                    alternative_pattern == nullptr ? root_pattern->range : alternative_pattern->range,
+                    std::string(SEMA_OR_PATTERN_BINDING_NAMES)
+                );
+                bindings_consistent = false;
+                continue;
+            }
+            if (is_valid(expected.type) &&
+                is_valid(actual->second.type) &&
+                !this->checked_.types.same(expected.type, actual->second.type)) {
+                this->report(actual->second.range, std::string(SEMA_OR_PATTERN_BINDING_TYPES));
+                bindings_consistent = false;
+            }
+        }
+    }
+    if (bindings_consistent) {
+        bindings.insert(bindings.end(), unified_bindings.begin(), unified_bindings.end());
     }
     return this->pattern_is_irrefutable(pattern_id, matched);
 }
@@ -388,7 +463,9 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         (this->checked_.types.is_integer(matched) || this->checked_.types.is_bool(matched));
     const bool tuple_match = is_valid(matched) && this->checked_.types.is_tuple(matched);
     const bool struct_match = this->find_struct(matched) != nullptr;
-    if (!enum_match && !literal_match && !tuple_match && !struct_match) {
+    const bool array_match = is_valid(matched) && this->checked_.types.is_array(matched);
+    const bool slice_match = is_valid(matched) && this->checked_.types.is_slice(matched);
+    if (!enum_match && !literal_match && !tuple_match && !struct_match && !array_match && !slice_match) {
         this->report(expr.range, std::string(SEMA_MATCH_VALUE_TYPE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
@@ -567,7 +644,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
     } else if (literal_match && !saw_wildcard && !saw_irrefutable && (!this->checked_.types.is_bool(matched) || !covered_true || !covered_false)) {
         this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
-    } else if ((tuple_match || struct_match) && !saw_irrefutable && !saw_wildcard) {
+    } else if ((tuple_match || struct_match || array_match || slice_match) && !saw_irrefutable && !saw_wildcard) {
         this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
     }
     if (is_valid(result) && this->checked_.types.is_void(result)) {

@@ -97,11 +97,15 @@ This matrix records whether a syntax position is supported by current M2.
 | Pattern | `.span(a, b)` | yes | Binding count must match payload |
 | Pattern | `.some((a, b))` | yes | Nested payload destructuring |
 | Pattern | `Point { x, y: other }` | yes | Struct pattern |
-| Pattern | `.some(x) | .none` | no | Or-pattern alternatives cannot bind payloads |
+| Pattern | `[head, .., tail]` | yes | Array/slice pattern with at most one `..` rest marker |
+| Pattern | `.int(x) | .other(x)` | yes | Or-pattern bindings must use the same names and types |
+| Pattern | `.some(x) | .none` | no | Binding sets differ across alternatives |
 | Local pattern | `let (a, _) = pair;` | yes | Tuple destructuring for local `let`/`var` |
 | Local pattern | `let Point { x, y } = point;` | yes | Struct destructuring for local `let`/`var` |
+| Local pattern | `let .some(v) = opt else { return 0; };` | yes | Else block must not fall through; `v` is visible after the declaration |
 | Local pattern | `let () = value;` | no | Empty tuple pattern is not part of M2 |
 | Match pattern | `match pair { (a, b) => a }` | yes | Structural match requires an irrefutable arm |
+| Match pattern | `match slice { [h, ..] => h, _ => 0 }` | yes | Slice matches need an irrefutable fallback arm |
 | For | `for var i: i32 = 0; i < 10; i += 1 {}` | yes | C-style loop |
 | Range-for | `for i in range(0, 10, 2) {}` | yes | `range` only |
 | For-in | `for x in values {}` | no | Generic iteration is not part of M2 |

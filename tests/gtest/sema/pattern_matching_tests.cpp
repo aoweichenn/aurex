@@ -36,7 +36,10 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path non_enum = negative_sample("pattern_matching", "match_expression_non_enum.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(non_enum)).output, "match expression requires an enum, integer, bool, tuple, or struct value");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(non_enum)).output,
+        "match expression requires an enum, integer, bool, tuple, struct, array, or slice value"
+    );
 
     const fs::path missing = negative_sample("pattern_matching", "match_expression_missing_case.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing)).output, "match expression is not exhaustive");
@@ -143,7 +146,13 @@ TEST_F(AurexIntegrationTest, MatchOrPattern) {
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path payload_binding = negative_sample("pattern_matching", "match_or_pattern_payload_binding.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(payload_binding)).output, "or-pattern alternatives cannot bind payloads");
+    expect_contains(require_failure(aurexc() + " --check " + q(payload_binding)).output, "or-pattern alternatives must bind the same names");
+
+    const fs::path name_mismatch = negative_sample("pattern_matching", "or_pattern_binding_name_mismatch.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(name_mismatch)).output, "or-pattern alternatives must bind the same names");
+
+    const fs::path type_mismatch = negative_sample("pattern_matching", "or_pattern_binding_type_mismatch.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(type_mismatch)).output, "or-pattern binding types must match across alternatives");
 
     const fs::path duplicate = negative_sample("pattern_matching", "match_or_pattern_duplicate.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate match arm for enum case");
@@ -151,6 +160,44 @@ TEST_F(AurexIntegrationTest, MatchOrPattern) {
     const fs::path refutable_payload =
         negative_sample("pattern_matching", "match_or_pattern_refutable_payload_not_exhaustive.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(refutable_payload)).output, "match expression is not exhaustive");
+}
+
+TEST_F(AurexIntegrationTest, PatternRemainingSliceLetElseAndBindingOr) {
+    const fs::path source = positive_sample("pattern_matching", "pattern_remaining.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "match_arm .int(value) | .other(value)",
+        "stmt #",
+        "[left, .., right]",
+        "[head, ..]",
+        "[..]",
+        "[4, .., tail]",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains_all(ir, {
+        "pattern.bind.alt",
+        "let.else.ok",
+        "let.else.fail",
+        "slice_len",
+        "literal 4",
+        "ge %",
+    });
+
+    require_success(aurexc() + " --emit=llvm-ir " + q(source));
+
+    const fs::path non_slice = negative_sample("pattern_matching", "slice_pattern_non_slice.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(non_slice)).output, "slice pattern requires an array or slice value");
+
+    const fs::path length = negative_sample("pattern_matching", "slice_pattern_array_length.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(length)).output, "slice pattern length does not match array length");
+
+    const fs::path fallthrough = negative_sample("pattern_matching", "let_else_fallthrough.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(fallthrough)).output, "let-else else block must not fall through");
+
+    const fs::path binding_scope = negative_sample("pattern_matching", "let_else_binding_scope.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(binding_scope)).output, "unknown name: inner");
 }
 
 TEST_F(AurexIntegrationTest, MatchLiteralPattern) {

@@ -525,6 +525,9 @@ void SemanticAnalyzer::analyze_statement_action(
     case StatementAnalysisActionKind::pattern_scoped_block:
         this->analyze_pattern_scoped_block(action.pattern, action.pattern_type, action.block, stack);
         break;
+    case StatementAnalysisActionKind::local_pattern:
+        this->define_local_pattern(action.pattern, action.pattern_type, action.is_mutable, action.allow_refutable);
+        break;
     case StatementAnalysisActionKind::block_statements:
         this->analyze_statement_block(action.stmt, stack);
         break;
@@ -685,10 +688,11 @@ void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, cons
 void SemanticAnalyzer::define_local_pattern(
     const syntax::PatternId pattern_id,
     const TypeHandle type,
-    const bool is_mutable
+    const bool is_mutable,
+    const bool allow_refutable
 ) {
     std::vector<PatternBinding> bindings;
-    if (!this->analyze_pattern(pattern_id, type, bindings)) {
+    if (!this->analyze_pattern(pattern_id, type, bindings) && !allow_refutable) {
         const syntax::PatternNode* pattern =
             syntax::is_valid(pattern_id) && pattern_id.value < this->module_.patterns.size()
                 ? &this->module_.patterns[pattern_id.value]
@@ -727,8 +731,31 @@ void SemanticAnalyzer::analyze_statement_node(
             this->report(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH));
         }
         if (syntax::is_valid(stmt.pattern)) {
+            if (syntax::is_valid(stmt.else_block)) {
+                if (this->block_may_fallthrough(stmt.else_block)) {
+                    this->report(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
+                }
+                stack.push_back(StatementAnalysisAction {
+                    StatementAnalysisActionKind::local_pattern,
+                    syntax::INVALID_STMT_ID,
+                    syntax::INVALID_STMT_ID,
+                    stmt.pattern,
+                    local_type,
+                    stmt.kind == syntax::StmtKind::var,
+                    true,
+                });
+                stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
+                break;
+            }
             this->define_local_pattern(stmt.pattern, local_type, stmt.kind == syntax::StmtKind::var);
             break;
+        }
+        if (syntax::is_valid(stmt.else_block)) {
+            this->report(stmt.range, std::string(SEMA_LET_ELSE_PATTERN));
+            if (this->block_may_fallthrough(stmt.else_block)) {
+                this->report(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
+            }
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
         }
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,

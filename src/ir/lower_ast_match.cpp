@@ -108,6 +108,26 @@ bool Lowerer::is_irrefutable_pattern(
                         results[element.value];
                 }
                 break;
+            case syntax::PatternKind::slice: {
+                const bool array_type = sema::is_valid(frame.type) && this->module_.types.is_array(frame.type);
+                const bool slice_type = sema::is_valid(frame.type) && this->module_.types.is_slice(frame.type);
+                result = false;
+                if (array_type) {
+                    const sema::TypeInfo& array = this->module_.types.get(frame.type);
+                    result = pattern->has_slice_rest
+                        ? pattern->elements.size() <= array.array_count
+                        : pattern->elements.size() == array.array_count;
+                } else if (slice_type) {
+                    result = pattern->has_slice_rest && pattern->elements.empty();
+                }
+                for (const syntax::PatternId element : pattern->elements) {
+                    result = result &&
+                        syntax::is_valid(element) &&
+                        element.value < results.size() &&
+                        results[element.value];
+                }
+                break;
+            }
             case syntax::PatternKind::struct_:
                 result = sema::is_valid(frame.type) && this->module_.types.get(frame.type).kind == sema::TypeKind::struct_;
                 for (const syntax::FieldPattern& field : pattern->field_patterns) {
@@ -145,6 +165,20 @@ bool Lowerer::is_irrefutable_pattern(
             }
             break;
         }
+        case syntax::PatternKind::slice: {
+            if (!sema::is_valid(frame.type) ||
+                (!this->module_.types.is_array(frame.type) && !this->module_.types.is_slice(frame.type))) {
+                break;
+            }
+            const sema::TypeInfo& info = this->module_.types.get(frame.type);
+            const sema::TypeHandle element_type = info.kind == sema::TypeKind::array
+                ? info.array_element
+                : info.slice_element;
+            for (auto element = pattern->elements.rbegin(); element != pattern->elements.rend(); ++element) {
+                pending.push_back(PatternFrame {*element, element_type, false});
+            }
+            break;
+        }
         case syntax::PatternKind::struct_:
             for (auto field = pattern->field_patterns.rbegin(); field != pattern->field_patterns.rend(); ++field) {
                 pending.push_back(PatternFrame {
@@ -174,6 +208,47 @@ ValueId Lowerer::append_true_value() {
     value.kind = ValueKind::bool_literal;
     value.type = this->module_.types.builtin(sema::BuiltinType::bool_);
     value.text = "true";
+    return this->append_value(value);
+}
+
+ValueId Lowerer::append_pattern_source_length(
+    const ValueId source_address,
+    const sema::TypeHandle source_type
+) {
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    if (!sema::is_valid(source_type)) {
+        return this->append_integer_literal("0", usize_type);
+    }
+    if (this->module_.types.is_array(source_type)) {
+        const sema::TypeInfo& array = this->module_.types.get(source_type);
+        return this->append_integer_literal(std::to_string(array.array_count), usize_type);
+    }
+    if (this->module_.types.is_slice(source_type)) {
+        const ValueId slice_value = this->append_load(source_address, source_type, "pattern.slice");
+        return this->append_slice_len(slice_value);
+    }
+    return this->append_integer_literal("0", usize_type);
+}
+
+ValueId Lowerer::append_pattern_element_address(
+    const ValueId source_address,
+    const sema::TypeHandle source_type,
+    const ValueId index,
+    const sema::TypeHandle element_type
+) {
+    sema::PointerMutability mutability = sema::PointerMutability::mut;
+    ValueId base_address = source_address;
+    if (sema::is_valid(source_type) && this->module_.types.is_slice(source_type)) {
+        const sema::TypeInfo& slice = this->module_.types.get(source_type);
+        mutability = slice.slice_mutability;
+        const ValueId slice_value = this->append_load(source_address, source_type, "pattern.slice");
+        base_address = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
+    }
+    Value value;
+    value.kind = ValueKind::index_addr;
+    value.type = this->module_.types.pointer(mutability, element_type);
+    value.object = base_address;
+    value.index = index;
     return this->append_value(value);
 }
 
@@ -246,6 +321,49 @@ ValueId Lowerer::append_pattern_condition(
                 : element_condition;
         }
         return is_valid(condition) ? condition : this->append_true_value();
+    }
+    if (pattern->kind == syntax::PatternKind::slice) {
+        if (!sema::is_valid(source_type) ||
+            (!this->module_.types.is_array(source_type) && !this->module_.types.is_slice(source_type))) {
+            return this->append_true_value();
+        }
+        const sema::TypeInfo& source = this->module_.types.get(source_type);
+        const sema::TypeHandle element_type = source.kind == sema::TypeKind::array
+            ? source.array_element
+            : source.slice_element;
+        const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+        const sema::TypeHandle bool_type = this->module_.types.builtin(sema::BuiltinType::bool_);
+        const ValueId length = this->append_pattern_source_length(source_address, source_type);
+        const ValueId fixed_count = this->append_integer_literal(std::to_string(pattern->elements.size()), usize_type);
+        ValueId condition = this->append_binary_value(
+            pattern->has_slice_rest ? BinaryOp::greater_equal : BinaryOp::equal,
+            bool_type,
+            length,
+            fixed_count
+        );
+        const base::usize rest_index = pattern->has_slice_rest
+            ? std::min(pattern->slice_rest_index, pattern->elements.size())
+            : pattern->elements.size();
+        const base::usize suffix_count = pattern->has_slice_rest
+            ? pattern->elements.size() - rest_index
+            : 0;
+        for (base::usize i = 0; i < pattern->elements.size(); ++i) {
+            ValueId index = INVALID_VALUE_ID;
+            if (!pattern->has_slice_rest || i < rest_index) {
+                index = this->append_integer_literal(std::to_string(i), usize_type);
+            } else {
+                const base::usize suffix_index = i - rest_index;
+                const ValueId suffix_offset =
+                    this->append_integer_literal(std::to_string(suffix_count - suffix_index), usize_type);
+                index = this->append_binary_value(BinaryOp::sub, usize_type, length, suffix_offset);
+            }
+            const ValueId element_address =
+                this->append_pattern_element_address(source_address, source_type, index, element_type);
+            const ValueId element_condition =
+                this->append_pattern_condition(pattern->elements[i], element_address, element_type);
+            condition = this->append_binary_value(BinaryOp::logical_and, bool_type, condition, element_condition);
+        }
+        return condition;
     }
     if (pattern->kind == syntax::PatternKind::struct_) {
         ValueId condition = INVALID_VALUE_ID;
@@ -670,6 +788,119 @@ void Lowerer::bind_pattern_locals(
     const ValueId source_address,
     const sema::TypeHandle source_type
 ) {
+    this->bind_pattern_locals_with_mutability(pattern_id, source_address, source_type, false);
+}
+
+void Lowerer::collect_pattern_binding_slots(
+    const syntax::PatternId pattern_id,
+    const sema::TypeHandle source_type,
+    const bool is_mutable,
+    std::unordered_map<std::string, PatternBindingSlot>& slots
+) {
+    struct PatternTypeFrame {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+    };
+
+    std::vector<PatternTypeFrame> pending;
+    pending.push_back(PatternTypeFrame {pattern_id, source_type});
+    while (!pending.empty()) {
+        const PatternTypeFrame frame = pending.back();
+        pending.pop_back();
+        const syntax::PatternNode* pattern = this->pattern_node(frame.pattern);
+        if (pattern == nullptr) {
+            continue;
+        }
+        switch (pattern->kind) {
+        case syntax::PatternKind::wildcard:
+        case syntax::PatternKind::literal:
+            break;
+        case syntax::PatternKind::binding: {
+            const std::string local_name(pattern->binding_name);
+            if (slots.contains(local_name)) {
+                break;
+            }
+            const ValueId slot = this->append_temp_alloca(local_name, frame.type);
+            this->locals_[local_name] = LocalBinding {slot, is_mutable};
+            slots.emplace(local_name, PatternBindingSlot {local_name, slot, frame.type});
+            break;
+        }
+        case syntax::PatternKind::tuple: {
+            if (!sema::is_valid(frame.type) || !this->module_.types.is_tuple(frame.type)) {
+                break;
+            }
+            const sema::TypeInfo& tuple = this->module_.types.get(frame.type);
+            const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
+            for (base::usize i = count; i > 0; --i) {
+                const base::usize element_index = i - 1;
+                pending.push_back(PatternTypeFrame {
+                    pattern->elements[element_index],
+                    tuple.tuple_elements[element_index],
+                });
+            }
+            break;
+        }
+        case syntax::PatternKind::slice: {
+            if (!sema::is_valid(frame.type) ||
+                (!this->module_.types.is_array(frame.type) && !this->module_.types.is_slice(frame.type))) {
+                break;
+            }
+            const sema::TypeInfo& info = this->module_.types.get(frame.type);
+            const sema::TypeHandle element_type = info.kind == sema::TypeKind::array
+                ? info.array_element
+                : info.slice_element;
+            for (auto element = pattern->elements.rbegin(); element != pattern->elements.rend(); ++element) {
+                pending.push_back(PatternTypeFrame {*element, element_type});
+            }
+            break;
+        }
+        case syntax::PatternKind::struct_:
+            for (auto field_pattern = pattern->field_patterns.rbegin();
+                 field_pattern != pattern->field_patterns.rend();
+                 ++field_pattern) {
+                pending.push_back(PatternTypeFrame {
+                    field_pattern->pattern,
+                    this->aggregate_field_type(frame.type, field_pattern->name),
+                });
+            }
+            break;
+        case syntax::PatternKind::enum_case: {
+            if (pattern->payload_patterns.empty()) {
+                break;
+            }
+            const sema::EnumCaseInfo* info = this->enum_case_info(this->pattern_case_symbol(frame.pattern));
+            if (info == nullptr || !sema::is_valid(info->payload_type)) {
+                break;
+            }
+            if (info->payload_types.size() == 1 && pattern->payload_patterns.size() == 1) {
+                pending.push_back(PatternTypeFrame {pattern->payload_patterns.front(), info->payload_type});
+                break;
+            }
+            const base::usize count = std::min(info->payload_types.size(), pattern->payload_patterns.size());
+            for (base::usize i = count; i > 0; --i) {
+                const base::usize payload_index = i - 1;
+                pending.push_back(PatternTypeFrame {
+                    pattern->payload_patterns[payload_index],
+                    info->payload_types[payload_index],
+                });
+            }
+            break;
+        }
+        case syntax::PatternKind::or_pattern:
+            if (!pattern->alternatives.empty()) {
+                pending.push_back(PatternTypeFrame {pattern->alternatives.front(), frame.type});
+            }
+            break;
+        }
+    }
+}
+
+void Lowerer::store_pattern_bindings(
+    const syntax::PatternId pattern_id,
+    const ValueId source_address,
+    const sema::TypeHandle source_type,
+    const std::unordered_map<std::string, PatternBindingSlot>& slots
+) {
     struct PatternFrame {
         syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
         ValueId address = INVALID_VALUE_ID;
@@ -691,9 +922,10 @@ void Lowerer::bind_pattern_locals(
             break;
         case syntax::PatternKind::binding: {
             const std::string local_name(pattern->binding_name);
-            const ValueId slot = this->append_temp_alloca(local_name, frame.type);
-            this->locals_[local_name] = LocalBinding {slot, false};
-            this->append_store(slot, this->append_load(frame.address, frame.type, local_name));
+            const auto slot = slots.find(local_name);
+            if (slot != slots.end()) {
+                this->append_store(slot->second.slot, this->append_load(frame.address, frame.type, local_name));
+            }
             break;
         }
         case syntax::PatternKind::tuple: {
@@ -713,6 +945,42 @@ void Lowerer::bind_pattern_locals(
                     pattern->elements[element_index],
                     this->append_value(field),
                     tuple.tuple_elements[element_index],
+                });
+            }
+            break;
+        }
+        case syntax::PatternKind::slice: {
+            if (!sema::is_valid(frame.type) ||
+                (!this->module_.types.is_array(frame.type) && !this->module_.types.is_slice(frame.type))) {
+                break;
+            }
+            const sema::TypeInfo& info = this->module_.types.get(frame.type);
+            const sema::TypeHandle element_type = info.kind == sema::TypeKind::array
+                ? info.array_element
+                : info.slice_element;
+            const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+            const ValueId length = this->append_pattern_source_length(frame.address, frame.type);
+            const base::usize rest_index = pattern->has_slice_rest
+                ? std::min(pattern->slice_rest_index, pattern->elements.size())
+                : pattern->elements.size();
+            const base::usize suffix_count = pattern->has_slice_rest
+                ? pattern->elements.size() - rest_index
+                : 0;
+            for (base::usize i = pattern->elements.size(); i > 0; --i) {
+                const base::usize element_index = i - 1;
+                ValueId index = INVALID_VALUE_ID;
+                if (!pattern->has_slice_rest || element_index < rest_index) {
+                    index = this->append_integer_literal(std::to_string(element_index), usize_type);
+                } else {
+                    const base::usize suffix_index = element_index - rest_index;
+                    const ValueId suffix_offset =
+                        this->append_integer_literal(std::to_string(suffix_count - suffix_index), usize_type);
+                    index = this->append_binary_value(BinaryOp::sub, usize_type, length, suffix_offset);
+                }
+                pending.push_back(PatternFrame {
+                    pattern->elements[element_index],
+                    this->append_pattern_element_address(frame.address, frame.type, index, element_type),
+                    element_type,
                 });
             }
             break;
@@ -778,6 +1046,58 @@ void Lowerer::bind_pattern_locals(
             break;
         }
     }
+}
+
+void Lowerer::bind_pattern_locals_with_mutability(
+    const syntax::PatternId pattern_id,
+    const ValueId source_address,
+    const sema::TypeHandle source_type,
+    const bool is_mutable
+) {
+    const syntax::PatternNode* pattern = this->pattern_node(pattern_id);
+    if (pattern == nullptr) {
+        return;
+    }
+
+    std::unordered_map<std::string, PatternBindingSlot> slots;
+    this->collect_pattern_binding_slots(pattern_id, source_type, is_mutable, slots);
+    if (pattern->kind != syntax::PatternKind::or_pattern) {
+        this->store_pattern_bindings(pattern_id, source_address, source_type, slots);
+        return;
+    }
+    if (pattern->alternatives.empty()) {
+        return;
+    }
+
+    const BlockId join_block =
+        add_block(*this->current_function_, "pattern.bind.join" + std::to_string(this->current_function_->blocks.size()));
+    for (base::usize i = 0; i < pattern->alternatives.size(); ++i) {
+        const syntax::PatternId alternative = pattern->alternatives[i];
+        const BlockId alternative_block =
+            add_block(*this->current_function_, "pattern.bind.alt" + std::to_string(this->current_function_->blocks.size()));
+        BlockId next_block = INVALID_BLOCK_ID;
+        if (i + 1 == pattern->alternatives.size()) {
+            this->append_branch_if_open(alternative_block);
+        } else {
+            next_block =
+                add_block(*this->current_function_, "pattern.bind.next" + std::to_string(this->current_function_->blocks.size()));
+            const ValueId condition = this->append_pattern_condition(alternative, source_address, source_type);
+            Terminator branch;
+            branch.kind = TerminatorKind::cond_branch;
+            branch.condition = condition;
+            branch.then_target = alternative_block;
+            branch.else_target = next_block;
+            this->set_terminator(this->current_block_, branch);
+        }
+
+        this->current_block_ = alternative_block;
+        this->store_pattern_bindings(alternative, source_address, source_type, slots);
+        this->append_branch_if_open(join_block);
+        if (is_valid(next_block)) {
+            this->current_block_ = next_block;
+        }
+    }
+    this->current_block_ = join_block;
 }
 
 } // namespace aurex::ir::detail

@@ -130,6 +130,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_ergonomics) {
     run_positive_runtime_smoke_sample("pattern_matching", "pattern_ergonomics.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_remaining) {
+    run_positive_runtime_smoke_sample("pattern_matching", "pattern_remaining.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_NegativeSamples) {
     verify_negative_sample_diagnostics();
 }

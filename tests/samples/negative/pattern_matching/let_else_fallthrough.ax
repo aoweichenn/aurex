@@ -1,0 +1,14 @@
+module let_else_fallthrough;
+
+enum Maybe {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let value = Maybe.some(1);
+    let .some(inner) = value else {
+        let fallback = 0;
+    };
+    return inner;
+}

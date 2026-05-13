@@ -472,6 +472,15 @@ inline constexpr std::string_view PARSER_EXPECT_INITIALIZER =
 inline constexpr std::string_view PARSER_EXPECT_LOCAL_DECL_TERMINATOR =
     "expected ';' after local declaration";
 
+inline constexpr std::string_view PARSER_EXPECT_LET_ELSE_BLOCK =
+    "expected block after let-else";
+
+inline constexpr std::string_view PARSER_EXPECT_LET_ELSE_TERMINATOR =
+    "expected ';' after let-else declaration";
+
+inline constexpr std::string_view PARSER_LET_ELSE_REQUIRES_PATTERN =
+    "let-else requires a destructuring or refutable pattern";
+
 inline constexpr std::string_view PARSER_EXPECT_EXPR_STMT_TERMINATOR =
     "expected ';' after expression statement";
 
@@ -489,6 +498,18 @@ inline constexpr std::string_view PARSER_EXPECT_TUPLE_PATTERN_SEPARATOR =
 
 inline constexpr std::string_view PARSER_EXPECT_TUPLE_PATTERN_END =
     "expected ')' after tuple pattern";
+
+inline constexpr std::string_view PARSER_EXPECT_SLICE_PATTERN_SEPARATOR =
+    "expected ',' or ']' after slice pattern element";
+
+inline constexpr std::string_view PARSER_EXPECT_SLICE_PATTERN_END =
+    "expected ']' after slice pattern";
+
+inline constexpr std::string_view PARSER_DUPLICATE_SLICE_PATTERN_REST =
+    "slice pattern can contain at most one '..' rest marker";
+
+inline constexpr std::string_view PARSER_EXPECT_SLICE_PATTERN_REST =
+    "slice pattern rest marker is '..'";
 
 inline constexpr std::string_view PARSER_EXPECT_STRUCT_PATTERN_FIELD =
     "expected field name in struct pattern";

@@ -563,6 +563,92 @@ TEST(CoreUnit, ParserRejectsEmptyTupleForms) {
     );
 }
 
+TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse) {
+    constexpr std::string_view source =
+        "module parser.slice_patterns;\n"
+        "enum Maybe { some(i32), none }\n"
+        "fn main() -> i32 {\n"
+        "  let values: [3]i32 = [1, 2, 3];\n"
+        "  let [..] = values;\n"
+        "  let [.., last] = values;\n"
+        "  let [[nested], ..] = values;\n"
+        "  let [dot_case, .none] = values;\n"
+        "  let [head, .., tail] = values;\n"
+        "  let some(other) = Maybe.some(head) else {\n"
+        "    return nested;\n"
+        "  };\n"
+        "  let .some(value) = Maybe.some(head) else {\n"
+        "    return tail;\n"
+        "  };\n"
+        "  let .some(nested_case(inner)) = Maybe.some(head) else {\n"
+        "    return 0;\n"
+        "  };\n"
+        "  let .some(Wrapper { _ }) = Maybe.some(head) else {\n"
+        "    return 0;\n"
+        "  };\n"
+        "  let .some(choice) | .none | some(fallback) = Maybe.some(value) else {\n"
+        "    return dot_case;\n"
+        "  };\n"
+        "  return value + other;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "[..]",
+        "[.., last]",
+        "[[nested], ..]",
+        "[dot_case, .none]",
+        "[head, .., tail]",
+        "some(other)",
+        ".some(value)",
+        ".some(nested_case(inner))",
+        ".some(choice) | .none | some(fallback)",
+    });
+}
+
+TEST(CoreUnit, ParserRejectsMalformedSlicePatternRest) {
+    expect_parse_error(
+        "module parser.slice_pattern_rest;\n"
+        "fn main() -> i32 {\n"
+        "  let [head, .., ..] = [1, 2];\n"
+        "  return head;\n"
+        "}\n",
+        "slice pattern can contain at most one '..' rest marker"
+    );
+    expect_parse_error(
+        "module parser.slice_pattern_ellipsis;\n"
+        "fn main() -> i32 {\n"
+        "  let [head, ...] = [1, 2];\n"
+        "  return head;\n"
+        "}\n",
+        "slice pattern rest marker is '..'"
+    );
+    expect_parse_error(
+        "module parser.slice_pattern_separator;\n"
+        "fn main() -> i32 {\n"
+        "  let [head tail] = [1, 2];\n"
+        "  return head;\n"
+        "}\n",
+        "expected ',' or ']' after slice pattern element"
+    );
+    expect_parse_error(
+        "module parser.slice_pattern_separator_recovery;\n"
+        "fn main() -> i32 {\n"
+        "  let [head tail, other] = [1, 2, 3];\n"
+        "  return head;\n"
+        "}\n",
+        "expected ',' or ']' after slice pattern element"
+    );
+    expect_parse_error(
+        "module parser.let_else_name;\n"
+        "fn main() -> i32 {\n"
+        "  let value = 1 else { return 0; };\n"
+        "  return value;\n"
+        "}\n",
+        "let-else requires a destructuring or refutable pattern"
+    );
+}
+
 TEST(CoreUnit, ParserRecoveryHandlesMalformedTupleSeparators) {
     constexpr base::SourceId PARSER_TEST_TUPLE_RECOVERY_SOURCE_ID {33};
     constexpr std::string_view source =
@@ -2082,6 +2168,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_false,
             TokenKind::dot,
             TokenKind::l_paren,
+            TokenKind::l_bracket,
         }
     );
     expect_false_on(parse::token_starts_match_arm, TokenKind::kw_let);

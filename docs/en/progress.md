@@ -95,11 +95,11 @@ LLVM lowering, native execution, and installed compiler execution.
   values, including `fn(...) -> T`, `unsafe fn(...) -> T`,
   `extern c fn(...) -> T`, and `unsafe extern c fn(...) -> T`; capturing
   closures are still intentionally out of scope. Pattern support includes tuple
-  match patterns, struct patterns, nested enum payload destructuring, local
-  struct destructuring, `if value is pattern` / `while value is pattern`, and
-  `if` expression pattern conditions.
-  Remaining pattern gaps are slice patterns, binding or-pattern alternatives,
-  and `let ... else`.
+  match patterns, slice patterns, struct patterns, nested enum payload
+  destructuring, local struct/slice/enum destructuring, binding or-pattern
+  alternatives with same-name/same-type consistency, `let ... else`,
+  `if value is pattern` / `while value is pattern`, and `if` expression pattern
+  conditions.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing

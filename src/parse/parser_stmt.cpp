@@ -58,6 +58,20 @@ syntax::StmtId StmtParser::parse_stmt() {
     return this->parse_expr_or_assign_stmt();
 }
 
+bool StmtParser::starts_local_pattern() const noexcept {
+    if (this->check(TokenKind::l_paren) ||
+        this->check(TokenKind::l_bracket) ||
+        this->check(TokenKind::dot)) {
+        return true;
+    }
+    if (!this->check(TokenKind::identifier)) {
+        return false;
+    }
+    return this->check_next(TokenKind::l_brace) ||
+           this->check_next(TokenKind::dot) ||
+           this->check_next(TokenKind::l_paren);
+}
+
 syntax::StmtId StmtParser::parse_unsafe_block_stmt() {
     const syntax::ExprId expr = this->parse_expr(ExprContext::normal);
     syntax::StmtNode stmt;
@@ -77,8 +91,8 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     const syntax::Token& begin = this->advance();
     syntax::Token name;
     syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
-    if (this->check(TokenKind::l_paren) || (this->check(TokenKind::identifier) && this->check_next(TokenKind::l_brace))) {
-        pattern = PatternParser(this->parser_).parse_binding_pattern();
+    if (this->starts_local_pattern()) {
+        pattern = PatternParser(this->parser_).parse_pattern();
     } else {
         name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_LOCAL_NAME));
     }
@@ -88,18 +102,37 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     }
     this->expect_initializer_equal(std::string(PARSER_EXPECT_INITIALIZER));
     const syntax::ExprId init = this->parse_expr();
-    const syntax::Token& end = this->expect_statement_semicolon(
-        std::string(PARSER_EXPECT_LOCAL_DECL_TERMINATOR),
-        recovery
-    );
+    syntax::StmtId else_block = syntax::INVALID_STMT_ID;
+    base::SourceRange end_range {};
+    if (this->match(TokenKind::kw_else)) {
+        if (!syntax::is_valid(pattern)) {
+            this->report_at(name, std::string(PARSER_LET_ELSE_REQUIRES_PATTERN));
+        }
+        if (!this->check(TokenKind::l_brace)) {
+            this->report_here(std::string(PARSER_EXPECT_LET_ELSE_BLOCK));
+        }
+        else_block = this->parse_block();
+        const syntax::Token& end = this->expect_statement_semicolon(
+            std::string(PARSER_EXPECT_LET_ELSE_TERMINATOR),
+            recovery
+        );
+        end_range = end.range;
+    } else {
+        const syntax::Token& end = this->expect_statement_semicolon(
+            std::string(PARSER_EXPECT_LOCAL_DECL_TERMINATOR),
+            recovery
+        );
+        end_range = end.range;
+    }
 
     syntax::StmtNode stmt;
     stmt.kind = kind;
-    stmt.range = this->merge(begin.range, end.range);
+    stmt.range = this->merge(begin.range, end_range);
     stmt.name = name.text;
     stmt.pattern = pattern;
     stmt.declared_type = type;
     stmt.init = init;
+    stmt.else_block = else_block;
     return this->session_.module.push_stmt(std::move(stmt));
 }
 

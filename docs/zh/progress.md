@@ -94,4 +94,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界和 M2 pattern ergonomics 已经落地；pattern 当前支持 tuple match pattern、struct pattern、nested enum payload destructuring、局部 struct destructuring、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。随后更适合处理 slice pattern、binding or-pattern alternatives、`let ... else`、`str` checked API 和非资源类 capability/trait/where。
+下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界和 M2 pattern ergonomics 已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。随后更适合处理 `str` checked API 的语言边界、非资源类 capability/trait/where，以及更精细的结构化 exhaustiveness。

@@ -364,22 +364,17 @@ Stmt
   | Block ;
 
 LetStmt
-  = "let" LocalBinding [ ":" Type ] "=" Expr ";" ;
+  = "let" LocalBinding [ ":" Type ] "=" Expr [ LetElse ] ";" ;
 
 VarStmt
-  = "var" LocalBinding [ ":" Type ] "=" Expr ";" ;
+  = "var" LocalBinding [ ":" Type ] "=" Expr [ LetElse ] ";" ;
+
+LetElse
+  = "else" Block ;
 
 LocalBinding
   = Identifier
-  | TupleLocalBinding ;
-
-TupleLocalBinding
-  = "(" LocalPattern "," [ LocalPattern { "," LocalPattern } [ "," ] ] ")" ;
-
-LocalPattern
-  = Identifier
-  | "_"
-  | TupleLocalBinding ;
+  | Pattern ;
 
 ReturnStmt
   = "return" [ Expr ] ";" ;
@@ -393,6 +388,16 @@ ContinueStmt
 DeferStmt
   = "defer" Expr ";" ;
 ```
+
+Rules:
+
+- A plain identifier local binding is the normal local declaration form.
+- Pattern local bindings support tuple, struct, enum, slice, and or-pattern
+  forms.
+- Without `else`, a local pattern must be irrefutable.
+- With `else`, refutable patterns are allowed; the `else` block must not fall
+  through. Pattern bindings are visible after the declaration, and are not
+  visible inside the `else` block.
 
 Assignment is a statement, not an expression:
 
@@ -567,6 +572,7 @@ PatternAtom
   | "true"
   | "false"
   | TuplePattern
+  | SlicePattern
   | StructPattern
   | Identifier [ "." Identifier ] [ PayloadBindings ]
   | "." Identifier [ PayloadBindings ] ;
@@ -576,6 +582,13 @@ PayloadBindings
 
 TuplePattern
   = "(" DestructurePattern "," { DestructurePattern "," } [ DestructurePattern ] ")" ;
+
+SlicePattern
+  = "[" [ SlicePatternPart { "," SlicePatternPart } [ "," ] ] "]" ;
+
+SlicePatternPart
+  = DestructurePattern
+  | ".." ;
 
 StructPattern
   = Identifier "{" StructPatternField { "," StructPatternField } [ "," ] "}" ;
@@ -590,6 +603,7 @@ DestructurePattern
   | "true"
   | "false"
   | TuplePattern
+  | SlicePattern
   | StructPattern
   | Identifier "." Identifier [ PayloadBindings ]
   | "." Identifier [ PayloadBindings ] ;
@@ -603,14 +617,19 @@ Rules:
 - Payload patterns may destructure tuple payloads and multi-field enum payloads.
 - Struct patterns use field shorthand `Point { x, y }` or explicit field
   patterns `Point { x: left }`.
+- Slice patterns use `[a, b]` for exact length and one optional `..` rest
+  marker for open length, for example `[head, ..]`, `[.., tail]`, and
+  `[head, .., tail]`. They match arrays and slices.
 - `if value is pattern` and `while value is pattern` introduce pattern bindings
   only inside the taken block. `if` expressions may also use the same pattern
   condition form.
-- Or-pattern alternatives cannot bind payloads or names in current M2.
+- Or-pattern alternatives may bind names only when every alternative binds the
+  same names with the same types. The bindings are visible in the matched arm
+  or taken pattern block.
 - Integer/bool matches use literal patterns and require wildcard coverage where
   needed.
-- Tuple and struct matches require an irrefutable arm because M2 does not yet
-  implement full structural exhaustiveness.
+- Tuple, struct, array, and slice matches require an irrefutable arm because M2
+  does not yet implement full structural exhaustiveness for those shapes.
 
 ## 13. Basic Generics
 

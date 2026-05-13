@@ -343,6 +343,12 @@ inline constexpr std::string_view SEMA_TUPLE_DESTRUCTURE_ARITY =
 inline constexpr std::string_view SEMA_LOCAL_PATTERN_REFUTABLE =
     "local destructuring pattern must be irrefutable";
 
+inline constexpr std::string_view SEMA_LET_ELSE_PATTERN =
+    "let-else requires a pattern";
+
+inline constexpr std::string_view SEMA_LET_ELSE_FALLTHROUGH =
+    "let-else else block must not fall through";
+
 inline constexpr std::string_view SEMA_STRUCT_LITERAL_TYPE =
     "struct literal requires a non-opaque struct type";
 
@@ -446,7 +452,7 @@ inline constexpr std::string_view SEMA_MATCH_CONST_INITIALIZER =
     "match expression cannot be used in const initializer";
 
 inline constexpr std::string_view SEMA_MATCH_VALUE_TYPE =
-    "match expression requires an enum, integer, bool, tuple, or struct value";
+    "match expression requires an enum, integer, bool, tuple, struct, array, or slice value";
 
 inline constexpr std::string_view SEMA_MATCH_ARM_REQUIRED =
     "match expression requires at least one arm";
@@ -466,11 +472,14 @@ inline constexpr std::string_view SEMA_MATCH_INTEGER_BOOL_WILDCARD =
 inline constexpr std::string_view SEMA_MATCH_RESULT_VOID =
     "match expression result cannot be void";
 
-inline constexpr std::string_view SEMA_OR_PATTERN_PAYLOAD_UNSUPPORTED =
-    "or-pattern alternatives cannot bind payloads";
+inline constexpr std::string_view SEMA_OR_PATTERN_BINDING_NAMES =
+    "or-pattern alternatives must bind the same names";
+
+inline constexpr std::string_view SEMA_OR_PATTERN_BINDING_TYPES =
+    "or-pattern binding types must match across alternatives";
 
 inline constexpr std::string_view SEMA_MATCH_NON_ENUM_IRREFUTABLE =
-    "match expression over tuple or struct requires an irrefutable arm";
+    "match expression over tuple, struct, array, or slice requires an irrefutable arm";
 
 inline constexpr std::string_view SEMA_MATCH_WILDCARD_UNREACHABLE =
     "match arm is unreachable after wildcard pattern";
@@ -507,6 +516,12 @@ inline constexpr std::string_view SEMA_STRUCT_PATTERN_FIELD =
 
 inline constexpr std::string_view SEMA_STRUCT_PATTERN_DUPLICATE_FIELD =
     "duplicate struct pattern field";
+
+inline constexpr std::string_view SEMA_SLICE_PATTERN_TYPE =
+    "slice pattern requires an array or slice value";
+
+inline constexpr std::string_view SEMA_SLICE_PATTERN_LENGTH =
+    "slice pattern length does not match array length";
 
 inline constexpr std::string_view SEMA_OPAQUE_POINTER_ONLY =
     "opaque struct can only be used as a pointer target";

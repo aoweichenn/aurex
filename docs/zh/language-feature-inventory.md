@@ -629,16 +629,17 @@ let value = match result {
 - tuple pattern 和 struct pattern：`(a, b)`、`Point { x, y }`。
 - pattern condition：`if value is pattern`、`while value is pattern`，以及 if 表达式中的 `if value is pattern { ... } else { ... }`。
 - 局部 struct destructuring：`let Point { x, y } = point;`。
+- 局部 slice/enum destructuring 和 `let ... else`：`let [head, ..] = array;`、`let .some(value) = opt else { return 0; };`。
 - guarded arm：`pattern if guard => value`。
-- or-pattern：`a | b | c`。
+- or-pattern：`a | b | c`，绑定 alternative 必须绑定同名且同类型的名字。
+- slice pattern：`[head, .., tail]`。
 - exhaustiveness 和 unreachable 检查。
 
 当前限制：
 
 - payload pattern 的绑定数量必须和 case payload 字段数一致；无 payload case 不能写 binding。
-- or-pattern alternatives 不能绑定 payload 或名字。
-- 没有 slice pattern。
-- 没有 Rust-style `if let` / `while let` / `let ... else`；M2 使用 `if value is pattern` / `while value is pattern`。
+- or-pattern alternatives 绑定名字时必须在每个 alternative 中保持同名同类型。
+- 没有 Rust-style `if let` / `while let`；M2 使用 `if value is pattern` / `while value is pattern`。
 - match 不能用于 const initializer。
 
 try expression：
@@ -696,7 +697,7 @@ p1 | p2 | p3
 - enum match pattern 必须是 enum case 或 `_`。
 - integer/bool match pattern 必须是 literal 或 `_`。
 - payload binding 数量必须和 enum case payload 字段数一致，例如 `.some(value)`、`.span(start, end)`。
-- or-pattern 不能绑定 payload。
+- or-pattern 可以绑定 payload，但每个 alternative 必须绑定同名且同类型的名字。
 - wildcard 后续 arm 会诊断 unreachable。
 
 ### const initializer
@@ -756,12 +757,6 @@ M2 已删除：
 
 ## 未完成特性总清单
 
-### 基础语法未完成
-
-- slice pattern。
-- binding or-pattern alternatives。
-- `let ... else`。
-
 ### 类型系统未完成
 
 - tuple struct / anonymous record。
@@ -784,9 +779,6 @@ M2 已删除：
 
 ### 表达式与 pattern 未完成
 
-- slice pattern。
-- binding or-pattern alternatives。
-- `let ... else`。
 - range pattern。
 - string/byte pattern。
 - match guard exhaustiveness 更精确建模。
@@ -944,7 +936,7 @@ let all = bytes[:];
    }
    ```
 
-   `let ... else`、slice pattern 和 binding or-pattern alternatives 继续暂缓。
+   `let ... else`、slice pattern 和 binding or-pattern alternatives 已补齐；后续继续改进 structural exhaustiveness 和 guard/unreachable 诊断。
 
 ### P2：已冻结或中等优先级
 

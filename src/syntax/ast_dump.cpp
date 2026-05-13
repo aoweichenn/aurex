@@ -1,5 +1,6 @@
 #include <aurex/syntax/ast_dump.hpp>
 
+#include <algorithm>
 #include <sstream>
 #include <unordered_set>
 
@@ -259,6 +260,29 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
             label += ",";
         }
         label += ")";
+        return label;
+    }
+    if (pattern.kind == PatternKind::slice) {
+        std::string label = "[";
+        const base::usize rest_index = pattern.has_slice_rest
+            ? std::min(pattern.slice_rest_index, pattern.elements.size())
+            : pattern.elements.size();
+        for (base::usize i = 0; i <= pattern.elements.size(); ++i) {
+            if (pattern.has_slice_rest && i == rest_index) {
+                if (label.size() > 1) {
+                    label += ", ";
+                }
+                label += "..";
+            }
+            if (i == pattern.elements.size()) {
+                break;
+            }
+            if (label.size() > 1) {
+                label += ", ";
+            }
+            label += pattern_label(module, pattern.elements[i]);
+        }
+        label += "]";
         return label;
     }
     if (pattern.kind == PatternKind::struct_) {

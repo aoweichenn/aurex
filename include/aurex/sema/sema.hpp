@@ -73,6 +73,7 @@ private:
         scoped_block,
         block_statements,
         pattern_scoped_block,
+        local_pattern,
         pop_scope,
         enter_loop,
         exit_loop,
@@ -85,6 +86,8 @@ private:
         syntax::StmtId block = syntax::INVALID_STMT_ID;
         syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
         TypeHandle pattern_type = INVALID_TYPE_HANDLE;
+        bool is_mutable = false;
+        bool allow_refutable = false;
     };
 
     struct TypeAbiLayout {
@@ -217,7 +220,7 @@ private:
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    void define_local_pattern(syntax::PatternId pattern, TypeHandle type, bool is_mutable);
+    void define_local_pattern(syntax::PatternId pattern, TypeHandle type, bool is_mutable, bool allow_refutable = false);
     [[nodiscard]] bool analyze_pattern(
         syntax::PatternId pattern,
         TypeHandle matched,

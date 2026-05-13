@@ -1,0 +1,7 @@
+module slice_pattern_array_length;
+
+fn main() -> i32 {
+    let values: [3]i32 = [1, 2, 3];
+    let [left, right] = values;
+    return left + right;
+}

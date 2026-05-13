@@ -1,6 +1,5 @@
 #include <ir/lower_ast_internal.hpp>
 
-#include <algorithm>
 #include <string_view>
 #include <vector>
 
@@ -131,6 +130,33 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
             const ValueId init = this->coerce_value(this->lower_expr(stmt.init, local_type), local_type);
             const ValueId source_slot = this->append_temp_alloca("tuple.pattern", local_type);
             this->append_store(source_slot, init);
+            if (syntax::is_valid(stmt.else_block)) {
+                const ValueId condition = this->append_pattern_condition(stmt.pattern, source_slot, local_type);
+                const BlockId success_block =
+                    add_block(*this->current_function_, "let.else.ok" + std::to_string(this->current_function_->blocks.size()));
+                const BlockId failure_block =
+                    add_block(*this->current_function_, "let.else.fail" + std::to_string(this->current_function_->blocks.size()));
+                const BlockId join_block =
+                    add_block(*this->current_function_, "let.else.join" + std::to_string(this->current_function_->blocks.size()));
+                Terminator branch;
+                branch.kind = TerminatorKind::cond_branch;
+                branch.condition = condition;
+                branch.then_target = success_block;
+                branch.else_target = failure_block;
+                this->set_terminator(this->current_block_, branch);
+
+                const auto previous_locals = this->locals_;
+                this->current_block_ = failure_block;
+                this->lower_block(stmt.else_block);
+                this->append_branch_if_open(join_block);
+
+                this->current_block_ = success_block;
+                this->locals_ = previous_locals;
+                this->lower_local_pattern(stmt.pattern, source_slot, local_type, stmt.kind == syntax::StmtKind::var);
+                this->append_branch_if_open(join_block);
+                this->current_block_ = join_block;
+                break;
+            }
             this->lower_local_pattern(stmt.pattern, source_slot, local_type, stmt.kind == syntax::StmtKind::var);
             break;
         }
@@ -222,79 +248,7 @@ void Lowerer::lower_local_pattern(
     const sema::TypeHandle source_type,
     const bool is_mutable
 ) {
-    struct PatternFrame {
-        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
-        ValueId address = INVALID_VALUE_ID;
-        sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
-    };
-
-    std::vector<PatternFrame> pending;
-    pending.push_back(PatternFrame {pattern_id, source_address, source_type});
-    while (!pending.empty()) {
-        const PatternFrame frame = pending.back();
-        pending.pop_back();
-        const syntax::PatternNode* pattern = this->pattern_node(frame.pattern);
-        if (pattern == nullptr) {
-            continue;
-        }
-        switch (pattern->kind) {
-        case syntax::PatternKind::wildcard:
-            break;
-        case syntax::PatternKind::binding: {
-            Value slot;
-            slot.kind = ValueKind::alloca;
-            slot.name = std::string(pattern->binding_name);
-            slot.type = this->module_.types.pointer(sema::PointerMutability::mut, frame.type);
-            const ValueId slot_id = this->append_value(slot);
-            this->locals_[std::string(pattern->binding_name)] = LocalBinding {slot_id, is_mutable};
-            this->append_store(slot_id, this->append_load(frame.address, frame.type, std::string(pattern->binding_name)));
-            break;
-        }
-        case syntax::PatternKind::tuple: {
-            if (!sema::is_valid(frame.type) || !this->module_.types.is_tuple(frame.type)) {
-                break;
-            }
-            const sema::TypeInfo& tuple = this->module_.types.get(frame.type);
-            const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
-            for (base::usize i = count; i > 0; --i) {
-                const base::usize element_index = i - 1;
-                const sema::TypeHandle element_type = tuple.tuple_elements[element_index];
-                Value field;
-                field.kind = ValueKind::field_addr;
-                field.name = std::to_string(element_index);
-                field.object = frame.address;
-                field.type = this->module_.types.pointer(sema::PointerMutability::mut, element_type);
-                pending.push_back(PatternFrame {
-                    pattern->elements[element_index],
-                    this->append_value(field),
-                    element_type,
-                });
-            }
-            break;
-        }
-        case syntax::PatternKind::struct_:
-            for (auto field_pattern = pattern->field_patterns.rbegin();
-                 field_pattern != pattern->field_patterns.rend();
-                 ++field_pattern) {
-                const sema::TypeHandle field_type = this->aggregate_field_type(frame.type, field_pattern->name);
-                Value field;
-                field.kind = ValueKind::field_addr;
-                field.name = std::string(field_pattern->name);
-                field.object = frame.address;
-                field.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
-                pending.push_back(PatternFrame {
-                    field_pattern->pattern,
-                    this->append_value(field),
-                    field_type,
-                });
-            }
-            break;
-        case syntax::PatternKind::enum_case:
-        case syntax::PatternKind::literal:
-        case syntax::PatternKind::or_pattern:
-            break;
-        }
-    }
+    this->bind_pattern_locals_with_mutability(pattern_id, source_address, source_type, is_mutable);
 }
 
 void Lowerer::lower_if(const syntax::StmtNode& stmt) {

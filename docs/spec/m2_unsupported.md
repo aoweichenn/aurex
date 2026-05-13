@@ -173,24 +173,26 @@ Block expressions require a value-producing tail expression when used where a
 value is needed. `return`, `break`, `continue`, `defer`, and assignment are
 statements, not block results.
 
-Current match syntax supports enum/integer/bool plus tuple and struct
-destructuring. Slice patterns, guards with payload binding consistency across
-or-pattern alternatives, and binding alternatives inside or-patterns are not
-part of M2.
+Current match syntax supports enum/integer/bool plus tuple, struct, array, and
+slice destructuring. Binding alternatives inside or-patterns are supported only
+when every alternative binds the same names with the same types.
 
-Local tuple and struct destructuring is supported only in `let` / `var`
+Local tuple, struct, enum, and slice destructuring is supported in `let` / `var`
 declarations:
 
 ```aurex
 let (left, _) = pair;
 let Point { x, y } = point;
+let [head, ..] = array;
+let .some(value) = opt else { return 0; };
 ```
 
 Empty tuple patterns such as `let () = value;` are rejected.
 
 `if value is pattern`, `while value is pattern`, and `if` expression pattern
-conditions are the M2 pattern condition forms. Rust-style `if let`,
-`while let`, and `let ... else` are still deferred.
+conditions are the M2 pattern condition forms. Rust-style `if let` and
+`while let` remain unsupported; M2 uses `if value is pattern` and
+`while value is pattern` instead.
 
 ## Resource And Advanced Language Features
 

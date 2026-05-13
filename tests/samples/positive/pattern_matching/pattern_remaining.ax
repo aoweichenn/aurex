@@ -1,0 +1,68 @@
+module pattern_remaining;
+
+enum Packet {
+    int(i32),
+    other(i32),
+    none,
+}
+
+fn payload_score(packet: Packet) -> i32 {
+    return match packet {
+        .int(value) | .other(value) => value,
+        .none => 0,
+    };
+}
+
+fn first_or_zero(values: []const i32) -> i32 {
+    if values is [head, ..] {
+        return head;
+    }
+    return 0;
+}
+
+fn edge_sum(values: []const i32) -> i32 {
+    return match values {
+        [head, .., tail] => head + tail,
+        [single] => single,
+        _ => 0,
+    };
+}
+
+fn slice_always(values: []const i32) -> i32 {
+    return match values {
+        [..] => 1,
+    };
+}
+
+fn array_edge_score() -> i32 {
+    let values: [3]i32 = [4, 5, 6];
+    return match values {
+        [4, .., tail] => tail,
+        _ => 0,
+    };
+}
+
+fn unwrap_or_zero(packet: Packet) -> i32 {
+    let .int(value) | .other(value) = packet else {
+        return 0;
+    };
+    return value;
+}
+
+fn main() -> i32 {
+    let values: [3]i32 = [4, 5, 6];
+    let [left, .., right] = values;
+    let slice: []const i32 = values[:];
+    return payload_score(Packet.int(10)) +
+        payload_score(Packet.other(20)) +
+        payload_score(Packet.none) +
+        first_or_zero(slice) +
+        edge_sum(slice) +
+        slice_always(slice) +
+        array_edge_score() +
+        unwrap_or_zero(Packet.other(7)) +
+        unwrap_or_zero(Packet.none) +
+        left +
+        right -
+        68;
+}

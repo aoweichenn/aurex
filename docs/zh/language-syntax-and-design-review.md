@@ -632,7 +632,7 @@ p1 | p2 | p3
 限制：
 
 - payload pattern 的 binding 数量必须和 enum case payload 字段数一致，例如 `.some(value)`、`.span(start, end)`。
-- or-pattern alternatives 不能绑定 payload。
+- or-pattern alternatives 可以绑定 payload，但每个 alternative 必须绑定同名且同类型的名字，例如 `.int(value) | .other(value)`。
 - enum match pattern 必须是 enum case 或 `_`。
 - integer/bool match pattern 必须是 literal 或 `_`。
 - wildcard 后面的 arm 会被判 unreachable。
@@ -891,7 +891,7 @@ enum TokenKind: u8 {
 
 ### 8. pattern matching 应变成 ADT 的主要消费方式
 
-当前 pattern 已经能覆盖 enum case、payload binding、multi-field payload destructuring、literal、wildcard、or-pattern、guard，以及局部 tuple destructuring。下一步应该补：
+当前 pattern 已经能覆盖 enum case、payload binding、multi-field payload destructuring、literal、wildcard、or-pattern、guard、slice pattern、局部 tuple/struct/slice/enum destructuring、`let ... else`，以及 `if value is pattern` / `while value is pattern` / if 表达式 pattern condition。典型写法是：
 
 ```aurex
 match value {
@@ -912,8 +912,8 @@ let Result.ok(value) = result else {
 
 1. struct pattern、match tuple pattern、nested enum payload pattern 已补齐。
 2. `if value is pattern` / `while value is pattern` / if 表达式 pattern condition 已补齐。
-3. payload binding 在 or-pattern 中的一致性规则仍暂缓。
-4. slice pattern 和 `let ... else` 仍暂缓。
+3. payload binding 在 or-pattern 中的一致性规则已补齐：每个 alternative 必须绑定同名且同类型的名字。
+4. slice pattern 和 `let ... else` 已补齐。
 5. 更精确的 guard exhaustiveness 诊断。
 
 ### 9. 错误处理路线应继续坚持 `Result` / `Option` / `?`
@@ -998,9 +998,8 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 1. slice type / slice expression 已落地；继续和 `str` 的 UTF-8 boundary 规则对齐。
 2. raw/multiline raw string、bytes string、Unicode scalar `char` 的字面量边界已补齐；`b'a'` 继续是 `u8`。
 3. function pointer / function type 已落地，包括 `fn(...) -> T`、`extern c fn(...) -> T`、函数名作为值和函数指针间接调用；后续只需要补完整 closure 设计。
-4. tuple / destructuring declaration、struct pattern、match tuple pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition 已落地；保持空 tuple 暂缓边界。
-5. 后续处理 slice pattern、binding or-pattern alternatives 和 `let ... else`。
-6. 改进 exhaustiveness 和 unreachable diagnostics，避免 pattern 扩展后退化为 ad-hoc 检查。
+4. tuple / destructuring declaration、struct pattern、slice pattern、match tuple pattern、nested enum payload pattern、binding or-pattern alternatives、`let ... else`、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition 已落地；保持空 tuple 暂缓边界。
+5. 后续主要改进 exhaustiveness 和 unreachable diagnostics，避免 pattern 扩展后退化为 ad-hoc 检查。
 
 ### P1：类型系统主线
 
@@ -1022,10 +1021,9 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 
 1. enum base type 和 discriminant 可选已完成；显式 C-like/repr enum 继续使用 `enum Status: u8 { ok = 0, err = 1 }`。
 2. 多字段 payload 构造和 `.case(a, b)` destructuring 已完成。
-3. struct pattern、match tuple pattern、nested enum payload pattern、`if value is pattern` / `while value is pattern` / if 表达式 pattern condition 已完成。
-4. 后续支持 slice pattern、binding or-pattern alternatives 和 `let ... else`。
-5. 改进 exhaustiveness 和 unreachable diagnostics。
-6. 明确 payload 的普通值传递、匹配绑定和数组/含数组类型限制；资源相关的 move / borrow / drop 规则暂缓。
+3. struct pattern、slice pattern、match tuple pattern、nested enum payload pattern、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern` / if 表达式 pattern condition 已完成。
+4. 后续继续改进 structural exhaustiveness 和 guard/unreachable diagnostics。
+5. 明确 payload 的普通值传递、匹配绑定和数组/含数组类型限制；资源相关的 move / borrow / drop 规则暂缓。
 
 ### P2：模块、包和 API surface
 
@@ -1207,7 +1205,7 @@ where T: Eq
 7. function pointer / function type 已落地；后续补充 closure/lambda 捕获专题。
 8. 设计并实现最小非资源类 `where` 约束。
 9. 设计 `&T` / `&mut T`，先文档冻结。
-10. 增强 `match`：struct pattern、`let ... else` 和更精确 exhaustiveness 诊断。
+10. 增强 `match`：更精确 structural exhaustiveness、guard 和 unreachable 诊断。
 11. 把 `Copy` / `Drop` / destructor / move-out 明确留给后续资源语义专题。
 
 ## 参考资料

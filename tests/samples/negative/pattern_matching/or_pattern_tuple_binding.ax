@@ -1,0 +1,8 @@
+module or_pattern_tuple_binding;
+
+fn main() -> i32 {
+    let pair = (1, 2);
+    return match pair {
+        (left, right) | _ => 0,
+    };
+}

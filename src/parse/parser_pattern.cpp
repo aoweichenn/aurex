@@ -30,14 +30,17 @@ syntax::PatternId PatternParser::parse_pattern() {
         }
     } while (this->match(TokenKind::pipe));
     pattern.range = range;
-    return this->session_.module.push_pattern(pattern);
+    return this->session_.module.push_pattern(std::move(pattern));
 }
 
 syntax::PatternId PatternParser::parse_binding_pattern() {
-    return this->parse_binding_pattern_atom();
+    return this->parse_destructure_pattern_atom();
 }
 
 syntax::PatternId PatternParser::parse_pattern_atom() {
+    if (this->check(TokenKind::l_paren)) {
+        return this->parse_tuple_pattern(true);
+    }
     if (this->match(TokenKind::identifier)) {
         const syntax::Token& first = this->previous();
         if (first.text == "_") {
@@ -45,6 +48,9 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
             pattern.kind = syntax::PatternKind::wildcard;
             pattern.range = first.range;
             return this->session_.module.push_pattern(pattern);
+        }
+        if (this->check(TokenKind::l_brace)) {
+            return this->parse_struct_pattern(first);
         }
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::enum_case;
@@ -59,8 +65,77 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
             pattern.range = this->merge(first.range, case_name.range);
         }
         if (this->match(TokenKind::l_paren)) {
-            this->parse_payload_bindings(pattern);
+            this->parse_payload_patterns(pattern);
         }
+        return this->session_.module.push_pattern(std::move(pattern));
+    }
+    if (this->match(TokenKind::integer_literal) || this->match(TokenKind::kw_true) || this->match(TokenKind::kw_false)) {
+        const syntax::Token& token = this->previous();
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::literal;
+        pattern.case_name = token.text;
+        pattern.range = token.range;
+        return this->session_.module.push_pattern(pattern);
+    }
+    if (this->match(TokenKind::dot)) {
+        const syntax::Token& dot = this->previous();
+        const syntax::Token& case_name =
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::enum_case;
+        pattern.case_name = case_name.text;
+        pattern.scoped = true;
+        pattern.range = this->merge(dot.range, case_name.range);
+        if (this->match(TokenKind::l_paren)) {
+            this->parse_payload_patterns(pattern);
+        }
+        return this->session_.module.push_pattern(std::move(pattern));
+    }
+    this->report_here(std::string(PARSER_EXPECT_MATCH_PATTERN));
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::wildcard;
+    pattern.range = this->peek().range;
+    this->advance();
+    return this->session_.module.push_pattern(pattern);
+}
+
+syntax::PatternId PatternParser::parse_destructure_pattern_atom() {
+    if (this->check(TokenKind::l_paren)) {
+        return this->parse_tuple_pattern(true);
+    }
+    if (this->match(TokenKind::identifier)) {
+        const syntax::Token& token = this->previous();
+        if (token.text == "_") {
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::wildcard;
+            pattern.range = token.range;
+            return this->session_.module.push_pattern(pattern);
+        }
+        if (this->check(TokenKind::l_brace)) {
+            return this->parse_struct_pattern(token);
+        }
+        if (this->check(TokenKind::dot) || this->check(TokenKind::l_paren)) {
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::enum_case;
+            pattern.case_name = token.text;
+            pattern.range = token.range;
+            if (this->match(TokenKind::dot)) {
+                const syntax::Token& case_name =
+                    this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+                pattern.enum_name = token.text;
+                pattern.case_name = case_name.text;
+                pattern.scoped = true;
+                pattern.range = this->merge(token.range, case_name.range);
+            }
+            if (this->match(TokenKind::l_paren)) {
+                this->parse_payload_patterns(pattern);
+            }
+            return this->session_.module.push_pattern(std::move(pattern));
+        }
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::binding;
+        pattern.binding_name = token.text;
+        pattern.range = token.range;
         return this->session_.module.push_pattern(pattern);
     }
     if (this->match(TokenKind::integer_literal) || this->match(TokenKind::kw_true) || this->match(TokenKind::kw_false)) {
@@ -81,9 +156,9 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
         pattern.scoped = true;
         pattern.range = this->merge(dot.range, case_name.range);
         if (this->match(TokenKind::l_paren)) {
-            this->parse_payload_bindings(pattern);
+            this->parse_payload_patterns(pattern);
         }
-        return this->session_.module.push_pattern(pattern);
+        return this->session_.module.push_pattern(std::move(pattern));
     }
     this->report_here(std::string(PARSER_EXPECT_MATCH_PATTERN));
     syntax::PatternNode pattern;
@@ -93,27 +168,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     return this->session_.module.push_pattern(pattern);
 }
 
-syntax::PatternId PatternParser::parse_binding_pattern_atom() {
-    if (this->match(TokenKind::identifier)) {
-        const syntax::Token& token = this->previous();
-        syntax::PatternNode pattern;
-        pattern.kind = token.text == "_" ? syntax::PatternKind::wildcard : syntax::PatternKind::binding;
-        pattern.binding_name = token.text == "_" ? std::string_view {} : token.text;
-        pattern.range = token.range;
-        return this->session_.module.push_pattern(pattern);
-    }
-    if (this->check(TokenKind::l_paren)) {
-        return this->parse_tuple_binding_pattern();
-    }
-    this->report_here(std::string(PARSER_EXPECT_MATCH_PATTERN));
-    syntax::PatternNode pattern;
-    pattern.kind = syntax::PatternKind::wildcard;
-    pattern.range = this->peek().range;
-    this->advance();
-    return this->session_.module.push_pattern(pattern);
-}
-
-syntax::PatternId PatternParser::parse_tuple_binding_pattern() {
+syntax::PatternId PatternParser::parse_tuple_pattern(const bool destructure_context) {
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_TUPLE_PATTERN_END));
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_PATTERN_UNSUPPORTED));
@@ -124,7 +179,7 @@ syntax::PatternId PatternParser::parse_tuple_binding_pattern() {
         return this->session_.module.push_pattern(pattern);
     }
 
-    const syntax::PatternId first = this->parse_binding_pattern_atom();
+    const syntax::PatternId first = destructure_context ? this->parse_destructure_pattern_atom() : this->parse_pattern_atom();
     if (!this->match(TokenKind::comma)) {
         static_cast<void>(this->expect_tuple_pattern_end());
         return first;
@@ -134,7 +189,7 @@ syntax::PatternId PatternParser::parse_tuple_binding_pattern() {
     pattern.kind = syntax::PatternKind::tuple;
     pattern.elements.push_back(first);
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
-        pattern.elements.push_back(this->parse_binding_pattern_atom());
+        pattern.elements.push_back(destructure_context ? this->parse_destructure_pattern_atom() : this->parse_pattern_atom());
         this->reset_panic();
         if (!this->recover_tuple_pattern_separator()) {
             break;
@@ -142,6 +197,40 @@ syntax::PatternId PatternParser::parse_tuple_binding_pattern() {
     }
     const syntax::Token& end = this->expect_tuple_pattern_end();
     pattern.range = this->merge(begin.range, end.range);
+    return this->session_.module.push_pattern(std::move(pattern));
+}
+
+syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name) {
+    const syntax::Token& begin = this->expect(TokenKind::l_brace, std::string(PARSER_EXPECT_STRUCT_PATTERN_END));
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::struct_;
+    pattern.struct_name = name.text;
+    pattern.range = this->merge(name.range, begin.range);
+    while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        const syntax::Token& field_name =
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_STRUCT_PATTERN_FIELD));
+        syntax::PatternId field_pattern = syntax::INVALID_PATTERN_ID;
+        if (this->match(TokenKind::colon)) {
+            field_pattern = this->parse_destructure_pattern_atom();
+        } else {
+            syntax::PatternNode binding;
+            binding.kind = field_name.text == "_" ? syntax::PatternKind::wildcard : syntax::PatternKind::binding;
+            binding.binding_name = field_name.text == "_" ? std::string_view {} : field_name.text;
+            binding.range = field_name.range;
+            field_pattern = this->session_.module.push_pattern(binding);
+        }
+        pattern.field_patterns.push_back(syntax::FieldPattern {
+            field_name.text,
+            field_pattern,
+            this->merge(field_name.range, this->pattern_range_or(field_pattern, field_name.range)),
+        });
+        this->reset_panic();
+        if (!this->recover_struct_pattern_separator()) {
+            break;
+        }
+    }
+    const syntax::Token& end = this->expect_struct_pattern_end();
+    pattern.range = this->merge(name.range, end.range);
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
@@ -166,14 +255,39 @@ bool PatternParser::recover_tuple_pattern_separator() {
     return false;
 }
 
-void PatternParser::parse_payload_bindings(syntax::PatternNode& pattern) {
+bool PatternParser::recover_struct_pattern_separator() {
+    if (this->check(TokenKind::r_brace)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_STRUCT_PATTERN_FIELD_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::pattern_payload)) {
+        this->synchronize(RecoveryContext::pattern_payload);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_brace);
+    }
+    this->reset_panic();
+    return false;
+}
+
+void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern) {
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EXPECT_PAYLOAD_BINDING));
     } else {
         while (!this->is_eof()) {
-            const syntax::Token& binding = this->expect_payload_binding_name();
-            if (binding.kind == TokenKind::identifier) {
-                pattern.binding_names.push_back(binding.text);
+            const syntax::PatternId payload = this->parse_destructure_pattern_atom();
+            pattern.payload_patterns.push_back(payload);
+            if (syntax::is_valid(payload) && payload.value < this->session_.module.patterns.size()) {
+                const syntax::PatternNode& payload_node = this->session_.module.patterns[payload.value];
+                if (payload_node.kind == syntax::PatternKind::binding) {
+                    pattern.binding_names.push_back(payload_node.binding_name);
+                }
             }
             if (!this->match(TokenKind::comma)) {
                 break;
@@ -183,7 +297,7 @@ void PatternParser::parse_payload_bindings(syntax::PatternNode& pattern) {
             }
         }
     }
-    const syntax::Token& end = this->expect_payload_binding_end();
+    const syntax::Token& end = this->expect_payload_pattern_end();
     pattern.range = this->merge(pattern.range, end.range);
 }
 
@@ -195,18 +309,18 @@ const syntax::Token& PatternParser::expect_tuple_pattern_end() {
     );
 }
 
-const syntax::Token& PatternParser::expect_payload_binding_name() {
+const syntax::Token& PatternParser::expect_payload_pattern_end() {
     return this->expect_recovered(
-        TokenKind::identifier,
-        std::string(PARSER_EXPECT_PAYLOAD_BINDING),
+        TokenKind::r_paren,
+        std::string(PARSER_EXPECT_PAYLOAD_BINDING_END),
         RecoveryContext::pattern_payload
     );
 }
 
-const syntax::Token& PatternParser::expect_payload_binding_end() {
+const syntax::Token& PatternParser::expect_struct_pattern_end() {
     return this->expect_recovered(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_PAYLOAD_BINDING_END),
+        TokenKind::r_brace,
+        std::string(PARSER_EXPECT_STRUCT_PATTERN_END),
         RecoveryContext::pattern_payload
     );
 }

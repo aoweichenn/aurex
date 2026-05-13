@@ -167,9 +167,16 @@ enum class PatternKind {
     wildcard,
     binding,
     tuple,
+    struct_,
     enum_case,
     literal,
     or_pattern,
+};
+
+struct FieldPattern {
+    std::string_view name;
+    PatternId pattern = INVALID_PATTERN_ID;
+    base::SourceRange range {};
 };
 
 struct PatternNode {
@@ -178,8 +185,11 @@ struct PatternNode {
     std::string_view binding_name;
     std::string_view enum_name;
     std::string_view case_name;
+    std::string_view struct_name;
     std::vector<std::string_view> binding_names;
+    std::vector<PatternId> payload_patterns;
     std::vector<PatternId> elements;
+    std::vector<FieldPattern> field_patterns;
     std::vector<PatternId> alternatives;
     bool scoped = false;
 };
@@ -211,6 +221,7 @@ struct ExprNode {
     ExprId callee = INVALID_EXPR_ID;
     std::vector<ExprId> args;
     ExprId condition = INVALID_EXPR_ID;
+    PatternId condition_pattern = INVALID_PATTERN_ID;
     ExprId then_expr = INVALID_EXPR_ID;
     ExprId else_expr = INVALID_EXPR_ID;
     StmtId block = INVALID_STMT_ID;

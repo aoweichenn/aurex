@@ -340,6 +340,9 @@ inline constexpr std::string_view SEMA_TUPLE_DESTRUCTURE_TYPE =
 inline constexpr std::string_view SEMA_TUPLE_DESTRUCTURE_ARITY =
     "tuple destructuring pattern arity does not match tuple type";
 
+inline constexpr std::string_view SEMA_LOCAL_PATTERN_REFUTABLE =
+    "local destructuring pattern must be irrefutable";
+
 inline constexpr std::string_view SEMA_STRUCT_LITERAL_TYPE =
     "struct literal requires a non-opaque struct type";
 
@@ -443,7 +446,7 @@ inline constexpr std::string_view SEMA_MATCH_CONST_INITIALIZER =
     "match expression cannot be used in const initializer";
 
 inline constexpr std::string_view SEMA_MATCH_VALUE_TYPE =
-    "match expression requires an enum, integer, or bool value";
+    "match expression requires an enum, integer, bool, tuple, or struct value";
 
 inline constexpr std::string_view SEMA_MATCH_ARM_REQUIRED =
     "match expression requires at least one arm";
@@ -466,11 +469,17 @@ inline constexpr std::string_view SEMA_MATCH_RESULT_VOID =
 inline constexpr std::string_view SEMA_OR_PATTERN_PAYLOAD_UNSUPPORTED =
     "or-pattern alternatives cannot bind payloads";
 
+inline constexpr std::string_view SEMA_MATCH_NON_ENUM_IRREFUTABLE =
+    "match expression over tuple or struct requires an irrefutable arm";
+
 inline constexpr std::string_view SEMA_MATCH_WILDCARD_UNREACHABLE =
     "match arm is unreachable after wildcard pattern";
 
 inline constexpr std::string_view SEMA_ENUM_MATCH_PATTERN =
     "enum match pattern must be an enum case or wildcard";
+
+inline constexpr std::string_view SEMA_ENUM_PATTERN_TYPE =
+    "enum pattern requires an enum value";
 
 inline constexpr std::string_view SEMA_MATCH_CASE_WRONG_ENUM =
     "match arm case does not belong to matched enum";
@@ -489,6 +498,15 @@ inline constexpr std::string_view SEMA_INTEGER_PATTERN_RANGE =
 
 inline constexpr std::string_view SEMA_UNSUPPORTED_LITERAL_PATTERN =
     "unsupported literal match pattern";
+
+inline constexpr std::string_view SEMA_STRUCT_PATTERN_TYPE =
+    "struct pattern requires a struct value";
+
+inline constexpr std::string_view SEMA_STRUCT_PATTERN_FIELD =
+    "unknown struct pattern field";
+
+inline constexpr std::string_view SEMA_STRUCT_PATTERN_DUPLICATE_FIELD =
+    "duplicate struct pattern field";
 
 inline constexpr std::string_view SEMA_OPAQUE_POINTER_ONLY =
     "opaque struct can only be used as a pointer target";

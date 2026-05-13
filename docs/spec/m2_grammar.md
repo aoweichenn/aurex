@@ -566,11 +566,33 @@ PatternAtom
   | IntegerLiteral
   | "true"
   | "false"
+  | TuplePattern
+  | StructPattern
   | Identifier [ "." Identifier ] [ PayloadBindings ]
   | "." Identifier [ PayloadBindings ] ;
 
 PayloadBindings
-  = "(" Identifier { "," Identifier } [ "," ] ")" ;
+  = "(" DestructurePattern { "," DestructurePattern } [ "," ] ")" ;
+
+TuplePattern
+  = "(" DestructurePattern "," { DestructurePattern "," } [ DestructurePattern ] ")" ;
+
+StructPattern
+  = Identifier "{" StructPatternField { "," StructPatternField } [ "," ] "}" ;
+
+StructPatternField
+  = Identifier [ ":" DestructurePattern ] ;
+
+DestructurePattern
+  = "_"
+  | Identifier
+  | IntegerLiteral
+  | "true"
+  | "false"
+  | TuplePattern
+  | StructPattern
+  | Identifier "." Identifier [ PayloadBindings ]
+  | "." Identifier [ PayloadBindings ] ;
 ```
 
 Rules:
@@ -578,11 +600,17 @@ Rules:
 - Enum patterns may be unscoped, enum-scoped, or inferred from matched enum
   type via `.case`.
 - Payload binding count must match the enum case payload field count.
-- Or-pattern alternatives cannot bind payloads in current M2.
+- Payload patterns may destructure tuple payloads and multi-field enum payloads.
+- Struct patterns use field shorthand `Point { x, y }` or explicit field
+  patterns `Point { x: left }`.
+- `if value is pattern` and `while value is pattern` introduce pattern bindings
+  only inside the taken block. `if` expressions may also use the same pattern
+  condition form.
+- Or-pattern alternatives cannot bind payloads or names in current M2.
 - Integer/bool matches use literal patterns and require wildcard coverage where
   needed.
-- Tuple patterns are currently local-binding patterns only; `match` does not
-  destructure tuple values.
+- Tuple and struct matches require an irrefutable arm because M2 does not yet
+  implement full structural exhaustiveness.
 
 ## 13. Basic Generics
 

@@ -36,7 +36,7 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path non_enum = negative_sample("pattern_matching", "match_expression_non_enum.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(non_enum)).output, "match expression requires an enum, integer, or bool value");
+    expect_contains(require_failure(aurexc() + " --check " + q(non_enum)).output, "match expression requires an enum, integer, bool, tuple, or struct value");
 
     const fs::path missing = negative_sample("pattern_matching", "match_expression_missing_case.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing)).output, "match expression is not exhaustive");
@@ -147,6 +147,10 @@ TEST_F(AurexIntegrationTest, MatchOrPattern) {
 
     const fs::path duplicate = negative_sample("pattern_matching", "match_or_pattern_duplicate.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate match arm for enum case");
+
+    const fs::path refutable_payload =
+        negative_sample("pattern_matching", "match_or_pattern_refutable_payload_not_exhaustive.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(refutable_payload)).output, "match expression is not exhaustive");
 }
 
 TEST_F(AurexIntegrationTest, MatchLiteralPattern) {

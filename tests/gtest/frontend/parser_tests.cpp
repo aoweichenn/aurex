@@ -2081,6 +2081,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_true,
             TokenKind::kw_false,
             TokenKind::dot,
+            TokenKind::l_paren,
         }
     );
     expect_false_on(parse::token_starts_match_arm, TokenKind::kw_let);

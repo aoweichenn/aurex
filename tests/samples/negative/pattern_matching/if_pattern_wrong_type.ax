@@ -1,0 +1,14 @@
+module if_pattern_wrong_type;
+
+enum OptionI32 {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let value = 1;
+    if value is .some(x) {
+        return x;
+    }
+    return 0;
+}

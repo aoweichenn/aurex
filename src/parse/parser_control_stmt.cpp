@@ -1,6 +1,7 @@
 #include <aurex/parse/parser_control_stmt_part.hpp>
 
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_pattern_part.hpp>
 #include <aurex/parse/parser_stmt_part.hpp>
 
 #include <string>
@@ -24,6 +25,10 @@ constexpr base::usize PARSER_FOR_RANGE_MAX_ARG_COUNT = PARSER_FOR_RANGE_STEP_ARG
 syntax::StmtId ControlStmtParser::parse_if_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_if, std::string(PARSER_EXPECT_IF));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
+    syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
+    if (this->match(TokenKind::kw_is)) {
+        condition_pattern = PatternParser(this->parser_).parse_pattern();
+    }
     const syntax::StmtId then_block = this->parse_block();
     syntax::StmtId else_block = syntax::INVALID_STMT_ID;
     syntax::StmtId else_if = syntax::INVALID_STMT_ID;
@@ -45,6 +50,7 @@ syntax::StmtId ControlStmtParser::parse_if_stmt() {
         stmt.range = this->merge(begin.range, this->stmt_range_or(then_block, begin.range));
     }
     stmt.condition = condition;
+    stmt.pattern = condition_pattern;
     stmt.then_block = then_block;
     stmt.else_block = else_block;
     stmt.else_if = else_if;
@@ -54,12 +60,17 @@ syntax::StmtId ControlStmtParser::parse_if_stmt() {
 syntax::StmtId ControlStmtParser::parse_while_stmt() {
     const syntax::Token& begin = this->expect(TokenKind::kw_while, std::string(PARSER_EXPECT_WHILE));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
+    syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
+    if (this->match(TokenKind::kw_is)) {
+        condition_pattern = PatternParser(this->parser_).parse_pattern();
+    }
     const syntax::StmtId body = this->parse_block();
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::while_;
     stmt.range = this->merge(begin.range, this->stmt_range_or(body, begin.range));
     stmt.condition = condition;
+    stmt.pattern = condition_pattern;
     stmt.body = body;
     return this->session_.module.push_stmt(std::move(stmt));
 }

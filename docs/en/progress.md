@@ -90,12 +90,16 @@ LLVM lowering, native execution, and installed compiler execution.
 - M2 `unsafe` is intentionally minimal. It is a semantic boundary only and does
   not include borrow checking, lifetimes, unsafe traits, unsafe impl blocks,
   unsafe extern blocks, or an ownership/resource model.
-- Slices, tuple basics, and function pointer types are implemented in the M2
-  core. Function types are non-capturing function pointer values, including
-  `fn(...) -> T`, `unsafe fn(...) -> T`, `extern c fn(...) -> T`, and
-  `unsafe extern c fn(...) -> T`; capturing closures are still intentionally
-  out of scope. Remaining pattern gaps are struct patterns, tuple patterns in
-  `match`, nested enum payload patterns, and `if let` / `let ... else`.
+- Slices, tuple basics, function pointer types, and M2 pattern ergonomics are
+  implemented in the M2 core. Function types are non-capturing function pointer
+  values, including `fn(...) -> T`, `unsafe fn(...) -> T`,
+  `extern c fn(...) -> T`, and `unsafe extern c fn(...) -> T`; capturing
+  closures are still intentionally out of scope. Pattern support includes tuple
+  match patterns, struct patterns, nested enum payload destructuring, local
+  struct destructuring, `if value is pattern` / `while value is pattern`, and
+  `if` expression pattern conditions.
+  Remaining pattern gaps are slice patterns, binding or-pattern alternatives,
+  and `let ... else`.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing

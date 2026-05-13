@@ -14,13 +14,15 @@ public:
 
 private:
     [[nodiscard]] syntax::PatternId parse_pattern_atom();
-    [[nodiscard]] syntax::PatternId parse_binding_pattern_atom();
-    [[nodiscard]] syntax::PatternId parse_tuple_binding_pattern();
+    [[nodiscard]] syntax::PatternId parse_destructure_pattern_atom();
+    [[nodiscard]] syntax::PatternId parse_tuple_pattern(bool destructure_context);
+    [[nodiscard]] syntax::PatternId parse_struct_pattern(const syntax::Token& name);
     [[nodiscard]] bool recover_tuple_pattern_separator();
-    void parse_payload_bindings(syntax::PatternNode& pattern);
+    [[nodiscard]] bool recover_struct_pattern_separator();
+    void parse_payload_patterns(syntax::PatternNode& pattern);
     [[nodiscard]] const syntax::Token& expect_tuple_pattern_end();
-    [[nodiscard]] const syntax::Token& expect_payload_binding_name();
-    [[nodiscard]] const syntax::Token& expect_payload_binding_end();
+    [[nodiscard]] const syntax::Token& expect_payload_pattern_end();
+    [[nodiscard]] const syntax::Token& expect_struct_pattern_end();
 };
 
 } // namespace aurex::parse

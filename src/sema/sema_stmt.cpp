@@ -522,6 +522,9 @@ void SemanticAnalyzer::analyze_statement_action(
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, action.stmt});
         break;
+    case StatementAnalysisActionKind::pattern_scoped_block:
+        this->analyze_pattern_scoped_block(action.pattern, action.pattern_type, action.block, stack);
+        break;
     case StatementAnalysisActionKind::block_statements:
         this->analyze_statement_block(action.stmt, stack);
         break;
@@ -554,6 +557,20 @@ void SemanticAnalyzer::analyze_statement_block(
             stmt->statements[i - 1],
         });
     }
+}
+
+void SemanticAnalyzer::analyze_pattern_scoped_block(
+    const syntax::PatternId pattern,
+    const TypeHandle pattern_type,
+    const syntax::StmtId block,
+    std::vector<StatementAnalysisAction>& stack
+) {
+    std::vector<PatternBinding> bindings;
+    static_cast<void>(this->analyze_pattern(pattern, pattern_type, bindings));
+    this->symbols_.push_scope();
+    this->define_pattern_bindings(bindings, false);
+    stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
+    stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, block});
 }
 
 void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
@@ -670,68 +687,15 @@ void SemanticAnalyzer::define_local_pattern(
     const TypeHandle type,
     const bool is_mutable
 ) {
-    struct PatternFrame {
-        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
-        TypeHandle type = INVALID_TYPE_HANDLE;
-    };
-
-    std::vector<PatternFrame> pending;
-    pending.push_back(PatternFrame {pattern_id, type});
-    while (!pending.empty()) {
-        const PatternFrame frame = pending.back();
-        pending.pop_back();
-        if (!syntax::is_valid(frame.pattern) || frame.pattern.value >= this->module_.patterns.size()) {
-            continue;
-        }
-        const syntax::PatternNode& pattern = this->module_.patterns[frame.pattern.value];
-        switch (pattern.kind) {
-        case syntax::PatternKind::wildcard:
-            break;
-        case syntax::PatternKind::binding: {
-            const auto inserted = this->symbols_.insert(Symbol {
-                SymbolKind::local,
-                std::string(pattern.binding_name),
-                {},
-                syntax::INVALID_MODULE_ID,
-                frame.type,
-                pattern.range,
-                is_mutable,
-                syntax::Visibility::private_,
-            }, this->diagnostics_);
-            static_cast<void>(inserted);
-            break;
-        }
-        case syntax::PatternKind::tuple: {
-            if (!this->checked_.types.is_tuple(frame.type)) {
-                this->report(pattern.range, std::string(SEMA_TUPLE_DESTRUCTURE_TYPE));
-                for (auto element = pattern.elements.rbegin(); element != pattern.elements.rend(); ++element) {
-                    pending.push_back(PatternFrame {*element, INVALID_TYPE_HANDLE});
-                }
-                break;
-            }
-            const TypeInfo& tuple = this->checked_.types.get(frame.type);
-            if (tuple.tuple_elements.size() != pattern.elements.size()) {
-                this->report(pattern.range, std::string(SEMA_TUPLE_DESTRUCTURE_ARITY));
-            }
-            const base::usize count = std::min(tuple.tuple_elements.size(), pattern.elements.size());
-            for (base::usize i = count; i > 0; --i) {
-                pending.push_back(PatternFrame {
-                    pattern.elements[i - 1],
-                    tuple.tuple_elements[i - 1],
-                });
-            }
-            for (base::usize i = pattern.elements.size(); i > count; --i) {
-                pending.push_back(PatternFrame {pattern.elements[i - 1], INVALID_TYPE_HANDLE});
-            }
-            break;
-        }
-        case syntax::PatternKind::enum_case:
-        case syntax::PatternKind::literal:
-        case syntax::PatternKind::or_pattern:
-            this->report(pattern.range, std::string(SEMA_TUPLE_DESTRUCTURE_TYPE));
-            break;
-        }
+    std::vector<PatternBinding> bindings;
+    if (!this->analyze_pattern(pattern_id, type, bindings)) {
+        const syntax::PatternNode* pattern =
+            syntax::is_valid(pattern_id) && pattern_id.value < this->module_.patterns.size()
+                ? &this->module_.patterns[pattern_id.value]
+                : nullptr;
+        this->report(pattern == nullptr ? base::SourceRange {} : pattern->range, std::string(SEMA_LOCAL_PATTERN_REFUTABLE));
     }
+    this->define_pattern_bindings(bindings, is_mutable);
 }
 
 void SemanticAnalyzer::analyze_statement_node(
@@ -809,7 +773,7 @@ void SemanticAnalyzer::analyze_statement_node(
     }
     case syntax::StmtKind::if_: {
         const TypeHandle condition = this->analyze_expr(stmt.condition);
-        if (!this->checked_.types.is_bool(condition)) {
+        if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
             this->report(expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_IF_CONDITION_BOOL));
         }
         if (syntax::is_valid(stmt.else_if)) {
@@ -818,16 +782,36 @@ void SemanticAnalyzer::analyze_statement_node(
         if (syntax::is_valid(stmt.else_block)) {
             stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
         }
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.then_block});
+        if (syntax::is_valid(stmt.pattern)) {
+            stack.push_back(StatementAnalysisAction {
+                StatementAnalysisActionKind::pattern_scoped_block,
+                syntax::INVALID_STMT_ID,
+                stmt.then_block,
+                stmt.pattern,
+                condition,
+            });
+        } else {
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.then_block});
+        }
         break;
     }
     case syntax::StmtKind::while_: {
         const TypeHandle condition = this->analyze_expr(stmt.condition);
-        if (!this->checked_.types.is_bool(condition)) {
+        if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
             this->report(expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_WHILE_CONDITION_BOOL));
         }
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
+        if (syntax::is_valid(stmt.pattern)) {
+            stack.push_back(StatementAnalysisAction {
+                StatementAnalysisActionKind::pattern_scoped_block,
+                syntax::INVALID_STMT_ID,
+                stmt.body,
+                stmt.pattern,
+                condition,
+            });
+        } else {
+            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
+        }
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
         break;
     }

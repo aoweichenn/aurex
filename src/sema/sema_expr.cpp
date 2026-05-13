@@ -1129,9 +1129,21 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
         report(expr.range, std::string(SEMA_IF_EXPR_CONST_INITIALIZER));
     }
     const TypeHandle condition = analyze_expr(expr.condition);
-    if (!checked_.types.is_bool(condition)) {
+    if (!syntax::is_valid(expr.condition_pattern) && !checked_.types.is_bool(condition)) {
         report(module_.exprs[expr.condition.value].range, std::string(SEMA_IF_EXPR_CONDITION_BOOL));
     }
+    const auto analyze_then_branch = [&](const TypeHandle expected) {
+        if (!syntax::is_valid(expr.condition_pattern)) {
+            return analyze_expr(expr.then_expr, expected);
+        }
+        std::vector<PatternBinding> bindings;
+        static_cast<void>(this->analyze_pattern(expr.condition_pattern, condition, bindings));
+        this->symbols_.push_scope();
+        this->define_pattern_bindings(bindings, false);
+        const TypeHandle result = analyze_expr(expr.then_expr, expected);
+        this->symbols_.pop_scope();
+        return result;
+    };
 
     const auto is_null_result_expr = [&](const syntax::ExprId candidate) {
         if (!syntax::is_valid(candidate) || candidate.value >= module_.exprs.size()) {
@@ -1145,12 +1157,12 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
     TypeHandle else_type = INVALID_TYPE_HANDLE;
     if (!is_valid(expected_type) && is_null_result_expr(expr.then_expr) && !is_null_result_expr(expr.else_expr)) {
         else_type = analyze_expr(expr.else_expr);
-        then_type = analyze_expr(expr.then_expr, else_type);
+        then_type = analyze_then_branch(else_type);
     } else {
-        then_type = analyze_expr(expr.then_expr, expected_type);
+        then_type = analyze_then_branch(expected_type);
         else_type = analyze_expr(expr.else_expr, is_valid(then_type) ? then_type : expected_type);
         if (!is_valid(then_type) && checked_.types.is_pointer(else_type) && is_null_result_expr(expr.then_expr)) {
-            then_type = analyze_expr(expr.then_expr, else_type);
+            then_type = analyze_then_branch(else_type);
         }
         if (!is_valid(else_type) && checked_.types.is_pointer(then_type) && is_null_result_expr(expr.else_expr)) {
             else_type = analyze_expr(expr.else_expr, then_type);

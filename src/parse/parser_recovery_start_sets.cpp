@@ -152,6 +152,7 @@ bool token_starts_match_arm(const TokenKind kind) noexcept {
     case TokenKind::kw_true:
     case TokenKind::kw_false:
     case TokenKind::dot:
+    case TokenKind::l_paren:
         return true;
     default:
         return false;

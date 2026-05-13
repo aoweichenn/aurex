@@ -490,6 +490,15 @@ inline constexpr std::string_view PARSER_EXPECT_TUPLE_PATTERN_SEPARATOR =
 inline constexpr std::string_view PARSER_EXPECT_TUPLE_PATTERN_END =
     "expected ')' after tuple pattern";
 
+inline constexpr std::string_view PARSER_EXPECT_STRUCT_PATTERN_FIELD =
+    "expected field name in struct pattern";
+
+inline constexpr std::string_view PARSER_EXPECT_STRUCT_PATTERN_FIELD_SEPARATOR =
+    "expected ',' or '}' after struct pattern field";
+
+inline constexpr std::string_view PARSER_EXPECT_STRUCT_PATTERN_END =
+    "expected '}' after struct pattern";
+
 inline constexpr std::string_view PARSER_EXPECT_ENUM_CASE_AFTER_DOT =
     "expected enum case name after '.'";
 

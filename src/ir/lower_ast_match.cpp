@@ -11,32 +11,6 @@ namespace {
 
 constexpr char IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
 
-[[nodiscard]] bool pattern_has_payload_bindings(const syntax::PatternNode& pattern) noexcept {
-    return !pattern.binding_names.empty();
-}
-
-[[nodiscard]] base::usize pattern_payload_binding_count(const syntax::PatternNode& pattern) noexcept {
-    return pattern.binding_names.size();
-}
-
-[[nodiscard]] std::string_view pattern_payload_binding_name(
-    const syntax::PatternNode& pattern,
-    const base::usize index
-) noexcept {
-    return pattern.binding_names[index];
-}
-
-[[nodiscard]] base::usize enum_case_payload_field_count(const sema::EnumCaseInfo& info) noexcept {
-    return info.payload_types.size();
-}
-
-[[nodiscard]] sema::TypeHandle enum_case_payload_field_type(
-    const sema::EnumCaseInfo& info,
-    const base::usize index
-) noexcept {
-    return info.payload_types[index];
-}
-
 } // namespace
 
 GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const noexcept {
@@ -94,69 +68,294 @@ std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
     return pattern == nullptr ? "<invalid>" : std::string(pattern->case_name);
 }
 
-bool Lowerer::is_fallback_match_pattern(const syntax::PatternId id) const noexcept {
-    const syntax::PatternNode* pattern = pattern_node(id);
-    return pattern != nullptr && pattern->kind == syntax::PatternKind::wildcard;
+bool Lowerer::is_irrefutable_pattern(
+    const syntax::PatternId id,
+    const sema::TypeHandle matched_type
+) const {
+    struct PatternFrame {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+        bool expanded = false;
+    };
+
+    std::vector<PatternFrame> pending;
+    std::vector<bool> results(this->ast_.patterns.size(), false);
+    pending.push_back(PatternFrame {id, matched_type, false});
+    while (!pending.empty()) {
+        const PatternFrame frame = pending.back();
+        pending.pop_back();
+        const syntax::PatternNode* pattern = this->pattern_node(frame.pattern);
+        if (pattern == nullptr) {
+            continue;
+        }
+        if (frame.expanded) {
+            bool result = false;
+            switch (pattern->kind) {
+            case syntax::PatternKind::wildcard:
+            case syntax::PatternKind::binding:
+                result = true;
+                break;
+            case syntax::PatternKind::literal:
+            case syntax::PatternKind::enum_case:
+                result = false;
+                break;
+            case syntax::PatternKind::tuple:
+                result = sema::is_valid(frame.type) && this->module_.types.is_tuple(frame.type);
+                for (const syntax::PatternId element : pattern->elements) {
+                    result = result &&
+                        syntax::is_valid(element) &&
+                        element.value < results.size() &&
+                        results[element.value];
+                }
+                break;
+            case syntax::PatternKind::struct_:
+                result = sema::is_valid(frame.type) && this->module_.types.get(frame.type).kind == sema::TypeKind::struct_;
+                for (const syntax::FieldPattern& field : pattern->field_patterns) {
+                    result = result &&
+                        syntax::is_valid(field.pattern) &&
+                        field.pattern.value < results.size() &&
+                        results[field.pattern.value];
+                }
+                break;
+            case syntax::PatternKind::or_pattern:
+                for (const syntax::PatternId alternative : pattern->alternatives) {
+                    if (syntax::is_valid(alternative) &&
+                        alternative.value < results.size() &&
+                        results[alternative.value]) {
+                        result = true;
+                        break;
+                    }
+                }
+                break;
+            }
+            results[frame.pattern.value] = result;
+            continue;
+        }
+
+        pending.push_back(PatternFrame {frame.pattern, frame.type, true});
+        switch (pattern->kind) {
+        case syntax::PatternKind::tuple: {
+            if (!sema::is_valid(frame.type) || !this->module_.types.is_tuple(frame.type)) {
+                break;
+            }
+            const sema::TypeInfo& tuple = this->module_.types.get(frame.type);
+            const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
+            for (base::usize i = count; i > 0; --i) {
+                pending.push_back(PatternFrame {pattern->elements[i - 1], tuple.tuple_elements[i - 1], false});
+            }
+            break;
+        }
+        case syntax::PatternKind::struct_:
+            for (auto field = pattern->field_patterns.rbegin(); field != pattern->field_patterns.rend(); ++field) {
+                pending.push_back(PatternFrame {
+                    field->pattern,
+                    this->aggregate_field_type(frame.type, field->name),
+                    false,
+                });
+            }
+            break;
+        case syntax::PatternKind::or_pattern:
+            for (auto alternative = pattern->alternatives.rbegin(); alternative != pattern->alternatives.rend(); ++alternative) {
+                pending.push_back(PatternFrame {*alternative, frame.type, false});
+            }
+            break;
+        case syntax::PatternKind::wildcard:
+        case syntax::PatternKind::binding:
+        case syntax::PatternKind::enum_case:
+        case syntax::PatternKind::literal:
+            break;
+        }
+    }
+    return syntax::is_valid(id) && id.value < results.size() && results[id.value];
 }
 
-ValueId Lowerer::append_match_pattern_condition(
+ValueId Lowerer::append_true_value() {
+    Value value;
+    value.kind = ValueKind::bool_literal;
+    value.type = this->module_.types.builtin(sema::BuiltinType::bool_);
+    value.text = "true";
+    return this->append_value(value);
+}
+
+ValueId Lowerer::append_pattern_condition(
     const syntax::PatternId id,
-    const ValueId matched_tag,
-    const sema::TypeHandle matched_type,
-    const bool payload_enum
+    const ValueId source_address,
+    const sema::TypeHandle source_type
 ) {
-    const syntax::PatternNode* pattern = pattern_node(id);
+    const syntax::PatternNode* pattern = this->pattern_node(id);
     if (pattern == nullptr) {
-        return INVALID_VALUE_ID;
+        return this->append_true_value();
+    }
+    if (pattern->kind == syntax::PatternKind::wildcard || pattern->kind == syntax::PatternKind::binding) {
+        return this->append_true_value();
     }
     if (pattern->kind == syntax::PatternKind::or_pattern) {
         ValueId condition = INVALID_VALUE_ID;
-        for (syntax::PatternId alternative : pattern->alternatives) {
-            const ValueId alternative_condition = append_match_pattern_condition(alternative, matched_tag, matched_type, payload_enum);
+        for (const syntax::PatternId alternative : pattern->alternatives) {
+            const ValueId alternative_condition = this->append_pattern_condition(alternative, source_address, source_type);
             if (!is_valid(condition)) {
                 condition = alternative_condition;
                 continue;
             }
-            Value or_value;
-            or_value.kind = ValueKind::binary;
-            or_value.type = module_.types.builtin(sema::BuiltinType::bool_);
-            or_value.binary_op = BinaryOp::logical_or;
-            or_value.lhs = condition;
-            or_value.rhs = alternative_condition;
-            condition = append_value(or_value);
+            condition = this->append_binary_value(
+                BinaryOp::logical_or,
+                this->module_.types.builtin(sema::BuiltinType::bool_),
+                condition,
+                alternative_condition
+            );
         }
-        return condition;
+        return is_valid(condition) ? condition : this->append_true_value();
     }
     if (pattern->kind == syntax::PatternKind::literal) {
+        const ValueId source = this->append_load(source_address, source_type);
         Value literal;
         literal.kind = (pattern->case_name == "true" || pattern->case_name == "false")
             ? ValueKind::bool_literal
             : ValueKind::integer_literal;
-        literal.type = matched_type;
+        literal.type = source_type;
         literal.text = std::string(pattern->case_name);
-        const ValueId literal_id = append_value(literal);
-
-        Value cmp;
-        cmp.kind = ValueKind::binary;
-        cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
-        cmp.binary_op = BinaryOp::equal;
-        cmp.lhs = matched_tag;
-        cmp.rhs = literal_id;
-        return append_value(cmp);
+        return this->append_binary_value(
+            BinaryOp::equal,
+            this->module_.types.builtin(sema::BuiltinType::bool_),
+            source,
+            this->append_value(literal)
+        );
+    }
+    if (pattern->kind == syntax::PatternKind::tuple) {
+        if (!sema::is_valid(source_type) || !this->module_.types.is_tuple(source_type)) {
+            return this->append_true_value();
+        }
+        const sema::TypeInfo& tuple = this->module_.types.get(source_type);
+        ValueId condition = INVALID_VALUE_ID;
+        const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
+        for (base::usize i = 0; i < count; ++i) {
+            Value field;
+            field.kind = ValueKind::field_addr;
+            field.name = std::to_string(i);
+            field.object = source_address;
+            field.type = this->module_.types.pointer(sema::PointerMutability::mut, tuple.tuple_elements[i]);
+            const ValueId element_condition =
+                this->append_pattern_condition(pattern->elements[i], this->append_value(field), tuple.tuple_elements[i]);
+            condition = is_valid(condition)
+                ? this->append_binary_value(
+                    BinaryOp::logical_and,
+                    this->module_.types.builtin(sema::BuiltinType::bool_),
+                    condition,
+                    element_condition
+                )
+                : element_condition;
+        }
+        return is_valid(condition) ? condition : this->append_true_value();
+    }
+    if (pattern->kind == syntax::PatternKind::struct_) {
+        ValueId condition = INVALID_VALUE_ID;
+        for (const syntax::FieldPattern& field_pattern : pattern->field_patterns) {
+            const sema::TypeHandle field_type = this->aggregate_field_type(source_type, field_pattern.name);
+            Value field;
+            field.kind = ValueKind::field_addr;
+            field.name = std::string(field_pattern.name);
+            field.object = source_address;
+            field.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
+            const ValueId field_condition =
+                this->append_pattern_condition(field_pattern.pattern, this->append_value(field), field_type);
+            condition = is_valid(condition)
+                ? this->append_binary_value(
+                    BinaryOp::logical_and,
+                    this->module_.types.builtin(sema::BuiltinType::bool_),
+                    condition,
+                    field_condition
+                )
+                : field_condition;
+        }
+        return is_valid(condition) ? condition : this->append_true_value();
     }
 
-    const std::string case_symbol = pattern_case_symbol(id);
+    const bool payload_enum = is_payload_enum(this->module_.types, source_type);
+    const std::string case_symbol = this->pattern_case_symbol(id);
+    const ValueId source = payload_enum
+        ? this->append_load(
+            this->enum_field_addr(source_address, std::string(IR_ENUM_TAG_FIELD_NAME)),
+            enum_tag_type(this->module_.types, source_type),
+            "pattern.tag"
+        )
+        : this->append_load(source_address, source_type);
     const ValueId case_id = payload_enum
-        ? append_enum_tag_literal(case_symbol, enum_tag_type(module_.types, matched_type))
-        : append_enum_case_ref(case_symbol, matched_type);
+        ? this->append_enum_tag_literal(case_symbol, enum_tag_type(this->module_.types, source_type))
+        : this->append_enum_case_ref(case_symbol, source_type);
+    ValueId condition = this->append_binary_value(
+        BinaryOp::equal,
+        this->module_.types.builtin(sema::BuiltinType::bool_),
+        source,
+        case_id
+    );
+    if (!payload_enum || pattern->payload_patterns.empty()) {
+        return condition;
+    }
+    const sema::EnumCaseInfo* info = this->enum_case_info(case_symbol);
+    if (info == nullptr || !sema::is_valid(info->payload_type)) {
+        return condition;
+    }
+    const BlockId tag_block = this->current_block_;
+    const BlockId payload_block =
+        add_block(*this->current_function_, "pattern.payload" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block =
+        add_block(*this->current_function_, "pattern.join" + std::to_string(this->current_function_->blocks.size()));
+    Terminator payload_guard;
+    payload_guard.kind = TerminatorKind::cond_branch;
+    payload_guard.condition = condition;
+    payload_guard.then_target = payload_block;
+    payload_guard.else_target = exit_block;
+    this->set_terminator(this->current_block_, payload_guard);
 
-    Value cmp;
-    cmp.kind = ValueKind::binary;
-    cmp.type = module_.types.builtin(sema::BuiltinType::bool_);
-    cmp.binary_op = BinaryOp::equal;
-    cmp.lhs = matched_tag;
-    cmp.rhs = case_id;
-    return append_value(cmp);
+    this->current_block_ = payload_block;
+    const ValueId storage_addr = this->enum_field_addr(source_address, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
+    Value cast;
+    cast.kind = ValueKind::cast;
+    cast.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_type);
+    cast.target_type = cast.type;
+    cast.lhs = storage_addr;
+    cast.cast_kind = CastKind::pointer;
+    const ValueId payload_addr = this->append_value(cast);
+    ValueId payload_condition = INVALID_VALUE_ID;
+    if (info->payload_types.size() == 1 && pattern->payload_patterns.size() == 1) {
+        payload_condition = this->append_pattern_condition(
+            pattern->payload_patterns.front(),
+            payload_addr,
+            info->payload_type
+        );
+    } else {
+        const base::usize count = std::min(info->payload_types.size(), pattern->payload_patterns.size());
+        for (base::usize i = 0; i < count; ++i) {
+            Value field;
+            field.kind = ValueKind::field_addr;
+            field.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_types[i]);
+            field.name = std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
+            field.object = payload_addr;
+            const ValueId field_condition =
+                this->append_pattern_condition(pattern->payload_patterns[i], this->append_value(field), info->payload_types[i]);
+            payload_condition = is_valid(payload_condition)
+                ? this->append_binary_value(
+                    BinaryOp::logical_and,
+                    this->module_.types.builtin(sema::BuiltinType::bool_),
+                    payload_condition,
+                    field_condition
+                )
+                : field_condition;
+        }
+    }
+    if (!is_valid(payload_condition)) {
+        payload_condition = this->append_true_value();
+    }
+    const BlockId payload_tail_block = this->current_block_;
+    this->append_branch_if_open(exit_block);
+
+    this->current_block_ = exit_block;
+    Value result;
+    result.kind = ValueKind::phi;
+    result.type = this->module_.types.builtin(sema::BuiltinType::bool_);
+    result.incoming.push_back(PhiInput {tag_block, condition});
+    result.incoming.push_back(PhiInput {payload_tail_block, payload_condition});
+    return this->append_value(result);
 }
 
 ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
@@ -165,19 +364,9 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
     }
 
     const sema::TypeHandle matched_type = expr_type(expr.match_value);
-    const bool payload_enum = is_payload_enum(module_.types, matched_type);
     const ValueId matched = lower_expr(expr.match_value);
-    ValueId matched_slot = INVALID_VALUE_ID;
-    ValueId matched_tag = matched;
-    if (payload_enum) {
-        matched_slot = append_temp_alloca("match.value", matched_type);
-        append_store(matched_slot, matched);
-        matched_tag = append_load(
-            enum_field_addr(matched_slot, std::string(IR_ENUM_TAG_FIELD_NAME)),
-            enum_tag_type(module_.types, matched_type),
-            "match.tag"
-        );
-    }
+    const ValueId matched_slot = append_temp_alloca("match.value", matched_type);
+    append_store(matched_slot, matched);
 
     const BlockId join_block = add_block(*current_function_, "match.join" + std::to_string(current_function_->blocks.size()));
     std::vector<PhiInput> incoming;
@@ -185,8 +374,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
 
     for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
         const syntax::MatchArm& arm = expr.match_arms[i];
-        const syntax::PatternNode* pattern = pattern_node(arm.pattern);
-        const bool fallback = is_fallback_match_pattern(arm.pattern);
+        const bool fallback = is_irrefutable_pattern(arm.pattern, matched_type);
         const BlockId arm_block = add_block(*current_function_, "match.arm" + std::to_string(current_function_->blocks.size()));
         BlockId next_test_block = INVALID_BLOCK_ID;
         const bool guarded = syntax::is_valid(arm.guard);
@@ -198,7 +386,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
             if (fallback) {
                 append_branch_if_open(arm_block);
             } else {
-                const ValueId condition = append_match_pattern_condition(arm.pattern, matched_tag, matched_type, payload_enum);
+                const ValueId condition = append_pattern_condition(arm.pattern, matched_slot, matched_type);
                 Terminator cond;
                 cond.kind = TerminatorKind::cond_branch;
                 cond.condition = condition;
@@ -210,7 +398,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
 
         current_block_ = arm_block;
         const auto previous_locals = locals_;
-        bind_match_payload(pattern, arm.pattern, payload_enum, matched_slot);
+        bind_pattern_locals(arm.pattern, matched_slot, matched_type);
         BlockId arm_body_block = arm_block;
         if (guarded) {
             arm_body_block = add_block(*current_function_, "match.guard.pass" + std::to_string(current_function_->blocks.size()));
@@ -477,66 +665,118 @@ ValueId Lowerer::enum_field_addr(const ValueId object, const std::string& field_
     return append_value(value);
 }
 
-void Lowerer::bind_payload_arm(const syntax::PatternNode& pattern, const sema::EnumCaseInfo& info, const ValueId matched_slot) {
-    const base::usize binding_count = pattern_payload_binding_count(pattern);
-    const base::usize payload_field_count = enum_case_payload_field_count(info);
-    if (!sema::is_valid(info.payload_type) || binding_count == 0 || binding_count != payload_field_count) {
-        return;
-    }
-    const ValueId storage_addr = this->enum_field_addr(matched_slot, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
-    Value cast;
-    cast.kind = ValueKind::cast;
-    cast.type = this->module_.types.pointer(sema::PointerMutability::mut, info.payload_type);
-    cast.target_type = cast.type;
-    cast.lhs = storage_addr;
-    cast.cast_kind = CastKind::pointer;
-    const ValueId payload_addr = this->append_value(cast);
-
-    const auto bind_payload_value = [&](const std::string_view name, const sema::TypeHandle type, const ValueId value) {
-        const std::string local_name(name);
-        const ValueId slot = this->append_temp_alloca(local_name, type);
-        this->locals_[local_name] = LocalBinding {slot, false};
-        this->append_store(slot, value);
+void Lowerer::bind_pattern_locals(
+    const syntax::PatternId pattern_id,
+    const ValueId source_address,
+    const sema::TypeHandle source_type
+) {
+    struct PatternFrame {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        ValueId address = INVALID_VALUE_ID;
+        sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     };
 
-    if (payload_field_count == 1) {
-        const std::string_view binding_name = pattern_payload_binding_name(pattern, 0);
-        bind_payload_value(
-            binding_name,
-            info.payload_type,
-            this->append_load(payload_addr, info.payload_type, std::string(binding_name))
-        );
-        return;
-    }
-
-    for (base::usize i = 0; i < payload_field_count; ++i) {
-        const sema::TypeHandle field_type = enum_case_payload_field_type(info, i);
-        const std::string field_name = std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
-        Value field_addr;
-        field_addr.kind = ValueKind::field_addr;
-        field_addr.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
-        field_addr.name = field_name;
-        field_addr.object = payload_addr;
-        const std::string_view binding_name = pattern_payload_binding_name(pattern, i);
-        bind_payload_value(
-            binding_name,
-            field_type,
-            this->append_load(this->append_value(field_addr), field_type, std::string(binding_name))
-        );
-    }
-}
-
-void Lowerer::bind_match_payload(
-    const syntax::PatternNode* pattern,
-    const syntax::PatternId pattern_id,
-    const bool payload_enum,
-    const ValueId matched_slot
-) {
-    if (!payload_enum || pattern == nullptr || !pattern_has_payload_bindings(*pattern)) {
-        return;
-    }
-    if (const sema::EnumCaseInfo* info = this->enum_case_info(this->pattern_case_symbol(pattern_id)); info != nullptr) {
-        this->bind_payload_arm(*pattern, *info, matched_slot);
+    std::vector<PatternFrame> pending;
+    pending.push_back(PatternFrame {pattern_id, source_address, source_type});
+    while (!pending.empty()) {
+        const PatternFrame frame = pending.back();
+        pending.pop_back();
+        const syntax::PatternNode* pattern = this->pattern_node(frame.pattern);
+        if (pattern == nullptr) {
+            continue;
+        }
+        switch (pattern->kind) {
+        case syntax::PatternKind::wildcard:
+        case syntax::PatternKind::literal:
+            break;
+        case syntax::PatternKind::binding: {
+            const std::string local_name(pattern->binding_name);
+            const ValueId slot = this->append_temp_alloca(local_name, frame.type);
+            this->locals_[local_name] = LocalBinding {slot, false};
+            this->append_store(slot, this->append_load(frame.address, frame.type, local_name));
+            break;
+        }
+        case syntax::PatternKind::tuple: {
+            if (!sema::is_valid(frame.type) || !this->module_.types.is_tuple(frame.type)) {
+                break;
+            }
+            const sema::TypeInfo& tuple = this->module_.types.get(frame.type);
+            const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
+            for (base::usize i = count; i > 0; --i) {
+                const base::usize element_index = i - 1;
+                Value field;
+                field.kind = ValueKind::field_addr;
+                field.name = std::to_string(element_index);
+                field.object = frame.address;
+                field.type = this->module_.types.pointer(sema::PointerMutability::mut, tuple.tuple_elements[element_index]);
+                pending.push_back(PatternFrame {
+                    pattern->elements[element_index],
+                    this->append_value(field),
+                    tuple.tuple_elements[element_index],
+                });
+            }
+            break;
+        }
+        case syntax::PatternKind::struct_:
+            for (auto field_pattern = pattern->field_patterns.rbegin();
+                 field_pattern != pattern->field_patterns.rend();
+                 ++field_pattern) {
+                const sema::TypeHandle field_type = this->aggregate_field_type(frame.type, field_pattern->name);
+                Value field;
+                field.kind = ValueKind::field_addr;
+                field.name = std::string(field_pattern->name);
+                field.object = frame.address;
+                field.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
+                pending.push_back(PatternFrame {
+                    field_pattern->pattern,
+                    this->append_value(field),
+                    field_type,
+                });
+            }
+            break;
+        case syntax::PatternKind::enum_case: {
+            if (pattern->payload_patterns.empty()) {
+                break;
+            }
+            const sema::EnumCaseInfo* info = this->enum_case_info(this->pattern_case_symbol(frame.pattern));
+            if (info == nullptr || !sema::is_valid(info->payload_type)) {
+                break;
+            }
+            const ValueId storage_addr = this->enum_field_addr(frame.address, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
+            Value cast;
+            cast.kind = ValueKind::cast;
+            cast.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_type);
+            cast.target_type = cast.type;
+            cast.lhs = storage_addr;
+            cast.cast_kind = CastKind::pointer;
+            const ValueId payload_addr = this->append_value(cast);
+            if (info->payload_types.size() == 1 && pattern->payload_patterns.size() == 1) {
+                pending.push_back(PatternFrame {
+                    pattern->payload_patterns.front(),
+                    payload_addr,
+                    info->payload_type,
+                });
+                break;
+            }
+            const base::usize count = std::min(info->payload_types.size(), pattern->payload_patterns.size());
+            for (base::usize i = count; i > 0; --i) {
+                const base::usize payload_index = i - 1;
+                Value field;
+                field.kind = ValueKind::field_addr;
+                field.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_types[payload_index]);
+                field.name = std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(payload_index);
+                field.object = payload_addr;
+                pending.push_back(PatternFrame {
+                    pattern->payload_patterns[payload_index],
+                    this->append_value(field),
+                    info->payload_types[payload_index],
+                });
+            }
+            break;
+        }
+        case syntax::PatternKind::or_pattern:
+            break;
+        }
     }
 }
 

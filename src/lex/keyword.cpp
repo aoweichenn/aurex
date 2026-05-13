@@ -18,6 +18,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"fn", syntax::TokenKind::kw_fn},
     KeywordEntry {"if", syntax::TokenKind::kw_if},
     KeywordEntry {"in", syntax::TokenKind::kw_in},
+    KeywordEntry {"is", syntax::TokenKind::kw_is},
     KeywordEntry {"i8", syntax::TokenKind::kw_i8},
     KeywordEntry {"u8", syntax::TokenKind::kw_u8},
 

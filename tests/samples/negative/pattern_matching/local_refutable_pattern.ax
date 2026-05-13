@@ -1,0 +1,12 @@
+module local_refutable_pattern;
+
+enum OptionI32 {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let wrapped = OptionI32.some(1);
+    let (.some(value),) = (wrapped,);
+    return value;
+}

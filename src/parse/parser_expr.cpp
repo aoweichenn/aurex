@@ -1,6 +1,7 @@
 #include <aurex/parse/parser_expr_part.hpp>
 
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_pattern_part.hpp>
 #include <aurex/parse/parser_postfix_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -105,6 +106,10 @@ syntax::ExprId ExprParser::parse_expr(const ExprContext context) {
 syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
     const syntax::Token& begin = this->expect(TokenKind::kw_if, std::string(PARSER_EXPECT_IF));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
+    syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
+    if (this->match(TokenKind::kw_is)) {
+        condition_pattern = PatternParser(this->parser_).parse_pattern();
+    }
 
     const syntax::ExprId then_expr = this->parse_block_expr(context);
     this->expect_recovered(
@@ -120,6 +125,7 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
     expr.kind = syntax::ExprKind::if_expr;
     expr.range = this->merge(begin.range, this->expr_range_or(else_expr, begin.range));
     expr.condition = condition;
+    expr.condition_pattern = condition_pattern;
     expr.then_expr = then_expr;
     expr.else_expr = else_expr;
     return this->session_.module.push_expr(std::move(expr));

@@ -134,6 +134,7 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
         arg = remap_expr(arg, map);
     }
     node.condition = remap_expr(node.condition, map);
+    node.condition_pattern = remap_pattern(node.condition_pattern, map);
     node.then_expr = remap_expr(node.then_expr, map);
     node.else_expr = remap_expr(node.else_expr, map);
     node.block = remap_stmt(node.block, map);
@@ -164,6 +165,15 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
 }
 
 void remap_pattern_node(syntax::PatternNode& node, const IdMap& map) {
+    for (syntax::PatternId& payload : node.payload_patterns) {
+        payload = remap_pattern(payload, map);
+    }
+    for (syntax::PatternId& element : node.elements) {
+        element = remap_pattern(element, map);
+    }
+    for (syntax::FieldPattern& field : node.field_patterns) {
+        field.pattern = remap_pattern(field.pattern, map);
+    }
     for (syntax::PatternId& alternative : node.alternatives) {
         alternative = remap_pattern(alternative, map);
     }
@@ -175,6 +185,7 @@ void remap_stmt_node(syntax::StmtNode& node, const IdMap& map) {
     node.lhs = remap_expr(node.lhs, map);
     node.rhs = remap_expr(node.rhs, map);
     node.condition = remap_expr(node.condition, map);
+    node.pattern = remap_pattern(node.pattern, map);
     node.range_start = remap_expr(node.range_start, map);
     node.range_end = remap_expr(node.range_end, map);
     node.range_step = remap_expr(node.range_step, map);

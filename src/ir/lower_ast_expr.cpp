@@ -86,7 +86,16 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
     if (current_function_ == nullptr || !is_valid(current_block_)) {
         return INVALID_VALUE_ID;
     }
-    const ValueId condition = lower_expr(expr.condition);
+    ValueId condition = INVALID_VALUE_ID;
+    ValueId condition_slot = INVALID_VALUE_ID;
+    const sema::TypeHandle condition_type = this->expr_type(expr.condition);
+    if (syntax::is_valid(expr.condition_pattern)) {
+        condition_slot = this->append_temp_alloca("if.pattern", condition_type);
+        this->append_store(condition_slot, this->lower_expr(expr.condition));
+        condition = this->append_pattern_condition(expr.condition_pattern, condition_slot, condition_type);
+    } else {
+        condition = lower_expr(expr.condition);
+    }
     const BlockId then_block = add_block(*current_function_, "if.expr.then" + std::to_string(current_function_->blocks.size()));
     const BlockId else_block = add_block(*current_function_, "if.expr.else" + std::to_string(current_function_->blocks.size()));
     const BlockId join_block = add_block(*current_function_, "if.expr.join" + std::to_string(current_function_->blocks.size()));
@@ -99,7 +108,12 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
     set_terminator(current_block_, cond);
 
     current_block_ = then_block;
+    const auto previous_then_locals = this->locals_;
+    if (syntax::is_valid(expr.condition_pattern)) {
+        this->bind_pattern_locals(expr.condition_pattern, condition_slot, condition_type);
+    }
     const ValueId then_value = lower_expr(expr.then_expr, expr_type(expr_id));
+    this->locals_ = previous_then_locals;
     const BlockId then_tail_block = current_block_;
     append_branch_if_open(join_block);
 

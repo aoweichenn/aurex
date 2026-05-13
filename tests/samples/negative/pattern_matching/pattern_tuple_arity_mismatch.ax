@@ -1,0 +1,8 @@
+module pattern_tuple_arity_mismatch;
+
+fn main() -> i32 {
+    let pair: (i32, i32) = (1, 2);
+    return match pair {
+        (a, b, third) => a + b + third,
+    };
+}

@@ -77,7 +77,7 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     const syntax::Token& begin = this->advance();
     syntax::Token name;
     syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
-    if (this->check(TokenKind::l_paren)) {
+    if (this->check(TokenKind::l_paren) || (this->check(TokenKind::identifier) && this->check_next(TokenKind::l_brace))) {
         pattern = PatternParser(this->parser_).parse_binding_pattern();
     } else {
         name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_LOCAL_NAME));

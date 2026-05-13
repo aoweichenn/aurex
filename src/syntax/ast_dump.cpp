@@ -41,6 +41,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_else: return "kw_else";
     case TokenKind::kw_for: return "kw_for";
     case TokenKind::kw_in: return "kw_in";
+    case TokenKind::kw_is: return "kw_is";
     case TokenKind::kw_while: return "kw_while";
     case TokenKind::kw_break: return "kw_break";
     case TokenKind::kw_continue: return "kw_continue";
@@ -260,6 +261,27 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
         label += ")";
         return label;
     }
+    if (pattern.kind == PatternKind::struct_) {
+        std::string label = std::string(pattern.struct_name) + " {";
+        for (base::usize i = 0; i < pattern.field_patterns.size(); ++i) {
+            if (i != 0) {
+                label += ", ";
+            }
+            const FieldPattern& field = pattern.field_patterns[i];
+            label += std::string(field.name);
+            const PatternNode* child = is_valid(field.pattern) && field.pattern.value < module.patterns.size()
+                ? &module.patterns[field.pattern.value]
+                : nullptr;
+            if (child == nullptr ||
+                child->kind != PatternKind::binding ||
+                child->binding_name != field.name) {
+                label += ": ";
+                label += pattern_label(module, field.pattern);
+            }
+        }
+        label += "}";
+        return label;
+    }
     if (pattern.kind == PatternKind::literal) {
         return std::string(pattern.case_name);
     }
@@ -281,7 +303,16 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
         label += ".";
     }
     label += std::string(pattern.case_name);
-    if (!pattern.binding_names.empty()) {
+    if (!pattern.payload_patterns.empty()) {
+        label += "(";
+        for (base::usize i = 0; i < pattern.payload_patterns.size(); ++i) {
+            if (i != 0) {
+                label += ", ";
+            }
+            label += pattern_label(module, pattern.payload_patterns[i]);
+        }
+        label += ")";
+    } else if (!pattern.binding_names.empty()) {
         label += "(";
         for (base::usize i = 0; i < pattern.binding_names.size(); ++i) {
             if (i != 0) {
@@ -523,6 +554,10 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     }
     if (is_valid(expr.condition)) {
         dump_expr(out, module, expr.condition, depth + 1);
+    }
+    if (is_valid(expr.condition_pattern)) {
+        indent(out, depth + 1);
+        out << "condition_pattern " << pattern_label(module, expr.condition_pattern) << "\n";
     }
     if (is_valid(expr.then_expr)) {
         dump_expr(out, module, expr.then_expr, depth + 1);

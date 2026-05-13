@@ -1,0 +1,13 @@
+module struct_pattern_non_struct;
+
+struct Point {
+    x: i32;
+}
+
+fn main() -> i32 {
+    let value = 1;
+    return match value {
+        Point { x } => 1,
+        _ => 0,
+    };
+}

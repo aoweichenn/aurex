@@ -272,6 +272,23 @@ void Lowerer::lower_local_pattern(
             }
             break;
         }
+        case syntax::PatternKind::struct_:
+            for (auto field_pattern = pattern->field_patterns.rbegin();
+                 field_pattern != pattern->field_patterns.rend();
+                 ++field_pattern) {
+                const sema::TypeHandle field_type = this->aggregate_field_type(frame.type, field_pattern->name);
+                Value field;
+                field.kind = ValueKind::field_addr;
+                field.name = std::string(field_pattern->name);
+                field.object = frame.address;
+                field.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
+                pending.push_back(PatternFrame {
+                    field_pattern->pattern,
+                    this->append_value(field),
+                    field_type,
+                });
+            }
+            break;
         case syntax::PatternKind::enum_case:
         case syntax::PatternKind::literal:
         case syntax::PatternKind::or_pattern:
@@ -281,7 +298,16 @@ void Lowerer::lower_local_pattern(
 }
 
 void Lowerer::lower_if(const syntax::StmtNode& stmt) {
-    const ValueId condition = lower_expr(stmt.condition);
+    ValueId condition = INVALID_VALUE_ID;
+    ValueId condition_slot = INVALID_VALUE_ID;
+    const sema::TypeHandle condition_type = this->expr_type(stmt.condition);
+    if (syntax::is_valid(stmt.pattern)) {
+        condition_slot = this->append_temp_alloca("if.pattern", condition_type);
+        this->append_store(condition_slot, this->lower_expr(stmt.condition));
+        condition = this->append_pattern_condition(stmt.pattern, condition_slot, condition_type);
+    } else {
+        condition = lower_expr(stmt.condition);
+    }
     const BlockId then_block = add_block(*current_function_, "if.then" + std::to_string(current_function_->blocks.size()));
     const BlockId else_block = add_block(*current_function_, "if.else" + std::to_string(current_function_->blocks.size()));
     BlockId join_block = INVALID_BLOCK_ID;
@@ -300,7 +326,12 @@ void Lowerer::lower_if(const syntax::StmtNode& stmt) {
     set_terminator(current_block_, cond);
 
     current_block_ = then_block;
+    const auto previous_then_locals = this->locals_;
+    if (syntax::is_valid(stmt.pattern)) {
+        this->bind_pattern_locals(stmt.pattern, condition_slot, condition_type);
+    }
     lower_block(stmt.then_block);
+    this->locals_ = previous_then_locals;
     const bool then_open = !has_terminator(current_block_);
     if (then_open) {
         append_branch_if_open(ensure_join_block());
@@ -326,7 +357,16 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
 
     append_branch_if_open(condition_block);
     current_block_ = condition_block;
-    const ValueId condition = lower_expr(stmt.condition);
+    ValueId condition = INVALID_VALUE_ID;
+    ValueId condition_slot = INVALID_VALUE_ID;
+    const sema::TypeHandle condition_type = this->expr_type(stmt.condition);
+    if (syntax::is_valid(stmt.pattern)) {
+        condition_slot = this->append_temp_alloca("while.pattern", condition_type);
+        this->append_store(condition_slot, this->lower_expr(stmt.condition));
+        condition = this->append_pattern_condition(stmt.pattern, condition_slot, condition_type);
+    } else {
+        condition = lower_expr(stmt.condition);
+    }
     const BlockId body_block = add_block(*current_function_, "while.body" + std::to_string(current_function_->blocks.size()));
     const BlockId exit_block = add_block(*current_function_, "while.exit" + std::to_string(current_function_->blocks.size()));
     Terminator cond;
@@ -338,7 +378,12 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
 
     loop_contexts_.push_back(LoopContext {exit_block, condition_block, defer_scopes_.size()});
     current_block_ = body_block;
+    const auto previous_body_locals = this->locals_;
+    if (syntax::is_valid(stmt.pattern)) {
+        this->bind_pattern_locals(stmt.pattern, condition_slot, condition_type);
+    }
     lower_block(stmt.body);
+    this->locals_ = previous_body_locals;
     append_branch_if_open(condition_block);
     loop_contexts_.pop_back();
 

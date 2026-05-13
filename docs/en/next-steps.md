@@ -55,8 +55,12 @@ after core syntax, types, modules, and ABI boundaries stabilize.
 
    Tuple basics are now in M2: `(A, B)` / `(A,)` types, `(a, b)` / `(a,)`
    literals, `value.0` numeric field access, and local tuple destructuring in
-   `let` / `var`. Keep tuple match patterns, struct patterns, `if let`,
-   `while let`, and `let ... else` as the next pattern ergonomics topic.
+   `let` / `var`. Pattern ergonomics now include tuple match patterns, struct
+   patterns, nested enum payload destructuring, local struct destructuring, and
+   `if value is pattern` / `while value is pattern` conditions and `if`
+   expression pattern conditions. Keep slice
+   patterns, binding or-pattern alternatives, and `let ... else` as later
+   pattern topics.
 
 7. Capability / trait / where
 

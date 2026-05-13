@@ -1,0 +1,13 @@
+module match_or_pattern_refutable_payload_not_exhaustive;
+
+enum Maybe {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let value = Maybe.some(2);
+    return match value {
+        .some(1) | .none => 0,
+    };
+}

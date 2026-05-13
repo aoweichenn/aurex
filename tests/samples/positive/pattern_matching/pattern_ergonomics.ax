@@ -1,0 +1,144 @@
+module pattern_ergonomics;
+
+struct Point {
+    x: i32;
+    y: i32;
+}
+
+enum MaybePair {
+    some((i32, i32)),
+    none,
+}
+
+enum NestedPair {
+    wrap(MaybePair),
+    none,
+}
+
+enum Color {
+    red,
+    green,
+    blue,
+}
+
+enum Step {
+    next(i32),
+    stop,
+}
+
+fn tuple_score(pair: (i32, i32)) -> i32 {
+    return match pair {
+        (left, right) => left + right,
+    };
+}
+
+fn point_score(point: Point) -> i32 {
+    return match point {
+        Point { x, y } => x * 10 + y,
+    };
+}
+
+fn point_x_score(point: Point) -> i32 {
+    return match point {
+        Point { x: 4, y } => y,
+        _ => 0,
+    };
+}
+
+fn if_point_score(point: Point) -> i32 {
+    if point is Point { x: 4, y } {
+        return y;
+    }
+    return 0;
+}
+
+fn if_point_expr_score(point: Point) -> i32 {
+    return if point is Point { x: 4, y } {
+        y
+    } else {
+        0
+    };
+}
+
+fn nested_score(pair: MaybePair) -> i32 {
+    return match pair {
+        .some((left, right)) => left * right,
+        .none => 0,
+    };
+}
+
+fn maybe_present_score(pair: MaybePair) -> i32 {
+    return match pair {
+        .some(_) | .none => 1,
+    };
+}
+
+fn nested_scoped_score(pair: NestedPair) -> i32 {
+    return match pair {
+        .wrap(MaybePair.some((left, right))) => left + right,
+        .wrap(MaybePair.none) => 0,
+        _ => 0,
+    };
+}
+
+fn color_score(color: Color) -> i32 {
+    return match color {
+        .red | _ => 1,
+    };
+}
+
+fn if_score(pair: MaybePair) -> i32 {
+    if pair is .some((left, right)) {
+        return left - right;
+    }
+    return 0;
+}
+
+fn if_expr_score(pair: MaybePair) -> i32 {
+    return if pair is .some((left, right)) {
+        left + right
+    } else {
+        0
+    };
+}
+
+fn while_score(start: i32) -> i32 {
+    var current = Step.next(start);
+    var total = 0;
+    while current is .next(value) {
+        total += value;
+        if value > 1 {
+            current = Step.next(value - 1);
+        } else {
+            current = Step.stop;
+        }
+    }
+    return total;
+}
+
+fn main() -> i32 {
+    let pair: (i32, i32) = (2, 3);
+    let point = Point { x: 4, y: 7 };
+    let Point { x: px, y: py } = point;
+    let maybe = MaybePair.some(pair);
+    let nested = NestedPair.wrap(maybe);
+    return tuple_score(pair) +
+        point_score(point) +
+        point_x_score(point) +
+        if_point_score(point) +
+        if_point_expr_score(point) +
+        px +
+        py +
+        nested_score(maybe) +
+        nested_score(MaybePair.none) +
+        maybe_present_score(maybe) +
+        nested_scoped_score(nested) +
+        nested_scoped_score(NestedPair.wrap(MaybePair.none)) +
+        color_score(Color.green) +
+        if_score(maybe) +
+        if_score(MaybePair.none) +
+        if_expr_score(maybe) +
+        if_expr_score(MaybePair.none) +
+        while_score(3) -
+        107;
+}

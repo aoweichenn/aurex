@@ -87,15 +87,21 @@ This matrix records whether a syntax position is supported by current M2.
 | Block | `{ let x = 1; x + 1 }` | yes | Tail expression result |
 | Block | `{ x = 1 }` | no | Assignment cannot be block result |
 | If expr | `if c { 1 } else { 2 }` | yes | Branch types must match |
+| If expr | `if opt is .some(v) { v } else { 0 }` | yes | Pattern bindings are scoped to then branch |
 | If expr | `if c { 1 }` | no | Expression form requires else |
 | If stmt | `if c { f(); }` | yes | Else optional |
+| If stmt | `if opt is .some(v) { f(v); }` | yes | Pattern condition |
+| While stmt | `while step is .next(v) { ... }` | yes | Pattern bindings are scoped to loop body |
 | Match | `match e { .some(x) => x, .none => 0 }` | yes | Enum match |
 | Match | `match b { true => 1, false => 0 }` | yes | Bool match |
 | Pattern | `.span(a, b)` | yes | Binding count must match payload |
+| Pattern | `.some((a, b))` | yes | Nested payload destructuring |
+| Pattern | `Point { x, y: other }` | yes | Struct pattern |
 | Pattern | `.some(x) | .none` | no | Or-pattern alternatives cannot bind payloads |
-| Local pattern | `let (a, _) = pair;` | yes | Tuple destructuring for local `let`/`var` only |
+| Local pattern | `let (a, _) = pair;` | yes | Tuple destructuring for local `let`/`var` |
+| Local pattern | `let Point { x, y } = point;` | yes | Struct destructuring for local `let`/`var` |
 | Local pattern | `let () = value;` | no | Empty tuple pattern is not part of M2 |
-| Match pattern | `match pair { (a, b) => a }` | no | Tuple match patterns are deferred |
+| Match pattern | `match pair { (a, b) => a }` | yes | Structural match requires an irrefutable arm |
 | For | `for var i: i32 = 0; i < 10; i += 1 {}` | yes | C-style loop |
 | Range-for | `for i in range(0, 10, 2) {}` | yes | `range` only |
 | For-in | `for x in values {}` | no | Generic iteration is not part of M2 |

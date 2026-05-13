@@ -256,15 +256,15 @@ tuple 类型：
 (i32,)
 ```
 
-当前 tuple 是匿名 product type；支持 tuple literal、零基数字字段和局部解构：
+当前 tuple 是匿名 product type；支持 tuple literal、零基数字字段、局部解构和 match tuple pattern：
 
 ```aurex
 let pair: (i32, bool) = (1, true);
 let (count, ok) = pair;
-return pair.0;
+return match pair { (left, right) => left };
 ```
 
-空 tuple 和 match tuple pattern 暂不属于 M2。
+空 tuple 暂不属于 M2。
 
 泛型类型：
 
@@ -910,10 +910,10 @@ let Result.ok(value) = result else {
 
 优先级：
 
-1. struct pattern。
-2. `let` pattern / `if let` / `while let`。
-3. payload binding 在 or-pattern 中的一致性规则。
-4. nested pattern。
+1. struct pattern、match tuple pattern、nested enum payload pattern 已补齐。
+2. `if value is pattern` / `while value is pattern` / if 表达式 pattern condition 已补齐。
+3. payload binding 在 or-pattern 中的一致性规则仍暂缓。
+4. slice pattern 和 `let ... else` 仍暂缓。
 5. 更精确的 guard exhaustiveness 诊断。
 
 ### 9. 错误处理路线应继续坚持 `Result` / `Option` / `?`
@@ -998,8 +998,8 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 1. slice type / slice expression 已落地；继续和 `str` 的 UTF-8 boundary 规则对齐。
 2. raw/multiline raw string、bytes string、Unicode scalar `char` 的字面量边界已补齐；`b'a'` 继续是 `u8`。
 3. function pointer / function type 已落地，包括 `fn(...) -> T`、`extern c fn(...) -> T`、函数名作为值和函数指针间接调用；后续只需要补完整 closure 设计。
-4. tuple / destructuring declaration 已落地；保持空 tuple 和 match tuple pattern 暂缓边界。
-5. 支持 struct pattern、match tuple pattern、`if let`、`let ... else`。
+4. tuple / destructuring declaration、struct pattern、match tuple pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition 已落地；保持空 tuple 暂缓边界。
+5. 后续处理 slice pattern、binding or-pattern alternatives 和 `let ... else`。
 6. 改进 exhaustiveness 和 unreachable diagnostics，避免 pattern 扩展后退化为 ad-hoc 检查。
 
 ### P1：类型系统主线
@@ -1022,8 +1022,8 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 
 1. enum base type 和 discriminant 可选已完成；显式 C-like/repr enum 继续使用 `enum Status: u8 { ok = 0, err = 1 }`。
 2. 多字段 payload 构造和 `.case(a, b)` destructuring 已完成。
-3. 支持 struct pattern。这和 P1 pattern 人体工程学同步推进。
-4. 支持 `if let` / `let ... else`。
+3. struct pattern、match tuple pattern、nested enum payload pattern、`if value is pattern` / `while value is pattern` / if 表达式 pattern condition 已完成。
+4. 后续支持 slice pattern、binding or-pattern alternatives 和 `let ... else`。
 5. 改进 exhaustiveness 和 unreachable diagnostics。
 6. 明确 payload 的普通值传递、匹配绑定和数组/含数组类型限制；资源相关的 move / borrow / drop 规则暂缓。
 

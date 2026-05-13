@@ -1,0 +1,14 @@
+module enum_pattern_unknown_scoped_case;
+
+enum Choice {
+    first,
+    second,
+}
+
+fn main() -> i32 {
+    let choice = Choice.first;
+    return match choice {
+        Choice.missing => 0,
+        _ => 1,
+    };
+}

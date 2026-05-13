@@ -41,6 +41,7 @@ enum class TokenKind {
     kw_else,
     kw_for,
     kw_in,
+    kw_is,
     kw_while,
     kw_break,
     kw_continue,

@@ -52,6 +52,12 @@ private:
         bool cache_syntax_types = true;
     };
 
+    struct PatternBinding {
+        std::string name;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        base::SourceRange range {};
+    };
+
     static constexpr base::u64 SEMA_TYPE_ABI_INVALID_SIZE = 0;
     static constexpr base::u64 SEMA_TYPE_ABI_MIN_ALIGNMENT = 1;
     static constexpr int SEMA_NO_LOOP_DEPTH = 0;
@@ -66,6 +72,7 @@ private:
         statement,
         scoped_block,
         block_statements,
+        pattern_scoped_block,
         pop_scope,
         enter_loop,
         exit_loop,
@@ -75,6 +82,9 @@ private:
     struct StatementAnalysisAction {
         StatementAnalysisActionKind kind = StatementAnalysisActionKind::statement;
         syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+        syntax::StmtId block = syntax::INVALID_STMT_ID;
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        TypeHandle pattern_type = INVALID_TYPE_HANDLE;
     };
 
     struct TypeAbiLayout {
@@ -130,6 +140,12 @@ private:
         ReturnTypeInference* return_inference
     );
     void analyze_statement_block(syntax::StmtId block, std::vector<StatementAnalysisAction>& stack);
+    void analyze_pattern_scoped_block(
+        syntax::PatternId pattern,
+        TypeHandle pattern_type,
+        syntax::StmtId block,
+        std::vector<StatementAnalysisAction>& stack
+    );
     void analyze_for_condition(syntax::StmtId stmt);
     [[nodiscard]] TypeHandle analyze_for_range_bounds(syntax::StmtId stmt, const syntax::StmtNode& node);
     void define_for_range_local(const syntax::StmtNode& node, TypeHandle type);
@@ -202,25 +218,13 @@ private:
     [[nodiscard]] TypeHandle analyze_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     void define_local_pattern(syntax::PatternId pattern, TypeHandle type, bool is_mutable);
-    [[nodiscard]] const EnumCaseInfo* analyze_enum_case_pattern(
+    [[nodiscard]] bool analyze_pattern(
         syntax::PatternId pattern,
         TypeHandle matched,
-        std::vector<std::string>& covered,
-        bool& saw_wildcard
+        std::vector<PatternBinding>& bindings
     );
-    [[nodiscard]] const EnumCaseInfo* analyze_single_enum_case_pattern(
-        syntax::PatternId pattern,
-        TypeHandle matched,
-        std::vector<std::string>& covered,
-        bool& saw_wildcard
-    );
-    [[nodiscard]] const EnumCaseInfo* analyze_value_pattern(
-        syntax::PatternId pattern,
-        TypeHandle matched,
-        bool& covered_true,
-        bool& covered_false,
-        bool& saw_wildcard
-    );
+    [[nodiscard]] bool pattern_is_irrefutable(syntax::PatternId pattern, TypeHandle matched) const;
+    void define_pattern_bindings(const std::vector<PatternBinding>& bindings, bool is_mutable);
     [[nodiscard]] const EnumCaseInfo* analyze_single_value_pattern(
         syntax::PatternId pattern,
         TypeHandle matched,

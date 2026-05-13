@@ -101,13 +101,9 @@ private:
 
     [[nodiscard]] const syntax::PatternNode* pattern_node(syntax::PatternId id) const noexcept;
     [[nodiscard]] std::string pattern_case_symbol(syntax::PatternId id) const;
-    [[nodiscard]] bool is_fallback_match_pattern(syntax::PatternId id) const noexcept;
-    [[nodiscard]] ValueId append_match_pattern_condition(
-        syntax::PatternId id,
-        ValueId matched_tag,
-        sema::TypeHandle matched_type,
-        bool payload_enum
-    );
+    [[nodiscard]] bool is_irrefutable_pattern(syntax::PatternId id, sema::TypeHandle matched_type) const;
+    [[nodiscard]] ValueId append_true_value();
+    [[nodiscard]] ValueId append_pattern_condition(syntax::PatternId id, ValueId source_address, sema::TypeHandle source_type);
 
     void lower_function_body(FunctionId function_id, const syntax::ItemNode& item);
     void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceInfo& instance);
@@ -160,13 +156,7 @@ private:
         const std::string& name = {}
     );
     [[nodiscard]] ValueId enum_field_addr(ValueId object, const std::string& field_name);
-    void bind_payload_arm(const syntax::PatternNode& pattern, const sema::EnumCaseInfo& info, ValueId matched_slot);
-    void bind_match_payload(
-        const syntax::PatternNode* pattern,
-        syntax::PatternId pattern_id,
-        bool payload_enum,
-        ValueId matched_slot
-    );
+    void bind_pattern_locals(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type);
 
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);

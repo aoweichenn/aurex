@@ -84,7 +84,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `*p` outside `unsafe` | no | Raw pointer dereference requires unsafe context |
 | Expr | `ptrcast[T](p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
 | Expr | `strvalid(bytes)` | yes | Safe UTF-8 validation for `[]const u8` / `[]mut u8` |
-| Expr | `strfromutf8(bytes)` | yes | Safe checked construction returning `(bool, str)`; failure returns empty `str` |
+| Expr | `strfromutf8(bytes)` | yes | Safe checked construction returning `str`; failure returns empty `str` |
 | Expr | `value++` / `value--` | no | Use assignment operators |
 | Block | `{ let x = 1; x + 1 }` | yes | Tail expression result |
 | Block | `{ x = 1 }` | no | Assignment cannot be block result |

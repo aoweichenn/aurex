@@ -41,6 +41,11 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 native 输出需要 `-o`。driver 风格的 `-S` 和 `-c` 在省略 `-o` 时会推导
 `input.s` 和 `input.o`。
 
+命令语法仍保持 clang 风格的扁平 flags，但 `--help` 会按一级动作选项和二级
+修饰选项分组。`--clang`、`--clang-arg` 这类 native backend 修饰选项只适用
+于 native 输出模式；如果和 `--emit=ir` 或 `--check` 这类 frontend-only 模式
+组合，会作为参数错误拒绝。
+
 ## import
 
 模块查找顺序：

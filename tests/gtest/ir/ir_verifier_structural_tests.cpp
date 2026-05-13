@@ -975,7 +975,6 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     const TypeHandle mut_u8_ptr = ptr(module, PointerMutability::mut, u8);
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
     const TypeHandle u8_slice = module.types.slice(PointerMutability::const_, u8);
-    const TypeHandle checked_str = module.types.tuple({bool_type, str});
 
     Function function = make_function(module, "bad_string_builtins", i32);
     FunctionBuilder builder {module, function};
@@ -1027,7 +1026,7 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     bad_strfromutf8_result.object = good_u8_slice_id;
     const ValueId bad_strfromutf8_result_id = builder.add(bad_strfromutf8_result);
 
-    Value bad_strfromutf8_operand = typed_value(ValueKind::str_from_utf8_checked, checked_str);
+    Value bad_strfromutf8_operand = typed_value(ValueKind::str_from_utf8_checked, str);
     bad_strfromutf8_operand.object = good_string_value;
     const ValueId bad_strfromutf8_operand_id = builder.add(bad_strfromutf8_operand);
 
@@ -1093,7 +1092,7 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
         "strblen operand type mismatch",
         "strvalid result must be bool",
         "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice",
-        "strfromutf8 result must be (bool, str)",
+        "strfromutf8 result must be str",
         "strraw requires data and length arguments",
         "strraw result must be str",
         "strraw data must be *const u8",

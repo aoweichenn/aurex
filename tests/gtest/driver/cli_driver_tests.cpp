@@ -68,6 +68,16 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult separate_emit_parse = require_parse_cli(separate_emit_args);
     EXPECT_EQ(separate_emit_parse.invocation.emit_kind, driver::EmitKind::check);
 
+    const std::vector<std::string_view> inference_reset_args {
+        "aurexc",
+        "-S",
+        "--emit=ir",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult inference_reset_parse = require_parse_cli(inference_reset_args);
+    EXPECT_EQ(inference_reset_parse.invocation.emit_kind, driver::EmitKind::ir);
+    EXPECT_TRUE(inference_reset_parse.invocation.output_path.empty());
+
     const std::vector<std::string_view> dump_llvm_ir_args {
         "aurexc",
         "--dump-llvm-ir",
@@ -111,6 +121,16 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     ASSERT_FALSE(unknown_equal);
     expect_contains(unknown_equal.error().message, "unknown option: --unknown");
 
+    const std::vector<std::string_view> inapplicable_native_backend_args {
+        "aurexc",
+        "--clang=/usr/bin/clang",
+        "--emit=ir",
+        "examples/hello.ax",
+    };
+    const auto inapplicable_native_backend = driver::parse_cli_arguments(inapplicable_native_backend_args);
+    ASSERT_FALSE(inapplicable_native_backend);
+    expect_contains(inapplicable_native_backend.error().message, "option requires native output: --clang");
+
     std::ostringstream out;
     std::ostringstream err;
     const std::vector<std::string_view> missing_file_args {
@@ -133,6 +153,10 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
 
     const std::string help = require_success(aurexc() + " --help").output;
     expect_contains_all(help, {
+        "primary options:",
+        "secondary options:",
+        "frontend and debug output:",
+        "native backend:",
         "--check",
         "--emit=ast",
         "--emit=ir",

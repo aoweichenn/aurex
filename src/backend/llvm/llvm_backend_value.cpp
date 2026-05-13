@@ -40,7 +40,6 @@ constexpr char LLVM_BACKEND_VALUE_UTF8_INDEX_NAME[] = "i";
 constexpr char LLVM_BACKEND_VALUE_UTF8_FIRST_NAME[] = "first";
 constexpr char LLVM_BACKEND_VALUE_UTF8_BYTE_NAME[] = "byte";
 constexpr char LLVM_BACKEND_VALUE_UTF8_STR_NAME[] = "str.checked";
-constexpr char LLVM_BACKEND_VALUE_UTF8_RESULT_NAME[] = "strfromutf8.result";
 constexpr char LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX[] = ".result";
 constexpr char LLVM_BACKEND_VALUE_FIELD_ADDRESS_SUFFIX[] = ".addr";
 constexpr char LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME[] = "index.addr";
@@ -49,8 +48,6 @@ constexpr unsigned LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX = 1U;
-constexpr unsigned LLVM_BACKEND_VALUE_STRFROMUTF8_OK_FIELD_INDEX = 0U;
-constexpr unsigned LLVM_BACKEND_VALUE_STRFROMUTF8_VALUE_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_ZERO_INTEGER = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER = 1U;
@@ -665,7 +662,7 @@ llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value) {
     llvm::Value* checked_data = this->builder_.CreateSelect(valid, data, empty_data);
     llvm::Value* checked_length = this->builder_.CreateSelect(valid, length, empty_length);
 
-    llvm::Value* text = llvm::UndefValue::get(this->llvm_type(this->source_.types.builtin(sema::BuiltinType::str)));
+    llvm::Value* text = llvm::UndefValue::get(this->llvm_type(value.type));
     text = this->builder_.CreateInsertValue(
         text,
         checked_data,
@@ -678,21 +675,7 @@ llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value) {
         {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
         LLVM_BACKEND_VALUE_UTF8_STR_NAME
     );
-
-    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
-    result = this->builder_.CreateInsertValue(
-        result,
-        valid,
-        {LLVM_BACKEND_VALUE_STRFROMUTF8_OK_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_UTF8_RESULT_NAME
-    );
-    result = this->builder_.CreateInsertValue(
-        result,
-        text,
-        {LLVM_BACKEND_VALUE_STRFROMUTF8_VALUE_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_UTF8_RESULT_NAME
-    );
-    return result;
+    return text;
 }
 
 llvm::Value* LlvmEmitter::emit_utf8_validation_call(llvm::Value* data, llvm::Value* length) {

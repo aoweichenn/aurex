@@ -51,10 +51,13 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 
 `--emit=exe` is the default. `-fsyntax-only` is accepted as an alias for
 `--check`; `-S` and `-c` follow the usual compiler-driver spelling for assembly
-and object output. `--clang <path>` or `--clang=<path>` selects a clang binary,
+and object output. CLI help is grouped into primary action options and secondary
+modifier options, while the command syntax remains clang-style flat flags.
+`--clang <path>` or `--clang=<path>` selects a clang binary for native output,
 `--opt-level O1`, `--opt-level=O1`, or `-O1` enables Aurex IR passes, and
 repeated `--clang-arg <arg>` / `--clang-arg=<arg>` options pass raw arguments
-such as `-O2` or `-g` to clang.
+such as `-O2` or `-g` to clang. Native backend options are rejected for
+non-native emit modes such as `--emit=ir`.
 
 The IR path is visible with:
 

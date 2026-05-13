@@ -22,7 +22,6 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     const TypeHandle slice_i32 = module.types.slice(PointerMutability::mut, i32);
     const TypeHandle callback_type = module.types.function(sema::FunctionCallConv::aurex, false, {i32}, i32);
     const TypeHandle str_type = builtin(module, BuiltinType::str);
-    const TypeHandle checked_str_type = module.types.tuple({bool_type, str_type});
     const TypeHandle record_type = module.types.named_struct("dump.Record", "dump_Record", false);
     const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
     module.records.push_back(RecordLayout {
@@ -92,7 +91,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     const ValueId utf8_valid = builder.add(str_valid);
     Value checked_string;
     checked_string.kind = ValueKind::str_from_utf8_checked;
-    checked_string.type = checked_str_type;
+    checked_string.type = str_type;
     checked_string.object = utf8_bytes;
     const ValueId utf8_checked = builder.add(checked_string);
 

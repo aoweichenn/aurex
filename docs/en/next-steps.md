@@ -74,8 +74,8 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    identity, ABI, literals, slice boundaries, and the checked/unchecked
    construction boundary. `strraw(data, len)` is fenced by `unsafe`; checked
    UTF-8 construction is now frozen as no-std builtins: `strvalid(bytes) -> bool`
-   and `strfromutf8(bytes) -> (bool, str)`, where failure returns `(false, "")`
-   instead of wrapping invalid input as `str`.
+   and `strfromutf8(bytes) -> str`, where failure returns the empty `str`
+   instead of wrapping invalid input as text.
 
 9. Test performance
 

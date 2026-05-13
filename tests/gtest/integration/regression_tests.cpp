@@ -158,13 +158,13 @@ TEST_F(AurexIntegrationTest, StringCheckedBoundary) {
     expect_contains_all(ir, {
         "strvalid",
         "strfromutf8",
-        "(bool, str)",
+        "str",
     });
 
     const std::string llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(positive)).output;
     expect_contains_all(llvm_ir, {
         "__aurex_utf8_validate",
-        "strfromutf8.result",
+        "str.checked",
         "select i1",
     });
 

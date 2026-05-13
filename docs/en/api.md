@@ -7,11 +7,16 @@ Version: 0.1.2
 Basic form:
 
 ```sh
-aurexc [options] input.ax [-o output]
+aurexc [primary-option] [secondary-options] input.ax [-o output]
 ```
 
-Native output modes require `-o output`. Dump and check modes write to stdout
-or only return status.
+Native output selected with `--emit=asm`, `--emit=obj`, or `--emit=exe`
+requires `-o output`; the driver-style `-S` and `-c` forms infer `input.s` and
+`input.o` when `-o` is omitted. Dump and check modes write to stdout or only
+return status. The CLI keeps clang-style flat flags while classifying options
+internally and in `--help` as primary actions or secondary modifiers. Native
+backend modifiers such as `--clang` and `--clang-arg` are valid only for native
+output modes.
 
 Common options:
 

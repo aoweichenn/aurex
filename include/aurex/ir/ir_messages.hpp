@@ -174,7 +174,7 @@ inline constexpr std::string_view IR_VERIFY_STR_UTF8_SLICE =
     "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice";
 
 inline constexpr std::string_view IR_VERIFY_STRFROMUTF8_RESULT =
-    "strfromutf8 result must be (bool, str)";
+    "strfromutf8 result must be str";
 
 inline constexpr std::string_view IR_VERIFY_STRRAW_RESULT =
     "strraw result must be str";

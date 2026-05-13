@@ -534,7 +534,7 @@ strraw(data, len)
 - `bitcast` 要求源/目标尺寸相同，并限制在非 `bool` / 非 `str` / 非 `void` 的内建数值标量或 pointer 形态。
 - `ptraddr` 要求参数是 pointer，返回 `usize`。
 - `ptrat` 目标类型必须是 pointer，地址参数是整数。
-- `strptr` / `strblen` / `strvalid` / `strfromutf8` / `strraw` 是当前 `str` ABI 和 UTF-8 边界支撑点；`strfromutf8(bytes)` 返回 `(bool, str)`，失败时返回空 `str`，不会把无效输入包装成文本。
+- `strptr` / `strblen` / `strvalid` / `strfromutf8` / `strraw` 是当前 `str` ABI 和 UTF-8 边界支撑点；`strfromutf8(bytes)` 返回 `str`，失败时返回空 `str`，不会把无效输入包装成文本；需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。
 
 `if` 表达式：
 

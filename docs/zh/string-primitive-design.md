@@ -341,7 +341,7 @@ unsafe {
 旧 std 已经从当前树删除，不应急着重建完整 `std.core.str`。M2 当前先提供两个 compiler builtin 来锁住 safe/unsafe 边界：
 
 - `strvalid(bytes: []const u8 | []mut u8) -> bool`：只验证 byte slice 是否为有效 UTF-8。
-- `strfromutf8(bytes: []const u8 | []mut u8) -> (bool, str)`：成功返回 `(true, text)`；失败返回 `(false, "")`。失败路径不会把无效输入包装成 `str`，也不 trap。
+- `strfromutf8(bytes: []const u8 | []mut u8) -> str`：成功返回借用原 byte slice 的文本；失败返回空 `str`。需要区分“合法空输入”和“非法输入”时调用 `strvalid(bytes)`。失败路径不会把无效输入包装成 `str`，也不 trap。
 
 未来库层的最小 text surface 可以在这个边界上继续设计：
 
@@ -413,7 +413,7 @@ M2 当前 language-core 至少要覆盖：
 - 非 ASCII 文本如 `"ƒ"` 按 UTF-8 byte length 表达，不能被截断成单字节字符。
 - invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
 - `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw` 的类型检查稳定。
-- `strvalid` 对合法/非法 UTF-8 byte slice 返回稳定 bool；`strfromutf8` 成功返回 `(true, text)`，失败返回 `(false, "")`。
+- `strvalid` 对合法/非法 UTF-8 byte slice 返回稳定 bool；`strfromutf8` 成功返回文本，失败返回空 `str`。
 - `strraw` 不能继续暴露在 safe context。
 
 未来库层重建后再补这些验收项：

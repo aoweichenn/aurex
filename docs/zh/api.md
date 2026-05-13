@@ -7,10 +7,14 @@
 基本形式：
 
 ```sh
-aurexc [options] input.ax [-o output]
+aurexc [primary-option] [secondary-options] input.ax [-o output]
 ```
 
-native 输出模式需要 `-o output`。dump 和 check 类模式写 stdout 或只返回状态。
+通过 `--emit=asm`、`--emit=obj` 或 `--emit=exe` 选择 native 输出时需要
+`-o output`；driver 风格的 `-S` 和 `-c` 在省略 `-o` 时会推导 `input.s` 和
+`input.o`。dump 和 check 类模式写 stdout 或只返回状态。CLI 语法保持 clang
+风格的扁平 flags，但内部和 `--help` 都按一级动作选项和二级修饰选项归类。
+`--clang`、`--clang-arg` 这类 native backend 修饰选项只对 native 输出模式有效。
 
 常用参数：
 

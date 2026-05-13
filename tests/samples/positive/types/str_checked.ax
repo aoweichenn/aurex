@@ -3,79 +3,61 @@ module str_checked;
 fn main() -> i32 {
     let ascii_bytes: [2]u8 = b"ok";
     let ascii: []const u8 = ascii_bytes[:];
-    let ascii_checked = strfromutf8(ascii);
+    let ascii_text = strfromutf8(ascii);
     if !strvalid(ascii) {
         return 1;
     }
-    if !ascii_checked.0 {
-        return 2;
-    }
-    if strblen(ascii_checked.1) != 2usize {
+    if strblen(ascii_text) != 2usize {
         return 3;
     }
 
     let scalar_bytes: [2]u8 = [0xCEu8, 0xBBu8];
     let scalar: []const u8 = scalar_bytes[:];
-    let scalar_checked = strfromutf8(scalar);
+    let scalar_text = strfromutf8(scalar);
     if !strvalid(scalar) {
         return 4;
     }
-    if !scalar_checked.0 {
-        return 5;
-    }
-    if strblen(scalar_checked.1) != 2usize {
+    if strblen(scalar_text) != 2usize {
         return 6;
     }
 
     let euro_bytes: [3]u8 = [0xE2u8, 0x82u8, 0xACu8];
     let euro: []const u8 = euro_bytes[:];
-    let euro_checked = strfromutf8(euro);
+    let euro_text = strfromutf8(euro);
     if !strvalid(euro) {
         return 7;
     }
-    if !euro_checked.0 {
-        return 8;
-    }
-    if strblen(euro_checked.1) != 3usize {
+    if strblen(euro_text) != 3usize {
         return 9;
     }
 
     let smile_bytes: [4]u8 = [0xF0u8, 0x9Fu8, 0x98u8, 0x80u8];
     let smile: []const u8 = smile_bytes[:];
-    let smile_checked = strfromutf8(smile);
+    let smile_text = strfromutf8(smile);
     if !strvalid(smile) {
         return 10;
     }
-    if !smile_checked.0 {
-        return 11;
-    }
-    if strblen(smile_checked.1) != 4usize {
+    if strblen(smile_text) != 4usize {
         return 12;
     }
 
     var mutable_bytes: [1]u8 = [0x41u8];
     let mutable: []mut u8 = mutable_bytes[:];
-    let mutable_checked = strfromutf8(mutable);
+    let mutable_text = strfromutf8(mutable);
     if !strvalid(mutable) {
         return 13;
     }
-    if !mutable_checked.0 {
-        return 14;
-    }
-    if strblen(mutable_checked.1) != 1usize {
+    if strblen(mutable_text) != 1usize {
         return 15;
     }
 
     let bad_bytes: [1]u8 = [0x80u8];
     let bad: []const u8 = bad_bytes[:];
-    let bad_checked = strfromutf8(bad);
+    let bad_text = strfromutf8(bad);
     if strvalid(bad) {
         return 16;
     }
-    if bad_checked.0 {
-        return 17;
-    }
-    if strblen(bad_checked.1) != 0usize {
+    if strblen(bad_text) != 0usize {
         return 18;
     }
 
@@ -84,7 +66,7 @@ fn main() -> i32 {
     if strvalid(overlong) {
         return 19;
     }
-    if strfromutf8(overlong).0 {
+    if strblen(strfromutf8(overlong)) != 0usize {
         return 20;
     }
 
@@ -93,7 +75,7 @@ fn main() -> i32 {
     if strvalid(surrogate) {
         return 21;
     }
-    if strfromutf8(surrogate).0 {
+    if strblen(strfromutf8(surrogate)) != 0usize {
         return 22;
     }
 
@@ -102,7 +84,7 @@ fn main() -> i32 {
     if strvalid(truncated) {
         return 23;
     }
-    if strfromutf8(truncated).0 {
+    if strblen(strfromutf8(truncated)) != 0usize {
         return 24;
     }
 

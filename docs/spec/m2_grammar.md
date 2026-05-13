@@ -563,10 +563,11 @@ Safe operations include address-of `&place`, `ptraddr(p)`, `strptr(s)`,
 
 `strvalid(bytes)` accepts a `[]const u8` or `[]mut u8` borrowed byte slice and
 returns `bool`. `strfromutf8(bytes)` accepts the same slice shape and returns
-`(bool, str)`: field `.0` is the success flag, and field `.1` is the borrowed
-`str` on success or the empty `str` on failure. A failed checked call never
-wraps invalid input as `str`; unchecked construction remains `strraw(data, len)`
-and is unsafe-only.
+`str`: on success it borrows the original byte slice as text, and on failure it
+returns the empty `str`. A caller that needs to distinguish failure from valid
+empty input must call `strvalid(bytes)`. A failed checked call never wraps
+invalid input as `str`; unchecked construction remains `strraw(data, len)` and
+is unsafe-only.
 
 ## 12. Patterns
 

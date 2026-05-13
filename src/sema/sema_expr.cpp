@@ -1074,13 +1074,7 @@ TypeHandle SemanticAnalyzer::analyze_str_utf8_slice_expr(
     if (expr.kind == syntax::ExprKind::str_is_valid_utf8) {
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
     }
-    return this->record_expr_type(
-        expr_id,
-        this->checked_.types.tuple({
-            this->checked_.types.builtin(BuiltinType::bool_),
-            this->checked_.types.builtin(BuiltinType::str),
-        })
-    );
+    return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
 }
 
 TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(

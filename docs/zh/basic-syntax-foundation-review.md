@@ -706,7 +706,7 @@ unsafe fn from_raw(data: *const u8, len: usize) -> str {
 问题：
 
 - `strraw` 能直接构造 `str`，当前已被 `unsafe` 语法约束。
-- checked UTF-8 构造已冻结为语言核心内建：`strvalid(bytes) -> bool` 和 `strfromutf8(bytes) -> (bool, str)`，参数是 `[]const u8` 或 `[]mut u8`。`strfromutf8` 成功时返回 `(true, text)`，失败时返回 `(false, "")`，不会把无效输入包装成 `str`。
+- checked UTF-8 构造已冻结为语言核心内建：`strvalid(bytes) -> bool` 和 `strfromutf8(bytes) -> str`，参数是 `[]const u8` 或 `[]mut u8`。`strfromutf8` 成功时返回文本，失败时返回空 `str`；需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。失败路径不会把无效输入包装成 `str`。
 - 仍未做语言核心层面的 checked string slicing；未来 `slice_bytes_checked` / UTF-8 scalar boundary API 可以进入 core text API 或库层。
 - `strptr` 暴露 raw pointer，长期需要和 borrow/lifetime/FFI 边界一起解释。
 - `c"..."` 仍是 `*const u8`，这是合理 FFI 过渡，但不能变成普通文本 API 的替代品。

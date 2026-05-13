@@ -43,6 +43,11 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 `--emit=obj`, and `--emit=exe` requires `-o`. The driver-style `-S` and `-c`
 forms infer `input.s` and `input.o` when `-o` is omitted.
 
+The command syntax stays clang-style and flat, but `--help` groups options into
+primary actions and secondary modifiers. Native backend modifiers such as
+`--clang` and `--clang-arg` apply only to native output modes and are rejected
+for frontend-only modes such as `--emit=ir` or `--check`.
+
 ## Imports
 
 Module lookup order:

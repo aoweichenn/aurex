@@ -79,6 +79,7 @@ struct TypeLayoutFrame {
 enum class TypeResolveActionKind {
     resolve,
     build_pointer,
+    build_reference,
     build_array,
     build_slice,
     build_tuple,
@@ -555,6 +556,21 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 actions.push_back(resolve_pointee);
                 break;
             }
+            case syntax::TypeKind::reference:
+            {
+                TypeResolveAction build;
+                build.kind = TypeResolveActionKind::build_reference;
+                build.type = action.type;
+                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                build.pointer_mutability = type.pointer_mutability;
+                actions.push_back(build);
+                TypeResolveAction resolve_pointee;
+                resolve_pointee.kind = TypeResolveActionKind::resolve;
+                resolve_pointee.type = type.pointee;
+                resolve_pointee.opaque_allowed_as_pointee = false;
+                actions.push_back(resolve_pointee);
+                break;
+            }
             case syntax::TypeKind::array:
             {
                 TypeResolveAction build;
@@ -639,6 +655,17 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             const TypeHandle pointee = values.back();
             values.pop_back();
             const TypeHandle resolved = this->checked_.types.pointer(map_mutability(action.pointer_mutability), pointee);
+            this->record_syntax_type_handle(action.type, resolved);
+            values.push_back(resolved);
+            break;
+        }
+        case TypeResolveActionKind::build_reference: {
+            const TypeHandle pointee = values.back();
+            values.pop_back();
+            if (!this->is_valid_storage_type(pointee)) {
+                this->report(this->module_.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
+            }
+            const TypeHandle resolved = this->checked_.types.reference(map_mutability(action.pointer_mutability), pointee);
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;
@@ -846,6 +873,15 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
             return true;
         }
     }
+    if (this->checked_.types.is_reference(dst) && this->checked_.types.is_reference(src)) {
+        const TypeInfo& dst_info = this->checked_.types.get(dst);
+        const TypeInfo& src_info = this->checked_.types.get(src);
+        if (!this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
+            return false;
+        }
+        return dst_info.pointer_mutability == PointerMutability::const_ ||
+               src_info.pointer_mutability == PointerMutability::mut;
+    }
     if (this->checked_.types.is_slice(dst) && this->checked_.types.is_slice(src)) {
         const TypeInfo& dst_info = this->checked_.types.get(dst);
         const TypeInfo& src_info = this->checked_.types.get(src);
@@ -876,6 +912,10 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
         }
         if (info.kind == TypeKind::slice) {
             pending.push_back(info.slice_element);
+            continue;
+        }
+        if (info.kind == TypeKind::reference) {
+            pending.push_back(info.pointee);
             continue;
         }
         if (info.kind == TypeKind::tuple) {
@@ -922,6 +962,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         const TypeInfo& info = this->checked_.types.get(type);
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::reference ||
             info.kind == TypeKind::slice ||
             info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param) {
@@ -1085,6 +1126,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         const TypeInfo& dependency_info = this->checked_.types.get(dependency);
         if (dependency_info.kind == TypeKind::builtin ||
             dependency_info.kind == TypeKind::pointer ||
+            dependency_info.kind == TypeKind::reference ||
             dependency_info.kind == TypeKind::slice ||
             dependency_info.kind == TypeKind::function ||
             dependency_info.kind == TypeKind::generic_param ||
@@ -1149,6 +1191,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         const TypeInfo& info = this->checked_.types.get(type);
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::reference ||
             info.kind == TypeKind::slice ||
             info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param) {
@@ -1358,7 +1401,8 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
                (this->checked_.types.is_integer(src) || this->checked_.types.is_float(src) || this->checked_.types.is_bool(src));
     }
     if (kind == syntax::ExprKind::pcast) {
-        return this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src);
+        return this->checked_.types.is_pointer(dst) &&
+               (this->checked_.types.is_pointer(src) || this->checked_.types.is_reference(src));
     }
     if (kind == syntax::ExprKind::bcast) {
         if (this->checked_.types.same(dst, src)) {
@@ -1412,6 +1456,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         case TypeKind::builtin:
             return builtin_layout(info.builtin);
         case TypeKind::pointer:
+        case TypeKind::reference:
             return TypeAbiLayout {sizeof(void*), alignof(void*)};
         case TypeKind::function:
             return TypeAbiLayout {sizeof(void*), alignof(void*)};
@@ -1482,6 +1527,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         const TypeInfo& info = this->checked_.types.get(dependency);
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::reference ||
             info.kind == TypeKind::slice ||
             info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param ||
@@ -1527,6 +1573,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         }
         case TypeKind::builtin:
         case TypeKind::pointer:
+        case TypeKind::reference:
         case TypeKind::slice:
         case TypeKind::function:
         case TypeKind::generic_param:
@@ -1558,6 +1605,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         }
         if (info.kind == TypeKind::builtin ||
             info.kind == TypeKind::pointer ||
+            info.kind == TypeKind::reference ||
             info.kind == TypeKind::slice ||
             info.kind == TypeKind::function ||
             info.kind == TypeKind::generic_param ||
@@ -1653,6 +1701,9 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
             if (this->checked_.types.is_pointer(object)) {
                 return this->checked_.types.get(object).pointer_mutability == PointerMutability::mut;
             }
+            if (this->checked_.types.is_reference(object)) {
+                return this->checked_.types.get(object).pointer_mutability == PointerMutability::mut;
+            }
             if (this->checked_.types.is_slice(object)) {
                 return this->checked_.types.get(object).slice_mutability == PointerMutability::mut;
             }
@@ -1664,7 +1715,7 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
                 return false;
             }
             const TypeHandle pointer = this->analyze_expr(expr.unary_operand);
-            return this->checked_.types.is_pointer(pointer) &&
+            return (this->checked_.types.is_pointer(pointer) || this->checked_.types.is_reference(pointer)) &&
                    this->checked_.types.get(pointer).pointer_mutability == PointerMutability::mut;
         }
         default:

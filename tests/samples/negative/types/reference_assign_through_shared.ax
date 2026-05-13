@@ -1,0 +1,8 @@
+module reference_assign_through_shared;
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let ref_value: &i32 = &value;
+    *ref_value = 2;
+    return value;
+}

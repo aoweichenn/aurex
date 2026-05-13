@@ -24,7 +24,7 @@ M2 背景：M1 阶段已经舍弃。M1 的失败点在于标准库、host suppor
 
 - trait / interface / protocol。
 - `where` / 泛型约束。
-- borrow checker、lifetime、安全引用。
+- borrow checker、lifetime、borrowed return、alias/resource 语义。
 - `unsafe` 体系。
 - 资源语义、自动释放和析构规则。
 - class / inheritance / dynamic dispatch。
@@ -735,7 +735,7 @@ unsafe {
 
 优先级：中高。字符串是诊断、模块名、路径显示、未来文本/路径 API 的共同地基；如果 `str` 的 safe/unsafe 边界不先定，M1 的标准库问题会在重新设计 `String`、`Path`、`CString` 时再次出现。
 
-## P1 缺陷：raw pointer 和 safe borrow 没有分层
+## P1 已补最小版：raw pointer 和 safe reference 开始分层
 
 现状：
 
@@ -744,21 +744,28 @@ fn len(self: *const Buffer) -> usize
 fn push(self: *mut Buffer, value: u8) -> void
 ```
 
-`*const` / `*mut` 现在同时承担：
+M2 现在已有：
+
+```aurex
+fn len(self: &Buffer) -> usize
+fn push(self: &mut Buffer, value: u8) -> void
+```
+
+当前仍需要继续清理的是：
 
 - C FFI raw pointer。
 - method receiver。
-- address-of 结果。
-- 未来 borrow 语义。
+- 旧 raw address-of 兼容路径。
+- 未来 borrow / lifetime / alias 语义。
 - buffer/span 类数据结构的内部引用。
 
 问题：
 
 - raw pointer 没有生命周期、别名、有效性保证。
 - 如果 method receiver 长期使用 raw pointer，safe API 和 unsafe API 的边界会混在一起。
-- borrow checker 很难在这种语法上自然落地。
+- borrow checker 和 alias model 仍未设计；当前只完成基础 reference 类型和值语法。
 
-长期建议：
+推荐 API 方向：
 
 ```aurex
 fn len(self: &Buffer) -> usize
@@ -773,9 +780,11 @@ extern c {
 
 - `&T` / `&mut T` 是 safe borrow。
 - `*const T` / `*mut T` 是 raw pointer，主要用于 FFI 和 unsafe 内部实现。
-- `&place` 应产生 safe borrow，而不是默认产生 raw pointer；raw address-of 可以另设 unsafe 操作。
+- `&place` 产生 safe reference；明确期望 raw pointer 的位置暂时保留兼容路径。
+- `&mut place` 产生 `&mut T`，要求 writable place，且不会退化成 raw pointer。
+- `*ref` 是 safe 解引用；`*raw_pointer` 仍需要 unsafe。
 
-优先级：中。实现可以晚于 M2 语法冻结，但文档必须明确方向。
+优先级：已补最小 M2 版本；完整 borrow checker、lifetime、borrowed return 和资源语义后置。
 
 ## P1 已补：标识符规则应显式 ASCII，而不是 locale 相关
 
@@ -941,7 +950,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 6. tuple/destructuring/pattern ergonomics 已落地，当前支持 `(A, B)` / `(A,)`、`(a, b)` / `(a,)`、局部 `let (a, _) = value;`、局部 struct destructuring、match tuple/struct pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition；匿名 tuple 不支持直接字段访问，需要字段访问时使用 named struct；空 tuple 暂缓。
 7. 冻结 namespace `.` / `::` 规则。
 8. 设计 capability / `where` 约束语法。
-9. 设计 safe reference `&T` / `&mut T`。
+9. safe reference `&T` / `&mut T` 已补最小 M2 版本；后续不在基础语法阶段扩张 borrow/lifetime。
 
 第三批暂缓：
 

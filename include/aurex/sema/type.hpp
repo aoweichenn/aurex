@@ -42,6 +42,7 @@ enum class BuiltinType {
 enum class TypeKind {
     builtin,
     pointer,
+    reference,
     array,
     slice,
     tuple,
@@ -94,6 +95,7 @@ public:
 
     [[nodiscard]] TypeHandle builtin(BuiltinType type) const noexcept;
     [[nodiscard]] TypeHandle pointer(PointerMutability mutability, TypeHandle pointee);
+    [[nodiscard]] TypeHandle reference(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
     [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
     [[nodiscard]] TypeHandle tuple(std::vector<TypeHandle> elements);
@@ -128,6 +130,7 @@ public:
     [[nodiscard]] bool is_char(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_void(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_pointer(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_reference(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_slice(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_tuple(TypeHandle type) const noexcept;
@@ -214,6 +217,7 @@ private:
 
     std::vector<TypeInfo> types_;
     std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
+    std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> reference_types_;
     std::unordered_map<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
     std::unordered_map<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
     std::unordered_map<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;

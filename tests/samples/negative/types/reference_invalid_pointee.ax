@@ -1,0 +1,7 @@
+module reference_invalid_pointee;
+
+type Bad = &void;
+
+fn main() -> i32 {
+    return 0;
+}

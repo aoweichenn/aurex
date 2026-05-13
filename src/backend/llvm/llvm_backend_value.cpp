@@ -587,7 +587,8 @@ llvm::Value* LlvmEmitter::emit_call(const Value& value) {
 
 llvm::Value* LlvmEmitter::emit_field_addr(const Value& value) {
     const sema::TypeHandle object_pointee = this->pointee_type(value.object);
-    const sema::TypeHandle record_type = this->source_.types.is_pointer(object_pointee)
+    const sema::TypeHandle record_type =
+        (this->source_.types.is_pointer(object_pointee) || this->source_.types.is_reference(object_pointee))
         ? this->source_.types.get(object_pointee).pointee
         : object_pointee;
     const RecordLayout* record = find_record(this->source_, record_type);

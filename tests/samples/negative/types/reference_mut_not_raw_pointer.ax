@@ -1,0 +1,10 @@
+module reference_mut_not_raw_pointer;
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let ptr: *mut i32 = &mut value;
+    unsafe {
+        *ptr = 2;
+    }
+    return value;
+}

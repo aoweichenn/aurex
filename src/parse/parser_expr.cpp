@@ -272,6 +272,23 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
             continue;
         }
 
+        if (this->check(TokenKind::amp)) {
+            const syntax::Token& op = this->advance();
+            syntax::UnaryOp unary_op = syntax::UnaryOp::address_of;
+            base::SourceRange range = op.range;
+            if (this->match(TokenKind::kw_mut)) {
+                unary_op = syntax::UnaryOp::address_of_mut;
+                range = this->merge(op.range, this->previous().range);
+            }
+            prefixes.push_back(PrefixOperator {
+                op.kind,
+                unary_op,
+                op.text,
+                range,
+            });
+            continue;
+        }
+
         const std::optional<syntax::UnaryOp> unary_op = unary_op_for(this->peek().kind);
         if (!unary_op.has_value()) {
             break;

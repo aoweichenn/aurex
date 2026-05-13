@@ -40,6 +40,7 @@ Not part of M2:
 
 ```aurex
 *i32
+&void
 [N]i32
 [1 + 2]i32
 []i32
@@ -54,6 +55,8 @@ fn(i32, ...) -> i32
 Rules:
 
 - Pointer types require `*mut` or `*const`.
+- Reference types are supported as `&T` and `&mut T`, but their pointee must be
+  valid storage. `&void` and references to opaque value types are rejected.
 - Array type length is an integer literal token.
 - Type paths are currently plain names or one-level `scope::Name`.
 - Variadic function types require `extern c fn`; plain `fn(..., ...) -> T`
@@ -206,7 +209,6 @@ trait/interface/protocol
 ownership
 borrow checking
 lifetime parameters
-safe references
 advanced RAII/drop
 macro system
 lambda/function literal
@@ -216,5 +218,7 @@ full const expression language
 standard library abstraction layer
 ```
 
-These are future design topics and should not leak into current M2 parser
-acceptance as half-supported syntax.
+Minimal `&T` / `&mut T` references are part of M2. Borrow checking, lifetimes,
+borrowed-return rules, alias/resource semantics, and RAII/drop are future design
+topics and should not leak into current M2 parser acceptance as half-supported
+syntax.

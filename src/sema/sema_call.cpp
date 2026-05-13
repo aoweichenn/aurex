@@ -265,7 +265,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         has_receiver = true;
         receiver_type = this->analyze_expr(callee.object);
         TypeHandle owner_type = receiver_type;
-        if (this->checked_.types.is_pointer(owner_type)) {
+        if (this->checked_.types.is_pointer(owner_type) || this->checked_.types.is_reference(owner_type)) {
             owner_type = this->checked_.types.get(owner_type).pointee;
         }
         signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);

@@ -46,7 +46,9 @@ fn main() -> i32 {
     let q = make_pair(1, false);
     let unwrapped = unwrap(Box[i32] { value: 2 });
     let value_ptr = same_ptr(&a.value);
-    if first(p) == 41 && q.first == 1 && a.value == 1 && nested.value.second && unwrapped == 2 && unsafe { *value_ptr } == 1 {
+    var mutable_value: i32 = 3;
+    let mutable_value_ptr = same_ptr(&mutable_value);
+    if first(p) == 41 && q.first == 1 && a.value == 1 && nested.value.second && unwrapped == 2 && unsafe { *value_ptr } == 1 && unsafe { *mutable_value_ptr } == 3 {
         return id::[i32](0);
     }
     return 1;

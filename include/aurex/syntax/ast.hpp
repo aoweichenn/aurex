@@ -47,6 +47,7 @@ enum class TypeKind {
     primitive,
     named,
     pointer,
+    reference,
     array,
     slice,
     tuple,
@@ -127,6 +128,7 @@ enum class UnaryOp {
     numeric_negate,
     bitwise_not,
     address_of,
+    address_of_mut,
     dereference,
 };
 

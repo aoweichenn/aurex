@@ -13,7 +13,7 @@ fn make_count() -> Count {
 
 fn main() -> i32 {
     var value = make_count();
-    let ptr = &value;
+    let ptr: CountPtr = &value;
     let pair = Pair { value: unsafe { *ptr } + 2 };
     let aliased: CountPtr = ptr;
     return pair.value + unsafe { *aliased } - 82;

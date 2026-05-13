@@ -224,10 +224,10 @@ inline constexpr std::string_view SEMA_BITWISE_NOT_INTEGER =
     "bitwise not requires integer operand";
 
 inline constexpr std::string_view SEMA_DEREF_POINTER =
-    "dereference requires pointer operand";
+    "dereference requires pointer or reference operand";
 
 inline constexpr std::string_view SEMA_DEREF_STORAGE =
-    "dereference requires pointer to valid storage";
+    "dereference requires pointer or reference to valid storage";
 
 inline constexpr std::string_view SEMA_UNSAFE_DEREF =
     "raw pointer dereference requires unsafe context";
@@ -249,6 +249,12 @@ inline constexpr std::string_view SEMA_UNSAFE_BLOCK_CONST_INITIALIZER =
 
 inline constexpr std::string_view SEMA_ADDRESS_OF_PLACE =
     "address-of requires a place expression";
+
+inline constexpr std::string_view SEMA_MUTABLE_REFERENCE_PLACE =
+    "mutable reference requires a writable place expression";
+
+inline constexpr std::string_view SEMA_REFERENCE_STORAGE =
+    "reference requires a valid storage type";
 
 inline constexpr std::string_view SEMA_BINARY_OPERANDS_SAME_TYPE =
     "binary operands must have the same type";

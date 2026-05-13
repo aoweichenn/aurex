@@ -45,11 +45,13 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    after `unsafe`, ADTs, arrays/slices/strings, function types, and patterns have
    settled.
 
-5. Safe reference direction
+5. Safe references
 
-   Keep `&T` / `&mut T` as the documented direction for separating safe
-   references from raw pointers. Borrow checking, lifetimes, and borrowed returns
-   remain deferred.
+   Minimal `&T` / `&mut T` references are now part of the M2 core. Keep the
+   boundary narrow: references are distinct from raw pointers, `&mut` requires a
+   writable place, reference dereference is safe, and raw pointer dereference
+   remains unsafe-only. Borrow checking, lifetimes, borrowed returns, alias
+   models, and ownership/resource semantics remain deferred.
 
 6. Tuple and pattern boundary
 

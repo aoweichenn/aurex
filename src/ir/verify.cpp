@@ -430,7 +430,7 @@ private:
             this->verify_load(*value);
             break;
         case ValueKind::store:
-            this->verify_pointer_value(value->object, "store target");
+            this->verify_pointer_like_value(value->object, "store target");
             this->verify_value_id(value->lhs, "store source");
             this->verify_type(value->type, "store result");
             if (!this->module_.types.is_void(value->type)) {
@@ -438,7 +438,7 @@ private:
             }
             if (const Value* object = this->get(value->object);
                 object != nullptr &&
-                this->module_.types.is_pointer(object->type) &&
+                (this->module_.types.is_pointer(object->type) || this->module_.types.is_reference(object->type)) &&
                 this->module_.types.get(object->type).pointer_mutability != sema::PointerMutability::mut) {
                 this->fail(std::string(IR_VERIFY_STORE_TARGET_MUTABLE));
             }
@@ -830,7 +830,7 @@ private:
     }
 
     void verify_load(const Value& value) {
-        this->verify_pointer_value(value.object, "load object");
+        this->verify_pointer_like_value(value.object, "load object");
         this->verify_type(value.type, "load result");
         if (this->module_.types.is_void(value.type)) {
             this->fail(std::string(IR_VERIFY_LOAD_RESULT_NONVOID));
@@ -935,14 +935,15 @@ private:
     }
 
     void verify_field_addr(const Value& value) {
-        this->verify_pointer_value(value.object, "field object");
+        this->verify_pointer_like_value(value.object, "field object");
         this->verify_type(value.type, "field address type");
         if (!this->module_.types.is_pointer(value.type)) {
             this->fail(std::string(IR_VERIFY_FIELD_ADDRESS_POINTER));
             return;
         }
         const sema::TypeHandle object_type = this->pointee_type(value.object);
-        const sema::TypeHandle record_type = this->module_.types.is_pointer(object_type)
+        const sema::TypeHandle record_type =
+            (this->module_.types.is_pointer(object_type) || this->module_.types.is_reference(object_type))
             ? this->module_.types.get(object_type).pointee
             : object_type;
         const RecordField* field = find_record_field(this->module_, record_type, value.name);
@@ -956,7 +957,7 @@ private:
         }
         const Value* object = this->get(value.object);
         if (object != nullptr &&
-            this->module_.types.is_pointer(object->type) &&
+            (this->module_.types.is_pointer(object->type) || this->module_.types.is_reference(object->type)) &&
             this->module_.types.get(object->type).pointer_mutability == sema::PointerMutability::const_ &&
             address.pointer_mutability == sema::PointerMutability::mut) {
             this->fail(std::string(IR_VERIFY_FIELD_ADDRESS_CONST_MUTABLE));
@@ -964,7 +965,7 @@ private:
     }
 
     void verify_index_addr(const Value& value) {
-        this->verify_pointer_value(value.object, "index object");
+        this->verify_pointer_like_value(value.object, "index object");
         this->verify_value_id(value.index, "index");
         this->verify_type(value.type, "index result");
         if (!this->module_.types.is_pointer(value.type)) {
@@ -985,7 +986,7 @@ private:
         }
         const Value* object = this->get(value.object);
         if (object != nullptr &&
-            this->module_.types.is_pointer(object->type) &&
+            (this->module_.types.is_pointer(object->type) || this->module_.types.is_reference(object->type)) &&
             this->module_.types.get(object->type).pointer_mutability == sema::PointerMutability::const_ &&
             address.pointer_mutability == sema::PointerMutability::mut) {
             this->fail(std::string(IR_VERIFY_INDEX_ADDRESS_CONST_MUTABLE));
@@ -1110,6 +1111,13 @@ private:
                 worklist.push_back(StorageTypeWorkItem {
                     this->module_.types.get(item.type).slice_element,
                     item.context + " element",
+                });
+                continue;
+            }
+            if (this->module_.types.is_reference(item.type)) {
+                worklist.push_back(StorageTypeWorkItem {
+                    this->module_.types.get(item.type).pointee,
+                    item.context + " pointee",
                 });
                 continue;
             }
@@ -1244,9 +1252,21 @@ private:
         }
     }
 
+    void verify_pointer_like_value(const ValueId value_id, const std::string& context) {
+        const Value* value = this->get(value_id);
+        if (value == nullptr) {
+            this->fail(ir_verify_value_id_message(context));
+            return;
+        }
+        if (!this->module_.types.is_pointer(value->type) && !this->module_.types.is_reference(value->type)) {
+            this->fail(ir_verify_not_pointer_message(context));
+        }
+    }
+
     [[nodiscard]] sema::TypeHandle pointee_type(const ValueId value_id) const noexcept {
         const Value* value = this->get(value_id);
-        if (value == nullptr || !this->module_.types.is_pointer(value->type)) {
+        if (value == nullptr ||
+            (!this->module_.types.is_pointer(value->type) && !this->module_.types.is_reference(value->type))) {
             return sema::INVALID_TYPE_HANDLE;
         }
         return this->module_.types.get(value->type).pointee;

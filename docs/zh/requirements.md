@@ -27,4 +27,4 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
 
-M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求；资源语义等基础语法、`unsafe`、slice/string、safe reference 方向和非资源类 trait/where 规则稳定后再单独重新设计。
+M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求；资源语义要等基础语法、`unsafe`、slice/string、最小 safe reference 和非资源类 trait/where 规则稳定后再单独重新设计。

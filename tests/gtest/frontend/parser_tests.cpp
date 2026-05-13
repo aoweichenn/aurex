@@ -1766,6 +1766,40 @@ TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
     EXPECT_EQ(module.exprs[binary.value].kind, syntax::ExprKind::integer_literal);
 }
 
+TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression) {
+    constexpr std::string_view source =
+        "module parser.references;\n"
+        "fn borrow(shared: &i32, unique: &mut i32) -> &i32 {\n"
+        "  var value: i32 = 1;\n"
+        "  let unique_ref: &mut i32 = &mut value;\n"
+        "  return &value;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* borrow = find_item(module, "borrow");
+    ASSERT_NE(borrow, nullptr);
+    ASSERT_EQ(borrow->params.size(), 2U);
+    ASSERT_TRUE(syntax::is_valid(borrow->params[0].type));
+    const syntax::TypeNode& shared = module.types[borrow->params[0].type.value];
+    ASSERT_EQ(shared.kind, syntax::TypeKind::reference);
+    EXPECT_EQ(shared.pointer_mutability, syntax::PointerMutability::const_);
+    ASSERT_TRUE(syntax::is_valid(borrow->params[1].type));
+    const syntax::TypeNode& unique = module.types[borrow->params[1].type.value];
+    ASSERT_EQ(unique.kind, syntax::TypeKind::reference);
+    EXPECT_EQ(unique.pointer_mutability, syntax::PointerMutability::mut);
+    ASSERT_TRUE(syntax::is_valid(borrow->return_type));
+    EXPECT_EQ(module.types[borrow->return_type.value].kind, syntax::TypeKind::reference);
+
+    ASSERT_TRUE(syntax::is_valid(borrow->body));
+    const syntax::StmtNode& body = module.stmts[borrow->body.value];
+    ASSERT_GE(body.statements.size(), 2U);
+    const syntax::StmtNode& local = module.stmts[body.statements[1].value];
+    ASSERT_TRUE(syntax::is_valid(local.init));
+    const syntax::ExprNode& init = module.exprs[local.init.value];
+    ASSERT_EQ(init.kind, syntax::ExprKind::unary);
+    EXPECT_EQ(init.unary_op, syntax::UnaryOp::address_of_mut);
+}
+
 TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {
     constexpr std::string_view source =
         "module parser.assign_ops;\n"

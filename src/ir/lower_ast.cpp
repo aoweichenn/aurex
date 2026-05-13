@@ -49,6 +49,7 @@ namespace {
         case sema::TypeKind::generic_param:
             return true;
         case sema::TypeKind::pointer:
+        case sema::TypeKind::reference:
             pending.push_back(info.pointee);
             break;
         case sema::TypeKind::array:

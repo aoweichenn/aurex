@@ -15,6 +15,8 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_INVALID_NAME = "<invalid>";
 constexpr std::string_view SEMA_TYPE_DISPLAY_UNKNOWN_NAME = "<unknown>";
 constexpr std::string_view SEMA_TYPE_DISPLAY_POINTER_MUT_PREFIX = "*mut ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_POINTER_CONST_PREFIX = "*const ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_REFERENCE_PREFIX = "&";
+constexpr std::string_view SEMA_TYPE_DISPLAY_REFERENCE_MUT_PREFIX = "&mut ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_ARRAY_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
@@ -114,6 +116,21 @@ TypeHandle TypeTable::pointer(const PointerMutability mutability, const TypeHand
     info.pointee = pointee;
     const TypeHandle handle = this->push(std::move(info));
     this->pointer_types_.emplace(key, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::reference(const PointerMutability mutability, const TypeHandle pointee) {
+    const PointerKey key {pointee.value, mutability};
+    if (const auto found = this->reference_types_.find(key); found != this->reference_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info;
+    info.kind = TypeKind::reference;
+    info.pointer_mutability = mutability;
+    info.pointee = pointee;
+    const TypeHandle handle = this->push(std::move(info));
+    this->reference_types_.emplace(key, handle);
     return handle;
 }
 
@@ -335,6 +352,10 @@ bool TypeTable::is_pointer(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::pointer;
 }
 
+bool TypeTable::is_reference(const TypeHandle type) const noexcept {
+    return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::reference;
+}
+
 bool TypeTable::is_array(const TypeHandle type) const noexcept {
     return is_valid(type) && type.value < this->types_.size() && this->types_[type.value].kind == TypeKind::array;
 }
@@ -380,6 +401,12 @@ std::string TypeTable::display_name(const TypeHandle type) const {
             name.append(info.pointer_mutability == PointerMutability::mut
                 ? SEMA_TYPE_DISPLAY_POINTER_MUT_PREFIX
                 : SEMA_TYPE_DISPLAY_POINTER_CONST_PREFIX);
+            pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.pointee, {}});
+            break;
+        case TypeKind::reference:
+            name.append(info.pointer_mutability == PointerMutability::mut
+                ? SEMA_TYPE_DISPLAY_REFERENCE_MUT_PREFIX
+                : SEMA_TYPE_DISPLAY_REFERENCE_PREFIX);
             pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.pointee, {}});
             break;
         case TypeKind::array:

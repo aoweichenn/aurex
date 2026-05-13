@@ -85,7 +85,7 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - 最小 `unsafe` 已落地：`unsafe { ... }` 可作为 statement 或 expression，`unsafe fn` 和 unsafe 函数指针类型会把调用限制在 unsafe context 内；raw pointer 解引用、`ptrcast`、`bitcast`、`ptrat`、`strraw` 都必须在 unsafe context 中使用。
 - 泛型没有 `where`、trait 或 capability predicate，不能表达 `K: Eq + Hash` 这类基础约束；资源类约束暂缓。
 - M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 暂缓为后续资源语义专题。
-- raw pointer 仍同时承担 FFI、method receiver、临时借用和地址操作；unsafe 现在已经圈住底层危险操作，但长期仍需要 safe reference 把这些角色分层。
+- 最小 safe reference 已落地：`&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用、`&mut` 可写 place 检查、`&mut T` 到 `&T` 的只读化赋值，以及按 pointer-sized ABI lowering。raw pointer 解引用仍必须在 `unsafe` 中；borrow checker、lifetime、borrowed return、alias/resource 语义继续暂缓。
 - `str` 已有语言级雏形，普通数组/slice 地基已落地，`strraw` 已纳入 unsafe；M2 no-std checked UTF-8 边界已冻结为 `strvalid(bytes) -> bool`、`strfromutf8(bytes) -> str` 和 `text[l:r]` checked slicing。`strfromutf8` 失败或 `str` 切片越界/落在 UTF-8 continuation byte 上时返回空 `str`，不会把无效输入包装成 `str`。更完整的 text API、Unicode scalar/grapheme 迭代和拥有型 `String` 仍后置到库层重建。
 
 当前完整语法库存、已支持高级能力、未完成特性和基础语法优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
@@ -94,4 +94,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界、M2 pattern ergonomics 和 `str` checked UTF-8 边界已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。随后更适合处理非资源类 capability/trait/where、safe reference 边界，以及更精细的结构化 exhaustiveness。
+下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界、最小 safe reference、M2 pattern ergonomics 和 `str` checked UTF-8 边界已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。随后更适合处理非资源类 capability/trait/where，以及更精细的结构化 exhaustiveness。

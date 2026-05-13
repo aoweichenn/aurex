@@ -193,6 +193,10 @@ std::string type_label(const AstModule& module, const TypeId id) {
         out << "*" << (type.pointer_mutability == PointerMutability::mut ? "mut " : "const ");
         out << type_label(module, type.pointee);
         break;
+    case TypeKind::reference:
+        out << "&" << (type.pointer_mutability == PointerMutability::mut ? "mut " : "");
+        out << type_label(module, type.pointee);
+        break;
     case TypeKind::array:
         out << "[" << type.array_count << "]" << type_label(module, type.array_element);
         break;

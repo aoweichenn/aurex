@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型和 C FFI。字面量体系、tuple 基础、pattern ergonomics 和 `str` checked UTF-8 构造/切片已经补齐到 M2 基线；下一步更适合处理 capability/where 和 safe reference，而不是重建库层。
+   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型、C FFI 和最小 safe reference。字面量体系、tuple 基础、pattern ergonomics、`str` checked UTF-8 构造/切片和 `&T` / `&mut T` 已经补齐到 M2 基线；下一步更适合处理 capability/where 和更精确的结构化 exhaustiveness，而不是重建库层。
 
 5. 值语义边界
 
@@ -41,9 +41,9 @@
 
    `Copy` / `Drop` / destructor / borrow / move-out 不作为当前 M2 近期任务。等 `unsafe`、ADT、array/slice/string、function type 和 pattern 地基稳定后，再重新开资源语义专题。
 
-7. safe reference 方向
+7. safe reference
 
-   文档层面保留 `&T` / `&mut T` 作为 safe reference 方向，用于和 raw pointer 分层；borrow checker、lifetime 和 borrowed return 暂缓。
+   最小 `&T` / `&mut T` 已进入 M2 核心：reference 和 raw pointer 是不同类型，`&mut` 要求 writable place，reference 解引用是 safe，raw pointer 解引用仍是 unsafe-only。borrow checker、lifetime、borrowed return、alias model 和资源语义继续暂缓。
 
 8. Capability / trait / where
 

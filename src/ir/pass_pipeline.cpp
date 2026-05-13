@@ -73,6 +73,7 @@ void rewrite_terminator(Terminator& terminator, const ValueReplacementMap& repla
            module.types.is_integer(pointee) ||
            module.types.is_float(pointee) ||
            module.types.is_pointer(pointee) ||
+           module.types.is_reference(pointee) ||
            module.types.is_function(pointee) ||
            module.types.get(pointee).kind == sema::TypeKind::enum_;
 }

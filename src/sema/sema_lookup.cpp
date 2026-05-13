@@ -234,41 +234,44 @@ bool SemanticAnalyzer::method_receiver_matches(
         return false;
     }
     const TypeHandle self_type = signature.param_types.front();
-    if (checked_.types.same(self_type, receiver_type)) {
-        if (checked_.types.contains_array(self_type)) {
-            report(module_.exprs[receiver.value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+    if (this->checked_.types.same(self_type, receiver_type)) {
+        if (this->checked_.types.contains_array(self_type)) {
+            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
             return false;
         }
         return true;
     }
-    if (!checked_.types.is_pointer(self_type)) {
+    if (!this->checked_.types.is_pointer(self_type) && !this->checked_.types.is_reference(self_type)) {
         return false;
     }
-    const TypeHandle pointee = checked_.types.get(self_type).pointee;
-    if (checked_.types.is_pointer(receiver_type)) {
-        const TypeInfo& self_info = checked_.types.get(self_type);
-        const TypeInfo& receiver_info = checked_.types.get(receiver_type);
-        if (!checked_.types.same(self_info.pointee, receiver_info.pointee)) {
+    const TypeHandle pointee = this->checked_.types.get(self_type).pointee;
+    if (this->checked_.types.is_pointer(receiver_type) || this->checked_.types.is_reference(receiver_type)) {
+        const TypeInfo& self_info = this->checked_.types.get(self_type);
+        const TypeInfo& receiver_info = this->checked_.types.get(receiver_type);
+        if (self_info.kind != receiver_info.kind) {
+            return false;
+        }
+        if (!this->checked_.types.same(self_info.pointee, receiver_info.pointee)) {
             return false;
         }
         if (self_info.pointer_mutability == PointerMutability::mut &&
             receiver_info.pointer_mutability != PointerMutability::mut) {
-            report(module_.exprs[receiver.value].range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
+            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
             return false;
         }
         return true;
     }
-    if (!checked_.types.same(pointee, receiver_type)) {
+    if (!this->checked_.types.same(pointee, receiver_type)) {
         return false;
     }
-    const PointerMutability self_mutability = checked_.types.get(self_type).pointer_mutability;
+    const PointerMutability self_mutability = this->checked_.types.get(self_type).pointer_mutability;
     if (self_mutability == PointerMutability::mut) {
-        if (!is_place_expr(receiver)) {
-            report(module_.exprs[receiver.value].range, std::string(SEMA_METHOD_RECEIVER_PLACE));
+        if (!this->is_place_expr(receiver)) {
+            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_METHOD_RECEIVER_PLACE));
             return false;
         }
-        if (!is_writable_place(receiver)) {
-            report(module_.exprs[receiver.value].range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
+        if (!this->is_writable_place(receiver)) {
+            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
             return false;
         }
     }

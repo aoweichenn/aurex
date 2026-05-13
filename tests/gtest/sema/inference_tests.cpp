@@ -8,12 +8,11 @@ TEST_F(AurexIntegrationTest, LocalTypeInference) {
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
         "var value\n",
-        "let ptr\n",
+        "let ptr : CountPtr",
         "let pair\n",
         "let aliased : CountPtr",
     });
     expect_not_contains(ast, "var value :");
-    expect_not_contains(ast, "let ptr :");
     expect_not_contains(ast, "let pair :");
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;

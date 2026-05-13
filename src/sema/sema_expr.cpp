@@ -172,6 +172,10 @@ struct IntegerLiteralExpr {
            types.same(types.get(type).slice_element, types.builtin(BuiltinType::u8));
 }
 
+[[nodiscard]] bool is_pointer_or_reference(const TypeTable& types, const TypeHandle type) noexcept {
+    return types.is_pointer(type) || types.is_reference(type);
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
@@ -366,8 +370,10 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
         this->report(expr.range, std::string(SEMA_BITWISE_NOT_INTEGER));
     }
     if (expr.unary_op == syntax::UnaryOp::dereference) {
-        this->require_unsafe_context(expr.range, SEMA_UNSAFE_DEREF);
-        if (!this->checked_.types.is_pointer(operand)) {
+        if (this->checked_.types.is_pointer(operand)) {
+            this->require_unsafe_context(expr.range, SEMA_UNSAFE_DEREF);
+        }
+        if (!is_pointer_or_reference(this->checked_.types, operand)) {
             this->report(expr.range, std::string(SEMA_DEREF_POINTER));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
@@ -378,14 +384,35 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
         }
         return this->record_expr_type(expr_id, pointee);
     }
-    if (expr.unary_op == syntax::UnaryOp::address_of) {
+    if (expr.unary_op == syntax::UnaryOp::address_of || expr.unary_op == syntax::UnaryOp::address_of_mut) {
         if (!this->is_place_expr(expr.unary_operand)) {
             this->report(expr.range, std::string(SEMA_ADDRESS_OF_PLACE));
         }
-        const PointerMutability mutability = this->is_writable_place(expr.unary_operand)
-            ? PointerMutability::mut
-            : PointerMutability::const_;
-        return this->record_expr_type(expr_id, this->checked_.types.pointer(mutability, operand));
+        if (expr.unary_op == syntax::UnaryOp::address_of_mut) {
+            if (!this->is_writable_place(expr.unary_operand)) {
+                this->report(expr.range, std::string(SEMA_MUTABLE_REFERENCE_PLACE));
+            }
+            if (!this->is_valid_storage_type(operand)) {
+                this->report(expr.range, std::string(SEMA_REFERENCE_STORAGE));
+            }
+            return this->record_expr_type(
+                expr_id,
+                this->checked_.types.reference(PointerMutability::mut, operand)
+            );
+        }
+        if (this->checked_.types.is_pointer(expected_type)) {
+            const PointerMutability mutability = this->is_writable_place(expr.unary_operand)
+                ? PointerMutability::mut
+                : PointerMutability::const_;
+            return this->record_expr_type(expr_id, this->checked_.types.pointer(mutability, operand));
+        }
+        if (!this->is_valid_storage_type(operand)) {
+            this->report(expr.range, std::string(SEMA_REFERENCE_STORAGE));
+        }
+        return this->record_expr_type(
+            expr_id,
+            this->checked_.types.reference(PointerMutability::const_, operand)
+        );
     }
     return this->record_expr_type(expr_id, operand);
 }
@@ -585,7 +612,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
     }
 
     TypeHandle object = this->analyze_expr(expr.object);
-    if (this->checked_.types.is_pointer(object)) {
+    if (is_pointer_or_reference(this->checked_.types, object)) {
         object = this->checked_.types.get(object).pointee;
     }
     if (this->checked_.types.is_tuple(object)) {
@@ -639,6 +666,14 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         return this->record_expr_type(expr_id, pointee);
+    }
+    if (this->checked_.types.is_reference(object)) {
+        const TypeHandle pointee = this->checked_.types.get(object).pointee;
+        if (this->checked_.types.is_array(pointee)) {
+            return this->record_expr_type(expr_id, this->checked_.types.get(pointee).array_element);
+        }
+        this->report(expr.range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->report(expr.range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
@@ -963,8 +998,10 @@ TypeHandle SemanticAnalyzer::analyze_cast_expr(
     } else if (expr.kind == syntax::ExprKind::bcast) {
         this->require_unsafe_context(expr.range, SEMA_UNSAFE_BITCAST);
     }
-    const TypeHandle source = this->analyze_expr(expr.cast_expr);
     const TypeHandle target = this->resolve_type(expr.cast_type);
+    const TypeHandle source = expr.kind == syntax::ExprKind::pcast
+        ? this->analyze_expr(expr.cast_expr, target)
+        : this->analyze_expr(expr.cast_expr);
     if (!this->is_valid_cast(expr.kind, target, source)) {
         this->report(expr.range, std::string(SEMA_INVALID_CONVERSION));
     }
@@ -991,7 +1028,7 @@ TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
     const syntax::ExprNode& expr
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
-    if (!this->checked_.types.is_pointer(value)) {
+    if (!is_pointer_or_reference(this->checked_.types, value)) {
         this->report(expr.range, std::string(SEMA_PTRADDR_POINTER));
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));

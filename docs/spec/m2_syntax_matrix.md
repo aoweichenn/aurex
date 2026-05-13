@@ -42,6 +42,9 @@ This matrix records whether a syntax position is supported by current M2.
 | Impl | `impl[T] Box[T] {}` | no | Not part of M2 |
 | Type | `*mut i32` / `*const u8` | yes | Pointer mutability required |
 | Type | `*i32` | no | Missing `mut`/`const` |
+| Type | `&i32` | yes | Safe shared reference, distinct from raw pointer |
+| Type | `&mut i32` | yes | Safe mutable reference; pointee must be valid storage |
+| Type | `&void` | no | Reference pointee must be valid storage |
 | Type | `[4]i32` | yes | Integer literal length |
 | Type | `[N]i32` | no | Const expr lengths are not part of M2 |
 | Type | `[]const i32` | yes | Immutable borrowed slice, fat pointer value |
@@ -84,6 +87,10 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `unsafe { *p }` | yes | Tail expression result; creates unsafe context |
 | Expr | `unsafe { *p = 1; }` | yes | Statement-form unsafe block; no tail means `void` |
 | Expr | `*p` outside `unsafe` | no | Raw pointer dereference requires unsafe context |
+| Expr | `let r: &i32 = &value; *r` | yes | Safe reference dereference does not require unsafe |
+| Expr | `let r: &mut i32 = &mut value; *r = 1;` | yes | Mutable reference requires a writable place |
+| Expr | `let r: &mut i32 = &mut value;` where `value` is `let` | no | `&mut` requires writable storage |
+| Expr | `let p: *mut i32 = &mut value;` | no | `&mut` is safe reference syntax, not raw pointer syntax |
 | Expr | `ptrcast[T](p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
 | Expr | `strvalid(bytes)` | yes | Safe UTF-8 validation for `[]const u8` / `[]mut u8` |
 | Expr | `strfromutf8(bytes)` | yes | Safe checked construction returning `str`; failure returns empty `str` |

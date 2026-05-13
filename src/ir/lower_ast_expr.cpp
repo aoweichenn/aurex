@@ -18,6 +18,7 @@ constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
     case syntax::UnaryOp::numeric_negate: return UnaryOp::numeric_negate;
     case syntax::UnaryOp::bitwise_not: return UnaryOp::bitwise_not;
     case syntax::UnaryOp::address_of: return UnaryOp::address_of;
+    case syntax::UnaryOp::address_of_mut: return UnaryOp::address_of;
     case syntax::UnaryOp::dereference: return UnaryOp::dereference;
     }
     return UnaryOp::logical_not;
@@ -326,7 +327,7 @@ ValueId Lowerer::lower_unary_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
 ) {
-    if (expr.unary_op == syntax::UnaryOp::address_of) {
+    if (expr.unary_op == syntax::UnaryOp::address_of || expr.unary_op == syntax::UnaryOp::address_of_mut) {
         return this->coerce_value(this->lower_place_addr(expr.unary_operand), this->expr_type(expr_id));
     }
     if (expr.unary_op == syntax::UnaryOp::dereference) {
@@ -401,9 +402,13 @@ ValueId Lowerer::lower_call_expr(
         const sema::TypeHandle receiver_type = this->expr_type(callee.object);
         const sema::TypeHandle param_type = this->call_param_type(target.function, 0);
         ValueId receiver = INVALID_VALUE_ID;
-        if (sema::is_valid(param_type) &&
-            this->module_.types.is_pointer(param_type) &&
-            (!sema::is_valid(receiver_type) || !this->module_.types.is_pointer(receiver_type))) {
+        const bool param_is_indirect =
+            sema::is_valid(param_type) &&
+            (this->module_.types.is_pointer(param_type) || this->module_.types.is_reference(param_type));
+        const bool receiver_is_indirect =
+            sema::is_valid(receiver_type) &&
+            (this->module_.types.is_pointer(receiver_type) || this->module_.types.is_reference(receiver_type));
+        if (param_is_indirect && !receiver_is_indirect) {
             const sema::TypeInfo& param_info = this->module_.types.get(param_type);
             receiver = param_info.pointer_mutability == sema::PointerMutability::mut
                 ? this->lower_place_addr(callee.object)
@@ -776,7 +781,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
 
 PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id) {
     const sema::TypeHandle type = expr_type(expr_id);
-    if (sema::is_valid(type) && module_.types.is_pointer(type)) {
+    if (sema::is_valid(type) && (module_.types.is_pointer(type) || module_.types.is_reference(type))) {
         return PlaceAddress {lower_expr(expr_id), module_.types.get(type).pointer_mutability == sema::PointerMutability::mut};
     }
     const PlaceAddress place = lower_place_address(expr_id);
@@ -804,7 +809,7 @@ bool Lowerer::is_local_slot_type(const sema::TypeHandle type) const noexcept {
 bool Lowerer::pointee_is_mutable(const syntax::ExprId expr_id) const noexcept {
     const sema::TypeHandle type = expr_type(expr_id);
     return sema::is_valid(type) &&
-           module_.types.is_pointer(type) &&
+           (module_.types.is_pointer(type) || module_.types.is_reference(type)) &&
            module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
 }
 
@@ -936,7 +941,7 @@ sema::TypeHandle Lowerer::local_load_type(const ValueId slot) const noexcept {
         return sema::INVALID_TYPE_HANDLE;
     }
     const sema::TypeHandle slot_type = module_.values[slot.value].type;
-    if (!sema::is_valid(slot_type) || !module_.types.is_pointer(slot_type)) {
+    if (!sema::is_valid(slot_type) || (!module_.types.is_pointer(slot_type) && !module_.types.is_reference(slot_type))) {
         return sema::INVALID_TYPE_HANDLE;
     }
     return module_.types.get(slot_type).pointee;
@@ -968,6 +973,36 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
             value.type = target_type;
             value.lhs = this->append_slice_data(value_id, sema::PointerMutability::const_, target.slice_element);
             value.rhs = this->append_slice_len(value_id);
+            return this->append_value(value);
+        }
+    }
+    if (this->module_.types.is_reference(source_type) && this->module_.types.is_reference(target_type)) {
+        const sema::TypeInfo& source = this->module_.types.get(source_type);
+        const sema::TypeInfo& target = this->module_.types.get(target_type);
+        if (target.pointer_mutability == sema::PointerMutability::const_ &&
+            source.pointer_mutability == sema::PointerMutability::mut &&
+            this->module_.types.same(source.pointee, target.pointee)) {
+            Value value;
+            value.kind = ValueKind::cast;
+            value.type = target_type;
+            value.target_type = target_type;
+            value.lhs = value_id;
+            value.cast_kind = CastKind::pointer;
+            return this->append_value(value);
+        }
+    }
+    if (this->module_.types.is_pointer(source_type) && this->module_.types.is_reference(target_type)) {
+        const sema::TypeInfo& source = this->module_.types.get(source_type);
+        const sema::TypeInfo& target = this->module_.types.get(target_type);
+        if (this->module_.types.same(source.pointee, target.pointee) &&
+            (target.pointer_mutability == sema::PointerMutability::const_ ||
+             source.pointer_mutability == sema::PointerMutability::mut)) {
+            Value value;
+            value.kind = ValueKind::cast;
+            value.type = target_type;
+            value.target_type = target_type;
+            value.lhs = value_id;
+            value.cast_kind = CastKind::pointer;
             return this->append_value(value);
         }
     }

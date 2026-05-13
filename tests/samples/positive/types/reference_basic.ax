@@ -1,0 +1,77 @@
+module reference_basic;
+
+struct Pair {
+    first: i32;
+    second: i32;
+}
+
+impl Pair {
+    fn total(self: &Pair) -> i32 {
+        return self.first + self.second;
+    }
+
+    fn replace_first(self: &mut Pair, replacement: i32) -> void {
+        self.first = replacement;
+    }
+}
+
+fn read(value: &i32) -> i32 {
+    return *value;
+}
+
+fn write(value: &mut i32, replacement: i32) -> void {
+    *value = replacement;
+}
+
+fn sum(pair: &Pair) -> i32 {
+    return pair.first + pair.second;
+}
+
+fn set_first(pair: &mut Pair, replacement: i32) -> void {
+    pair.first = replacement;
+}
+
+fn id_ref[T](value: &T) -> &T {
+    return value;
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let shared: &i32 = &value;
+    if read(shared) != 1 {
+        return 1;
+    }
+
+    let unique: &mut i32 = &mut value;
+    write(unique, 9);
+    let shared_again: &i32 = unique;
+    if *shared_again != 9 {
+        return 2;
+    }
+
+    var pair: Pair = Pair { first: 2, second: 3 };
+    let pair_shared: &Pair = &pair;
+    if sum(pair_shared) != 5 {
+        return 3;
+    }
+    if pair.total() != 5 {
+        return 4;
+    }
+    if pair_shared.total() != 5 {
+        return 5;
+    }
+
+    let pair_unique: &mut Pair = &mut pair;
+    set_first(pair_unique, 6);
+    pair.replace_first(7);
+    if pair.first != 7 {
+        return 6;
+    }
+    pair_unique.replace_first(8);
+    if pair_unique.total() != 11 {
+        return 7;
+    }
+
+    let inferred: &i32 = id_ref(shared_again);
+    return *inferred + pair.first - 17;
+}

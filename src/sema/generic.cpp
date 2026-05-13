@@ -432,7 +432,15 @@ bool SemanticAnalyzer::unify_generic_type(
             }
             break;
         case TypeKind::pointer:
-            if (pattern_info.pointer_mutability != actual_info.pointer_mutability) {
+            if (pattern_info.pointer_mutability == PointerMutability::mut &&
+                actual_info.pointer_mutability != PointerMutability::mut) {
+                return false;
+            }
+            pending.emplace_back(pattern_info.pointee, actual_info.pointee);
+            break;
+        case TypeKind::reference:
+            if (pattern_info.pointer_mutability == PointerMutability::mut &&
+                actual_info.pointer_mutability != PointerMutability::mut) {
                 return false;
             }
             pending.emplace_back(pattern_info.pointee, actual_info.pointee);
@@ -525,7 +533,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
 
     std::unordered_map<std::string, TypeHandle> inferred;
     for (base::usize i = 0; i < call.args.size(); ++i) {
-        const TypeHandle actual = this->analyze_expr(call.args[i]);
+        const TypeHandle actual = this->analyze_expr(call.args[i], pattern_param_types[i]);
         if (!this->unify_generic_type(pattern_param_types[i], actual, inferred)) {
             this->report(
                 this->module_.exprs[call.args[i].value].range,
@@ -621,6 +629,7 @@ bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const 
         case TypeKind::generic_param:
             return true;
         case TypeKind::pointer:
+        case TypeKind::reference:
             pending.push_back(info.pointee);
             break;
         case TypeKind::slice:

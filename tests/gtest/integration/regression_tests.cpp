@@ -152,6 +152,45 @@ TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {
     );
 }
 
+TEST_F(AurexIntegrationTest, M2SafeReferences) {
+    const fs::path positive = positive_sample("types", "reference_basic.ax");
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(positive)).output;
+    expect_contains_all(checked, {
+        "fn priv read -> i32",
+        "fn priv write -> void",
+        "fn priv id_ref[i32] -> &i32",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(positive)).output;
+    expect_contains_all(ir, {
+        "fn read(value: &i32)",
+        "fn write(value: &mut i32",
+        "ptrcast",
+        "field_addr",
+    });
+
+    const fs::path binary = test_bin_root() / "reference_basic";
+    require_success(aurexc() + " " + q(positive) + " -o " + q(binary));
+    require_success(q(binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "reference_mut_from_immutable.ax"))).output,
+        "mutable reference requires a writable place expression"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "reference_assign_through_shared.ax"))).output,
+        "left side of assignment must be writable"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "reference_invalid_pointee.ax"))).output,
+        "reference requires a valid storage type"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "reference_mut_not_raw_pointer.ax"))).output,
+        "initializer type does not match declared type"
+    );
+}
+
 TEST_F(AurexIntegrationTest, StringCheckedBoundary) {
     const fs::path positive = positive_sample("types", "str_checked.ax");
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(positive)).output;

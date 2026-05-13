@@ -174,6 +174,7 @@ syntax::TypeId TypeParser::parse_type() {
     this->reset_panic();
     enum class TypeConstructorKind {
         pointer,
+        reference,
         array,
         slice,
     };
@@ -200,6 +201,21 @@ syntax::TypeId TypeParser::parse_type() {
             }
             constructors.push_back(TypeConstructor {
                 TypeConstructorKind::pointer,
+                begin.range,
+                mutability,
+                0,
+            });
+            continue;
+        }
+
+        if (this->match(TokenKind::amp)) {
+            const syntax::Token& begin = this->previous();
+            syntax::PointerMutability mutability = syntax::PointerMutability::const_;
+            if (this->match(TokenKind::kw_mut)) {
+                mutability = syntax::PointerMutability::mut;
+            }
+            constructors.push_back(TypeConstructor {
+                TypeConstructorKind::reference,
                 begin.range,
                 mutability,
                 0,
@@ -250,6 +266,10 @@ syntax::TypeId TypeParser::parse_type() {
         node.range = this->merge(constructor.begin_range, this->type_range_or(type, constructor.begin_range));
         if (constructor.kind == TypeConstructorKind::pointer) {
             node.kind = syntax::TypeKind::pointer;
+            node.pointer_mutability = constructor.pointer_mutability;
+            node.pointee = type;
+        } else if (constructor.kind == TypeConstructorKind::reference) {
+            node.kind = syntax::TypeKind::reference;
             node.pointer_mutability = constructor.pointer_mutability;
             node.pointee = type;
         } else if (constructor.kind == TypeConstructorKind::array) {

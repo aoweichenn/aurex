@@ -288,7 +288,7 @@ void SemanticAnalyzer::register_value_names() {
                 }
                 if (saw_self && !param_types.empty() && is_valid(method_owner_type)) {
                     TypeHandle self_type = param_types.front();
-                    if (this->checked_.types.is_pointer(self_type)) {
+                    if (this->checked_.types.is_pointer(self_type) || this->checked_.types.is_reference(self_type)) {
                         self_type = this->checked_.types.get(self_type).pointee;
                     }
                     if (!this->checked_.types.same(self_type, method_owner_type)) {

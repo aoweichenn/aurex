@@ -1,0 +1,7 @@
+module reference_mut_from_immutable;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let ref_value: &mut i32 = &mut value;
+    return *ref_value;
+}

@@ -110,9 +110,11 @@ LLVM lowering, native execution, and installed compiler execution.
   baseline. M2 keeps ordinary value semantics plus the current array-containing
   value restrictions; copy/drop/borrow/ownership are deferred to a later
   resource-semantics design.
-- Raw pointers still carry FFI, receiver, address, and temporary-borrow roles.
-  Unsafe checks now fence the raw operations, but safe references remain a later
-  design needed to separate those roles cleanly.
+- Minimal safe references are implemented: `&T`, `&mut T`, `&place`,
+  `&mut place`, safe reference dereference, mutable-reference write checks, and
+  pointer-sized ABI lowering. Raw pointer dereference still requires `unsafe`.
+  Borrow checking, lifetimes, borrowed-return rules, alias analysis, and
+  ownership/resource semantics remain deferred.
 
 ## Current Conclusion
 

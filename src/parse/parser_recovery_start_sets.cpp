@@ -114,6 +114,7 @@ bool token_starts_non_expression_statement(const TokenKind kind) noexcept {
 bool token_starts_type(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::identifier:
+    case TokenKind::amp:
     case TokenKind::star:
     case TokenKind::l_bracket:
     case TokenKind::kw_unsafe:

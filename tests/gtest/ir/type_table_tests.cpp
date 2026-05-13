@@ -28,6 +28,9 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle ptr_i32_again = ptr(module, PointerMutability::mut, i32);
     const TypeHandle const_ptr_i32 = ptr(module, PointerMutability::const_, i32);
+    const TypeHandle ref_i32 = module.types.reference(PointerMutability::const_, i32);
+    const TypeHandle ref_i32_again = module.types.reference(PointerMutability::const_, i32);
+    const TypeHandle mut_ref_i32 = module.types.reference(PointerMutability::mut, i32);
     const TypeHandle array_i32 = module.types.array(TYPE_TABLE_TEST_ARRAY_COUNT, i32);
     const TypeHandle array_i32_again = module.types.array(TYPE_TABLE_TEST_ARRAY_COUNT, i32);
     const TypeHandle array_ptr_i32 = module.types.array(TYPE_TABLE_TEST_ARRAY_COUNT, ptr_i32);
@@ -90,6 +93,9 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
 
     EXPECT_TRUE(module.types.same(ptr_i32, ptr_i32_again));
     EXPECT_FALSE(module.types.same(ptr_i32, const_ptr_i32));
+    EXPECT_TRUE(module.types.same(ref_i32, ref_i32_again));
+    EXPECT_FALSE(module.types.same(ref_i32, mut_ref_i32));
+    EXPECT_FALSE(module.types.same(ref_i32, const_ptr_i32));
     EXPECT_TRUE(module.types.same(array_i32, array_i32_again));
     EXPECT_TRUE(module.types.same(const_slice_i32, const_slice_i32_again));
     EXPECT_FALSE(module.types.same(const_slice_i32, mut_slice_i32));
@@ -102,6 +108,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.is_integer(u32));
     EXPECT_TRUE(module.types.is_float(f64));
     EXPECT_TRUE(module.types.is_pointer(ptr_i32));
+    EXPECT_TRUE(module.types.is_reference(ref_i32));
+    EXPECT_TRUE(module.types.is_reference(mut_ref_i32));
     EXPECT_TRUE(module.types.is_array(array_i32));
     EXPECT_TRUE(module.types.is_slice(const_slice_i32));
     EXPECT_TRUE(module.types.is_slice(mut_slice_i32));
@@ -112,6 +120,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.contains_array(tuple_with_array));
     EXPECT_FALSE(module.types.contains_array(tuple_i32_bool));
     EXPECT_EQ(module.types.display_name(ptr_i32), "*mut i32");
+    EXPECT_EQ(module.types.display_name(ref_i32), "&i32");
+    EXPECT_EQ(module.types.display_name(mut_ref_i32), "&mut i32");
     EXPECT_EQ(module.types.display_name(array_i32), array_display + "i32");
     EXPECT_EQ(module.types.display_name(array_ptr_i32), array_display + "*mut i32");
     EXPECT_EQ(module.types.display_name(ptr_array_i32), std::string("*mut ") + array_display + "i32");
@@ -263,6 +273,8 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_FALSE(module.types.is_void(out_of_range));
     EXPECT_FALSE(module.types.is_pointer(sema::INVALID_TYPE_HANDLE));
     EXPECT_FALSE(module.types.is_pointer(out_of_range));
+    EXPECT_FALSE(module.types.is_reference(sema::INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(module.types.is_reference(out_of_range));
     EXPECT_FALSE(module.types.is_array(sema::INVALID_TYPE_HANDLE));
     EXPECT_FALSE(module.types.is_array(out_of_range));
     EXPECT_FALSE(module.types.is_slice(sema::INVALID_TYPE_HANDLE));

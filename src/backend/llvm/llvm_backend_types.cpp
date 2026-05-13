@@ -78,6 +78,7 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
             }
             break;
         case sema::TypeKind::pointer:
+        case sema::TypeKind::reference:
         case sema::TypeKind::function:
             result = llvm::PointerType::get(this->context_, LLVM_DEFAULT_ADDRESS_SPACE);
             break;
@@ -143,7 +144,7 @@ llvm::FunctionType* LlvmEmitter::llvm_function_type(const sema::TypeHandle funct
 }
 
 llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type) {
-    if (!this->source_.types.is_pointer(pointer_type)) {
+    if (!this->source_.types.is_pointer(pointer_type) && !this->source_.types.is_reference(pointer_type)) {
         return llvm::Type::getVoidTy(this->context_);
     }
     return this->llvm_type(this->source_.types.get(pointer_type).pointee);
@@ -151,7 +152,7 @@ llvm::Type* LlvmEmitter::pointee_llvm_type(const sema::TypeHandle pointer_type) 
 
 sema::TypeHandle LlvmEmitter::pointee_type(const ValueId value) const noexcept {
     const sema::TypeHandle type = this->source_.values[value.value].type;
-    if (!this->source_.types.is_pointer(type)) {
+    if (!this->source_.types.is_pointer(type) && !this->source_.types.is_reference(type)) {
         return sema::INVALID_TYPE_HANDLE;
     }
     return this->source_.types.get(type).pointee;

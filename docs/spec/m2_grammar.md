@@ -111,10 +111,13 @@ contain function declarations and opaque struct declarations.
 
 ```ebnf
 Type
-  = { PointerTypePrefix | ArrayTypePrefix | SliceTypePrefix } TypeAtom ;
+  = { PointerTypePrefix | ReferenceTypePrefix | ArrayTypePrefix | SliceTypePrefix } TypeAtom ;
 
 PointerTypePrefix
   = "*" ( "mut" | "const" ) ;
+
+ReferenceTypePrefix
+  = "&" [ "mut" ] ;
 
 ArrayTypePrefix
   = "[" IntegerLiteral "]" ;
@@ -170,6 +173,8 @@ str
 char
 *mut i32
 *const u8
+&i32
+&mut i32
 [4]i32
 []const i32
 []mut u8
@@ -188,6 +193,13 @@ foo::Box[i32]
 Rules:
 
 - Pointer types require `mut` or `const` after `*`.
+- Reference types use `&T` for a safe shared reference and `&mut T` for a
+  safe mutable reference. References are semantic types distinct from raw
+  pointers, though the current ABI lowers them as pointer-sized values.
+  Reference pointees must be valid storage types, so `&void` and references to
+  opaque value types are rejected. `&mut place` requires a writable place.
+  M2 references do not include borrow checking, lifetimes, borrowed-return
+  rules, or alias analysis.
 - Array type length is an integer literal, not a const expression.
 - Slice types require `const` or `mut` after `[]`; bare `[]T` is rejected.
 - Slices are fat values represented as data pointer plus length. They can be
@@ -565,9 +577,15 @@ The following operations require an unsafe context:
 - Calling an `unsafe fn` or a value whose type is `unsafe fn(...) -> T` /
   `unsafe extern c fn(...) -> T`.
 
-Safe operations include address-of `&place`, `ptraddr(p)`, `strptr(s)`,
+Safe operations include address-of `&place`, `ptraddr(p_or_ref)`, `strptr(s)`,
 `strblen(s)`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof[T]`,
 `alignof[T]`, and checked numeric `cast[T](x)`.
+
+`&place` creates `&T` unless a legacy raw-pointer context explicitly expects a
+`*const T` or `*mut T`; that compatibility path exists for current M2 pointer
+samples. `&mut place` creates `&mut T` and does not silently become a raw
+pointer. Unary `*` on a safe reference is a safe load or place projection;
+unary `*` on a raw pointer remains unsafe-only.
 
 `strvalid(bytes)` accepts a `[]const u8` or `[]mut u8` borrowed byte slice and
 returns `bool`. `strfromutf8(bytes)` accepts the same slice shape and returns

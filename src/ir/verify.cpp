@@ -414,6 +414,9 @@ private:
         case ValueKind::str_from_utf8_checked:
             this->verify_str_from_utf8_checked(*value);
             break;
+        case ValueKind::str_slice_checked:
+            this->verify_str_slice_checked(*value);
+            break;
         case ValueKind::str_from_bytes_unchecked:
             this->verify_str_from_bytes_unchecked(*value);
             break;
@@ -878,6 +881,20 @@ private:
             this->fail(std::string(IR_VERIFY_STRFROMUTF8_RESULT));
         }
         this->verify_str_utf8_slice_operand(value);
+    }
+
+    void verify_str_slice_checked(const Value& value) {
+        this->verify_type(value.type, "str slice result");
+        if (!this->module_.types.is_str(value.type)) {
+            this->fail(std::string(IR_VERIFY_STR_SLICE_RESULT));
+        }
+        this->verify_value_id(value.object, "str slice object");
+        if (const Value* object = this->get(value.object);
+            object != nullptr && !this->module_.types.is_str(object->type)) {
+            this->fail(std::string(IR_VERIFY_STR_SLICE_OBJECT));
+        }
+        this->verify_value_type(value.lhs, this->module_.types.builtin(sema::BuiltinType::usize), "str slice start");
+        this->verify_value_type(value.rhs, this->module_.types.builtin(sema::BuiltinType::usize), "str slice end");
     }
 
     void verify_str_utf8_slice_operand(const Value& value) {

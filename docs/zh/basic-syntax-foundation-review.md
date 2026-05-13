@@ -707,7 +707,7 @@ unsafe fn from_raw(data: *const u8, len: usize) -> str {
 
 - `strraw` 能直接构造 `str`，当前已被 `unsafe` 语法约束。
 - checked UTF-8 构造已冻结为语言核心内建：`strvalid(bytes) -> bool` 和 `strfromutf8(bytes) -> str`，参数是 `[]const u8` 或 `[]mut u8`。`strfromutf8` 成功时返回文本，失败时返回空 `str`；需要区分合法空输入和非法输入时调用 `strvalid(bytes)`。失败路径不会把无效输入包装成 `str`。
-- 仍未做语言核心层面的 checked string slicing；未来 `slice_bytes_checked` / UTF-8 scalar boundary API 可以进入 core text API 或库层。
+- 语言核心层面的 checked string slicing 已落地：`text[l:r]` 按 byte offset 返回 `str`，越界或边界落在 UTF-8 continuation byte 上时返回空 `str`；未来 `slice_bytes_checked` / UTF-8 scalar boundary API 可以在库层提供更细错误信息。
 - `strptr` 暴露 raw pointer，长期需要和 borrow/lifetime/FFI 边界一起解释。
 - `c"..."` 仍是 `*const u8`，这是合理 FFI 过渡，但不能变成普通文本 API 的替代品。
 
@@ -933,7 +933,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 
 第二批再做：
 
-1. 固定 `str` 的 safe/unsafe API 边界。已补 M2 no-std checked 构造；checked slicing 后续单独设计。
+1. 固定 `str` 的 safe/unsafe API 边界。已补 M2 no-std checked 构造和 checked slicing；未来只保留库层 text API 设计。
 2. slice type/expression 已落地，后续只需和 `str` boundary 保持一致。
 3. raw/multiline raw string、bytes string 和 Unicode scalar `char` 已补齐，后续只需保持文档和测试矩阵同步。
 4. function pointer / function type 已落地，后续只需保持 grammar、诊断和 ABI 文档同步。

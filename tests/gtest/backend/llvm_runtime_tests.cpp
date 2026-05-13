@@ -476,6 +476,14 @@ TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
     from_bytes.args = {str_data_id, str_byte_len_id};
     add_and_keep(from_bytes);
 
+    Value str_slice;
+    str_slice.kind = ValueKind::str_slice_checked;
+    str_slice.type = str_type;
+    str_slice.object = runtime_string_id;
+    str_slice.lhs = str_byte_len_id;
+    str_slice.rhs = str_byte_len_id;
+    add_and_keep(str_slice);
+
     Value float_less;
     float_less.kind = ValueKind::binary;
     float_less.type = bool_type;
@@ -506,6 +514,8 @@ TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
         "insertvalue",
         "str.data",
         "str.len",
+        "str.slice.ok",
+        "__aurex_utf8_boundary",
         "fcmp olt",
         "xor",
     });

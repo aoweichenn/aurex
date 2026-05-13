@@ -679,6 +679,8 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
         const TypeInfo& slice = this->checked_.types.get(object);
         element = slice.slice_element;
         mutability = slice.slice_mutability;
+    } else if (this->checked_.types.is_str(object)) {
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     } else {
         this->report(expr.range, std::string(SEMA_SLICE_ARRAY_OR_SLICE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);

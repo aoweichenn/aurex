@@ -953,11 +953,27 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
     Value from_bytes_value = typed_value(ValueKind::str_from_bytes_unchecked, str);
     from_bytes_value.args = {c_string_value, str_len_id};
     const ValueId from_bytes_id = builder.add(from_bytes_value);
+    Value str_slice_value = typed_value(ValueKind::str_slice_checked, str);
+    str_slice_value.object = string_value;
+    str_slice_value.lhs = str_len_id;
+    str_slice_value.rhs = str_len_id;
+    const ValueId str_slice_id = builder.add(str_slice_value);
 
     append_return_block(
         builder,
         function,
-        {string_value, raw_string_value, char_value, c_string_value, size_of_id, align_of_id, str_data_id, str_len_id, from_bytes_id},
+        {
+            string_value,
+            raw_string_value,
+            char_value,
+            c_string_value,
+            size_of_id,
+            align_of_id,
+            str_data_id,
+            str_len_id,
+            from_bytes_id,
+            str_slice_id,
+        },
         from_bytes_id
     );
     module.functions.push_back(function);
@@ -1030,6 +1046,30 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     bad_strfromutf8_operand.object = good_string_value;
     const ValueId bad_strfromutf8_operand_id = builder.add(bad_strfromutf8_operand);
 
+    Value bad_str_slice_result = typed_value(ValueKind::str_slice_checked, i32);
+    bad_str_slice_result.object = good_string_value;
+    bad_str_slice_result.lhs = usize_one;
+    bad_str_slice_result.rhs = usize_one;
+    const ValueId bad_str_slice_result_id = builder.add(bad_str_slice_result);
+
+    Value bad_str_slice_object = typed_value(ValueKind::str_slice_checked, str);
+    bad_str_slice_object.object = bad_byte_literal;
+    bad_str_slice_object.lhs = usize_one;
+    bad_str_slice_object.rhs = usize_one;
+    const ValueId bad_str_slice_object_id = builder.add(bad_str_slice_object);
+
+    Value bad_str_slice_start = typed_value(ValueKind::str_slice_checked, str);
+    bad_str_slice_start.object = good_string_value;
+    bad_str_slice_start.lhs = bool_value_id;
+    bad_str_slice_start.rhs = usize_one;
+    const ValueId bad_str_slice_start_id = builder.add(bad_str_slice_start);
+
+    Value bad_str_slice_end = typed_value(ValueKind::str_slice_checked, str);
+    bad_str_slice_end.object = good_string_value;
+    bad_str_slice_end.lhs = usize_one;
+    bad_str_slice_end.rhs = bool_value_id;
+    const ValueId bad_str_slice_end_id = builder.add(bad_str_slice_end);
+
     Value bad_from_count = typed_value(ValueKind::str_from_bytes_unchecked, str);
     bad_from_count.args = {good_c_string_value};
     const ValueId bad_from_count_id = builder.add(bad_from_count);
@@ -1069,6 +1109,10 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
             bad_strvalid_operand_id,
             bad_strfromutf8_result_id,
             bad_strfromutf8_operand_id,
+            bad_str_slice_result_id,
+            bad_str_slice_object_id,
+            bad_str_slice_start_id,
+            bad_str_slice_end_id,
             bad_from_count_id,
             bad_from_result_id,
             bad_from_data_id,
@@ -1093,6 +1137,10 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
         "strvalid result must be bool",
         "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice",
         "strfromutf8 result must be str",
+        "str slice result must be str",
+        "str slice object type mismatch",
+        "str slice start type mismatch",
+        "str slice end type mismatch",
         "strraw requires data and length arguments",
         "strraw result must be str",
         "strraw data must be *const u8",

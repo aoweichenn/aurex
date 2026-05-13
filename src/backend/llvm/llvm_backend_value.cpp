@@ -25,7 +25,17 @@ constexpr char LLVM_BACKEND_VALUE_STRING_LENGTH_NAME[] = "str.len";
 constexpr char LLVM_BACKEND_VALUE_SLICE_DATA_NAME[] = "slice.data";
 constexpr char LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME[] = "slice.len";
 constexpr char LLVM_BACKEND_VALUE_UTF8_VALID_NAME[] = "str.utf8.valid";
+constexpr char LLVM_BACKEND_VALUE_STR_SLICE_NAME[] = "str.slice";
+constexpr char LLVM_BACKEND_VALUE_STR_SLICE_DATA_NAME[] = "str.slice.data";
+constexpr char LLVM_BACKEND_VALUE_STR_SLICE_LENGTH_NAME[] = "str.slice.len";
+constexpr char LLVM_BACKEND_VALUE_STR_SLICE_SUCCESS_NAME[] = "str.slice.ok";
+constexpr char LLVM_BACKEND_VALUE_STR_SLICE_START_BOUNDARY_SUFFIX[] = ".start";
+constexpr char LLVM_BACKEND_VALUE_STR_SLICE_END_BOUNDARY_SUFFIX[] = ".end";
 constexpr char LLVM_BACKEND_VALUE_UTF8_HELPER_NAME[] = "__aurex_utf8_validate";
+constexpr char LLVM_BACKEND_VALUE_UTF8_BOUNDARY_HELPER_NAME[] = "__aurex_utf8_boundary";
+constexpr char LLVM_BACKEND_VALUE_UTF8_BOUNDARY_EDGE_BLOCK[] = "edge";
+constexpr char LLVM_BACKEND_VALUE_UTF8_BOUNDARY_PROBE_BLOCK[] = "probe";
+constexpr char LLVM_BACKEND_VALUE_UTF8_BOUNDARY_LOAD_BLOCK[] = "load";
 constexpr char LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK[] = "entry";
 constexpr char LLVM_BACKEND_VALUE_UTF8_NULL_CHECK_BLOCK[] = "null.check";
 constexpr char LLVM_BACKEND_VALUE_UTF8_LOOP_BLOCK[] = "loop";
@@ -186,6 +196,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         return this->emit_str_is_valid_utf8(value);
     case ValueKind::str_from_utf8_checked:
         return this->emit_str_from_utf8_checked(value);
+    case ValueKind::str_slice_checked:
+        return this->emit_str_slice_checked(value);
     case ValueKind::str_from_bytes_unchecked: {
         llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
         result = this->builder_.CreateInsertValue(
@@ -678,12 +690,194 @@ llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value) {
     return text;
 }
 
+llvm::Value* LlvmEmitter::emit_str_slice_checked(const Value& value) {
+    llvm::Value* source = this->get(value.object);
+    llvm::Value* data = this->builder_.CreateExtractValue(
+        source,
+        {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_STRING_DATA_NAME
+    );
+    llvm::Value* length = this->builder_.CreateExtractValue(
+        source,
+        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_STRING_LENGTH_NAME
+    );
+    llvm::Value* start = this->get(value.lhs);
+    llvm::Value* end = this->get(value.rhs);
+
+    llvm::Type* byte_type = llvm::Type::getInt8Ty(this->context_);
+    llvm::Value* zero = llvm::ConstantInt::get(length->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* empty_source = this->builder_.CreateICmpEQ(length, zero);
+    llvm::Value* null_data = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(data->getType()));
+    llvm::Value* data_present = this->builder_.CreateICmpNE(data, null_data);
+    llvm::Value* source_storage_ok = this->builder_.CreateOr(empty_source, data_present);
+    llvm::Value* ordered_bounds = this->builder_.CreateICmpULE(start, end);
+    llvm::Value* end_in_bounds = this->builder_.CreateICmpULE(end, length);
+    llvm::Value* start_boundary = this->emit_utf8_boundary_check(
+        data,
+        length,
+        start,
+        std::string(LLVM_BACKEND_VALUE_STR_SLICE_NAME) + LLVM_BACKEND_VALUE_STR_SLICE_START_BOUNDARY_SUFFIX
+    );
+    llvm::Value* end_boundary = this->emit_utf8_boundary_check(
+        data,
+        length,
+        end,
+        std::string(LLVM_BACKEND_VALUE_STR_SLICE_NAME) + LLVM_BACKEND_VALUE_STR_SLICE_END_BOUNDARY_SUFFIX
+    );
+
+    llvm::Value* success = this->builder_.CreateAnd(source_storage_ok, ordered_bounds);
+    success = this->builder_.CreateAnd(success, end_in_bounds);
+    success = this->builder_.CreateAnd(success, start_boundary);
+    success = this->builder_.CreateAnd(success, end_boundary, LLVM_BACKEND_VALUE_STR_SLICE_SUCCESS_NAME);
+
+    llvm::Value* slice_data = this->builder_.CreateGEP(
+        byte_type,
+        data,
+        start,
+        LLVM_BACKEND_VALUE_STR_SLICE_DATA_NAME
+    );
+    llvm::Value* slice_length = this->builder_.CreateSub(end, start, LLVM_BACKEND_VALUE_STR_SLICE_LENGTH_NAME);
+    llvm::Value* empty_length = llvm::ConstantInt::get(length->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* checked_data = this->builder_.CreateSelect(success, slice_data, null_data);
+    llvm::Value* checked_length = this->builder_.CreateSelect(success, slice_length, empty_length);
+
+    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+    result = this->builder_.CreateInsertValue(
+        result,
+        checked_data,
+        {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_STR_SLICE_NAME
+    );
+    result = this->builder_.CreateInsertValue(
+        result,
+        checked_length,
+        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_STR_SLICE_NAME
+    );
+    return result;
+}
+
 llvm::Value* LlvmEmitter::emit_utf8_validation_call(llvm::Value* data, llvm::Value* length) {
     return this->builder_.CreateCall(
         this->utf8_validator_function(),
         {data, length},
         LLVM_BACKEND_VALUE_UTF8_VALID_NAME
     );
+}
+
+llvm::Value* LlvmEmitter::emit_utf8_boundary_check(
+    llvm::Value* data,
+    llvm::Value* length,
+    llvm::Value* index,
+    const std::string& name
+) {
+    return this->builder_.CreateCall(
+        this->utf8_boundary_function(),
+        {data, length, index},
+        name
+    );
+}
+
+llvm::Function* LlvmEmitter::utf8_boundary_function() {
+    if (llvm::Function* existing = this->module_->getFunction(LLVM_BACKEND_VALUE_UTF8_BOUNDARY_HELPER_NAME);
+        existing != nullptr) {
+        return existing;
+    }
+
+    llvm::Type* byte_type = llvm::Type::getInt8Ty(this->context_);
+    llvm::Type* bool_type = llvm::Type::getInt1Ty(this->context_);
+    llvm::Type* size_type = this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize));
+    llvm::PointerType* byte_pointer_type = llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE);
+    llvm::FunctionType* function_type = llvm::FunctionType::get(
+        bool_type,
+        {byte_pointer_type, size_type, size_type},
+        false
+    );
+    llvm::Function* function = llvm::Function::Create(
+        function_type,
+        llvm::GlobalValue::InternalLinkage,
+        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_HELPER_NAME,
+        this->module_.get()
+    );
+
+    auto argument = function->arg_begin();
+    llvm::Value* data = &*argument++;
+    llvm::Value* length = &*argument++;
+    llvm::Value* index = &*argument;
+
+    const llvm::IRBuilderBase::InsertPoint saved_insert_point = this->builder_.saveIP();
+    llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK,
+        function
+    );
+    llvm::BasicBlock* edge_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_EDGE_BLOCK,
+        function
+    );
+    llvm::BasicBlock* probe_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_PROBE_BLOCK,
+        function
+    );
+    llvm::BasicBlock* load_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_LOAD_BLOCK,
+        function
+    );
+    llvm::BasicBlock* valid_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK,
+        function
+    );
+    llvm::BasicBlock* invalid_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK,
+        function
+    );
+
+    const auto size_constant = [&](const std::uint64_t value) {
+        return llvm::ConstantInt::get(size_type, value);
+    };
+    const auto byte_constant = [&](const std::uint64_t value) {
+        return llvm::ConstantInt::get(byte_type, value);
+    };
+
+    this->builder_.SetInsertPoint(entry_block);
+    llvm::Value* zero = size_constant(LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* at_start = this->builder_.CreateICmpEQ(index, zero);
+    this->builder_.CreateCondBr(at_start, valid_block, edge_block);
+
+    this->builder_.SetInsertPoint(edge_block);
+    llvm::Value* at_end = this->builder_.CreateICmpEQ(index, length);
+    this->builder_.CreateCondBr(at_end, valid_block, probe_block);
+
+    this->builder_.SetInsertPoint(probe_block);
+    llvm::Value* in_bounds = this->builder_.CreateICmpULT(index, length);
+    llvm::Value* null_data = llvm::ConstantPointerNull::get(byte_pointer_type);
+    llvm::Value* data_present = this->builder_.CreateICmpNE(data, null_data);
+    llvm::Value* can_load = this->builder_.CreateAnd(in_bounds, data_present);
+    this->builder_.CreateCondBr(can_load, load_block, invalid_block);
+
+    this->builder_.SetInsertPoint(load_block);
+    llvm::Value* pointer = this->builder_.CreateGEP(byte_type, data, index);
+    llvm::Value* byte = this->builder_.CreateLoad(byte_type, pointer, LLVM_BACKEND_VALUE_UTF8_BYTE_NAME);
+    llvm::Value* above_cont_min = this->builder_.CreateICmpUGE(byte, byte_constant(LLVM_BACKEND_VALUE_UTF8_CONT_MIN));
+    llvm::Value* below_cont_max = this->builder_.CreateICmpULE(byte, byte_constant(LLVM_BACKEND_VALUE_UTF8_CONT_MAX));
+    llvm::Value* continuation = this->builder_.CreateAnd(above_cont_min, below_cont_max);
+    llvm::Value* boundary = this->builder_.CreateNot(continuation);
+    this->builder_.CreateCondBr(boundary, valid_block, invalid_block);
+
+    this->builder_.SetInsertPoint(valid_block);
+    this->builder_.CreateRet(llvm::ConstantInt::get(bool_type, true));
+
+    this->builder_.SetInsertPoint(invalid_block);
+    this->builder_.CreateRet(llvm::ConstantInt::get(bool_type, false));
+
+    this->builder_.restoreIP(saved_insert_point);
+    return function;
 }
 
 llvm::Function* LlvmEmitter::utf8_validator_function() {

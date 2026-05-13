@@ -49,6 +49,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"private_field_access", "field is private: secret"},
     {"private_function_import", "unknown function: add_secret"},
     {"private_qualified_function", "function is private: samplelib.visibility.add_secret"},
+    {"str_slice_bound_non_integer", "slice bound must be an integer"},
     {"strfromutf8_non_slice", "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"},
     {"try_result_return_mismatch", "try expression on result-like enum requires enclosing function"},
     {"unsafe_fn_call_required", "call to unsafe function read_raw requires unsafe context"},
@@ -267,6 +268,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic) {
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_checked) {
     run_positive_runtime_smoke_sample("types", "str_checked.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_slice) {
+    run_positive_runtime_smoke_sample("types", "str_slice.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_ergonomics) {

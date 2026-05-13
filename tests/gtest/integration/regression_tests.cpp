@@ -172,6 +172,25 @@ TEST_F(AurexIntegrationTest, StringCheckedBoundary) {
     require_success(aurexc() + " " + q(positive) + " -o " + q(binary));
     require_success(q(binary));
 
+    const fs::path str_slice = positive_sample("types", "str_slice.ax");
+    const std::string slice_ir = require_success(aurexc() + " --emit=ir " + q(str_slice)).output;
+    expect_contains_all(slice_ir, {
+        "strslice.checked",
+        "strblen",
+        "strptr",
+    });
+
+    const std::string slice_llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(str_slice)).output;
+    expect_contains_all(slice_llvm_ir, {
+        "str.slice.ok",
+        "__aurex_utf8_boundary",
+        "select i1",
+    });
+
+    const fs::path slice_binary = test_bin_root() / "str_slice";
+    require_success(aurexc() + " " + q(str_slice) + " -o " + q(slice_binary));
+    require_success(q(slice_binary));
+
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "strvalid_non_slice.ax"))).output,
         "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"
@@ -179,6 +198,10 @@ TEST_F(AurexIntegrationTest, StringCheckedBoundary) {
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "strfromutf8_non_slice.ax"))).output,
         "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "str_slice_bound_non_integer.ax"))).output,
+        "slice bound must be an integer"
     );
 }
 
@@ -281,7 +304,7 @@ TEST_F(AurexIntegrationTest, SliceRegressions) {
 
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_non_slice.ax"))).output,
-        "slicing requires array or slice value"
+        "slicing requires array, slice, or str value"
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_bound_non_integer.ax"))).output,

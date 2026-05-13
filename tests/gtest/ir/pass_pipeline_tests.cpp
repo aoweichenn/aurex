@@ -237,6 +237,13 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
     from_bytes.type = str_type;
     from_bytes.args = {string_data, string_byte_len};
     const ValueId rebuilt_string = builder.add(from_bytes);
+    Value str_slice;
+    str_slice.kind = ValueKind::str_slice_checked;
+    str_slice.type = str_type;
+    str_slice.object = string_value;
+    str_slice.lhs = string_byte_len;
+    str_slice.rhs = string_byte_len;
+    const ValueId sliced_string = builder.add(str_slice);
     const ValueId result = builder.add(integer_value(i32, "0"));
     const BlockId entry = builder.block("entry");
     function.blocks[entry.value].values = {
@@ -248,6 +255,7 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
         string_data,
         string_byte_len,
         rebuilt_string,
+        sliced_string,
         result,
     };
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;

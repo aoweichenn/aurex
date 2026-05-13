@@ -216,6 +216,10 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     case ValueKind::str_from_utf8_checked:
         out << "strfromutf8 " << value_ref(value.object);
         break;
+    case ValueKind::str_slice_checked:
+        out << "strslice.checked " << value_ref(value.object) << "["
+            << value_ref(value.lhs) << ":" << value_ref(value.rhs) << "]";
+        break;
     case ValueKind::str_from_bytes_unchecked:
         out << "strraw(";
         for (base::usize i = 0; i < value.args.size(); ++i) {

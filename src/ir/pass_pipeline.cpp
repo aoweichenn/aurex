@@ -189,6 +189,11 @@ struct FunctionUseInfo {
             case ValueKind::str_from_utf8_checked:
                 record_slot_use(value.object, block_index, false);
                 break;
+            case ValueKind::str_slice_checked:
+                record_slot_use(value.object, block_index, false);
+                record_slot_use(value.lhs, block_index, false);
+                record_slot_use(value.rhs, block_index, false);
+                break;
             case ValueKind::str_from_bytes_unchecked:
                 for (const ValueId arg : value.args) {
                     record_slot_use(arg, block_index, false);

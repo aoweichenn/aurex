@@ -281,6 +281,15 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     str_from_bytes.kind = ExprKind::str_from_bytes_unchecked;
     str_from_bytes.args = {str_data_id, length_value_id};
     const ExprId str_from_bytes_id = ast.push_expr(str_from_bytes);
+    syntax::ExprNode str_slice;
+    str_slice.kind = ExprKind::slice;
+    str_slice.object = str_value_id;
+    str_slice.slice_start = length_value_id;
+    str_slice.slice_end = length_value_id;
+    const ExprId str_slice_id = ast.push_expr(str_slice);
+    syntax::ExprNode str_suffix = str_slice;
+    str_suffix.slice_end = syntax::INVALID_EXPR_ID;
+    const ExprId str_suffix_id = ast.push_expr(str_suffix);
     syntax::ExprNode malformed_str_from_bytes = str_from_bytes;
     malformed_str_from_bytes.args = {str_data_id};
     const ExprId malformed_str_from_bytes_id = ast.push_expr(malformed_str_from_bytes);
@@ -302,6 +311,8 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     set_expr_type(checked, str_data_id, const_u8_ptr);
     set_expr_type(checked, str_byte_len_id, usize);
     set_expr_type(checked, str_from_bytes_id, str);
+    set_expr_type(checked, str_slice_id, str);
+    set_expr_type(checked, str_suffix_id, str);
     set_expr_type(checked, malformed_str_from_bytes_id, str);
     set_expr_type(checked, raw_literal_id, str);
     set_expr_type(checked, byte_string_literal_id, byte_array);
@@ -311,6 +322,8 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     const ValueId data = lowerer.lower_expr(str_data_id);
     const ValueId byte_len = lowerer.lower_expr(str_byte_len_id);
     const ValueId from_bytes = lowerer.lower_expr(str_from_bytes_id);
+    const ValueId slice = lowerer.lower_expr(str_slice_id);
+    const ValueId suffix = lowerer.lower_expr(str_suffix_id);
     const ValueId malformed = lowerer.lower_expr(malformed_str_from_bytes_id);
     const ValueId raw = lowerer.lower_expr(raw_literal_id);
     const ValueId byte_string = lowerer.lower_expr(byte_string_literal_id);
@@ -319,6 +332,8 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     ASSERT_TRUE(is_valid(data));
     ASSERT_TRUE(is_valid(byte_len));
     ASSERT_TRUE(is_valid(from_bytes));
+    ASSERT_TRUE(is_valid(slice));
+    ASSERT_TRUE(is_valid(suffix));
     ASSERT_TRUE(is_valid(malformed));
     ASSERT_TRUE(is_valid(raw));
     ASSERT_TRUE(is_valid(byte_string));
@@ -327,6 +342,10 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     EXPECT_EQ(lowerer.module_.values[byte_len.value].kind, ValueKind::str_byte_len);
     EXPECT_EQ(lowerer.module_.values[from_bytes.value].kind, ValueKind::str_from_bytes_unchecked);
     EXPECT_EQ(lowerer.module_.values[from_bytes.value].args.size(), 2U);
+    EXPECT_EQ(lowerer.module_.values[slice.value].kind, ValueKind::str_slice_checked);
+    EXPECT_EQ(lowerer.module_.values[suffix.value].kind, ValueKind::str_slice_checked);
+    ASSERT_TRUE(is_valid(lowerer.module_.values[suffix.value].rhs));
+    EXPECT_EQ(lowerer.module_.values[lowerer.module_.values[suffix.value].rhs.value].kind, ValueKind::str_byte_len);
     EXPECT_EQ(lowerer.module_.values[malformed.value].kind, ValueKind::str_from_bytes_unchecked);
     EXPECT_TRUE(lowerer.module_.values[malformed.value].args.empty());
     EXPECT_EQ(lowerer.module_.values[raw.value].kind, ValueKind::raw_string_literal);

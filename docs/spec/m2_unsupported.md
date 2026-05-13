@@ -106,6 +106,9 @@ Rules:
 - `id[i32](1)` is not a generic call. Explicit generic calls use
   `id::[i32](1)`.
 - Tuple literals use `(a, b)` or `(a,)`. Empty tuple literal `()` is rejected.
+- `str` has checked byte-range slicing with `text[l:r]`, but single-index
+  `text[i]`, Unicode scalar iteration, grapheme-cluster APIs, and locale-aware
+  text segmentation are not part of M2.
 - Increment/decrement operators are not supported.
 - Assignment is a statement and cannot be used as a block result.
 

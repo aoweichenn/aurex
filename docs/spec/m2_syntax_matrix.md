@@ -62,10 +62,11 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `foo::Box[i32]` | yes | One-level scope |
 | Type | `foo::bar::Box` | no | Too deep for M2 type syntax |
 | Expr | `arr[i]` | yes | Index expression |
-| Expr | `arr[l:r]` | yes | Slice from array or slice |
+| Expr | `arr[l:r]` | yes | Borrowed slice from array or slice |
 | Expr | `arr[:r]` | yes | Omitted start defaults to zero |
 | Expr | `arr[l:]` | yes | Omitted end defaults to array length or source slice length |
 | Expr | `arr[:]` | yes | Full slice |
+| Expr | `text[l:r]` | yes | Checked `str` slice by byte offsets; bounds must be UTF-8 code point boundaries |
 | Expr | `let op: fn(i32) -> i32 = f; op(1)` | yes | Function name as value and indirect call |
 | Expr | `let op: unsafe fn(*const i32) -> i32 = f; unsafe { op(p) }` | yes | Unsafe function value call fenced by unsafe block |
 | Expr | `table.callback(1)` | yes | Struct fields of function type can be called |
@@ -86,6 +87,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `ptrcast[T](p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
 | Expr | `strvalid(bytes)` | yes | Safe UTF-8 validation for `[]const u8` / `[]mut u8` |
 | Expr | `strfromutf8(bytes)` | yes | Safe checked construction returning `str`; failure returns empty `str` |
+| Expr | `text[i]` where `text` is `str` | no | Use checked byte-range slicing; scalar/grapheme APIs are deferred |
 | Expr | `value++` / `value--` | no | Use assignment operators |
 | Block | `{ let x = 1; x + 1 }` | yes | Tail expression result |
 | Block | `{ x = 1 }` | no | Assignment cannot be block result |

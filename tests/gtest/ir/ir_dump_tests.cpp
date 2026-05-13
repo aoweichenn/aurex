@@ -94,6 +94,13 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     checked_string.type = str_type;
     checked_string.object = utf8_bytes;
     const ValueId utf8_checked = builder.add(checked_string);
+    Value checked_slice;
+    checked_slice.kind = ValueKind::str_slice_checked;
+    checked_slice.type = str_type;
+    checked_slice.object = text;
+    checked_slice.lhs = len;
+    checked_slice.rhs = string_byte_len;
+    const ValueId string_slice = builder.add(checked_slice);
 
     Value missing_constant;
     missing_constant.kind = ValueKind::constant_ref;
@@ -149,6 +156,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         utf8_bytes,
         utf8_valid,
         utf8_checked,
+        string_slice,
         fallback_constant,
         callback,
         callback_call,
@@ -228,6 +236,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "strraw",
         "strvalid",
         "strfromutf8",
+        "strslice.checked",
         "const_ref @fallback_constant",
         "function_ref @dump_callback",
         "call %",

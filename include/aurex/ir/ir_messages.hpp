@@ -176,6 +176,12 @@ inline constexpr std::string_view IR_VERIFY_STR_UTF8_SLICE =
 inline constexpr std::string_view IR_VERIFY_STRFROMUTF8_RESULT =
     "strfromutf8 result must be str";
 
+inline constexpr std::string_view IR_VERIFY_STR_SLICE_RESULT =
+    "str slice result must be str";
+
+inline constexpr std::string_view IR_VERIFY_STR_SLICE_OBJECT =
+    "str slice object type mismatch";
+
 inline constexpr std::string_view IR_VERIFY_STRRAW_RESULT =
     "strraw result must be str";
 

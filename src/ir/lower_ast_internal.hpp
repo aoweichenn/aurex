@@ -200,6 +200,7 @@ private:
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_str_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);

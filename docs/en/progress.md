@@ -47,7 +47,9 @@ notes are design input only, not current progress.
   raw pointer dereference, `ptrcast`, `bitcast`, `ptrat`, and `strraw`.
   The no-std checked `str` boundary is now `strvalid(bytes) -> bool` and
   `strfromutf8(bytes) -> str`; failed checked construction returns an empty
-  `str` instead of wrapping invalid input as text.
+  `str` instead of wrapping invalid input as text. `str` also supports checked
+  byte-offset slicing with `text[l:r]`; out-of-range bounds or non-UTF-8
+  boundary offsets return the empty `str`.
 - Default-private visibility, explicit `pub fn` return types, compound
   assignment, unified block-expression bodies, nested block comments, and
   range-only `for i in range(...)`.
@@ -93,7 +95,7 @@ LLVM lowering, native execution, and installed compiler execution.
 - M2 `unsafe` is intentionally minimal. It is a semantic boundary only and does
   not include borrow checking, lifetimes, unsafe traits, unsafe impl blocks,
   unsafe extern blocks, or an ownership/resource model.
-- Slices, tuple basics, function pointer types, and M2 pattern ergonomics are
+- Slices, checked `str` slicing, tuple basics, function pointer types, and M2 pattern ergonomics are
   implemented in the M2 core. Function types are non-capturing function pointer
   values, including `fn(...) -> T`, `unsafe fn(...) -> T`,
   `extern c fn(...) -> T`, and `unsafe extern c fn(...) -> T`; capturing

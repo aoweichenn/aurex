@@ -440,6 +440,7 @@ array[start:end]
 array[:end]
 array[start:]
 array[:]
+text[start:end]
 function(arg)
 generic_fn::[T](arg)
 expr?
@@ -466,6 +467,7 @@ let all: []const i32 = values[:];
 let prefix = values[:3];
 let suffix = values[1:];
 let middle = values[1:3];
+let part: str = text[1:3];
 ```
 
 Struct literals:
@@ -507,9 +509,15 @@ Rules:
 - `return`, `break`, `continue`, and `defer` are statements, not tail
   expressions.
 - Empty blocks do not infer a value in value-required positions.
-- Slice expressions require an array or slice operand. Bounds must be integer
-  expressions. Current M2 does not add runtime bounds checks and does not add
-  container iteration.
+- Slice expressions require an array, slice, or `str` operand. Bounds must be
+  integer expressions. For array and borrowed slice operands, current M2 does
+  not add runtime bounds checks and does not add container iteration.
+- `str[start:end]`, `str[:end]`, `str[start:]`, and `str[:]` use byte offsets
+  and return `str`. The operation is checked at runtime: `start <= end`,
+  `end <= strblen(text)`, and both bounds must be UTF-8 code point boundaries.
+  Failure returns the empty `str` instead of trapping or constructing invalid
+  UTF-8. This is not grapheme-cluster indexing, Unicode scalar iteration, or
+  locale-aware text segmentation.
 - Tuple literals infer a tuple type from their element expressions unless an
   expected tuple type is present. Arity and element types must match the
   expected tuple type. Empty tuple literals are rejected.

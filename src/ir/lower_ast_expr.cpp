@@ -520,7 +520,16 @@ ValueId Lowerer::lower_slice_expr(
     const syntax::ExprNode& expr
 ) {
     const sema::TypeHandle result_type = this->expr_type(expr_id);
-    if (!sema::is_valid(result_type) || !this->module_.types.is_slice(result_type)) {
+    if (!sema::is_valid(result_type)) {
+        Value invalid;
+        invalid.kind = ValueKind::undef;
+        invalid.type = result_type;
+        return this->append_value(invalid);
+    }
+    if (this->module_.types.is_str(result_type)) {
+        return this->lower_str_slice_expr(expr_id, expr);
+    }
+    if (!this->module_.types.is_slice(result_type)) {
         Value invalid;
         invalid.kind = ValueKind::undef;
         invalid.type = result_type;
@@ -569,6 +578,46 @@ ValueId Lowerer::lower_slice_expr(
     value.type = result_type;
     value.lhs = base_data;
     value.rhs = length;
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_str_slice_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const sema::TypeHandle result_type = this->expr_type(expr_id);
+    const sema::TypeHandle object_type = this->expr_type(expr.object);
+    if (!sema::is_valid(object_type) || !this->module_.types.is_str(object_type)) {
+        Value invalid;
+        invalid.kind = ValueKind::undef;
+        invalid.type = result_type;
+        return this->append_value(invalid);
+    }
+
+    const sema::TypeHandle usize_type = this->module_.types.builtin(sema::BuiltinType::usize);
+    const ValueId source = this->lower_expr(expr.object, object_type);
+    const ValueId zero = this->append_integer_literal("0", usize_type);
+    const ValueId start = syntax::is_valid(expr.slice_start)
+        ? this->coerce_value(this->lower_expr(expr.slice_start, usize_type), usize_type)
+        : zero;
+
+    ValueId end = INVALID_VALUE_ID;
+    if (syntax::is_valid(expr.slice_end)) {
+        end = this->coerce_value(this->lower_expr(expr.slice_end, usize_type), usize_type);
+    } else {
+        Value length;
+        length.kind = ValueKind::str_byte_len;
+        length.type = usize_type;
+        length.object = source;
+        end = this->append_value(length);
+    }
+
+    Value value;
+    value.kind = ValueKind::str_slice_checked;
+    value.type = result_type;
+    value.object = source;
+    value.lhs = start;
+    value.rhs = end;
     return this->append_value(value);
 }
 

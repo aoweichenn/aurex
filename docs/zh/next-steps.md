@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型和 C FFI。字面量体系、tuple 基础、pattern ergonomics 和 `str` checked UTF-8 构造已经补齐到 M2 基线；下一步更适合处理 checked string slicing、capability/where 和 safe reference，而不是重建库层。
+   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型和 C FFI。字面量体系、tuple 基础、pattern ergonomics 和 `str` checked UTF-8 构造/切片已经补齐到 M2 基线；下一步更适合处理 capability/where 和 safe reference，而不是重建库层。
 
 5. 值语义边界
 
@@ -51,7 +51,7 @@
 
 9. 字符串基础类型
 
-   保留 `str` 作为语言级 borrowed UTF-8 slice 的设计方向，但不要复活旧 std 的 `String`/`Bytes` 实现。`str` 的类型、ABI、字面量、unchecked `strraw` 和 checked `strvalid` / `strfromutf8` 构造边界已落地；后续补 checked slicing 和未来库层 text API。
+   保留 `str` 作为语言级 borrowed UTF-8 slice 的设计方向，但不要复活旧 std 的 `String`/`Bytes` 实现。`str` 的类型、ABI、字面量、unchecked `strraw`、checked `strvalid` / `strfromutf8` 构造边界，以及 `text[l:r]` checked byte-offset slicing 已落地；未来库层 text API、Unicode scalar/grapheme 迭代和拥有型 `String` 继续后置。
 
 10. 测试性能继续收口
 

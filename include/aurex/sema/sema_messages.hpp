@@ -287,7 +287,7 @@ inline constexpr std::string_view SEMA_INDEX_ARRAY_OR_POINTER =
     "indexing requires array, slice, or pointer value";
 
 inline constexpr std::string_view SEMA_SLICE_ARRAY_OR_SLICE =
-    "slicing requires array or slice value";
+    "slicing requires array, slice, or str value";
 
 inline constexpr std::string_view SEMA_SLICE_ELEMENT_STORAGE =
     "slice element type is not valid storage";

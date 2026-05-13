@@ -72,12 +72,15 @@ after core syntax, types, modules, and ABI boundaries stabilize.
 8. String primitive
 
    Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
-   recreate old `String`/`Bytes` std implementations. First settle type
-   identity, ABI, literals, slice boundaries, and the checked/unchecked
-   construction boundary. `strraw(data, len)` is fenced by `unsafe`; checked
-   UTF-8 construction is now frozen as no-std builtins: `strvalid(bytes) -> bool`
-   and `strfromutf8(bytes) -> str`, where failure returns the empty `str`
-   instead of wrapping invalid input as text.
+   recreate old `String`/`Bytes` std implementations. The M2 core now settles
+   type identity, ABI, literals, checked byte-offset slicing, and the
+   checked/unchecked construction boundary. `strraw(data, len)` is fenced by
+   `unsafe`; checked UTF-8 construction is frozen as no-std builtins:
+   `strvalid(bytes) -> bool` and `strfromutf8(bytes) -> str`, where failure
+   returns the empty `str` instead of wrapping invalid input as text.
+   `text[l:r]` returns `str` only when the byte bounds are ordered, in range,
+   and on UTF-8 code point boundaries; scalar/grapheme iteration remains a
+   future library-layer topic.
 
 9. Test performance
 

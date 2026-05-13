@@ -45,7 +45,7 @@ builtin str = {
 - 编译器内建已经有 `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw`；`strraw` 已被正式 `unsafe` 体系约束，checked UTF-8 构造不依赖旧 std。
 - 当前仓库根目录没有 `std/` 或 `selfhost/`。不存在当前有效的 `std.core.string.String`、`std.core.bytes.Bytes`、`std.fs.path.Path`、`std.ffi.c.string.CString` 实现。
 
-因此 M2 的判断是：`str` 的 ABI 方向已经接近正确，checked-vs-unchecked 构造边界已在语言核心收口；真正后续要补的是 checked slicing、未来库类型边界和拥有型资源语义。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span[u8]` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为未来库层重建设计素材。
+因此 M2 的判断是：`str` 的 ABI 方向已经接近正确，checked-vs-unchecked 构造边界和 checked byte-offset slicing 已在语言核心收口；真正后续要补的是未来库类型边界、Unicode text API 和拥有型资源语义。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span[u8]` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为未来库层重建设计素材。
 
 ## 业界设计对比
 
@@ -194,11 +194,13 @@ let p: *const u8 = c"hello";
 
 不要提供默认 `s[i]`。所有单位必须显式：
 
+- 当前 M2 源码语法是 `s[l:r]` / `s[:r]` / `s[l:]` / `s[:]`：`l` 和 `r` 是 UTF-8 byte offset，返回 `str`，不分配。运行时检查 `l <= r`、`r <= strblen(s)`，并要求两个边界都落在 UTF-8 code point boundary 上；失败返回空 `str`。这不是 Unicode scalar 迭代、grapheme cluster 索引或 locale-aware text segmentation。
+
 - `byte_len(s: str) -> usize`：O(1)，返回 UTF-8 byte 数。
 - `is_empty(s: str) -> bool`：O(1)。
 - `as_bytes(s: str) -> Span[u8]`：O(1)，只读 byte view。
 - `is_boundary(s: str, index: usize) -> bool`：检查 UTF-8 scalar 边界。
-- `slice_bytes_checked(s: str, begin: usize, end: usize) -> Result[str, SliceError]`：begin/end 必须在边界上。
+- `slice_bytes_checked(s: str, begin: usize, end: usize) -> Result[str, SliceError]`：未来库层可在 `s[l:r]` 的基础上提供更细错误信息；begin/end 必须在边界上。
 - `is_scalar_value(value: u32) -> bool`：检查 `u32` 是否是合法 Unicode scalar value，排除 surrogate 和超过 `U+10FFFF` 的值。
 - `scalar_utf8_width(value: u32) -> Result[usize, ScalarError]`：返回合法 scalar 的 UTF-8 byte 宽度。
 - `scalar_at(s: str, byte_index: usize) -> Result[u32, ScalarError]`：byte_index 必须在 scalar 边界上，返回 Unicode scalar value。
@@ -336,12 +338,13 @@ unsafe {
 
 ### Phase 3：定义最小 text API
 
-状态：M2 已冻结 no-std checked 构造入口，库层 text API 仍后置。
+状态：M2 已冻结 no-std checked 构造入口和 checked byte-offset slicing，库层 text API 仍后置。
 
 旧 std 已经从当前树删除，不应急着重建完整 `std.core.str`。M2 当前先提供两个 compiler builtin 来锁住 safe/unsafe 边界：
 
 - `strvalid(bytes: []const u8 | []mut u8) -> bool`：只验证 byte slice 是否为有效 UTF-8。
 - `strfromutf8(bytes: []const u8 | []mut u8) -> str`：成功返回借用原 byte slice 的文本；失败返回空 `str`。需要区分“合法空输入”和“非法输入”时调用 `strvalid(bytes)`。失败路径不会把无效输入包装成 `str`，也不 trap。
+- `s[l:r] -> str`：按 byte offset 切片，检查 bounds 和 UTF-8 code point boundary；失败返回空 `str`，不会 trap，也不会构造 invalid UTF-8。
 
 未来库层的最小 text surface 可以在这个边界上继续设计：
 
@@ -414,11 +417,12 @@ M2 当前 language-core 至少要覆盖：
 - invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
 - `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw` 的类型检查稳定。
 - `strvalid` 对合法/非法 UTF-8 byte slice 返回稳定 bool；`strfromutf8` 成功返回文本，失败返回空 `str`。
+- checked slicing 对 `"ƒ"` 这类多字节文本遵守 UTF-8 边界：`text[0:1]` 失败并返回空 `str`，`text[0:2]` 成功。
 - `strraw` 不能继续暴露在 safe context。
 
 未来库层重建后再补这些验收项：
 
-- `slice_bytes_checked("ƒ", 0, 1)` 失败，`slice_bytes_checked("ƒ", 0, 2)` 成功。
+- `slice_bytes_checked("ƒ", 0, 1)` 返回带错误信息的失败结果，`slice_bytes_checked("ƒ", 0, 2)` 成功。
 - `String.from_utf8` 接受合法 UTF-8，拒绝非法 bytes。
 - `CString.from_str("a\0b")` 拒绝内部 NUL。
 - `String` safe surface 不暴露 raw mutable byte view。

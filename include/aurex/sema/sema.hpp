@@ -292,6 +292,11 @@ private:
     [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] bool negative_integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] TypeHandle analyze_integer_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_negative_integer_literal(
+        syntax::ExprId expr,
+        const syntax::ExprNode& node,
+        TypeHandle expected_type
+    );
     [[nodiscard]] TypeHandle analyze_float_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
     [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, std::unordered_set<std::string>& dependencies);
     [[nodiscard]] TypeAbiLayout abi_layout(TypeHandle type) const;

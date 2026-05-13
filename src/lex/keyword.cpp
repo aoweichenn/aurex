@@ -45,6 +45,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"null", syntax::TokenKind::kw_null},
     KeywordEntry {"void", syntax::TokenKind::kw_void},
     KeywordEntry {"bool", syntax::TokenKind::kw_bool},
+    KeywordEntry {"char", syntax::TokenKind::kw_char},
     KeywordEntry {"cast", syntax::TokenKind::kw_cast},
 
     KeywordEntry {"const", syntax::TokenKind::kw_const},

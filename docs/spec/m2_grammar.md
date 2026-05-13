@@ -26,14 +26,38 @@ IntegerLiteral
 FloatLiteral
 StringLiteral
 CStringLiteral
+RawStringLiteral
+ByteStringLiteral
 ByteLiteral
+CharLiteral
 true
 false
 null
 ```
 
 Integer literals may use `_` separators between digits. Array type lengths use
-integer literal tokens only.
+integer literal tokens only. M2 accepts integer type suffixes:
+`i8`, `i16`, `i32`, `i64`, `isize`, `u8`, `u16`, `u32`, `u64`, and `usize`.
+
+Float literals support `1.0`, `1e3`, `1.0e-3`, `.5`, and `1.`. M2 accepts
+float suffixes `f32` and `f64`; integer suffixes are rejected on float
+literals and float suffixes are rejected on integer literals.
+
+String and character literal forms:
+
+```aurex
+"text"        // str, decoded as valid UTF-8
+c"text"       // *const u8, FFI C string, rejects interior NUL
+r"raw\n"      // str, escapes are not interpreted; may span lines
+b"abc\n"      // [N]u8, ASCII byte string with simple escapes
+b'a'          // u8 byte literal
+'λ'           // char, Unicode scalar value
+'\u{03BB}'    // char via Unicode scalar escape
+```
+
+Ordinary strings and char literals support `\0`, `\n`, `\r`, `\t`, `\\`,
+`\"` where applicable, and `\u{...}` Unicode scalar escapes. Byte strings
+support simple byte escapes and reject Unicode escapes and non-ASCII raw bytes.
 
 ## 2. Module And Import Declarations
 
@@ -126,7 +150,7 @@ Primitive types:
 void bool
 i8 u8 i16 u16 i32 u32 i64 u64 isize usize
 f32 f64
-str
+str char
 ```
 
 Examples:
@@ -135,6 +159,7 @@ Examples:
 i32
 bool
 str
+char
 *mut i32
 *const u8
 [4]i32

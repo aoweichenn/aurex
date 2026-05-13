@@ -58,6 +58,33 @@ Rules:
 - Variadic function types require `extern c fn`; plain `fn(..., ...) -> T`
   cannot use `...`.
 
+## Literal Syntax
+
+Not part of M2:
+
+```aurex
+r#"raw"#
+b"\u{41}"
+b"é"
+'ab'
+'\u{D800}'
+1f32
+1.0u8
+1.0_f32
+```
+
+Rules:
+
+- Raw strings use only `r"..."`. Rust-style delimiter-counted raw strings such
+  as `r#"..."#` are not part of M2.
+- Byte strings are ASCII byte sequences with simple escapes. Unicode escapes
+  and non-ASCII raw bytes are rejected in `b"..."`.
+- `char` literals contain exactly one Unicode scalar value. Surrogates and
+  values above `U+10FFFF` are rejected.
+- Integer literals accept only integer suffixes. Float literals accept only
+  `f32` and `f64`; underscore suffix spellings such as `1.0_f32` are not part
+  of M2.
+
 ## Expression Syntax
 
 Not part of M2:

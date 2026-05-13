@@ -31,6 +31,16 @@ constexpr char PARSER_TYPE_ASCII_HEX_LOWER_LAST = 'f';
 constexpr char PARSER_TYPE_ASCII_HEX_UPPER_FIRST = 'A';
 constexpr char PARSER_TYPE_ASCII_HEX_UPPER_LAST = 'F';
 constexpr char PARSER_TYPE_DIGIT_SEPARATOR = '_';
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_I8 = "i8";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_I16 = "i16";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_I32 = "i32";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_I64 = "i64";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_ISIZE = "isize";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_U8 = "u8";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_U16 = "u16";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_U32 = "u32";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_U64 = "u64";
+constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_USIZE = "usize";
 constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
 
 [[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
@@ -50,6 +60,7 @@ constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
     case TokenKind::kw_f32:
     case TokenKind::kw_f64:
     case TokenKind::kw_str:
+    case TokenKind::kw_char:
         return true;
     default:
         return false;
@@ -73,6 +84,7 @@ constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
     case TokenKind::kw_f32: return syntax::PrimitiveTypeKind::f32;
     case TokenKind::kw_f64: return syntax::PrimitiveTypeKind::f64;
     case TokenKind::kw_str: return syntax::PrimitiveTypeKind::str;
+    case TokenKind::kw_char: return syntax::PrimitiveTypeKind::char_;
     default: return syntax::PrimitiveTypeKind::void_;
     }
 }
@@ -94,7 +106,43 @@ constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
         radix = PARSER_TYPE_BINARY_RADIX;
         begin = PARSER_TYPE_RADIX_PREFIX_LENGTH;
     }
-    for (base::usize i = begin; i < text.size(); ++i) {
+    const auto suffix_is_valid = [](const std::string_view suffix) noexcept {
+        return suffix.empty() ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_I8 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_I16 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_I32 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_I64 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_ISIZE ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_U8 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_U16 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_U32 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_U64 ||
+               suffix == PARSER_TYPE_INTEGER_SUFFIX_USIZE;
+    };
+    base::usize digit_end = begin;
+    for (; digit_end < text.size(); ++digit_end) {
+        const char c = text[digit_end];
+        if (c == PARSER_TYPE_DIGIT_SEPARATOR) {
+            continue;
+        }
+        base::u64 digit = 0;
+        if (c >= PARSER_TYPE_ASCII_DECIMAL_FIRST && c <= PARSER_TYPE_ASCII_DECIMAL_LAST) {
+            digit = static_cast<base::u64>(c - PARSER_TYPE_ASCII_DECIMAL_FIRST);
+        } else if (c >= PARSER_TYPE_ASCII_HEX_LOWER_FIRST && c <= PARSER_TYPE_ASCII_HEX_LOWER_LAST) {
+            digit = static_cast<base::u64>(PARSER_TYPE_DECIMAL_DIGIT_COUNT + c - PARSER_TYPE_ASCII_HEX_LOWER_FIRST);
+        } else if (c >= PARSER_TYPE_ASCII_HEX_UPPER_FIRST && c <= PARSER_TYPE_ASCII_HEX_UPPER_LAST) {
+            digit = static_cast<base::u64>(PARSER_TYPE_DECIMAL_DIGIT_COUNT + c - PARSER_TYPE_ASCII_HEX_UPPER_FIRST);
+        } else {
+            break;
+        }
+        if (digit >= static_cast<base::u64>(radix)) {
+            return false;
+        }
+    }
+    if (!suffix_is_valid(text.substr(digit_end))) {
+        return false;
+    }
+    for (base::usize i = begin; i < digit_end; ++i) {
         const char c = text[i];
         if (c == PARSER_TYPE_DIGIT_SEPARATOR) {
             continue;

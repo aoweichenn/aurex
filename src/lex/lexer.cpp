@@ -27,6 +27,8 @@ enum class TokenStartAction : std::uint8_t {
     PUNCTUATOR,
     C_STRING_OR_IDENTIFIER,
     BYTE_OR_IDENTIFIER,
+    RAW_STRING_OR_IDENTIFIER,
+    CHAR,
 };
 
 constexpr void mark_token_start(
@@ -60,7 +62,9 @@ constexpr void mark_token_start_range(
 
     mark_token_start(table, LEXEME_C_STRING_PREFIX.front(), TokenStartAction::C_STRING_OR_IDENTIFIER);
     mark_token_start(table, LEXEME_BYTE_LITERAL_PREFIX.front(), TokenStartAction::BYTE_OR_IDENTIFIER);
+    mark_token_start(table, LEXEME_RAW_STRING_PREFIX.front(), TokenStartAction::RAW_STRING_OR_IDENTIFIER);
     mark_token_start(table, LEXEME_DOUBLE_QUOTE, TokenStartAction::STRING);
+    mark_token_start(table, LEXEME_SINGLE_QUOTE, TokenStartAction::CHAR);
 
     mark_token_start(table, LEXEME_DOT, TokenStartAction::PUNCTUATOR);
     mark_token_start(table, LEXEME_COLON, TokenStartAction::PUNCTUATOR);
@@ -171,6 +175,10 @@ void Lexer::scan_token() {
         this->scan_string(begin);
         return;
     case TokenStartAction::PUNCTUATOR:
+        if (first == LEXEME_DOT && is_decimal_digit(this->peek_next())) {
+            this->scan_leading_dot_float(begin);
+            return;
+        }
         if (this->scan_punctuator(begin, first)) {
             return;
         }
@@ -187,7 +195,22 @@ void Lexer::scan_token() {
             this->scan_byte(begin);
             return;
         }
+        if (this->peek_next() == LEXEME_BYTE_STRING_PREFIX.back()) {
+            this->scan_byte_string(begin);
+            return;
+        }
         this->scan_identifier();
+        return;
+    case TokenStartAction::RAW_STRING_OR_IDENTIFIER:
+        if (this->peek_next() == LEXEME_RAW_STRING_PREFIX.back()) {
+            this->scan_raw_string(begin);
+            return;
+        }
+        this->scan_identifier();
+        return;
+    case TokenStartAction::CHAR:
+        this->advance();
+        this->scan_char(begin);
         return;
     case TokenStartAction::INVALID:
         break;

@@ -1,6 +1,7 @@
 #include <aurex/lex/lexer.hpp>
 
 #include <aurex/base/string_literal.hpp>
+#include <aurex/base/string_literal_messages.hpp>
 #include <lex/lexeme.hpp>
 
 #include <string_view>
@@ -36,12 +37,35 @@ void Lexer::scan_c_string(const base::usize begin) {
     );
 }
 
+void Lexer::scan_raw_string(const base::usize begin) {
+    this->advance_bytes(LEXEME_RAW_STRING_PREFIX.size());
+    this->scan_string_body(
+        begin,
+        syntax::TokenKind::raw_string_literal,
+        base::StringLiteralKind::raw_string,
+        LEXEME_UNTERMINATED_RAW_STRING_MESSAGE,
+        true
+    );
+}
+
+void Lexer::scan_byte_string(const base::usize begin) {
+    this->advance_bytes(LEXEME_BYTE_STRING_PREFIX.size());
+    this->scan_string_body(
+        begin,
+        syntax::TokenKind::byte_string_literal,
+        base::StringLiteralKind::byte_string,
+        LEXEME_UNTERMINATED_BYTE_STRING_MESSAGE
+    );
+}
+
 void Lexer::scan_string_body(
     const base::usize begin,
     const syntax::TokenKind token_kind,
     const base::StringLiteralKind literal_kind,
-    const std::string_view unterminated_message
+    const std::string_view unterminated_message,
+    const bool allow_newline
 ) {
+    const bool is_raw_string = literal_kind == base::StringLiteralKind::raw_string;
     bool escaped = false;
     bool needs_decode_validation = false;
     while (!this->is_at_end()) {
@@ -51,7 +75,7 @@ void Lexer::scan_string_body(
             needs_decode_validation = true;
             continue;
         }
-        if (c == LEXEME_ESCAPE) {
+        if (!is_raw_string && c == LEXEME_ESCAPE) {
             escaped = true;
             needs_decode_validation = true;
             continue;
@@ -79,7 +103,7 @@ void Lexer::scan_string_body(
             (literal_kind == base::StringLiteralKind::c_string && c == LEXEME_NUL)) {
             needs_decode_validation = true;
         }
-        if (c == LEXEME_LINE_FEED) {
+        if (!allow_newline && c == LEXEME_LINE_FEED) {
             this->report_current(begin, unterminated_message);
             this->finish_invalid_token(begin);
             return;
@@ -92,39 +116,79 @@ void Lexer::scan_string_body(
 void Lexer::scan_byte(const base::usize begin) {
     this->advance_bytes(LEXEME_BYTE_LITERAL_PREFIX.size());
 
-    if (this->is_at_end() || this->peek() == LEXEME_LINE_FEED) {
-        this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
-        this->finish_invalid_token(begin);
-        return;
-    }
-
-    if (this->peek() == LEXEME_ESCAPE) {
-        this->advance();
-        if (!this->is_at_end()) {
-            this->advance();
+    bool escaped = false;
+    while (!this->is_at_end()) {
+        const char c = this->advance();
+        if (escaped) {
+            escaped = false;
+            continue;
         }
-    } else {
-        this->advance();
-    }
-
-    if (!this->match(LEXEME_SINGLE_QUOTE)) {
-        const std::string_view remaining = this->cursor_.remaining_text();
-        const base::usize recovery_offset = remaining.find_first_of(LEXEME_BYTE_LITERAL_RECOVERY_CHARS);
-        if (recovery_offset == std::string_view::npos) {
-            this->advance_bytes(remaining.size());
-            this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
-        } else if (remaining[recovery_offset] == LEXEME_SINGLE_QUOTE) {
-            this->advance_bytes(recovery_offset + LEXEME_SINGLE_BYTE_WIDTH);
-            this->report_current(begin, LEXEME_OVERSIZED_BYTE_MESSAGE);
-        } else {
-            this->advance_bytes(recovery_offset);
-            this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
+        if (c == LEXEME_ESCAPE) {
+            escaped = true;
+            continue;
         }
-        this->finish_invalid_token(begin);
-        return;
+        if (c == LEXEME_SINGLE_QUOTE) {
+            const base::ByteLiteralDecode decoded =
+                base::decode_byte_literal(this->cursor_.slice(begin, this->cursor_.offset()));
+            for (const base::StringLiteralError& error : decoded.errors) {
+                if (error.message == base::STRING_LITERAL_BYTE_LITERAL_ONE_BYTE) {
+                    this->report_current(begin, LEXEME_OVERSIZED_BYTE_MESSAGE);
+                } else {
+                    this->report(begin + error.begin, begin + error.end, error.message);
+                }
+            }
+            if (decoded.ok()) {
+                this->add_nonempty_token(syntax::TokenKind::byte_literal, begin, this->cursor_.offset());
+            } else {
+                this->finish_invalid_token(begin);
+            }
+            return;
+        }
+        if (c == LEXEME_LINE_FEED) {
+            this->report(begin, this->cursor_.offset() - LEXEME_SINGLE_BYTE_WIDTH, LEXEME_UNTERMINATED_BYTE_MESSAGE);
+            this->finish_invalid_token(begin);
+            return;
+        }
     }
 
-    this->add_nonempty_token(syntax::TokenKind::byte_literal, begin, this->cursor_.offset());
+    this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
+    this->finish_invalid_token(begin);
+}
+
+void Lexer::scan_char(const base::usize begin) {
+    bool escaped = false;
+    while (!this->is_at_end()) {
+        const char c = this->advance();
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (c == LEXEME_ESCAPE) {
+            escaped = true;
+            continue;
+        }
+        if (c == LEXEME_SINGLE_QUOTE) {
+            const base::CharLiteralDecode decoded =
+                base::decode_char_literal(this->cursor_.slice(begin, this->cursor_.offset()));
+            for (const base::StringLiteralError& error : decoded.errors) {
+                this->report(begin + error.begin, begin + error.end, error.message);
+            }
+            if (decoded.ok()) {
+                this->add_nonempty_token(syntax::TokenKind::char_literal, begin, this->cursor_.offset());
+            } else {
+                this->finish_invalid_token(begin);
+            }
+            return;
+        }
+        if (c == LEXEME_LINE_FEED) {
+            this->report(begin, this->cursor_.offset() - LEXEME_SINGLE_BYTE_WIDTH, LEXEME_UNTERMINATED_CHAR_MESSAGE);
+            this->finish_invalid_token(begin);
+            return;
+        }
+    }
+
+    this->report_current(begin, LEXEME_UNTERMINATED_CHAR_MESSAGE);
+    this->finish_invalid_token(begin);
 }
 
 } // namespace aurex::lex

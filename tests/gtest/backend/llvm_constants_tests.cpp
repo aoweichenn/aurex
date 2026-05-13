@@ -40,6 +40,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         const TypeHandle f64 = builtin(module, BuiltinType::f64);
         const TypeHandle usize = builtin(module, BuiltinType::usize);
         const TypeHandle str_type = builtin(module, BuiltinType::str);
+        const TypeHandle char_type = builtin(module, BuiltinType::char_);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         const TypeHandle array_i32 = module.types.array(2, i32);
         const TypeHandle nested_array_i32 = module.types.array(3, array_i32);
@@ -77,6 +78,20 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         const ValueId cstr_id = add_value(module, cstr);
         [[maybe_unused]] const GlobalConstantId cstr_constant =
             add_global_constant(module, GlobalConstant {"cstr", "unit_cstr", cstr.type, cstr_id});
+        Value raw_str;
+        raw_str.kind = ValueKind::raw_string_literal;
+        raw_str.type = str_type;
+        raw_str.text = "r\"C:\\tmp\\a\"";
+        const ValueId raw_str_id = add_value(module, raw_str);
+        [[maybe_unused]] const GlobalConstantId raw_str_constant =
+            add_global_constant(module, GlobalConstant {"raw_str", "unit_raw_str", str_type, raw_str_id});
+        Value char_value;
+        char_value.kind = ValueKind::char_literal;
+        char_value.type = char_type;
+        char_value.text = "'\\u{03BB}'";
+        const ValueId char_id = add_value(module, char_value);
+        [[maybe_unused]] const GlobalConstantId char_constant =
+            add_global_constant(module, GlobalConstant {"char_value", "unit_char_value", char_type, char_id});
         Value cast;
         cast.kind = ValueKind::cast;
         cast.type = i64;
@@ -235,6 +250,15 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         runtime_string.type = str_type;
         runtime_string.text = "\"hi\"";
         values.push_back(builder.add(runtime_string));
+        Value runtime_raw_string = runtime_string;
+        runtime_raw_string.kind = ValueKind::raw_string_literal;
+        runtime_raw_string.text = "r\"C:\\tmp\\a\"";
+        values.push_back(builder.add(runtime_raw_string));
+        Value runtime_char;
+        runtime_char.kind = ValueKind::char_literal;
+        runtime_char.type = char_type;
+        runtime_char.text = "'λ'";
+        values.push_back(builder.add(runtime_char));
         Value local_array;
         local_array.kind = ValueKind::alloca;
         local_array.type = ptr(module, PointerMutability::mut, array_i32);
@@ -266,6 +290,8 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             "@unit_flag",
             "@unit_byte",
             "@unit_ptr",
+            "@unit_raw_str",
+            "@unit_char_value",
             "@unit_pair",
             "@unit_size",
             "@unit_align",

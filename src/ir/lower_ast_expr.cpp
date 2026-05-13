@@ -1,5 +1,6 @@
 #include <ir/lower_ast_internal.hpp>
 
+#include <aurex/base/string_literal.hpp>
 #include <aurex/ir/enum_layout.hpp>
 
 namespace aurex::ir::detail {
@@ -142,10 +143,13 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::float_literal:
     case syntax::ExprKind::bool_literal:
     case syntax::ExprKind::byte_literal:
+    case syntax::ExprKind::char_literal:
     case syntax::ExprKind::null_literal:
         return this->lower_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::string_literal:
+    case syntax::ExprKind::raw_string_literal:
     case syntax::ExprKind::c_string_literal:
+    case syntax::ExprKind::byte_string_literal:
         return this->lower_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::name:
         return this->lower_name(expr_id, expr);
@@ -206,9 +210,29 @@ ValueId Lowerer::lower_literal_expr(
     const syntax::ExprNode& expr,
     const sema::TypeHandle expected_type
 ) {
+    if (expr.kind == syntax::ExprKind::byte_string_literal) {
+        const base::StringLiteralDecode decoded =
+            base::decode_string_literal(expr.text, base::StringLiteralKind::byte_string);
+        Value aggregate;
+        aggregate.kind = ValueKind::aggregate;
+        aggregate.type = this->expr_type(expr_id);
+        aggregate.elements.reserve(decoded.decoded.size());
+        const sema::TypeHandle byte_type = this->module_.types.builtin(sema::BuiltinType::u8);
+        for (const char byte : decoded.decoded) {
+            Value element;
+            element.kind = ValueKind::integer_literal;
+            element.type = byte_type;
+            element.text = std::to_string(static_cast<unsigned>(static_cast<unsigned char>(byte)));
+            aggregate.elements.push_back(this->append_value(element));
+        }
+        return this->append_value(aggregate);
+    }
+
     Value value;
     if (expr.kind == syntax::ExprKind::byte_literal) {
         value.kind = ValueKind::byte_literal;
+    } else if (expr.kind == syntax::ExprKind::char_literal) {
+        value.kind = ValueKind::char_literal;
     } else if (expr.kind == syntax::ExprKind::bool_literal) {
         value.kind = ValueKind::bool_literal;
     } else if (expr.kind == syntax::ExprKind::float_literal) {
@@ -219,6 +243,8 @@ ValueId Lowerer::lower_literal_expr(
         return this->append_value(value);
     } else if (expr.kind == syntax::ExprKind::string_literal) {
         value.kind = ValueKind::string_literal;
+    } else if (expr.kind == syntax::ExprKind::raw_string_literal) {
+        value.kind = ValueKind::raw_string_literal;
     } else if (expr.kind == syntax::ExprKind::c_string_literal) {
         value.kind = ValueKind::c_string_literal;
     } else {

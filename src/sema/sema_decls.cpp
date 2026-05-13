@@ -806,8 +806,11 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
             case syntax::ExprKind::bool_literal:
             case syntax::ExprKind::null_literal:
             case syntax::ExprKind::string_literal:
+            case syntax::ExprKind::raw_string_literal:
             case syntax::ExprKind::c_string_literal:
+            case syntax::ExprKind::byte_string_literal:
             case syntax::ExprKind::byte_literal:
+            case syntax::ExprKind::char_literal:
             case syntax::ExprKind::size_of:
             case syntax::ExprKind::align_of:
                 values.push_back(true);

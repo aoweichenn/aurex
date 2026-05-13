@@ -10,7 +10,7 @@ namespace {
 using namespace irtest;
 
 constexpr base::u64 TYPE_TABLE_TEST_ARRAY_COUNT = 4;
-constexpr base::usize TYPE_TABLE_TEST_BUILTIN_COUNT = 15;
+constexpr base::usize TYPE_TABLE_TEST_BUILTIN_COUNT = 16;
 constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE = 8;
 constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT = 4;
 constexpr base::usize TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT = 2;
@@ -176,6 +176,7 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     const TypeHandle f32 = builtin(module, BuiltinType::f32);
     const TypeHandle f64 = builtin(module, BuiltinType::f64);
     const TypeHandle str = builtin(module, BuiltinType::str);
+    const TypeHandle char_type = builtin(module, BuiltinType::char_);
 
     const std::array<std::pair<TypeHandle, std::string_view>, TYPE_TABLE_TEST_BUILTIN_COUNT> builtins = {{
         {void_type, "void"},
@@ -193,6 +194,7 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
         {f32, "f32"},
         {f64, "f64"},
         {str, "str"},
+        {char_type, "char"},
     }};
 
     for (const auto& [type, display] : builtins) {
@@ -214,8 +216,10 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_TRUE(module.types.is_float(f32));
     EXPECT_TRUE(module.types.is_float(f64));
     EXPECT_TRUE(module.types.is_str(str));
+    EXPECT_TRUE(module.types.is_char(char_type));
     EXPECT_TRUE(module.types.is_void(void_type));
     EXPECT_FALSE(module.types.is_integer(bool_type));
+    EXPECT_FALSE(module.types.is_integer(char_type));
     EXPECT_FALSE(module.types.is_float(i32));
 }
 

@@ -32,6 +32,9 @@ notes are design input only, not current progress.
   generics, expression types, visibility, and pattern matching.
 - M2 baseline generics with `[]` syntax only, including explicit `id::[T](x)`
   calls and non-empty generic parameter/type-argument lists.
+- Literal system support for ordinary strings, C strings, raw/multiline raw
+  strings, byte strings, byte literals, Unicode scalar `char`, and integer /
+  float type suffixes.
 - Fixed array value syntax: array literals `[1, 2, 3]` and repeat literals
   `[0; 128]`, including const, struct-field, IR, LLVM, and native paths.
 - ADT-first enum basics, including automatic tags, explicit C-like repr enums,
@@ -82,8 +85,8 @@ LLVM lowering, native execution, and installed compiler execution.
 - Slices and function pointer types are implemented in the M2 core. Function
   types are non-capturing function pointer values, including
   `fn(...) -> T` and `extern c fn(...) -> T`; capturing closures are still
-  intentionally out of scope. Raw/multiline/byte strings and Unicode scalar
-  `char` literals are not implemented yet.
+  intentionally out of scope. The remaining value-syntax gaps are tuple /
+  destructuring and broader pattern forms.
 - Generics have no `where`, trait, or capability predicates.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing

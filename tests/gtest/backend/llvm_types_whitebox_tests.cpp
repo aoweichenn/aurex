@@ -39,6 +39,7 @@ TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges) {
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle u32 = builtin(module, BuiltinType::u32);
+    const TypeHandle char_type = builtin(module, BuiltinType::char_);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle generic_param = module.types.generic_param("T");
     const TypeHandle enum_without_underlying = module.types.named_enum("unit.MissingTag", "unit_MissingTag");
@@ -89,6 +90,7 @@ TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges) {
     EXPECT_TRUE(emitter.llvm_type(enum_without_underlying)->isVoidTy());
     EXPECT_TRUE(emitter.llvm_type(function_type)->isPointerTy());
     EXPECT_TRUE(emitter.llvm_type(extern_variadic_type)->isPointerTy());
+    EXPECT_TRUE(emitter.llvm_type(char_type)->isIntegerTy(32));
 
     llvm::FunctionType* invalid_function = emitter.llvm_function_type(i32);
     ASSERT_NE(invalid_function, nullptr);
@@ -115,6 +117,7 @@ TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges) {
     EXPECT_FALSE(emitter.is_unsigned_integer(sema::INVALID_TYPE_HANDLE));
     EXPECT_FALSE(emitter.is_unsigned_integer(enum_without_underlying));
     EXPECT_FALSE(emitter.is_unsigned_integer(function_type));
+    EXPECT_FALSE(emitter.is_unsigned_integer(char_type));
     EXPECT_TRUE(emitter.is_unsigned_integer(u32));
 }
 

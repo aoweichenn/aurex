@@ -93,6 +93,7 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     case ValueKind::integer_literal:
     case ValueKind::float_literal:
     case ValueKind::bool_literal:
+    case ValueKind::char_literal:
     case ValueKind::byte_literal:
         out << "literal " << value.text;
         break;
@@ -112,6 +113,9 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         break;
     case ValueKind::string_literal:
         out << "string " << value.text;
+        break;
+    case ValueKind::raw_string_literal:
+        out << "raw_string " << value.text;
         break;
     case ValueKind::c_string_literal:
         out << "c_string " << value.text;

@@ -20,6 +20,10 @@ enum class NumberScanState {
     return state == NumberScanState::FRACTION || state == NumberScanState::EXPONENT;
 }
 
+[[nodiscard]] bool can_start_integer_suffix(const char c) noexcept {
+    return c == 'i' || c == 'u';
+}
+
 } // namespace
 
 template <typename IsDigit>
@@ -115,8 +119,16 @@ bool Lexer::scan_invalid_radix_tail_matching(
 }
 
 bool Lexer::scan_fraction_part(bool& had_error) {
-    if (this->peek() != LEXEME_DOT || !is_decimal_digit(this->peek_next())) {
+    if (this->peek() != LEXEME_DOT) {
         return false;
+    }
+    if (!is_decimal_digit(this->peek_next())) {
+        const char next = this->peek_next();
+        if (next == LEXEME_DOT || is_ident_continue(next)) {
+            return false;
+        }
+        this->advance();
+        return true;
     }
     this->advance();
     const DigitScanResult digits = this->scan_digits_matching(
@@ -125,6 +137,43 @@ bool Lexer::scan_fraction_part(bool& had_error) {
     );
     had_error = had_error || digits.had_error;
     return true;
+}
+
+void Lexer::scan_numeric_suffix() {
+    if (!is_ident_start(this->peek())) {
+        return;
+    }
+    const std::string_view remaining = this->cursor_.remaining_text();
+    base::usize width = 0;
+    while (width < remaining.size() && is_ident_continue(remaining[width])) {
+        ++width;
+    }
+    this->advance_bytes(width);
+}
+
+bool Lexer::scan_integer_suffix() {
+    if (!can_start_integer_suffix(this->peek())) {
+        return false;
+    }
+    this->scan_numeric_suffix();
+    return true;
+}
+
+void Lexer::scan_leading_dot_float(const base::usize begin) {
+    bool had_error = false;
+    this->advance();
+    const DigitScanResult digits = this->scan_digits_matching(
+        [](const char c) noexcept { return is_decimal_digit(c); },
+        LEXEME_FLOAT_LITERAL_KIND
+    );
+    had_error = digits.had_error;
+    static_cast<void>(this->scan_exponent_part(had_error));
+    this->scan_numeric_suffix();
+    if (had_error) {
+        this->finish_invalid_token(begin);
+        return;
+    }
+    this->add_nonempty_token(syntax::TokenKind::float_literal, begin, this->cursor_.offset());
 }
 
 bool Lexer::scan_exponent_part(bool& had_error) {
@@ -175,10 +224,12 @@ void Lexer::scan_number() {
             LEXEME_INTEGER_LITERAL_KIND
         );
         had_error = digits.had_error;
-        had_error = this->scan_invalid_radix_tail_matching(
-            [](const char c) noexcept { return is_hex_digit(c); },
-            LEXEME_INVALID_HEXADECIMAL_DIGIT_MESSAGE
-        ) || had_error;
+        if (!this->scan_integer_suffix()) {
+            had_error = this->scan_invalid_radix_tail_matching(
+                [](const char c) noexcept { return is_hex_digit(c); },
+                LEXEME_INVALID_HEXADECIMAL_DIGIT_MESSAGE
+            ) || had_error;
+        }
     } else if (first == LEXEME_BINARY_INTEGER_PREFIX_LOWER.front() &&
                (second == LEXEME_BINARY_INTEGER_PREFIX_LOWER.back() || second == LEXEME_BINARY_INTEGER_PREFIX_UPPER.back())) {
         state = NumberScanState::RADIX_INTEGER;
@@ -188,10 +239,12 @@ void Lexer::scan_number() {
             LEXEME_INTEGER_LITERAL_KIND
         );
         had_error = digits.had_error;
-        had_error = this->scan_invalid_radix_tail_matching(
-            [](const char c) noexcept { return is_binary_digit(c); },
-            LEXEME_INVALID_BINARY_DIGIT_MESSAGE
-        ) || had_error;
+        if (!this->scan_integer_suffix()) {
+            had_error = this->scan_invalid_radix_tail_matching(
+                [](const char c) noexcept { return is_binary_digit(c); },
+                LEXEME_INVALID_BINARY_DIGIT_MESSAGE
+            ) || had_error;
+        }
     } else {
         const DigitScanResult digits = this->scan_digits_matching(
             [](const char c) noexcept { return is_decimal_digit(c); },
@@ -204,6 +257,7 @@ void Lexer::scan_number() {
         if (this->scan_exponent_part(had_error)) {
             state = NumberScanState::EXPONENT;
         }
+        this->scan_numeric_suffix();
     }
 
     if (had_error) {

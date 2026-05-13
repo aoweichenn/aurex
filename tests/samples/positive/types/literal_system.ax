@@ -1,0 +1,42 @@
+module literal_system;
+
+const RAW: str = r"C:\tmp\a
+next";
+const CH: char = 'λ';
+const ESCAPED_CH: char = '\u{03BB}';
+const BYTES: [4]u8 = b"ab\n\0";
+const U: usize = 42usize;
+const F: f32 = 1.0f32;
+
+fn main() -> i32 {
+    let i: i8 = 1i8;
+    let u: u16 = 255u16;
+    let f: f64 = .5f64 + 1.;
+    let ch: char = '\u{03BB}';
+    let bytes: [3]u8 = b"abc";
+    if ch != CH {
+        return 1;
+    }
+    if ESCAPED_CH != CH {
+        return 2;
+    }
+    if sizeof[char] != cast[usize](4) {
+        return 3;
+    }
+    if cast[i32](bytes[0]) != 97 {
+        return 4;
+    }
+    if cast[i32](i) != 1 {
+        return 5;
+    }
+    if cast[i32](u) != 255 {
+        return 6;
+    }
+    if cast[i32](F) != 1 {
+        return 7;
+    }
+    if cast[i32](f) != 1 {
+        return 8;
+    }
+    return 0;
+}

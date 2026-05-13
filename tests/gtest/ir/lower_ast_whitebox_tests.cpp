@@ -257,6 +257,8 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     const TypeHandle u8 = checked.types.builtin(BuiltinType::u8);
     const TypeHandle usize = checked.types.builtin(BuiltinType::usize);
     const TypeHandle str = checked.types.builtin(BuiltinType::str);
+    const TypeHandle char_type = checked.types.builtin(BuiltinType::char_);
+    const TypeHandle byte_array = checked.types.array(3, u8);
     const TypeHandle const_u8_ptr = checked.types.pointer(PointerMutability::const_, u8);
 
     syntax::ExprNode str_value;
@@ -282,6 +284,18 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     syntax::ExprNode malformed_str_from_bytes = str_from_bytes;
     malformed_str_from_bytes.args = {str_data_id};
     const ExprId malformed_str_from_bytes_id = ast.push_expr(malformed_str_from_bytes);
+    syntax::ExprNode raw_literal;
+    raw_literal.kind = ExprKind::raw_string_literal;
+    raw_literal.text = "r\"C:\\tmp\\a\"";
+    const ExprId raw_literal_id = ast.push_expr(raw_literal);
+    syntax::ExprNode byte_string_literal;
+    byte_string_literal.kind = ExprKind::byte_string_literal;
+    byte_string_literal.text = "b\"a\\n\\0\"";
+    const ExprId byte_string_literal_id = ast.push_expr(byte_string_literal);
+    syntax::ExprNode char_literal;
+    char_literal.kind = ExprKind::char_literal;
+    char_literal.text = "'\\u{03BB}'";
+    const ExprId char_literal_id = ast.push_expr(char_literal);
 
     set_expr_type(checked, str_value_id, str);
     set_expr_type(checked, length_value_id, usize);
@@ -289,23 +303,36 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     set_expr_type(checked, str_byte_len_id, usize);
     set_expr_type(checked, str_from_bytes_id, str);
     set_expr_type(checked, malformed_str_from_bytes_id, str);
+    set_expr_type(checked, raw_literal_id, str);
+    set_expr_type(checked, byte_string_literal_id, byte_array);
+    set_expr_type(checked, char_literal_id, char_type);
 
     Lowerer lowerer(ast, checked);
     const ValueId data = lowerer.lower_expr(str_data_id);
     const ValueId byte_len = lowerer.lower_expr(str_byte_len_id);
     const ValueId from_bytes = lowerer.lower_expr(str_from_bytes_id);
     const ValueId malformed = lowerer.lower_expr(malformed_str_from_bytes_id);
+    const ValueId raw = lowerer.lower_expr(raw_literal_id);
+    const ValueId byte_string = lowerer.lower_expr(byte_string_literal_id);
+    const ValueId char_value = lowerer.lower_expr(char_literal_id);
 
     ASSERT_TRUE(is_valid(data));
     ASSERT_TRUE(is_valid(byte_len));
     ASSERT_TRUE(is_valid(from_bytes));
     ASSERT_TRUE(is_valid(malformed));
+    ASSERT_TRUE(is_valid(raw));
+    ASSERT_TRUE(is_valid(byte_string));
+    ASSERT_TRUE(is_valid(char_value));
     EXPECT_EQ(lowerer.module_.values[data.value].kind, ValueKind::str_data);
     EXPECT_EQ(lowerer.module_.values[byte_len.value].kind, ValueKind::str_byte_len);
     EXPECT_EQ(lowerer.module_.values[from_bytes.value].kind, ValueKind::str_from_bytes_unchecked);
     EXPECT_EQ(lowerer.module_.values[from_bytes.value].args.size(), 2U);
     EXPECT_EQ(lowerer.module_.values[malformed.value].kind, ValueKind::str_from_bytes_unchecked);
     EXPECT_TRUE(lowerer.module_.values[malformed.value].args.empty());
+    EXPECT_EQ(lowerer.module_.values[raw.value].kind, ValueKind::raw_string_literal);
+    EXPECT_EQ(lowerer.module_.values[byte_string.value].kind, ValueKind::aggregate);
+    EXPECT_EQ(lowerer.module_.values[byte_string.value].elements.size(), 3U);
+    EXPECT_EQ(lowerer.module_.values[char_value.value].kind, ValueKind::char_literal);
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {

@@ -131,6 +131,9 @@ inline constexpr std::string_view IR_VERIFY_CALL_ARGUMENT_OUT_OF_RANGE =
 inline constexpr std::string_view IR_VERIFY_BOOL_LITERAL_TYPE =
     "bool literal type must be bool";
 
+inline constexpr std::string_view IR_VERIFY_CHAR_LITERAL_TYPE =
+    "char literal type must be char";
+
 inline constexpr std::string_view IR_VERIFY_NULL_LITERAL_TYPE =
     "null literal type must be pointer";
 

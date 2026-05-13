@@ -196,8 +196,10 @@ struct FunctionUseInfo {
             case ValueKind::integer_literal:
             case ValueKind::float_literal:
             case ValueKind::bool_literal:
+            case ValueKind::char_literal:
             case ValueKind::null_literal:
             case ValueKind::string_literal:
+            case ValueKind::raw_string_literal:
             case ValueKind::c_string_literal:
             case ValueKind::byte_literal:
             case ValueKind::undef:

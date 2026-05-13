@@ -147,9 +147,34 @@ let s: str = "hello";
 
 - 字面量内容必须解码成有效 UTF-8。
 - 支持 `\\`、`\"`、`\0`、`\n`、`\r`、`\t`。
-- 应新增 `\u{...}`，表示 Unicode scalar value，排除 surrogate range 和超过 `U+10FFFF` 的值。
+- 支持 `\u{...}`，表示 Unicode scalar value，排除 surrogate range 和超过 `U+10FFFF` 的值。
 - 普通 `str` 字面量不应支持任意 raw byte escape；如果未来支持 `\xNN`，只允许产生 ASCII byte，或明确改成 bytes literal。
 - 无效 escape 必须诊断，不能静默吞掉。
+
+raw string：
+
+```aurex
+let raw: str = r"C:\tmp\a";
+```
+
+规则：
+
+- 使用 `r"..."`。
+- escape 不解释，内容仍必须是有效 UTF-8。
+- 允许跨行。
+- 不支持 Rust 风格 `r#"..."#` 分隔符。
+
+byte string：
+
+```aurex
+let bytes: [3]u8 = b"abc";
+```
+
+规则：
+
+- 类型是固定长度 `[N]u8`，`N` 是解码后的 byte 数。
+- 只接受 ASCII raw byte 和 `\0`、`\n`、`\r`、`\t`、`\\`、`\"` 等简单 byte escape。
+- 不接受 `\u{...}` 或非 ASCII raw byte。
 
 C 字符串字面量：
 
@@ -183,7 +208,7 @@ let p: *const u8 = c"hello";
 - 后续再提供 `scalars(s: str) -> ScalarIter`：按 Unicode scalar value 迭代，O(n)。
 - `graphemes(s: str)` 和 `grapheme_count(s: str)`：放在未来显式 Unicode 模块，O(n)，依赖 Unicode 数据版本。
 
-如果未来引入 `char`：
+当前 `char`：
 
 - `char` 必须表示 Unicode scalar value。
 - `char` 不是 `u8`，不是 C `char`，也不是 grapheme cluster。
@@ -277,14 +302,17 @@ FFI 层应有单独类型：
 - 已完成：新增 `\u{...}` Unicode scalar escape。
 - 已完成：普通 `str` 字面量不产生 trailing NUL。
 - 已完成：`c"..."` 生成 trailing NUL，并加入内部 NUL / 无效 escape 诊断策略。
-- 增加 negative tests：invalid UTF-8、invalid scalar、surrogate、bad escape。
+- 已完成：新增 raw/multiline raw string，类型为 `str`，escape 不解释。
+- 已完成：新增 byte string，类型为 `[N]u8`，拒绝 Unicode escape 和非 ASCII raw byte。
+- 已完成：新增 Unicode scalar `char` 字面量，类型为 `char`，LLVM 表示为 `i32`。
+- 已完成：增加 negative tests：invalid UTF-8、invalid scalar、surrogate、bad escape、invalid byte string、invalid char literal。
 
 落地文件：
 
 - `include/aurex/base/string_literal.hpp` / `src/base/string_literal.cpp`：共享字符串字面量解码、UTF-8 validation、Unicode scalar validation。
 - `src/lex/lexer.cpp`：lexer 在产出字符串 token 前执行 escape/UTF-8/C string NUL 诊断。
 - `src/backend/llvm/llvm_backend_util.cpp`：LLVM 后端复用共享解码逻辑，避免 lexer/backend escape 语义分裂。
-- `tests/gtest/frontend/lexer_tests.cpp`、`tests/gtest/backend/llvm_utility_tests.cpp`、`tests/samples/positive/types/string_unicode_escape.ax` 和三个 negative samples 覆盖 Phase 1 行为。
+- `tests/gtest/frontend/lexer_tests.cpp`、`tests/gtest/backend/llvm_utility_tests.cpp`、`tests/gtest/sema/sema_whitebox_tests.cpp`、`tests/gtest/ir/lower_ast_whitebox_tests.cpp`、`tests/gtest/backend/llvm_constants_tests.cpp`、`tests/samples/positive/types/string_unicode_escape.ax`、`tests/samples/positive/types/literal_system.ax` 和 negative literal samples 覆盖 Phase 1 行为。
 
 ### Phase 2：补上 `unsafe` 边界
 

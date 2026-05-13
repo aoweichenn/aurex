@@ -19,7 +19,7 @@
 
    已完成的第一优先级基础项：default private、ADT-first enum、enum multi-payload destructuring、array literal / repeat literal、slice type/expression、function type / function pointer。顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public，`impl` / `extern` block 不能显式 `priv`。slice 当前是 `ptr + len` 的 borrowed fat value，支持 `[]const T` / `[]mut T` 和 `a[l:r]`、`a[:r]`、`a[l:]`、`a[:]`，不包含容器迭代或运行时 bounds check。函数类型当前是非捕获函数指针，支持 `fn(...) -> T`、`extern c fn(...) -> T`、函数名作为值以及局部/参数/字段函数指针间接调用；完整 closure 捕获仍暂缓。
 
-   第二批 P1 基础语法继续补 raw/multiline/byte string、Unicode scalar `char`、tuple/destructuring，以及 `if let` / `let ... else` / struct pattern。容器迭代、完整 closure 捕获、trait/interface/protocol、package manager、macro、async 继续暂缓。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
+   第二批 P1 基础语法中 raw/multiline raw string、byte string、Unicode scalar `char` 和数值后缀已补齐；后续继续处理 tuple/destructuring，以及 `if let` / `let ... else` / struct pattern。容器迭代、完整 closure 捕获、trait/interface/protocol、package manager、macro、async 继续暂缓。完整库存和优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
 2. unsafe 与 `str` 安全边界
 
@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型和值语法、borrowed slice、`str`、C string、byte literal、函数声明、函数指针类型和 C FFI，但还缺 raw/multiline/byte string、Unicode scalar `char`。现代系统语言和 ML-family 语言都说明这些属于基础表达能力，不应等到未来库层重建后再补。
+   Aurex 已有数组类型和值语法、borrowed slice、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型和 C FFI。字面量体系已经补齐到 M2 基线；下一步更适合进入 tuple/destructuring 和 pattern 人体工程学，而不是重建库层。
 
 5. 值语义边界
 

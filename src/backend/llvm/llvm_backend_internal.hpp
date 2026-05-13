@@ -77,6 +77,7 @@ private:
     [[nodiscard]] llvm::Constant* emit_constant_cast(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_aggregate(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_string(const std::string& literal, bool c_string);
+    [[nodiscard]] llvm::Constant* emit_constant_raw_string(const std::string& literal);
     [[nodiscard]] llvm::Value* emit_unary(const Value& value);
     [[nodiscard]] llvm::Value* emit_binary(const Value& value);
     [[nodiscard]] llvm::Value* emit_call(const Value& value);
@@ -91,6 +92,7 @@ private:
     [[nodiscard]] llvm::Value* integer_constant(sema::TypeHandle type, const std::string& text);
     [[nodiscard]] llvm::Value* float_constant(sema::TypeHandle type, const std::string& text);
     [[nodiscard]] llvm::Value* emit_string_literal(const std::string& literal, bool c_string);
+    [[nodiscard]] llvm::Value* emit_raw_string_literal(const std::string& literal);
     [[nodiscard]] llvm::Value* global_string_pointer(const std::string& text, const std::string& name, bool add_null);
     [[nodiscard]] llvm::FunctionType* llvm_function_type(const Function& function);
     [[nodiscard]] llvm::FunctionType* llvm_function_type(sema::TypeHandle function_type);
@@ -119,6 +121,8 @@ private:
 [[nodiscard]] bool parse_u64(const std::string& text, std::uint64_t& out) noexcept;
 [[nodiscard]] bool parse_f64(const std::string& text, double& out) noexcept;
 [[nodiscard]] std::string decode_string_literal(const std::string& literal, bool has_c_prefix);
+[[nodiscard]] std::string decode_raw_string_literal(const std::string& literal);
 [[nodiscard]] std::uint64_t parse_byte_literal(const std::string& literal);
+[[nodiscard]] std::uint64_t parse_char_literal(const std::string& literal);
 
 } // namespace aurex::backend

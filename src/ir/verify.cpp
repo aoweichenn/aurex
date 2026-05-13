@@ -130,10 +130,12 @@ private:
         case ValueKind::integer_literal:
         case ValueKind::float_literal:
         case ValueKind::bool_literal:
+        case ValueKind::char_literal:
         case ValueKind::byte_literal:
         case ValueKind::undef:
         case ValueKind::null_literal:
         case ValueKind::string_literal:
+        case ValueKind::raw_string_literal:
         case ValueKind::c_string_literal:
         case ValueKind::size_of:
         case ValueKind::align_of:
@@ -384,8 +386,10 @@ private:
         case ValueKind::integer_literal:
         case ValueKind::float_literal:
         case ValueKind::bool_literal:
+        case ValueKind::char_literal:
         case ValueKind::null_literal:
         case ValueKind::string_literal:
+        case ValueKind::raw_string_literal:
         case ValueKind::c_string_literal:
         case ValueKind::byte_literal:
         case ValueKind::undef:
@@ -549,6 +553,7 @@ private:
                 this->fail(std::string(IR_VERIFY_EQUALITY_RESULT_BOOL));
             }
             if (!this->module_.types.is_bool(operand_type) &&
+                !this->module_.types.is_char(operand_type) &&
                 !this->module_.types.is_integer(operand_type) &&
                 !this->module_.types.is_float(operand_type) &&
                 !this->module_.types.is_pointer(operand_type)) {
@@ -765,12 +770,18 @@ private:
                 this->fail(std::string(IR_VERIFY_BOOL_LITERAL_TYPE));
             }
             break;
+        case ValueKind::char_literal:
+            if (!this->module_.types.is_char(value.type)) {
+                this->fail(std::string(IR_VERIFY_CHAR_LITERAL_TYPE));
+            }
+            break;
         case ValueKind::null_literal:
             if (!this->module_.types.is_pointer(value.type)) {
                 this->fail(std::string(IR_VERIFY_NULL_LITERAL_TYPE));
             }
             break;
         case ValueKind::string_literal:
+        case ValueKind::raw_string_literal:
             if (!this->module_.types.is_str(value.type)) {
                 this->fail(std::string(IR_VERIFY_STRING_LITERAL_TYPE));
             }

@@ -665,6 +665,18 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "integer literal out of range for " + std::string(type_name);
 }
 
+[[nodiscard]] inline std::string sema_invalid_integer_literal_suffix_message(const std::string_view suffix) {
+    return "invalid integer literal suffix `" + std::string(suffix) + "`";
+}
+
+[[nodiscard]] inline std::string sema_integer_literal_suffix_type_mismatch_message(
+    const std::string_view suffix_type,
+    const std::string_view expected_type
+) {
+    return "integer literal suffix type " + std::string(suffix_type) +
+           " does not match expected " + std::string(expected_type);
+}
+
 [[nodiscard]] inline std::string sema_generic_comparison_operator_message(const std::string_view type_name) {
     return "generic type parameter `" + std::string(type_name) + "` has no known comparison operator";
 }
@@ -780,6 +792,18 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_float_literal_out_of_range_message(const std::string_view type_name) {
     return "float literal out of range for " + std::string(type_name);
+}
+
+[[nodiscard]] inline std::string sema_invalid_float_literal_suffix_message(const std::string_view suffix) {
+    return "invalid float literal suffix `" + std::string(suffix) + "`";
+}
+
+[[nodiscard]] inline std::string sema_float_literal_suffix_type_mismatch_message(
+    const std::string_view suffix_type,
+    const std::string_view expected_type
+) {
+    return "float literal suffix type " + std::string(suffix_type) +
+           " does not match expected " + std::string(expected_type);
 }
 
 [[nodiscard]] inline std::string sema_unknown_import_alias_message(const std::string_view alias) {

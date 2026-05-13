@@ -70,10 +70,15 @@ constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_INVALID_CHAR = "12g";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_EMPTY = "";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_UNSIGNED_OVERFLOW = "18446744073709551616";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_SIGNED_OVERFLOW = "9223372036854775808";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_U8_SUFFIX = "255u8";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_I8_SUFFIX = "127i8";
+constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_INVALID_SUFFIX = "1f32";
 constexpr syntax::PrimitiveTypeKind SEMA_TEST_INVALID_PRIMITIVE_KIND = static_cast<syntax::PrimitiveTypeKind>(99);
 constexpr std::string_view SEMA_TEST_FLOAT_OVERFLOW_LITERAL = "1e999999999";
 constexpr std::string_view SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL = "1_2.5";
 constexpr std::string_view SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL = "1.0x";
+constexpr std::string_view SEMA_TEST_FLOAT_LITERAL_F32_SUFFIX = ".5f32";
+constexpr std::string_view SEMA_TEST_FLOAT_LITERAL_INVALID_SUFFIX = "1.0u8";
 constexpr syntax::BinaryOp SEMA_TEST_INVALID_BINARY_OP = static_cast<syntax::BinaryOp>(99);
 constexpr sema::BuiltinType SEMA_TEST_INVALID_BUILTIN_TYPE = static_cast<sema::BuiltinType>(99);
 constexpr sema::TypeKind SEMA_TEST_INVALID_TYPE_KIND = static_cast<sema::TypeKind>(99);
@@ -282,6 +287,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     const TypeHandle f32 = types.builtin(BuiltinType::f32);
     const TypeHandle f64 = types.builtin(BuiltinType::f64);
     const TypeHandle str = types.builtin(BuiltinType::str);
+    const TypeHandle char_type = types.builtin(BuiltinType::char_);
     const TypeHandle ptr_i32 = types.pointer(PointerMutability::mut, i32);
     const TypeHandle const_ptr_i32 = types.pointer(PointerMutability::const_, i32);
     const TypeHandle array_i16 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i16);
@@ -327,6 +333,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_EQ(analyzer.abi_size(f32), sizeof(float));
     EXPECT_EQ(analyzer.abi_size(f64), sizeof(double));
     EXPECT_EQ(analyzer.abi_size(str), sizeof(void*) + sizeof(std::size_t));
+    EXPECT_EQ(analyzer.abi_size(char_type), sizeof(std::uint32_t));
     EXPECT_EQ(analyzer.abi_align(i8), alignof(std::uint8_t));
     EXPECT_EQ(analyzer.abi_align(i64), alignof(std::uint64_t));
     EXPECT_EQ(analyzer.abi_align(isize), alignof(std::ptrdiff_t));
@@ -334,6 +341,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_EQ(analyzer.abi_align(f32), alignof(float));
     EXPECT_EQ(analyzer.abi_align(f64), alignof(double));
     EXPECT_EQ(analyzer.abi_align(str), alignof(void*));
+    EXPECT_EQ(analyzer.abi_align(char_type), alignof(std::uint32_t));
     EXPECT_EQ(analyzer.abi_size(ptr_i32), sizeof(void*));
     EXPECT_EQ(analyzer.abi_align(ptr_i32), alignof(void*));
     EXPECT_EQ(analyzer.abi_size(array_i16), SEMA_TEST_SMALL_ARRAY_COUNT * sizeof(std::uint16_t));
@@ -354,12 +362,15 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::pcast, const_ptr_i32, ptr_i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bcast, i32, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bcast, u32, i32));
+    EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bcast, char_type, u32));
+    EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::cast, u32, char_type));
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::bcast, bool_type, i8));
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::bcast, str, ptr_i32));
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::ptr_addr, u32, ptr_i32));
     EXPECT_FALSE(analyzer.is_valid_storage_type(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(analyzer.is_valid_storage_type(void_type));
     EXPECT_FALSE(analyzer.is_valid_storage_type(opaque_type));
+    EXPECT_TRUE(analyzer.is_valid_storage_type(char_type));
     EXPECT_TRUE(analyzer.is_valid_storage_type(nested_array_i16));
     EXPECT_FALSE(analyzer.is_valid_storage_type(array_void));
     EXPECT_FALSE(analyzer.is_valid_storage_type(array_opaque));
@@ -616,6 +627,18 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     syntax::ExprNode malformed = str_from_bytes;
     malformed.args = {data_value};
     const ExprId malformed_id = module.push_expr(malformed);
+    syntax::ExprNode raw_literal;
+    raw_literal.kind = syntax::ExprKind::raw_string_literal;
+    raw_literal.text = "r\"C:\\tmp\\a\"";
+    const ExprId raw_literal_id = module.push_expr(raw_literal);
+    syntax::ExprNode byte_string_literal;
+    byte_string_literal.kind = syntax::ExprKind::byte_string_literal;
+    byte_string_literal.text = "b\"a\\n\\0\"";
+    const ExprId byte_string_literal_id = module.push_expr(byte_string_literal);
+    syntax::ExprNode char_literal;
+    char_literal.kind = syntax::ExprKind::char_literal;
+    char_literal.text = "'\\u{03BB}'";
+    const ExprId char_literal_id = module.push_expr(char_literal);
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -639,6 +662,12 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_byte_len_id, module.exprs[str_byte_len_id.value]), usize));
     EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, module.exprs[str_from_bytes_id.value]), str));
     EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(malformed_id, module.exprs[malformed_id.value]), str));
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(raw_literal_id), str));
+    const TypeHandle byte_string_type = analyzer.analyze_expr(byte_string_literal_id);
+    ASSERT_TRUE(types.is_array(byte_string_type));
+    EXPECT_EQ(types.get(byte_string_type).array_count, 3U);
+    EXPECT_TRUE(types.same(types.get(byte_string_type).array_element, u8));
+    EXPECT_TRUE(types.is_char(analyzer.analyze_expr(char_literal_id)));
 
     analyzer.global_values_[analyzer.module_key(module_id(0), "text")].type = usize;
     analyzer.global_values_[analyzer.module_key(module_id(0), "data")].type = usize;
@@ -812,6 +841,9 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     const ExprId empty_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_EMPTY);
     const ExprId overflow_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_UNSIGNED_OVERFLOW);
     const ExprId signed_overflow_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_SIGNED_OVERFLOW);
+    const ExprId suffixed_u8_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_U8_SUFFIX);
+    const ExprId suffixed_i8_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_I8_SUFFIX);
+    const ExprId invalid_suffix_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_INVALID_SUFFIX);
     syntax::ExprNode float_overflow_expr;
     float_overflow_expr.kind = syntax::ExprKind::float_literal;
     float_overflow_expr.text = SEMA_TEST_FLOAT_OVERFLOW_LITERAL;
@@ -822,6 +854,12 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     syntax::ExprNode invalid_float_expr = float_overflow_expr;
     invalid_float_expr.text = SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL;
     const ExprId invalid_float_expr_id = module.push_expr(invalid_float_expr);
+    syntax::ExprNode suffixed_float_expr = float_overflow_expr;
+    suffixed_float_expr.text = SEMA_TEST_FLOAT_LITERAL_F32_SUFFIX;
+    const ExprId suffixed_float_expr_id = module.push_expr(suffixed_float_expr);
+    syntax::ExprNode invalid_suffix_float_expr = float_overflow_expr;
+    invalid_suffix_float_expr.text = SEMA_TEST_FLOAT_LITERAL_INVALID_SUFFIX;
+    const ExprId invalid_suffix_float_expr_id = module.push_expr(invalid_suffix_float_expr);
 
     syntax::TypeNode scoped_missing_alias_type = named_node("Missing");
     scoped_missing_alias_type.scope_name = "missing";
@@ -881,7 +919,17 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     EXPECT_FALSE(analyzer.can_assign(u8, u8, empty_expr));
     EXPECT_FALSE(analyzer.can_assign(u64, u64, overflow_expr));
     EXPECT_FALSE(analyzer.can_assign(i64, i64, signed_overflow_expr));
+    EXPECT_TRUE(analyzer.can_assign(u8, u8, suffixed_u8_expr));
+    EXPECT_FALSE(analyzer.can_assign(u16, u16, suffixed_u8_expr));
     EXPECT_FALSE(analyzer.can_assign(bool_type, u8, hex_expr));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_integer_literal(suffixed_i8_expr, module.exprs[suffixed_i8_expr.value], INVALID_TYPE_HANDLE),
+        i8
+    ));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_integer_literal(invalid_suffix_expr, module.exprs[invalid_suffix_expr.value], INVALID_TYPE_HANDLE),
+        types.builtin(BuiltinType::i32)
+    ));
     EXPECT_TRUE(types.same(
         analyzer.analyze_float_literal(float_overflow_expr_id, module.exprs[float_overflow_expr_id.value], types.builtin(BuiltinType::f32)),
         types.builtin(BuiltinType::f32)
@@ -892,6 +940,18 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     ));
     EXPECT_TRUE(types.same(
         analyzer.analyze_float_literal(invalid_float_expr_id, module.exprs[invalid_float_expr_id.value], types.builtin(BuiltinType::f64)),
+        types.builtin(BuiltinType::f64)
+    ));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_float_literal(suffixed_float_expr_id, module.exprs[suffixed_float_expr_id.value], INVALID_TYPE_HANDLE),
+        types.builtin(BuiltinType::f32)
+    ));
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_float_literal(
+            invalid_suffix_float_expr_id,
+            module.exprs[invalid_suffix_float_expr_id.value],
+            INVALID_TYPE_HANDLE
+        ),
         types.builtin(BuiltinType::f64)
     ));
     EXPECT_TRUE(types.is_str(types.builtin(BuiltinType::str)));
@@ -1314,6 +1374,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
     EXPECT_FALSE(kind_table.is_float(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_bool(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_str(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(kind_table.is_char(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_void(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_pointer(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_array(INVALID_TYPE_HANDLE));
@@ -1323,6 +1384,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
     EXPECT_FALSE(kind_table.is_float(builtin_type));
     EXPECT_FALSE(kind_table.is_bool(builtin_type));
     EXPECT_FALSE(kind_table.is_str(builtin_type));
+    EXPECT_FALSE(kind_table.is_char(builtin_type));
     EXPECT_FALSE(kind_table.is_void(builtin_type));
     EXPECT_FALSE(kind_table.is_pointer(builtin_type));
     EXPECT_FALSE(kind_table.is_array(builtin_type));

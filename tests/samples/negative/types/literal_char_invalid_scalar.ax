@@ -1,0 +1,9 @@
+module literal_char_invalid_scalar;
+
+fn main() -> i32 {
+    let value: char = '\u{D800}';
+    if value == 'a' {
+        return 1;
+    }
+    return 0;
+}

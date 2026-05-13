@@ -1,0 +1,9 @@
+module literal_char_multiple_scalars;
+
+fn main() -> i32 {
+    let value: char = 'ab';
+    if value == 'a' {
+        return 1;
+    }
+    return 0;
+}

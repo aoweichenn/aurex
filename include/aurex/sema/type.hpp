@@ -36,6 +36,7 @@ enum class BuiltinType {
     f32,
     f64,
     str,
+    char_,
 };
 
 enum class TypeKind {
@@ -113,6 +114,7 @@ public:
     [[nodiscard]] bool is_float(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_bool(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_str(TypeHandle type) const noexcept;
+    [[nodiscard]] bool is_char(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_void(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_pointer(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_array(TypeHandle type) const noexcept;

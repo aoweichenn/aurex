@@ -31,4 +31,16 @@ inline constexpr std::string_view STRING_LITERAL_INVALID_ESCAPE =
 inline constexpr std::string_view STRING_LITERAL_INVALID_UTF8 =
     "string literal must contain valid UTF-8";
 
+inline constexpr std::string_view STRING_LITERAL_BYTE_STRING_NON_ASCII =
+    "byte string literal can only contain ASCII bytes";
+
+inline constexpr std::string_view STRING_LITERAL_BYTE_LITERAL_ONE_BYTE =
+    "byte literal must contain one byte";
+
+inline constexpr std::string_view STRING_LITERAL_CHAR_LITERAL_ONE_SCALAR =
+    "char literal must contain one Unicode scalar value";
+
+inline constexpr std::string_view STRING_LITERAL_CHAR_LITERAL_INVALID_UTF8 =
+    "char literal must contain valid UTF-8";
+
 } // namespace aurex::base

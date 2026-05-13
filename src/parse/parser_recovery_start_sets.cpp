@@ -34,7 +34,10 @@ bool token_starts_expression(const TokenKind kind) noexcept {
     case TokenKind::float_literal:
     case TokenKind::string_literal:
     case TokenKind::c_string_literal:
+    case TokenKind::raw_string_literal:
+    case TokenKind::byte_string_literal:
     case TokenKind::byte_literal:
+    case TokenKind::char_literal:
     case TokenKind::kw_if:
     case TokenKind::kw_match:
     case TokenKind::kw_true:
@@ -124,6 +127,7 @@ bool token_starts_type(const TokenKind kind) noexcept {
     case TokenKind::kw_f32:
     case TokenKind::kw_f64:
     case TokenKind::kw_str:
+    case TokenKind::kw_char:
         return true;
     default:
         return false;

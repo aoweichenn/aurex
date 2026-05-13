@@ -918,6 +918,7 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
     const TypeHandle usize = builtin(module, BuiltinType::usize);
     const TypeHandle str = builtin(module, BuiltinType::str);
     const TypeHandle u8 = builtin(module, BuiltinType::u8);
+    const TypeHandle char_type = builtin(module, BuiltinType::char_);
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
 
     Function function = make_function(module, "string_and_layout", str);
@@ -925,6 +926,10 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
 
     const ValueId string_value =
         builder.add(typed_value(ValueKind::string_literal, str, IR_VERIFIER_STRING_LITERAL_BYTES));
+    const ValueId raw_string_value =
+        builder.add(typed_value(ValueKind::raw_string_literal, str, IR_VERIFIER_STRING_LITERAL_BYTES));
+    const ValueId char_value =
+        builder.add(typed_value(ValueKind::char_literal, char_type, "'\\u{03BB}'"));
     const ValueId c_string_value = builder.add(
         typed_value(ValueKind::c_string_literal, const_u8_ptr, IR_VERIFIER_C_STRING_LITERAL_BYTES)
     );
@@ -952,7 +957,7 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
     append_return_block(
         builder,
         function,
-        {string_value, c_string_value, size_of_id, align_of_id, str_data_id, str_len_id, from_bytes_id},
+        {string_value, raw_string_value, char_value, c_string_value, size_of_id, align_of_id, str_data_id, str_len_id, from_bytes_id},
         from_bytes_id
     );
     module.functions.push_back(function);

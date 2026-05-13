@@ -10,6 +10,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -41,6 +42,23 @@ constexpr base::u64 SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET = 10;
 constexpr base::u32 SEMA_INTEGER_LITERAL_MAX_BITS = std::numeric_limits<base::u64>::digits;
 constexpr base::u32 SEMA_INTEGER_LITERAL_SIGN_BIT_SHIFT = SEMA_INTEGER_LITERAL_MAX_BITS - 1;
 constexpr base::u32 SEMA_INTEGER_LITERAL_INVALID_BITS = 0;
+constexpr char SEMA_FLOAT_LITERAL_DOT = '.';
+constexpr char SEMA_FLOAT_LITERAL_EXPONENT_LOWER = 'e';
+constexpr char SEMA_FLOAT_LITERAL_EXPONENT_UPPER = 'E';
+constexpr char SEMA_FLOAT_LITERAL_PLUS = '+';
+constexpr char SEMA_FLOAT_LITERAL_MINUS = '-';
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_I8 = "i8";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_I16 = "i16";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_I32 = "i32";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_I64 = "i64";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_ISIZE = "isize";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_U8 = "u8";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_U16 = "u16";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_U32 = "u32";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_U64 = "u64";
+constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_USIZE = "usize";
+constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F32 = "f32";
+constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F64 = "f64";
 
 enum class TypeLayoutFrameStage {
     enter,
@@ -77,6 +95,16 @@ struct TypeResolveAction {
     base::usize function_param_count = 0;
 };
 
+struct IntegerLiteralParts {
+    std::string_view digits;
+    std::string_view suffix;
+};
+
+struct FloatLiteralParts {
+    std::string_view digits;
+    std::string_view suffix;
+};
+
 [[nodiscard]] BuiltinType map_builtin(const syntax::PrimitiveTypeKind kind) noexcept {
     switch (kind) {
     case syntax::PrimitiveTypeKind::void_: return BuiltinType::void_;
@@ -94,6 +122,7 @@ struct TypeResolveAction {
     case syntax::PrimitiveTypeKind::f32: return BuiltinType::f32;
     case syntax::PrimitiveTypeKind::f64: return BuiltinType::f64;
     case syntax::PrimitiveTypeKind::str: return BuiltinType::str;
+    case syntax::PrimitiveTypeKind::char_: return BuiltinType::char_;
     }
     return BuiltinType::void_;
 }
@@ -153,6 +182,111 @@ struct TypeResolveAction {
     return false;
 }
 
+[[nodiscard]] bool is_decimal_digit_char(const char c) noexcept {
+    return c >= SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_DECIMAL_LAST_CHAR;
+}
+
+[[nodiscard]] IntegerLiteralParts split_integer_literal_text(const std::string_view text) noexcept {
+    int radix = SEMA_INTEGER_LITERAL_DECIMAL_BASE;
+    base::usize index = 0;
+    if (text.size() > SEMA_INTEGER_LITERAL_PREFIX_LENGTH && text[0] == SEMA_INTEGER_LITERAL_ZERO_CHAR) {
+        if (text[1] == SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR || text[1] == SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR) {
+            radix = SEMA_INTEGER_LITERAL_HEX_BASE;
+            index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
+        } else if (text[1] == SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR ||
+            text[1] == SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR) {
+            radix = SEMA_INTEGER_LITERAL_BINARY_BASE;
+            index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
+        }
+    }
+
+    while (index < text.size()) {
+        if (text[index] == SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR) {
+            ++index;
+            continue;
+        }
+        base::u64 digit = 0;
+        if (!parse_integer_literal_digit(text[index], radix, digit)) {
+            break;
+        }
+        ++index;
+    }
+    return IntegerLiteralParts {text.substr(0, index), text.substr(index)};
+}
+
+[[nodiscard]] FloatLiteralParts split_float_literal_text(const std::string_view text) noexcept {
+    base::usize index = 0;
+    const auto consume_digits = [&]() noexcept {
+        while (index < text.size() &&
+               (is_decimal_digit_char(text[index]) || text[index] == SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR)) {
+            ++index;
+        }
+    };
+
+    if (index < text.size() && text[index] == SEMA_FLOAT_LITERAL_DOT) {
+        ++index;
+    }
+    consume_digits();
+    if (index < text.size() && text[index] == SEMA_FLOAT_LITERAL_DOT) {
+        ++index;
+        consume_digits();
+    }
+    if (index < text.size() &&
+        (text[index] == SEMA_FLOAT_LITERAL_EXPONENT_LOWER || text[index] == SEMA_FLOAT_LITERAL_EXPONENT_UPPER)) {
+        ++index;
+        if (index < text.size() &&
+            (text[index] == SEMA_FLOAT_LITERAL_PLUS || text[index] == SEMA_FLOAT_LITERAL_MINUS)) {
+            ++index;
+        }
+        consume_digits();
+    }
+    return FloatLiteralParts {text.substr(0, index), text.substr(index)};
+}
+
+[[nodiscard]] std::optional<BuiltinType> integer_suffix_type(const std::string_view suffix) noexcept {
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_I8) {
+        return BuiltinType::i8;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_I16) {
+        return BuiltinType::i16;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_I32) {
+        return BuiltinType::i32;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_I64) {
+        return BuiltinType::i64;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_ISIZE) {
+        return BuiltinType::isize;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_U8) {
+        return BuiltinType::u8;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_U16) {
+        return BuiltinType::u16;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_U32) {
+        return BuiltinType::u32;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_U64) {
+        return BuiltinType::u64;
+    }
+    if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_USIZE) {
+        return BuiltinType::usize;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<BuiltinType> float_suffix_type(const std::string_view suffix) noexcept {
+    if (suffix == SEMA_FLOAT_LITERAL_SUFFIX_F32) {
+        return BuiltinType::f32;
+    }
+    if (suffix == SEMA_FLOAT_LITERAL_SUFFIX_F64) {
+        return BuiltinType::f64;
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] bool parse_u64_literal_checked(const std::string_view text, base::u64& value) noexcept {
     int radix = SEMA_INTEGER_LITERAL_DECIMAL_BASE;
     base::usize index = 0;
@@ -190,9 +324,13 @@ struct TypeResolveAction {
 
 template <typename Float>
 [[nodiscard]] bool parse_float_literal_checked(const std::string_view text) noexcept {
+    const FloatLiteralParts parts = split_float_literal_text(text);
+    if (!parts.suffix.empty() && !float_suffix_type(parts.suffix).has_value()) {
+        return false;
+    }
     std::string digits;
-    digits.reserve(text.size());
-    for (const char c : text) {
+    digits.reserve(parts.digits.size());
+    for (const char c : parts.digits) {
         if (c != SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR) {
             digits.push_back(c);
         }
@@ -212,6 +350,13 @@ template <typename Float>
     if (!types.is_integer(destination)) {
         return false;
     }
+    const IntegerLiteralParts parts = split_integer_literal_text(text);
+    if (!parts.suffix.empty()) {
+        const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
+        if (!suffix.has_value() || !types.same(types.builtin(*suffix), destination)) {
+            return false;
+        }
+    }
     const TypeInfo& info = types.get(destination);
     const base::u32 bits = builtin_integer_bits(info.builtin);
     if (bits == SEMA_INTEGER_LITERAL_INVALID_BITS) {
@@ -219,7 +364,7 @@ template <typename Float>
     }
 
     base::u64 value = 0;
-    if (!parse_u64_literal_checked(text, value)) {
+    if (!parse_u64_literal_checked(parts.digits, value)) {
         return false;
     }
     if (builtin_is_unsigned(info.builtin)) {
@@ -242,6 +387,13 @@ template <typename Float>
     if (!types.is_integer(destination)) {
         return false;
     }
+    const IntegerLiteralParts parts = split_integer_literal_text(text);
+    if (!parts.suffix.empty()) {
+        const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
+        if (!suffix.has_value() || !types.same(types.builtin(*suffix), destination)) {
+            return false;
+        }
+    }
     const TypeInfo& info = types.get(destination);
     const base::u32 bits = builtin_integer_bits(info.builtin);
     if (bits == SEMA_INTEGER_LITERAL_INVALID_BITS || builtin_is_unsigned(info.builtin)) {
@@ -249,7 +401,7 @@ template <typename Float>
     }
 
     base::u64 value = 0;
-    if (!parse_u64_literal_checked(text, value)) {
+    if (!parse_u64_literal_checked(parts.digits, value)) {
         return false;
     }
     if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
@@ -972,7 +1124,11 @@ void SemanticAnalyzer::validate_type_layouts() {
 }
 
 bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept {
-    return parse_u64_literal_checked(text, value);
+    const IntegerLiteralParts parts = split_integer_literal_text(text);
+    if (!parts.suffix.empty() && !integer_suffix_type(parts.suffix).has_value()) {
+        return false;
+    }
+    return parse_u64_literal_checked(parts.digits, value);
 }
 
 bool SemanticAnalyzer::integer_literal_fits_type(const TypeHandle destination, const std::string_view text) const noexcept {
@@ -991,10 +1147,67 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
     const syntax::ExprNode& expr,
     const TypeHandle expected_type
 ) {
-    const TypeHandle literal_type = checked_.types.is_integer(expected_type)
+    TypeHandle literal_type = checked_.types.is_integer(expected_type)
         ? expected_type
         : checked_.types.builtin(BuiltinType::i32);
-    if (!integer_literal_fits_type(literal_type, expr.text)) {
+    bool suffix_valid = true;
+    const IntegerLiteralParts parts = split_integer_literal_text(expr.text);
+    if (!parts.suffix.empty()) {
+        const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
+        if (!suffix.has_value()) {
+            suffix_valid = false;
+            report(expr.range, sema_invalid_integer_literal_suffix_message(parts.suffix));
+        } else {
+            literal_type = checked_.types.builtin(*suffix);
+            if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
+                report(
+                    expr.range,
+                    sema_integer_literal_suffix_type_mismatch_message(
+                        checked_.types.display_name(literal_type),
+                        checked_.types.display_name(expected_type)
+                    )
+                );
+            }
+        }
+    }
+    if (suffix_valid && !integer_literal_fits_type(literal_type, expr.text)) {
+        report(
+            expr.range,
+            sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
+        );
+    }
+    return record_expr_type(expr_id, literal_type);
+}
+
+TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    TypeHandle literal_type = checked_.types.is_integer(expected_type)
+        ? expected_type
+        : checked_.types.builtin(BuiltinType::i32);
+    bool suffix_valid = true;
+    const IntegerLiteralParts parts = split_integer_literal_text(expr.text);
+    if (!parts.suffix.empty()) {
+        const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
+        if (!suffix.has_value()) {
+            suffix_valid = false;
+            report(expr.range, sema_invalid_integer_literal_suffix_message(parts.suffix));
+        } else {
+            literal_type = checked_.types.builtin(*suffix);
+            if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
+                report(
+                    expr.range,
+                    sema_integer_literal_suffix_type_mismatch_message(
+                        checked_.types.display_name(literal_type),
+                        checked_.types.display_name(expected_type)
+                    )
+                );
+            }
+        }
+    }
+    if (suffix_valid && !negative_integer_literal_fits_type(literal_type, expr.text)) {
         report(
             expr.range,
             sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
@@ -1008,13 +1221,34 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
     const syntax::ExprNode& expr,
     const TypeHandle expected_type
 ) {
-    const TypeHandle literal_type = checked_.types.is_float(expected_type)
+    TypeHandle literal_type = checked_.types.is_float(expected_type)
         ? expected_type
         : checked_.types.builtin(BuiltinType::f64);
-    const bool fits = checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
+    bool suffix_valid = true;
+    const FloatLiteralParts parts = split_float_literal_text(expr.text);
+    if (!parts.suffix.empty()) {
+        const std::optional<BuiltinType> suffix = float_suffix_type(parts.suffix);
+        if (!suffix.has_value()) {
+            suffix_valid = false;
+            report(expr.range, sema_invalid_float_literal_suffix_message(parts.suffix));
+        } else {
+            literal_type = checked_.types.builtin(*suffix);
+            if (checked_.types.is_float(expected_type) && !checked_.types.same(literal_type, expected_type)) {
+                report(
+                    expr.range,
+                    sema_float_literal_suffix_type_mismatch_message(
+                        checked_.types.display_name(literal_type),
+                        checked_.types.display_name(expected_type)
+                    )
+                );
+            }
+        }
+    }
+    const bool fits = !suffix_valid ||
+        (checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
         ? parse_float_literal_checked<float>(expr.text)
-        : parse_float_literal_checked<double>(expr.text);
-    if (!fits) {
+        : parse_float_literal_checked<double>(expr.text));
+    if (suffix_valid && !fits) {
         report(
             expr.range,
             sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type))
@@ -1075,6 +1309,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         case BuiltinType::f32: return TypeAbiLayout {sizeof(float), alignof(float)};
         case BuiltinType::f64: return TypeAbiLayout {sizeof(double), alignof(double)};
         case BuiltinType::str: return TypeAbiLayout {sizeof(void*) + sizeof(std::size_t), alignof(void*)};
+        case BuiltinType::char_: return TypeAbiLayout {sizeof(std::uint32_t), alignof(std::uint32_t)};
         }
         return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
     };

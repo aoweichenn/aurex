@@ -25,6 +25,7 @@ enum class PrimitiveTypeKind {
     f32,
     f64,
     str,
+    char_,
 };
 
 enum class PointerMutability {
@@ -84,7 +85,10 @@ enum class ExprKind {
     null_literal,
     string_literal,
     c_string_literal,
+    raw_string_literal,
+    byte_string_literal,
     byte_literal,
+    char_literal,
     name,
     generic_apply,
     unary,

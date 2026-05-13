@@ -82,8 +82,17 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
     if (this->match(TokenKind::c_string_literal)) {
         return this->parse_literal(syntax::ExprKind::c_string_literal);
     }
+    if (this->match(TokenKind::raw_string_literal)) {
+        return this->parse_literal(syntax::ExprKind::raw_string_literal);
+    }
+    if (this->match(TokenKind::byte_string_literal)) {
+        return this->parse_literal(syntax::ExprKind::byte_string_literal);
+    }
     if (this->match(TokenKind::byte_literal)) {
         return this->parse_literal(syntax::ExprKind::byte_literal);
+    }
+    if (this->match(TokenKind::char_literal)) {
+        return this->parse_literal(syntax::ExprKind::char_literal);
     }
     if (this->match(TokenKind::l_paren)) {
         const syntax::ExprId expr = this->parse_expr(context);

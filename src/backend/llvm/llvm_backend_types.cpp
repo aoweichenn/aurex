@@ -65,6 +65,7 @@ llvm::Type* LlvmEmitter::llvm_type(const sema::TypeHandle type) {
             case sema::BuiltinType::u16: result = llvm::Type::getInt16Ty(this->context_); break;
             case sema::BuiltinType::i32:
             case sema::BuiltinType::u32: result = llvm::Type::getInt32Ty(this->context_); break;
+            case sema::BuiltinType::char_: result = llvm::Type::getInt32Ty(this->context_); break;
             case sema::BuiltinType::i64:
             case sema::BuiltinType::u64: result = llvm::Type::getInt64Ty(this->context_); break;
             case sema::BuiltinType::isize:

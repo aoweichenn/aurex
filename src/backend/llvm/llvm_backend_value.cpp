@@ -55,6 +55,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
                 : LLVM_BACKEND_VALUE_ZERO_INTEGER,
             false
         );
+    case ValueKind::char_literal:
+        return llvm::ConstantInt::get(this->llvm_type(value.type), parse_char_literal(value.text), false);
     case ValueKind::byte_literal:
         return llvm::ConstantInt::get(this->llvm_type(value.type), parse_byte_literal(value.text), false);
     case ValueKind::undef:
@@ -63,6 +65,8 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
         return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(this->llvm_type(value.type)));
     case ValueKind::string_literal:
         return this->emit_string_literal(value.text, false);
+    case ValueKind::raw_string_literal:
+        return this->emit_raw_string_literal(value.text);
     case ValueKind::c_string_literal:
         return this->emit_string_literal(value.text, true);
     case ValueKind::constant_ref:
@@ -179,6 +183,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
                 : LLVM_BACKEND_VALUE_ZERO_INTEGER,
             false
         );
+    case ValueKind::char_literal:
+        return llvm::ConstantInt::get(this->llvm_type(value.type), parse_char_literal(value.text), false);
     case ValueKind::byte_literal:
         return llvm::ConstantInt::get(this->llvm_type(value.type), parse_byte_literal(value.text), false);
     case ValueKind::undef:
@@ -187,6 +193,8 @@ llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
         return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(this->llvm_type(value.type)));
     case ValueKind::string_literal:
         return this->emit_constant_string(value.text, false);
+    case ValueKind::raw_string_literal:
+        return this->emit_constant_raw_string(value.text);
     case ValueKind::c_string_literal:
         return this->emit_constant_string(value.text, true);
     case ValueKind::constant_ref: {
@@ -408,6 +416,10 @@ llvm::Constant* LlvmEmitter::emit_constant_string(const std::string& literal, co
         );
     }
     return llvm::cast<llvm::Constant>(this->emit_string_literal(literal, false));
+}
+
+llvm::Constant* LlvmEmitter::emit_constant_raw_string(const std::string& literal) {
+    return llvm::cast<llvm::Constant>(this->emit_raw_string_literal(literal));
 }
 
 llvm::Value* LlvmEmitter::emit_unary(const Value& value) {
@@ -645,6 +657,20 @@ llvm::Value* LlvmEmitter::emit_string_literal(const std::string& literal, const 
         return this->global_string_pointer(decoded, LLVM_BACKEND_VALUE_C_STRING_NAME, false);
     }
 
+    llvm::Value* data = this->global_string_pointer(decoded, LLVM_BACKEND_VALUE_STRING_DATA_NAME, false);
+    const sema::TypeHandle str_type = this->source_.types.builtin(sema::BuiltinType::str);
+    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(str_type));
+    result = this->builder_.CreateInsertValue(result, data, {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX});
+    result = this->builder_.CreateInsertValue(
+        result,
+        llvm::ConstantInt::get(this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)), decoded.size()),
+        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}
+    );
+    return result;
+}
+
+llvm::Value* LlvmEmitter::emit_raw_string_literal(const std::string& literal) {
+    const std::string decoded = decode_raw_string_literal(literal);
     llvm::Value* data = this->global_string_pointer(decoded, LLVM_BACKEND_VALUE_STRING_DATA_NAME, false);
     const sema::TypeHandle str_type = this->source_.types.builtin(sema::BuiltinType::str);
     llvm::Value* result = llvm::UndefValue::get(this->llvm_type(str_type));

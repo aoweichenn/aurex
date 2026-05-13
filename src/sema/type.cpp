@@ -9,7 +9,7 @@ namespace aurex::sema {
 
 namespace {
 
-inline constexpr base::u32 SEMA_BUILTIN_TYPE_COUNT = static_cast<base::u32>(BuiltinType::str) + 1U;
+inline constexpr base::u32 SEMA_BUILTIN_TYPE_COUNT = static_cast<base::u32>(BuiltinType::char_) + 1U;
 constexpr base::usize SEMA_TYPE_TABLE_INITIAL_CAPACITY = 128;
 constexpr std::string_view SEMA_TYPE_DISPLAY_INVALID_NAME = "<invalid>";
 constexpr std::string_view SEMA_TYPE_DISPLAY_UNKNOWN_NAME = "<unknown>";
@@ -75,6 +75,7 @@ struct TypeDisplayTask {
     case BuiltinType::f32: return "f32";
     case BuiltinType::f64: return "f64";
     case BuiltinType::str: return "str";
+    case BuiltinType::char_: return "char";
     }
     return "<unknown>";
 }
@@ -272,6 +273,13 @@ bool TypeTable::is_str(const TypeHandle type) const noexcept {
            type.value < this->types_.size() &&
            this->types_[type.value].kind == TypeKind::builtin &&
            this->types_[type.value].builtin == BuiltinType::str;
+}
+
+bool TypeTable::is_char(const TypeHandle type) const noexcept {
+    return is_valid(type) &&
+           type.value < this->types_.size() &&
+           this->types_[type.value].kind == TypeKind::builtin &&
+           this->types_[type.value].builtin == BuiltinType::char_;
 }
 
 bool TypeTable::is_void(const TypeHandle type) const noexcept {

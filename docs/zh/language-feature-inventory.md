@@ -43,6 +43,7 @@ fn struct opaque enum const type impl match
 let var if else for in while break continue defer return
 true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str
+char
 mut cast ptrcast bitcast sizeof alignof
 ptraddr ptrat strptr strblen strraw
 ```
@@ -83,13 +84,17 @@ identifier = [A-Za-z_][A-Za-z0-9_]*
 0Xff
 0b1010
 0B1010
+1u8
+42usize
+1i32
 ```
 
 规则：
 
 - `_` 只能出现在两个合法数字之间。
 - 不允许 `1_`、`1__2`、`0x_FF`、`0b_1010`。
-- 没有整数后缀。
+- 整数后缀支持 `i8`、`i16`、`i32`、`i64`、`isize`、`u8`、`u16`、`u32`、`u64`、`usize`。
+- 浮点后缀不能用于整数字面量，例如 `1f32` 会诊断。
 - 整数字面量可根据期望整数类型做范围检查。
 
 浮点：
@@ -97,26 +102,36 @@ identifier = [A-Za-z_][A-Za-z0-9_]*
 ```aurex
 1.0
 0.5
+.5
+1.
 1e3
 1.0e-3
+1.0f32
+1.0f64
 ```
 
 规则：
 
 - 没有期望类型时默认 `f64`。
 - 期望类型是 `f32` / `f64` 时按期望类型检查。
-- 当前不支持 `.5`、`1.`、`1.0f32` 或 `1.0_f32`。
+- 浮点后缀支持 `f32` / `f64`。
+- 整数后缀不能用于浮点字面量，例如 `1.0u8` 会诊断。
+- 当前不支持 underscore suffix 形式，例如 `1.0_f32`。
 
 字符串和 byte：
 
 ```aurex
-"hello"      // str
-c"hello"     // *const u8, 用于 C FFI
-b'a'         // u8
-b'\n'        // u8
+"hello"       // str
+c"hello"      // *const u8, 用于 C FFI
+r"raw\n"      // str，escape 不解释，可跨行
+b"abc\n"      // [N]u8
+b'a'          // u8
+b'\n'         // u8
+'λ'           // char
+'\u{03BB}'    // char
 ```
 
-普通字符串会校验 UTF-8。C 字符串拒绝内部 NUL。当前没有 raw string、multi-line string、bytes string 或 Unicode scalar `char` 字面量。
+普通字符串会校验 UTF-8。C 字符串拒绝内部 NUL。raw string 不解释 escape，并允许换行。byte string 只接受 ASCII raw byte 和简单 byte escape，结果类型是固定长度 `[N]u8`。`char` 是 Unicode scalar value，不是 `u8` 或 C `char`。
 
 布尔和空指针：
 
@@ -668,7 +683,7 @@ p1 | p2 | p3
 
 当前允许：
 
-- integer / float / bool / null / string / c-string / byte literal。
+- integer / float / bool / null / string / c-string / raw string / byte string / byte literal / char literal。
 - const 引用。
 - enum case 常量。
 - struct literal，只要字段 initializer 都是 const evaluable。
@@ -724,8 +739,6 @@ M2 已删除：
 ### 基础语法未完成
 
 - 最小 `unsafe` block / `unsafe fn`，以及 unsafe-only 诊断清单。
-- raw string、bytes string、Unicode scalar `char`。
-- literal suffix 策略：整数/浮点类型后缀。
 
 ### 类型系统未完成
 
@@ -858,21 +871,19 @@ let all = bytes[:];
 
 ### P1：基础可用性补齐
 
-1. raw string / multiline string / bytes string / Unicode scalar `char`
+1. raw string / multiline raw string / bytes string / Unicode scalar `char`。已补
 
-   当前已有 `"..." -> str`、`c"..." -> *const u8`、`b'a' -> u8`，但缺现代基础字面量：
+   M2 当前已有 `"..." -> str`、`c"..." -> *const u8`、`r"..." -> str`、`b"..." -> [N]u8`、`b'a' -> u8` 和 `'λ' -> char`：
 
    ```aurex
    r"c:\tmp\file.txt"
-   """
-   line 1
-   line 2
-   """
+   r"line 1
+   line 2"
    b"abc"
    'λ'
    ```
 
-   `char` 应表示 Unicode scalar value，不是 `u8` 或 C `char`。`b"abc"` 的结果类型需要和 array literal / slice 设计一起冻结。
+   规则已经冻结为：raw string 不解释 escape 且允许换行；byte string 结果类型是固定数组 `[N]u8`，拒绝 Unicode escape 和非 ASCII raw bytes；`char` 表示 Unicode scalar value，不是 `u8` 或 C `char`。
 
 2. function pointer / function type（已补入 M2 基线）
 
@@ -953,7 +964,7 @@ let all = bytes[:];
 
 - labeled break/continue。
 - match/switch statement context。
-- literal suffix / octal / hex float。
+- octal / hex float。
 - doc comment。
 - `where` / non-resource capability / trait。
 - resource semantics。
@@ -970,7 +981,7 @@ let all = bytes[:];
 1. 写当前 grammar 的 EBNF，并用 parser tests 锁住。
 2. 给 `unsafe` 设计最小 AST/语义框架和 unsafe-only 诊断清单。
 3. 冻结 `str` 的 safe/unsafe 边界，并明确和普通 slice 的关系。
-4. 设计 raw/multiline/bytes string、Unicode scalar `char`。
+4. 保持 raw/multiline raw string、byte string、Unicode scalar `char` 和 numeric suffix 的 grammar、诊断、测试矩阵同步。
 5. 再进入 tuple/destructuring、pattern 扩展、`where` / 非资源类 capability；资源语义暂缓。
 
 ## 参考

@@ -1,5 +1,6 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/base/string_literal.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -204,13 +205,38 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         );
     case syntax::ExprKind::string_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
+    case syntax::ExprKind::raw_string_literal:
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     case syntax::ExprKind::c_string_literal:
         return this->record_expr_type(
             expr_id,
             this->checked_.types.pointer(PointerMutability::const_, this->checked_.types.builtin(BuiltinType::u8))
         );
+    case syntax::ExprKind::byte_string_literal: {
+        const base::StringLiteralDecode decoded =
+            base::decode_string_literal(expr.text, base::StringLiteralKind::byte_string);
+        for (const base::StringLiteralError& error : decoded.errors) {
+            this->report(
+                base::SourceRange {
+                    expr.range.source,
+                    expr.range.begin + error.begin,
+                    expr.range.begin + error.end,
+                },
+                error.message
+            );
+        }
+        return this->record_expr_type(
+            expr_id,
+            this->checked_.types.array(
+                static_cast<base::u64>(decoded.decoded.size()),
+                this->checked_.types.builtin(BuiltinType::u8)
+            )
+        );
+    }
     case syntax::ExprKind::byte_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::u8));
+    case syntax::ExprKind::char_literal:
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::char_));
     case syntax::ExprKind::name:
         return this->analyze_name_expr(expr_id, expr);
     case syntax::ExprKind::generic_apply:
@@ -304,16 +330,8 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
         expr.unary_operand.value < this->module_.exprs.size() &&
         this->module_.exprs[expr.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
         const syntax::ExprNode& operand_expr = this->module_.exprs[expr.unary_operand.value];
-        const TypeHandle literal_type = this->checked_.types.is_integer(expected_type)
-            ? expected_type
-            : this->checked_.types.builtin(BuiltinType::i32);
-        if (!this->negative_integer_literal_fits_type(literal_type, operand_expr.text)) {
-            this->report(
-                expr.range,
-                sema_integer_literal_out_of_range_message(this->checked_.types.display_name(literal_type))
-            );
-        }
-        static_cast<void>(this->record_expr_type(expr.unary_operand, literal_type));
+        const TypeHandle literal_type =
+            this->analyze_negative_integer_literal(expr.unary_operand, operand_expr, expected_type);
         return this->record_expr_type(expr_id, literal_type);
     }
 
@@ -469,6 +487,7 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::not_equal: {
         const bool scalar =
             this->checked_.types.is_bool(lhs) ||
+            this->checked_.types.is_char(lhs) ||
             this->checked_.types.is_integer(lhs) ||
             this->checked_.types.is_float(lhs) ||
             this->checked_.types.is_pointer(lhs) ||

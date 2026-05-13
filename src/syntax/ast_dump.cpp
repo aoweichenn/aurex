@@ -14,7 +14,10 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::float_literal: return "float_literal";
     case TokenKind::string_literal: return "string_literal";
     case TokenKind::c_string_literal: return "c_string_literal";
+    case TokenKind::raw_string_literal: return "raw_string_literal";
+    case TokenKind::byte_string_literal: return "byte_string_literal";
     case TokenKind::byte_literal: return "byte_literal";
+    case TokenKind::char_literal: return "char_literal";
     case TokenKind::kw_module: return "kw_module";
     case TokenKind::kw_import: return "kw_import";
     case TokenKind::kw_as: return "kw_as";
@@ -60,6 +63,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_f32: return "kw_f32";
     case TokenKind::kw_f64: return "kw_f64";
     case TokenKind::kw_str: return "kw_str";
+    case TokenKind::kw_char: return "kw_char";
     case TokenKind::kw_mut: return "kw_mut";
     case TokenKind::kw_cast: return "kw_cast";
     case TokenKind::kw_ptrcast: return "kw_ptrcast";
@@ -149,6 +153,7 @@ std::string_view primitive_name(const PrimitiveTypeKind kind) {
     case PrimitiveTypeKind::f32: return "f32";
     case PrimitiveTypeKind::f64: return "f64";
     case PrimitiveTypeKind::str: return "str";
+    case PrimitiveTypeKind::char_: return "char";
     }
     return "unknown";
 }
@@ -305,7 +310,10 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::null_literal: return "null_literal";
     case ExprKind::string_literal: return "string_literal";
     case ExprKind::c_string_literal: return "c_string_literal";
+    case ExprKind::raw_string_literal: return "raw_string_literal";
+    case ExprKind::byte_string_literal: return "byte_string_literal";
     case ExprKind::byte_literal: return "byte_literal";
+    case ExprKind::char_literal: return "char_literal";
     case ExprKind::name: return "name";
     case ExprKind::generic_apply: return "generic_apply";
     case ExprKind::unary: return "unary";

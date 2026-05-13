@@ -9,8 +9,11 @@
 
 namespace aurex::backend {
 [[nodiscard]] bool parse_u64(const std::string& text, std::uint64_t& out) noexcept;
+[[nodiscard]] bool parse_f64(const std::string& text, double& out) noexcept;
 [[nodiscard]] std::string decode_string_literal(const std::string& literal, bool has_c_prefix);
+[[nodiscard]] std::string decode_raw_string_literal(const std::string& literal);
 [[nodiscard]] std::uint64_t parse_byte_literal(const std::string& literal);
+[[nodiscard]] std::uint64_t parse_char_literal(const std::string& literal);
 } // namespace aurex::backend
 
 namespace aurex::test {
@@ -27,9 +30,21 @@ TEST(CoreUnit, LlvmBackendUtilityHelpersCoverLiteralVariants) {
     EXPECT_EQ(parsed, 42U);
     EXPECT_TRUE(backend::parse_u64("0b1010", parsed));
     EXPECT_EQ(parsed, 10U);
+    EXPECT_TRUE(backend::parse_u64("42usize", parsed));
+    EXPECT_EQ(parsed, 42U);
+    EXPECT_TRUE(backend::parse_u64("0xffu8", parsed));
+    EXPECT_EQ(parsed, 255U);
+    EXPECT_FALSE(backend::parse_u64("1f32", parsed));
     EXPECT_FALSE(backend::parse_u64("", parsed));
     EXPECT_FALSE(backend::parse_u64("0x", parsed));
     EXPECT_FALSE(backend::parse_u64("not-a-number", parsed));
+
+    double parsed_float = 0.0;
+    EXPECT_TRUE(backend::parse_f64(".5f32", parsed_float));
+    EXPECT_DOUBLE_EQ(parsed_float, 0.5);
+    EXPECT_TRUE(backend::parse_f64("1.", parsed_float));
+    EXPECT_DOUBLE_EQ(parsed_float, 1.0);
+    EXPECT_FALSE(backend::parse_f64("1.0u8", parsed_float));
 
     const std::string decoded = backend::decode_string_literal("\"\\0\\r\\t\\\\\\\"x\"", false);
     ASSERT_EQ(decoded.size(), 6U);
@@ -40,6 +55,7 @@ TEST(CoreUnit, LlvmBackendUtilityHelpersCoverLiteralVariants) {
     EXPECT_EQ(decoded[4], '"');
     EXPECT_EQ(decoded[5], 'x');
     EXPECT_EQ(backend::decode_string_literal("c\"raw\"", true), "raw");
+    EXPECT_EQ(backend::decode_raw_string_literal("r\"C:\\tmp\\a\""), "C:\\tmp\\a");
     const std::string omega = backend::decode_string_literal("\"\\u{03A9}\"", false);
     ASSERT_EQ(omega.size(), 2U);
     EXPECT_EQ(static_cast<unsigned char>(omega[0]), 0xCEU);
@@ -76,8 +92,10 @@ TEST(CoreUnit, LlvmBackendUtilityHelpersCoverLiteralVariants) {
     EXPECT_EQ(backend::parse_byte_literal("b'\\0'"), 0U);
     EXPECT_EQ(backend::parse_byte_literal("b'\\r'"), static_cast<std::uint64_t>('\r'));
     EXPECT_EQ(backend::parse_byte_literal("b'\\t'"), static_cast<std::uint64_t>('\t'));
-    EXPECT_EQ(backend::parse_byte_literal("b'\\x'"), static_cast<std::uint64_t>('x'));
+    EXPECT_EQ(backend::parse_byte_literal("b'\\x'"), 0U);
     EXPECT_EQ(backend::parse_byte_literal("b''"), 0U);
+    EXPECT_EQ(backend::parse_char_literal("'λ'"), 0x03BBU);
+    EXPECT_EQ(backend::parse_char_literal("'\\u{1F600}'"), 0x1F600U);
 }
 
 TEST(CoreUnit, BaseStringLiteralHelpersCoverUtf8AndEscapes) {
@@ -88,13 +106,24 @@ TEST(CoreUnit, BaseStringLiteralHelpersCoverUtf8AndEscapes) {
     constexpr base::usize BASE_STRING_LITERAL_UTF8_TWO_BYTE_WIDTH = 2;
     constexpr base::usize BASE_STRING_LITERAL_UTF8_THREE_BYTE_WIDTH = 3;
     constexpr base::usize BASE_STRING_LITERAL_UTF8_FOUR_BYTE_WIDTH = 4;
+    constexpr base::usize BASE_STRING_LITERAL_UTF8_SURROGATE_WIDTH = 3;
     constexpr unsigned char BASE_STRING_LITERAL_INVALID_UTF8_LEAD_BYTE = 0xC3U;
+    constexpr unsigned char BASE_STRING_LITERAL_INVALID_UTF8_STANDALONE_CONTINUATION = 0x80U;
     constexpr unsigned char BASE_STRING_LITERAL_OVERLONG_UTF8_LEAD_BYTE = 0xC0U;
     constexpr unsigned char BASE_STRING_LITERAL_OVERLONG_UTF8_TRAIL_BYTE = 0x80U;
+    constexpr unsigned char BASE_STRING_LITERAL_SURROGATE_UTF8_BYTE_0 = 0xEDU;
+    constexpr unsigned char BASE_STRING_LITERAL_SURROGATE_UTF8_BYTE_1 = 0xA0U;
+    constexpr unsigned char BASE_STRING_LITERAL_SURROGATE_UTF8_BYTE_2 = 0x80U;
 
     const std::string BASE_STRING_LITERAL_UTF8_TWO_BYTE {"\xC2\xA9", BASE_STRING_LITERAL_UTF8_TWO_BYTE_WIDTH};
     const std::string BASE_STRING_LITERAL_UTF8_THREE_BYTE {"\xE2\x82\xAC", BASE_STRING_LITERAL_UTF8_THREE_BYTE_WIDTH};
     const std::string BASE_STRING_LITERAL_UTF8_FOUR_BYTE {"\xF0\x9F\x98\x80", BASE_STRING_LITERAL_UTF8_FOUR_BYTE_WIDTH};
+    const std::string BASE_STRING_LITERAL_UTF8_SURROGATE {
+        static_cast<char>(BASE_STRING_LITERAL_SURROGATE_UTF8_BYTE_0),
+        static_cast<char>(BASE_STRING_LITERAL_SURROGATE_UTF8_BYTE_1),
+        static_cast<char>(BASE_STRING_LITERAL_SURROGATE_UTF8_BYTE_2),
+    };
+    ASSERT_EQ(BASE_STRING_LITERAL_UTF8_SURROGATE.size(), BASE_STRING_LITERAL_UTF8_SURROGATE_WIDTH);
 
     EXPECT_TRUE(base::is_unicode_scalar(BASE_STRING_LITERAL_UNICODE_NULL_TEST_VALUE));
     EXPECT_TRUE(base::is_unicode_scalar(BASE_STRING_LITERAL_UNICODE_MAX_TEST_VALUE));
@@ -111,14 +140,27 @@ TEST(CoreUnit, BaseStringLiteralHelpersCoverUtf8AndEscapes) {
     invalid_utf8.push_back('(');
     EXPECT_FALSE(base::is_valid_utf8(invalid_utf8));
 
+    std::string invalid_lead_utf8;
+    invalid_lead_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_INVALID_UTF8_STANDALONE_CONTINUATION));
+    EXPECT_FALSE(base::is_valid_utf8(invalid_lead_utf8));
+
+    std::string truncated_utf8;
+    truncated_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_INVALID_UTF8_LEAD_BYTE));
+    EXPECT_FALSE(base::is_valid_utf8(truncated_utf8));
+
     std::string overlong_utf8;
     overlong_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_OVERLONG_UTF8_LEAD_BYTE));
     overlong_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_OVERLONG_UTF8_TRAIL_BYTE));
     EXPECT_FALSE(base::is_valid_utf8(overlong_utf8));
+    EXPECT_FALSE(base::is_valid_utf8(BASE_STRING_LITERAL_UTF8_SURROGATE));
 
     const base::StringLiteralDecode plain = base::decode_string_literal("\"plain\"", base::StringLiteralKind::string);
     ASSERT_TRUE(plain.ok());
     EXPECT_EQ(plain.decoded, "plain");
+
+    const base::StringLiteralDecode unquoted_plain = base::decode_string_literal("plain", base::StringLiteralKind::string);
+    ASSERT_TRUE(unquoted_plain.ok());
+    EXPECT_EQ(unquoted_plain.decoded, "plain");
 
     const base::StringLiteralDecode escapes =
         base::decode_string_literal("\"\\0\\n\\r\\t\\\\\\\"\"", base::StringLiteralKind::string);
@@ -150,6 +192,60 @@ TEST(CoreUnit, BaseStringLiteralHelpersCoverUtf8AndEscapes) {
     ASSERT_TRUE(c_string.ok());
     EXPECT_EQ(c_string.decoded, "abc");
 
+    const base::StringLiteralDecode raw_string =
+        base::decode_string_literal("r\"C:\\tmp\\a\nnext\"", base::StringLiteralKind::raw_string);
+    ASSERT_TRUE(raw_string.ok());
+    EXPECT_EQ(raw_string.decoded, "C:\\tmp\\a\nnext");
+
+    std::string raw_invalid_utf8 = "r\"";
+    raw_invalid_utf8.push_back(static_cast<char>(BASE_STRING_LITERAL_INVALID_UTF8_LEAD_BYTE));
+    raw_invalid_utf8.push_back('(');
+    raw_invalid_utf8.push_back('"');
+    const base::StringLiteralDecode raw_utf8_error =
+        base::decode_string_literal(raw_invalid_utf8, base::StringLiteralKind::raw_string);
+    ASSERT_FALSE(raw_utf8_error.ok());
+    expect_contains(raw_utf8_error.errors.front().message, "valid UTF-8");
+
+    const base::StringLiteralDecode byte_string =
+        base::decode_string_literal("b\"a\\n\\0\"", base::StringLiteralKind::byte_string);
+    ASSERT_TRUE(byte_string.ok());
+    ASSERT_EQ(byte_string.decoded.size(), 3U);
+    EXPECT_EQ(byte_string.decoded[0], 'a');
+    EXPECT_EQ(byte_string.decoded[1], '\n');
+    EXPECT_EQ(byte_string.decoded[2], '\0');
+
+    const base::ByteLiteralDecode byte_literal = base::decode_byte_literal("b'\\n'");
+    ASSERT_TRUE(byte_literal.ok());
+    EXPECT_EQ(byte_literal.value, static_cast<base::u8>('\n'));
+
+    const base::ByteLiteralDecode plain_byte_literal = base::decode_byte_literal("'a'");
+    ASSERT_TRUE(plain_byte_literal.ok());
+    EXPECT_EQ(plain_byte_literal.value, static_cast<base::u8>('a'));
+
+    const base::ByteLiteralDecode unterminated_byte_escape = base::decode_byte_literal("b'\\'");
+    ASSERT_FALSE(unterminated_byte_escape.ok());
+    expect_contains(unterminated_byte_escape.errors.front().message, "unterminated escape sequence");
+
+    const base::ByteLiteralDecode overlong_byte_escape = base::decode_byte_literal("b'\\nq'");
+    ASSERT_FALSE(overlong_byte_escape.ok());
+    expect_contains(overlong_byte_escape.errors.front().message, "one byte");
+
+    const base::CharLiteralDecode char_literal = base::decode_char_literal("'\\u{03BB}'");
+    ASSERT_TRUE(char_literal.ok());
+    EXPECT_EQ(char_literal.value, 0x03BBU);
+
+    const base::CharLiteralDecode char_simple_escape = base::decode_char_literal("'\\n'");
+    ASSERT_TRUE(char_simple_escape.ok());
+    EXPECT_EQ(char_simple_escape.value, static_cast<base::u32>('\n'));
+
+    const base::CharLiteralDecode char_quote_escape = base::decode_char_literal("'\\\"'");
+    ASSERT_TRUE(char_quote_escape.ok());
+    EXPECT_EQ(char_quote_escape.value, static_cast<base::u32>('"'));
+
+    const base::CharLiteralDecode char_three_byte_scalar = base::decode_char_literal("'€'");
+    ASSERT_TRUE(char_three_byte_scalar.ok());
+    EXPECT_EQ(char_three_byte_scalar.value, 0x20ACU);
+
     const base::StringLiteralDecode invalid_escape = base::decode_string_literal("\"\\q\"", base::StringLiteralKind::string);
     ASSERT_FALSE(invalid_escape.ok());
     ASSERT_FALSE(invalid_escape.errors.empty());
@@ -180,6 +276,27 @@ TEST(CoreUnit, BaseStringLiteralHelpersCoverUtf8AndEscapes) {
     ASSERT_FALSE(c_nul.ok());
     ASSERT_FALSE(c_nul.errors.empty());
     expect_contains(c_nul.errors.front().message, "interior NUL");
+
+    const base::StringLiteralDecode byte_unicode =
+        base::decode_string_literal("b\"\\u{41}\"", base::StringLiteralKind::byte_string);
+    ASSERT_FALSE(byte_unicode.ok());
+    expect_contains(byte_unicode.errors.front().message, "invalid escape sequence");
+
+    const base::CharLiteralDecode char_multi = base::decode_char_literal("'ab'");
+    ASSERT_FALSE(char_multi.ok());
+    expect_contains(char_multi.errors.front().message, "one Unicode scalar");
+
+    const base::CharLiteralDecode char_empty = base::decode_char_literal("''");
+    ASSERT_FALSE(char_empty.ok());
+    expect_contains(char_empty.errors.front().message, "one Unicode scalar");
+
+    const base::CharLiteralDecode char_unterminated_escape = base::decode_char_literal("'\\'");
+    ASSERT_FALSE(char_unterminated_escape.ok());
+    expect_contains(char_unterminated_escape.errors.front().message, "unterminated escape sequence");
+
+    const base::CharLiteralDecode char_overlong_escape = base::decode_char_literal("'\\nq'");
+    ASSERT_FALSE(char_overlong_escape.ok());
+    expect_contains(char_overlong_escape.errors.front().message, "one Unicode scalar");
 
     std::string truncated_escape = "\"abc";
     truncated_escape.push_back('\\');

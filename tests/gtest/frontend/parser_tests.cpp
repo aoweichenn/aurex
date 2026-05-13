@@ -133,7 +133,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let data: *const u8 = strptr(s);\n"
         "  let len: usize = strblen(s);\n"
         "  let raw: str = strraw(data, len);\n"
+        "  let raw_literal: str = r\"C:\\tmp\\a\";\n"
+        "  let bytes: [3]u8 = b\"a\\n\\0\";\n"
         "  let b: u8 = b'\\n';\n"
+        "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
         "  let reps: [2]u8 = [b'a'; 2];\n"
         "  let a: i32 = cast[i32](argc) + bitcast[i32](argc) + alignof[*mut i32];\n"
@@ -170,6 +173,9 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_ptrat",
         "ellipsis",
         "byte_literal",
+        "byte_string_literal",
+        "char_literal",
+        "raw_string_literal",
         "string_literal",
     });
 
@@ -193,7 +199,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "expr #",
         "null_literal",
         "string_literal",
+        "raw_string_literal",
+        "byte_string_literal",
         "byte_literal",
+        "char_literal",
         "array_literal",
         "array_repeat_value",
         "array_repeat_count",

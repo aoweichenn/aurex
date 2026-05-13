@@ -61,18 +61,21 @@ module import as pub priv extern export c
 fn struct opaque enum const type impl match
 let var if else for in while break continue defer return
 true false null
-void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str
+void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char
 mut cast ptrcast bitcast sizeof alignof
 ptraddr ptrat strptr strblen strraw
 ```
 
 字面量：
 
-- 整数字面量：十进制、`0x` / `0X` 十六进制、`0b` / `0B` 二进制，允许 `_` 分隔；`_` 只能出现在两个合法数字之间。
-- 浮点字面量：`1.0`、`1e3`、`1.0e-3`，没有期望类型时默认 `f64`，有 `f32` / `f64` 期望类型时按期望类型检查。
+- 整数字面量：十进制、`0x` / `0X` 十六进制、`0b` / `0B` 二进制，允许 `_` 分隔；`_` 只能出现在两个合法数字之间；支持 `i8`、`i16`、`i32`、`i64`、`isize`、`u8`、`u16`、`u32`、`u64`、`usize` 后缀。
+- 浮点字面量：`1.0`、`.5`、`1.`、`1e3`、`1.0e-3`，支持 `f32` / `f64` 后缀；没有期望类型时默认 `f64`，有 `f32` / `f64` 期望类型时按期望类型检查。
 - 普通字符串字面量：`"text"`，类型是 `str`，lexer 会校验解码后的内容必须是有效 UTF-8。
 - C 字符串字面量：`c"text"`，类型是 `*const u8`，会拒绝内部 NUL，面向 FFI。
+- raw string：`r"text"`，类型是 `str`，escape 不解释，并允许跨行。
+- byte string：`b"abc"`，类型是 `[N]u8`，只接受 ASCII raw byte 和简单 byte escape。
 - byte 字面量：`b'a'`、`b'\n'`，类型是 `u8`。
+- `char` 字面量：`'λ'`、`'\u{03BB}'`，类型是 `char`，表示 Unicode scalar value。
 - 布尔字面量：`true`、`false`。
 - 空指针字面量：`null`，需要期望类型是指针。
 
@@ -82,7 +85,7 @@ ptraddr ptrat strptr strblen strraw
 \0 \n \r \t \\ \" \u{...}
 ```
 
-当前浮点字面量不支持 `.5`、`1.` 或 `1.0f32` 这类后缀/省略形式。
+字面量后缀边界：`1f32`、`1.0u8` 和 `1.0_f32` 会诊断；整数后缀只能用于 integer literal，`f32` / `f64` 后缀只能用于 float literal。
 
 标点和操作符：
 
@@ -92,7 +95,7 @@ ptraddr ptrat strptr strblen strraw
 = == != < <= > >= << >> && ||
 ```
 
-当前已支持复合赋值和基础 `for i in range(...)`。当前没有 `++`、`--`、`..` range operator、`?:` 三元表达式、lambda 箭头、属性列表或宏调用语法。
+当前已支持复合赋值和基础 `for i in range(...)`。当前没有语法层 `++`、`--`、`..` range operator、`?:` 三元表达式、lambda 箭头、属性列表或宏调用语法。
 
 ### 模块与导入
 
@@ -675,8 +678,6 @@ M2 当前值语义：
 
 这份清单很重要，因为它能防止后续误以为“应该已经有”：
 
-- `char` / Unicode scalar 字面量。
-- raw string、multi-line string、bytes string。
 - tuple、tuple struct、anonymous record。
 - lambda / closure。
 - trait / interface / protocol。
@@ -966,7 +967,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 5. 为 `unsafe` block / `unsafe fn` 设计最小语法和 unsafe-only 诊断清单，不一定立刻改所有 lowering。
 6. ADT-first enum 已补齐：普通 enum 的 base type 和 discriminant 可选，显式 C-like/repr enum 保留 `enum Status: u8 { ok = 0, err = 1 }` 形态。
 7. array literal / repeat literal 已补齐，让已有 `[N]T` 数组类型具备基础值语法。
-8. 浮点字面量已补齐基础形式；后续只需决定是否增加后缀方案。
+8. 浮点字面量和 numeric suffix 已补齐基础形式；后续只需保持诊断边界。
 9. default private 已完成；后续只需要 public surface dump 和文档生成基于当前规则继续完善。
 
 ### P1：基础值语法与 pattern 人体工程学
@@ -976,7 +977,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 任务：
 
 1. slice type / slice expression 已落地；继续和 `str` 的 UTF-8 boundary 规则对齐。
-2. 明确 raw string、multiline string、bytes string、Unicode scalar `char` 的字面量边界；`b'a'` 继续是 `u8`。
+2. raw/multiline raw string、bytes string、Unicode scalar `char` 的字面量边界已补齐；`b'a'` 继续是 `u8`。
 3. function pointer / function type 已落地，包括 `fn(...) -> T`、`extern c fn(...) -> T`、函数名作为值和函数指针间接调用；后续只需要补完整 closure 设计。
 4. 设计 tuple / destructuring declaration 的有限形态。
 5. 支持 struct pattern、`if let`、`let ... else`。

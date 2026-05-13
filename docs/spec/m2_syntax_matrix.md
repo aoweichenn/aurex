@@ -9,6 +9,16 @@ This matrix records whether a syntax position is supported by current M2.
 | Import | `pub import foo as f;` | yes | Re-export import |
 | Import | `priv import foo;` | yes | Current parser accepts it |
 | Const | `const X: i32 = 1;` | yes | Const initializer subset only |
+| Literal | `"text"` | yes | `str`, decoded as valid UTF-8 |
+| Literal | `r"raw\n"` | yes | Raw `str`; escapes are not interpreted and newlines are allowed |
+| Literal | `b"abc\n"` | yes | Fixed array `[N]u8`; ASCII bytes plus simple escapes |
+| Literal | `b'a'` | yes | `u8` byte literal |
+| Literal | `'λ'` / `'\u{03BB}'` | yes | `char`, Unicode scalar value |
+| Literal | `1u8` / `42usize` | yes | Integer suffixes select the literal type |
+| Literal | `.5` / `1.` / `1.0f32` | yes | Float forms and `f32` / `f64` suffixes |
+| Literal | `1f32` | no | Float suffixes are not accepted on integer literals |
+| Literal | `1.0u8` | no | Integer suffixes are not accepted on float literals |
+| Literal | `1.0_f32` | no | Underscore suffix spelling is not part of M2 |
 | Type alias | `type MyInt = i32;` | yes | Non-generic only |
 | Type alias | `type Alias[T] = T;` | no | Not part of M2 |
 | Struct | `struct Point { x: i32; }` | yes | Fields separated by `;` |

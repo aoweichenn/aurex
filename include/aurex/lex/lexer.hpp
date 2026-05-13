@@ -56,15 +56,22 @@ private:
     [[nodiscard]] bool scan_invalid_radix_tail_matching(IsValidDigit is_valid_digit, std::string_view message);
     [[nodiscard]] bool scan_fraction_part(bool& had_error);
     [[nodiscard]] bool scan_exponent_part(bool& had_error);
+    void scan_leading_dot_float(base::usize begin);
+    void scan_numeric_suffix();
+    [[nodiscard]] bool scan_integer_suffix();
     void scan_string_body(
         base::usize begin,
         syntax::TokenKind token_kind,
         base::StringLiteralKind literal_kind,
-        std::string_view unterminated_message
+        std::string_view unterminated_message,
+        bool allow_newline = false
     );
     void scan_string(base::usize begin);
     void scan_c_string(base::usize begin);
+    void scan_raw_string(base::usize begin);
+    void scan_byte_string(base::usize begin);
     void scan_byte(base::usize begin);
+    void scan_char(base::usize begin);
     void scan_line_comment();
     void scan_block_comment();
     [[nodiscard]] base::SourceRange range(base::usize begin, base::usize end) const noexcept;

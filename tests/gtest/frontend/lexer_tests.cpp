@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace aurex::test {
@@ -49,12 +50,19 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "module lex.unit; /* block comment */\n"
         "import common.text as text;\n"
         "const hex: i32 = 0x2A;\n"
+        "const hex_suffix: u8 = 0xffu8;\n"
         "const bin: i32 = 0b1010;\n"
+        "const bin_suffix: usize = 0b1010usize;\n"
         "const dec: i32 = 1_000;\n"
         "const flt: f64 = 1.25e+2;\n"
+        "const flt_minus_exp: f64 = 1e-2;\n"
+        "const flt_upper_exp: f64 = 1E2;\n"
         "const s: str = \"hi\\\\n\";\n"
         "const c: *const u8 = c\"hi\\n\";\n"
+        "const raw: str = r\"C:\\tmp\\a\";\n"
+        "const bytes: [3]u8 = b\"a\\n\\0\";\n"
         "const b: u8 = b'\\n';\n"
+        "const ch: char = '\\u{03BB}';\n"
         "struct LexerProbe { value: i32; }\n"
         "impl LexerProbe { fn value(self: *const LexerProbe) -> i32 { return self.value; } }\n"
         "fn ops(a: i32, b: i32) -> i32 { return ((a / b) % 3) ^ (a << 1) >> 1 | ~b; }\n"
@@ -69,6 +77,9 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "  let usize_value: usize = 8;\n"
         "  let f32_value: f32 = 9;\n"
         "  let f64_value: f64 = 10;\n"
+        "  let suffix_value: usize = 42usize;\n"
+        "  let leading_dot: f32 = .5f32;\n"
+        "  let trailing_dot: f64 = 1.;\n"
         "  let span_value: text::SpanU8 = text::span_u8(c\"hi\", cast[usize](2));\n"
         "  let copied_value: i32 = i8_value;\n"
         "  let try_token: i32 = 1?;\n"
@@ -88,7 +99,10 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::float_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::string_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::c_string_literal), kinds.end());
+    EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::raw_string_literal), kinds.end());
+    EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::byte_string_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::byte_literal), kinds.end());
+    EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::char_literal), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::slash), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::caret), kinds.end());
     EXPECT_NE(std::find(kinds.begin(), kinds.end(), TokenKind::less_less), kinds.end());
@@ -112,10 +126,14 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
         "kw_usize",
         "kw_f32",
         "kw_f64",
+        "kw_char",
         "kw_impl",
         "kw_defer",
         "kw_for",
         "float_literal",
+        "raw_string_literal",
+        "byte_string_literal",
+        "char_literal",
         "slash",
         "percent",
         "pipe",
@@ -201,7 +219,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     constexpr std::string_view source =
         "module import as pub priv extern export c fn struct opaque enum const type impl match "
         "let var if else for in while break continue defer return true false null "
-        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
+        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut cast "
         "ptrcast bitcast sizeof alignof ptraddr ptrat strptr strblen strraw";
     lex::Lexer lexer({8}, source, diagnostics);
     auto result = lexer.tokenize();
@@ -254,6 +272,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
         TokenKind::kw_f32,
         TokenKind::kw_f64,
         TokenKind::kw_str,
+        TokenKind::kw_char,
         TokenKind::kw_mut,
         TokenKind::kw_cast,
         TokenKind::kw_ptrcast,
@@ -414,6 +433,29 @@ TEST(CoreUnit, LexerPreservesNumericDiagnosticRanges) {
     EXPECT_EQ(missing_exponent_digits.range.end, source.size());
 }
 
+TEST(CoreUnit, LexerRejectsNumericLiteralEdgeForms) {
+    const std::vector<std::pair<std::string_view, std::string_view>> cases {
+        {"0xG", "invalid digit in hexadecimal literal"},
+        {"1e_", "digit separator must be between digits"},
+        {"1e#", "float exponent literal has no digits"},
+        {".5_", "digit separator must be between digits"},
+    };
+
+    for (const auto& [source, expected_message] : cases) {
+        DiagnosticSink diagnostics;
+        lex::Lexer lexer({16}, source, diagnostics);
+        auto result = lexer.tokenize();
+        ASSERT_FALSE(result) << source;
+
+        std::string messages;
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            messages += diagnostic.message;
+            messages.push_back('\n');
+        }
+        expect_contains(messages, expected_message);
+    }
+}
+
 TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
     DiagnosticSink good_diagnostics;
     constexpr std::string_view good_source =
@@ -439,9 +481,18 @@ TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
     };
 
     expect_lex_error("const text: str = \"\\q\";", "invalid escape sequence");
+    expect_lex_error("const text: str = \"line\nbreak\";", "unterminated string literal");
     expect_lex_error("const text: str = \"\\u{D800}\";", "not a valid Unicode scalar");
     expect_lex_error("const text: str = \"\\u{}\";", "unicode escape has no digits");
     expect_lex_error("const text: *const u8 = c\"a\\0b\";", "interior NUL");
+    expect_lex_error("const bytes: [1]u8 = b\"\\u{41}\";", "invalid escape sequence");
+    expect_lex_error("const bytes: [1]u8 = b\"λ\";", "ASCII bytes");
+    expect_lex_error("const b: u8 = b'\\x';", "invalid escape sequence");
+    expect_lex_error("const b: u8 = b'a", "unterminated byte literal");
+    expect_lex_error("const ch: char = 'ab';", "one Unicode scalar");
+    expect_lex_error("const ch: char = '\\u{D800}';", "not a valid Unicode scalar");
+    expect_lex_error("const ch: char = 'a\nnext", "unterminated char literal");
+    expect_lex_error("const ch: char = 'a", "unterminated char literal");
 
     std::string raw_nul_c_string = "const text: *const u8 = c\"a";
     raw_nul_c_string.push_back('\0');

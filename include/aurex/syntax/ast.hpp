@@ -59,6 +59,14 @@ struct GenericParamDecl {
     base::SourceRange range {};
 };
 
+struct GenericConstraintDecl {
+    std::string_view param_name;
+    base::SourceRange param_range {};
+    std::vector<std::string_view> capability_names;
+    std::vector<base::SourceRange> capability_ranges;
+    base::SourceRange range {};
+};
+
 struct TypeNode {
     TypeKind kind = TypeKind::named;
     base::SourceRange range {};
@@ -328,6 +336,7 @@ struct ItemNode {
     base::SourceRange range {};
     std::string_view name;
     std::vector<GenericParamDecl> generic_params;
+    std::vector<GenericConstraintDecl> where_constraints;
     Visibility visibility = Visibility::private_;
     TypeId const_type = INVALID_TYPE_ID;
     ExprId const_value = INVALID_EXPR_ID;

@@ -41,7 +41,12 @@ notes are design input only, not current progress.
   `(a,)`, and tuple destructuring in local `let` / `var` declarations and
   patterns. Anonymous tuple field access is intentionally rejected.
 - ADT-first enum basics, including automatic tags, explicit C-like repr enums,
-  and multi-field payload destructuring in patterns.
+  generic enums, and multi-field payload destructuring in patterns.
+- Minimal non-resource generic constraints through `where`, with built-in
+  `Sized`, `Eq`, `Ord`, and `Hash` capabilities. Resource capabilities such as
+  `Copy` / `Drop` remain deferred.
+- Generic type aliases and owner-generic impl blocks such as
+  `impl[T] Box[T] { ... }`. Method-local generic parameters remain outside M2.
 - Minimal M2 `unsafe` boundaries: `unsafe { ... }`, `unsafe fn`, unsafe
   function pointer types, unsafe call diagnostics, and unsafe-only checks for
   raw pointer dereference, `ptrcast`, `bitcast`, `ptrat`, and `strraw`.
@@ -88,10 +93,10 @@ LLVM lowering, native execution, and installed compiler execution.
 
 ## M2 Gaps
 
-- Enum syntax now supports the M2 ADT-first form: ordinary enums may omit the
+- Enum syntax now supports the M2 ADT-first form: ordinary and generic enums may omit the
   base type and case discriminants, tags are assigned automatically, and
   explicit `enum Status: u8 { ok = 0, err = 1 }` remains available for C-like
-  repr enums. Generic enums are still intentionally unsupported in M2.
+  repr enums.
 - M2 `unsafe` is intentionally minimal. It is a semantic boundary only and does
   not include borrow checking, lifetimes, unsafe traits, unsafe impl blocks,
   unsafe extern blocks, or an ownership/resource model.
@@ -105,7 +110,9 @@ LLVM lowering, native execution, and installed compiler execution.
   alternatives with same-name/same-type consistency, `let ... else`,
   `if value is pattern` / `while value is pattern`, and `if` expression pattern
   conditions.
-- Generics have no `where`, trait, or capability predicates.
+- Generics support minimal `where` capability predicates for `Sized`, `Eq`,
+  `Ord`, and `Hash`. User-defined traits, associated types, const generics,
+  trait objects, and resource capabilities are still outside M2.
 - The M1 language-level `noncopy` / `move` MVP has been removed from the M2
   baseline. M2 keeps ordinary value semantics plus the current array-containing
   value restrictions; copy/drop/borrow/ownership are deferred to a later

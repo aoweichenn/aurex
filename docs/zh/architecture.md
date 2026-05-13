@@ -5,7 +5,7 @@
 - `src/lex`：词法分析。
 - `src/parse`：递归下降 parser。
 - `src/syntax`：AST、token、模块路径和 dump。
-- `src/sema`：名称解析、类型系统、泛型实例化、pattern exhaustiveness、所有权/移动检查。
+- `src/sema`：名称解析、类型系统、泛型实例化、pattern exhaustiveness、值语义和控制流检查。
 - `src/ir`：Aurex IR、lowering、验证和 pass pipeline。
 - `src/backend/llvm`：LLVM IR 生成。
 - `src/driver`：文件读取、模块加载、编译流水线和 clang 调用。
@@ -30,5 +30,5 @@ M2 `language-core-no-std` 移除了标准库层：
 - `unsafe` 边界：raw pointer、unchecked string 和 bit-level cast 不能长期留在 safe surface。
 - ADT enum 与 pattern matching：让 Result/Option/AST 状态空间成为主力表达。
 - array/slice/string/function type：补齐不依赖 std 的基础值和 ABI 表达。
-- trait/where：先把非资源类泛型约束迁到可解释、可诊断的语言机制。
+- trait/where：最小非资源类 `where` capability 已落地；完整 trait / protocol 后置。
 - 资源语义：`Copy` / `Drop` / borrow / move-out 暂缓为后续专题，不作为当前架构前置条件。

@@ -1,0 +1,16 @@
+module generic_enum_where_unsatisfied;
+
+struct Pair {
+    first: i32;
+    second: i32;
+}
+
+enum Holder[T] where T: Eq {
+    value(T),
+}
+
+fn main() -> i32 {
+    let pair: Pair = Pair { first: 1, second: 2 };
+    let holder: Holder[Pair] = Holder::[Pair].value(pair);
+    return 0;
+}

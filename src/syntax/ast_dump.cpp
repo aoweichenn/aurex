@@ -35,6 +35,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_const: return "kw_const";
     case TokenKind::kw_type: return "kw_type";
     case TokenKind::kw_impl: return "kw_impl";
+    case TokenKind::kw_where: return "kw_where";
     case TokenKind::kw_match: return "kw_match";
     case TokenKind::kw_let: return "kw_let";
     case TokenKind::kw_var: return "kw_var";
@@ -688,6 +689,22 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (is_valid(item.impl_type)) {
         out << " for " << type_label(module, item.impl_type);
+    }
+    if (!item.where_constraints.empty()) {
+        out << " where ";
+        for (base::usize i = 0; i < item.where_constraints.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            const GenericConstraintDecl& constraint = item.where_constraints[i];
+            out << constraint.param_name << ": ";
+            for (base::usize capability = 0; capability < constraint.capability_names.size(); ++capability) {
+                if (capability != 0) {
+                    out << " + ";
+                }
+                out << constraint.capability_names[capability];
+            }
+        }
     }
     if (item.is_export_c) {
         out << " export_c";

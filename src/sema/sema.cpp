@@ -34,6 +34,9 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     for (const auto& entry : this->generic_function_templates_) {
         this->analyze_generic_function_definition(entry.second);
     }
+    for (const auto& entry : this->generic_method_templates_) {
+        this->analyze_generic_function_definition(entry.second);
+    }
 
     for (const syntax::ItemNode& item : this->module_.items) {
         if (is_function_item(item) &&

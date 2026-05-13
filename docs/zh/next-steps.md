@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型、C FFI 和最小 safe reference。字面量体系、tuple 基础、pattern ergonomics、`str` checked UTF-8 构造/切片和 `&T` / `&mut T` 已经补齐到 M2 基线；下一步更适合处理 capability/where 和更精确的结构化 exhaustiveness，而不是重建库层。
+   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型、C FFI、最小 safe reference、最小非资源类 `where` capability 和结构化 match 覆盖检查。字面量体系、tuple 基础、pattern ergonomics、`str` checked UTF-8 构造/切片、`&T` / `&mut T`、generic enum / generic type alias / owner generic impl 已经补齐到 M2 基线；下一步更适合继续收窄剩余诊断边界，而不是重建库层。
 
 5. 值语义边界
 
@@ -47,7 +47,7 @@
 
 8. Capability / trait / where
 
-   用语言机制替代临时 hardcode。当前只评估非资源类约束，例如 `Eq`、`Ord`、`Hash`、`Sized`；资源相关能力等资源语义专题再定。
+   最小语言机制已落地：`where T: Eq + Hash` 支持内建非资源能力 `Sized`、`Eq`、`Ord`、`Hash`，并在泛型实例化、泛型函数体检查和相关运算符上给出诊断。资源相关能力 `Copy` / `Drop`、用户自定义 trait、associated type、const generic、trait object 和完整 protocol 仍等后续专题再定。
 
 9. 字符串基础类型
 
@@ -64,4 +64,4 @@
 - host support C shim。
 - 安装后 std 查找。
 
-重新设计或重新评估这些内容的前置条件是：基础语法、模块边界、`unsafe`、ADT、slice/string 和泛型约束已有稳定语言级设计和测试矩阵；拥有型资源库还需要后续资源语义专题完成。
+重新设计或重新评估这些内容的前置条件是：基础语法、模块边界、`unsafe`、ADT、slice/string 和最小泛型约束已有稳定语言级设计和测试矩阵；拥有型资源库还需要后续资源语义专题完成。

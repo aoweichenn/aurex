@@ -1,0 +1,12 @@
+module where_duplicate_capability;
+
+fn same[T](left: T, right: T) -> bool where T: Eq + Eq {
+    return left == right;
+}
+
+fn main() -> i32 {
+    if same(1, 1) {
+        return 0;
+    }
+    return 1;
+}

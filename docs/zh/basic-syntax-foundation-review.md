@@ -23,9 +23,8 @@ M2 背景：M1 阶段已经舍弃。M1 的失败点在于标准库、host suppor
 暂不纳入范围：
 
 - trait / interface / protocol。
-- `where` / 泛型约束。
+- 用户自定义 trait / 完整泛型约束系统。
 - borrow checker、lifetime、borrowed return、alias/resource 语义。
-- `unsafe` 体系。
 - 资源语义、自动释放和析构规则。
 - class / inheritance / dynamic dispatch。
 - macro、async、effect、comptime。
@@ -607,14 +606,14 @@ enum Token {
 - pattern 支持按字段解构多字段 payload，例如 `.span(start, end)`；binding 数量必须和 payload 字段数一致。
 - 写 base type 和显式 discriminant 的 `enum Status: u8 { ok = 0, err = 1 }` 仍是 ABI/repr enum 形态。
 
-仍未完成：
+已补齐：
 
-- generic enum 仍不在 M2 基础泛型范围内。
+- generic enum 已进入 M2 基础泛型范围，`Option[T]` / `Result[T, E]` 可作为类型参数 ADT。
 - struct pattern、slice pattern、nested enum payload pattern、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`、if 表达式 pattern condition 和 match tuple pattern 已补齐。
 
-## P1 缺陷：泛型参数只有名字，没有约束语法
+## P1 已补：最小非资源类 `where` 约束
 
-本节只记录未来约束需求，不属于 M2 基础泛型落地范围。本轮基础泛型只收紧 `[]` 参数/实参、显式 `generic_apply`、推导失败和泛型函数体错误，不混 trait、`where`、associated type 或 const generic。
+M2 基础泛型现在包含类型参数、类型实参、显式 `generic_apply`、generic enum、generic type alias、owner generic impl，以及最小非资源类 `where` capability。仍不混入用户 trait、associated type、const generic 或资源 capability。
 
 现状：
 
@@ -624,27 +623,28 @@ fn identity[T](value: T) -> T {
 }
 ```
 
-当前能表达“有一个类型参数 T”，但不能表达：
+当前可以表达：
 
 ```aurex
 fn contains[K](key: K) -> bool where K: Eq
 fn hash_key[K](key: K) -> usize where K: Hash
 ```
 
-问题：
+已冻结边界：
 
-- 当前 equality、hash、ordering 等通用约束无法通过函数签名表达。
-- 泛型函数的错误常常只能在实例化体内报出，API 用户看不到约束。
+- `Sized`、`Eq`、`Ord`、`Hash` 是内建非资源能力。
+- equality、ordering、`sizeof` / `alignof` 这类泛型体检查会读取对应 capability。
+- 泛型实例化会检查实际类型是否满足约束。
 - 未来重新设计库层时，`Vec[T]`、`Map[K,V]`、`Result[T,E]`、`Option[T]` 都需要一套可诊断的泛型约束；资源相关约束等资源语义专题再定。
 
-建议 M2 先设计非资源类 `where` 语法，不急着实现完整 trait：
+当前语法：
 
 ```aurex
 fn contains[K, V](items: *const Map[K, V], key: K) -> bool
 where K: Eq + Hash
 ```
 
-优先级：中高。没有约束语法，泛型越多，诊断越晚，库设计越依赖文档约定。
+`Copy` / `Drop`、用户自定义 trait、associated type、const generic 和 trait object 仍不属于 M2。
 
 ## P1 已补：最小 `unsafe` 边界
 
@@ -809,7 +809,7 @@ identifier_continue = identifier_start | "0".."9"
 
 暂不建议现在加入 Unicode identifier。Unicode identifier 需要 normalization、confusable、tooling、diagnostic 策略，不是 M2 基础地基必须项。
 
-状态：暂缓。M2 当前只支持无约束类型参数；`where` / trait / capability 约束后续单独设计。
+状态：最小 `where` capability 已补齐；Unicode identifier 仍暂缓。
 
 ## P1 已补：trailing separator 策略统一
 
@@ -949,16 +949,15 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 5. public 函数返回类型推导已收紧，后续只需保持诊断与 public surface dump 一致。
 6. tuple/destructuring/pattern ergonomics 已落地，当前支持 `(A, B)` / `(A,)`、`(a, b)` / `(a,)`、局部 `let (a, _) = value;`、局部 struct destructuring、match tuple/struct pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition；匿名 tuple 不支持直接字段访问，需要字段访问时使用 named struct；空 tuple 暂缓。
 7. 冻结 namespace `.` / `::` 规则。
-8. 设计 capability / `where` 约束语法。
+8. 最小 capability / `where` 约束语法已落地，后续只保持 grammar、诊断和测试同步。
 9. safe reference `&T` / `&mut T` 已补最小 M2 版本；后续不在基础语法阶段扩张 borrow/lifetime。
 
 第三批暂缓：
 
 1. shadowing 策略。
-2. 更精确 structural exhaustiveness、guard 和 unreachable diagnostics。
-3. 嵌套 block comment。
+2. 继续完善 guard、slice 和开放域 structural exhaustiveness / unreachable diagnostics。
+3. package manifest 和包管理。
 4. octal / hex float 等更复杂数值字面量。
-5. package manifest 和包管理。
 
 ## 不建议现在做
 
@@ -970,7 +969,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 - user-defined implicit conversion。
 - lambda / closure。
 - class。
-- trait / where。
+- 完整 trait / protocol。
 - borrow / lifetime。
 - macro。
 - async。

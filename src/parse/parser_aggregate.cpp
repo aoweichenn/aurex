@@ -18,12 +18,14 @@ syntax::ItemId ItemParser::parse_struct_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_struct, std::string(PARSER_EXPECT_STRUCT_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_STRUCT_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
+    std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
     this->expect_item_container_start(std::string(PARSER_EXPECT_STRUCT_BODY));
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::struct_decl;
     item.name = name.text;
     item.generic_params = std::move(generic_params);
+    item.where_constraints = std::move(where_constraints);
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         if (std::optional<syntax::FieldDecl> field = this->parse_struct_field_decl()) {
@@ -48,6 +50,9 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     syntax::TypeId base_type = syntax::INVALID_TYPE_ID;
     if (this->match(TokenKind::colon)) {
         base_type = this->parse_type();
+    }
+    std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
+    if (syntax::is_valid(base_type)) {
         this->expect_item_container_start(std::string(PARSER_EXPECT_ENUM_BODY_AFTER_BASE));
     } else {
         this->expect_item_container_start(std::string(PARSER_EXPECT_ENUM_BODY_AFTER_NAME));
@@ -57,6 +62,7 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     item.kind = syntax::ItemKind::enum_decl;
     item.name = name.text;
     item.generic_params = std::move(generic_params);
+    item.where_constraints = std::move(where_constraints);
     item.enum_base_type = base_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {

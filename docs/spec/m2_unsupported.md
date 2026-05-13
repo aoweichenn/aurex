@@ -6,18 +6,9 @@ to test.
 
 ## Generics
 
-Not part of M2 syntax:
+Not part of M2 syntax or semantics:
 
 ```aurex
-type Alias[T] = T;
-
-enum Option[T] {
-    none,
-}
-
-impl[T] Box[T] {
-}
-
 fn add[T: Add](a: T, b: T) -> T {
     return a;
 }
@@ -25,14 +16,23 @@ fn add[T: Add](a: T, b: T) -> T {
 fn copy[T](value: T) -> T where T: Copy {
     return value;
 }
+
+impl Box {
+    fn id[T](self: *const Box, value: T) -> T {
+        return value;
+    }
+}
 ```
 
 M2 uses `[]` for generic parameters and arguments. Legacy angle-bracket generic
 forms are rejected because `<` and `>` are comparison tokens, not generic
 delimiters.
 
-Generic methods and generic C ABI/prototype functions are not supported by M2
-semantic analysis.
+Generic structs, generic enums, generic type aliases, generic functions, and
+`impl[T] Box[T]`-style owner generics are supported. Inline bounds (`T: Add`),
+resource capabilities such as `Copy` / `Drop`, method-local generic parameters,
+and generic C ABI/prototype functions are not supported by M2 semantic
+analysis.
 
 ## Type Syntax
 

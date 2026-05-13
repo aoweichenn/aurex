@@ -2556,12 +2556,18 @@ TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax) {
     );
 }
 
-TEST(CoreUnit, ParserRejectsWhereClausesWithM2Message) {
-    expect_parse_error(
+TEST(CoreUnit, ParserParsesWhereCapabilityClauses) {
+    syntax::AstModule module = parse_success(
         "module parser.where_clause;\n"
-        "fn id[T](value: T) -> T where T: Copy { return value; }\n",
-        "where clauses are not part of M2 syntax"
+        "fn id[T](value: T) -> T where T: Eq + Hash { return value; }\n"
     );
+    const syntax::ItemNode* id = find_item(module, "id");
+    ASSERT_NE(id, nullptr);
+    ASSERT_EQ(id->where_constraints.size(), 1U);
+    EXPECT_EQ(id->where_constraints.front().param_name, "T");
+    ASSERT_EQ(id->where_constraints.front().capability_names.size(), 2U);
+    EXPECT_EQ(id->where_constraints.front().capability_names[0], "Eq");
+    EXPECT_EQ(id->where_constraints.front().capability_names[1], "Hash");
 }
 
 } // namespace aurex::test

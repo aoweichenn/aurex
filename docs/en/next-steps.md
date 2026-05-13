@@ -67,9 +67,11 @@ after core syntax, types, modules, and ABI boundaries stabilize.
 
 7. Capability / trait / where
 
-   Replace temporary hardcodes with language mechanisms. For this stage, only
-   evaluate non-resource constraints such as `Eq`, `Ord`, `Hash`, and `Sized`;
-   resource constraints belong to the deferred resource-semantics design.
+   The minimal M2 mechanism is now in place: `where T: Eq + Hash` supports
+   built-in non-resource capabilities `Sized`, `Eq`, `Ord`, and `Hash`, with
+   diagnostics during instantiation and generic body checking. Resource
+   capabilities, user-defined traits, associated types, const generics, trait
+   objects, and protocol-style abstraction remain deferred.
 
 8. String primitive
 

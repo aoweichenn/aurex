@@ -35,6 +35,7 @@ Before designing any future library layer, the language needs the current core a
   state spaces.
 - Arrays, slices, strings, and function types as std-independent value and ABI
   foundations.
-- Trait/where for non-resource generic constraints.
+- Minimal non-resource `where` capabilities are in place; full traits and
+  protocols remain a later design track.
 - Resource semantics: `Copy`, `Drop`, borrow checking, and move-out remain a
   later design track, not a current architecture prerequisite.

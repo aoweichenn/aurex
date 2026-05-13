@@ -618,11 +618,32 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
     }
     if (callee.kind != syntax::ExprKind::field ||
         !syntax::is_valid(callee.object) ||
-        callee.object.value >= module_.exprs.size() ||
-        module_.exprs[callee.object.value].kind != syntax::ExprKind::name) {
+        callee.object.value >= module_.exprs.size()) {
         return nullptr;
     }
     const syntax::ExprNode& enum_name = module_.exprs[callee.object.value];
+    if (enum_name.kind == syntax::ExprKind::generic_apply) {
+        const TypeHandle enum_type = this->resolve_associated_generic_type_owner(enum_name, report_unknown);
+        if (!is_valid(enum_type)) {
+            return nullptr;
+        }
+        if (checked_.types.get(enum_type).kind != TypeKind::enum_) {
+            if (report_unknown) {
+                report(callee.range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+            }
+            return nullptr;
+        }
+        if (const EnumCaseInfo* result = find_enum_case_by_type_and_case(enum_type, callee.field_name); result != nullptr) {
+            return result;
+        }
+        if (report_unknown) {
+            report(callee.range, sema_unknown_scoped_enum_case_message(checked_.types.display_name(enum_type), callee.field_name));
+        }
+        return nullptr;
+    }
+    if (enum_name.kind != syntax::ExprKind::name) {
+        return nullptr;
+    }
     if (!enum_name.scope_name.empty()) {
         const TypeHandle enum_type = resolve_associated_type_owner(enum_name, report_unknown);
         if (!is_valid(enum_type)) {

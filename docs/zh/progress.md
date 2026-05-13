@@ -80,10 +80,11 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - default private 已完成：顶层 item、struct field、impl method 和 import 默认 private，跨模块 API 必须显式 `pub`；`export c fn` 仍强制 public。
 - `pub fn` 返回类型已收紧为必须显式；private helper 仍可推导。
 - lexer 已支持嵌套 `/* ... */` 块注释。
-- enum 已支持 ADT-first 形态：普通 enum 可省略 base type 和 discriminant，tag 自动分配；多字段 payload 可用 `.case(a, b)` pattern 按字段解构；显式 `enum Status: u8 { ok = 0, err = 1 }` 仍作为 C-like/repr enum 形态保留。M2 仍不支持 generic enum。
+- enum 已支持 ADT-first 形态：普通 enum 可省略 base type 和 discriminant，tag 自动分配；多字段 payload 可用 `.case(a, b)` pattern 按字段解构；显式 `enum Status: u8 { ok = 0, err = 1 }` 仍作为 C-like/repr enum 形态保留。generic enum 已进入 M2 基线，`Option[T]` / `Result[T, E]` 这类类型参数 ADT 可被实例化和匹配。
 - 数组、slice、tuple、函数指针和字面量基础语法已闭合：固定数组支持 `[1, 2, 3]` 和 `[0; 128]`，borrowed slice 支持 `[]const T` / `[]mut T` 以及 `a[l:r]`、`a[:r]`、`a[l:]`、`a[:]`；tuple 支持 `(A, B)` / `(A,)` 类型、`(a, b)` / `(a,)` 字面量、局部 `let (a, _) = value;` 解构和 tuple pattern；匿名 tuple 不支持直接字段访问，需要字段访问时使用 named struct；函数类型支持 `fn(i32) -> i32`、`extern c fn(*const u8, ...) -> i32`、函数名作为值、局部/参数/字段函数指针间接调用；字面量支持普通字符串、C 字符串、raw/multiline raw string、byte string、byte literal、Unicode scalar `char` 和整数/浮点类型后缀。
 - 最小 `unsafe` 已落地：`unsafe { ... }` 可作为 statement 或 expression，`unsafe fn` 和 unsafe 函数指针类型会把调用限制在 unsafe context 内；raw pointer 解引用、`ptrcast`、`bitcast`、`ptrat`、`strraw` 都必须在 unsafe context 中使用。
-- 泛型没有 `where`、trait 或 capability predicate，不能表达 `K: Eq + Hash` 这类基础约束；资源类约束暂缓。
+- 泛型已支持最小非资源类 `where` capability predicate：`Sized`、`Eq`、`Ord`、`Hash`。`Copy` / `Drop` 等资源类约束、用户自定义 trait、associated type、const generic 和 trait object 仍暂缓。
+- 泛型边界已扩展到 generic struct / function / enum / type alias，以及 `impl[T] Box[T]` 这类 owner generic impl；method-local generic parameter 仍不属于 M2。
 - M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 暂缓为后续资源语义专题。
 - 最小 safe reference 已落地：`&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用、`&mut` 可写 place 检查、`&mut T` 到 `&T` 的只读化赋值，以及按 pointer-sized ABI lowering。raw pointer 解引用仍必须在 `unsafe` 中；borrow checker、lifetime、borrowed return、alias/resource 语义继续暂缓。
 - `str` 已有语言级雏形，普通数组/slice 地基已落地，`strraw` 已纳入 unsafe；M2 no-std checked UTF-8 边界已冻结为 `strvalid(bytes) -> bool`、`strfromutf8(bytes) -> str` 和 `text[l:r]` checked slicing。`strfromutf8` 失败或 `str` 切片越界/落在 UTF-8 continuation byte 上时返回空 `str`，不会把无效输入包装成 `str`。更完整的 text API、Unicode scalar/grapheme 迭代和拥有型 `String` 仍后置到库层重建。
@@ -94,4 +95,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界、最小 safe reference、M2 pattern ergonomics 和 `str` checked UTF-8 边界已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。随后更适合处理非资源类 capability/trait/where，以及更精细的结构化 exhaustiveness。
+下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、generic enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界、最小 safe reference、M2 pattern ergonomics、最小非资源类 `where` capability 和 `str` checked UTF-8 边界已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。结构化 match 已能证明 bool / no-payload enum 叶子组成的 tuple、struct 和小 fixed array 覆盖；更复杂的 guard、slice 和开放域 exhaustiveness 继续后置。

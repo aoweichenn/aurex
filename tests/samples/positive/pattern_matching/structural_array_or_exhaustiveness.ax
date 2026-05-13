@@ -1,0 +1,35 @@
+module structural_array_or_exhaustiveness;
+
+struct Flags {
+    left: bool;
+    right: bool;
+}
+
+fn array_score() -> i32 {
+    let values: [2]bool = [false, true];
+    return match values {
+        [true, true] | [false, true] => 1,
+        [true, false] => 2,
+        [false, false] => 3,
+    };
+}
+
+fn single_array_score() -> i32 {
+    let value: [1]bool = [true];
+    return match value {
+        [true] => 2,
+        [false] => 0,
+    };
+}
+
+fn partial_struct_score(flags: Flags) -> i32 {
+    return match flags {
+        Flags { left: true } => 4,
+        Flags { left: false } => 5,
+    };
+}
+
+fn main() -> i32 {
+    let flags: Flags = Flags { left: false, right: true };
+    return array_score() + single_array_score() + partial_struct_score(flags) - 8;
+}

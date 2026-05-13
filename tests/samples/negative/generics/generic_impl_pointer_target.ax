@@ -1,0 +1,11 @@
+module generic_impl_pointer_target;
+
+impl[T] *const T {
+    fn read(self: *const T) -> T {
+        return *self;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -19,20 +19,17 @@ inline constexpr std::string_view SEMA_DUPLICATE_DEFINITION_OR_SHADOWING =
 inline constexpr std::string_view SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT =
     "public function return type must be explicit";
 
-inline constexpr std::string_view SEMA_GENERIC_ENUMS_UNSUPPORTED =
-    "generic enums are not supported by M2 semantic analysis";
-
-inline constexpr std::string_view SEMA_GENERIC_TYPE_ALIASES_UNSUPPORTED =
-    "generic type aliases are not supported by M2 semantic analysis";
-
-inline constexpr std::string_view SEMA_GENERIC_PARAMS_OUTSIDE_STRUCTS_FUNCTIONS_UNSUPPORTED =
-    "generic parameters outside structs and functions are not supported by M2 semantic analysis";
+inline constexpr std::string_view SEMA_GENERIC_PARAMS_UNSUPPORTED_ON_ITEM =
+    "generic parameters are not supported on this item by M2 semantic analysis";
 
 inline constexpr std::string_view SEMA_GENERIC_C_ABI_OR_PROTOTYPE_UNSUPPORTED =
     "generic functions with C ABI or prototypes are not supported by M2 semantic analysis";
 
 inline constexpr std::string_view SEMA_GENERIC_METHODS_UNSUPPORTED =
-    "generic methods are not supported by M2 semantic analysis";
+    "method-local generic parameters are not supported by M2 semantic analysis";
+
+inline constexpr std::string_view SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED =
+    "resource capabilities are not part of M2 where constraints";
 
 inline constexpr std::string_view SEMA_VARIADIC_EXTERN_C_ONLY =
     "variadic functions are only supported for extern c declarations";
@@ -692,6 +689,30 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_generic_param_type_args_message(const std::string_view name) {
     return "generic type parameter cannot take type arguments: " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_unknown_generic_constraint_param_message(const std::string_view name) {
+    return "where constraint references unknown generic parameter `" + std::string(name) + "`";
+}
+
+[[nodiscard]] inline std::string sema_unknown_capability_message(const std::string_view name) {
+    return "unknown M2 capability `" + std::string(name) + "`";
+}
+
+[[nodiscard]] inline std::string sema_duplicate_capability_message(
+    const std::string_view param,
+    const std::string_view capability
+) {
+    return "duplicate capability `" + std::string(capability) +
+           "` for generic parameter `" + std::string(param) + "`";
+}
+
+[[nodiscard]] inline std::string sema_generic_capability_not_satisfied_message(
+    const std::string_view type_name,
+    const std::string_view capability
+) {
+    return "type " + std::string(type_name) + " does not satisfy capability `" +
+           std::string(capability) + "`";
 }
 
 [[nodiscard]] inline std::string sema_cyclic_type_alias_message(const std::string_view name) {

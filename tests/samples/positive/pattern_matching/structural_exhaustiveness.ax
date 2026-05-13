@@ -1,0 +1,29 @@
+module structural_exhaustiveness;
+
+struct Flags {
+    left: bool;
+    right: bool;
+}
+
+fn tuple_score(value: (bool, bool)) -> i32 {
+    return match value {
+        (true, true) => 1,
+        (true, false) => 2,
+        (false, true) => 3,
+        (false, false) => 4,
+    };
+}
+
+fn struct_score(value: Flags) -> i32 {
+    return match value {
+        Flags { left: true, right: true } => 1,
+        Flags { left: true, right: false } => 2,
+        Flags { left: false, right: true } => 3,
+        Flags { left: false, right: false } => 4,
+    };
+}
+
+fn main() -> i32 {
+    let flags: Flags = Flags { left: false, right: true };
+    return tuple_score((true, false)) + struct_score(flags) - 5;
+}

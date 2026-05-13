@@ -13,11 +13,15 @@ using syntax::TokenKind;
 
 syntax::ItemId ItemParser::parse_impl_block() {
     const syntax::Token& begin = this->expect(TokenKind::kw_impl, std::string(PARSER_EXPECT_IMPL_KEYWORD));
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     const syntax::TypeId impl_type = this->parse_type();
+    std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
     this->expect_item_container_start(std::string(PARSER_EXPECT_IMPL_BODY));
 
     syntax::ItemNode block;
     block.kind = syntax::ItemKind::impl_block;
+    block.generic_params = generic_params;
+    block.where_constraints = where_constraints;
     block.impl_type = impl_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
@@ -31,8 +35,23 @@ syntax::ItemId ItemParser::parse_impl_block() {
         }
         const syntax::ItemId method = this->parse_fn_decl(false, false, is_unsafe);
         if (syntax::is_valid(method)) {
-            this->session_.module.items[method.value].visibility = visibility.visibility;
-            this->session_.module.items[method.value].impl_type = impl_type;
+            syntax::ItemNode& method_item = this->session_.module.items[method.value];
+            method_item.visibility = visibility.visibility;
+            method_item.impl_type = impl_type;
+            if (!generic_params.empty()) {
+                method_item.generic_params.insert(
+                    method_item.generic_params.begin(),
+                    generic_params.begin(),
+                    generic_params.end()
+                );
+            }
+            if (!where_constraints.empty()) {
+                method_item.where_constraints.insert(
+                    method_item.where_constraints.begin(),
+                    where_constraints.begin(),
+                    where_constraints.end()
+                );
+            }
             block.impl_items.push_back(method);
         }
         this->reset_panic();

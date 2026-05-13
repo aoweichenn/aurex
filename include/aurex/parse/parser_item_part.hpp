@@ -34,6 +34,10 @@ private:
     void parse_generic_params(std::vector<syntax::GenericParamDecl>& params);
     [[nodiscard]] std::optional<syntax::GenericParamDecl> parse_generic_param();
     [[nodiscard]] bool recover_generic_param_separator();
+    [[nodiscard]] std::vector<syntax::GenericConstraintDecl> parse_optional_where_constraints();
+    [[nodiscard]] std::optional<syntax::GenericConstraintDecl> parse_where_constraint();
+    void parse_where_capabilities(syntax::GenericConstraintDecl& constraint);
+    [[nodiscard]] bool recover_where_constraint_separator();
     [[nodiscard]] syntax::ItemId parse_const_decl();
     [[nodiscard]] syntax::ItemId parse_type_alias_decl();
     [[nodiscard]] syntax::ItemId parse_struct_decl();
@@ -52,7 +56,6 @@ private:
     [[nodiscard]] bool recover_param_separator(bool& is_variadic);
     [[nodiscard]] syntax::TypeId parse_optional_return_type();
     void parse_optional_abi_name(syntax::ItemNode& item);
-    void reject_optional_where_clause();
     void expect_abi_attribute_argument_start();
     void parse_abi_name_argument(syntax::ItemNode& item);
     void recover_abi_attribute_argument_end();

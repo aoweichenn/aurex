@@ -61,7 +61,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     item.is_variadic = is_variadic;
 
     this->parse_optional_abi_name(item);
-    this->reject_optional_where_clause();
+    item.where_constraints = this->parse_optional_where_constraints();
 
     if (is_extern_c) {
         const syntax::Token& end = this->expect_item_terminator(
@@ -263,14 +263,91 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
     this->reset_panic();
 }
 
-void ItemParser::reject_optional_where_clause() {
-    if (!this->check(TokenKind::identifier) || this->peek().text != "where") {
-        return;
+std::vector<syntax::GenericConstraintDecl> ItemParser::parse_optional_where_constraints() {
+    std::vector<syntax::GenericConstraintDecl> constraints;
+    if (!this->match(TokenKind::kw_where)) {
+        return constraints;
     }
-    const syntax::Token& begin = this->advance();
-    this->report_at(begin, std::string(PARSER_M2_GENERIC_WHERE_UNSUPPORTED));
+    if (this->check(TokenKind::l_brace) ||
+        this->check(TokenKind::semicolon) ||
+        this->check(TokenKind::equal)) {
+        this->report_here(std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM));
+        return constraints;
+    }
+    while (!this->is_eof() &&
+           !this->check(TokenKind::l_brace) &&
+           !this->check(TokenKind::semicolon) &&
+           !this->check(TokenKind::equal)) {
+        if (std::optional<syntax::GenericConstraintDecl> constraint = this->parse_where_constraint()) {
+            constraints.push_back(std::move(constraint.value()));
+        }
+        this->reset_panic();
+        if (!this->recover_where_constraint_separator()) {
+            break;
+        }
+    }
+    return constraints;
+}
+
+std::optional<syntax::GenericConstraintDecl> ItemParser::parse_where_constraint() {
+    const syntax::Token& param = this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM));
+    this->expect_recovered(
+        TokenKind::colon,
+        std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM_COLON),
+        RecoveryContext::item
+    );
+    if (param.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+
+    syntax::GenericConstraintDecl constraint;
+    constraint.param_name = param.text;
+    constraint.param_range = param.range;
+    constraint.range = param.range;
+    this->parse_where_capabilities(constraint);
+    if (!constraint.capability_ranges.empty()) {
+        constraint.range = this->merge(param.range, constraint.capability_ranges.back());
+    }
+    return constraint;
+}
+
+void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constraint) {
+    while (!this->is_eof()) {
+        const syntax::Token& capability =
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_CAPABILITY));
+        if (capability.kind == TokenKind::identifier) {
+            constraint.capability_names.push_back(capability.text);
+            constraint.capability_ranges.push_back(capability.range);
+        }
+        if (!this->match(TokenKind::plus)) {
+            break;
+        }
+    }
+}
+
+bool ItemParser::recover_where_constraint_separator() {
+    if (this->check(TokenKind::l_brace) ||
+        this->check(TokenKind::semicolon) ||
+        this->check(TokenKind::equal)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        if (this->check(TokenKind::l_brace) ||
+            this->check(TokenKind::semicolon) ||
+            this->check(TokenKind::equal)) {
+            this->report_here(std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM));
+            return false;
+        }
+        return !this->check(TokenKind::l_brace) &&
+               !this->check(TokenKind::semicolon) &&
+               !this->check(TokenKind::equal);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_WHERE_SEPARATOR));
     this->synchronize(RecoveryContext::item);
     this->reset_panic();
+    return false;
 }
 
 void ItemParser::expect_abi_attribute_argument_start() {

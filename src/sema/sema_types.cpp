@@ -799,6 +799,18 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         if (generic_struct != nullptr) {
             return this->instantiate_generic_struct(*generic_struct, type, type_id, args);
         }
+        const GenericTemplateInfo* const generic_enum = qualified
+            ? this->find_generic_enum_in_module(scope_module, type.name, type.range, false)
+            : this->find_generic_enum_in_visible_modules(type.name, type.range, false);
+        if (generic_enum != nullptr) {
+            return this->instantiate_generic_enum(*generic_enum, type, type_id, args);
+        }
+        const GenericTemplateInfo* const generic_alias = qualified
+            ? this->find_generic_type_alias_in_module(scope_module, type.name, type.range, false)
+            : this->find_generic_type_alias_in_visible_modules(type.name, type.range, false);
+        if (generic_alias != nullptr) {
+            return this->instantiate_generic_type_alias(*generic_alias, type, type_id, args, opaque_allowed_as_pointee);
+        }
 
         const TypeHandle concrete = qualified
             ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee, false)
@@ -806,9 +818,22 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         if (is_valid(concrete)) {
             this->report(type.range, sema_type_not_generic_message(type.name));
         } else {
-            static_cast<void>(qualified
-                ? this->find_generic_struct_in_module(scope_module, type.name, type.range, true)
-                : this->find_generic_struct_in_visible_modules(type.name, type.range, true));
+            const bool saw_generic = (qualified
+                ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
+                : this->find_generic_struct_in_visible_modules(type.name, type.range, false)) != nullptr ||
+                (qualified
+                    ? this->find_generic_enum_in_module(scope_module, type.name, type.range, false)
+                    : this->find_generic_enum_in_visible_modules(type.name, type.range, false)) != nullptr ||
+                (qualified
+                    ? this->find_generic_type_alias_in_module(scope_module, type.name, type.range, false)
+                    : this->find_generic_type_alias_in_visible_modules(type.name, type.range, false)) != nullptr;
+            if (!saw_generic) {
+                if (qualified) {
+                    this->report_generic_type_template_in_module(scope_module, type.name, type.range);
+                } else {
+                    static_cast<void>(this->find_generic_struct_in_visible_modules(type.name, type.range, true));
+                }
+            }
         }
         return INVALID_TYPE_HANDLE;
     }
@@ -818,6 +843,24 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
     if (generic_struct != nullptr) {
         this->report(type.range, sema_generic_type_requires_args_message(type.name));
+        return INVALID_TYPE_HANDLE;
+    }
+    const GenericTemplateInfo* const generic_enum = qualified
+        ? this->find_generic_enum_in_module(scope_module, type.name, type.range, false)
+        : this->find_generic_enum_in_visible_modules(type.name, type.range, false);
+    if (generic_enum != nullptr) {
+        this->report(type.range, sema_generic_type_requires_args_message(type.name));
+        return INVALID_TYPE_HANDLE;
+    }
+    const GenericTemplateInfo* const generic_alias = qualified
+        ? this->find_generic_type_alias_in_module(scope_module, type.name, type.range, false)
+        : this->find_generic_type_alias_in_visible_modules(type.name, type.range, false);
+    if (generic_alias != nullptr) {
+        this->report(type.range, sema_generic_type_requires_args_message(type.name));
+        return INVALID_TYPE_HANDLE;
+    }
+    if (qualified && this->generic_type_template_exists_in_module(scope_module, type.name)) {
+        this->report_generic_type_template_in_module(scope_module, type.name, type.range);
         return INVALID_TYPE_HANDLE;
     }
 

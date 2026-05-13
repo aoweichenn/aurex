@@ -14,7 +14,7 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 
 - 手写 lexer/parser。
 - 模块、import、可见性、re-export。
-- 基础类型、struct、ADT-style enum、显式 C-like/repr enum、generic struct/function。
+- 基础类型、struct、ADT-style enum、显式 C-like/repr enum、generic struct/function/enum/type alias、owner generic impl 和最小 `where` capability。
 - pattern matching、guard、or-pattern。
 - `if` expression、block expression、`while`、`for`、`break`、`continue`。
 - `defer` 和 `?`。
@@ -27,4 +27,4 @@ M2 `language-core-no-std` 阶段的需求是隔离语言核心验证：
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
 
-M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求；资源语义要等基础语法、`unsafe`、slice/string、最小 safe reference 和非资源类 trait/where 规则稳定后再单独重新设计。
+M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求；资源语义要等基础语法、`unsafe`、slice/string、最小 safe reference 和最小非资源类 `where` capability 稳定后再单独重新设计。

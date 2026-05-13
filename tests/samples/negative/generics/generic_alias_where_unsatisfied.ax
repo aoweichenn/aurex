@@ -1,0 +1,14 @@
+module generic_alias_where_unsatisfied;
+
+struct Pair {
+    first: i32;
+    second: i32;
+}
+
+type EqPtr[T] where T: Eq = *const T;
+
+fn main() -> i32 {
+    let pair: Pair = Pair { first: 1, second: 2 };
+    let ptr: EqPtr[Pair] = &pair;
+    return 0;
+}

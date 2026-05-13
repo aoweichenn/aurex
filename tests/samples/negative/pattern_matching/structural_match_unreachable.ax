@@ -1,0 +1,13 @@
+module structural_match_unreachable;
+
+fn score(value: (bool, bool)) -> i32 {
+    return match value {
+        (true, _) => 1,
+        (true, false) => 2,
+        (false, _) => 3,
+    };
+}
+
+fn main() -> i32 {
+    return score((true, false));
+}

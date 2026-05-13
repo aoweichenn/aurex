@@ -129,6 +129,7 @@ syntax::ItemId ItemParser::parse_type_alias_decl() {
     const syntax::Token& begin = this->expect(TokenKind::kw_type, std::string(PARSER_EXPECT_TYPE_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_ALIAS_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
+    std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
     this->expect_initializer_equal(std::string(PARSER_EXPECT_TYPE_ALIAS_INITIALIZER_EQUAL));
     const syntax::TypeId target = this->parse_type();
     const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_TYPE_ALIAS_TERMINATOR));
@@ -138,6 +139,7 @@ syntax::ItemId ItemParser::parse_type_alias_decl() {
     item.range = this->merge(begin.range, end.range);
     item.name = name.text;
     item.generic_params = std::move(generic_params);
+    item.where_constraints = std::move(where_constraints);
     item.alias_type = target;
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));

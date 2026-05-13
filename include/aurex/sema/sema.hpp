@@ -40,11 +40,14 @@ private:
         std::string name;
         std::string key;
         std::vector<std::string> params;
+        std::unordered_map<std::string, std::unordered_set<std::string>> constraints;
+        TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
     };
 
     struct GenericContext {
         std::unordered_map<std::string, TypeHandle> params;
+        std::unordered_map<std::string, std::unordered_set<std::string>> constraints;
     };
 
     struct GenericSideTableScope {
@@ -98,8 +101,26 @@ private:
     void register_type_names();
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);
+    void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
+    [[nodiscard]] bool generic_param_has_capability(std::string_view param, std::string_view capability) const;
+    [[nodiscard]] bool type_satisfies_capability(TypeHandle type, std::string_view capability) const;
+    [[nodiscard]] bool validate_generic_arguments(
+        const GenericTemplateInfo& info,
+        const std::vector<TypeHandle>& args,
+        base::SourceRange use_range
+    );
     [[nodiscard]] bool has_generic_params(const syntax::ItemNode& item) const noexcept;
+    [[nodiscard]] bool has_generic_constraints(const syntax::ItemNode& item) const noexcept;
     void register_value_names();
+    void register_enum_cases_for_item(
+        const syntax::ItemNode& item,
+        syntax::ModuleId owner,
+        TypeHandle named_enum_type,
+        std::string enum_display_name,
+        std::string case_prefix,
+        std::string c_prefix,
+        syntax::Visibility visibility
+    );
     void validate_function_prototypes();
     void validate_abi_symbols();
     void validate_type_layouts();
@@ -249,6 +270,19 @@ private:
         syntax::TypeId use_type_id,
         const std::vector<TypeHandle>& args
     );
+    [[nodiscard]] TypeHandle instantiate_generic_enum(
+        const GenericTemplateInfo& info,
+        const syntax::TypeNode& use_type,
+        syntax::TypeId use_type_id,
+        const std::vector<TypeHandle>& args
+    );
+    [[nodiscard]] TypeHandle instantiate_generic_type_alias(
+        const GenericTemplateInfo& info,
+        const syntax::TypeNode& use_type,
+        syntax::TypeId use_type_id,
+        const std::vector<TypeHandle>& args,
+        bool opaque_allowed_as_pointee
+    );
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool infer_generic_arguments(
         const GenericTemplateInfo& info,
@@ -282,8 +316,45 @@ private:
         base::SourceRange range,
         bool report_unknown = true
     );
+    [[nodiscard]] const GenericTemplateInfo* find_generic_enum_in_visible_modules(
+        std::string_view name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
+    [[nodiscard]] const GenericTemplateInfo* find_generic_enum_in_module(
+        syntax::ModuleId module,
+        std::string_view name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
+    [[nodiscard]] const GenericTemplateInfo* find_generic_type_alias_in_visible_modules(
+        std::string_view name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
+    [[nodiscard]] const GenericTemplateInfo* find_generic_type_alias_in_module(
+        syntax::ModuleId module,
+        std::string_view name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
+    [[nodiscard]] bool generic_type_template_exists_in_module(
+        syntax::ModuleId module,
+        std::string_view name
+    ) const;
+    void report_generic_type_template_in_module(
+        syntax::ModuleId module,
+        std::string_view name,
+        base::SourceRange range
+    );
     [[nodiscard]] FunctionSignature* instantiate_generic_function(
         const GenericTemplateInfo& info,
+        const std::vector<TypeHandle>& args,
+        base::SourceRange use_range
+    );
+    [[nodiscard]] FunctionSignature* instantiate_generic_method(
+        const GenericTemplateInfo& info,
+        TypeHandle owner_type,
         const std::vector<TypeHandle>& args,
         base::SourceRange use_range
     );
@@ -292,9 +363,18 @@ private:
         const std::vector<TypeHandle>& args,
         base::SourceRange use_range
     );
+    [[nodiscard]] FunctionSignature* find_generic_method_in_visible_modules(
+        TypeHandle owner_type,
+        std::string_view name,
+        base::SourceRange range,
+        bool require_self,
+        bool report_unknown = true
+    );
     [[nodiscard]] bool type_contains_generic_param(TypeHandle type) const;
     [[nodiscard]] std::string generic_instance_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_struct_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_enum_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_type_alias_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_function_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
@@ -320,6 +400,7 @@ private:
     [[nodiscard]] bool is_array_containing_value_type(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
     [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
+    [[nodiscard]] TypeHandle resolve_associated_generic_type_owner(const syntax::ExprNode& apply, bool report_unknown);
     [[nodiscard]] TypeHandle function_type_from_signature(const FunctionSignature& signature);
     [[nodiscard]] TypeHandle function_type_from_symbol(const Symbol& symbol, base::SourceRange range);
     [[nodiscard]] bool in_unsafe_context() const noexcept;
@@ -402,8 +483,13 @@ private:
     std::unordered_map<std::string, TypeHandle> named_types_;
     std::unordered_map<std::string, syntax::Visibility> type_visibilities_;
     std::unordered_map<std::string, GenericTemplateInfo> generic_struct_templates_;
+    std::unordered_map<std::string, GenericTemplateInfo> generic_enum_templates_;
+    std::unordered_map<std::string, GenericTemplateInfo> generic_type_alias_templates_;
     std::unordered_map<std::string, GenericTemplateInfo> generic_function_templates_;
+    std::unordered_map<std::string, GenericTemplateInfo> generic_method_templates_;
     std::unordered_map<std::string, TypeHandle> generic_struct_instances_;
+    std::unordered_map<std::string, TypeHandle> generic_enum_instances_;
+    std::unordered_map<std::string, TypeHandle> resolved_generic_type_aliases_;
     std::unordered_map<std::string, base::usize> generic_function_instances_;
     std::unordered_map<std::string, FunctionSignature> generic_placeholder_functions_;
     std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;

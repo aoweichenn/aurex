@@ -1,0 +1,9 @@
+module where_unknown_param;
+
+fn id[T](value: T) -> T where U: Eq {
+    return value;
+}
+
+fn main() -> i32 {
+    return id(1);
+}

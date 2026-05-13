@@ -107,6 +107,14 @@ declarations where the parser accepts visibility.
 `export c` only introduces a function declaration. `extern c` blocks only
 contain function declarations and opaque struct declarations.
 
+```ebnf
+ConstDecl
+  = "const" Identifier ":" Type "=" Expr ";" ;
+
+TypeAliasDecl
+  = "type" Identifier [ GenericParams ] [ WhereClause ] "=" Type ";" ;
+```
+
 ## 4. Type Syntax
 
 ```ebnf
@@ -228,7 +236,7 @@ Rules:
 ```ebnf
 FnDecl
   = [ "unsafe" ] "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")"
-    [ "->" Type ] [ AbiName ] ( Block | ";" ) ;
+    [ "->" Type ] [ AbiName ] [ WhereClause ] ( Block | ";" ) ;
 
 ParamList
   = Param { "," Param } [ "," ]
@@ -271,7 +279,7 @@ Rules:
 
 ```ebnf
 StructDecl
-  = "struct" Identifier [ GenericParams ] "{"
+  = "struct" Identifier [ GenericParams ] [ WhereClause ] "{"
       { StructField ";" }
     "}" ;
 
@@ -299,13 +307,13 @@ opaque struct FILE;
 
 ## 7. Enum Declarations
 
-Current M2 is ADT-first for non-generic enums. Base type and case
+Current M2 is ADT-first for ordinary and generic enums. Base type and case
 discriminants are optional. Explicit base/discriminant syntax remains available
 for C-like/repr-style enums.
 
 ```ebnf
 EnumDecl
-  = "enum" Identifier [ ":" Type ] "{"
+  = "enum" Identifier [ GenericParams ] [ ":" Type ] [ WhereClause ] "{"
       { EnumCase [ "," ] }
     "}" ;
 
@@ -327,6 +335,11 @@ enum Token {
     eof,
 }
 
+enum Option[T] {
+    some(T),
+    none,
+}
+
 enum Status: u8 {
     ok = 0,
     err = 1,
@@ -335,7 +348,8 @@ enum Status: u8 {
 
 Rules:
 
-- Generic enum declarations are not part of M2.
+- Generic enum declarations support type parameters only. Bounds, associated
+  types, const generics, and trait declarations remain outside M2.
 - If no base type is written, the current implementation uses an internal
   integer tag representation.
 - If no discriminant is written, tag values are assigned in declaration order.
@@ -347,15 +361,17 @@ Rules:
 
 ```ebnf
 ImplBlock
-  = "impl" Type "{" { MethodDecl } "}" ;
+  = "impl" [ GenericParams ] Type [ WhereClause ] "{" { MethodDecl } "}" ;
 
 MethodDecl
   = [ Visibility ] FnDecl ;
 ```
 
 Current semantic rules require the resolved impl target to be a named struct,
-enum, or opaque struct type. Generic impl blocks and generic methods are not
-supported by M2 semantic analysis.
+enum, or opaque struct type. Generic impl blocks are supported when every impl
+generic parameter appears in the impl target type, for example
+`impl[T] Box[T] { ... }`. Method-local generic parameters that are independent
+of the impl target are still rejected by M2 semantic analysis.
 
 ## 9. Statements
 
@@ -661,10 +677,12 @@ Rules:
 - Or-pattern alternatives may bind names only when every alternative binds the
   same names with the same types. The bindings are visible in the matched arm
   or taken pattern block.
-- Integer/bool matches use literal patterns and require wildcard coverage where
-  needed.
-- Tuple, struct, array, and slice matches require an irrefutable arm because M2
-  does not yet implement full structural exhaustiveness for those shapes.
+- Integer/bool matches use literal patterns and require wildcard coverage for
+  open integer domains. Bool supports full `true`/`false` coverage.
+- Tuple, struct, and fixed-array matches can be proven exhaustive when all
+  structural slots are finite leaf domains such as `bool` or no-payload enum
+  values. Guarded arms do not contribute to exhaustiveness. Other tuple,
+  struct, array, and slice shapes still require an irrefutable arm.
 
 ## 13. Basic Generics
 
@@ -680,6 +698,15 @@ GenericTypeArgs
 
 ExplicitGenericCall
   = NameExpr "::" GenericTypeArgs "(" [ ArgumentList ] ")" ;
+
+WhereClause
+  = "where" WhereConstraint { "," WhereConstraint } ;
+
+WhereConstraint
+  = Identifier ":" Capability { "+" Capability } ;
+
+Capability
+  = "Sized" | "Eq" | "Ord" | "Hash" ;
 ```
 
 Supported generic positions:
@@ -691,16 +718,21 @@ Supported generic positions:
 | `Name[T]` type arguments | yes | Type context |
 | `Name[T] { ... }` | yes | Generic struct literal |
 | `name::[T](...)` | yes | Explicit generic function call |
-| `type Alias[T]` | no | Not part of M2 |
-| `enum E[T]` | no | Not part of M2 |
-| `impl[T]` | no | Not part of M2 |
-| generic method | no | Not supported by M2 semantic analysis |
+| `type Alias[T]` | yes | Structural generic type alias |
+| `enum E[T]` | yes | Generic ADT enum |
+| `impl[T] Type[T]` | yes | Impl generics must appear in the impl target |
+| method-local generics | no | Generic parameters independent of the impl target are not supported |
 | generic bounds | no | Not part of M2 |
-| `where` | no | Not part of M2 |
+| `where T: Eq + Hash` | yes | Built-in non-resource capabilities only |
 | `<>` generics | no | Aurex uses `[]` |
 
 `name[index]` is always an index expression. Explicit generic calls use
 `name::[T](...)`.
+
+The M2 `where` clause is deliberately small. `Sized`, `Eq`, `Ord`, and `Hash`
+are built-in non-resource capability predicates used for type checking and
+diagnostics. `Copy`, `Drop`, user-defined traits, associated types, const
+generics, trait objects, and impl-local generic methods remain outside M2.
 
 ## 14. Explicitly Rejected Syntax
 
@@ -716,11 +748,9 @@ Box<i32>
 ()
 let () = value;
 foo::bar::Baz
-type Alias[T] = T;
-enum Option[T] { none }
-impl[T] Box[T] {}
 fn add[T: Add](a: T, b: T) -> T { return a; }
 fn foo[T]() where T: Copy {}
+impl Box { fn id[T](self: *const Box, value: T) -> T { return value; } }
 id[i32](1)
 for x in values {}
 ```

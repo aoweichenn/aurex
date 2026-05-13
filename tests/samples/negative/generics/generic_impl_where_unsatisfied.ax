@@ -1,0 +1,25 @@
+module generic_impl_where_unsatisfied;
+
+struct Pair {
+    first: i32;
+    second: i32;
+}
+
+struct Box[T] {
+    value: T;
+}
+
+impl[T] Box[T] where T: Eq {
+    fn same_value(self: *const Box[T], other: *const Box[T]) -> bool {
+        return self.value == other.value;
+    }
+}
+
+fn main() -> i32 {
+    let left: Box[Pair] = Box[Pair] { value: Pair { first: 1, second: 2 } };
+    let right: Box[Pair] = Box[Pair] { value: Pair { first: 1, second: 2 } };
+    if left.same_value(&right) {
+        return 0;
+    }
+    return 1;
+}

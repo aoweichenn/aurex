@@ -93,6 +93,67 @@ TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
     return find_type_in_module(scope_module, object.text, object.range, false, report_unknown);
 }
 
+TypeHandle SemanticAnalyzer::resolve_associated_generic_type_owner(
+    const syntax::ExprNode& apply,
+    const bool report_unknown
+) {
+    if (apply.kind != syntax::ExprKind::generic_apply ||
+        !syntax::is_valid(apply.callee) ||
+        apply.callee.value >= this->module_.exprs.size()) {
+        return INVALID_TYPE_HANDLE;
+    }
+    const syntax::ExprNode& callee = this->module_.exprs[apply.callee.value];
+    if (callee.kind != syntax::ExprKind::name) {
+        return INVALID_TYPE_HANDLE;
+    }
+
+    const bool qualified = !callee.scope_name.empty();
+    syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
+    if (qualified) {
+        scope_module = this->resolve_import_alias(callee.scope_name, callee.scope_range, report_unknown);
+        if (!syntax::is_valid(scope_module)) {
+            return INVALID_TYPE_HANDLE;
+        }
+    }
+
+    std::vector<TypeHandle> args;
+    args.reserve(apply.type_args.size());
+    for (const syntax::TypeId arg : apply.type_args) {
+        args.push_back(this->resolve_type(arg));
+    }
+
+    syntax::TypeNode use_type;
+    use_type.kind = syntax::TypeKind::named;
+    use_type.scope_name = callee.scope_name;
+    use_type.scope_range = callee.scope_range;
+    use_type.name = callee.text;
+    use_type.range = apply.range;
+    use_type.type_args = apply.type_args;
+
+    const GenericTemplateInfo* generic_struct = qualified
+        ? this->find_generic_struct_in_module(scope_module, callee.text, apply.range, false)
+        : this->find_generic_struct_in_visible_modules(callee.text, apply.range, false);
+    if (generic_struct != nullptr) {
+        return this->instantiate_generic_struct(*generic_struct, use_type, syntax::INVALID_TYPE_ID, args);
+    }
+    const GenericTemplateInfo* generic_enum = qualified
+        ? this->find_generic_enum_in_module(scope_module, callee.text, apply.range, false)
+        : this->find_generic_enum_in_visible_modules(callee.text, apply.range, false);
+    if (generic_enum != nullptr) {
+        return this->instantiate_generic_enum(*generic_enum, use_type, syntax::INVALID_TYPE_ID, args);
+    }
+    const GenericTemplateInfo* generic_alias = qualified
+        ? this->find_generic_type_alias_in_module(scope_module, callee.text, apply.range, false)
+        : this->find_generic_type_alias_in_visible_modules(callee.text, apply.range, false);
+    if (generic_alias != nullptr) {
+        return this->instantiate_generic_type_alias(*generic_alias, use_type, syntax::INVALID_TYPE_ID, args, false);
+    }
+    if (report_unknown) {
+        this->report(apply.range, sema_unknown_generic_type_message(callee.text));
+    }
+    return INVALID_TYPE_HANDLE;
+}
+
 TypeHandle SemanticAnalyzer::analyze_call_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr,
@@ -249,6 +310,15 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         if (is_valid(associated_owner)) {
             signature = this->find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
             if (signature == nullptr) {
+                signature = this->find_generic_method_in_visible_modules(
+                    associated_owner,
+                    callee.field_name,
+                    callee.range,
+                    false,
+                    false
+                );
+            }
+            if (signature == nullptr) {
                 signature = this->find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
                 return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
@@ -269,6 +339,15 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
             owner_type = this->checked_.types.get(owner_type).pointee;
         }
         signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
+        if (signature == nullptr) {
+            signature = this->find_generic_method_in_visible_modules(
+                owner_type,
+                callee.field_name,
+                callee.range,
+                true,
+                false
+            );
+        }
         if (signature == nullptr) {
             const TypeHandle callee_type = this->analyze_expr(expr.callee);
             if (this->checked_.types.is_function(callee_type)) {

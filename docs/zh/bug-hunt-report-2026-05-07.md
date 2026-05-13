@@ -1591,7 +1591,7 @@ fn read_box[T](box: ga::Box[T]) -> T {
 验证：
 
 - `build/bin/aurexc -I tests/samples/imports --check tests/samples/positive/generics/qualified_generic_inference_import.ax`
-- `--emit=checked` 中同时存在 `samplelib.generic_a.Box<i32>` 和 `samplelib.generic_b.Box<i32>`，但实例化函数参数绑定到 `samplelib.generic_a.*`。
+- `--emit=checked` 中同时存在 `samplelib.generic_a.Box[i32]` 和 `samplelib.generic_b.Box[i32]`，但实例化函数参数绑定到 `samplelib.generic_a.*`。
 - 单文件编译运行通过。
 - `build/bin/aurex_tests --gtest_filter=AurexIntegrationTest.QualifiedGenericInferenceUsesAliasScope`
 
@@ -1748,7 +1748,7 @@ Counter.new(7).read()
 验证：
 
 - 普通方法和泛型方法正例 `--check`、`--dump-ir`、单文件编译运行均通过。
-- IR 中 rvalue receiver 先 `alloca field.object`，再 `pcast` 为 `*const Counter` / `*const Box<i32>`。
+- IR 中 rvalue receiver 先 `alloca field.object`，再 `pcast` 为 `*const Counter` / `*const Box[i32]`。
 - `Counter.new(1).add(2)` 仍报 `method receiver must be a place expression`。
 - immutable local 调 `*mut self` 仍报 `mutable method receiver requires writable storage`。
 

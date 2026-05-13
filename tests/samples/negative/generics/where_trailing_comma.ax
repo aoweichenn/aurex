@@ -1,0 +1,9 @@
+module where_trailing_comma;
+
+fn id[T](value: T) -> T where T: Sized, {
+    return value;
+}
+
+fn main() -> i32 {
+    return id(1);
+}

@@ -50,6 +50,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"cast", syntax::TokenKind::kw_cast},
 
     KeywordEntry {"const", syntax::TokenKind::kw_const},
+    KeywordEntry {"where", syntax::TokenKind::kw_where},
     KeywordEntry {"match", syntax::TokenKind::kw_match},
     KeywordEntry {"while", syntax::TokenKind::kw_while},
     KeywordEntry {"break", syntax::TokenKind::kw_break},

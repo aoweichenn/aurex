@@ -1,7 +1,0 @@
-module generic_type_alias_unsupported;
-
-type Boxed[T] = T;
-
-fn main() -> i32 {
-    return 0;
-}

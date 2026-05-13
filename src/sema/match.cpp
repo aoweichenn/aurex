@@ -15,6 +15,7 @@ namespace {
 
 constexpr std::string_view SEMA_MATCH_BOOL_TRUE_NAME = "true";
 constexpr std::string_view SEMA_MATCH_BOOL_FALSE_NAME = "false";
+constexpr base::u64 SEMA_MATCH_STRUCTURAL_ARRAY_MAX_ELEMENTS = 8;
 
 [[nodiscard]] const syntax::PatternNode* pattern_node(
     const syntax::AstModule& module,
@@ -361,9 +362,6 @@ bool SemanticAnalyzer::analyze_pattern(
                 break;
             }
             case syntax::PatternKind::or_pattern:
-                for (auto alternative = pattern->alternatives.rbegin(); alternative != pattern->alternatives.rend(); ++alternative) {
-                    pending.push_back(PatternFrame {*alternative, frame.type});
-                }
                 break;
             }
         }
@@ -515,6 +513,256 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
         return payloads_cover_case;
     };
+
+    const auto leaf_domain = [&](const TypeHandle type) {
+        std::vector<std::string> domain;
+        if (!is_valid(type)) {
+            return domain;
+        }
+        if (this->checked_.types.is_bool(type)) {
+            domain.emplace_back(SEMA_MATCH_BOOL_TRUE_NAME);
+            domain.emplace_back(SEMA_MATCH_BOOL_FALSE_NAME);
+            return domain;
+        }
+        if (this->checked_.types.get(type).kind == TypeKind::enum_) {
+            const std::vector<const EnumCaseInfo*>* cases = this->find_enum_cases_by_type(type);
+            if (cases == nullptr || cases->empty()) {
+                return std::vector<std::string> {};
+            }
+            domain.reserve(cases->size());
+            for (const EnumCaseInfo* case_info : *cases) {
+                if (case_info == nullptr || !case_info->payload_types.empty()) {
+                    return std::vector<std::string> {};
+                }
+                domain.push_back(case_info->c_name);
+            }
+        }
+        return domain;
+    };
+
+    const auto combine_option_sets = [](const std::vector<std::vector<std::string>>& option_sets) {
+        std::vector<std::string> combinations;
+        combinations.emplace_back();
+        for (const std::vector<std::string>& options : option_sets) {
+            if (options.empty()) {
+                return std::vector<std::string> {};
+            }
+            std::vector<std::string> next;
+            next.reserve(combinations.size() * options.size());
+            for (const std::string& prefix : combinations) {
+                for (const std::string& option : options) {
+                    std::string value = prefix;
+                    if (!value.empty()) {
+                        value.push_back('|');
+                    }
+                    value += option;
+                    next.push_back(std::move(value));
+                }
+            }
+            combinations = std::move(next);
+        }
+        return combinations;
+    };
+
+    struct StructuralSlot {
+        std::string name;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+    };
+
+    const auto structural_slots = [&](const TypeHandle type) {
+        std::vector<StructuralSlot> slots;
+        if (!is_valid(type)) {
+            return slots;
+        }
+        if (!leaf_domain(type).empty()) {
+            slots.push_back(StructuralSlot {{}, type});
+            return slots;
+        }
+        const TypeInfo& info = this->checked_.types.get(type);
+        if (info.kind == TypeKind::tuple) {
+            slots.reserve(info.tuple_elements.size());
+            for (base::usize i = 0; i < info.tuple_elements.size(); ++i) {
+                if (leaf_domain(info.tuple_elements[i]).empty()) {
+                    return std::vector<StructuralSlot> {};
+                }
+                slots.push_back(StructuralSlot {std::to_string(i), info.tuple_elements[i]});
+            }
+            return slots;
+        }
+        if (info.kind == TypeKind::struct_) {
+            const StructInfo* struct_info = this->find_struct(type);
+            if (struct_info == nullptr) {
+                return slots;
+            }
+            slots.reserve(struct_info->fields.size());
+            for (const StructFieldInfo& field : struct_info->fields) {
+                if (leaf_domain(field.type).empty()) {
+                    return std::vector<StructuralSlot> {};
+                }
+                slots.push_back(StructuralSlot {field.name, field.type});
+            }
+            return slots;
+        }
+        if (info.kind == TypeKind::array &&
+            info.array_count <= SEMA_MATCH_STRUCTURAL_ARRAY_MAX_ELEMENTS &&
+            !leaf_domain(info.array_element).empty()) {
+            slots.reserve(static_cast<base::usize>(info.array_count));
+            for (base::u64 i = 0; i < info.array_count; ++i) {
+                slots.push_back(StructuralSlot {std::to_string(i), info.array_element});
+            }
+        }
+        return slots;
+    };
+
+    const auto total_structural_cases = [&]() {
+        const std::vector<StructuralSlot> slots = structural_slots(matched);
+        std::vector<std::vector<std::string>> option_sets;
+        option_sets.reserve(slots.size());
+        for (const StructuralSlot& slot : slots) {
+            option_sets.push_back(leaf_domain(slot.type));
+        }
+        return combine_option_sets(option_sets);
+    };
+
+    const auto append_unique_option = [](
+        std::vector<std::string>& options,
+        std::unordered_set<std::string>& seen,
+        std::string option
+    ) {
+        if (seen.insert(option).second) {
+            options.push_back(std::move(option));
+        }
+    };
+
+    const auto append_unique_options = [&append_unique_option](
+        std::vector<std::string>& options,
+        std::unordered_set<std::string>& seen,
+        std::vector<std::string> values
+    ) {
+        for (std::string& value : values) {
+            append_unique_option(options, seen, std::move(value));
+        }
+    };
+
+    const auto non_or_leaf_pattern_options = [&](const syntax::PatternNode& leaf_pattern, const TypeHandle leaf_type) {
+        if (leaf_pattern.kind == syntax::PatternKind::wildcard ||
+            leaf_pattern.kind == syntax::PatternKind::binding) {
+            return leaf_domain(leaf_type);
+        }
+        if (this->checked_.types.is_bool(leaf_type) && leaf_pattern.kind == syntax::PatternKind::literal) {
+            if (leaf_pattern.case_name == SEMA_MATCH_BOOL_TRUE_NAME ||
+                leaf_pattern.case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
+                return std::vector<std::string> {std::string(leaf_pattern.case_name)};
+            }
+            return std::vector<std::string> {};
+        }
+        if (is_valid(leaf_type) &&
+            this->checked_.types.get(leaf_type).kind == TypeKind::enum_ &&
+            leaf_pattern.kind == syntax::PatternKind::enum_case &&
+            enum_case_payloads_cover_case(leaf_pattern)) {
+            const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(leaf_type, leaf_pattern.case_name);
+            if (case_info != nullptr && case_info->payload_types.empty()) {
+                return std::vector<std::string> {case_info->c_name};
+            }
+        }
+        return std::vector<std::string> {};
+    };
+
+    const auto non_or_structural_pattern_cases = [&](const syntax::PatternNode& root_pattern) {
+        const std::vector<StructuralSlot> slots = structural_slots(matched);
+        if (slots.empty()) {
+            return std::vector<std::string> {};
+        }
+        if (root_pattern.kind == syntax::PatternKind::wildcard ||
+            root_pattern.kind == syntax::PatternKind::binding) {
+            return total_structural_cases();
+        }
+        if (slots.size() == 1 &&
+            !array_match &&
+            !this->checked_.types.is_tuple(matched) &&
+            this->find_struct(matched) == nullptr) {
+            return non_or_leaf_pattern_options(root_pattern, matched);
+        }
+        std::vector<std::vector<std::string>> option_sets;
+        option_sets.reserve(slots.size());
+        if (root_pattern.kind == syntax::PatternKind::tuple && this->checked_.types.is_tuple(matched)) {
+            if (root_pattern.elements.size() != slots.size()) {
+                return std::vector<std::string> {};
+            }
+            const TypeInfo& tuple = this->checked_.types.get(matched);
+            for (base::usize i = 0; i < root_pattern.elements.size(); ++i) {
+                const syntax::PatternNode* element_pattern = pattern_node(this->module_, root_pattern.elements[i]);
+                if (element_pattern == nullptr) {
+                    return std::vector<std::string> {};
+                }
+                option_sets.push_back(non_or_leaf_pattern_options(*element_pattern, tuple.tuple_elements[i]));
+            }
+            return combine_option_sets(option_sets);
+        }
+        if (root_pattern.kind == syntax::PatternKind::struct_ && this->find_struct(matched) != nullptr) {
+            std::unordered_map<std::string_view, syntax::PatternId> field_patterns;
+            for (const syntax::FieldPattern& field : root_pattern.field_patterns) {
+                field_patterns.emplace(field.name, field.pattern);
+            }
+            for (const StructuralSlot& slot : slots) {
+                const auto found = field_patterns.find(slot.name);
+                if (found == field_patterns.end()) {
+                    option_sets.push_back(leaf_domain(slot.type));
+                    continue;
+                }
+                const syntax::PatternNode* field_pattern = pattern_node(this->module_, found->second);
+                if (field_pattern == nullptr) {
+                    return std::vector<std::string> {};
+                }
+                option_sets.push_back(non_or_leaf_pattern_options(*field_pattern, slot.type));
+            }
+            return combine_option_sets(option_sets);
+        }
+        if (root_pattern.kind == syntax::PatternKind::slice && array_match && !root_pattern.has_slice_rest) {
+            if (root_pattern.elements.size() != slots.size()) {
+                return std::vector<std::string> {};
+            }
+            const TypeInfo& array = this->checked_.types.get(matched);
+            for (const syntax::PatternId element : root_pattern.elements) {
+                const syntax::PatternNode* element_pattern = pattern_node(this->module_, element);
+                if (element_pattern == nullptr) {
+                    return std::vector<std::string> {};
+                }
+                option_sets.push_back(non_or_leaf_pattern_options(*element_pattern, array.array_element));
+            }
+            return combine_option_sets(option_sets);
+        }
+        return std::vector<std::string> {};
+    };
+
+    const auto structural_pattern_cases = [&](const syntax::PatternNode& root_pattern) {
+        if (root_pattern.kind != syntax::PatternKind::or_pattern) {
+            return non_or_structural_pattern_cases(root_pattern);
+        }
+
+        std::vector<std::string> cases;
+        std::unordered_set<std::string> seen;
+        std::vector<const syntax::PatternNode*> pending;
+        pending.push_back(&root_pattern);
+        while (!pending.empty()) {
+            const syntax::PatternNode* pattern = pending.back();
+            pending.pop_back();
+            if (pattern == nullptr) {
+                continue;
+            }
+            if (pattern->kind == syntax::PatternKind::or_pattern) {
+                for (const syntax::PatternId alternative : pattern->alternatives) {
+                    pending.push_back(pattern_node(this->module_, alternative));
+                }
+                continue;
+            }
+            append_unique_options(cases, seen, non_or_structural_pattern_cases(*pattern));
+        }
+        return cases;
+    };
+
+    const std::vector<std::string> structural_total = total_structural_cases();
+    std::unordered_set<std::string> structural_covered;
     for (const syntax::MatchArm& arm : expr.match_arms) {
         const bool guarded = syntax::is_valid(arm.guard);
         const syntax::PatternNode* pattern = syntax::is_valid(arm.pattern) && arm.pattern.value < this->module_.patterns.size()
@@ -527,6 +775,24 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         const bool irrefutable = this->analyze_pattern(arm.pattern, matched, bindings);
         if (!guarded && irrefutable) {
             saw_irrefutable = true;
+        }
+        if (!guarded && pattern != nullptr && !structural_total.empty()) {
+            const std::vector<std::string> arm_cases = structural_pattern_cases(*pattern);
+            if (!arm_cases.empty()) {
+                bool already_covered = true;
+                for (const std::string& arm_case : arm_cases) {
+                    if (!structural_covered.contains(arm_case)) {
+                        already_covered = false;
+                        break;
+                    }
+                }
+                if (already_covered) {
+                    this->report(pattern->range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
+                }
+                for (const std::string& arm_case : arm_cases) {
+                    structural_covered.insert(arm_case);
+                }
+            }
         }
         if (!guarded && pattern != nullptr) {
             if (pattern->kind == syntax::PatternKind::wildcard ||
@@ -644,7 +910,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
     } else if (literal_match && !saw_wildcard && !saw_irrefutable && (!this->checked_.types.is_bool(matched) || !covered_true || !covered_false)) {
         this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
-    } else if ((tuple_match || struct_match || array_match || slice_match) && !saw_irrefutable && !saw_wildcard) {
+    } else if ((tuple_match || struct_match || array_match || slice_match) &&
+               !saw_irrefutable &&
+               !saw_wildcard &&
+               (structural_total.empty() || structural_covered.size() != structural_total.size())) {
         this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
     }
     if (is_valid(result) && this->checked_.types.is_void(result)) {

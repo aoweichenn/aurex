@@ -196,14 +196,17 @@ inline constexpr std::string_view PARSER_EXPECT_LEGACY_GENERIC_BEGIN =
 inline constexpr std::string_view PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED =
     "generic bounds are not part of M2 syntax";
 
-inline constexpr std::string_view PARSER_M2_GENERIC_ENUM_UNSUPPORTED =
-    "generic enums are not part of M2 syntax";
+inline constexpr std::string_view PARSER_EXPECT_WHERE_GENERIC_PARAM =
+    "expected generic parameter name in where clause";
 
-inline constexpr std::string_view PARSER_M2_GENERIC_TYPE_ALIAS_UNSUPPORTED =
-    "generic type aliases are not part of M2 syntax";
+inline constexpr std::string_view PARSER_EXPECT_WHERE_GENERIC_PARAM_COLON =
+    "expected ':' after generic parameter name in where clause";
 
-inline constexpr std::string_view PARSER_M2_GENERIC_WHERE_UNSUPPORTED =
-    "where clauses are not part of M2 syntax";
+inline constexpr std::string_view PARSER_EXPECT_WHERE_CAPABILITY =
+    "expected capability name in where clause";
+
+inline constexpr std::string_view PARSER_EXPECT_WHERE_SEPARATOR =
+    "expected ',' or declaration body after where constraint";
 
 inline constexpr std::string_view PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED =
     "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters";

@@ -133,6 +133,11 @@ void SemanticAnalyzer::register_type_names() {
             this->register_generic_template(item, syntax::ItemId {static_cast<base::u32>(item_index)});
             continue;
         }
+        if (this->has_generic_constraints(item)) {
+            for (const syntax::GenericConstraintDecl& constraint : item.where_constraints) {
+                this->report(constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
+            }
+        }
         const syntax::ModuleId owner = this->item_module(item);
         const std::string key = this->module_key(owner, item.name);
         const std::string qualified = this->qualified_name(owner, item.name);
@@ -155,15 +160,26 @@ void SemanticAnalyzer::register_type_names() {
             if (this->generic_struct_templates_.contains(key)) {
                 this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             }
+            if (this->generic_enum_templates_.contains(key) || this->generic_type_alias_templates_.contains(key)) {
+                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            }
             continue;
         }
         if (item.kind == syntax::ItemKind::struct_decl) {
-            if (this->generic_struct_templates_.contains(key)) {
+            if (this->generic_struct_templates_.contains(key) ||
+                this->generic_enum_templates_.contains(key) ||
+                this->generic_type_alias_templates_.contains(key)) {
                 this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
                 continue;
             }
             handle = this->checked_.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
+            if (this->generic_struct_templates_.contains(key) ||
+                this->generic_enum_templates_.contains(key) ||
+                this->generic_type_alias_templates_.contains(key)) {
+                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                continue;
+            }
             handle = this->checked_.types.named_enum(qualified, c_name);
         } else if (item.kind == syntax::ItemKind::opaque_struct_decl) {
             handle = this->checked_.types.opaque_struct(qualified, c_name);
@@ -205,8 +221,191 @@ void SemanticAnalyzer::register_type_names() {
 }
 
 void SemanticAnalyzer::resolve_type_alias_decls() {
-    for (const auto& entry : checked_.type_aliases) {
-        static_cast<void>(resolve_type_alias(entry.second, false));
+    for (const auto& entry : this->checked_.type_aliases) {
+        static_cast<void>(this->resolve_type_alias(entry.second, false));
+    }
+}
+
+void SemanticAnalyzer::register_enum_cases_for_item(
+    const syntax::ItemNode& item,
+    const syntax::ModuleId owner,
+    const TypeHandle named_enum_type,
+    std::string enum_display_name,
+    std::string case_prefix,
+    std::string c_prefix,
+    const syntax::Visibility visibility
+) {
+    std::unordered_set<std::string> seen_cases;
+    for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
+        if (!seen_cases.insert(std::string(enum_case.name)).second) {
+            this->report(enum_case.range, sema_duplicate_enum_case_message(enum_display_name, enum_case.name));
+        }
+    }
+
+    const TypeHandle enum_type = syntax::is_valid(item.enum_base_type)
+        ? this->resolve_type(item.enum_base_type)
+        : this->checked_.types.builtin(BuiltinType::u32);
+    if (syntax::is_valid(item.enum_base_type) && !this->checked_.types.is_integer(enum_type)) {
+        this->report(item.range, std::string(SEMA_ENUM_BASE_INTEGER));
+    }
+    if (is_valid(named_enum_type)) {
+        this->checked_.types.set_enum_underlying(named_enum_type, enum_type);
+    }
+
+    std::unordered_set<base::u64> seen_values;
+    TypeHandle payload_storage = INVALID_TYPE_HANDLE;
+    base::u64 payload_size = 0;
+    base::u64 payload_align = 1;
+    bool contains_array_payload = false;
+    base::u64 next_discriminant = 0;
+    for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
+        const std::string full_name = case_prefix + std::string(enum_case.name);
+        const std::string enum_case_key = this->module_key(owner, full_name);
+        const bool has_payload = !enum_case.payload_types.empty() || syntax::is_valid(enum_case.payload_type);
+        std::vector<TypeHandle> payload_types;
+        payload_types.reserve(enum_case.payload_types.empty() ? 1 : enum_case.payload_types.size());
+        if (enum_case.payload_types.empty()) {
+            if (syntax::is_valid(enum_case.payload_type)) {
+                payload_types.push_back(this->resolve_type(enum_case.payload_type));
+            }
+        } else {
+            for (const syntax::TypeId payload_syntax_type : enum_case.payload_types) {
+                payload_types.push_back(this->resolve_type(payload_syntax_type));
+            }
+        }
+
+        TypeHandle payload_type = INVALID_TYPE_HANDLE;
+        if (payload_types.size() == 1) {
+            payload_type = payload_types.front();
+        } else if (payload_types.size() > 1) {
+            const std::string payload_type_name = this->qualified_name(
+                owner,
+                full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX
+            );
+            const std::string payload_type_c_name = this->c_symbol_name(
+                owner,
+                c_prefix + std::string(enum_case.name) + SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX
+            );
+            bool payload_contains_array = false;
+            for (const TypeHandle field_type : payload_types) {
+                payload_contains_array = payload_contains_array || this->checked_.types.contains_array(field_type);
+            }
+            payload_type = this->checked_.types.named_struct(
+                payload_type_name,
+                payload_type_c_name,
+                payload_contains_array
+            );
+            StructInfo payload_info;
+            payload_info.name = payload_type_name;
+            payload_info.c_name = payload_type_c_name;
+            payload_info.module = owner;
+            payload_info.type = payload_type;
+            payload_info.visibility = syntax::Visibility::private_;
+            payload_info.fields.reserve(payload_types.size());
+            for (base::usize i = 0; i < payload_types.size(); ++i) {
+                const std::string field_name =
+                    std::string(SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
+                payload_info.fields.push_back(StructFieldInfo {
+                    field_name,
+                    field_name,
+                    owner,
+                    payload_types[i],
+                    enum_case.range,
+                    syntax::Visibility::public_,
+                });
+            }
+            const auto payload_inserted = this->checked_.structs.emplace(
+                this->module_key(owner, full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX),
+                std::move(payload_info)
+            );
+            if (payload_inserted.second) {
+                this->struct_infos_by_type_[payload_type.value] = &payload_inserted.first->second;
+            }
+        }
+
+        const std::string value_text = enum_case.value_text.empty()
+            ? std::to_string(next_discriminant)
+            : std::string(enum_case.value_text);
+        base::u64 discriminant = next_discriminant;
+        const bool parsed_discriminant = this->parse_integer_literal_text(value_text, discriminant);
+        if (!parsed_discriminant) {
+            this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_OUT_OF_RANGE));
+        } else if (!this->integer_literal_fits_type(enum_type, value_text)) {
+            this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_DOES_NOT_FIT));
+        } else if (!seen_values.insert(discriminant).second) {
+            this->report(enum_case.range, sema_duplicate_enum_discriminant_message(enum_display_name));
+        }
+        next_discriminant = discriminant == std::numeric_limits<base::u64>::max()
+            ? discriminant
+            : discriminant + 1;
+        if (has_payload) {
+            for (const TypeHandle payload_field_type : payload_types) {
+                if (!this->is_valid_storage_type(payload_field_type)) {
+                    this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_STORAGE));
+                }
+                if (this->checked_.types.contains_array(payload_field_type)) {
+                    contains_array_payload = true;
+                    this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
+                }
+            }
+            const base::u64 case_size = this->abi_size(payload_type);
+            const base::u64 case_align = this->abi_align(payload_type);
+            if (!is_valid(payload_storage) ||
+                case_size > payload_size ||
+                (case_size == payload_size && case_align > payload_align)) {
+                payload_storage = payload_type;
+            }
+            payload_size = std::max(payload_size, case_size);
+            payload_align = std::max(payload_align, case_align);
+        }
+
+        const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
+            full_name,
+            this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)),
+            owner,
+            named_enum_type,
+            payload_type,
+            std::move(payload_types),
+            value_text,
+            enum_case.range,
+            enum_display_name,
+            std::string(enum_case.name),
+            visibility,
+        });
+        if (!case_inserted.second) {
+            this->report(enum_case.range, sema_duplicate_enum_case_message(enum_display_name, enum_case.name));
+            continue;
+        }
+        this->index_enum_case(case_inserted.first->second);
+        if (!has_payload) {
+            const auto value_inserted = this->global_values_.emplace(enum_case_key, Symbol {
+                SymbolKind::enum_case,
+                full_name,
+                this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)),
+                owner,
+                named_enum_type,
+                enum_case.range,
+                false,
+                visibility,
+            });
+            if (!value_inserted.second) {
+                this->report(
+                    enum_case.range,
+                    sema_duplicate_value_definition_message(this->module_name(owner), full_name)
+                );
+            }
+        }
+    }
+    if (is_valid(named_enum_type) && is_valid(payload_storage)) {
+        this->checked_.types.set_enum_payload_layout(
+            named_enum_type,
+            payload_storage_type(this->checked_.types, payload_size, payload_align),
+            payload_size,
+            payload_align
+        );
+    }
+    if (is_valid(named_enum_type)) {
+        this->checked_.types.set_record_contains_array(named_enum_type, contains_array_payload);
     }
 }
 
@@ -339,175 +538,16 @@ void SemanticAnalyzer::register_value_names() {
                 );
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
-            std::unordered_set<std::string> seen_cases;
-            for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
-                if (!seen_cases.insert(std::string(enum_case.name)).second) {
-                    this->report(enum_case.range, sema_duplicate_enum_case_message(item.name, enum_case.name));
-                }
-            }
-            const TypeHandle enum_type = syntax::is_valid(item.enum_base_type)
-                ? this->resolve_type(item.enum_base_type)
-                : this->checked_.types.builtin(BuiltinType::u32);
-            if (syntax::is_valid(item.enum_base_type) && !this->checked_.types.is_integer(enum_type)) {
-                this->report(item.range, std::string(SEMA_ENUM_BASE_INTEGER));
-            }
-            std::unordered_set<base::u64> seen_values;
             const auto type_found = this->named_types_.find(key);
-            const TypeHandle named_enum_type = type_found == this->named_types_.end() ? enum_type : type_found->second;
-            if (is_valid(named_enum_type)) {
-                this->checked_.types.set_enum_underlying(named_enum_type, enum_type);
-            }
-            TypeHandle payload_storage = INVALID_TYPE_HANDLE;
-            base::u64 payload_size = 0;
-            base::u64 payload_align = 1;
-            bool contains_array_payload = false;
-            base::u64 next_discriminant = 0;
-            for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
-                const std::string full_name = std::string(item.name) + "_" + std::string(enum_case.name);
-                const std::string enum_case_key = this->module_key(this->current_module_, full_name);
-                const bool has_payload = !enum_case.payload_types.empty() || syntax::is_valid(enum_case.payload_type);
-                std::vector<TypeHandle> payload_types;
-                payload_types.reserve(enum_case.payload_types.empty() ? 1 : enum_case.payload_types.size());
-                if (enum_case.payload_types.empty()) {
-                    if (syntax::is_valid(enum_case.payload_type)) {
-                        payload_types.push_back(this->resolve_type(enum_case.payload_type));
-                    }
-                } else {
-                    for (const syntax::TypeId payload_syntax_type : enum_case.payload_types) {
-                        payload_types.push_back(this->resolve_type(payload_syntax_type));
-                    }
-                }
-                TypeHandle payload_type = INVALID_TYPE_HANDLE;
-                if (payload_types.size() == 1) {
-                    payload_type = payload_types.front();
-                } else if (payload_types.size() > 1) {
-                    const std::string payload_type_name = this->qualified_name(
-                        this->current_module_,
-                        full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX
-                    );
-                    const std::string payload_type_c_name = this->c_symbol_name(
-                        this->current_module_,
-                        full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX
-                    );
-                    bool payload_contains_array = false;
-                    for (const TypeHandle field_type : payload_types) {
-                        payload_contains_array = payload_contains_array || this->checked_.types.contains_array(field_type);
-                    }
-                    payload_type = this->checked_.types.named_struct(
-                        payload_type_name,
-                        payload_type_c_name,
-                        payload_contains_array
-                    );
-                    StructInfo payload_info;
-                    payload_info.name = payload_type_name;
-                    payload_info.c_name = payload_type_c_name;
-                    payload_info.module = this->current_module_;
-                    payload_info.type = payload_type;
-                    payload_info.visibility = syntax::Visibility::private_;
-                    payload_info.fields.reserve(payload_types.size());
-                    for (base::usize i = 0; i < payload_types.size(); ++i) {
-                        const std::string field_name =
-                            std::string(SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
-                        payload_info.fields.push_back(StructFieldInfo {
-                            field_name,
-                            field_name,
-                            this->current_module_,
-                            payload_types[i],
-                            enum_case.range,
-                            syntax::Visibility::public_,
-                        });
-                    }
-                    const auto payload_inserted = this->checked_.structs.emplace(
-                        this->module_key(this->current_module_, full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX),
-                        std::move(payload_info)
-                    );
-                    if (payload_inserted.second) {
-                        this->struct_infos_by_type_[payload_type.value] = &payload_inserted.first->second;
-                    }
-                }
-                const std::string value_text = enum_case.value_text.empty()
-                    ? std::to_string(next_discriminant)
-                    : std::string(enum_case.value_text);
-                base::u64 discriminant = next_discriminant;
-                const bool parsed_discriminant = this->parse_integer_literal_text(value_text, discriminant);
-                if (!parsed_discriminant) {
-                    this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_OUT_OF_RANGE));
-                } else if (!this->integer_literal_fits_type(enum_type, value_text)) {
-                    this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_DOES_NOT_FIT));
-                } else if (!seen_values.insert(discriminant).second) {
-                    this->report(enum_case.range, sema_duplicate_enum_discriminant_message(item.name));
-                }
-                next_discriminant = discriminant == std::numeric_limits<base::u64>::max()
-                    ? discriminant
-                    : discriminant + 1;
-                if (has_payload) {
-                    for (const TypeHandle payload_field_type : payload_types) {
-                        if (!this->is_valid_storage_type(payload_field_type)) {
-                            this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_STORAGE));
-                        }
-                        if (this->checked_.types.contains_array(payload_field_type)) {
-                            contains_array_payload = true;
-                            this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
-                        }
-                    }
-                    const base::u64 case_size = this->abi_size(payload_type);
-                    const base::u64 case_align = this->abi_align(payload_type);
-                    if (!is_valid(payload_storage) ||
-                        case_size > payload_size ||
-                        (case_size == payload_size && case_align > payload_align)) {
-                        payload_storage = payload_type;
-                    }
-                    payload_size = std::max(payload_size, case_size);
-                    payload_align = std::max(payload_align, case_align);
-                }
-                const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
-                    full_name,
-                    this->c_symbol_name(this->current_module_, full_name),
-                    this->current_module_,
-                    named_enum_type,
-                    payload_type,
-                    std::move(payload_types),
-                    value_text,
-                    enum_case.range,
-                    std::string(item.name),
-                    std::string(enum_case.name),
-                    item.visibility,
-                });
-                if (!case_inserted.second) {
-                    this->report(enum_case.range, sema_duplicate_enum_case_message(item.name, enum_case.name));
-                    continue;
-                }
-                this->index_enum_case(case_inserted.first->second);
-                if (!has_payload) {
-                    const auto value_inserted = this->global_values_.emplace(enum_case_key, Symbol {
-                        SymbolKind::enum_case,
-                        full_name,
-                        this->c_symbol_name(this->current_module_, full_name),
-                        this->current_module_,
-                        named_enum_type,
-                        enum_case.range,
-                        false,
-                        item.visibility,
-                    });
-                    if (!value_inserted.second) {
-                        this->report(
-                            enum_case.range,
-                            sema_duplicate_value_definition_message(this->module_name(this->current_module_), full_name)
-                        );
-                    }
-                }
-            }
-            if (is_valid(named_enum_type) && is_valid(payload_storage)) {
-                this->checked_.types.set_enum_payload_layout(
-                    named_enum_type,
-                    payload_storage_type(this->checked_.types, payload_size, payload_align),
-                    payload_size,
-                    payload_align
-                );
-            }
-            if (is_valid(named_enum_type)) {
-                this->checked_.types.set_record_contains_array(named_enum_type, contains_array_payload);
-            }
+            this->register_enum_cases_for_item(
+                item,
+                this->current_module_,
+                type_found == this->named_types_.end() ? INVALID_TYPE_HANDLE : type_found->second,
+                std::string(item.name),
+                std::string(item.name) + "_",
+                std::string(item.name) + "_",
+                item.visibility
+            );
         }
     }
     this->current_module_ = syntax::INVALID_MODULE_ID;

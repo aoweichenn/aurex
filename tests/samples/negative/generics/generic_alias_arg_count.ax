@@ -1,0 +1,9 @@
+module generic_alias_arg_count;
+
+type Ptr[T] = *const T;
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let ptr: Ptr[i32, bool] = &value;
+    return 0;
+}

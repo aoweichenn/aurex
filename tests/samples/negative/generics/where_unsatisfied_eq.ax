@@ -1,0 +1,19 @@
+module where_unsatisfied_eq;
+
+struct Pair {
+    first: i32;
+    second: i32;
+}
+
+fn same[T](left: T, right: T) -> bool where T: Eq {
+    return left == right;
+}
+
+fn main() -> i32 {
+    let left: Pair = Pair { first: 1, second: 2 };
+    let right: Pair = Pair { first: 1, second: 2 };
+    if same(left, right) {
+        return 0;
+    }
+    return 1;
+}

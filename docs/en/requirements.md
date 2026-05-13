@@ -16,8 +16,9 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 
 - Handwritten lexer/parser.
 - Modules, imports, visibility, and re-exports.
-- Primitive types, structs, ADT-style enums, explicit C-like repr enums, and
-  generic structs/functions.
+- Primitive types, structs, ADT-style enums, explicit C-like repr enums,
+  generic structs/functions/enums/type aliases, owner-generic impl blocks, and
+  minimal `where` capabilities.
 - Tuple types, tuple literals, and tuple destructuring. Anonymous tuple field
   access is intentionally rejected.
 - Pattern matching, multi-field enum payload destructuring, guards, and
@@ -38,4 +39,4 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 The M1 language-level `move(...)` and `noncopy struct` syntax is no longer part
 of the current M2 requirements. Resource semantics should be redesigned after
 core syntax, `unsafe`, slices/strings, the safe-reference direction, and
-non-resource trait/where rules are stable.
+minimal non-resource `where` capabilities are stable.

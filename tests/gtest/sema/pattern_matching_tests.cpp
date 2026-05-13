@@ -47,6 +47,15 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
     const fs::path duplicate = negative_sample("pattern_matching", "match_expression_duplicate.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output, "duplicate match arm");
 
+    const fs::path bool_wildcard_unreachable = negative_sample(
+        "pattern_matching",
+        "bool_match_wildcard_unreachable.ax"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(bool_wildcard_unreachable)).output,
+        "match arm is unreachable after wildcard pattern"
+    );
+
     const fs::path mismatch = negative_sample("pattern_matching", "match_expression_type_mismatch.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "match expression arms must have the same type");
 }
@@ -128,6 +137,26 @@ TEST_F(AurexIntegrationTest, MatchWildcardAndScopedCases) {
 
     const fs::path wrong_enum = negative_sample("pattern_matching", "match_scoped_wrong_enum.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(wrong_enum)).output, "match arm case does not belong to matched enum");
+}
+
+TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
+    const fs::path source = positive_sample("pattern_matching", "structural_exhaustiveness.ax");
+    require_success(aurexc() + " --check " + q(source));
+
+    const fs::path array_or_source = positive_sample("pattern_matching", "structural_array_or_exhaustiveness.ax");
+    require_success(aurexc() + " --check " + q(array_or_source));
+
+    const fs::path unreachable = negative_sample("pattern_matching", "structural_match_unreachable.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(unreachable)).output,
+        "match arm is unreachable after wildcard pattern"
+    );
+
+    const fs::path guarded = negative_sample("pattern_matching", "structural_match_guard_not_exhaustive.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(guarded)).output,
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
+    );
 }
 
 TEST_F(AurexIntegrationTest, MatchOrPattern) {

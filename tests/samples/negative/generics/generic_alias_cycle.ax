@@ -1,0 +1,9 @@
+module generic_alias_cycle;
+
+type A[T] = B[T];
+type B[T] = A[T];
+
+fn main() -> i32 {
+    let value: A[i32] = 1;
+    return value;
+}

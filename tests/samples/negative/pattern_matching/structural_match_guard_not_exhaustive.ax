@@ -1,0 +1,14 @@
+module structural_match_guard_not_exhaustive;
+
+fn score(value: (bool, bool), enabled: bool) -> i32 {
+    return match value {
+        (true, true) if enabled => 1,
+        (true, false) => 2,
+        (false, true) => 3,
+        (false, false) => 4,
+    };
+}
+
+fn main() -> i32 {
+    return score((true, true), false);
+}

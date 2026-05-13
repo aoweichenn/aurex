@@ -1,0 +1,9 @@
+module bool_match_wildcard_unreachable;
+
+fn main() -> i32 {
+    let value: bool = true;
+    return match value {
+        _ => 1,
+        true => 2,
+    };
+}

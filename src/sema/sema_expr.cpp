@@ -516,7 +516,9 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::greater:
     case syntax::BinaryOp::greater_equal:
         if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
+            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, "Ord")) {
+                this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
+            }
             return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
         }
         if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
@@ -535,7 +537,9 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
              this->checked_.types.get(lhs).kind == TypeKind::enum_ &&
              !is_valid(this->checked_.types.get(lhs).enum_payload_storage));
         if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
+            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, "Eq")) {
+                this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
+            }
         } else if (!scalar && !is_null_pointer_comparison) {
             this->report(expr.range, std::string(SEMA_EQUALITY_SCALAR));
         }
@@ -579,9 +583,50 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
     const TypeHandle
 ) {
     if (syntax::is_valid(expr.object) &&
-        expr.object.value < this->module_.exprs.size() &&
-        this->module_.exprs[expr.object.value].kind == syntax::ExprKind::name) {
+        expr.object.value < this->module_.exprs.size()) {
         const syntax::ExprNode& object = this->module_.exprs[expr.object.value];
+        if (object.kind == syntax::ExprKind::generic_apply) {
+            const TypeHandle enum_type = this->resolve_associated_generic_type_owner(object, false);
+            if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
+                const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
+                if (enum_case == nullptr) {
+                    this->report(expr.range, sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), expr.field_name));
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+                }
+                if (is_valid(enum_case->payload_type)) {
+                    this->report(expr.range, sema_enum_payload_constructor_call_message(enum_case->name));
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+                }
+                this->record_expr_c_name(expr_id, enum_case->c_name);
+                return this->record_expr_type(expr_id, enum_case->type);
+            }
+        }
+        if (object.kind != syntax::ExprKind::name) {
+            TypeHandle object_type = this->analyze_expr(expr.object);
+            if (is_pointer_or_reference(this->checked_.types, object_type)) {
+                object_type = this->checked_.types.get(object_type).pointee;
+            }
+            if (this->checked_.types.is_tuple(object_type)) {
+                this->report(expr.range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
+            const StructInfo* info = this->find_struct(object_type);
+            if (info == nullptr || info->is_opaque) {
+                this->report(expr.range, std::string(SEMA_FIELD_STRUCT_VALUE));
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
+            for (const StructFieldInfo& field : info->fields) {
+                if (field.name == expr.field_name) {
+                    if (!this->can_access(info->module, field.visibility)) {
+                        this->report(expr.range, sema_private_field_message(expr.field_name));
+                        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+                    }
+                    return this->record_expr_type(expr_id, field.type);
+                }
+            }
+            this->report(expr.range, sema_unknown_field_message(expr.field_name));
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
         if (!object.scope_name.empty()) {
             const TypeHandle enum_type = this->resolve_associated_type_owner(object, false);
             if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
@@ -1014,7 +1059,9 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
 ) {
     const TypeHandle queried = this->resolve_type(expr.cast_type);
     if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::generic_param) {
-        this->report(expr.range, std::string(SEMA_GENERIC_SIZEOF_ALIGNOF));
+        if (!this->generic_param_has_capability(this->checked_.types.get(queried).name, "Sized")) {
+            this->report(expr.range, std::string(SEMA_GENERIC_SIZEOF_ALIGNOF));
+        }
     } else if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
         this->report(expr.range, std::string(SEMA_OPAQUE_SIZEOF_ALIGNOF));
     } else if (is_valid(queried) && !this->is_valid_storage_type(queried)) {

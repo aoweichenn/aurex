@@ -1,0 +1,9 @@
+module where_unknown_capability;
+
+fn same[T](left: T, right: T) -> bool where T: Comparable {
+    return left == right;
+}
+
+fn main() -> i32 {
+    return 0;
+}

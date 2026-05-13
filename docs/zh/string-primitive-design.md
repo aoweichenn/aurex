@@ -42,10 +42,10 @@ builtin str = {
 - LLVM 后端把 `str` 降低为 `{ ptr, usize }`，普通字符串字面量降低为全局字节数据加长度。
 - 测试已经锁住 `sizeof[str] == 16`、`alignof[str] == 8` 这一 64-bit ABI 事实。
 - 字符串字面量解码已经集中到共享实现，普通字符串会做 UTF-8 / Unicode scalar / escape 诊断，C 字符串会拒绝内部 NUL。
-- 编译器内建已经有 `strptr`、`strblen`、`strraw`，但这些还没有被正式 `unsafe` 体系约束。
+- 编译器内建已经有 `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw`；`strraw` 已被正式 `unsafe` 体系约束，checked UTF-8 构造不依赖旧 std。
 - 当前仓库根目录没有 `std/` 或 `selfhost/`。不存在当前有效的 `std.core.string.String`、`std.core.bytes.Bytes`、`std.fs.path.Path`、`std.ffi.c.string.CString` 实现。
 
-因此 M2 的判断是：`str` 的 ABI 方向已经接近正确；真正要补的是语言级安全边界和未来库类型边界。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span[u8]` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为未来库层重建设计素材。
+因此 M2 的判断是：`str` 的 ABI 方向已经接近正确，checked-vs-unchecked 构造边界已在语言核心收口；真正后续要补的是 checked slicing、未来库类型边界和拥有型资源语义。`str` 应负责有效 UTF-8 借用文本，`String` 负责拥有文本，`Bytes` / `Span[u8]` 负责原始字节，`CStr` / `CString` 负责 C FFI，`Path` 负责平台路径。旧 M1 的标准库 API 名字不能继续当成当前事实，只能作为未来库层重建设计素材。
 
 ## 业界设计对比
 
@@ -330,15 +330,20 @@ unsafe {
 
 - safe context 下调用 unchecked 构造会诊断。
 - `unsafe fn` 和 unsafe 函数指针调用必须发生在 unsafe context。
-- `strptr` / `strblen` 可以继续是 safe 只读观察操作。
+- `strptr` / `strblen` 可以继续是 safe 只读观察操作；`strvalid` / `strfromutf8` 是 safe checked 构造边界。
 - 文档要明确：任何构造 `str` 的入口都必须证明 UTF-8 有效，或者被标记为 unsafe。
 - 当前 unsafe 不包含 borrow checker、lifetime、unsafe trait/impl/extern block 或资源模型。
 
 ### Phase 3：定义最小 text API
 
-状态：M2 暂缓实现，先写规范。
+状态：M2 已冻结 no-std checked 构造入口，库层 text API 仍后置。
 
-旧 std 已经从当前树删除，不应急着重建完整 `std.core.str`。可以先定义未来库层的最小 text surface：
+旧 std 已经从当前树删除，不应急着重建完整 `std.core.str`。M2 当前先提供两个 compiler builtin 来锁住 safe/unsafe 边界：
+
+- `strvalid(bytes: []const u8 | []mut u8) -> bool`：只验证 byte slice 是否为有效 UTF-8。
+- `strfromutf8(bytes: []const u8 | []mut u8) -> (bool, str)`：成功返回 `(true, text)`；失败返回 `(false, "")`。失败路径不会把无效输入包装成 `str`，也不 trap。
+
+未来库层的最小 text surface 可以在这个边界上继续设计：
 
 - `byte_len`
 - `is_empty`
@@ -352,7 +357,7 @@ unsafe {
 
 验收重点不是 API 数量，而是边界：
 
-- checked API 不能调用后留下非法 `str`。
+- checked API 失败时不能把无效输入包装成 `str`。
 - unchecked API 必须在 `unsafe` 内。
 - API 不应依赖 M1 标准库名字特判。
 - 正例和负例应放在 language-core 样例中，直到库层重新设计完成。
@@ -407,8 +412,9 @@ M2 当前 language-core 至少要覆盖：
 - 普通字符串字面量允许内部 `\0`，C 字符串字面量拒绝内部 NUL。
 - 非 ASCII 文本如 `"ƒ"` 按 UTF-8 byte length 表达，不能被截断成单字节字符。
 - invalid UTF-8 字面量、invalid escape、surrogate escape 都给出稳定诊断。
-- `strptr`、`strblen`、`strraw` 的类型检查稳定。
-- 在引入 `unsafe` 后，`strraw` 不能继续暴露在 safe context。
+- `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw` 的类型检查稳定。
+- `strvalid` 对合法/非法 UTF-8 byte slice 返回稳定 bool；`strfromutf8` 成功返回 `(true, text)`，失败返回 `(false, "")`。
+- `strraw` 不能继续暴露在 safe context。
 
 未来库层重建后再补这些验收项：
 

@@ -18,9 +18,11 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
     const TypeHandle array_i32 = module.types.array(2, i32);
+    const TypeHandle slice_u8 = module.types.slice(PointerMutability::const_, u8);
     const TypeHandle slice_i32 = module.types.slice(PointerMutability::mut, i32);
     const TypeHandle callback_type = module.types.function(sema::FunctionCallConv::aurex, false, {i32}, i32);
     const TypeHandle str_type = builtin(module, BuiltinType::str);
+    const TypeHandle checked_str_type = module.types.tuple({bool_type, str_type});
     const TypeHandle record_type = module.types.named_struct("dump.Record", "dump_Record", false);
     const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
     module.records.push_back(RecordLayout {
@@ -77,6 +79,22 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     from_bytes.type = str_type;
     from_bytes.args = {string_data, string_byte_len};
     const ValueId rebuilt_string = builder.add(from_bytes);
+    Value byte_slice;
+    byte_slice.kind = ValueKind::slice;
+    byte_slice.type = slice_u8;
+    byte_slice.lhs = string_data;
+    byte_slice.rhs = string_byte_len;
+    const ValueId utf8_bytes = builder.add(byte_slice);
+    Value str_valid;
+    str_valid.kind = ValueKind::str_is_valid_utf8;
+    str_valid.type = bool_type;
+    str_valid.object = utf8_bytes;
+    const ValueId utf8_valid = builder.add(str_valid);
+    Value checked_string;
+    checked_string.kind = ValueKind::str_from_utf8_checked;
+    checked_string.type = checked_str_type;
+    checked_string.object = utf8_bytes;
+    const ValueId utf8_checked = builder.add(checked_string);
 
     Value missing_constant;
     missing_constant.kind = ValueKind::constant_ref;
@@ -129,6 +147,9 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         string_data,
         string_byte_len,
         rebuilt_string,
+        utf8_bytes,
+        utf8_valid,
+        utf8_checked,
         fallback_constant,
         callback,
         callback_call,
@@ -206,6 +227,8 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         "strptr",
         "strblen",
         "strraw",
+        "strvalid",
+        "strfromutf8",
         "const_ref @fallback_constant",
         "function_ref @dump_callback",
         "call %",

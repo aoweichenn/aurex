@@ -128,6 +128,23 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     return this->session_.module.push_expr(std::move(expr));
 }
 
+syntax::ExprId BuiltinExprParser::parse_str_slice_unary(
+    const syntax::ExprKind kind,
+    const ExprContext context
+) {
+    const syntax::Token& begin = this->previous();
+    const std::string name {begin.text};
+    this->expect_builtin_arg_list_start(parser_builtin_arg_start_message(name));
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_arg_end_message(name));
+
+    syntax::ExprNode expr;
+    expr.kind = kind;
+    expr.range = this->merge(begin.range, end.range);
+    expr.cast_expr = value;
+    return this->session_.module.push_expr(std::move(expr));
+}
+
 syntax::ExprId BuiltinExprParser::parse_strraw(const ExprContext context) {
     const syntax::Token& begin = this->previous();
     this->expect_builtin_arg_list_start(std::string(PARSER_EXPECT_BUILTIN_STRRAW_START));

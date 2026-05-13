@@ -13,9 +13,9 @@ after core syntax, types, modules, and ABI boundaries stabilize.
 
    Source-level builtin spellings are normalized to `sizeof[T]`,
    `alignof[T]`, `cast[T](x)`, `ptrcast[T](p)`, `bitcast[T](x)`,
-   `ptraddr(p)`, `ptrat[T](addr)`, `strptr(s)`, `strblen(s)`, and
-   `strraw(data, len)`. The old function-like names are no longer the language
-   surface.
+   `ptraddr(p)`, `ptrat[T](addr)`, `strptr(s)`, `strblen(s)`,
+   `strvalid(bytes)`, `strfromutf8(bytes)`, and `strraw(data, len)`. The old
+   function-like names are no longer the language surface.
 
 2. Value semantics boundary
 
@@ -72,8 +72,10 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
    recreate old `String`/`Bytes` std implementations. First settle type
    identity, ABI, literals, slice boundaries, and the checked/unchecked
-   construction boundary. `strraw(data, len)` is already fenced by `unsafe`;
-   checked UTF-8 construction remains a later API/design question.
+   construction boundary. `strraw(data, len)` is fenced by `unsafe`; checked
+   UTF-8 construction is now frozen as no-std builtins: `strvalid(bytes) -> bool`
+   and `strfromutf8(bytes) -> (bool, str)`, where failure returns `(false, "")`
+   instead of wrapping invalid input as `str`.
 
 9. Test performance
 

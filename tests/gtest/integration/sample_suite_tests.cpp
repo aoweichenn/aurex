@@ -126,6 +126,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic) {
     run_positive_runtime_smoke_sample("types", "tuple_basic.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_checked) {
+    run_positive_runtime_smoke_sample("types", "str_checked.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_ergonomics) {
     run_positive_runtime_smoke_sample("pattern_matching", "pattern_ergonomics.ax");
 }

@@ -971,8 +971,11 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     const TypeHandle usize = builtin(module, BuiltinType::usize);
     const TypeHandle str = builtin(module, BuiltinType::str);
     const TypeHandle u8 = builtin(module, BuiltinType::u8);
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
     const TypeHandle mut_u8_ptr = ptr(module, PointerMutability::mut, u8);
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
+    const TypeHandle u8_slice = module.types.slice(PointerMutability::const_, u8);
+    const TypeHandle checked_str = module.types.tuple({bool_type, str});
 
     Function function = make_function(module, "bad_string_builtins", i32);
     FunctionBuilder builder {module, function};
@@ -991,6 +994,10 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     const ValueId bad_mut_ptr_value = builder.add(typed_value(ValueKind::undef, mut_u8_ptr));
     const ValueId usize_one = builder.add(integer_value(usize, IR_VERIFIER_LITERAL_ONE));
     const ValueId bool_value_id = builder.add(bool_value(module, true));
+    Value good_u8_slice = typed_value(ValueKind::slice, u8_slice);
+    good_u8_slice.lhs = good_c_string_value;
+    good_u8_slice.rhs = usize_one;
+    const ValueId good_u8_slice_id = builder.add(good_u8_slice);
 
     Value bad_str_data_result = typed_value(ValueKind::str_data, i32);
     bad_str_data_result.object = good_string_value;
@@ -1007,6 +1014,22 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     Value bad_str_len_operand = typed_value(ValueKind::str_byte_len, usize);
     bad_str_len_operand.object = bad_byte_literal;
     const ValueId bad_str_len_operand_id = builder.add(bad_str_len_operand);
+
+    Value bad_strvalid_result = typed_value(ValueKind::str_is_valid_utf8, i32);
+    bad_strvalid_result.object = good_u8_slice_id;
+    const ValueId bad_strvalid_result_id = builder.add(bad_strvalid_result);
+
+    Value bad_strvalid_operand = typed_value(ValueKind::str_is_valid_utf8, bool_type);
+    bad_strvalid_operand.object = good_string_value;
+    const ValueId bad_strvalid_operand_id = builder.add(bad_strvalid_operand);
+
+    Value bad_strfromutf8_result = typed_value(ValueKind::str_from_utf8_checked, i32);
+    bad_strfromutf8_result.object = good_u8_slice_id;
+    const ValueId bad_strfromutf8_result_id = builder.add(bad_strfromutf8_result);
+
+    Value bad_strfromutf8_operand = typed_value(ValueKind::str_from_utf8_checked, checked_str);
+    bad_strfromutf8_operand.object = good_string_value;
+    const ValueId bad_strfromutf8_operand_id = builder.add(bad_strfromutf8_operand);
 
     Value bad_from_count = typed_value(ValueKind::str_from_bytes_unchecked, str);
     bad_from_count.args = {good_c_string_value};
@@ -1038,10 +1061,15 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
             bad_mut_ptr_value,
             usize_one,
             bool_value_id,
+            good_u8_slice_id,
             bad_str_data_result_id,
             bad_str_data_operand_id,
             bad_str_len_result_id,
             bad_str_len_operand_id,
+            bad_strvalid_result_id,
+            bad_strvalid_operand_id,
+            bad_strfromutf8_result_id,
+            bad_strfromutf8_operand_id,
             bad_from_count_id,
             bad_from_result_id,
             bad_from_data_id,
@@ -1063,6 +1091,9 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
         "strptr operand type mismatch",
         "strblen result must be usize",
         "strblen operand type mismatch",
+        "strvalid result must be bool",
+        "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice",
+        "strfromutf8 result must be (bool, str)",
         "strraw requires data and length arguments",
         "strraw result must be str",
         "strraw data must be *const u8",

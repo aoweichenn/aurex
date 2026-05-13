@@ -205,6 +205,7 @@ private:
     [[nodiscard]] ValueId lower_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_size_or_align_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_str_utf8_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
 
     void emit_deferred_scopes(base::usize keep_depth);

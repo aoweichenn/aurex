@@ -45,6 +45,9 @@ notes are design input only, not current progress.
 - Minimal M2 `unsafe` boundaries: `unsafe { ... }`, `unsafe fn`, unsafe
   function pointer types, unsafe call diagnostics, and unsafe-only checks for
   raw pointer dereference, `ptrcast`, `bitcast`, `ptrat`, and `strraw`.
+  The no-std checked `str` boundary is now `strvalid(bytes) -> bool` and
+  `strfromutf8(bytes) -> (bool, str)`; failed checked construction returns an
+  empty `str` instead of wrapping invalid input as text.
 - Default-private visibility, explicit `pub fn` return types, compound
   assignment, unified block-expression bodies, nested block comments, and
   range-only `for i in range(...)`.

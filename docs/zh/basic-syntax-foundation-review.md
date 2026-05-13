@@ -80,7 +80,7 @@ Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` /
 - 有表达式块，但普通块和表达式块不是同一套语法。
 - const initializer 已补齐基础纯标量运算，但还没有函数调用、控制流表达式或完整 comptime。
 - 最小 `unsafe` 边界已落地，unchecked 字符串、raw pointer dereference、bit cast 等破坏不变量的操作必须进入 unsafe context；完整 borrow/lifetime/resource 模型仍未设计。
-- `str` 已是语言内建，普通 slice 已落地，但还缺 UTF-8 boundary/check-vs-unchecked 的最小安全 API。
+- `str` 已是语言内建，普通 slice 已落地，M2 no-std UTF-8 check-vs-unchecked 边界已形成：`strvalid(bytes)` / `strfromutf8(bytes)` 是 safe checked 入口，`strraw(data, len)` 是 unsafe-only unchecked 入口。
 - 可见性默认值对长期模块 API 不友好。
 - enum 语法过早绑定 C ABI 形态，作为 ADT 过重。
 - 指针语法在基础层承担了 safe borrow、raw pointer、method receiver 和 FFI 多种角色。
@@ -440,7 +440,7 @@ expr_stmt =
 
 - 函数调用。
 - `if` / block / match / `?`。
-- `strptr` / `strblen` / `strraw`。
+- `strptr` / `strblen` / `strvalid` / `strfromutf8` / `strraw`。
 
 已补内容：
 
@@ -658,6 +658,13 @@ strraw(data, len)
 *ptr
 ```
 
+对应的 safe `str` checked 入口不在 unsafe 清单中：
+
+```aurex
+strvalid(bytes)
+strfromutf8(bytes)
+```
+
 已解决的问题：
 
 - raw pointer 解引用、指针整数转换、unchecked UTF-8、bit cast 都可能破坏语言不变量。
@@ -687,19 +694,20 @@ unsafe fn from_raw(data: *const u8, len: usize) -> str {
 
 优先级：中高。它是 optimizer 合约和未来资源语义专题的前置地基。
 
-## P1 缺陷：`str` 已是内建，但安全 API 边界还没形成
+## P1 已补：`str` 已是内建，安全构造边界已形成
 
 现状：
 
 - 普通字符串字面量类型是 `str`。
 - `str` 在 LLVM 后端降低为 `{ ptr, usize }`。
 - `sizeof[str]` / `alignof[str]` 已有 64-bit ABI 测试。
-- 编译器内建已有 `strptr`、`strblen`、`strraw`。
+- 编译器内建已有 `strptr`、`strblen`、`strvalid`、`strfromutf8`、`strraw`。
 
 问题：
 
-- `strraw` 能直接构造 `str`，当前已被 `unsafe` 语法约束；剩余问题是 checked UTF-8 构造 API 还没冻结。
-- 没有语言核心层面的 `slice_bytes_checked` / UTF-8 boundary 规则，未来重建设计文本/路径库时容易再次把安全边界推给库约定。
+- `strraw` 能直接构造 `str`，当前已被 `unsafe` 语法约束。
+- checked UTF-8 构造已冻结为语言核心内建：`strvalid(bytes) -> bool` 和 `strfromutf8(bytes) -> (bool, str)`，参数是 `[]const u8` 或 `[]mut u8`。`strfromutf8` 成功时返回 `(true, text)`，失败时返回 `(false, "")`，不会把无效输入包装成 `str`。
+- 仍未做语言核心层面的 checked string slicing；未来 `slice_bytes_checked` / UTF-8 scalar boundary API 可以进入 core text API 或库层。
 - `strptr` 暴露 raw pointer，长期需要和 borrow/lifetime/FFI 边界一起解释。
 - `c"..."` 仍是 `*const u8`，这是合理 FFI 过渡，但不能变成普通文本 API 的替代品。
 
@@ -708,6 +716,8 @@ M2 最小方向：
 ```aurex
 let text: str = "hello";
 let n: usize = strblen(text);
+let bytes: []const u8 = b"ok"[:];
+let checked = strfromutf8(bytes);
 
 unsafe {
     let borrowed = strraw(data, n);
@@ -718,7 +728,8 @@ unsafe {
 
 - `str` 继续作为语言内建，不依赖标准库存在。
 - `strblen` 可以保持 O(1) 基础观察能力。
-- checked UTF-8 构造和 checked slice 可以先设计语义，再决定是 compiler builtin、core intrinsic 还是未来 `core.str` API。
+- `strvalid` / `strfromutf8` 作为 M2 no-std compiler builtin，先锁住“checked 构造失败不返回无效文本”的边界。
+- checked slice 可以继续先设计语义，再决定是 compiler builtin、core intrinsic 还是未来 `core.str` API。
 - unchecked 构造必须进入 `unsafe`。
 - `c"..."` 只用于 FFI，不能隐式转 `str`。
 
@@ -922,7 +933,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 
 第二批再做：
 
-1. 固定 `str` 的 safe/unsafe API 边界。
+1. 固定 `str` 的 safe/unsafe API 边界。已补 M2 no-std checked 构造；checked slicing 后续单独设计。
 2. slice type/expression 已落地，后续只需和 `str` boundary 保持一致。
 3. raw/multiline raw string、bytes string 和 Unicode scalar `char` 已补齐，后续只需保持文档和测试矩阵同步。
 4. function pointer / function type 已落地，后续只需保持 grammar、诊断和 ABI 文档同步。

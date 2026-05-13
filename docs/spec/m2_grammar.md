@@ -558,7 +558,15 @@ The following operations require an unsafe context:
   `unsafe extern c fn(...) -> T`.
 
 Safe operations include address-of `&place`, `ptraddr(p)`, `strptr(s)`,
-`strblen(s)`, `sizeof[T]`, `alignof[T]`, and checked numeric `cast[T](x)`.
+`strblen(s)`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof[T]`,
+`alignof[T]`, and checked numeric `cast[T](x)`.
+
+`strvalid(bytes)` accepts a `[]const u8` or `[]mut u8` borrowed byte slice and
+returns `bool`. `strfromutf8(bytes)` accepts the same slice shape and returns
+`(bool, str)`: field `.0` is the success flag, and field `.1` is the borrowed
+`str` on success or the empty `str` on failure. A failed checked call never
+wraps invalid input as `str`; unchecked construction remains `strraw(data, len)`
+and is unsafe-only.
 
 ## 12. Patterns
 

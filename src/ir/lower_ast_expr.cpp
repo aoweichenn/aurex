@@ -220,6 +220,9 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
         return this->lower_str_projection_expr(expr_id, expr);
+    case syntax::ExprKind::str_is_valid_utf8:
+    case syntax::ExprKind::str_from_utf8_checked:
+        return this->lower_str_utf8_slice_expr(expr_id, expr);
     case syntax::ExprKind::str_from_bytes_unchecked:
         return this->lower_str_from_bytes_unchecked_expr(expr_id, expr);
     case syntax::ExprKind::invalid:
@@ -632,6 +635,19 @@ ValueId Lowerer::lower_str_projection_expr(
 ) {
     Value value;
     value.kind = expr.kind == syntax::ExprKind::str_data ? ValueKind::str_data : ValueKind::str_byte_len;
+    value.type = this->expr_type(expr_id);
+    value.object = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
+    return this->append_value(value);
+}
+
+ValueId Lowerer::lower_str_utf8_slice_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    Value value;
+    value.kind = expr.kind == syntax::ExprKind::str_is_valid_utf8
+        ? ValueKind::str_is_valid_utf8
+        : ValueKind::str_from_utf8_checked;
     value.type = this->expr_type(expr_id);
     value.object = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
     return this->append_value(value);

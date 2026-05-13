@@ -210,6 +210,12 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     case ValueKind::str_byte_len:
         out << "strblen " << value_ref(value.object);
         break;
+    case ValueKind::str_is_valid_utf8:
+        out << "strvalid " << value_ref(value.object);
+        break;
+    case ValueKind::str_from_utf8_checked:
+        out << "strfromutf8 " << value_ref(value.object);
+        break;
     case ValueKind::str_from_bytes_unchecked:
         out << "strraw(";
         for (base::usize i = 0; i < value.args.size(); ++i) {

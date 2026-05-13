@@ -84,6 +84,10 @@ private:
     [[nodiscard]] llvm::Value* emit_field_addr(const Value& value);
     [[nodiscard]] llvm::Value* emit_index_addr(const Value& value);
     [[nodiscard]] llvm::Value* emit_aggregate(const Value& value);
+    [[nodiscard]] llvm::Value* emit_str_is_valid_utf8(const Value& value);
+    [[nodiscard]] llvm::Value* emit_str_from_utf8_checked(const Value& value);
+    [[nodiscard]] llvm::Value* emit_utf8_validation_call(llvm::Value* data, llvm::Value* length);
+    [[nodiscard]] llvm::Function* utf8_validator_function();
     [[nodiscard]] llvm::Value* emit_cast(const Value& value);
     [[nodiscard]] llvm::Value* emit_size_of(sema::TypeHandle type);
     [[nodiscard]] llvm::Value* emit_align_of(sema::TypeHandle type);

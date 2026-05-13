@@ -53,6 +53,9 @@ struct StorageTypeWorkItem {
 
 constexpr base::usize IR_VERIFIER_ENTRY_ARGC_ARGV_PARAM_COUNT = 2;
 constexpr base::usize IR_VERIFIER_STR_FROM_BYTES_UNCHECKED_ARGUMENT_COUNT = 2;
+constexpr base::usize IR_VERIFIER_STRFROMUTF8_RESULT_FIELD_COUNT = 2;
+constexpr base::usize IR_VERIFIER_STRFROMUTF8_RESULT_OK_INDEX = 0;
+constexpr base::usize IR_VERIFIER_STRFROMUTF8_RESULT_VALUE_INDEX = 1;
 
 class Verifier final {
 public:
@@ -407,6 +410,12 @@ private:
             break;
         case ValueKind::str_byte_len:
             this->verify_str_byte_len(*value);
+            break;
+        case ValueKind::str_is_valid_utf8:
+            this->verify_str_is_valid_utf8(*value);
+            break;
+        case ValueKind::str_from_utf8_checked:
+            this->verify_str_from_utf8_checked(*value);
             break;
         case ValueKind::str_from_bytes_unchecked:
             this->verify_str_from_bytes_unchecked(*value);
@@ -858,6 +867,30 @@ private:
         this->verify_value_type(value.object, this->module_.types.builtin(sema::BuiltinType::str), "strblen operand");
     }
 
+    void verify_str_is_valid_utf8(const Value& value) {
+        this->verify_type(value.type, "strvalid result");
+        if (!this->module_.types.same(value.type, this->module_.types.builtin(sema::BuiltinType::bool_))) {
+            this->fail(std::string(IR_VERIFY_STRVALID_RESULT));
+        }
+        this->verify_str_utf8_slice_operand(value);
+    }
+
+    void verify_str_from_utf8_checked(const Value& value) {
+        this->verify_type(value.type, "strfromutf8 result");
+        if (!this->is_bool_str_tuple(value.type)) {
+            this->fail(std::string(IR_VERIFY_STRFROMUTF8_RESULT));
+        }
+        this->verify_str_utf8_slice_operand(value);
+    }
+
+    void verify_str_utf8_slice_operand(const Value& value) {
+        this->verify_value_id(value.object, "str UTF-8 operand");
+        const Value* object = this->get(value.object);
+        if (object != nullptr && !this->is_u8_slice(object->type)) {
+            this->fail(std::string(IR_VERIFY_STR_UTF8_SLICE));
+        }
+    }
+
     void verify_str_from_bytes_unchecked(const Value& value) {
         this->verify_type(value.type, "strraw result");
         if (!this->module_.types.is_str(value.type)) {
@@ -1089,6 +1122,30 @@ private:
         const sema::TypeInfo& pointer = this->module_.types.get(type);
         return pointer.pointer_mutability == sema::PointerMutability::const_ &&
                this->module_.types.same(pointer.pointee, this->module_.types.builtin(sema::BuiltinType::u8));
+    }
+
+    [[nodiscard]] bool is_u8_slice(const sema::TypeHandle type) const noexcept {
+        return this->module_.types.is_slice(type) &&
+               this->module_.types.same(
+                   this->module_.types.get(type).slice_element,
+                   this->module_.types.builtin(sema::BuiltinType::u8)
+               );
+    }
+
+    [[nodiscard]] bool is_bool_str_tuple(const sema::TypeHandle type) const noexcept {
+        if (!this->module_.types.is_tuple(type)) {
+            return false;
+        }
+        const sema::TypeInfo& tuple = this->module_.types.get(type);
+        return tuple.tuple_elements.size() == IR_VERIFIER_STRFROMUTF8_RESULT_FIELD_COUNT &&
+               this->module_.types.same(
+                   tuple.tuple_elements[IR_VERIFIER_STRFROMUTF8_RESULT_OK_INDEX],
+                   this->module_.types.builtin(sema::BuiltinType::bool_)
+               ) &&
+               this->module_.types.same(
+                   tuple.tuple_elements[IR_VERIFIER_STRFROMUTF8_RESULT_VALUE_INDEX],
+                   this->module_.types.builtin(sema::BuiltinType::str)
+               );
     }
 
     [[nodiscard]] bool slice_data_input_compatible(

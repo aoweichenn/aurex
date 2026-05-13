@@ -69,6 +69,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"strblen", syntax::TokenKind::kw_strblen},
     KeywordEntry {"strptr", syntax::TokenKind::kw_strptr},
     KeywordEntry {"strraw", syntax::TokenKind::kw_strraw},
+    KeywordEntry {"strvalid", syntax::TokenKind::kw_strvalid},
 
     KeywordEntry {"sizeof", syntax::TokenKind::kw_sizeof},
 
@@ -78,6 +79,7 @@ inline constexpr std::array KEYWORD_ENTRIES {
     KeywordEntry {"ptrat", syntax::TokenKind::kw_ptrat},
     KeywordEntry {"ptraddr", syntax::TokenKind::kw_ptraddr},
     KeywordEntry {"ptrcast", syntax::TokenKind::kw_ptrcast},
+    KeywordEntry {"strfromutf8", syntax::TokenKind::kw_strfromutf8},
 };
 
 struct KeywordBucket final {

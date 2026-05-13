@@ -1,0 +1,9 @@
+module strfromutf8_non_slice;
+
+fn main() -> i32 {
+    let checked = strfromutf8(1);
+    if checked.0 {
+        return 1;
+    }
+    return 0;
+}

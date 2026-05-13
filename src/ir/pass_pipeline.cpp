@@ -185,6 +185,8 @@ struct FunctionUseInfo {
                 break;
             case ValueKind::str_data:
             case ValueKind::str_byte_len:
+            case ValueKind::str_is_valid_utf8:
+            case ValueKind::str_from_utf8_checked:
                 record_slot_use(value.object, block_index, false);
                 break;
             case ValueKind::str_from_bytes_unchecked:

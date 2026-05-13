@@ -117,6 +117,8 @@ enum class ExprKind {
     paddr,
     str_data,
     str_byte_len,
+    str_is_valid_utf8,
+    str_from_utf8_checked,
     str_from_bytes_unchecked,
 };
 

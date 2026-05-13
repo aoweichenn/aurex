@@ -12,7 +12,7 @@
 
    第一批 P0 基础语法按这个顺序推进：
 
-   - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strblen(s)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
+   - 内建操作拼写已经先规范为 `sizeof[T]`、`alignof[T]`、`cast[T](x)`、`ptrcast[T](p)`、`bitcast[T](x)`、`ptraddr(p)`、`ptrat[T](addr)`、`strptr(s)`、`strblen(s)`、`strvalid(bytes)`、`strfromutf8(bytes)`、`strraw(data, len)`；旧的函数式拼写不再作为源码语法。
    - 最小 `unsafe` block / `unsafe fn` 已完成：raw pointer dereference、`ptrcast`、`bitcast`、`ptrat`、`strraw` 这类破坏不变量的操作已经不能留在普通安全表达式表面。
    - ADT-first enum 已完成非泛型 M2 形态：普通 `enum OptionI32 { some(i32), none }` / `enum Token { span(usize, usize), eof }` 成为主力写法；保留 `enum Status: u8 { ok = 0, err = 1 }` 作为显式 C-like/repr enum。
    - array literal / repeat literal 已完成：`[1, 2, 3]` 和 `[0; 128]` 现在能构造固定长度数组值。
@@ -23,7 +23,7 @@
 
 2. unsafe 与 `str` 安全边界
 
-   最小 unsafe 已落地：`unsafe { ... }` 建立 unsafe context，带 tail expression 时作为表达式求值，没有 tail expression 时类型为 `void`；`unsafe fn` 和 unsafe 函数指针调用必须发生在 unsafe context。raw pointer 解引用、`ptrcast`、`bitcast`、`ptrat`、`strraw` 已经是 unsafe-only。M2 这里不包含 borrow checker、lifetime、unsafe trait、unsafe impl、unsafe extern block 或资源/所有权模型。下一步围绕 `str` 继续冻结 checked UTF-8 构造、slice / FFI 边界和 safe API。
+   最小 unsafe 已落地：`unsafe { ... }` 建立 unsafe context，带 tail expression 时作为表达式求值，没有 tail expression 时类型为 `void`；`unsafe fn` 和 unsafe 函数指针调用必须发生在 unsafe context。raw pointer 解引用、`ptrcast`、`bitcast`、`ptrat`、`strraw` 已经是 unsafe-only。M2 这里不包含 borrow checker、lifetime、unsafe trait、unsafe impl、unsafe extern block 或资源/所有权模型。`str` 的无 std checked UTF-8 边界已冻结为 `strvalid(bytes) -> bool` 和 `strfromutf8(bytes) -> (bool, str)`；失败时返回空 `str`，不会把无效输入包装成 UTF-8 文本。
 
 3. enum ADT 与 pattern 地基
 
@@ -31,7 +31,7 @@
 
 4. 数组、slice、字符串与函数类型基础语法
 
-   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型和 C FFI。字面量体系和 tuple 基础已经补齐到 M2 基线；下一步更适合进入 pattern 人体工程学和 `str` checked boundary，而不是重建库层。
+   Aurex 已有数组类型和值语法、borrowed slice、tuple、`str`、C string、raw/multiline raw string、byte string、byte literal、Unicode scalar `char`、函数声明、函数指针类型和 C FFI。字面量体系、tuple 基础、pattern ergonomics 和 `str` checked UTF-8 构造已经补齐到 M2 基线；下一步更适合处理 checked string slicing、capability/where 和 safe reference，而不是重建库层。
 
 5. 值语义边界
 
@@ -51,7 +51,7 @@
 
 9. 字符串基础类型
 
-   保留 `str` 作为语言级 borrowed UTF-8 slice 的设计方向，但不要复活旧 std 的 `String`/`Bytes` 实现。先完成 `str` 的类型、ABI、字面量、slice 边界和内建操作边界。
+   保留 `str` 作为语言级 borrowed UTF-8 slice 的设计方向，但不要复活旧 std 的 `String`/`Bytes` 实现。`str` 的类型、ABI、字面量、unchecked `strraw` 和 checked `strvalid` / `strfromutf8` 构造边界已落地；后续补 checked slicing 和未来库层 text API。
 
 10. 测试性能继续收口
 

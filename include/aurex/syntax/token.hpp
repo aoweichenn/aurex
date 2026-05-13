@@ -76,6 +76,8 @@ enum class TokenKind {
     kw_ptrat,
     kw_strptr,
     kw_strblen,
+    kw_strvalid,
+    kw_strfromutf8,
     kw_strraw,
     l_paren,
     r_paren,

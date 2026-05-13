@@ -1,12 +1,15 @@
 #include <backend/llvm/llvm_backend_internal.hpp>
 
-#include <llvm/IR/Constants.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/ConstantFold.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -21,6 +24,23 @@ constexpr char LLVM_BACKEND_VALUE_STRING_DATA_NAME[] = "str.data";
 constexpr char LLVM_BACKEND_VALUE_STRING_LENGTH_NAME[] = "str.len";
 constexpr char LLVM_BACKEND_VALUE_SLICE_DATA_NAME[] = "slice.data";
 constexpr char LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME[] = "slice.len";
+constexpr char LLVM_BACKEND_VALUE_UTF8_VALID_NAME[] = "str.utf8.valid";
+constexpr char LLVM_BACKEND_VALUE_UTF8_HELPER_NAME[] = "__aurex_utf8_validate";
+constexpr char LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK[] = "entry";
+constexpr char LLVM_BACKEND_VALUE_UTF8_NULL_CHECK_BLOCK[] = "null.check";
+constexpr char LLVM_BACKEND_VALUE_UTF8_LOOP_BLOCK[] = "loop";
+constexpr char LLVM_BACKEND_VALUE_UTF8_SCAN_BLOCK[] = "scan";
+constexpr char LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK[] = "valid";
+constexpr char LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK[] = "invalid";
+constexpr char LLVM_BACKEND_VALUE_UTF8_CASE_MATCH_SUFFIX[] = ".match";
+constexpr char LLVM_BACKEND_VALUE_UTF8_CASE_BYTES_SUFFIX[] = ".bytes";
+constexpr char LLVM_BACKEND_VALUE_UTF8_CASE_SUCCESS_SUFFIX[] = ".success";
+constexpr char LLVM_BACKEND_VALUE_UTF8_CASE_MISS_SUFFIX[] = ".miss";
+constexpr char LLVM_BACKEND_VALUE_UTF8_INDEX_NAME[] = "i";
+constexpr char LLVM_BACKEND_VALUE_UTF8_FIRST_NAME[] = "first";
+constexpr char LLVM_BACKEND_VALUE_UTF8_BYTE_NAME[] = "byte";
+constexpr char LLVM_BACKEND_VALUE_UTF8_STR_NAME[] = "str.checked";
+constexpr char LLVM_BACKEND_VALUE_UTF8_RESULT_NAME[] = "strfromutf8.result";
 constexpr char LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX[] = ".result";
 constexpr char LLVM_BACKEND_VALUE_FIELD_ADDRESS_SUFFIX[] = ".addr";
 constexpr char LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME[] = "index.addr";
@@ -29,11 +49,41 @@ constexpr unsigned LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX = 1U;
+constexpr unsigned LLVM_BACKEND_VALUE_STRFROMUTF8_OK_FIELD_INDEX = 0U;
+constexpr unsigned LLVM_BACKEND_VALUE_STRFROMUTF8_VALUE_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_ZERO_INTEGER = 0U;
 constexpr std::uint64_t LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER = 1U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_WIDTH_ONE = 1U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_WIDTH_TWO = 2U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE = 3U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR = 4U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_ASCII_MAX = 0x7FU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_CONT_MIN = 0x80U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_CONT_MAX = 0xBFU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_TWO_MIN = 0xC2U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_TWO_MAX = 0xDFU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_E0 = 0xE0U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_E0_SECOND_MIN = 0xA0U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_E1_MIN = 0xE1U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_EC_MAX = 0xECU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_ED = 0xEDU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_ED_SECOND_MAX = 0x9FU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_EE_MIN = 0xEEU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_THREE_EF_MAX = 0xEFU;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_FOUR_F0 = 0xF0U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_FOUR_F0_SECOND_MIN = 0x90U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_FOUR_F1_MIN = 0xF1U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_FOUR_F3_MAX = 0xF3U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_FOUR_F4 = 0xF4U;
+constexpr std::uint64_t LLVM_BACKEND_VALUE_UTF8_FOUR_F4_SECOND_MAX = 0x8FU;
 constexpr double LLVM_BACKEND_VALUE_ZERO_FLOAT = 0.0;
 constexpr char LLVM_BACKEND_VALUE_NULL_TERMINATOR = '\0';
+
+struct Utf8ByteRange {
+    std::uint64_t min = LLVM_BACKEND_VALUE_ZERO_INTEGER;
+    std::uint64_t max = LLVM_BACKEND_VALUE_ZERO_INTEGER;
+};
 
 } // namespace
 
@@ -135,6 +185,10 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
             {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
             LLVM_BACKEND_VALUE_STRING_LENGTH_NAME
         );
+    case ValueKind::str_is_valid_utf8:
+        return this->emit_str_is_valid_utf8(value);
+    case ValueKind::str_from_utf8_checked:
+        return this->emit_str_from_utf8_checked(value);
     case ValueKind::str_from_bytes_unchecked: {
         llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
         result = this->builder_.CreateInsertValue(
@@ -575,6 +629,315 @@ llvm::Value* LlvmEmitter::emit_aggregate(const Value& value) {
         aggregate = this->builder_.CreateInsertValue(aggregate, this->get(field.value), {static_cast<unsigned>(index)});
     }
     return aggregate;
+}
+
+llvm::Value* LlvmEmitter::emit_str_is_valid_utf8(const Value& value) {
+    llvm::Value* slice = this->get(value.object);
+    llvm::Value* data = this->builder_.CreateExtractValue(
+        slice,
+        {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_SLICE_DATA_NAME
+    );
+    llvm::Value* length = this->builder_.CreateExtractValue(
+        slice,
+        {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME
+    );
+    return this->emit_utf8_validation_call(data, length);
+}
+
+llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value) {
+    llvm::Value* slice = this->get(value.object);
+    llvm::Value* data = this->builder_.CreateExtractValue(
+        slice,
+        {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_SLICE_DATA_NAME
+    );
+    llvm::Value* length = this->builder_.CreateExtractValue(
+        slice,
+        {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME
+    );
+    llvm::Value* valid = this->emit_utf8_validation_call(data, length);
+
+    llvm::Value* empty_data = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(data->getType()));
+    llvm::Value* empty_length = llvm::ConstantInt::get(length->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* checked_data = this->builder_.CreateSelect(valid, data, empty_data);
+    llvm::Value* checked_length = this->builder_.CreateSelect(valid, length, empty_length);
+
+    llvm::Value* text = llvm::UndefValue::get(this->llvm_type(this->source_.types.builtin(sema::BuiltinType::str)));
+    text = this->builder_.CreateInsertValue(
+        text,
+        checked_data,
+        {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_UTF8_STR_NAME
+    );
+    text = this->builder_.CreateInsertValue(
+        text,
+        checked_length,
+        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_UTF8_STR_NAME
+    );
+
+    llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+    result = this->builder_.CreateInsertValue(
+        result,
+        valid,
+        {LLVM_BACKEND_VALUE_STRFROMUTF8_OK_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_UTF8_RESULT_NAME
+    );
+    result = this->builder_.CreateInsertValue(
+        result,
+        text,
+        {LLVM_BACKEND_VALUE_STRFROMUTF8_VALUE_FIELD_INDEX},
+        LLVM_BACKEND_VALUE_UTF8_RESULT_NAME
+    );
+    return result;
+}
+
+llvm::Value* LlvmEmitter::emit_utf8_validation_call(llvm::Value* data, llvm::Value* length) {
+    return this->builder_.CreateCall(
+        this->utf8_validator_function(),
+        {data, length},
+        LLVM_BACKEND_VALUE_UTF8_VALID_NAME
+    );
+}
+
+llvm::Function* LlvmEmitter::utf8_validator_function() {
+    if (llvm::Function* existing = this->module_->getFunction(LLVM_BACKEND_VALUE_UTF8_HELPER_NAME);
+        existing != nullptr) {
+        return existing;
+    }
+
+    llvm::Type* byte_type = llvm::Type::getInt8Ty(this->context_);
+    llvm::Type* bool_type = llvm::Type::getInt1Ty(this->context_);
+    llvm::Type* size_type = this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize));
+    llvm::PointerType* byte_pointer_type = llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE);
+    llvm::FunctionType* function_type = llvm::FunctionType::get(
+        bool_type,
+        {byte_pointer_type, size_type},
+        false
+    );
+    llvm::Function* function = llvm::Function::Create(
+        function_type,
+        llvm::GlobalValue::InternalLinkage,
+        LLVM_BACKEND_VALUE_UTF8_HELPER_NAME,
+        this->module_.get()
+    );
+
+    auto argument = function->arg_begin();
+    llvm::Value* data = &*argument++;
+    llvm::Value* length = &*argument;
+
+    const llvm::IRBuilderBase::InsertPoint saved_insert_point = this->builder_.saveIP();
+    llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK,
+        function
+    );
+    llvm::BasicBlock* null_check_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_NULL_CHECK_BLOCK,
+        function
+    );
+    llvm::BasicBlock* loop_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_LOOP_BLOCK,
+        function
+    );
+    llvm::BasicBlock* scan_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_SCAN_BLOCK,
+        function
+    );
+    llvm::BasicBlock* valid_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK,
+        function
+    );
+    llvm::BasicBlock* invalid_block = llvm::BasicBlock::Create(
+        this->context_,
+        LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK,
+        function
+    );
+
+    const auto size_constant = [&](const std::uint64_t value) {
+        return llvm::ConstantInt::get(size_type, value);
+    };
+    const auto byte_constant = [&](const std::uint64_t value) {
+        return llvm::ConstantInt::get(byte_type, value);
+    };
+    const auto byte_in_range = [&](llvm::Value* byte, const Utf8ByteRange range) {
+        llvm::Value* above_min = this->builder_.CreateICmpUGE(byte, byte_constant(range.min));
+        llvm::Value* below_max = this->builder_.CreateICmpULE(byte, byte_constant(range.max));
+        return this->builder_.CreateAnd(above_min, below_max);
+    };
+    const auto byte_at = [&](llvm::Value* index) {
+        llvm::Value* pointer = this->builder_.CreateInBoundsGEP(byte_type, data, index);
+        return this->builder_.CreateLoad(byte_type, pointer, LLVM_BACKEND_VALUE_UTF8_BYTE_NAME);
+    };
+
+    this->builder_.SetInsertPoint(entry_block);
+    llvm::Value* zero = size_constant(LLVM_BACKEND_VALUE_ZERO_INTEGER);
+    llvm::Value* empty = this->builder_.CreateICmpEQ(length, zero);
+    this->builder_.CreateCondBr(empty, valid_block, null_check_block);
+
+    this->builder_.SetInsertPoint(null_check_block);
+    llvm::Value* null_data = llvm::ConstantPointerNull::get(byte_pointer_type);
+    llvm::Value* data_is_null = this->builder_.CreateICmpEQ(data, null_data);
+    this->builder_.CreateCondBr(data_is_null, invalid_block, loop_block);
+
+    this->builder_.SetInsertPoint(loop_block);
+    llvm::PHINode* index = this->builder_.CreatePHI(size_type, 0, LLVM_BACKEND_VALUE_UTF8_INDEX_NAME);
+    index->addIncoming(zero, null_check_block);
+    llvm::Value* done = this->builder_.CreateICmpEQ(index, length);
+    this->builder_.CreateCondBr(done, valid_block, scan_block);
+
+    this->builder_.SetInsertPoint(scan_block);
+    llvm::Value* first = byte_at(index);
+    first->setName(LLVM_BACKEND_VALUE_UTF8_FIRST_NAME);
+
+    const auto append_case = [&](
+        const std::string& name,
+        llvm::Value* first_matches,
+        const std::uint64_t width,
+        const std::initializer_list<Utf8ByteRange> continuation_ranges
+    ) {
+        llvm::BasicBlock* match_block = llvm::BasicBlock::Create(
+            this->context_,
+            name + LLVM_BACKEND_VALUE_UTF8_CASE_MATCH_SUFFIX,
+            function
+        );
+        llvm::BasicBlock* bytes_block = llvm::BasicBlock::Create(
+            this->context_,
+            name + LLVM_BACKEND_VALUE_UTF8_CASE_BYTES_SUFFIX,
+            function
+        );
+        llvm::BasicBlock* success_block = llvm::BasicBlock::Create(
+            this->context_,
+            name + LLVM_BACKEND_VALUE_UTF8_CASE_SUCCESS_SUFFIX,
+            function
+        );
+        llvm::BasicBlock* miss_block = llvm::BasicBlock::Create(
+            this->context_,
+            name + LLVM_BACKEND_VALUE_UTF8_CASE_MISS_SUFFIX,
+            function
+        );
+
+        this->builder_.CreateCondBr(first_matches, match_block, miss_block);
+
+        this->builder_.SetInsertPoint(match_block);
+        llvm::Value* remaining = this->builder_.CreateSub(length, index);
+        llvm::Value* has_width = this->builder_.CreateICmpUGE(remaining, size_constant(width));
+        this->builder_.CreateCondBr(has_width, bytes_block, invalid_block);
+
+        this->builder_.SetInsertPoint(bytes_block);
+        llvm::Value* bytes_ok = llvm::ConstantInt::get(bool_type, true);
+        std::uint64_t offset = LLVM_BACKEND_VALUE_UTF8_WIDTH_ONE;
+        for (const Utf8ByteRange range : continuation_ranges) {
+            llvm::Value* byte_index = this->builder_.CreateAdd(index, size_constant(offset));
+            llvm::Value* byte = byte_at(byte_index);
+            bytes_ok = this->builder_.CreateAnd(bytes_ok, byte_in_range(byte, range));
+            ++offset;
+        }
+        this->builder_.CreateCondBr(bytes_ok, success_block, invalid_block);
+
+        this->builder_.SetInsertPoint(success_block);
+        llvm::Value* next_index = this->builder_.CreateAdd(index, size_constant(width));
+        index->addIncoming(next_index, success_block);
+        this->builder_.CreateBr(loop_block);
+
+        this->builder_.SetInsertPoint(miss_block);
+    };
+
+    append_case(
+        "utf8.ascii",
+        this->builder_.CreateICmpULE(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_ASCII_MAX)),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_ONE,
+        {}
+    );
+    append_case(
+        "utf8.two",
+        byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_TWO_MIN, LLVM_BACKEND_VALUE_UTF8_TWO_MAX}),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_TWO,
+        {{LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX}}
+    );
+    append_case(
+        "utf8.three.e0",
+        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_THREE_E0)),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_THREE_E0_SECOND_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    append_case(
+        "utf8.three.mid",
+        byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_THREE_E1_MIN, LLVM_BACKEND_VALUE_UTF8_THREE_EC_MAX}),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    append_case(
+        "utf8.three.ed",
+        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_THREE_ED)),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_THREE_ED_SECOND_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    append_case(
+        "utf8.three.high",
+        byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_THREE_EE_MIN, LLVM_BACKEND_VALUE_UTF8_THREE_EF_MAX}),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    append_case(
+        "utf8.four.f0",
+        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_FOUR_F0)),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_FOUR_F0_SECOND_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    append_case(
+        "utf8.four.mid",
+        byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_FOUR_F1_MIN, LLVM_BACKEND_VALUE_UTF8_FOUR_F3_MAX}),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    append_case(
+        "utf8.four.f4",
+        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_FOUR_F4)),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR,
+        {
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_FOUR_F4_SECOND_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+            {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
+        }
+    );
+    this->builder_.CreateBr(invalid_block);
+
+    this->builder_.SetInsertPoint(valid_block);
+    this->builder_.CreateRet(llvm::ConstantInt::get(bool_type, true));
+
+    this->builder_.SetInsertPoint(invalid_block);
+    this->builder_.CreateRet(llvm::ConstantInt::get(bool_type, false));
+
+    this->builder_.restoreIP(saved_insert_point);
+    return function;
 }
 
 llvm::Value* LlvmEmitter::emit_cast(const Value& value) {

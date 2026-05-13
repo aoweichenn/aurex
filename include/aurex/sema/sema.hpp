@@ -177,6 +177,7 @@ private:
     [[nodiscard]] TypeHandle analyze_ptr_addr_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_paddr_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] TypeHandle analyze_str_utf8_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_enum_constructor_call(syntax::ExprId expr_id, const syntax::ExprNode& expr, const EnumCaseInfo& enum_case);

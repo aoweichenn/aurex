@@ -2084,6 +2084,8 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_ptrat,
             TokenKind::kw_strptr,
             TokenKind::kw_strblen,
+            TokenKind::kw_strvalid,
+            TokenKind::kw_strfromutf8,
             TokenKind::kw_strraw,
             TokenKind::kw_unsafe,
             TokenKind::l_paren,

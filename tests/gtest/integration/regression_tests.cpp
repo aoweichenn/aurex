@@ -152,6 +152,36 @@ TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {
     );
 }
 
+TEST_F(AurexIntegrationTest, StringCheckedBoundary) {
+    const fs::path positive = positive_sample("types", "str_checked.ax");
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(positive)).output;
+    expect_contains_all(ir, {
+        "strvalid",
+        "strfromutf8",
+        "(bool, str)",
+    });
+
+    const std::string llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(positive)).output;
+    expect_contains_all(llvm_ir, {
+        "__aurex_utf8_validate",
+        "strfromutf8.result",
+        "select i1",
+    });
+
+    const fs::path binary = test_bin_root() / "str_checked";
+    require_success(aurexc() + " " + q(positive) + " -o " + q(binary));
+    require_success(q(binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "strvalid_non_slice.ax"))).output,
+        "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "strfromutf8_non_slice.ax"))).output,
+        "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"
+    );
+}
+
 TEST_F(AurexIntegrationTest, ArrayLiteralRegressions) {
     const fs::path array_literal = positive_sample("types", "array_literal.ax");
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(array_literal)).output;

@@ -171,6 +171,11 @@ struct IntegerLiteralExpr {
            types.same(pointer.pointee, types.builtin(BuiltinType::u8));
 }
 
+[[nodiscard]] bool is_u8_slice(const TypeTable& types, const TypeHandle type) noexcept {
+    return types.is_slice(type) &&
+           types.same(types.get(type).slice_element, types.builtin(BuiltinType::u8));
+}
+
 [[nodiscard]] bool parse_tuple_field_index(const std::string_view text, base::usize& index) noexcept {
     if (text.empty()) {
         return false;
@@ -306,6 +311,9 @@ TypeHandle SemanticAnalyzer::analyze_expr(
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
         return this->analyze_str_projection_expr(expr_id, expr);
+    case syntax::ExprKind::str_is_valid_utf8:
+    case syntax::ExprKind::str_from_utf8_checked:
+        return this->analyze_str_utf8_slice_expr(expr_id, expr);
     case syntax::ExprKind::str_from_bytes_unchecked:
         return this->analyze_str_from_bytes_unchecked_expr(expr_id, expr);
     case syntax::ExprKind::invalid:
@@ -1053,6 +1061,26 @@ TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
         );
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
+}
+
+TypeHandle SemanticAnalyzer::analyze_str_utf8_slice_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr
+) {
+    const TypeHandle bytes = this->analyze_expr(expr.cast_expr);
+    if (!is_u8_slice(this->checked_.types, bytes)) {
+        this->report(expr.range, std::string(SEMA_STR_UTF8_SLICE));
+    }
+    if (expr.kind == syntax::ExprKind::str_is_valid_utf8) {
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
+    }
+    return this->record_expr_type(
+        expr_id,
+        this->checked_.types.tuple({
+            this->checked_.types.builtin(BuiltinType::bool_),
+            this->checked_.types.builtin(BuiltinType::str),
+        })
+    );
 }
 
 TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(

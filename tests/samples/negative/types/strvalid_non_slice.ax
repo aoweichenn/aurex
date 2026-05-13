@@ -1,0 +1,9 @@
+module strvalid_non_slice;
+
+fn main() -> i32 {
+    let ok = strvalid(1);
+    if ok {
+        return 1;
+    }
+    return 0;
+}

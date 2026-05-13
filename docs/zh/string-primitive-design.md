@@ -316,9 +316,9 @@ FFI 层应有单独类型：
 
 ### Phase 2：补上 `unsafe` 边界
 
-状态：M2 待设计。
+状态：M2 已完成最小边界。
 
-`strraw(data, len)` 当前能绕过 UTF-8 不变量，是典型 unsafe 操作。M2 应先引入最小 `unsafe` 语法，再决定它是否保留为裸内建：
+`strraw(data, len)` 能绕过 UTF-8 不变量，是典型 unsafe 操作。当前 M2 已引入最小 `unsafe` 语法，并把它保留为 unsafe-only 内建：
 
 ```aurex
 unsafe {
@@ -326,12 +326,13 @@ unsafe {
 }
 ```
 
-第一阶段要求：
+已落地规则：
 
-- safe context 下调用 unchecked 构造必须诊断。
-- `unsafe fn` 调用必须发生在 unsafe context。
+- safe context 下调用 unchecked 构造会诊断。
+- `unsafe fn` 和 unsafe 函数指针调用必须发生在 unsafe context。
 - `strptr` / `strblen` 可以继续是 safe 只读观察操作。
 - 文档要明确：任何构造 `str` 的入口都必须证明 UTF-8 有效，或者被标记为 unsafe。
+- 当前 unsafe 不包含 borrow checker、lifetime、unsafe trait/impl/extern block 或资源模型。
 
 ### Phase 3：定义最小 text API
 

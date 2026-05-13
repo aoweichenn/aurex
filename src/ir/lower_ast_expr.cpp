@@ -120,7 +120,10 @@ ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const syntax::Ex
     const base::usize scope_depth = defer_scopes_.size();
     defer_scopes_.push_back({});
     lower_block_contents(expr.block);
-    const ValueId result = lower_expr(expr.block_result, expr_type(expr_id));
+    ValueId result = INVALID_VALUE_ID;
+    if (syntax::is_valid(expr.block_result)) {
+        result = this->lower_expr(expr.block_result, this->expr_type(expr_id));
+    }
     if (!has_terminator(current_block_)) {
         emit_deferred_scopes(scope_depth);
     }
@@ -166,6 +169,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::if_expr:
         return this->lower_if_expr(expr_id, expr);
     case syntax::ExprKind::block_expr:
+        return this->lower_block_expr(expr_id, expr);
+    case syntax::ExprKind::unsafe_block:
         return this->lower_block_expr(expr_id, expr);
     case syntax::ExprKind::match_expr:
         return this->lower_match_expr(expr_id, expr);

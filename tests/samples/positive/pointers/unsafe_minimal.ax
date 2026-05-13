@@ -1,0 +1,36 @@
+module unsafe_minimal;
+
+type UnsafeRead = unsafe fn(*const i32) -> i32;
+
+unsafe fn from_raw(data: *const u8, len: usize) -> str {
+    return strraw(data, len);
+}
+
+unsafe fn read_raw(value: *const i32) -> i32 {
+    return *value;
+}
+
+fn bump(value: *mut i32) -> void {
+    unsafe {
+        *value = *value + 1;
+    }
+}
+
+fn same_address(value: *mut i32) -> *mut i32 {
+    return unsafe { ptrat[*mut i32](ptraddr(value)) };
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    bump(&value);
+    let ptr: *mut i32 = same_address(&value);
+    unsafe {
+        *ptr = *ptr + 1;
+    }
+    let text: str = unsafe { from_raw(strptr("ok"), strblen("ok")) };
+    let zero_bits: f32 = unsafe { bitcast[f32](cast[u32](0)) };
+    let read_ptr: *const i32 = unsafe { ptrcast[*const i32](&value) };
+    let reader: UnsafeRead = read_raw;
+    let read_value: i32 = unsafe { reader(read_ptr) };
+    return value - read_value + cast[i32](strblen(text)) - 2;
+}

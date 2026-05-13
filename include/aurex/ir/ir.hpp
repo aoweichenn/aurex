@@ -218,6 +218,7 @@ struct Function {
     Linkage linkage = Linkage::internal;
     AbiCallConv call_conv = AbiCallConv::aurex;
     bool is_entry = false;
+    bool is_unsafe = false;
     bool is_variadic = false;
     sema::TypeHandle return_type = sema::INVALID_TYPE_HANDLE;
     std::vector<FunctionParam> signature_params;

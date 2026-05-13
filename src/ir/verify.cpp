@@ -724,6 +724,7 @@ private:
         const bool target_is_c = target.call_conv == AbiCallConv::c;
         const bool type_is_c = function.function_call_conv == sema::FunctionCallConv::c;
         if (target_is_c != type_is_c ||
+            function.function_is_unsafe != target.is_unsafe ||
             function.function_is_variadic != target.is_variadic ||
             function.function_params.size() != target.signature_params.size() ||
             !this->module_.types.same(function.function_return, target.return_type)) {

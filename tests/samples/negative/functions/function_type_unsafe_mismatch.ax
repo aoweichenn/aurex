@@ -1,0 +1,12 @@
+module function_type_unsafe_mismatch;
+
+type SafeRead = fn(*const i32) -> i32;
+
+unsafe fn read_raw(value: *const i32) -> i32 {
+    return *value;
+}
+
+fn main() -> i32 {
+    let reader: SafeRead = read_raw;
+    return 0;
+}

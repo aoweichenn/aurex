@@ -22,13 +22,14 @@ syntax::ItemId ItemParser::parse_impl_block() {
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         const ParsedVisibility visibility = this->parse_visibility();
-        if (!this->check(TokenKind::kw_fn)) {
+        const bool is_unsafe = this->check(TokenKind::kw_unsafe);
+        if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
             this->report_here(std::string(PARSER_EXPECT_IMPL_FN));
             this->synchronize(RecoveryContext::item);
             this->reset_panic();
             continue;
         }
-        const syntax::ItemId method = this->parse_fn_decl(false, false);
+        const syntax::ItemId method = this->parse_fn_decl(false, false, is_unsafe);
         if (syntax::is_valid(method)) {
             this->session_.module.items[method.value].visibility = visibility.visibility;
             this->session_.module.items[method.value].impl_type = impl_type;
@@ -53,8 +54,9 @@ syntax::ItemId ItemParser::parse_extern_block() {
     block.is_extern_c = true;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
-        if (this->check(TokenKind::kw_fn)) {
-            const syntax::ItemId item = this->parse_fn_decl(false, true);
+        const bool is_unsafe = this->check(TokenKind::kw_unsafe);
+        if (this->check(TokenKind::kw_fn) || (is_unsafe && this->check_next(TokenKind::kw_fn))) {
+            const syntax::ItemId item = this->parse_fn_decl(false, true, is_unsafe);
             if (syntax::is_valid(item)) {
                 block.extern_items.push_back(item);
             }

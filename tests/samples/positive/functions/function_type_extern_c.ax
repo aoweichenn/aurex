@@ -20,7 +20,7 @@ fn main() -> i32 {
         return 1;
     }
     var buffer: [16]u8 = [0; 16];
-    let written: i32 = format(ptrcast[*mut u8](&buffer), cast[usize](16), c"%s", text);
+    let written: i32 = format(unsafe { ptrcast[*mut u8](&buffer) }, cast[usize](16), c"%s", text);
     if written != 4 {
         return 2;
     }

@@ -5,5 +5,5 @@ import samplelib.aliases;
 fn main() -> i32 {
     var value: ImportedInt = 40;
     let ptr: ImportedIntPtr = &value;
-    return *ptr - 40;
+    return unsafe { *ptr } - 40;
 }

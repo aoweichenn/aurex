@@ -45,6 +45,20 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
         std::vector<TypeHandle> {i32, u32},
         i32
     );
+    const TypeHandle unsafe_function_i32_u32 = module.types.function(
+        sema::FunctionCallConv::aurex,
+        true,
+        false,
+        std::vector<TypeHandle> {i32, u32},
+        i32
+    );
+    const TypeHandle unsafe_extern_function = module.types.function(
+        sema::FunctionCallConv::c,
+        true,
+        false,
+        std::vector<TypeHandle> {const_ptr_i32},
+        i32
+    );
     const TypeHandle extern_variadic_function = module.types.function(
         sema::FunctionCallConv::c,
         true,
@@ -74,6 +88,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_TRUE(module.types.same(const_slice_i32, const_slice_i32_again));
     EXPECT_FALSE(module.types.same(const_slice_i32, mut_slice_i32));
     EXPECT_TRUE(module.types.same(function_i32_u32, function_i32_u32_again));
+    EXPECT_FALSE(module.types.same(function_i32_u32, unsafe_function_i32_u32));
     EXPECT_FALSE(module.types.same(function_i32_u32, extern_variadic_function));
     EXPECT_TRUE(module.types.is_integer(i32));
     EXPECT_TRUE(module.types.is_integer(u32));
@@ -92,6 +107,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(module.types.display_name(const_slice_i32), "[]const i32");
     EXPECT_EQ(module.types.display_name(mut_slice_i32), "[]mut i32");
     EXPECT_EQ(module.types.display_name(function_i32_u32), "fn(i32, u32) -> i32");
+    EXPECT_EQ(module.types.display_name(unsafe_function_i32_u32), "unsafe fn(i32, u32) -> i32");
+    EXPECT_EQ(module.types.display_name(unsafe_extern_function), "unsafe extern c fn(*const i32) -> i32");
     EXPECT_EQ(module.types.display_name(extern_variadic_function), "extern c fn(*const i32, ...) -> i32");
     EXPECT_EQ(module.types.display_name(function_void), "fn() -> void");
     EXPECT_EQ(module.types.display_name(extern_variadic_void), "extern c fn(...) -> void");

@@ -266,7 +266,7 @@ inline void append_statement(
         append_statement(random, out, statement);
     }
     out << "  let ptr: *mut i32 = &total;\n"
-        << "  *ptr = *ptr + helper_0(1);\n"
+        << "  unsafe { *ptr = *ptr + helper_0(1); }\n"
         << "  return total - total;\n"
         << "}\n";
     return out.str();

@@ -20,6 +20,7 @@ struct FunctionSignature {
     base::SourceRange range {};
     bool is_extern_c = false;
     bool is_export_c = false;
+    bool is_unsafe = false;
     bool is_variadic = false;
     bool has_prototype = false;
     bool has_definition = false;

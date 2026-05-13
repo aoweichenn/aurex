@@ -1,7 +1,9 @@
 module pointer_ops;
 
 fn increment(value: *mut i32) -> void {
-    *value = *value + 1;
+    unsafe {
+        *value = *value + 1;
+    }
 }
 
 fn main() -> i32 {

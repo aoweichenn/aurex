@@ -163,6 +163,10 @@ TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls) {
         "initializer type does not match declared type"
     );
     expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_unsafe_mismatch.ax"))).output,
+        "initializer type does not match declared type"
+    );
+    expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "function_type_array_param.ax"))).output,
         "array type cannot be used as a function type parameter"
     );

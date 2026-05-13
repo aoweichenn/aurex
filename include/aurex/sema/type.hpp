@@ -71,6 +71,7 @@ struct TypeInfo {
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeHandle slice_element = INVALID_TYPE_HANDLE;
     FunctionCallConv function_call_conv = FunctionCallConv::aurex;
+    bool function_is_unsafe = false;
     bool function_is_variadic = false;
     std::vector<TypeHandle> function_params;
     TypeHandle function_return = INVALID_TYPE_HANDLE;
@@ -93,6 +94,13 @@ public:
     [[nodiscard]] TypeHandle pointer(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
     [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
+    [[nodiscard]] TypeHandle function(
+        FunctionCallConv call_conv,
+        bool is_unsafe,
+        bool is_variadic,
+        std::vector<TypeHandle> params,
+        TypeHandle return_type
+    );
     [[nodiscard]] TypeHandle function(
         FunctionCallConv call_conv,
         bool is_variadic,
@@ -155,12 +163,14 @@ private:
 
     struct FunctionKey {
         FunctionCallConv call_conv = FunctionCallConv::aurex;
+        bool is_unsafe = false;
         bool is_variadic = false;
         std::vector<base::u32> params;
         base::u32 return_type = TypeHandle::INVALID_VALUE;
 
         [[nodiscard]] bool operator==(const FunctionKey& other) const noexcept {
             return call_conv == other.call_conv &&
+                   is_unsafe == other.is_unsafe &&
                    is_variadic == other.is_variadic &&
                    params == other.params &&
                    return_type == other.return_type;

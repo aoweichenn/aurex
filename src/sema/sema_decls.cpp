@@ -902,6 +902,9 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                     stack.push_back(ConstEvalFrame {*it, ConstEvalStage::ENTER, 0});
                 }
                 break;
+            case syntax::ExprKind::unsafe_block:
+                values.push_back(false);
+                break;
             case syntax::ExprKind::unary:
                 if (expr.unary_op != syntax::UnaryOp::logical_not &&
                     expr.unary_op != syntax::UnaryOp::numeric_negate &&

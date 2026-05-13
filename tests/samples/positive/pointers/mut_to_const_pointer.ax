@@ -1,7 +1,7 @@
 module mut_to_const_pointer;
 
 fn accept(ptr: *const i32) -> i32 {
-    return *ptr;
+    return unsafe { *ptr };
 }
 
 fn main() -> i32 {

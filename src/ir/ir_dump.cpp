@@ -289,6 +289,9 @@ std::string dump_module(const Module& module) {
         if (function.is_entry) {
             out << " entry";
         }
+        if (function.is_unsafe) {
+            out << " unsafe";
+        }
         out << " -> " << module.types.display_name(function.return_type) << " {\n";
         if (!function.param_values.empty()) {
             out << "  params";

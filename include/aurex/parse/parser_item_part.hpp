@@ -45,7 +45,7 @@ private:
     [[nodiscard]] syntax::ItemId parse_impl_block();
     [[nodiscard]] syntax::ItemId parse_extern_block();
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
-    [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c);
+    [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c, bool is_unsafe = false);
     void expect_param_list_start(std::string message);
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_param();

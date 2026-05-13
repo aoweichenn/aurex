@@ -25,6 +25,7 @@ namespace {
 [[nodiscard]] TypeHandle signature_function_type(TypeTable& types, const FunctionSignature& signature) {
     return types.function(
         signature_call_conv(signature),
+        signature.is_unsafe,
         signature.is_variadic,
         signature.param_types,
         signature.return_type
@@ -64,6 +65,7 @@ void FunctionRegistry::register_function(
     signature.range = item.range;
     signature.is_extern_c = item.is_extern_c;
     signature.is_export_c = item.is_export_c;
+    signature.is_unsafe = item.is_unsafe;
     signature.is_variadic = item.is_variadic;
     signature.has_prototype = is_prototype;
     signature.has_definition = !is_prototype && !item.is_extern_c;
@@ -98,7 +100,11 @@ void FunctionRegistry::merge_function(
         this->report(signature.range, sema_function_signature_mismatch_message(signature.name));
         return;
     }
-    if (prior.is_extern_c || signature.is_extern_c || prior.is_export_c != signature.is_export_c || prior.c_name != signature.c_name) {
+    if (prior.is_extern_c ||
+        signature.is_extern_c ||
+        prior.is_export_c != signature.is_export_c ||
+        prior.is_unsafe != signature.is_unsafe ||
+        prior.c_name != signature.c_name) {
         prior.has_conflict = true;
         this->report(signature.range, sema_function_declaration_conflict_message(signature.name));
         return;

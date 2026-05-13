@@ -25,37 +25,45 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    and the current array-containing type restrictions without reintroducing a
    resource model.
 
-3. Resource semantics deferred
+3. Unsafe boundary
+
+   Minimal M2 `unsafe` is now part of the core language. `unsafe { ... }`
+   creates an unsafe context and may be used as either a statement or an
+   expression; a tail expression supplies the value, while a block without a
+   tail expression has type `void`. `unsafe fn` marks a callable that can only
+   be called from an unsafe context. Raw pointer dereference, `ptrcast`,
+   `bitcast`, `ptrat`, and `strraw` require an unsafe context.
+
+   This is deliberately not a resource-safety system: no borrow checker,
+   lifetimes, unsafe traits, unsafe impl blocks, unsafe extern blocks, or
+   ownership model are included in M2.
+
+4. Resource semantics deferred
 
    `Copy`, `Drop`, destructors, borrow checking, lifetimes, and move-out are not
    near-term M2 tasks. Reopen them as a separate resource-semantics design only
    after `unsafe`, ADTs, arrays/slices/strings, function types, and patterns have
    settled.
 
-4. Safe reference direction
+5. Safe reference direction
 
    Keep `&T` / `&mut T` as the documented direction for separating safe
    references from raw pointers. Borrow checking, lifetimes, and borrowed returns
    remain deferred.
 
-5. Capability / trait / where
+6. Capability / trait / where
 
    Replace temporary hardcodes with language mechanisms. For this stage, only
    evaluate non-resource constraints such as `Eq`, `Ord`, `Hash`, and `Sized`;
    resource constraints belong to the deferred resource-semantics design.
 
-6. String primitive
+7. String primitive
 
    Keep `str` as the language-level borrowed UTF-8 slice direction, but do not
    recreate old `String`/`Bytes` std implementations. First settle type
-   identity, ABI, literals, slice boundaries, and builtin operation boundaries.
-
-7. Unsafe boundary
-
-   Raw pointer dereference, `ptrcast`, `bitcast`, `ptrat`, and `strraw` remain
-   ordinary expressions today. M2 should introduce minimal `unsafe` block /
-   `unsafe fn` syntax and diagnostics before these operations become part of the
-   stable safe surface.
+   identity, ABI, literals, slice boundaries, and the checked/unchecked
+   construction boundary. `strraw(data, len)` is already fenced by `unsafe`;
+   checked UTF-8 construction remains a later API/design question.
 
 8. Test performance
 

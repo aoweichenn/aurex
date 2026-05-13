@@ -1,10 +1,12 @@
 module eval_order_condition;
 
 fn check(state: *mut i32, expected: i32, result: bool) -> bool {
-    if *state != expected {
-        return false;
+    unsafe {
+        if *state != expected {
+            return false;
+        }
+        *state = *state + 1;
     }
-    *state = *state + 1;
     return result;
 }
 

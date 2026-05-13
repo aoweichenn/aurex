@@ -105,6 +105,31 @@ Rules:
 - Increment/decrement operators are not supported.
 - Assignment is a statement and cannot be used as a block result.
 
+## Unsafe Syntax
+
+Unsafe boundaries are intentionally minimal. M2 does not include:
+
+```aurex
+unsafe extern c {
+    fn f() -> void;
+}
+
+unsafe impl Trait for Type {
+}
+
+unsafe trait Trait {
+}
+```
+
+Rules:
+
+- `unsafe { ... }`, `unsafe fn`, and unsafe function pointer types are
+  supported.
+- Raw pointer dereference, `ptrcast`, `bitcast`, `ptrat`, `strraw`, and unsafe
+  function calls require an unsafe context.
+- Borrow checking, lifetimes, unsafe traits, unsafe impl blocks, unsafe extern
+  blocks, and ownership/resource semantics are outside M2.
+
 ## Statement And Control Flow Syntax
 
 Not part of M2:

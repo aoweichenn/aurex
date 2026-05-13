@@ -25,6 +25,7 @@ enum class TokenKind {
     kw_priv,
     kw_extern,
     kw_export,
+    kw_unsafe,
     kw_c,
     kw_fn,
     kw_struct,

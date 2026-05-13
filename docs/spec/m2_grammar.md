@@ -128,7 +128,7 @@ TypeAtom
   | QualifiedType ;
 
 FunctionType
-  = [ "extern" "c" ] "fn" "(" [ FunctionTypeParamList ] ")" "->" Type ;
+  = [ "unsafe" ] [ "extern" "c" ] "fn" "(" [ FunctionTypeParamList ] ")" "->" Type ;
 
 FunctionTypeParamList
   = FunctionTypeParam { "," FunctionTypeParam } [ "," ]
@@ -167,7 +167,9 @@ char
 []mut u8
 *mut [4]i32
 fn(i32, i32) -> i32
+unsafe fn(*const i32) -> i32
 extern c fn(*const u8, ...) -> i32
+unsafe extern c fn(*const u8) -> i32
 Box[i32]
 Pair[i32, bool]
 foo::Box[i32]
@@ -182,10 +184,12 @@ Rules:
   produced from arrays or other slices. `[]mut T` is assignable to `[]const T`;
   `[]const T` is not assignable to `[]mut T`.
 - Function types are non-capturing function pointer types. `fn(...) -> T` uses
-  the Aurex function ABI, while `extern c fn(...) -> T` uses the C ABI. Calling
-  convention, fixed parameter types, variadic marker, and return type are part
-  of type identity. Function type parameters may omit names; optional names are
-  documentation only in the type syntax.
+  the Aurex function ABI, while `extern c fn(...) -> T` uses the C ABI.
+  `unsafe fn(...) -> T` and `unsafe extern c fn(...) -> T` are distinct
+  function pointer types whose calls require an unsafe context. Calling
+  convention, unsafe marker, fixed parameter types, variadic marker, and return
+  type are part of type identity. Function type parameters may omit names;
+  optional names are documentation only in the type syntax.
 - Variadic function types are only supported for `extern c fn`.
 - Function type parameters and return types cannot be by-value arrays or
   array-containing types.
@@ -197,7 +201,7 @@ Rules:
 
 ```ebnf
 FnDecl
-  = "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")"
+  = [ "unsafe" ] "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")"
     [ "->" Type ] [ AbiName ] ( Block | ";" ) ;
 
 ParamList
@@ -226,12 +230,16 @@ Rules:
 - Private non-C functions may infer return type from returns.
 - `pub fn`, `extern c fn`, `export c fn`, and prototypes require explicit
   return types in semantic analysis.
+- `unsafe fn` bodies are checked in an unsafe context. Calling an `unsafe fn`
+  requires an unsafe context, whether the callee is named directly, explicitly
+  generic, a method, or a function pointer value.
 - Variadic `...` is only supported for `extern c` declarations.
 - Generic functions are supported only for normal non-C non-prototype
   functions.
 - Function names can be used as non-capturing function pointer values. Values
-  whose type is `fn(...) -> T` or `extern c fn(...) -> T` can be called with the
-  normal call syntax.
+  whose type is any supported function pointer type can be called with the
+  normal call syntax; unsafe function pointer calls still require an unsafe
+  context.
 
 ## 6. Struct Declarations
 
@@ -339,6 +347,7 @@ Stmt
   | ContinueStmt
   | DeferStmt
   | ReturnStmt
+  | UnsafeBlock
   | Block ;
 
 LetStmt
@@ -384,7 +393,11 @@ RangeForStmt
 Expr
   = IfExpr
   | MatchExpr
+  | UnsafeBlock
   | BinaryExpr ;
+
+UnsafeBlock
+  = "unsafe" Block ;
 ```
 
 Postfix forms:
@@ -434,9 +447,24 @@ let value = {
 };
 ```
 
+Unsafe blocks:
+
+```aurex
+unsafe {
+    *ptr = *ptr + 1;
+}
+
+let value = unsafe {
+    *ptr
+};
+```
+
 Rules:
 
 - The result of a block expression is the last expression without `;`.
+- The result of an unsafe block expression is its tail expression. An unsafe
+  block without a tail expression has type `void` and can be used as a
+  statement.
 - Assignment cannot be a block result.
 - `return`, `break`, `continue`, and `defer` are statements, not tail
   expressions.
@@ -467,7 +495,26 @@ let value = match token {
 };
 ```
 
-## 11. Patterns
+## 11. Minimal Unsafe
+
+M2 `unsafe` is a narrow semantic boundary. It does not introduce borrow
+checking, lifetimes, unsafe traits, unsafe impl blocks, unsafe extern blocks, or
+an ownership/resource model.
+
+The following operations require an unsafe context:
+
+- Raw pointer dereference with unary `*`.
+- `ptrcast[T](p)`.
+- `bitcast[T](x)`.
+- `ptrat[T](addr)`.
+- `strraw(data, len)`.
+- Calling an `unsafe fn` or a value whose type is `unsafe fn(...) -> T` /
+  `unsafe extern c fn(...) -> T`.
+
+Safe operations include address-of `&place`, `ptraddr(p)`, `strptr(s)`,
+`strblen(s)`, `sizeof[T]`, `alignof[T]`, and checked numeric `cast[T](x)`.
+
+## 12. Patterns
 
 ```ebnf
 Pattern
@@ -494,7 +541,7 @@ Rules:
 - Integer/bool matches use literal patterns and require wildcard coverage where
   needed.
 
-## 12. Basic Generics
+## 13. Basic Generics
 
 ```ebnf
 GenericParams
@@ -530,7 +577,7 @@ Supported generic positions:
 `name[index]` is always an index expression. Explicit generic calls use
 `name::[T](...)`.
 
-## 13. Explicitly Rejected Syntax
+## 14. Explicitly Rejected Syntax
 
 Examples:
 

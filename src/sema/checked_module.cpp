@@ -27,6 +27,9 @@ std::string dump_checked_module(const CheckedModule& checked) {
             out << "method " << checked.types.display_name(fn.method_owner_type) << ".";
         }
         out << fn.name << " -> " << checked.types.display_name(fn.return_type);
+        if (fn.is_unsafe) {
+            out << " unsafe";
+        }
         if (fn.c_name != fn.name) {
             out << " @c_name=" << fn.c_name;
         }

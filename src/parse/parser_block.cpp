@@ -201,6 +201,9 @@ bool BlockParser::token_starts_tail_expression() const noexcept {
     if (this->check(TokenKind::l_brace)) {
         return this->next_block_is_tail_expression();
     }
+    if (this->check(TokenKind::kw_unsafe)) {
+        return this->next_unsafe_block_is_tail_expression();
+    }
 
     switch (this->peek().kind) {
     case TokenKind::identifier:
@@ -273,6 +276,20 @@ bool BlockParser::next_block_is_tail_expression() const noexcept {
            this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
 }
 
+bool BlockParser::next_unsafe_block_is_tail_expression() const noexcept {
+    base::usize index = this->session_.cursor.position();
+    if (index >= this->session_.cursor.tokens().size() ||
+        this->session_.cursor.tokens()[index].kind != TokenKind::kw_unsafe) {
+        return false;
+    }
+    ++index;
+    if (!scan_balanced_delimited(this->session_.cursor.tokens(), index)) {
+        return false;
+    }
+    return index < this->session_.cursor.tokens().size() &&
+           this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
+}
+
 const syntax::Token& BlockParser::expect_block_start(std::string message) {
     return this->expect_recovered(
         TokenKind::l_brace,
@@ -290,6 +307,9 @@ const syntax::Token& BlockParser::expect_block_end(std::string message) {
 }
 
 bool BlockParser::at_block_recovery_boundary() const noexcept {
+    if (this->check(TokenKind::kw_unsafe) && !this->check_next(TokenKind::kw_fn)) {
+        return false;
+    }
     return token_matches_recovery_context(this->peek().kind, RecoveryContext::item);
 }
 

@@ -72,6 +72,7 @@ struct TypeNode {
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeId slice_element = INVALID_TYPE_ID;
     FunctionCallConv function_call_conv = FunctionCallConv::aurex;
+    bool function_is_unsafe = false;
     bool function_is_variadic = false;
     std::vector<TypeId> function_params;
     TypeId function_return = INVALID_TYPE_ID;
@@ -97,6 +98,7 @@ enum class ExprKind {
     try_expr,
     if_expr,
     block_expr,
+    unsafe_block,
     match_expr,
     array_literal,
     field,
@@ -312,6 +314,7 @@ struct ItemNode {
     TypeId impl_type = INVALID_TYPE_ID;
     bool is_export_c = false;
     bool is_extern_c = false;
+    bool is_unsafe = false;
     bool is_variadic = false;
     bool is_prototype = false;
     std::string_view abi_name;

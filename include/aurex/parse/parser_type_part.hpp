@@ -16,7 +16,8 @@ private:
     [[nodiscard]] syntax::TypeId parse_function_type();
     [[nodiscard]] syntax::TypeId parse_function_type_after_fn(
         base::SourceRange begin_range,
-        syntax::FunctionCallConv call_conv
+        syntax::FunctionCallConv call_conv,
+        bool is_unsafe
     );
     void parse_function_type_params(std::vector<syntax::TypeId>& params, bool& is_variadic);
     [[nodiscard]] bool recover_function_type_param_separator(bool& is_variadic);

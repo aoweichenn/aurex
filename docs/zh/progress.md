@@ -82,10 +82,11 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 - lexer 已支持嵌套 `/* ... */` 块注释。
 - enum 已支持 ADT-first 形态：普通 enum 可省略 base type 和 discriminant，tag 自动分配；多字段 payload 可用 `.case(a, b)` pattern 按字段解构；显式 `enum Status: u8 { ok = 0, err = 1 }` 仍作为 C-like/repr enum 形态保留。M2 仍不支持 generic enum。
 - 数组、slice、函数指针和字面量基础语法已闭合：固定数组支持 `[1, 2, 3]` 和 `[0; 128]`，borrowed slice 支持 `[]const T` / `[]mut T` 以及 `a[l:r]`、`a[:r]`、`a[l:]`、`a[:]`；函数类型支持 `fn(i32) -> i32`、`extern c fn(*const u8, ...) -> i32`、函数名作为值、局部/参数/字段函数指针间接调用；字面量支持普通字符串、C 字符串、raw/multiline raw string、byte string、byte literal、Unicode scalar `char` 和整数/浮点类型后缀。
+- 最小 `unsafe` 已落地：`unsafe { ... }` 可作为 statement 或 expression，`unsafe fn` 和 unsafe 函数指针类型会把调用限制在 unsafe context 内；raw pointer 解引用、`ptrcast`、`bitcast`、`ptrat`、`strraw` 都必须在 unsafe context 中使用。
 - 泛型没有 `where`、trait 或 capability predicate，不能表达 `K: Eq + Hash` 这类基础约束；资源类约束暂缓。
 - M1 的语言级 `noncopy` / `move` MVP 已从 M2 基线删除。当前先保留普通值语义和必要的数组/含数组类型限制；copy/drop/borrow/ownership 暂缓为后续资源语义专题。
-- raw pointer 同时承担 FFI、method receiver、临时借用和地址操作，长期需要 safe reference 与 `unsafe` 边界分层。
-- `str` 已有语言级雏形，普通数组/slice 地基已落地；后续还需要冻结 UTF-8 边界和安全/unsafe API 分层。
+- raw pointer 仍同时承担 FFI、method receiver、临时借用和地址操作；unsafe 现在已经圈住底层危险操作，但长期仍需要 safe reference 把这些角色分层。
+- `str` 已有语言级雏形，普通数组/slice 地基已落地，`strraw` 已纳入 unsafe；后续还需要设计 checked UTF-8 构造和更完整的 safe API。
 
 当前完整语法库存、已支持高级能力、未完成特性和基础语法优先级见 [Aurex 当前语法与特性清单](language-feature-inventory.md)。
 
@@ -93,4 +94,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、function pointer / function type 和字面量体系已经落地；随后补 `str` safe/unsafe 边界、tuple/destructuring、struct/nested pattern 扩展和非资源类 capability/trait/where。
+下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、enum multi-payload destructuring、数组值语法、slice type/expression、function pointer / function type、字面量体系和最小 unsafe 边界已经落地；随后更适合处理 tuple/destructuring、struct/nested pattern、`str` checked API 和非资源类 capability/trait/where。

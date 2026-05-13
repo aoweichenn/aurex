@@ -21,6 +21,8 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_MUT_PREFIX = "[]mut ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_SLICE_CONST_PREFIX = "[]const ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_PREFIX = "fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_EXTERN_C_FN_PREFIX = "extern c fn(";
+constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_FN_PREFIX = "unsafe fn(";
+constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_EXTERN_C_FN_PREFIX = "unsafe extern c fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_VARIADIC = "...";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_RETURN = ") -> ";
 constexpr std::size_t SEMA_TYPE_HASH_MULTIPLIER = 1099511628211ULL;
@@ -144,12 +146,14 @@ TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle
 
 TypeHandle TypeTable::function(
     const FunctionCallConv call_conv,
+    const bool is_unsafe,
     const bool is_variadic,
     std::vector<TypeHandle> params,
     const TypeHandle return_type
 ) {
     FunctionKey key;
     key.call_conv = call_conv;
+    key.is_unsafe = is_unsafe;
     key.is_variadic = is_variadic;
     key.params.reserve(params.size());
     for (const TypeHandle param : params) {
@@ -163,12 +167,22 @@ TypeHandle TypeTable::function(
     TypeInfo info;
     info.kind = TypeKind::function;
     info.function_call_conv = call_conv;
+    info.function_is_unsafe = is_unsafe;
     info.function_is_variadic = is_variadic;
     info.function_params = std::move(params);
     info.function_return = return_type;
     const TypeHandle handle = this->push(std::move(info));
     this->function_types_.emplace(std::move(key), handle);
     return handle;
+}
+
+TypeHandle TypeTable::function(
+    const FunctionCallConv call_conv,
+    const bool is_variadic,
+    std::vector<TypeHandle> params,
+    const TypeHandle return_type
+) {
+    return this->function(call_conv, false, is_variadic, std::move(params), return_type);
 }
 
 TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const bool contains_array) {
@@ -349,9 +363,15 @@ std::string TypeTable::display_name(const TypeHandle type) const {
             pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.slice_element, {}});
             break;
         case TypeKind::function: {
-            name.append(info.function_call_conv == FunctionCallConv::c
-                ? SEMA_TYPE_DISPLAY_EXTERN_C_FN_PREFIX
-                : SEMA_TYPE_DISPLAY_FN_PREFIX);
+            if (info.function_is_unsafe && info.function_call_conv == FunctionCallConv::c) {
+                name.append(SEMA_TYPE_DISPLAY_UNSAFE_EXTERN_C_FN_PREFIX);
+            } else if (info.function_is_unsafe) {
+                name.append(SEMA_TYPE_DISPLAY_UNSAFE_FN_PREFIX);
+            } else {
+                name.append(info.function_call_conv == FunctionCallConv::c
+                    ? SEMA_TYPE_DISPLAY_EXTERN_C_FN_PREFIX
+                    : SEMA_TYPE_DISPLAY_FN_PREFIX);
+            }
             pending.push_back(TypeDisplayTask {TypeDisplayTaskKind::type, info.function_return, {}});
             pending.push_back(TypeDisplayTask {
                 TypeDisplayTaskKind::text,
@@ -442,7 +462,8 @@ std::size_t TypeTable::SliceKeyHash::operator()(const SliceKey& key) const noexc
 std::size_t TypeTable::FunctionKeyHash::operator()(const FunctionKey& key) const noexcept {
     std::size_t hash = static_cast<std::size_t>(key.return_type) ^
         (static_cast<std::size_t>(key.call_conv == FunctionCallConv::c ? 1U : 0U) << 1) ^
-        (static_cast<std::size_t>(key.is_variadic ? 1U : 0U) << 2);
+        (static_cast<std::size_t>(key.is_unsafe ? 1U : 0U) << 2) ^
+        (static_cast<std::size_t>(key.is_variadic ? 1U : 0U) << 3);
     for (const base::u32 param : key.params) {
         hash = (hash * SEMA_TYPE_HASH_MULTIPLIER) ^ static_cast<std::size_t>(param);
     }

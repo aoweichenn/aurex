@@ -99,6 +99,9 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
         this->expect_grouped_expression_end();
         return expr;
     }
+    if (this->check(TokenKind::kw_unsafe)) {
+        return this->parse_unsafe_block_expr(context);
+    }
     if (this->check(TokenKind::l_bracket)) {
         return this->parse_array_literal(context);
     }
@@ -137,6 +140,20 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
         return parser.parse_strraw(context);
     }
     return syntax::INVALID_EXPR_ID;
+}
+
+syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext context) {
+    const syntax::Token& begin = this->expect(TokenKind::kw_unsafe, std::string(PARSER_EXPECT_UNSAFE_KEYWORD));
+    if (!this->check(TokenKind::l_brace)) {
+        this->report_here(std::string(PARSER_EXPECT_UNSAFE_BLOCK));
+    }
+    const syntax::ExprId block = this->parse_block_expr(context);
+    if (syntax::is_valid(block) && block.value < this->session_.module.exprs.size()) {
+        syntax::ExprNode& expr = this->session_.module.exprs[block.value];
+        expr.kind = syntax::ExprKind::unsafe_block;
+        expr.range = this->merge(begin.range, expr.range);
+    }
+    return block;
 }
 
 syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {

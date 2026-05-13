@@ -267,7 +267,7 @@ syntax::TypeId TypeParser::parse_type() {
 }
 
 syntax::TypeId TypeParser::parse_type_atom() {
-    if (this->check(TokenKind::kw_fn) || this->check(TokenKind::kw_extern)) {
+    if (this->check(TokenKind::kw_fn) || this->check(TokenKind::kw_extern) || this->check(TokenKind::kw_unsafe)) {
         return this->parse_function_type();
     }
     if (is_primitive_type_token(this->peek().kind)) {
@@ -345,9 +345,16 @@ bool TypeParser::recover_generic_type_arg_separator() {
 
 syntax::TypeId TypeParser::parse_function_type() {
     syntax::FunctionCallConv call_conv = syntax::FunctionCallConv::aurex;
+    bool is_unsafe = false;
     base::SourceRange begin_range = this->peek().range;
-    if (this->match(TokenKind::kw_extern)) {
+    if (this->match(TokenKind::kw_unsafe)) {
         begin_range = this->previous().range;
+        is_unsafe = true;
+    }
+    if (this->match(TokenKind::kw_extern)) {
+        if (!is_unsafe) {
+            begin_range = this->previous().range;
+        }
         call_conv = syntax::FunctionCallConv::c;
         this->expect_recovered(
             TokenKind::kw_c,
@@ -359,16 +366,17 @@ syntax::TypeId TypeParser::parse_function_type() {
             std::string(PARSER_EXPECT_FN_AFTER_EXTERN_C_FUNCTION_TYPE),
             RecoveryContext::parameter_list_start
         );
-        return this->parse_function_type_after_fn(begin_range, call_conv);
+        return this->parse_function_type_after_fn(begin_range, call_conv, is_unsafe);
     }
 
     const syntax::Token& begin = this->expect(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_KEYWORD));
-    return this->parse_function_type_after_fn(begin.range, call_conv);
+    return this->parse_function_type_after_fn(is_unsafe ? begin_range : begin.range, call_conv, is_unsafe);
 }
 
 syntax::TypeId TypeParser::parse_function_type_after_fn(
     const base::SourceRange begin_range,
-    const syntax::FunctionCallConv call_conv
+    const syntax::FunctionCallConv call_conv,
+    const bool is_unsafe
 ) {
     this->expect_recovered(
         TokenKind::l_paren,
@@ -396,6 +404,7 @@ syntax::TypeId TypeParser::parse_function_type_after_fn(
     type.kind = syntax::TypeKind::function;
     type.range = this->merge(begin_range, this->type_range_or(return_type, arrow.range));
     type.function_call_conv = call_conv;
+    type.function_is_unsafe = is_unsafe;
     type.function_is_variadic = is_variadic;
     type.function_params = std::move(params);
     type.function_return = return_type;

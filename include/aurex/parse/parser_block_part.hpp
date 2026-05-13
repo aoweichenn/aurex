@@ -35,6 +35,7 @@ private:
     [[nodiscard]] bool token_starts_required_statement() const noexcept;
     [[nodiscard]] bool next_if_is_tail_expression() const noexcept;
     [[nodiscard]] bool next_block_is_tail_expression() const noexcept;
+    [[nodiscard]] bool next_unsafe_block_is_tail_expression() const noexcept;
     [[nodiscard]] const syntax::Token& expect_block_start(std::string message);
     [[nodiscard]] const syntax::Token& expect_block_end(std::string message);
     [[nodiscard]] bool at_block_recovery_boundary() const noexcept;

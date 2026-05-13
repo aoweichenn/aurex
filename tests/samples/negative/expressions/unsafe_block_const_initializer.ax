@@ -1,0 +1,7 @@
+module unsafe_block_const_initializer;
+
+const BAD: i32 = unsafe { 1 };
+
+fn main() -> i32 {
+    return BAD;
+}

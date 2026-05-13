@@ -15,7 +15,9 @@ fn make_pair(value: Count) {
 }
 
 fn touch(value: *mut Count) {
-    *value = *value + 1;
+    unsafe {
+        *value = *value + 1;
+    }
     return;
 }
 

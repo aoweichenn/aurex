@@ -229,6 +229,24 @@ inline constexpr std::string_view SEMA_DEREF_POINTER =
 inline constexpr std::string_view SEMA_DEREF_STORAGE =
     "dereference requires pointer to valid storage";
 
+inline constexpr std::string_view SEMA_UNSAFE_DEREF =
+    "raw pointer dereference requires unsafe context";
+
+inline constexpr std::string_view SEMA_UNSAFE_PTRCAST =
+    "ptrcast requires unsafe context";
+
+inline constexpr std::string_view SEMA_UNSAFE_BITCAST =
+    "bitcast requires unsafe context";
+
+inline constexpr std::string_view SEMA_UNSAFE_PTRAT =
+    "ptrat requires unsafe context";
+
+inline constexpr std::string_view SEMA_UNSAFE_STRRAW =
+    "strraw requires unsafe context";
+
+inline constexpr std::string_view SEMA_UNSAFE_BLOCK_CONST_INITIALIZER =
+    "unsafe block cannot be used in const initializer";
+
 inline constexpr std::string_view SEMA_ADDRESS_OF_PLACE =
     "address-of requires a place expression";
 
@@ -568,6 +586,10 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_function_not_generic_message(const std::string_view function_name) {
     return "function " + std::string(function_name) + " is not generic";
+}
+
+[[nodiscard]] inline std::string sema_unsafe_function_call_message(const std::string_view function_name) {
+    return "call to unsafe function " + std::string(function_name) + " requires unsafe context";
 }
 
 [[nodiscard]] inline std::string sema_method_requires_receiver_message(

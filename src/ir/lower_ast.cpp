@@ -205,6 +205,7 @@ void Lowerer::lower_function_declarations() {
             ? AbiCallConv::c
             : AbiCallConv::aurex;
         function.is_entry = is_root_aurex_entry(this->ast_, index, item);
+        function.is_unsafe = item.is_unsafe;
         function.is_variadic = item.is_variadic;
         function.return_type = this->function_return_type(index, item);
         for (const syntax::ParamDecl& param : item.params) {
@@ -227,6 +228,7 @@ void Lowerer::lower_function_declarations() {
         function.linkage = Linkage::internal;
         function.call_conv = AbiCallConv::aurex;
         function.is_entry = false;
+        function.is_unsafe = instance.signature.is_unsafe;
         function.is_variadic = false;
         function.return_type = instance.signature.return_type;
         if (syntax::is_valid(instance.item) && instance.item.value < this->ast_.items.size()) {

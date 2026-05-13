@@ -108,6 +108,32 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "struct Counter { value: i32; }\n"
         "struct Owner { value: i32; }\n"
         "enum Token { ident(str), span(usize, usize), eof }\n"
+        "type UnsafeText = unsafe fn(*const u8, usize) -> str;\n"
+        "unsafe fn unchecked_string(data: *const u8, len: usize) -> str {\n"
+        "  return strraw(data, len);\n"
+        "}\n"
+        "fn unsafe_block_tail(ptr: *const i32) -> i32 {\n"
+        "  return {\n"
+        "    unsafe { *ptr }\n"
+        "  };\n"
+        "}\n"
+        "fn unsafe_block_statement(ptr: *mut i32) -> i32 {\n"
+        "  return {\n"
+        "    unsafe { *ptr = 1; }\n"
+        "    0\n"
+        "  };\n"
+        "}\n"
+        "fn block_expr_statement(value: i32) -> i32 {\n"
+        "  return {\n"
+        "    value;\n"
+        "    0\n"
+        "  };\n"
+        "}\n"
+        "fn tail_else_if(first: bool, second: bool) -> i32 {\n"
+        "  return {\n"
+        "    if first { 1 } else if second { 2 } else { 3 }\n"
+        "  };\n"
+        "}\n"
         "impl Counter {\n"
         "  pub fn inc(self: *mut Counter) -> i32 {\n"
         "    self.value = self.value + 1;\n"
@@ -126,21 +152,23 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "    if i == 1 { continue; } else { break; }\n"
         "  }\n"
         "  defer puts(c\"cleanup\");\n"
-        "  let p: *mut i32 = ptrat[*mut i32](ptraddr(argv));\n"
+        "  let p: *mut i32 = unsafe { ptrat[*mut i32](ptraddr(argv)) };\n"
         "  let n: *const u8 = null;\n"
         "  let s: str = \"hello\";\n"
         "  let size: usize = sizeof[*mut i32];\n"
         "  let data: *const u8 = strptr(s);\n"
         "  let len: usize = strblen(s);\n"
-        "  let raw: str = strraw(data, len);\n"
+        "  let raw: str = unsafe { strraw(data, len) };\n"
         "  let raw_literal: str = r\"C:\\tmp\\a\";\n"
         "  let bytes: [3]u8 = b\"a\\n\\0\";\n"
         "  let b: u8 = b'\\n';\n"
         "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
         "  let reps: [2]u8 = [b'a'; 2];\n"
-        "  let a: i32 = cast[i32](argc) + bitcast[i32](argc) + alignof[*mut i32];\n"
-        "  let q: *mut i32 = ptrcast[*mut i32](p);\n"
+        "  let a: i32 = cast[i32](argc) + unsafe { bitcast[i32](argc) } + alignof[*mut i32];\n"
+        "  let q: *mut i32 = unsafe { ptrcast[*mut i32](p) };\n"
+        "  let make_text: UnsafeText = unchecked_string;\n"
+        "  let from_fn_ptr: str = unsafe { make_text(data, len) };\n"
         "  let idx: u8 = argv[0][0];\n"
         "  return a;\n"
         "}\n";
@@ -165,6 +193,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_break",
         "kw_continue",
         "kw_defer",
+        "kw_unsafe",
         "kw_null",
         "kw_ptrcast",
         "kw_bitcast",
@@ -188,6 +217,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "struct Owner",
         "enum Token",
         "case span(usize, usize)",
+        "alias unsafe fn(*const u8, usize) -> str",
+        "fn unchecked_string unsafe",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
         "stmt #",
@@ -197,6 +228,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "continue",
         "defer",
         "expr #",
+        "unsafe_block",
         "null_literal",
         "string_literal",
         "raw_string_literal",
@@ -245,6 +277,8 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes) {
         "module parser.function_types;\n"
         "type BinaryOp = fn(left: i32, right: i32) -> i32;\n"
         "type Callback = extern c fn(*mut void, ...) -> void;\n"
+        "type UnsafeOp = unsafe fn(i32) -> i32;\n"
+        "type UnsafeCallback = unsafe extern c fn(*mut void) -> void;\n"
         "struct Ops { run: fn(i32) -> i32; }\n"
         "fn apply(op: fn(i32, i32) -> i32, value: i32) -> i32 {\n"
         "  return op(value, value);\n"
@@ -255,6 +289,8 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes) {
     expect_contains_all(ast, {
         "alias fn(i32, i32) -> i32",
         "alias extern c fn(*mut void, ...) -> void",
+        "alias unsafe fn(i32) -> i32",
+        "alias unsafe extern c fn(*mut void) -> void",
         "field priv run : fn(i32) -> i32",
         "param op : fn(i32, i32) -> i32",
     });
@@ -265,6 +301,18 @@ TEST(CoreUnit, ParserRejectsBareSliceType) {
         "module parser.bad_slice_type;\n"
         "type Bad = []i32;\n",
         "expected 'mut' or 'const' after '[]'"
+    );
+}
+
+TEST(CoreUnit, ParserRejectsUnsafeWithoutBlock) {
+    expect_parse_error(
+        "module parser.bad_unsafe_block;\n"
+        "fn value() -> i32 {\n"
+        "  return {\n"
+        "    unsafe 1\n"
+        "  };\n"
+        "}\n",
+        "expected block after 'unsafe'"
     );
 }
 
@@ -1733,6 +1781,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_extern,
             TokenKind::kw_export,
             TokenKind::kw_import,
+            TokenKind::kw_unsafe,
         }
     );
     expect_false_on(parse::detail::token_starts_item, TokenKind::identifier);
@@ -1761,6 +1810,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_strptr,
             TokenKind::kw_strblen,
             TokenKind::kw_strraw,
+            TokenKind::kw_unsafe,
             TokenKind::l_paren,
             TokenKind::l_brace,
             TokenKind::minus,
@@ -1784,6 +1834,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_continue,
             TokenKind::kw_defer,
             TokenKind::kw_return,
+            TokenKind::kw_unsafe,
         }
     );
     expect_false_on(parse::detail::token_starts_statement, TokenKind::semicolon);
@@ -1800,6 +1851,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_continue,
             TokenKind::kw_defer,
             TokenKind::kw_return,
+            TokenKind::kw_unsafe,
         }
     );
     expect_false_on(parse::detail::token_starts_non_expression_statement, TokenKind::identifier);
@@ -1812,6 +1864,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::l_bracket,
             TokenKind::kw_fn,
             TokenKind::kw_extern,
+            TokenKind::kw_unsafe,
             TokenKind::kw_void,
             TokenKind::kw_bool,
             TokenKind::kw_i8,

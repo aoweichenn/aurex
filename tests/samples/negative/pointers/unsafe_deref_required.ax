@@ -1,0 +1,7 @@
+module unsafe_deref_required;
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let ptr: *const i32 = &value;
+    return *ptr;
+}

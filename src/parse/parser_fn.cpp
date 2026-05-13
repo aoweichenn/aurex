@@ -24,8 +24,16 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
 
 } // namespace
 
-syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c) {
+syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c, const bool is_unsafe) {
+    base::SourceRange begin_range = this->peek().range;
+    if (is_unsafe) {
+        const syntax::Token& unsafe = this->expect(TokenKind::kw_unsafe, std::string(PARSER_EXPECT_UNSAFE_KEYWORD));
+        begin_range = unsafe.range;
+    }
     const syntax::Token& begin = this->expect(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_KEYWORD));
+    if (!is_unsafe) {
+        begin_range = begin.range;
+    }
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FN_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     this->expect_param_list_start(std::string(PARSER_EXPECT_FN_PARAM_LIST));
@@ -49,6 +57,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     item.return_type = return_type;
     item.is_export_c = is_export_c;
     item.is_extern_c = is_extern_c;
+    item.is_unsafe = is_unsafe;
     item.is_variadic = is_variadic;
 
     this->parse_optional_abi_name(item);
@@ -58,13 +67,13 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
         const syntax::Token& end = this->expect_item_terminator(
             std::string(PARSER_EXPECT_EXTERN_FN_TERMINATOR)
         );
-        item.range = this->merge(begin.range, end.range);
+        item.range = this->merge(begin_range, end.range);
     } else if (this->match(TokenKind::semicolon)) {
         item.is_prototype = true;
-        item.range = this->merge(begin.range, this->previous().range);
+        item.range = this->merge(begin_range, this->previous().range);
     } else {
         item.body = this->parse_block();
-        item.range = this->merge(begin.range, this->stmt_range_or(item.body, begin.range));
+        item.range = this->merge(begin_range, this->stmt_range_or(item.body, begin.range));
     }
 
     this->reset_panic();

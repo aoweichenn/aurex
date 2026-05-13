@@ -48,10 +48,25 @@ syntax::StmtId StmtParser::parse_stmt() {
     if (this->check(TokenKind::kw_return)) {
         return ControlStmtParser(this->parser_).parse_return_stmt();
     }
+    if (this->check(TokenKind::kw_unsafe) && this->check_next(TokenKind::l_brace)) {
+        return this->parse_unsafe_block_stmt();
+    }
     if (this->check(TokenKind::l_brace)) {
         return this->parse_block();
     }
     return this->parse_expr_or_assign_stmt();
+}
+
+syntax::StmtId StmtParser::parse_unsafe_block_stmt() {
+    const syntax::ExprId expr = this->parse_expr(ExprContext::normal);
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::expr;
+    stmt.init = expr;
+    stmt.range = this->expr_range_or(expr, this->previous().range);
+    if (this->match(TokenKind::semicolon)) {
+        stmt.range = this->merge(stmt.range, this->previous().range);
+    }
+    return this->session_.module.push_stmt(std::move(stmt));
 }
 
 syntax::StmtId StmtParser::parse_let_or_var_stmt(

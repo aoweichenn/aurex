@@ -12,6 +12,7 @@ public:
     [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
 
 private:
+    [[nodiscard]] syntax::ExprId parse_unsafe_block_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_array_literal(ExprContext context);
     bool recover_array_literal_separator();
     const syntax::Token& expect_array_literal_end();

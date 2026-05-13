@@ -294,7 +294,9 @@ void evaluate_control_flow_if_statement(
         return false;
     }
     const syntax::ExprKind kind = module.exprs[expr_id.value].kind;
-    return kind == syntax::ExprKind::call || kind == syntax::ExprKind::try_expr;
+    return kind == syntax::ExprKind::call ||
+           kind == syntax::ExprKind::try_expr ||
+           kind == syntax::ExprKind::unsafe_block;
 }
 
 [[nodiscard]] bool compound_assignment_binary_op(
@@ -359,12 +361,14 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     const TypeHandle previous_function_return_type = this->current_function_return_type_;
     ReturnTypeInference* const previous_return_inference = this->current_return_inference_;
     const int previous_loop_depth = this->loop_depth_;
+    const int previous_unsafe_depth = this->unsafe_context_depth_;
     const SymbolTable previous_symbols = this->symbols_;
     const auto restore_context = [&]() {
         this->current_module_ = previous_module;
         this->current_function_return_type_ = previous_function_return_type;
         this->current_return_inference_ = previous_return_inference;
         this->loop_depth_ = previous_loop_depth;
+        this->unsafe_context_depth_ = previous_unsafe_depth;
         this->symbols_ = previous_symbols;
     };
     this->current_module_ = signature.module;
@@ -386,6 +390,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     }
     state = FunctionBodyState::analyzing;
     this->loop_depth_ = SEMA_NO_LOOP_DEPTH;
+    this->unsafe_context_depth_ = signature.is_unsafe ? previous_unsafe_depth + 1 : previous_unsafe_depth;
     const bool infer_return_type = !syntax::is_valid(function.return_type);
     ReturnTypeInference return_inference;
     TypeHandle expected_return = signature.return_type;

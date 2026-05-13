@@ -10,7 +10,7 @@ struct Packet {
 }
 
 fn read_count(value: CountPtr) -> Count {
-    return *value;
+    return unsafe { *value };
 }
 
 fn main() -> i32 {

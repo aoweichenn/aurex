@@ -446,6 +446,7 @@ bool SemanticAnalyzer::unify_generic_type(
             break;
         case TypeKind::function:
             if (pattern_info.function_call_conv != actual_info.function_call_conv ||
+                pattern_info.function_is_unsafe != actual_info.function_is_unsafe ||
                 pattern_info.function_is_variadic != actual_info.function_is_variadic ||
                 pattern_info.function_params.size() != actual_info.function_params.size()) {
                 return false;
@@ -578,6 +579,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
         ? this->resolve_type(function.return_type)
         : INVALID_TYPE_HANDLE;
     signature.range = function.range;
+    signature.is_unsafe = function.is_unsafe;
     signature.has_definition = true;
     signature.visibility = info.visibility;
     signature.definition_item = info.item;
@@ -694,6 +696,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         ? this->resolve_type(function.return_type)
         : INVALID_TYPE_HANDLE;
     signature.range = function.range;
+    signature.is_unsafe = function.is_unsafe;
     signature.has_definition = true;
     signature.visibility = info.visibility;
     signature.definition_item = info.item;
@@ -764,6 +767,7 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
         ? this->resolve_type(function.return_type)
         : INVALID_TYPE_HANDLE;
     signature.range = function.range;
+    signature.is_unsafe = function.is_unsafe;
     signature.has_definition = true;
     signature.visibility = info.visibility;
     for (const syntax::ParamDecl& param : function.params) {

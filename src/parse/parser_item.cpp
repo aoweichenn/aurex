@@ -69,14 +69,28 @@ syntax::ItemId ItemParser::parse_item() {
         }
         const syntax::Token& begin = this->advance();
         this->expect(TokenKind::kw_c, std::string(PARSER_EXPECT_EXPORT_C_KEYWORD));
-        if (!this->check(TokenKind::kw_fn)) {
+        const bool is_unsafe = this->check(TokenKind::kw_unsafe);
+        if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
             this->report_here(std::string(PARSER_EXPECT_EXPORT_C_FN));
             return syntax::INVALID_ITEM_ID;
         }
-        syntax::ItemId id = this->parse_fn_decl(true, false);
+        syntax::ItemId id = this->parse_fn_decl(true, false, is_unsafe);
         if (syntax::is_valid(id)) {
             this->session_.module.items[id.value].range.begin = begin.range.begin;
             this->session_.module.items[id.value].visibility = syntax::Visibility::public_;
+        }
+        return id;
+    }
+    if (this->check(TokenKind::kw_unsafe)) {
+        if (!this->check_next(TokenKind::kw_fn)) {
+            this->advance();
+            this->report_here(std::string(PARSER_EXPECT_FN_AFTER_UNSAFE));
+            this->synchronize(RecoveryContext::item);
+            return syntax::INVALID_ITEM_ID;
+        }
+        const syntax::ItemId id = this->parse_fn_decl(false, false, true);
+        if (syntax::is_valid(id)) {
+            this->session_.module.items[id.value].visibility = visibility.visibility;
         }
         return id;
     }

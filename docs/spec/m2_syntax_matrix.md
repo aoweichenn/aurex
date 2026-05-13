@@ -29,6 +29,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Enum | `enum E[T] { none }` | no | Not part of M2 |
 | Opaque | `opaque struct FILE;` | yes | Used by extern C |
 | Function | `fn f() -> i32 { return 1; }` | yes | Normal function |
+| Function | `unsafe fn f(p: *const i32) -> i32 { return *p; }` | yes | Body is an unsafe context |
 | Function | `fn f();` | yes | Prototype; explicit return required |
 | Function | `fn id[T](x: T) -> T { return x; }` | yes | Basic generic function |
 | Function | `fn id[T: Copy](x: T) -> T` | no | Generic bounds are not part of M2 |
@@ -47,8 +48,10 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `[]mut i32` | yes | Mutable borrowed slice, fat pointer value |
 | Type | `[]i32` | no | Slice mutability is required |
 | Type | `fn(i32, i32) -> i32` | yes | Non-capturing Aurex function pointer type |
+| Type | `unsafe fn(*const i32) -> i32` | yes | Calls require unsafe context |
 | Type | `fn(a: i32, b: i32) -> i32` | yes | Names are accepted in function type params |
 | Type | `extern c fn(*const u8, ...) -> i32` | yes | C ABI function pointer; variadic only for `extern c fn` |
+| Type | `unsafe extern c fn(*const u8) -> i32` | yes | Unsafe C ABI function pointer |
 | Type | `fn(i32, ...) -> i32` | no | Variadic function types require `extern c fn` |
 | Type | `Box[i32]` | yes | Generic type arguments |
 | Type | `Box[]` | no | Empty type arguments rejected |
@@ -61,6 +64,7 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `arr[l:]` | yes | Omitted end defaults to array length or source slice length |
 | Expr | `arr[:]` | yes | Full slice |
 | Expr | `let op: fn(i32) -> i32 = f; op(1)` | yes | Function name as value and indirect call |
+| Expr | `let op: unsafe fn(*const i32) -> i32 = f; unsafe { op(p) }` | yes | Unsafe function value call fenced by unsafe block |
 | Expr | `table.callback(1)` | yes | Struct fields of function type can be called |
 | Expr | `id::[i32](1)` | yes | Explicit generic function call |
 | Expr | `id[i32](1)` | no | Use `id::[i32](...)` |
@@ -68,6 +72,10 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `Box[i32] { value: 1 }` | yes | Generic struct literal |
 | Expr | `[1, 2, 3]` | yes | Array literal |
 | Expr | `[0; 4]` | yes | Array repeat literal |
+| Expr | `unsafe { *p }` | yes | Tail expression result; creates unsafe context |
+| Expr | `unsafe { *p = 1; }` | yes | Statement-form unsafe block; no tail means `void` |
+| Expr | `*p` outside `unsafe` | no | Raw pointer dereference requires unsafe context |
+| Expr | `ptrcast[T](p)` outside `unsafe` | no | `ptrcast`, `bitcast`, `ptrat`, and `strraw` are unsafe-only |
 | Expr | `value++` / `value--` | no | Use assignment operators |
 | Block | `{ let x = 1; x + 1 }` | yes | Tail expression result |
 | Block | `{ x = 1 }` | no | Assignment cannot be block result |

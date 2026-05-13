@@ -25,6 +25,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_priv: return "kw_priv";
     case TokenKind::kw_extern: return "kw_extern";
     case TokenKind::kw_export: return "kw_export";
+    case TokenKind::kw_unsafe: return "kw_unsafe";
     case TokenKind::kw_c: return "kw_c";
     case TokenKind::kw_fn: return "kw_fn";
     case TokenKind::kw_struct: return "kw_struct";
@@ -196,6 +197,9 @@ std::string type_label(const AstModule& module, const TypeId id) {
         out << type_label(module, type.slice_element);
         break;
     case TypeKind::function:
+        if (type.function_is_unsafe) {
+            out << "unsafe ";
+        }
         if (type.function_call_conv == FunctionCallConv::c) {
             out << "extern c ";
         }
@@ -322,6 +326,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::try_expr: return "try_expr";
     case ExprKind::if_expr: return "if_expr";
     case ExprKind::block_expr: return "block_expr";
+    case ExprKind::unsafe_block: return "unsafe_block";
     case ExprKind::match_expr: return "match_expr";
     case ExprKind::array_literal: return "array_literal";
     case ExprKind::field: return "field";
@@ -583,6 +588,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     if (item.is_extern_c) {
         out << " extern_c";
+    }
+    if (item.is_unsafe) {
+        out << " unsafe";
     }
     if (item.is_variadic) {
         out << " variadic";

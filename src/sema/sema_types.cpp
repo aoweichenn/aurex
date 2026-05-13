@@ -90,6 +90,7 @@ struct TypeResolveAction {
     bool opaque_allowed_as_pointee = false;
     syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
     syntax::FunctionCallConv function_call_conv = syntax::FunctionCallConv::aurex;
+    bool function_is_unsafe = false;
     bool function_is_variadic = false;
     std::optional<base::u64> array_count {};
     base::usize function_param_count = 0;
@@ -587,6 +588,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 build.type = action.type;
                 build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
                 build.function_call_conv = type.function_call_conv;
+                build.function_is_unsafe = type.function_is_unsafe;
                 build.function_is_variadic = type.function_is_variadic;
                 build.function_param_count = type.function_params.size();
                 actions.push_back(build);
@@ -678,6 +680,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             }
             const TypeHandle resolved = this->checked_.types.function(
                 map_function_call_conv(action.function_call_conv),
+                action.function_is_unsafe,
                 action.function_is_variadic,
                 std::move(params),
                 return_type

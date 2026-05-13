@@ -1,7 +1,9 @@
 module for_range;
 
 fn push_digit(log: *mut i32, value: i32) -> void {
-    *log = *log * 10 + value;
+    unsafe {
+        *log = *log * 10 + value;
+    }
 }
 
 fn contextual_start(limit: i64) -> i64 {

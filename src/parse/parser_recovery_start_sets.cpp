@@ -20,6 +20,7 @@ bool token_starts_item(const TokenKind kind) noexcept {
     case TokenKind::kw_priv:
     case TokenKind::kw_extern:
     case TokenKind::kw_export:
+    case TokenKind::kw_unsafe:
     case TokenKind::kw_import:
         return true;
     default:
@@ -53,6 +54,7 @@ bool token_starts_expression(const TokenKind kind) noexcept {
     case TokenKind::kw_strptr:
     case TokenKind::kw_strblen:
     case TokenKind::kw_strraw:
+    case TokenKind::kw_unsafe:
     case TokenKind::l_paren:
     case TokenKind::l_brace:
     case TokenKind::l_bracket:
@@ -82,6 +84,7 @@ bool token_starts_statement(const TokenKind kind) noexcept {
     case TokenKind::kw_continue:
     case TokenKind::kw_defer:
     case TokenKind::kw_return:
+    case TokenKind::kw_unsafe:
         return true;
     default:
         return false;
@@ -99,6 +102,7 @@ bool token_starts_non_expression_statement(const TokenKind kind) noexcept {
     case TokenKind::kw_continue:
     case TokenKind::kw_defer:
     case TokenKind::kw_return:
+    case TokenKind::kw_unsafe:
         return true;
     default:
         return false;
@@ -110,6 +114,7 @@ bool token_starts_type(const TokenKind kind) noexcept {
     case TokenKind::identifier:
     case TokenKind::star:
     case TokenKind::l_bracket:
+    case TokenKind::kw_unsafe:
     case TokenKind::kw_fn:
     case TokenKind::kw_extern:
     case TokenKind::kw_void:

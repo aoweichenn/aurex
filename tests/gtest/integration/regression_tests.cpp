@@ -99,6 +99,59 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
     expect_contains(llvm_ir, "ret i32 1000");
 }
 
+TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {
+    const fs::path positive = positive_sample("pointers", "unsafe_minimal.ax");
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(positive)).output;
+    expect_contains_all(ast, {
+        "fn from_raw unsafe",
+        "unsafe_block",
+        "alias unsafe fn(*const i32) -> i32",
+    });
+
+    const std::string checked = require_success(aurexc() + " --emit=checked " + q(positive)).output;
+    expect_contains_all(checked, {
+        "fn priv from_raw -> str unsafe",
+        "type priv UnsafeRead = unsafe fn(*const i32) -> i32",
+    });
+
+    const fs::path binary = test_bin_root() / "unsafe_minimal";
+    require_success(aurexc() + " " + q(positive) + " -o " + q(binary));
+    require_success(q(binary));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "unsafe_deref_required.ax"))).output,
+        "raw pointer dereference requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "unsafe_ptrcast_required.ax"))).output,
+        "ptrcast requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "unsafe_bitcast_required.ax"))).output,
+        "bitcast requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "unsafe_ptrat_required.ax"))).output,
+        "ptrat requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "unsafe_strraw_required.ax"))).output,
+        "strraw requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "unsafe_fn_call_required.ax"))).output,
+        "call to unsafe function read_raw requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("functions", "unsafe_fn_pointer_call_required.ax"))).output,
+        "call to unsafe function"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("expressions", "unsafe_block_const_initializer.ax"))).output,
+        "unsafe block cannot be used in const initializer"
+    );
+}
+
 TEST_F(AurexIntegrationTest, ArrayLiteralRegressions) {
     const fs::path array_literal = positive_sample("types", "array_literal.ax");
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(array_literal)).output;
@@ -562,7 +615,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "fn main() -> i32 {\n"
         "  let box: ga::RemoteBox[i32] = ga::make_box::[i32](ga::remote_id(5));\n"
         "  let ptr: *const i32 = &box.value;\n"
-        "  return ga::remote_id(*ptr) - 5;\n"
+        "  return ga::remote_id(unsafe { *ptr }) - 5;\n"
         "}\n"
     );
     require_success(aurexc() + " -I " + q(import_dir) + " --check " + q(use_imported));
@@ -662,7 +715,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "  let values: *mut [2]i32 = null;\n"
         "  let same_values = array_ptr_id(values);\n"
         "  let size: usize = sizeof[ArrayBox[i32]];\n"
-        "  return *same_ptr + (*same_values)[0] + cast[i32](size) - 9;\n"
+        "  return unsafe { *same_ptr } + unsafe { (*same_values)[0] } + cast[i32](size) - 9;\n"
         "}\n"
     );
     require_success(aurexc() + " --check " + q(generic_inference_edges));

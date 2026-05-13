@@ -197,6 +197,7 @@ private:
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_unsafe_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
     [[nodiscard]] const EnumCaseInfo* analyze_enum_case_pattern(
@@ -311,6 +312,10 @@ private:
     [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
     [[nodiscard]] TypeHandle function_type_from_signature(const FunctionSignature& signature);
     [[nodiscard]] TypeHandle function_type_from_symbol(const Symbol& symbol, base::SourceRange range);
+    [[nodiscard]] bool in_unsafe_context() const noexcept;
+    void require_unsafe_context(base::SourceRange range, std::string_view operation);
+    void validate_unsafe_call(const FunctionSignature& signature, base::SourceRange range);
+    void validate_unsafe_function_value_call(TypeHandle callee_type, base::SourceRange range);
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;
@@ -406,6 +411,7 @@ private:
     GenericContext* current_generic_context_ = nullptr;
     GenericSideTableScope current_side_tables_ {};
     int loop_depth_ = SEMA_NO_LOOP_DEPTH;
+    int unsafe_context_depth_ = 0;
     bool in_const_initializer_ = false;
 };
 

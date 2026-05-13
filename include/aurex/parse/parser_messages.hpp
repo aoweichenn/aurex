@@ -70,6 +70,12 @@ inline constexpr std::string_view PARSER_EXPECT_EXPORT_C_KEYWORD =
 inline constexpr std::string_view PARSER_EXPECT_EXPORT_C_FN =
     "expected function declaration after 'export c'";
 
+inline constexpr std::string_view PARSER_EXPECT_FN_AFTER_UNSAFE =
+    "expected 'fn' after 'unsafe'";
+
+inline constexpr std::string_view PARSER_EXPECT_UNSAFE_KEYWORD =
+    "expected 'unsafe'";
+
 inline constexpr std::string_view PARSER_EXPECT_STRUCT_KEYWORD =
     "expected 'struct'";
 
@@ -252,6 +258,9 @@ inline constexpr std::string_view PARSER_EXPECT_BLOCK_EXPR =
 
 inline constexpr std::string_view PARSER_EXPECT_BLOCK_EXPR_END =
     "expected '}' after block expression";
+
+inline constexpr std::string_view PARSER_EXPECT_UNSAFE_BLOCK =
+    "expected block after 'unsafe'";
 
 inline constexpr std::string_view PARSER_EXPECT_IF =
     "expected 'if'";

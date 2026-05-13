@@ -14,7 +14,7 @@ fn make_count() -> Count {
 fn main() -> i32 {
     var value = make_count();
     let ptr = &value;
-    let pair = Pair { value: *ptr + 2 };
+    let pair = Pair { value: unsafe { *ptr } + 2 };
     let aliased: CountPtr = ptr;
-    return pair.value + *aliased - 82;
+    return pair.value + unsafe { *aliased } - 82;
 }

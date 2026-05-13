@@ -1,7 +1,7 @@
 module address_of_let;
 
 fn read(value: *const i32) -> i32 {
-    return *value;
+    return unsafe { *value };
 }
 
 fn main() -> i32 {

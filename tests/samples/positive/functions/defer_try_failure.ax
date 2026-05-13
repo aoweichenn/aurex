@@ -6,7 +6,9 @@ enum ResultI32I32: u8 {
 }
 
 fn mark(log: *mut i32) -> void {
-  *log = *log + 1;
+  unsafe {
+    *log = *log + 1;
+  }
 }
 
 fn fail() -> ResultI32I32 {

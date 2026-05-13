@@ -249,6 +249,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_if_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::block_expr:
         return this->analyze_block_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::unsafe_block:
+        return this->analyze_unsafe_block_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::match_expr:
         return this->analyze_match_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::array_literal:
@@ -354,6 +356,7 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
         this->report(expr.range, std::string(SEMA_BITWISE_NOT_INTEGER));
     }
     if (expr.unary_op == syntax::UnaryOp::dereference) {
+        this->require_unsafe_context(expr.range, SEMA_UNSAFE_DEREF);
         if (!this->checked_.types.is_pointer(operand)) {
             this->report(expr.range, std::string(SEMA_DEREF_POINTER));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
@@ -876,6 +879,11 @@ TypeHandle SemanticAnalyzer::analyze_cast_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
 ) {
+    if (expr.kind == syntax::ExprKind::pcast) {
+        this->require_unsafe_context(expr.range, SEMA_UNSAFE_PTRCAST);
+    } else if (expr.kind == syntax::ExprKind::bcast) {
+        this->require_unsafe_context(expr.range, SEMA_UNSAFE_BITCAST);
+    }
     const TypeHandle source = this->analyze_expr(expr.cast_expr);
     const TypeHandle target = this->resolve_type(expr.cast_type);
     if (!this->is_valid_cast(expr.kind, target, source)) {
@@ -914,6 +922,7 @@ TypeHandle SemanticAnalyzer::analyze_paddr_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
 ) {
+    this->require_unsafe_context(expr.range, SEMA_UNSAFE_PTRAT);
     const TypeHandle target = this->resolve_type(expr.cast_type);
     const TypeHandle address = this->analyze_expr(expr.cast_expr, this->checked_.types.builtin(BuiltinType::usize));
     if (!this->checked_.types.is_pointer(target)) {
@@ -949,6 +958,7 @@ TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
 ) {
+    this->require_unsafe_context(expr.range, SEMA_UNSAFE_STRRAW);
     if (expr.args.size() != 2) {
         this->report(expr.range, std::string(SEMA_STRRAW_ARITY));
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
@@ -1085,6 +1095,39 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
         return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     return record_expr_type(expr_id, result);
+}
+
+TypeHandle SemanticAnalyzer::analyze_unsafe_block_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ExprNode& expr,
+    const TypeHandle expected_type
+) {
+    if (this->in_const_initializer_) {
+        this->report(expr.range, std::string(SEMA_UNSAFE_BLOCK_CONST_INITIALIZER));
+    }
+
+    this->symbols_.push_scope();
+    const int previous_unsafe_depth = this->unsafe_context_depth_;
+    ++this->unsafe_context_depth_;
+    this->analyze_block_statements(expr.block, this->current_function_return_type_, this->current_return_inference_);
+    TypeHandle result = this->checked_.types.builtin(BuiltinType::void_);
+    if (syntax::is_valid(expr.block_result)) {
+        if (!this->block_may_fallthrough(expr.block)) {
+            this->report(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
+        }
+        result = this->analyze_expr(expr.block_result, expected_type);
+    }
+    this->unsafe_context_depth_ = previous_unsafe_depth;
+    this->symbols_.pop_scope();
+
+    if (!is_valid(result)) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    if (syntax::is_valid(expr.block_result) && this->checked_.types.is_void(result)) {
+        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    return this->record_expr_type(expr_id, result);
 }
 
 } // namespace aurex::sema

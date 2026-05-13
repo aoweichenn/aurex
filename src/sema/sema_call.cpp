@@ -21,6 +21,7 @@ constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
 TypeHandle SemanticAnalyzer::function_type_from_signature(const FunctionSignature& signature) {
     return this->checked_.types.function(
         signature_call_conv(signature),
+        signature.is_unsafe,
         signature.is_variadic,
         signature.param_types,
         signature.return_type
@@ -36,6 +37,41 @@ TypeHandle SemanticAnalyzer::function_type_from_symbol(const Symbol& symbol, con
     }
     this->ensure_function_return_known(*signature, range);
     return this->function_type_from_signature(*signature);
+}
+
+bool SemanticAnalyzer::in_unsafe_context() const noexcept {
+    return this->unsafe_context_depth_ > 0;
+}
+
+void SemanticAnalyzer::require_unsafe_context(
+    const base::SourceRange range,
+    const std::string_view operation
+) {
+    if (!this->in_unsafe_context()) {
+        this->report(range, std::string(operation));
+    }
+}
+
+void SemanticAnalyzer::validate_unsafe_call(
+    const FunctionSignature& signature,
+    const base::SourceRange range
+) {
+    if (signature.is_unsafe && !this->in_unsafe_context()) {
+        this->report(range, sema_unsafe_function_call_message(signature.name));
+    }
+}
+
+void SemanticAnalyzer::validate_unsafe_function_value_call(
+    const TypeHandle callee_type,
+    const base::SourceRange range
+) {
+    if (!this->checked_.types.is_function(callee_type)) {
+        return;
+    }
+    const TypeInfo& function = this->checked_.types.get(callee_type);
+    if (function.function_is_unsafe && !this->in_unsafe_context()) {
+        this->report(range, sema_unsafe_function_call_message(SEMA_FUNCTION_VALUE_CALL_NAME));
+    }
 }
 
 TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
@@ -148,6 +184,7 @@ TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
     if (signature == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
+    this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
     this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
     return this->record_expr_type(expr_id, signature->return_type);
@@ -243,6 +280,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         receiver_valid = this->method_receiver_matches(*signature, receiver_type, callee.object);
     }
     this->ensure_function_return_known(*signature, callee.range);
+    this->validate_unsafe_call(*signature, callee.range);
     this->record_expr_c_name(expr.callee, signature->c_name);
     const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
     if (!receiver_valid || signature->param_types.size() < receiver_count) {
@@ -266,6 +304,7 @@ TypeHandle SemanticAnalyzer::analyze_function_value_call_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const TypeInfo& function = this->checked_.types.get(callee_type);
+    this->validate_unsafe_function_value_call(callee_type, expr.range);
     this->validate_call_arguments(
         expr,
         name.empty() ? SEMA_FUNCTION_VALUE_CALL_NAME : name,
@@ -305,6 +344,7 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
         if (signature == nullptr) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
+        this->validate_unsafe_call(*signature, callee_range);
         this->record_expr_c_name(expr.callee, signature->c_name);
         this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
         return this->record_expr_type(expr_id, signature->return_type);
@@ -318,6 +358,7 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->ensure_function_return_known(*signature, this->module_.exprs[expr.callee.value].range);
+    this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
     this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
     return this->record_expr_type(expr_id, signature->return_type);

@@ -122,7 +122,7 @@ if(BUILD_TESTING)
     )
     add_test(
         NAME aurex_tests_sample_suite_negative
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_NegativeSamples
+        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Negative*
     )
     set_tests_properties(
         aurex_tests_core_unit

@@ -221,7 +221,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "fn unchecked_string unsafe",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
-        "struct_literal <selector>",
+        "postfix_op struct_literal",
         "stmt #",
         "while",
         "for",
@@ -239,7 +239,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "array_literal",
         "array_repeat_value",
         "array_repeat_count",
-        "index",
+        "postfix_op bracket",
         "ptrcast",
         "bitcast",
         "alignof",
@@ -269,7 +269,7 @@ TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions) {
         "slice",
         "slice_start",
         "slice_end",
-        "index",
+        "postfix_op bracket",
     });
 }
 
@@ -397,8 +397,8 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
             "alias [10]u8",
             "alias [10]u8",
             "alias [1000]u8",
-            "struct_literal <selector>",
-            "try_expr",
+            "postfix_op struct_literal",
+            "postfix_op try",
             "binary",
         });
     }
@@ -1335,7 +1335,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
         messages += '\n';
     }
     expect_contains(messages, "expected ')' after expression");
-    expect_contains(messages, "expected ']' after index");
+    expect_contains(messages, "expected ',' or ']' after generic type argument");
     expect_contains(messages, "expected ')' after ptraddr argument");
     expect_contains(messages, "expected ',' or ')' after argument");
     expect_contains(messages, "expected expression");
@@ -1627,28 +1627,29 @@ TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
 
     const syntax::StmtNode& call_stmt = module.stmts[body.statements[0].value];
     ASSERT_TRUE(syntax::is_valid(call_stmt.init));
-    const syntax::ExprNode& try_expr = module.exprs[call_stmt.init.value];
-    ASSERT_EQ(try_expr.kind, syntax::ExprKind::try_expr);
-    ASSERT_TRUE(syntax::is_valid(try_expr.unary_operand));
-    const syntax::ExprNode& call_expr = module.exprs[try_expr.unary_operand.value];
-    ASSERT_EQ(call_expr.kind, syntax::ExprKind::call);
-    ASSERT_TRUE(syntax::is_valid(call_expr.callee));
-    const syntax::ExprNode& field_expr = module.exprs[call_expr.callee.value];
-    ASSERT_EQ(field_expr.kind, syntax::ExprKind::field);
-    EXPECT_EQ(field_expr.field_name, "ok");
-    ASSERT_TRUE(syntax::is_valid(field_expr.object));
-    const syntax::ExprNode& result_name = module.exprs[field_expr.object.value];
+    const syntax::ExprNode& call_chain = module.exprs[call_stmt.init.value];
+    ASSERT_EQ(call_chain.kind, syntax::ExprKind::postfix_chain);
+    ASSERT_TRUE(syntax::is_valid(call_chain.postfix_base));
+    const syntax::ExprNode& result_name = module.exprs[call_chain.postfix_base.value];
     ASSERT_EQ(result_name.kind, syntax::ExprKind::name);
     EXPECT_EQ(result_name.text, "ResultI32");
+    ASSERT_EQ(call_chain.postfix_ops.size(), 3U);
+    EXPECT_EQ(call_chain.postfix_ops[0].kind, syntax::PostfixOpKind::select);
+    EXPECT_EQ(call_chain.postfix_ops[0].name, "ok");
+    EXPECT_EQ(call_chain.postfix_ops[1].kind, syntax::PostfixOpKind::call);
+    ASSERT_EQ(call_chain.postfix_ops[1].args.size(), 1U);
+    EXPECT_EQ(call_chain.postfix_ops[2].kind, syntax::PostfixOpKind::try_);
 
     const syntax::StmtNode& literal_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(literal_stmt.init));
-    const syntax::ExprNode& literal = module.exprs[literal_stmt.init.value];
-    ASSERT_EQ(literal.kind, syntax::ExprKind::struct_literal);
-    ASSERT_TRUE(syntax::is_valid(literal.object));
-    const syntax::ExprNode& literal_type = module.exprs[literal.object.value];
+    const syntax::ExprNode& literal_chain = module.exprs[literal_stmt.init.value];
+    ASSERT_EQ(literal_chain.kind, syntax::ExprKind::postfix_chain);
+    ASSERT_TRUE(syntax::is_valid(literal_chain.postfix_base));
+    const syntax::ExprNode& literal_type = module.exprs[literal_chain.postfix_base.value];
     ASSERT_EQ(literal_type.kind, syntax::ExprKind::name);
     EXPECT_EQ(literal_type.text, "Wrap");
+    ASSERT_EQ(literal_chain.postfix_ops.size(), 1U);
+    EXPECT_EQ(literal_chain.postfix_ops[0].kind, syntax::PostfixOpKind::struct_literal);
 
     const syntax::StmtNode& shifted_stmt = module.stmts[body.statements[2].value];
     ASSERT_TRUE(syntax::is_valid(shifted_stmt.init));
@@ -2505,8 +2506,8 @@ TEST(CoreUnit, ParserM2GenericSyntax) {
         "return T",
         "Box[i32]",
         "Pair[i32, bool]",
-        "generic_apply[i32]",
-        "index",
+        "type_arg i32",
+        "postfix_op bracket",
     });
 }
 

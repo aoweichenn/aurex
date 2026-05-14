@@ -15,7 +15,10 @@ namespace {
 } // namespace
 
 SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::DiagnosticSink& diagnostics) noexcept
-    : module_(module), diagnostics_(diagnostics) {}
+    : module_(module), diagnostics_(diagnostics) {
+    this->module_.exprs.reserve(this->module_.exprs.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+    this->module_.types.reserve(this->module_.types.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+}
 
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->checked_.expr_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
@@ -57,6 +60,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     if (this->diagnostics_.has_error()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, std::string(SEMA_ANALYSIS_FAILED)});
     }
+    this->checked_.normalized_ast = this->module_;
     return base::Result<CheckedModule>::ok(std::move(this->checked_));
 }
 

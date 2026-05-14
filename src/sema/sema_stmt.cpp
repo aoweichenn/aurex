@@ -774,10 +774,10 @@ void SemanticAnalyzer::analyze_statement_node(
         break;
     }
     case syntax::StmtKind::assign: {
+        const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
         if (!this->is_writable_place(stmt.lhs)) {
             this->report(expr_range_or(this->module_, stmt.lhs, stmt.range), std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
         }
-        const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
         if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
             syntax::ExprNode binary;
@@ -884,12 +884,12 @@ void SemanticAnalyzer::analyze_statement_node(
         break;
     }
     case syntax::StmtKind::expr:
+        static_cast<void>(this->analyze_expr(stmt.init));
         if (syntax::is_valid(stmt.init) &&
             stmt.init.value < this->module_.exprs.size() &&
             !is_allowed_expression_statement(this->module_, stmt.init)) {
             this->report(this->module_.exprs[stmt.init.value].range, std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
         }
-        static_cast<void>(this->analyze_expr(stmt.init));
         break;
     case syntax::StmtKind::block:
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt_id});
@@ -901,13 +901,13 @@ void SemanticAnalyzer::analyze_statement_node(
         }
         break;
     case syntax::StmtKind::defer:
+        static_cast<void>(this->analyze_expr(stmt.init));
         if (!syntax::is_valid(stmt.init) ||
             stmt.init.value >= this->module_.exprs.size() ||
             this->module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
             this->report(stmt.range, std::string(SEMA_DEFER_CALL));
             break;
         }
-        static_cast<void>(this->analyze_expr(stmt.init));
         break;
     }
 }

@@ -473,7 +473,7 @@ alias.name
 
 | 优先级 | 操作符 |
 | --- | --- |
-| postfix | `.`, `[]`, `()`, `?`, explicit type args on callee |
+| postfix | `.`, `[]`, `()`, `?`, sema-resolved type args on callee |
 | unary | `!`, `-`, `~`, `&`, `*`, builtins |
 | multiplicative | `*`, `/`, `%` |
 | additive | `+`, `-` |
@@ -515,7 +515,7 @@ module_alias.Point { x: 1, y: 2 }
 - 跨模块 private field 不能访问或初始化。
 - 泛型 struct literal 当前必须显式写 `[]` 类型实参，例如 `Pair[i32, bool] { ... }`。
 - 显式函数泛型调用写 `name[T](...)` 或 `module.name[T](...)`。
-- `id[T]` 在 AST 中是独立 postfix `generic_apply` 节点；call 再以它作为 callee。
+- `id[T]` 在 raw AST 中是 `postfix_chain` 的 bracket op；sema 确认 `id` 是泛型函数后，再 materialize 成 `generic_apply` 并让 call 以它作为 callee。
 - `fn f[]`、`Box[]`、`id[](...)` 均非法。
 - `<` / `>` 已完全退出泛型语法，只保留为比较 token。
 

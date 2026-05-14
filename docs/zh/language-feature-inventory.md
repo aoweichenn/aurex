@@ -310,7 +310,7 @@ M2 基础泛型语法：
 GenericParams = "[" GenericParam ("," GenericParam)* ","? "]"
 GenericParam  = identifier
 TypeArgs      = "[" Type ("," Type)* ","? "]"
-GenericApply  = Callee TypeArgs
+GenericApply  = Callee TypeArgs  // sema materialized from postfix_chain bracket op
 WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 ```
 
@@ -322,8 +322,9 @@ WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 - 命名类型后的 `TypeArgs` 用于泛型类型实例化，例如 `Pair[i32, bool]`。
 - 泛型类型声明覆盖 `struct Pair[T, U]`、`enum Option[T]`、`type Ptr[T] = *const T`。
 - `impl[T] Box[T]` 这类 owner generic impl 支持；method-local generic parameter 仍不支持。
-- `GenericApply` 是独立 postfix 表达式，只用于显式泛型函数调用，例如 `id[i32](value)`。
-- `name[index]` 永远是 index 表达式，不是泛型调用。
+- parser 阶段不再把 `[]` 立即分成 `GenericApply` 或 index；表达式后缀统一记录成 `postfix_chain(base + ops)`。
+- sema 根据 base kind 再 materialize：`id[i32](value)` 变成显式泛型函数调用，`Option[i32].some` 变成泛型类型选择 + enum case，`values[0].field` 变成 value index 后接字段选择。
+- `name[index]` 是否是 index 由 `name` 的语义种类决定；局部 value base 会走 index，泛型函数/type base 会走 type args。
 
 enum：
 
@@ -551,7 +552,7 @@ binary precedence 从高到低：
 
 | 层级 | 操作符 |
 | --- | --- |
-| postfix | `.`, `[]`, `()`, `?`, explicit generic apply |
+| postfix | `.`, `[]`, `()`, `?`, sema-resolved generic apply |
 | unary | `!`, `-`, `~`, `&`, `*`, builtins |
 | multiplicative | `*`, `/`, `%` |
 | additive | `+`, `-` |

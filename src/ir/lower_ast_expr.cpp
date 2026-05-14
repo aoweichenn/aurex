@@ -195,6 +195,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_array_literal_expr(expr_id, expr);
     case syntax::ExprKind::tuple_literal:
         return this->lower_tuple_literal_expr(expr_id, expr);
+    case syntax::ExprKind::postfix_chain:
+        return INVALID_VALUE_ID;
     case syntax::ExprKind::slice:
         return this->lower_slice_expr(expr_id, expr);
     case syntax::ExprKind::field:

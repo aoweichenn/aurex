@@ -199,6 +199,30 @@ private:
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_postfix_chain_expr(syntax::ExprId expr_id, TypeHandle expected_type);
+    [[nodiscard]] syntax::ExprId materialize_postfix_chain(syntax::ExprId expr_id);
+    [[nodiscard]] syntax::ExprId materialize_postfix_op(
+        syntax::ExprId chain_expr,
+        syntax::ExprId base,
+        const syntax::PostfixOp& op,
+        const syntax::PostfixOp* next_op,
+        bool is_last
+    );
+    [[nodiscard]] syntax::ExprId materialize_postfix_bracket_op(
+        syntax::ExprId chain_expr,
+        syntax::ExprId base,
+        const syntax::PostfixOp& op,
+        const syntax::PostfixOp* next_op,
+        bool is_last
+    );
+    [[nodiscard]] bool postfix_bracket_is_generic_apply(
+        syntax::ExprId base,
+        const syntax::PostfixOp& op,
+        const syntax::PostfixOp* next_op
+    );
+    [[nodiscard]] std::vector<syntax::TypeId> postfix_bracket_type_args(const syntax::PostfixOp& op);
+    [[nodiscard]] syntax::TypeId postfix_arg_expr_to_type(syntax::ExprId expr);
+    [[nodiscard]] syntax::TypeId postfix_chain_expr_to_type(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
@@ -538,10 +562,14 @@ private:
     [[nodiscard]] std::vector<std::unordered_set<std::string>>& active_pattern_case_sets() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_syntax_type_handles() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_stmt_local_types() noexcept;
+    [[nodiscard]] syntax::ExprId push_synthetic_expr(syntax::ExprNode node);
+    [[nodiscard]] syntax::TypeId push_synthetic_type(syntax::TypeNode node);
+    void ensure_expr_side_table_size(base::usize size);
+    void ensure_type_side_table_size(base::usize size);
     void index_enum_case(const EnumCaseInfo& info);
     void report(base::SourceRange range, std::string message);
 
-    const syntax::AstModule& module_;
+    syntax::AstModule module_;
     base::DiagnosticSink& diagnostics_;
     CheckedModule checked_;
     SymbolTable symbols_;

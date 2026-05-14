@@ -130,12 +130,12 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     expect_contains_all(alias_ast, {
         "import samplelib.visibility as vis",
         "let answer : vis.PublicInt",
-        "field .answer",
+        "postfix_op select .answer",
         "var boxed : vis.PublicBox",
-        "field .make_box",
-        "field .value",
-        "field .read",
-        "field .bump",
+        "postfix_op select .make_box",
+        "postfix_op select .value",
+        "postfix_op select .read",
+        "postfix_op select .bump",
     });
 
     const std::string alias_ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(alias_source)).output;

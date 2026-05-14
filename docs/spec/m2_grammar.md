@@ -520,6 +520,13 @@ generic_fn[T](arg)
 expr?
 ```
 
+Parser note: postfix expressions are stored as a raw `postfix_chain`
+(`base + ops`). A bracket op is not classified as `generic_apply` or `index`
+until semantic analysis resolves the base kind. For example, `id[i32](1)`,
+`Option[i32].some(1)`, and `values[0].field` share the same raw bracket syntax
+but materialize to generic function call, generic type selector, and value
+index respectively.
+
 Array expressions:
 
 ```aurex
@@ -751,6 +758,9 @@ GenericTypeArgs
 
 ExplicitGenericCall
   = SelectorExpr GenericTypeArgs "(" [ ArgumentList ] ")" ;
+
+; In the raw AST, this is parsed as a postfix chain and materialized during
+; semantic analysis after the selector base resolves as a generic function.
 
 WhereClause
   = "where" WhereConstraint { "," WhereConstraint } ;

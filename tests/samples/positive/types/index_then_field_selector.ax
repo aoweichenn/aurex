@@ -1,0 +1,10 @@
+module index_then_field_selector;
+
+struct Box {
+    value: i32;
+}
+
+fn main() -> i32 {
+    let boxes: [1]Box = [Box { value: 41 }];
+    return boxes[0].value - 41;
+}

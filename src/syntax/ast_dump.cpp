@@ -425,6 +425,7 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::match_expr: return "match_expr";
     case ExprKind::array_literal: return "array_literal";
     case ExprKind::tuple_literal: return "tuple_literal";
+    case ExprKind::postfix_chain: return "postfix_chain";
     case ExprKind::field: return "field";
     case ExprKind::index: return "index";
     case ExprKind::slice: return "slice";
@@ -441,6 +442,17 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::str_is_valid_utf8: return "strvalid";
     case ExprKind::str_from_utf8_checked: return "strfromutf8";
     case ExprKind::str_from_bytes_unchecked: return "strraw";
+    }
+    return "unknown";
+}
+
+std::string_view postfix_op_kind_name(const PostfixOpKind kind) {
+    switch (kind) {
+    case PostfixOpKind::select: return "select";
+    case PostfixOpKind::bracket: return "bracket";
+    case PostfixOpKind::call: return "call";
+    case PostfixOpKind::try_: return "try";
+    case PostfixOpKind::struct_literal: return "struct_literal";
     }
     return "unknown";
 }
@@ -641,6 +653,51 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         indent(out, depth + 1);
         out << "array_repeat_count\n";
         dump_expr(out, module, expr.array_repeat_count, depth + 2);
+    }
+    if (is_valid(expr.postfix_base)) {
+        indent(out, depth + 1);
+        out << "postfix_base\n";
+        dump_expr(out, module, expr.postfix_base, depth + 2);
+    }
+    for (const PostfixOp& op : expr.postfix_ops) {
+        indent(out, depth + 1);
+        out << "postfix_op " << postfix_op_kind_name(op.kind);
+        if (!op.name.empty()) {
+            out << " ." << op.name;
+        }
+        if (op.bracket_is_slice) {
+            out << " slice";
+        }
+        out << "\n";
+        for (const PostfixBracketArg& arg : op.bracket_args) {
+            indent(out, depth + 2);
+            if (is_valid(arg.type)) {
+                out << "type_arg " << type_label(module, arg.type) << "\n";
+            } else {
+                out << "expr_arg\n";
+                dump_expr(out, module, arg.expr, depth + 3);
+            }
+        }
+        if (is_valid(op.slice_start)) {
+            indent(out, depth + 2);
+            out << "slice_start\n";
+            dump_expr(out, module, op.slice_start, depth + 3);
+        }
+        if (is_valid(op.slice_end)) {
+            indent(out, depth + 2);
+            out << "slice_end\n";
+            dump_expr(out, module, op.slice_end, depth + 3);
+        }
+        for (const ExprId arg : op.args) {
+            indent(out, depth + 2);
+            out << "call_arg\n";
+            dump_expr(out, module, arg, depth + 3);
+        }
+        for (const FieldInit& init : op.field_inits) {
+            indent(out, depth + 2);
+            out << "field_init " << init.name << "\n";
+            dump_expr(out, module, init.value, depth + 3);
+        }
     }
     if (is_valid(expr.object)) {
         dump_expr(out, module, expr.object, depth + 1);

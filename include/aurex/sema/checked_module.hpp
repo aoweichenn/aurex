@@ -5,6 +5,7 @@
 #include <aurex/syntax/ast.hpp>
 
 #include <deque>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -86,6 +87,7 @@ struct CheckedModule {
     std::unordered_map<std::string, EnumCaseInfo> enum_cases;
     std::unordered_map<std::string, TypeAliasInfo> type_aliases;
     std::deque<GenericFunctionInstanceInfo> generic_function_instances;
+    std::optional<syntax::AstModule> normalized_ast;
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);

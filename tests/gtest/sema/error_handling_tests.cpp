@@ -8,7 +8,7 @@ TEST_F(AurexIntegrationTest, TryExpressionResultAndOption) {
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
         "expr #",
-        "try_expr",
+        "postfix_op try",
         "name `ResultI32I32`",
         "name `OptionI32`",
     });

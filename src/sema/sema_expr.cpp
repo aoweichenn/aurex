@@ -266,6 +266,8 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_array_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::tuple_literal:
         return this->analyze_tuple_literal_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::postfix_chain:
+        return this->analyze_postfix_chain_expr(expr_id, expected_type);
     case syntax::ExprKind::unary:
         return this->analyze_unary_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::binary:

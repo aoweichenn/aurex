@@ -386,7 +386,10 @@ sema::TypeHandle Lowerer::function_return_type(const base::u32 index, const synt
 namespace aurex::ir {
 
 base::Result<Module> lower_ast(const syntax::AstModule& ast, const sema::CheckedModule& checked) {
-    detail::Lowerer lowerer(ast, checked);
+    const syntax::AstModule& lowered_ast = checked.normalized_ast.has_value()
+        ? checked.normalized_ast.value()
+        : ast;
+    detail::Lowerer lowerer(lowered_ast, checked);
     return base::Result<Module>::ok(lowerer.lower());
 }
 

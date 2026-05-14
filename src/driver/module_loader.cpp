@@ -150,6 +150,21 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
     }
     node.array_repeat_value = remap_expr(node.array_repeat_value, map);
     node.array_repeat_count = remap_expr(node.array_repeat_count, map);
+    node.postfix_base = remap_expr(node.postfix_base, map);
+    for (syntax::PostfixOp& op : node.postfix_ops) {
+        for (syntax::PostfixBracketArg& arg : op.bracket_args) {
+            arg.expr = remap_expr(arg.expr, map);
+            arg.type = remap_type(arg.type, map);
+        }
+        op.slice_start = remap_expr(op.slice_start, map);
+        op.slice_end = remap_expr(op.slice_end, map);
+        for (syntax::ExprId& arg : op.args) {
+            arg = remap_expr(arg, map);
+        }
+        for (syntax::FieldInit& init : op.field_inits) {
+            init.value = remap_expr(init.value, map);
+        }
+    }
     node.object = remap_expr(node.object, map);
     node.index = remap_expr(node.index, map);
     node.slice_start = remap_expr(node.slice_start, map);

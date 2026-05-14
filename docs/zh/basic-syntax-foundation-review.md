@@ -614,7 +614,7 @@ enum Token {
 
 ## P1 已补：最小非资源类 `where` 约束
 
-M2 基础泛型现在包含类型参数、类型实参、显式 `generic_apply`、generic enum、generic type alias、owner generic impl，以及最小非资源类 `where` capability。仍不混入用户 trait、associated type、const generic 或资源 capability。
+M2 基础泛型现在包含类型参数、类型实参、sema materialized `generic_apply`、generic enum、generic type alias、owner generic impl，以及最小非资源类 `where` capability。raw parser AST 会先把 `id[T](x)` 记录成 `postfix_chain`，由 sema 根据 base kind 决定 bracket 是泛型实参还是 value index。仍不混入用户 trait、associated type、const generic 或资源 capability。
 
 现状：
 

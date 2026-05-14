@@ -113,6 +113,7 @@ enum class ExprKind {
     match_expr,
     array_literal,
     tuple_literal,
+    postfix_chain,
     field,
     index,
     slice,
@@ -216,6 +217,32 @@ struct FieldInit {
     base::SourceRange range {};
 };
 
+enum class PostfixOpKind {
+    select,
+    bracket,
+    call,
+    try_,
+    struct_literal,
+};
+
+struct PostfixBracketArg {
+    ExprId expr = INVALID_EXPR_ID;
+    TypeId type = INVALID_TYPE_ID;
+    base::SourceRange range {};
+};
+
+struct PostfixOp {
+    PostfixOpKind kind = PostfixOpKind::select;
+    base::SourceRange range {};
+    std::string_view name;
+    std::vector<PostfixBracketArg> bracket_args;
+    bool bracket_is_slice = false;
+    ExprId slice_start = INVALID_EXPR_ID;
+    ExprId slice_end = INVALID_EXPR_ID;
+    std::vector<ExprId> args;
+    std::vector<FieldInit> field_inits;
+};
+
 struct MatchArm {
     PatternId pattern = INVALID_PATTERN_ID;
     ExprId guard = INVALID_EXPR_ID;
@@ -248,6 +275,8 @@ struct ExprNode {
     std::vector<ExprId> tuple_elements;
     ExprId array_repeat_value = INVALID_EXPR_ID;
     ExprId array_repeat_count = INVALID_EXPR_ID;
+    ExprId postfix_base = INVALID_EXPR_ID;
+    std::vector<PostfixOp> postfix_ops;
     ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
     ExprId index = INVALID_EXPR_ID;

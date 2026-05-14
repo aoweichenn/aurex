@@ -235,12 +235,13 @@ Rules:
   array-containing types.
 - Generic type arguments use `[]`; empty `[]` is rejected.
 - `<` and `>` are not generic delimiters.
-- Type paths use the same dot selector spelling as values and modules. A
-  one-segment qualifier such as `mem.File` resolves through an import alias.
-  A multi-segment qualifier such as `core.mem.File` resolves as a visible
-  module path plus exported type name. Semantic base kind decides whether a
-  selector denotes a module, type, value, field, method, enum case, or
-  associated function. `::` is not accepted.
+- Type paths and expression selectors use the same dot spelling. A one-segment
+  module qualifier such as `mem.File` resolves through an import alias. A
+  multi-segment selector such as `core.mem.File` or `core.mem.page_size`
+  resolves the visible module path first, then selects the exported type or
+  value member. Semantic base kind decides whether a selector denotes a module,
+  type, value, field, method, enum case, or associated function. `::` is not
+  accepted.
 
 ## 4.1 Name Domains And Dot Selectors
 
@@ -249,9 +250,10 @@ postfix syntax uniform, and semantic analysis decides selector meaning from
 the base expression or type:
 
 ```text
-module.name  -> exported module member
-type.name    -> enum case or associated function
-value.name   -> field or method
+module.name       -> exported module member
+module.path.name  -> exported member of a visible module path
+type.name         -> enum case or associated function
+value.name        -> field or method
 ```
 
 Top-level names are split into module, type, and value domains:
@@ -274,11 +276,12 @@ Rules:
   namespace, so `some(1)` is rejected and `Option[i32].some(1)` is required.
 - A type member name cannot be reused by an enum case and an associated
   function on the same type.
-- A local or parameter name cannot shadow an import alias, generic type
-  parameter, or visible type name. Same-scope duplicate locals/parameters are
-  also rejected by the symbol table.
+- A local or parameter name cannot shadow an import alias, visible root module
+  name, generic type parameter, or visible type name. Same-scope duplicate
+  locals/parameters are also rejected by the symbol table.
 - A local declared in an inner lexical scope may shadow an outer local.
-- Imported module members are selected through the import alias. Unqualified
+- Imported module members are selected through the import alias or through a
+  visible full module path such as `samplelib.visibility.answer`. Unqualified
   lookup does not search imported modules.
 
 ## 5. Function Declarations

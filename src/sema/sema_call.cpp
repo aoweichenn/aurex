@@ -3,6 +3,7 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <string>
 #include <string_view>
 
 namespace aurex::sema {
@@ -11,6 +12,17 @@ namespace {
 
 constexpr base::usize SEMA_RECEIVER_ARGUMENT_COUNT = 1;
 constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
+
+[[nodiscard]] std::string module_selector_path_name(const std::vector<std::string_view>& parts) {
+    std::string name;
+    for (base::usize i = 0; i < parts.size(); ++i) {
+        if (i != 0) {
+            name.push_back('.');
+        }
+        name += parts[i];
+    }
+    return name;
+}
 
 [[nodiscard]] FunctionCallConv signature_call_conv(const FunctionSignature& signature) noexcept {
     return signature.is_extern_c || signature.is_export_c ? FunctionCallConv::c : FunctionCallConv::aurex;
@@ -100,21 +112,84 @@ TypeHandle SemanticAnalyzer::resolve_associated_generic_type_owner(
     return this->resolve_type_selector(syntax::ExprId {index}, report_unknown);
 }
 
+SemanticAnalyzer::ModuleSelectorPath SemanticAnalyzer::expr_selector_path(
+    const syntax::ExprId expr_id
+) const {
+    ModuleSelectorPath path;
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+        return path;
+    }
+
+    path.range = this->module_.exprs[expr_id.value].range;
+    syntax::ExprId current = expr_id;
+    while (syntax::is_valid(current) && current.value < this->module_.exprs.size()) {
+        const syntax::ExprNode& expr = this->module_.exprs[current.value];
+        if (expr.kind == syntax::ExprKind::field) {
+            if (expr.field_name.empty()) {
+                return {};
+            }
+            path.parts.push_back(expr.field_name);
+            current = expr.object;
+            continue;
+        }
+        if (expr.kind == syntax::ExprKind::name && expr.scope_name.empty()) {
+            path.parts.push_back(expr.text);
+            std::reverse(path.parts.begin(), path.parts.end());
+            return path;
+        }
+        return {};
+    }
+    return {};
+}
+
 SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
     const syntax::ExprId expr_id,
     const bool report_unknown
 ) {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+    const ModuleSelectorPath path = this->expr_selector_path(expr_id);
+    if (path.parts.empty()) {
         return {};
     }
-    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
-    if (expr.kind != syntax::ExprKind::name || !expr.scope_name.empty()) {
-        return {};
+
+    if (path.parts.size() == 1) {
+        const std::string_view name = path.parts.front();
+        const syntax::ModuleId alias_module = this->resolve_import_alias(name, path.range, false);
+        if (syntax::is_valid(alias_module)) {
+            return ModuleSelector {alias_module, false};
+        }
+        const syntax::ModuleId path_module = this->find_visible_module_path(path.parts);
+        if (syntax::is_valid(path_module)) {
+            return ModuleSelector {path_module, false};
+        }
+        const bool failed_selector = !this->selector_base_has_non_module_meaning(name);
+        if (failed_selector && report_unknown) {
+            if (this->visible_root_module_name_exists(name)) {
+                this->report(path.range, sema_unknown_module_path_message(std::string(name)));
+            } else {
+                static_cast<void>(this->resolve_import_alias(name, path.range, true));
+            }
+        }
+        return ModuleSelector {syntax::INVALID_MODULE_ID, failed_selector};
     }
-    const syntax::ModuleId module = this->resolve_import_alias(expr.text, expr.range, report_unknown);
-    const bool failed_as_import_alias =
-        !syntax::is_valid(module) && !this->selector_base_has_non_module_meaning(expr.text);
-    return ModuleSelector {module, failed_as_import_alias};
+
+    const syntax::ModuleId path_module = this->find_visible_module_path(path.parts);
+    if (syntax::is_valid(path_module)) {
+        return ModuleSelector {path_module, false};
+    }
+
+    const std::string_view root = path.parts.front();
+    const bool failed_selector =
+        !this->selector_base_has_non_module_meaning(root) &&
+        !this->module_alias_visible(root) &&
+        !this->visible_module_path_prefix_exists(path.parts);
+    if (failed_selector && report_unknown) {
+        if (this->visible_root_module_name_exists(root)) {
+            this->report(path.range, sema_unknown_module_path_message(module_selector_path_name(path.parts)));
+        } else {
+            static_cast<void>(this->resolve_import_alias(root, path.range, true));
+        }
+    }
+    return ModuleSelector {syntax::INVALID_MODULE_ID, failed_selector};
 }
 
 SemanticAnalyzer::NamedTypeSelector SemanticAnalyzer::resolve_named_type_selector(
@@ -343,7 +418,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
                 const syntax::ExprNode& generic_callee = this->module_.exprs[callee.callee.value];
                 if (generic_callee.kind == syntax::ExprKind::field) {
                     const ModuleSelector module = this->resolve_module_selector(generic_callee.object, false);
-                    if (module.failed_as_import_alias) {
+                    if (module.failed_as_module_selector) {
                         static_cast<void>(this->resolve_module_selector(generic_callee.object, true));
                         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                     }
@@ -379,7 +454,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         if (syntax::is_valid(module.module)) {
             return this->analyze_function_call_expr(expr_id, expr, callee, name, expected_type);
         }
-        if (module.failed_as_import_alias) {
+        if (module.failed_as_module_selector) {
             static_cast<void>(this->resolve_module_selector(callee.object, true));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }

@@ -605,7 +605,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
         if (syntax::is_valid(module.module)) {
             return this->analyze_module_member_expr(expr_id, module.module, expr);
         }
-        if (module.failed_as_import_alias) {
+        if (module.failed_as_module_selector) {
             static_cast<void>(this->resolve_module_selector(expr.object, true));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }

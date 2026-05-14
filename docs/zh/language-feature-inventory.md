@@ -325,7 +325,7 @@ WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 - parser 阶段不再把 `[]` 立即分成 `GenericApply` 或 index；表达式后缀统一记录成 `postfix_chain(base + ops)`。
 - sema 根据 base kind 再 materialize：`id[i32](value)` 变成显式泛型函数调用，`Option[i32].some` 变成泛型类型选择 + enum case，`values[0].field` 变成 value index 后接字段选择。
 - `name[index]` 是否是 index 由 `name` 的语义种类决定；局部 value base 会走 index，泛型函数/type base 会走 type args。
-- 类型注解支持 `Name`、`alias.Name` 和可见模块路径形式 `core.mem.File` / `core.mem.Box[i32]`；一段 qualifier 仍按 import alias 解析，多段 qualifier 按 visible module path 解析。
+- 类型注解支持 `Name`、`alias.Name` 和可见模块路径形式 `core.mem.File` / `core.mem.Box[i32]`；表达式侧同样支持 `core.mem.PAGE_SIZE`、`core.mem.make()`、`core.mem.File.new()` 这类多段模块 selector。一段 qualifier 仍按 import alias 解析，多段 qualifier 按 visible module path 解析。
 
 enum：
 
@@ -434,7 +434,7 @@ var z: i32 = 3;
 - 类型可省略并推导。
 - 同一 lexical scope 内不允许重复定义 local/param。
 - 内层 lexical scope 可以 shadow 外层 local。
-- local/param 不能 shadow import alias、generic type parameter 或当前可见类型名。
+- local/param 不能 shadow import alias、visible root module、generic type parameter 或当前可见类型名。
 
 赋值：
 
@@ -990,7 +990,9 @@ let all = bytes[:];
 
 5. namespace 规则冻结
 
-   `.` 统一用于 module path、import alias item、type、const/function、enum constructor、field 和 method；语义按 base kind 区分 module / type / value / member。`::` 不再是 Aurex 源语法。
+   `.` 统一用于 module path、import alias item、type、const/function、enum constructor、field 和 method；语义按 base kind 区分 module / type / value / member。表达式侧已支持 `samplelib.visibility.answer`、`samplelib.visibility.PublicBox.new()`、`samplelib.visibility.PublicChoice.yes` 这类 visible module path selector。`::` 不再是 Aurex 源语法。
+
+   shadowing 规则保持严格：local/parameter 不能 shadow import alias、visible root module、generic type parameter 或 visible type name；内层 local 仍可 shadow 外层 local。
 
 6. `str` 安全边界：已补 M2 no-std checked 构造和切片
 

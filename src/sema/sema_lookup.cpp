@@ -37,6 +37,22 @@ constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
     return true;
 }
 
+[[nodiscard]] bool module_path_matches_prefix(
+    const syntax::ModulePath& path,
+    const std::vector<std::string_view>& parts,
+    const base::usize prefix_size
+) noexcept {
+    if (path.parts.size() != prefix_size || parts.size() < prefix_size) {
+        return false;
+    }
+    for (base::usize i = 0; i < prefix_size; ++i) {
+        if (path.parts[i] != parts[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] std::string module_path_parts_name(const std::vector<std::string_view>& parts) {
     std::string name;
     for (base::usize i = 0; i < parts.size(); ++i) {
@@ -135,6 +151,22 @@ bool SemanticAnalyzer::module_alias_visible(const std::string_view name) const {
     return false;
 }
 
+bool SemanticAnalyzer::visible_root_module_name_exists(const std::string_view name) const {
+    if (name.empty()) {
+        return false;
+    }
+    for (const syntax::ModuleId module : this->visible_modules(this->current_module_)) {
+        if (!syntax::is_valid(module) || module.value >= this->module_.modules.size()) {
+            continue;
+        }
+        const syntax::ModulePath& path = this->module_.modules[module.value].path;
+        if (!path.parts.empty() && path.parts.front() == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<std::string_view> SemanticAnalyzer::type_scope_parts(const syntax::TypeNode& type) const {
     if (!type.scope_parts.empty()) {
         return type.scope_parts;
@@ -158,6 +190,25 @@ syntax::ModuleId SemanticAnalyzer::find_visible_module_path(const std::vector<st
         }
     }
     return syntax::INVALID_MODULE_ID;
+}
+
+bool SemanticAnalyzer::visible_module_path_prefix_exists(
+    const std::vector<std::string_view>& parts
+) const {
+    if (parts.size() < 2) {
+        return false;
+    }
+    for (base::usize prefix_size = 1; prefix_size < parts.size(); ++prefix_size) {
+        for (const syntax::ModuleId module : this->visible_modules(this->current_module_)) {
+            if (!syntax::is_valid(module) || module.value >= this->module_.modules.size()) {
+                continue;
+            }
+            if (module_path_matches_prefix(this->module_.modules[module.value].path, parts, prefix_size)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 syntax::ModuleId SemanticAnalyzer::resolve_type_scope(
@@ -348,6 +399,10 @@ bool SemanticAnalyzer::can_define_local_name(
     }
     if (this->module_alias_visible(name)) {
         this->report(range, sema_local_shadows_import_alias_message(name));
+        return false;
+    }
+    if (this->visible_root_module_name_exists(name)) {
+        this->report(range, sema_local_shadows_root_module_message(name));
         return false;
     }
     if (this->current_generic_param_exists(name)) {

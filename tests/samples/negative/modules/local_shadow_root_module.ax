@@ -1,0 +1,8 @@
+module local_shadow_root_module;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    let samplelib = 1;
+    return samplelib;
+}

@@ -57,7 +57,12 @@ private:
 
     struct ModuleSelector {
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
-        bool failed_as_import_alias = false;
+        bool failed_as_module_selector = false;
+    };
+
+    struct ModuleSelectorPath {
+        std::vector<std::string_view> parts;
+        base::SourceRange range {};
     };
 
     struct NamedTypeSelector {
@@ -465,6 +470,9 @@ private:
     );
     [[nodiscard]] bool selector_base_has_non_module_meaning(std::string_view name) const;
     [[nodiscard]] bool module_alias_visible(std::string_view name) const;
+    [[nodiscard]] bool visible_root_module_name_exists(std::string_view name) const;
+    [[nodiscard]] bool visible_module_path_prefix_exists(const std::vector<std::string_view>& parts) const;
+    [[nodiscard]] ModuleSelectorPath expr_selector_path(syntax::ExprId expr) const;
     [[nodiscard]] bool current_generic_param_exists(std::string_view name) const;
     [[nodiscard]] bool visible_type_name_exists(std::string_view name) const;
     [[nodiscard]] bool can_define_local_name(std::string_view name, base::SourceRange range);

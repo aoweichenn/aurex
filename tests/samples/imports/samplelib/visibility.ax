@@ -35,7 +35,18 @@ pub fn make_box(value: i32) -> PublicBox {
     };
 }
 
+pub fn keep[T](value: T) -> T {
+    return value;
+}
+
 impl PublicBox {
+    pub fn new(value: i32) -> PublicBox {
+        return PublicBox {
+            value: value,
+            secret: hidden_answer,
+        };
+    }
+
     pub fn read(self: *const PublicBox) -> i32 {
         return self.value;
     }

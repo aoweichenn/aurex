@@ -7,9 +7,17 @@ fn identity[T](value: T) -> T {
 }
 
 fn main() -> i32 {
-    let answer: samplelib.visibility.PublicInt = vis.answer;
+    let answer: samplelib.visibility.PublicInt = samplelib.visibility.answer;
     let same: samplelib.visibility.PublicInt = identity[samplelib.visibility.PublicInt](answer);
-    var boxed: samplelib.visibility.PublicBox = vis.make_box(answer);
+    let kept: samplelib.visibility.PublicInt = samplelib.visibility.keep[samplelib.visibility.PublicInt](answer);
+    var boxed: samplelib.visibility.PublicBox = samplelib.visibility.make_box(answer);
+    var constructed: samplelib.visibility.PublicBox = samplelib.visibility.PublicBox.new(answer);
+    let choice = samplelib.visibility.PublicChoice.yes;
+    let choice_score = match choice {
+        .yes => 0,
+        .no => 1,
+    };
     let read: samplelib.visibility.PublicInt = boxed.read();
-    return read - same;
+    let constructed_read: samplelib.visibility.PublicInt = constructed.read();
+    return read - same + kept - answer + constructed_read - answer + choice_score;
 }

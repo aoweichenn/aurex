@@ -859,7 +859,7 @@ let result = match value {
 
 当前规则是：同一 lexical scope 内不允许重复定义 local/param；内层
 lexical scope 可以 shadow 外层 local；local/param 不能 shadow import
-alias、generic type parameter 或当前可见类型名。
+alias、visible root module、generic type parameter 或当前可见类型名。
 
 这保留了值转换阶段的可写性，同时避免 dot-only selector 下最危险的
 module/type/value 名称歧义：

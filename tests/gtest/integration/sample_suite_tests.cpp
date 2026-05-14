@@ -51,6 +51,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"import_alias_namespace_conflict", "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
     {"local_shadow_generic_type_parameter", "local name shadows generic type parameter: T"},
     {"local_shadow_import_alias", "local name shadows import alias: util"},
+    {"local_shadow_root_module", "local name shadows visible root module: samplelib"},
     {"local_shadow_visible_type", "local name shadows visible type: File"},
     {"match_expression_missing_case", "match expression is not exhaustive for enum case"},
     {"method_abi_collision", "duplicate ABI symbol"},
@@ -66,6 +67,8 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"str_slice_bound_non_integer", "slice bound must be an integer"},
     {"strfromutf8_non_slice", "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"},
     {"try_result_return_mismatch", "try expression on result-like enum requires enclosing function"},
+    {"unknown_module_expr_member", "unknown name in module samplelib.visibility: missing"},
+    {"unknown_module_expr_path", "unknown module path: samplelib.missing"},
     {"unknown_module_type_path", "unknown module path: missing.path"},
     {"unsafe_fn_call_required", "call to unsafe function read_raw requires unsafe context"},
 });

@@ -379,7 +379,7 @@ var count: i32 = 0;
 - 类型可省略，但必须能推导。
 - 同一 lexical scope 内不允许重复定义 local/param。
 - 内层 lexical scope 可以 shadow 外层 local。
-- local/param 不能 shadow import alias、generic type parameter 或当前可见类型名。
+- local/param 不能 shadow import alias、visible root module、generic type parameter 或当前可见类型名。
 
 赋值：
 
@@ -675,7 +675,7 @@ p1 | p2 | p3
 当前语义规则偏“显式成本”：
 
 - 没有函数重载。
-- 局部 shadowing 只允许内层 local shadow 外层 local；同一 scope 重名、shadow import alias、shadow generic type parameter 和 shadow 可见类型名都会报错。
+- 局部 shadowing 只允许内层 local shadow 外层 local；同一 scope 重名、shadow import alias、shadow visible root module、shadow generic type parameter 和 shadow 可见类型名都会报错。
 - 没有隐式 numeric conversion。
 - integer literal 可以在期望整数类型下检查范围并赋值。
 - `*mut T` 可以赋给 `*const T`。

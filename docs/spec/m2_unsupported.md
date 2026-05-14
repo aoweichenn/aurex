@@ -59,8 +59,9 @@ Rules:
   valid storage. `&void` and references to opaque value types are rejected.
 - Array type length is an integer literal token.
 - Type paths and value/member/module selections use dot-only selectors. `::`
-  is rejected. Multi-segment type paths such as `core.mem.File` are accepted
-  when the module path is visible to the current module.
+  is rejected. Multi-segment selectors such as `core.mem.File`,
+  `core.mem.PAGE_SIZE`, and `core.mem.File.open(...)` are accepted when the
+  module path is visible to the current module.
 - Variadic function types require `extern c fn`; plain `fn(..., ...) -> T`
   cannot use `...`.
 - Tuple types use `(A, B)` or `(A,)`. Empty tuple type `()` is rejected.

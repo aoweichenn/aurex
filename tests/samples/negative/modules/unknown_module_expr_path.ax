@@ -1,0 +1,7 @@
+module unknown_module_expr_path;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    return samplelib.missing.answer;
+}

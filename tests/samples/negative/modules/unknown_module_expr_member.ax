@@ -1,0 +1,7 @@
+module unknown_module_expr_member;
+
+import samplelib.visibility as vis;
+
+fn main() -> i32 {
+    return samplelib.visibility.missing;
+}

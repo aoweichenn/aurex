@@ -943,6 +943,10 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "local name shadows import alias: " + std::string(name);
 }
 
+[[nodiscard]] inline std::string sema_local_shadows_root_module_message(const std::string_view name) {
+    return "local name shadows visible root module: " + std::string(name);
+}
+
 [[nodiscard]] inline std::string sema_local_shadows_generic_type_parameter_message(const std::string_view name) {
     return "local name shadows generic type parameter: " + std::string(name);
 }

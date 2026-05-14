@@ -5,7 +5,7 @@ enum Choice: u8 {
     no = 2,
 }
 
-const VALUE: i32 = match Choice_yes {
+const VALUE: i32 = match Choice.yes {
     .yes => 1,
     .no => 0,
 };

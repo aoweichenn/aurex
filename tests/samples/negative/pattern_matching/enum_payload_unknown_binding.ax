@@ -5,7 +5,7 @@ enum Packet: u8 {
 }
 
 fn main() -> i32 {
-    return match Packet_int(1) {
-        Packet_int(value) => missing,
+    return match Packet.int(1) {
+        .int(value) => missing,
     };
 }

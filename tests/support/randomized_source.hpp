@@ -143,7 +143,7 @@ template <base::usize Size>
     case 6:
         return "id(" + integer_literal(random) + ")";
     case 7:
-        return "id::[i32](" + integer_literal(random) + ")";
+        return "id[i32](" + integer_literal(random) + ")";
     case 8:
         return "first(Holder[i32] { value: " + integer_literal(random) + " })";
     default:
@@ -211,8 +211,8 @@ inline void append_statement(
         out << "  let " << local << ": bool = " << bool_expr(random) << ";\n";
         break;
     case 6:
-        out << "  let " << local << ": i32 = match Mode_a { Mode_a => "
-            << i32_expr(random) << ", Mode_b => " << i32_expr(random) << ", };\n";
+        out << "  let " << local << ": i32 = match Mode.a { .a => "
+            << i32_expr(random) << ", .b => " << i32_expr(random) << ", };\n";
         break;
     case 7:
         out << "  let " << local << ": Holder[i32] = Holder[i32] { value: " << i32_expr(random) << " };\n"
@@ -223,7 +223,7 @@ inline void append_statement(
             << "  total += " << local << ".value;\n";
         break;
     case 9:
-        out << "  let " << local << ": Holder[bool] = Holder[bool] { value: id::[bool]("
+        out << "  let " << local << ": Holder[bool] = Holder[bool] { value: id[bool]("
             << (random.coin() ? "true" : "false") << ") };\n";
         break;
     default:

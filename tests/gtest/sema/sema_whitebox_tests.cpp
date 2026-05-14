@@ -175,6 +175,18 @@ constexpr std::string_view SEMA_TEST_SYMBOL_DUPLICATE_NAME = "duplicate_value";
     return module.push_expr(expr);
 }
 
+[[nodiscard]] ExprId push_field(
+    syntax::AstModule& module,
+    const ExprId object,
+    const std::string_view field_name
+) {
+    syntax::ExprNode expr;
+    expr.kind = syntax::ExprKind::field;
+    expr.object = object;
+    expr.field_name = field_name;
+    return module.push_expr(expr);
+}
+
 [[nodiscard]] ExprId push_integer(syntax::AstModule& module) {
     syntax::ExprNode expr;
     expr.kind = syntax::ExprKind::integer_literal;
@@ -376,12 +388,12 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_FALSE(analyzer.is_valid_storage_type(array_opaque));
     EXPECT_FALSE(analyzer.is_valid_storage_type(overflowing_array));
 
-    analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "value"), symbol(SymbolKind::local, "value", module_id(0), i32, true));
-    analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "ptr"), symbol(SymbolKind::local, "ptr", module_id(0), ptr_i32, true));
+    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "value", module_id(0), i32, true), diagnostics));
+    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "ptr", module_id(0), ptr_i32, true), diagnostics));
     analyzer.global_values_.emplace(analyzer.module_key(module_id(1), "shared"), symbol(SymbolKind::local, "shared", module_id(1), i32, true));
 
     EXPECT_TRUE(analyzer.is_place_expr(value_expr));
-    EXPECT_TRUE(analyzer.is_place_expr(scoped_value_expr));
+    EXPECT_FALSE(analyzer.is_place_expr(scoped_value_expr));
     EXPECT_FALSE(analyzer.is_place_expr(missing_scoped_value_expr));
     EXPECT_TRUE(analyzer.is_place_expr(field_id));
     EXPECT_TRUE(analyzer.is_place_expr(index_id));
@@ -391,7 +403,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_FALSE(analyzer.is_place_expr(not_id));
     EXPECT_FALSE(analyzer.is_place_expr(syntax::INVALID_EXPR_ID));
     EXPECT_TRUE(analyzer.is_writable_place(value_expr));
-    EXPECT_TRUE(analyzer.is_writable_place(scoped_value_expr));
+    EXPECT_FALSE(analyzer.is_writable_place(scoped_value_expr));
     EXPECT_FALSE(analyzer.is_writable_place(missing_scoped_value_expr));
     EXPECT_TRUE(analyzer.is_writable_place(field_id));
     EXPECT_TRUE(analyzer.is_writable_place(index_id));
@@ -1006,16 +1018,18 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
         analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice_none")
     )->second);
 
-    syntax::ExprNode scoped_enum = unqualified_missing_type;
-    scoped_enum.text = "Choice";
-    scoped_enum.scope_name = "one";
-    const TypeHandle choice_i32 = analyzer.resolve_associated_type_owner(scoped_enum, false);
+    const ExprId import_alias_expr = push_name(module, "one");
+    const ExprId scoped_enum_id = push_field(module, import_alias_expr, "Choice");
+    analyzer.checked_.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.checked_.expr_c_names.resize(module.exprs.size());
+    const TypeHandle choice_i32 =
+        analyzer.resolve_associated_type_owner(module.exprs[scoped_enum_id.value], false);
     EXPECT_TRUE(is_valid(choice_i32));
 
-    syntax::ExprNode scoped_missing_type = unqualified_missing_type;
-    scoped_missing_type.text = "MissingScoped";
-    scoped_missing_type.scope_name = "one";
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(scoped_missing_type, false)));
+    const ExprId scoped_missing_type_id = push_field(module, import_alias_expr, "MissingScoped");
+    analyzer.checked_.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.checked_.expr_c_names.resize(module.exprs.size());
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(module.exprs[scoped_missing_type_id.value], false)));
 
     const TypeHandle opaque = types.opaque_struct("Opaque", "Opaque");
     analyzer.checked_.syntax_type_handles[i32_type_id.value] = opaque;
@@ -1321,7 +1335,7 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationRejectsUnsupportedShapes) {
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(syntax::INVALID_EXPR_ID, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(missing_name, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(local_name, dependencies));
-    EXPECT_TRUE(analyzer.is_const_evaluable_expr(enum_name, dependencies));
+    EXPECT_FALSE(analyzer.is_const_evaluable_expr(enum_name, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(unsupported_unary_id, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(invalid_child_cast_id, dependencies));
     EXPECT_TRUE(analyzer.is_const_evaluable_expr(empty_struct_literal_id, dependencies));

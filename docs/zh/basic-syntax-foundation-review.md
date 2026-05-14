@@ -72,7 +72,7 @@ fn main() -> i32 {
 
 ## 总体判断
 
-Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` / `var`、无隐式数值转换、表达式优先级清楚、C-style `for`、基础 `for i in range(...)`、`defer`、模块限定 `alias::item`，这些都适合系统语言。
+Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` / `var`、无隐式数值转换、表达式优先级清楚、C-style `for`、基础 `for i in range(...)`、`defer`、模块限定 `alias.item`，这些都适合系统语言。
 
 现在最主要的问题不是“缺高级特性”，而是基础语法里有几处不一致：
 
@@ -565,18 +565,19 @@ fn answer() {
 ```aurex
 module common.result;
 import common.result as result;
-let x = result::ok(1);
+let x = result.ok(1);
 ```
 
-模块路径用 `.`，item 限定用 `::`。
+模块路径、import alias 下的 item/type/const/function/enum constructor、field 和 method 统一使用 `.`。
 
-这个设计可以保留，但必须冻结，不要同时引入多套写法。
+这个设计必须冻结，不要同时引入多套写法。
 
 建议：
 
-- `.` 只用于 module path、field access、method access。
-- `::` 只用于 import alias / module alias 下的 item、type、const、function、enum constructor。
-- 不加 `common.result::Type` 这种混合长路径表达式，强制通过 `import ... as alias` 控制局部命名。
+- `.` 是唯一 selector token。
+- 语义按 base kind 区分 module / type / value / member。
+- 不加 `common.result.Type` 这种混合长路径表达式，强制通过 `import ... as alias` 控制局部命名。
+- `::` 不作为 Aurex 源语法保留。
 - `c`、`str` 这类关键字是否允许作为 path segment 要明确定义。当前 parser 特许 `c` 和 `str`，这属于历史兼容，不宜继续扩大。
 
 优先级：中。
@@ -948,7 +949,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 4. function pointer / function type 已落地，后续只需保持 grammar、诊断和 ABI 文档同步。
 5. public 函数返回类型推导已收紧，后续只需保持诊断与 public surface dump 一致。
 6. tuple/destructuring/pattern ergonomics 已落地，当前支持 `(A, B)` / `(A,)`、`(a, b)` / `(a,)`、局部 `let (a, _) = value;`、局部 struct destructuring、match tuple/struct pattern、nested enum payload pattern、`if value is pattern`、`while value is pattern` 和 if 表达式 pattern condition；匿名 tuple 不支持直接字段访问，需要字段访问时使用 named struct；空 tuple 暂缓。
-7. 冻结 namespace `.` / `::` 规则。
+7. 冻结 dot-only namespace / selector 规则。
 8. 最小 capability / `where` 约束语法已落地，后续只保持 grammar、诊断和测试同步。
 9. safe reference `&T` / `&mut T` 已补最小 M2 版本；后续不在基础语法阶段扩张 borrow/lifetime。
 

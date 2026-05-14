@@ -5,7 +5,7 @@ import samplelib.visibility;
 fn main() -> i32 {
     let value: PublicInt = exported(answer);
     var box = make_box(value);
-    let choice = PublicChoice_yes;
+    let choice = PublicChoice.yes;
     if choice != PublicChoice.yes {
         return 1;
     }

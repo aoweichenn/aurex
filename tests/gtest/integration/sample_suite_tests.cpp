@@ -42,6 +42,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"ambiguous_import_alias", "ambiguous import alias: lib"},
     {"ambiguous_import_name", "ambiguous function name"},
     {"array_literal_empty_infer", "empty array literal requires an array type context"},
+    {"bare_enum_case_constructor", "unknown function: some"},
     {"increment_syntax", "increment operator is not supported"},
     {"match_expression_missing_case", "match expression is not exhaustive for enum case"},
     {"method_abi_collision", "duplicate ABI symbol"},

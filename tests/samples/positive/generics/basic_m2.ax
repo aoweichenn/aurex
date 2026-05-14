@@ -40,7 +40,7 @@ fn main() -> i32 {
     let a: Box[i32] = Box[i32] { value: 1 };
     let p: Pair[i32, bool] = Pair[i32, bool] {
         first: id(41),
-        second: id::[bool](true),
+        second: id[bool](true),
     };
     let nested: Box[Pair[i32, bool]] = make_box(p);
     let q = make_pair(1, false);
@@ -49,7 +49,7 @@ fn main() -> i32 {
     var mutable_value: i32 = 3;
     let mutable_value_ptr = same_ptr(&mutable_value);
     if first(p) == 41 && q.first == 1 && a.value == 1 && nested.value.second && unwrapped == 2 && unsafe { *value_ptr } == 1 && unsafe { *mutable_value_ptr } == 3 {
-        return id::[i32](0);
+        return id[i32](0);
     }
     return 1;
 }

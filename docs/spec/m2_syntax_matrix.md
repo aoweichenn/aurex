@@ -65,8 +65,9 @@ This matrix records whether a syntax position is supported by current M2.
 | Type | `Box[i32]` | yes | Generic type arguments |
 | Type | `Box[]` | no | Empty type arguments rejected |
 | Type | `Box<i32>` | no | `<>` are not generic delimiters |
-| Type | `foo::Box[i32]` | yes | One-level scope |
-| Type | `foo::bar::Box` | no | Too deep for M2 type syntax |
+| Type | `foo.Box[i32]` | yes | Dot selector, resolved by base kind |
+| Type | `foo.bar.Box` | no | Multi-module expression-style paths are not part of M2 |
+| Type | `foo::Box[i32]` | no | Selectors use `.`, not `::` |
 | Expr | `arr[i]` | yes | Index expression |
 | Expr | `arr[l:r]` | yes | Borrowed slice from array or slice |
 | Expr | `arr[:r]` | yes | Omitted start defaults to zero |
@@ -76,8 +77,8 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `let op: fn(i32) -> i32 = f; op(1)` | yes | Function name as value and indirect call |
 | Expr | `let op: unsafe fn(*const i32) -> i32 = f; unsafe { op(p) }` | yes | Unsafe function value call fenced by unsafe block |
 | Expr | `table.callback(1)` | yes | Struct fields of function type can be called |
-| Expr | `id::[i32](1)` | yes | Explicit generic function call |
-| Expr | `id[i32](1)` | no | Use `id::[i32](...)` |
+| Expr | `id[i32](1)` | yes | Explicit generic function call |
+| Expr | `id::[i32](1)` | no | Selectors use `.`, not `::` |
 | Expr | `(1, true)` | yes | Tuple literal, type inferred from elements unless expected type is present |
 | Expr | `(1,)` | yes | One-element tuple literal uses a trailing comma |
 | Expr | `()` | no | Empty tuple literal is not part of M2 |

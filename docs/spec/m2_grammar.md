@@ -157,7 +157,7 @@ FunctionTypeParam
   = [ Identifier ":" ] Type ;
 
 QualifiedType
-  = Identifier [ "::" Identifier ] [ GenericTypeArgs ] ;
+  = Identifier [ "." Identifier ] [ GenericTypeArgs ] ;
 
 GenericTypeArgs
   = "[" Type { "," Type } [ "," ] "]" ;
@@ -195,7 +195,7 @@ extern c fn(*const u8, ...) -> i32
 unsafe extern c fn(*const u8) -> i32
 Box[i32]
 Pair[i32, bool]
-foo::Box[i32]
+foo.Box[i32]
 ```
 
 Rules:
@@ -229,7 +229,10 @@ Rules:
   array-containing types.
 - Generic type arguments use `[]`; empty `[]` is rejected.
 - `<` and `>` are not generic delimiters.
-- Type paths are currently unqualified or one-level `scope::Name`.
+- Type paths are currently plain names or one-level `alias.Name`. They use the
+  same dot selector spelling as values and modules, while semantic base kind
+  decides whether a selector denotes a module, type, value, field, method, enum
+  case, or associated function. `::` is not accepted.
 
 ## 5. Function Declarations
 
@@ -470,7 +473,7 @@ array[start:]
 array[:]
 text[start:end]
 function(arg)
-generic_fn::[T](arg)
+generic_fn[T](arg)
 expr?
 ```
 
@@ -503,7 +506,7 @@ Struct literals:
 ```aurex
 Point { x: 1, y: 2 }
 Pair[i32, bool] { first: 1, second: true }
-remote::Point { x: 1, y: 2 }
+remote.Point { x: 1, y: 2 }
 ```
 
 Block expressions:
@@ -697,7 +700,7 @@ GenericTypeArgs
   = "[" Type { "," Type } [ "," ] "]" ;
 
 ExplicitGenericCall
-  = NameExpr "::" GenericTypeArgs "(" [ ArgumentList ] ")" ;
+  = SelectorExpr GenericTypeArgs "(" [ ArgumentList ] ")" ;
 
 WhereClause
   = "where" WhereConstraint { "," WhereConstraint } ;
@@ -717,7 +720,7 @@ Supported generic positions:
 | `fn name[T]` | yes | Normal non-C non-prototype function |
 | `Name[T]` type arguments | yes | Type context |
 | `Name[T] { ... }` | yes | Generic struct literal |
-| `name::[T](...)` | yes | Explicit generic function call |
+| `name[T](...)` | yes | Explicit generic function call |
 | `type Alias[T]` | yes | Structural generic type alias |
 | `enum E[T]` | yes | Generic ADT enum |
 | `impl[T] Type[T]` | yes | Impl generics must appear in the impl target |
@@ -726,8 +729,9 @@ Supported generic positions:
 | `where T: Eq + Hash` | yes | Built-in non-resource capabilities only |
 | `<>` generics | no | Aurex uses `[]` |
 
-`name[index]` is always an index expression. Explicit generic calls use
-`name::[T](...)`.
+`name[index]` is an index expression unless the bracketed suffix is directly
+followed by a call, struct literal, or selector suffix. Explicit generic calls
+use `name[T](...)` or `module.name[T](...)`.
 
 The M2 `where` clause is deliberately small. `Sized`, `Eq`, `Ord`, and `Hash`
 are built-in non-resource capability predicates used for type checking and
@@ -747,10 +751,11 @@ Box[]
 Box<i32>
 ()
 let () = value;
+foo::bar
 foo::bar::Baz
 fn add[T: Add](a: T, b: T) -> T { return a; }
 fn foo[T]() where T: Copy {}
 impl Box { fn id[T](self: *const Box, value: T) -> T { return value; } }
-id[i32](1)
+id::[i32](1)
 for x in values {}
 ```

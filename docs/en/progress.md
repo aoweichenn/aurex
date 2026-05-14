@@ -30,7 +30,7 @@ notes are design input only, not current progress.
   modules, checked summaries, Aurex IR, and LLVM IR.
 - Semantic analysis for types, symbols, functions, ABI names, structs, enums,
   generics, expression types, visibility, and pattern matching.
-- M2 baseline generics with `[]` syntax only, including explicit `id::[T](x)`
+- M2 baseline generics with `[]` syntax only, including explicit `id[T](x)`
   calls and non-empty generic parameter/type-argument lists.
 - Literal system support for ordinary strings, C strings, raw/multiline raw
   strings, byte strings, byte literals, Unicode scalar `char`, and integer /

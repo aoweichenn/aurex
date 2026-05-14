@@ -191,10 +191,10 @@ inline constexpr std::string_view SEMA_NOT_ALL_PATHS_RETURN =
     "not all control paths return a value";
 
 inline constexpr std::string_view SEMA_EXPLICIT_GENERIC_CALL_SYNTAX =
-    "explicit generic calls use '::[...]', for example id::[i32](...)";
+    "explicit generic calls use '[...]', for example id[i32](...)";
 
 inline constexpr std::string_view SEMA_CALLEE_FUNCTION_NAME =
-    "callee must be a function value; explicit generic calls use '::[...]', for example id::[i32](...)";
+    "callee must be a function value; explicit generic calls use '[...]', for example id[i32](...)";
 
 inline constexpr std::string_view SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH =
     "enum payload constructor argument type mismatch";

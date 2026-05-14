@@ -302,7 +302,7 @@ syntax::TypeId TypeParser::parse_type_atom() {
         type.kind = syntax::TypeKind::named;
         type.range = name.range;
         type.name = name.text;
-        if (this->match(TokenKind::colon_colon)) {
+        if (this->match(TokenKind::dot)) {
             const syntax::Token& scoped_name =
                 this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE));
             type.scope_name = name.text;

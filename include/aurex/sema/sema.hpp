@@ -55,6 +55,19 @@ private:
         bool cache_syntax_types = true;
     };
 
+    struct ModuleSelector {
+        syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+        bool failed_as_import_alias = false;
+    };
+
+    struct NamedTypeSelector {
+        syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+        std::string_view name;
+        base::SourceRange range {};
+        std::vector<syntax::TypeId> type_args;
+        bool qualified = false;
+    };
+
     struct PatternBinding {
         std::string name;
         TypeHandle type = INVALID_TYPE_HANDLE;
@@ -225,7 +238,6 @@ private:
         syntax::ExprId expr_id,
         const syntax::ExprNode& expr,
         const syntax::ExprNode& apply,
-        const syntax::ExprNode& callee,
         std::string_view name
     );
     void validate_call_arguments(
@@ -342,6 +354,14 @@ private:
         syntax::ModuleId module,
         std::string_view name
     ) const;
+    [[nodiscard]] const GenericTemplateInfo* find_any_generic_type_template_in_module(
+        syntax::ModuleId module,
+        std::string_view name
+    ) const;
+    [[nodiscard]] bool report_generic_type_requires_args_if_visible(
+        std::string_view name,
+        base::SourceRange range
+    );
     void report_generic_type_template_in_module(
         syntax::ModuleId module,
         std::string_view name,
@@ -399,6 +419,42 @@ private:
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
     [[nodiscard]] bool is_array_containing_value_type(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
+    [[nodiscard]] ModuleSelector resolve_module_selector(syntax::ExprId expr, bool report_unknown);
+    [[nodiscard]] NamedTypeSelector resolve_named_type_selector(syntax::ExprId expr, bool report_unknown);
+    [[nodiscard]] TypeHandle resolve_type_selector(syntax::ExprId expr, bool report_unknown);
+    [[nodiscard]] TypeHandle resolve_named_type_selector_type(
+        const NamedTypeSelector& selector,
+        bool opaque_allowed_as_pointee,
+        bool report_unknown
+    );
+    [[nodiscard]] TypeHandle resolve_generic_type_selector(
+        const NamedTypeSelector& selector,
+        syntax::TypeId use_type_id,
+        bool opaque_allowed_as_pointee,
+        bool report_unknown
+    );
+    [[nodiscard]] bool selector_base_has_non_module_meaning(std::string_view name) const;
+    [[nodiscard]] const FunctionSignature* find_function_selector(
+        syntax::ExprId callee,
+        std::string_view name,
+        base::SourceRange range,
+        bool report_unknown
+    );
+    [[nodiscard]] const GenericTemplateInfo* find_generic_function_selector(
+        const NamedTypeSelector& selector,
+        base::SourceRange range,
+        bool report_unknown
+    );
+    [[nodiscard]] TypeHandle analyze_module_member_expr(
+        syntax::ExprId expr_id,
+        syntax::ModuleId module,
+        const syntax::ExprNode& expr
+    );
+    [[nodiscard]] bool record_no_payload_enum_case_expr(
+        syntax::ExprId expr_id,
+        const EnumCaseInfo& enum_case,
+        base::SourceRange range
+    );
     [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
     [[nodiscard]] TypeHandle resolve_associated_generic_type_owner(const syntax::ExprNode& apply, bool report_unknown);
     [[nodiscard]] TypeHandle function_type_from_signature(const FunctionSignature& signature);

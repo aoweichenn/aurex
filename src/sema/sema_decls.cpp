@@ -377,24 +377,6 @@ void SemanticAnalyzer::register_enum_cases_for_item(
             continue;
         }
         this->index_enum_case(case_inserted.first->second);
-        if (!has_payload) {
-            const auto value_inserted = this->global_values_.emplace(enum_case_key, Symbol {
-                SymbolKind::enum_case,
-                full_name,
-                this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)),
-                owner,
-                named_enum_type,
-                enum_case.range,
-                false,
-                visibility,
-            });
-            if (!value_inserted.second) {
-                this->report(
-                    enum_case.range,
-                    sema_duplicate_value_definition_message(this->module_name(owner), full_name)
-                );
-            }
-        }
     }
     if (is_valid(named_enum_type) && is_valid(payload_storage)) {
         this->checked_.types.set_enum_payload_layout(
@@ -882,10 +864,6 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                 }
                 if (symbol == nullptr) {
                     values.push_back(false);
-                    break;
-                }
-                if (symbol->kind == SymbolKind::enum_case) {
-                    values.push_back(true);
                     break;
                 }
                 if (symbol->kind != SymbolKind::const_) {

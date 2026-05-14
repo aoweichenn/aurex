@@ -87,7 +87,7 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_struct)).output, "unknown type: HiddenBox");
 
     const fs::path private_enum = negative_sample("visibility", "private_enum_import.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice_yes");
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice");
 
     const fs::path private_qualified_const = negative_sample("visibility", "private_qualified_const.ax");
     expect_contains(
@@ -120,17 +120,16 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     const std::string alias_tokens = require_success(aurexc() + " " + import_flags + " --dump-tokens " + q(alias_source)).output;
     expect_contains_all(alias_tokens, {
         "kw_as `as`",
-        "colon_colon `::`",
         "dot `.`",
     });
 
     const std::string alias_ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(alias_source)).output;
     expect_contains_all(alias_ast, {
         "import samplelib.visibility as vis",
-        "let answer : vis::PublicInt",
-        "name `vis::answer`",
-        "var boxed : vis::PublicBox",
-        "name `vis::make_box`",
+        "let answer : vis.PublicInt",
+        "field .answer",
+        "var boxed : vis.PublicBox",
+        "field .make_box",
         "field .value",
         "field .read",
         "field .bump",
@@ -208,7 +207,7 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_type)).output, "unknown type: SecretCount");
 
     const fs::path private_enum = negative_sample("visibility", "private_reexport_enum.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: SecretMode_hidden");
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: SecretMode");
 }
 
 TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
@@ -246,7 +245,7 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
             "module default_private_public_use;\n"
             "import default_private_lib as lib;\n"
             "fn main() -> i32 {\n"
-            "  let box: lib::Box = lib::make_box();\n"
+            "  let box: lib.Box = lib.make_box();\n"
             "  return box.read() - 7;\n"
             "}\n";
     }
@@ -258,7 +257,7 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
         out <<
             "module default_private_value;\n"
             "import default_private_lib as lib;\n"
-            "fn main() -> i32 { return lib::hidden_value; }\n";
+            "fn main() -> i32 { return lib.hidden_value; }\n";
     }
     expect_contains(
         require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_value)).output,
@@ -271,7 +270,7 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
         out <<
             "module default_private_function;\n"
             "import default_private_lib as lib;\n"
-            "fn main() -> i32 { return lib::hidden_fn(); }\n";
+            "fn main() -> i32 { return lib.hidden_fn(); }\n";
     }
     expect_contains(
         require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_function)).output,
@@ -285,7 +284,7 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
             "module default_private_field;\n"
             "import default_private_lib as lib;\n"
             "fn main() -> i32 {\n"
-            "  let box: lib::Box = lib::make_box();\n"
+            "  let box: lib.Box = lib.make_box();\n"
             "  return box.value;\n"
             "}\n";
     }
@@ -301,7 +300,7 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
             "module default_private_method;\n"
             "import default_private_lib as lib;\n"
             "fn main() -> i32 {\n"
-            "  let box: lib::Box = lib::make_box();\n"
+            "  let box: lib.Box = lib.make_box();\n"
             "  return box.hidden_method();\n"
             "}\n";
     }

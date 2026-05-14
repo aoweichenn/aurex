@@ -4,5 +4,5 @@ import const_mangle_collision.a.b_c as left;
 import const_mangle_collision.a_b.c as right;
 
 fn main() -> i32 {
-  return left::VALUE + right::VALUE;
+  return left.VALUE + right.VALUE;
 }

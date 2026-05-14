@@ -46,8 +46,9 @@ Not part of M2:
 []i32
 [-1]i32
 Box[]
+foo::bar
 foo::bar::Baz
-a.b.C
+foo.bar.Baz
 fn(i32, ...) -> i32
 ()
 ```
@@ -58,7 +59,8 @@ Rules:
 - Reference types are supported as `&T` and `&mut T`, but their pointee must be
   valid storage. `&void` and references to opaque value types are rejected.
 - Array type length is an integer literal token.
-- Type paths are currently plain names or one-level `scope::Name`.
+- Type paths and value/member/module selections use dot-only selectors. `::`
+  is rejected.
 - Variadic function types require `extern c fn`; plain `fn(..., ...) -> T`
   cannot use `...`.
 - Tuple types use `(A, B)` or `(A,)`. Empty tuple type `()` is rejected.
@@ -106,8 +108,8 @@ let value = {
 
 Rules:
 
-- `id[i32](1)` is not a generic call. Explicit generic calls use
-  `id::[i32](1)`.
+- Explicit generic calls use `id[i32](1)`. The old `id::[i32](1)` spelling is
+  rejected.
 - Tuple literals use `(a, b)` or `(a,)`. Empty tuple literal `()` is rejected.
 - `str` has checked byte-range slicing with `text[l:r]`, but single-index
   `text[i]`, Unicode scalar iteration, grapheme-cluster APIs, and locale-aware

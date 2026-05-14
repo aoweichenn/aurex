@@ -328,6 +328,21 @@ TypeHandle SemanticAnalyzer::analyze_name_expr(
     return this->record_expr_type(expr_id, symbol->type);
 }
 
+bool SemanticAnalyzer::record_no_payload_enum_case_expr(
+    const syntax::ExprId expr_id,
+    const EnumCaseInfo& enum_case,
+    const base::SourceRange range
+) {
+    if (is_valid(enum_case.payload_type)) {
+        this->report(range, sema_enum_payload_constructor_call_message(enum_case.name));
+        static_cast<void>(this->record_expr_type(expr_id, INVALID_TYPE_HANDLE));
+        return false;
+    }
+    this->record_expr_c_name(expr_id, enum_case.c_name);
+    static_cast<void>(this->record_expr_type(expr_id, enum_case.type));
+    return true;
+}
+
 TypeHandle SemanticAnalyzer::analyze_generic_apply_expr(
     const syntax::ExprId expr_id,
     const syntax::ExprNode& expr
@@ -584,75 +599,33 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
 ) {
     if (syntax::is_valid(expr.object) &&
         expr.object.value < this->module_.exprs.size()) {
-        const syntax::ExprNode& object = this->module_.exprs[expr.object.value];
-        if (object.kind == syntax::ExprKind::generic_apply) {
-            const TypeHandle enum_type = this->resolve_associated_generic_type_owner(object, false);
-            if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
-                const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
-                if (enum_case == nullptr) {
-                    this->report(expr.range, sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), expr.field_name));
-                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-                }
-                if (is_valid(enum_case->payload_type)) {
-                    this->report(expr.range, sema_enum_payload_constructor_call_message(enum_case->name));
-                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-                }
-                this->record_expr_c_name(expr_id, enum_case->c_name);
-                return this->record_expr_type(expr_id, enum_case->type);
-            }
+        const ModuleSelector module = this->resolve_module_selector(expr.object, false);
+        if (syntax::is_valid(module.module)) {
+            return this->analyze_module_member_expr(expr_id, module.module, expr);
         }
-        if (object.kind != syntax::ExprKind::name) {
-            TypeHandle object_type = this->analyze_expr(expr.object);
-            if (is_pointer_or_reference(this->checked_.types, object_type)) {
-                object_type = this->checked_.types.get(object_type).pointee;
-            }
-            if (this->checked_.types.is_tuple(object_type)) {
-                this->report(expr.range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
-                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-            }
-            const StructInfo* info = this->find_struct(object_type);
-            if (info == nullptr || info->is_opaque) {
-                this->report(expr.range, std::string(SEMA_FIELD_STRUCT_VALUE));
-                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-            }
-            for (const StructFieldInfo& field : info->fields) {
-                if (field.name == expr.field_name) {
-                    if (!this->can_access(info->module, field.visibility)) {
-                        this->report(expr.range, sema_private_field_message(expr.field_name));
-                        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-                    }
-                    return this->record_expr_type(expr_id, field.type);
-                }
-            }
-            this->report(expr.range, sema_unknown_field_message(expr.field_name));
+        if (module.failed_as_import_alias) {
+            static_cast<void>(this->resolve_module_selector(expr.object, true));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
-        if (!object.scope_name.empty()) {
-            const TypeHandle enum_type = this->resolve_associated_type_owner(object, false);
-            if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
-                const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
-                if (enum_case == nullptr) {
-                    this->report(expr.range, sema_unknown_scoped_enum_case_message(object.text, expr.field_name));
-                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-                }
-                if (is_valid(enum_case->payload_type)) {
-                    this->report(expr.range, sema_enum_payload_constructor_call_message(enum_case->name));
-                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-                }
-                this->record_expr_c_name(expr_id, enum_case->c_name);
-                return this->record_expr_type(expr_id, enum_case->type);
+        const bool object_is_plain_name =
+            this->module_.exprs[expr.object.value].kind == syntax::ExprKind::name &&
+            this->module_.exprs[expr.object.value].scope_name.empty();
+        const TypeHandle enum_type = this->resolve_type_selector(expr.object, !object_is_plain_name);
+        if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
+            const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
+            if (enum_case == nullptr) {
+                this->report(
+                    expr.range,
+                    sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), expr.field_name)
+                );
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
+            const bool recorded = this->record_no_payload_enum_case_expr(expr_id, *enum_case, expr.range);
+            return recorded ? enum_case->type : INVALID_TYPE_HANDLE;
         }
-        if (object.scope_name.empty()) {
-            if (const EnumCaseInfo* enum_case = this->find_enum_case_by_scoped_name(object.text, expr.field_name, expr.range, false);
-                enum_case != nullptr) {
-                if (is_valid(enum_case->payload_type)) {
-                    this->report(expr.range, sema_enum_payload_constructor_call_message(enum_case->name));
-                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-                }
-                this->record_expr_c_name(expr_id, enum_case->c_name);
-                return this->record_expr_type(expr_id, enum_case->type);
-            }
+        if (object_is_plain_name && is_valid(enum_type)) {
+            this->report(expr.range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
 
@@ -679,6 +652,30 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
         }
     }
     this->report(expr.range, sema_unknown_field_message(expr.field_name));
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+}
+
+TypeHandle SemanticAnalyzer::analyze_module_member_expr(
+    const syntax::ExprId expr_id,
+    const syntax::ModuleId module,
+    const syntax::ExprNode& expr
+) {
+    if (const Symbol* symbol = this->find_symbol_in_module(module, expr.field_name, expr.range, false);
+        symbol != nullptr) {
+        if (symbol->kind == SymbolKind::function) {
+            this->record_expr_c_name(expr_id, symbol->c_name);
+            return this->record_expr_type(expr_id, this->function_type_from_symbol(*symbol, expr.range));
+        }
+        this->record_expr_c_name(expr_id, symbol->c_name);
+        return this->record_expr_type(expr_id, symbol->type);
+    }
+    if (is_valid(this->find_type_in_module(module, expr.field_name, expr.range, false, false))) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    if (this->generic_type_template_exists_in_module(module, expr.field_name)) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    static_cast<void>(this->find_symbol_in_module(module, expr.field_name, expr.range, true));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
@@ -943,54 +940,16 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
     const TypeHandle
 ) {
     TypeHandle struct_type = INVALID_TYPE_HANDLE;
-    const bool qualified = !expr.scope_name.empty();
-    syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
-    if (qualified) {
-        scope_module = this->resolve_import_alias(expr.scope_name, expr.scope_range);
-        if (!syntax::is_valid(scope_module)) {
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-    }
-    if (!expr.type_args.empty()) {
-        std::vector<TypeHandle> args;
-        args.reserve(expr.type_args.size());
-        for (const syntax::TypeId arg : expr.type_args) {
-            args.push_back(this->resolve_type(arg));
-        }
-        const GenericTemplateInfo* generic_struct = qualified
-            ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, false)
-            : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, false);
-        if (generic_struct != nullptr) {
-            syntax::TypeNode use_type;
-            use_type.kind = syntax::TypeKind::named;
-            use_type.scope_name = expr.scope_name;
-            use_type.scope_range = expr.scope_range;
-            use_type.name = expr.struct_name;
-            use_type.range = expr.range;
-            struct_type = this->instantiate_generic_struct(*generic_struct, use_type, syntax::INVALID_TYPE_ID, args);
-        } else {
-            struct_type = qualified
-                ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false, false)
-                : this->find_type_in_visible_modules(expr.struct_name, expr.range, false, false);
-            if (is_valid(struct_type)) {
-                this->report(expr.range, sema_type_not_generic_message(expr.struct_name));
-            } else {
-                static_cast<void>(qualified
-                    ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, true)
-                    : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, true));
-            }
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-    } else if (const GenericTemplateInfo* generic_struct = qualified
-            ? this->find_generic_struct_in_module(scope_module, expr.struct_name, expr.range, false)
-            : this->find_generic_struct_in_visible_modules(expr.struct_name, expr.range, false);
-        generic_struct != nullptr) {
-        this->report(expr.range, sema_generic_type_requires_args_message(expr.struct_name));
-        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    if (syntax::is_valid(expr.object)) {
+        struct_type = this->resolve_type_selector(expr.object, true);
     } else {
-        struct_type = qualified
-            ? this->find_type_in_module(scope_module, expr.struct_name, expr.range, false)
-            : this->find_type_in_visible_modules(expr.struct_name, expr.range, false);
+        NamedTypeSelector selector;
+        selector.module = syntax::INVALID_MODULE_ID;
+        selector.name = expr.struct_name;
+        selector.range = expr.range;
+        selector.type_args = expr.type_args;
+        selector.qualified = false;
+        struct_type = this->resolve_named_type_selector_type(selector, false, true);
     }
     if (!is_valid(struct_type)) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);

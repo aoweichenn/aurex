@@ -6,9 +6,9 @@ enum Choice: u8 {
 }
 
 fn main() -> i32 {
-    return match Choice_zero {
-        Choice_zero => 0,
-        Choice_zero => 1,
-        Choice_one => 2,
+    return match Choice.zero {
+        .zero => 0,
+        .zero => 1,
+        .one => 2,
     };
 }

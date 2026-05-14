@@ -193,6 +193,7 @@ private:
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_bound_value_ref(syntax::ExprId expr_id, const std::string& symbol);
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);

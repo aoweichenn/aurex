@@ -7,14 +7,14 @@ enum Choice: u8 {
 
 fn score(choice: Choice) {
     return match choice {
-        Choice_zero => {
+        .zero => {
             let value = 39;
             value + 1
         },
-        Choice_one => 41,
+        .one => 41,
     };
 }
 
 fn main() -> i32 {
-    return score(Choice_zero) - 40;
+    return score(Choice.zero) - 40;
 }

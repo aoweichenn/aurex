@@ -610,13 +610,66 @@ bool SemanticAnalyzer::generic_type_template_exists_in_module(
     const syntax::ModuleId module,
     const std::string_view name
 ) const {
+    return this->find_any_generic_type_template_in_module(module, name) != nullptr;
+}
+
+const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_any_generic_type_template_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name
+) const {
     if (!syntax::is_valid(module)) {
-        return false;
+        return nullptr;
     }
     const std::string key = this->module_key(module, name);
-    return this->generic_struct_templates_.contains(key) ||
-           this->generic_enum_templates_.contains(key) ||
-           this->generic_type_alias_templates_.contains(key);
+    if (const auto found = this->generic_struct_templates_.find(key);
+        found != this->generic_struct_templates_.end()) {
+        return &found->second;
+    }
+    if (const auto found = this->generic_enum_templates_.find(key);
+        found != this->generic_enum_templates_.end()) {
+        return &found->second;
+    }
+    if (const auto found = this->generic_type_alias_templates_.find(key);
+        found != this->generic_type_alias_templates_.end()) {
+        return &found->second;
+    }
+    return nullptr;
+}
+
+bool SemanticAnalyzer::report_generic_type_requires_args_if_visible(
+    const std::string_view name,
+    const base::SourceRange range
+) {
+    const GenericTemplateInfo* imported_result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId module : this->visible_modules(this->current_module_)) {
+        const GenericTemplateInfo* const found = this->find_any_generic_type_template_in_module(module, name);
+        if (found == nullptr || !this->can_access(module, found->visibility)) {
+            continue;
+        }
+        if (module.value == this->current_module_.value) {
+            this->report(range, sema_generic_type_requires_args_message(name));
+            return true;
+        }
+        if (imported_result != nullptr) {
+            this->report(
+                range,
+                sema_ambiguous_generic_type_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(module)
+                )
+            );
+            return true;
+        }
+        imported_result = found;
+        result_module = module;
+    }
+    if (imported_result != nullptr) {
+        this->report(range, sema_generic_type_requires_args_message(name));
+        return true;
+    }
+    return false;
 }
 
 void SemanticAnalyzer::report_generic_type_template_in_module(
@@ -631,14 +684,29 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
 
     const std::string key = this->module_key(module, name);
     if (this->generic_struct_templates_.contains(key)) {
+        if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(module, name);
+            info != nullptr && this->can_access(module, info->visibility)) {
+            this->report(range, sema_generic_type_requires_args_message(name));
+            return;
+        }
         static_cast<void>(this->find_generic_struct_in_module(module, name, range, true));
         return;
     }
     if (this->generic_enum_templates_.contains(key)) {
+        if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(module, name);
+            info != nullptr && this->can_access(module, info->visibility)) {
+            this->report(range, sema_generic_type_requires_args_message(name));
+            return;
+        }
         static_cast<void>(this->find_generic_enum_in_module(module, name, range, true));
         return;
     }
     if (this->generic_type_alias_templates_.contains(key)) {
+        if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(module, name);
+            info != nullptr && this->can_access(module, info->visibility)) {
+            this->report(range, sema_generic_type_requires_args_message(name));
+            return;
+        }
         static_cast<void>(this->find_generic_type_alias_in_module(module, name, range, true));
         return;
     }

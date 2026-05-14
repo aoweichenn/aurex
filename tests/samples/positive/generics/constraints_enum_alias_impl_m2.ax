@@ -64,9 +64,9 @@ fn read_sized_ptr[T](value: SizedPtr[T]) -> SizedPtr[T] where T: Sized {
 fn main() -> i32 {
     let boxed: Box[i32] = Box[i32] { value: 39 };
     let other: Box[i32] = Box[i32] { value: 39 };
-    let opt: Option[i32] = Option::[i32].some(boxed.get());
-    let none: Option[i32] = Option::[i32].none;
-    let result: Result[i32, i32] = Result::[i32, i32].ok(1);
+    let opt: Option[i32] = Option[i32].some(boxed.get());
+    let none: Option[i32] = Option[i32].none;
+    let result: Result[i32, i32] = Result[i32, i32].ok(1);
     let value: i32 = 2;
     let ptr: ConstPtr[i32] = read_ptr(&value);
     let sized_ptr: SizedPtr[i32] = read_sized_ptr(ptr);

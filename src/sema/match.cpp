@@ -326,7 +326,10 @@ bool SemanticAnalyzer::analyze_pattern(
                         }
                     }
                 } else {
-                    case_info = this->find_enum_case_in_visible_modules(pattern->case_name, pattern->range);
+                    case_info = this->find_enum_case_by_type_and_case(frame.type, pattern->case_name);
+                    if (case_info == nullptr) {
+                        this->report(pattern->range, sema_unknown_matched_enum_case_message(pattern->case_name));
+                    }
                 }
                 if (case_info == nullptr) {
                     for (auto payload = pattern->payload_patterns.rbegin(); payload != pattern->payload_patterns.rend(); ++payload) {

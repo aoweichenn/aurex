@@ -221,6 +221,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "fn unchecked_string unsafe",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
+        "struct_literal <selector>",
         "stmt #",
         "while",
         "for",
@@ -396,8 +397,7 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
             "alias [10]u8",
             "alias [10]u8",
             "alias [1000]u8",
-            "struct_literal Outer",
-            "struct_literal Wrap",
+            "struct_literal <selector>",
             "try_expr",
             "binary",
         });
@@ -699,7 +699,7 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
         "  let bad_array = [1 ->, 2];\n"
         "  let bad_literal = (1, true ->, 2);\n"
         "  let (a, b +, c) = (1, 2, 3);\n"
-        "  let bad_apply = value::[i32 +, bool](1);\n"
+        "  let bad_apply = value[i32 +, bool](1);\n"
         "  let bad_payload = match value { .some() => 0, .some(name,) => 1, _ => 2 };\n"
         "  return value;\n"
         "}\n";
@@ -1484,7 +1484,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators) {
     );
     expect_parse_error(
         "module parser.generic_expr_arg_recovery;\n"
-        "fn main() -> i32 { return id::[i32 bool](1); }\n",
+        "fn main() -> i32 { return id[i32 bool](1); }\n",
         "expected ',' or ']' after generic type argument"
     );
     expect_parse_error(
@@ -1649,7 +1649,10 @@ TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
     ASSERT_TRUE(syntax::is_valid(literal_stmt.init));
     const syntax::ExprNode& literal = module.exprs[literal_stmt.init.value];
     ASSERT_EQ(literal.kind, syntax::ExprKind::struct_literal);
-    EXPECT_EQ(literal.struct_name, "Wrap");
+    ASSERT_TRUE(syntax::is_valid(literal.object));
+    const syntax::ExprNode& literal_type = module.exprs[literal.object.value];
+    ASSERT_EQ(literal_type.kind, syntax::ExprKind::name);
+    EXPECT_EQ(literal_type.text, "Wrap");
 
     const syntax::StmtNode& shifted_stmt = module.stmts[body.statements[2].value];
     ASSERT_TRUE(syntax::is_valid(shifted_stmt.init));
@@ -2484,10 +2487,10 @@ TEST(CoreUnit, ParserM2GenericSyntax) {
         "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
         "fn id[T](x: T) -> T { return x; }\n"
         "fn main() -> i32 {\n"
-        "  let a: Box[i32] = Box[i32] { value: id::[i32](1) };\n"
+        "  let a: Box[i32] = Box[i32] { value: id[i32](1) };\n"
         "  let p: Pair[i32, bool] = Pair[i32, bool] { first: a.value, second: true };\n"
-        "  let i: i32 = 0;\n"
-        "  let f = id[i](1);\n"
+        "  let values: [1]i32 = [1];\n"
+        "  let f = values[0];\n"
         "  return p.first;\n"
         "}\n";
 
@@ -2531,7 +2534,7 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
     expect_parse_error(
         "module parser.empty_generic_call;\n"
         "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id::[](1); }\n",
+        "fn main() -> i32 { return id[](1); }\n",
         "expected generic type argument"
     );
     expect_parse_error(
@@ -2553,6 +2556,20 @@ TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax) {
         "struct Pair[A, B] { first: A; second: B; }\n"
         "type Bad = Pair<i32, bool>;\n",
         "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters"
+    );
+}
+
+TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax) {
+    expect_parse_error(
+        "module parser.legacy_scope_value;\n"
+        "fn main() -> i32 { return vis::answer; }\n",
+        "Aurex selectors use '.', not '::'"
+    );
+    expect_parse_error(
+        "module parser.legacy_scope_generic_call;\n"
+        "fn id[T](x: T) -> T { return x; }\n"
+        "fn main() -> i32 { return id::[i32](1); }\n",
+        "Aurex selectors use '.', not '::'"
     );
 }
 

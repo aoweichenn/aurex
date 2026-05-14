@@ -7,7 +7,7 @@ struct Box {
 }
 
 fn main() -> i32 {
-  let boxed: remote::Box = remote::Box { value: true };
+  let boxed: remote.Box = remote.Box { value: true };
   if boxed.value {
     return 0;
   }

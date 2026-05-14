@@ -6,8 +6,8 @@ enum Packet: u8 {
 }
 
 fn main() -> i32 {
-    return match Packet_none {
-        Packet_int(value) => value,
-        Packet_none(value) => value,
+    return match Packet.none {
+        .int(value) => value,
+        .none(value) => value,
     };
 }

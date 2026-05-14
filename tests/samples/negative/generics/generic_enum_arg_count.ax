@@ -6,6 +6,6 @@ enum Option[T] {
 }
 
 fn main() -> i32 {
-    let value: Option[i32, bool] = Option::[i32, bool].none;
+    let value: Option[i32, bool] = Option[i32, bool].none;
     return 0;
 }

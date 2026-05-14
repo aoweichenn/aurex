@@ -5,6 +5,6 @@ enum Packet: u8 {
 }
 
 fn main() -> i32 {
-    let packet = Packet_int(true);
+    let packet = Packet.int(true);
     return 0;
 }

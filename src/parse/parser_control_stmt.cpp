@@ -257,7 +257,7 @@ syntax::StmtId ControlStmtParser::parse_for_update_clause() {
     if (this->check(TokenKind::l_brace)) {
         return syntax::INVALID_STMT_ID;
     }
-    return StmtParser(this->parser_).parse_expr_or_assign_stmt(false);
+    return StmtParser(this->parser_).parse_expr_or_assign_stmt(ExprContext::no_struct_literal, false);
 }
 
 } // namespace aurex::parse

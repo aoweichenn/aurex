@@ -215,7 +215,10 @@ inline constexpr std::string_view PARSER_M2_RANGE_FOR_ONLY_RANGE =
     "M2 range-for only supports range(...); generic iteration is not part of M2 syntax";
 
 inline constexpr std::string_view PARSER_M2_EXPLICIT_GENERIC_CALL_SYNTAX =
-    "explicit generic calls use '::[...]', for example id::[i32](...)";
+    "explicit generic calls use '[...]', for example id[i32](...)";
+
+inline constexpr std::string_view PARSER_DOT_ONLY_SELECTOR =
+    "Aurex selectors use '.', not '::'";
 
 inline constexpr std::string_view PARSER_M2_IF_EXPR_REQUIRES_ELSE =
     "if expression requires an else branch";
@@ -347,7 +350,7 @@ inline constexpr std::string_view PARSER_EXPECT_EXPRESSION_NAME =
     "expected expression name";
 
 inline constexpr std::string_view PARSER_EXPECT_ITEM_NAME_AFTER_SCOPE =
-    "expected item name after '::'";
+    "expected item name after '.'";
 
 inline constexpr std::string_view PARSER_EXPECT_STRUCT_LITERAL_END =
     "expected '}' after struct literal";
@@ -392,10 +395,10 @@ inline constexpr std::string_view PARSER_EXPECT_GROUPED_EXPR_END =
     "expected ')' after expression";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_SCOPE =
-    "expected '::' before generic type arguments";
+    "expected callee before generic type arguments";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_START =
-    "expected '[' after '::'";
+    "expected '[' before generic type arguments";
 
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_TYPE_ARGS_END =
     "expected ']' after generic type arguments";
@@ -464,7 +467,7 @@ inline constexpr std::string_view PARSER_EXPECT_TYPE =
     "expected type";
 
 inline constexpr std::string_view PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE =
-    "expected type name after '::'";
+    "expected type name after '.'";
 
 inline constexpr std::string_view PARSER_EXPECT_ARRAY_LENGTH_END =
     "expected ']' after array length";

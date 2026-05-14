@@ -766,7 +766,15 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     const syntax::TypeNode& type,
     const bool opaque_allowed_as_pointee
 ) {
-    if (type.scope_name.empty() && this->current_generic_context_ != nullptr) {
+    const bool qualified = !type.scope_name.empty();
+    syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
+    if (qualified) {
+        scope_module = this->resolve_import_alias(type.scope_name, type.scope_range);
+        if (!syntax::is_valid(scope_module)) {
+            return INVALID_TYPE_HANDLE;
+        }
+    }
+    if (!qualified && this->current_generic_context_ != nullptr) {
         if (const auto found = this->current_generic_context_->params.find(std::string(type.name));
             found != this->current_generic_context_->params.end()) {
             if (!type.type_args.empty()) {
@@ -777,102 +785,20 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         }
     }
 
-    std::vector<TypeHandle> args;
-    args.reserve(type.type_args.size());
-    for (const syntax::TypeId arg : type.type_args) {
-        args.push_back(this->resolve_type(arg, false));
-    }
-
-    const bool qualified = !type.scope_name.empty();
-    syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
-    if (qualified) {
-        scope_module = this->resolve_import_alias(type.scope_name, type.scope_range);
-        if (!syntax::is_valid(scope_module)) {
-            return INVALID_TYPE_HANDLE;
-        }
-    }
-
-    if (!args.empty()) {
-        const GenericTemplateInfo* const generic_struct = qualified
-            ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
-            : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
-        if (generic_struct != nullptr) {
-            return this->instantiate_generic_struct(*generic_struct, type, type_id, args);
-        }
-        const GenericTemplateInfo* const generic_enum = qualified
-            ? this->find_generic_enum_in_module(scope_module, type.name, type.range, false)
-            : this->find_generic_enum_in_visible_modules(type.name, type.range, false);
-        if (generic_enum != nullptr) {
-            return this->instantiate_generic_enum(*generic_enum, type, type_id, args);
-        }
-        const GenericTemplateInfo* const generic_alias = qualified
-            ? this->find_generic_type_alias_in_module(scope_module, type.name, type.range, false)
-            : this->find_generic_type_alias_in_visible_modules(type.name, type.range, false);
-        if (generic_alias != nullptr) {
-            return this->instantiate_generic_type_alias(*generic_alias, type, type_id, args, opaque_allowed_as_pointee);
-        }
-
-        const TypeHandle concrete = qualified
-            ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee, false)
-            : this->find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee, false);
-        if (is_valid(concrete)) {
-            this->report(type.range, sema_type_not_generic_message(type.name));
-        } else {
-            const bool saw_generic = (qualified
-                ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
-                : this->find_generic_struct_in_visible_modules(type.name, type.range, false)) != nullptr ||
-                (qualified
-                    ? this->find_generic_enum_in_module(scope_module, type.name, type.range, false)
-                    : this->find_generic_enum_in_visible_modules(type.name, type.range, false)) != nullptr ||
-                (qualified
-                    ? this->find_generic_type_alias_in_module(scope_module, type.name, type.range, false)
-                    : this->find_generic_type_alias_in_visible_modules(type.name, type.range, false)) != nullptr;
-            if (!saw_generic) {
-                if (qualified) {
-                    this->report_generic_type_template_in_module(scope_module, type.name, type.range);
-                } else {
-                    static_cast<void>(this->find_generic_struct_in_visible_modules(type.name, type.range, true));
-                }
-            }
-        }
-        return INVALID_TYPE_HANDLE;
-    }
-
-    const GenericTemplateInfo* const generic_struct = qualified
-        ? this->find_generic_struct_in_module(scope_module, type.name, type.range, false)
-        : this->find_generic_struct_in_visible_modules(type.name, type.range, false);
-    if (generic_struct != nullptr) {
-        this->report(type.range, sema_generic_type_requires_args_message(type.name));
-        return INVALID_TYPE_HANDLE;
-    }
-    const GenericTemplateInfo* const generic_enum = qualified
-        ? this->find_generic_enum_in_module(scope_module, type.name, type.range, false)
-        : this->find_generic_enum_in_visible_modules(type.name, type.range, false);
-    if (generic_enum != nullptr) {
-        this->report(type.range, sema_generic_type_requires_args_message(type.name));
-        return INVALID_TYPE_HANDLE;
-    }
-    const GenericTemplateInfo* const generic_alias = qualified
-        ? this->find_generic_type_alias_in_module(scope_module, type.name, type.range, false)
-        : this->find_generic_type_alias_in_visible_modules(type.name, type.range, false);
-    if (generic_alias != nullptr) {
-        this->report(type.range, sema_generic_type_requires_args_message(type.name));
-        return INVALID_TYPE_HANDLE;
+    NamedTypeSelector selector;
+    selector.module = scope_module;
+    selector.name = type.name;
+    selector.range = type.range;
+    selector.type_args = type.type_args;
+    selector.qualified = qualified;
+    if (!selector.type_args.empty()) {
+        return this->resolve_generic_type_selector(selector, type_id, opaque_allowed_as_pointee, true);
     }
     if (qualified && this->generic_type_template_exists_in_module(scope_module, type.name)) {
         this->report_generic_type_template_in_module(scope_module, type.name, type.range);
         return INVALID_TYPE_HANDLE;
     }
-
-    const TypeHandle resolved = qualified
-        ? this->find_type_in_module(scope_module, type.name, type.range, opaque_allowed_as_pointee)
-        : this->find_type_in_visible_modules(type.name, type.range, opaque_allowed_as_pointee);
-    if (is_valid(resolved) &&
-        this->checked_.types.get(resolved).kind == TypeKind::opaque_struct &&
-        !opaque_allowed_as_pointee) {
-        this->report(type.range, std::string(SEMA_OPAQUE_POINTER_ONLY));
-    }
-    return resolved;
+    return this->resolve_named_type_selector_type(selector, opaque_allowed_as_pointee, true);
 }
 
 TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee) {
@@ -1699,13 +1625,7 @@ bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id) {
         const syntax::ExprNode& expr = this->module_.exprs[current.value];
         switch (expr.kind) {
         case syntax::ExprKind::name: {
-            const Symbol* symbol = nullptr;
-            if (!expr.scope_name.empty()) {
-                const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range, false);
-                symbol = syntax::is_valid(module) ? this->find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
-            } else {
-                symbol = this->find_symbol(expr.text, expr.range);
-            }
+            const Symbol* symbol = expr.scope_name.empty() ? this->symbols_.find(expr.text) : nullptr;
             return symbol != nullptr && (symbol->kind == SymbolKind::local || symbol->kind == SymbolKind::parameter);
         }
         case syntax::ExprKind::field:
@@ -1729,13 +1649,7 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
         const syntax::ExprNode& expr = this->module_.exprs[current.value];
         switch (expr.kind) {
         case syntax::ExprKind::name: {
-            const Symbol* symbol = nullptr;
-            if (!expr.scope_name.empty()) {
-                const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range, false);
-                symbol = syntax::is_valid(module) ? this->find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
-            } else {
-                symbol = this->find_symbol(expr.text, expr.range);
-            }
+            const Symbol* symbol = expr.scope_name.empty() ? this->symbols_.find(expr.text) : nullptr;
             return symbol != nullptr && symbol->is_mutable;
         }
         case syntax::ExprKind::field:

@@ -1,0 +1,11 @@
+module bare_enum_case_constructor;
+
+enum Maybe {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let value = some(1);
+    return 0;
+}

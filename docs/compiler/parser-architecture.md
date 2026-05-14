@@ -212,7 +212,7 @@ Protected cases:
 - Array literals and repeat literals such as `[1, 2, 3]` and `[0; 128]`.
 - Index expressions such as `items[index]`.
 - Builtin type arguments such as `cast[i32](value)` and `sizeof[T]`.
-- Explicit generic function calls such as `id::[i32](value)`. The `::[...]`
+- Explicit generic function calls such as `id[i32](value)`. The `[...]`
   suffix is represented as a separate `generic_apply` expression whose callee is
   the function name expression.
 - Generic struct literals such as `Wrap[Wrap[i32]] { ... }`.
@@ -221,7 +221,7 @@ Protected cases:
   comparison or shift-related tokens in the language grammar.
 
 Generic parameter lists and type argument lists are non-empty. `fn f[]`,
-`Box[]`, and `id::[](...)` are parser errors instead of recoverable shorthand
+`Box[]`, and `id[](...)` are parser errors instead of recoverable shorthand
 for inference.
 
 Before changing lookahead or expression parsing, add a focused parser regression

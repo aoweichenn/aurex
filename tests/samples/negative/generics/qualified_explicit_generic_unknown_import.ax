@@ -1,5 +1,5 @@
 module qualified_explicit_generic_unknown_import;
 
 fn main() -> i32 {
-    return missing::id::[i32](1);
+    return missing.id[i32](1);
 }

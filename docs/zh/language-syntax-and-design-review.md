@@ -90,7 +90,7 @@ ptraddr ptrat strptr strblen strvalid strfromutf8 strraw
 标点和操作符：
 
 ```text
-( ) { } [ ] , . ... ; : :: -> => @ ?
+( ) { } [ ] , . ... ; : -> => @ ?
 + - * / % & | ^ ~ !
 = == != < <= > >= << >> && ||
 ```
@@ -120,7 +120,8 @@ priv import internal.helpers as helpers;
 - `as` 绑定直接导入别名。
 - `pub import` 形成 public re-export。
 - 未限定名字会在当前模块、直接 import 和 public re-export 中查找；冲突会报 ambiguous。
-- 限定查找使用 `alias::item`。
+- 限定查找使用 `alias.item`；语法统一使用 `.`，语义按 base kind
+  区分 module / type / value / member。
 - import、顶层 item、struct field 和 impl method 默认 private；跨模块 API 必须显式 `pub`。
 
 当前没有 package / crate 边界、选择性导入、glob import、版本化包名、模块 public surface dump 或包管理语法。
@@ -229,7 +230,7 @@ str
 ```aurex
 Point
 Box[u8]
-result::OutcomeI32
+result.OutcomeI32
 ```
 
 指针类型：
@@ -286,7 +287,7 @@ M2 基础泛型包含类型参数、类型实参和最小非资源类 `where` ca
 
 - 声明侧：`fn id[T](value: T) -> T`、`struct Box[T] { ... }`。
 - 类型侧：`Box[i32]`、`Pair[i32, bool]`、`Box[Pair[i32, bool]]`。
-- 调用侧：显式函数泛型调用必须写 `id::[i32](value)`。
+- 调用侧：显式函数泛型调用写 `id[i32](value)`。
 - `[]` 列表不能为空；空列表不表示推导。
 - `GenericParam` 只能是 identifier；inline bound `T: Bound`、用户 trait、associated type 和 const generic 都不属于 M2 基础泛型。
 - `where T: Eq + Hash` 支持内建非资源能力 `Sized`、`Eq`、`Ord`、`Hash`；`Copy` / `Drop` 等资源能力暂缓。
@@ -452,7 +453,7 @@ null
 c"hello"
 b'\n'
 name
-alias::name
+alias.name
 (expr)
 ```
 
@@ -494,7 +495,7 @@ pointer[index]
 function(arg1, arg2)
 value.method(arg)
 Type.associated(arg)
-generic_fn::[T](value)
+generic_fn[T](value)
 ```
 
 struct literal：
@@ -502,7 +503,7 @@ struct literal：
 ```aurex
 Point { x: 1, y: 2 }
 Pair[i32, bool] { left: 1, right: true }
-module_alias::Point { x: 1, y: 2 }
+module_alias.Point { x: 1, y: 2 }
 ```
 
 规则：
@@ -511,9 +512,9 @@ module_alias::Point { x: 1, y: 2 }
 - 字段不能重复。
 - 跨模块 private field 不能访问或初始化。
 - 泛型 struct literal 当前必须显式写 `[]` 类型实参，例如 `Pair[i32, bool] { ... }`。
-- `name[index]` 按 index 解析；显式函数泛型调用必须写 `name::[T](...)`，不用 `name[T](...)`。
-- `id::[T]` 在 AST 中是独立 postfix `generic_apply` 节点；call 再以它作为 callee。
-- `fn f[]`、`Box[]`、`id::[](...)` 均非法。
+- 显式函数泛型调用写 `name[T](...)` 或 `module.name[T](...)`。
+- `id[T]` 在 AST 中是独立 postfix `generic_apply` 节点；call 再以它作为 callee。
+- `fn f[]`、`Box[]`、`id[](...)` 均非法。
 - `<` / `>` 已完全退出泛型语法，只保留为比较 token。
 
 内建转换和查询：
@@ -965,7 +966,7 @@ Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-lik
 - `?`。
 - `defer`。
 - `for init; condition; update {}`。
-- `alias::item` 做模块限定。
+- `alias.item` 做模块限定；`::` 不再是 Aurex 源语法。
 
 建议谨慎加入：
 

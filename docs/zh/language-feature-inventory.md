@@ -52,7 +52,7 @@ ptraddr ptrat strptr strblen strvalid strfromutf8 strraw
 当前标点和操作符：
 
 ```text
-( ) { } [ ] , . ... ; : :: -> => @ ?
+( ) { } [ ] , . ... ; : -> => @ ?
 + - * / % & | ^ ~ !
 = += -= *= /= %= &= |= ^= <<= >>=
 == != < <= > >= << >> && ||
@@ -161,7 +161,8 @@ priv import internal.detail as detail;
 - import 通过导入者目录和显式 `-I` 查找。
 - import 默认 private。
 - `pub import` 可 re-export。
-- 使用 `alias::item` 做限定查找。
+- 使用 `alias.item` 做限定查找；语法统一使用 `.`，语义按 base kind
+  区分 module / type / value / member。
 - 当前没有 package manifest、glob import、selective import、版本化依赖或 package root 语法。
 
 ### 可见性
@@ -201,7 +202,7 @@ str
 ```aurex
 Point
 Box[i32]
-result::ResultI32I32
+result.ResultI32I32
 ```
 
 指针：
@@ -309,19 +310,19 @@ M2 基础泛型语法：
 GenericParams = "[" GenericParam ("," GenericParam)* ","? "]"
 GenericParam  = identifier
 TypeArgs      = "[" Type ("," Type)* ","? "]"
-GenericApply  = Callee "::" TypeArgs
+GenericApply  = Callee TypeArgs
 WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 ```
 
 规则：
 
-- `[]` 不能为空；`fn f[]`、`struct Box[]`、`Box[]`、`id::[](...)` 都是 parser 错误。
+- `[]` 不能为空；`fn f[]`、`struct Box[]`、`Box[]`、`id[](...)` 都是 parser 错误。
 - `GenericParam` 只能是类型参数名；inline bound `T: Bound` 仍被拒绝。
 - `where` 只支持内建非资源 capability：`Sized`、`Eq`、`Ord`、`Hash`；不支持用户 trait、associated type、const generic、trait object 或资源能力。
 - 命名类型后的 `TypeArgs` 用于泛型类型实例化，例如 `Pair[i32, bool]`。
 - 泛型类型声明覆盖 `struct Pair[T, U]`、`enum Option[T]`、`type Ptr[T] = *const T`。
 - `impl[T] Box[T]` 这类 owner generic impl 支持；method-local generic parameter 仍不支持。
-- `GenericApply` 是独立 postfix 表达式，只用于显式泛型函数调用，例如 `id::[i32](value)`。
+- `GenericApply` 是独立 postfix 表达式，只用于显式泛型函数调用，例如 `id[i32](value)`。
 - `name[index]` 永远是 index 表达式，不是泛型调用。
 
 enum：
@@ -522,9 +523,9 @@ name / qualified name：
 
 ```aurex
 value
-math::add
+math.add
 Status.ok
-remote::Status.ok
+remote.Status.ok
 ```
 
 grouping：
@@ -568,7 +569,7 @@ value.field
 array[index]
 ptr[index]
 function(arg)
-generic_fn::[T](arg)
+generic_fn[T](arg)
 value.method(arg)
 expr?
 ```
@@ -578,15 +579,15 @@ struct literal：
 ```aurex
 Point { x: 1, y: 2 }
 Pair[i32, bool] { first: 1, second: true }
-remote::Point { x: 1, y: 2 }
+remote.Point { x: 1, y: 2 }
 ```
 
 歧义规则：
 
 - `name[index]` 永远按 index 表达式解析。
-- 显式函数泛型实参必须写成 `name::[T](arg)` 或 `module::name::[T](arg)`；`name[T](arg)` 不作为泛型调用语法。
+- 显式函数泛型实参写成 `name[T](arg)` 或 `module.name[T](arg)`。
 - generic struct literal 只有在 `Name[Args] { ... }` 形态中解析为类型实参。
-- `fn f[]`、`Box[]`、`id::[](...)` 均非法，空 `[]` 不表示推导。
+- `fn f[]`、`Box[]`、`id[](...)` 均非法，空 `[]` 不表示推导。
 - `<` / `>` 只作为比较相关 token，不再作为泛型 delimiter。
 
 if expression：
@@ -749,7 +750,7 @@ p1 | p2 | p3
 2. 多文件 module/import/re-export。
 3. C FFI：`extern c`、`export c fn`、`@name`、variadic extern。
 4. 泛型 struct / function / enum / type alias，采用单态化实例化或结构化 alias 替换。
-5. 泛型函数参数推断、显式 `id::[T](x)` 调用、generic struct literal、owner generic impl，以及最小 `where` capability 约束。
+5. 泛型函数参数推断、显式 `id[T](x)` 调用、generic struct literal、owner generic impl，以及最小 `where` capability 约束。
 6. enum payload 和 enum constructor。
 7. pattern matching：enum/integer/bool、payload binding、guard、or-pattern、exhaustiveness。
 8. `Result` / `Option` 形状约定和 `?` lowering。
@@ -985,7 +986,7 @@ let all = bytes[:];
 
 5. namespace 规则冻结
 
-   `.` 只用于 module path、field、method；`::` 只用于 import alias 下的 item/type/const/function/enum constructor。不要引入混合长路径表达式。
+   `.` 统一用于 module path、import alias item、type、const/function、enum constructor、field 和 method；语义按 base kind 区分 module / type / value / member。`::` 不再是 Aurex 源语法。
 
 6. `str` 安全边界：已补 M2 no-std checked 构造和切片
 

@@ -176,7 +176,7 @@ std::string type_label(const AstModule& module, const TypeId id) {
         break;
     case TypeKind::named:
         if (!type.scope_name.empty()) {
-            out << type.scope_name << "::";
+            out << type.scope_name << ".";
         }
         out << type.name;
         if (!type.type_args.empty()) {
@@ -522,7 +522,7 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     if (!expr.text.empty()) {
         out << " `";
         if (!expr.scope_name.empty()) {
-            out << expr.scope_name << "::";
+            out << expr.scope_name << ".";
         }
         out << expr.text << "`";
         if (!expr.type_args.empty()) {
@@ -542,7 +542,7 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     if (!expr.struct_name.empty()) {
         out << " ";
         if (!expr.scope_name.empty()) {
-            out << expr.scope_name << "::";
+            out << expr.scope_name << ".";
         }
         out << expr.struct_name;
         if (!expr.type_args.empty()) {
@@ -555,6 +555,8 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
             }
             out << "]";
         }
+    } else if (expr.kind == ExprKind::struct_literal && is_valid(expr.object)) {
+        out << " <selector>";
     }
     if (expr.kind == ExprKind::generic_apply && !expr.type_args.empty()) {
         out << "[";

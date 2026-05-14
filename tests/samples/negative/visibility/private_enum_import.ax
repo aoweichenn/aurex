@@ -3,6 +3,6 @@ module private_enum_import;
 import samplelib.visibility;
 
 fn main() -> i32 {
-    let choice = HiddenChoice_yes;
+    let choice = HiddenChoice.yes;
     return 0;
 }

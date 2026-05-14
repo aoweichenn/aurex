@@ -14,8 +14,8 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
         "match_expr",
-        "match_arm Choice_zero",
-        "match_arm Choice_one",
+        "match_arm .zero",
+        "match_arm .one",
     });
 
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;

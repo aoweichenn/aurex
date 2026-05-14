@@ -55,7 +55,7 @@ fn main() -> i32 {
     let bad_strblen = strblen(1);
     let bad_strraw_data = strraw(1, cast[usize](1));
     let bad_strraw_len = strraw(c"bytes", true);
-    let bad_generic_apply = id::[i32];
+    let bad_generic_apply = id[i32];
     let bad_array_unknown = [missing_name];
     let bad_array_storage = [touch()];
     let bad_if_void = if true { touch() } else { touch() };

@@ -198,11 +198,8 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::slice:
         return this->lower_slice_expr(expr_id, expr);
     case syntax::ExprKind::field:
-        if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(this->value_symbol(expr_id, expr)); enum_case != nullptr) {
-            if (!sema::is_valid(enum_case->payload_type) && is_payload_enum(this->module_.types, enum_case->type)) {
-                return this->lower_enum_constructor(*enum_case, syntax::INVALID_EXPR_ID);
-            }
-            return this->append_enum_case_ref(enum_case->c_name, enum_case->type);
+        if (const ValueId value = this->lower_bound_value_ref(expr_id, this->value_symbol(expr_id, expr)); is_valid(value)) {
+            return value;
         }
         [[fallthrough]];
     case syntax::ExprKind::index:
@@ -282,18 +279,7 @@ ValueId Lowerer::lower_literal_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
-    const std::string name(expr.text);
-    const auto local = expr.scope_name.empty() ? this->locals_.find(name) : this->locals_.end();
-    if (local != this->locals_.end()) {
-        Value value;
-        value.kind = ValueKind::load;
-        value.name = name;
-        value.type = this->local_load_type(local->second.slot);
-        value.object = local->second.slot;
-        return this->append_value(value);
-    }
-    const std::string symbol = this->value_symbol(expr_id, expr);
+ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const std::string& symbol) {
     if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
         enum_case != nullptr &&
         !sema::is_valid(enum_case->payload_type) &&
@@ -315,6 +301,24 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode
         value.call_target = function->second;
         value.type = this->expr_type(expr_id);
         return this->append_value(value);
+    }
+    return INVALID_VALUE_ID;
+}
+
+ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+    const std::string name(expr.text);
+    const auto local = expr.scope_name.empty() ? this->locals_.find(name) : this->locals_.end();
+    if (local != this->locals_.end()) {
+        Value value;
+        value.kind = ValueKind::load;
+        value.name = name;
+        value.type = this->local_load_type(local->second.slot);
+        value.object = local->second.slot;
+        return this->append_value(value);
+    }
+    const std::string symbol = this->value_symbol(expr_id, expr);
+    if (const ValueId value = this->lower_bound_value_ref(expr_id, symbol); is_valid(value)) {
+        return value;
     }
     Value value;
     value.kind = ValueKind::load;

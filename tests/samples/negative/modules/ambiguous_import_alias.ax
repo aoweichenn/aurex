@@ -4,5 +4,5 @@ import samplelib.visibility as lib;
 import samplelib.reexport_inner as lib;
 
 fn main() -> i32 {
-    return lib::answer;
+    return lib.answer;
 }

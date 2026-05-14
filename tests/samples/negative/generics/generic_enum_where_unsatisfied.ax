@@ -11,6 +11,6 @@ enum Holder[T] where T: Eq {
 
 fn main() -> i32 {
     let pair: Pair = Pair { first: 1, second: 2 };
-    let holder: Holder[Pair] = Holder::[Pair].value(pair);
+    let holder: Holder[Pair] = Holder[Pair].value(pair);
     return 0;
 }

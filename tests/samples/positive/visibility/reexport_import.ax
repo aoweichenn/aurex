@@ -9,7 +9,7 @@ fn main() -> i32 {
         right: base,
     };
     let mode = Mode.ready;
-    if mode != Mode_ready {
+    if mode != Mode.ready {
         return 1;
     }
     return pair.left + pair.right - 82;

@@ -5,5 +5,5 @@ fn id[T](value: T) -> T {
 }
 
 fn main() -> i32 {
-    return id::[i32, bool](1);
+    return id[i32, bool](1);
 }

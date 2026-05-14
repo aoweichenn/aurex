@@ -686,7 +686,7 @@ PatternAtom
   | TuplePattern
   | SlicePattern
   | StructPattern
-  | Identifier "." Identifier [ PayloadBindings ]
+  | ExplicitEnumCasePattern
   | Identifier
   | "." Identifier [ PayloadBindings ] ;
 
@@ -719,16 +719,22 @@ DestructurePattern
   | TuplePattern
   | SlicePattern
   | StructPattern
-  | Identifier "." Identifier [ PayloadBindings ]
+  | ExplicitEnumCasePattern
   | "." Identifier [ PayloadBindings ] ;
+
+ExplicitEnumCasePattern
+  = NamedType "." Identifier [ PayloadBindings ] ;
+
+NamedType
+  = Identifier { "." Identifier } [ "[" Type { "," Type } [ "," ] "]" ] ;
 ```
 
 Rules:
 
 - A bare identifier pattern is always a binding. Bare enum case patterns such
   as `some(v)` are rejected.
-- Enum case patterns are either explicit `Type.case` or inferred shorthand
-  `.case` from the matched enum type.
+- Enum case patterns are either explicit `Type.case` / `Type[Args].case` or
+  inferred shorthand `.case` from the matched enum type.
 - Constant patterns use `const NAME` and currently match integer and bool
   constants only.
 - Payload binding count must match the enum case payload field count.

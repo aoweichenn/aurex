@@ -335,7 +335,9 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
     }
     std::string label;
     if (pattern.scoped) {
-        if (!pattern.enum_name.empty()) {
+        if (is_valid(pattern.enum_type)) {
+            label += type_label(module, pattern.enum_type);
+        } else if (!pattern.enum_name.empty()) {
             label += std::string(pattern.enum_name);
         }
         label += ".";

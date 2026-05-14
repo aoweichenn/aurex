@@ -141,7 +141,8 @@ Rules:
 
 - Wildcard imports are rejected; use module imports with aliases.
 - Bare enum case patterns are rejected. Use `.case` when the matched enum type
-  is known, or `Type.case` for an explicit enum case pattern.
+  is known, or `Type.case` / `Type[Args].case` for an explicit enum case
+  pattern.
 - Bare identifiers in patterns always introduce bindings.
 - Import aliases are module-domain names and cannot be shadowed by locals or
   collide with type/value members in the importing module.

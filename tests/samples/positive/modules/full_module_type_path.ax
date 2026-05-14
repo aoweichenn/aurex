@@ -14,8 +14,8 @@ fn main() -> i32 {
     var constructed: samplelib.visibility.PublicBox = samplelib.visibility.PublicBox.new(answer);
     let choice = samplelib.visibility.PublicChoice.yes;
     let choice_score = match choice {
-        .yes => 0,
-        .no => 1,
+        samplelib.visibility.PublicChoice.yes => 0,
+        samplelib.visibility.PublicChoice.no => 1,
     };
     let read: samplelib.visibility.PublicInt = boxed.read();
     let constructed_read: samplelib.visibility.PublicInt = constructed.read();

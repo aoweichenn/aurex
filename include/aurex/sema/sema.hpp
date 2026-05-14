@@ -568,6 +568,11 @@ private:
         base::SourceRange range,
         bool report_unknown = true
     );
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_pattern_type(
+        syntax::TypeId enum_type,
+        std::string_view case_name,
+        base::SourceRange range
+    );
     [[nodiscard]] const EnumCaseInfo* find_enum_constructor(syntax::ExprId callee, bool report_unknown);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);

@@ -43,7 +43,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"ambiguous_import_name", "unknown function: helper"},
     {"array_literal_empty_infer", "empty array literal requires an array type context"},
     {"bare_enum_case_constructor", "unknown function: some"},
-    {"bare_enum_case_pattern", "bare enum case patterns are not supported; use '.case' or 'Type.case'"},
+    {"bare_enum_case_pattern", "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type[Args].case'"},
     {"const_pattern_non_const_name", "unsupported literal match pattern"},
     {"const_pattern_type_mismatch", "match pattern for integer or bool value must be a literal or wildcard"},
     {"duplicate_type_member_enum_case_method", "duplicate type member: duplicate_type_member_enum_case_method.Option.some"},

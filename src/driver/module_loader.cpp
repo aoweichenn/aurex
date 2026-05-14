@@ -180,6 +180,7 @@ void remap_expr_node(syntax::ExprNode& node, const IdMap& map) {
 }
 
 void remap_pattern_node(syntax::PatternNode& node, const IdMap& map) {
+    node.enum_type = remap_type(node.enum_type, map);
     for (syntax::PatternId& payload : node.payload_patterns) {
         payload = remap_pattern(payload, map);
     }

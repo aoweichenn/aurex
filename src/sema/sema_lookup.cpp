@@ -866,6 +866,26 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     return nullptr;
 }
 
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
+    const syntax::TypeId enum_type_id,
+    const std::string_view case_name,
+    const base::SourceRange range
+) {
+    const TypeHandle enum_type = this->resolve_type(enum_type_id);
+    if (!is_valid(enum_type)) {
+        return nullptr;
+    }
+    if (checked_.types.get(enum_type).kind != TypeKind::enum_) {
+        report(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+        return nullptr;
+    }
+    if (const EnumCaseInfo* result = find_enum_case_by_type_and_case(enum_type, case_name); result != nullptr) {
+        return result;
+    }
+    report(range, sema_unknown_scoped_enum_case_message(checked_.types.display_name(enum_type), case_name));
+    return nullptr;
+}
+
 const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId callee_id, const bool report_unknown) {
     if (!syntax::is_valid(callee_id) || callee_id.value >= module_.exprs.size()) {
         return nullptr;

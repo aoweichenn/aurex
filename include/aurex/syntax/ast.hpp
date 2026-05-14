@@ -201,6 +201,7 @@ struct PatternNode {
     std::string_view binding_name;
     std::string_view enum_name;
     std::string_view case_name;
+    TypeId enum_type = INVALID_TYPE_ID;
     std::string_view struct_name;
     std::vector<std::string_view> binding_names;
     std::vector<PatternId> payload_patterns;

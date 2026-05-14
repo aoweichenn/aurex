@@ -343,7 +343,9 @@ bool SemanticAnalyzer::analyze_pattern(
                 }
                 const EnumCaseInfo* case_info = nullptr;
                 if (pattern->scoped) {
-                    if (!pattern->enum_name.empty()) {
+                    if (syntax::is_valid(pattern->enum_type)) {
+                        case_info = this->find_enum_case_by_pattern_type(pattern->enum_type, pattern->case_name, pattern->range);
+                    } else if (!pattern->enum_name.empty()) {
                         case_info = this->find_enum_case_by_scoped_name(pattern->enum_name, pattern->case_name, pattern->range);
                     } else {
                         case_info = this->find_enum_case_by_type_and_case(frame.type, pattern->case_name);

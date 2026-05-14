@@ -643,6 +643,142 @@ TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse) {
     });
 }
 
+TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace) {
+    constexpr std::string_view source =
+        "module parser.generic_enum_case_patterns;\n"
+        "enum Option[T] { some(T), none }\n"
+        "fn main(opt: Option[i32]) -> i32 {\n"
+        "  return match opt {\n"
+        "    Option[i32].some(value) => value,\n"
+        "    Option[i32].none => 0,\n"
+        "  };\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "Option[i32].some(value)",
+        "Option[i32].none",
+    });
+
+    const syntax::ItemNode* main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_EQ(body.kind, syntax::StmtKind::block);
+    ASSERT_EQ(body.statements.size(), 1U);
+    const syntax::StmtNode& return_stmt = module.stmts[body.statements.front().value];
+    ASSERT_EQ(return_stmt.kind, syntax::StmtKind::return_);
+    ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
+    const syntax::ExprNode& match_expr = module.exprs[return_stmt.return_value.value];
+    ASSERT_EQ(match_expr.kind, syntax::ExprKind::match_expr);
+    ASSERT_EQ(match_expr.match_arms.size(), 2U);
+
+    const syntax::PatternNode& some = module.patterns[match_expr.match_arms.front().pattern.value];
+    ASSERT_EQ(some.kind, syntax::PatternKind::enum_case);
+    EXPECT_TRUE(some.scoped);
+    EXPECT_TRUE(syntax::is_valid(some.enum_type));
+    EXPECT_EQ(some.enum_name, "");
+    EXPECT_EQ(some.case_name, "some");
+    ASSERT_EQ(some.payload_patterns.size(), 1U);
+
+    const syntax::TypeNode& option_type = module.types[some.enum_type.value];
+    ASSERT_EQ(option_type.kind, syntax::TypeKind::named);
+    EXPECT_EQ(option_type.name, "Option");
+    ASSERT_EQ(option_type.type_args.size(), 1U);
+    const syntax::TypeNode& i32_arg = module.types[option_type.type_args.front().value];
+    ASSERT_EQ(i32_arg.kind, syntax::TypeKind::primitive);
+    EXPECT_EQ(i32_arg.primitive, syntax::PrimitiveTypeKind::i32);
+
+    const syntax::PatternNode& value = module.patterns[some.payload_patterns.front().value];
+    EXPECT_EQ(value.kind, syntax::PatternKind::binding);
+    EXPECT_EQ(value.binding_name, "value");
+}
+
+TEST(CoreUnit, ParserAcceptsQualifiedGenericExplicitEnumCasePattern) {
+    constexpr std::string_view source =
+        "module parser.qualified_generic_enum_case_patterns;\n"
+        "enum Option[T] { some(T), none }\n"
+        "fn main(opt: parser.qualified_generic_enum_case_patterns.Option[i32]) -> i32 {\n"
+        "  return match opt {\n"
+        "    parser.qualified_generic_enum_case_patterns.Option[i32].some(value) => value,\n"
+        "    parser.qualified_generic_enum_case_patterns.Option[i32].none => 0,\n"
+        "  };\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "parser.qualified_generic_enum_case_patterns.Option[i32].some(value)",
+        "parser.qualified_generic_enum_case_patterns.Option[i32].none",
+    });
+}
+
+TEST(CoreUnit, ParserRecoversMalformedExplicitEnumCasePatternTypeArgs) {
+    expect_parse_error(
+        "module parser.malformed_explicit_enum_case_pattern;\n"
+        "enum Option[T] { some(T), none }\n"
+        "fn main(opt: Option[i32]) -> i32 {\n"
+        "  return match opt {\n"
+        "    Option[].some(value) => value,\n"
+        "    Option[i32].none => 0,\n"
+        "  };\n"
+        "}\n",
+        "expected generic type argument"
+    );
+    expect_parse_error(
+        "module parser.missing_explicit_enum_case_dot;\n"
+        "enum Option[T] { some(T), none }\n"
+        "fn main(opt: Option[i32]) -> i32 {\n"
+        "  return match opt {\n"
+        "    Option[i32] => 0,\n"
+        "  };\n"
+        "}\n",
+        "expected '.' before enum case pattern name"
+    );
+    expect_parse_error(
+        "module parser.malformed_explicit_enum_case_args;\n"
+        "enum Pair[A, B] { some(A, B), none }\n"
+        "fn main(opt: Pair[i32, i32]) -> i32 {\n"
+        "  return match opt {\n"
+        "    Pair[i32 @ i32].some(left, right) => left + right,\n"
+        "    Pair[i32, i32].none => 0,\n"
+        "  };\n"
+        "}\n",
+        "expected ',' or ']' after generic type argument"
+    );
+}
+
+TEST(CoreUnit, ParserRejectsBareEnumCasePatternButRecoversAsBinding) {
+    constexpr base::SourceId PARSER_TEST_BARE_ENUM_CASE_PATTERN_SOURCE_ID {31};
+    constexpr std::string_view source =
+        "module parser.bare_enum_case_pattern;\n"
+        "enum Option { some(i32), none }\n"
+        "fn main(opt: Option) -> i32 {\n"
+        "  return match opt {\n"
+        "    some(value) => value,\n"
+        "    .none => 0,\n"
+        "  };\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer(PARSER_TEST_BARE_ENUM_CASE_PATTERN_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    ASSERT_FALSE(parsed);
+    ASSERT_TRUE(diagnostics.has_error());
+
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        if (diagnostic.message.find("bare enum case patterns are not supported") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
 TEST(CoreUnit, ParserRejectsMalformedSlicePatternRest) {
     expect_parse_error(
         "module parser.slice_pattern_rest;\n"

@@ -1,0 +1,6 @@
+module unknown_module_type_path;
+
+fn main() -> i32 {
+    let value: missing.path.File = 0;
+    return value;
+}

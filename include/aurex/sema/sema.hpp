@@ -223,6 +223,11 @@ private:
     [[nodiscard]] std::vector<syntax::TypeId> postfix_bracket_type_args(const syntax::PostfixOp& op);
     [[nodiscard]] syntax::TypeId postfix_arg_expr_to_type(syntax::ExprId expr);
     [[nodiscard]] syntax::TypeId postfix_chain_expr_to_type(syntax::ExprId expr);
+    [[nodiscard]] syntax::TypeId append_postfix_type_selector(
+        syntax::TypeId current,
+        std::string_view name,
+        base::SourceRange range
+    );
     [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
     [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
@@ -497,6 +502,9 @@ private:
     void validate_unsafe_function_value_call(TypeHandle callee_type, base::SourceRange range);
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] std::vector<std::string_view> type_scope_parts(const syntax::TypeNode& type) const;
+    [[nodiscard]] syntax::ModuleId resolve_type_scope(const syntax::TypeNode& type, bool report_unknown);
+    [[nodiscard]] syntax::ModuleId find_visible_module_path(const std::vector<std::string_view>& parts) const;
     [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;
     [[nodiscard]] std::vector<syntax::ModuleId> module_export_modules(syntax::ModuleId module) const;
     void append_public_reexports(syntax::ModuleId module, std::vector<syntax::ModuleId>& result, std::unordered_set<base::u32>& seen) const;

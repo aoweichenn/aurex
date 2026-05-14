@@ -1,0 +1,15 @@
+module full_module_type_path;
+
+import samplelib.visibility as vis;
+
+fn identity[T](value: T) -> T {
+    return value;
+}
+
+fn main() -> i32 {
+    let answer: samplelib.visibility.PublicInt = vis.answer;
+    let same: samplelib.visibility.PublicInt = identity[samplelib.visibility.PublicInt](answer);
+    var boxed: samplelib.visibility.PublicBox = vis.make_box(answer);
+    let read: samplelib.visibility.PublicInt = boxed.read();
+    return read - same;
+}

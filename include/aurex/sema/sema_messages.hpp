@@ -935,6 +935,10 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "ambiguous import alias: " + std::string(alias);
 }
 
+[[nodiscard]] inline std::string sema_unknown_module_path_message(const std::string_view path) {
+    return "unknown module path: " + std::string(path);
+}
+
 [[nodiscard]] inline std::string sema_local_shadows_import_alias_message(const std::string_view name) {
     return "local name shadows import alias: " + std::string(name);
 }

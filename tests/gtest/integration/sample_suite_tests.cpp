@@ -66,6 +66,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"str_slice_bound_non_integer", "slice bound must be an integer"},
     {"strfromutf8_non_slice", "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"},
     {"try_result_return_mismatch", "try expression on result-like enum requires enclosing function"},
+    {"unknown_module_type_path", "unknown module path: missing.path"},
     {"unsafe_fn_call_required", "call to unsafe function read_raw requires unsafe context"},
 });
 
@@ -87,6 +88,7 @@ inline constexpr auto CROSS_STAGE_EMIT_KINDS = std::to_array<driver::EmitKind>({
 });
 
 inline constexpr auto IMPORT_RUNTIME_SAMPLES = std::to_array<ImportRuntimeSample>({
+    {"modules", "full_module_type_path.ax"},
     {"modules", "import_alias_qualified_call.ax"},
     {"modules", "import_path.ax"},
     {"modules", "module_math.ax"},

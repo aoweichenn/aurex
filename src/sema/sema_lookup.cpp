@@ -22,6 +22,32 @@ constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
     return key;
 }
 
+[[nodiscard]] bool module_path_matches_parts(
+    const syntax::ModulePath& path,
+    const std::vector<std::string_view>& parts
+) noexcept {
+    if (path.parts.size() != parts.size()) {
+        return false;
+    }
+    for (base::usize i = 0; i < parts.size(); ++i) {
+        if (path.parts[i] != parts[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] std::string module_path_parts_name(const std::vector<std::string_view>& parts) {
+    std::string name;
+    for (base::usize i = 0; i < parts.size(); ++i) {
+        if (i != 0) {
+            name.push_back('.');
+        }
+        name += parts[i];
+    }
+    return name;
+}
+
 } // namespace
 
 syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) const noexcept {
@@ -107,6 +133,50 @@ bool SemanticAnalyzer::module_alias_visible(const std::string_view name) const {
         }
     }
     return false;
+}
+
+std::vector<std::string_view> SemanticAnalyzer::type_scope_parts(const syntax::TypeNode& type) const {
+    if (!type.scope_parts.empty()) {
+        return type.scope_parts;
+    }
+    if (!type.scope_name.empty()) {
+        return {type.scope_name};
+    }
+    return {};
+}
+
+syntax::ModuleId SemanticAnalyzer::find_visible_module_path(const std::vector<std::string_view>& parts) const {
+    if (parts.empty()) {
+        return syntax::INVALID_MODULE_ID;
+    }
+    for (const syntax::ModuleId module : this->visible_modules(this->current_module_)) {
+        if (!syntax::is_valid(module) || module.value >= this->module_.modules.size()) {
+            continue;
+        }
+        if (module_path_matches_parts(this->module_.modules[module.value].path, parts)) {
+            return module;
+        }
+    }
+    return syntax::INVALID_MODULE_ID;
+}
+
+syntax::ModuleId SemanticAnalyzer::resolve_type_scope(
+    const syntax::TypeNode& type,
+    const bool report_unknown
+) {
+    const std::vector<std::string_view> parts = this->type_scope_parts(type);
+    if (parts.empty()) {
+        return syntax::INVALID_MODULE_ID;
+    }
+    if (parts.size() == 1) {
+        return this->resolve_import_alias(parts.front(), type.scope_range, report_unknown);
+    }
+
+    const syntax::ModuleId module = this->find_visible_module_path(parts);
+    if (!syntax::is_valid(module) && report_unknown) {
+        this->report(type.scope_range, sema_unknown_module_path_message(module_path_parts_name(parts)));
+    }
+    return module;
 }
 
 std::vector<syntax::ModuleId> SemanticAnalyzer::module_export_modules(const syntax::ModuleId module) const {

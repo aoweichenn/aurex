@@ -297,34 +297,7 @@ syntax::TypeId TypeParser::parse_type_atom() {
         return this->parse_primitive_type();
     }
     if (this->check(TokenKind::identifier)) {
-        const syntax::Token& name = this->advance();
-        syntax::TypeNode type;
-        type.kind = syntax::TypeKind::named;
-        type.range = name.range;
-        type.name = name.text;
-        if (this->match(TokenKind::dot)) {
-            const syntax::Token& scoped_name =
-                this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE));
-            type.scope_name = name.text;
-            type.scope_range = name.range;
-            type.name = scoped_name.text;
-            type.range = this->merge(name.range, scoped_name.range);
-        }
-        if (this->match(TokenKind::l_bracket)) {
-            if (this->check(TokenKind::r_bracket)) {
-                this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
-            }
-            this->parse_generic_type_args(type.type_args);
-            const syntax::Token& end = this->expect_recovered(
-                TokenKind::r_bracket,
-                std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
-                RecoveryContext::generic_type_argument
-            );
-            type.range = this->merge(type.range, end.range);
-        } else if (this->check(TokenKind::less)) {
-            this->reject_legacy_angle_type_args();
-        }
-        return this->session_.module.push_type(type);
+        return this->parse_named_type();
     }
 
     this->report_here(std::string(PARSER_EXPECT_TYPE));
@@ -332,6 +305,43 @@ syntax::TypeId TypeParser::parse_type_atom() {
     type.kind = syntax::TypeKind::primitive;
     type.primitive = syntax::PrimitiveTypeKind::void_;
     type.range = this->peek().range;
+    return this->session_.module.push_type(type);
+}
+
+syntax::TypeId TypeParser::parse_named_type() {
+    std::vector<syntax::Token> parts;
+    parts.push_back(this->advance());
+    while (this->match(TokenKind::dot)) {
+        parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_NAME_AFTER_SCOPE)));
+    }
+
+    syntax::TypeNode type;
+    type.kind = syntax::TypeKind::named;
+    type.range = this->merge(parts.front().range, parts.back().range);
+    type.name = parts.back().text;
+    if (parts.size() > 1) {
+        type.scope_range = this->merge(parts.front().range, parts[parts.size() - 2].range);
+        type.scope_parts.reserve(parts.size() - 1);
+        for (base::usize i = 0; i + 1 < parts.size(); ++i) {
+            type.scope_parts.push_back(parts[i].text);
+        }
+        type.scope_name = type.scope_parts.front();
+    }
+
+    if (this->match(TokenKind::l_bracket)) {
+        if (this->check(TokenKind::r_bracket)) {
+            this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
+        }
+        this->parse_generic_type_args(type.type_args);
+        const syntax::Token& end = this->expect_recovered(
+            TokenKind::r_bracket,
+            std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
+            RecoveryContext::generic_type_argument
+        );
+        type.range = this->merge(type.range, end.range);
+    } else if (this->check(TokenKind::less)) {
+        this->reject_legacy_angle_type_args();
+    }
     return this->session_.module.push_type(type);
 }
 

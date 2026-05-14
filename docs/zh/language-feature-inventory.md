@@ -325,6 +325,7 @@ WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 - parser 阶段不再把 `[]` 立即分成 `GenericApply` 或 index；表达式后缀统一记录成 `postfix_chain(base + ops)`。
 - sema 根据 base kind 再 materialize：`id[i32](value)` 变成显式泛型函数调用，`Option[i32].some` 变成泛型类型选择 + enum case，`values[0].field` 变成 value index 后接字段选择。
 - `name[index]` 是否是 index 由 `name` 的语义种类决定；局部 value base 会走 index，泛型函数/type base 会走 type args。
+- 类型注解支持 `Name`、`alias.Name` 和可见模块路径形式 `core.mem.File` / `core.mem.Box[i32]`；一段 qualifier 仍按 import alias 解析，多段 qualifier 按 visible module path 解析。
 
 enum：
 
@@ -587,7 +588,7 @@ remote.Point { x: 1, y: 2 }
 
 歧义规则：
 
-- `name[index]` 永远按 index 表达式解析。
+- parser 不提前判定 `name[index]` 是 index 还是泛型实参；sema 根据 base kind materialize。局部 value base 走 index，泛型函数/type base 走 type args。
 - 显式函数泛型实参写成 `name[T](arg)` 或 `module.name[T](arg)`。
 - generic struct literal 只有在 `Name[Args] { ... }` 形态中解析为类型实参。
 - `fn f[]`、`Box[]`、`id[](...)` 均非法，空 `[]` 不表示推导。

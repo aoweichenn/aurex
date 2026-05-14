@@ -73,6 +73,7 @@ struct TypeNode {
     PrimitiveTypeKind primitive = PrimitiveTypeKind::void_;
     std::string_view scope_name;
     base::SourceRange scope_range {};
+    std::vector<std::string_view> scope_parts;
     std::string_view name;
     std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;

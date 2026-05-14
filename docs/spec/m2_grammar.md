@@ -161,7 +161,7 @@ FunctionTypeParam
   = [ Identifier ":" ] Type ;
 
 QualifiedType
-  = Identifier [ "." Identifier ] [ GenericTypeArgs ] ;
+  = Identifier { "." Identifier } [ GenericTypeArgs ] ;
 
 GenericTypeArgs
   = "[" Type { "," Type } [ "," ] "]" ;
@@ -200,6 +200,8 @@ unsafe extern c fn(*const u8) -> i32
 Box[i32]
 Pair[i32, bool]
 foo.Box[i32]
+core.mem.File
+core.mem.Box[i32]
 ```
 
 Rules:
@@ -233,10 +235,12 @@ Rules:
   array-containing types.
 - Generic type arguments use `[]`; empty `[]` is rejected.
 - `<` and `>` are not generic delimiters.
-- Type paths are currently plain names or one-level `alias.Name`. They use the
-  same dot selector spelling as values and modules, while semantic base kind
-  decides whether a selector denotes a module, type, value, field, method, enum
-  case, or associated function. `::` is not accepted.
+- Type paths use the same dot selector spelling as values and modules. A
+  one-segment qualifier such as `mem.File` resolves through an import alias.
+  A multi-segment qualifier such as `core.mem.File` resolves as a visible
+  module path plus exported type name. Semantic base kind decides whether a
+  selector denotes a module, type, value, field, method, enum case, or
+  associated function. `::` is not accepted.
 
 ## 4.1 Name Domains And Dot Selectors
 
@@ -789,9 +793,11 @@ Supported generic positions:
 | `where T: Eq + Hash` | yes | Built-in non-resource capabilities only |
 | `<>` generics | no | Aurex uses `[]` |
 
-`name[index]` is an index expression unless the bracketed suffix is directly
-followed by a call, struct literal, or selector suffix. Explicit generic calls
-use `name[T](...)` or `module.name[T](...)`.
+Postfix brackets are kept raw by the parser and materialized by semantic
+analysis from the resolved base kind. A value base makes `name[index]` an index
+expression, while a generic function or type base makes the same bracket syntax
+type arguments. Explicit generic calls use `name[T](...)` or
+`module.name[T](...)`.
 
 The M2 `where` clause is deliberately small. `Sized`, `Eq`, `Ord`, and `Hash`
 are built-in non-resource capability predicates used for type checking and

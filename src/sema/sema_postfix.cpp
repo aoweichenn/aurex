@@ -231,26 +231,51 @@ syntax::TypeId SemanticAnalyzer::postfix_chain_expr_to_type(const syntax::ExprId
             return syntax::INVALID_TYPE_ID;
         }
 
-        syntax::TypeNode type = this->module_.types[current.value];
-        type.range = merge_ranges(type.range, op.range);
         if (op.kind == syntax::PostfixOpKind::select) {
-            if (type.kind != syntax::TypeKind::named ||
-                !type.scope_name.empty() ||
-                !type.type_args.empty()) {
-                this->report(op.range, "expected generic type argument");
+            current = this->append_postfix_type_selector(current, op.name, op.range);
+            if (!syntax::is_valid(current)) {
                 return syntax::INVALID_TYPE_ID;
             }
-            type.scope_name = type.name;
-            type.scope_range = this->module_.types[current.value].range;
-            type.name = op.name;
-            current = this->push_synthetic_type(std::move(type));
             continue;
         }
 
+        syntax::TypeNode type = this->module_.types[current.value];
+        type.range = merge_ranges(type.range, op.range);
         type.type_args = this->postfix_bracket_type_args(op);
         current = this->push_synthetic_type(std::move(type));
     }
     return current;
+}
+
+syntax::TypeId SemanticAnalyzer::append_postfix_type_selector(
+    const syntax::TypeId current,
+    const std::string_view name,
+    const base::SourceRange range
+) {
+    if (!syntax::is_valid(current) || current.value >= this->module_.types.size()) {
+        return syntax::INVALID_TYPE_ID;
+    }
+
+    syntax::TypeNode type = this->module_.types[current.value];
+    if (type.kind != syntax::TypeKind::named || !type.type_args.empty()) {
+        this->report(range, "expected generic type argument");
+        return syntax::INVALID_TYPE_ID;
+    }
+
+    const base::SourceRange previous_range = type.range;
+    if (type.scope_parts.empty()) {
+        if (!type.scope_name.empty()) {
+            type.scope_parts.push_back(type.scope_name);
+        }
+        type.scope_parts.push_back(type.name);
+    } else {
+        type.scope_parts.push_back(type.name);
+    }
+    type.scope_name = type.scope_parts.front();
+    type.scope_range = previous_range;
+    type.name = name;
+    type.range = merge_ranges(previous_range, range);
+    return this->push_synthetic_type(std::move(type));
 }
 
 syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId expr) {
@@ -266,6 +291,9 @@ syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId e
         type.range = node.range;
         type.scope_name = node.scope_name;
         type.scope_range = node.scope_range;
+        if (!node.scope_name.empty()) {
+            type.scope_parts.push_back(node.scope_name);
+        }
         type.name = node.text;
         return this->push_synthetic_type(std::move(type));
     }
@@ -282,6 +310,7 @@ syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId e
         type.range = node.range;
         type.scope_name = object.text;
         type.scope_range = object.range;
+        type.scope_parts.push_back(object.text);
         type.name = node.field_name;
         return this->push_synthetic_type(std::move(type));
     }

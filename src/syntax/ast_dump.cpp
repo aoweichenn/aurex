@@ -175,7 +175,11 @@ std::string type_label(const AstModule& module, const TypeId id) {
         out << primitive_name(type.primitive);
         break;
     case TypeKind::named:
-        if (!type.scope_name.empty()) {
+        if (!type.scope_parts.empty()) {
+            for (std::string_view part : type.scope_parts) {
+                out << part << ".";
+            }
+        } else if (!type.scope_name.empty()) {
             out << type.scope_name << ".";
         }
         out << type.name;

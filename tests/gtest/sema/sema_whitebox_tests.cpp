@@ -826,6 +826,11 @@ TEST(CoreUnit, SemanticWhiteBoxPostfixMaterializationEdges) {
         push_name(analyzer.module_, "lib"),
         {select_op("Record")}
     );
+    const ExprId multi_selector_chain = push_postfix_chain(
+        analyzer.module_,
+        push_name(analyzer.module_, "core"),
+        {select_op("mem"), select_op("File")}
+    );
     const ExprId generic_selector_chain = push_postfix_chain(
         analyzer.module_,
         push_name(analyzer.module_, "Box"),
@@ -858,6 +863,15 @@ TEST(CoreUnit, SemanticWhiteBoxPostfixMaterializationEdges) {
     ASSERT_TRUE(syntax::is_valid(selector_type));
     EXPECT_EQ(analyzer.module_.types[selector_type.value].scope_name, "lib");
     EXPECT_EQ(analyzer.module_.types[selector_type.value].name, "Record");
+
+    const TypeId multi_selector_type = analyzer.postfix_chain_expr_to_type(multi_selector_chain);
+    ASSERT_TRUE(syntax::is_valid(multi_selector_type));
+    const syntax::TypeNode& multi_selector_node = analyzer.module_.types[multi_selector_type.value];
+    EXPECT_EQ(multi_selector_node.scope_name, "core");
+    ASSERT_EQ(multi_selector_node.scope_parts.size(), 2U);
+    EXPECT_EQ(multi_selector_node.scope_parts[0], "core");
+    EXPECT_EQ(multi_selector_node.scope_parts[1], "mem");
+    EXPECT_EQ(multi_selector_node.name, "File");
 
     const TypeId generic_selector_type = analyzer.postfix_chain_expr_to_type(generic_selector_chain);
     ASSERT_TRUE(syntax::is_valid(generic_selector_type));

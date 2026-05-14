@@ -540,6 +540,46 @@ TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring) {
     });
 }
 
+TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations) {
+    constexpr std::string_view source =
+        "module parser.qualified_types;\n"
+        "type FileBox = core.mem.Box[core.mem.File];\n"
+        "fn use(file: core.mem.File) -> core.mem.Box[core.mem.File] {\n"
+        "  return file;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* file_box = find_item(module, "FileBox");
+    ASSERT_NE(file_box, nullptr);
+    ASSERT_TRUE(syntax::is_valid(file_box->alias_type));
+    const syntax::TypeNode& alias_type = module.types[file_box->alias_type.value];
+    ASSERT_EQ(alias_type.kind, syntax::TypeKind::named);
+    EXPECT_EQ(alias_type.name, "Box");
+    ASSERT_EQ(alias_type.scope_parts.size(), 2U);
+    EXPECT_EQ(alias_type.scope_parts[0], "core");
+    EXPECT_EQ(alias_type.scope_parts[1], "mem");
+    ASSERT_EQ(alias_type.type_args.size(), 1U);
+    const syntax::TypeNode& file_arg = module.types[alias_type.type_args.front().value];
+    ASSERT_EQ(file_arg.scope_parts.size(), 2U);
+    EXPECT_EQ(file_arg.scope_parts[0], "core");
+    EXPECT_EQ(file_arg.scope_parts[1], "mem");
+    EXPECT_EQ(file_arg.name, "File");
+
+    const syntax::ItemNode* use = find_item(module, "use");
+    ASSERT_NE(use, nullptr);
+    ASSERT_EQ(use->params.size(), 1U);
+    const syntax::TypeNode& param_type = module.types[use->params.front().type.value];
+    ASSERT_EQ(param_type.scope_parts.size(), 2U);
+    EXPECT_EQ(param_type.name, "File");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "alias core.mem.Box[core.mem.File]",
+        "param file : core.mem.File",
+        "return core.mem.Box[core.mem.File]",
+    });
+}
+
 TEST(CoreUnit, ParserRejectsEmptyTupleForms) {
     expect_parse_error(
         "module parser.empty_tuple_type;\n"

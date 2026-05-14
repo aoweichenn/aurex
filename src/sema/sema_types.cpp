@@ -766,10 +766,11 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     const syntax::TypeNode& type,
     const bool opaque_allowed_as_pointee
 ) {
-    const bool qualified = !type.scope_name.empty();
+    const std::vector<std::string_view> scope_parts = this->type_scope_parts(type);
+    const bool qualified = !scope_parts.empty();
     syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
     if (qualified) {
-        scope_module = this->resolve_import_alias(type.scope_name, type.scope_range);
+        scope_module = this->resolve_type_scope(type, true);
         if (!syntax::is_valid(scope_module)) {
             return INVALID_TYPE_HANDLE;
         }

@@ -1,12 +1,12 @@
 module visibility_import;
 
-import samplelib.visibility;
+import samplelib.visibility as visibility;
 
 fn main() -> i32 {
-    let value: PublicInt = exported(answer);
-    var box = make_box(value);
-    let choice = PublicChoice.yes;
-    if choice != PublicChoice.yes {
+    let value: visibility.PublicInt = visibility.exported(visibility.answer);
+    var box = visibility.make_box(value);
+    let choice = visibility.PublicChoice.yes;
+    if choice != visibility.PublicChoice.yes {
         return 1;
     }
     if box.read() != 82 {

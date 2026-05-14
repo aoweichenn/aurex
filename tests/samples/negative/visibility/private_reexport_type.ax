@@ -1,9 +1,8 @@
 module private_reexport_type;
 
-import samplelib.reexport_facade;
+import samplelib.reexport_facade as facade;
 
 fn main() -> i32 {
-    let value: SecretCount = 1;
+    let value: facade.SecretCount = 1;
     return value;
 }
-

@@ -430,7 +430,9 @@ var z: i32 = 3;
 - `var` 可赋值。
 - initializer 必填。
 - 类型可省略并推导。
-- 当前不允许 shadowing。
+- 同一 lexical scope 内不允许重复定义 local/param。
+- 内层 lexical scope 可以 shadow 外层 local。
+- local/param 不能 shadow import alias、generic type parameter 或当前可见类型名。
 
 赋值：
 

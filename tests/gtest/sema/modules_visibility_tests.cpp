@@ -87,7 +87,10 @@ TEST_F(AurexIntegrationTest, ModuleVisibility) {
     expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_struct)).output, "unknown type: HiddenBox");
 
     const fs::path private_enum = negative_sample("visibility", "private_enum_import.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: HiddenChoice");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output,
+        "unknown import alias: HiddenChoice"
+    );
 
     const fs::path private_qualified_const = negative_sample("visibility", "private_qualified_const.ax");
     expect_contains(
@@ -165,9 +168,9 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
     });
 
     const std::string ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(facade)).output;
-    expect_contains(ast, "pub import samplelib.reexport_inner");
+    expect_contains(ast, "pub import samplelib.reexport_inner as inner");
     const std::string private_ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(private_facade)).output;
-    expect_contains(private_ast, "priv import samplelib.reexport_inner");
+    expect_contains(private_ast, "priv import samplelib.reexport_inner as inner");
 
     const std::string modules = require_success(aurexc() + " " + import_flags + " --dump-modules " + q(source)).output;
     expect_contains_all(modules, {
@@ -198,16 +201,28 @@ TEST_F(AurexIntegrationTest, PublicImportReexport) {
     require_success(aurexc() + " " + import_flags + " --emit=llvm-ir " + q(source));
 
     const fs::path private_import = negative_sample("visibility", "private_reexport_import.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_import)).output, "unknown type: Count");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_import)).output,
+        "unknown type in module samplelib.private_facade: Count"
+    );
 
     const fs::path private_const = negative_sample("visibility", "private_reexport_const.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_const)).output, "unknown name: hidden_base");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_const)).output,
+        "unknown name in module samplelib.reexport_facade: hidden_base"
+    );
 
     const fs::path private_type = negative_sample("visibility", "private_reexport_type.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_type)).output, "unknown type: SecretCount");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_type)).output,
+        "unknown type in module samplelib.reexport_facade: SecretCount"
+    );
 
     const fs::path private_enum = negative_sample("visibility", "private_reexport_enum.ax");
-    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output, "unknown name: SecretMode");
+    expect_contains(
+        require_failure(aurexc() + " " + import_flags + " --check " + q(private_enum)).output,
+        "unknown type in module samplelib.reexport_facade: SecretMode"
+    );
 }
 
 TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {

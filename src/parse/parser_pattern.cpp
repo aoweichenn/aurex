@@ -40,6 +40,16 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     if (this->check(TokenKind::l_bracket)) {
         return this->parse_slice_pattern();
     }
+    if (this->match(TokenKind::kw_const)) {
+        const syntax::Token& keyword = this->previous();
+        const syntax::Token& name =
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::const_;
+        pattern.binding_name = name.text;
+        pattern.range = this->merge(keyword.range, name.range);
+        return this->session_.module.push_pattern(pattern);
+    }
     if (this->match(TokenKind::identifier)) {
         const syntax::Token& first = this->previous();
         if (first.text == "_") {
@@ -51,21 +61,34 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
         if (this->check(TokenKind::l_brace)) {
             return this->parse_struct_pattern(first);
         }
-        syntax::PatternNode pattern;
-        pattern.kind = syntax::PatternKind::enum_case;
-        pattern.case_name = first.text;
-        pattern.range = first.range;
         if (this->match(TokenKind::dot)) {
             const syntax::Token& case_name =
                 this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::enum_case;
             pattern.enum_name = first.text;
             pattern.case_name = case_name.text;
             pattern.scoped = true;
             pattern.range = this->merge(first.range, case_name.range);
+            if (this->match(TokenKind::l_paren)) {
+                this->parse_payload_patterns(pattern);
+            }
+            return this->session_.module.push_pattern(std::move(pattern));
         }
-        if (this->match(TokenKind::l_paren)) {
+        if (this->check(TokenKind::l_paren)) {
+            this->report_here(std::string(PARSER_BARE_ENUM_CASE_PATTERN_UNSUPPORTED));
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::enum_case;
+            pattern.case_name = first.text;
+            pattern.range = first.range;
+            this->advance();
             this->parse_payload_patterns(pattern);
+            return this->session_.module.push_pattern(std::move(pattern));
         }
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::binding;
+        pattern.binding_name = first.text;
+        pattern.range = first.range;
         return this->session_.module.push_pattern(std::move(pattern));
     }
     if (this->match(TokenKind::integer_literal) || this->match(TokenKind::kw_true) || this->match(TokenKind::kw_false)) {
@@ -105,6 +128,16 @@ syntax::PatternId PatternParser::parse_destructure_pattern_atom() {
     if (this->check(TokenKind::l_bracket)) {
         return this->parse_slice_pattern();
     }
+    if (this->match(TokenKind::kw_const)) {
+        const syntax::Token& keyword = this->previous();
+        const syntax::Token& name =
+            this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::const_;
+        pattern.binding_name = name.text;
+        pattern.range = this->merge(keyword.range, name.range);
+        return this->session_.module.push_pattern(pattern);
+    }
     if (this->match(TokenKind::identifier)) {
         const syntax::Token& token = this->previous();
         if (token.text == "_") {
@@ -116,22 +149,28 @@ syntax::PatternId PatternParser::parse_destructure_pattern_atom() {
         if (this->check(TokenKind::l_brace)) {
             return this->parse_struct_pattern(token);
         }
-        if (this->check(TokenKind::dot) || this->check(TokenKind::l_paren)) {
+        if (this->match(TokenKind::dot)) {
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::enum_case;
+            const syntax::Token& case_name =
+                this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+            pattern.enum_name = token.text;
+            pattern.case_name = case_name.text;
+            pattern.scoped = true;
+            pattern.range = this->merge(token.range, case_name.range);
+            if (this->match(TokenKind::l_paren)) {
+                this->parse_payload_patterns(pattern);
+            }
+            return this->session_.module.push_pattern(std::move(pattern));
+        }
+        if (this->check(TokenKind::l_paren)) {
+            this->report_here(std::string(PARSER_BARE_ENUM_CASE_PATTERN_UNSUPPORTED));
             syntax::PatternNode pattern;
             pattern.kind = syntax::PatternKind::enum_case;
             pattern.case_name = token.text;
             pattern.range = token.range;
-            if (this->match(TokenKind::dot)) {
-                const syntax::Token& case_name =
-                    this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
-                pattern.enum_name = token.text;
-                pattern.case_name = case_name.text;
-                pattern.scoped = true;
-                pattern.range = this->merge(token.range, case_name.range);
-            }
-            if (this->match(TokenKind::l_paren)) {
-                this->parse_payload_patterns(pattern);
-            }
+            this->advance();
+            this->parse_payload_patterns(pattern);
             return this->session_.module.push_pattern(std::move(pattern));
         }
         syntax::PatternNode pattern;

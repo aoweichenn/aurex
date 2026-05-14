@@ -97,7 +97,7 @@ Rules:
 Not part of M2:
 
 ```aurex
-id[i32](1)
+id::[i32](1)
 ()
 value++
 value--
@@ -116,6 +116,34 @@ Rules:
   text segmentation are not part of M2.
 - Increment/decrement operators are not supported.
 - Assignment is a statement and cannot be used as a block result.
+
+## Namespace And Pattern Syntax
+
+Not part of M2:
+
+```aurex
+import core.mem.*;
+
+match opt {
+    some(value) => value,
+}
+
+import core.mem as mem;
+
+fn f() -> i32 {
+    let mem = 1;
+    return mem;
+}
+```
+
+Rules:
+
+- Wildcard imports are rejected; use module imports with aliases.
+- Bare enum case patterns are rejected. Use `.case` when the matched enum type
+  is known, or `Type.case` for an explicit enum case pattern.
+- Bare identifiers in patterns always introduce bindings.
+- Import aliases are module-domain names and cannot be shadowed by locals or
+  collide with type/value members in the importing module.
 
 ## Unsafe Syntax
 

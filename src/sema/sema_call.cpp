@@ -228,16 +228,6 @@ bool SemanticAnalyzer::selector_base_has_non_module_meaning(const std::string_vi
     if (this->find_any_generic_type_template_in_module(this->current_module_, name) != nullptr) {
         return true;
     }
-    for (const syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-        if (module.value == this->current_module_.value) {
-            continue;
-        }
-        if (this->named_types_.contains(this->module_key(module, name)) ||
-            this->checked_.type_aliases.contains(this->module_key(module, name)) ||
-            this->find_any_generic_type_template_in_module(module, name) != nullptr) {
-            return true;
-        }
-    }
     return false;
 }
 

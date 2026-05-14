@@ -1,9 +1,9 @@
 module type_alias_import;
 
-import samplelib.aliases;
+import samplelib.aliases as aliases;
 
 fn main() -> i32 {
-    var value: ImportedInt = 40;
-    let ptr: ImportedIntPtr = &value;
+    var value: aliases.ImportedInt = 40;
+    let ptr: aliases.ImportedIntPtr = &value;
     return unsafe { *ptr } - 40;
 }

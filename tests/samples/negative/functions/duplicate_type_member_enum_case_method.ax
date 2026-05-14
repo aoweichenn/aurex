@@ -1,0 +1,16 @@
+module duplicate_type_member_enum_case_method;
+
+enum Option {
+    some(i32),
+    none,
+}
+
+impl Option {
+    fn some(value: i32) -> Option {
+        return Option.some(value);
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

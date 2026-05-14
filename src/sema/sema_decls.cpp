@@ -123,7 +123,65 @@ struct AbiSymbolInfo {
     AbiFunctionInfo function;
 };
 
+[[nodiscard]] bool is_top_level_type_item(const syntax::ItemKind kind) noexcept {
+    return kind == syntax::ItemKind::struct_decl ||
+           kind == syntax::ItemKind::enum_decl ||
+           kind == syntax::ItemKind::opaque_struct_decl ||
+           kind == syntax::ItemKind::type_alias;
+}
+
+[[nodiscard]] bool is_top_level_value_item(const syntax::ItemNode& item) noexcept {
+    if (item.kind == syntax::ItemKind::const_decl) {
+        return true;
+    }
+    return item.kind == syntax::ItemKind::fn_decl && !syntax::is_valid(item.impl_type);
+}
+
 } // namespace
+
+void SemanticAnalyzer::validate_module_namespace_conflicts() {
+    std::unordered_map<std::string, base::SourceRange> type_names;
+    std::unordered_map<std::string, base::SourceRange> value_names;
+    for (const syntax::ItemNode& item : this->module_.items) {
+        const syntax::ModuleId owner = this->item_module(item);
+        if (is_top_level_type_item(item.kind)) {
+            type_names.emplace(this->module_key(owner, item.name), item.range);
+        } else if (is_top_level_value_item(item)) {
+            value_names.emplace(this->module_key(owner, item.name), item.range);
+        }
+    }
+
+    for (const syntax::ItemNode& item : this->module_.items) {
+        if (!is_top_level_value_item(item)) {
+            continue;
+        }
+        const syntax::ModuleId owner = this->item_module(item);
+        const std::string key = this->module_key(owner, item.name);
+        if (type_names.contains(key)) {
+            this->report(item.range, sema_duplicate_namespace_member_message(this->module_name(owner), item.name));
+        }
+    }
+
+    for (const syntax::ModuleInfo& module_info : this->module_.modules) {
+        const auto* const begin = this->module_.modules.data();
+        const syntax::ModuleId owner {
+            static_cast<base::u32>(&module_info - begin)
+        };
+        std::unordered_set<std::string> module_aliases;
+        for (const syntax::ResolvedImport& import : module_info.imports) {
+            if (!module_aliases.insert(std::string(import.alias)).second) {
+                this->report(import.alias_range, sema_ambiguous_import_alias_message(import.alias));
+            }
+            const std::string key = this->module_key(owner, import.alias);
+            if (type_names.contains(key) || value_names.contains(key)) {
+                this->report(
+                    import.alias_range,
+                    sema_duplicate_namespace_member_message(this->module_name(owner), import.alias)
+                );
+            }
+        }
+    }
+}
 
 void SemanticAnalyzer::register_type_names() {
     for (const syntax::ItemNode& item : this->module_.items) {
@@ -258,7 +316,12 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     base::u64 payload_align = 1;
     bool contains_array_payload = false;
     base::u64 next_discriminant = 0;
+    std::unordered_set<std::string> registered_cases;
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
+        const bool duplicate_case_name = !registered_cases.insert(std::string(enum_case.name)).second;
+        if (!duplicate_case_name && this->type_member_name_exists(named_enum_type, enum_case.name)) {
+            this->report(enum_case.range, sema_duplicate_type_member_message(enum_display_name, enum_case.name));
+        }
         const std::string full_name = case_prefix + std::string(enum_case.name);
         const std::string enum_case_key = this->module_key(owner, full_name);
         const bool has_payload = !enum_case.payload_types.empty() || syntax::is_valid(enum_case.payload_type);
@@ -475,6 +538,15 @@ void SemanticAnalyzer::register_value_names() {
                     if (!this->checked_.types.same(self_type, method_owner_type)) {
                         this->report(item.params.front().range, std::string(SEMA_METHOD_SELF_TYPE));
                     }
+                }
+                if (this->type_member_name_exists(method_owner_type, item.name)) {
+                    this->report(
+                        item.range,
+                        sema_duplicate_type_member_message(
+                            this->checked_.types.display_name(method_owner_type),
+                            item.name
+                        )
+                    );
                 }
             }
             if (has_explicit_return && is_valid(return_type)) {
@@ -849,17 +921,6 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                     } else if (const auto found = this->global_values_.find(this->module_key(this->current_module_, expr.text));
                                found != this->global_values_.end()) {
                         symbol = &found->second;
-                    } else {
-                        for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-                            if (module.value == this->current_module_.value) {
-                                continue;
-                            }
-                            const auto imported = this->global_values_.find(this->module_key(module, expr.text));
-                            if (imported != this->global_values_.end() && this->can_access(module, imported->second.visibility)) {
-                                symbol = &imported->second;
-                                break;
-                            }
-                        }
                     }
                 }
                 if (symbol == nullptr) {

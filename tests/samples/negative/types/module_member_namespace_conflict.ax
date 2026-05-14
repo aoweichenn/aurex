@@ -1,0 +1,13 @@
+module module_member_namespace_conflict;
+
+struct File {
+    fd: i32;
+}
+
+fn File() -> i32 {
+    return 1;
+}
+
+fn main() -> i32 {
+    return File();
+}

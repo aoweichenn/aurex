@@ -96,6 +96,7 @@ bool Lowerer::is_irrefutable_pattern(
                 result = true;
                 break;
             case syntax::PatternKind::literal:
+            case syntax::PatternKind::const_:
             case syntax::PatternKind::enum_case:
                 result = false;
                 break;
@@ -196,6 +197,7 @@ bool Lowerer::is_irrefutable_pattern(
         case syntax::PatternKind::wildcard:
         case syntax::PatternKind::binding:
         case syntax::PatternKind::enum_case:
+        case syntax::PatternKind::const_:
         case syntax::PatternKind::literal:
             break;
         }
@@ -280,6 +282,25 @@ ValueId Lowerer::append_pattern_condition(
             );
         }
         return is_valid(condition) ? condition : this->append_true_value();
+    }
+    if (pattern->kind == syntax::PatternKind::const_) {
+        const std::string const_symbol = this->pattern_case_symbol(id);
+        const auto constant = this->constant_symbols_.find(const_symbol);
+        if (constant == this->constant_symbols_.end()) {
+            return this->append_true_value();
+        }
+        const ValueId source = this->append_load(source_address, source_type);
+        Value const_ref;
+        const_ref.kind = ValueKind::constant_ref;
+        const_ref.name = const_symbol;
+        const_ref.constant = constant->second;
+        const_ref.type = this->module_.constants[constant->second.value].type;
+        return this->append_binary_value(
+            BinaryOp::equal,
+            this->module_.types.builtin(sema::BuiltinType::bool_),
+            source,
+            this->append_value(const_ref)
+        );
     }
     if (pattern->kind == syntax::PatternKind::literal) {
         const ValueId source = this->append_load(source_address, source_type);
@@ -814,6 +835,7 @@ void Lowerer::collect_pattern_binding_slots(
         switch (pattern->kind) {
         case syntax::PatternKind::wildcard:
         case syntax::PatternKind::literal:
+        case syntax::PatternKind::const_:
             break;
         case syntax::PatternKind::binding: {
             const std::string local_name(pattern->binding_name);
@@ -919,6 +941,7 @@ void Lowerer::store_pattern_bindings(
         switch (pattern->kind) {
         case syntax::PatternKind::wildcard:
         case syntax::PatternKind::literal:
+        case syntax::PatternKind::const_:
             break;
         case syntax::PatternKind::binding: {
             const std::string local_name(pattern->binding_name);

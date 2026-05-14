@@ -5,9 +5,10 @@ This matrix records whether a syntax position is supported by current M2.
 | Area | Syntax | Status | Boundary |
 | --- | --- | ---: | --- |
 | Module | `module app.main;` | yes | At most once, before imports/items |
-| Import | `import foo.bar;` | yes | Before ordinary items |
+| Import | `import foo.bar;` | yes | Before ordinary items; creates default alias `bar` |
 | Import | `pub import foo as f;` | yes | Re-export import |
 | Import | `priv import foo;` | yes | Current parser accepts it |
+| Import | `import foo.*;` | no | Wildcard imports are not part of M2 |
 | Const | `const X: i32 = 1;` | yes | Const initializer subset only |
 | Literal | `"text"` | yes | `str`, decoded as valid UTF-8 |
 | Literal | `r"raw\n"` | yes | Raw `str`; escapes are not interpreted and newlines are allowed |
@@ -112,6 +113,9 @@ This matrix records whether a syntax position is supported by current M2.
 | Match | `match b { true => 1, false => 0 }` | yes | Bool match |
 | Pattern | `.span(a, b)` | yes | Binding count must match payload |
 | Pattern | `.some((a, b))` | yes | Nested payload destructuring |
+| Pattern | `Option.some(v)` | yes | Explicit enum case pattern |
+| Pattern | `some(v)` | no | Bare enum case patterns are rejected; bare identifiers bind |
+| Pattern | `const OK` | yes | Constant pattern for integer/bool constants |
 | Pattern | `Point { x, y: other }` | yes | Struct pattern |
 | Pattern | `[head, .., tail]` | yes | Array/slice pattern with at most one `..` rest marker |
 | Pattern | `.int(x) | .other(x)` | yes | Or-pattern bindings must use the same names and types |

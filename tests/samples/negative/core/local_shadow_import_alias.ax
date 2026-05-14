@@ -1,0 +1,8 @@
+module local_shadow_import_alias;
+
+import shared.util as util;
+
+fn main() -> i32 {
+    let util = 1;
+    return util;
+}

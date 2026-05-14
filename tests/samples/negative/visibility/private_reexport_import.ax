@@ -1,9 +1,8 @@
 module private_reexport_import;
 
-import samplelib.private_facade;
+import samplelib.private_facade as facade;
 
 fn main() -> i32 {
-    let value: Count = local_use();
+    let value: facade.Count = facade.local_use();
     return value;
 }
-

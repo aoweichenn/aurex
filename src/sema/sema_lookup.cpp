@@ -3,6 +3,8 @@
 #include <aurex/sema/sema_messages.hpp>
 #include <aurex/syntax/module.hpp>
 
+#include <array>
+
 namespace aurex::sema {
 
 namespace {
@@ -94,6 +96,34 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syn
     return inserted.first->second;
 }
 
+bool SemanticAnalyzer::module_alias_visible(const std::string_view name) const {
+    if (!syntax::is_valid(this->current_module_) ||
+        this->current_module_.value >= this->module_.modules.size()) {
+        return false;
+    }
+    for (const syntax::ResolvedImport& import : this->module_.modules[this->current_module_.value].imports) {
+        if (import.alias == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<syntax::ModuleId> SemanticAnalyzer::module_export_modules(const syntax::ModuleId module) const {
+    std::vector<syntax::ModuleId> result;
+    if (!syntax::is_valid(module)) {
+        return result;
+    }
+    result.push_back(module);
+    if (module.value >= this->module_.modules.size()) {
+        return result;
+    }
+    std::unordered_set<base::u32> seen;
+    seen.insert(module.value);
+    this->append_public_reexports(module, result, seen);
+    return result;
+}
+
 void SemanticAnalyzer::append_public_reexports(
     const syntax::ModuleId module,
     std::vector<syntax::ModuleId>& result,
@@ -174,6 +204,125 @@ std::string SemanticAnalyzer::method_key(
     method_name.push_back('.');
     method_name += name;
     return module_key(module, method_name);
+}
+
+bool SemanticAnalyzer::top_level_value_name_exists(
+    const syntax::ModuleId module,
+    const std::string_view name
+) const {
+    if (const auto found = this->global_values_.find(this->module_key(module, name));
+        found != this->global_values_.end()) {
+        return found->second.kind == SymbolKind::function || found->second.kind == SymbolKind::const_;
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::module_type_or_value_name_exists(
+    const syntax::ModuleId module,
+    const std::string_view name
+) const {
+    const std::string key = this->module_key(module, name);
+    return this->named_types_.contains(key) ||
+           this->checked_.type_aliases.contains(key) ||
+           this->find_any_generic_type_template_in_module(module, name) != nullptr ||
+           this->top_level_value_name_exists(module, name) ||
+           this->generic_function_templates_.contains(key);
+}
+
+bool SemanticAnalyzer::current_generic_param_exists(const std::string_view name) const {
+    return this->current_generic_context_ != nullptr &&
+           this->current_generic_context_->params.contains(std::string(name));
+}
+
+bool SemanticAnalyzer::visible_type_name_exists(const std::string_view name) const {
+    if (this->current_generic_param_exists(name)) {
+        return true;
+    }
+    const auto type_visible_in_module = [&](const syntax::ModuleId module) {
+        if (!syntax::is_valid(module)) {
+            return false;
+        }
+        const std::string key = this->module_key(module, name);
+        if (this->named_types_.contains(key)) {
+            const auto visibility = this->type_visibilities_.find(key);
+            return module.value == this->current_module_.value ||
+                   visibility == this->type_visibilities_.end() ||
+                   this->can_access(module, visibility->second);
+        }
+        if (const auto alias = this->checked_.type_aliases.find(key); alias != this->checked_.type_aliases.end()) {
+            return this->can_access(module, alias->second.visibility);
+        }
+        const GenericTemplateInfo* const generic = this->find_any_generic_type_template_in_module(module, name);
+        return generic != nullptr && this->can_access(module, generic->visibility);
+    };
+    if (type_visible_in_module(this->current_module_)) {
+        return true;
+    }
+    if (!syntax::is_valid(this->current_module_) || this->current_module_.value >= this->module_.modules.size()) {
+        return false;
+    }
+    for (const syntax::ResolvedImport& import : this->module_.modules[this->current_module_.value].imports) {
+        if (type_visible_in_module(import.module)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::can_define_local_name(
+    const std::string_view name,
+    const base::SourceRange range
+) {
+    if (name.empty()) {
+        return true;
+    }
+    if (this->module_alias_visible(name)) {
+        this->report(range, sema_local_shadows_import_alias_message(name));
+        return false;
+    }
+    if (this->current_generic_param_exists(name)) {
+        this->report(range, sema_local_shadows_generic_type_parameter_message(name));
+        return false;
+    }
+    if (this->visible_type_name_exists(name)) {
+        this->report(range, sema_local_shadows_type_name_message(name));
+        return false;
+    }
+    return true;
+}
+
+bool SemanticAnalyzer::type_member_name_exists(
+    const TypeHandle owner_type,
+    const std::string_view name
+) const {
+    if (!is_valid(owner_type)) {
+        return false;
+    }
+    if (const auto found = this->enum_cases_by_type_.find(owner_type.value);
+        found != this->enum_cases_by_type_.end()) {
+        for (const EnumCaseInfo* enum_case : found->second) {
+            if (enum_case != nullptr && enum_case->case_name == name) {
+                return true;
+            }
+        }
+    }
+    for (const auto& entry : this->checked_.functions) {
+        const FunctionSignature& signature = entry.second;
+        if (signature.is_method &&
+            this->checked_.types.same(signature.method_owner_type, owner_type) &&
+            signature.name == name) {
+            return true;
+        }
+    }
+    for (const auto& entry : this->generic_method_templates_) {
+        const GenericTemplateInfo& info = entry.second;
+        if (info.name == name &&
+            is_valid(info.impl_type_pattern) &&
+            this->checked_.types.same(info.impl_type_pattern, owner_type)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::string SemanticAnalyzer::method_c_symbol_name(
@@ -285,10 +434,15 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
     const bool require_self,
     const bool report_unknown
 ) {
-    const FunctionSignature* imported_result = nullptr;
+    const FunctionSignature* result = nullptr;
     const FunctionSignature* inaccessible_result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : visible_modules(current_module_)) {
+    const std::array<syntax::ModuleId, 2> modules {this->current_module_, this->owner_module(owner_type)};
+    std::unordered_set<base::u32> seen_modules;
+    for (const syntax::ModuleId module : modules) {
+        if (!syntax::is_valid(module) || !seen_modules.insert(module.value).second) {
+            continue;
+        }
         const auto found = checked_.functions.find(method_key(module, owner_type, name));
         if (found == checked_.functions.end()) {
             continue;
@@ -303,7 +457,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
             }
             continue;
         }
-        if (imported_result != nullptr) {
+        if (result != nullptr) {
             report(
                 range,
                 sema_ambiguous_method_message(
@@ -315,24 +469,17 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
             );
             return nullptr;
         }
-        imported_result = &signature;
+        result = &signature;
         result_module = module;
     }
-    if (imported_result == nullptr && report_unknown) {
-        if (const FunctionSignature* owner_result = find_method_in_owner_module(owner_type, name, require_self);
-            owner_result != nullptr) {
-            return owner_result;
-        }
+    if (result == nullptr && report_unknown) {
         if (inaccessible_result != nullptr) {
             report(range, sema_private_method_message(checked_.types.display_name(owner_type), name));
             return nullptr;
         }
         report(range, sema_unknown_method_message(checked_.types.display_name(owner_type), name));
     }
-    if (imported_result == nullptr) {
-        return find_method_in_owner_module(owner_type, name, require_self);
-    }
-    return imported_result;
+    return result;
 }
 
 TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
@@ -348,41 +495,10 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
         return resolve_type_alias(found->second, opaque_allowed_as_pointee);
     }
 
-    TypeHandle imported_result = INVALID_TYPE_HANDLE;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : visible_modules(current_module_)) {
-        if (module.value == current_module_.value) {
-            continue;
-        }
-        const auto found = named_types_.find(module_key(module, name));
-        TypeHandle candidate = INVALID_TYPE_HANDLE;
-        if (found != named_types_.end()) {
-            const auto visibility = type_visibilities_.find(module_key(module, name));
-            if (visibility != type_visibilities_.end() && !can_access(module, visibility->second)) {
-                continue;
-            }
-            candidate = found->second;
-        } else {
-            const auto alias_found = checked_.type_aliases.find(module_key(module, name));
-            if (alias_found == checked_.type_aliases.end()) {
-                continue;
-            }
-            if (!can_access(module, alias_found->second.visibility)) {
-                continue;
-            }
-            candidate = resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
-        }
-        if (is_valid(imported_result)) {
-            report(range, sema_ambiguous_type_name_message(name, module_name(result_module), module_name(module)));
-            return INVALID_TYPE_HANDLE;
-        }
-        imported_result = candidate;
-        result_module = module;
-    }
-    if (!is_valid(imported_result) && report_unknown) {
+    if (report_unknown) {
         report(range, sema_unknown_type_message(name));
     }
-    return imported_result;
+    return INVALID_TYPE_HANDLE;
 }
 
 TypeHandle SemanticAnalyzer::find_type_in_module(
@@ -399,25 +515,45 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
         return INVALID_TYPE_HANDLE;
     }
 
-    const std::string key = module_key(module, name);
-    if (const auto found = named_types_.find(key); found != named_types_.end()) {
-        const auto visibility = type_visibilities_.find(key);
-        if (visibility != type_visibilities_.end() && !can_access(module, visibility->second)) {
+    TypeHandle result = INVALID_TYPE_HANDLE;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const std::string key = module_key(candidate_module, name);
+        TypeHandle candidate = INVALID_TYPE_HANDLE;
+        if (const auto found = named_types_.find(key); found != named_types_.end()) {
+            const auto visibility = type_visibilities_.find(key);
+            if (visibility != type_visibilities_.end() && !can_access(candidate_module, visibility->second)) {
+                if (candidate_module.value == module.value && report_unknown) {
+                    report(range, sema_private_type_message(module_name(candidate_module), name));
+                    return INVALID_TYPE_HANDLE;
+                }
+                continue;
+            }
+            candidate = found->second;
+        } else if (const auto alias_found = checked_.type_aliases.find(key); alias_found != checked_.type_aliases.end()) {
+            if (!can_access(candidate_module, alias_found->second.visibility)) {
+                if (candidate_module.value == module.value && report_unknown) {
+                    report(range, sema_private_type_message(module_name(candidate_module), name));
+                    return INVALID_TYPE_HANDLE;
+                }
+                continue;
+            }
+            candidate = resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
+        }
+        if (!is_valid(candidate)) {
+            continue;
+        }
+        if (is_valid(result)) {
             if (report_unknown) {
-                report(range, sema_private_type_message(module_name(module), name));
+                report(range, sema_ambiguous_type_name_message(name, module_name(result_module), module_name(candidate_module)));
             }
             return INVALID_TYPE_HANDLE;
         }
-        return found->second;
+        result = candidate;
+        result_module = candidate_module;
     }
-    if (const auto alias_found = checked_.type_aliases.find(key); alias_found != checked_.type_aliases.end()) {
-        if (!can_access(module, alias_found->second.visibility)) {
-            if (report_unknown) {
-                report(range, sema_private_type_message(module_name(module), name));
-            }
-            return INVALID_TYPE_HANDLE;
-        }
-        return resolve_type_alias(alias_found->second, opaque_allowed_as_pointee);
+    if (is_valid(result)) {
+        return result;
     }
 
     if (report_unknown) {
@@ -435,30 +571,10 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
         return &found->second;
     }
 
-    const FunctionSignature* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : visible_modules(current_module_)) {
-        if (module.value == current_module_.value) {
-            continue;
-        }
-        const auto found = checked_.functions.find(module_key(module, name));
-        if (found == checked_.functions.end()) {
-            continue;
-        }
-        if (!can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            report(range, sema_ambiguous_function_name_message(name, module_name(result_module), module_name(module)));
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr && report_unknown) {
+    if (report_unknown) {
         report(range, sema_unknown_function_message(name));
     }
-    return imported_result;
+    return nullptr;
 }
 
 const FunctionSignature* SemanticAnalyzer::find_function_in_module(
@@ -467,20 +583,82 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
     const base::SourceRange range,
     const bool report_unknown
 ) {
-    const auto found = checked_.functions.find(module_key(module, name));
-    if (found == checked_.functions.end()) {
+    if (!syntax::is_valid(module)) {
         if (report_unknown) {
             report(range, sema_unknown_function_in_module_message(module_name(module), name));
         }
         return nullptr;
     }
-    if (!can_access(module, found->second.visibility)) {
+
+    const FunctionSignature* result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const auto found = checked_.functions.find(module_key(candidate_module, name));
+        if (found == checked_.functions.end()) {
+            continue;
+        }
+        if (!can_access(candidate_module, found->second.visibility)) {
+            if (candidate_module.value == module.value && report_unknown) {
+                report(range, sema_private_function_message(module_name(candidate_module), name));
+                return nullptr;
+            }
+            continue;
+        }
+        if (result != nullptr) {
+            if (report_unknown) {
+                report(range, sema_ambiguous_function_name_message(name, module_name(result_module), module_name(candidate_module)));
+            }
+            return nullptr;
+        }
+        result = &found->second;
+        result_module = candidate_module;
+    }
+    if (result == nullptr && report_unknown) {
+        report(range, sema_unknown_function_in_module_message(module_name(module), name));
+    }
+    return result;
+}
+
+const Symbol* SemanticAnalyzer::find_symbol_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            report(range, sema_private_function_message(module_name(module), name));
+            report(range, sema_unknown_name_in_module_message(module_name(module), name));
         }
         return nullptr;
     }
-    return &found->second;
+
+    const Symbol* result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const auto found = global_values_.find(module_key(candidate_module, name));
+        if (found == global_values_.end()) {
+            continue;
+        }
+        if (!can_access(candidate_module, found->second.visibility)) {
+            if (candidate_module.value == module.value && report_unknown) {
+                report(range, sema_private_name_message(module_name(candidate_module), name));
+                return nullptr;
+            }
+            continue;
+        }
+        if (result != nullptr) {
+            if (report_unknown) {
+                report(range, sema_ambiguous_name_message(name, module_name(result_module), module_name(candidate_module)));
+            }
+            return nullptr;
+        }
+        result = &found->second;
+        result_module = candidate_module;
+    }
+    if (result == nullptr && report_unknown) {
+        report(range, sema_unknown_name_in_module_message(module_name(module), name));
+    }
+    return result;
 }
 
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
@@ -492,30 +670,10 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
         return &found->second;
     }
 
-    const EnumCaseInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : visible_modules(current_module_)) {
-        if (module.value == current_module_.value) {
-            continue;
-        }
-        const auto found = checked_.enum_cases.find(module_key(module, name));
-        if (found == checked_.enum_cases.end()) {
-            continue;
-        }
-        if (!can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            report(range, sema_ambiguous_enum_case_message(name, module_name(result_module), module_name(module)));
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr && report_unknown) {
+    if (report_unknown) {
         report(range, sema_unknown_enum_case_message(name));
     }
-    return imported_result;
+    return nullptr;
 }
 
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
@@ -565,29 +723,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     if (!report_unknown &&
         named_types_.find(module_key(current_module_, enum_name)) == named_types_.end() &&
         checked_.type_aliases.find(module_key(current_module_, enum_name)) == checked_.type_aliases.end()) {
-        bool imported_type = false;
-        {
-            for (syntax::ModuleId module : visible_modules(current_module_)) {
-                if (module.value == current_module_.value) {
-                    continue;
-                }
-                const auto named = named_types_.find(module_key(module, enum_name));
-                const auto alias = checked_.type_aliases.find(module_key(module, enum_name));
-                bool accessible_named = false;
-                if (named != named_types_.end()) {
-                    const auto visibility = type_visibilities_.find(module_key(module, enum_name));
-                    accessible_named = visibility == type_visibilities_.end() || can_access(module, visibility->second);
-                }
-                const bool accessible_alias = alias != checked_.type_aliases.end() && can_access(module, alias->second.visibility);
-                if (accessible_named || accessible_alias) {
-                    imported_type = true;
-                    break;
-                }
-            }
-        }
-        if (!imported_type) {
-            return nullptr;
-        }
+        return nullptr;
     }
     const TypeHandle enum_type = find_type_in_visible_modules(enum_name, range, false);
     if (!is_valid(enum_type) || checked_.types.get(enum_type).kind != TypeKind::enum_) {
@@ -643,52 +779,8 @@ const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const b
         return &found->second;
     }
 
-    const Symbol* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : visible_modules(current_module_)) {
-        if (module.value == current_module_.value) {
-            continue;
-        }
-        const auto found = global_values_.find(module_key(module, name));
-        if (found == global_values_.end()) {
-            continue;
-        }
-        if (!can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            report(range, sema_ambiguous_name_message(name, module_name(result_module), module_name(module)));
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr) {
-        report(range, sema_unknown_name_message(name));
-    }
-    return imported_result;
-}
-
-const Symbol* SemanticAnalyzer::find_symbol_in_module(
-    const syntax::ModuleId module,
-    const std::string_view name,
-    const base::SourceRange range,
-    const bool report_unknown
-) {
-    const auto found = global_values_.find(module_key(module, name));
-    if (found == global_values_.end()) {
-        if (report_unknown) {
-            report(range, sema_unknown_name_in_module_message(module_name(module), name));
-        }
-        return nullptr;
-    }
-    if (!can_access(module, found->second.visibility)) {
-        if (report_unknown) {
-            report(range, sema_private_name_message(module_name(module), name));
-        }
-        return nullptr;
-    }
-    return &found->second;
+    report(range, sema_unknown_name_message(name));
+    return nullptr;
 }
 
 } // namespace aurex::sema

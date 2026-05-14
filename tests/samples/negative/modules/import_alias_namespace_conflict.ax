@@ -1,0 +1,11 @@
+module import_alias_namespace_conflict;
+
+import shared.util as util;
+
+fn util() -> i32 {
+    return 1;
+}
+
+fn main() -> i32 {
+    return util();
+}

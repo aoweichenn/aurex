@@ -137,6 +137,7 @@ private:
     void validate_function_prototypes();
     void validate_abi_symbols();
     void validate_type_layouts();
+    void validate_module_namespace_conflicts();
     void analyze_entry_points();
     void resolve_type_alias_decls();
     void analyze_struct_properties();
@@ -434,6 +435,13 @@ private:
         bool report_unknown
     );
     [[nodiscard]] bool selector_base_has_non_module_meaning(std::string_view name) const;
+    [[nodiscard]] bool module_alias_visible(std::string_view name) const;
+    [[nodiscard]] bool current_generic_param_exists(std::string_view name) const;
+    [[nodiscard]] bool visible_type_name_exists(std::string_view name) const;
+    [[nodiscard]] bool can_define_local_name(std::string_view name, base::SourceRange range);
+    [[nodiscard]] bool module_type_or_value_name_exists(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] bool top_level_value_name_exists(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] bool type_member_name_exists(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] const FunctionSignature* find_function_selector(
         syntax::ExprId callee,
         std::string_view name,
@@ -466,6 +474,7 @@ private:
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;
+    [[nodiscard]] std::vector<syntax::ModuleId> module_export_modules(syntax::ModuleId module) const;
     void append_public_reexports(syntax::ModuleId module, std::vector<syntax::ModuleId>& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;

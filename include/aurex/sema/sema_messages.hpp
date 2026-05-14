@@ -613,11 +613,26 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "duplicate value definition in module: " + std::string(name);
 }
 
+[[nodiscard]] inline std::string sema_duplicate_namespace_member_message(
+    const std::string_view module,
+    const std::string_view name
+) {
+    return "duplicate module member across namespaces in module " +
+           std::string(module) + ": " + std::string(name);
+}
+
 [[nodiscard]] inline std::string sema_duplicate_enum_case_message(
     const std::string_view enum_name,
     const std::string_view case_name
 ) {
     return "duplicate enum case: " + std::string(enum_name) + "." + std::string(case_name);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_type_member_message(
+    const std::string_view type_name,
+    const std::string_view name
+) {
+    return "duplicate type member: " + std::string(type_name) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_duplicate_enum_discriminant_message(const std::string_view enum_name) {
@@ -918,6 +933,18 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_ambiguous_import_alias_message(const std::string_view alias) {
     return "ambiguous import alias: " + std::string(alias);
+}
+
+[[nodiscard]] inline std::string sema_local_shadows_import_alias_message(const std::string_view name) {
+    return "local name shadows import alias: " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_local_shadows_generic_type_parameter_message(const std::string_view name) {
+    return "local name shadows generic type parameter: " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_local_shadows_type_name_message(const std::string_view name) {
+    return "local name shadows visible type: " + std::string(name);
 }
 
 inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_POINTER =

@@ -407,6 +407,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         const TypeHandle param_type = i < signature.param_types.size()
             ? signature.param_types[i]
             : this->resolve_type(param.type);
+        static_cast<void>(this->can_define_local_name(param.name, param.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::parameter,
             std::string(param.name),
@@ -672,6 +673,7 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
 }
 
 void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type) {
+    static_cast<void>(this->can_define_local_name(stmt.name, stmt.range));
     const auto inserted = this->symbols_.insert(Symbol {
         SymbolKind::local,
         std::string(stmt.name),
@@ -757,6 +759,7 @@ void SemanticAnalyzer::analyze_statement_node(
             }
             stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
         }
+        static_cast<void>(this->can_define_local_name(stmt.name, stmt.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,
             std::string(stmt.name),

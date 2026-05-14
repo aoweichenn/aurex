@@ -47,6 +47,9 @@ syntax::ImportDecl ItemParser::parse_import_decl() {
     import.path = this->parse_path();
     if (this->match(TokenKind::kw_as)) {
         this->parse_import_alias(import);
+    } else if (!import.path.parts.empty()) {
+        import.alias = import.path.parts.back();
+        import.alias_range = import.path.range;
     }
     [[maybe_unused]] const syntax::Token& terminator =
         this->expect_item_terminator(std::string(PARSER_EXPECT_IMPORT_TERMINATOR));

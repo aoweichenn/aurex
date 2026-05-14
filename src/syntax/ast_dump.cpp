@@ -316,6 +316,9 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
     if (pattern.kind == PatternKind::literal) {
         return std::string(pattern.case_name);
     }
+    if (pattern.kind == PatternKind::const_) {
+        return "const " + std::string(pattern.binding_name);
+    }
     if (pattern.kind == PatternKind::or_pattern) {
         std::string label;
         for (base::usize i = 0; i < pattern.alternatives.size(); ++i) {

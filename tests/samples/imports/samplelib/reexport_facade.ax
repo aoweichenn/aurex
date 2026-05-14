@@ -1,8 +1,7 @@
 module samplelib.reexport_facade;
 
-pub import samplelib.reexport_inner;
+pub import samplelib.reexport_inner as inner;
 
-pub fn add_two(value: Count) -> Count {
-    return add_base(value) + 2;
+pub fn add_two(value: inner.Count) -> inner.Count {
+    return inner.add_base(value) + 2;
 }
-

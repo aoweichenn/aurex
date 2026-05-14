@@ -1,0 +1,9 @@
+module const_pattern_non_const_name;
+
+fn main() -> i32 {
+    let OK = 0;
+    return match 0 {
+        const OK => 1,
+        _ => 0,
+    };
+}

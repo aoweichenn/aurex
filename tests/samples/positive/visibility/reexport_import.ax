@@ -1,15 +1,15 @@
 module reexport_import;
 
-import samplelib.reexport_facade;
+import samplelib.reexport_facade as facade;
 
 fn main() -> i32 {
-    let value: Count = add_two(0);
-    let pair: PairI32 = PairI32 {
+    let value: facade.Count = facade.add_two(0);
+    let pair: facade.PairI32 = facade.PairI32 {
         left: value,
-        right: base,
+        right: facade.base,
     };
-    let mode = Mode.ready;
-    if mode != Mode.ready {
+    let mode = facade.Mode.ready;
+    if mode != facade.Mode.ready {
         return 1;
     }
     return pair.left + pair.right - 82;

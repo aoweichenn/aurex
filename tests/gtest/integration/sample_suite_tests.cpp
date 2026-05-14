@@ -40,12 +40,21 @@ inline constexpr auto SAMPLE_IMPORT_MARKERS = std::to_array<std::string_view>({
 
 inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiagnostic>({
     {"ambiguous_import_alias", "ambiguous import alias: lib"},
-    {"ambiguous_import_name", "ambiguous function name"},
+    {"ambiguous_import_name", "unknown function: helper"},
     {"array_literal_empty_infer", "empty array literal requires an array type context"},
     {"bare_enum_case_constructor", "unknown function: some"},
+    {"bare_enum_case_pattern", "bare enum case patterns are not supported; use '.case' or 'Type.case'"},
+    {"const_pattern_non_const_name", "unsupported literal match pattern"},
+    {"const_pattern_type_mismatch", "match pattern for integer or bool value must be a literal or wildcard"},
+    {"duplicate_type_member_enum_case_method", "duplicate type member: duplicate_type_member_enum_case_method.Option.some"},
     {"increment_syntax", "increment operator is not supported"},
+    {"import_alias_namespace_conflict", "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
+    {"local_shadow_generic_type_parameter", "local name shadows generic type parameter: T"},
+    {"local_shadow_import_alias", "local name shadows import alias: util"},
+    {"local_shadow_visible_type", "local name shadows visible type: File"},
     {"match_expression_missing_case", "match expression is not exhaustive for enum case"},
     {"method_abi_collision", "duplicate ABI symbol"},
+    {"module_member_namespace_conflict", "duplicate module member across namespaces in module module_member_namespace_conflict: File"},
     {"module_name_mismatch", "does not match import 'bad.name'"},
     {"private_field_access", "field is private: secret"},
     {"private_function_import", "unknown function: add_secret"},
@@ -285,6 +294,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_ergonomics) {
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_remaining) {
     run_positive_runtime_smoke_sample("pattern_matching", "pattern_remaining.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_pattern) {
+    run_positive_runtime_smoke_sample("pattern_matching", "const_pattern.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples) {

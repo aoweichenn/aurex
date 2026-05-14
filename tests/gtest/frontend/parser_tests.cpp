@@ -575,22 +575,19 @@ TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse) {
         "  let [[nested], ..] = values;\n"
         "  let [dot_case, .none] = values;\n"
         "  let [head, .., tail] = values;\n"
-        "  let some(other) = Maybe.some(head) else {\n"
-        "    return nested;\n"
-        "  };\n"
         "  let .some(value) = Maybe.some(head) else {\n"
         "    return tail;\n"
         "  };\n"
-        "  let .some(nested_case(inner)) = Maybe.some(head) else {\n"
+        "  let .some(.some(inner)) = Maybe.some(head) else {\n"
         "    return 0;\n"
         "  };\n"
         "  let .some(Wrapper { _ }) = Maybe.some(head) else {\n"
         "    return 0;\n"
         "  };\n"
-        "  let .some(choice) | .none | some(fallback) = Maybe.some(value) else {\n"
+        "  let .some(choice) | .none | .some(fallback) = Maybe.some(value) else {\n"
         "    return dot_case;\n"
         "  };\n"
-        "  return value + other;\n"
+        "  return value + inner;\n"
         "}\n";
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
@@ -600,10 +597,9 @@ TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse) {
         "[[nested], ..]",
         "[dot_case, .none]",
         "[head, .., tail]",
-        "some(other)",
         ".some(value)",
-        ".some(nested_case(inner))",
-        ".some(choice) | .none | some(fallback)",
+        ".some(.some(inner))",
+        ".some(choice) | .none | .some(fallback)",
     });
 }
 

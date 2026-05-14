@@ -1625,7 +1625,15 @@ bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id) {
         const syntax::ExprNode& expr = this->module_.exprs[current.value];
         switch (expr.kind) {
         case syntax::ExprKind::name: {
-            const Symbol* symbol = expr.scope_name.empty() ? this->symbols_.find(expr.text) : nullptr;
+            const Symbol* symbol = nullptr;
+            if (expr.scope_name.empty()) {
+                if (const Symbol* local = this->symbols_.find(expr.text); local != nullptr) {
+                    symbol = local;
+                } else if (const auto global = this->global_values_.find(this->module_key(this->current_module_, expr.text));
+                           global != this->global_values_.end()) {
+                    symbol = &global->second;
+                }
+            }
             return symbol != nullptr && (symbol->kind == SymbolKind::local || symbol->kind == SymbolKind::parameter);
         }
         case syntax::ExprKind::field:
@@ -1649,7 +1657,15 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
         const syntax::ExprNode& expr = this->module_.exprs[current.value];
         switch (expr.kind) {
         case syntax::ExprKind::name: {
-            const Symbol* symbol = expr.scope_name.empty() ? this->symbols_.find(expr.text) : nullptr;
+            const Symbol* symbol = nullptr;
+            if (expr.scope_name.empty()) {
+                if (const Symbol* local = this->symbols_.find(expr.text); local != nullptr) {
+                    symbol = local;
+                } else if (const auto global = this->global_values_.find(this->module_key(this->current_module_, expr.text));
+                           global != this->global_values_.end()) {
+                    symbol = &global->second;
+                }
+            }
             return symbol != nullptr && symbol->is_mutable;
         }
         case syntax::ExprKind::field:

@@ -1,0 +1,14 @@
+module bare_enum_case_pattern;
+
+enum Maybe {
+    some(i32),
+    none,
+}
+
+fn main() -> i32 {
+    let value = Maybe.some(1);
+    return match value {
+        some(inner) => inner,
+        .none => 0,
+    };
+}

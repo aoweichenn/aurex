@@ -1412,6 +1412,12 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
     ASSERT_TRUE(inner_inserted) << inner_inserted.error().message;
     EXPECT_NE(symbols.find(SEMA_TEST_SYMBOL_INNER_NAME), nullptr);
     EXPECT_NE(symbols.find(SEMA_TEST_SYMBOL_OUTER_NAME), nullptr);
+    const auto shadowed_outer_inserted = symbols.insert(
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_OUTER_NAME, module_id(0), INVALID_TYPE_HANDLE),
+        diagnostics
+    );
+    ASSERT_TRUE(shadowed_outer_inserted) << shadowed_outer_inserted.error().message;
+    EXPECT_NE(symbols.find(SEMA_TEST_SYMBOL_OUTER_NAME), nullptr);
 
     const auto duplicate_name_inserted = symbols.insert(
         symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE),

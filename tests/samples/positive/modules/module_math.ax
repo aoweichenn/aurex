@@ -1,7 +1,7 @@
 module module_math;
 
-import lib.math;
+import lib.math as math;
 
 fn main() -> i32 {
-    return add_one(41) - 42;
+    return math.add_one(41) - 42;
 }

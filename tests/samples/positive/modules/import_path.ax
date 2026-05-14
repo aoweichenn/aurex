@@ -1,7 +1,7 @@
 module import_path;
 
-import shared.util;
+import shared.util as util;
 
 fn main() -> i32 {
-    return twice(21) - 42;
+    return util.twice(21) - 42;
 }

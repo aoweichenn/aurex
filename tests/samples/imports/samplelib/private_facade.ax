@@ -1,8 +1,7 @@
 module samplelib.private_facade;
 
-priv import samplelib.reexport_inner;
+priv import samplelib.reexport_inner as inner;
 
-pub fn local_use() -> Count {
-    return add_base(1);
+pub fn local_use() -> inner.Count {
+    return inner.add_base(1);
 }
-

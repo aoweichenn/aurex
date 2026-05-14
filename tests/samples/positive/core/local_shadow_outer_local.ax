@@ -1,0 +1,12 @@
+module local_shadow_outer_local;
+
+fn main() -> i32 {
+    let value = 1;
+    {
+        let value = 41;
+        if value != 41 {
+            return 1;
+        }
+    }
+    return value - 1;
+}

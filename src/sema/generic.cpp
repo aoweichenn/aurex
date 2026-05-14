@@ -3,6 +3,7 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -342,6 +343,16 @@ void SemanticAnalyzer::register_generic_template(
         method_template_name.push_back('.');
         method_template_name += item.name;
         info.key = this->module_key(owner, method_template_name);
+        if (this->type_member_name_exists(info.impl_type_pattern, item.name)) {
+            this->report(
+                item.range,
+                sema_duplicate_type_member_message(
+                    this->checked_.types.display_name(info.impl_type_pattern),
+                    item.name
+                )
+            );
+            return;
+        }
         this->generic_method_templates_.emplace(info.key, std::move(info));
         return;
     }
@@ -403,37 +414,10 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
         return &found->second;
     }
 
-    const GenericTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-        if (module.value == this->current_module_.value) {
-            continue;
-        }
-        const auto found = this->generic_struct_templates_.find(this->module_key(module, name));
-        if (found == this->generic_struct_templates_.end()) {
-            continue;
-        }
-        if (!this->can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            this->report(
-                range,
-                sema_ambiguous_generic_type_name_message(
-                    name,
-                    this->module_name(result_module),
-                    this->module_name(module)
-                )
-            );
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr && report_unknown) {
+    if (report_unknown) {
         this->report(range, sema_unknown_generic_type_message(name));
     }
-    return imported_result;
+    return nullptr;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_struct_in_module(
@@ -448,20 +432,38 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
         }
         return nullptr;
     }
-    const auto found = this->generic_struct_templates_.find(this->module_key(module, name));
-    if (found == this->generic_struct_templates_.end()) {
-        if (report_unknown) {
-            this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    const GenericTemplateInfo* result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const auto found = this->generic_struct_templates_.find(this->module_key(candidate_module, name));
+        if (found == this->generic_struct_templates_.end()) {
+            continue;
         }
-        return nullptr;
-    }
-    if (!this->can_access(module, found->second.visibility)) {
-        if (report_unknown) {
-            this->report(range, sema_private_generic_type_message(this->module_name(module), name));
+        if (!this->can_access(candidate_module, found->second.visibility)) {
+            if (candidate_module.value == module.value && report_unknown) {
+                this->report(range, sema_private_generic_type_message(this->module_name(candidate_module), name));
+                return nullptr;
+            }
+            continue;
         }
-        return nullptr;
+        if (result != nullptr) {
+            this->report(
+                range,
+                sema_ambiguous_generic_type_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(candidate_module)
+                )
+            );
+            return nullptr;
+        }
+        result = &found->second;
+        result_module = candidate_module;
     }
-    return &found->second;
+    if (result == nullptr && report_unknown) {
+        this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    }
+    return result;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum_in_visible_modules(
@@ -474,37 +476,10 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
         return &found->second;
     }
 
-    const GenericTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-        if (module.value == this->current_module_.value) {
-            continue;
-        }
-        const auto found = this->generic_enum_templates_.find(this->module_key(module, name));
-        if (found == this->generic_enum_templates_.end()) {
-            continue;
-        }
-        if (!this->can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            this->report(
-                range,
-                sema_ambiguous_generic_type_name_message(
-                    name,
-                    this->module_name(result_module),
-                    this->module_name(module)
-                )
-            );
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr && report_unknown) {
+    if (report_unknown) {
         this->report(range, sema_unknown_generic_type_message(name));
     }
-    return imported_result;
+    return nullptr;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum_in_module(
@@ -519,20 +494,38 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
         }
         return nullptr;
     }
-    const auto found = this->generic_enum_templates_.find(this->module_key(module, name));
-    if (found == this->generic_enum_templates_.end()) {
-        if (report_unknown) {
-            this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    const GenericTemplateInfo* result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const auto found = this->generic_enum_templates_.find(this->module_key(candidate_module, name));
+        if (found == this->generic_enum_templates_.end()) {
+            continue;
         }
-        return nullptr;
-    }
-    if (!this->can_access(module, found->second.visibility)) {
-        if (report_unknown) {
-            this->report(range, sema_private_generic_type_message(this->module_name(module), name));
+        if (!this->can_access(candidate_module, found->second.visibility)) {
+            if (candidate_module.value == module.value && report_unknown) {
+                this->report(range, sema_private_generic_type_message(this->module_name(candidate_module), name));
+                return nullptr;
+            }
+            continue;
         }
-        return nullptr;
+        if (result != nullptr) {
+            this->report(
+                range,
+                sema_ambiguous_generic_type_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(candidate_module)
+                )
+            );
+            return nullptr;
+        }
+        result = &found->second;
+        result_module = candidate_module;
     }
-    return &found->second;
+    if (result == nullptr && report_unknown) {
+        this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    }
+    return result;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type_alias_in_visible_modules(
@@ -545,37 +538,10 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
         return &found->second;
     }
 
-    const GenericTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-        if (module.value == this->current_module_.value) {
-            continue;
-        }
-        const auto found = this->generic_type_alias_templates_.find(this->module_key(module, name));
-        if (found == this->generic_type_alias_templates_.end()) {
-            continue;
-        }
-        if (!this->can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            this->report(
-                range,
-                sema_ambiguous_generic_type_name_message(
-                    name,
-                    this->module_name(result_module),
-                    this->module_name(module)
-                )
-            );
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr && report_unknown) {
+    if (report_unknown) {
         this->report(range, sema_unknown_generic_type_message(name));
     }
-    return imported_result;
+    return nullptr;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type_alias_in_module(
@@ -590,27 +556,51 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
         }
         return nullptr;
     }
-    const auto found = this->generic_type_alias_templates_.find(this->module_key(module, name));
-    if (found == this->generic_type_alias_templates_.end()) {
-        if (report_unknown) {
-            this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    const GenericTemplateInfo* result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const auto found = this->generic_type_alias_templates_.find(this->module_key(candidate_module, name));
+        if (found == this->generic_type_alias_templates_.end()) {
+            continue;
         }
-        return nullptr;
-    }
-    if (!this->can_access(module, found->second.visibility)) {
-        if (report_unknown) {
-            this->report(range, sema_private_generic_type_message(this->module_name(module), name));
+        if (!this->can_access(candidate_module, found->second.visibility)) {
+            if (candidate_module.value == module.value && report_unknown) {
+                this->report(range, sema_private_generic_type_message(this->module_name(candidate_module), name));
+                return nullptr;
+            }
+            continue;
         }
-        return nullptr;
+        if (result != nullptr) {
+            this->report(
+                range,
+                sema_ambiguous_generic_type_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(candidate_module)
+                )
+            );
+            return nullptr;
+        }
+        result = &found->second;
+        result_module = candidate_module;
     }
-    return &found->second;
+    if (result == nullptr && report_unknown) {
+        this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    }
+    return result;
 }
 
 bool SemanticAnalyzer::generic_type_template_exists_in_module(
     const syntax::ModuleId module,
     const std::string_view name
 ) const {
-    return this->find_any_generic_type_template_in_module(module, name) != nullptr;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        if (const GenericTemplateInfo* const found = this->find_any_generic_type_template_in_module(candidate_module, name);
+            found != nullptr && this->can_access(candidate_module, found->visibility)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_any_generic_type_template_in_module(
@@ -640,32 +630,9 @@ bool SemanticAnalyzer::report_generic_type_requires_args_if_visible(
     const std::string_view name,
     const base::SourceRange range
 ) {
-    const GenericTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-        const GenericTemplateInfo* const found = this->find_any_generic_type_template_in_module(module, name);
-        if (found == nullptr || !this->can_access(module, found->visibility)) {
-            continue;
-        }
-        if (module.value == this->current_module_.value) {
-            this->report(range, sema_generic_type_requires_args_message(name));
-            return true;
-        }
-        if (imported_result != nullptr) {
-            this->report(
-                range,
-                sema_ambiguous_generic_type_name_message(
-                    name,
-                    this->module_name(result_module),
-                    this->module_name(module)
-                )
-            );
-            return true;
-        }
-        imported_result = found;
-        result_module = module;
-    }
-    if (imported_result != nullptr) {
+    if (const GenericTemplateInfo* const found =
+            this->find_any_generic_type_template_in_module(this->current_module_, name);
+        found != nullptr && this->can_access(this->current_module_, found->visibility)) {
         this->report(range, sema_generic_type_requires_args_message(name));
         return true;
     }
@@ -682,33 +649,35 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
         return;
     }
 
-    const std::string key = this->module_key(module, name);
-    if (this->generic_struct_templates_.contains(key)) {
-        if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(module, name);
-            info != nullptr && this->can_access(module, info->visibility)) {
-            this->report(range, sema_generic_type_requires_args_message(name));
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const std::string key = this->module_key(candidate_module, name);
+        if (this->generic_struct_templates_.contains(key)) {
+            if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(candidate_module, name);
+                info != nullptr && this->can_access(candidate_module, info->visibility)) {
+                this->report(range, sema_generic_type_requires_args_message(name));
+                return;
+            }
+            static_cast<void>(this->find_generic_struct_in_module(module, name, range, true));
             return;
         }
-        static_cast<void>(this->find_generic_struct_in_module(module, name, range, true));
-        return;
-    }
-    if (this->generic_enum_templates_.contains(key)) {
-        if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(module, name);
-            info != nullptr && this->can_access(module, info->visibility)) {
-            this->report(range, sema_generic_type_requires_args_message(name));
+        if (this->generic_enum_templates_.contains(key)) {
+            if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(candidate_module, name);
+                info != nullptr && this->can_access(candidate_module, info->visibility)) {
+                this->report(range, sema_generic_type_requires_args_message(name));
+                return;
+            }
+            static_cast<void>(this->find_generic_enum_in_module(module, name, range, true));
             return;
         }
-        static_cast<void>(this->find_generic_enum_in_module(module, name, range, true));
-        return;
-    }
-    if (this->generic_type_alias_templates_.contains(key)) {
-        if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(module, name);
-            info != nullptr && this->can_access(module, info->visibility)) {
-            this->report(range, sema_generic_type_requires_args_message(name));
+        if (this->generic_type_alias_templates_.contains(key)) {
+            if (const GenericTemplateInfo* info = this->find_any_generic_type_template_in_module(candidate_module, name);
+                info != nullptr && this->can_access(candidate_module, info->visibility)) {
+                this->report(range, sema_generic_type_requires_args_message(name));
+                return;
+            }
+            static_cast<void>(this->find_generic_type_alias_in_module(module, name, range, true));
             return;
         }
-        static_cast<void>(this->find_generic_type_alias_in_module(module, name, range, true));
-        return;
     }
     this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
 }
@@ -723,37 +692,10 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
         return &found->second;
     }
 
-    const GenericTemplateInfo* imported_result = nullptr;
-    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
-        if (module.value == this->current_module_.value) {
-            continue;
-        }
-        const auto found = this->generic_function_templates_.find(this->module_key(module, name));
-        if (found == this->generic_function_templates_.end()) {
-            continue;
-        }
-        if (!this->can_access(module, found->second.visibility)) {
-            continue;
-        }
-        if (imported_result != nullptr) {
-            this->report(
-                range,
-                sema_ambiguous_generic_function_name_message(
-                    name,
-                    this->module_name(result_module),
-                    this->module_name(module)
-                )
-            );
-            return nullptr;
-        }
-        imported_result = &found->second;
-        result_module = module;
-    }
-    if (imported_result == nullptr && report_unknown) {
+    if (report_unknown) {
         this->report(range, sema_unknown_generic_function_message(name));
     }
-    return imported_result;
+    return nullptr;
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_in_module(
@@ -768,20 +710,38 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
         }
         return nullptr;
     }
-    const auto found = this->generic_function_templates_.find(this->module_key(module, name));
-    if (found == this->generic_function_templates_.end()) {
-        if (report_unknown) {
-            this->report(range, sema_unknown_generic_function_in_module_message(this->module_name(module), name));
+    const GenericTemplateInfo* result = nullptr;
+    syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        const auto found = this->generic_function_templates_.find(this->module_key(candidate_module, name));
+        if (found == this->generic_function_templates_.end()) {
+            continue;
         }
-        return nullptr;
-    }
-    if (!this->can_access(module, found->second.visibility)) {
-        if (report_unknown) {
-            this->report(range, sema_private_generic_function_message(this->module_name(module), name));
+        if (!this->can_access(candidate_module, found->second.visibility)) {
+            if (candidate_module.value == module.value && report_unknown) {
+                this->report(range, sema_private_generic_function_message(this->module_name(candidate_module), name));
+                return nullptr;
+            }
+            continue;
         }
-        return nullptr;
+        if (result != nullptr) {
+            this->report(
+                range,
+                sema_ambiguous_generic_function_name_message(
+                    name,
+                    this->module_name(result_module),
+                    this->module_name(candidate_module)
+                )
+            );
+            return nullptr;
+        }
+        result = &found->second;
+        result_module = candidate_module;
     }
-    return &found->second;
+    if (result == nullptr && report_unknown) {
+        this->report(range, sema_unknown_generic_function_in_module_message(this->module_name(module), name));
+    }
+    return result;
 }
 
 TypeHandle SemanticAnalyzer::instantiate_generic_struct(
@@ -1397,12 +1357,14 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->current_generic_context_ = &body_context;
     this->current_side_tables_.side_tables = &this->checked_.generic_function_instances[instance_index].side_tables;
     this->current_side_tables_.cache_syntax_types = false;
+    this->current_module_ = info.module;
     this->analyze_function_body_with_signature(
         function,
         key,
         this->checked_.generic_function_instances[instance_index].signature,
         this->function_body_states_[key]
     );
+    this->current_module_ = previous_module;
     this->current_generic_context_ = previous_body_generic_context;
     this->current_side_tables_ = previous_body_side_tables;
     this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
@@ -1503,12 +1465,14 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->current_generic_context_ = &body_context;
     this->current_side_tables_.side_tables = &this->checked_.generic_function_instances[instance_index].side_tables;
     this->current_side_tables_.cache_syntax_types = false;
+    this->current_module_ = info.module;
     this->analyze_function_body_with_signature(
         function,
         key,
         this->checked_.generic_function_instances[instance_index].signature,
         this->function_body_states_[key]
     );
+    this->current_module_ = previous_module;
     this->current_generic_context_ = previous_body_generic_context;
     this->current_side_tables_ = previous_body_side_tables;
     this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
@@ -1524,7 +1488,15 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
 ) {
     FunctionSignature* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (syntax::ModuleId module : this->visible_modules(this->current_module_)) {
+    const std::array<syntax::ModuleId, 2> modules {this->current_module_, this->owner_module(owner_type)};
+    std::unordered_set<base::u32> seen_modules;
+    for (const syntax::ModuleId module : modules) {
+        if (!syntax::is_valid(module)) {
+            continue;
+        }
+        if (!seen_modules.insert(module.value).second) {
+            continue;
+        }
         for (const auto& entry : this->generic_method_templates_) {
             const GenericTemplateInfo& info = entry.second;
             if (info.module.value != module.value || info.name != name) {
@@ -1626,13 +1598,16 @@ void SemanticAnalyzer::analyze_generic_function_body(
         generic_context.params.emplace(param, this->checked_.types.generic_param(param));
     }
     generic_context.constraints = info.constraints;
+    const syntax::ModuleId previous_module = this->current_module_;
     GenericContext* const previous_generic_context = this->current_generic_context_;
     GenericSideTables side_tables = make_generic_side_tables(this->module_);
     GenericSideTableScope previous_side_tables = this->current_side_tables_;
     this->current_generic_context_ = &generic_context;
     this->current_side_tables_.side_tables = &side_tables;
     this->current_side_tables_.cache_syntax_types = false;
+    this->current_module_ = info.module;
     this->analyze_function_body_with_signature(function, info.key, signature, state);
+    this->current_module_ = previous_module;
     this->current_generic_context_ = previous_generic_context;
     this->current_side_tables_ = previous_side_tables;
 }

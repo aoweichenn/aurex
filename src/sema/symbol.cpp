@@ -22,7 +22,7 @@ void SymbolTable::pop_scope() noexcept {
 
 base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& diagnostics) {
     assert(!this->scopes_.empty());
-    if (this->find(symbol.name) != nullptr) {
+    if (this->scopes_.back().contains(symbol.name)) {
         diagnostics.push(base::Diagnostic {
             base::Severity::error,
             symbol.range,

@@ -1,0 +1,10 @@
+module const_pattern_type_mismatch;
+
+const OK: bool = true;
+
+fn main() -> i32 {
+    return match 0 {
+        const OK => 1,
+        _ => 0,
+    };
+}

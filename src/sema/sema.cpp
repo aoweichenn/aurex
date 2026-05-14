@@ -29,6 +29,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->resolve_type_alias_decls();
     this->analyze_struct_properties();
     this->register_value_names();
+    this->validate_module_namespace_conflicts();
     this->validate_function_prototypes();
 
     for (const auto& entry : this->generic_function_templates_) {

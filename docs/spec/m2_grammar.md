@@ -84,7 +84,11 @@ Rules:
 - `module` may appear at most once and only before imports/items.
 - `import` declarations appear before ordinary items.
 - `pub import` and `priv import` are accepted by current M2.
-- Import aliases use `as Identifier`.
+- Import aliases use `as Identifier`; without `as`, the alias is the last
+  module path segment, so `import core.mem;` imports module alias `mem`.
+- Wildcard imports are not part of M2.
+- Import aliases live in the module namespace and must not use the same name
+  as a type or value member of the importing module.
 
 ## 3. Top-Level Items
 
@@ -233,6 +237,45 @@ Rules:
   same dot selector spelling as values and modules, while semantic base kind
   decides whether a selector denotes a module, type, value, field, method, enum
   case, or associated function. `::` is not accepted.
+
+## 4.1 Name Domains And Dot Selectors
+
+M2 uses dot-only selectors with separate name domains. The parser keeps
+postfix syntax uniform, and semantic analysis decides selector meaning from
+the base expression or type:
+
+```text
+module.name  -> exported module member
+type.name    -> enum case or associated function
+value.name   -> field or method
+```
+
+Top-level names are split into module, type, and value domains:
+
+- Module domain: module/package roots and import aliases.
+- Type domain: structs, enums, opaque structs, type aliases, generic type
+  parameters, and builtin primitive types.
+- Value domain: functions, constants, globals, locals, and parameters.
+
+Each type also has member domains:
+
+- Type members: enum cases and associated functions.
+- Instance members: fields and methods.
+
+Rules:
+
+- A module may export type and value members, but the same exported name cannot
+  appear in both domains.
+- Enum cases are type members. They are not inserted into the ordinary value
+  namespace, so `some(1)` is rejected and `Option[i32].some(1)` is required.
+- A type member name cannot be reused by an enum case and an associated
+  function on the same type.
+- A local or parameter name cannot shadow an import alias, generic type
+  parameter, or visible type name. Same-scope duplicate locals/parameters are
+  also rejected by the symbol table.
+- A local declared in an inner lexical scope may shadow an outer local.
+- Imported module members are selected through the import alias. Unqualified
+  lookup does not search imported modules.
 
 ## 5. Function Declarations
 
@@ -625,10 +668,12 @@ PatternAtom
   | IntegerLiteral
   | "true"
   | "false"
+  | "const" Identifier
   | TuplePattern
   | SlicePattern
   | StructPattern
-  | Identifier [ "." Identifier ] [ PayloadBindings ]
+  | Identifier "." Identifier [ PayloadBindings ]
+  | Identifier
   | "." Identifier [ PayloadBindings ] ;
 
 PayloadBindings
@@ -656,6 +701,7 @@ DestructurePattern
   | IntegerLiteral
   | "true"
   | "false"
+  | "const" Identifier
   | TuplePattern
   | SlicePattern
   | StructPattern
@@ -665,8 +711,12 @@ DestructurePattern
 
 Rules:
 
-- Enum patterns may be unscoped, enum-scoped, or inferred from matched enum
-  type via `.case`.
+- A bare identifier pattern is always a binding. Bare enum case patterns such
+  as `some(v)` are rejected.
+- Enum case patterns are either explicit `Type.case` or inferred shorthand
+  `.case` from the matched enum type.
+- Constant patterns use `const NAME` and currently match integer and bool
+  constants only.
 - Payload binding count must match the enum case payload field count.
 - Payload patterns may destructure tuple payloads and multi-field enum payloads.
 - Struct patterns use field shorthand `Point { x, y }` or explicit field

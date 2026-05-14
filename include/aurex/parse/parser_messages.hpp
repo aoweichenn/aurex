@@ -499,6 +499,9 @@ inline constexpr std::string_view PARSER_EXPECT_ASSIGNMENT_TERMINATOR =
 inline constexpr std::string_view PARSER_EXPECT_MATCH_PATTERN =
     "expected match pattern";
 
+inline constexpr std::string_view PARSER_BARE_ENUM_CASE_PATTERN_UNSUPPORTED =
+    "bare enum case patterns are not supported; use '.case' or 'Type.case'";
+
 inline constexpr std::string_view PARSER_EMPTY_TUPLE_PATTERN_UNSUPPORTED =
     "empty tuple pattern is not part of M2 syntax";
 

@@ -1,9 +1,9 @@
 module private_field_access;
 
-import samplelib.visibility;
+import samplelib.visibility as visibility;
 
 fn main() -> i32 {
-    let box = PublicBox {
+    let box = visibility.PublicBox {
         value: 1,
         secret: 2,
     };

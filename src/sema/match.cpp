@@ -77,6 +77,7 @@ bool SemanticAnalyzer::pattern_is_irrefutable(
                 result = true;
                 break;
             case syntax::PatternKind::literal:
+            case syntax::PatternKind::const_:
             case syntax::PatternKind::enum_case:
                 result = false;
                 break;
@@ -184,6 +185,7 @@ bool SemanticAnalyzer::pattern_is_irrefutable(
             }
             break;
         case syntax::PatternKind::enum_case:
+        case syntax::PatternKind::const_:
         case syntax::PatternKind::literal:
         case syntax::PatternKind::wildcard:
         case syntax::PatternKind::binding:
@@ -238,6 +240,30 @@ bool SemanticAnalyzer::analyze_pattern(
                     covered_false,
                     saw_wildcard
                 ));
+                break;
+            }
+            case syntax::PatternKind::const_: {
+                if (is_valid(frame.type) && this->checked_.types.get(frame.type).kind == TypeKind::enum_) {
+                    this->report(pattern->range, std::string(SEMA_ENUM_MATCH_PATTERN));
+                    break;
+                }
+                const Symbol* const symbol = this->find_symbol(pattern->binding_name, pattern->range);
+                if (symbol == nullptr) {
+                    break;
+                }
+                if (symbol->kind != SymbolKind::const_) {
+                    this->report(pattern->range, std::string(SEMA_UNSUPPORTED_LITERAL_PATTERN));
+                    break;
+                }
+                if (!this->checked_.types.same(symbol->type, frame.type)) {
+                    this->report(pattern->range, std::string(SEMA_INTEGER_BOOL_PATTERN));
+                    break;
+                }
+                if (!this->checked_.types.is_integer(frame.type) && !this->checked_.types.is_bool(frame.type)) {
+                    this->report(pattern->range, std::string(SEMA_UNSUPPORTED_LITERAL_PATTERN));
+                    break;
+                }
+                this->record_pattern_c_name(frame.pattern, symbol->c_name);
                 break;
             }
             case syntax::PatternKind::tuple: {
@@ -436,6 +462,7 @@ void SemanticAnalyzer::define_pattern_bindings(
         if (binding.name.empty()) {
             continue;
         }
+        static_cast<void>(this->can_define_local_name(binding.name, binding.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,
             binding.name,
@@ -651,6 +678,9 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         if (leaf_pattern.kind == syntax::PatternKind::wildcard ||
             leaf_pattern.kind == syntax::PatternKind::binding) {
             return leaf_domain(leaf_type);
+        }
+        if (leaf_pattern.kind == syntax::PatternKind::const_) {
+            return std::vector<std::string> {};
         }
         if (this->checked_.types.is_bool(leaf_type) && leaf_pattern.kind == syntax::PatternKind::literal) {
             if (leaf_pattern.case_name == SEMA_MATCH_BOOL_TRUE_NAME ||

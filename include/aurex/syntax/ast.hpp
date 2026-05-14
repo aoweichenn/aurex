@@ -182,6 +182,7 @@ enum class PatternKind {
     slice,
     struct_,
     enum_case,
+    const_,
     literal,
     or_pattern,
 };

@@ -880,6 +880,26 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check -I " + q(tmp_root()) + " " + q(ambiguous_enum)).output,
+        "unknown generic type: Maybe"
+    );
+    const fs::path enum_facade = write_source_file(
+        tmp_root() / "generic_enum_facade.ax",
+        "module generic_enum_facade;\n"
+        "pub import generic_enum_a as a;\n"
+        "pub import generic_enum_b as b;\n"
+    );
+    static_cast<void>(enum_facade);
+    const fs::path ambiguous_enum_selector = write_source_file(
+        tmp_root() / "generic_enum_selector_ambiguous.ax",
+        "module generic_enum_selector_ambiguous;\n"
+        "import generic_enum_facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  let value: facade.Maybe[i32] = facade.Maybe[i32].none;\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check -I " + q(tmp_root()) + " " + q(ambiguous_enum_selector)).output,
         "ambiguous generic type name 'Maybe'"
     );
 
@@ -908,6 +928,27 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions) {
     );
     expect_contains(
         require_failure(aurexc() + " --check -I " + q(tmp_root()) + " " + q(ambiguous_alias)).output,
+        "unknown generic type: Ptr"
+    );
+    const fs::path alias_facade = write_source_file(
+        tmp_root() / "generic_alias_facade.ax",
+        "module generic_alias_facade;\n"
+        "pub import generic_alias_a as a;\n"
+        "pub import generic_alias_b as b;\n"
+    );
+    static_cast<void>(alias_facade);
+    const fs::path ambiguous_alias_selector = write_source_file(
+        tmp_root() / "generic_alias_selector_ambiguous.ax",
+        "module generic_alias_selector_ambiguous;\n"
+        "import generic_alias_facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  let value: i32 = 1;\n"
+        "  let ptr: facade.Ptr[i32] = &value;\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check -I " + q(tmp_root()) + " " + q(ambiguous_alias_selector)).output,
         "ambiguous generic type name 'Ptr'"
     );
 }
@@ -1110,10 +1151,10 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     const fs::path imported_checked_source = write_source_file(
         tmp_root() / "imported_checked_generics.ax",
         "module imported_checked_generics;\n"
-        "import generic_a;\n"
+        "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
-        "  let box: RemoteBox[i32] = make_box(9);\n"
-        "  return remote_id(box.value) - 9;\n"
+        "  let box: ga.RemoteBox[i32] = ga.make_box(9);\n"
+        "  return ga.remote_id(box.value) - 9;\n"
         "}\n"
     );
     const std::string checked = require_success(aurexc() + " -I " + q(import_dir) + " --emit=checked " + q(imported_checked_source)).output;
@@ -1213,8 +1254,28 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "}\n"
     );
     const std::string ambiguous_output = require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(ambiguous_generic)).output;
-    expect_contains(ambiguous_output, "ambiguous generic type name");
-    expect_contains(ambiguous_output, "ambiguous generic function name");
+    expect_contains(ambiguous_output, "unknown generic type: RemoteBox");
+    expect_contains(ambiguous_output, "unknown function: remote_id");
+
+    static_cast<void>(write_source_file(
+        import_dir / "generic_facade.ax",
+        "module generic_facade;\n"
+        "pub import generic_a as a;\n"
+        "pub import generic_b as b;\n"
+    ));
+    const fs::path ambiguous_generic_selector = write_source_file(
+        tmp_root() / "ambiguous_generic_selector.ax",
+        "module ambiguous_generic_selector;\n"
+        "import generic_facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  let box: facade.RemoteBox[i32] = facade.RemoteBox[i32] { value: 1 };\n"
+        "  return facade.remote_id(box.value);\n"
+        "}\n"
+    );
+    const std::string selector_ambiguous_output =
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(ambiguous_generic_selector)).output;
+    expect_contains(selector_ambiguous_output, "ambiguous generic type name");
+    expect_contains(selector_ambiguous_output, "ambiguous generic function name");
 
     const fs::path ambiguous_generic_method = write_source_file(
         tmp_root() / "ambiguous_generic_method.ax",
@@ -1229,7 +1290,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
     );
     expect_contains(
         require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(ambiguous_generic_method)).output,
-        "ambiguous method"
+        "unknown method"
     );
 
     const fs::path private_generic_method = write_source_file(

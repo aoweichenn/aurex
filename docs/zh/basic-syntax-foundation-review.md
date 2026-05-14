@@ -853,31 +853,32 @@ let result = match value {
 
 状态：已补。parser 单测覆盖统一策略，positive sample `core/trailing_separator_policy.ax` 覆盖 sema / IR / LLVM 路径。
 
-## P2 可暂缓：shadowing 策略
+## P2 已补：shadowing 策略
 
 现状：
 
-当前不允许 local / param shadowing，内层作用域也不能重名。
+当前规则是：同一 lexical scope 内不允许重复定义 local/param；内层
+lexical scope 可以 shadow 外层 local；local/param 不能 shadow import
+alias、generic type parameter 或当前可见类型名。
 
-这个规则简单、安全，早期实现成本低，但长期会影响可写性：
+这保留了值转换阶段的可写性，同时避免 dot-only selector 下最危险的
+module/type/value 名称歧义：
 
 ```aurex
 let value = read();
-let value = normalize(value); // 当前不允许
+{
+    let value = normalize(value);
+}
 ```
 
-现代语言分歧很大：
+现代语言分歧很大，当前取中间策略：
 
 - Rust、Swift 允许 shadowing，适合表达值转换阶段。
 - Go 不允许同一作用域重复声明，但内层可以遮蔽。
 - C/C++ 允许内层遮蔽，但容易出 bug。
 
-建议暂不急着改。等基础 block 统一后再决策：
-
-- 至少可以考虑“只允许内层 scope shadow 外层，不允许同一 scope 重名”。
-- 如果后续重启资源语义或 safe borrow，shadowing 需要和对应诊断一起设计。
-
-优先级：低到中。不是当前最卡的基础缺陷。
+后续如果重启资源语义或 safe borrow，需要继续把 shadowing 与对应诊断
+放在一起设计。
 
 ## P2 已补：`char` 字面量、raw string 和 byte string
 
@@ -955,10 +956,9 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 
 第三批暂缓：
 
-1. shadowing 策略。
-2. 继续完善 guard、slice 和开放域 structural exhaustiveness / unreachable diagnostics。
-3. package manifest 和包管理。
-4. octal / hex float 等更复杂数值字面量。
+1. 继续完善 guard、slice 和开放域 structural exhaustiveness / unreachable diagnostics。
+2. package manifest 和包管理。
+3. octal / hex float 等更复杂数值字面量。
 
 ## 不建议现在做
 

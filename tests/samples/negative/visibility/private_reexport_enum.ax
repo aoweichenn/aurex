@@ -1,8 +1,8 @@
 module private_reexport_enum;
 
-import samplelib.reexport_facade;
+import samplelib.reexport_facade as facade;
 
 fn main() -> i32 {
-    let value = SecretMode.hidden;
+    let value = facade.SecretMode.hidden;
     return 0;
 }

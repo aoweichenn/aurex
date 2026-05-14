@@ -1,8 +1,7 @@
 module private_reexport_const;
 
-import samplelib.reexport_facade;
+import samplelib.reexport_facade as facade;
 
 fn main() -> i32 {
-    return hidden_base;
+    return facade.hidden_base;
 }
-

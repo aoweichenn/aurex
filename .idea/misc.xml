@@ -7,6 +7,7 @@
   <component name="CidrRootsConfiguration">
     <excludeRoots>
       <file path="$PROJECT_DIR$/build" />
+      <file path="$PROJECT_DIR$/build-asan" />
       <file path="$PROJECT_DIR$/build-clang" />
       <file path="$PROJECT_DIR$/build-coverage" />
       <file path="$PROJECT_DIR$/build-fuzz" />

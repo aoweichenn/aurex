@@ -24,8 +24,9 @@ SymbolTable::SymbolTable() {
     this->push_scope();
 }
 
-void SymbolTable::push_scope() {
-    this->scopes_.emplace_back();
+void SymbolTable::push_scope(const base::usize expected_symbols) {
+    StringSymbolMap& scope = this->scopes_.emplace_back();
+    scope.reserve(expected_symbols);
 }
 
 void SymbolTable::pop_scope() noexcept {

@@ -60,7 +60,7 @@ class SymbolTable final {
 public:
     SymbolTable();
 
-    void push_scope();
+    void push_scope(base::usize expected_symbols = 0);
     void pop_scope() noexcept;
 
     [[nodiscard]] base::Result<SymbolId> insert(Symbol symbol, base::DiagnosticSink& diagnostics);

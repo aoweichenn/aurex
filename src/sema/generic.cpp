@@ -77,6 +77,7 @@ bool SemanticAnalyzer::has_generic_constraints(const syntax::ItemNode& item) con
 
 void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& item) {
     std::unordered_map<std::string, base::SourceRange> seen;
+    seen.reserve(item.generic_params.size());
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         const std::string name(param.name);
         const auto [first, inserted] = seen.emplace(name, param.range);
@@ -95,6 +96,7 @@ void SemanticAnalyzer::validate_generic_constraints(
     const syntax::ItemNode& item,
     GenericTemplateInfo& info
 ) {
+    info.constraints.reserve(item.generic_params.size());
     std::unordered_set<std::string> params;
     params.reserve(item.generic_params.size());
     for (const syntax::GenericParamDecl& param : item.generic_params) {

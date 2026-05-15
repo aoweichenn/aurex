@@ -142,6 +142,8 @@ struct AbiSymbolInfo {
 void SemanticAnalyzer::validate_module_namespace_conflicts() {
     std::unordered_map<std::string, base::SourceRange> type_names;
     std::unordered_map<std::string, base::SourceRange> value_names;
+    type_names.reserve(this->module_.items.size());
+    value_names.reserve(this->module_.items.size());
     for (const syntax::ItemNode& item : this->module_.items) {
         const syntax::ModuleId owner = this->item_module(item);
         if (is_top_level_type_item(item.kind)) {
@@ -168,6 +170,7 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() {
             static_cast<base::u32>(&module_info - begin)
         };
         std::unordered_set<std::string> module_aliases;
+        module_aliases.reserve(module_info.imports.size());
         for (const syntax::ResolvedImport& import : module_info.imports) {
             if (!module_aliases.insert(std::string(import.alias)).second) {
                 this->report(import.alias_range, sema_ambiguous_import_alias_message(import.alias));
@@ -294,6 +297,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     const syntax::Visibility visibility
 ) {
     std::unordered_set<std::string> seen_cases;
+    seen_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
         if (!seen_cases.insert(std::string(enum_case.name)).second) {
             this->report(enum_case.range, sema_duplicate_enum_case_message(enum_display_name, enum_case.name));
@@ -311,12 +315,14 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     }
 
     std::unordered_set<base::u64> seen_values;
+    seen_values.reserve(item.enum_cases.size());
     TypeHandle payload_storage = INVALID_TYPE_HANDLE;
     base::u64 payload_size = 0;
     base::u64 payload_align = 1;
     bool contains_array_payload = false;
     base::u64 next_discriminant = 0;
     std::unordered_set<std::string> registered_cases;
+    registered_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
         const bool duplicate_case_name = !registered_cases.insert(std::string(enum_case.name)).second;
         if (!duplicate_case_name && this->type_member_name_exists(named_enum_type, enum_case.name)) {
@@ -506,6 +512,7 @@ void SemanticAnalyzer::register_value_names() {
                 return_type = INVALID_TYPE_HANDLE;
             }
             std::vector<TypeHandle> param_types;
+            param_types.reserve(item.params.size());
             for (const syntax::ParamDecl& param : item.params) {
                 TypeHandle param_type = this->resolve_type(param.type);
                 if (!this->is_valid_storage_type(param_type)) {
@@ -624,6 +631,7 @@ void SemanticAnalyzer::validate_function_prototypes() {
 
 void SemanticAnalyzer::validate_abi_symbols() {
     std::unordered_map<std::string, AbiSymbolInfo> symbols;
+    symbols.reserve(this->checked_.functions.size() + this->global_values_.size());
 
     const auto same_function_type = [&](const AbiFunctionInfo& lhs, const AbiFunctionInfo& rhs) {
         if (!checked_.types.same(lhs.return_type, rhs.return_type) ||
@@ -761,6 +769,13 @@ void SemanticAnalyzer::analyze_struct_properties() {
         const std::string key = this->module_key(this->current_module_, item.name);
         bool contains_array = false;
         std::unordered_set<std::string> seen_fields;
+        seen_fields.reserve(item.fields.size());
+        StructInfo* struct_info = nullptr;
+        if (const auto struct_found = this->checked_.structs.find(key);
+            struct_found != this->checked_.structs.end()) {
+            struct_info = &struct_found->second;
+            struct_info->fields.reserve(item.fields.size());
+        }
         for (const syntax::FieldDecl& field : item.fields) {
             if (!seen_fields.insert(std::string(field.name)).second) {
                 this->report(field.range, sema_duplicate_struct_field_message(field.name));
@@ -770,8 +785,8 @@ void SemanticAnalyzer::analyze_struct_properties() {
             if (!this->is_valid_storage_type(field_type)) {
                 this->report(field.range, std::string(SEMA_FIELD_STORAGE));
             }
-            if (const auto struct_found = this->checked_.structs.find(key); struct_found != this->checked_.structs.end()) {
-                struct_found->second.fields.push_back(StructFieldInfo {
+            if (struct_info != nullptr) {
+                struct_info->fields.push_back(StructFieldInfo {
                     std::string(field.name),
                     {},
                     syntax::INVALID_MODULE_ID,
@@ -796,6 +811,9 @@ void SemanticAnalyzer::analyze_const_decls() {
     std::unordered_map<std::string, std::vector<std::string>> dependencies_by_const;
     std::unordered_map<std::string, base::SourceRange> const_ranges;
     std::unordered_map<std::string, std::string> const_names;
+    dependencies_by_const.reserve(this->module_.items.size());
+    const_ranges.reserve(this->module_.items.size());
+    const_names.reserve(this->module_.items.size());
 
     for (const syntax::ItemNode& item : this->module_.items) {
         if (item.kind != syntax::ItemKind::const_decl) {
@@ -832,6 +850,8 @@ void SemanticAnalyzer::analyze_const_decls() {
 
     std::unordered_map<std::string, base::u8> states;
     std::vector<ConstDependencyFrame> stack;
+    states.reserve(dependencies_by_const.size());
+    stack.reserve(dependencies_by_const.size());
     for (const auto& entry : dependencies_by_const) {
         if (states[entry.first] == SEMA_CONST_DEP_STATE_VISITED) {
             continue;

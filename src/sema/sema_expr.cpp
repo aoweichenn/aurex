@@ -1148,22 +1148,22 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
     const syntax::ExprNode& expr,
     const TypeHandle expected_type
 ) {
-    if (in_const_initializer_) {
-        report(expr.range, std::string(SEMA_IF_EXPR_CONST_INITIALIZER));
+    if (this->in_const_initializer_) {
+        this->report(expr.range, std::string(SEMA_IF_EXPR_CONST_INITIALIZER));
     }
-    const TypeHandle condition = analyze_expr(expr.condition);
-    if (!syntax::is_valid(expr.condition_pattern) && !checked_.types.is_bool(condition)) {
-        report(module_.exprs[expr.condition.value].range, std::string(SEMA_IF_EXPR_CONDITION_BOOL));
+    const TypeHandle condition = this->analyze_expr(expr.condition);
+    if (!syntax::is_valid(expr.condition_pattern) && !this->checked_.types.is_bool(condition)) {
+        this->report(this->module_.exprs[expr.condition.value].range, std::string(SEMA_IF_EXPR_CONDITION_BOOL));
     }
     const auto analyze_then_branch = [&](const TypeHandle expected) {
         if (!syntax::is_valid(expr.condition_pattern)) {
-            return analyze_expr(expr.then_expr, expected);
+            return this->analyze_expr(expr.then_expr, expected);
         }
         std::vector<PatternBinding> bindings;
         static_cast<void>(this->analyze_pattern(expr.condition_pattern, condition, bindings));
-        this->symbols_.push_scope();
+        this->symbols_.push_scope(bindings.size());
         this->define_pattern_bindings(bindings, false);
-        const TypeHandle result = analyze_expr(expr.then_expr, expected);
+        const TypeHandle result = this->analyze_expr(expr.then_expr, expected);
         this->symbols_.pop_scope();
         return result;
     };
@@ -1189,15 +1189,15 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
             else_type = this->analyze_expr(expr.else_expr, then_type);
         }
     }
-    if (!checked_.types.same(then_type, else_type)) {
-        report(expr.range, std::string(SEMA_IF_EXPR_BRANCH_TYPE));
-        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    if (!this->checked_.types.same(then_type, else_type)) {
+        this->report(expr.range, std::string(SEMA_IF_EXPR_BRANCH_TYPE));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    if (is_valid(then_type) && checked_.types.is_void(then_type)) {
-        report(expr.range, std::string(SEMA_IF_EXPR_VOID));
-        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    if (is_valid(then_type) && this->checked_.types.is_void(then_type)) {
+        this->report(expr.range, std::string(SEMA_IF_EXPR_VOID));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    return record_expr_type(expr_id, then_type);
+    return this->record_expr_type(expr_id, then_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_block_expr(
@@ -1205,30 +1205,30 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
     const syntax::ExprNode& expr,
     const TypeHandle expected_type
 ) {
-    if (in_const_initializer_) {
-        report(expr.range, std::string(SEMA_BLOCK_EXPR_CONST_INITIALIZER));
+    if (this->in_const_initializer_) {
+        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_CONST_INITIALIZER));
     }
     if (!syntax::is_valid(expr.block_result)) {
-        report(expr.range, std::string(SEMA_BLOCK_EXPR_FINAL));
-        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_FINAL));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
-    symbols_.push_scope();
-    analyze_block_statements(expr.block, current_function_return_type_, current_return_inference_);
-    if (!block_may_fallthrough(expr.block)) {
-        report(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
+    this->symbols_.push_scope();
+    this->analyze_block_statements(expr.block, this->current_function_return_type_, this->current_return_inference_);
+    if (!this->block_may_fallthrough(expr.block)) {
+        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
     }
-    const TypeHandle result = analyze_expr(expr.block_result, expected_type);
-    symbols_.pop_scope();
+    const TypeHandle result = this->analyze_expr(expr.block_result, expected_type);
+    this->symbols_.pop_scope();
 
     if (!is_valid(result)) {
-        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    if (checked_.types.is_void(result)) {
-        report(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
-        return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    if (this->checked_.types.is_void(result)) {
+        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    return record_expr_type(expr_id, result);
+    return this->record_expr_type(expr_id, result);
 }
 
 TypeHandle SemanticAnalyzer::analyze_unsafe_block_expr(

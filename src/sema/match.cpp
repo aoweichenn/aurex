@@ -919,7 +919,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         };
         TypeHandle arm_type = INVALID_TYPE_HANDLE;
         if (!bindings.empty()) {
-            this->symbols_.push_scope();
+            this->symbols_.push_scope(bindings.size());
             this->define_pattern_bindings(bindings, false);
             arm_type = analyze_guard_and_arm_value();
             this->symbols_.pop_scope();

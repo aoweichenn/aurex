@@ -401,7 +401,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     this->current_function_return_type_ = expected_return;
     this->current_return_inference_ = infer_return_type ? &return_inference : nullptr;
 
-    this->symbols_.push_scope();
+    this->symbols_.push_scope(function.params.size());
     for (base::usize i = 0; i < function.params.size(); ++i) {
         const syntax::ParamDecl& param = function.params[i];
         const TypeHandle param_type = i < signature.param_types.size()
@@ -571,7 +571,7 @@ void SemanticAnalyzer::analyze_pattern_scoped_block(
 ) {
     std::vector<PatternBinding> bindings;
     static_cast<void>(this->analyze_pattern(pattern, pattern_type, bindings));
-    this->symbols_.push_scope();
+    this->symbols_.push_scope(bindings.size());
     this->define_pattern_bindings(bindings, false);
     stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
     stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, block});
@@ -846,7 +846,7 @@ void SemanticAnalyzer::analyze_statement_node(
         break;
     }
     case syntax::StmtKind::for_: {
-        this->symbols_.push_scope();
+        this->symbols_.push_scope(1);
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
         if (syntax::is_valid(stmt.for_update)) {
@@ -862,7 +862,7 @@ void SemanticAnalyzer::analyze_statement_node(
     }
     case syntax::StmtKind::for_range: {
         const TypeHandle range_type = this->analyze_for_range_bounds(stmt_id, stmt);
-        this->symbols_.push_scope();
+        this->symbols_.push_scope(1);
         this->define_for_range_local(stmt, range_type);
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});

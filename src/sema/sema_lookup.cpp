@@ -118,15 +118,21 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syn
         found != this->visible_modules_cache_.end()) {
         return found->second;
     }
-    std::vector<syntax::ModuleId> result;
-    result.push_back(module);
-    if (module.value >= module_.modules.size()) {
+    if (module.value >= this->module_.modules.size()) {
+        std::vector<syntax::ModuleId> result;
+        result.reserve(1);
+        result.push_back(module);
         auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
+    const base::usize import_count = this->module_.modules[module.value].imports.size();
+    std::vector<syntax::ModuleId> result;
+    result.reserve(import_count + 1);
+    result.push_back(module);
     std::unordered_set<base::u32> seen;
+    seen.reserve(import_count + 1);
     seen.insert(module.value);
-    for (const syntax::ResolvedImport& import : module_.modules[module.value].imports) {
+    for (const syntax::ResolvedImport& import : this->module_.modules[module.value].imports) {
         if (!syntax::is_valid(import.module)) {
             continue;
         }
@@ -240,13 +246,19 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::module_export_modules(con
         found != this->module_export_modules_cache_.end()) {
         return found->second;
     }
-    std::vector<syntax::ModuleId> result;
-    result.push_back(module);
     if (module.value >= this->module_.modules.size()) {
+        std::vector<syntax::ModuleId> result;
+        result.reserve(1);
+        result.push_back(module);
         auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
+    const base::usize import_count = this->module_.modules[module.value].imports.size();
+    std::vector<syntax::ModuleId> result;
+    result.reserve(import_count + 1);
+    result.push_back(module);
     std::unordered_set<base::u32> seen;
+    seen.reserve(import_count + 1);
     seen.insert(module.value);
     this->append_public_reexports(module, result, seen);
     auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
@@ -259,6 +271,7 @@ void SemanticAnalyzer::append_public_reexports(
     std::unordered_set<base::u32>& seen
 ) const {
     std::vector<syntax::ModuleId> pending;
+    pending.reserve(result.size());
     pending.push_back(module);
     while (!pending.empty()) {
         const syntax::ModuleId current = pending.back();

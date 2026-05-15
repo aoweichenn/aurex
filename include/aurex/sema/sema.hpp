@@ -102,6 +102,11 @@ private:
         bool failed_as_module_selector = false;
     };
 
+    struct IndexedTypeInfo {
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        syntax::Visibility visibility = syntax::Visibility::public_;
+    };
+
     struct ModuleSelectorPath {
         std::vector<std::string_view> parts;
         base::SourceRange range {};
@@ -588,6 +593,31 @@ private:
     [[nodiscard]] std::string function_key(const syntax::ItemNode& function) const;
     [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
+    [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, std::string_view name);
+    [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, std::string_view name) const noexcept;
+    [[nodiscard]] MethodLookupKey intern_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name);
+    [[nodiscard]] MethodLookupKey find_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const noexcept;
+    void index_named_type(syntax::ModuleId module, std::string_view name, TypeHandle type, syntax::Visibility visibility);
+    void index_type_alias(const TypeAliasInfo& info);
+    void index_generic_struct_template(const GenericTemplateInfo& info);
+    void index_generic_enum_template(const GenericTemplateInfo& info);
+    void index_generic_type_alias_template(const GenericTemplateInfo& info);
+    void index_generic_function_template(const GenericTemplateInfo& info);
+    void index_generic_method_template(const GenericTemplateInfo& info);
+    void index_function_lookup(std::string_view lookup_name, const FunctionSignature& signature);
+    void index_method_lookup(syntax::ModuleId module, TypeHandle owner_type, std::string_view lookup_name, const FunctionSignature& signature);
+    void index_function_value(std::string_view lookup_name, const FunctionSignature& signature);
+    void index_global_value(const Symbol& symbol);
+    [[nodiscard]] bool named_type_lookup_complete() const noexcept;
+    [[nodiscard]] bool type_alias_lookup_complete() const noexcept;
+    [[nodiscard]] bool generic_struct_lookup_complete() const noexcept;
+    [[nodiscard]] bool generic_enum_lookup_complete() const noexcept;
+    [[nodiscard]] bool generic_type_alias_lookup_complete() const noexcept;
+    [[nodiscard]] bool generic_function_lookup_complete() const noexcept;
+    [[nodiscard]] bool generic_method_lookup_complete() const noexcept;
+    [[nodiscard]] bool function_lookup_complete() const noexcept;
+    [[nodiscard]] bool global_value_lookup_complete() const noexcept;
+    [[nodiscard]] bool enum_case_module_lookup_complete() const noexcept;
     [[nodiscard]] bool can_access(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
     void record_stmt_local_type(syntax::StmtId stmt, TypeHandle type);
     void record_expr_c_name(syntax::ExprId expr, std::string_view c_name);
@@ -688,6 +718,20 @@ private:
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
     IdentifierInterner identifiers_;
+    std::unordered_map<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash> named_types_by_name_;
+    std::unordered_map<ModuleLookupKey, const TypeAliasInfo*, ModuleLookupKeyHash> type_aliases_by_name_;
+    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_struct_templates_by_name_;
+    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_enum_templates_by_name_;
+    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_type_alias_templates_by_name_;
+    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_function_templates_by_name_;
+    std::unordered_map<ModuleLookupKey, std::vector<const GenericTemplateInfo*>, ModuleLookupKeyHash> generic_method_templates_by_name_;
+    base::usize generic_method_lookup_indexed_count_ = 0;
+    std::unordered_map<ModuleLookupKey, const FunctionSignature*, ModuleLookupKeyHash> functions_by_name_;
+    std::unordered_map<MethodLookupKey, const FunctionSignature*, MethodLookupKeyHash> methods_by_name_;
+    base::usize internal_function_lookup_exclusions_ = 0;
+    std::unordered_map<ModuleLookupKey, const Symbol*, ModuleLookupKeyHash> global_values_by_name_;
+    std::unordered_map<MethodLookupKey, const Symbol*, MethodLookupKeyHash> method_global_values_by_name_;
+    std::unordered_map<ModuleLookupKey, const EnumCaseInfo*, ModuleLookupKeyHash> enum_cases_by_module_name_;
     std::unordered_map<EnumCaseLookupKey, const EnumCaseInfo*, EnumCaseLookupKeyHash> enum_cases_by_type_and_case_;
     std::unordered_map<base::u32, std::vector<const EnumCaseInfo*>> enum_cases_by_type_;
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;

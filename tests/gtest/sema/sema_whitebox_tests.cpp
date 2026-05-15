@@ -43,6 +43,7 @@ using syntax::TypeId;
 
 constexpr u32 SEMA_TEST_ROOT_MODULE_INDEX = 0;
 constexpr u32 SEMA_TEST_LIB_ONE_MODULE_INDEX = 1;
+constexpr u32 SEMA_TEST_LIB_TWO_MODULE_INDEX = 2;
 constexpr u32 SEMA_TEST_MISSING_MODULE_INDEX = 99;
 constexpr base::u32 SEMA_TEST_PATTERN_FIRST_INDEX = 0;
 constexpr base::u32 SEMA_TEST_PATTERN_SECOND_INDEX = 1;
@@ -926,6 +927,365 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
     analyzer.validate_call_arguments(argument_call, "array_arg", {array_i32}, 0, false);
     argument_call.args = {payload_value, payload_value};
     analyzer.validate_call_arguments(argument_call, "array_vararg", {}, 0, true);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib"}),
+    };
+    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {
+        resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "lib"),
+    };
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle record_type = types.named_struct("lib.Record", "lib_Record", false);
+    const TypeHandle enum_type = types.named_enum("lib.Choice", "lib_Choice");
+    types.set_enum_underlying(enum_type, i32);
+
+    const std::string record_key = analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Record");
+    analyzer.named_types_.emplace(record_key, record_type);
+    analyzer.type_visibilities_.emplace(record_key, syntax::Visibility::public_);
+    analyzer.index_named_type(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Record", record_type, syntax::Visibility::public_);
+    StructInfo record_info;
+    record_info.name = "Record";
+    record_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    record_info.type = record_type;
+    const auto record_inserted = analyzer.checked_.structs.emplace(record_key, record_info);
+    ASSERT_TRUE(record_inserted.second);
+    analyzer.struct_infos_by_type_[record_type.value] = &record_inserted.first->second;
+
+    const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    sema::TypeAliasInfo alias;
+    alias.name = "Alias";
+    alias.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    alias.target = i32_type_id;
+    alias.visibility = syntax::Visibility::public_;
+    const auto alias_inserted = analyzer.checked_.type_aliases.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Alias"),
+        alias
+    );
+    ASSERT_TRUE(alias_inserted.second);
+    analyzer.index_type_alias(alias_inserted.first->second);
+
+    sema::SemanticAnalyzer::GenericTemplateInfo generic_type;
+    generic_type.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    generic_type.name = "Box";
+    generic_type.key = analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Box");
+    generic_type.visibility = syntax::Visibility::public_;
+    const auto generic_type_inserted = analyzer.generic_struct_templates_.emplace(generic_type.key, generic_type);
+    ASSERT_TRUE(generic_type_inserted.second);
+    analyzer.index_generic_struct_template(generic_type_inserted.first->second);
+
+    sema::SemanticAnalyzer::GenericTemplateInfo generic_function;
+    generic_function.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    generic_function.name = "make";
+    generic_function.key = analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "make");
+    generic_function.visibility = syntax::Visibility::public_;
+    const auto generic_function_inserted = analyzer.generic_function_templates_.emplace(
+        generic_function.key,
+        generic_function
+    );
+    ASSERT_TRUE(generic_function_inserted.second);
+    analyzer.index_generic_function_template(generic_function_inserted.first->second);
+
+    sema::SemanticAnalyzer::GenericTemplateInfo generic_method;
+    generic_method.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    generic_method.name = "generic_method";
+    generic_method.key = analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "#generic_method:test.generic_method");
+    generic_method.impl_type_pattern = record_type;
+    generic_method.visibility = syntax::Visibility::public_;
+    const auto generic_method_inserted = analyzer.generic_method_templates_.emplace(generic_method.key, generic_method);
+    ASSERT_TRUE(generic_method_inserted.second);
+    analyzer.index_generic_method_template(generic_method_inserted.first->second);
+
+    FunctionSignature run = function_signature("run", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
+    run.visibility = syntax::Visibility::public_;
+    const auto run_inserted = analyzer.checked_.functions.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "run"),
+        run
+    );
+    ASSERT_TRUE(run_inserted.second);
+    analyzer.index_function_lookup("run", run_inserted.first->second);
+
+    FunctionSignature method = function_signature("method", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
+    method.is_method = true;
+    method.has_self_param = true;
+    method.method_owner_type = record_type;
+    method.visibility = syntax::Visibility::public_;
+    const auto method_inserted = analyzer.checked_.functions.emplace(
+        analyzer.method_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "method"),
+        method
+    );
+    ASSERT_TRUE(method_inserted.second);
+    analyzer.index_method_lookup(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "method", method_inserted.first->second);
+
+    const auto value_inserted = analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE"),
+        symbol(SymbolKind::const_, "VALUE", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32)
+    );
+    ASSERT_TRUE(value_inserted.second);
+    analyzer.index_global_value(value_inserted.first->second);
+
+    EnumCaseInfo case_info;
+    case_info.name = "Choice_yes";
+    case_info.case_name = "yes";
+    case_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    case_info.type = enum_type;
+    const auto case_inserted = analyzer.checked_.enum_cases.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice_yes"),
+        case_info
+    );
+    ASSERT_TRUE(case_inserted.second);
+    analyzer.index_enum_case(case_inserted.first->second);
+
+    EXPECT_TRUE(analyzer.named_type_lookup_complete());
+    EXPECT_TRUE(analyzer.type_alias_lookup_complete());
+    EXPECT_TRUE(analyzer.generic_struct_lookup_complete());
+    EXPECT_TRUE(analyzer.generic_function_lookup_complete());
+    EXPECT_TRUE(analyzer.generic_method_lookup_complete());
+    EXPECT_TRUE(analyzer.function_lookup_complete());
+    EXPECT_TRUE(analyzer.global_value_lookup_complete());
+    EXPECT_TRUE(analyzer.enum_case_module_lookup_complete());
+
+    EXPECT_TRUE(analyzer.top_level_value_name_exists(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE"));
+    EXPECT_TRUE(analyzer.module_type_or_value_name_exists(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Record"));
+    EXPECT_TRUE(analyzer.module_type_or_value_name_exists(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE"));
+    EXPECT_TRUE(analyzer.visible_type_name_exists("Record"));
+    EXPECT_TRUE(types.same(analyzer.find_type_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Record", {}, false), record_type));
+    EXPECT_TRUE(types.same(analyzer.find_type_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Alias", {}, false), i32));
+    EXPECT_EQ(
+        analyzer.find_any_generic_type_template_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Box"),
+        &generic_type_inserted.first->second
+    );
+    EXPECT_EQ(analyzer.find_generic_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "make", {}), &generic_function_inserted.first->second);
+    EXPECT_EQ(analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "run", {}), &run_inserted.first->second);
+    EXPECT_EQ(analyzer.find_method_in_visible_modules(record_type, "method", {}, true), &method_inserted.first->second);
+    EXPECT_EQ(analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE", {}), &value_inserted.first->second);
+
+    analyzer.current_module_ = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    EXPECT_EQ(analyzer.find_enum_case_in_visible_modules("Choice_yes", {}), &case_inserted.first->second);
+    const base::usize interned_before_miss = analyzer.identifiers_.size();
+    EXPECT_EQ(analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "missing", {}, false), nullptr);
+    EXPECT_EQ(analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "missing", {}, false), nullptr);
+    EXPECT_EQ(analyzer.identifiers_.size(), interned_before_miss);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxTypedLookupLegacyFallbackEdges) {
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib"}),
+        module_info({"extra"}),
+    };
+    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {
+        resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "lib"),
+    };
+    module.modules[SEMA_TEST_LIB_ONE_MODULE_INDEX].imports = {
+        resolved_import(module_id(SEMA_TEST_LIB_TWO_MODULE_INDEX), "extra", syntax::Visibility::public_),
+    };
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
+    const TypeHandle record_type = types.named_struct("lib.LegacyRecord", "lib_LegacyRecord", false);
+    const TypeHandle extra_record_type = types.named_struct("extra.LegacyRecord", "extra_LegacyRecord", false);
+    const TypeHandle enum_type = types.named_enum("lib.LegacyChoice", "lib_LegacyChoice");
+    types.set_enum_underlying(enum_type, i32);
+
+    const std::string record_key = analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyRecord");
+    analyzer.named_types_.emplace(record_key, record_type);
+    analyzer.type_visibilities_.emplace(record_key, syntax::Visibility::public_);
+    const std::string extra_record_key = analyzer.module_key(module_id(SEMA_TEST_LIB_TWO_MODULE_INDEX), "LegacyRecord");
+    analyzer.named_types_.emplace(extra_record_key, extra_record_type);
+    analyzer.type_visibilities_.emplace(extra_record_key, syntax::Visibility::public_);
+
+    StructInfo record_info;
+    record_info.name = "LegacyRecord";
+    record_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    record_info.type = record_type;
+    const auto record_inserted = analyzer.checked_.structs.emplace(record_key, record_info);
+    ASSERT_TRUE(record_inserted.second);
+    analyzer.struct_infos_by_type_[record_type.value] = &record_inserted.first->second;
+
+    const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    sema::TypeAliasInfo alias;
+    alias.name = "LegacyAlias";
+    alias.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    alias.target = i32_type_id;
+    alias.visibility = syntax::Visibility::public_;
+    analyzer.checked_.type_aliases.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAlias"),
+        alias
+    );
+
+    auto generic_info = [&analyzer](const std::string_view name, const syntax::Visibility visibility) {
+        sema::SemanticAnalyzer::GenericTemplateInfo info;
+        info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+        info.name = std::string(name);
+        info.key = analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), name);
+        info.params = {"T"};
+        info.visibility = visibility;
+        return info;
+    };
+    analyzer.generic_struct_templates_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox"),
+        generic_info("LegacyBox", syntax::Visibility::public_)
+    );
+    analyzer.generic_struct_templates_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "PrivateBox"),
+        generic_info("PrivateBox", syntax::Visibility::private_)
+    );
+    analyzer.generic_enum_templates_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyEnum"),
+        generic_info("LegacyEnum", syntax::Visibility::public_)
+    );
+    analyzer.generic_type_alias_templates_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAliasBox"),
+        generic_info("LegacyAliasBox", syntax::Visibility::public_)
+    );
+    analyzer.generic_function_templates_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyMake"),
+        generic_info("LegacyMake", syntax::Visibility::public_)
+    );
+
+    FunctionSignature fallback_function =
+        function_signature("legacy_fn", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
+    fallback_function.visibility = syntax::Visibility::public_;
+    analyzer.checked_.functions.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn"),
+        fallback_function
+    );
+    FunctionSignature ambiguous_one =
+        function_signature("ambiguous_fn", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
+    ambiguous_one.visibility = syntax::Visibility::public_;
+    FunctionSignature ambiguous_two =
+        function_signature("ambiguous_fn", module_id(SEMA_TEST_LIB_TWO_MODULE_INDEX), bool_type);
+    ambiguous_two.visibility = syntax::Visibility::public_;
+    analyzer.checked_.functions.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "ambiguous_fn"),
+        ambiguous_one
+    );
+    analyzer.checked_.functions.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_TWO_MODULE_INDEX), "ambiguous_fn"),
+        ambiguous_two
+    );
+
+    FunctionSignature owner_method =
+        function_signature("owner_method", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
+    owner_method.is_method = true;
+    owner_method.has_self_param = true;
+    owner_method.method_owner_type = record_type;
+    owner_method.visibility = syntax::Visibility::public_;
+    owner_method.param_types = {record_type};
+    const auto owner_method_inserted = analyzer.checked_.functions.emplace(
+        analyzer.method_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "owner_method"),
+        owner_method
+    );
+    ASSERT_TRUE(owner_method_inserted.second);
+
+    const auto value_inserted = analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LEGACY_VALUE"),
+        symbol(SymbolKind::const_, "LEGACY_VALUE", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32)
+    );
+    ASSERT_TRUE(value_inserted.second);
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "ambiguous_value"),
+        symbol(SymbolKind::const_, "ambiguous_value", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32)
+    );
+    analyzer.global_values_.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_TWO_MODULE_INDEX), "ambiguous_value"),
+        symbol(SymbolKind::const_, "ambiguous_value", module_id(SEMA_TEST_LIB_TWO_MODULE_INDEX), bool_type)
+    );
+
+    EnumCaseInfo enum_case;
+    enum_case.name = "LegacyChoice_yes";
+    enum_case.case_name = "yes";
+    enum_case.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    enum_case.type = enum_type;
+    const auto enum_case_inserted = analyzer.checked_.enum_cases.emplace(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyChoice_yes"),
+        enum_case
+    );
+    ASSERT_TRUE(enum_case_inserted.second);
+
+    EXPECT_FALSE(analyzer.named_type_lookup_complete());
+    EXPECT_FALSE(analyzer.type_alias_lookup_complete());
+    EXPECT_FALSE(analyzer.generic_struct_lookup_complete());
+    EXPECT_FALSE(analyzer.generic_enum_lookup_complete());
+    EXPECT_FALSE(analyzer.generic_type_alias_lookup_complete());
+    EXPECT_FALSE(analyzer.generic_function_lookup_complete());
+    EXPECT_FALSE(analyzer.function_lookup_complete());
+    EXPECT_FALSE(analyzer.global_value_lookup_complete());
+    EXPECT_FALSE(analyzer.enum_case_module_lookup_complete());
+
+    EXPECT_TRUE(analyzer.top_level_value_name_exists(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LEGACY_VALUE"));
+    EXPECT_TRUE(analyzer.module_type_or_value_name_exists(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyRecord"));
+    EXPECT_TRUE(analyzer.visible_type_name_exists("LegacyAlias"));
+    EXPECT_TRUE(types.same(
+        analyzer.find_type_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAlias", {}, false),
+        i32
+    ));
+    EXPECT_FALSE(is_valid(analyzer.find_type_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyRecord", {}, false)));
+
+    analyzer.current_module_ = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    EXPECT_NE(analyzer.find_generic_struct_in_visible_modules("LegacyBox", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_enum_in_visible_modules("LegacyEnum", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_type_alias_in_visible_modules("LegacyAliasBox", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_function_in_visible_modules("LegacyMake", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_struct_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_enum_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyEnum", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_type_alias_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAliasBox", {}), nullptr);
+    EXPECT_NE(analyzer.find_generic_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyMake", {}), nullptr);
+    EXPECT_EQ(
+        analyzer.find_any_generic_type_template_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox"),
+        &analyzer.generic_struct_templates_.find(
+            analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox")
+        )->second
+    );
+    EXPECT_TRUE(analyzer.generic_type_template_exists_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox"));
+    EXPECT_TRUE(analyzer.report_generic_type_requires_args_if_visible("LegacyBox", {}));
+    analyzer.report_generic_type_template_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox", {});
+    analyzer.report_generic_type_template_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyEnum", {});
+    analyzer.report_generic_type_template_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAliasBox", {});
+    analyzer.report_generic_type_template_in_module(syntax::INVALID_MODULE_ID, "MissingGeneric", {});
+
+    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    EXPECT_EQ(analyzer.find_generic_struct_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "PrivateBox", {}), nullptr);
+    EXPECT_EQ(analyzer.find_generic_struct_in_module(syntax::INVALID_MODULE_ID, "MissingGeneric", {}), nullptr);
+    EXPECT_EQ(analyzer.find_generic_enum_in_module(syntax::INVALID_MODULE_ID, "MissingGeneric", {}), nullptr);
+    EXPECT_EQ(analyzer.find_generic_type_alias_in_module(syntax::INVALID_MODULE_ID, "MissingGeneric", {}), nullptr);
+    EXPECT_EQ(analyzer.find_generic_function_in_module(syntax::INVALID_MODULE_ID, "MissingGeneric", {}), nullptr);
+    EXPECT_EQ(analyzer.find_generic_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "missing", {}), nullptr);
+
+    analyzer.current_module_ = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    EXPECT_EQ(analyzer.find_function_in_visible_modules("legacy_fn", {}), &analyzer.checked_.functions.find(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn")
+    )->second);
+    EXPECT_EQ(analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn", {}), &analyzer.checked_.functions.find(
+        analyzer.module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn")
+    )->second);
+    EXPECT_EQ(analyzer.find_function_in_module(syntax::INVALID_MODULE_ID, "missing", {}), nullptr);
+    EXPECT_EQ(analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "ambiguous_fn", {}), nullptr);
+
+    EXPECT_EQ(analyzer.find_method_in_owner_module(record_type, "owner_method", true), &owner_method_inserted.first->second);
+    EXPECT_EQ(analyzer.find_method_in_owner_module(record_type, "missing", true), nullptr);
+    EXPECT_EQ(analyzer.find_method_in_owner_module(INVALID_TYPE_HANDLE, "owner_method", true), nullptr);
+
+    EXPECT_EQ(analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LEGACY_VALUE", {}), &value_inserted.first->second);
+    EXPECT_EQ(analyzer.find_symbol_in_module(syntax::INVALID_MODULE_ID, "missing", {}), nullptr);
+    EXPECT_EQ(analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "ambiguous_value", {}), nullptr);
+
+    EXPECT_EQ(analyzer.find_enum_case_in_visible_modules("LegacyChoice_yes", {}), &enum_case_inserted.first->second);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {

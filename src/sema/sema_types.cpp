@@ -1744,9 +1744,18 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     if (base_expr.kind == syntax::ExprKind::name && base_expr.scope_name.empty()) {
         const Symbol* symbol = this->symbols_.find(base_expr.text);
         if (symbol == nullptr) {
-            const auto global = this->global_values_.find(this->module_key(this->current_module_, base_expr.text));
-            if (global != this->global_values_.end()) {
-                symbol = &global->second;
+            const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr.text);
+            if (is_valid(lookup_key)) {
+                if (const auto global = this->global_values_by_name_.find(lookup_key);
+                    global != this->global_values_by_name_.end()) {
+                    symbol = global->second;
+                }
+            }
+            if (symbol == nullptr && !this->global_value_lookup_complete()) {
+                const auto global = this->global_values_.find(this->module_key(this->current_module_, base_expr.text));
+                if (global != this->global_values_.end()) {
+                    symbol = &global->second;
+                }
             }
         }
         if (symbol != nullptr) {

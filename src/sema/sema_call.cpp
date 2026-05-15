@@ -291,14 +291,23 @@ bool SemanticAnalyzer::selector_base_has_non_module_meaning(const std::string_vi
     if (this->symbols_.find(name) != nullptr) {
         return true;
     }
-    if (this->global_values_.contains(this->module_key(this->current_module_, name))) {
-        return true;
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name);
+    if (is_valid(lookup_key)) {
+        if (this->global_values_by_name_.contains(lookup_key) ||
+            this->named_types_by_name_.contains(lookup_key) ||
+            this->type_aliases_by_name_.contains(lookup_key)) {
+            return true;
+        }
     }
-    if (this->named_types_.contains(this->module_key(this->current_module_, name))) {
-        return true;
-    }
-    if (this->checked_.type_aliases.contains(this->module_key(this->current_module_, name))) {
-        return true;
+    if (!this->global_value_lookup_complete() ||
+        !this->named_type_lookup_complete() ||
+        !this->type_alias_lookup_complete()) {
+        const std::string key = this->module_key(this->current_module_, name);
+        if (this->global_values_.contains(key) ||
+            this->named_types_.contains(key) ||
+            this->checked_.type_aliases.contains(key)) {
+            return true;
+        }
     }
     if (this->find_any_generic_type_template_in_module(this->current_module_, name) != nullptr) {
         return true;

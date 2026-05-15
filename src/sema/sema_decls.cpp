@@ -214,6 +214,8 @@ void SemanticAnalyzer::register_type_names() {
             auto alias_inserted = this->checked_.type_aliases.emplace(key, std::move(alias));
             if (!alias_inserted.second) {
                 this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            } else {
+                this->index_type_alias(alias_inserted.first->second);
             }
             if (this->named_types_.contains(key)) {
                 this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
@@ -258,6 +260,7 @@ void SemanticAnalyzer::register_type_names() {
             continue;
         }
         this->type_visibilities_[key] = item.visibility;
+        this->index_named_type(owner, item.name, handle, item.visibility);
         if (this->checked_.type_aliases.contains(key)) {
             this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             continue;
@@ -571,6 +574,11 @@ void SemanticAnalyzer::register_value_names() {
                 std::move(param_types),
                 syntax::ItemId {static_cast<base::u32>(item_index)}
             );
+            if (const auto found = this->checked_.functions.find(key);
+                found != this->checked_.functions.end()) {
+                this->index_function_lookup(item.name, found->second);
+                this->index_function_value(item.name, found->second);
+            }
             if (!item.is_prototype && !item.is_extern_c) {
                 this->function_definition_items_[key] = syntax::ItemId {static_cast<base::u32>(item_index)};
             }
@@ -597,6 +605,8 @@ void SemanticAnalyzer::register_value_names() {
                     item.range,
                     sema_duplicate_value_definition_message(this->module_name(this->current_module_), item.name)
                 );
+            } else {
+                this->index_global_value(inserted.first->second);
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
             const auto type_found = this->named_types_.find(key);
@@ -938,9 +948,20 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                 } else {
                     if (const Symbol* local = this->symbols_.find(expr.text); local != nullptr) {
                         symbol = local;
-                    } else if (const auto found = this->global_values_.find(this->module_key(this->current_module_, expr.text));
-                               found != this->global_values_.end()) {
-                        symbol = &found->second;
+                    } else {
+                        const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, expr.text);
+                        if (is_valid(lookup_key)) {
+                            if (const auto found = this->global_values_by_name_.find(lookup_key);
+                                found != this->global_values_by_name_.end()) {
+                                symbol = found->second;
+                            }
+                        }
+                        if (symbol == nullptr && !this->global_value_lookup_complete()) {
+                            if (const auto found = this->global_values_.find(this->module_key(this->current_module_, expr.text));
+                                found != this->global_values_.end()) {
+                                symbol = &found->second;
+                            }
+                        }
                     }
                 }
                 if (symbol == nullptr) {

@@ -54,6 +54,45 @@ private:
     std::unordered_map<std::string_view, IdentId, IdentifierTextHash, std::equal_to<>> ids_;
 };
 
+struct ModuleLookupKey {
+    base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;
+    IdentId name = INVALID_IDENT_ID;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        ModuleLookupKey lhs,
+        ModuleLookupKey rhs
+    ) noexcept = default;
+};
+
+[[nodiscard]] inline constexpr bool is_valid(const ModuleLookupKey key) noexcept {
+    return key.module != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.name);
+}
+
+struct ModuleLookupKeyHash {
+    [[nodiscard]] std::size_t operator()(ModuleLookupKey key) const noexcept;
+};
+
+struct MethodLookupKey {
+    base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;
+    base::u32 owner_type = SEMA_LOOKUP_INVALID_KEY_PART;
+    IdentId name = INVALID_IDENT_ID;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        MethodLookupKey lhs,
+        MethodLookupKey rhs
+    ) noexcept = default;
+};
+
+[[nodiscard]] inline constexpr bool is_valid(const MethodLookupKey key) noexcept {
+    return key.module != SEMA_LOOKUP_INVALID_KEY_PART &&
+           key.owner_type != SEMA_LOOKUP_INVALID_KEY_PART &&
+           is_valid(key.name);
+}
+
+struct MethodLookupKeyHash {
+    [[nodiscard]] std::size_t operator()(MethodLookupKey key) const noexcept;
+};
+
 struct EnumCaseLookupKey {
     base::u32 enum_type = SEMA_LOOKUP_INVALID_KEY_PART;
     IdentId case_name = INVALID_IDENT_ID;

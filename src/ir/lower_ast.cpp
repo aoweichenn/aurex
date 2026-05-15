@@ -295,7 +295,7 @@ void Lowerer::lower_function_declarations() {
     for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
         const sema::GenericFunctionInstanceInfo& instance = this->checked_.generic_function_instances[index];
         Function function;
-        function.name = instance.signature.name;
+        function.name = sema::function_display_name(this->checked_.types, instance.signature);
         function.symbol = instance.signature.c_name;
         function.linkage = Linkage::internal;
         function.call_conv = AbiCallConv::aurex;

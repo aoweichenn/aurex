@@ -19,6 +19,7 @@ std::string dump_checked_module(const CheckedModule& checked) {
     out << "  functions " << function_names.size() << "\n";
     for (const std::string& name : function_names) {
         const FunctionSignature& fn = checked.functions.at(name);
+        const std::string display_name = function_display_name(checked.types, fn);
         out << "    fn ";
         if (fn.visibility == syntax::Visibility::private_) {
             out << "priv ";
@@ -26,11 +27,11 @@ std::string dump_checked_module(const CheckedModule& checked) {
         if (fn.is_method) {
             out << "method " << checked.types.display_name(fn.method_owner_type) << ".";
         }
-        out << fn.name << " -> " << checked.types.display_name(fn.return_type);
+        out << display_name << " -> " << checked.types.display_name(fn.return_type);
         if (fn.is_unsafe) {
             out << " unsafe";
         }
-        if (fn.c_name != fn.name) {
+        if (fn.c_name != display_name) {
             out << " @c_name=" << fn.c_name;
         }
         if (fn.is_extern_c) {

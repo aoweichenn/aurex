@@ -57,6 +57,7 @@ void FunctionRegistry::register_function(
 
     FunctionSignature signature;
     signature.name = std::string(item.name);
+    signature.semantic_key = key;
     signature.c_name = abi_or_c_name(item, c_name);
     signature.module = owner;
     signature.method_owner_type = method_owner_type;

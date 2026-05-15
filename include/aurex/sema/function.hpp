@@ -12,11 +12,13 @@ namespace aurex::sema {
 
 struct FunctionSignature {
     std::string name;
+    std::string semantic_key;
     std::string c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::vector<TypeHandle> param_types;
+    std::vector<TypeHandle> generic_args;
     base::SourceRange range {};
     bool is_extern_c = false;
     bool is_export_c = false;
@@ -31,5 +33,7 @@ struct FunctionSignature {
     syntax::ItemId prototype_item = syntax::INVALID_ITEM_ID;
     syntax::ItemId definition_item = syntax::INVALID_ITEM_ID;
 };
+
+[[nodiscard]] std::string function_display_name(const TypeTable& types, const FunctionSignature& signature);
 
 } // namespace aurex::sema

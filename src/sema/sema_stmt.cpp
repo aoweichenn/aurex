@@ -1027,9 +1027,12 @@ void SemanticAnalyzer::ensure_function_return_known(
     if (is_valid(signature.return_type) || signature.is_extern_c) {
         return;
     }
-    const std::string key = signature.is_method
-        ? this->method_key(signature.module, signature.method_owner_type, signature.name)
-        : this->module_key(signature.module, signature.name);
+    std::string key = signature.semantic_key;
+    if (key.empty()) {
+        key = signature.is_method
+            ? this->method_key(signature.module, signature.method_owner_type, signature.name)
+            : this->module_key(signature.module, signature.name);
+    }
     const FunctionBodyState state = this->function_body_states_.contains(key)
         ? this->function_body_states_.at(key)
         : FunctionBodyState::not_started;

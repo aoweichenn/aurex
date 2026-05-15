@@ -98,6 +98,10 @@ generic-instantiation-heavy sema paths, then runs a Google Benchmark
 process-level comparison against available modern frontend drivers (`clang++`,
 `g++`, and `rustc`) without enforcing thresholds yet. `make perf-compare` runs
 only the cross-frontend comparison lane.
+Generic function instance signatures now keep internal semantic keys and
+TypeHandle arguments separate from display names, so `--check` does not format
+names such as `id[i32]` for checked signatures; checked dumps and IR lowering
+format them lazily when output needs them.
 
 ## M2 Gaps
 

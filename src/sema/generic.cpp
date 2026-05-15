@@ -1553,8 +1553,9 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature;
-    signature.name = info.name + this->generic_instance_suffix(args);
+    signature.name = info.name;
     signature.c_name = signature.name;
+    signature.generic_args = args;
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
         ? this->resolve_type(function.return_type)
@@ -1573,6 +1574,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     this->current_side_tables_ = previous_side_tables;
 
     const std::string key = this->generic_function_instance_key(info, args);
+    signature.semantic_key = key;
     auto inserted = this->generic_placeholder_functions_.emplace(key, std::move(signature));
     return &inserted.first->second;
 }
@@ -1670,11 +1672,13 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature;
-    signature.name = info.name + this->generic_instance_suffix(args);
+    signature.name = info.name;
+    signature.semantic_key = key;
     signature.c_name = this->c_symbol_name(
         info.module,
         info.name + this->generic_instance_abi_suffix(args)
     );
+    signature.generic_args = args;
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
         ? this->resolve_type(function.return_type)
@@ -1771,8 +1775,10 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature;
-    signature.name = info.name + this->generic_instance_suffix(args);
+    signature.name = info.name;
+    signature.semantic_key = key;
     signature.c_name = this->method_c_symbol_name(owner_type, info.name);
+    signature.generic_args = args;
     signature.module = info.module;
     signature.method_owner_type = owner_type;
     signature.return_type = syntax::is_valid(function.return_type)

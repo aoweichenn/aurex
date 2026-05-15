@@ -71,6 +71,9 @@ make perf
 覆盖 lexer、lookup-heavy sema 和 generic-instantiation-heavy sema 路径，并运行
 Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
 做 frontend/check 模式基线；暂不强制阈值。`make perf-compare` 只运行跨前端对比通道。
+generic function instance 签名已经把内部 semantic key / TypeHandle args 和展示名分离，
+`--check` 热路径不再为了 checked signature 生成 `id[i32]` 这类展示字符串，dump 和 IR
+lowering 需要时再延迟格式化。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 

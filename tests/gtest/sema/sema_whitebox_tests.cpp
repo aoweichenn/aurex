@@ -1649,6 +1649,15 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     ASSERT_TRUE(checked_result) << checked_result.error().message;
     const sema::CheckedModule& checked = checked_result.value();
     ASSERT_EQ(checked.generic_function_instances.size(), 1U);
+    const sema::FunctionSignature& signature = checked.generic_function_instances.front().signature;
+    EXPECT_EQ(signature.name, "id");
+    EXPECT_FALSE(signature.semantic_key.empty());
+    ASSERT_EQ(signature.generic_args.size(), 1U);
+    EXPECT_TRUE(checked.types.same(signature.generic_args.front(), checked.types.builtin(sema::BuiltinType::i32)));
+    EXPECT_EQ(sema::function_display_name(checked.types, signature), "id[i32]");
+    EXPECT_TRUE(checked.functions.contains(signature.semantic_key));
+    EXPECT_NE(sema::dump_checked_module(checked).find("id[i32]"), std::string::npos);
+
     const sema::GenericSideTables& side_tables = checked.generic_function_instances.front().side_tables;
     EXPECT_TRUE(side_tables.sparse);
     EXPECT_TRUE(side_tables.expr_types.empty());

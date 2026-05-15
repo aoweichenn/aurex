@@ -252,60 +252,70 @@ void append_module_into(
     const syntax::ModuleId owner_module
 ) {
     IdMap map;
-    map.types.reserve(source.types.size());
-    map.exprs.reserve(source.exprs.size());
-    map.patterns.reserve(source.patterns.size());
-    map.stmts.reserve(source.stmts.size());
-    map.items.reserve(source.items.size());
-    destination.types.reserve(destination.types.size() + source.types.size());
-    destination.exprs.reserve(destination.exprs.size() + source.exprs.size());
-    destination.patterns.reserve(destination.patterns.size() + source.patterns.size());
-    destination.stmts.reserve(destination.stmts.size() + source.stmts.size());
-    destination.items.reserve(destination.items.size() + source.items.size());
-    destination.item_modules.reserve(destination.item_modules.size() + source.items.size());
+    const base::usize source_type_count = source.types.size();
+    const base::usize source_expr_count = source.exprs.size();
+    const base::usize source_pattern_count = source.patterns.size();
+    const base::usize source_stmt_count = source.stmts.size();
+    const base::usize source_item_count = source.items.size();
+    const base::usize type_begin = destination.types.size();
+    const base::usize expr_begin = destination.exprs.size();
+    const base::usize pattern_begin = destination.patterns.size();
+    const base::usize stmt_begin = destination.stmts.size();
+    const base::usize item_begin = destination.items.size();
 
-    for (syntax::TypeNode& node : source.types) {
-        map.types.push_back(syntax::TypeId {static_cast<base::u32>(destination.types.size())});
+    map.types.reserve(source_type_count);
+    map.exprs.reserve(source_expr_count);
+    map.patterns.reserve(source_pattern_count);
+    map.stmts.reserve(source_stmt_count);
+    map.items.reserve(source_item_count);
+    destination.types.reserve(type_begin + source_type_count);
+    destination.exprs.reserve(expr_begin + source_expr_count);
+    destination.patterns.reserve(pattern_begin + source_pattern_count);
+    destination.stmts.reserve(stmt_begin + source_stmt_count);
+    destination.items.reserve(item_begin + source_item_count);
+    destination.item_modules.reserve(destination.item_modules.size() + source_item_count);
+
+    for (base::usize i = 0; i < source_type_count; ++i) {
+        map.types.push_back(syntax::TypeId {static_cast<base::u32>(type_begin + i)});
+    }
+    for (base::usize i = 0; i < source_expr_count; ++i) {
+        map.exprs.push_back(syntax::ExprId {static_cast<base::u32>(expr_begin + i)});
+    }
+    for (base::usize i = 0; i < source_pattern_count; ++i) {
+        map.patterns.push_back(syntax::PatternId {static_cast<base::u32>(pattern_begin + i)});
+    }
+    for (base::usize i = 0; i < source_stmt_count; ++i) {
+        map.stmts.push_back(syntax::StmtId {static_cast<base::u32>(stmt_begin + i)});
+    }
+    for (base::usize i = 0; i < source_item_count; ++i) {
+        map.items.push_back(syntax::ItemId {static_cast<base::u32>(item_begin + i)});
+    }
+
+    for (base::usize i = 0; i < source_type_count; ++i) {
+        syntax::TypeNode node = source.types.take(i);
+        remap_type_node(node, map);
         destination.types.push_back(std::move(node));
     }
-    for (syntax::ExprNode& node : source.exprs) {
-        map.exprs.push_back(syntax::ExprId {static_cast<base::u32>(destination.exprs.size())});
+    for (base::usize i = 0; i < source_expr_count; ++i) {
+        syntax::ExprNode node = source.exprs.take(i);
+        remap_expr_node(node, map);
         destination.exprs.push_back(std::move(node));
     }
-    for (syntax::PatternNode& node : source.patterns) {
-        map.patterns.push_back(syntax::PatternId {static_cast<base::u32>(destination.patterns.size())});
+    for (base::usize i = 0; i < source_pattern_count; ++i) {
+        syntax::PatternNode node = source.patterns.take(i);
+        remap_pattern_node(node, map);
         destination.patterns.push_back(std::move(node));
     }
-    for (syntax::StmtNode& node : source.stmts) {
-        map.stmts.push_back(syntax::StmtId {static_cast<base::u32>(destination.stmts.size())});
+    for (syntax::StmtNode& source_stmt : source.stmts) {
+        syntax::StmtNode node = std::move(source_stmt);
+        remap_stmt_node(node, map);
         destination.stmts.push_back(std::move(node));
     }
-    for (syntax::ItemNode& node : source.items) {
-        map.items.push_back(syntax::ItemId {static_cast<base::u32>(destination.items.size())});
+    for (syntax::ItemNode& source_item : source.items) {
+        syntax::ItemNode node = std::move(source_item);
+        remap_item_node(node, map);
         destination.items.push_back(std::move(node));
         destination.item_modules.push_back(owner_module);
-    }
-
-    const base::usize type_begin = destination.types.size() - source.types.size();
-    const base::usize expr_begin = destination.exprs.size() - source.exprs.size();
-    const base::usize stmt_begin = destination.stmts.size() - source.stmts.size();
-    const base::usize item_begin = destination.items.size() - source.items.size();
-
-    for (base::usize i = type_begin; i < destination.types.size(); ++i) {
-        remap_type_node(destination.types[i], map);
-    }
-    for (base::usize i = expr_begin; i < destination.exprs.size(); ++i) {
-        remap_expr_node(destination.exprs[i], map);
-    }
-    const base::usize pattern_begin = destination.patterns.size() - source.patterns.size();
-    for (base::usize i = pattern_begin; i < destination.patterns.size(); ++i) {
-        remap_pattern_node(destination.patterns[i], map);
-    }
-    for (base::usize i = stmt_begin; i < destination.stmts.size(); ++i) {
-        remap_stmt_node(destination.stmts[i], map);
-    }
-    for (base::usize i = item_begin; i < destination.items.size(); ++i) {
-        remap_item_node(destination.items[i], map);
     }
 
     if (keep_imports) {

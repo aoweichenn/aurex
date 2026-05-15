@@ -2,6 +2,7 @@
 #include <aurex/syntax/token.hpp>
 #include <support/frontend_test_support.hpp>
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,9 @@ namespace {
 
 using syntax::Token;
 using syntax::TokenKind;
+
+constexpr std::size_t AST_COMPACT_HEADER_MAX_BYTES = 32;
+constexpr std::size_t AST_FAT_NODE_HEADER_RATIO = 4;
 
 [[nodiscard]] syntax::TypeId push_primitive_type(
     syntax::AstModule& module,
@@ -29,6 +33,80 @@ using syntax::TokenKind;
 }
 
 } // namespace
+
+TEST(CoreUnit, AstStorageUsesCompactHeaders) {
+    EXPECT_LE(sizeof(syntax::TypeNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
+    EXPECT_LE(sizeof(syntax::ExprNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
+    EXPECT_LE(sizeof(syntax::PatternNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
+    EXPECT_LT(sizeof(syntax::TypeNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::TypeNode));
+    EXPECT_LT(sizeof(syntax::ExprNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ExprNode));
+    EXPECT_LT(sizeof(syntax::PatternNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::PatternNode));
+}
+
+TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
+    syntax::TypeNode function_type;
+    function_type.kind = syntax::TypeKind::function;
+    function_type.function_is_unsafe = true;
+    function_type.function_params = {syntax::TypeId {1}, syntax::TypeId {2}};
+    function_type.function_return = syntax::TypeId {3};
+
+    syntax::TypeNodeList types;
+    types.push_back(function_type);
+    EXPECT_TRUE(types[0].function_is_unsafe);
+    EXPECT_EQ(types[0].function_params.size(), 2U);
+    syntax::TypeNode moved_type = types.take(0);
+    EXPECT_TRUE(moved_type.function_is_unsafe);
+    EXPECT_EQ(moved_type.function_params.back().value, 2U);
+
+    syntax::ExprNode call_expr;
+    call_expr.kind = syntax::ExprKind::call;
+    call_expr.callee = syntax::ExprId {4};
+    call_expr.args = {syntax::ExprId {5}, syntax::ExprId {6}};
+
+    syntax::ExprNodeList exprs;
+    exprs.push_back(call_expr);
+    EXPECT_EQ(exprs[0].args.size(), 2U);
+    syntax::ExprNode moved_expr = exprs.take(0);
+    EXPECT_EQ(moved_expr.callee.value, 4U);
+    EXPECT_EQ(moved_expr.args.back().value, 6U);
+
+    syntax::ExprNode typed_name;
+    typed_name.kind = syntax::ExprKind::name;
+    typed_name.text = "make";
+    typed_name.type_args = {syntax::TypeId {8}, syntax::TypeId {9}};
+    syntax::ExprNodeList names;
+    names.push_back(typed_name);
+    EXPECT_EQ(names[0].type_args.back().value, 9U);
+    syntax::ExprNode moved_name = names.take(0);
+    EXPECT_EQ(moved_name.type_args.front().value, 8U);
+
+    syntax::ExprNode bool_expr;
+    bool_expr.kind = syntax::ExprKind::bool_literal;
+    bool_expr.text = "true";
+    syntax::ExprNode null_expr;
+    null_expr.kind = syntax::ExprKind::null_literal;
+    null_expr.text = "null";
+    syntax::ExprNodeList literals;
+    literals.push_back(bool_expr);
+    literals.push_back(null_expr);
+    EXPECT_EQ(literals[0].text, "true");
+    EXPECT_EQ(literals[1].text, "null");
+
+    syntax::PatternNode enum_pattern;
+    enum_pattern.kind = syntax::PatternKind::enum_case;
+    enum_pattern.scoped = true;
+    enum_pattern.case_name = "some";
+    enum_pattern.payload_patterns = {syntax::PatternId {7}};
+    enum_pattern.binding_names = {"value"};
+
+    syntax::PatternNodeList patterns;
+    patterns.push_back(enum_pattern);
+    EXPECT_EQ(patterns[0].binding_names.front(), "value");
+    syntax::PatternNode moved_pattern = patterns.take(0);
+    EXPECT_TRUE(moved_pattern.scoped);
+    EXPECT_EQ(moved_pattern.payload_patterns.front().value, 7U);
+    EXPECT_EQ(moved_pattern.binding_names.front(), "value");
+}
 
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     std::vector<Token> tokens = {

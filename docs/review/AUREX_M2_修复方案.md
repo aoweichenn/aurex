@@ -258,10 +258,10 @@ scope->find(std::string(name));  // 每层 scope 构造
 
 **实测：** 2M AST 节点 → **3.0 GB** 🚨
 
-**开发者修复状态：** ✅ 阶段性已修当前整树复制爆点；compact layout 仍后续
-**方案：** Sema 用引用不复制；normalized_ast 默认不保留 AST snapshot；长期改 compact AST（header + per-kind payload arena）
+**开发者修复状态：** ✅ 已修当前整树复制爆点；`TypeNode` / `ExprNode` / `PatternNode` 已落 compact layout
+**方案：** Sema 用引用不复制；normalized_ast 默认不保留 AST snapshot；AST 主存储使用 compact header + per-kind payload arena
 
-**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。
+**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；`AstModule::types` / `exprs` / `patterns` 已从胖节点 vector 改为 32B header + per-kind payload arena，module loader 从 payload arena move 出节点后 remap，不再依赖 `.data()` 指针；新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 200-215 MiB RSS / 118-127 ms。global bump allocator、Stmt/Item compact storage、AST 原生 `IdentId` 和 CI 阈值仍后续。
 
 ---
 

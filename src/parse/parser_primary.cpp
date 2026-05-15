@@ -200,9 +200,10 @@ syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext cont
     }
     const syntax::ExprId block = this->parse_block_expr(context);
     if (syntax::is_valid(block) && block.value < this->session_.module.exprs.size()) {
-        syntax::ExprNode& expr = this->session_.module.exprs[block.value];
+        syntax::ExprNode expr = this->session_.module.exprs[block.value];
         expr.kind = syntax::ExprKind::unsafe_block;
         expr.range = this->merge(begin.range, expr.range);
+        this->session_.module.exprs.set(block.value, std::move(expr));
     }
     return block;
 }

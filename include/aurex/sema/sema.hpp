@@ -589,8 +589,8 @@ private:
         const EnumCaseInfo& enum_case,
         base::SourceRange range
     );
-    [[nodiscard]] TypeHandle resolve_associated_type_owner(const syntax::ExprNode& object, bool report_unknown);
-    [[nodiscard]] TypeHandle resolve_associated_generic_type_owner(const syntax::ExprNode& apply, bool report_unknown);
+    [[nodiscard]] TypeHandle resolve_associated_type_owner(syntax::ExprId object, bool report_unknown);
+    [[nodiscard]] TypeHandle resolve_associated_generic_type_owner(syntax::ExprId apply, bool report_unknown);
     [[nodiscard]] TypeHandle function_type_from_signature(const FunctionSignature& signature);
     [[nodiscard]] TypeHandle function_type_from_symbol(const Symbol& symbol, base::SourceRange range);
     [[nodiscard]] TryShape classify_try_shape(TypeHandle type) const noexcept;

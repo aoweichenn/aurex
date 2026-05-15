@@ -102,7 +102,10 @@ cross-frontend comparison lane. `make perf-stress` runs the generated
 and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
 `--check` path does not retain codegen-only generic instance side tables, and
 the default sema path no longer copies or retains a full normalized AST
-snapshot.
+snapshot. The syntax AST now stores `TypeNode`, `ExprNode`, and `PatternNode`
+as compact 32-byte headers plus per-kind payload arenas; on the local AST bulk
+stress lane, the 100000-statement case is roughly 200-215 MiB RSS / 118-127 ms after
+this layout change.
 
 ## Stage Status
 

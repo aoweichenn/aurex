@@ -15,7 +15,7 @@ namespace {
     if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
         return fallback;
     }
-    return module.exprs[expr.value].range;
+    return module.exprs.range(expr.value);
 }
 
 [[nodiscard]] base::SourceRange merge_ranges(
@@ -62,7 +62,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_chain(const syntax::ExprId 
         return syntax::INVALID_EXPR_ID;
     }
 
-    if (this->module_.exprs[expr_id.value].kind != syntax::ExprKind::postfix_chain) {
+    if (this->module_.exprs.kind(expr_id.value) != syntax::ExprKind::postfix_chain) {
         return expr_id;
     }
 
@@ -70,7 +70,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_chain(const syntax::ExprId 
     syntax::ExprId current_chain = expr_id;
     while (syntax::is_valid(current_chain) &&
            current_chain.value < this->module_.exprs.size() &&
-           this->module_.exprs[current_chain.value].kind == syntax::ExprKind::postfix_chain) {
+           this->module_.exprs.kind(current_chain.value) == syntax::ExprKind::postfix_chain) {
         chains.push_back(current_chain);
         current_chain = this->module_.exprs[current_chain.value].postfix_base;
     }
@@ -79,7 +79,12 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_chain(const syntax::ExprId 
     while (!chains.empty()) {
         const syntax::ExprId chain_id = chains.back();
         chains.pop_back();
-        std::vector<syntax::PostfixOp> postfix_ops = std::move(this->module_.exprs[chain_id.value].postfix_ops);
+        syntax::ExprNode chain = this->module_.exprs.take(chain_id.value);
+        std::vector<syntax::PostfixOp> postfix_ops = std::move(chain.postfix_ops);
+        if (postfix_ops.empty()) {
+            this->module_.exprs.set(chain_id.value, std::move(chain));
+            continue;
+        }
         for (base::usize index = 0; index < postfix_ops.size(); ++index) {
             const bool is_last = index + 1 == postfix_ops.size();
             const syntax::PostfixOp* const next_op = is_last ? nullptr : &postfix_ops[index + 1];
@@ -129,7 +134,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     }
 
     if (is_last) {
-        this->module_.exprs[chain_expr.value] = std::move(node);
+        this->module_.exprs.set(chain_expr.value, std::move(node));
         return chain_expr;
     }
     return this->push_synthetic_expr(std::move(node));
@@ -165,7 +170,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
     }
 
     if (is_last) {
-        this->module_.exprs[chain_expr.value] = std::move(node);
+        this->module_.exprs.set(chain_expr.value, std::move(node));
         return chain_expr;
     }
     return this->push_synthetic_expr(std::move(node));

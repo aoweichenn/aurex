@@ -2409,14 +2409,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     );
     EXPECT_TRUE(analyzer.checked_.pattern_case_sets[SEMA_TEST_PATTERN_FIRST_INDEX].contains("from_checked"));
 
-    syntax::ExprNode unqualified_missing_type;
-    unqualified_missing_type.kind = syntax::ExprKind::name;
-    unqualified_missing_type.text = "Missing";
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(unqualified_missing_type, false)));
-
-    syntax::ExprNode missing_alias_type = unqualified_missing_type;
-    missing_alias_type.scope_name = "missing";
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(missing_alias_type, false)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(syntax::INVALID_EXPR_ID, false)));
 
     const TypeHandle choice_type = types.named_enum("lib.one.Choice", "lib_one_Choice");
     types.set_enum_underlying(choice_type, u8);
@@ -2441,14 +2434,13 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     const ExprId scoped_enum_id = push_field(analyzer.module_, import_alias_expr, "Choice");
     analyzer.checked_.expr_types.resize(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_c_names.resize(analyzer.module_.exprs.size());
-    const TypeHandle choice_i32 =
-        analyzer.resolve_associated_type_owner(analyzer.module_.exprs[scoped_enum_id.value], false);
+    const TypeHandle choice_i32 = analyzer.resolve_associated_type_owner(scoped_enum_id, false);
     EXPECT_TRUE(is_valid(choice_i32));
 
     const ExprId scoped_missing_type_id = push_field(analyzer.module_, import_alias_expr, "MissingScoped");
     analyzer.checked_.expr_types.resize(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_c_names.resize(analyzer.module_.exprs.size());
-    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(analyzer.module_.exprs[scoped_missing_type_id.value], false)));
+    EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(scoped_missing_type_id, false)));
 
     const TypeHandle opaque = types.opaque_struct("Opaque", "Opaque");
     analyzer.checked_.syntax_type_handles[i32_type_id.value] = opaque;

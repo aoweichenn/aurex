@@ -88,11 +88,11 @@ TryShape Lowerer::classify_try_shape(const sema::TypeHandle enum_type) const noe
     return {};
 }
 
-const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) const noexcept {
+const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) const {
     if (!syntax::is_valid(id) || id.value >= ast_.patterns.size()) {
         return nullptr;
     }
-    return &ast_.patterns[id.value];
+    return this->ast_.patterns.ptr(id.value);
 }
 
 std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {

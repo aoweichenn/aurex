@@ -123,7 +123,7 @@ private:
     [[nodiscard]] std::string enum_case_symbol(std::string_view name) const noexcept;
     [[nodiscard]] const sema::EnumCaseInfo* enum_case_info(std::string_view name) const noexcept;
 
-    [[nodiscard]] const syntax::PatternNode* pattern_node(syntax::PatternId id) const noexcept;
+    [[nodiscard]] const syntax::PatternNode* pattern_node(syntax::PatternId id) const;
     [[nodiscard]] std::string pattern_case_symbol(syntax::PatternId id) const;
     [[nodiscard]] bool is_irrefutable_pattern(syntax::PatternId id, sema::TypeHandle matched_type) const;
     [[nodiscard]] ValueId append_true_value();

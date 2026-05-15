@@ -304,12 +304,12 @@ std::string pattern_label(const AstModule& module, const PatternId id) {
             }
             const FieldPattern& field = pattern.field_patterns[i];
             label += std::string(field.name);
-            const PatternNode* child = is_valid(field.pattern) && field.pattern.value < module.patterns.size()
-                ? &module.patterns[field.pattern.value]
-                : nullptr;
-            if (child == nullptr ||
-                child->kind != PatternKind::binding ||
-                child->binding_name != field.name) {
+            const bool shorthand =
+                is_valid(field.pattern) &&
+                field.pattern.value < module.patterns.size() &&
+                module.patterns[field.pattern.value].kind == PatternKind::binding &&
+                module.patterns[field.pattern.value].binding_name == field.name;
+            if (!shorthand) {
                 label += ": ";
                 label += pattern_label(module, field.pattern);
             }

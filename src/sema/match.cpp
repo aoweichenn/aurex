@@ -25,7 +25,7 @@ constexpr base::usize SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096;
     if (!syntax::is_valid(pattern) || pattern.value >= module.patterns.size()) {
         return nullptr;
     }
-    return &module.patterns[pattern.value];
+    return module.patterns.ptr(pattern.value);
 }
 
 [[nodiscard]] base::usize enum_case_payload_field_count(const EnumCaseInfo& info) noexcept {
@@ -816,9 +816,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     std::unordered_set<std::string> structural_covered;
     for (const syntax::MatchArm& arm : expr.match_arms) {
         const bool guarded = syntax::is_valid(arm.guard);
-        const syntax::PatternNode* pattern = syntax::is_valid(arm.pattern) && arm.pattern.value < this->module_.patterns.size()
-            ? &this->module_.patterns[arm.pattern.value]
-            : nullptr;
+        const syntax::PatternNode* pattern = this->module_.patterns.ptr(arm.pattern.value);
         if (!guarded && (saw_wildcard || saw_irrefutable) && pattern != nullptr) {
             this->report(pattern->range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
         }

@@ -87,29 +87,17 @@ void SemanticAnalyzer::validate_unsafe_function_value_call(
 }
 
 TypeHandle SemanticAnalyzer::resolve_associated_type_owner(
-    const syntax::ExprNode& object,
+    const syntax::ExprId object,
     const bool report_unknown
 ) {
-    const auto* const begin = this->module_.exprs.data();
-    const auto* const end = begin + this->module_.exprs.size();
-    if (&object < begin || &object >= end) {
-        return INVALID_TYPE_HANDLE;
-    }
-    const auto index = static_cast<base::u32>(&object - begin);
-    return this->resolve_type_selector(syntax::ExprId {index}, report_unknown);
+    return this->resolve_type_selector(object, report_unknown);
 }
 
 TypeHandle SemanticAnalyzer::resolve_associated_generic_type_owner(
-    const syntax::ExprNode& apply,
+    const syntax::ExprId apply,
     const bool report_unknown
 ) {
-    const auto* const begin = this->module_.exprs.data();
-    const auto* const end = begin + this->module_.exprs.size();
-    if (&apply < begin || &apply >= end) {
-        return INVALID_TYPE_HANDLE;
-    }
-    const auto index = static_cast<base::u32>(&apply - begin);
-    return this->resolve_type_selector(syntax::ExprId {index}, report_unknown);
+    return this->resolve_type_selector(apply, report_unknown);
 }
 
 SemanticAnalyzer::ModuleSelectorPath SemanticAnalyzer::expr_selector_path(

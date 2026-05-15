@@ -695,10 +695,7 @@ void SemanticAnalyzer::define_local_pattern(
 ) {
     std::vector<PatternBinding> bindings;
     if (!this->analyze_pattern(pattern_id, type, bindings) && !allow_refutable) {
-        const syntax::PatternNode* pattern =
-            syntax::is_valid(pattern_id) && pattern_id.value < this->module_.patterns.size()
-                ? &this->module_.patterns[pattern_id.value]
-                : nullptr;
+        const syntax::PatternNode* pattern = this->module_.patterns.ptr(pattern_id.value);
         this->report(pattern == nullptr ? base::SourceRange {} : pattern->range, std::string(SEMA_LOCAL_PATTERN_REFUTABLE));
     }
     this->define_pattern_bindings(bindings, is_mutable);

@@ -1,0 +1,162 @@
+#include <aurex/base/bump_allocator.hpp>
+
+#include <algorithm>
+#include <cstring>
+#include <new>
+#include <utility>
+
+namespace aurex::base {
+
+namespace {
+
+constexpr usize BASE_BUMP_MIN_BLOCK_BYTES = 1024U;
+constexpr usize BASE_BUMP_STRING_NUL_BYTES = 1U;
+constexpr usize BASE_BUMP_ALIGNMENT_FLOOR = alignof(std::max_align_t);
+
+} // namespace
+
+BumpAllocator::Block::Block(
+    std::byte* const data,
+    const usize capacity,
+    const usize alignment
+) noexcept
+    : data(data), capacity(capacity), alignment(alignment) {}
+
+BumpAllocator::Block::Block(Block&& other) noexcept
+    : data(other.data),
+      capacity(other.capacity),
+      used(other.used),
+      alignment(other.alignment) {
+    other.data = nullptr;
+    other.capacity = 0;
+    other.used = 0;
+    other.alignment = BASE_BUMP_ALIGNMENT_FLOOR;
+}
+
+BumpAllocator::Block::~Block() {
+    this->release();
+}
+
+void BumpAllocator::Block::release() noexcept {
+    if (this->data == nullptr) {
+        return;
+    }
+    ::operator delete(this->data, std::align_val_t {this->alignment});
+    this->data = nullptr;
+    this->capacity = 0;
+    this->used = 0;
+    this->alignment = BASE_BUMP_ALIGNMENT_FLOOR;
+}
+
+BumpAllocator::BumpAllocator(const usize block_size) noexcept
+    : block_size_(std::max(block_size, BASE_BUMP_MIN_BLOCK_BYTES)) {}
+
+BumpAllocator::BumpAllocator(BumpAllocator&& other) noexcept
+    : block_size_(other.block_size_),
+      blocks_(std::move(other.blocks_)),
+      allocated_bytes_(other.allocated_bytes_) {
+    other.allocated_bytes_ = 0;
+}
+
+BumpAllocator& BumpAllocator::operator=(BumpAllocator&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    this->blocks_.clear();
+    this->block_size_ = other.block_size_;
+    this->blocks_.swap(other.blocks_);
+    this->allocated_bytes_ = other.allocated_bytes_;
+    other.allocated_bytes_ = 0;
+    return *this;
+}
+
+void* BumpAllocator::allocate(const usize size, const usize alignment) {
+    if (size == 0) {
+        return nullptr;
+    }
+    const usize effective_alignment = normalize_alignment(alignment);
+    if (this->blocks_.empty() || this->blocks_.back().alignment < effective_alignment) {
+        this->add_block(size + effective_alignment, effective_alignment);
+    }
+
+    Block* block = &this->blocks_.back();
+    const auto block_base = reinterpret_cast<usize>(block->data);
+    usize aligned = align_address(block_base + block->used, effective_alignment) - block_base;
+    if (aligned + size > block->capacity) {
+        this->add_block(size + effective_alignment, effective_alignment);
+        block = &this->blocks_.back();
+        const auto new_block_base = reinterpret_cast<usize>(block->data);
+        aligned = align_address(new_block_base + block->used, effective_alignment) - new_block_base;
+    }
+
+    std::byte* const result = block->data + aligned;
+    block->used = aligned + size;
+    return result;
+}
+
+std::string_view BumpAllocator::copy_string(const std::string_view text) {
+    if (text.empty()) {
+        return {};
+    }
+    char* const storage = static_cast<char*>(
+        this->allocate(text.size() + BASE_BUMP_STRING_NUL_BYTES, alignof(char))
+    );
+    std::memcpy(storage, text.data(), text.size());
+    storage[text.size()] = '\0';
+    return {storage, text.size()};
+}
+
+void BumpAllocator::reserve(const usize bytes) {
+    if (bytes == 0) {
+        return;
+    }
+    if (!this->blocks_.empty()) {
+        Block& block = this->blocks_.back();
+        if (block.capacity - block.used >= bytes) {
+            return;
+        }
+    }
+    this->add_block(bytes, BASE_BUMP_ALIGNMENT_FLOOR);
+}
+
+void BumpAllocator::reset() noexcept {
+    this->blocks_.clear();
+    this->allocated_bytes_ = 0;
+}
+
+usize BumpAllocator::allocated_bytes() const noexcept {
+    return this->allocated_bytes_;
+}
+
+usize BumpAllocator::block_count() const noexcept {
+    return this->blocks_.size();
+}
+
+usize BumpAllocator::align_address(const usize address, const usize alignment) noexcept {
+    const usize remainder = address % alignment;
+    return remainder == 0 ? address : address + (alignment - remainder);
+}
+
+usize BumpAllocator::normalize_alignment(const usize alignment) noexcept {
+    usize normalized = std::max(alignment, BASE_BUMP_ALIGNMENT_FLOOR);
+    if ((normalized & (normalized - 1U)) == 0U) {
+        return normalized;
+    }
+    usize power = BASE_BUMP_ALIGNMENT_FLOOR;
+    while (power < normalized) {
+        power <<= 1U;
+    }
+    return power;
+}
+
+void BumpAllocator::add_block(const usize min_capacity, const usize alignment) {
+    const usize block_alignment = normalize_alignment(alignment);
+    const usize capacity = std::max(this->block_size_, min_capacity);
+    auto* const data = static_cast<std::byte*>(
+        ::operator new(capacity, std::align_val_t {block_alignment})
+    );
+    this->blocks_.push_back(Block {data, capacity, block_alignment});
+    this->allocated_bytes_ += capacity;
+}
+
+} // namespace aurex::base

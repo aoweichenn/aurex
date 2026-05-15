@@ -135,7 +135,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     }
 
     if (is_last) {
-        this->module_.exprs.set(chain_expr.value, std::move(node));
+        this->module_.set_expr(chain_expr.value, std::move(node));
         return chain_expr;
     }
     return this->push_synthetic_expr(std::move(node));
@@ -171,7 +171,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
     }
 
     if (is_last) {
-        this->module_.exprs.set(chain_expr.value, std::move(node));
+        this->module_.set_expr(chain_expr.value, std::move(node));
         return chain_expr;
     }
     return this->push_synthetic_expr(std::move(node));

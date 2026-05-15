@@ -3,6 +3,7 @@
 #include <aurex/base/config.hpp>
 #include <aurex/base/source.hpp>
 #include <aurex/syntax/ast_ids.hpp>
+#include <aurex/syntax/identifier.hpp>
 
 #include <cstdint>
 #include <deque>
@@ -60,6 +61,7 @@ enum class TypeKind {
 struct GenericParamDecl {
     std::string_view name;
     base::SourceRange range {};
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct GenericConstraintDecl {
@@ -68,6 +70,8 @@ struct GenericConstraintDecl {
     std::vector<std::string_view> capability_names;
     std::vector<base::SourceRange> capability_ranges;
     base::SourceRange range {};
+    IdentId param_name_id = INVALID_IDENT_ID;
+    std::vector<IdentId> capability_name_ids;
 };
 
 struct TypeNode {
@@ -78,6 +82,9 @@ struct TypeNode {
     base::SourceRange scope_range {};
     std::vector<std::string_view> scope_parts;
     std::string_view name;
+    IdentId scope_name_id = INVALID_IDENT_ID;
+    std::vector<IdentId> scope_part_ids;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<TypeId> type_args;
     PointerMutability pointer_mutability = PointerMutability::const_;
     TypeId pointee = INVALID_TYPE_ID;
@@ -196,6 +203,7 @@ struct FieldPattern {
     std::string_view name;
     PatternId pattern = INVALID_PATTERN_ID;
     base::SourceRange range {};
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct PatternNode {
@@ -206,7 +214,12 @@ struct PatternNode {
     std::string_view case_name;
     TypeId enum_type = INVALID_TYPE_ID;
     std::string_view struct_name;
+    IdentId binding_name_id = INVALID_IDENT_ID;
+    IdentId enum_name_id = INVALID_IDENT_ID;
+    IdentId case_name_id = INVALID_IDENT_ID;
+    IdentId struct_name_id = INVALID_IDENT_ID;
     std::vector<std::string_view> binding_names;
+    std::vector<IdentId> binding_name_ids;
     std::vector<PatternId> payload_patterns;
     std::vector<PatternId> elements;
     std::vector<FieldPattern> field_patterns;
@@ -220,6 +233,7 @@ struct FieldInit {
     std::string_view name;
     ExprId value = INVALID_EXPR_ID;
     base::SourceRange range {};
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 enum class PostfixOpKind {
@@ -240,6 +254,7 @@ struct PostfixOp {
     PostfixOpKind kind = PostfixOpKind::select;
     base::SourceRange range {};
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<PostfixBracketArg> bracket_args;
     bool bracket_is_slice = false;
     ExprId slice_start = INVALID_EXPR_ID;
@@ -261,6 +276,8 @@ struct ExprNode {
     std::string_view scope_name;
     base::SourceRange scope_range {};
     std::string_view text;
+    IdentId scope_name_id = INVALID_IDENT_ID;
+    IdentId text_id = INVALID_IDENT_ID;
     UnaryOp unary_op = UnaryOp::logical_not;
     ExprId unary_operand = INVALID_EXPR_ID;
     BinaryOp binary_op = BinaryOp::add;
@@ -284,10 +301,12 @@ struct ExprNode {
     std::vector<PostfixOp> postfix_ops;
     ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
+    IdentId field_name_id = INVALID_IDENT_ID;
     ExprId index = INVALID_EXPR_ID;
     ExprId slice_start = INVALID_EXPR_ID;
     ExprId slice_end = INVALID_EXPR_ID;
     std::string_view struct_name;
+    IdentId struct_name_id = INVALID_IDENT_ID;
     std::vector<TypeId> type_args;
     std::vector<FieldInit> field_inits;
     TypeId cast_type = INVALID_TYPE_ID;
@@ -305,6 +324,9 @@ struct NamedTypePayload {
     base::SourceRange scope_range {};
     std::vector<std::string_view> scope_parts;
     std::string_view name;
+    IdentId scope_name_id = INVALID_IDENT_ID;
+    std::vector<IdentId> scope_part_ids;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<TypeId> type_args;
 };
 
@@ -405,6 +427,9 @@ private:
                 node.scope_range,
                 std::move(node.scope_parts),
                 node.name,
+                node.scope_name_id,
+                std::move(node.scope_part_ids),
+                node.name_id,
                 std::move(node.type_args),
             });
         case TypeKind::pointer:
@@ -456,6 +481,9 @@ private:
             node.scope_range = payload.scope_range;
             node.scope_parts = payload.scope_parts;
             node.name = payload.name;
+            node.scope_name_id = payload.scope_name_id;
+            node.scope_part_ids = payload.scope_part_ids;
+            node.name_id = payload.name_id;
             node.type_args = payload.type_args;
             break;
         }
@@ -514,6 +542,9 @@ private:
             node.scope_range = payload.scope_range;
             node.scope_parts = std::move(payload.scope_parts);
             node.name = payload.name;
+            node.scope_name_id = payload.scope_name_id;
+            node.scope_part_ids = std::move(payload.scope_part_ids);
+            node.name_id = payload.name_id;
             node.type_args = std::move(payload.type_args);
             break;
         }
@@ -576,6 +607,8 @@ struct NameExprPayload {
     std::string_view scope_name;
     base::SourceRange scope_range {};
     std::string_view text;
+    IdentId scope_name_id = INVALID_IDENT_ID;
+    IdentId text_id = INVALID_IDENT_ID;
     std::vector<TypeId> type_args;
 };
 
@@ -631,6 +664,7 @@ struct PostfixChainExprPayload {
 struct FieldExprPayload {
     ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
+    IdentId field_name_id = INVALID_IDENT_ID;
 };
 
 struct IndexExprPayload {
@@ -649,6 +683,8 @@ struct StructLiteralExprPayload {
     std::string_view scope_name;
     base::SourceRange scope_range {};
     std::string_view name;
+    IdentId scope_name_id = INVALID_IDENT_ID;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<TypeId> type_args;
     std::vector<FieldInit> field_inits;
 };
@@ -942,6 +978,8 @@ private:
                 node.scope_name,
                 node.scope_range,
                 node.text,
+                node.scope_name_id,
+                node.text_id,
                 std::move(node.type_args),
             });
         case ExprKind::generic_apply:
@@ -1002,6 +1040,7 @@ private:
             return this->push_payload(this->payloads_.fields, FieldExprPayload {
                 node.object,
                 node.field_name,
+                node.field_name_id,
             });
         case ExprKind::index:
             return this->push_payload(this->payloads_.indexes, IndexExprPayload {
@@ -1020,6 +1059,8 @@ private:
                 node.scope_name,
                 node.scope_range,
                 node.struct_name,
+                node.scope_name_id,
+                node.struct_name_id,
                 std::move(node.type_args),
                 std::move(node.field_inits),
             });
@@ -1071,6 +1112,8 @@ private:
             node.scope_name = payload.scope_name;
             node.scope_range = payload.scope_range;
             node.text = payload.text;
+            node.scope_name_id = payload.scope_name_id;
+            node.text_id = payload.text_id;
             node.type_args = payload.type_args;
             break;
         }
@@ -1142,6 +1185,7 @@ private:
             const FieldExprPayload& payload = this->payloads_.fields[header.payload];
             node.object = payload.object;
             node.field_name = payload.field_name;
+            node.field_name_id = payload.field_name_id;
             break;
         }
         case ExprKind::index: {
@@ -1163,6 +1207,8 @@ private:
             node.scope_name = payload.scope_name;
             node.scope_range = payload.scope_range;
             node.struct_name = payload.name;
+            node.scope_name_id = payload.scope_name_id;
+            node.struct_name_id = payload.name_id;
             node.type_args = payload.type_args;
             node.field_inits = payload.field_inits;
             break;
@@ -1194,6 +1240,8 @@ private:
             node.scope_name = payload.scope_name;
             node.scope_range = payload.scope_range;
             node.text = payload.text;
+            node.scope_name_id = payload.scope_name_id;
+            node.text_id = payload.text_id;
             node.type_args = std::move(payload.type_args);
             break;
         }
@@ -1265,6 +1313,7 @@ private:
             const FieldExprPayload& payload = this->payloads_.fields[header.payload];
             node.object = payload.object;
             node.field_name = payload.field_name;
+            node.field_name_id = payload.field_name_id;
             break;
         }
         case ExprKind::index: {
@@ -1286,6 +1335,8 @@ private:
             node.scope_name = payload.scope_name;
             node.scope_range = payload.scope_range;
             node.struct_name = payload.name;
+            node.scope_name_id = payload.scope_name_id;
+            node.struct_name_id = payload.name_id;
             node.type_args = std::move(payload.type_args);
             node.field_inits = std::move(payload.field_inits);
             break;
@@ -1313,18 +1364,28 @@ struct PatternNodeHeader {
     PatternKind kind = PatternKind::wildcard;
 };
 
+struct BindingPatternPayload {
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+};
+
 struct EnumCasePatternPayload {
     std::string_view enum_name;
     std::string_view case_name;
     TypeId enum_type = INVALID_TYPE_ID;
     std::vector<PatternId> payload_patterns;
     std::vector<std::string_view> binding_names;
+    IdentId enum_name_id = INVALID_IDENT_ID;
+    IdentId case_name_id = INVALID_IDENT_ID;
+    std::vector<IdentId> binding_name_ids;
     bool scoped = false;
 };
 
 struct LiteralPatternPayload {
     std::string_view case_name;
     std::vector<std::string_view> binding_names;
+    IdentId case_name_id = INVALID_IDENT_ID;
+    std::vector<IdentId> binding_name_ids;
 };
 
 struct SlicePatternPayload {
@@ -1336,10 +1397,11 @@ struct SlicePatternPayload {
 struct StructPatternPayload {
     std::string_view name;
     std::vector<FieldPattern> fields;
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct PatternNodePayloadArena {
-    std::vector<std::string_view> bindings;
+    std::vector<BindingPatternPayload> bindings;
     std::vector<LiteralPatternPayload> literals;
     std::vector<EnumCasePatternPayload> enum_cases;
     std::vector<std::vector<PatternId>> tuples;
@@ -1414,11 +1476,16 @@ private:
         switch (node.kind) {
         case PatternKind::binding:
         case PatternKind::const_:
-            return this->push_payload(this->payloads_.bindings, node.binding_name);
+            return this->push_payload(this->payloads_.bindings, BindingPatternPayload {
+                node.binding_name,
+                node.binding_name_id,
+            });
         case PatternKind::literal:
             return this->push_payload(this->payloads_.literals, LiteralPatternPayload {
                 node.case_name,
                 std::move(node.binding_names),
+                node.case_name_id,
+                std::move(node.binding_name_ids),
             });
         case PatternKind::enum_case:
             return this->push_payload(this->payloads_.enum_cases, EnumCasePatternPayload {
@@ -1427,6 +1494,9 @@ private:
                 node.enum_type,
                 std::move(node.payload_patterns),
                 std::move(node.binding_names),
+                node.enum_name_id,
+                node.case_name_id,
+                std::move(node.binding_name_ids),
                 node.scoped,
             });
         case PatternKind::tuple:
@@ -1441,6 +1511,7 @@ private:
             return this->push_payload(this->payloads_.structs, StructPatternPayload {
                 node.struct_name,
                 std::move(node.field_patterns),
+                node.struct_name_id,
             });
         case PatternKind::or_pattern:
             return this->push_payload(this->payloads_.alternatives, std::move(node.alternatives));
@@ -1458,12 +1529,15 @@ private:
         switch (header.kind) {
         case PatternKind::binding:
         case PatternKind::const_:
-            node.binding_name = this->payloads_.bindings[header.payload];
+            node.binding_name = this->payloads_.bindings[header.payload].name;
+            node.binding_name_id = this->payloads_.bindings[header.payload].name_id;
             break;
         case PatternKind::literal: {
             const LiteralPatternPayload& payload = this->payloads_.literals[header.payload];
             node.case_name = payload.case_name;
             node.binding_names = payload.binding_names;
+            node.case_name_id = payload.case_name_id;
+            node.binding_name_ids = payload.binding_name_ids;
             break;
         }
         case PatternKind::enum_case: {
@@ -1473,6 +1547,9 @@ private:
             node.enum_type = payload.enum_type;
             node.payload_patterns = payload.payload_patterns;
             node.binding_names = payload.binding_names;
+            node.enum_name_id = payload.enum_name_id;
+            node.case_name_id = payload.case_name_id;
+            node.binding_name_ids = payload.binding_name_ids;
             node.scoped = payload.scoped;
             break;
         }
@@ -1490,6 +1567,7 @@ private:
             const StructPatternPayload& payload = this->payloads_.structs[header.payload];
             node.struct_name = payload.name;
             node.field_patterns = payload.fields;
+            node.struct_name_id = payload.name_id;
             break;
         }
         case PatternKind::or_pattern:
@@ -1509,12 +1587,15 @@ private:
         switch (header.kind) {
         case PatternKind::binding:
         case PatternKind::const_:
-            node.binding_name = this->payloads_.bindings[header.payload];
+            node.binding_name = this->payloads_.bindings[header.payload].name;
+            node.binding_name_id = this->payloads_.bindings[header.payload].name_id;
             break;
         case PatternKind::literal: {
             LiteralPatternPayload& payload = this->payloads_.literals[header.payload];
             node.case_name = payload.case_name;
             node.binding_names = std::move(payload.binding_names);
+            node.case_name_id = payload.case_name_id;
+            node.binding_name_ids = std::move(payload.binding_name_ids);
             break;
         }
         case PatternKind::enum_case: {
@@ -1524,6 +1605,9 @@ private:
             node.enum_type = payload.enum_type;
             node.payload_patterns = std::move(payload.payload_patterns);
             node.binding_names = std::move(payload.binding_names);
+            node.enum_name_id = payload.enum_name_id;
+            node.case_name_id = payload.case_name_id;
+            node.binding_name_ids = std::move(payload.binding_name_ids);
             node.scoped = payload.scoped;
             break;
         }
@@ -1541,6 +1625,7 @@ private:
             StructPatternPayload& payload = this->payloads_.structs[header.payload];
             node.struct_name = payload.name;
             node.field_patterns = std::move(payload.fields);
+            node.struct_name_id = payload.name_id;
             break;
         }
         case PatternKind::or_pattern:
@@ -1609,6 +1694,7 @@ struct StmtNode {
     StmtKind kind = StmtKind::expr;
     base::SourceRange range {};
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     PatternId pattern = INVALID_PATTERN_ID;
     TypeId declared_type = INVALID_TYPE_ID;
     ExprId init = INVALID_EXPR_ID;
@@ -1637,6 +1723,7 @@ struct StmtNodeHeader {
 
 struct LocalStmtPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     PatternId pattern = INVALID_PATTERN_ID;
     TypeId declared_type = INVALID_TYPE_ID;
     ExprId init = INVALID_EXPR_ID;
@@ -1666,6 +1753,7 @@ struct ForStmtPayload {
 
 struct ForRangeStmtPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     ExprId start = INVALID_EXPR_ID;
     ExprId end = INVALID_EXPR_ID;
     ExprId step = INVALID_EXPR_ID;
@@ -1770,6 +1858,7 @@ private:
         case StmtKind::var:
             return this->push_payload(this->payloads_.locals, LocalStmtPayload {
                 node.name,
+                node.name_id,
                 node.pattern,
                 node.declared_type,
                 node.init,
@@ -1799,6 +1888,7 @@ private:
         case StmtKind::for_range:
             return this->push_payload(this->payloads_.for_ranges, ForRangeStmtPayload {
                 node.name,
+                node.name_id,
                 node.range_start,
                 node.range_end,
                 node.range_step,
@@ -1839,6 +1929,7 @@ private:
         case StmtKind::var: {
             const LocalStmtPayload& payload = this->payloads_.locals[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.pattern = payload.pattern;
             node.declared_type = payload.declared_type;
             node.init = payload.init;
@@ -1872,6 +1963,7 @@ private:
         case StmtKind::for_range: {
             const ForRangeStmtPayload& payload = this->payloads_.for_ranges[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.range_start = payload.start;
             node.range_end = payload.end;
             node.range_step = payload.step;
@@ -1917,6 +2009,7 @@ private:
         case StmtKind::var: {
             const LocalStmtPayload& payload = this->payloads_.locals[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.pattern = payload.pattern;
             node.declared_type = payload.declared_type;
             node.init = payload.init;
@@ -1950,6 +2043,7 @@ private:
         case StmtKind::for_range: {
             const ForRangeStmtPayload& payload = this->payloads_.for_ranges[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.range_start = payload.start;
             node.range_end = payload.end;
             node.range_step = payload.step;
@@ -2001,6 +2095,7 @@ struct ParamDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
     base::SourceRange range {};
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct FieldDecl {
@@ -2008,6 +2103,7 @@ struct FieldDecl {
     TypeId type = INVALID_TYPE_ID;
     base::SourceRange range {};
     Visibility visibility = Visibility::private_;
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct EnumCaseDecl {
@@ -2016,6 +2112,7 @@ struct EnumCaseDecl {
     std::vector<TypeId> payload_types;
     std::string_view value_text;
     base::SourceRange range {};
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 enum class ItemKind {
@@ -2033,6 +2130,7 @@ struct ItemNode {
     ItemKind kind = ItemKind::fn_decl;
     base::SourceRange range {};
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<GenericParamDecl> generic_params;
     std::vector<GenericConstraintDecl> where_constraints;
     Visibility visibility = Visibility::private_;
@@ -2066,12 +2164,14 @@ struct ItemNodeHeader {
 
 struct ConstItemPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     TypeId type = INVALID_TYPE_ID;
     ExprId value = INVALID_EXPR_ID;
 };
 
 struct TypeAliasItemPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<GenericParamDecl> generic_params;
     std::vector<GenericConstraintDecl> where_constraints;
     TypeId target = INVALID_TYPE_ID;
@@ -2079,6 +2179,7 @@ struct TypeAliasItemPayload {
 
 struct StructItemPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<GenericParamDecl> generic_params;
     std::vector<GenericConstraintDecl> where_constraints;
     std::vector<FieldDecl> fields;
@@ -2086,6 +2187,7 @@ struct StructItemPayload {
 
 struct EnumItemPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<GenericParamDecl> generic_params;
     std::vector<GenericConstraintDecl> where_constraints;
     TypeId base_type = INVALID_TYPE_ID;
@@ -2094,10 +2196,12 @@ struct EnumItemPayload {
 
 struct OpaqueStructItemPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct FunctionItemPayload {
     std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::vector<GenericParamDecl> generic_params;
     std::vector<GenericConstraintDecl> where_constraints;
     std::vector<ParamDecl> params;
@@ -2253,12 +2357,14 @@ private:
         case ItemKind::const_decl:
             return this->push_payload(this->payloads_.consts, ConstItemPayload {
                 node.name,
+                node.name_id,
                 node.const_type,
                 node.const_value,
             });
         case ItemKind::type_alias:
             return this->push_payload(this->payloads_.type_aliases, TypeAliasItemPayload {
                 node.name,
+                node.name_id,
                 std::move(node.generic_params),
                 std::move(node.where_constraints),
                 node.alias_type,
@@ -2266,6 +2372,7 @@ private:
         case ItemKind::struct_decl:
             return this->push_payload(this->payloads_.structs, StructItemPayload {
                 node.name,
+                node.name_id,
                 std::move(node.generic_params),
                 std::move(node.where_constraints),
                 std::move(node.fields),
@@ -2273,6 +2380,7 @@ private:
         case ItemKind::enum_decl:
             return this->push_payload(this->payloads_.enums, EnumItemPayload {
                 node.name,
+                node.name_id,
                 std::move(node.generic_params),
                 std::move(node.where_constraints),
                 node.enum_base_type,
@@ -2281,10 +2389,12 @@ private:
         case ItemKind::opaque_struct_decl:
             return this->push_payload(this->payloads_.opaque_structs, OpaqueStructItemPayload {
                 node.name,
+                node.name_id,
             });
         case ItemKind::fn_decl:
             return this->push_payload(this->payloads_.functions, FunctionItemPayload {
                 node.name,
+                node.name_id,
                 std::move(node.generic_params),
                 std::move(node.where_constraints),
                 std::move(node.params),
@@ -2327,6 +2437,7 @@ private:
         case ItemKind::const_decl: {
             const ConstItemPayload& payload = this->payloads_.consts[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.const_type = payload.type;
             node.const_value = payload.value;
             break;
@@ -2334,6 +2445,7 @@ private:
         case ItemKind::type_alias: {
             const TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = payload.generic_params;
             node.where_constraints = payload.where_constraints;
             node.alias_type = payload.target;
@@ -2342,6 +2454,7 @@ private:
         case ItemKind::struct_decl: {
             const StructItemPayload& payload = this->payloads_.structs[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = payload.generic_params;
             node.where_constraints = payload.where_constraints;
             node.fields = payload.fields;
@@ -2350,6 +2463,7 @@ private:
         case ItemKind::enum_decl: {
             const EnumItemPayload& payload = this->payloads_.enums[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = payload.generic_params;
             node.where_constraints = payload.where_constraints;
             node.enum_base_type = payload.base_type;
@@ -2358,10 +2472,12 @@ private:
         }
         case ItemKind::opaque_struct_decl:
             node.name = this->payloads_.opaque_structs[header.payload].name;
+            node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
             break;
         case ItemKind::fn_decl: {
             const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = payload.generic_params;
             node.where_constraints = payload.where_constraints;
             node.params = payload.params;
@@ -2398,6 +2514,7 @@ private:
         case ItemKind::const_decl: {
             const ConstItemPayload& payload = this->payloads_.consts[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.const_type = payload.type;
             node.const_value = payload.value;
             break;
@@ -2405,6 +2522,7 @@ private:
         case ItemKind::type_alias: {
             TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = std::move(payload.generic_params);
             node.where_constraints = std::move(payload.where_constraints);
             node.alias_type = payload.target;
@@ -2413,6 +2531,7 @@ private:
         case ItemKind::struct_decl: {
             StructItemPayload& payload = this->payloads_.structs[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = std::move(payload.generic_params);
             node.where_constraints = std::move(payload.where_constraints);
             node.fields = std::move(payload.fields);
@@ -2421,6 +2540,7 @@ private:
         case ItemKind::enum_decl: {
             EnumItemPayload& payload = this->payloads_.enums[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = std::move(payload.generic_params);
             node.where_constraints = std::move(payload.where_constraints);
             node.enum_base_type = payload.base_type;
@@ -2429,10 +2549,12 @@ private:
         }
         case ItemKind::opaque_struct_decl:
             node.name = this->payloads_.opaque_structs[header.payload].name;
+            node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
             break;
         case ItemKind::fn_decl: {
             FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
+            node.name_id = payload.name_id;
             node.generic_params = std::move(payload.generic_params);
             node.where_constraints = std::move(payload.where_constraints);
             node.params = std::move(payload.params);
@@ -2501,6 +2623,7 @@ private:
 struct ModulePath {
     std::vector<std::string_view> parts;
     base::SourceRange range {};
+    std::vector<IdentId> part_ids;
 };
 
 struct ImportDecl {
@@ -2509,6 +2632,7 @@ struct ImportDecl {
     base::SourceRange alias_range {};
     Visibility visibility = Visibility::private_;
     bool explicit_visibility = false;
+    IdentId alias_id = INVALID_IDENT_ID;
 };
 
 struct ResolvedImport {
@@ -2516,6 +2640,7 @@ struct ResolvedImport {
     std::string_view alias;
     base::SourceRange alias_range {};
     Visibility visibility = Visibility::private_;
+    IdentId alias_id = INVALID_IDENT_ID;
 };
 
 struct ModuleInfo {
@@ -2536,36 +2661,276 @@ struct AstModule {
     StmtNodeList stmts;
     ItemNodeList items;
     std::vector<ModuleId> item_modules;
+    IdentifierInterner identifiers;
 
     AstModule() {
-        types.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        exprs.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        patterns.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        stmts.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        items.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->types.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->exprs.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->patterns.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->stmts.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->items.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
     }
 
+    AstModule(const AstModule& other)
+        : module_path(other.module_path),
+          imports(other.imports),
+          modules(other.modules),
+          types(other.types),
+          exprs(other.exprs),
+          patterns(other.patterns),
+          stmts(other.stmts),
+          items(other.items),
+          item_modules(other.item_modules),
+          identifiers(other.identifiers),
+          identifiers_ready_(other.identifiers_ready_) {
+        this->intern_identifiers();
+    }
+
+    AstModule& operator=(const AstModule& other) {
+        if (this == &other) {
+            return *this;
+        }
+        this->module_path = other.module_path;
+        this->imports = other.imports;
+        this->modules = other.modules;
+        this->types = other.types;
+        this->exprs = other.exprs;
+        this->patterns = other.patterns;
+        this->stmts = other.stmts;
+        this->items = other.items;
+        this->item_modules = other.item_modules;
+        this->identifiers = other.identifiers;
+        this->identifiers_ready_ = other.identifiers_ready_;
+        this->intern_identifiers();
+        return *this;
+    }
+
+    AstModule(AstModule&&) noexcept = default;
+    AstModule& operator=(AstModule&&) noexcept = default;
+
     [[nodiscard]] TypeId push_type(TypeNode node) {
-        return types.append(std::move(node));
+        this->intern_type_node(node);
+        return this->types.append(std::move(node));
     }
 
     [[nodiscard]] ExprId push_expr(ExprNode node) {
-        return exprs.append(std::move(node));
+        this->intern_expr_node(node);
+        return this->exprs.append(std::move(node));
     }
 
     [[nodiscard]] PatternId push_pattern(PatternNode node) {
-        return patterns.append(std::move(node));
+        this->intern_pattern_node(node);
+        return this->patterns.append(std::move(node));
     }
 
     [[nodiscard]] StmtId push_stmt(StmtNode node) {
-        return stmts.append(std::move(node));
+        this->intern_stmt_node(node);
+        return this->stmts.append(std::move(node));
     }
 
     [[nodiscard]] ItemId push_item(ItemNode node) {
-        const ItemId id = items.append(std::move(node));
-        item_modules.push_back(INVALID_MODULE_ID);
+        return this->push_item_for_module(std::move(node), INVALID_MODULE_ID);
+    }
+
+    [[nodiscard]] ItemId push_item_for_module(ItemNode node, const ModuleId module) {
+        this->intern_item_node(node);
+        const ItemId id = this->items.append(std::move(node));
+        this->item_modules.push_back(module);
         return id;
     }
+
+    void set_expr(const base::usize index, ExprNode node) {
+        this->intern_expr_node(node);
+        this->exprs.set(index, std::move(node));
+    }
+
+    void set_item(const base::usize index, ItemNode node) {
+        this->intern_item_node(node);
+        this->items.set(index, std::move(node));
+    }
+
+    [[nodiscard]] IdentId intern_identifier(std::string_view text) {
+        return this->identifiers.intern(text);
+    }
+
+    [[nodiscard]] IdentId find_identifier(std::string_view text) const noexcept {
+        return this->identifiers.find(text);
+    }
+
+    [[nodiscard]] std::string_view identifier_text(const IdentId id) const noexcept {
+        return this->identifiers.text(id);
+    }
+
+    [[nodiscard]] bool identifiers_ready() const noexcept {
+        return this->identifiers_ready_;
+    }
+
+    void finalize_identifiers() {
+        this->intern_module_metadata();
+        this->identifiers_ready_ = true;
+    }
+
+    void intern_identifiers() {
+        this->intern_module_metadata();
+        for (base::usize i = 0; i < this->types.size(); ++i) {
+            TypeNode node = this->types.take(i);
+            this->intern_type_node(node);
+            this->types.set(i, std::move(node));
+        }
+        for (base::usize i = 0; i < this->exprs.size(); ++i) {
+            ExprNode node = this->exprs.take(i);
+            this->intern_expr_node(node);
+            this->exprs.set(i, std::move(node));
+        }
+        for (base::usize i = 0; i < this->patterns.size(); ++i) {
+            PatternNode node = this->patterns.take(i);
+            this->intern_pattern_node(node);
+            this->patterns.set(i, std::move(node));
+        }
+        for (base::usize i = 0; i < this->stmts.size(); ++i) {
+            StmtNode node = this->stmts.take(i);
+            this->intern_stmt_node(node);
+            this->stmts.set(i, std::move(node));
+        }
+        for (base::usize i = 0; i < this->items.size(); ++i) {
+            ItemNode node = this->items.take(i);
+            this->intern_item_node(node);
+            this->items.set(i, std::move(node));
+        }
+        this->identifiers_ready_ = true;
+    }
+
+    void intern_module_path(ModulePath& path) {
+        this->intern_identifier_list(path.parts, path.part_ids);
+    }
+
+    void intern_import_decl(ImportDecl& import) {
+        this->intern_module_path(import.path);
+        this->intern_identifier_text(import.alias, import.alias_id);
+    }
+
+    void intern_resolved_import(ResolvedImport& import) {
+        this->intern_identifier_text(import.alias, import.alias_id);
+    }
+
+private:
+    void intern_identifier_text(std::string_view& text, IdentId& id) {
+        id = this->identifiers.intern(text);
+        text = this->identifiers.text(id);
+    }
+
+    void intern_identifier_list(std::vector<std::string_view>& texts, std::vector<IdentId>& ids) {
+        ids.resize(texts.size(), INVALID_IDENT_ID);
+        for (base::usize i = 0; i < texts.size(); ++i) {
+            this->intern_identifier_text(texts[i], ids[i]);
+        }
+    }
+
+    void intern_generic_params(std::vector<GenericParamDecl>& params) {
+        for (GenericParamDecl& param : params) {
+            this->intern_identifier_text(param.name, param.name_id);
+        }
+    }
+
+    void intern_generic_constraints(std::vector<GenericConstraintDecl>& constraints) {
+        for (GenericConstraintDecl& constraint : constraints) {
+            this->intern_identifier_text(constraint.param_name, constraint.param_name_id);
+            this->intern_identifier_list(constraint.capability_names, constraint.capability_name_ids);
+        }
+    }
+
+    void intern_type_node(TypeNode& node) {
+        this->intern_identifier_text(node.scope_name, node.scope_name_id);
+        this->intern_identifier_list(node.scope_parts, node.scope_part_ids);
+        this->intern_identifier_text(node.name, node.name_id);
+    }
+
+    void intern_field_inits(std::vector<FieldInit>& inits) {
+        for (FieldInit& init : inits) {
+            this->intern_identifier_text(init.name, init.name_id);
+        }
+    }
+
+    void intern_postfix_ops(std::vector<PostfixOp>& ops) {
+        for (PostfixOp& op : ops) {
+            this->intern_identifier_text(op.name, op.name_id);
+            this->intern_field_inits(op.field_inits);
+        }
+    }
+
+    void intern_expr_node(ExprNode& node) {
+        this->intern_identifier_text(node.scope_name, node.scope_name_id);
+        if (node.kind == ExprKind::name) {
+            this->intern_identifier_text(node.text, node.text_id);
+        }
+        this->intern_postfix_ops(node.postfix_ops);
+        this->intern_identifier_text(node.field_name, node.field_name_id);
+        this->intern_identifier_text(node.struct_name, node.struct_name_id);
+        this->intern_field_inits(node.field_inits);
+    }
+
+    void intern_field_patterns(std::vector<FieldPattern>& fields) {
+        for (FieldPattern& field : fields) {
+            this->intern_identifier_text(field.name, field.name_id);
+        }
+    }
+
+    void intern_pattern_node(PatternNode& node) {
+        this->intern_identifier_text(node.binding_name, node.binding_name_id);
+        this->intern_identifier_text(node.enum_name, node.enum_name_id);
+        if (node.kind == PatternKind::enum_case || node.kind == PatternKind::literal) {
+            this->intern_identifier_text(node.case_name, node.case_name_id);
+        }
+        this->intern_identifier_text(node.struct_name, node.struct_name_id);
+        this->intern_identifier_list(node.binding_names, node.binding_name_ids);
+        this->intern_field_patterns(node.field_patterns);
+    }
+
+    void intern_stmt_node(StmtNode& node) {
+        this->intern_identifier_text(node.name, node.name_id);
+    }
+
+    void intern_param_decls(std::vector<ParamDecl>& params) {
+        for (ParamDecl& param : params) {
+            this->intern_identifier_text(param.name, param.name_id);
+        }
+    }
+
+    void intern_field_decls(std::vector<FieldDecl>& fields) {
+        for (FieldDecl& field : fields) {
+            this->intern_identifier_text(field.name, field.name_id);
+        }
+    }
+
+    void intern_enum_case_decls(std::vector<EnumCaseDecl>& cases) {
+        for (EnumCaseDecl& enum_case : cases) {
+            this->intern_identifier_text(enum_case.name, enum_case.name_id);
+        }
+    }
+
+    void intern_item_node(ItemNode& node) {
+        this->intern_identifier_text(node.name, node.name_id);
+        this->intern_generic_params(node.generic_params);
+        this->intern_generic_constraints(node.where_constraints);
+        this->intern_field_decls(node.fields);
+        this->intern_enum_case_decls(node.enum_cases);
+        this->intern_param_decls(node.params);
+    }
+
+    void intern_module_metadata() {
+        this->intern_module_path(this->module_path);
+        for (ImportDecl& import : this->imports) {
+            this->intern_import_decl(import);
+        }
+        for (ModuleInfo& module : this->modules) {
+            this->intern_module_path(module.path);
+            for (ResolvedImport& import : module.imports) {
+                this->intern_resolved_import(import);
+            }
+        }
+    }
+
+    bool identifiers_ready_ = false;
 };
 
 } // namespace aurex::syntax

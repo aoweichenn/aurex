@@ -825,6 +825,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     NamedTypeSelector selector;
     selector.module = scope_module;
     selector.name = type.name;
+    selector.name_id = type.name_id;
     selector.range = type.range;
     selector.type_args = type.type_args;
     selector.qualified = qualified;
@@ -1754,7 +1755,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     if (base_expr != nullptr && base_expr->scope_name.empty()) {
         const Symbol* symbol = this->symbols_.find(base_expr->text);
         if (symbol == nullptr) {
-            const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr->text);
+            const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr->text_id);
             if (is_valid(lookup_key)) {
                 if (const auto global = this->global_values_by_name_.find(lookup_key);
                     global != this->global_values_by_name_.end()) {

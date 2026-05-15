@@ -48,6 +48,7 @@ base::Result<syntax::AstModule> Parser::parse_module() {
             {base::ErrorCode::parse_error, std::string(PARSER_PARSE_FAILED)}
         );
     }
+    this->session_.module.finalize_identifiers();
     return base::Result<syntax::AstModule>::ok(std::move(this->session_.module));
 }
 

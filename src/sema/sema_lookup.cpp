@@ -334,24 +334,54 @@ std::string SemanticAnalyzer::method_key(
     return module_key(module, method_name);
 }
 
+ModuleLookupKey SemanticAnalyzer::module_lookup_key(
+    const syntax::ModuleId module,
+    const IdentId name
+) const noexcept {
+    return ModuleLookupKey {
+        module.value,
+        name,
+    };
+}
+
+MethodLookupKey SemanticAnalyzer::method_lookup_key(
+    const syntax::ModuleId module,
+    const TypeHandle owner_type,
+    const IdentId name
+) const noexcept {
+    return MethodLookupKey {
+        module.value,
+        owner_type.value,
+        name,
+    };
+}
+
 ModuleLookupKey SemanticAnalyzer::intern_module_lookup_key(
     const syntax::ModuleId module,
     const std::string_view name
 ) {
-    return ModuleLookupKey {
-        module.value,
-        this->identifiers_.intern(name),
-    };
+    return this->intern_module_lookup_key(module, this->module_.intern_identifier(name));
+}
+
+ModuleLookupKey SemanticAnalyzer::intern_module_lookup_key(
+    const syntax::ModuleId module,
+    const IdentId name
+) const noexcept {
+    return this->module_lookup_key(module, name);
 }
 
 ModuleLookupKey SemanticAnalyzer::find_module_lookup_key(
     const syntax::ModuleId module,
     const std::string_view name
 ) const noexcept {
-    return ModuleLookupKey {
-        module.value,
-        this->identifiers_.find(name),
-    };
+    return this->find_module_lookup_key(module, this->module_.find_identifier(name));
+}
+
+ModuleLookupKey SemanticAnalyzer::find_module_lookup_key(
+    const syntax::ModuleId module,
+    const IdentId name
+) const noexcept {
+    return this->module_lookup_key(module, name);
 }
 
 MethodLookupKey SemanticAnalyzer::intern_method_lookup_key(
@@ -359,11 +389,15 @@ MethodLookupKey SemanticAnalyzer::intern_method_lookup_key(
     const TypeHandle owner_type,
     const std::string_view name
 ) {
-    return MethodLookupKey {
-        module.value,
-        owner_type.value,
-        this->identifiers_.intern(name),
-    };
+    return this->intern_method_lookup_key(module, owner_type, this->module_.intern_identifier(name));
+}
+
+MethodLookupKey SemanticAnalyzer::intern_method_lookup_key(
+    const syntax::ModuleId module,
+    const TypeHandle owner_type,
+    const IdentId name
+) const noexcept {
+    return this->method_lookup_key(module, owner_type, name);
 }
 
 MethodLookupKey SemanticAnalyzer::find_method_lookup_key(
@@ -371,11 +405,15 @@ MethodLookupKey SemanticAnalyzer::find_method_lookup_key(
     const TypeHandle owner_type,
     const std::string_view name
 ) const noexcept {
-    return MethodLookupKey {
-        module.value,
-        owner_type.value,
-        this->identifiers_.find(name),
-    };
+    return this->find_method_lookup_key(module, owner_type, this->module_.find_identifier(name));
+}
+
+MethodLookupKey SemanticAnalyzer::find_method_lookup_key(
+    const syntax::ModuleId module,
+    const TypeHandle owner_type,
+    const IdentId name
+) const noexcept {
+    return this->method_lookup_key(module, owner_type, name);
 }
 
 void SemanticAnalyzer::index_named_type(
@@ -851,7 +889,23 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     const bool opaque_allowed_as_pointee,
     const bool report_unknown
 ) {
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name);
+    return this->find_type_in_visible_modules(
+        this->module_.find_identifier(name),
+        name,
+        range,
+        opaque_allowed_as_pointee,
+        report_unknown
+    );
+}
+
+TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool opaque_allowed_as_pointee,
+    const bool report_unknown
+) {
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
     if (is_valid(lookup_key)) {
         if (const auto found = this->named_types_by_name_.find(lookup_key);
             found != this->named_types_by_name_.end()) {
@@ -886,6 +940,24 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
     const bool opaque_allowed_as_pointee,
     const bool report_unknown
 ) {
+    return this->find_type_in_module(
+        module,
+        this->module_.find_identifier(name),
+        name,
+        range,
+        opaque_allowed_as_pointee,
+        report_unknown
+    );
+}
+
+TypeHandle SemanticAnalyzer::find_type_in_module(
+    const syntax::ModuleId module,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool opaque_allowed_as_pointee,
+    const bool report_unknown
+) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
             report(range, sema_unknown_type_message(name));
@@ -897,7 +969,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
         TypeHandle candidate = INVALID_TYPE_HANDLE;
-        const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name);
+        const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->named_types_by_name_.find(lookup_key);
                 found != this->named_types_by_name_.end()) {
@@ -1055,6 +1127,16 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
     const base::SourceRange range,
     const bool report_unknown
 ) {
+    return this->find_symbol_in_module(module, this->module_.find_identifier(name), name, range, report_unknown);
+}
+
+const Symbol* SemanticAnalyzer::find_symbol_in_module(
+    const syntax::ModuleId module,
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
             this->report(range, sema_unknown_name_in_module_message(this->module_name(module), name));
@@ -1066,7 +1148,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
     for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
         const Symbol* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name);
+        const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->global_values_by_name_.find(lookup_key);
                 found != this->global_values_by_name_.end()) {
@@ -1133,16 +1215,23 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
     const TypeHandle enum_type,
     const std::string_view case_name
 ) const {
+    return this->find_enum_case_by_type_and_case(enum_type, this->module_.find_identifier(case_name), case_name);
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
+    const TypeHandle enum_type,
+    const IdentId case_name_id,
+    const std::string_view case_name
+) const {
     if (!is_valid(enum_type)) {
         return nullptr;
     }
-    const IdentId case_ident = this->identifiers_.find(case_name);
-    if (!is_valid(case_ident)) {
+    if (!is_valid(case_name_id)) {
         return nullptr;
     }
     const auto found = this->enum_cases_by_type_and_case_.find(EnumCaseLookupKey {
         enum_type.value,
-        case_ident,
+        case_name_id,
     });
     if (found == this->enum_cases_by_type_and_case_.end() ||
         found->second == nullptr ||
@@ -1167,7 +1256,7 @@ void SemanticAnalyzer::index_enum_case(const EnumCaseInfo& info) {
     if (!is_valid(info.type)) {
         return;
     }
-    const IdentId case_ident = this->identifiers_.intern(info.case_name);
+    const IdentId case_ident = this->module_.intern_identifier(info.case_name);
     this->enum_cases_by_type_and_case_.emplace(EnumCaseLookupKey {
         info.type.value,
         case_ident,
@@ -1185,7 +1274,25 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     const base::SourceRange range,
     const bool report_unknown
 ) {
-    const ModuleLookupKey enum_lookup_key = this->find_module_lookup_key(this->current_module_, enum_name);
+    return this->find_enum_case_by_scoped_name(
+        this->module_.find_identifier(enum_name),
+        enum_name,
+        this->module_.find_identifier(case_name),
+        case_name,
+        range,
+        report_unknown
+    );
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
+    const IdentId enum_name_id,
+    const std::string_view enum_name,
+    const IdentId case_name_id,
+    const std::string_view case_name,
+    const base::SourceRange range,
+    const bool report_unknown
+) {
+    const ModuleLookupKey enum_lookup_key = this->find_module_lookup_key(this->current_module_, enum_name_id);
     const bool enum_type_name_exists = is_valid(enum_lookup_key) &&
         (this->named_types_by_name_.contains(enum_lookup_key) ||
          this->type_aliases_by_name_.contains(enum_lookup_key));
@@ -1195,14 +1302,15 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
         this->type_alias_lookup_complete()) {
         return nullptr;
     }
-    const TypeHandle enum_type = this->find_type_in_visible_modules(enum_name, range, false);
+    const TypeHandle enum_type = this->find_type_in_visible_modules(enum_name_id, enum_name, range, false);
     if (!is_valid(enum_type) || this->checked_.types.get(enum_type).kind != TypeKind::enum_) {
         if (is_valid(enum_type) && report_unknown) {
             this->report(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
         }
         return nullptr;
     }
-    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, case_name); result != nullptr) {
+    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, case_name_id, case_name);
+        result != nullptr) {
         return result;
     }
     if (report_unknown) {
@@ -1216,6 +1324,20 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
     const std::string_view case_name,
     const base::SourceRange range
 ) {
+    return this->find_enum_case_by_pattern_type(
+        enum_type_id,
+        this->module_.find_identifier(case_name),
+        case_name,
+        range
+    );
+}
+
+const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
+    const syntax::TypeId enum_type_id,
+    const IdentId case_name_id,
+    const std::string_view case_name,
+    const base::SourceRange range
+) {
     const TypeHandle enum_type = this->resolve_type(enum_type_id);
     if (!is_valid(enum_type)) {
         return nullptr;
@@ -1224,7 +1346,8 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
         this->report(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
         return nullptr;
     }
-    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, case_name); result != nullptr) {
+    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, case_name_id, case_name);
+        result != nullptr) {
         return result;
     }
     this->report(range, sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), case_name));
@@ -1251,7 +1374,8 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
         }
         return nullptr;
     }
-    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, callee->field_name);
+    if (const EnumCaseInfo* result =
+            this->find_enum_case_by_type_and_case(enum_type, callee->field_name_id, callee->field_name);
         result != nullptr) {
         return result;
     }
@@ -1265,11 +1389,19 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
 }
 
 const Symbol* SemanticAnalyzer::find_symbol(const std::string_view name, const base::SourceRange range) {
+    return this->find_symbol(this->module_.find_identifier(name), name, range);
+}
+
+const Symbol* SemanticAnalyzer::find_symbol(
+    const IdentId name_id,
+    const std::string_view name,
+    const base::SourceRange range
+) {
     if (const Symbol* local = this->symbols_.find(name); local != nullptr) {
         return local;
     }
 
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name);
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
     if (is_valid(lookup_key)) {
         if (const auto found = this->global_values_by_name_.find(lookup_key);
             found != this->global_values_by_name_.end()) {

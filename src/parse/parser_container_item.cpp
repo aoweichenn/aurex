@@ -52,7 +52,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
                     where_constraints.end()
                 );
             }
-            this->session_.module.items.set(method.value, std::move(method_item));
+            this->session_.module.set_item(method.value, std::move(method_item));
             block.impl_items.push_back(method);
         }
         this->reset_panic();

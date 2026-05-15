@@ -107,12 +107,16 @@ as compact 32-byte headers plus per-kind payload arenas; `StmtNode` and
 `ItemNode` now use the same compact header + per-kind payload arena layout.
 Sema, IR lowering, and AST dump hot paths read `ExprNode` payloads through
 compact views instead of materializing fat nodes. The remaining address-based
-item owner lookup has been replaced with explicit `ItemId` ownership. On the
-local AST bulk stress lane, the 100000-statement case is now roughly 176 MiB RSS
-/ 104 ms after the compact syntax layout; Google Benchmark `sema_ast_bulk/1024`
-is roughly 164 ns/expr, and the local `tools/frontend_compare.py` baseline has
-Aurex `--check` at about 10.0 ms for lookup/96 and 9.5 ms for generics/96 versus
-Clang++ at about 23.2 ms / 24.8 ms and G++ at about 23.4 ms / 27.0 ms.
+item owner lookup has been replaced with explicit `ItemId` ownership. Identifier
+storage now uses a reusable global bump allocator through the syntax-layer
+`IdentifierInterner`; AST identifier-bearing nodes carry native `IdentId`
+payload fields, and sema typed lookup keys use the AST module interner instead
+of a second private interner. On the local AST bulk stress lane, the
+100000-statement case is now roughly 180 MiB RSS / 112 ms after compact syntax
+storage plus AST-native identifiers; Google Benchmark `sema_ast_bulk/1024` is
+roughly 174 ns/expr, and the local `tools/frontend_compare.py` baseline has
+Aurex `--check` at about 8.4 ms for lookup/96 and 9.1 ms for generics/96
+versus Clang++ at about 20.6 ms / 22.4 ms and G++ at about 25.8 ms / 24.4 ms.
 
 ## Stage Status
 

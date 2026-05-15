@@ -954,12 +954,14 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                 const Symbol* symbol = nullptr;
                 if (!expr.scope_name.empty()) {
                     const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range, false);
-                    symbol = syntax::is_valid(module) ? this->find_symbol_in_module(module, expr.text, expr.range, false) : nullptr;
+                    symbol = syntax::is_valid(module)
+                        ? this->find_symbol_in_module(module, expr.text_id, expr.text, expr.range, false)
+                        : nullptr;
                 } else {
                     if (const Symbol* local = this->symbols_.find(expr.text); local != nullptr) {
                         symbol = local;
                     } else {
-                        const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, expr.text);
+                        const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, expr.text_id);
                         if (is_valid(lookup_key)) {
                             if (const auto found = this->global_values_by_name_.find(lookup_key);
                                 found != this->global_values_by_name_.end()) {

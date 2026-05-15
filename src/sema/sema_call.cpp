@@ -213,12 +213,22 @@ SemanticAnalyzer::NamedTypeSelector SemanticAnalyzer::resolve_named_type_selecto
             if (!syntax::is_valid(module)) {
                 return {};
             }
-            return NamedTypeSelector {module, expr.text, expr.range, {}, true};
+            NamedTypeSelector selector;
+            selector.module = module;
+            selector.name = expr.text;
+            selector.name_id = expr.text_id;
+            selector.range = expr.range;
+            selector.qualified = true;
+            return selector;
         }
         if (syntax::is_valid(this->resolve_import_alias(expr.text, expr.range, false))) {
             return {};
         }
-        return NamedTypeSelector {syntax::INVALID_MODULE_ID, expr.text, expr.range, {}, false};
+        NamedTypeSelector selector;
+        selector.name = expr.text;
+        selector.name_id = expr.text_id;
+        selector.range = expr.range;
+        return selector;
     }
     if (expr.kind != syntax::ExprKind::field ||
         !syntax::is_valid(expr.object) ||
@@ -229,7 +239,13 @@ SemanticAnalyzer::NamedTypeSelector SemanticAnalyzer::resolve_named_type_selecto
     if (!syntax::is_valid(module.module)) {
         return {};
     }
-    return NamedTypeSelector {module.module, expr.field_name, expr.range, {}, true};
+    NamedTypeSelector selector;
+    selector.module = module.module;
+    selector.name = expr.field_name;
+    selector.name_id = expr.field_name_id;
+    selector.range = expr.range;
+    selector.qualified = true;
+    return selector;
 }
 
 TypeHandle SemanticAnalyzer::resolve_type_selector(
@@ -270,8 +286,16 @@ TypeHandle SemanticAnalyzer::resolve_named_type_selector_type(
         report_unknown &&
         this->report_generic_type_requires_args_if_visible(selector.name, selector.range);
     const TypeHandle resolved = selector.qualified
-        ? this->find_type_in_module(selector.module, selector.name, selector.range, opaque_allowed_as_pointee, report_unknown)
+        ? this->find_type_in_module(
+              selector.module,
+              selector.name_id,
+              selector.name,
+              selector.range,
+              opaque_allowed_as_pointee,
+              report_unknown
+          )
         : this->find_type_in_visible_modules(
+              selector.name_id,
               selector.name,
               selector.range,
               opaque_allowed_as_pointee,
@@ -354,8 +378,21 @@ TypeHandle SemanticAnalyzer::resolve_generic_type_selector(
     }
 
     const TypeHandle concrete = selector.qualified
-        ? this->find_type_in_module(selector.module, selector.name, selector.range, opaque_allowed_as_pointee, false)
-        : this->find_type_in_visible_modules(selector.name, selector.range, opaque_allowed_as_pointee, false);
+        ? this->find_type_in_module(
+              selector.module,
+              selector.name_id,
+              selector.name,
+              selector.range,
+              opaque_allowed_as_pointee,
+              false
+          )
+        : this->find_type_in_visible_modules(
+              selector.name_id,
+              selector.name,
+              selector.range,
+              opaque_allowed_as_pointee,
+              false
+          );
     if (is_valid(concrete)) {
         if (report_unknown) {
             this->report(selector.range, sema_type_not_generic_message(selector.name));

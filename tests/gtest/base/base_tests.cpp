@@ -1,7 +1,12 @@
 #include <aurex/base/abi.hpp>
+#include <aurex/base/bump_allocator.hpp>
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/result.hpp>
 #include <aurex/base/source.hpp>
+
+#include <cstdint>
+#include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -14,6 +19,12 @@ using base::ErrorCode;
 using base::Severity;
 
 constexpr int BASE_TEST_UNKNOWN_SEVERITY_VALUE = 99;
+constexpr base::usize BASE_TEST_BUMP_SMALL_BLOCK_BYTES = 32;
+constexpr base::usize BASE_TEST_BUMP_ALIGNMENT = 16;
+constexpr base::usize BASE_TEST_BUMP_NON_POWER_ALIGNMENT = 24;
+constexpr base::usize BASE_TEST_BUMP_NORMALIZED_ALIGNMENT = 32;
+constexpr base::usize BASE_TEST_BUMP_LARGE_TEXT_BYTES = 4096;
+constexpr char BASE_TEST_BUMP_FILL_CHAR = 'x';
 
 } // namespace
 
@@ -99,6 +110,63 @@ TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents) {
     EXPECT_EQ(third.begin, 13U);
     EXPECT_EQ(third.end, 18U);
     EXPECT_EQ(file.text().substr(third.begin, third.end - third.begin), "third");
+}
+
+TEST(CoreUnit, BumpAllocatorCopiesStringsAndResetsWholeArena) {
+    base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+
+    EXPECT_EQ(arena.allocate(0), nullptr);
+    arena.reserve(0);
+
+    void* const aligned = arena.allocate(1, BASE_TEST_BUMP_ALIGNMENT);
+    ASSERT_NE(aligned, nullptr);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(aligned) % BASE_TEST_BUMP_ALIGNMENT, 0U);
+
+    void* const normalized = arena.allocate(1, BASE_TEST_BUMP_NON_POWER_ALIGNMENT);
+    ASSERT_NE(normalized, nullptr);
+    EXPECT_EQ(reinterpret_cast<std::uintptr_t>(normalized) % BASE_TEST_BUMP_NORMALIZED_ALIGNMENT, 0U);
+
+    const std::string_view hello = arena.copy_string("hello");
+    EXPECT_EQ(hello, "hello");
+    ASSERT_NE(hello.data(), nullptr);
+    EXPECT_EQ(hello.data()[hello.size()], '\0');
+    EXPECT_GT(arena.allocated_bytes(), 0U);
+    EXPECT_GT(arena.block_count(), 0U);
+
+    const base::usize blocks_before_reserved_fit = arena.block_count();
+    arena.reserve(1);
+    EXPECT_EQ(arena.block_count(), blocks_before_reserved_fit);
+
+    const base::usize blocks_before_large = arena.block_count();
+    const std::string large(BASE_TEST_BUMP_LARGE_TEXT_BYTES, BASE_TEST_BUMP_FILL_CHAR);
+    const std::string_view copied_large = arena.copy_string(large);
+    EXPECT_EQ(copied_large, large);
+    EXPECT_GT(arena.block_count(), blocks_before_large);
+
+    arena.reset();
+    EXPECT_EQ(arena.allocated_bytes(), 0U);
+    EXPECT_EQ(arena.block_count(), 0U);
+    EXPECT_EQ(arena.copy_string(""), "");
+}
+
+TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats) {
+    base::BumpAllocator source(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+    const std::string_view copied = source.copy_string("move-source");
+    ASSERT_EQ(copied, "move-source");
+    const base::usize allocated = source.allocated_bytes();
+    ASSERT_GT(allocated, 0U);
+
+    base::BumpAllocator moved(std::move(source));
+    EXPECT_EQ(moved.allocated_bytes(), allocated);
+    EXPECT_EQ(moved.copy_string("after-move"), "after-move");
+    EXPECT_EQ(source.allocated_bytes(), 0U);
+
+    base::BumpAllocator assigned(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+    EXPECT_EQ(assigned.copy_string("old"), "old");
+    assigned = std::move(moved);
+    EXPECT_GE(assigned.allocated_bytes(), allocated);
+    EXPECT_EQ(assigned.copy_string("assigned"), "assigned");
+    EXPECT_EQ(moved.allocated_bytes(), 0U);
 }
 
 } // namespace aurex::test

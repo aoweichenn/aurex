@@ -321,8 +321,10 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
     case syntax::ExprKind::name: {
         const syntax::NameExprPayload& payload = *this->module_.exprs.name_payload(expr_id.value);
         view.scope_name = payload.scope_name;
+        view.scope_name_id = payload.scope_name_id;
         view.scope_range = payload.scope_range;
         view.text = payload.text;
+        view.text_id = payload.text_id;
         view.type_args = readonly_span(payload.type_args);
         break;
     }
@@ -396,6 +398,7 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
         const syntax::FieldExprPayload& payload = *this->module_.exprs.field_payload(expr_id.value);
         view.object = payload.object;
         view.field_name = payload.field_name;
+        view.field_name_id = payload.field_name_id;
         break;
     }
     case syntax::ExprKind::index: {
@@ -415,8 +418,10 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
         const syntax::StructLiteralExprPayload& payload = *this->module_.exprs.struct_literal_payload(expr_id.value);
         view.object = payload.object;
         view.scope_name = payload.scope_name;
+        view.scope_name_id = payload.scope_name_id;
         view.scope_range = payload.scope_range;
         view.struct_name = payload.name;
+        view.struct_name_id = payload.name_id;
         view.type_args = readonly_span(payload.type_args);
         view.field_inits = readonly_span(payload.field_inits);
         break;
@@ -587,9 +592,9 @@ TypeHandle SemanticAnalyzer::analyze_name_expr(
         if (!syntax::is_valid(module)) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
-        symbol = this->find_symbol_in_module(module, expr.text, expr.range);
+        symbol = this->find_symbol_in_module(module, expr.text_id, expr.text, expr.range);
     } else {
-        symbol = this->find_symbol(expr.text, expr.range);
+        symbol = this->find_symbol(expr.text_id, expr.text, expr.range);
     }
     if (symbol == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
@@ -876,7 +881,8 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
         const bool object_is_plain_name = expr_name_is_unqualified(this->module_, expr.object);
         const TypeHandle enum_type = this->resolve_type_selector(expr.object, !object_is_plain_name);
         if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
-            const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
+            const EnumCaseInfo* enum_case =
+                this->find_enum_case_by_type_and_case(enum_type, expr.field_name_id, expr.field_name);
             if (enum_case == nullptr) {
                 this->report(
                     expr.range,
@@ -903,7 +909,8 @@ TypeHandle SemanticAnalyzer::analyze_module_member_expr(
     const syntax::ModuleId module,
     const SemanticAnalyzer::ExprView& expr
 ) {
-    if (const Symbol* symbol = this->find_symbol_in_module(module, expr.field_name, expr.range, false);
+    if (const Symbol* symbol =
+            this->find_symbol_in_module(module, expr.field_name_id, expr.field_name, expr.range, false);
         symbol != nullptr) {
         if (symbol->kind == SymbolKind::function) {
             this->record_expr_c_name(expr_id, symbol->c_name);
@@ -912,7 +919,7 @@ TypeHandle SemanticAnalyzer::analyze_module_member_expr(
         this->record_expr_c_name(expr_id, symbol->c_name);
         return this->record_expr_type(expr_id, symbol->type);
     }
-    if (is_valid(this->find_type_in_module(module, expr.field_name, expr.range, false, false))) {
+    if (is_valid(this->find_type_in_module(module, expr.field_name_id, expr.field_name, expr.range, false, false))) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (this->generic_type_template_exists_in_module(module, expr.field_name)) {

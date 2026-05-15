@@ -4,6 +4,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #if defined(__clang__)
@@ -880,15 +881,15 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
         analyzer.checked_.enum_cases.find(analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "Choice_yes"))->second
     );
     ASSERT_NE(analyzer.find_enum_cases_by_type(enum_type), nullptr);
-    const base::usize interned_cases = analyzer.identifiers_.size();
+    const base::usize interned_cases = analyzer.module_.identifiers.size();
     const EnumCaseInfo* indexed_yes = analyzer.find_enum_case_by_type_and_case(enum_type, "yes");
     ASSERT_NE(indexed_yes, nullptr);
     EXPECT_EQ(indexed_yes->case_name, "yes");
     EXPECT_EQ(analyzer.find_enum_case_by_type_and_case(record_type, "yes"), nullptr);
     EXPECT_EQ(analyzer.find_enum_case_by_type_and_case(enum_type, "missing"), nullptr);
-    EXPECT_EQ(analyzer.identifiers_.size(), interned_cases);
+    EXPECT_EQ(analyzer.module_.identifiers.size(), interned_cases);
     EXPECT_EQ(analyzer.enum_cases_by_type_and_case_.size(), 1U);
-    EXPECT_TRUE(sema::is_valid(analyzer.identifiers_.find("yes")));
+    EXPECT_TRUE(sema::is_valid(analyzer.module_.find_identifier("yes")));
 
     EXPECT_EQ(analyzer.find_enum_case_by_scoped_name("Missing", "case", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_enum_case_by_scoped_name("Record", "case", {}, true), nullptr);
@@ -1071,10 +1072,10 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
 
     analyzer.current_module_ = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     EXPECT_EQ(analyzer.find_enum_case_in_visible_modules("Choice_yes", {}), &case_inserted.first->second);
-    const base::usize interned_before_miss = analyzer.identifiers_.size();
+    const base::usize interned_before_miss = analyzer.module_.identifiers.size();
     EXPECT_EQ(analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "missing", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "missing", {}, false), nullptr);
-    EXPECT_EQ(analyzer.identifiers_.size(), interned_before_miss);
+    EXPECT_EQ(analyzer.module_.identifiers.size(), interned_before_miss);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxTypedLookupLegacyFallbackEdges) {
@@ -2805,6 +2806,37 @@ TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
     EXPECT_EQ(interner.text(IdentId {IdentId::INVALID_VALUE - 1}), "");
     EXPECT_EQ(interner.find("missing"), sema::INVALID_IDENT_ID);
     EXPECT_EQ(interner.size(), 2U);
+    EXPECT_GT(interner.arena_blocks(), 0U);
+    EXPECT_GT(interner.arena_bytes(), 0U);
+
+    IdentifierInterner copied = interner;
+    EXPECT_EQ(copied.find("alpha"), alpha);
+    EXPECT_EQ(copied.text(beta), "beta");
+    EXPECT_GT(copied.arena_blocks(), 0U);
+
+    IdentifierInterner assigned;
+    assigned = copied;
+    EXPECT_EQ(assigned.find("alpha"), alpha);
+    EXPECT_EQ(assigned.text(beta), "beta");
+    IdentifierInterner* const assigned_ref = &assigned;
+    assigned = *assigned_ref;
+    EXPECT_EQ(assigned.size(), 2U);
+    EXPECT_EQ(assigned.find("beta"), beta);
+
+    IdentifierInterner moved(std::move(assigned));
+    EXPECT_EQ(moved.find("alpha"), alpha);
+    EXPECT_EQ(moved.text(beta), "beta");
+    EXPECT_EQ(assigned.size(), 0U);
+    EXPECT_EQ(assigned.find("alpha"), sema::INVALID_IDENT_ID);
+
+    IdentifierInterner move_assigned;
+    static_cast<void>(move_assigned.intern("stale"));
+    move_assigned = std::move(moved);
+    EXPECT_EQ(move_assigned.find("alpha"), alpha);
+    EXPECT_EQ(move_assigned.find("stale"), sema::INVALID_IDENT_ID);
+    EXPECT_EQ(move_assigned.text(beta), "beta");
+    EXPECT_EQ(moved.size(), 0U);
+    EXPECT_EQ(move_assigned.intern(""), sema::INVALID_IDENT_ID);
 }
 
 TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {

@@ -28,7 +28,7 @@
 ---
 
 > **文档状态：** 持续更新中 · 随开发者修复进度同步  
-> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储。
+> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径。
 
 ---
 
@@ -239,8 +239,10 @@ checked_.functions.find(module_key(current_module_, name));
 scope->find(std::string(name));  // 每层 scope 构造
 ```
 
-**开发者修复状态：** ❌ 未修  
+**开发者修复状态：** ✅ 当前主热路径已修
 **方案：** 引入 Identifier interning + typed key (`IdentId` / `QualifiedNameKey`)
+
+**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix materialization set 和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，module/function/value/generic/enum-case lookup key 直接复用 AST `IdentId`，字符串 key 只保留在 ABI、diagnostic、dump 和不完整索引 fallback 边界。跨模块 stable hash / parallel global ID 仍后置。
 
 ---
 
@@ -261,7 +263,7 @@ scope->find(std::string(name));  // 每层 scope 构造
 **开发者修复状态：** ✅ 已修当前整树复制爆点；`TypeNode` / `ExprNode` / `PatternNode` / `StmtNode` / `ItemNode` 已落 compact layout
 **方案：** Sema 用引用不复制；normalized_ast 默认不保留 AST snapshot；AST 主存储使用 compact header + per-kind payload arena
 
-**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena，module loader 从 payload arena move 出节点后 remap，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，postfix chain 直接 move payload、unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 176 MiB RSS / 104 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 164 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 10.0 ms、generics/96 约 9.5 ms，Clang++ 分别约 23.2 ms / 24.8 ms，G++ 分别约 23.4 ms / 27.0 ms。global bump allocator、AST 原生 `IdentId` 和 CI 阈值仍后续。
+**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena，module loader 从 payload arena move 出节点后 remap，并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，postfix chain 直接 move payload、unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 180 MiB RSS / 112 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 174 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 8.4 ms、generics/96 约 9.1 ms，Clang++ 分别约 20.6 ms / 22.4 ms，G++ 分别约 25.8 ms / 24.4 ms。CI 阈值和 2M AST 跨机器阈值仍后续。
 
 ---
 
@@ -1117,7 +1119,7 @@ Phase 4: 工程化测试闭环      ██████████░░░░  
 
 ```
 P0 语义缺陷:  3/3  ✅（全部修复）
-P0 性能缺陷:  2/4  ⚠️（进行中）
+P0 性能缺陷:  4/4  ✅（当前爆点已收口，长期 pattern matrix / CI 阈值后续）
 P0 攻击面:    2/2  ✅（全部修复）
 P0 功能缺口:  1/1  ✅（已修复）
 P1 语义缺陷:  14/14 ❌（未开始）
@@ -1162,8 +1164,8 @@ P1 性能缺陷:  6/6  ❌（未开始）
    待修复 ❌ return null LUB
 
 🔴 第二优先：性能修复（Phase 2）  
-   已修复 ⚠️ match 上限、side table 稀疏化起步
-   待修复 ❌ IdentifierInterner、AST overlay、line table、scope stack
+   已修复 ✅ side table 稀疏化、match 超限保守诊断、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
+   待修复 ❌ pattern matrix / witness search、跨模块 stable hash / parallel global ID、CI perf 阈值
 
 🟡 第三优先：工程闭环（Phase 3+4）
    待修复 ❌ Capability enum、GenericParamId、Mangling、Resolver 等 15 项
@@ -1532,8 +1534,8 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
    待修复 ❌ return null LUB
 
 🔴 第二优先：性能修复（Phase 2）  
-   已修复 ⚠️ match 上限（需改 witness）、side table 稀疏化起步
-   待修复 ❌ IdentifierInterner、AST overlay、line table、scope stack
+   已修复 ✅ side table 稀疏化、match 超限保守诊断、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
+   待修复 ❌ pattern matrix / witness search、跨模块 stable hash / parallel global ID、CI perf 阈值
 
 🟡 第三优先：工程闭环（Phase 3+4）
    待修复 ❌ Capability enum、GenericParamId、Mangling、Resolver 等 15 项

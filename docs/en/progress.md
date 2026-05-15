@@ -127,15 +127,20 @@ arithmetic. Sema item-owner lookup is now explicit `ItemId` lookup rather than
 address-derived lookup through `items.data()`. The 2026-05-16 performance pass
 also moved sema, IR lowering, and AST dump `ExprNode` hot paths to compact views
 and direct payload reads, removing compatibility wrappers and literal fat-node
-reconstruction from the sema hot path. On the local
+reconstruction from the sema hot path. The same 2026-05-16 line also landed a
+reusable global bump allocator behind the syntax-layer `IdentifierInterner`;
+AST type/expr/pattern/stmt/item/module/import name-bearing fields now carry
+native `IdentId` payload fields, parser/module-loader/postfix writes intern
+through the current `AstModule`, and sema typed lookup keys reuse that AST
+module interner instead of maintaining a second private interner. On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 176 MiB RSS / 104 ms. Google Benchmark `sema_ast_bulk/1024` is now
-roughly 164 ns/expr, and the local `tools/frontend_compare.py` baseline has
-Aurex `--check` at roughly 10.0 ms for lookup/96 and 9.5 ms for generics/96,
-versus Clang++ at roughly 23.2 ms / 24.8 ms and G++ at roughly 23.4 ms /
-27.0 ms. A global bump allocator, native AST `IdentId`, and CI perf thresholds
-remain later performance work.
+roughly 180 MiB RSS / 112 ms. Google Benchmark `sema_ast_bulk/1024` is now
+roughly 174 ns/expr, and the local `tools/frontend_compare.py` baseline has
+Aurex `--check` at roughly 8.4 ms for lookup/96 and 9.1 ms for generics/96,
+versus Clang++ at roughly 20.6 ms / 22.4 ms and G++ at roughly 25.8 ms /
+24.4 ms. Cross-module stable hashes / parallel global IDs and CI perf
+thresholds remain later performance work.
 
 ## M2 Gaps
 

@@ -345,17 +345,36 @@ bool SemanticAnalyzer::analyze_pattern(
                 const EnumCaseInfo* case_info = nullptr;
                 if (pattern->scoped) {
                     if (syntax::is_valid(pattern->enum_type)) {
-                        case_info = this->find_enum_case_by_pattern_type(pattern->enum_type, pattern->case_name, pattern->range);
+                        case_info = this->find_enum_case_by_pattern_type(
+                            pattern->enum_type,
+                            pattern->case_name_id,
+                            pattern->case_name,
+                            pattern->range
+                        );
                     } else if (!pattern->enum_name.empty()) {
-                        case_info = this->find_enum_case_by_scoped_name(pattern->enum_name, pattern->case_name, pattern->range);
+                        case_info = this->find_enum_case_by_scoped_name(
+                            pattern->enum_name_id,
+                            pattern->enum_name,
+                            pattern->case_name_id,
+                            pattern->case_name,
+                            pattern->range
+                        );
                     } else {
-                        case_info = this->find_enum_case_by_type_and_case(frame.type, pattern->case_name);
+                        case_info = this->find_enum_case_by_type_and_case(
+                            frame.type,
+                            pattern->case_name_id,
+                            pattern->case_name
+                        );
                         if (case_info == nullptr) {
                             this->report(pattern->range, sema_unknown_matched_enum_case_message(pattern->case_name));
                         }
                     }
                 } else {
-                    case_info = this->find_enum_case_by_type_and_case(frame.type, pattern->case_name);
+                    case_info = this->find_enum_case_by_type_and_case(
+                        frame.type,
+                        pattern->case_name_id,
+                        pattern->case_name
+                    );
                     if (case_info == nullptr) {
                         this->report(pattern->range, sema_unknown_matched_enum_case_message(pattern->case_name));
                     }
@@ -527,7 +546,11 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         if (enum_pattern.payload_patterns.empty()) {
             return true;
         }
-        const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(matched, enum_pattern.case_name);
+        const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(
+            matched,
+            enum_pattern.case_name_id,
+            enum_pattern.case_name
+        );
         if (case_info == nullptr || case_info->payload_types.size() != enum_pattern.payload_patterns.size()) {
             return false;
         }
@@ -711,7 +734,11 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             this->checked_.types.get(leaf_type).kind == TypeKind::enum_ &&
             leaf_pattern.kind == syntax::PatternKind::enum_case &&
             enum_case_payloads_cover_case(leaf_pattern)) {
-            const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(leaf_type, leaf_pattern.case_name);
+            const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(
+                leaf_type,
+                leaf_pattern.case_name_id,
+                leaf_pattern.case_name
+            );
             if (case_info != nullptr && case_info->payload_types.empty()) {
                 return std::vector<std::string> {case_info->c_name};
             }

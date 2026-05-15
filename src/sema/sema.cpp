@@ -38,7 +38,11 @@ SemanticAnalyzer::SemanticAnalyzer(
     : owned_module_(std::move(module)), module_(*this->owned_module_), diagnostics_(diagnostics), options_(options) {}
 
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
+    if (!this->module_.identifiers_ready()) {
+        this->module_.intern_identifiers();
+    }
     this->normalize_parser_only_module_contract();
+    this->module_.finalize_identifiers();
     if (!this->validate_ast_contract()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, std::string(SEMA_ANALYSIS_FAILED)});
     }
@@ -73,7 +77,12 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->function_definition_items_.reserve(this->module_.items.size());
     this->function_body_states_.reserve(this->module_.items.size());
     this->struct_infos_by_type_.reserve(this->module_.items.size());
-    this->identifiers_.reserve(this->module_.items.size() + enum_cases + this->module_.modules.size());
+    const base::usize expected_identifier_count =
+        this->module_.identifiers.size() +
+        this->module_.items.size() +
+        enum_cases +
+        this->module_.modules.size();
+    this->module_.identifiers.reserve(expected_identifier_count);
     this->named_types_by_name_.reserve(this->module_.items.size());
     this->type_aliases_by_name_.reserve(this->module_.items.size());
     this->generic_struct_templates_by_name_.reserve(this->module_.items.size());

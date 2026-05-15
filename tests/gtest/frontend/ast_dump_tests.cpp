@@ -47,6 +47,214 @@ TEST(CoreUnit, AstStorageUsesCompactHeaders) {
     EXPECT_LT(sizeof(syntax::ItemNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ItemNode));
 }
 
+TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
+    syntax::AstModule module;
+    module.module_path.parts = {"app", "main"};
+    syntax::ImportDecl import;
+    import.path.parts = {"core", "mem"};
+    import.alias = "mem";
+    module.imports.push_back(import);
+    syntax::ModuleInfo module_info;
+    module_info.path.parts = {"lib", "math"};
+    syntax::ResolvedImport resolved_import;
+    resolved_import.module = syntax::ModuleId {0};
+    resolved_import.alias = "math";
+    resolved_import.visibility = syntax::Visibility::public_;
+    module_info.imports.push_back(resolved_import);
+    module.modules.push_back(module_info);
+
+    syntax::TypeNode named_type;
+    named_type.kind = syntax::TypeKind::named;
+    named_type.scope_name = "core";
+    named_type.scope_parts = {"core", "mem"};
+    named_type.name = "Buffer";
+    const syntax::TypeId type_id = module.push_type(named_type);
+
+    syntax::ExprNode name_expr;
+    name_expr.kind = syntax::ExprKind::name;
+    name_expr.scope_name = "mem";
+    name_expr.text = "value";
+    const syntax::ExprId name_expr_id = module.push_expr(name_expr);
+
+    syntax::ExprNode field_expr;
+    field_expr.kind = syntax::ExprKind::field;
+    field_expr.object = name_expr_id;
+    field_expr.field_name = "len";
+    const syntax::ExprId field_expr_id = module.push_expr(field_expr);
+
+    syntax::ExprNode struct_literal;
+    struct_literal.kind = syntax::ExprKind::struct_literal;
+    struct_literal.scope_name = "core";
+    struct_literal.struct_name = "Buffer";
+    syntax::FieldInit count_init;
+    count_init.name = "count";
+    count_init.value = name_expr_id;
+    struct_literal.field_inits = {count_init};
+    const syntax::ExprId struct_literal_id = module.push_expr(struct_literal);
+
+    syntax::PostfixOp postfix_select;
+    postfix_select.kind = syntax::PostfixOpKind::select;
+    postfix_select.name = "next";
+    syntax::ExprNode postfix_expr;
+    postfix_expr.kind = syntax::ExprKind::postfix_chain;
+    postfix_expr.postfix_base = name_expr_id;
+    postfix_expr.postfix_ops = {postfix_select};
+    const syntax::ExprId postfix_expr_id = module.push_expr(postfix_expr);
+
+    syntax::PatternNode binding_pattern;
+    binding_pattern.kind = syntax::PatternKind::binding;
+    binding_pattern.binding_name = "value";
+    const syntax::PatternId pattern_id = module.push_pattern(binding_pattern);
+
+    syntax::PatternNode literal_pattern;
+    literal_pattern.kind = syntax::PatternKind::literal;
+    literal_pattern.case_name = "true";
+    literal_pattern.binding_names = {"value"};
+    const syntax::PatternId literal_pattern_id = module.push_pattern(literal_pattern);
+
+    syntax::PatternNode enum_pattern;
+    enum_pattern.kind = syntax::PatternKind::enum_case;
+    enum_pattern.enum_name = "Choice";
+    enum_pattern.case_name = "Some";
+    enum_pattern.binding_names = {"payload"};
+    const syntax::PatternId enum_pattern_id = module.push_pattern(enum_pattern);
+
+    syntax::FieldPattern item_field;
+    item_field.name = "item";
+    item_field.pattern = pattern_id;
+    syntax::PatternNode struct_pattern;
+    struct_pattern.kind = syntax::PatternKind::struct_;
+    struct_pattern.struct_name = "Record";
+    struct_pattern.field_patterns = {item_field};
+    const syntax::PatternId struct_pattern_id = module.push_pattern(struct_pattern);
+
+    syntax::StmtNode local_stmt;
+    local_stmt.kind = syntax::StmtKind::let;
+    local_stmt.name = "value";
+    local_stmt.pattern = pattern_id;
+    local_stmt.init = field_expr_id;
+    const syntax::StmtId stmt_id = module.push_stmt(local_stmt);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "value";
+    function.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    syntax::GenericConstraintDecl copy_constraint;
+    copy_constraint.param_name = "T";
+    copy_constraint.capability_names = {"Copy"};
+    function.where_constraints = {copy_constraint};
+    function.params = {syntax::ParamDecl {"value", type_id, {}}};
+    function.body = stmt_id;
+    const syntax::ItemId item_id = module.push_item(function);
+
+    syntax::ItemNode struct_item;
+    struct_item.kind = syntax::ItemKind::struct_decl;
+    struct_item.name = "Record";
+    syntax::FieldDecl field_decl;
+    field_decl.name = "item";
+    field_decl.type = type_id;
+    struct_item.fields = {field_decl};
+    const syntax::ItemId struct_item_id = module.push_item(struct_item);
+
+    syntax::ItemNode enum_item;
+    enum_item.kind = syntax::ItemKind::enum_decl;
+    enum_item.name = "Choice";
+    syntax::EnumCaseDecl enum_case;
+    enum_case.name = "Some";
+    enum_case.payload_type = type_id;
+    enum_item.enum_cases = {enum_case};
+    const syntax::ItemId enum_item_id = module.push_item(enum_item);
+
+    module.finalize_identifiers();
+
+    const syntax::IdentId value_id = module.find_identifier("value");
+    ASSERT_TRUE(syntax::is_valid(value_id));
+    EXPECT_EQ(module.identifier_text(value_id), "value");
+    EXPECT_GT(module.identifiers.arena_blocks(), 0U);
+    EXPECT_GT(module.identifiers.arena_bytes(), 0U);
+
+    const syntax::TypeNode stored_type = module.types[type_id.value];
+    EXPECT_EQ(stored_type.name_id, module.find_identifier("Buffer"));
+    ASSERT_EQ(stored_type.scope_part_ids.size(), 2U);
+    EXPECT_EQ(stored_type.scope_part_ids.front(), module.find_identifier("core"));
+    EXPECT_EQ(stored_type.scope_part_ids.back(), module.find_identifier("mem"));
+
+    const syntax::NameExprPayload* const name_payload = module.exprs.name_payload(name_expr_id.value);
+    ASSERT_NE(name_payload, nullptr);
+    EXPECT_EQ(name_payload->scope_name_id, module.find_identifier("mem"));
+    EXPECT_EQ(name_payload->text_id, value_id);
+
+    const syntax::FieldExprPayload* const field_payload = module.exprs.field_payload(field_expr_id.value);
+    ASSERT_NE(field_payload, nullptr);
+    EXPECT_EQ(field_payload->field_name_id, module.find_identifier("len"));
+
+    const syntax::StructLiteralExprPayload* const struct_payload =
+        module.exprs.struct_literal_payload(struct_literal_id.value);
+    ASSERT_NE(struct_payload, nullptr);
+    EXPECT_EQ(struct_payload->scope_name_id, module.find_identifier("core"));
+    EXPECT_EQ(struct_payload->name_id, module.find_identifier("Buffer"));
+    ASSERT_EQ(struct_payload->field_inits.size(), 1U);
+    EXPECT_EQ(struct_payload->field_inits.front().name_id, module.find_identifier("count"));
+
+    const syntax::PostfixChainExprPayload* const postfix_payload =
+        module.exprs.postfix_chain_payload(postfix_expr_id.value);
+    ASSERT_NE(postfix_payload, nullptr);
+    ASSERT_EQ(postfix_payload->ops.size(), 1U);
+    EXPECT_EQ(postfix_payload->ops.front().name_id, module.find_identifier("next"));
+
+    EXPECT_EQ(module.patterns[pattern_id.value].binding_name_id, value_id);
+    const syntax::PatternNode stored_literal = module.patterns[literal_pattern_id.value];
+    EXPECT_EQ(stored_literal.case_name_id, module.find_identifier("true"));
+    ASSERT_EQ(stored_literal.binding_name_ids.size(), 1U);
+    EXPECT_EQ(stored_literal.binding_name_ids.front(), value_id);
+    const syntax::PatternNode stored_enum_pattern = module.patterns[enum_pattern_id.value];
+    EXPECT_EQ(stored_enum_pattern.enum_name_id, module.find_identifier("Choice"));
+    EXPECT_EQ(stored_enum_pattern.case_name_id, module.find_identifier("Some"));
+    ASSERT_EQ(stored_enum_pattern.binding_name_ids.size(), 1U);
+    EXPECT_EQ(stored_enum_pattern.binding_name_ids.front(), module.find_identifier("payload"));
+    const syntax::PatternNode stored_struct_pattern = module.patterns[struct_pattern_id.value];
+    EXPECT_EQ(stored_struct_pattern.struct_name_id, module.find_identifier("Record"));
+    ASSERT_EQ(stored_struct_pattern.field_patterns.size(), 1U);
+    EXPECT_EQ(stored_struct_pattern.field_patterns.front().name_id, module.find_identifier("item"));
+    EXPECT_EQ(module.stmts[stmt_id.value].name_id, value_id);
+    const syntax::ItemNode stored_item = module.items[item_id.value];
+    EXPECT_EQ(stored_item.name_id, value_id);
+    ASSERT_EQ(stored_item.generic_params.size(), 1U);
+    EXPECT_EQ(stored_item.generic_params.front().name_id, module.find_identifier("T"));
+    ASSERT_EQ(stored_item.where_constraints.size(), 1U);
+    EXPECT_EQ(stored_item.where_constraints.front().param_name_id, module.find_identifier("T"));
+    ASSERT_EQ(stored_item.where_constraints.front().capability_name_ids.size(), 1U);
+    EXPECT_EQ(stored_item.where_constraints.front().capability_name_ids.front(), module.find_identifier("Copy"));
+    ASSERT_EQ(stored_item.params.size(), 1U);
+    EXPECT_EQ(stored_item.params.front().name_id, value_id);
+    const syntax::ItemNode stored_struct_item = module.items[struct_item_id.value];
+    EXPECT_EQ(stored_struct_item.name_id, module.find_identifier("Record"));
+    ASSERT_EQ(stored_struct_item.fields.size(), 1U);
+    EXPECT_EQ(stored_struct_item.fields.front().name_id, module.find_identifier("item"));
+    const syntax::ItemNode stored_enum_item = module.items[enum_item_id.value];
+    EXPECT_EQ(stored_enum_item.name_id, module.find_identifier("Choice"));
+    ASSERT_EQ(stored_enum_item.enum_cases.size(), 1U);
+    EXPECT_EQ(stored_enum_item.enum_cases.front().name_id, module.find_identifier("Some"));
+
+    ASSERT_EQ(module.module_path.part_ids.size(), 2U);
+    EXPECT_EQ(module.module_path.part_ids.front(), module.find_identifier("app"));
+    ASSERT_EQ(module.imports.size(), 1U);
+    EXPECT_EQ(module.imports.front().alias_id, module.find_identifier("mem"));
+    ASSERT_EQ(module.imports.front().path.part_ids.size(), 2U);
+    EXPECT_EQ(module.imports.front().path.part_ids.back(), module.find_identifier("mem"));
+    ASSERT_EQ(module.modules.size(), 1U);
+    ASSERT_EQ(module.modules.front().path.part_ids.size(), 2U);
+    EXPECT_EQ(module.modules.front().path.part_ids.back(), module.find_identifier("math"));
+    ASSERT_EQ(module.modules.front().imports.size(), 1U);
+    EXPECT_EQ(module.modules.front().imports.front().alias_id, module.find_identifier("math"));
+
+    const syntax::AstModule copied = module;
+    const syntax::NameExprPayload* const copied_name = copied.exprs.name_payload(name_expr_id.value);
+    ASSERT_NE(copied_name, nullptr);
+    EXPECT_EQ(copied_name->text_id, copied.find_identifier("value"));
+    EXPECT_EQ(copied.identifier_text(copied_name->text_id), "value");
+}
+
 TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     syntax::TypeNode function_type;
     function_type.kind = syntax::TypeKind::function;
@@ -124,7 +332,10 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     function_item.kind = syntax::ItemKind::fn_decl;
     function_item.name = "map";
     function_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
-    function_item.where_constraints = {syntax::GenericConstraintDecl {"T", {}, {"Copy"}, {}, {}}};
+    syntax::GenericConstraintDecl copy_constraint;
+    copy_constraint.param_name = "T";
+    copy_constraint.capability_names = {"Copy"};
+    function_item.where_constraints = {copy_constraint};
     function_item.params = {syntax::ParamDecl {"value", syntax::TypeId {13}, {}}};
     function_item.return_type = syntax::TypeId {14};
     function_item.body = syntax::StmtId {15};
@@ -553,8 +764,10 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
 
     syntax::AstModule module;
     module.module_path.parts = {"app", "main"};
+    syntax::ModulePath core_mem_path;
+    core_mem_path.parts = {"core", "mem"};
     module.imports.push_back(syntax::ImportDecl {
-        syntax::ModulePath {{"core", "mem"}, {}},
+        core_mem_path,
         {},
         {},
         syntax::Visibility::private_,
@@ -705,10 +918,13 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
     function.kind = syntax::ItemKind::fn_decl;
     function.name = "dumped";
     function.generic_params = {syntax::GenericParamDecl {"T", {}}, syntax::GenericParamDecl {"U", {}}};
-    function.where_constraints = {
-        syntax::GenericConstraintDecl {"T", {}, {"copy", "drop"}, {}, {}},
-        syntax::GenericConstraintDecl {"U", {}, {"fmt"}, {}, {}},
-    };
+    syntax::GenericConstraintDecl t_constraint;
+    t_constraint.param_name = "T";
+    t_constraint.capability_names = {"copy", "drop"};
+    syntax::GenericConstraintDecl u_constraint;
+    u_constraint.param_name = "U";
+    u_constraint.capability_names = {"fmt"};
+    function.where_constraints = {t_constraint, u_constraint};
     function.return_type = fn_type_id;
     function.body = body_id;
     static_cast<void>(module.push_item(function));

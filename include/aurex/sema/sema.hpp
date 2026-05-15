@@ -136,6 +136,7 @@ private:
     struct NamedTypeSelector {
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
         std::string_view name;
+        IdentId name_id = INVALID_IDENT_ID;
         base::SourceRange range {};
         std::vector<syntax::TypeId> type_args;
         bool qualified = false;
@@ -145,8 +146,10 @@ private:
         syntax::ExprKind kind = syntax::ExprKind::invalid;
         base::SourceRange range {};
         std::string_view scope_name;
+        IdentId scope_name_id = INVALID_IDENT_ID;
         base::SourceRange scope_range {};
         std::string_view text;
+        IdentId text_id = INVALID_IDENT_ID;
         syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
         syntax::ExprId unary_operand = syntax::INVALID_EXPR_ID;
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
@@ -170,10 +173,12 @@ private:
         std::span<const syntax::PostfixOp> postfix_ops {};
         syntax::ExprId object = syntax::INVALID_EXPR_ID;
         std::string_view field_name;
+        IdentId field_name_id = INVALID_IDENT_ID;
         syntax::ExprId index = syntax::INVALID_EXPR_ID;
         syntax::ExprId slice_start = syntax::INVALID_EXPR_ID;
         syntax::ExprId slice_end = syntax::INVALID_EXPR_ID;
         std::string_view struct_name;
+        IdentId struct_name_id = INVALID_IDENT_ID;
         std::span<const syntax::TypeId> type_args {};
         std::span<const syntax::FieldInit> field_inits {};
         syntax::TypeId cast_type = syntax::INVALID_TYPE_ID;
@@ -667,10 +672,16 @@ private:
     [[nodiscard]] std::string function_key(const syntax::ItemNode& function, syntax::ItemId function_id) const;
     [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
+    [[nodiscard]] ModuleLookupKey module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
+    [[nodiscard]] MethodLookupKey method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
     [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, std::string_view name);
+    [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, std::string_view name) const noexcept;
+    [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] MethodLookupKey intern_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name);
+    [[nodiscard]] MethodLookupKey intern_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
     [[nodiscard]] MethodLookupKey find_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const noexcept;
+    [[nodiscard]] MethodLookupKey find_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
     void index_named_type(syntax::ModuleId module, std::string_view name, TypeHandle type, syntax::Visibility visibility);
     void index_type_alias(const TypeAliasInfo& info);
     void index_generic_struct_template(const GenericTemplateInfo& info);
@@ -719,8 +730,23 @@ private:
         bool opaque_allowed_as_pointee,
         bool report_unknown = true
     );
+    [[nodiscard]] TypeHandle find_type_in_visible_modules(
+        IdentId name_id,
+        std::string_view name,
+        base::SourceRange range,
+        bool opaque_allowed_as_pointee,
+        bool report_unknown = true
+    );
     [[nodiscard]] TypeHandle find_type_in_module(
         syntax::ModuleId module,
+        std::string_view name,
+        base::SourceRange range,
+        bool opaque_allowed_as_pointee,
+        bool report_unknown = true
+    );
+    [[nodiscard]] TypeHandle find_type_in_module(
+        syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool opaque_allowed_as_pointee,
@@ -730,9 +756,22 @@ private:
     [[nodiscard]] const FunctionSignature* find_function_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const;
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(
+        TypeHandle enum_type,
+        IdentId case_name_id,
+        std::string_view case_name
+    ) const;
     [[nodiscard]] const std::vector<const EnumCaseInfo*>* find_enum_cases_by_type(TypeHandle enum_type) const noexcept;
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
         std::string_view enum_name,
+        std::string_view case_name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
+        IdentId enum_name_id,
+        std::string_view enum_name,
+        IdentId case_name_id,
         std::string_view case_name,
         base::SourceRange range,
         bool report_unknown = true
@@ -742,9 +781,23 @@ private:
         std::string_view case_name,
         base::SourceRange range
     );
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_pattern_type(
+        syntax::TypeId enum_type,
+        IdentId case_name_id,
+        std::string_view case_name,
+        base::SourceRange range
+    );
     [[nodiscard]] const EnumCaseInfo* find_enum_constructor(syntax::ExprId callee, bool report_unknown);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
+    [[nodiscard]] const Symbol* find_symbol(IdentId name_id, std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const Symbol* find_symbol_in_module(
+        syntax::ModuleId module,
+        IdentId name_id,
+        std::string_view name,
+        base::SourceRange range,
+        bool report_unknown = true
+    );
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type);
     void record_expr_expected_type(syntax::ExprId expr, TypeHandle expected_type);
     void record_coercion(syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, CoercionKind kind);
@@ -793,7 +846,6 @@ private:
     std::unordered_map<std::string, syntax::ItemId> function_definition_items_;
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
-    IdentifierInterner identifiers_;
     std::unordered_map<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash> named_types_by_name_;
     std::unordered_map<ModuleLookupKey, const TypeAliasInfo*, ModuleLookupKeyHash> type_aliases_by_name_;
     std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_struct_templates_by_name_;

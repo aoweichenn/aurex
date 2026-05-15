@@ -294,32 +294,34 @@ void append_module_into(
     for (base::usize i = 0; i < source_type_count; ++i) {
         syntax::TypeNode node = source.types.take(i);
         remap_type_node(node, map);
-        destination.types.push_back(std::move(node));
+        static_cast<void>(destination.push_type(std::move(node)));
     }
     for (base::usize i = 0; i < source_expr_count; ++i) {
         syntax::ExprNode node = source.exprs.take(i);
         remap_expr_node(node, map);
-        destination.exprs.push_back(std::move(node));
+        static_cast<void>(destination.push_expr(std::move(node)));
     }
     for (base::usize i = 0; i < source_pattern_count; ++i) {
         syntax::PatternNode node = source.patterns.take(i);
         remap_pattern_node(node, map);
-        destination.patterns.push_back(std::move(node));
+        static_cast<void>(destination.push_pattern(std::move(node)));
     }
     for (base::usize i = 0; i < source_stmt_count; ++i) {
         syntax::StmtNode node = source.stmts.take(i);
         remap_stmt_node(node, map);
-        destination.stmts.push_back(std::move(node));
+        static_cast<void>(destination.push_stmt(std::move(node)));
     }
     for (base::usize i = 0; i < source_item_count; ++i) {
         syntax::ItemNode node = source.items.take(i);
         remap_item_node(node, map);
-        destination.items.push_back(std::move(node));
-        destination.item_modules.push_back(owner_module);
+        static_cast<void>(destination.push_item_for_module(std::move(node), owner_module));
     }
 
     if (keep_imports) {
-        destination.imports.insert(destination.imports.end(), source.imports.begin(), source.imports.end());
+        for (syntax::ImportDecl import : source.imports) {
+            destination.intern_import_decl(import);
+            destination.imports.push_back(std::move(import));
+        }
     }
 }
 
@@ -341,6 +343,7 @@ base::Result<syntax::AstModule> ModuleLoader::load_root() {
     if (!result) {
         return base::Result<syntax::AstModule>::fail(result.error());
     }
+    combined.finalize_identifiers();
     return base::Result<syntax::AstModule>::ok(std::move(combined));
 }
 
@@ -450,11 +453,15 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     if (module_inserted.second) {
         module_id = syntax::ModuleId {static_cast<base::u32>(combined.modules.size())};
         module_inserted.first->second.id = module_id;
-        combined.modules.push_back(syntax::ModuleInfo {module.module_path, {}});
+        syntax::ModuleInfo info;
+        info.path = module.module_path;
+        combined.intern_module_path(info.path);
+        combined.modules.push_back(std::move(info));
         this->modules_.push_back(ModuleRecord {module_name, canonical});
     }
     if (is_root) {
         combined.module_path = module.module_path;
+        combined.intern_module_path(combined.module_path);
     }
 
     const std::vector<syntax::ImportDecl> imports = module.imports;
@@ -480,12 +487,15 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
             this->loading_files_.erase(key);
             return import_result;
         }
-        direct_imports.push_back(syntax::ResolvedImport {
+        syntax::ResolvedImport resolved {
             import_result.value(),
             import.alias,
             import.alias_range,
             import.visibility,
-        });
+            import.alias_id,
+        };
+        combined.intern_resolved_import(resolved);
+        direct_imports.push_back(std::move(resolved));
     }
     if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
         combined.modules[module_id.value].imports = std::move(direct_imports);

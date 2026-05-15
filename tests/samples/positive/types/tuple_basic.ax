@@ -18,6 +18,10 @@ fn inc(value: i32) -> i32 {
     return value + 1;
 }
 
+fn as_const_ptr(value: &i32) -> *const i32 {
+    return unsafe { ptrat[*const i32](ptraddr(value)) };
+}
+
 fn main() -> i32 {
     let pair: (i32, bool) = make_pair(4);
     let (x, ok) = pair;
@@ -25,7 +29,7 @@ fn main() -> i32 {
     var (mutable_count, mutable_flag) = pair;
     mutable_count = mutable_count + 0;
     var pointer_source: i32 = 9;
-    let pointer_value: *const i32 = &pointer_source;
+    let pointer_value: *const i32 = as_const_ptr(&pointer_source);
     let bytes: [3]u8 = [1u8, 2u8, 3u8];
     let view: []const u8 = bytes[:];
     let triple: (i32, bool, u8) = (4, true, 7u8);

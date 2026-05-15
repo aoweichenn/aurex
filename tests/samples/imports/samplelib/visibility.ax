@@ -47,16 +47,16 @@ impl PublicBox {
         };
     }
 
-    pub fn read(self: *const PublicBox) -> i32 {
+    pub fn read(self: &PublicBox) -> i32 {
         return self.value;
     }
 
-    pub fn bump(self: *mut PublicBox, delta: i32) -> i32 {
+    pub fn bump(self: &mut PublicBox, delta: i32) -> i32 {
         self.value = self.value + delta;
         return self.value;
     }
 
-    priv fn secret_value(self: *const PublicBox) -> i32 {
+    priv fn secret_value(self: &PublicBox) -> i32 {
         return self.secret;
     }
 }

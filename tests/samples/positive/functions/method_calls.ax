@@ -9,12 +9,12 @@ impl Counter {
         return Counter { value: value };
     }
 
-    pub fn add(self: *mut Counter, delta: i32) -> i32 {
+    pub fn add(self: &mut Counter, delta: i32) -> i32 {
         self.value = self.value + delta;
         return self.value;
     }
 
-    pub fn read(self: *const Counter) -> i32 {
+    pub fn read(self: &Counter) -> i32 {
         return self.value;
     }
 }

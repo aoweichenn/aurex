@@ -229,6 +229,9 @@ inline constexpr std::string_view SEMA_DEREF_STORAGE =
 inline constexpr std::string_view SEMA_UNSAFE_DEREF =
     "raw pointer dereference requires unsafe context";
 
+inline constexpr std::string_view SEMA_UNSAFE_RAW_POINTER_PROJECTION =
+    "raw pointer projection requires unsafe context";
+
 inline constexpr std::string_view SEMA_UNSAFE_PTRCAST =
     "ptrcast requires unsafe context";
 

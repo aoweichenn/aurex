@@ -1273,6 +1273,34 @@ TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges) {
     EXPECT_TRUE(diagnostics.has_error());
 }
 
+TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId integer_literal = push_integer_text(module, "2147483648");
+    syntax::ExprNode null_literal;
+    null_literal.kind = syntax::ExprKind::null_literal;
+    const ExprId null_literal_id = module.push_expr(null_literal);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle i64 = types.builtin(BuiltinType::i64);
+    const TypeHandle ptr_i32 = types.pointer(PointerMutability::const_, i32);
+
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal), i32));
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal, i64), i64));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_types[integer_literal.value], i64));
+
+    EXPECT_FALSE(is_valid(analyzer.analyze_expr(null_literal_id)));
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(null_literal_id, ptr_i32), ptr_i32));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_types[null_literal_id.value], ptr_i32));
+}
+
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};

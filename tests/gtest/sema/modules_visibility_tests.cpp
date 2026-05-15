@@ -238,8 +238,8 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility) {
             "pub struct Box { value: i32; }\n"
             "pub fn make_box() -> Box { return Box { value: hidden_fn() }; }\n"
             "impl Box {\n"
-            "  fn hidden_method(self: *const Box) -> i32 { return self.value; }\n"
-            "  pub fn read(self: *const Box) -> i32 { return self.hidden_method(); }\n"
+            "  fn hidden_method(self: &Box) -> i32 { return self.value; }\n"
+            "  pub fn read(self: &Box) -> i32 { return self.hidden_method(); }\n"
             "}\n";
     }
 

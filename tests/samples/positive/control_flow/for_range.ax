@@ -1,9 +1,7 @@
 module for_range;
 
-fn push_digit(log: *mut i32, value: i32) -> void {
-    unsafe {
-        *log = *log * 10 + value;
-    }
+fn push_digit(log: &mut i32, value: i32) -> void {
+    *log = *log * 10 + value;
 }
 
 fn contextual_start(limit: i64) -> i64 {
@@ -18,7 +16,7 @@ fn range_control_paths() -> i32 {
     var total: i32 = 0;
     var log: i32 = 0;
     for i in range(0, 5) {
-        defer push_digit(&log, 1);
+        defer push_digit(&mut log, 1);
         if i == 1 {
             continue;
         }

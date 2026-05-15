@@ -1,18 +1,16 @@
 module eval_order_assign;
 
-fn next(state: *mut i32, expected: i32) -> i32 {
-    unsafe {
-        if *state != expected {
-            return 100;
-        }
-        *state = *state + 1;
+fn next(state: &mut i32, expected: i32) -> i32 {
+    if *state != expected {
+        return 100;
     }
+    *state = *state + 1;
     return expected;
 }
 
 fn main() -> i32 {
     var state: i32 = 0;
     var value: i32 = 0;
-    value = next(&state, 0) + next(&state, 1);
+    value = next(&mut state, 0) + next(&mut state, 1);
     return state + value - 3;
 }

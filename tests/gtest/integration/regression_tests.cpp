@@ -139,6 +139,26 @@ TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {
         "strraw requires unsafe context"
     );
     expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "raw_pointer_field_requires_unsafe.ax"))).output,
+        "raw pointer projection requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "raw_pointer_field_write_requires_unsafe.ax"))).output,
+        "raw pointer projection requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "raw_pointer_index_requires_unsafe.ax"))).output,
+        "raw pointer projection requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "raw_pointer_index_write_requires_unsafe.ax"))).output,
+        "raw pointer projection requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "implicit_address_to_raw_pointer_rejected.ax"))).output,
+        "initializer type does not match declared type"
+    );
+    expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("functions", "unsafe_fn_call_required.ax"))).output,
         "call to unsafe function read_raw requires unsafe context"
     );
@@ -814,8 +834,8 @@ TEST_F(AurexIntegrationTest, M2GenericWhereEnumAliasAndImplRegressions) {
         "fn lower[i32](left: i32, right: i32)",
         "fn hashable[i32](value: i32)",
         "fn unwrap_or[i32](value: constraints_enum_alias_impl_m2.Option[i32], fallback: i32)",
-        "fn get[i32](self: *const constraints_enum_alias_impl_m2.Box[i32])",
-        "fn same_value[i32](self: *const constraints_enum_alias_impl_m2.Box[i32], other: *const constraints_enum_alias_impl_m2.Box[i32])",
+        "fn get[i32](self: &constraints_enum_alias_impl_m2.Box[i32])",
+        "fn same_value[i32](self: &constraints_enum_alias_impl_m2.Box[i32], other: &constraints_enum_alias_impl_m2.Box[i32])",
     });
 
     const fs::path binary = test_bin_root() / "constraints_enum_alias_impl_m2";
@@ -842,7 +862,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions) {
         "}\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 3;\n"
-        "  let ptr: g.Ptr[i32] = &value;\n"
+        "  let ptr: g.Ptr[i32] = unsafe { ptrat[g.Ptr[i32]](ptraddr(&value)) };\n"
         "  let maybe: g.Maybe[i32] = g.Maybe[i32].some(39);\n"
         "  if ptraddr(ptr) == 0usize { return 1; }\n"
         "  return g.hashable[i32](value) + unwrap(maybe) - 40;\n"
@@ -922,7 +942,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions) {
         "import generic_alias_b;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: Ptr[i32] = &value;\n"
+        "  let ptr: Ptr[i32] = null;\n"
         "  return 0;\n"
         "}\n"
     );
@@ -943,7 +963,7 @@ TEST_F(AurexIntegrationTest, M2GenericEnumAliasImportRegressions) {
         "import generic_alias_facade as facade;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: facade.Ptr[i32] = &value;\n"
+        "  let ptr: facade.Ptr[i32] = null;\n"
         "  return 0;\n"
         "}\n"
     );
@@ -966,13 +986,13 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
         "  return 0;\n"
         "}\n"
         "impl[T] Box[T] {\n"
-        "  fn get(self: *const Box[T]) -> T { return self.value; }\n"
+        "  fn get(self: &Box[T]) -> T { return self.value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  var left: i32 = 1;\n"
         "  var right: i32 = 2;\n"
-        "  let left_ptr: *const i32 = &left;\n"
-        "  let right_ptr: *const i32 = &right;\n"
+        "  let left_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&left)) };\n"
+        "  let right_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&right)) };\n"
         "  let left_ref: &i32 = &left;\n"
         "  let flag: Flag = Flag.yes;\n"
         "  let box: Box[i32] = Box[i32] { value: 1 };\n"
@@ -1007,23 +1027,23 @@ TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions) {
         "struct Box[T] { value: T; }\n"
         "fn id_i32(value: i32) -> i32 { return value; }\n"
         "impl[T] Box[*const T] {\n"
-        "  fn ptr_marker(self: *const Box[*const T]) -> i32 { return 1; }\n"
+        "  fn ptr_marker(self: &Box[*const T]) -> i32 { return 1; }\n"
         "}\n"
         "impl[T] Box[[]const T] {\n"
-        "  fn slice_marker(self: *const Box[[]const T]) -> i32 { return 2; }\n"
+        "  fn slice_marker(self: &Box[[]const T]) -> i32 { return 2; }\n"
         "}\n"
         "impl[T] Box[[4]T] {\n"
-        "  fn array_marker(self: *const Box[[4]T]) -> i32 { return 3; }\n"
+        "  fn array_marker(self: &Box[[4]T]) -> i32 { return 3; }\n"
         "}\n"
         "impl[T] Box[(T, bool)] {\n"
-        "  fn tuple_marker(self: *const Box[(T, bool)]) -> i32 { return 4; }\n"
+        "  fn tuple_marker(self: &Box[(T, bool)]) -> i32 { return 4; }\n"
         "}\n"
         "impl[T] Box[Unary[T]] {\n"
-        "  fn fn_marker(self: *const Box[Unary[T]]) -> i32 { return 5; }\n"
+        "  fn fn_marker(self: &Box[Unary[T]]) -> i32 { return 5; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr_box: Box[*const i32] = Box[*const i32] { value: &value };\n"
+        "  let ptr_box: Box[*const i32] = Box[*const i32] { value: unsafe { ptrat[*const i32](ptraddr(&value)) } };\n"
         "  let array: [4]i32 = [1, 2, 3, 4];\n"
         "  let slice: []const i32 = array[:];\n"
         "  let slice_box: Box[[]const i32] = Box[[]const i32] { value: slice };\n"
@@ -1116,7 +1136,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "module generic_method_ext_a;\n"
         "import generic_method_owner as owner;\n"
         "impl[T] owner.Box[T] {\n"
-        "  pub fn read(self: *const owner.Box[T]) -> T { return self.value; }\n"
+        "  pub fn read(self: &owner.Box[T]) -> T { return self.value; }\n"
         "}\n"
     ));
     static_cast<void>(write_source_file(
@@ -1124,7 +1144,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "module generic_method_ext_b;\n"
         "import generic_method_owner as owner;\n"
         "impl[T] owner.Box[T] {\n"
-        "  pub fn read(self: *const owner.Box[T]) -> T { return self.value; }\n"
+        "  pub fn read(self: &owner.Box[T]) -> T { return self.value; }\n"
         "}\n"
     ));
     static_cast<void>(write_source_file(
@@ -1132,7 +1152,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "module generic_method_ext_private;\n"
         "import generic_method_owner as owner;\n"
         "impl[T] owner.Box[T] {\n"
-        "  priv fn hidden(self: *const owner.Box[T]) -> T { return self.value; }\n"
+        "  priv fn hidden(self: &owner.Box[T]) -> T { return self.value; }\n"
         "}\n"
     ));
 
@@ -1142,7 +1162,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
         "  let box: ga.RemoteBox[i32] = ga.make_box[i32](ga.remote_id(5));\n"
-        "  let ptr: *const i32 = &box.value;\n"
+        "  let ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&box.value)) };\n"
         "  return ga.remote_id(unsafe { *ptr }) - 5;\n"
         "}\n"
     );
@@ -1196,7 +1216,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "import generic_a as ga;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: ga.SecretPtr[i32] = &value;\n"
+        "  let ptr: ga.SecretPtr[i32] = null;\n"
         "  return 0;\n"
         "}\n"
     );
@@ -1223,7 +1243,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "import generic_a;\n"
         "fn main() -> i32 {\n"
         "  let value: i32 = 1;\n"
-        "  let ptr: SecretPtr[i32] = &value;\n"
+        "  let ptr: SecretPtr[i32] = null;\n"
         "  return 0;\n"
         "}\n"
     );
@@ -1343,7 +1363,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "fn main() -> i32 {\n"
         "  let b: Box[i32] = Box[i32] { value: 1 };\n"
         "  let chosen: Box[i32] = pick(b, Box[i32] { value: 2 });\n"
-        "  let ptr: *const i32 = &chosen.value;\n"
+        "  let ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&chosen.value)) };\n"
         "  let same_ptr = ptr_id(ptr);\n"
         "  let values: *mut [2]i32 = null;\n"
         "  let same_values = array_ptr_id(values);\n"
@@ -1496,7 +1516,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         tmp_root() / "generic_impl_missing_target.ax",
         "module generic_impl_missing_target;\n"
         "impl[T] Missing[T] {\n"
-        "  fn value(self: *const Missing[T]) -> T { return self.value; }\n"
+        "  fn value(self: &Missing[T]) -> T { return self.value; }\n"
         "}\n"
         "fn main() -> i32 { return 0; }\n"
     );
@@ -1721,7 +1741,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "module generic_method;\n"
         "struct Box { value: i32; }\n"
         "impl Box {\n"
-        "  fn id[T](self: *const Box, value: T) -> T { return value; }\n"
+        "  fn id[T](self: &Box, value: T) -> T { return value; }\n"
         "}\n"
         "fn main() -> i32 { return 0; }\n"
     );
@@ -1735,7 +1755,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports) {
         "module generic_method_call;\n"
         "struct Box { value: i32; }\n"
         "impl Box {\n"
-        "  fn read(self: *const Box) -> i32 { return self.value; }\n"
+        "  fn read(self: &Box) -> i32 { return self.value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let box: Box = Box { value: 1 };\n"

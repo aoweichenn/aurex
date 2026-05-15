@@ -1,4 +1,4 @@
-module assign_field_through_const_pointer;
+module raw_pointer_field_requires_unsafe;
 
 struct Pair {
     value: i32;
@@ -11,8 +11,5 @@ fn as_const_pair_ptr(value: &Pair) -> *const Pair {
 fn main() -> i32 {
     let pair: Pair = Pair { value: 1 };
     let ptr: *const Pair = as_const_pair_ptr(&pair);
-    unsafe {
-        ptr.value = 42;
-    }
-    return 0;
+    return ptr.value;
 }

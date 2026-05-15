@@ -9,7 +9,7 @@ impl Counter {
         return Counter { value: value };
     }
 
-    fn read(self: *const Counter) -> i32 {
+    fn read(self: &Counter) -> i32 {
         return self.value;
     }
 }

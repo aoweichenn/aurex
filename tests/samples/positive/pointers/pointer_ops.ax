@@ -1,5 +1,9 @@
 module pointer_ops;
 
+fn as_mut_ptr(value: &mut i32) -> *mut i32 {
+    return unsafe { ptrat[*mut i32](ptraddr(value)) };
+}
+
 fn increment(value: *mut i32) -> void {
     unsafe {
         *value = *value + 1;
@@ -8,6 +12,6 @@ fn increment(value: *mut i32) -> void {
 
 fn main() -> i32 {
     var value: i32 = 41;
-    increment(&value);
+    increment(as_mut_ptr(&mut value));
     return value - 42;
 }

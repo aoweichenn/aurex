@@ -1,23 +1,19 @@
 module eval_order_call_stmt;
 
-fn next(state: *mut i32, expected: i32) -> i32 {
-    unsafe {
-        if *state != expected {
-            return 100;
-        }
-        *state = *state + 1;
+fn next(state: &mut i32, expected: i32) -> i32 {
+    if *state != expected {
+        return 100;
     }
+    *state = *state + 1;
     return expected;
 }
 
-fn consume(state: *mut i32, value: i32) -> void {
-    unsafe {
-        *state = *state + value;
-    }
+fn consume(state: &mut i32, value: i32) -> void {
+    *state = *state + value;
 }
 
 fn main() -> i32 {
     var state: i32 = 0;
-    consume(&state, next(&state, 0) + next(&state, 1));
+    consume(&mut state, next(&mut state, 0) + next(&mut state, 1));
     return state - 3;
 }

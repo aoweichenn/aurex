@@ -1,15 +1,13 @@
 module for_loop;
 
-fn push_digit(log: *mut i32, value: i32) -> void {
-    unsafe {
-        *log = *log * 10 + value;
-    }
+fn push_digit(log: &mut i32, value: i32) -> void {
+    *log = *log * 10 + value;
 }
 
 fn for_defer_continue() -> i32 {
     var log: i32 = 0;
     for var i: i32 = 0; i < 3; i = i + 1 {
-        defer push_digit(&log, 1);
+        defer push_digit(&mut log, 1);
         if i == 0 {
             continue;
         }

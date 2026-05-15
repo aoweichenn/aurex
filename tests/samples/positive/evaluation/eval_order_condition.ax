@@ -1,24 +1,22 @@
 module eval_order_condition;
 
-fn check(state: *mut i32, expected: i32, result: bool) -> bool {
-    unsafe {
-        if *state != expected {
-            return false;
-        }
-        *state = *state + 1;
+fn check(state: &mut i32, expected: i32, result: bool) -> bool {
+    if *state != expected {
+        return false;
     }
+    *state = *state + 1;
     return result;
 }
 
 fn main() -> i32 {
     var state: i32 = 0;
-    if check(&state, 0, true) && check(&state, 1, false) {
+    if check(&mut state, 0, true) && check(&mut state, 1, false) {
         return 1;
     }
     if state != 2 {
         return 2;
     }
-    if check(&state, 2, true) || check(&state, 3, true) {
+    if check(&mut state, 2, true) || check(&mut state, 3, true) {
         return state - 3;
     }
     return 3;

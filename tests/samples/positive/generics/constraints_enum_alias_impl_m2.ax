@@ -3,6 +3,10 @@ module constraints_enum_alias_impl_m2;
 type ConstPtr[T] = *const T;
 type SizedPtr[T] where T: Sized = *const T;
 
+fn const_ptr[T](value: &T) -> *const T {
+    return unsafe { ptrat[*const T](ptraddr(value)) };
+}
+
 enum Option[T] {
     some(T),
     none,
@@ -18,11 +22,11 @@ struct Box[T] {
 }
 
 impl[T] Box[T] where T: Eq {
-    fn get(self: *const Box[T]) -> T {
+    fn get(self: &Box[T]) -> T {
         return self.value;
     }
 
-    fn same_value(self: *const Box[T], other: *const Box[T]) -> bool {
+    fn same_value(self: &Box[T], other: &Box[T]) -> bool {
         return self.value == other.value;
     }
 }
@@ -68,7 +72,7 @@ fn main() -> i32 {
     let none: Option[i32] = Option[i32].none;
     let result: Result[i32, i32] = Result[i32, i32].ok(1);
     let value: i32 = 2;
-    let ptr: ConstPtr[i32] = read_ptr(&value);
+    let ptr: ConstPtr[i32] = read_ptr(const_ptr(&value));
     let sized_ptr: SizedPtr[i32] = read_sized_ptr(ptr);
     if boxed.same_value(&other) && same(1, 1) && lower(1, 2) && ptraddr(sized_ptr) != 0usize {
         return unwrap_or(opt, 0) + unwrap_or(none, 2) + use_result(result) + hashable(value) - 43;

@@ -362,8 +362,8 @@ TEST_F(AurexIntegrationTest, MethodsAndAssociatedFunctions) {
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
     expect_contains_all(ir, {
         "fn new(value: i32)",
-        "fn add(self: *mut method_calls.Counter, delta: i32)",
-        "fn read(self: *const method_calls.Counter)",
+        "fn add(self: &mut method_calls.Counter, delta: i32)",
+        "fn read(self: &method_calls.Counter)",
         "call m0_method_calls_Counter_new",
         "call m0_method_calls_Counter_add",
         "call m0_method_calls_Counter_read",

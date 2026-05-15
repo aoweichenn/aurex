@@ -1,21 +1,19 @@
 module eval_order_return;
 
-fn next(state: *mut i32, expected: i32) -> i32 {
-    unsafe {
-        if *state != expected {
-            return 100;
-        }
-        *state = *state + 1;
+fn next(state: &mut i32, expected: i32) -> i32 {
+    if *state != expected {
+        return 100;
     }
+    *state = *state + 1;
     return expected;
 }
 
-fn total(state: *mut i32) -> i32 {
+fn total(state: &mut i32) -> i32 {
     return next(state, 0) + next(state, 1);
 }
 
 fn main() -> i32 {
     var state: i32 = 0;
-    let value: i32 = total(&state);
+    let value: i32 = total(&mut state);
     return state + value - 3;
 }

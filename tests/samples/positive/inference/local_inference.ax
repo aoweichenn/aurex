@@ -7,13 +7,17 @@ struct Pair {
     value: Count;
 }
 
+fn as_count_ptr(value: &mut Count) -> CountPtr {
+    return unsafe { ptrat[CountPtr](ptraddr(value)) };
+}
+
 fn make_count() -> Count {
     return 40;
 }
 
 fn main() -> i32 {
     var value = make_count();
-    let ptr: CountPtr = &value;
+    let ptr: CountPtr = as_count_ptr(&mut value);
     let pair = Pair { value: unsafe { *ptr } + 2 };
     let aliased: CountPtr = ptr;
     return pair.value + unsafe { *aliased } - 82;

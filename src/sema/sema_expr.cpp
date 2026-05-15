@@ -176,6 +176,28 @@ struct IntegerLiteralExpr {
     return types.is_pointer(type) || types.is_reference(type);
 }
 
+[[nodiscard]] bool expr_type_cache_depends_on_expected_type(const syntax::ExprNode& expr) noexcept {
+    switch (expr.kind) {
+    case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::float_literal:
+    case syntax::ExprKind::null_literal:
+    case syntax::ExprKind::unary:
+    case syntax::ExprKind::binary:
+    case syntax::ExprKind::call:
+    case syntax::ExprKind::if_expr:
+    case syntax::ExprKind::block_expr:
+    case syntax::ExprKind::unsafe_block:
+    case syntax::ExprKind::match_expr:
+    case syntax::ExprKind::array_literal:
+    case syntax::ExprKind::tuple_literal:
+    case syntax::ExprKind::struct_literal:
+    case syntax::ExprKind::slice:
+        return true;
+    default:
+        return false;
+    }
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
@@ -189,7 +211,12 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
 
     const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
     std::vector<TypeHandle>& expr_types = this->active_expr_types();
-    if (expr_id.value < expr_types.size() && is_valid(expr_types[expr_id.value])) {
+    const bool can_use_cached_type =
+        !is_valid(expected_type) ||
+        !expr_type_cache_depends_on_expected_type(expr);
+    if (can_use_cached_type &&
+        expr_id.value < expr_types.size() &&
+        is_valid(expr_types[expr_id.value])) {
         return expr_types[expr_id.value];
     }
     return this->analyze_expr(expr_id, expr, expected_type);
@@ -417,12 +444,6 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
                 this->checked_.types.reference(PointerMutability::mut, operand)
             );
         }
-        if (this->checked_.types.is_pointer(expected_type)) {
-            const PointerMutability mutability = this->is_writable_place(expr.unary_operand)
-                ? PointerMutability::mut
-                : PointerMutability::const_;
-            return this->record_expr_type(expr_id, this->checked_.types.pointer(mutability, operand));
-        }
         if (!this->is_valid_storage_type(operand)) {
             this->report(expr.range, std::string(SEMA_REFERENCE_STORAGE));
         }
@@ -632,7 +653,10 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
     }
 
     TypeHandle object = this->analyze_expr(expr.object);
-    if (is_pointer_or_reference(this->checked_.types, object)) {
+    if (this->checked_.types.is_pointer(object)) {
+        this->require_unsafe_context(expr.range, SEMA_UNSAFE_RAW_POINTER_PROJECTION);
+        object = this->checked_.types.get(object).pointee;
+    } else if (this->checked_.types.is_reference(object)) {
         object = this->checked_.types.get(object).pointee;
     }
     if (this->checked_.types.is_tuple(object)) {
@@ -700,6 +724,7 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
         return this->record_expr_type(expr_id, this->checked_.types.get(object).slice_element);
     }
     if (this->checked_.types.is_pointer(object)) {
+        this->require_unsafe_context(expr.range, SEMA_UNSAFE_RAW_POINTER_PROJECTION);
         const TypeHandle pointee = this->checked_.types.get(object).pointee;
         if (this->checked_.types.is_array(pointee)) {
             this->report(expr.range, std::string(SEMA_INDEX_POINTER_ARRAY_DEREF));

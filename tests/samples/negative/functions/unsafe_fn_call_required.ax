@@ -1,10 +1,14 @@
 module unsafe_fn_call_required;
 
+fn as_const_ptr(value: &i32) -> *const i32 {
+    return unsafe { ptrat[*const i32](ptraddr(value)) };
+}
+
 unsafe fn read_raw(value: *const i32) -> i32 {
     return *value;
 }
 
 fn main() -> i32 {
     var value: i32 = 1;
-    return read_raw(&value);
+    return read_raw(as_const_ptr(&value));
 }

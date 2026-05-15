@@ -36,10 +36,10 @@ TEST_F(AurexIntegrationTest, FunctionReturnInference) {
 
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
     expect_contains_all(ast, {
-        "item #2 priv fn make_count\n",
-        "item #3 priv fn make_pair\n",
-        "item #4 priv fn touch\n",
-        "item #5 priv fn choose\n",
+        "item #3 priv fn make_count\n",
+        "item #4 priv fn make_pair\n",
+        "item #5 priv fn touch\n",
+        "item #6 priv fn choose\n",
     });
     expect_not_contains(ast, "fn make_count\n    return");
     expect_not_contains(ast, "fn make_pair\n    return");

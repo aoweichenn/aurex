@@ -18,6 +18,10 @@ fn c_string_equal(left: *const u8, right: *const u8) -> bool {
     return strcmp(left, right) == 0;
 }
 
+fn index_ptr(index: &mut usize) -> *mut usize {
+    return unsafe { ptrat[*mut usize](ptraddr(index)) };
+}
+
 fn push(log: *mut u8, index: *mut usize, value: u8) -> void {
     unsafe {
         log[*index] = value;
@@ -80,12 +84,13 @@ fn main() -> i32 {
     defer free_bytes(log);
 
     var index: usize = 0;
-    normal_scope(log, &index);
-    if early_return(log, &index) != 7 {
+    let index_ref: *mut usize = index_ptr(&mut index);
+    normal_scope(log, index_ref);
+    if early_return(log, index_ref) != 7 {
         return 2;
     }
-    loop_paths(log, &index);
-    for_paths(log, &index);
+    loop_paths(log, index_ref);
+    for_paths(log, index_ref);
 
     if !c_string_equal(unsafe { ptrcast[*const u8](log) }, c"CBDAFELLZQQR") {
         return 3;

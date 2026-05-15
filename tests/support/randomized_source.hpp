@@ -265,7 +265,7 @@ inline void append_statement(
     for (base::usize statement = 0; statement < statement_count; ++statement) {
         append_statement(random, out, statement);
     }
-    out << "  let ptr: *mut i32 = &total;\n"
+    out << "  let ptr: *mut i32 = unsafe { ptrat[*mut i32](ptraddr(&mut total)) };\n"
         << "  unsafe { *ptr = *ptr + helper_0(1); }\n"
         << "  return total - total;\n"
         << "}\n";

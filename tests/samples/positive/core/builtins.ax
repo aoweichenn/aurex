@@ -14,5 +14,5 @@ fn main() -> i32 {
     if pointer_size == cast[usize](0) || pointer_align == cast[usize](0) {
         return 1;
     }
-    return pair_ptr.a + pair_ptr.b - 3;
+    return unsafe { pair_ptr.a + pair_ptr.b } - 3;
 }

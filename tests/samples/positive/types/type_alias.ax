@@ -9,13 +9,17 @@ struct Packet {
     len: Count;
 }
 
+fn as_count_ptr(value: &mut Count) -> CountPtr {
+    return unsafe { ptrat[CountPtr](ptraddr(value)) };
+}
+
 fn read_count(value: CountPtr) -> Count {
     return unsafe { *value };
 }
 
 fn main() -> i32 {
     var count: Count = 41;
-    let ptr: CountPtr = &count;
+    let ptr: CountPtr = as_count_ptr(&mut count);
     let packet: PacketAlias = Packet { len: read_count(ptr) + 1 };
     return packet.len - cast[i32](sizeof[Bytes4]) - 38;
 }

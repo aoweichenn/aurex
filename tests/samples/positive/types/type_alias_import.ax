@@ -2,8 +2,12 @@ module type_alias_import;
 
 import samplelib.aliases as aliases;
 
+fn as_imported_ptr(value: &mut aliases.ImportedInt) -> aliases.ImportedIntPtr {
+    return unsafe { ptrat[aliases.ImportedIntPtr](ptraddr(value)) };
+}
+
 fn main() -> i32 {
     var value: aliases.ImportedInt = 40;
-    let ptr: aliases.ImportedIntPtr = &value;
+    let ptr: aliases.ImportedIntPtr = as_imported_ptr(&mut value);
     return unsafe { *ptr } - 40;
 }

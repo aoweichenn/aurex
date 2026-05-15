@@ -8,6 +8,10 @@ extern c {
 type Strlen = extern c fn(text: *const u8) -> usize;
 type Snprintf = extern c fn(*mut u8, usize, *const u8, ...) -> i32;
 
+fn u8_buffer_ptr(value: &mut [16]u8) -> *mut u8 {
+    return unsafe { ptrcast[*mut u8](ptrat[*mut [16]u8](ptraddr(value))) };
+}
+
 fn takes_strlen(callback: Strlen, text: *const u8) -> usize {
     return callback(text);
 }
@@ -20,7 +24,7 @@ fn main() -> i32 {
         return 1;
     }
     var buffer: [16]u8 = [0; 16];
-    let written: i32 = format(unsafe { ptrcast[*mut u8](&buffer) }, cast[usize](16), c"%s", text);
+    let written: i32 = format(u8_buffer_ptr(&mut buffer), cast[usize](16), c"%s", text);
     if written != 4 {
         return 2;
     }

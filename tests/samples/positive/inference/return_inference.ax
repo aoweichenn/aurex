@@ -6,6 +6,10 @@ struct Pair {
     value: Count;
 }
 
+fn as_count_ptr(value: &mut Count) -> *mut Count {
+    return unsafe { ptrat[*mut Count](ptraddr(value)) };
+}
+
 fn make_count() {
     return 40;
 }
@@ -30,7 +34,7 @@ fn choose(flag: bool, value: Count) {
 
 fn main() -> i32 {
     var value = choose(false, 1);
-    touch(&value);
+    touch(as_count_ptr(&mut value));
     let pair = make_pair(value);
     return pair.value - 43;
 }

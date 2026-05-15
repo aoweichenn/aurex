@@ -5,17 +5,15 @@ enum ResultI32I32: u8 {
   err(i32) = 2,
 }
 
-fn mark(log: *mut i32) -> void {
-  unsafe {
-    *log = *log + 1;
-  }
+fn mark(log: &mut i32) -> void {
+  *log = *log + 1;
 }
 
 fn fail() -> ResultI32I32 {
   return ResultI32I32.err(5);
 }
 
-fn use_try(log: *mut i32) -> ResultI32I32 {
+fn use_try(log: &mut i32) -> ResultI32I32 {
   defer mark(log);
   let value: i32 = fail()?;
   return ResultI32I32.ok(value);
@@ -23,7 +21,7 @@ fn use_try(log: *mut i32) -> ResultI32I32 {
 
 fn main() -> i32 {
   var log: i32 = 0;
-  let result: ResultI32I32 = use_try(&log);
+  let result: ResultI32I32 = use_try(&mut log);
   if log != 1 {
     return 1;
   }

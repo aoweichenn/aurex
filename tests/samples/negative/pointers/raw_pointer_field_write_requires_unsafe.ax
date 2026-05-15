@@ -1,4 +1,4 @@
-module pointer_field_write;
+module raw_pointer_field_write_requires_unsafe;
 
 struct Pair {
     value: i32;
@@ -11,8 +11,6 @@ fn as_mut_pair_ptr(value: &mut Pair) -> *mut Pair {
 fn main() -> i32 {
     var pair: Pair = Pair { value: 1 };
     let ptr: *mut Pair = as_mut_pair_ptr(&mut pair);
-    unsafe {
-        ptr.value = 42;
-    }
-    return pair.value - 42;
+    ptr.value = 2;
+    return pair.value;
 }

@@ -1,0 +1,11 @@
+module implicit_address_to_raw_pointer_rejected;
+
+fn read(value: *const i32) -> i32 {
+    return unsafe { *value };
+}
+
+fn main() -> i32 {
+    let value: i32 = 1;
+    let ptr: *const i32 = &value;
+    return read(&value) + unsafe { *ptr };
+}

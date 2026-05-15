@@ -1,10 +1,14 @@
 module address_of_let;
 
+fn as_const_ptr(value: &i32) -> *const i32 {
+    return unsafe { ptrat[*const i32](ptraddr(value)) };
+}
+
 fn read(value: *const i32) -> i32 {
     return unsafe { *value };
 }
 
 fn main() -> i32 {
     let value: i32 = 42;
-    return read(&value) - 42;
+    return read(as_const_ptr(&value)) - 42;
 }

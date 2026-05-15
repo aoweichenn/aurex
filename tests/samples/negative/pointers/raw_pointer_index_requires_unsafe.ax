@@ -1,11 +1,11 @@
-module unsafe_deref_required;
+module raw_pointer_index_requires_unsafe;
 
 fn as_const_ptr(value: &i32) -> *const i32 {
     return unsafe { ptrat[*const i32](ptraddr(value)) };
 }
 
 fn main() -> i32 {
-    var value: i32 = 1;
+    let value: i32 = 1;
     let ptr: *const i32 = as_const_ptr(&value);
-    return *ptr;
+    return ptr[0];
 }

@@ -1,8 +1,14 @@
 module assign_through_const_pointer;
 
+fn as_const_ptr(value: &i32) -> *const i32 {
+    return unsafe { ptrat[*const i32](ptraddr(value)) };
+}
+
 fn main() -> i32 {
     let value: i32 = 1;
-    let ptr: *const i32 = &value;
-    *ptr = 2;
+    let ptr: *const i32 = as_const_ptr(&value);
+    unsafe {
+        *ptr = 2;
+    }
     return 0;
 }

@@ -105,9 +105,14 @@ the default sema path no longer copies or retains a full normalized AST
 snapshot. The syntax AST now stores `TypeNode`, `ExprNode`, and `PatternNode`
 as compact 32-byte headers plus per-kind payload arenas; `StmtNode` and
 `ItemNode` now use the same compact header + per-kind payload arena layout.
-The remaining address-based item owner lookup has been replaced with explicit
-`ItemId` ownership. On the local AST bulk stress lane, the 100000-statement case
-is now roughly 174-180 MiB RSS / 109-115 ms after the compact syntax layout.
+Sema, IR lowering, and AST dump hot paths read `ExprNode` payloads through
+compact views instead of materializing fat nodes. The remaining address-based
+item owner lookup has been replaced with explicit `ItemId` ownership. On the
+local AST bulk stress lane, the 100000-statement case is now roughly 176 MiB RSS
+/ 104 ms after the compact syntax layout; Google Benchmark `sema_ast_bulk/1024`
+is roughly 164 ns/expr, and the local `tools/frontend_compare.py` baseline has
+Aurex `--check` at about 10.0 ms for lookup/96 and 9.5 ms for generics/96 versus
+Clang++ at about 23.2 ms / 24.8 ms and G++ at about 23.4 ms / 27.0 ms.
 
 ## Stage Status
 

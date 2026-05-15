@@ -852,7 +852,7 @@ void SemanticAnalyzer::analyze_const_decls() {
         if (!this->is_const_evaluable_expr(item.const_value, dependencies)) {
             const base::SourceRange range =
                 syntax::is_valid(item.const_value) && item.const_value.value < this->module_.exprs.size()
-                    ? this->module_.exprs[item.const_value.value].range
+                    ? this->module_.exprs.range(item.const_value.value)
                     : item.range;
             this->report(range, std::string(SEMA_CONST_NOT_COMPILE_TIME));
         }
@@ -932,7 +932,7 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
             values.push_back(false);
             continue;
         }
-        const syntax::ExprNode& expr = this->module_.exprs[frame.expr_id.value];
+        const ExprView expr = this->expr_view(frame.expr_id);
         switch (frame.stage) {
         case ConstEvalStage::ENTER:
             switch (expr.kind) {

@@ -28,6 +28,16 @@ constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
     return signature.is_extern_c || signature.is_export_c ? FunctionCallConv::c : FunctionCallConv::aurex;
 }
 
+[[nodiscard]] base::SourceRange call_expr_range_or(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr,
+    const base::SourceRange fallback
+) noexcept {
+    return syntax::is_valid(expr) && expr.value < module.exprs.size()
+        ? module.exprs.range(expr.value)
+        : fallback;
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::function_type_from_signature(const FunctionSignature& signature) {
@@ -108,10 +118,10 @@ SemanticAnalyzer::ModuleSelectorPath SemanticAnalyzer::expr_selector_path(
         return path;
     }
 
-    path.range = this->module_.exprs[expr_id.value].range;
+    path.range = this->module_.exprs.range(expr_id.value);
     syntax::ExprId current = expr_id;
     while (syntax::is_valid(current) && current.value < this->module_.exprs.size()) {
-        const syntax::ExprNode& expr = this->module_.exprs[current.value];
+        const SemanticAnalyzer::ExprView expr = this->expr_view(current);
         if (expr.kind == syntax::ExprKind::field) {
             if (expr.field_name.empty()) {
                 return {};
@@ -187,14 +197,14 @@ SemanticAnalyzer::NamedTypeSelector SemanticAnalyzer::resolve_named_type_selecto
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return {};
     }
-    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
+    const SemanticAnalyzer::ExprView expr = this->expr_view(expr_id);
     if (expr.kind == syntax::ExprKind::generic_apply) {
         NamedTypeSelector selector = this->resolve_named_type_selector(expr.callee, report_unknown);
         if (selector.name.empty()) {
             return {};
         }
         selector.range = expr.range;
-        selector.type_args = expr.type_args;
+        selector.type_args.assign(expr.type_args.begin(), expr.type_args.end());
         return selector;
     }
     if (expr.kind == syntax::ExprKind::name) {
@@ -369,7 +379,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_selector(
     const bool report_unknown
 ) {
     if (syntax::is_valid(callee) && callee.value < this->module_.exprs.size()) {
-        const syntax::ExprNode& expr = this->module_.exprs[callee.value];
+        const SemanticAnalyzer::ExprView expr = this->expr_view(callee);
         if (expr.kind == syntax::ExprKind::name && !expr.scope_name.empty()) {
             const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range, report_unknown);
             return syntax::is_valid(module) ? this->find_function_in_module(module, name, range, report_unknown) : nullptr;
@@ -399,7 +409,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
 
 TypeHandle SemanticAnalyzer::analyze_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     if (!syntax::is_valid(expr.callee) ||
@@ -407,12 +417,12 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         this->report(expr.range, std::string(SEMA_CALLEE_FUNCTION_NAME));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    const syntax::ExprNode& callee = this->module_.exprs[expr.callee.value];
+    const SemanticAnalyzer::ExprView callee = this->expr_view(expr.callee);
     if (callee.kind == syntax::ExprKind::generic_apply) {
         const NamedTypeSelector selector = this->resolve_named_type_selector(expr.callee, false);
         if (selector.name.empty()) {
             if (syntax::is_valid(callee.callee) && callee.callee.value < this->module_.exprs.size()) {
-                const syntax::ExprNode& generic_callee = this->module_.exprs[callee.callee.value];
+                const SemanticAnalyzer::ExprView generic_callee = this->expr_view(callee.callee);
                 if (generic_callee.kind == syntax::ExprKind::field) {
                     const ModuleSelector module = this->resolve_module_selector(generic_callee.object, false);
                     if (module.failed_as_module_selector) {
@@ -462,8 +472,8 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
 
 TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
-    const syntax::ExprNode&,
+    const SemanticAnalyzer::ExprView& expr,
+    const SemanticAnalyzer::ExprView&,
     const std::string_view name
 ) {
     const NamedTypeSelector selector = this->resolve_named_type_selector(expr.callee, true);
@@ -508,7 +518,7 @@ TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
 
 TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const EnumCaseInfo& enum_case
 ) {
     const std::string case_display_name = enum_case_display_name(this->checked_.types, enum_case);
@@ -531,13 +541,13 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
         const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
         if (!this->can_assign(expected, actual, expr.args[i])) {
             this->report(
-                this->module_.exprs[expr.args[i].value].range,
+                call_expr_range_or(this->module_, expr.args[i], expr.range),
                 std::string(SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH)
             );
         }
         if (this->checked_.types.contains_array(expected)) {
             this->report(
-                this->module_.exprs[expr.args[i].value].range,
+                call_expr_range_or(this->module_, expr.args[i], expr.range),
                 std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED)
             );
         }
@@ -548,8 +558,8 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
 
 TypeHandle SemanticAnalyzer::analyze_field_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
-    const syntax::ExprNode& callee,
+    const SemanticAnalyzer::ExprView& expr,
+    const SemanticAnalyzer::ExprView& callee,
     const std::string_view name,
     const TypeHandle
 ) {
@@ -624,7 +634,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
 
 TypeHandle SemanticAnalyzer::analyze_function_value_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const std::string_view name
 ) {
     const TypeHandle callee_type = this->analyze_expr(expr.callee);
@@ -649,8 +659,8 @@ TypeHandle SemanticAnalyzer::analyze_function_value_call_expr(
 
 TypeHandle SemanticAnalyzer::analyze_function_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
-    const syntax::ExprNode& callee,
+    const SemanticAnalyzer::ExprView& expr,
+    const SemanticAnalyzer::ExprView& callee,
     const std::string_view name,
     const TypeHandle
 ) {
@@ -676,7 +686,7 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
     if (signature == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    this->ensure_function_return_known(*signature, this->module_.exprs[expr.callee.value].range);
+    this->ensure_function_return_known(*signature, call_expr_range_or(this->module_, expr.callee, callee_range));
     this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
     this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
@@ -684,7 +694,7 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
 }
 
 void SemanticAnalyzer::validate_call_arguments(
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const std::string_view name,
     const std::vector<TypeHandle>& param_types,
     const base::usize receiver_count,
@@ -702,10 +712,10 @@ void SemanticAnalyzer::validate_call_arguments(
         const TypeHandle expected = param_types[i + receiver_count];
         const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
         if (!this->can_assign(expected, actual, expr.args[i])) {
-            this->report(this->module_.exprs[expr.args[i].value].range, sema_argument_type_message(name));
+            this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), sema_argument_type_message(name));
         }
         if (this->checked_.types.contains_array(expected)) {
-            this->report(this->module_.exprs[expr.args[i].value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+            this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
         }
     }
     if (is_variadic) {
@@ -713,11 +723,11 @@ void SemanticAnalyzer::validate_call_arguments(
             const TypeHandle actual = this->analyze_expr(expr.args[i]);
             if (!is_valid(actual)) {
                 this->report(
-                    this->module_.exprs[expr.args[i].value].range,
+                    call_expr_range_or(this->module_, expr.args[i], expr.range),
                     sema_variadic_argument_type_infer_message(name)
                 );
             } else if (this->is_array_containing_value_type(actual)) {
-                this->report(this->module_.exprs[expr.args[i].value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+                this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
             }
         }
     }

@@ -57,7 +57,7 @@ struct ControlFlowFrame {
     if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
         return fallback;
     }
-    return module.exprs[expr.value].range;
+    return module.exprs.range(expr.value);
 }
 
 [[nodiscard]] bool statement_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
@@ -90,18 +90,19 @@ struct ControlFlowFrame {
         if (!syntax::is_valid(current) || current.value >= module.exprs.size()) {
             return false;
         }
-        const syntax::ExprNode& node = module.exprs[current.value];
-        if (node.kind == syntax::ExprKind::integer_literal) {
+        const syntax::ExprKind kind = module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::integer_literal) {
             continue;
         }
-        if (node.kind == syntax::ExprKind::unary && node.unary_op == syntax::UnaryOp::numeric_negate) {
-            pending.push_back(node.unary_operand);
+        if (const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(current.value);
+            kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::numeric_negate) {
+            pending.push_back(unary->operand);
             continue;
         }
-        if (node.kind == syntax::ExprKind::binary &&
-            statement_binary_result_uses_operand_type(node.binary_op)) {
-            pending.push_back(node.binary_lhs);
-            pending.push_back(node.binary_rhs);
+        if (const syntax::BinaryExprPayload* const binary = module.exprs.binary_payload(current.value);
+            kind == syntax::ExprKind::binary && binary != nullptr && statement_binary_result_uses_operand_type(binary->op)) {
+            pending.push_back(binary->lhs);
+            pending.push_back(binary->rhs);
             continue;
         }
         return false;
@@ -295,7 +296,7 @@ void evaluate_control_flow_if_statement(
     if (!syntax::is_valid(expr_id) || expr_id.value >= module.exprs.size()) {
         return false;
     }
-    const syntax::ExprKind kind = module.exprs[expr_id.value].kind;
+    const syntax::ExprKind kind = module.exprs.kind(expr_id.value);
     return kind == syntax::ExprKind::call ||
            kind == syntax::ExprKind::try_expr ||
            kind == syntax::ExprKind::unsafe_block;
@@ -462,17 +463,18 @@ TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return INVALID_TYPE_HANDLE;
     }
-    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
-    if (expr.kind != syntax::ExprKind::name || !expr.scope_name.empty()) {
+    const syntax::NameExprPayload* const expr = this->module_.exprs.name_payload(expr_id.value);
+    if (expr == nullptr || !expr->scope_name.empty()) {
         return this->analyze_expr(expr_id);
     }
-    const Symbol* symbol = this->find_symbol(expr.text, expr.range);
+    const base::SourceRange expr_range = this->module_.exprs.range(expr_id.value);
+    const Symbol* symbol = this->find_symbol(expr->text, expr_range);
     if (symbol == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (symbol->kind == SymbolKind::function) {
         this->record_expr_c_name(expr_id, symbol->c_name);
-        return this->record_expr_type(expr_id, this->function_type_from_symbol(*symbol, expr.range));
+        return this->record_expr_type(expr_id, this->function_type_from_symbol(*symbol, expr_range));
     }
     this->record_expr_c_name(expr_id, symbol->c_name);
     return this->record_expr_type(expr_id, symbol->type);
@@ -784,7 +786,7 @@ void SemanticAnalyzer::analyze_statement_node(
         }
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
         if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
-            syntax::ExprNode binary;
+            ExprView binary;
             binary.kind = syntax::ExprKind::binary;
             binary.range = stmt.range;
             binary.binary_op = binary_op;
@@ -892,7 +894,7 @@ void SemanticAnalyzer::analyze_statement_node(
         if (syntax::is_valid(stmt.init) &&
             stmt.init.value < this->module_.exprs.size() &&
             !is_allowed_expression_statement(this->module_, stmt.init)) {
-            this->report(this->module_.exprs[stmt.init.value].range, std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
+            this->report(this->module_.exprs.range(stmt.init.value), std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
         }
         break;
     case syntax::StmtKind::block:
@@ -908,7 +910,7 @@ void SemanticAnalyzer::analyze_statement_node(
         static_cast<void>(this->analyze_expr(stmt.init));
         if (!syntax::is_valid(stmt.init) ||
             stmt.init.value >= this->module_.exprs.size() ||
-            this->module_.exprs[stmt.init.value].kind != syntax::ExprKind::call) {
+            this->module_.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
             this->report(stmt.range, std::string(SEMA_DEFER_CALL));
             break;
         }

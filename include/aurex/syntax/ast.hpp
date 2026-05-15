@@ -702,6 +702,137 @@ public:
         return this->headers_[index].range;
     }
 
+    [[nodiscard]] const LiteralExprPayload* literal_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || !this->is_literal(this->headers_[index].kind)) {
+            return nullptr;
+        }
+        return &this->payloads_.literals[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const NameExprPayload* name_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::name) {
+            return nullptr;
+        }
+        return &this->payloads_.names[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const GenericApplyExprPayload* generic_apply_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::generic_apply) {
+            return nullptr;
+        }
+        return &this->payloads_.generic_applies[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const UnaryExprPayload* unary_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) ||
+            (this->headers_[index].kind != ExprKind::unary && this->headers_[index].kind != ExprKind::try_expr)) {
+            return nullptr;
+        }
+        return &this->payloads_.unaries[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const BinaryExprPayload* binary_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::binary) {
+            return nullptr;
+        }
+        return &this->payloads_.binaries[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const CallExprPayload* call_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) ||
+            (this->headers_[index].kind != ExprKind::call &&
+             this->headers_[index].kind != ExprKind::str_from_bytes_unchecked)) {
+            return nullptr;
+        }
+        return &this->payloads_.calls[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const IfExprPayload* if_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::if_expr) {
+            return nullptr;
+        }
+        return &this->payloads_.ifs[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const BlockExprPayload* block_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) ||
+            (this->headers_[index].kind != ExprKind::block_expr &&
+             this->headers_[index].kind != ExprKind::unsafe_block)) {
+            return nullptr;
+        }
+        return &this->payloads_.blocks[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const MatchExprPayload* match_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::match_expr) {
+            return nullptr;
+        }
+        return &this->payloads_.matches[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const ArrayExprPayload* array_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::array_literal) {
+            return nullptr;
+        }
+        return &this->payloads_.arrays[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const std::vector<ExprId>* tuple_elements(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::tuple_literal) {
+            return nullptr;
+        }
+        return &this->payloads_.tuples[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const PostfixChainExprPayload* postfix_chain_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
+            return nullptr;
+        }
+        return &this->payloads_.postfix_chains[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] PostfixChainExprPayload take_postfix_chain_payload(const base::usize index) {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
+            return {};
+        }
+        return std::move(this->payloads_.postfix_chains[this->headers_[index].payload]);
+    }
+
+    [[nodiscard]] const FieldExprPayload* field_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::field) {
+            return nullptr;
+        }
+        return &this->payloads_.fields[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const IndexExprPayload* index_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::index) {
+            return nullptr;
+        }
+        return &this->payloads_.indexes[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const SliceExprPayload* slice_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::slice) {
+            return nullptr;
+        }
+        return &this->payloads_.slices[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const StructLiteralExprPayload* struct_literal_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::struct_literal) {
+            return nullptr;
+        }
+        return &this->payloads_.struct_literals[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const CastExprPayload* cast_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || !this->is_cast_like(this->headers_[index].kind)) {
+            return nullptr;
+        }
+        return &this->payloads_.casts[this->headers_[index].payload];
+    }
+
     void reserve(const base::usize size) {
         this->headers_.reserve(size);
     }
@@ -728,6 +859,22 @@ public:
         this->headers_[index] = header;
     }
 
+    [[nodiscard]] bool retag_block_expr(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range
+    ) noexcept {
+        if (index >= this->headers_.size() ||
+            !this->payload_available(index) ||
+            !this->is_block_payload_kind(this->headers_[index].kind) ||
+            !this->is_block_payload_kind(kind)) {
+            return false;
+        }
+        this->headers_[index].kind = kind;
+        this->headers_[index].range = range;
+        return true;
+    }
+
     [[nodiscard]] ExprNode take(const base::usize index) {
         return this->load_moved(index);
     }
@@ -737,6 +884,10 @@ public:
     }
 
 private:
+    [[nodiscard]] bool payload_available(const base::usize index) const noexcept {
+        return index < this->headers_.size() && this->headers_[index].payload != UINT32_MAX;
+    }
+
     [[nodiscard]] bool is_literal(const ExprKind kind) const noexcept {
         switch (kind) {
         case ExprKind::integer_literal:
@@ -772,6 +923,10 @@ private:
         default:
             return false;
         }
+    }
+
+    [[nodiscard]] bool is_block_payload_kind(const ExprKind kind) const noexcept {
+        return kind == ExprKind::block_expr || kind == ExprKind::unsafe_block;
     }
 
     [[nodiscard]] base::u32 store_payload(ExprNode node) {

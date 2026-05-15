@@ -142,6 +142,194 @@ void indent(std::ostringstream& out, const int depth) {
     }
 }
 
+template <typename T>
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T>& values) noexcept {
+    return {values.data(), values.size()};
+}
+
+struct ExprDumpView {
+    ExprKind kind = ExprKind::invalid;
+    std::string_view scope_name;
+    std::string_view text;
+    std::span<const TypeId> type_args {};
+    UnaryOp unary_op = UnaryOp::logical_not;
+    ExprId unary_operand = INVALID_EXPR_ID;
+    ExprId binary_lhs = INVALID_EXPR_ID;
+    ExprId binary_rhs = INVALID_EXPR_ID;
+    ExprId callee = INVALID_EXPR_ID;
+    std::span<const ExprId> args {};
+    ExprId condition = INVALID_EXPR_ID;
+    PatternId condition_pattern = INVALID_PATTERN_ID;
+    ExprId then_expr = INVALID_EXPR_ID;
+    ExprId else_expr = INVALID_EXPR_ID;
+    StmtId block = INVALID_STMT_ID;
+    ExprId block_result = INVALID_EXPR_ID;
+    ExprId match_value = INVALID_EXPR_ID;
+    std::span<const MatchArm> match_arms {};
+    std::span<const ExprId> array_elements {};
+    std::span<const ExprId> tuple_elements {};
+    ExprId array_repeat_value = INVALID_EXPR_ID;
+    ExprId array_repeat_count = INVALID_EXPR_ID;
+    ExprId postfix_base = INVALID_EXPR_ID;
+    std::span<const PostfixOp> postfix_ops {};
+    ExprId object = INVALID_EXPR_ID;
+    std::string_view field_name;
+    ExprId index = INVALID_EXPR_ID;
+    ExprId slice_start = INVALID_EXPR_ID;
+    ExprId slice_end = INVALID_EXPR_ID;
+    std::string_view struct_name;
+    std::span<const FieldInit> field_inits {};
+    TypeId cast_type = INVALID_TYPE_ID;
+    ExprId cast_expr = INVALID_EXPR_ID;
+};
+
+[[nodiscard]] ExprDumpView expr_dump_view(const AstModule& module, const ExprId id) noexcept {
+    ExprDumpView view;
+    if (!is_valid(id) || id.value >= module.exprs.size()) {
+        return view;
+    }
+
+    view.kind = module.exprs.kind(id.value);
+    if (const LiteralExprPayload* const literal = module.exprs.literal_payload(id.value);
+        literal != nullptr) {
+        view.text = literal->text;
+        return view;
+    }
+    if (const CastExprPayload* const cast = module.exprs.cast_payload(id.value);
+        cast != nullptr) {
+        view.cast_type = cast->type;
+        view.cast_expr = cast->expr;
+        return view;
+    }
+
+    switch (view.kind) {
+    case ExprKind::name: {
+        const NameExprPayload& payload = *module.exprs.name_payload(id.value);
+        view.scope_name = payload.scope_name;
+        view.text = payload.text;
+        view.type_args = readonly_span(payload.type_args);
+        break;
+    }
+    case ExprKind::generic_apply: {
+        const GenericApplyExprPayload& payload = *module.exprs.generic_apply_payload(id.value);
+        view.callee = payload.callee;
+        view.type_args = readonly_span(payload.type_args);
+        break;
+    }
+    case ExprKind::unary:
+    case ExprKind::try_expr: {
+        const UnaryExprPayload& payload = *module.exprs.unary_payload(id.value);
+        view.unary_op = payload.op;
+        view.unary_operand = payload.operand;
+        break;
+    }
+    case ExprKind::binary: {
+        const BinaryExprPayload& payload = *module.exprs.binary_payload(id.value);
+        view.binary_lhs = payload.lhs;
+        view.binary_rhs = payload.rhs;
+        break;
+    }
+    case ExprKind::call:
+    case ExprKind::str_from_bytes_unchecked: {
+        const CallExprPayload& payload = *module.exprs.call_payload(id.value);
+        view.callee = payload.callee;
+        view.args = readonly_span(payload.args);
+        break;
+    }
+    case ExprKind::if_expr: {
+        const IfExprPayload& payload = *module.exprs.if_payload(id.value);
+        view.condition = payload.condition;
+        view.condition_pattern = payload.condition_pattern;
+        view.then_expr = payload.then_expr;
+        view.else_expr = payload.else_expr;
+        break;
+    }
+    case ExprKind::block_expr:
+    case ExprKind::unsafe_block: {
+        const BlockExprPayload& payload = *module.exprs.block_payload(id.value);
+        view.block = payload.block;
+        view.block_result = payload.result;
+        break;
+    }
+    case ExprKind::match_expr: {
+        const MatchExprPayload& payload = *module.exprs.match_payload(id.value);
+        view.match_value = payload.value;
+        view.match_arms = readonly_span(payload.arms);
+        break;
+    }
+    case ExprKind::array_literal: {
+        const ArrayExprPayload& payload = *module.exprs.array_payload(id.value);
+        view.array_elements = readonly_span(payload.elements);
+        view.array_repeat_value = payload.repeat_value;
+        view.array_repeat_count = payload.repeat_count;
+        break;
+    }
+    case ExprKind::tuple_literal: {
+        const std::vector<ExprId>& payload = *module.exprs.tuple_elements(id.value);
+        view.tuple_elements = readonly_span(payload);
+        break;
+    }
+    case ExprKind::postfix_chain: {
+        const PostfixChainExprPayload& payload = *module.exprs.postfix_chain_payload(id.value);
+        view.postfix_base = payload.base;
+        view.postfix_ops = readonly_span(payload.ops);
+        break;
+    }
+    case ExprKind::field: {
+        const FieldExprPayload& payload = *module.exprs.field_payload(id.value);
+        view.object = payload.object;
+        view.field_name = payload.field_name;
+        break;
+    }
+    case ExprKind::index: {
+        const IndexExprPayload& payload = *module.exprs.index_payload(id.value);
+        view.object = payload.object;
+        view.index = payload.index;
+        break;
+    }
+    case ExprKind::slice: {
+        const SliceExprPayload& payload = *module.exprs.slice_payload(id.value);
+        view.object = payload.object;
+        view.slice_start = payload.start;
+        view.slice_end = payload.end;
+        break;
+    }
+    case ExprKind::struct_literal: {
+        const StructLiteralExprPayload& payload = *module.exprs.struct_literal_payload(id.value);
+        view.object = payload.object;
+        view.scope_name = payload.scope_name;
+        view.struct_name = payload.name;
+        view.type_args = readonly_span(payload.type_args);
+        view.field_inits = readonly_span(payload.field_inits);
+        break;
+    }
+    case ExprKind::invalid:
+    case ExprKind::integer_literal:
+    case ExprKind::float_literal:
+    case ExprKind::bool_literal:
+    case ExprKind::null_literal:
+    case ExprKind::string_literal:
+    case ExprKind::c_string_literal:
+    case ExprKind::raw_string_literal:
+    case ExprKind::byte_string_literal:
+    case ExprKind::byte_literal:
+    case ExprKind::char_literal:
+    case ExprKind::cast:
+    case ExprKind::pcast:
+    case ExprKind::bcast:
+    case ExprKind::size_of:
+    case ExprKind::align_of:
+    case ExprKind::ptr_addr:
+    case ExprKind::paddr:
+    case ExprKind::str_data:
+    case ExprKind::str_byte_len:
+    case ExprKind::str_is_valid_utf8:
+    case ExprKind::str_from_utf8_checked:
+        break;
+    }
+    return view;
+}
+
 std::string_view primitive_name(const PrimitiveTypeKind kind) {
     switch (kind) {
     case PrimitiveTypeKind::void_: return "void";
@@ -537,7 +725,7 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         out << "expr <invalid>\n";
         return;
     }
-    const ExprNode& expr = module.exprs[id.value];
+    const ExprDumpView expr = expr_dump_view(module, id);
     indent(out, depth);
     out << "expr #" << id.value << " " << expr_kind_name(expr.kind);
     if (!expr.text.empty()) {

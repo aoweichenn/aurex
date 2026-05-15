@@ -130,16 +130,16 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
 
     EXPECT_EQ(lowerer.lower_expr(syntax::INVALID_EXPR_ID).value, INVALID_VALUE_ID.value);
     EXPECT_EQ(lowerer.lower_expr(invalid_expr).value, INVALID_VALUE_ID.value);
-    EXPECT_EQ(lowerer.lower_if_expr(integer, ast.exprs[integer.value]).value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_if_expr(integer, lowerer.expr_view(integer)).value, INVALID_VALUE_ID.value);
 
-    const ValueId unknown_value = lowerer.lower_name(missing_name, ast.exprs[missing_name.value]);
+    const ValueId unknown_value = lowerer.lower_name(missing_name, lowerer.expr_view(missing_name));
     ASSERT_TRUE(is_valid(unknown_value));
     ASSERT_LT(unknown_value.value, lowerer.module_.values.size());
     EXPECT_EQ(lowerer.module_.values[unknown_value.value].kind, ValueKind::load);
     EXPECT_EQ(lowerer.module_.values[unknown_value.value].name, "missing");
     EXPECT_FALSE(sema::is_valid(lowerer.module_.values[unknown_value.value].type));
 
-    const ValueId enum_value = lowerer.lower_name(none_name, ast.exprs[none_name.value]);
+    const ValueId enum_value = lowerer.lower_name(none_name, lowerer.expr_view(none_name));
     ASSERT_TRUE(is_valid(enum_value));
     ASSERT_LT(enum_value.value, lowerer.module_.values.size());
     EXPECT_EQ(lowerer.module_.values[enum_value.value].kind, ValueKind::aggregate);
@@ -150,7 +150,7 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     const ir::detail::CallTarget missing_target = lowerer.call_target(missing_name);
     EXPECT_FALSE(is_valid(missing_target.function));
     EXPECT_EQ(missing_target.symbol, "missing");
-    EXPECT_EQ(lowerer.value_symbol(missing_name, ast.exprs[missing_name.value]), "missing");
+    EXPECT_EQ(lowerer.value_symbol(missing_name, lowerer.expr_view(missing_name)), "missing");
 
     EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(INVALID_FUNCTION_ID, 0)));
     EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(FunctionId {999}, 0)));
@@ -241,7 +241,7 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
 
     lowerer.current_function_->blocks[entry.value].terminator = {};
     lowerer.current_block_ = entry;
-    const ValueId short_circuit = lowerer.lower_short_circuit_expr(logical, ast.exprs[logical.value]);
+    const ValueId short_circuit = lowerer.lower_short_circuit_expr(logical, lowerer.expr_view(logical));
     ASSERT_TRUE(is_valid(short_circuit));
     ASSERT_LT(short_circuit.value, lowerer.module_.values.size());
     const Value& phi = lowerer.module_.values[short_circuit.value];

@@ -916,16 +916,18 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
     EXPECT_EQ(analyzer.find_enum_constructor(choice_missing, true), nullptr);
     EXPECT_NE(analyzer.find_enum_constructor(choice_yes, true), nullptr);
     EXPECT_TRUE(types.same(
-        analyzer.analyze_enum_constructor_call(enum_call_id, analyzer.module_.exprs[enum_call_id.value], yes_case),
+        analyzer.analyze_enum_constructor_call(enum_call_id, analyzer.expr_view(enum_call_id), yes_case),
         enum_type
     ));
 
     syntax::ExprNode argument_call;
     argument_call.kind = syntax::ExprKind::call;
     argument_call.args = {payload_value};
-    analyzer.validate_call_arguments(argument_call, "array_arg", {array_i32}, 0, false);
+    const ExprId argument_call_id = analyzer.module_.push_expr(argument_call);
+    analyzer.validate_call_arguments(analyzer.expr_view(argument_call_id), "array_arg", {array_i32}, 0, false);
     argument_call.args = {payload_value, payload_value};
-    analyzer.validate_call_arguments(argument_call, "array_vararg", {}, 0, true);
+    const ExprId variadic_argument_call_id = analyzer.module_.push_expr(argument_call);
+    analyzer.validate_call_arguments(analyzer.expr_view(variadic_argument_call_id), "array_vararg", {}, 0, true);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
@@ -2036,10 +2038,10 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "data"), symbol(SymbolKind::local, "data", module_id(0), const_u8_ptr));
     analyzer.global_values_.emplace(analyzer.module_key(module_id(0), "len"), symbol(SymbolKind::local, "len", module_id(0), usize));
 
-    EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_data_id, module.exprs[str_data_id.value]), const_u8_ptr));
-    EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_byte_len_id, module.exprs[str_byte_len_id.value]), usize));
-    EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, module.exprs[str_from_bytes_id.value]), str));
-    EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(malformed_id, module.exprs[malformed_id.value]), str));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_data_id, analyzer.expr_view(str_data_id)), const_u8_ptr));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_projection_expr(str_byte_len_id, analyzer.expr_view(str_byte_len_id)), usize));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, analyzer.expr_view(str_from_bytes_id)), str));
+    EXPECT_TRUE(types.same(analyzer.analyze_str_from_bytes_unchecked_expr(malformed_id, analyzer.expr_view(malformed_id)), str));
     EXPECT_TRUE(types.same(analyzer.analyze_expr(raw_literal_id), str));
     const TypeHandle byte_string_type = analyzer.analyze_expr(byte_string_literal_id);
     ASSERT_TRUE(types.is_array(byte_string_type));
@@ -2055,9 +2057,9 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     analyzer.global_values_[analyzer.module_key(module_id(0), "text")].type = usize;
     analyzer.global_values_[analyzer.module_key(module_id(0), "data")].type = usize;
     analyzer.global_values_[analyzer.module_key(module_id(0), "len")].type = str;
-    static_cast<void>(analyzer.analyze_str_projection_expr(str_data_id, module.exprs[str_data_id.value]));
-    static_cast<void>(analyzer.analyze_str_projection_expr(str_byte_len_id, module.exprs[str_byte_len_id.value]));
-    static_cast<void>(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, module.exprs[str_from_bytes_id.value]));
+    static_cast<void>(analyzer.analyze_str_projection_expr(str_data_id, analyzer.expr_view(str_data_id)));
+    static_cast<void>(analyzer.analyze_str_projection_expr(str_byte_len_id, analyzer.expr_view(str_byte_len_id)));
+    static_cast<void>(analyzer.analyze_str_from_bytes_unchecked_expr(str_from_bytes_id, analyzer.expr_view(str_from_bytes_id)));
 
     EXPECT_GT(diagnostics.diagnostics().size(), 0U);
 }
@@ -2081,7 +2083,7 @@ TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges) {
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle expected_array = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i32);
     EXPECT_TRUE(types.same(
-        analyzer.analyze_array_literal_expr(repeat_literal_id, module.exprs[repeat_literal_id.value], expected_array),
+        analyzer.analyze_array_literal_expr(repeat_literal_id, analyzer.expr_view(repeat_literal_id), expected_array),
         expected_array
     ));
     EXPECT_TRUE(diagnostics.has_error());
@@ -2352,38 +2354,21 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     EXPECT_TRUE(analyzer.can_assign(u8, u8, suffixed_u8_expr));
     EXPECT_FALSE(analyzer.can_assign(u16, u16, suffixed_u8_expr));
     EXPECT_FALSE(analyzer.can_assign(bool_type, u8, hex_expr));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_integer_literal(suffixed_i8_expr, module.exprs[suffixed_i8_expr.value], INVALID_TYPE_HANDLE),
-        i8
-    ));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_integer_literal(invalid_suffix_expr, module.exprs[invalid_suffix_expr.value], INVALID_TYPE_HANDLE),
-        types.builtin(BuiltinType::i32)
-    ));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_float_literal(float_overflow_expr_id, module.exprs[float_overflow_expr_id.value], types.builtin(BuiltinType::f32)),
-        types.builtin(BuiltinType::f32)
-    ));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_float_literal(separated_float_expr_id, module.exprs[separated_float_expr_id.value], INVALID_TYPE_HANDLE),
-        types.builtin(BuiltinType::f64)
-    ));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_float_literal(invalid_float_expr_id, module.exprs[invalid_float_expr_id.value], types.builtin(BuiltinType::f64)),
-        types.builtin(BuiltinType::f64)
-    ));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_float_literal(suffixed_float_expr_id, module.exprs[suffixed_float_expr_id.value], INVALID_TYPE_HANDLE),
-        types.builtin(BuiltinType::f32)
-    ));
-    EXPECT_TRUE(types.same(
-        analyzer.analyze_float_literal(
-            invalid_suffix_float_expr_id,
-            module.exprs[invalid_suffix_float_expr_id.value],
-            INVALID_TYPE_HANDLE
-        ),
-        types.builtin(BuiltinType::f64)
-    ));
+    const auto analyze_integer_literal_id = [&](const ExprId expr, const TypeHandle expected) {
+        const sema::SemanticAnalyzer::ExprView view = analyzer.expr_view(expr);
+        return analyzer.analyze_integer_literal(expr, view.text, view.range, expected);
+    };
+    const auto analyze_float_literal_id = [&](const ExprId expr, const TypeHandle expected) {
+        const sema::SemanticAnalyzer::ExprView view = analyzer.expr_view(expr);
+        return analyzer.analyze_float_literal(expr, view.text, view.range, expected);
+    };
+    EXPECT_TRUE(types.same(analyze_integer_literal_id(suffixed_i8_expr, INVALID_TYPE_HANDLE), i8));
+    EXPECT_TRUE(types.same(analyze_integer_literal_id(invalid_suffix_expr, INVALID_TYPE_HANDLE), types.builtin(BuiltinType::i32)));
+    EXPECT_TRUE(types.same(analyze_float_literal_id(float_overflow_expr_id, types.builtin(BuiltinType::f32)), types.builtin(BuiltinType::f32)));
+    EXPECT_TRUE(types.same(analyze_float_literal_id(separated_float_expr_id, INVALID_TYPE_HANDLE), types.builtin(BuiltinType::f64)));
+    EXPECT_TRUE(types.same(analyze_float_literal_id(invalid_float_expr_id, types.builtin(BuiltinType::f64)), types.builtin(BuiltinType::f64)));
+    EXPECT_TRUE(types.same(analyze_float_literal_id(suffixed_float_expr_id, INVALID_TYPE_HANDLE), types.builtin(BuiltinType::f32)));
+    EXPECT_TRUE(types.same(analyze_float_literal_id(invalid_suffix_float_expr_id, INVALID_TYPE_HANDLE), types.builtin(BuiltinType::f64)));
     EXPECT_TRUE(types.is_str(types.builtin(BuiltinType::str)));
 
     const TypeHandle zero_align_enum = types.named_enum("ZeroAlign", "ZeroAlign");
@@ -2514,10 +2499,10 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
 
     analyzer.checked_.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_c_names.resize(module.exprs.size());
-    static_cast<void>(analyzer.analyze_call_expr(static_method_call_id, module.exprs[static_method_call_id.value], INVALID_TYPE_HANDLE));
-    static_cast<void>(analyzer.analyze_call_expr(missing_arg_call_id, module.exprs[missing_arg_call_id.value], INVALID_TYPE_HANDLE));
-    static_cast<void>(analyzer.analyze_call_expr(array_arg_call_id, module.exprs[array_arg_call_id.value], INVALID_TYPE_HANDLE));
-    static_cast<void>(analyzer.analyze_call_expr(none_call_id, module.exprs[none_call_id.value], choice_i32));
+    static_cast<void>(analyzer.analyze_call_expr(static_method_call_id, analyzer.expr_view(static_method_call_id), INVALID_TYPE_HANDLE));
+    static_cast<void>(analyzer.analyze_call_expr(missing_arg_call_id, analyzer.expr_view(missing_arg_call_id), INVALID_TYPE_HANDLE));
+    static_cast<void>(analyzer.analyze_call_expr(array_arg_call_id, analyzer.expr_view(array_arg_call_id), INVALID_TYPE_HANDLE));
+    static_cast<void>(analyzer.analyze_call_expr(none_call_id, analyzer.expr_view(none_call_id), choice_i32));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
@@ -2617,13 +2602,13 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     EXPECT_FALSE(analyzer.analyze_pattern(syntax::INVALID_PATTERN_ID, choice_type, invalid_bindings));
     EXPECT_FALSE(analyzer.pattern_is_irrefutable(syntax::INVALID_PATTERN_ID, choice_type));
 
-    EXPECT_TRUE(types.is_bool(analyzer.analyze_match_expr(enum_match_id, module.exprs[enum_match_id.value], INVALID_TYPE_HANDLE)));
+    EXPECT_TRUE(types.is_bool(analyzer.analyze_match_expr(enum_match_id, analyzer.expr_view(enum_match_id), INVALID_TYPE_HANDLE)));
     EXPECT_TRUE(types.is_integer(analyzer.analyze_match_expr(
         binding_value_match_id,
-        module.exprs[binding_value_match_id.value],
+        analyzer.expr_view(binding_value_match_id),
         INVALID_TYPE_HANDLE
     )));
-    EXPECT_FALSE(is_valid(analyzer.analyze_match_expr(void_match_id, module.exprs[void_match_id.value], INVALID_TYPE_HANDLE)));
+    EXPECT_FALSE(is_valid(analyzer.analyze_match_expr(void_match_id, analyzer.expr_view(void_match_id), INVALID_TYPE_HANDLE)));
 
     bool covered_true = false;
     bool covered_false = false;

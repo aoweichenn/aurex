@@ -121,16 +121,18 @@ struct PlaceIntegerLiteralExpr {
     if (!syntax::is_valid(candidate) || candidate.value >= module.exprs.size()) {
         return {};
     }
-    const syntax::ExprNode& node = module.exprs[candidate.value];
-    if (node.kind == syntax::ExprKind::integer_literal) {
+    const syntax::ExprKind kind = module.exprs.kind(candidate.value);
+    if (kind == syntax::ExprKind::integer_literal) {
         return {candidate, false};
     }
-    if (node.kind == syntax::ExprKind::unary &&
-        node.unary_op == syntax::UnaryOp::numeric_negate &&
-        syntax::is_valid(node.unary_operand) &&
-        node.unary_operand.value < module.exprs.size() &&
-        module.exprs[node.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
-        return {node.unary_operand, true};
+    const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(candidate.value);
+    if (kind == syntax::ExprKind::unary &&
+        unary != nullptr &&
+        unary->op == syntax::UnaryOp::numeric_negate &&
+        syntax::is_valid(unary->operand) &&
+        unary->operand.value < module.exprs.size() &&
+        module.exprs.kind(unary->operand.value) == syntax::ExprKind::integer_literal) {
+        return {unary->operand, true};
     }
     return {};
 }
@@ -141,7 +143,7 @@ struct PlaceIntegerLiteralExpr {
     const base::SourceRange fallback
 ) noexcept {
     return syntax::is_valid(expr) && expr.value < module.exprs.size()
-        ? module.exprs[expr.value].range
+        ? module.exprs.range(expr.value)
         : fallback;
 }
 
@@ -865,9 +867,11 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
         return this->checked_.types.same(dst, src);
     }
     if (this->checked_.types.is_integer(dst) && this->checked_.types.is_integer(src) && this->is_integer_literal(value)) {
-        return syntax::is_valid(value) &&
-               value.value < this->module_.exprs.size() &&
-               this->integer_literal_fits_type(dst, this->module_.exprs[value.value].text);
+        const syntax::LiteralExprPayload* const literal =
+            syntax::is_valid(value) && value.value < this->module_.exprs.size()
+                ? this->module_.exprs.literal_payload(value.value)
+                : nullptr;
+        return literal != nullptr && this->integer_literal_fits_type(dst, literal->text);
     }
     if (this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src)) {
         const TypeInfo& dst_info = this->checked_.types.get(dst);
@@ -1278,7 +1282,8 @@ bool SemanticAnalyzer::negative_integer_literal_fits_type(
 
 TypeHandle SemanticAnalyzer::analyze_integer_literal(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const std::string_view text,
+    const base::SourceRange range,
     const TypeHandle expected_type
 ) {
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
@@ -1286,19 +1291,19 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
     TypeHandle literal_type = checked_.types.is_integer(expected_type) ? expected_type : natural_type;
     bool suffix_valid = true;
     bool has_suffix = false;
-    const IntegerLiteralParts parts = split_integer_literal_text(expr.text);
+    const IntegerLiteralParts parts = split_integer_literal_text(text);
     if (!parts.suffix.empty()) {
         has_suffix = true;
         const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
         if (!suffix.has_value()) {
             suffix_valid = false;
-            report(expr.range, sema_invalid_integer_literal_suffix_message(parts.suffix));
+            report(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
         } else {
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
                 report(
-                    expr.range,
+                    range,
                     sema_integer_literal_suffix_type_mismatch_message(
                         checked_.types.display_name(literal_type),
                         checked_.types.display_name(expected_type)
@@ -1307,9 +1312,9 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
             }
         }
     }
-    if (suffix_valid && !integer_literal_fits_type(literal_type, expr.text)) {
+    if (suffix_valid && !integer_literal_fits_type(literal_type, text)) {
         report(
-            expr.range,
+            range,
             sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
     }
@@ -1317,7 +1322,7 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
         !has_suffix &&
         checked_.types.is_integer(expected_type) &&
         !checked_.types.same(default_type, expected_type) &&
-        integer_literal_fits_type(default_type, expr.text)) {
+        integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
     return record_expr_type(expr_id, literal_type);
@@ -1325,7 +1330,8 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
 
 TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const std::string_view text,
+    const base::SourceRange range,
     const TypeHandle expected_type
 ) {
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
@@ -1333,19 +1339,19 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
     TypeHandle literal_type = checked_.types.is_integer(expected_type) ? expected_type : natural_type;
     bool suffix_valid = true;
     bool has_suffix = false;
-    const IntegerLiteralParts parts = split_integer_literal_text(expr.text);
+    const IntegerLiteralParts parts = split_integer_literal_text(text);
     if (!parts.suffix.empty()) {
         has_suffix = true;
         const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
         if (!suffix.has_value()) {
             suffix_valid = false;
-            report(expr.range, sema_invalid_integer_literal_suffix_message(parts.suffix));
+            report(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
         } else {
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
                 report(
-                    expr.range,
+                    range,
                     sema_integer_literal_suffix_type_mismatch_message(
                         checked_.types.display_name(literal_type),
                         checked_.types.display_name(expected_type)
@@ -1354,9 +1360,9 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
             }
         }
     }
-    if (suffix_valid && !negative_integer_literal_fits_type(literal_type, expr.text)) {
+    if (suffix_valid && !negative_integer_literal_fits_type(literal_type, text)) {
         report(
-            expr.range,
+            range,
             sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
     }
@@ -1364,7 +1370,7 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
         !has_suffix &&
         checked_.types.is_integer(expected_type) &&
         !checked_.types.same(default_type, expected_type) &&
-        negative_integer_literal_fits_type(default_type, expr.text)) {
+        negative_integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
     return record_expr_type(expr_id, literal_type);
@@ -1372,7 +1378,8 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
 
 TypeHandle SemanticAnalyzer::analyze_float_literal(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const std::string_view text,
+    const base::SourceRange range,
     const TypeHandle expected_type
 ) {
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::f64);
@@ -1380,19 +1387,19 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
     TypeHandle literal_type = checked_.types.is_float(expected_type) ? expected_type : natural_type;
     bool suffix_valid = true;
     bool has_suffix = false;
-    const FloatLiteralParts parts = split_float_literal_text(expr.text);
+    const FloatLiteralParts parts = split_float_literal_text(text);
     if (!parts.suffix.empty()) {
         has_suffix = true;
         const std::optional<BuiltinType> suffix = float_suffix_type(parts.suffix);
         if (!suffix.has_value()) {
             suffix_valid = false;
-            report(expr.range, sema_invalid_float_literal_suffix_message(parts.suffix));
+            report(range, sema_invalid_float_literal_suffix_message(parts.suffix));
         } else {
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_float(expected_type) && !checked_.types.same(literal_type, expected_type)) {
                 report(
-                    expr.range,
+                    range,
                     sema_float_literal_suffix_type_mismatch_message(
                         checked_.types.display_name(literal_type),
                         checked_.types.display_name(expected_type)
@@ -1403,11 +1410,11 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
     }
     const bool fits = !suffix_valid ||
         (checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
-        ? parse_float_literal_checked<float>(expr.text)
-        : parse_float_literal_checked<double>(expr.text));
+        ? parse_float_literal_checked<float>(text)
+        : parse_float_literal_checked<double>(text));
     if (suffix_valid && !fits) {
         report(
-            expr.range,
+            range,
             sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
     }
@@ -1415,7 +1422,7 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
         !has_suffix &&
         checked_.types.is_float(expected_type) &&
         !checked_.types.same(default_type, expected_type) &&
-        parse_float_literal_checked<double>(expr.text)) {
+        parse_float_literal_checked<double>(text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_float_literal);
     }
     return record_expr_type(expr_id, literal_type);
@@ -1671,23 +1678,24 @@ base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const {
 
 bool SemanticAnalyzer::is_integer_literal(const syntax::ExprId expr_id) const noexcept {
     return syntax::is_valid(expr_id) &&
-           expr_id.value < module_.exprs.size() &&
-           module_.exprs[expr_id.value].kind == syntax::ExprKind::integer_literal;
+           expr_id.value < this->module_.exprs.size() &&
+           this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::integer_literal;
 }
 
 bool SemanticAnalyzer::is_null_literal(const syntax::ExprId expr_id) const noexcept {
     return syntax::is_valid(expr_id) &&
-           expr_id.value < module_.exprs.size() &&
-           module_.exprs[expr_id.value].kind == syntax::ExprKind::null_literal;
+           expr_id.value < this->module_.exprs.size() &&
+           this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::null_literal;
 }
 
 bool SemanticAnalyzer::is_null_result_expr(const syntax::ExprId expr_id) const noexcept {
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return false;
     }
-    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
-    return expr.kind == syntax::ExprKind::null_literal ||
-           (expr.kind == syntax::ExprKind::block_expr && this->is_null_literal(expr.block_result));
+    const syntax::ExprKind kind = this->module_.exprs.kind(expr_id.value);
+    const syntax::BlockExprPayload* const block = this->module_.exprs.block_payload(expr_id.value);
+    return kind == syntax::ExprKind::null_literal ||
+           (block != nullptr && this->is_null_literal(block->result));
 }
 
 SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
@@ -1708,28 +1716,30 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     syntax::ExprId root = expr_id;
     if (syntax::is_valid(root) &&
         root.value < this->module_.exprs.size() &&
-        this->module_.exprs[root.value].kind == syntax::ExprKind::postfix_chain) {
+        this->module_.exprs.kind(root.value) == syntax::ExprKind::postfix_chain) {
         root = this->materialize_postfix_chain(root);
     }
 
     std::vector<PendingProjection> pending;
     syntax::ExprId current = root;
     while (syntax::is_valid(current) && current.value < this->module_.exprs.size()) {
-        const syntax::ExprNode& expr = this->module_.exprs[current.value];
-        if (expr.kind == syntax::ExprKind::field) {
+        const syntax::ExprKind kind = this->module_.exprs.kind(current.value);
+        if (const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(current.value);
+            kind == syntax::ExprKind::field && field != nullptr) {
             pending.push_back(PendingProjection {PendingProjectionKind::field, current});
-            current = expr.object;
+            current = field->object;
             continue;
         }
-        if (expr.kind == syntax::ExprKind::index) {
+        if (const syntax::IndexExprPayload* const index = this->module_.exprs.index_payload(current.value);
+            kind == syntax::ExprKind::index && index != nullptr) {
             pending.push_back(PendingProjection {PendingProjectionKind::index, current});
-            current = expr.object;
+            current = index->object;
             continue;
         }
-        if (expr.kind == syntax::ExprKind::unary &&
-            expr.unary_op == syntax::UnaryOp::dereference) {
+        if (const syntax::UnaryExprPayload* const unary = this->module_.exprs.unary_payload(current.value);
+            kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference) {
             pending.push_back(PendingProjection {PendingProjectionKind::deref, current});
-            current = expr.unary_operand;
+            current = unary->operand;
             continue;
         }
         break;
@@ -1740,11 +1750,11 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
         return place;
     }
 
-    const syntax::ExprNode& base_expr = this->module_.exprs[current.value];
-    if (base_expr.kind == syntax::ExprKind::name && base_expr.scope_name.empty()) {
-        const Symbol* symbol = this->symbols_.find(base_expr.text);
+    const syntax::NameExprPayload* const base_expr = this->module_.exprs.name_payload(current.value);
+    if (base_expr != nullptr && base_expr->scope_name.empty()) {
+        const Symbol* symbol = this->symbols_.find(base_expr->text);
         if (symbol == nullptr) {
-            const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr.text);
+            const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr->text);
             if (is_valid(lookup_key)) {
                 if (const auto global = this->global_values_by_name_.find(lookup_key);
                     global != this->global_values_by_name_.end()) {
@@ -1752,7 +1762,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 }
             }
             if (symbol == nullptr && !this->global_value_lookup_complete()) {
-                const auto global = this->global_values_.find(this->module_key(this->current_module_, base_expr.text));
+                const auto global = this->global_values_.find(this->module_key(this->current_module_, base_expr->text));
                 if (global != this->global_values_.end()) {
                     symbol = &global->second;
                 }
@@ -1781,7 +1791,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             continue;
         }
 
-        const syntax::ExprNode& projection_expr = this->module_.exprs[projection->expr.value];
+        const base::SourceRange projection_range = this->module_.exprs.range(projection->expr.value);
         const TypeHandle input_type = place.type;
         TypeHandle output_type = INVALID_TYPE_HANDLE;
         bool output_is_place = false;
@@ -1800,9 +1810,12 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 output_is_place = true;
                 output_is_writable = reference.pointer_mutability == PointerMutability::mut;
             } else if (emit_diagnostics) {
-                this->report(projection_expr.range, std::string(SEMA_DEREF_POINTER));
+                this->report(projection_range, std::string(SEMA_DEREF_POINTER));
             }
         } else if (projection->kind == PendingProjectionKind::field) {
+            const syntax::FieldExprPayload* const projection_expr =
+                this->module_.exprs.field_payload(projection->expr.value);
+            const std::string_view field_name = projection_expr == nullptr ? std::string_view {} : projection_expr->field_name;
             TypeHandle object_type = input_type;
             bool projection_is_indirect = false;
             output_is_writable = place.is_writable;
@@ -1820,18 +1833,18 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             }
             if (this->checked_.types.is_tuple(object_type)) {
                 if (emit_diagnostics) {
-                    this->report(projection_expr.range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
+                    this->report(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
                 }
             } else if (const StructInfo* info = this->find_struct(object_type); info != nullptr && !info->is_opaque) {
                 bool saw_field = false;
                 for (const StructFieldInfo& field : info->fields) {
-                    if (field.name != projection_expr.field_name) {
+                    if (field.name != field_name) {
                         continue;
                     }
                     saw_field = true;
                     if (!this->can_access(info->module, field.visibility)) {
                         if (emit_diagnostics) {
-                            this->report(projection_expr.range, sema_private_field_message(projection_expr.field_name));
+                            this->report(projection_range, sema_private_field_message(field_name));
                         }
                     } else {
                         output_type = field.type;
@@ -1840,34 +1853,36 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                     break;
                 }
                 if (!saw_field && emit_diagnostics) {
-                    this->report(projection_expr.range, sema_unknown_field_message(projection_expr.field_name));
+                    this->report(projection_range, sema_unknown_field_message(field_name));
                 }
             } else if (emit_diagnostics) {
-                this->report(projection_expr.range, std::string(SEMA_FIELD_STRUCT_VALUE));
+                this->report(projection_range, std::string(SEMA_FIELD_STRUCT_VALUE));
             }
         } else {
-            const TypeHandle index_type = this->analyze_expr(projection_expr.index);
+            const syntax::IndexExprPayload* const projection_expr =
+                this->module_.exprs.index_payload(projection->expr.value);
+            const syntax::ExprId index_expr = projection_expr == nullptr ? syntax::INVALID_EXPR_ID : projection_expr->index;
+            const TypeHandle index_type = this->analyze_expr(index_expr);
             if (emit_diagnostics && !this->checked_.types.is_integer(index_type)) {
                 this->report(
-                    projection_expr.index.value < this->module_.exprs.size()
-                        ? this->module_.exprs[projection_expr.index.value].range
-                        : projection_expr.range,
+                    place_expr_range_or(this->module_, index_expr, projection_range),
                     std::string(SEMA_ARRAY_INDEX_INTEGER)
                 );
             }
             if (this->checked_.types.is_array(input_type)) {
                 const PlaceIntegerLiteralExpr literal_index =
-                    place_integer_literal_expr(this->module_, projection_expr.index);
+                    place_integer_literal_expr(this->module_, index_expr);
                 if (emit_diagnostics && syntax::is_valid(literal_index.literal)) {
                     base::u64 index_value = 0;
-                    const syntax::ExprNode& literal_expr = this->module_.exprs[literal_index.literal.value];
-                    if (this->parse_integer_literal_text(literal_expr.text, index_value)) {
+                    const syntax::LiteralExprPayload* const literal_expr =
+                        this->module_.exprs.literal_payload(literal_index.literal.value);
+                    if (literal_expr != nullptr && this->parse_integer_literal_text(literal_expr->text, index_value)) {
                         const bool out_of_bounds =
                             (literal_index.negated && index_value != 0) ||
                             (!literal_index.negated && index_value >= this->checked_.types.get(input_type).array_count);
                         if (out_of_bounds) {
                             this->report(
-                                place_expr_range_or(this->module_, projection_expr.index, literal_expr.range),
+                                place_expr_range_or(this->module_, index_expr, projection_range),
                                 std::string(SEMA_ARRAY_INDEX_OUT_OF_BOUNDS)
                             );
                         }
@@ -1886,11 +1901,11 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 place.crosses_raw_pointer = true;
                 if (this->checked_.types.is_array(pointer.pointee)) {
                     if (emit_diagnostics) {
-                        this->report(projection_expr.range, std::string(SEMA_INDEX_POINTER_ARRAY_DEREF));
+                        this->report(projection_range, std::string(SEMA_INDEX_POINTER_ARRAY_DEREF));
                     }
                 } else if (!this->is_valid_storage_type(pointer.pointee)) {
                     if (emit_diagnostics) {
-                        this->report(projection_expr.range, std::string(SEMA_INDEX_POINTER_STORAGE));
+                        this->report(projection_range, std::string(SEMA_INDEX_POINTER_STORAGE));
                     }
                 } else {
                     output_type = pointer.pointee;
@@ -1909,10 +1924,10 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                     output_is_place = true;
                     output_is_writable = slice.slice_mutability == PointerMutability::mut;
                 } else if (emit_diagnostics) {
-                    this->report(projection_expr.range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
+                    this->report(projection_range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
                 }
             } else if (emit_diagnostics) {
-                this->report(projection_expr.range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
+                this->report(projection_range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
             }
         }
 

@@ -124,11 +124,18 @@ value. The 2026-05-15 compact AST storage pass now stores `TypeNode`,
 plus per-kind payload arenas; module loading moves payload-backed nodes before
 remapping instead of depending on fat-vector addresses or `.data()` pointer
 arithmetic. Sema item-owner lookup is now explicit `ItemId` lookup rather than
-address-derived lookup through `items.data()`. On the local
+address-derived lookup through `items.data()`. The 2026-05-16 performance pass
+also moved sema, IR lowering, and AST dump `ExprNode` hot paths to compact views
+and direct payload reads, removing compatibility wrappers and literal fat-node
+reconstruction from the sema hot path. On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 174-180 MiB RSS / 109-115 ms. A global bump allocator, native AST
-`IdentId`, and CI perf thresholds remain later performance work.
+roughly 176 MiB RSS / 104 ms. Google Benchmark `sema_ast_bulk/1024` is now
+roughly 164 ns/expr, and the local `tools/frontend_compare.py` baseline has
+Aurex `--check` at roughly 10.0 ms for lookup/96 and 9.5 ms for generics/96,
+versus Clang++ at roughly 23.2 ms / 24.8 ms and G++ at roughly 23.4 ms /
+27.0 ms. A global bump allocator, native AST `IdentId`, and CI perf thresholds
+remain later performance work.
 
 ## M2 Gaps
 

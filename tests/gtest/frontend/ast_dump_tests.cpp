@@ -160,6 +160,241 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     EXPECT_EQ(moved_enum.enum_cases.back().value_text, "0");
 }
 
+TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
+    syntax::ExprNodeList exprs;
+
+    syntax::ExprNode literal;
+    literal.kind = syntax::ExprKind::integer_literal;
+    literal.text = "42";
+    const syntax::ExprId literal_id = exprs.append(literal);
+
+    syntax::ExprNode name;
+    name.kind = syntax::ExprKind::name;
+    name.scope_name = "math";
+    name.text = "add";
+    name.type_args = {syntax::TypeId {1}, syntax::TypeId {2}};
+    const syntax::ExprId name_id = exprs.append(name);
+
+    syntax::ExprNode generic;
+    generic.kind = syntax::ExprKind::generic_apply;
+    generic.callee = name_id;
+    generic.type_args = {syntax::TypeId {3}};
+    const syntax::ExprId generic_id = exprs.append(generic);
+
+    syntax::ExprNode unary;
+    unary.kind = syntax::ExprKind::unary;
+    unary.unary_op = syntax::UnaryOp::numeric_negate;
+    unary.unary_operand = literal_id;
+    const syntax::ExprId unary_id = exprs.append(unary);
+
+    syntax::ExprNode binary;
+    binary.kind = syntax::ExprKind::binary;
+    binary.binary_op = syntax::BinaryOp::add;
+    binary.binary_lhs = literal_id;
+    binary.binary_rhs = unary_id;
+    const syntax::ExprId binary_id = exprs.append(binary);
+
+    syntax::ExprNode call;
+    call.kind = syntax::ExprKind::call;
+    call.callee = generic_id;
+    call.args = {literal_id, binary_id};
+    const syntax::ExprId call_id = exprs.append(call);
+
+    syntax::ExprNode if_expr;
+    if_expr.kind = syntax::ExprKind::if_expr;
+    if_expr.condition = literal_id;
+    if_expr.condition_pattern = syntax::PatternId {4};
+    if_expr.then_expr = name_id;
+    if_expr.else_expr = call_id;
+    const syntax::ExprId if_id = exprs.append(if_expr);
+
+    syntax::ExprNode block;
+    block.kind = syntax::ExprKind::unsafe_block;
+    block.block = syntax::StmtId {5};
+    block.block_result = if_id;
+    const syntax::ExprId block_id = exprs.append(block);
+
+    syntax::ExprNode match;
+    match.kind = syntax::ExprKind::match_expr;
+    match.match_value = literal_id;
+    match.match_arms = {
+        syntax::MatchArm {syntax::PatternId {6}, syntax::ExprId {7}, name_id, {}},
+    };
+    const syntax::ExprId match_id = exprs.append(match);
+
+    syntax::ExprNode array;
+    array.kind = syntax::ExprKind::array_literal;
+    array.array_elements = {literal_id, name_id};
+    array.array_repeat_value = unary_id;
+    array.array_repeat_count = binary_id;
+    const syntax::ExprId array_id = exprs.append(array);
+
+    syntax::ExprNode tuple;
+    tuple.kind = syntax::ExprKind::tuple_literal;
+    tuple.tuple_elements = {literal_id, call_id};
+    const syntax::ExprId tuple_id = exprs.append(tuple);
+
+    syntax::PostfixOp postfix_op;
+    postfix_op.kind = syntax::PostfixOpKind::call;
+    postfix_op.args = {literal_id, name_id};
+    syntax::ExprNode postfix;
+    postfix.kind = syntax::ExprKind::postfix_chain;
+    postfix.postfix_base = name_id;
+    postfix.postfix_ops = {postfix_op};
+    const syntax::ExprId postfix_id = exprs.append(postfix);
+
+    syntax::ExprNode field;
+    field.kind = syntax::ExprKind::field;
+    field.object = name_id;
+    field.field_name = "value";
+    const syntax::ExprId field_id = exprs.append(field);
+
+    syntax::ExprNode index;
+    index.kind = syntax::ExprKind::index;
+    index.object = field_id;
+    index.index = literal_id;
+    const syntax::ExprId index_id = exprs.append(index);
+
+    syntax::ExprNode slice;
+    slice.kind = syntax::ExprKind::slice;
+    slice.object = field_id;
+    slice.slice_start = literal_id;
+    slice.slice_end = binary_id;
+    const syntax::ExprId slice_id = exprs.append(slice);
+
+    syntax::ExprNode struct_literal;
+    struct_literal.kind = syntax::ExprKind::struct_literal;
+    struct_literal.object = name_id;
+    struct_literal.scope_name = "pkg";
+    struct_literal.struct_name = "Pair";
+    struct_literal.type_args = {syntax::TypeId {8}};
+    struct_literal.field_inits = {syntax::FieldInit {"left", literal_id, {}}};
+    const syntax::ExprId struct_id = exprs.append(struct_literal);
+
+    syntax::ExprNode cast;
+    cast.kind = syntax::ExprKind::pcast;
+    cast.cast_type = syntax::TypeId {9};
+    cast.cast_expr = field_id;
+    const syntax::ExprId cast_id = exprs.append(cast);
+
+    const syntax::LiteralExprPayload* const literal_payload = exprs.literal_payload(literal_id.value);
+    ASSERT_NE(literal_payload, nullptr);
+    EXPECT_EQ(literal_payload->text, "42");
+
+    const syntax::NameExprPayload* const name_payload = exprs.name_payload(name_id.value);
+    ASSERT_NE(name_payload, nullptr);
+    EXPECT_EQ(name_payload->scope_name, "math");
+    EXPECT_EQ(name_payload->text, "add");
+    ASSERT_EQ(name_payload->type_args.size(), 2U);
+    EXPECT_EQ(name_payload->type_args.back().value, 2U);
+
+    const syntax::GenericApplyExprPayload* const generic_payload = exprs.generic_apply_payload(generic_id.value);
+    ASSERT_NE(generic_payload, nullptr);
+    EXPECT_EQ(generic_payload->callee.value, name_id.value);
+    ASSERT_EQ(generic_payload->type_args.size(), 1U);
+    EXPECT_EQ(generic_payload->type_args.front().value, 3U);
+
+    const syntax::UnaryExprPayload* const unary_payload = exprs.unary_payload(unary_id.value);
+    ASSERT_NE(unary_payload, nullptr);
+    EXPECT_EQ(unary_payload->op, syntax::UnaryOp::numeric_negate);
+    EXPECT_EQ(unary_payload->operand.value, literal_id.value);
+
+    const syntax::BinaryExprPayload* const binary_payload = exprs.binary_payload(binary_id.value);
+    ASSERT_NE(binary_payload, nullptr);
+    EXPECT_EQ(binary_payload->op, syntax::BinaryOp::add);
+    EXPECT_EQ(binary_payload->lhs.value, literal_id.value);
+    EXPECT_EQ(binary_payload->rhs.value, unary_id.value);
+
+    const syntax::CallExprPayload* const call_payload = exprs.call_payload(call_id.value);
+    ASSERT_NE(call_payload, nullptr);
+    EXPECT_EQ(call_payload->callee.value, generic_id.value);
+    ASSERT_EQ(call_payload->args.size(), 2U);
+    EXPECT_EQ(call_payload->args.back().value, binary_id.value);
+
+    const syntax::IfExprPayload* const if_payload = exprs.if_payload(if_id.value);
+    ASSERT_NE(if_payload, nullptr);
+    EXPECT_EQ(if_payload->condition.value, literal_id.value);
+    EXPECT_EQ(if_payload->condition_pattern.value, 4U);
+    EXPECT_EQ(if_payload->then_expr.value, name_id.value);
+    EXPECT_EQ(if_payload->else_expr.value, call_id.value);
+
+    const syntax::BlockExprPayload* const block_payload = exprs.block_payload(block_id.value);
+    ASSERT_NE(block_payload, nullptr);
+    EXPECT_EQ(block_payload->block.value, 5U);
+    EXPECT_EQ(block_payload->result.value, if_id.value);
+    const base::SourceRange retagged_range {{99}, 3, 9};
+    EXPECT_TRUE(exprs.retag_block_expr(block_id.value, syntax::ExprKind::block_expr, retagged_range));
+    EXPECT_EQ(exprs.kind(block_id.value), syntax::ExprKind::block_expr);
+    EXPECT_EQ(exprs.range(block_id.value).begin, 3U);
+    EXPECT_NE(exprs.block_payload(block_id.value), nullptr);
+    EXPECT_FALSE(exprs.retag_block_expr(literal_id.value, syntax::ExprKind::unsafe_block, retagged_range));
+    EXPECT_FALSE(exprs.retag_block_expr(block_id.value, syntax::ExprKind::call, retagged_range));
+
+    const syntax::MatchExprPayload* const match_payload = exprs.match_payload(match_id.value);
+    ASSERT_NE(match_payload, nullptr);
+    EXPECT_EQ(match_payload->value.value, literal_id.value);
+    ASSERT_EQ(match_payload->arms.size(), 1U);
+    EXPECT_EQ(match_payload->arms.front().value.value, name_id.value);
+
+    const syntax::ArrayExprPayload* const array_payload = exprs.array_payload(array_id.value);
+    ASSERT_NE(array_payload, nullptr);
+    ASSERT_EQ(array_payload->elements.size(), 2U);
+    EXPECT_EQ(array_payload->elements.front().value, literal_id.value);
+    EXPECT_EQ(array_payload->repeat_value.value, unary_id.value);
+    EXPECT_EQ(array_payload->repeat_count.value, binary_id.value);
+
+    const std::vector<syntax::ExprId>* const tuple_payload = exprs.tuple_elements(tuple_id.value);
+    ASSERT_NE(tuple_payload, nullptr);
+    ASSERT_EQ(tuple_payload->size(), 2U);
+    EXPECT_EQ(tuple_payload->back().value, call_id.value);
+
+    const syntax::PostfixChainExprPayload* const postfix_payload = exprs.postfix_chain_payload(postfix_id.value);
+    ASSERT_NE(postfix_payload, nullptr);
+    EXPECT_EQ(postfix_payload->base.value, name_id.value);
+    ASSERT_EQ(postfix_payload->ops.size(), 1U);
+    EXPECT_EQ(postfix_payload->ops.front().args.back().value, name_id.value);
+    syntax::PostfixChainExprPayload moved_postfix = exprs.take_postfix_chain_payload(postfix_id.value);
+    EXPECT_EQ(moved_postfix.base.value, name_id.value);
+    ASSERT_EQ(moved_postfix.ops.size(), 1U);
+    EXPECT_EQ(moved_postfix.ops.front().args.front().value, literal_id.value);
+    EXPECT_TRUE(exprs.take_postfix_chain_payload(literal_id.value).ops.empty());
+
+    const syntax::FieldExprPayload* const field_payload = exprs.field_payload(field_id.value);
+    ASSERT_NE(field_payload, nullptr);
+    EXPECT_EQ(field_payload->object.value, name_id.value);
+    EXPECT_EQ(field_payload->field_name, "value");
+
+    const syntax::IndexExprPayload* const index_payload = exprs.index_payload(index_id.value);
+    ASSERT_NE(index_payload, nullptr);
+    EXPECT_EQ(index_payload->object.value, field_id.value);
+    EXPECT_EQ(index_payload->index.value, literal_id.value);
+
+    const syntax::SliceExprPayload* const slice_payload = exprs.slice_payload(slice_id.value);
+    ASSERT_NE(slice_payload, nullptr);
+    EXPECT_EQ(slice_payload->object.value, field_id.value);
+    EXPECT_EQ(slice_payload->start.value, literal_id.value);
+    EXPECT_EQ(slice_payload->end.value, binary_id.value);
+
+    const syntax::StructLiteralExprPayload* const struct_payload = exprs.struct_literal_payload(struct_id.value);
+    ASSERT_NE(struct_payload, nullptr);
+    EXPECT_EQ(struct_payload->object.value, name_id.value);
+    EXPECT_EQ(struct_payload->scope_name, "pkg");
+    EXPECT_EQ(struct_payload->name, "Pair");
+    ASSERT_EQ(struct_payload->type_args.size(), 1U);
+    EXPECT_EQ(struct_payload->type_args.front().value, 8U);
+    ASSERT_EQ(struct_payload->field_inits.size(), 1U);
+    EXPECT_EQ(struct_payload->field_inits.front().name, "left");
+
+    const syntax::CastExprPayload* const cast_payload = exprs.cast_payload(cast_id.value);
+    ASSERT_NE(cast_payload, nullptr);
+    EXPECT_EQ(cast_payload->type.value, 9U);
+    EXPECT_EQ(cast_payload->expr.value, field_id.value);
+
+    EXPECT_EQ(exprs.kind(binary_id.value), syntax::ExprKind::binary);
+    EXPECT_EQ(exprs.name_payload(literal_id.value), nullptr);
+    EXPECT_EQ(exprs.literal_payload(999), nullptr);
+}
+
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     std::vector<Token> tokens = {
         Token {TokenKind::invalid, {{6}, 0, 1}, "?"},

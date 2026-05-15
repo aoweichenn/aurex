@@ -21,6 +21,16 @@ constexpr base::u32 SEMA_I64_SIGN_BIT_INDEX = 63;
 constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
 constexpr base::usize SEMA_TRY_SHAPE_CASE_COUNT = 2;
 
+struct IntegerLiteralExpr {
+    syntax::ExprId literal = syntax::INVALID_EXPR_ID;
+    bool negated = false;
+};
+
+template <typename T>
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T>& values) noexcept {
+    return {values.data(), values.size()};
+}
+
 [[nodiscard]] bool binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
     switch (op) {
     case syntax::BinaryOp::add:
@@ -51,22 +61,144 @@ constexpr base::usize SEMA_TRY_SHAPE_CASE_COUNT = 2;
         if (!syntax::is_valid(current) || current.value >= module.exprs.size()) {
             return false;
         }
-        const syntax::ExprNode& node = module.exprs[current.value];
-        if (node.kind == syntax::ExprKind::integer_literal) {
+        const syntax::ExprKind kind = module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::integer_literal) {
             continue;
         }
-        if (node.kind == syntax::ExprKind::unary && node.unary_op == syntax::UnaryOp::numeric_negate) {
-            pending.push_back(node.unary_operand);
-            continue;
+        if (kind == syntax::ExprKind::unary) {
+            const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(current.value);
+            if (unary != nullptr && unary->op == syntax::UnaryOp::numeric_negate) {
+                pending.push_back(unary->operand);
+                continue;
+            }
         }
-        if (node.kind == syntax::ExprKind::binary && binary_result_uses_operand_type(node.binary_op)) {
-            pending.push_back(node.binary_lhs);
-            pending.push_back(node.binary_rhs);
-            continue;
+        if (kind == syntax::ExprKind::binary) {
+            const syntax::BinaryExprPayload* const binary = module.exprs.binary_payload(current.value);
+            if (binary != nullptr && binary_result_uses_operand_type(binary->op)) {
+                pending.push_back(binary->lhs);
+                pending.push_back(binary->rhs);
+                continue;
+            }
         }
         return false;
     }
     return true;
+}
+
+[[nodiscard]] bool expr_is_kind(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr,
+    const syntax::ExprKind kind
+) noexcept {
+    return syntax::is_valid(expr) &&
+           expr.value < module.exprs.size() &&
+           module.exprs.kind(expr.value) == kind;
+}
+
+[[nodiscard]] std::string_view expr_literal_text_or_empty(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr
+) noexcept {
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return {};
+    }
+    const syntax::LiteralExprPayload* const literal = module.exprs.literal_payload(expr.value);
+    return literal == nullptr ? std::string_view {} : literal->text;
+}
+
+[[nodiscard]] bool expr_name_is_unqualified(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr
+) noexcept {
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return false;
+    }
+    const syntax::NameExprPayload* const name = module.exprs.name_payload(expr.value);
+    return name != nullptr && name->scope_name.empty();
+}
+
+[[nodiscard]] syntax::ExprId unary_operand_or_invalid(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr
+) noexcept {
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return syntax::INVALID_EXPR_ID;
+    }
+    const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(expr.value);
+    return unary == nullptr ? syntax::INVALID_EXPR_ID : unary->operand;
+}
+
+[[nodiscard]] bool unary_expr_has_op(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr,
+    const syntax::UnaryOp op
+) noexcept {
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return false;
+    }
+    const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(expr.value);
+    return unary != nullptr && unary->op == op;
+}
+
+[[nodiscard]] IntegerLiteralExpr integer_literal_expr(
+    const syntax::AstModule& module,
+    const syntax::ExprId candidate
+) noexcept {
+    if (!syntax::is_valid(candidate) || candidate.value >= module.exprs.size()) {
+        return {};
+    }
+    if (module.exprs.kind(candidate.value) == syntax::ExprKind::integer_literal) {
+        return {candidate, false};
+    }
+    if (unary_expr_has_op(module, candidate, syntax::UnaryOp::numeric_negate)) {
+        const syntax::ExprId operand = unary_operand_or_invalid(module, candidate);
+        if (expr_is_kind(module, operand, syntax::ExprKind::integer_literal)) {
+            return {operand, true};
+        }
+    }
+    return {};
+}
+
+[[nodiscard]] bool is_signed_min_integer_literal(
+    const IntegerLiteralExpr literal,
+    const base::u64 value,
+    const base::u32 bit_width
+) noexcept {
+    if (!literal.negated || bit_width == 0) {
+        return false;
+    }
+    const base::u64 min_magnitude = bit_width >= SEMA_I64_BIT_WIDTH
+        ? (base::u64 {1} << SEMA_I64_SIGN_BIT_INDEX)
+        : (base::u64 {1} << (bit_width - SEMA_SIGN_BIT_OFFSET));
+    return value == min_magnitude;
+}
+
+[[nodiscard]] base::SourceRange expr_range_or(
+    const syntax::AstModule& module,
+    const syntax::ExprId expr,
+    const base::SourceRange fallback
+) noexcept {
+    return syntax::is_valid(expr) && expr.value < module.exprs.size()
+        ? module.exprs.range(expr.value)
+        : fallback;
+}
+
+[[nodiscard]] bool is_const_u8_pointer(const TypeTable& types, const TypeHandle type) noexcept {
+    if (!types.is_pointer(type)) {
+        return false;
+    }
+    const TypeInfo& pointer = types.get(type);
+    return pointer.pointer_mutability == PointerMutability::const_ &&
+           types.same(pointer.pointee, types.builtin(BuiltinType::u8));
+}
+
+[[nodiscard]] bool is_u8_slice(const TypeTable& types, const TypeHandle type) noexcept {
+    return types.is_slice(type) &&
+           types.same(types.get(type).slice_element, types.builtin(BuiltinType::u8));
+}
+
+[[nodiscard]] bool is_pointer_or_reference(const TypeTable& types, const TypeHandle type) noexcept {
+    return types.is_pointer(type) || types.is_reference(type);
 }
 
 [[nodiscard]] bool is_signed_integer_type(const TypeTable& types, const TypeHandle type) noexcept {
@@ -119,74 +251,6 @@ constexpr base::usize SEMA_TRY_SHAPE_CASE_COUNT = 2;
     }
 }
 
-struct IntegerLiteralExpr {
-    syntax::ExprId literal = syntax::INVALID_EXPR_ID;
-    bool negated = false;
-};
-
-[[nodiscard]] IntegerLiteralExpr integer_literal_expr(
-    const syntax::AstModule& module,
-    const syntax::ExprId candidate
-) noexcept {
-    if (!syntax::is_valid(candidate) || candidate.value >= module.exprs.size()) {
-        return {};
-    }
-    const syntax::ExprNode& node = module.exprs[candidate.value];
-    if (node.kind == syntax::ExprKind::integer_literal) {
-        return {candidate, false};
-    }
-    if (node.kind == syntax::ExprKind::unary &&
-        node.unary_op == syntax::UnaryOp::numeric_negate &&
-        syntax::is_valid(node.unary_operand) &&
-        node.unary_operand.value < module.exprs.size() &&
-        module.exprs[node.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
-        return {node.unary_operand, true};
-    }
-    return {};
-}
-
-[[nodiscard]] bool is_signed_min_integer_literal(
-    const IntegerLiteralExpr literal,
-    const base::u64 value,
-    const base::u32 bit_width
-) noexcept {
-    if (!literal.negated || bit_width == 0) {
-        return false;
-    }
-    const base::u64 min_magnitude = bit_width >= SEMA_I64_BIT_WIDTH
-        ? (base::u64 {1} << SEMA_I64_SIGN_BIT_INDEX)
-        : (base::u64 {1} << (bit_width - SEMA_SIGN_BIT_OFFSET));
-    return value == min_magnitude;
-}
-
-[[nodiscard]] base::SourceRange expr_range_or(
-    const syntax::AstModule& module,
-    const syntax::ExprId expr,
-    const base::SourceRange fallback
-) noexcept {
-    return syntax::is_valid(expr) && expr.value < module.exprs.size()
-        ? module.exprs[expr.value].range
-        : fallback;
-}
-
-[[nodiscard]] bool is_const_u8_pointer(const TypeTable& types, const TypeHandle type) noexcept {
-    if (!types.is_pointer(type)) {
-        return false;
-    }
-    const TypeInfo& pointer = types.get(type);
-    return pointer.pointer_mutability == PointerMutability::const_ &&
-           types.same(pointer.pointee, types.builtin(BuiltinType::u8));
-}
-
-[[nodiscard]] bool is_u8_slice(const TypeTable& types, const TypeHandle type) noexcept {
-    return types.is_slice(type) &&
-           types.same(types.get(type).slice_element, types.builtin(BuiltinType::u8));
-}
-
-[[nodiscard]] bool is_pointer_or_reference(const TypeTable& types, const TypeHandle type) noexcept {
-    return types.is_pointer(type) || types.is_reference(type);
-}
-
 } // namespace
 
 SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle type) const noexcept {
@@ -233,6 +297,157 @@ SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle
     return {};
 }
 
+SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr_id) const noexcept {
+    ExprView view;
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+        return view;
+    }
+
+    view.kind = this->module_.exprs.kind(expr_id.value);
+    view.range = this->module_.exprs.range(expr_id.value);
+    if (const syntax::LiteralExprPayload* const literal = this->module_.exprs.literal_payload(expr_id.value);
+        literal != nullptr) {
+        view.text = literal->text;
+        return view;
+    }
+    if (const syntax::CastExprPayload* const cast = this->module_.exprs.cast_payload(expr_id.value);
+        cast != nullptr) {
+        view.cast_type = cast->type;
+        view.cast_expr = cast->expr;
+        return view;
+    }
+
+    switch (view.kind) {
+    case syntax::ExprKind::name: {
+        const syntax::NameExprPayload& payload = *this->module_.exprs.name_payload(expr_id.value);
+        view.scope_name = payload.scope_name;
+        view.scope_range = payload.scope_range;
+        view.text = payload.text;
+        view.type_args = readonly_span(payload.type_args);
+        break;
+    }
+    case syntax::ExprKind::generic_apply: {
+        const syntax::GenericApplyExprPayload& payload = *this->module_.exprs.generic_apply_payload(expr_id.value);
+        view.callee = payload.callee;
+        view.type_args = readonly_span(payload.type_args);
+        break;
+    }
+    case syntax::ExprKind::unary:
+    case syntax::ExprKind::try_expr: {
+        const syntax::UnaryExprPayload& payload = *this->module_.exprs.unary_payload(expr_id.value);
+        view.unary_op = payload.op;
+        view.unary_operand = payload.operand;
+        break;
+    }
+    case syntax::ExprKind::binary: {
+        const syntax::BinaryExprPayload& payload = *this->module_.exprs.binary_payload(expr_id.value);
+        view.binary_op = payload.op;
+        view.binary_lhs = payload.lhs;
+        view.binary_rhs = payload.rhs;
+        break;
+    }
+    case syntax::ExprKind::call:
+    case syntax::ExprKind::str_from_bytes_unchecked: {
+        const syntax::CallExprPayload& payload = *this->module_.exprs.call_payload(expr_id.value);
+        view.callee = payload.callee;
+        view.args = readonly_span(payload.args);
+        break;
+    }
+    case syntax::ExprKind::if_expr: {
+        const syntax::IfExprPayload& payload = *this->module_.exprs.if_payload(expr_id.value);
+        view.condition = payload.condition;
+        view.condition_pattern = payload.condition_pattern;
+        view.then_expr = payload.then_expr;
+        view.else_expr = payload.else_expr;
+        break;
+    }
+    case syntax::ExprKind::block_expr:
+    case syntax::ExprKind::unsafe_block: {
+        const syntax::BlockExprPayload& payload = *this->module_.exprs.block_payload(expr_id.value);
+        view.block = payload.block;
+        view.block_result = payload.result;
+        break;
+    }
+    case syntax::ExprKind::match_expr: {
+        const syntax::MatchExprPayload& payload = *this->module_.exprs.match_payload(expr_id.value);
+        view.match_value = payload.value;
+        view.match_arms = readonly_span(payload.arms);
+        break;
+    }
+    case syntax::ExprKind::array_literal: {
+        const syntax::ArrayExprPayload& payload = *this->module_.exprs.array_payload(expr_id.value);
+        view.array_elements = readonly_span(payload.elements);
+        view.array_repeat_value = payload.repeat_value;
+        view.array_repeat_count = payload.repeat_count;
+        break;
+    }
+    case syntax::ExprKind::tuple_literal: {
+        const std::vector<syntax::ExprId>& payload = *this->module_.exprs.tuple_elements(expr_id.value);
+        view.tuple_elements = readonly_span(payload);
+        break;
+    }
+    case syntax::ExprKind::postfix_chain: {
+        const syntax::PostfixChainExprPayload& payload = *this->module_.exprs.postfix_chain_payload(expr_id.value);
+        view.postfix_base = payload.base;
+        view.postfix_ops = readonly_span(payload.ops);
+        break;
+    }
+    case syntax::ExprKind::field: {
+        const syntax::FieldExprPayload& payload = *this->module_.exprs.field_payload(expr_id.value);
+        view.object = payload.object;
+        view.field_name = payload.field_name;
+        break;
+    }
+    case syntax::ExprKind::index: {
+        const syntax::IndexExprPayload& payload = *this->module_.exprs.index_payload(expr_id.value);
+        view.object = payload.object;
+        view.index = payload.index;
+        break;
+    }
+    case syntax::ExprKind::slice: {
+        const syntax::SliceExprPayload& payload = *this->module_.exprs.slice_payload(expr_id.value);
+        view.object = payload.object;
+        view.slice_start = payload.start;
+        view.slice_end = payload.end;
+        break;
+    }
+    case syntax::ExprKind::struct_literal: {
+        const syntax::StructLiteralExprPayload& payload = *this->module_.exprs.struct_literal_payload(expr_id.value);
+        view.object = payload.object;
+        view.scope_name = payload.scope_name;
+        view.scope_range = payload.scope_range;
+        view.struct_name = payload.name;
+        view.type_args = readonly_span(payload.type_args);
+        view.field_inits = readonly_span(payload.field_inits);
+        break;
+    }
+    case syntax::ExprKind::invalid:
+    case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::float_literal:
+    case syntax::ExprKind::bool_literal:
+    case syntax::ExprKind::null_literal:
+    case syntax::ExprKind::string_literal:
+    case syntax::ExprKind::c_string_literal:
+    case syntax::ExprKind::raw_string_literal:
+    case syntax::ExprKind::byte_string_literal:
+    case syntax::ExprKind::byte_literal:
+    case syntax::ExprKind::char_literal:
+    case syntax::ExprKind::cast:
+    case syntax::ExprKind::pcast:
+    case syntax::ExprKind::bcast:
+    case syntax::ExprKind::size_of:
+    case syntax::ExprKind::align_of:
+    case syntax::ExprKind::ptr_addr:
+    case syntax::ExprKind::paddr:
+    case syntax::ExprKind::str_data:
+    case syntax::ExprKind::str_byte_len:
+    case syntax::ExprKind::str_is_valid_utf8:
+    case syntax::ExprKind::str_from_utf8_checked:
+        break;
+    }
+    return view;
+}
+
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
     return this->analyze_expr(expr_id, INVALID_TYPE_HANDLE);
 }
@@ -246,21 +461,21 @@ TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id, const Ty
     if (is_valid(cached_type)) {
         return cached_type;
     }
-    const TypeHandle analyzed = this->analyze_expr(expr_id, this->module_.exprs[expr_id.value], expected_type);
+    const TypeHandle analyzed = this->analyze_expr(expr_id, this->expr_view(expr_id), expected_type);
     this->record_expr_expected_type(expr_id, expected_type);
     return analyzed;
 }
 
 TypeHandle SemanticAnalyzer::analyze_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
-        return this->analyze_integer_literal(expr_id, expr, expected_type);
+        return this->analyze_integer_literal(expr_id, expr.text, expr.range, expected_type);
     case syntax::ExprKind::float_literal:
-        return this->analyze_float_literal(expr_id, expr, expected_type);
+        return this->analyze_float_literal(expr_id, expr.text, expr.range, expected_type);
     case syntax::ExprKind::bool_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
     case syntax::ExprKind::null_literal:
@@ -364,7 +579,7 @@ TypeHandle SemanticAnalyzer::analyze_expr(
 
 TypeHandle SemanticAnalyzer::analyze_name_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     const Symbol* symbol = nullptr;
     if (!expr.scope_name.empty()) {
@@ -407,7 +622,7 @@ bool SemanticAnalyzer::record_no_payload_enum_case_expr(
 
 TypeHandle SemanticAnalyzer::analyze_generic_apply_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     this->report(expr.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
@@ -415,16 +630,14 @@ TypeHandle SemanticAnalyzer::analyze_generic_apply_expr(
 
 TypeHandle SemanticAnalyzer::analyze_unary_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
-        syntax::is_valid(expr.unary_operand) &&
-        expr.unary_operand.value < this->module_.exprs.size() &&
-        this->module_.exprs[expr.unary_operand.value].kind == syntax::ExprKind::integer_literal) {
-        const syntax::ExprNode& operand_expr = this->module_.exprs[expr.unary_operand.value];
+        expr_is_kind(this->module_, expr.unary_operand, syntax::ExprKind::integer_literal)) {
+        const SemanticAnalyzer::ExprView operand = this->expr_view(expr.unary_operand);
         const TypeHandle literal_type =
-            this->analyze_negative_integer_literal(expr.unary_operand, operand_expr, expected_type);
+            this->analyze_negative_integer_literal(expr.unary_operand, operand.text, operand.range, expected_type);
         return this->record_expr_type(expr_id, literal_type);
     }
 
@@ -494,7 +707,7 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
 
 TypeHandle SemanticAnalyzer::analyze_binary_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     const TypeHandle operand_expected =
@@ -528,9 +741,10 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     const IntegerLiteralExpr rhs_integer_literal = integer_literal_expr(this->module_, expr.binary_rhs);
     if (syntax::is_valid(rhs_integer_literal.literal)) {
         base::u64 rhs_literal_value = 0;
-        const syntax::ExprNode& literal_expr = this->module_.exprs[rhs_integer_literal.literal.value];
-        const base::SourceRange rhs_range = expr_range_or(this->module_, expr.binary_rhs, literal_expr.range);
-        if (this->parse_integer_literal_text(literal_expr.text, rhs_literal_value)) {
+        const std::string_view literal_text = expr_literal_text_or_empty(this->module_, rhs_integer_literal.literal);
+        const base::SourceRange rhs_range =
+            expr_range_or(this->module_, expr.binary_rhs, expr_range_or(this->module_, rhs_integer_literal.literal, expr.range));
+        if (this->parse_integer_literal_text(literal_text, rhs_literal_value)) {
             if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
                 this->checked_.types.is_integer(lhs) &&
                 rhs_literal_value == 0) {
@@ -561,10 +775,14 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
             syntax::is_valid(rhs_integer_literal.literal)) {
             base::u64 lhs_literal_value = 0;
             base::u64 rhs_literal_value = 0;
-            const syntax::ExprNode& lhs_literal_expr = this->module_.exprs[lhs_integer_literal.literal.value];
-            const syntax::ExprNode& rhs_literal_expr = this->module_.exprs[rhs_integer_literal.literal.value];
-            if (this->parse_integer_literal_text(lhs_literal_expr.text, lhs_literal_value) &&
-                this->parse_integer_literal_text(rhs_literal_expr.text, rhs_literal_value) &&
+            if (this->parse_integer_literal_text(
+                    expr_literal_text_or_empty(this->module_, lhs_integer_literal.literal),
+                    lhs_literal_value
+                ) &&
+                this->parse_integer_literal_text(
+                    expr_literal_text_or_empty(this->module_, rhs_integer_literal.literal),
+                    rhs_literal_value
+                ) &&
                 is_signed_min_integer_literal(
                     lhs_integer_literal,
                     lhs_literal_value,
@@ -642,7 +860,7 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
 
 TypeHandle SemanticAnalyzer::analyze_field_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle
 ) {
     if (syntax::is_valid(expr.object) &&
@@ -655,9 +873,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
             static_cast<void>(this->resolve_module_selector(expr.object, true));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
-        const bool object_is_plain_name =
-            this->module_.exprs[expr.object.value].kind == syntax::ExprKind::name &&
-            this->module_.exprs[expr.object.value].scope_name.empty();
+        const bool object_is_plain_name = expr_name_is_unqualified(this->module_, expr.object);
         const TypeHandle enum_type = this->resolve_type_selector(expr.object, !object_is_plain_name);
         if (is_valid(enum_type) && this->checked_.types.get(enum_type).kind == TypeKind::enum_) {
             const EnumCaseInfo* enum_case = this->find_enum_case_by_type_and_case(enum_type, expr.field_name);
@@ -685,7 +901,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
 TypeHandle SemanticAnalyzer::analyze_module_member_expr(
     const syntax::ExprId expr_id,
     const syntax::ModuleId module,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     if (const Symbol* symbol = this->find_symbol_in_module(module, expr.field_name, expr.range, false);
         symbol != nullptr) {
@@ -708,7 +924,7 @@ TypeHandle SemanticAnalyzer::analyze_module_member_expr(
 
 TypeHandle SemanticAnalyzer::analyze_index_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     const PlaceInfo place = this->analyze_place_info(expr_id, true);
     this->require_place_projection_safety(place, expr.range);
@@ -717,7 +933,7 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
 
 TypeHandle SemanticAnalyzer::analyze_slice_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     const TypeHandle usize_type = this->checked_.types.builtin(BuiltinType::usize);
@@ -728,7 +944,7 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
         const TypeHandle bound_type = this->analyze_expr(bound, usize_type);
         if (!this->checked_.types.is_integer(bound_type)) {
             this->report(
-                bound.value < this->module_.exprs.size() ? this->module_.exprs[bound.value].range : expr.range,
+                expr_range_or(this->module_, bound, expr.range),
                 std::string(SEMA_SLICE_BOUND_INTEGER)
             );
         }
@@ -772,7 +988,7 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
 
 TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     const bool has_expected_array = this->checked_.types.is_array(expected_type);
@@ -801,11 +1017,14 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
         if (!count_expr_valid) {
             this->report(expr.range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
         } else {
-            const syntax::ExprNode& count_expr = this->module_.exprs[expr.array_repeat_count.value];
-            if (count_expr.kind != syntax::ExprKind::integer_literal) {
-                this->report(count_expr.range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
-            } else if (!this->parse_integer_literal_text(count_expr.text, literal_count)) {
-                this->report(count_expr.range, std::string(SEMA_ARRAY_REPEAT_OUT_OF_RANGE));
+            const base::SourceRange count_range = this->module_.exprs.range(expr.array_repeat_count.value);
+            if (this->module_.exprs.kind(expr.array_repeat_count.value) != syntax::ExprKind::integer_literal) {
+                this->report(count_range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
+            } else if (!this->parse_integer_literal_text(
+                           expr_literal_text_or_empty(this->module_, expr.array_repeat_count),
+                           literal_count
+                       )) {
+                this->report(count_range, std::string(SEMA_ARRAY_REPEAT_OUT_OF_RANGE));
             } else {
                 count_known = true;
             }
@@ -845,9 +1064,7 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
             const TypeHandle actual = this->analyze_expr(element, element_type);
             if (!this->can_assign(element_type, actual, element)) {
                 this->report(
-                    syntax::is_valid(element) && element.value < this->module_.exprs.size()
-                        ? this->module_.exprs[element.value].range
-                        : expr.range,
+                    expr_range_or(this->module_, element, expr.range),
                     std::string(SEMA_ARRAY_LITERAL_ELEMENT_TYPE_MISMATCH)
                 );
             }
@@ -868,7 +1085,7 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
 
 TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     const bool has_expected_tuple = this->checked_.types.is_tuple(expected_type);
@@ -900,9 +1117,7 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
         if (has_expected_tuple) {
             if (!this->can_assign(element_types[i], actual, expr.tuple_elements[i])) {
                 this->report(
-                    syntax::is_valid(expr.tuple_elements[i]) && expr.tuple_elements[i].value < this->module_.exprs.size()
-                        ? this->module_.exprs[expr.tuple_elements[i].value].range
-                        : expr.range,
+                    expr_range_or(this->module_, expr.tuple_elements[i], expr.range),
                     std::string(SEMA_TUPLE_LITERAL_ELEMENT_TYPE_MISMATCH)
                 );
             }
@@ -931,7 +1146,7 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
 
 TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle
 ) {
     TypeHandle struct_type = INVALID_TYPE_HANDLE;
@@ -942,7 +1157,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         selector.module = syntax::INVALID_MODULE_ID;
         selector.name = expr.struct_name;
         selector.range = expr.range;
-        selector.type_args = expr.type_args;
+        selector.type_args.assign(expr.type_args.begin(), expr.type_args.end());
         selector.qualified = false;
         struct_type = this->resolve_named_type_selector_type(selector, false, true);
     }
@@ -990,7 +1205,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
 
 TypeHandle SemanticAnalyzer::analyze_cast_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     if (expr.kind == syntax::ExprKind::pcast) {
         this->require_unsafe_context(expr.range, SEMA_UNSAFE_PTRCAST);
@@ -1009,7 +1224,7 @@ TypeHandle SemanticAnalyzer::analyze_cast_expr(
 
 TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     const TypeHandle queried = this->resolve_type(expr.cast_type);
     if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::generic_param) {
@@ -1026,7 +1241,7 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
 
 TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!is_pointer_or_reference(this->checked_.types, value)) {
@@ -1037,7 +1252,7 @@ TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
 
 TypeHandle SemanticAnalyzer::analyze_paddr_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     this->require_unsafe_context(expr.range, SEMA_UNSAFE_PTRAT);
     const TypeHandle target = this->resolve_type(expr.cast_type);
@@ -1046,14 +1261,14 @@ TypeHandle SemanticAnalyzer::analyze_paddr_expr(
         this->report(expr.range, std::string(SEMA_PTRAT_POINTER));
     }
     if (!this->checked_.types.is_integer(address)) {
-        this->report(this->module_.exprs[expr.cast_expr.value].range, std::string(SEMA_PTRAT_INTEGER));
+        this->report(expr_range_or(this->module_, expr.cast_expr, expr.range), std::string(SEMA_PTRAT_INTEGER));
     }
     return this->record_expr_type(expr_id, target);
 }
 
 TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!this->checked_.types.is_str(value)) {
@@ -1073,7 +1288,7 @@ TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
 
 TypeHandle SemanticAnalyzer::analyze_str_utf8_slice_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     const TypeHandle bytes = this->analyze_expr(expr.cast_expr);
     if (!is_u8_slice(this->checked_.types, bytes)) {
@@ -1087,7 +1302,7 @@ TypeHandle SemanticAnalyzer::analyze_str_utf8_slice_expr(
 
 TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const SemanticAnalyzer::ExprView& expr
 ) {
     this->require_unsafe_context(expr.range, SEMA_UNSAFE_STRRAW);
     if (expr.args.size() != 2) {
@@ -1097,15 +1312,15 @@ TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
     const TypeHandle data = this->analyze_expr(expr.args[0]);
     const TypeHandle len = this->analyze_expr(expr.args[1], this->checked_.types.builtin(BuiltinType::usize));
     if (!is_const_u8_pointer(this->checked_.types, data)) {
-        this->report(this->module_.exprs[expr.args[0].value].range, std::string(SEMA_STRRAW_DATA_POINTER));
+        this->report(expr_range_or(this->module_, expr.args[0], expr.range), std::string(SEMA_STRRAW_DATA_POINTER));
     }
     if (!this->checked_.types.is_integer(len)) {
-        this->report(this->module_.exprs[expr.args[1].value].range, std::string(SEMA_STRRAW_LENGTH_INTEGER));
+        this->report(expr_range_or(this->module_, expr.args[1], expr.range), std::string(SEMA_STRRAW_LENGTH_INTEGER));
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
 }
 
-TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, const SemanticAnalyzer::ExprView& expr) {
     if (this->in_const_initializer_) {
         this->report(expr.range, std::string(SEMA_TRY_CONST_INITIALIZER));
     }
@@ -1148,7 +1363,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
 
 TypeHandle SemanticAnalyzer::analyze_if_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
@@ -1156,7 +1371,7 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
     }
     const TypeHandle condition = this->analyze_expr(expr.condition);
     if (!syntax::is_valid(expr.condition_pattern) && !this->checked_.types.is_bool(condition)) {
-        this->report(this->module_.exprs[expr.condition.value].range, std::string(SEMA_IF_EXPR_CONDITION_BOOL));
+        this->report(expr_range_or(this->module_, expr.condition, expr.range), std::string(SEMA_IF_EXPR_CONDITION_BOOL));
     }
     const auto analyze_then_branch = [&](const TypeHandle expected) {
         if (!syntax::is_valid(expr.condition_pattern)) {
@@ -1205,7 +1420,7 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
 
 TypeHandle SemanticAnalyzer::analyze_block_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
@@ -1236,7 +1451,7 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
 
 TypeHandle SemanticAnalyzer::analyze_unsafe_block_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {

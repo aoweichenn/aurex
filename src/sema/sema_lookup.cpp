@@ -737,7 +737,7 @@ bool SemanticAnalyzer::method_receiver_matches(
     const TypeHandle self_type = signature.param_types.front();
     if (this->checked_.types.same(self_type, receiver_type)) {
         if (this->checked_.types.contains_array(self_type)) {
-            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
             return false;
         }
         return true;
@@ -757,7 +757,7 @@ bool SemanticAnalyzer::method_receiver_matches(
         }
         if (self_info.pointer_mutability == PointerMutability::mut &&
             receiver_info.pointer_mutability != PointerMutability::mut) {
-            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
+            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
             return false;
         }
         return true;
@@ -768,11 +768,11 @@ bool SemanticAnalyzer::method_receiver_matches(
     const PointerMutability self_mutability = this->checked_.types.get(self_type).pointer_mutability;
     if (self_mutability == PointerMutability::mut) {
         if (!this->is_place_expr(receiver)) {
-            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_METHOD_RECEIVER_PLACE));
+            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_METHOD_RECEIVER_PLACE));
             return false;
         }
         if (!this->is_writable_place(receiver)) {
-            this->report(this->module_.exprs[receiver.value].range, std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
+            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
             return false;
         }
     }
@@ -1235,27 +1235,31 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
     if (!syntax::is_valid(callee_id) || callee_id.value >= this->module_.exprs.size()) {
         return nullptr;
     }
-    const syntax::ExprNode& callee = this->module_.exprs[callee_id.value];
-    if (callee.kind != syntax::ExprKind::field ||
-        !syntax::is_valid(callee.object) ||
-        callee.object.value >= this->module_.exprs.size()) {
+    const syntax::FieldExprPayload* const callee = this->module_.exprs.field_payload(callee_id.value);
+    if (callee == nullptr ||
+        !syntax::is_valid(callee->object) ||
+        callee->object.value >= this->module_.exprs.size()) {
         return nullptr;
     }
-    const TypeHandle enum_type = this->resolve_type_selector(callee.object, report_unknown);
+    const TypeHandle enum_type = this->resolve_type_selector(callee->object, report_unknown);
     if (!is_valid(enum_type)) {
         return nullptr;
     }
     if (this->checked_.types.get(enum_type).kind != TypeKind::enum_) {
         if (report_unknown) {
-            this->report(callee.range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+            this->report(this->module_.exprs.range(callee_id.value), std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
         }
         return nullptr;
     }
-    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, callee.field_name); result != nullptr) {
+    if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, callee->field_name);
+        result != nullptr) {
         return result;
     }
     if (report_unknown) {
-        this->report(callee.range, sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), callee.field_name));
+        this->report(
+            this->module_.exprs.range(callee_id.value),
+            sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), callee->field_name)
+        );
     }
     return nullptr;
 }

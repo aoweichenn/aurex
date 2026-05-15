@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -138,6 +139,45 @@ private:
         base::SourceRange range {};
         std::vector<syntax::TypeId> type_args;
         bool qualified = false;
+    };
+
+    struct ExprView {
+        syntax::ExprKind kind = syntax::ExprKind::invalid;
+        base::SourceRange range {};
+        std::string_view scope_name;
+        base::SourceRange scope_range {};
+        std::string_view text;
+        syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
+        syntax::ExprId unary_operand = syntax::INVALID_EXPR_ID;
+        syntax::BinaryOp binary_op = syntax::BinaryOp::add;
+        syntax::ExprId binary_lhs = syntax::INVALID_EXPR_ID;
+        syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
+        syntax::ExprId callee = syntax::INVALID_EXPR_ID;
+        std::span<const syntax::ExprId> args {};
+        syntax::ExprId condition = syntax::INVALID_EXPR_ID;
+        syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
+        syntax::ExprId then_expr = syntax::INVALID_EXPR_ID;
+        syntax::ExprId else_expr = syntax::INVALID_EXPR_ID;
+        syntax::StmtId block = syntax::INVALID_STMT_ID;
+        syntax::ExprId block_result = syntax::INVALID_EXPR_ID;
+        syntax::ExprId match_value = syntax::INVALID_EXPR_ID;
+        std::span<const syntax::MatchArm> match_arms {};
+        std::span<const syntax::ExprId> array_elements {};
+        std::span<const syntax::ExprId> tuple_elements {};
+        syntax::ExprId array_repeat_value = syntax::INVALID_EXPR_ID;
+        syntax::ExprId array_repeat_count = syntax::INVALID_EXPR_ID;
+        syntax::ExprId postfix_base = syntax::INVALID_EXPR_ID;
+        std::span<const syntax::PostfixOp> postfix_ops {};
+        syntax::ExprId object = syntax::INVALID_EXPR_ID;
+        std::string_view field_name;
+        syntax::ExprId index = syntax::INVALID_EXPR_ID;
+        syntax::ExprId slice_start = syntax::INVALID_EXPR_ID;
+        syntax::ExprId slice_end = syntax::INVALID_EXPR_ID;
+        std::string_view struct_name;
+        std::span<const syntax::TypeId> type_args {};
+        std::span<const syntax::FieldInit> field_inits {};
+        syntax::TypeId cast_type = syntax::INVALID_TYPE_ID;
+        syntax::ExprId cast_expr = syntax::INVALID_EXPR_ID;
     };
 
     struct PatternBinding {
@@ -278,7 +318,8 @@ private:
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] ExprView expr_view(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_postfix_chain_expr(syntax::ExprId expr_id, TypeHandle expected_type);
     [[nodiscard]] syntax::ExprId materialize_postfix_chain(syntax::ExprId expr_id);
     [[nodiscard]] syntax::ExprId materialize_postfix_op(
@@ -308,62 +349,62 @@ private:
         std::string_view name,
         base::SourceRange range
     );
-    [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_field_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_index_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_size_or_align_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_ptr_addr_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_paddr_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_str_utf8_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_enum_constructor_call(syntax::ExprId expr_id, const syntax::ExprNode& expr, const EnumCaseInfo& enum_case);
+    [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_binary_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_field_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_index_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_slice_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_struct_literal_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_cast_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_size_or_align_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_ptr_addr_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_paddr_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_str_projection_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_str_utf8_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_enum_constructor_call(syntax::ExprId expr_id, const ExprView& expr, const EnumCaseInfo& enum_case);
     [[nodiscard]] TypeHandle analyze_field_call_expr(
         syntax::ExprId expr_id,
-        const syntax::ExprNode& expr,
-        const syntax::ExprNode& callee,
+        const ExprView& expr,
+        const ExprView& callee,
         std::string_view name,
         TypeHandle expected_type
     );
     [[nodiscard]] TypeHandle analyze_function_call_expr(
         syntax::ExprId expr_id,
-        const syntax::ExprNode& expr,
-        const syntax::ExprNode& callee,
+        const ExprView& expr,
+        const ExprView& callee,
         std::string_view name,
         TypeHandle expected_type
     );
     [[nodiscard]] TypeHandle analyze_function_value_call_expr(
         syntax::ExprId expr_id,
-        const syntax::ExprNode& expr,
+        const ExprView& expr,
         std::string_view name
     );
     [[nodiscard]] TypeHandle analyze_explicit_generic_function_call_expr(
         syntax::ExprId expr_id,
-        const syntax::ExprNode& expr,
-        const syntax::ExprNode& apply,
+        const ExprView& expr,
+        const ExprView& apply,
         std::string_view name
     );
     void validate_call_arguments(
-        const syntax::ExprNode& expr,
+        const ExprView& expr,
         std::string_view name,
         const std::vector<TypeHandle>& param_types,
         base::usize receiver_count,
         bool is_variadic
     );
-    [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_unsafe_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] TypeHandle analyze_if_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_block_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_unsafe_block_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_match_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_array_literal_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_tuple_literal_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     void define_local_pattern(syntax::PatternId pattern, TypeHandle type, bool is_mutable, bool allow_refutable = false);
     [[nodiscard]] bool analyze_pattern(
         syntax::PatternId pattern,
@@ -408,7 +449,7 @@ private:
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool infer_generic_arguments(
         const GenericTemplateInfo& info,
-        const syntax::ExprNode& call,
+        const ExprView& call,
         std::vector<TypeHandle>& args
     );
     [[nodiscard]] bool unify_generic_type(
@@ -525,13 +566,24 @@ private:
     [[nodiscard]] bool parse_integer_literal_text(std::string_view text, base::u64& value) const noexcept;
     [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
     [[nodiscard]] bool negative_integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;
-    [[nodiscard]] TypeHandle analyze_integer_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
-    [[nodiscard]] TypeHandle analyze_negative_integer_literal(
+    [[nodiscard]] TypeHandle analyze_integer_literal(
         syntax::ExprId expr,
-        const syntax::ExprNode& node,
+        std::string_view text,
+        base::SourceRange range,
         TypeHandle expected_type
     );
-    [[nodiscard]] TypeHandle analyze_float_literal(syntax::ExprId expr, const syntax::ExprNode& node, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_negative_integer_literal(
+        syntax::ExprId expr,
+        std::string_view text,
+        base::SourceRange range,
+        TypeHandle expected_type
+    );
+    [[nodiscard]] TypeHandle analyze_float_literal(
+        syntax::ExprId expr,
+        std::string_view text,
+        base::SourceRange range,
+        TypeHandle expected_type
+    );
     [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, std::unordered_set<std::string>& dependencies);
     [[nodiscard]] TypeAbiLayout abi_layout(TypeHandle type) const;
     [[nodiscard]] base::u64 abi_size(TypeHandle type) const;
@@ -582,7 +634,7 @@ private:
     [[nodiscard]] TypeHandle analyze_module_member_expr(
         syntax::ExprId expr_id,
         syntax::ModuleId module,
-        const syntax::ExprNode& expr
+        const ExprView& expr
     );
     [[nodiscard]] bool record_no_payload_enum_case_expr(
         syntax::ExprId expr_id,

@@ -543,7 +543,7 @@ ValueId Lowerer::append_pattern_condition(
     return this->append_value(result);
 }
 
-ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const ExprView& expr) {
     if (current_function_ == nullptr || !is_valid(current_block_) || expr.match_arms.empty()) {
         return INVALID_VALUE_ID;
     }
@@ -613,7 +613,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
     return append_value(result);
 }
 
-ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& expr) {
     if (current_function_ == nullptr || !is_valid(current_block_)) {
         return INVALID_VALUE_ID;
     }
@@ -714,7 +714,7 @@ ValueId Lowerer::lower_enum_constructor(const sema::EnumCaseInfo& enum_case, con
 
 ValueId Lowerer::lower_enum_constructor_call(
     const sema::EnumCaseInfo& enum_case,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     if (enum_case.payload_types.empty()) {
         return this->append_enum_constructor(enum_case, INVALID_VALUE_ID);

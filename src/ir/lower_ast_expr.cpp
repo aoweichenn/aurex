@@ -12,6 +12,11 @@ namespace {
 constexpr base::usize IR_METHOD_RECEIVER_PARAM_COUNT = 1;
 constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
 
+template <typename T>
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T>& values) noexcept {
+    return {values.data(), values.size()};
+}
+
 [[nodiscard]] UnaryOp map_unary(const syntax::UnaryOp op) noexcept {
     switch (op) {
     case syntax::UnaryOp::logical_not: return UnaryOp::logical_not;
@@ -50,7 +55,146 @@ constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
 
 } // namespace
 
-ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcept {
+    ExprView view;
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
+        return view;
+    }
+
+    view.kind = this->ast_.exprs.kind(expr_id.value);
+    view.range = this->ast_.exprs.range(expr_id.value);
+    if (const syntax::LiteralExprPayload* const literal = this->ast_.exprs.literal_payload(expr_id.value);
+        literal != nullptr) {
+        view.text = literal->text;
+        return view;
+    }
+    if (const syntax::CastExprPayload* const cast = this->ast_.exprs.cast_payload(expr_id.value);
+        cast != nullptr) {
+        view.cast_type = cast->type;
+        view.cast_expr = cast->expr;
+        return view;
+    }
+
+    switch (view.kind) {
+    case syntax::ExprKind::name: {
+        const syntax::NameExprPayload& payload = *this->ast_.exprs.name_payload(expr_id.value);
+        view.scope_name = payload.scope_name;
+        view.scope_range = payload.scope_range;
+        view.text = payload.text;
+        break;
+    }
+    case syntax::ExprKind::unary:
+    case syntax::ExprKind::try_expr: {
+        const syntax::UnaryExprPayload& payload = *this->ast_.exprs.unary_payload(expr_id.value);
+        view.unary_op = payload.op;
+        view.unary_operand = payload.operand;
+        break;
+    }
+    case syntax::ExprKind::binary: {
+        const syntax::BinaryExprPayload& payload = *this->ast_.exprs.binary_payload(expr_id.value);
+        view.binary_op = payload.op;
+        view.binary_lhs = payload.lhs;
+        view.binary_rhs = payload.rhs;
+        break;
+    }
+    case syntax::ExprKind::call:
+    case syntax::ExprKind::str_from_bytes_unchecked: {
+        const syntax::CallExprPayload& payload = *this->ast_.exprs.call_payload(expr_id.value);
+        view.callee = payload.callee;
+        view.args = readonly_span(payload.args);
+        break;
+    }
+    case syntax::ExprKind::if_expr: {
+        const syntax::IfExprPayload& payload = *this->ast_.exprs.if_payload(expr_id.value);
+        view.condition = payload.condition;
+        view.condition_pattern = payload.condition_pattern;
+        view.then_expr = payload.then_expr;
+        view.else_expr = payload.else_expr;
+        break;
+    }
+    case syntax::ExprKind::block_expr:
+    case syntax::ExprKind::unsafe_block: {
+        const syntax::BlockExprPayload& payload = *this->ast_.exprs.block_payload(expr_id.value);
+        view.block = payload.block;
+        view.block_result = payload.result;
+        break;
+    }
+    case syntax::ExprKind::match_expr: {
+        const syntax::MatchExprPayload& payload = *this->ast_.exprs.match_payload(expr_id.value);
+        view.match_value = payload.value;
+        view.match_arms = readonly_span(payload.arms);
+        break;
+    }
+    case syntax::ExprKind::array_literal: {
+        const syntax::ArrayExprPayload& payload = *this->ast_.exprs.array_payload(expr_id.value);
+        view.array_elements = readonly_span(payload.elements);
+        view.array_repeat_value = payload.repeat_value;
+        view.array_repeat_count = payload.repeat_count;
+        break;
+    }
+    case syntax::ExprKind::tuple_literal: {
+        const std::vector<syntax::ExprId>& payload = *this->ast_.exprs.tuple_elements(expr_id.value);
+        view.tuple_elements = readonly_span(payload);
+        break;
+    }
+    case syntax::ExprKind::field: {
+        const syntax::FieldExprPayload& payload = *this->ast_.exprs.field_payload(expr_id.value);
+        view.object = payload.object;
+        view.field_name = payload.field_name;
+        break;
+    }
+    case syntax::ExprKind::index: {
+        const syntax::IndexExprPayload& payload = *this->ast_.exprs.index_payload(expr_id.value);
+        view.object = payload.object;
+        view.index = payload.index;
+        break;
+    }
+    case syntax::ExprKind::slice: {
+        const syntax::SliceExprPayload& payload = *this->ast_.exprs.slice_payload(expr_id.value);
+        view.object = payload.object;
+        view.slice_start = payload.start;
+        view.slice_end = payload.end;
+        break;
+    }
+    case syntax::ExprKind::struct_literal: {
+        const syntax::StructLiteralExprPayload& payload = *this->ast_.exprs.struct_literal_payload(expr_id.value);
+        view.object = payload.object;
+        view.scope_name = payload.scope_name;
+        view.scope_range = payload.scope_range;
+        view.text = payload.name;
+        view.field_inits = readonly_span(payload.field_inits);
+        break;
+    }
+    case syntax::ExprKind::invalid:
+    case syntax::ExprKind::generic_apply:
+    case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::float_literal:
+    case syntax::ExprKind::bool_literal:
+    case syntax::ExprKind::null_literal:
+    case syntax::ExprKind::string_literal:
+    case syntax::ExprKind::c_string_literal:
+    case syntax::ExprKind::raw_string_literal:
+    case syntax::ExprKind::byte_string_literal:
+    case syntax::ExprKind::byte_literal:
+    case syntax::ExprKind::char_literal:
+    case syntax::ExprKind::postfix_chain:
+    case syntax::ExprKind::cast:
+    case syntax::ExprKind::pcast:
+    case syntax::ExprKind::bcast:
+    case syntax::ExprKind::size_of:
+    case syntax::ExprKind::align_of:
+    case syntax::ExprKind::ptr_addr:
+    case syntax::ExprKind::paddr:
+    case syntax::ExprKind::str_data:
+    case syntax::ExprKind::str_byte_len:
+    case syntax::ExprKind::str_is_valid_utf8:
+    case syntax::ExprKind::str_from_utf8_checked:
+        break;
+    }
+    return view;
+}
+
+ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const ExprView& expr) {
     const ValueId lhs = lower_expr(expr.binary_lhs);
     const BlockId lhs_block = current_block_;
 
@@ -83,7 +227,7 @@ ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const sy
     return append_value(result);
 }
 
-ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& expr) {
     if (current_function_ == nullptr || !is_valid(current_block_)) {
         return INVALID_VALUE_ID;
     }
@@ -132,7 +276,7 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
     return append_value(result);
 }
 
-ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const ExprView& expr) {
     this->push_local_scope();
     const base::usize scope_depth = this->defer_scopes_.size();
     this->defer_scopes_.push_back({});
@@ -157,7 +301,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return INVALID_VALUE_ID;
     }
-    const syntax::ExprNode& expr = this->ast_.exprs[expr_id.value];
+    const ExprView expr = this->expr_view(expr_id);
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
     case syntax::ExprKind::float_literal:
@@ -233,7 +377,7 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
 
 ValueId Lowerer::lower_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const ExprView& expr,
     const sema::TypeHandle expected_type
 ) {
     if (expr.kind == syntax::ExprKind::byte_string_literal) {
@@ -307,7 +451,7 @@ ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const std::
     return INVALID_VALUE_ID;
 }
 
-ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
+ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const ExprView& expr) {
     const std::string name(expr.text);
     const auto local = expr.scope_name.empty() ? this->locals_.find(name) : this->locals_.end();
     if (local != this->locals_.end()) {
@@ -331,7 +475,7 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const syntax::ExprNode
 
 ValueId Lowerer::lower_unary_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     if (expr.unary_op == syntax::UnaryOp::address_of || expr.unary_op == syntax::UnaryOp::address_of_mut) {
         return this->coerce_value(this->lower_place_addr(expr.unary_operand), this->expr_type(expr_id));
@@ -353,7 +497,7 @@ ValueId Lowerer::lower_unary_expr(
 
 ValueId Lowerer::lower_binary_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     if (!this->lowering_constant_initializer_ &&
         (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or)) {
@@ -378,7 +522,7 @@ ValueId Lowerer::lower_binary_expr(
 
 ValueId Lowerer::lower_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     const std::string symbol = this->call_symbol(expr.callee);
     if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
@@ -398,14 +542,15 @@ ValueId Lowerer::lower_call_expr(
     value.name = target.symbol;
     value.call_target = target.function;
     base::usize param_offset = 0;
-    if (syntax::is_valid(expr.callee) &&
-        expr.callee.value < this->ast_.exprs.size() &&
-        this->ast_.exprs[expr.callee.value].kind == syntax::ExprKind::field &&
+    const syntax::FieldExprPayload* const callee_field = syntax::is_valid(expr.callee) &&
+            expr.callee.value < this->ast_.exprs.size()
+        ? this->ast_.exprs.field_payload(expr.callee.value)
+        : nullptr;
+    if (callee_field != nullptr &&
         is_valid(target.function) &&
         target.function.value < this->module_.functions.size() &&
         this->module_.functions[target.function.value].signature_params.size() == expr.args.size() + IR_METHOD_RECEIVER_PARAM_COUNT) {
-        const syntax::ExprNode& callee = this->ast_.exprs[expr.callee.value];
-        const sema::TypeHandle receiver_type = this->expr_type(callee.object);
+        const sema::TypeHandle receiver_type = this->expr_type(callee_field->object);
         const sema::TypeHandle param_type = this->call_param_type(target.function, 0);
         ValueId receiver = INVALID_VALUE_ID;
         const bool param_is_indirect =
@@ -417,10 +562,10 @@ ValueId Lowerer::lower_call_expr(
         if (param_is_indirect && !receiver_is_indirect) {
             const sema::TypeInfo& param_info = this->module_.types.get(param_type);
             receiver = param_info.pointer_mutability == sema::PointerMutability::mut
-                ? this->lower_place_addr(callee.object)
-                : this->lower_object_place_or_value(callee.object).address;
+                ? this->lower_place_addr(callee_field->object)
+                : this->lower_object_place_or_value(callee_field->object).address;
         } else {
-            receiver = this->lower_expr(callee.object, param_type);
+            receiver = this->lower_expr(callee_field->object, param_type);
         }
         value.args.push_back(this->coerce_value(receiver, param_type));
         param_offset = IR_METHOD_RECEIVER_PARAM_COUNT;
@@ -442,7 +587,7 @@ ValueId Lowerer::lower_call_expr(
 
 ValueId Lowerer::lower_indirect_call_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const ExprView& expr,
     const sema::TypeHandle callee_type
 ) {
     const sema::TypeInfo& function = this->module_.types.get(callee_type);
@@ -467,7 +612,7 @@ ValueId Lowerer::lower_indirect_call_expr(
 
 ValueId Lowerer::lower_array_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = ValueKind::aggregate;
@@ -504,7 +649,7 @@ ValueId Lowerer::lower_array_literal_expr(
 
 ValueId Lowerer::lower_tuple_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = ValueKind::aggregate;
@@ -528,7 +673,7 @@ ValueId Lowerer::lower_tuple_literal_expr(
 
 ValueId Lowerer::lower_slice_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     const sema::TypeHandle result_type = this->expr_type(expr_id);
     if (!sema::is_valid(result_type)) {
@@ -594,7 +739,7 @@ ValueId Lowerer::lower_slice_expr(
 
 ValueId Lowerer::lower_str_slice_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     const sema::TypeHandle result_type = this->expr_type(expr_id);
     const sema::TypeHandle object_type = this->expr_type(expr.object);
@@ -642,7 +787,7 @@ ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id) {
 
 ValueId Lowerer::lower_struct_literal_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = ValueKind::aggregate;
@@ -659,7 +804,7 @@ ValueId Lowerer::lower_struct_literal_expr(
 
 ValueId Lowerer::lower_cast_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = ValueKind::cast;
@@ -680,7 +825,7 @@ ValueId Lowerer::lower_cast_expr(
 
 ValueId Lowerer::lower_size_or_align_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = expr.kind == syntax::ExprKind::size_of ? ValueKind::size_of : ValueKind::align_of;
@@ -691,7 +836,7 @@ ValueId Lowerer::lower_size_or_align_expr(
 
 ValueId Lowerer::lower_str_projection_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = expr.kind == syntax::ExprKind::str_data ? ValueKind::str_data : ValueKind::str_byte_len;
@@ -702,7 +847,7 @@ ValueId Lowerer::lower_str_projection_expr(
 
 ValueId Lowerer::lower_str_utf8_slice_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = expr.kind == syntax::ExprKind::str_is_valid_utf8
@@ -715,7 +860,7 @@ ValueId Lowerer::lower_str_utf8_slice_expr(
 
 ValueId Lowerer::lower_str_from_bytes_unchecked_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr
+    const ExprView& expr
 ) {
     Value value;
     value.kind = ValueKind::str_from_bytes_unchecked;
@@ -735,7 +880,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return {};
     }
-    const syntax::ExprNode& expr = this->ast_.exprs[expr_id.value];
+    const ExprView expr = this->expr_view(expr_id);
     if (expr.kind == syntax::ExprKind::name && expr.scope_name.empty()) {
         const auto found = this->locals_.find(std::string(expr.text));
         if (found == this->locals_.end()) {
@@ -885,13 +1030,13 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
         !(*this->active_side_tables_.expr_c_names)[callee.value].empty()) {
         return (*this->active_side_tables_.expr_c_names)[callee.value];
     }
-    if (syntax::is_valid(callee) && callee.value < ast_.exprs.size()) {
-        return std::string(ast_.exprs[callee.value].text);
+    if (syntax::is_valid(callee) && callee.value < this->ast_.exprs.size()) {
+        return std::string(this->expr_view(callee).text);
     }
     return "<invalid>";
 }
 
-std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const syntax::ExprNode& expr) const {
+std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& expr) const {
     if (syntax::is_valid(expr_id) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {

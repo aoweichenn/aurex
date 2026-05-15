@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -106,6 +107,43 @@ public:
     [[nodiscard]] Module lower();
 
 private:
+    struct ExprView {
+        syntax::ExprKind kind = syntax::ExprKind::invalid;
+        base::SourceRange range {};
+        std::string_view scope_name;
+        base::SourceRange scope_range {};
+        std::string_view text;
+        syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
+        syntax::ExprId unary_operand = syntax::INVALID_EXPR_ID;
+        syntax::BinaryOp binary_op = syntax::BinaryOp::add;
+        syntax::ExprId binary_lhs = syntax::INVALID_EXPR_ID;
+        syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
+        syntax::ExprId callee = syntax::INVALID_EXPR_ID;
+        std::span<const syntax::ExprId> args {};
+        syntax::ExprId condition = syntax::INVALID_EXPR_ID;
+        syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
+        syntax::ExprId then_expr = syntax::INVALID_EXPR_ID;
+        syntax::ExprId else_expr = syntax::INVALID_EXPR_ID;
+        syntax::StmtId block = syntax::INVALID_STMT_ID;
+        syntax::ExprId block_result = syntax::INVALID_EXPR_ID;
+        syntax::ExprId match_value = syntax::INVALID_EXPR_ID;
+        std::span<const syntax::MatchArm> match_arms {};
+        std::span<const syntax::ExprId> array_elements {};
+        std::span<const syntax::ExprId> tuple_elements {};
+        syntax::ExprId array_repeat_value = syntax::INVALID_EXPR_ID;
+        syntax::ExprId array_repeat_count = syntax::INVALID_EXPR_ID;
+        syntax::ExprId object = syntax::INVALID_EXPR_ID;
+        std::string_view field_name;
+        syntax::ExprId index = syntax::INVALID_EXPR_ID;
+        syntax::ExprId slice_start = syntax::INVALID_EXPR_ID;
+        syntax::ExprId slice_end = syntax::INVALID_EXPR_ID;
+        std::span<const syntax::FieldInit> field_inits {};
+        syntax::TypeId cast_type = syntax::INVALID_TYPE_ID;
+        syntax::ExprId cast_expr = syntax::INVALID_EXPR_ID;
+    };
+
+    [[nodiscard]] ExprView expr_view(syntax::ExprId expr_id) const noexcept;
+
     void lower_record_layouts();
     void declare_global_constants();
     void lower_function_declarations();
@@ -152,18 +190,18 @@ private:
     void lower_for_range(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void lower_while(const syntax::StmtNode& stmt);
 
-    [[nodiscard]] ValueId lower_short_circuit_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_if_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_block_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_match_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_try_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_short_circuit_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_if_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_block_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_match_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_try_expr(syntax::ExprId expr_id, const ExprView& expr);
 
     [[nodiscard]] ValueId append_enum_case_ref(std::string_view case_name, sema::TypeHandle enum_type);
     [[nodiscard]] ValueId append_enum_tag_literal(std::string_view case_name, sema::TypeHandle tag_type);
     [[nodiscard]] ValueId lower_enum_constructor(const sema::EnumCaseInfo& enum_case, syntax::ExprId payload_expr);
     [[nodiscard]] ValueId lower_enum_constructor_call(
         const sema::EnumCaseInfo& enum_case,
-        const syntax::ExprNode& expr
+        const ExprView& expr
     );
     [[nodiscard]] ValueId append_enum_constructor(const sema::EnumCaseInfo& enum_case, ValueId payload_value);
     [[nodiscard]] ValueId append_enum_payload_load(ValueId enum_slot, sema::TypeHandle payload_type, const std::string& name);
@@ -210,24 +248,24 @@ private:
 
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);
-    [[nodiscard]] ValueId lower_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, sema::TypeHandle expected_type);
-    [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_literal_expr(syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle expected_type);
+    [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_bound_value_ref(syntax::ExprId expr_id, const std::string& symbol);
-    [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_indirect_call_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr, sema::TypeHandle callee_type);
-    [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_str_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_indirect_call_expr(syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle callee_type);
+    [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_str_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);
-    [[nodiscard]] ValueId lower_struct_literal_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_cast_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_size_or_align_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_str_projection_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_str_utf8_slice_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
-    [[nodiscard]] ValueId lower_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
+    [[nodiscard]] ValueId lower_struct_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_cast_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_size_or_align_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_str_projection_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_str_utf8_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const ExprView& expr);
 
     void emit_deferred_scopes(base::usize keep_depth);
     void push_local_scope();
@@ -244,7 +282,7 @@ private:
 
     [[nodiscard]] CallTarget call_target(syntax::ExprId callee) const;
     [[nodiscard]] std::string call_symbol(syntax::ExprId callee) const;
-    [[nodiscard]] std::string value_symbol(syntax::ExprId expr_id, const syntax::ExprNode& expr) const;
+    [[nodiscard]] std::string value_symbol(syntax::ExprId expr_id, const ExprView& expr) const;
     [[nodiscard]] sema::TypeHandle call_param_type(FunctionId function_id, base::usize index) const noexcept;
     [[nodiscard]] sema::TypeHandle variadic_argument_type(sema::TypeHandle source_type) const noexcept;
     [[nodiscard]] sema::TypeHandle expr_type(syntax::ExprId expr) const noexcept;

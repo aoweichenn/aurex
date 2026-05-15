@@ -482,7 +482,7 @@ void SemanticAnalyzer::define_pattern_bindings(
 
 TypeHandle SemanticAnalyzer::analyze_match_expr(
     const syntax::ExprId expr_id,
-    const syntax::ExprNode& expr,
+    const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
@@ -909,7 +909,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             if (guarded) {
                 const TypeHandle guard_type = this->analyze_expr(arm.guard);
                 if (!this->checked_.types.is_bool(guard_type)) {
-                    this->report(this->module_.exprs[arm.guard.value].range, std::string(SEMA_MATCH_GUARD_BOOL));
+                    this->report(this->module_.exprs.range(arm.guard.value), std::string(SEMA_MATCH_GUARD_BOOL));
                 }
             }
             const TypeHandle arm_expected = is_valid(result) ? result : expected_type;
@@ -929,7 +929,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             arm_type = this->analyze_expr(arm.value, result);
         }
         if (!is_valid(arm_type) && null_result_arm && !is_valid(result)) {
-            pending_null_arm_ranges.push_back(this->module_.exprs[arm.value.value].range);
+            pending_null_arm_ranges.push_back(this->module_.exprs.range(arm.value.value));
             continue;
         }
         if (!is_valid(result)) {

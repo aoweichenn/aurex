@@ -1442,7 +1442,7 @@ bool SemanticAnalyzer::unify_generic_type(
 
 bool SemanticAnalyzer::infer_generic_arguments(
     const GenericTemplateInfo& info,
-    const syntax::ExprNode& call,
+    const SemanticAnalyzer::ExprView& call,
     std::vector<TypeHandle>& args
 ) {
     const syntax::ItemNode function = this->module_.items[info.item.value];
@@ -1476,7 +1476,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
         const TypeHandle actual = this->analyze_expr(call.args[i], pattern_param_types[i]);
         if (!this->unify_generic_type(pattern_param_types[i], actual, inferred)) {
             this->report(
-                this->module_.exprs[call.args[i].value].range,
+                this->module_.exprs.range(call.args[i].value),
                 sema_generic_call_argument_unify_message(info.name)
             );
             return false;

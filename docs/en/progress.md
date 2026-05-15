@@ -84,12 +84,17 @@ Use:
 ```sh
 tools/run_tests.sh
 tools/bench.py
+make perf
 ```
 
 The test suite covers lexer/parser behavior, CLI/driver behavior, positive and
 negative samples, modules, visibility, generics, functions, methods, pattern
 matching, error handling, type-system diagnostics, IR lowering, IR verification,
 LLVM lowering, native execution, and installed compiler execution.
+`tools/bench.py` builds a Release `build-perf` tree and uses Google Benchmark
+for frontend hot-path measurements. `make perf` runs the lightweight JSON
+redline checks for lexer, lookup-heavy sema, and generic-instantiation-heavy
+sema paths.
 
 ## M2 Gaps
 

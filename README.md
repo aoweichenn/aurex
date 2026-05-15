@@ -84,11 +84,15 @@ functions declare a narrow `extern c` boundary in the sample under test.
 ```sh
 tools/run_tests.sh
 tools/bench.py
+make perf
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
 language samples, negative semantic samples, current language features, LLVM
 lowering, native execution, import paths, and install-tree compiler execution.
+`tools/bench.py` uses a Release `build-perf` tree and Google Benchmark for
+frontend hot-path measurements. `make perf` runs the lightweight JSON redline
+checks for lexer, lookup-heavy sema, and generic-instantiation-heavy sema paths.
 
 ## Stage Status
 

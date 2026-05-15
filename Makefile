@@ -15,7 +15,10 @@ test:
 bench:
 	tools/bench.py
 
+perf:
+	tools/check_perf_redlines.py
+
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true
 
-.PHONY: all configure build test bench clean
+.PHONY: all configure build test bench perf clean

@@ -10,6 +10,7 @@
 #include <aurex/syntax/ast.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -35,15 +36,21 @@ struct CapabilityKindHash {
 
 struct SemanticOptions {
     bool retain_generic_side_tables = true;
+    bool retain_normalized_ast = false;
 };
 
 class SemanticAnalyzer final {
 public:
     SemanticAnalyzer(
-        const syntax::AstModule& module,
+        syntax::AstModule& module,
         base::DiagnosticSink& diagnostics,
         SemanticOptions options = {}
     ) noexcept;
+    SemanticAnalyzer(
+        const syntax::AstModule& module,
+        base::DiagnosticSink& diagnostics,
+        SemanticOptions options = {}
+    ) = delete;
     SemanticAnalyzer(
         syntax::AstModule&& module,
         base::DiagnosticSink& diagnostics,
@@ -277,14 +284,14 @@ private:
     [[nodiscard]] syntax::ExprId materialize_postfix_op(
         syntax::ExprId chain_expr,
         syntax::ExprId base,
-        const syntax::PostfixOp& op,
+        syntax::PostfixOp&& op,
         const syntax::PostfixOp* next_op,
         bool is_last
     );
     [[nodiscard]] syntax::ExprId materialize_postfix_bracket_op(
         syntax::ExprId chain_expr,
         syntax::ExprId base,
-        const syntax::PostfixOp& op,
+        syntax::PostfixOp&& op,
         const syntax::PostfixOp* next_op,
         bool is_last
     );
@@ -710,7 +717,8 @@ private:
     void index_enum_case(const EnumCaseInfo& info);
     void report(base::SourceRange range, std::string message);
 
-    syntax::AstModule module_;
+    std::optional<syntax::AstModule> owned_module_;
+    syntax::AstModule& module_;
     base::DiagnosticSink& diagnostics_;
     SemanticOptions options_;
     CheckedModule checked_;

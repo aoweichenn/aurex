@@ -30,6 +30,20 @@ namespace {
            (op.kind == syntax::PostfixOpKind::bracket && !op.bracket_is_slice);
 }
 
+[[nodiscard]] syntax::TypeNode copy_named_type_selector(
+    const syntax::TypeNode& source,
+    const base::SourceRange range
+) {
+    syntax::TypeNode type;
+    type.kind = syntax::TypeKind::named;
+    type.range = range;
+    type.scope_name = source.scope_name;
+    type.scope_range = source.scope_range;
+    type.scope_parts = source.scope_parts;
+    type.name = source.name;
+    return type;
+}
+
 } // namespace
 
 TypeHandle SemanticAnalyzer::analyze_postfix_chain_expr(
@@ -48,27 +62,35 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_chain(const syntax::ExprId 
         return syntax::INVALID_EXPR_ID;
     }
 
-    const syntax::ExprNode chain = this->module_.exprs[expr_id.value];
-    if (chain.kind != syntax::ExprKind::postfix_chain) {
+    if (this->module_.exprs[expr_id.value].kind != syntax::ExprKind::postfix_chain) {
         return expr_id;
     }
 
-    syntax::ExprId current = chain.postfix_base;
-    for (base::usize index = 0; index < chain.postfix_ops.size(); ++index) {
-        if (syntax::is_valid(current) &&
-            current.value < this->module_.exprs.size() &&
-            this->module_.exprs[current.value].kind == syntax::ExprKind::postfix_chain) {
-            current = this->materialize_postfix_chain(current);
+    std::vector<syntax::ExprId> chains;
+    syntax::ExprId current_chain = expr_id;
+    while (syntax::is_valid(current_chain) &&
+           current_chain.value < this->module_.exprs.size() &&
+           this->module_.exprs[current_chain.value].kind == syntax::ExprKind::postfix_chain) {
+        chains.push_back(current_chain);
+        current_chain = this->module_.exprs[current_chain.value].postfix_base;
+    }
+
+    syntax::ExprId current = current_chain;
+    while (!chains.empty()) {
+        const syntax::ExprId chain_id = chains.back();
+        chains.pop_back();
+        std::vector<syntax::PostfixOp> postfix_ops = std::move(this->module_.exprs[chain_id.value].postfix_ops);
+        for (base::usize index = 0; index < postfix_ops.size(); ++index) {
+            const bool is_last = index + 1 == postfix_ops.size();
+            const syntax::PostfixOp* const next_op = is_last ? nullptr : &postfix_ops[index + 1];
+            current = this->materialize_postfix_op(
+                chain_id,
+                current,
+                std::move(postfix_ops[index]),
+                next_op,
+                is_last
+            );
         }
-        const bool is_last = index + 1 == chain.postfix_ops.size();
-        const syntax::PostfixOp* const next_op = is_last ? nullptr : &chain.postfix_ops[index + 1];
-        current = this->materialize_postfix_op(
-            expr_id,
-            current,
-            chain.postfix_ops[index],
-            next_op,
-            is_last
-        );
     }
     return current;
 }
@@ -76,7 +98,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_chain(const syntax::ExprId 
 syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     const syntax::ExprId chain_expr,
     const syntax::ExprId base,
-    const syntax::PostfixOp& op,
+    syntax::PostfixOp&& op,
     const syntax::PostfixOp* next_op,
     const bool is_last
 ) {
@@ -84,7 +106,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     node.range = merge_ranges(expr_range_or(this->module_, base, op.range), op.range);
     switch (op.kind) {
     case syntax::PostfixOpKind::bracket:
-        return this->materialize_postfix_bracket_op(chain_expr, base, op, next_op, is_last);
+        return this->materialize_postfix_bracket_op(chain_expr, base, std::move(op), next_op, is_last);
     case syntax::PostfixOpKind::select:
         node.kind = op.name.empty() ? syntax::ExprKind::invalid : syntax::ExprKind::field;
         node.object = base;
@@ -93,7 +115,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     case syntax::PostfixOpKind::call:
         node.kind = syntax::ExprKind::call;
         node.callee = base;
-        node.args = op.args;
+        node.args = std::move(op.args);
         break;
     case syntax::PostfixOpKind::try_:
         node.kind = syntax::ExprKind::try_expr;
@@ -102,7 +124,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     case syntax::PostfixOpKind::struct_literal:
         node.kind = syntax::ExprKind::struct_literal;
         node.object = base;
-        node.field_inits = op.field_inits;
+        node.field_inits = std::move(op.field_inits);
         break;
     }
 
@@ -116,7 +138,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
 syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
     const syntax::ExprId chain_expr,
     const syntax::ExprId base,
-    const syntax::PostfixOp& op,
+    syntax::PostfixOp&& op,
     const syntax::PostfixOp* next_op,
     const bool is_last
 ) {
@@ -216,7 +238,7 @@ syntax::TypeId SemanticAnalyzer::postfix_chain_expr_to_type(const syntax::ExprId
     if (!syntax::is_valid(expr) || expr.value >= this->module_.exprs.size()) {
         return syntax::INVALID_TYPE_ID;
     }
-    const syntax::ExprNode chain = this->module_.exprs[expr.value];
+    const syntax::ExprNode& chain = this->module_.exprs[expr.value];
     if (chain.kind != syntax::ExprKind::postfix_chain) {
         return this->postfix_arg_expr_to_type(expr);
     }
@@ -239,8 +261,12 @@ syntax::TypeId SemanticAnalyzer::postfix_chain_expr_to_type(const syntax::ExprId
             continue;
         }
 
-        syntax::TypeNode type = this->module_.types[current.value];
-        type.range = merge_ranges(type.range, op.range);
+        const syntax::TypeNode& current_type = this->module_.types[current.value];
+        if (current_type.kind != syntax::TypeKind::named) {
+            this->report(op.range, "expected generic type argument");
+            return syntax::INVALID_TYPE_ID;
+        }
+        syntax::TypeNode type = copy_named_type_selector(current_type, merge_ranges(current_type.range, op.range));
         type.type_args = this->postfix_bracket_type_args(op);
         current = this->push_synthetic_type(std::move(type));
     }
@@ -256,20 +282,23 @@ syntax::TypeId SemanticAnalyzer::append_postfix_type_selector(
         return syntax::INVALID_TYPE_ID;
     }
 
-    syntax::TypeNode type = this->module_.types[current.value];
-    if (type.kind != syntax::TypeKind::named || !type.type_args.empty()) {
+    const syntax::TypeNode& current_type = this->module_.types[current.value];
+    if (current_type.kind != syntax::TypeKind::named || !current_type.type_args.empty()) {
         this->report(range, "expected generic type argument");
         return syntax::INVALID_TYPE_ID;
     }
 
-    const base::SourceRange previous_range = type.range;
-    if (type.scope_parts.empty()) {
-        if (!type.scope_name.empty()) {
-            type.scope_parts.push_back(type.scope_name);
+    syntax::TypeNode type;
+    type.kind = syntax::TypeKind::named;
+    const base::SourceRange previous_range = current_type.range;
+    if (current_type.scope_parts.empty()) {
+        if (!current_type.scope_name.empty()) {
+            type.scope_parts.push_back(current_type.scope_name);
         }
-        type.scope_parts.push_back(type.name);
+        type.scope_parts.push_back(current_type.name);
     } else {
-        type.scope_parts.push_back(type.name);
+        type.scope_parts = current_type.scope_parts;
+        type.scope_parts.push_back(current_type.name);
     }
     type.scope_name = type.scope_parts.front();
     type.scope_range = previous_range;
@@ -283,7 +312,7 @@ syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId e
         return syntax::INVALID_TYPE_ID;
     }
 
-    const syntax::ExprNode node = this->module_.exprs[expr.value];
+    const syntax::ExprNode& node = this->module_.exprs[expr.value];
     switch (node.kind) {
     case syntax::ExprKind::name: {
         syntax::TypeNode type;
@@ -319,8 +348,11 @@ syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId e
         if (!syntax::is_valid(callee) || callee.value >= this->module_.types.size()) {
             break;
         }
-        syntax::TypeNode type = this->module_.types[callee.value];
-        type.range = node.range;
+        const syntax::TypeNode& callee_type = this->module_.types[callee.value];
+        if (callee_type.kind != syntax::TypeKind::named) {
+            break;
+        }
+        syntax::TypeNode type = copy_named_type_selector(callee_type, node.range);
         type.type_args = node.type_args;
         return this->push_synthetic_type(std::move(type));
     }

@@ -56,6 +56,7 @@ tools/run_tests.sh
 tools/bench.py
 make perf
 make perf-stress
+make perf-ast-stress
 ```
 
 测试覆盖：
@@ -69,16 +70,22 @@ make perf-stress
 
 `tools/bench.py` 使用 Release `build-perf` 构建目录，并用 Google Benchmark
 测量 frontend 热路径。`make perf` 输出基于 JSON 的 Aurex frontend baseline，
-覆盖 lexer、lookup-heavy sema 和 generic-instantiation-heavy sema 路径，并运行
+覆盖 lexer、lookup-heavy sema、generic-instantiation-heavy sema 和 AST bulk sema 路径，并运行
 Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
 做 frontend/check 模式基线；暂不强制阈值。`make perf-compare` 只运行跨前端对比通道。
-`make perf-stress` 运行 `tools/generic_stress.py`，生成 200/500/1000/2000 规模的泛型实例
-源码并记录 `aurexc --check` elapsed time + peak RSS baseline。generic function instance 签名、
+`make perf-stress` 运行 `tools/generic_stress.py` 和 `tools/ast_stress.py`，生成 200/500/1000/2000
+规模的泛型实例源码以及 10000/50000/100000 AST bulk statements 源码，并记录 `aurexc --check`
+elapsed time + peak RSS baseline；`make perf-ast-stress` 只运行 AST bulk RSS/time lane。
+generic function instance 签名、
 generic struct/enum `TypeInfo` 和 checked enum case display 已经把内部 semantic key / TypeHandle
 args 和展示名分离，`--check` 热路径不再为了 checked signature 或泛型类型实例生成
 `id[i32]`、`Box[i32]`、`Maybe[i32]_some` 这类展示字符串，dump、IR lowering 和诊断需要时再延迟格式化。
 `--check` / checked dump 模式还会在每个泛型函数实例分析完成后释放后端 lowering 专用 sparse side table；
 IR/native 输出模式继续保留这些表，保证 codegen 行为不退化。
+AST 主路径也已按 P0-Perf-4 收口：driver 持有 parser/module AST 并把 mutable 引用传给 sema 和 IR lowering，
+`SemanticAnalyzer(const AstModule&)` 被删除以避免隐式整树复制，`CheckedModule::normalized_ast` 默认不再保留 AST
+snapshot，sema 构造期不再对 `exprs/types` 做 `size+4096` reserve，postfix materialization 不再按值复制胖
+`ExprNode` / `TypeNode`。compact AST payload layout 和 bump allocator 仍是后续性能任务。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 

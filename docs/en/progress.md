@@ -86,6 +86,7 @@ tools/run_tests.sh
 tools/bench.py
 make perf
 make perf-stress
+make perf-ast-stress
 ```
 
 The test suite covers lexer/parser behavior, CLI/driver behavior, positive and
@@ -95,13 +96,15 @@ LLVM lowering, native execution, and installed compiler execution.
 `tools/bench.py` builds a Release `build-perf` tree and uses Google Benchmark
 for frontend hot-path measurements. `make perf` prints the lightweight
 JSON-derived Aurex frontend baseline for lexer, lookup-heavy sema, and
-generic-instantiation-heavy sema paths, then runs a Google Benchmark
+generic-instantiation-heavy sema paths plus the AST bulk sema path, then runs a Google Benchmark
 process-level comparison against available modern frontend drivers (`clang++`,
 `g++`, and `rustc`) without enforcing thresholds yet. `make perf-compare` runs
 only the cross-frontend comparison lane.
-`make perf-stress` runs `tools/generic_stress.py`, generating 200/500/1000/2000
-generic-instantiation sources and recording `aurexc --check` elapsed time plus
-peak RSS baselines. Generic function instance signatures, generic struct/enum
+`make perf-stress` runs `tools/generic_stress.py` and `tools/ast_stress.py`,
+generating 200/500/1000/2000 generic-instantiation sources and
+10000/50000/100000 AST bulk statement sources, then recording `aurexc --check`
+elapsed time plus peak RSS baselines. `make perf-ast-stress` runs only the AST
+bulk RSS/time lane. Generic function instance signatures, generic struct/enum
 `TypeInfo`, and checked enum case display now keep internal semantic keys and
 TypeHandle arguments separate from display names, so `--check` does not format
 names such as `id[i32]`, `Box[i32]`, or `Maybe[i32]_some` on the hot path;
@@ -110,6 +113,14 @@ needs them.
 `--check` / checked-dump mode also releases backend-lowering sparse side tables
 after each generic function instance is analyzed; IR/native output mode keeps
 those tables so codegen behavior stays unchanged.
+The AST main path now follows the P0-Perf-4 plan: the driver owns the
+parser/module AST and passes a mutable reference through sema and IR lowering,
+`SemanticAnalyzer(const AstModule&)` is deleted to prevent implicit whole-tree
+copies, `CheckedModule::normalized_ast` no longer keeps an AST snapshot by
+default, sema construction no longer reserves `exprs/types` as `size+4096`, and
+postfix materialization no longer copies fat `ExprNode` / `TypeNode` values by
+value. Compact payload layout and a bump allocator remain later performance
+work.
 
 ## M2 Gaps
 

@@ -125,9 +125,10 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         print_diagnostics(sources, diagnostics);
         return base::Result<void>::fail(ast_result.error());
     }
+    syntax::AstModule ast = ast_result.take_value();
 
     if (invocation.emit_kind == EmitKind::ast) {
-        std::cout << syntax::dump_ast(ast_result.value());
+        std::cout << syntax::dump_ast(ast);
         return base::Result<void>::ok();
     }
 
@@ -141,7 +142,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
 
     sema::SemanticOptions sema_options;
     sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(invocation.emit_kind);
-    sema::SemanticAnalyzer analyzer(ast_result.take_value(), diagnostics, sema_options);
+    sema::SemanticAnalyzer analyzer(ast, diagnostics, sema_options);
     auto checked_result = analyzer.analyze();
     if (!checked_result) {
         print_diagnostics(sources, diagnostics);
@@ -158,7 +159,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
     }
 
     if (invocation.emit_kind == EmitKind::ir || invocation.emit_kind == EmitKind::llvm_ir) {
-        auto ir_result = ir::lower_ast(checked_result.value().normalized_ast.value(), checked_result.value());
+        auto ir_result = ir::lower_ast(ast, checked_result.value());
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
         }
@@ -193,7 +194,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         if (invocation.output_path.empty()) {
             return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_NATIVE_OUTPUT_REQUIRES_OUTPUT_PATH)});
         }
-        auto ir_result = ir::lower_ast(checked_result.value().normalized_ast.value(), checked_result.value());
+        auto ir_result = ir::lower_ast(ast, checked_result.value());
         if (!ir_result) {
             return base::Result<void>::fail(ir_result.error());
         }

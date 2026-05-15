@@ -26,24 +26,18 @@ namespace {
 } // namespace
 
 SemanticAnalyzer::SemanticAnalyzer(
-    const syntax::AstModule& module,
+    syntax::AstModule& module,
     base::DiagnosticSink& diagnostics,
     const SemanticOptions options
 ) noexcept
-    : module_(module), diagnostics_(diagnostics), options_(options) {
-    this->module_.exprs.reserve(this->module_.exprs.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-    this->module_.types.reserve(this->module_.types.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-}
+    : module_(module), diagnostics_(diagnostics), options_(options) {}
 
 SemanticAnalyzer::SemanticAnalyzer(
     syntax::AstModule&& module,
     base::DiagnosticSink& diagnostics,
     const SemanticOptions options
 ) noexcept
-    : module_(std::move(module)), diagnostics_(diagnostics), options_(options) {
-    this->module_.exprs.reserve(this->module_.exprs.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-    this->module_.types.reserve(this->module_.types.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-}
+    : owned_module_(std::move(module)), module_(*this->owned_module_), diagnostics_(diagnostics), options_(options) {}
 
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->normalize_parser_only_module_contract();
@@ -130,7 +124,13 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     if (this->diagnostics_.has_error()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, std::string(SEMA_ANALYSIS_FAILED)});
     }
-    this->checked_.normalized_ast.emplace(std::move(this->module_));
+    if (this->options_.retain_normalized_ast) {
+        if (this->owned_module_.has_value()) {
+            this->checked_.normalized_ast.emplace(std::move(*this->owned_module_));
+        } else {
+            this->checked_.normalized_ast.emplace(this->module_);
+        }
+    }
     return base::Result<CheckedModule>::ok(std::move(this->checked_));
 }
 

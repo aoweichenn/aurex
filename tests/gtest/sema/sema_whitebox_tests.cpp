@@ -1892,13 +1892,42 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
     static_cast<void>(module.push_item(main_function));
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
     auto checked_result = analyzer.analyze();
     ASSERT_TRUE(checked_result) << checked_result.error().message;
-    ASSERT_TRUE(checked_result.value().normalized_ast.has_value());
-    EXPECT_EQ(checked_result.value().normalized_ast->modules.size(), 1U);
-    EXPECT_EQ(checked_result.value().normalized_ast->item_modules.size(), 1U);
-    EXPECT_EQ(checked_result.value().normalized_ast->item_modules.front().value, 0U);
+    EXPECT_FALSE(checked_result.value().normalized_ast.has_value());
+    EXPECT_EQ(module.modules.size(), 1U);
+    EXPECT_EQ(module.item_modules.size(), 1U);
+    EXPECT_EQ(module.item_modules.front().value, 0U);
+
+    syntax::AstModule discard_module;
+    discard_module.modules = {module_info({"root"})};
+    const TypeId discard_i32_type = discard_module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const ExprId discard_zero = push_integer(discard_module);
+    syntax::StmtNode discard_return_stmt;
+    discard_return_stmt.kind = syntax::StmtKind::return_;
+    discard_return_stmt.return_value = discard_zero;
+    const syntax::StmtId discard_return_stmt_id = discard_module.push_stmt(discard_return_stmt);
+    const syntax::StmtId discard_body = push_block(discard_module, {discard_return_stmt_id});
+
+    syntax::ItemNode discard_main_function;
+    discard_main_function.kind = syntax::ItemKind::fn_decl;
+    discard_main_function.name = "main";
+    discard_main_function.return_type = discard_i32_type;
+    discard_main_function.body = discard_body;
+    const syntax::ItemId discard_main_item = discard_module.push_item(discard_main_function);
+    discard_module.item_modules[discard_main_item.value] = module_id(0);
+
+    sema::SemanticOptions snapshot_options;
+    snapshot_options.retain_normalized_ast = true;
+    base::DiagnosticSink snapshot_diagnostics;
+    sema::SemanticAnalyzer snapshot_analyzer(std::move(discard_module), snapshot_diagnostics, snapshot_options);
+    auto snapshot_result = snapshot_analyzer.analyze();
+    ASSERT_TRUE(snapshot_result) << snapshot_result.error().message;
+    ASSERT_TRUE(snapshot_result.value().normalized_ast.has_value());
+    EXPECT_EQ(snapshot_result.value().normalized_ast->modules.size(), 1U);
+    EXPECT_EQ(snapshot_result.value().normalized_ast->item_modules.size(), 1U);
+    EXPECT_EQ(snapshot_result.value().normalized_ast->item_modules.front().value, 0U);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxParserAstRequiresItemModulesWhenModulesExist) {

@@ -86,6 +86,7 @@ tools/run_tests.sh
 tools/bench.py
 make perf
 make perf-stress
+make perf-ast-stress
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
@@ -97,8 +98,11 @@ Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`)
 without enforcing thresholds yet. `make perf-compare` runs only the
 cross-frontend comparison lane. `make perf-stress` runs the generated
-200/500/1000/2000 generic-instantiation elapsed-time and peak-RSS baseline.
-The `--check` path does not retain codegen-only generic instance side tables.
+200/500/1000/2000 generic-instantiation baseline plus the AST bulk elapsed-time
+and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
+`--check` path does not retain codegen-only generic instance side tables, and
+the default sema path no longer copies or retains a full normalized AST
+snapshot.
 
 ## Stage Status
 

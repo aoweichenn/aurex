@@ -21,6 +21,10 @@ perf:
 
 perf-stress:
 	tools/generic_stress.py
+	tools/ast_stress.py
+
+perf-ast-stress:
+	tools/ast_stress.py
 
 perf-compare:
 	tools/frontend_compare.py
@@ -28,4 +32,4 @@ perf-compare:
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true
 
-.PHONY: all configure build test bench perf perf-stress perf-compare clean
+.PHONY: all configure build test bench perf perf-stress perf-ast-stress perf-compare clean

@@ -21,7 +21,7 @@ BUILD = pathlib.Path(os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build-p
 FRONTEND_BENCH = BUILD / "bin" / "aurex_frontend_bench"
 
 BENCHMARK_MIN_TIME_SECONDS = "0.01s"
-BENCHMARK_FILTER = "BM_LexMixed/64$|BM_SemaLookup/96$|BM_SemaGenerics/64$"
+BENCHMARK_FILTER = "BM_LexMixed/64$|BM_SemaLookup/96$|BM_SemaGenerics/64$|BM_SemaAstBulk/1024$"
 
 TIME_UNIT_TO_NS = {
     "ns": 1.0,
@@ -119,6 +119,7 @@ def print_report(data: dict[str, Any]) -> None:
     lex_mixed = find_benchmark(data, "BM_LexMixed/64")
     sema_lookup = find_benchmark(data, "BM_SemaLookup/96")
     sema_generics = find_benchmark(data, "BM_SemaGenerics/64")
+    sema_ast_bulk = find_benchmark(data, "BM_SemaAstBulk/1024")
 
     print("Aurex frontend Google Benchmark baseline")
     print(f"build: {BUILD}")
@@ -139,6 +140,11 @@ def print_report(data: dict[str, Any]) -> None:
         f"{'sema_generics/64':<24} "
         f"{cpu_time_ns(sema_generics):>14.3f} "
         f"{ns_per_item(sema_generics, 64.0):>14.3f} ns/item"
+    )
+    print(
+        f"{'sema_ast_bulk/1024':<24} "
+        f"{cpu_time_ns(sema_ast_bulk):>14.3f} "
+        f"{ns_per_item(sema_ast_bulk, float(sema_ast_bulk.get('ast_exprs', 1024.0))):>14.3f} ns/expr"
     )
 
 

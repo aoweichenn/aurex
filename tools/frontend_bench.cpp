@@ -16,12 +16,15 @@ namespace {
 constexpr aurex::base::SourceId FRONTEND_BENCH_SOURCE_ID {1};
 constexpr aurex::base::usize LOOKUP_SOURCE_BYTES_PER_ITEM_ESTIMATE = 360;
 constexpr aurex::base::usize GENERIC_SOURCE_BYTES_PER_ITEM_ESTIMATE = 430;
+constexpr aurex::base::usize AST_SOURCE_BYTES_PER_STATEMENT_ESTIMATE = 34;
 constexpr std::int64_t LEX_MIXED_SMALL_REPETITIONS = 64;
 constexpr std::int64_t LEX_MIXED_LARGE_REPETITIONS = 128;
 constexpr std::int64_t SEMA_LOOKUP_SMALL_ITEMS = 96;
 constexpr std::int64_t SEMA_LOOKUP_LARGE_ITEMS = 192;
 constexpr std::int64_t SEMA_GENERICS_SMALL_ITEMS = 64;
 constexpr std::int64_t SEMA_GENERICS_LARGE_ITEMS = 128;
+constexpr std::int64_t SEMA_AST_SMALL_STATEMENTS = 1024;
+constexpr std::int64_t SEMA_AST_LARGE_STATEMENTS = 4096;
 
 constexpr std::string_view LEX_MIXED_SNIPPET =
     "module bench.lex;\n"
@@ -114,7 +117,7 @@ struct FrontendRunResult final {
 
     aurex::sema::SemanticOptions options;
     options.retain_generic_side_tables = false;
-    aurex::sema::SemanticAnalyzer analyzer(parsed.take_value(), diagnostics, options);
+    aurex::sema::SemanticAnalyzer analyzer(parsed.value(), diagnostics, options);
     auto checked = analyzer.analyze();
     if (!checked) {
         return FrontendRunResult {
@@ -284,6 +287,22 @@ void append_payload_use_function(std::string& source, const aurex::base::usize i
     return source;
 }
 
+[[nodiscard]] std::string make_ast_source(const aurex::base::usize statement_count) {
+    std::string source;
+    source.reserve(AST_SOURCE_BYTES_PER_STATEMENT_ESTIMATE * statement_count);
+    source += "module bench.ast;\n\n"
+              "fn main() -> i32 {\n"
+              "    var total: i32 = 0;\n";
+    for (aurex::base::usize index = 0; index < statement_count; ++index) {
+        source += "    total = total + ";
+        source += std::to_string(index % 97U);
+        source += ";\n";
+    }
+    source += "    return total;\n"
+              "}\n";
+    return source;
+}
+
 [[nodiscard]] std::int64_t processed_count(
     const std::int64_t iterations,
     const aurex::base::usize count
@@ -366,9 +385,30 @@ void BM_SemaGenerics(benchmark::State& state) {
     set_frontend_counters(state, source, summary);
 }
 
+void BM_SemaAstBulk(benchmark::State& state) {
+    const auto statement_count = static_cast<aurex::base::usize>(state.range(0));
+    const std::string source = make_ast_source(statement_count);
+    FrontendSummary summary;
+
+    for (auto _ : state) {
+        auto result = analyze_source(source);
+        if (!result.ok) {
+            state.SkipWithError(result.error.c_str());
+            break;
+        }
+        summary = result.summary;
+        benchmark::DoNotOptimize(summary.expr_count);
+    }
+
+    state.SetBytesProcessed(processed_count(state.iterations(), source.size()));
+    state.SetItemsProcessed(processed_count(state.iterations(), summary.expr_count));
+    set_frontend_counters(state, source, summary);
+}
+
 BENCHMARK(BM_LexMixed)->Arg(LEX_MIXED_SMALL_REPETITIONS)->Arg(LEX_MIXED_LARGE_REPETITIONS);
 BENCHMARK(BM_SemaLookup)->Arg(SEMA_LOOKUP_SMALL_ITEMS)->Arg(SEMA_LOOKUP_LARGE_ITEMS);
 BENCHMARK(BM_SemaGenerics)->Arg(SEMA_GENERICS_SMALL_ITEMS)->Arg(SEMA_GENERICS_LARGE_ITEMS);
+BENCHMARK(BM_SemaAstBulk)->Arg(SEMA_AST_SMALL_STATEMENTS)->Arg(SEMA_AST_LARGE_STATEMENTS);
 
 } // namespace
 

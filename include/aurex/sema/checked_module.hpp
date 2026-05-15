@@ -56,12 +56,19 @@ struct TypeAliasInfo {
 };
 
 struct GenericSideTables {
+    bool sparse = false;
     std::vector<TypeHandle> expr_types;
     std::vector<std::string> expr_c_names;
     std::vector<std::string> pattern_c_names;
     std::vector<std::unordered_set<std::string>> pattern_case_sets;
     std::vector<TypeHandle> syntax_type_handles;
     std::vector<TypeHandle> stmt_local_types;
+    std::unordered_map<base::u32, TypeHandle> sparse_expr_types;
+    std::unordered_map<base::u32, std::string> sparse_expr_c_names;
+    std::unordered_map<base::u32, std::string> sparse_pattern_c_names;
+    std::unordered_map<base::u32, std::unordered_set<std::string>> sparse_pattern_case_sets;
+    std::unordered_map<base::u32, TypeHandle> sparse_syntax_type_handles;
+    std::unordered_map<base::u32, TypeHandle> sparse_stmt_local_types;
 };
 
 struct GenericFunctionInstanceInfo {

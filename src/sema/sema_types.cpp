@@ -518,10 +518,8 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 break;
             }
 
-            std::vector<TypeHandle>& syntax_type_handles = this->active_syntax_type_handles();
-            if (action.type.value < syntax_type_handles.size() &&
-                is_valid(syntax_type_handles[action.type.value])) {
-                const TypeHandle cached = syntax_type_handles[action.type.value];
+            const TypeHandle cached = this->cached_syntax_type(action.type);
+            if (is_valid(cached)) {
                 if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct &&
                     !action.opaque_allowed_as_pointee) {
                     this->report(

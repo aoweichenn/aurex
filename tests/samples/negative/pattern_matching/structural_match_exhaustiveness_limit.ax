@@ -1,0 +1,43 @@
+module structural_match_exhaustiveness_limit;
+
+struct Flags13 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+    f3: bool;
+    f4: bool;
+    f5: bool;
+    f6: bool;
+    f7: bool;
+    f8: bool;
+    f9: bool;
+    f10: bool;
+    f11: bool;
+    f12: bool;
+}
+
+fn score(flags: Flags13) -> i32 {
+    return match flags {
+        Flags13 { f0: true } => 1,
+        Flags13 { f0: false } => 0,
+    };
+}
+
+fn main() -> i32 {
+    let flags: Flags13 = Flags13 {
+        f0: true,
+        f1: false,
+        f2: true,
+        f3: false,
+        f4: true,
+        f5: false,
+        f6: true,
+        f7: false,
+        f8: true,
+        f9: false,
+        f10: true,
+        f11: false,
+        f12: true,
+    };
+    return score(flags);
+}

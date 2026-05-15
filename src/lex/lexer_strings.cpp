@@ -95,7 +95,7 @@ void Lexer::scan_string_body(
             if (decoded.ok()) {
                 this->add_nonempty_token(token_kind, begin, this->cursor_.offset());
             } else {
-                this->finish_invalid_token(begin);
+                this->finish_invalid_token(begin, this->cursor_.offset());
             }
             return;
         }
@@ -105,12 +105,12 @@ void Lexer::scan_string_body(
         }
         if (!allow_newline && c == LEXEME_LINE_FEED) {
             this->report_current(begin, unterminated_message);
-            this->finish_invalid_token(begin);
+            this->finish_invalid_token(begin, this->cursor_.offset());
             return;
         }
     }
     this->report_current(begin, unterminated_message);
-    this->finish_invalid_token(begin);
+    this->finish_invalid_token(begin, this->cursor_.offset());
 }
 
 void Lexer::scan_byte(const base::usize begin) {
@@ -140,19 +140,19 @@ void Lexer::scan_byte(const base::usize begin) {
             if (decoded.ok()) {
                 this->add_nonempty_token(syntax::TokenKind::byte_literal, begin, this->cursor_.offset());
             } else {
-                this->finish_invalid_token(begin);
+                this->finish_invalid_token(begin, this->cursor_.offset());
             }
             return;
         }
         if (c == LEXEME_LINE_FEED) {
             this->report(begin, this->cursor_.offset() - LEXEME_SINGLE_BYTE_WIDTH, LEXEME_UNTERMINATED_BYTE_MESSAGE);
-            this->finish_invalid_token(begin);
+            this->finish_invalid_token(begin, this->cursor_.offset());
             return;
         }
     }
 
     this->report_current(begin, LEXEME_UNTERMINATED_BYTE_MESSAGE);
-    this->finish_invalid_token(begin);
+    this->finish_invalid_token(begin, this->cursor_.offset());
 }
 
 void Lexer::scan_char(const base::usize begin) {
@@ -176,19 +176,19 @@ void Lexer::scan_char(const base::usize begin) {
             if (decoded.ok()) {
                 this->add_nonempty_token(syntax::TokenKind::char_literal, begin, this->cursor_.offset());
             } else {
-                this->finish_invalid_token(begin);
+                this->finish_invalid_token(begin, this->cursor_.offset());
             }
             return;
         }
         if (c == LEXEME_LINE_FEED) {
             this->report(begin, this->cursor_.offset() - LEXEME_SINGLE_BYTE_WIDTH, LEXEME_UNTERMINATED_CHAR_MESSAGE);
-            this->finish_invalid_token(begin);
+            this->finish_invalid_token(begin, this->cursor_.offset());
             return;
         }
     }
 
     this->report_current(begin, LEXEME_UNTERMINATED_CHAR_MESSAGE);
-    this->finish_invalid_token(begin);
+    this->finish_invalid_token(begin, this->cursor_.offset());
 }
 
 } // namespace aurex::lex

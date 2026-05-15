@@ -1,0 +1,15 @@
+module array_constant_index_out_of_bounds;
+
+fn high() -> i32 {
+    let values: [2]i32 = [1, 2];
+    return values[2];
+}
+
+fn low() -> i32 {
+    let values: [2]i32 = [1, 2];
+    return values[-1];
+}
+
+fn main() -> i32 {
+    return high() + low();
+}

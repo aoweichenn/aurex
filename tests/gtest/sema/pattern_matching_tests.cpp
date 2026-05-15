@@ -157,6 +157,12 @@ TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
         require_failure(aurexc() + " --check " + q(guarded)).output,
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"
     );
+
+    const fs::path limit = negative_sample("pattern_matching", "structural_match_exhaustiveness_limit.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(limit)).output,
+        "match exhaustiveness check exceeded M2.1 structural combination limit"
+    );
 }
 
 TEST_F(AurexIntegrationTest, MatchOrPattern) {

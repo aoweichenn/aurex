@@ -59,6 +59,14 @@ const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) con
 
 std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
     if (syntax::is_valid(id) &&
+        this->active_side_tables_.generic != nullptr &&
+        this->active_side_tables_.generic->sparse) {
+        const auto found = this->active_side_tables_.generic->sparse_pattern_c_names.find(id.value);
+        if (found != this->active_side_tables_.generic->sparse_pattern_c_names.end() && !found->second.empty()) {
+            return found->second;
+        }
+    }
+    if (syntax::is_valid(id) &&
         this->active_side_tables_.pattern_c_names != nullptr &&
         id.value < this->active_side_tables_.pattern_c_names->size() &&
         !(*this->active_side_tables_.pattern_c_names)[id.value].empty()) {

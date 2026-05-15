@@ -21,6 +21,8 @@ namespace {
 using base::DiagnosticSink;
 
 constexpr base::usize PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH = 8;
+constexpr base::usize PARSER_TEST_LONG_BINARY_TERM_COUNT = 3'000;
+constexpr base::usize PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH = 600;
 
 void expect_parse_error(const std::string_view source, const std::string_view message) {
     DiagnosticSink diagnostics;
@@ -63,7 +65,7 @@ void expect_parse_error(const std::string_view source, const std::string_view me
         }
         return {};
     }
-    return std::move(parsed.value());
+    return parsed.take_value();
 }
 
 [[nodiscard]] const syntax::ItemNode* find_item(
@@ -1940,6 +1942,30 @@ TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
     }
     ASSERT_TRUE(syntax::is_valid(binary));
     EXPECT_EQ(module.exprs[binary.value].kind, syntax::ExprKind::integer_literal);
+}
+
+TEST(CoreUnit, ParserHandlesLongBinaryChainsWithoutRecursiveDescent) {
+    std::string source = "module parser.long_binary_chain;\nfn main() -> i32 {\n  return ";
+    for (base::usize index = 0; index < PARSER_TEST_LONG_BINARY_TERM_COUNT; ++index) {
+        if (index != 0) {
+            source += " + ";
+        }
+        source += "1";
+    }
+    source += ";\n}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    EXPECT_GT(module.exprs.size(), PARSER_TEST_LONG_BINARY_TERM_COUNT);
+}
+
+TEST(CoreUnit, ParserRejectsExcessivelyNestedGroupedExpressionsWithoutCrashing) {
+    std::string source = "module parser.deep_grouped_expression;\nfn main() -> i32 {\n  return ";
+    source.append(PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH, '(');
+    source += "1";
+    source.append(PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH, ')');
+    source += ";\n}\n";
+
+    expect_parse_error(source, "expression nesting exceeds M2 parser limit");
 }
 
 TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression) {

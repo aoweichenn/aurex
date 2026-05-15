@@ -13,6 +13,7 @@ struct ParseSession final {
     TokenCursor cursor;
     ParseDiagnostics diagnostics;
     syntax::AstModule module;
+    base::usize expression_nesting_depth = 0;
 
     ParseSession(
         std::span<const syntax::Token> tokens,

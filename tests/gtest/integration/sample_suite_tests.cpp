@@ -41,6 +41,7 @@ inline constexpr auto SAMPLE_IMPORT_MARKERS = std::to_array<std::string_view>({
 inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiagnostic>({
     {"ambiguous_import_alias", "ambiguous import alias: lib"},
     {"ambiguous_import_name", "unknown function: helper"},
+    {"array_constant_index_out_of_bounds", "array constant index is out of bounds"},
     {"array_literal_empty_infer", "empty array literal requires an array type context"},
     {"bare_enum_case_constructor", "unknown function: some"},
     {"bare_enum_case_pattern", "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type[Args].case'"},
@@ -54,6 +55,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"local_shadow_root_module", "local name shadows visible root module: samplelib"},
     {"local_shadow_visible_type", "local name shadows visible type: File"},
     {"match_expression_missing_case", "match expression is not exhaustive for enum case"},
+    {"structural_match_exhaustiveness_limit", "match exhaustiveness check exceeded M2.1 structural combination limit"},
     {"method_abi_collision", "duplicate ABI symbol"},
     {"module_member_namespace_conflict", "duplicate module member across namespaces in module module_member_namespace_conflict: File"},
     {"module_name_mismatch", "does not match import 'bad.name'"},

@@ -850,6 +850,14 @@ CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
 
 std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
     if (syntax::is_valid(callee) &&
+        this->active_side_tables_.generic != nullptr &&
+        this->active_side_tables_.generic->sparse) {
+        const auto found = this->active_side_tables_.generic->sparse_expr_c_names.find(callee.value);
+        if (found != this->active_side_tables_.generic->sparse_expr_c_names.end() && !found->second.empty()) {
+            return found->second;
+        }
+    }
+    if (syntax::is_valid(callee) &&
         this->active_side_tables_.expr_c_names != nullptr &&
         callee.value < this->active_side_tables_.expr_c_names->size() &&
         !(*this->active_side_tables_.expr_c_names)[callee.value].empty()) {
@@ -862,6 +870,14 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
 }
 
 std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const syntax::ExprNode& expr) const {
+    if (syntax::is_valid(expr_id) &&
+        this->active_side_tables_.generic != nullptr &&
+        this->active_side_tables_.generic->sparse) {
+        const auto found = this->active_side_tables_.generic->sparse_expr_c_names.find(expr_id.value);
+        if (found != this->active_side_tables_.generic->sparse_expr_c_names.end() && !found->second.empty()) {
+            return found->second;
+        }
+    }
     if (syntax::is_valid(expr_id) &&
         this->active_side_tables_.expr_c_names != nullptr &&
         expr_id.value < this->active_side_tables_.expr_c_names->size() &&
@@ -908,6 +924,14 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
 }
 
 sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
+    if (syntax::is_valid(expr) &&
+        this->active_side_tables_.generic != nullptr &&
+        this->active_side_tables_.generic->sparse) {
+        const auto found = this->active_side_tables_.generic->sparse_expr_types.find(expr.value);
+        if (found != this->active_side_tables_.generic->sparse_expr_types.end()) {
+            return found->second;
+        }
+    }
     if (!syntax::is_valid(expr) ||
         this->active_side_tables_.expr_types == nullptr ||
         expr.value >= this->active_side_tables_.expr_types->size()) {
@@ -917,6 +941,14 @@ sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
 }
 
 sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept {
+    if (syntax::is_valid(type) &&
+        this->active_side_tables_.generic != nullptr &&
+        this->active_side_tables_.generic->sparse) {
+        const auto found = this->active_side_tables_.generic->sparse_syntax_type_handles.find(type.value);
+        if (found != this->active_side_tables_.generic->sparse_syntax_type_handles.end()) {
+            return found->second;
+        }
+    }
     if (!syntax::is_valid(type) ||
         this->active_side_tables_.syntax_type_handles == nullptr ||
         type.value >= this->active_side_tables_.syntax_type_handles->size()) {
@@ -926,6 +958,14 @@ sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept 
 }
 
 sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexcept {
+    if (syntax::is_valid(stmt) &&
+        this->active_side_tables_.generic != nullptr &&
+        this->active_side_tables_.generic->sparse) {
+        const auto found = this->active_side_tables_.generic->sparse_stmt_local_types.find(stmt.value);
+        if (found != this->active_side_tables_.generic->sparse_stmt_local_types.end()) {
+            return found->second;
+        }
+    }
     if (!syntax::is_valid(stmt) ||
         this->active_side_tables_.stmt_local_types == nullptr ||
         stmt.value >= this->active_side_tables_.stmt_local_types->size()) {

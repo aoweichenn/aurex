@@ -257,26 +257,32 @@ void append_module_into(
     map.patterns.reserve(source.patterns.size());
     map.stmts.reserve(source.stmts.size());
     map.items.reserve(source.items.size());
+    destination.types.reserve(destination.types.size() + source.types.size());
+    destination.exprs.reserve(destination.exprs.size() + source.exprs.size());
+    destination.patterns.reserve(destination.patterns.size() + source.patterns.size());
+    destination.stmts.reserve(destination.stmts.size() + source.stmts.size());
+    destination.items.reserve(destination.items.size() + source.items.size());
+    destination.item_modules.reserve(destination.item_modules.size() + source.items.size());
 
-    for (const syntax::TypeNode& node : source.types) {
+    for (syntax::TypeNode& node : source.types) {
         map.types.push_back(syntax::TypeId {static_cast<base::u32>(destination.types.size())});
-        destination.types.push_back(node);
+        destination.types.push_back(std::move(node));
     }
-    for (const syntax::ExprNode& node : source.exprs) {
+    for (syntax::ExprNode& node : source.exprs) {
         map.exprs.push_back(syntax::ExprId {static_cast<base::u32>(destination.exprs.size())});
-        destination.exprs.push_back(node);
+        destination.exprs.push_back(std::move(node));
     }
-    for (const syntax::PatternNode& node : source.patterns) {
+    for (syntax::PatternNode& node : source.patterns) {
         map.patterns.push_back(syntax::PatternId {static_cast<base::u32>(destination.patterns.size())});
-        destination.patterns.push_back(node);
+        destination.patterns.push_back(std::move(node));
     }
-    for (const syntax::StmtNode& node : source.stmts) {
+    for (syntax::StmtNode& node : source.stmts) {
         map.stmts.push_back(syntax::StmtId {static_cast<base::u32>(destination.stmts.size())});
-        destination.stmts.push_back(node);
+        destination.stmts.push_back(std::move(node));
     }
-    for (const syntax::ItemNode& node : source.items) {
+    for (syntax::ItemNode& node : source.items) {
         map.items.push_back(syntax::ItemId {static_cast<base::u32>(destination.items.size())});
-        destination.items.push_back(node);
+        destination.items.push_back(std::move(node));
         destination.item_modules.push_back(owner_module);
     }
 
@@ -382,7 +388,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         return base::Result<syntax::ModuleId>::fail(source_result.error());
     }
 
-    const base::SourceId source_id = this->sources_.add_source(canonical.string(), std::move(source_result.value()));
+    const base::SourceId source_id = this->sources_.add_source(canonical.string(), source_result.take_value());
     lex::Lexer lexer(source_id, this->sources_.text(source_id), this->diagnostics_);
     auto token_result = lexer.tokenize();
     if (!token_result) {
@@ -396,7 +402,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         return base::Result<syntax::ModuleId>::fail(ast_result.error());
     }
 
-    syntax::AstModule module = std::move(ast_result.value());
+    syntax::AstModule module = ast_result.take_value();
     if (module.module_path.parts.empty()) {
         push_error(
             this->diagnostics_,

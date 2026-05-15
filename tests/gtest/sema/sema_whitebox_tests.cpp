@@ -1165,6 +1165,74 @@ TEST(CoreUnit, SemanticWhiteBoxPostfixMaterializationEdges) {
     EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(one_expr)));
 }
 
+TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
+    syntax::AstModule module;
+    module.modules = {module_info({"generic_sparse"})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    syntax::TypeNode i32_type_node = primitive_node(syntax::PrimitiveTypeKind::i32);
+    const TypeId i32_type = module.push_type(i32_type_node);
+
+    syntax::ExprNode value_expr;
+    value_expr.kind = syntax::ExprKind::name;
+    value_expr.text = "value";
+    const ExprId value = module.push_expr(value_expr);
+
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = value;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode id_function;
+    id_function.kind = syntax::ItemKind::fn_decl;
+    id_function.name = "id";
+    id_function.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    id_function.params = {syntax::ParamDecl {"value", generic_type, {}}};
+    id_function.return_type = generic_type;
+    id_function.body = body;
+    const syntax::ItemId id_item = module.push_item(id_function);
+    module.item_modules[id_item.value] = module_id(0);
+
+    const ExprId call_callee = push_name(module, "id");
+    const ExprId call_arg = push_integer(module);
+    syntax::ExprNode call_expr;
+    call_expr.kind = syntax::ExprKind::call;
+    call_expr.callee = call_callee;
+    call_expr.args = {call_arg};
+    const ExprId call = module.push_expr(call_expr);
+
+    syntax::StmtNode main_return;
+    main_return.kind = syntax::StmtKind::return_;
+    main_return.return_value = call;
+    const syntax::StmtId main_return_id = module.push_stmt(main_return);
+    const syntax::StmtId main_body = push_block(module, {main_return_id});
+
+    syntax::ItemNode main_function;
+    main_function.kind = syntax::ItemKind::fn_decl;
+    main_function.name = "main";
+    main_function.return_type = i32_type;
+    main_function.body = main_body;
+    const syntax::ItemId main_item = module.push_item(main_function);
+    module.item_modules[main_item.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+    ASSERT_EQ(checked.generic_function_instances.size(), 1U);
+    const sema::GenericSideTables& side_tables = checked.generic_function_instances.front().side_tables;
+    EXPECT_TRUE(side_tables.sparse);
+    EXPECT_TRUE(side_tables.expr_types.empty());
+    EXPECT_TRUE(side_tables.expr_c_names.empty());
+    EXPECT_TRUE(side_tables.pattern_c_names.empty());
+    EXPECT_TRUE(side_tables.pattern_case_sets.empty());
+    EXPECT_TRUE(side_tables.syntax_type_handles.empty());
+    EXPECT_TRUE(side_tables.stmt_local_types.empty());
+    EXPECT_FALSE(side_tables.sparse_expr_types.empty());
+}
+
 TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};

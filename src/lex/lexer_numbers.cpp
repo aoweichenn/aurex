@@ -170,7 +170,7 @@ void Lexer::scan_leading_dot_float(const base::usize begin) {
     static_cast<void>(this->scan_exponent_part(had_error));
     this->scan_numeric_suffix();
     if (had_error) {
-        this->finish_invalid_token(begin);
+        this->finish_invalid_token(begin, this->cursor_.offset());
         return;
     }
     this->add_nonempty_token(syntax::TokenKind::float_literal, begin, this->cursor_.offset());
@@ -261,7 +261,7 @@ void Lexer::scan_number() {
     }
 
     if (had_error) {
-        this->finish_invalid_token(begin);
+        this->finish_invalid_token(begin, this->cursor_.offset());
         return;
     }
     this->add_nonempty_token(

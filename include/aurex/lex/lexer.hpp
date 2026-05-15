@@ -47,6 +47,7 @@ private:
 
     void skip_trivia();
     void scan_token();
+    void scan_invalid_run(base::usize begin);
     [[nodiscard]] bool scan_punctuator(base::usize begin, char first);
     void scan_identifier();
     void scan_number();
@@ -78,17 +79,19 @@ private:
     [[nodiscard]] base::SourceRange current_range(base::usize begin) const noexcept;
     void finish_token(syntax::TokenKind kind, base::usize begin);
     void finish_token(syntax::TokenKind kind, base::usize begin, std::string_view text);
-    void finish_invalid_token(base::usize begin);
+    void finish_invalid_token(base::usize begin, base::usize end);
     void add_nonempty_token(syntax::TokenKind kind, base::usize begin, base::usize end);
     void add_token(syntax::TokenKind kind, base::usize begin, base::usize end);
-    void report_current(base::usize begin, std::string_view message) const;
-    void report(base::usize begin, base::usize end, std::string_view message) const;
+    void report_current(base::usize begin, std::string_view message);
+    void report(base::usize begin, base::usize end, std::string_view message);
 
     base::SourceId source_id_;
     detail::LexerCursor cursor_;
     base::DiagnosticSink& diagnostics_;
     LexerOptions options_;
     std::vector<syntax::Token> tokens_;
+    base::usize lexical_error_count_ = 0;
+    bool lexical_error_budget_reported_ = false;
 };
 
 } // namespace aurex::lex

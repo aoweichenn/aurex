@@ -317,6 +317,10 @@ TEST_F(AurexIntegrationTest, ArrayLiteralRegressions) {
         ).output,
         "array repeat value type mismatch"
     );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_constant_index_out_of_bounds.ax"))).output,
+        "array constant index is out of bounds"
+    );
 }
 
 TEST_F(AurexIntegrationTest, SliceRegressions) {

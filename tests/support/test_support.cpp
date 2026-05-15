@@ -361,7 +361,7 @@ private:
     if (!parse_result || parse_result.value().action != driver::CliAction::compile) {
         return std::nullopt;
     }
-    return run_compiler(parse_result.value().invocation);
+    return run_compiler(parse_result.take_value().invocation);
 }
 
 [[nodiscard]] bool command_may_need_shell_expansion(const std::string_view command) noexcept {

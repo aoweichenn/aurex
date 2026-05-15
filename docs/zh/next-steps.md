@@ -47,6 +47,27 @@
 | M2.1 收口清单 | 21 个建议测试必须进入测试矩阵或被等价测试覆盖 |
 | 最终总结和性能目标 | Semantic + Performance + Security Closure 完成前，不推进更高层语言/库路线；综合性能目标按“5-17× 收敛到 2× 内”管理 |
 
+### 当前 P0 收口状态（2026-05-15）
+
+当前 `m2` 分支已经优先关闭 review 中会破坏语义安全、造成指数/超线性资源消耗或形成 DoS 入口的 P0 项。下面状态是实现事实，不是长期架构终点；凡是标为“阶段性关闭”的项，表示 M2.1 先移除了当前爆点，并保留更大规模架构优化为后续任务。
+
+| 项目 | 当前状态 | 已落地边界 | 后续保留 |
+|:-----|:---------|:-----------|:---------|
+| raw pointer projection unsafe | 已关闭 | `*p`、`p.field`、`p.field = v`、`p[i]`、`p[i] = v` 统一要求 unsafe；reference projection 保持 safe | 后续 borrow/lifetime 设计不属于 M2.1 |
+| `&expr` 双语义 | 已关闭 | `&place` / `&mut place` 只产生 safe reference；raw pointer 地址必须显式走 `ptraddr` / `ptrat` 等边界 | 后续可设计更完整的 address-of/raw-pointer conversion API |
+| contextual expression cache | 已关闭为短期正确性方案 | context-sensitive 节点禁止复用不带 `expected_type` 的旧 final cache；generic 实例读取 sparse side table 中实际记录的类型 | 长期仍应拆出 intrinsic type、contextual final type 和 coercion/adjustment 模型 |
+| `[]` 多义 | 已关闭在 checked/materialized 层 | parser 保留 postfix bracket 语法承载；sema materialize 后形成 generic apply、index、slice 等显式 checked 节点，后端不直接靠 bracket 猜语义 | 长期可进一步让 parser AST 直接区分更多节点，提升诊断精度 |
+| capability 字符串 predicate | 已关闭 | capability 使用结构化 `CapabilityKind`，where clause、generic instantiation 和 operator predicate 共享规则；无操作锚点的 `Hash` 约束被拒绝 | 用户自定义 trait/protocol、associated type 和资源 capability 继续后置 |
+| 数组常量索引越界 | 已关闭 | 固定数组的整数常量 index 在 sema 报错，覆盖正数越界和负数字面量越界 | 变量 index 和完整运行时 bounds check 仍按当前 M2 边界处理 |
+| 泛型 side table 全模块分配 | 已关闭当前爆点 | generic instance side table 改为 sparse map，只为实际分析到的 expr/type/pattern/stmt 记录元数据；IR lower 支持 sparse 读取 | 后续可继续做函数 body 节点区间、实例生命周期释放和 perf RSS 复测 |
+| match exhaustiveness 笛卡尔积 | 已关闭当前爆点 | 结构化组合上限为 4096，超限时保守报错，要求 wildcard 或拆分 pattern，不把未知当 complete | 长期替换为 pattern matrix / witness search，减少字符串组合 |
+| parser 栈溢出攻击面 | 已关闭主要崩溃点 | 左结合二元链使用迭代 operator/operand 栈；深 grouped expression 增加 M2 深度预算并给诊断；新增 3000 项二元链和深括号 stress 测试 | 类型、pattern、generic 参数等更广递归预算仍可在 Phase 5 stress lane 扩展 |
+| lexer 二进制输入 DoS | 已关闭 | 连续 invalid byte 聚合为单个 range 诊断；lexer error diagnostics capped at 128 + summary | 全局 diagnostic 输出上限和 line table 优化仍在 Phase 4/5 |
+| identifier 临时 string | 阶段性关闭最窄热路径 | `SymbolTable` scope lookup 使用 transparent hash，`find(std::string_view)` 不再每层构造临时 `std::string` | 完整 identifier interner、typed module/function key 和 delayed display string 未做 |
+| AST 多次整树复制 | 阶段性关闭低风险复制路径 | module loader append 改为 move 节点；driver 将 parser AST move 进 sema；sema 成功后 move 到 `normalized_ast`；测试 helper 使用 `take_value()` 避免伪 move | normalized overlay、compact AST layout、bump allocator 和 2M 节点 RSS 目标仍是后续性能任务 |
+
+当前仍不应声称已经完成的内容：完整 identifier interner、compact AST、global bump allocator、diagnostic line table、全局 diagnostic 输出预算、完整 pattern matrix、frontend-only CMake lane、P1/P2 语义一致性清单。这些不是本轮 P0 修复的完成定义，后续应按 Phase 2-5 继续推进。
+
 ### Phase 0：基线冻结和红线建立
 
 1. 复现 review 中的关键数据，并把命令、机器环境和阈值写入性能记录：

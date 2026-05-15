@@ -16,6 +16,7 @@ namespace {
 constexpr std::string_view SEMA_MATCH_BOOL_TRUE_NAME = "true";
 constexpr std::string_view SEMA_MATCH_BOOL_FALSE_NAME = "false";
 constexpr base::u64 SEMA_MATCH_STRUCTURAL_ARRAY_MAX_ELEMENTS = 8;
+constexpr base::usize SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096;
 
 [[nodiscard]] const syntax::PatternNode* pattern_node(
     const syntax::AstModule& module,
@@ -572,11 +573,30 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         return domain;
     };
 
-    const auto combine_option_sets = [](const std::vector<std::vector<std::string>>& option_sets) {
+    const auto combination_count_exceeds_limit = [](const std::vector<std::vector<std::string>>& option_sets) {
+        base::usize combinations = 1;
+        for (const std::vector<std::string>& options : option_sets) {
+            if (options.empty()) {
+                return false;
+            }
+            if (combinations > SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT / options.size()) {
+                return true;
+            }
+            combinations *= options.size();
+        }
+        return combinations > SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT;
+    };
+
+    bool structural_exhaustiveness_limited = false;
+    const auto combine_option_sets = [&](const std::vector<std::vector<std::string>>& option_sets) {
         std::vector<std::string> combinations;
         combinations.emplace_back();
         for (const std::vector<std::string>& options : option_sets) {
             if (options.empty()) {
+                return std::vector<std::string> {};
+            }
+            if (combinations.size() > SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT / options.size()) {
+                structural_exhaustiveness_limited = true;
                 return std::vector<std::string> {};
             }
             std::vector<std::string> next;
@@ -652,6 +672,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         option_sets.reserve(slots.size());
         for (const StructuralSlot& slot : slots) {
             option_sets.push_back(leaf_domain(slot.type));
+        }
+        if (combination_count_exceeds_limit(option_sets)) {
+            structural_exhaustiveness_limited = true;
+            return std::vector<std::string> {};
         }
         return combine_option_sets(option_sets);
     };
@@ -835,12 +859,12 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 saw_wildcard = true;
             } else if (enum_match && pattern->kind == syntax::PatternKind::enum_case) {
                 if (enum_case_payloads_cover_case(*pattern)) {
-                    const std::vector<std::string>& pattern_names = this->active_pattern_c_names();
-                    if (arm.pattern.value < pattern_names.size() && !pattern_names[arm.pattern.value].empty()) {
-                        if (std::find(covered.begin(), covered.end(), pattern_names[arm.pattern.value]) != covered.end()) {
+                    const std::string_view pattern_name = this->cached_pattern_c_name(arm.pattern);
+                    if (!pattern_name.empty()) {
+                        if (std::find(covered.begin(), covered.end(), pattern_name) != covered.end()) {
                             this->report(pattern->range, sema_duplicate_match_enum_case_message(pattern->case_name));
                         } else {
-                            covered.push_back(pattern_names[arm.pattern.value]);
+                            covered.emplace_back(pattern_name);
                         }
                     }
                 }
@@ -854,7 +878,6 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 }
             } else if (pattern->kind == syntax::PatternKind::or_pattern) {
                 std::vector<syntax::PatternId> alternatives = pattern->alternatives;
-                const std::vector<std::string>& pattern_names = this->active_pattern_c_names();
                 while (!alternatives.empty()) {
                     const syntax::PatternId alternative = alternatives.back();
                     alternatives.pop_back();
@@ -875,16 +898,18 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                     }
                     if (enum_match &&
                         alternative_pattern->kind == syntax::PatternKind::enum_case &&
-                        enum_case_payloads_cover_case(*alternative_pattern) &&
-                        alternative.value < pattern_names.size() &&
-                        !pattern_names[alternative.value].empty()) {
-                        if (std::find(covered.begin(), covered.end(), pattern_names[alternative.value]) != covered.end()) {
+                        enum_case_payloads_cover_case(*alternative_pattern)) {
+                        const std::string_view pattern_name = this->cached_pattern_c_name(alternative);
+                        if (pattern_name.empty()) {
+                            continue;
+                        }
+                        if (std::find(covered.begin(), covered.end(), pattern_name) != covered.end()) {
                             this->report(
                                 alternative_pattern->range,
                                 sema_duplicate_match_enum_case_message(alternative_pattern->case_name)
                             );
                         } else {
-                            covered.push_back(pattern_names[alternative.value]);
+                            covered.emplace_back(pattern_name);
                         }
                     }
                 }
@@ -945,6 +970,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
     } else if (literal_match && !saw_wildcard && !saw_irrefutable && (!this->checked_.types.is_bool(matched) || !covered_true || !covered_false)) {
         this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
+    } else if (structural_exhaustiveness_limited) {
+        this->report(expr.range, std::string(SEMA_MATCH_EXHAUSTIVENESS_LIMIT));
     } else if ((tuple_match || struct_match || array_match || slice_match) &&
                !saw_irrefutable &&
                !saw_wildcard &&

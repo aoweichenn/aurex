@@ -5,7 +5,9 @@
 #include <aurex/parse/parser_name_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
+#include <optional>
 #include <utility>
+#include <vector>
 
 namespace aurex::parse {
 
@@ -28,6 +30,9 @@ struct BuiltinExprSyntax {
     BuiltinExprShape shape;
     syntax::ExprKind expr_kind;
 };
+
+constexpr base::usize PARSER_MAX_EXPRESSION_NESTING_DEPTH = 512;
+constexpr base::usize PARSER_GROUPED_RECOVERY_STACK_INITIAL_CAPACITY = 16;
 
 constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     {TokenKind::kw_cast, BuiltinExprShape::CAST, syntax::ExprKind::cast},
@@ -64,6 +69,45 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     }
     return nullptr;
 }
+
+[[nodiscard]] std::optional<TokenKind> closing_delimiter_for(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::l_paren:
+        return TokenKind::r_paren;
+    case TokenKind::l_bracket:
+        return TokenKind::r_bracket;
+    case TokenKind::l_brace:
+        return TokenKind::r_brace;
+    default:
+        return std::nullopt;
+    }
+}
+
+[[nodiscard]] bool token_is_closing_delimiter(const TokenKind kind) noexcept {
+    return kind == TokenKind::r_paren ||
+           kind == TokenKind::r_bracket ||
+           kind == TokenKind::r_brace;
+}
+
+class ExpressionNestingGuard final {
+public:
+    explicit ExpressionNestingGuard(ParseSession& session) noexcept
+        : session_(&session) {
+        ++this->session_->expression_nesting_depth;
+    }
+
+    ~ExpressionNestingGuard() noexcept {
+        --this->session_->expression_nesting_depth;
+    }
+
+    ExpressionNestingGuard(const ExpressionNestingGuard&) = delete;
+    ExpressionNestingGuard& operator=(const ExpressionNestingGuard&) = delete;
+    ExpressionNestingGuard(ExpressionNestingGuard&&) = delete;
+    ExpressionNestingGuard& operator=(ExpressionNestingGuard&&) = delete;
+
+private:
+    ParseSession* session_;
+};
 
 } // namespace
 
@@ -227,6 +271,16 @@ const syntax::Token& PrimaryExprParser::expect_array_literal_end() {
 
 syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext context) {
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_GROUPED_EXPR_END));
+    if (this->session_.expression_nesting_depth >= PARSER_MAX_EXPRESSION_NESTING_DEPTH) {
+        this->report_at(begin, std::string(PARSER_EXPRESSION_NESTING_LIMIT));
+        this->skip_grouped_expression_remainder();
+        syntax::ExprNode expr;
+        expr.kind = syntax::ExprKind::invalid;
+        expr.range = this->merge(begin.range, this->previous().range);
+        return this->session_.module.push_expr(std::move(expr));
+    }
+
+    const ExpressionNestingGuard nesting_guard(this->session_);
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_LITERAL_UNSUPPORTED));
         const syntax::Token& end = this->expect_tuple_literal_end();
@@ -294,6 +348,35 @@ void PrimaryExprParser::expect_grouped_expression_end() {
         std::string(PARSER_EXPECT_GROUPED_EXPR_END),
         RecoveryContext::grouped_expression
     );
+}
+
+void PrimaryExprParser::skip_grouped_expression_remainder() {
+    std::vector<TokenKind> expected_closers;
+    expected_closers.reserve(PARSER_GROUPED_RECOVERY_STACK_INITIAL_CAPACITY);
+    expected_closers.push_back(TokenKind::r_paren);
+
+    while (!this->is_eof() && !expected_closers.empty()) {
+        const TokenKind kind = this->peek().kind;
+        const std::optional<TokenKind> closer = closing_delimiter_for(kind);
+        if (closer.has_value()) {
+            expected_closers.push_back(closer.value());
+            this->advance();
+            continue;
+        }
+
+        if (kind == expected_closers.back()) {
+            expected_closers.pop_back();
+            this->advance();
+            continue;
+        }
+
+        if (token_is_closing_delimiter(kind)) {
+            this->advance();
+            continue;
+        }
+
+        this->advance();
+    }
 }
 
 syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) {

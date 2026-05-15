@@ -208,6 +208,9 @@ inline constexpr std::string_view SEMA_ARGUMENT_ARRAY_UNSUPPORTED =
 inline constexpr std::string_view SEMA_ARRAY_INDEX_INTEGER =
     "array index must be an integer";
 
+inline constexpr std::string_view SEMA_ARRAY_INDEX_OUT_OF_BOUNDS =
+    "array constant index is out of bounds";
+
 inline constexpr std::string_view SEMA_SLICE_BOUND_INTEGER =
     "slice bound must be an integer";
 
@@ -486,6 +489,9 @@ inline constexpr std::string_view SEMA_OR_PATTERN_BINDING_TYPES =
 
 inline constexpr std::string_view SEMA_MATCH_NON_ENUM_IRREFUTABLE =
     "match expression over tuple, struct, array, or slice requires an irrefutable arm";
+
+inline constexpr std::string_view SEMA_MATCH_EXHAUSTIVENESS_LIMIT =
+    "match exhaustiveness check exceeded M2.1 structural combination limit; add a wildcard or split the pattern";
 
 inline constexpr std::string_view SEMA_MATCH_WILDCARD_UNREACHABLE =
     "match arm is unreachable after wildcard pattern";

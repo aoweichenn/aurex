@@ -3,9 +3,22 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <cassert>
+#include <functional>
 #include <utility>
 
 namespace aurex::sema {
+
+std::size_t StringHash::operator()(const std::string_view value) const noexcept {
+    return std::hash<std::string_view> {}(value);
+}
+
+std::size_t StringHash::operator()(const std::string& value) const noexcept {
+    return (*this)(std::string_view {value});
+}
+
+std::size_t StringHash::operator()(const char* value) const noexcept {
+    return (*this)(std::string_view {value});
+}
 
 SymbolTable::SymbolTable() {
     this->push_scope();
@@ -40,7 +53,7 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
 
 const Symbol* SymbolTable::find(const std::string_view name) const noexcept {
     for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
-        const auto found = scope->find(std::string(name));
+        const auto found = scope->find(name);
         if (found != scope->end()) {
             return this->get(found->second);
         }

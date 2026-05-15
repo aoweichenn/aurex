@@ -21,6 +21,7 @@ private:
     const syntax::Token& expect_tuple_literal_end();
     [[nodiscard]] syntax::ExprId parse_builtin_expr(ExprContext context);
     void expect_grouped_expression_end();
+    void skip_grouped_expression_remainder();
     [[nodiscard]] syntax::ExprId parse_literal(syntax::ExprKind kind);
     [[nodiscard]] syntax::ExprId make_invalid_expr();
 };

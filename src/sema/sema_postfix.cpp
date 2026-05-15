@@ -364,6 +364,10 @@ syntax::TypeId SemanticAnalyzer::push_synthetic_type(syntax::TypeNode node) {
 }
 
 void SemanticAnalyzer::ensure_expr_side_table_size(const base::usize size) {
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        static_cast<void>(size);
+        return;
+    }
     std::vector<TypeHandle>& expr_types = this->active_expr_types();
     std::vector<std::string>& expr_c_names = this->active_expr_c_names();
     if (expr_types.size() < size) {
@@ -375,6 +379,10 @@ void SemanticAnalyzer::ensure_expr_side_table_size(const base::usize size) {
 }
 
 void SemanticAnalyzer::ensure_type_side_table_size(const base::usize size) {
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        static_cast<void>(size);
+        return;
+    }
     std::vector<TypeHandle>& syntax_type_handles = this->active_syntax_type_handles();
     if (syntax_type_handles.size() < size) {
         syntax_type_handles.resize(size, INVALID_TYPE_HANDLE);

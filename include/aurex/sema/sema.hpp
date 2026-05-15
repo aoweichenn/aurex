@@ -35,6 +35,7 @@ struct CapabilityKindHash {
 class SemanticAnalyzer final {
 public:
     SemanticAnalyzer(const syntax::AstModule& module, base::DiagnosticSink& diagnostics) noexcept;
+    SemanticAnalyzer(syntax::AstModule&& module, base::DiagnosticSink& diagnostics) noexcept;
 
     [[nodiscard]] base::Result<CheckedModule> analyze();
 
@@ -543,12 +544,12 @@ private:
     [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] bool can_access(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
-    void record_stmt_local_type(syntax::StmtId stmt, TypeHandle type) noexcept;
+    void record_stmt_local_type(syntax::StmtId stmt, TypeHandle type);
     void record_expr_c_name(syntax::ExprId expr, std::string_view c_name);
     void record_pattern_c_name(syntax::PatternId pattern, std::string_view c_name);
     void record_pattern_case_name(syntax::PatternId pattern, std::string_view c_name);
     void merge_pattern_case_names(syntax::PatternId pattern, syntax::PatternId alternative);
-    void record_syntax_type_handle(syntax::TypeId type, TypeHandle resolved) noexcept;
+    void record_syntax_type_handle(syntax::TypeId type, TypeHandle resolved);
     [[nodiscard]] bool method_receiver_matches(const FunctionSignature& signature, TypeHandle receiver_type, syntax::ExprId receiver);
     [[nodiscard]] syntax::ModuleId owner_module(TypeHandle owner_type) const noexcept;
     [[nodiscard]] const FunctionSignature* find_method_in_owner_module(
@@ -595,7 +596,10 @@ private:
     [[nodiscard]] const EnumCaseInfo* find_enum_constructor(syntax::ExprId callee, bool report_unknown);
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type) noexcept;
+    [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type);
+    [[nodiscard]] TypeHandle cached_expr_type(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
+    [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_expr_types() noexcept;
     [[nodiscard]] std::vector<std::string>& active_expr_c_names() noexcept;
     [[nodiscard]] std::vector<std::string>& active_pattern_c_names() noexcept;

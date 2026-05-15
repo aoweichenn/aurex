@@ -22,13 +22,9 @@ constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 
 [[nodiscard]] GenericSideTables make_generic_side_tables(const syntax::AstModule& module) {
+    static_cast<void>(module);
     GenericSideTables side_tables;
-    side_tables.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    side_tables.expr_c_names.assign(module.exprs.size(), {});
-    side_tables.pattern_c_names.assign(module.patterns.size(), {});
-    side_tables.pattern_case_sets.assign(module.patterns.size(), {});
-    side_tables.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    side_tables.stmt_local_types.assign(module.stmts.size(), INVALID_TYPE_HANDLE);
+    side_tables.sparse = true;
     return side_tables;
 }
 

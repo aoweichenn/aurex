@@ -18,6 +18,9 @@ namespace {
 
 constexpr base::usize LEXER_ESTIMATED_BYTES_PER_TOKEN = 2;
 constexpr base::usize LEXER_MAX_ESTIMATED_TOKEN_CAPACITY = 262'144;
+constexpr base::usize LEXER_MAX_ERROR_DIAGNOSTICS = 128;
+constexpr std::string_view LEXER_ERROR_BUDGET_EXHAUSTED_MESSAGE =
+    "too many lexical errors; suppressing further lexer diagnostics";
 
 enum class TokenStartAction : std::uint8_t {
     INVALID,
@@ -217,8 +220,16 @@ void Lexer::scan_token() {
     }
 
     this->advance();
-    this->report_current(begin, LEXEME_INVALID_CHARACTER_MESSAGE);
-    this->finish_invalid_token(begin);
+    this->scan_invalid_run(begin);
+}
+
+void Lexer::scan_invalid_run(const base::usize begin) {
+    while (!this->is_at_end() &&
+           TOKEN_START_ACTIONS[char_class_index(this->peek())] == TokenStartAction::INVALID) {
+        this->advance();
+    }
+    this->report(begin, this->cursor_.offset(), LEXEME_INVALID_CHARACTER_MESSAGE);
+    this->finish_invalid_token(begin, this->cursor_.offset());
 }
 
 bool Lexer::scan_punctuator(const base::usize begin, const char first) {
@@ -272,9 +283,9 @@ void Lexer::finish_token(const syntax::TokenKind kind, const base::usize begin, 
     });
 }
 
-void Lexer::finish_invalid_token(const base::usize begin) {
+void Lexer::finish_invalid_token(const base::usize begin, const base::usize end) {
     if (this->options_.emit_invalid_tokens) {
-        this->finish_token(syntax::TokenKind::invalid, begin);
+        this->add_nonempty_token(syntax::TokenKind::invalid, begin, end);
     }
 }
 
@@ -298,16 +309,24 @@ void Lexer::add_token(const syntax::TokenKind kind, const base::usize begin, con
     });
 }
 
-void Lexer::report_current(const base::usize begin, const std::string_view message) const {
-    this->diagnostics_.push(base::Diagnostic {
-        base::Severity::error,
-        this->current_range(begin),
-        std::string(message),
-    });
+void Lexer::report_current(const base::usize begin, const std::string_view message) {
+    this->report(begin, this->cursor_.offset(), message);
 }
 
-void Lexer::report(const base::usize begin, const base::usize end, const std::string_view message) const
+void Lexer::report(const base::usize begin, const base::usize end, const std::string_view message)
 {
+    if (this->lexical_error_count_ >= LEXER_MAX_ERROR_DIAGNOSTICS) {
+        if (!this->lexical_error_budget_reported_) {
+            this->diagnostics_.push(base::Diagnostic {
+                base::Severity::error,
+                this->range(begin, end),
+                std::string(LEXER_ERROR_BUDGET_EXHAUSTED_MESSAGE),
+            });
+            this->lexical_error_budget_reported_ = true;
+        }
+        return;
+    }
+    ++this->lexical_error_count_;
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         this->range(begin, end),

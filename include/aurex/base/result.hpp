@@ -52,6 +52,11 @@ public:
         return std::get<T>(storage_);
     }
 
+    [[nodiscard]] T&& take_value() noexcept {
+        assert(has_value());
+        return std::move(std::get<T>(storage_));
+    }
+
     [[nodiscard]] const Error& error() const noexcept {
         assert(!has_value());
         return std::get<Error>(storage_);

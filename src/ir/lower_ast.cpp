@@ -91,6 +91,7 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     this->item_functions_.assign(this->ast_.items.size(), INVALID_FUNCTION_ID);
     this->generic_instance_functions_.assign(this->checked_.generic_function_instances.size(), INVALID_FUNCTION_ID);
     this->active_side_tables_ = ActiveSideTables {
+        nullptr,
         &this->checked_.expr_types,
         &this->checked_.expr_c_names,
         &this->checked_.pattern_c_names,

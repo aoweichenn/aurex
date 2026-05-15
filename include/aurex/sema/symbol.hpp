@@ -6,6 +6,7 @@
 #include <aurex/syntax/ast.hpp>
 #include <aurex/syntax/ast_ids.hpp>
 
+#include <cstddef>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -45,6 +46,16 @@ struct Symbol {
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
+struct StringHash {
+    using is_transparent = void;
+
+    [[nodiscard]] std::size_t operator()(std::string_view value) const noexcept;
+    [[nodiscard]] std::size_t operator()(const std::string& value) const noexcept;
+    [[nodiscard]] std::size_t operator()(const char* value) const noexcept;
+};
+
+using StringSymbolMap = std::unordered_map<std::string, SymbolId, StringHash, std::equal_to<>>;
+
 class SymbolTable final {
 public:
     SymbolTable();
@@ -58,7 +69,7 @@ public:
 
 private:
     std::vector<Symbol> symbols_;
-    std::vector<std::unordered_map<std::string, SymbolId>> scopes_;
+    std::vector<StringSymbolMap> scopes_;
 };
 
 } // namespace aurex::sema

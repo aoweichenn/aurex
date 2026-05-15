@@ -99,7 +99,7 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path) {
         return read_result;
     }
 
-    std::string text = std::move(read_result.value());
+    std::string text = read_result.take_value();
     {
         std::lock_guard lock(file_cache_mutex);
         file_cache[key] = FileCacheEntry {

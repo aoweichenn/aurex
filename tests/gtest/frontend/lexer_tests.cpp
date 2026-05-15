@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -327,6 +328,36 @@ TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings) {
     EXPECT_EQ(diagnostics.diagnostics().front().message, "invalid character");
     EXPECT_EQ(diagnostics.diagnostics().front().range.begin, 0U);
     EXPECT_EQ(diagnostics.diagnostics().front().range.end, 1U);
+}
+
+TEST(CoreUnit, LexerAggregatesInvalidByteRunsAndCapsDiagnostics) {
+    constexpr std::size_t LEXER_TEST_BINARY_BYTES = 10 * 1024;
+    constexpr std::size_t LEXER_TEST_MAX_ERROR_DIAGNOSTICS = 128;
+    constexpr std::size_t LEXER_TEST_BUDGET_MESSAGE_DIAGNOSTIC_COUNT =
+        LEXER_TEST_MAX_ERROR_DIAGNOSTICS + 1;
+    std::string continuous_invalid(LEXER_TEST_BINARY_BYTES, '\0');
+
+    DiagnosticSink run_diagnostics;
+    lex::Lexer run_lexer({17}, continuous_invalid, run_diagnostics);
+    auto run_result = run_lexer.tokenize();
+    ASSERT_FALSE(run_result);
+    ASSERT_EQ(run_diagnostics.diagnostics().size(), 1U);
+    EXPECT_EQ(run_diagnostics.diagnostics().front().message, "invalid character");
+    EXPECT_EQ(run_diagnostics.diagnostics().front().range.begin, 0U);
+    EXPECT_EQ(run_diagnostics.diagnostics().front().range.end, LEXER_TEST_BINARY_BYTES);
+
+    std::string many_runs;
+    many_runs.reserve(LEXER_TEST_BINARY_BYTES * 2);
+    for (std::size_t i = 0; i < LEXER_TEST_BINARY_BYTES; ++i) {
+        many_runs.push_back('\0');
+        many_runs.push_back(';');
+    }
+    DiagnosticSink budget_diagnostics;
+    lex::Lexer budget_lexer({19}, many_runs, budget_diagnostics);
+    auto budget_result = budget_lexer.tokenize();
+    ASSERT_FALSE(budget_result);
+    ASSERT_EQ(budget_diagnostics.diagnostics().size(), LEXER_TEST_BUDGET_MESSAGE_DIAGNOSTIC_COUNT);
+    EXPECT_EQ(budget_diagnostics.diagnostics().back().message, "too many lexical errors; suppressing further lexer diagnostics");
 }
 
 TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {

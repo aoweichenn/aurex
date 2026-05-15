@@ -90,6 +90,10 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     const TypeHandle record_type = module.types.named_struct("unit.Pair", "unit_Pair", false);
     const TypeHandle enum_type = module.types.named_enum("unit.Tag", "unit_Tag");
     const TypeHandle opaque = module.types.opaque_struct("unit.Opaque", "unit_Opaque");
+    const TypeHandle generic_record = module.types.named_struct("unit.Box", "unit_Box__aurexg_t2", false);
+    module.types.set_generic_instance(generic_record, "unit:Box", std::vector<TypeHandle> {i32});
+    const TypeHandle generic_enum = module.types.named_enum("unit.Maybe", "unit_Maybe__aurexg_t2");
+    module.types.set_generic_instance(generic_enum, "unit:Maybe", std::vector<TypeHandle> {i32});
 
     EXPECT_TRUE(module.types.same(ptr_i32, ptr_i32_again));
     EXPECT_FALSE(module.types.same(ptr_i32, const_ptr_i32));
@@ -139,6 +143,11 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(module.types.display_name(record_type), "unit.Pair");
     EXPECT_EQ(module.types.display_name(enum_type), "unit.Tag");
     EXPECT_EQ(module.types.display_name(opaque), "unit.Opaque");
+    EXPECT_EQ(module.types.get(generic_record).name, "unit.Box");
+    EXPECT_EQ(module.types.display_name(generic_record), "unit.Box[i32]");
+    EXPECT_EQ(module.types.display_name("Box", module.types.get(generic_record).generic_args), "Box[i32]");
+    EXPECT_EQ(module.types.get(generic_enum).name, "unit.Maybe");
+    EXPECT_EQ(module.types.display_name(generic_enum), "unit.Maybe[i32]");
     EXPECT_EQ(module.types.display_name(sema::INVALID_TYPE_HANDLE), "<invalid>");
     EXPECT_EQ(module.types.c_name(sema::INVALID_TYPE_HANDLE), "void");
     EXPECT_EQ(module.types.c_name(record_type), "unit_Pair");

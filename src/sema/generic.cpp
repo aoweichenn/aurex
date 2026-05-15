@@ -16,9 +16,6 @@ namespace aurex::sema {
 namespace {
 
 constexpr std::string_view SEMA_GENERIC_INSTANCE_SEPARATOR = "$";
-constexpr std::string_view SEMA_GENERIC_ARG_LIST_OPEN = "[";
-constexpr std::string_view SEMA_GENERIC_ARG_LIST_CLOSE = "]";
-constexpr std::string_view SEMA_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr std::string_view SEMA_GENERIC_KEY_ARG_PREFIX = "t";
 constexpr std::string_view SEMA_GENERIC_KEY_ARG_SEPARATOR = ".";
 constexpr std::string_view SEMA_GENERIC_ABI_SUFFIX_PREFIX = "__aurexg";
@@ -29,7 +26,6 @@ constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "#param:";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR = ":";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER = "@";
 constexpr base::usize SEMA_DECIMAL_U64_MAX_DIGITS = 20;
-constexpr base::usize SEMA_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE = 16;
 constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
 constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
 
@@ -589,24 +585,6 @@ void SemanticAnalyzer::populate_generic_concrete_context(
     }
 }
 
-std::string SemanticAnalyzer::generic_instance_suffix(const std::vector<TypeHandle>& args) const {
-    std::string suffix;
-    suffix.reserve(
-        SEMA_GENERIC_ARG_LIST_OPEN.size() +
-        SEMA_GENERIC_ARG_LIST_CLOSE.size() +
-        args.size() * SEMA_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE
-    );
-    suffix += SEMA_GENERIC_ARG_LIST_OPEN;
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            suffix += SEMA_GENERIC_ARG_LIST_SEPARATOR;
-        }
-        suffix += this->checked_.types.display_name(args[i]);
-    }
-    suffix += SEMA_GENERIC_ARG_LIST_CLOSE;
-    return suffix;
-}
-
 std::string SemanticAnalyzer::generic_instance_key_suffix(const std::vector<TypeHandle>& args) const {
     std::string suffix;
     suffix.reserve(SEMA_GENERIC_KEY_ARG_PREFIX.size() + args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
@@ -1160,9 +1138,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     }
 
     const syntax::ItemNode& item = this->module_.items[info.item.value];
-    const std::string display_suffix = this->generic_instance_suffix(args);
     const std::string abi_suffix = this->generic_instance_abi_suffix(args);
-    const std::string qualified = this->qualified_name(info.module, item.name) + display_suffix;
+    const std::string qualified = this->qualified_name(info.module, item.name);
     const std::string c_name = this->c_symbol_name(
         info.module,
         std::string(item.name) + abi_suffix
@@ -1174,7 +1151,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     this->type_visibilities_[instance_key] = info.visibility;
 
     StructInfo struct_info;
-    struct_info.name = std::string(item.name) + display_suffix;
+    struct_info.name = std::string(item.name);
     struct_info.c_name = c_name;
     struct_info.module = info.module;
     struct_info.type = handle;
@@ -1260,10 +1237,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     }
 
     const syntax::ItemNode& item = this->module_.items[info.item.value];
-    const std::string suffix = this->generic_instance_suffix(args);
     const std::string abi_suffix = this->generic_instance_abi_suffix(args);
-    const std::string display_name = std::string(item.name) + suffix;
-    const std::string qualified = this->qualified_name(info.module, item.name) + suffix;
+    const std::string qualified = this->qualified_name(info.module, item.name);
     const std::string c_name = this->c_symbol_name(
         info.module,
         std::string(item.name) + abi_suffix
@@ -1287,8 +1262,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
         item,
         info.module,
         handle,
-        display_name,
-        display_name + "_",
+        std::string(item.name),
+        std::string(item.name) + abi_suffix + "_",
         std::string(item.name) + abi_suffix + "_",
         info.visibility
     );
@@ -1660,6 +1635,11 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         found != this->generic_function_instances_.end()) {
         return &this->checked_.generic_function_instances[found->second].signature;
     }
+    if (!this->options_.retain_generic_side_tables) {
+        if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
+            return &found->second;
+        }
+    }
     const syntax::ItemNode& function = this->module_.items[info.item.value];
 
     GenericContext generic_context;
@@ -1697,6 +1677,35 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
 
     if (syntax::is_valid(function.return_type) && is_valid(signature.return_type)) {
         this->validate_function_return_type(function, signature.return_type);
+    }
+
+    if (!this->options_.retain_generic_side_tables) {
+        auto function_inserted = this->checked_.functions.emplace(key, signature);
+        if (!function_inserted.second) {
+            function_inserted.first->second = signature;
+        } else {
+            this->internal_function_lookup_exclusions_ += 1;
+        }
+        this->function_body_states_[key] = FunctionBodyState::not_started;
+        GenericSideTables transient_side_tables = make_generic_side_tables(this->module_);
+        GenericContext body_context;
+        this->populate_generic_concrete_context(info, args, body_context);
+        GenericContext* const previous_body_generic_context = this->current_generic_context_;
+        const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
+        this->current_generic_context_ = &body_context;
+        this->current_side_tables_.side_tables = &transient_side_tables;
+        this->current_side_tables_.cache_syntax_types = false;
+        this->current_module_ = info.module;
+        this->analyze_function_body_with_signature(
+            function,
+            key,
+            function_inserted.first->second,
+            this->function_body_states_[key]
+        );
+        this->current_module_ = previous_module;
+        this->current_generic_context_ = previous_body_generic_context;
+        this->current_side_tables_ = previous_body_side_tables;
+        return &this->checked_.functions.at(key);
     }
 
     GenericFunctionInstanceInfo instance;
@@ -1801,6 +1810,36 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
 
     if (syntax::is_valid(function.return_type) && is_valid(signature.return_type)) {
         this->validate_function_return_type(function, signature.return_type);
+    }
+
+    if (!this->options_.retain_generic_side_tables) {
+        auto function_inserted = this->checked_.functions.emplace(key, signature);
+        if (!function_inserted.second) {
+            function_inserted.first->second = signature;
+        }
+        this->index_method_lookup(info.module, owner_type, info.name, function_inserted.first->second);
+        this->index_function_value(info.name, function_inserted.first->second);
+        this->function_body_states_[key] = FunctionBodyState::not_started;
+
+        GenericSideTables transient_side_tables = make_generic_side_tables(this->module_);
+        GenericContext body_context;
+        this->populate_generic_concrete_context(info, args, body_context);
+        GenericContext* const previous_body_generic_context = this->current_generic_context_;
+        const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
+        this->current_generic_context_ = &body_context;
+        this->current_side_tables_.side_tables = &transient_side_tables;
+        this->current_side_tables_.cache_syntax_types = false;
+        this->current_module_ = info.module;
+        this->analyze_function_body_with_signature(
+            function,
+            key,
+            function_inserted.first->second,
+            this->function_body_states_[key]
+        );
+        this->current_module_ = previous_module;
+        this->current_generic_context_ = previous_body_generic_context;
+        this->current_side_tables_ = previous_body_side_tables;
+        return &this->checked_.functions.at(key);
     }
 
     GenericFunctionInstanceInfo instance;

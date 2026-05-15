@@ -4,6 +4,7 @@
 
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -139,6 +140,7 @@ public:
     [[nodiscard]] bool is_function(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
+    [[nodiscard]] std::string display_name(std::string_view base_name, const std::vector<TypeHandle>& generic_args) const;
     [[nodiscard]] std::string c_name(TypeHandle type) const;
     [[nodiscard]] const TypeInfo& get(TypeHandle handle) const noexcept;
     [[nodiscard]] base::usize size() const noexcept;

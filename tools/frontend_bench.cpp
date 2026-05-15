@@ -112,7 +112,9 @@ struct FrontendRunResult final {
     summary.item_count = parsed.value().items.size();
     summary.expr_count = parsed.value().exprs.size();
 
-    aurex::sema::SemanticAnalyzer analyzer(parsed.take_value(), diagnostics);
+    aurex::sema::SemanticOptions options;
+    options.retain_generic_side_tables = false;
+    aurex::sema::SemanticAnalyzer analyzer(parsed.take_value(), diagnostics, options);
     auto checked = analyzer.analyze();
     if (!checked) {
         return FrontendRunResult {
@@ -124,6 +126,13 @@ struct FrontendRunResult final {
 
     summary.function_count = checked.value().functions.size();
     summary.generic_function_instance_count = checked.value().generic_function_instances.size();
+    if (summary.generic_function_instance_count == 0) {
+        for (const auto& entry : checked.value().functions) {
+            if (!entry.second.generic_args.empty()) {
+                summary.generic_function_instance_count += 1;
+            }
+        }
+    }
     return FrontendRunResult {
         true,
         {},

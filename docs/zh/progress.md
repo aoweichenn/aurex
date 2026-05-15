@@ -55,6 +55,7 @@ M2 明确删除并暂缓这些 M1 内容：
 tools/run_tests.sh
 tools/bench.py
 make perf
+make perf-stress
 ```
 
 测试覆盖：
@@ -71,9 +72,13 @@ make perf
 覆盖 lexer、lookup-heavy sema 和 generic-instantiation-heavy sema 路径，并运行
 Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
 做 frontend/check 模式基线；暂不强制阈值。`make perf-compare` 只运行跨前端对比通道。
-generic function instance 签名已经把内部 semantic key / TypeHandle args 和展示名分离，
-`--check` 热路径不再为了 checked signature 生成 `id[i32]` 这类展示字符串，dump 和 IR
-lowering 需要时再延迟格式化。
+`make perf-stress` 运行 `tools/generic_stress.py`，生成 200/500/1000/2000 规模的泛型实例
+源码并记录 `aurexc --check` elapsed time + peak RSS baseline。generic function instance 签名、
+generic struct/enum `TypeInfo` 和 checked enum case display 已经把内部 semantic key / TypeHandle
+args 和展示名分离，`--check` 热路径不再为了 checked signature 或泛型类型实例生成
+`id[i32]`、`Box[i32]`、`Maybe[i32]_some` 这类展示字符串，dump、IR lowering 和诊断需要时再延迟格式化。
+`--check` / checked dump 模式还会在每个泛型函数实例分析完成后释放后端 lowering 专用 sparse side table；
+IR/native 输出模式继续保留这些表，保证 codegen 行为不退化。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 

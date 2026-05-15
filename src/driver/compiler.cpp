@@ -28,6 +28,14 @@ namespace {
 
 constexpr base::usize DRIVER_MAX_PRINTED_DIAGNOSTICS = 128;
 
+[[nodiscard]] bool emit_kind_requires_ir_lowering(const EmitKind emit_kind) noexcept {
+    return emit_kind == EmitKind::ir ||
+           emit_kind == EmitKind::llvm_ir ||
+           emit_kind == EmitKind::assembly ||
+           emit_kind == EmitKind::object ||
+           emit_kind == EmitKind::executable;
+}
+
 [[nodiscard]] base::Result<void> write_file(const std::filesystem::path& path, const std::string_view text) {
     std::ofstream output(path, std::ios::binary);
     if (!output) {
@@ -131,7 +139,9 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
         return base::Result<void>::ok();
     }
 
-    sema::SemanticAnalyzer analyzer(ast_result.take_value(), diagnostics);
+    sema::SemanticOptions sema_options;
+    sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(invocation.emit_kind);
+    sema::SemanticAnalyzer analyzer(ast_result.take_value(), diagnostics, sema_options);
     auto checked_result = analyzer.analyze();
     if (!checked_result) {
         print_diagnostics(sources, diagnostics);

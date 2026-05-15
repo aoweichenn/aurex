@@ -945,7 +945,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     if (enum_match) {
         const auto check_case = [&](const EnumCaseInfo& case_info) {
             if (!saw_wildcard && std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
-                this->report(expr.range, sema_match_missing_enum_case_message(case_info.name));
+                this->report(
+                    expr.range,
+                    sema_match_missing_enum_case_message(enum_case_display_name(this->checked_.types, case_info))
+                );
             }
         };
         if (const std::vector<const EnumCaseInfo*>* cases = this->find_enum_cases_by_type(matched); cases != nullptr) {

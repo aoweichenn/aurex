@@ -116,5 +116,8 @@ struct CheckedModule {
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);
+[[nodiscard]] std::string struct_display_name(const TypeTable& types, const StructInfo& info);
+[[nodiscard]] std::string enum_display_name(const TypeTable& types, const EnumCaseInfo& info);
+[[nodiscard]] std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& info);
 
 } // namespace aurex::sema

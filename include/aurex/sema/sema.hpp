@@ -33,10 +33,22 @@ struct CapabilityKindHash {
 
 [[nodiscard]] std::string_view capability_name(CapabilityKind capability) noexcept;
 
+struct SemanticOptions {
+    bool retain_generic_side_tables = true;
+};
+
 class SemanticAnalyzer final {
 public:
-    SemanticAnalyzer(const syntax::AstModule& module, base::DiagnosticSink& diagnostics) noexcept;
-    SemanticAnalyzer(syntax::AstModule&& module, base::DiagnosticSink& diagnostics) noexcept;
+    SemanticAnalyzer(
+        const syntax::AstModule& module,
+        base::DiagnosticSink& diagnostics,
+        SemanticOptions options = {}
+    ) noexcept;
+    SemanticAnalyzer(
+        syntax::AstModule&& module,
+        base::DiagnosticSink& diagnostics,
+        SemanticOptions options = {}
+    ) noexcept;
 
     [[nodiscard]] base::Result<CheckedModule> analyze();
 
@@ -493,7 +505,6 @@ private:
         const std::vector<TypeHandle>& args,
         GenericContext& context
     );
-    [[nodiscard]] std::string generic_instance_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
@@ -701,6 +712,7 @@ private:
 
     syntax::AstModule module_;
     base::DiagnosticSink& diagnostics_;
+    SemanticOptions options_;
     CheckedModule checked_;
     SymbolTable symbols_;
     std::unordered_map<std::string, TypeHandle> named_types_;

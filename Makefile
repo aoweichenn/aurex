@@ -19,10 +19,13 @@ perf:
 	tools/perf_report.py
 	tools/frontend_compare.py
 
+perf-stress:
+	tools/generic_stress.py
+
 perf-compare:
 	tools/frontend_compare.py
 
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true
 
-.PHONY: all configure build test bench perf clean
+.PHONY: all configure build test bench perf perf-stress perf-compare clean

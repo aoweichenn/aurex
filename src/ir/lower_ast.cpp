@@ -128,7 +128,7 @@ void Lowerer::lower_record_layouts() {
         }
         RecordLayout record;
         record.type = info.type;
-        record.name = info.name;
+        record.name = sema::struct_display_name(this->checked_.types, info);
         record.symbol = info.c_name;
         record.is_opaque = info.is_opaque;
         for (const sema::StructFieldInfo& field : info.fields) {
@@ -248,7 +248,7 @@ void Lowerer::declare_global_constants() {
             continue;
         }
         GlobalConstant constant;
-        constant.name = enum_case.name;
+        constant.name = sema::enum_case_display_name(this->checked_.types, enum_case);
         constant.symbol = enum_case.c_name;
         constant.type = enum_case.type;
         const GlobalConstantId id = add_global_constant(module_, std::move(constant));

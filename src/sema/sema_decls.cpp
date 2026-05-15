@@ -299,11 +299,18 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     std::string c_prefix,
     const syntax::Visibility visibility
 ) {
+    const auto make_enum_display_name = [&]() {
+        if (!is_valid(named_enum_type)) {
+            return enum_display_name;
+        }
+        const TypeInfo& enum_info = this->checked_.types.get(named_enum_type);
+        return this->checked_.types.display_name(enum_display_name, enum_info.generic_args);
+    };
     std::unordered_set<std::string> seen_cases;
     seen_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
         if (!seen_cases.insert(std::string(enum_case.name)).second) {
-            this->report(enum_case.range, sema_duplicate_enum_case_message(enum_display_name, enum_case.name));
+            this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
         }
     }
 
@@ -329,7 +336,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
         const bool duplicate_case_name = !registered_cases.insert(std::string(enum_case.name)).second;
         if (!duplicate_case_name && this->type_member_name_exists(named_enum_type, enum_case.name)) {
-            this->report(enum_case.range, sema_duplicate_type_member_message(enum_display_name, enum_case.name));
+            this->report(enum_case.range, sema_duplicate_type_member_message(make_enum_display_name(), enum_case.name));
         }
         const std::string full_name = case_prefix + std::string(enum_case.name);
         const std::string enum_case_key = this->module_key(owner, full_name);
@@ -405,7 +412,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         } else if (!this->integer_literal_fits_type(enum_type, value_text)) {
             this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_DOES_NOT_FIT));
         } else if (!seen_values.insert(discriminant).second) {
-            this->report(enum_case.range, sema_duplicate_enum_discriminant_message(enum_display_name));
+            this->report(enum_case.range, sema_duplicate_enum_discriminant_message(make_enum_display_name()));
         }
         next_discriminant = discriminant == std::numeric_limits<base::u64>::max()
             ? discriminant
@@ -445,7 +452,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
             visibility,
         });
         if (!case_inserted.second) {
-            this->report(enum_case.range, sema_duplicate_enum_case_message(enum_display_name, enum_case.name));
+            this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
             continue;
         }
         this->index_enum_case(case_inserted.first->second);

@@ -85,6 +85,7 @@ Use:
 tools/run_tests.sh
 tools/bench.py
 make perf
+make perf-stress
 ```
 
 The test suite covers lexer/parser behavior, CLI/driver behavior, positive and
@@ -98,10 +99,17 @@ generic-instantiation-heavy sema paths, then runs a Google Benchmark
 process-level comparison against available modern frontend drivers (`clang++`,
 `g++`, and `rustc`) without enforcing thresholds yet. `make perf-compare` runs
 only the cross-frontend comparison lane.
-Generic function instance signatures now keep internal semantic keys and
+`make perf-stress` runs `tools/generic_stress.py`, generating 200/500/1000/2000
+generic-instantiation sources and recording `aurexc --check` elapsed time plus
+peak RSS baselines. Generic function instance signatures, generic struct/enum
+`TypeInfo`, and checked enum case display now keep internal semantic keys and
 TypeHandle arguments separate from display names, so `--check` does not format
-names such as `id[i32]` for checked signatures; checked dumps and IR lowering
-format them lazily when output needs them.
+names such as `id[i32]`, `Box[i32]`, or `Maybe[i32]_some` on the hot path;
+checked dumps, IR lowering, and diagnostics format them lazily when output
+needs them.
+`--check` / checked-dump mode also releases backend-lowering sparse side tables
+after each generic function instance is analyzed; IR/native output mode keeps
+those tables so codegen behavior stays unchanged.
 
 ## M2 Gaps
 

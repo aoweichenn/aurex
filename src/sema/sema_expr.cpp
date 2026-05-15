@@ -393,7 +393,10 @@ bool SemanticAnalyzer::record_no_payload_enum_case_expr(
     const base::SourceRange range
 ) {
     if (is_valid(enum_case.payload_type)) {
-        this->report(range, sema_enum_payload_constructor_call_message(enum_case.name));
+        this->report(
+            range,
+            sema_enum_payload_constructor_call_message(enum_case_display_name(this->checked_.types, enum_case))
+        );
         static_cast<void>(this->record_expr_type(expr_id, INVALID_TYPE_HANDLE));
         return false;
     }

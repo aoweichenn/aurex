@@ -523,15 +523,16 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
     const syntax::ExprNode& expr,
     const EnumCaseInfo& enum_case
 ) {
+    const std::string case_display_name = enum_case_display_name(this->checked_.types, enum_case);
     if (enum_case.payload_types.empty()) {
-        this->report(expr.range, sema_enum_payload_constructor_case_message(enum_case.name));
+        this->report(expr.range, sema_enum_payload_constructor_case_message(case_display_name));
     }
     if (expr.args.size() != enum_case.payload_types.size()) {
         if (enum_case.payload_types.size() == 1) {
-            this->report(expr.range, sema_enum_payload_constructor_arity_message(enum_case.name));
+            this->report(expr.range, sema_enum_payload_constructor_arity_message(case_display_name));
         } else {
             this->report(expr.range, sema_enum_payload_constructor_argument_count_message(
-                enum_case.name,
+                case_display_name,
                 enum_case.payload_types.size()
             ));
         }

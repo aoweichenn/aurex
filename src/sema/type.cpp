@@ -31,6 +31,10 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_FN_PREFIX = "unsafe fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_UNSAFE_EXTERN_C_FN_PREFIX = "unsafe extern c fn(";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_VARIADIC = "...";
 constexpr std::string_view SEMA_TYPE_DISPLAY_FN_RETURN = ") -> ";
+constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN = "[";
+constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE = "]";
+constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR = ",";
+constexpr base::usize SEMA_TYPE_DISPLAY_GENERIC_ARG_SIZE_ESTIMATE = 16;
 constexpr std::size_t SEMA_TYPE_HASH_MULTIPLIER = 1099511628211ULL;
 
 enum class TypeDisplayTaskKind {
@@ -86,6 +90,31 @@ struct TypeDisplayTask {
     case BuiltinType::char_: return "char";
     }
     return "<unknown>";
+}
+
+void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const std::vector<TypeHandle>& args) {
+    if (args.empty()) {
+        return;
+    }
+    pending.push_back(TypeDisplayTask {
+        TypeDisplayTaskKind::text,
+        INVALID_TYPE_HANDLE,
+        std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE),
+    });
+    for (base::usize index = args.size(); index > 0; --index) {
+        if (index < args.size()) {
+            pending.push_back(TypeDisplayTask {
+                TypeDisplayTaskKind::text,
+                INVALID_TYPE_HANDLE,
+                std::string(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR),
+            });
+        }
+        pending.push_back(TypeDisplayTask {
+            TypeDisplayTaskKind::type,
+            args[index - 1],
+            {},
+        });
+    }
 }
 
 } // namespace
@@ -505,6 +534,12 @@ std::string TypeTable::display_name(const TypeHandle type) const {
         case TypeKind::struct_:
         case TypeKind::enum_:
         case TypeKind::opaque_struct:
+            name += info.name;
+            if (!info.generic_args.empty()) {
+                name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
+                push_generic_arg_display_tasks(pending, info.generic_args);
+            }
+            break;
         case TypeKind::generic_param:
             name += info.name;
             break;
@@ -513,6 +548,33 @@ std::string TypeTable::display_name(const TypeHandle type) const {
             break;
         }
     }
+    return name;
+}
+
+std::string TypeTable::display_name(
+    const std::string_view base_name,
+    const std::vector<TypeHandle>& generic_args
+) const {
+    if (generic_args.empty()) {
+        return std::string(base_name);
+    }
+
+    std::string name;
+    name.reserve(
+        base_name.size() +
+        SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN.size() +
+        SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE.size() +
+        generic_args.size() * SEMA_TYPE_DISPLAY_GENERIC_ARG_SIZE_ESTIMATE
+    );
+    name.append(base_name);
+    name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
+    for (base::usize index = 0; index < generic_args.size(); ++index) {
+        if (index != 0) {
+            name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR);
+        }
+        name += this->display_name(generic_args[index]);
+    }
+    name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE);
     return name;
 }
 

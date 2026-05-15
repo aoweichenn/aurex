@@ -85,6 +85,7 @@ functions declare a narrow `extern c` boundary in the sample under test.
 tools/run_tests.sh
 tools/bench.py
 make perf
+make perf-stress
 ```
 
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
@@ -95,7 +96,9 @@ frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
 Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`)
 without enforcing thresholds yet. `make perf-compare` runs only the
-cross-frontend comparison lane.
+cross-frontend comparison lane. `make perf-stress` runs the generated
+200/500/1000/2000 generic-instantiation elapsed-time and peak-RSS baseline.
+The `--check` path does not retain codegen-only generic instance side tables.
 
 ## Stage Status
 

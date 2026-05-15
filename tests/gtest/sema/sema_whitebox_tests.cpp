@@ -1643,6 +1643,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     const syntax::ItemId main_item = module.push_item(main_function);
     module.item_modules[main_item.value] = module_id(0);
 
+    syntax::AstModule discard_side_tables_module = module;
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
     auto checked_result = analyzer.analyze();
@@ -1669,6 +1670,111 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     EXPECT_TRUE(side_tables.stmt_local_types.empty());
     EXPECT_FALSE(side_tables.sparse_expr_types.empty());
     EXPECT_FALSE(side_tables.sparse_expr_expected_types.empty());
+
+    sema::SemanticOptions discard_options;
+    discard_options.retain_generic_side_tables = false;
+    base::DiagnosticSink discard_diagnostics;
+    sema::SemanticAnalyzer discard_analyzer(
+        std::move(discard_side_tables_module),
+        discard_diagnostics,
+        discard_options
+    );
+    auto discard_result = discard_analyzer.analyze();
+    ASSERT_TRUE(discard_result) << discard_result.error().message;
+    EXPECT_TRUE(discard_result.value().generic_function_instances.empty());
+    EXPECT_TRUE(discard_result.value().functions.contains(signature.semantic_key));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy) {
+    syntax::AstModule module;
+    module.modules = {module_info({"generic_type_display"})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+
+    syntax::TypeNode box_i32_type_node = named_node("Box");
+    box_i32_type_node.type_args = {i32_type};
+    const TypeId box_i32_type = module.push_type(box_i32_type_node);
+
+    syntax::TypeNode maybe_i32_type_node = named_node("Maybe");
+    maybe_i32_type_node.type_args = {i32_type};
+    const TypeId maybe_i32_type = module.push_type(maybe_i32_type_node);
+
+    syntax::ItemNode box_item;
+    box_item.kind = syntax::ItemKind::struct_decl;
+    box_item.name = "Box";
+    box_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    box_item.fields = {syntax::FieldDecl {"value", generic_type, {}}};
+    const syntax::ItemId box_item_id = module.push_item(box_item);
+    module.item_modules[box_item_id.value] = module_id(0);
+
+    syntax::EnumCaseDecl some_case;
+    some_case.name = "some";
+    some_case.payload_types = {generic_type};
+    syntax::EnumCaseDecl none_case;
+    none_case.name = "none";
+    syntax::ItemNode maybe_item;
+    maybe_item.kind = syntax::ItemKind::enum_decl;
+    maybe_item.name = "Maybe";
+    maybe_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    maybe_item.enum_cases = {some_case, none_case};
+    const syntax::ItemId maybe_item_id = module.push_item(maybe_item);
+    module.item_modules[maybe_item_id.value] = module_id(0);
+
+    const ExprId zero = push_integer(module);
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = zero;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode use_item;
+    use_item.kind = syntax::ItemKind::fn_decl;
+    use_item.name = "use";
+    use_item.params = {
+        syntax::ParamDecl {"box", box_i32_type, {}},
+        syntax::ParamDecl {"maybe", maybe_i32_type, {}},
+    };
+    use_item.return_type = i32_type;
+    use_item.body = body;
+    const syntax::ItemId use_item_id = module.push_item(use_item);
+    module.item_modules[use_item_id.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+
+    const sema::StructInfo* generic_box = nullptr;
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        if (info.name == "Box" && !checked.types.get(info.type).generic_args.empty()) {
+            generic_box = &info;
+            break;
+        }
+    }
+    ASSERT_NE(generic_box, nullptr);
+    EXPECT_EQ(generic_box->name, "Box");
+    EXPECT_EQ(checked.types.get(generic_box->type).name, "generic_type_display.Box");
+    EXPECT_EQ(checked.types.display_name(generic_box->type), "generic_type_display.Box[i32]");
+
+    const sema::EnumCaseInfo* generic_some = nullptr;
+    for (const auto& entry : checked.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        if (info.enum_name == "Maybe" && info.case_name == "some") {
+            generic_some = &info;
+            break;
+        }
+    }
+    ASSERT_NE(generic_some, nullptr);
+    EXPECT_EQ(generic_some->enum_name, "Maybe");
+    EXPECT_EQ(checked.types.display_name(generic_some->type), "generic_type_display.Maybe[i32]");
+    EXPECT_EQ(generic_some->name.find("[i32]"), std::string::npos);
+
+    const std::string checked_dump = sema::dump_checked_module(checked);
+    EXPECT_NE(checked_dump.find("struct priv Box[i32]"), std::string::npos);
+    EXPECT_NE(checked_dump.find("case Maybe[i32]_some"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {

@@ -5,6 +5,33 @@
 
 namespace aurex::sema {
 
+namespace {
+
+[[nodiscard]] const std::vector<TypeHandle>& generic_args_for_type(const TypeTable& types, const TypeHandle type) {
+    static const std::vector<TypeHandle> EMPTY_GENERIC_ARGS;
+    if (!is_valid(type) || type.value >= types.size()) {
+        return EMPTY_GENERIC_ARGS;
+    }
+    return types.get(type).generic_args;
+}
+
+} // namespace
+
+std::string struct_display_name(const TypeTable& types, const StructInfo& info) {
+    return types.display_name(info.name, generic_args_for_type(types, info.type));
+}
+
+std::string enum_display_name(const TypeTable& types, const EnumCaseInfo& info) {
+    return types.display_name(info.enum_name, generic_args_for_type(types, info.type));
+}
+
+std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& info) {
+    std::string display = enum_display_name(types, info);
+    display += "_";
+    display += info.case_name;
+    return display;
+}
+
 std::string dump_checked_module(const CheckedModule& checked) {
     std::ostringstream out;
     out << "checked_module\n";
@@ -59,7 +86,7 @@ std::string dump_checked_module(const CheckedModule& checked) {
         if (info.visibility == syntax::Visibility::private_) {
             out << "priv ";
         }
-        out << info.name;
+        out << struct_display_name(checked.types, info);
         if (info.is_opaque) {
             out << " opaque";
         }
@@ -98,7 +125,7 @@ std::string dump_checked_module(const CheckedModule& checked) {
     std::sort(enum_case_names.begin(), enum_case_names.end());
     for (const std::string& name : enum_case_names) {
         const EnumCaseInfo& info = checked.enum_cases.at(name);
-        out << "    case " << info.name << " : " << checked.types.display_name(info.type);
+        out << "    case " << enum_case_display_name(checked.types, info) << " : " << checked.types.display_name(info.type);
         if (!info.payload_types.empty()) {
             out << "(";
             for (base::usize i = 0; i < info.payload_types.size(); ++i) {

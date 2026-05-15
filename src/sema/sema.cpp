@@ -25,14 +25,22 @@ namespace {
 
 } // namespace
 
-SemanticAnalyzer::SemanticAnalyzer(const syntax::AstModule& module, base::DiagnosticSink& diagnostics) noexcept
-    : module_(module), diagnostics_(diagnostics) {
+SemanticAnalyzer::SemanticAnalyzer(
+    const syntax::AstModule& module,
+    base::DiagnosticSink& diagnostics,
+    const SemanticOptions options
+) noexcept
+    : module_(module), diagnostics_(diagnostics), options_(options) {
     this->module_.exprs.reserve(this->module_.exprs.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
     this->module_.types.reserve(this->module_.types.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
 }
 
-SemanticAnalyzer::SemanticAnalyzer(syntax::AstModule&& module, base::DiagnosticSink& diagnostics) noexcept
-    : module_(std::move(module)), diagnostics_(diagnostics) {
+SemanticAnalyzer::SemanticAnalyzer(
+    syntax::AstModule&& module,
+    base::DiagnosticSink& diagnostics,
+    const SemanticOptions options
+) noexcept
+    : module_(std::move(module)), diagnostics_(diagnostics), options_(options) {
     this->module_.exprs.reserve(this->module_.exprs.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
     this->module_.types.reserve(this->module_.types.size() + base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
 }

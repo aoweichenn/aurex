@@ -121,14 +121,15 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
         ? this->parse_if_expr(context)
         : this->parse_block_expr(context);
 
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::if_expr;
-    expr.range = this->merge(begin.range, this->expr_range_or(else_expr, begin.range));
-    expr.condition = condition;
-    expr.condition_pattern = condition_pattern;
-    expr.then_expr = then_expr;
-    expr.else_expr = else_expr;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_if_expr(
+        this->merge(begin.range, this->expr_range_or(else_expr, begin.range)),
+        syntax::IfExprPayload {
+            condition,
+            condition_pattern,
+            then_expr,
+            else_expr,
+        }
+    );
 }
 
 syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
@@ -140,12 +141,10 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         RecoveryContext::block_start
     );
 
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::match_expr;
-    expr.match_value = value;
+    std::vector<syntax::MatchArm> arms;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
-        expr.match_arms.push_back(this->parse_match_arm(context, begin.range));
+        arms.push_back(this->parse_match_arm(context, begin.range));
         if (!this->recover_match_arm_separator()) {
             break;
         }
@@ -156,9 +155,14 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         std::string(PARSER_EXPECT_MATCH_END),
         RecoveryContext::match_arm
     );
-    expr.range = this->merge(begin.range, end.range);
     this->reset_panic();
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_match_expr(
+        this->merge(begin.range, end.range),
+        syntax::MatchExprPayload {
+            value,
+            std::move(arms),
+        }
+    );
 }
 
 syntax::MatchArm ExprParser::parse_match_arm(
@@ -305,15 +309,19 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
     syntax::ExprId expr = PostfixExprParser(this->parser_).parse_postfix(context);
     for (base::usize index = prefixes.size(); index > 0; --index) {
         const PrefixOperator& prefix = prefixes[index - 1];
-        syntax::ExprNode node;
-        node.kind = prefix.token_kind == TokenKind::plus_plus || prefix.token_kind == TokenKind::minus_minus
-            ? syntax::ExprKind::invalid
-            : syntax::ExprKind::unary;
-        node.range = this->merge(prefix.range, this->expr_range_or(expr, prefix.range));
-        node.text = prefix.text;
-        node.unary_op = prefix.unary_op;
-        node.unary_operand = expr;
-        expr = this->session_.module.push_expr(std::move(node));
+        const base::SourceRange range = this->merge(prefix.range, this->expr_range_or(expr, prefix.range));
+        if (prefix.token_kind == TokenKind::plus_plus || prefix.token_kind == TokenKind::minus_minus) {
+            expr = this->session_.module.push_invalid_expr(range);
+            continue;
+        }
+        expr = this->session_.module.push_unary_expr(
+            syntax::ExprKind::unary,
+            range,
+            syntax::UnaryExprPayload {
+                prefix.unary_op,
+                expr,
+            }
+        );
     }
     return expr;
 }
@@ -321,13 +329,14 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
 syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) {
     const base::SourceRange lhs_range = this->expr_range_or(lhs, this->expr_range_or(rhs, this->peek().range));
     const base::SourceRange rhs_range = this->expr_range_or(rhs, lhs_range);
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::binary;
-    expr.range = this->merge(lhs_range, rhs_range);
-    expr.binary_op = op;
-    expr.binary_lhs = lhs;
-    expr.binary_rhs = rhs;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_binary_expr(
+        this->merge(lhs_range, rhs_range),
+        syntax::BinaryExprPayload {
+            op,
+            lhs,
+            rhs,
+        }
+    );
 }
 
 } // namespace aurex::parse

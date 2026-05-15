@@ -108,37 +108,73 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
     const syntax::PostfixOp* next_op,
     const bool is_last
 ) {
-    syntax::ExprNode node;
-    node.range = merge_ranges(expr_range_or(this->module_, base, op.range), op.range);
+    const base::SourceRange range = merge_ranges(expr_range_or(this->module_, base, op.range), op.range);
     switch (op.kind) {
     case syntax::PostfixOpKind::bracket:
         return this->materialize_postfix_bracket_op(chain_expr, base, std::move(op), next_op, is_last);
-    case syntax::PostfixOpKind::select:
-        node.kind = op.name.empty() ? syntax::ExprKind::invalid : syntax::ExprKind::field;
-        node.object = base;
-        node.field_name = op.name;
-        break;
-    case syntax::PostfixOpKind::call:
-        node.kind = syntax::ExprKind::call;
-        node.callee = base;
-        node.args = std::move(op.args);
-        break;
-    case syntax::PostfixOpKind::try_:
-        node.kind = syntax::ExprKind::try_expr;
-        node.unary_operand = base;
-        break;
-    case syntax::PostfixOpKind::struct_literal:
-        node.kind = syntax::ExprKind::struct_literal;
-        node.object = base;
-        node.field_inits = std::move(op.field_inits);
-        break;
+    case syntax::PostfixOpKind::select: {
+        if (op.name.empty()) {
+            if (is_last) {
+                this->module_.set_invalid_expr(chain_expr.value, range);
+                return chain_expr;
+            }
+            const syntax::ExprId id = this->module_.push_invalid_expr(range);
+            this->ensure_expr_side_table_size(this->module_.exprs.size());
+            return id;
+        }
+        syntax::FieldExprPayload payload;
+        payload.object = base;
+        payload.field_name = op.name;
+        payload.field_name_id = op.name_id;
+        if (is_last) {
+            this->module_.set_field_expr(chain_expr.value, range, payload);
+            return chain_expr;
+        }
+        const syntax::ExprId id = this->module_.push_field_expr(range, payload);
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
     }
-
-    if (is_last) {
-        this->module_.set_expr(chain_expr.value, std::move(node));
-        return chain_expr;
+    case syntax::PostfixOpKind::call: {
+        syntax::CallExprPayload payload;
+        payload.callee = base;
+        payload.args = std::move(op.args);
+        if (is_last) {
+            this->module_.set_call_expr(chain_expr.value, syntax::ExprKind::call, range, std::move(payload));
+            return chain_expr;
+        }
+        const syntax::ExprId id =
+            this->module_.push_call_expr(syntax::ExprKind::call, range, std::move(payload));
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
     }
-    return this->push_synthetic_expr(std::move(node));
+    case syntax::PostfixOpKind::try_: {
+        const syntax::UnaryExprPayload payload {
+            syntax::UnaryOp::logical_not,
+            base,
+        };
+        if (is_last) {
+            this->module_.set_unary_expr(chain_expr.value, syntax::ExprKind::try_expr, range, payload);
+            return chain_expr;
+        }
+        const syntax::ExprId id =
+            this->module_.push_unary_expr(syntax::ExprKind::try_expr, range, payload);
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
+    }
+    case syntax::PostfixOpKind::struct_literal: {
+        syntax::StructLiteralExprPayload payload;
+        payload.object = base;
+        payload.field_inits = std::move(op.field_inits);
+        if (is_last) {
+            this->module_.set_struct_literal_expr(chain_expr.value, range, std::move(payload));
+            return chain_expr;
+        }
+        const syntax::ExprId id = this->module_.push_struct_literal_expr(range, std::move(payload));
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
+    }
+    }
+    return syntax::INVALID_EXPR_ID;
 }
 
 syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
@@ -148,33 +184,52 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
     const syntax::PostfixOp* next_op,
     const bool is_last
 ) {
-    syntax::ExprNode node;
-    node.range = merge_ranges(expr_range_or(this->module_, base, op.range), op.range);
-    node.object = base;
+    const base::SourceRange range = merge_ranges(expr_range_or(this->module_, base, op.range), op.range);
 
     if (op.bracket_is_slice) {
-        node.kind = syntax::ExprKind::slice;
-        node.slice_start = op.slice_start;
-        node.slice_end = op.slice_end;
+        const syntax::SliceExprPayload payload {
+            base,
+            op.slice_start,
+            op.slice_end,
+        };
+        if (is_last) {
+            this->module_.set_slice_expr(chain_expr.value, range, payload);
+            return chain_expr;
+        }
+        const syntax::ExprId id = this->module_.push_slice_expr(range, payload);
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
     } else if (this->postfix_bracket_is_generic_apply(base, op, next_op)) {
-        node.kind = syntax::ExprKind::generic_apply;
-        node.callee = base;
-        node.type_args = this->postfix_bracket_type_args(op);
+        syntax::GenericApplyExprPayload payload;
+        payload.callee = base;
+        payload.type_args = this->postfix_bracket_type_args(op);
+        if (is_last) {
+            this->module_.set_generic_apply_expr(chain_expr.value, range, std::move(payload));
+            return chain_expr;
+        }
+        const syntax::ExprId id = this->module_.push_generic_apply_expr(range, std::move(payload));
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
     } else {
-        node.kind = syntax::ExprKind::index;
+        syntax::ExprId index = syntax::INVALID_EXPR_ID;
         if (!op.bracket_args.empty()) {
-            node.index = op.bracket_args.front().expr;
+            index = op.bracket_args.front().expr;
         }
         if (op.bracket_args.size() > 1) {
             this->report(op.range, "index expression expects one argument");
         }
+        const syntax::IndexExprPayload payload {
+            base,
+            index,
+        };
+        if (is_last) {
+            this->module_.set_index_expr(chain_expr.value, range, payload);
+            return chain_expr;
+        }
+        const syntax::ExprId id = this->module_.push_index_expr(range, payload);
+        this->ensure_expr_side_table_size(this->module_.exprs.size());
+        return id;
     }
-
-    if (is_last) {
-        this->module_.set_expr(chain_expr.value, std::move(node));
-        return chain_expr;
-    }
-    return this->push_synthetic_expr(std::move(node));
 }
 
 bool SemanticAnalyzer::postfix_bracket_is_generic_apply(
@@ -397,12 +452,6 @@ syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId e
 
     this->report(this->module_.exprs.range(expr.value), "expected generic type argument");
     return syntax::INVALID_TYPE_ID;
-}
-
-syntax::ExprId SemanticAnalyzer::push_synthetic_expr(syntax::ExprNode node) {
-    const syntax::ExprId id = this->module_.push_expr(std::move(node));
-    this->ensure_expr_side_table_size(this->module_.exprs.size());
-    return id;
 }
 
 syntax::TypeId SemanticAnalyzer::push_synthetic_type(syntax::TypeNode node) {

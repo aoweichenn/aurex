@@ -87,17 +87,19 @@ AST 主路径也已按 P0-Perf-4 收口：driver 持有 parser/module AST 并把
 snapshot，sema 构造期不再对 `exprs/types` 做 `size+4096` reserve，postfix materialization 不再按值复制胖
 `ExprNode` / `TypeNode`。2026-05-15 的 compact AST 主线已继续落地：`TypeNode`、`ExprNode`、
 `PatternNode`、`StmtNode` 和 `ItemNode` 的主存储从胖节点 vector 改成 32B compact header +
-per-kind payload arena，module loader 合并模块时从 payload arena move 出节点后 remap，不再依赖
+per-kind payload arena，module loader 合并模块时按 compact payload remap/append，不再依赖
 fat-vector 地址或 `.data()` 指针反推 ID；sema 的 item owner 查询也改为显式 `ItemId`，不再靠
 `items.data()` 地址反推。2026-05-16 继续把 sema、IR lowering 和 AST dump 的 `ExprNode` 热路径迁到 compact
 view / payload 直读，移除 `ExprNode` 兼容 wrapper 和 literal 分析里的胖节点重建；同日继续落地
 global bump allocator + syntax 层 `IdentifierInterner`，AST 的 type/expr/pattern/stmt/item/module/import
 名字字段携带原生 `IdentId`，parser、module loader、postfix materialization 和 sema 入口都会把节点/metadata
-重新收口到当前 `AstModule` 的 identifier arena，sema typed lookup key 不再维护第二套私有 interner。当前
+重新收口到当前 `AstModule` 的 identifier arena，sema typed lookup key 不再维护第二套私有 interner。2026-05-16
+性能线随后删除旧胖 `ExprNode` 生产类型，parser 创建、`AstModule` 存储、module loader append 和 postfix
+materialization 都直接写 compact expression header + per-kind payload。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
-从约 575 MiB RSS / 135 ms 收敛到约 180 MiB RSS / 112 ms；Google Benchmark `sema_ast_bulk/1024`
-约 174 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 8.4 ms、
-generics/96 约 9.1 ms，Clang++ 分别约 20.6 ms / 22.4 ms，G++ 分别约 25.8 ms / 24.4 ms。
+从约 575 MiB RSS / 135 ms 收敛到约 180.1 MiB RSS / 70.9 ms；Google Benchmark `sema_ast_bulk/1024`
+约 117 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 8.1 ms、
+generics/96 约 8.6 ms，Clang++ 分别约 20.1 ms / 22.9 ms，G++ 分别约 22.4 ms / 23.1 ms。
 跨模块 stable hash / 并行全局 ID 和 CI perf 阈值仍是后续性能任务。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。

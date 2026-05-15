@@ -270,49 +270,6 @@ struct MatchArm {
     base::SourceRange range {};
 };
 
-struct ExprNode {
-    ExprKind kind = ExprKind::invalid;
-    base::SourceRange range {};
-    std::string_view scope_name;
-    base::SourceRange scope_range {};
-    std::string_view text;
-    IdentId scope_name_id = INVALID_IDENT_ID;
-    IdentId text_id = INVALID_IDENT_ID;
-    UnaryOp unary_op = UnaryOp::logical_not;
-    ExprId unary_operand = INVALID_EXPR_ID;
-    BinaryOp binary_op = BinaryOp::add;
-    ExprId binary_lhs = INVALID_EXPR_ID;
-    ExprId binary_rhs = INVALID_EXPR_ID;
-    ExprId callee = INVALID_EXPR_ID;
-    std::vector<ExprId> args;
-    ExprId condition = INVALID_EXPR_ID;
-    PatternId condition_pattern = INVALID_PATTERN_ID;
-    ExprId then_expr = INVALID_EXPR_ID;
-    ExprId else_expr = INVALID_EXPR_ID;
-    StmtId block = INVALID_STMT_ID;
-    ExprId block_result = INVALID_EXPR_ID;
-    ExprId match_value = INVALID_EXPR_ID;
-    std::vector<MatchArm> match_arms;
-    std::vector<ExprId> array_elements;
-    std::vector<ExprId> tuple_elements;
-    ExprId array_repeat_value = INVALID_EXPR_ID;
-    ExprId array_repeat_count = INVALID_EXPR_ID;
-    ExprId postfix_base = INVALID_EXPR_ID;
-    std::vector<PostfixOp> postfix_ops;
-    ExprId object = INVALID_EXPR_ID;
-    std::string_view field_name;
-    IdentId field_name_id = INVALID_IDENT_ID;
-    ExprId index = INVALID_EXPR_ID;
-    ExprId slice_start = INVALID_EXPR_ID;
-    ExprId slice_end = INVALID_EXPR_ID;
-    std::string_view struct_name;
-    IdentId struct_name_id = INVALID_IDENT_ID;
-    std::vector<TypeId> type_args;
-    std::vector<FieldInit> field_inits;
-    TypeId cast_type = INVALID_TYPE_ID;
-    ExprId cast_expr = INVALID_EXPR_ID;
-};
-
 struct TypeNodeHeader {
     base::SourceRange range {};
     base::u32 payload = UINT32_MAX;
@@ -752,7 +709,21 @@ public:
         return &this->payloads_.names[this->headers_[index].payload];
     }
 
+    [[nodiscard]] NameExprPayload* name_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::name) {
+            return nullptr;
+        }
+        return &this->payloads_.names[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const GenericApplyExprPayload* generic_apply_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::generic_apply) {
+            return nullptr;
+        }
+        return &this->payloads_.generic_applies[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] GenericApplyExprPayload* generic_apply_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::generic_apply) {
             return nullptr;
         }
@@ -767,7 +738,22 @@ public:
         return &this->payloads_.unaries[this->headers_[index].payload];
     }
 
+    [[nodiscard]] UnaryExprPayload* unary_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) ||
+            (this->headers_[index].kind != ExprKind::unary && this->headers_[index].kind != ExprKind::try_expr)) {
+            return nullptr;
+        }
+        return &this->payloads_.unaries[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const BinaryExprPayload* binary_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::binary) {
+            return nullptr;
+        }
+        return &this->payloads_.binaries[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] BinaryExprPayload* binary_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::binary) {
             return nullptr;
         }
@@ -783,7 +769,23 @@ public:
         return &this->payloads_.calls[this->headers_[index].payload];
     }
 
+    [[nodiscard]] CallExprPayload* call_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) ||
+            (this->headers_[index].kind != ExprKind::call &&
+             this->headers_[index].kind != ExprKind::str_from_bytes_unchecked)) {
+            return nullptr;
+        }
+        return &this->payloads_.calls[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const IfExprPayload* if_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::if_expr) {
+            return nullptr;
+        }
+        return &this->payloads_.ifs[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] IfExprPayload* if_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::if_expr) {
             return nullptr;
         }
@@ -799,7 +801,23 @@ public:
         return &this->payloads_.blocks[this->headers_[index].payload];
     }
 
+    [[nodiscard]] BlockExprPayload* block_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) ||
+            (this->headers_[index].kind != ExprKind::block_expr &&
+             this->headers_[index].kind != ExprKind::unsafe_block)) {
+            return nullptr;
+        }
+        return &this->payloads_.blocks[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const MatchExprPayload* match_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::match_expr) {
+            return nullptr;
+        }
+        return &this->payloads_.matches[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] MatchExprPayload* match_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::match_expr) {
             return nullptr;
         }
@@ -813,6 +831,13 @@ public:
         return &this->payloads_.arrays[this->headers_[index].payload];
     }
 
+    [[nodiscard]] ArrayExprPayload* array_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::array_literal) {
+            return nullptr;
+        }
+        return &this->payloads_.arrays[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const std::vector<ExprId>* tuple_elements(const base::usize index) const noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::tuple_literal) {
             return nullptr;
@@ -820,7 +845,21 @@ public:
         return &this->payloads_.tuples[this->headers_[index].payload];
     }
 
+    [[nodiscard]] std::vector<ExprId>* tuple_elements(const base::usize index) noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::tuple_literal) {
+            return nullptr;
+        }
+        return &this->payloads_.tuples[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const PostfixChainExprPayload* postfix_chain_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
+            return nullptr;
+        }
+        return &this->payloads_.postfix_chains[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] PostfixChainExprPayload* postfix_chain_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
             return nullptr;
         }
@@ -841,7 +880,21 @@ public:
         return &this->payloads_.fields[this->headers_[index].payload];
     }
 
+    [[nodiscard]] FieldExprPayload* field_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::field) {
+            return nullptr;
+        }
+        return &this->payloads_.fields[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const IndexExprPayload* index_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::index) {
+            return nullptr;
+        }
+        return &this->payloads_.indexes[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] IndexExprPayload* index_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::index) {
             return nullptr;
         }
@@ -855,7 +908,21 @@ public:
         return &this->payloads_.slices[this->headers_[index].payload];
     }
 
+    [[nodiscard]] SliceExprPayload* slice_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::slice) {
+            return nullptr;
+        }
+        return &this->payloads_.slices[this->headers_[index].payload];
+    }
+
     [[nodiscard]] const StructLiteralExprPayload* struct_literal_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::struct_literal) {
+            return nullptr;
+        }
+        return &this->payloads_.struct_literals[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] StructLiteralExprPayload* struct_literal_payload(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::struct_literal) {
             return nullptr;
         }
@@ -869,30 +936,161 @@ public:
         return &this->payloads_.casts[this->headers_[index].payload];
     }
 
+    [[nodiscard]] CastExprPayload* cast_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) || !this->is_cast_like(this->headers_[index].kind)) {
+            return nullptr;
+        }
+        return &this->payloads_.casts[this->headers_[index].payload];
+    }
+
     void reserve(const base::usize size) {
         this->headers_.reserve(size);
     }
 
-    void push_back(ExprNode node) {
-        static_cast<void>(this->append(std::move(node)));
+    [[nodiscard]] ExprId append_invalid(const base::SourceRange range) {
+        return this->append_header(ExprKind::invalid, range, UINT32_MAX);
     }
 
-    [[nodiscard]] ExprId append(ExprNode node) {
-        const ExprId id {static_cast<base::u32>(this->headers_.size())};
-        ExprNodeHeader header;
-        header.kind = node.kind;
-        header.range = node.range;
-        header.payload = this->store_payload(std::move(node));
-        this->headers_.push_back(header);
-        return id;
+    [[nodiscard]] ExprId append_literal(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const std::string_view text
+    ) {
+        return this->append_header(kind, range, this->push_payload(this->payloads_.literals, LiteralExprPayload {text}));
     }
 
-    void set(const base::usize index, ExprNode node) {
-        ExprNodeHeader header;
-        header.kind = node.kind;
-        header.range = node.range;
-        header.payload = this->store_payload(std::move(node));
-        this->headers_[index] = header;
+    [[nodiscard]] ExprId append_name(const base::SourceRange range, NameExprPayload payload) {
+        return this->append_header(ExprKind::name, range, this->push_payload(this->payloads_.names, std::move(payload)));
+    }
+
+    [[nodiscard]] ExprId append_generic_apply(const base::SourceRange range, GenericApplyExprPayload payload) {
+        return this->append_header(
+            ExprKind::generic_apply,
+            range,
+            this->push_payload(this->payloads_.generic_applies, std::move(payload))
+        );
+    }
+
+    [[nodiscard]] ExprId append_unary(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryExprPayload payload
+    ) {
+        return this->append_header(kind, range, this->push_payload(this->payloads_.unaries, payload));
+    }
+
+    [[nodiscard]] ExprId append_binary(const base::SourceRange range, const BinaryExprPayload payload) {
+        return this->append_header(ExprKind::binary, range, this->push_payload(this->payloads_.binaries, payload));
+    }
+
+    [[nodiscard]] ExprId append_call(
+        const ExprKind kind,
+        const base::SourceRange range,
+        CallExprPayload payload
+    ) {
+        return this->append_header(kind, range, this->push_payload(this->payloads_.calls, std::move(payload)));
+    }
+
+    [[nodiscard]] ExprId append_if(const base::SourceRange range, const IfExprPayload payload) {
+        return this->append_header(ExprKind::if_expr, range, this->push_payload(this->payloads_.ifs, payload));
+    }
+
+    [[nodiscard]] ExprId append_block(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const BlockExprPayload payload
+    ) {
+        return this->append_header(kind, range, this->push_payload(this->payloads_.blocks, payload));
+    }
+
+    [[nodiscard]] ExprId append_match(const base::SourceRange range, MatchExprPayload payload) {
+        return this->append_header(ExprKind::match_expr, range, this->push_payload(this->payloads_.matches, std::move(payload)));
+    }
+
+    [[nodiscard]] ExprId append_array(const base::SourceRange range, ArrayExprPayload payload) {
+        return this->append_header(ExprKind::array_literal, range, this->push_payload(this->payloads_.arrays, std::move(payload)));
+    }
+
+    [[nodiscard]] ExprId append_tuple(const base::SourceRange range, std::vector<ExprId> elements) {
+        return this->append_header(ExprKind::tuple_literal, range, this->push_payload(this->payloads_.tuples, std::move(elements)));
+    }
+
+    [[nodiscard]] ExprId append_postfix_chain(const base::SourceRange range, PostfixChainExprPayload payload) {
+        return this->append_header(
+            ExprKind::postfix_chain,
+            range,
+            this->push_payload(this->payloads_.postfix_chains, std::move(payload))
+        );
+    }
+
+    [[nodiscard]] ExprId append_field(const base::SourceRange range, const FieldExprPayload payload) {
+        return this->append_header(ExprKind::field, range, this->push_payload(this->payloads_.fields, payload));
+    }
+
+    [[nodiscard]] ExprId append_index(const base::SourceRange range, const IndexExprPayload payload) {
+        return this->append_header(ExprKind::index, range, this->push_payload(this->payloads_.indexes, payload));
+    }
+
+    [[nodiscard]] ExprId append_slice(const base::SourceRange range, const SliceExprPayload payload) {
+        return this->append_header(ExprKind::slice, range, this->push_payload(this->payloads_.slices, payload));
+    }
+
+    [[nodiscard]] ExprId append_struct_literal(const base::SourceRange range, StructLiteralExprPayload payload) {
+        return this->append_header(
+            ExprKind::struct_literal,
+            range,
+            this->push_payload(this->payloads_.struct_literals, std::move(payload))
+        );
+    }
+
+    [[nodiscard]] ExprId append_cast_like(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const CastExprPayload payload
+    ) {
+        return this->append_header(kind, range, this->push_payload(this->payloads_.casts, payload));
+    }
+
+    void set_invalid(const base::usize index, const base::SourceRange range) {
+        this->set_header(index, ExprKind::invalid, range, UINT32_MAX);
+    }
+
+    void set_generic_apply(const base::usize index, const base::SourceRange range, GenericApplyExprPayload payload) {
+        this->set_header(
+            index,
+            ExprKind::generic_apply,
+            range,
+            this->push_payload(this->payloads_.generic_applies, std::move(payload))
+        );
+    }
+
+    void set_unary(const base::usize index, const ExprKind kind, const base::SourceRange range, const UnaryExprPayload payload) {
+        this->set_header(index, kind, range, this->push_payload(this->payloads_.unaries, payload));
+    }
+
+    void set_call(const base::usize index, const ExprKind kind, const base::SourceRange range, CallExprPayload payload) {
+        this->set_header(index, kind, range, this->push_payload(this->payloads_.calls, std::move(payload)));
+    }
+
+    void set_field(const base::usize index, const base::SourceRange range, const FieldExprPayload payload) {
+        this->set_header(index, ExprKind::field, range, this->push_payload(this->payloads_.fields, payload));
+    }
+
+    void set_index(const base::usize index, const base::SourceRange range, const IndexExprPayload payload) {
+        this->set_header(index, ExprKind::index, range, this->push_payload(this->payloads_.indexes, payload));
+    }
+
+    void set_slice(const base::usize index, const base::SourceRange range, const SliceExprPayload payload) {
+        this->set_header(index, ExprKind::slice, range, this->push_payload(this->payloads_.slices, payload));
+    }
+
+    void set_struct_literal(const base::usize index, const base::SourceRange range, StructLiteralExprPayload payload) {
+        this->set_header(
+            index,
+            ExprKind::struct_literal,
+            range,
+            this->push_payload(this->payloads_.struct_literals, std::move(payload))
+        );
     }
 
     [[nodiscard]] bool retag_block_expr(
@@ -911,15 +1109,26 @@ public:
         return true;
     }
 
-    [[nodiscard]] ExprNode take(const base::usize index) {
-        return this->load_moved(index);
-    }
-
-    [[nodiscard]] ExprNode operator[](const base::usize index) const {
-        return this->load(index);
-    }
-
 private:
+    [[nodiscard]] ExprId append_header(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const base::u32 payload
+    ) {
+        const ExprId id {static_cast<base::u32>(this->headers_.size())};
+        this->headers_.push_back(ExprNodeHeader {range, payload, kind});
+        return id;
+    }
+
+    void set_header(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range,
+        const base::u32 payload
+    ) {
+        this->headers_[index] = ExprNodeHeader {range, payload, kind};
+    }
+
     [[nodiscard]] bool payload_available(const base::usize index) const noexcept {
         return index < this->headers_.size() && this->headers_[index].payload != UINT32_MAX;
     }
@@ -963,388 +1172,6 @@ private:
 
     [[nodiscard]] bool is_block_payload_kind(const ExprKind kind) const noexcept {
         return kind == ExprKind::block_expr || kind == ExprKind::unsafe_block;
-    }
-
-    [[nodiscard]] base::u32 store_payload(ExprNode node) {
-        if (this->is_literal(node.kind)) {
-            return this->push_payload(this->payloads_.literals, LiteralExprPayload {node.text});
-        }
-        if (this->is_cast_like(node.kind)) {
-            return this->push_payload(this->payloads_.casts, CastExprPayload {node.cast_type, node.cast_expr});
-        }
-        switch (node.kind) {
-        case ExprKind::name:
-            return this->push_payload(this->payloads_.names, NameExprPayload {
-                node.scope_name,
-                node.scope_range,
-                node.text,
-                node.scope_name_id,
-                node.text_id,
-                std::move(node.type_args),
-            });
-        case ExprKind::generic_apply:
-            return this->push_payload(this->payloads_.generic_applies, GenericApplyExprPayload {
-                node.callee,
-                std::move(node.type_args),
-            });
-        case ExprKind::unary:
-        case ExprKind::try_expr:
-            return this->push_payload(this->payloads_.unaries, UnaryExprPayload {
-                node.unary_op,
-                node.unary_operand,
-            });
-        case ExprKind::binary:
-            return this->push_payload(this->payloads_.binaries, BinaryExprPayload {
-                node.binary_op,
-                node.binary_lhs,
-                node.binary_rhs,
-            });
-        case ExprKind::call:
-        case ExprKind::str_from_bytes_unchecked:
-            return this->push_payload(this->payloads_.calls, CallExprPayload {
-                node.callee,
-                std::move(node.args),
-            });
-        case ExprKind::if_expr:
-            return this->push_payload(this->payloads_.ifs, IfExprPayload {
-                node.condition,
-                node.condition_pattern,
-                node.then_expr,
-                node.else_expr,
-            });
-        case ExprKind::block_expr:
-        case ExprKind::unsafe_block:
-            return this->push_payload(this->payloads_.blocks, BlockExprPayload {
-                node.block,
-                node.block_result,
-            });
-        case ExprKind::match_expr:
-            return this->push_payload(this->payloads_.matches, MatchExprPayload {
-                node.match_value,
-                std::move(node.match_arms),
-            });
-        case ExprKind::array_literal:
-            return this->push_payload(this->payloads_.arrays, ArrayExprPayload {
-                std::move(node.array_elements),
-                node.array_repeat_value,
-                node.array_repeat_count,
-            });
-        case ExprKind::tuple_literal:
-            return this->push_payload(this->payloads_.tuples, std::move(node.tuple_elements));
-        case ExprKind::postfix_chain:
-            return this->push_payload(this->payloads_.postfix_chains, PostfixChainExprPayload {
-                node.postfix_base,
-                std::move(node.postfix_ops),
-            });
-        case ExprKind::field:
-            return this->push_payload(this->payloads_.fields, FieldExprPayload {
-                node.object,
-                node.field_name,
-                node.field_name_id,
-            });
-        case ExprKind::index:
-            return this->push_payload(this->payloads_.indexes, IndexExprPayload {
-                node.object,
-                node.index,
-            });
-        case ExprKind::slice:
-            return this->push_payload(this->payloads_.slices, SliceExprPayload {
-                node.object,
-                node.slice_start,
-                node.slice_end,
-            });
-        case ExprKind::struct_literal:
-            return this->push_payload(this->payloads_.struct_literals, StructLiteralExprPayload {
-                node.object,
-                node.scope_name,
-                node.scope_range,
-                node.struct_name,
-                node.scope_name_id,
-                node.struct_name_id,
-                std::move(node.type_args),
-                std::move(node.field_inits),
-            });
-        case ExprKind::invalid:
-        case ExprKind::bool_literal:
-        case ExprKind::null_literal:
-        case ExprKind::integer_literal:
-        case ExprKind::float_literal:
-        case ExprKind::string_literal:
-        case ExprKind::c_string_literal:
-        case ExprKind::raw_string_literal:
-        case ExprKind::byte_string_literal:
-        case ExprKind::byte_literal:
-        case ExprKind::char_literal:
-        case ExprKind::cast:
-        case ExprKind::pcast:
-        case ExprKind::bcast:
-        case ExprKind::size_of:
-        case ExprKind::align_of:
-        case ExprKind::ptr_addr:
-        case ExprKind::paddr:
-        case ExprKind::str_data:
-        case ExprKind::str_byte_len:
-        case ExprKind::str_is_valid_utf8:
-        case ExprKind::str_from_utf8_checked:
-            break;
-        }
-        return UINT32_MAX;
-    }
-
-    [[nodiscard]] ExprNode load(const base::usize index) const {
-        const ExprNodeHeader& header = this->headers_[index];
-        ExprNode node;
-        node.kind = header.kind;
-        node.range = header.range;
-        if (this->is_literal(header.kind)) {
-            node.text = this->payloads_.literals[header.payload].text;
-            return node;
-        }
-        if (this->is_cast_like(header.kind)) {
-            const CastExprPayload& payload = this->payloads_.casts[header.payload];
-            node.cast_type = payload.type;
-            node.cast_expr = payload.expr;
-            return node;
-        }
-        switch (header.kind) {
-        case ExprKind::name: {
-            const NameExprPayload& payload = this->payloads_.names[header.payload];
-            node.scope_name = payload.scope_name;
-            node.scope_range = payload.scope_range;
-            node.text = payload.text;
-            node.scope_name_id = payload.scope_name_id;
-            node.text_id = payload.text_id;
-            node.type_args = payload.type_args;
-            break;
-        }
-        case ExprKind::generic_apply: {
-            const GenericApplyExprPayload& payload = this->payloads_.generic_applies[header.payload];
-            node.callee = payload.callee;
-            node.type_args = payload.type_args;
-            break;
-        }
-        case ExprKind::unary:
-        case ExprKind::try_expr: {
-            const UnaryExprPayload& payload = this->payloads_.unaries[header.payload];
-            node.unary_op = payload.op;
-            node.unary_operand = payload.operand;
-            break;
-        }
-        case ExprKind::binary: {
-            const BinaryExprPayload& payload = this->payloads_.binaries[header.payload];
-            node.binary_op = payload.op;
-            node.binary_lhs = payload.lhs;
-            node.binary_rhs = payload.rhs;
-            break;
-        }
-        case ExprKind::call:
-        case ExprKind::str_from_bytes_unchecked: {
-            const CallExprPayload& payload = this->payloads_.calls[header.payload];
-            node.callee = payload.callee;
-            node.args = payload.args;
-            break;
-        }
-        case ExprKind::if_expr: {
-            const IfExprPayload& payload = this->payloads_.ifs[header.payload];
-            node.condition = payload.condition;
-            node.condition_pattern = payload.condition_pattern;
-            node.then_expr = payload.then_expr;
-            node.else_expr = payload.else_expr;
-            break;
-        }
-        case ExprKind::block_expr:
-        case ExprKind::unsafe_block: {
-            const BlockExprPayload& payload = this->payloads_.blocks[header.payload];
-            node.block = payload.block;
-            node.block_result = payload.result;
-            break;
-        }
-        case ExprKind::match_expr: {
-            const MatchExprPayload& payload = this->payloads_.matches[header.payload];
-            node.match_value = payload.value;
-            node.match_arms = payload.arms;
-            break;
-        }
-        case ExprKind::array_literal: {
-            const ArrayExprPayload& payload = this->payloads_.arrays[header.payload];
-            node.array_elements = payload.elements;
-            node.array_repeat_value = payload.repeat_value;
-            node.array_repeat_count = payload.repeat_count;
-            break;
-        }
-        case ExprKind::tuple_literal:
-            node.tuple_elements = this->payloads_.tuples[header.payload];
-            break;
-        case ExprKind::postfix_chain: {
-            const PostfixChainExprPayload& payload = this->payloads_.postfix_chains[header.payload];
-            node.postfix_base = payload.base;
-            node.postfix_ops = payload.ops;
-            break;
-        }
-        case ExprKind::field: {
-            const FieldExprPayload& payload = this->payloads_.fields[header.payload];
-            node.object = payload.object;
-            node.field_name = payload.field_name;
-            node.field_name_id = payload.field_name_id;
-            break;
-        }
-        case ExprKind::index: {
-            const IndexExprPayload& payload = this->payloads_.indexes[header.payload];
-            node.object = payload.object;
-            node.index = payload.index;
-            break;
-        }
-        case ExprKind::slice: {
-            const SliceExprPayload& payload = this->payloads_.slices[header.payload];
-            node.object = payload.object;
-            node.slice_start = payload.start;
-            node.slice_end = payload.end;
-            break;
-        }
-        case ExprKind::struct_literal: {
-            const StructLiteralExprPayload& payload = this->payloads_.struct_literals[header.payload];
-            node.object = payload.object;
-            node.scope_name = payload.scope_name;
-            node.scope_range = payload.scope_range;
-            node.struct_name = payload.name;
-            node.scope_name_id = payload.scope_name_id;
-            node.struct_name_id = payload.name_id;
-            node.type_args = payload.type_args;
-            node.field_inits = payload.field_inits;
-            break;
-        }
-        default:
-            break;
-        }
-        return node;
-    }
-
-    [[nodiscard]] ExprNode load_moved(const base::usize index) {
-        const ExprNodeHeader& header = this->headers_[index];
-        ExprNode node;
-        node.kind = header.kind;
-        node.range = header.range;
-        if (this->is_literal(header.kind)) {
-            node.text = this->payloads_.literals[header.payload].text;
-            return node;
-        }
-        if (this->is_cast_like(header.kind)) {
-            const CastExprPayload& payload = this->payloads_.casts[header.payload];
-            node.cast_type = payload.type;
-            node.cast_expr = payload.expr;
-            return node;
-        }
-        switch (header.kind) {
-        case ExprKind::name: {
-            NameExprPayload& payload = this->payloads_.names[header.payload];
-            node.scope_name = payload.scope_name;
-            node.scope_range = payload.scope_range;
-            node.text = payload.text;
-            node.scope_name_id = payload.scope_name_id;
-            node.text_id = payload.text_id;
-            node.type_args = std::move(payload.type_args);
-            break;
-        }
-        case ExprKind::generic_apply: {
-            GenericApplyExprPayload& payload = this->payloads_.generic_applies[header.payload];
-            node.callee = payload.callee;
-            node.type_args = std::move(payload.type_args);
-            break;
-        }
-        case ExprKind::unary:
-        case ExprKind::try_expr: {
-            const UnaryExprPayload& payload = this->payloads_.unaries[header.payload];
-            node.unary_op = payload.op;
-            node.unary_operand = payload.operand;
-            break;
-        }
-        case ExprKind::binary: {
-            const BinaryExprPayload& payload = this->payloads_.binaries[header.payload];
-            node.binary_op = payload.op;
-            node.binary_lhs = payload.lhs;
-            node.binary_rhs = payload.rhs;
-            break;
-        }
-        case ExprKind::call:
-        case ExprKind::str_from_bytes_unchecked: {
-            CallExprPayload& payload = this->payloads_.calls[header.payload];
-            node.callee = payload.callee;
-            node.args = std::move(payload.args);
-            break;
-        }
-        case ExprKind::if_expr: {
-            const IfExprPayload& payload = this->payloads_.ifs[header.payload];
-            node.condition = payload.condition;
-            node.condition_pattern = payload.condition_pattern;
-            node.then_expr = payload.then_expr;
-            node.else_expr = payload.else_expr;
-            break;
-        }
-        case ExprKind::block_expr:
-        case ExprKind::unsafe_block: {
-            const BlockExprPayload& payload = this->payloads_.blocks[header.payload];
-            node.block = payload.block;
-            node.block_result = payload.result;
-            break;
-        }
-        case ExprKind::match_expr: {
-            MatchExprPayload& payload = this->payloads_.matches[header.payload];
-            node.match_value = payload.value;
-            node.match_arms = std::move(payload.arms);
-            break;
-        }
-        case ExprKind::array_literal: {
-            ArrayExprPayload& payload = this->payloads_.arrays[header.payload];
-            node.array_elements = std::move(payload.elements);
-            node.array_repeat_value = payload.repeat_value;
-            node.array_repeat_count = payload.repeat_count;
-            break;
-        }
-        case ExprKind::tuple_literal:
-            node.tuple_elements = std::move(this->payloads_.tuples[header.payload]);
-            break;
-        case ExprKind::postfix_chain: {
-            PostfixChainExprPayload& payload = this->payloads_.postfix_chains[header.payload];
-            node.postfix_base = payload.base;
-            node.postfix_ops = std::move(payload.ops);
-            break;
-        }
-        case ExprKind::field: {
-            const FieldExprPayload& payload = this->payloads_.fields[header.payload];
-            node.object = payload.object;
-            node.field_name = payload.field_name;
-            node.field_name_id = payload.field_name_id;
-            break;
-        }
-        case ExprKind::index: {
-            const IndexExprPayload& payload = this->payloads_.indexes[header.payload];
-            node.object = payload.object;
-            node.index = payload.index;
-            break;
-        }
-        case ExprKind::slice: {
-            const SliceExprPayload& payload = this->payloads_.slices[header.payload];
-            node.object = payload.object;
-            node.slice_start = payload.start;
-            node.slice_end = payload.end;
-            break;
-        }
-        case ExprKind::struct_literal: {
-            StructLiteralExprPayload& payload = this->payloads_.struct_literals[header.payload];
-            node.object = payload.object;
-            node.scope_name = payload.scope_name;
-            node.scope_range = payload.scope_range;
-            node.struct_name = payload.name;
-            node.scope_name_id = payload.scope_name_id;
-            node.struct_name_id = payload.name_id;
-            node.type_args = std::move(payload.type_args);
-            node.field_inits = std::move(payload.field_inits);
-            break;
-        }
-        default:
-            break;
-        }
-        return node;
     }
 
     template <typename T>
@@ -2713,9 +2540,100 @@ struct AstModule {
         return this->types.append(std::move(node));
     }
 
-    [[nodiscard]] ExprId push_expr(ExprNode node) {
-        this->intern_expr_node(node);
-        return this->exprs.append(std::move(node));
+    [[nodiscard]] ExprId push_invalid_expr(const base::SourceRange range) {
+        return this->exprs.append_invalid(range);
+    }
+
+    [[nodiscard]] ExprId push_literal_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const std::string_view text
+    ) {
+        return this->exprs.append_literal(kind, range, text);
+    }
+
+    [[nodiscard]] ExprId push_name_expr(const base::SourceRange range, NameExprPayload payload) {
+        this->intern_name_expr_payload(payload);
+        return this->exprs.append_name(range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_generic_apply_expr(const base::SourceRange range, GenericApplyExprPayload payload) {
+        return this->exprs.append_generic_apply(range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_unary_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryExprPayload payload
+    ) {
+        return this->exprs.append_unary(kind, range, payload);
+    }
+
+    [[nodiscard]] ExprId push_binary_expr(const base::SourceRange range, const BinaryExprPayload payload) {
+        return this->exprs.append_binary(range, payload);
+    }
+
+    [[nodiscard]] ExprId push_call_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        CallExprPayload payload
+    ) {
+        return this->exprs.append_call(kind, range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_if_expr(const base::SourceRange range, const IfExprPayload payload) {
+        return this->exprs.append_if(range, payload);
+    }
+
+    [[nodiscard]] ExprId push_block_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const BlockExprPayload payload
+    ) {
+        return this->exprs.append_block(kind, range, payload);
+    }
+
+    [[nodiscard]] ExprId push_match_expr(const base::SourceRange range, MatchExprPayload payload) {
+        return this->exprs.append_match(range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_array_expr(const base::SourceRange range, ArrayExprPayload payload) {
+        return this->exprs.append_array(range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_tuple_expr(const base::SourceRange range, std::vector<ExprId> elements) {
+        return this->exprs.append_tuple(range, std::move(elements));
+    }
+
+    [[nodiscard]] ExprId push_postfix_chain_expr(const base::SourceRange range, PostfixChainExprPayload payload) {
+        this->intern_postfix_ops(payload.ops);
+        return this->exprs.append_postfix_chain(range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_field_expr(const base::SourceRange range, FieldExprPayload payload) {
+        this->intern_identifier_text(payload.field_name, payload.field_name_id);
+        return this->exprs.append_field(range, payload);
+    }
+
+    [[nodiscard]] ExprId push_index_expr(const base::SourceRange range, const IndexExprPayload payload) {
+        return this->exprs.append_index(range, payload);
+    }
+
+    [[nodiscard]] ExprId push_slice_expr(const base::SourceRange range, const SliceExprPayload payload) {
+        return this->exprs.append_slice(range, payload);
+    }
+
+    [[nodiscard]] ExprId push_struct_literal_expr(const base::SourceRange range, StructLiteralExprPayload payload) {
+        this->intern_struct_literal_payload(payload);
+        return this->exprs.append_struct_literal(range, std::move(payload));
+    }
+
+    [[nodiscard]] ExprId push_cast_like_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const CastExprPayload payload
+    ) {
+        return this->exprs.append_cast_like(kind, range, payload);
     }
 
     [[nodiscard]] PatternId push_pattern(PatternNode node) {
@@ -2739,9 +2657,43 @@ struct AstModule {
         return id;
     }
 
-    void set_expr(const base::usize index, ExprNode node) {
-        this->intern_expr_node(node);
-        this->exprs.set(index, std::move(node));
+    void set_invalid_expr(const base::usize index, const base::SourceRange range) {
+        this->exprs.set_invalid(index, range);
+    }
+
+    void set_generic_apply_expr(const base::usize index, const base::SourceRange range, GenericApplyExprPayload payload) {
+        this->exprs.set_generic_apply(index, range, std::move(payload));
+    }
+
+    void set_unary_expr(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryExprPayload payload
+    ) {
+        this->exprs.set_unary(index, kind, range, payload);
+    }
+
+    void set_call_expr(const base::usize index, const ExprKind kind, const base::SourceRange range, CallExprPayload payload) {
+        this->exprs.set_call(index, kind, range, std::move(payload));
+    }
+
+    void set_field_expr(const base::usize index, const base::SourceRange range, FieldExprPayload payload) {
+        this->intern_identifier_text(payload.field_name, payload.field_name_id);
+        this->exprs.set_field(index, range, payload);
+    }
+
+    void set_index_expr(const base::usize index, const base::SourceRange range, const IndexExprPayload payload) {
+        this->exprs.set_index(index, range, payload);
+    }
+
+    void set_slice_expr(const base::usize index, const base::SourceRange range, const SliceExprPayload payload) {
+        this->exprs.set_slice(index, range, payload);
+    }
+
+    void set_struct_literal_expr(const base::usize index, const base::SourceRange range, StructLiteralExprPayload payload) {
+        this->intern_struct_literal_payload(payload);
+        this->exprs.set_struct_literal(index, range, std::move(payload));
     }
 
     void set_item(const base::usize index, ItemNode node) {
@@ -2778,9 +2730,7 @@ struct AstModule {
             this->types.set(i, std::move(node));
         }
         for (base::usize i = 0; i < this->exprs.size(); ++i) {
-            ExprNode node = this->exprs.take(i);
-            this->intern_expr_node(node);
-            this->exprs.set(i, std::move(node));
+            this->intern_expr_payload(i);
         }
         for (base::usize i = 0; i < this->patterns.size(); ++i) {
             PatternNode node = this->patterns.take(i);
@@ -2858,15 +2808,42 @@ private:
         }
     }
 
-    void intern_expr_node(ExprNode& node) {
-        this->intern_identifier_text(node.scope_name, node.scope_name_id);
-        if (node.kind == ExprKind::name) {
-            this->intern_identifier_text(node.text, node.text_id);
+    void intern_name_expr_payload(NameExprPayload& payload) {
+        this->intern_identifier_text(payload.scope_name, payload.scope_name_id);
+        this->intern_identifier_text(payload.text, payload.text_id);
+    }
+
+    void intern_struct_literal_payload(StructLiteralExprPayload& payload) {
+        this->intern_identifier_text(payload.scope_name, payload.scope_name_id);
+        this->intern_identifier_text(payload.name, payload.name_id);
+        this->intern_field_inits(payload.field_inits);
+    }
+
+    void intern_expr_payload(const base::usize index) {
+        switch (this->exprs.kind(index)) {
+        case ExprKind::name:
+            if (NameExprPayload* const payload = this->exprs.name_payload(index); payload != nullptr) {
+                this->intern_name_expr_payload(*payload);
+            }
+            break;
+        case ExprKind::postfix_chain:
+            if (PostfixChainExprPayload* const payload = this->exprs.postfix_chain_payload(index); payload != nullptr) {
+                this->intern_postfix_ops(payload->ops);
+            }
+            break;
+        case ExprKind::field:
+            if (FieldExprPayload* const payload = this->exprs.field_payload(index); payload != nullptr) {
+                this->intern_identifier_text(payload->field_name, payload->field_name_id);
+            }
+            break;
+        case ExprKind::struct_literal:
+            if (StructLiteralExprPayload* const payload = this->exprs.struct_literal_payload(index); payload != nullptr) {
+                this->intern_struct_literal_payload(*payload);
+            }
+            break;
+        default:
+            break;
         }
-        this->intern_postfix_ops(node.postfix_ops);
-        this->intern_identifier_text(node.field_name, node.field_name_id);
-        this->intern_identifier_text(node.struct_name, node.struct_name_id);
-        this->intern_field_inits(node.field_inits);
     }
 
     void intern_field_patterns(std::vector<FieldPattern>& fields) {

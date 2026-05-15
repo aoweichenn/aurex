@@ -111,12 +111,15 @@ item owner lookup has been replaced with explicit `ItemId` ownership. Identifier
 storage now uses a reusable global bump allocator through the syntax-layer
 `IdentifierInterner`; AST identifier-bearing nodes carry native `IdentId`
 payload fields, and sema typed lookup keys use the AST module interner instead
-of a second private interner. On the local AST bulk stress lane, the
-100000-statement case is now roughly 180 MiB RSS / 112 ms after compact syntax
-storage plus AST-native identifiers; Google Benchmark `sema_ast_bulk/1024` is
-roughly 174 ns/expr, and the local `tools/frontend_compare.py` baseline has
-Aurex `--check` at about 8.4 ms for lookup/96 and 9.1 ms for generics/96
-versus Clang++ at about 20.6 ms / 22.4 ms and G++ at about 25.8 ms / 24.4 ms.
+of a second private interner. The old fat `ExprNode` production type has been
+removed; parser construction, module loading, and postfix materialization now
+write compact expression headers plus per-kind payloads directly. On the local
+AST bulk stress lane, the 100000-statement case is now roughly 180.1 MiB RSS /
+70.9 ms after compact syntax storage plus AST-native identifiers; Google
+Benchmark `sema_ast_bulk/1024` is roughly 117 ns/expr, and the local
+`tools/frontend_compare.py` baseline has Aurex `--check` at about 8.1 ms for
+lookup/96 and 8.6 ms for generics/96 versus Clang++ at about 20.1 ms / 22.9 ms
+and G++ at about 22.4 ms / 23.1 ms.
 
 ## Stage Status
 

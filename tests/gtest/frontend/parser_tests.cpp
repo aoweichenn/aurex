@@ -513,9 +513,10 @@ TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring) {
     const syntax::StmtNode& pair_stmt = module.stmts[body.statements[0].value];
     ASSERT_EQ(pair_stmt.kind, syntax::StmtKind::let);
     ASSERT_TRUE(syntax::is_valid(pair_stmt.init));
-    const syntax::ExprNode& pair_init = module.exprs[pair_stmt.init.value];
-    ASSERT_EQ(pair_init.kind, syntax::ExprKind::tuple_literal);
-    EXPECT_EQ(pair_init.tuple_elements.size(), 2U);
+    ASSERT_EQ(module.exprs.kind(pair_stmt.init.value), syntax::ExprKind::tuple_literal);
+    const std::vector<syntax::ExprId>* const pair_init = module.exprs.tuple_elements(pair_stmt.init.value);
+    ASSERT_NE(pair_init, nullptr);
+    EXPECT_EQ(pair_init->size(), 2U);
 
     const syntax::StmtNode& destructure_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(destructure_stmt.pattern));
@@ -672,11 +673,13 @@ TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace) {
     const syntax::StmtNode& return_stmt = module.stmts[body.statements.front().value];
     ASSERT_EQ(return_stmt.kind, syntax::StmtKind::return_);
     ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
-    const syntax::ExprNode& match_expr = module.exprs[return_stmt.return_value.value];
-    ASSERT_EQ(match_expr.kind, syntax::ExprKind::match_expr);
-    ASSERT_EQ(match_expr.match_arms.size(), 2U);
+    ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::match_expr);
+    const syntax::MatchExprPayload* const match_expr =
+        module.exprs.match_payload(return_stmt.return_value.value);
+    ASSERT_NE(match_expr, nullptr);
+    ASSERT_EQ(match_expr->arms.size(), 2U);
 
-    const syntax::PatternNode& some = module.patterns[match_expr.match_arms.front().pattern.value];
+    const syntax::PatternNode& some = module.patterns[match_expr->arms.front().pattern.value];
     ASSERT_EQ(some.kind, syntax::PatternKind::enum_case);
     EXPECT_TRUE(some.scoped);
     EXPECT_TRUE(syntax::is_valid(some.enum_type));
@@ -968,18 +971,19 @@ TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
     const syntax::StmtNode& value_stmt = module.stmts[body.statements.front().value];
     ASSERT_EQ(value_stmt.kind, syntax::StmtKind::let);
     ASSERT_TRUE(syntax::is_valid(value_stmt.init));
-    const syntax::ExprNode& block_expr = module.exprs[value_stmt.init.value];
-    ASSERT_EQ(block_expr.kind, syntax::ExprKind::block_expr);
-    ASSERT_TRUE(syntax::is_valid(block_expr.block));
-    ASSERT_TRUE(syntax::is_valid(block_expr.block_result));
-    const syntax::StmtNode& expr_block = module.stmts[block_expr.block.value];
+    ASSERT_EQ(module.exprs.kind(value_stmt.init.value), syntax::ExprKind::block_expr);
+    const syntax::BlockExprPayload* const block_expr = module.exprs.block_payload(value_stmt.init.value);
+    ASSERT_NE(block_expr, nullptr);
+    ASSERT_TRUE(syntax::is_valid(block_expr->block));
+    ASSERT_TRUE(syntax::is_valid(block_expr->result));
+    const syntax::StmtNode& expr_block = module.stmts[block_expr->block.value];
     ASSERT_EQ(expr_block.kind, syntax::StmtKind::block);
     ASSERT_EQ(expr_block.statements.size(), 5U);
     EXPECT_EQ(module.stmts[expr_block.statements[1].value].kind, syntax::StmtKind::if_);
     EXPECT_EQ(module.stmts[expr_block.statements[2].value].kind, syntax::StmtKind::while_);
     EXPECT_EQ(module.stmts[expr_block.statements[3].value].kind, syntax::StmtKind::for_);
     EXPECT_EQ(module.stmts[expr_block.statements[4].value].kind, syntax::StmtKind::block);
-    EXPECT_EQ(module.exprs[block_expr.block_result.value].kind, syntax::ExprKind::if_expr);
+    EXPECT_EQ(module.exprs.kind(block_expr->result.value), syntax::ExprKind::if_expr);
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayTypeSeparators) {
@@ -1806,35 +1810,42 @@ TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
 
     const syntax::StmtNode& call_stmt = module.stmts[body.statements[0].value];
     ASSERT_TRUE(syntax::is_valid(call_stmt.init));
-    const syntax::ExprNode& call_chain = module.exprs[call_stmt.init.value];
-    ASSERT_EQ(call_chain.kind, syntax::ExprKind::postfix_chain);
-    ASSERT_TRUE(syntax::is_valid(call_chain.postfix_base));
-    const syntax::ExprNode& result_name = module.exprs[call_chain.postfix_base.value];
-    ASSERT_EQ(result_name.kind, syntax::ExprKind::name);
-    EXPECT_EQ(result_name.text, "ResultI32");
-    ASSERT_EQ(call_chain.postfix_ops.size(), 3U);
-    EXPECT_EQ(call_chain.postfix_ops[0].kind, syntax::PostfixOpKind::select);
-    EXPECT_EQ(call_chain.postfix_ops[0].name, "ok");
-    EXPECT_EQ(call_chain.postfix_ops[1].kind, syntax::PostfixOpKind::call);
-    ASSERT_EQ(call_chain.postfix_ops[1].args.size(), 1U);
-    EXPECT_EQ(call_chain.postfix_ops[2].kind, syntax::PostfixOpKind::try_);
+    ASSERT_EQ(module.exprs.kind(call_stmt.init.value), syntax::ExprKind::postfix_chain);
+    const syntax::PostfixChainExprPayload* const call_chain =
+        module.exprs.postfix_chain_payload(call_stmt.init.value);
+    ASSERT_NE(call_chain, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call_chain->base));
+    ASSERT_EQ(module.exprs.kind(call_chain->base.value), syntax::ExprKind::name);
+    const syntax::NameExprPayload* const result_name = module.exprs.name_payload(call_chain->base.value);
+    ASSERT_NE(result_name, nullptr);
+    EXPECT_EQ(result_name->text, "ResultI32");
+    ASSERT_EQ(call_chain->ops.size(), 3U);
+    EXPECT_EQ(call_chain->ops[0].kind, syntax::PostfixOpKind::select);
+    EXPECT_EQ(call_chain->ops[0].name, "ok");
+    EXPECT_EQ(call_chain->ops[1].kind, syntax::PostfixOpKind::call);
+    ASSERT_EQ(call_chain->ops[1].args.size(), 1U);
+    EXPECT_EQ(call_chain->ops[2].kind, syntax::PostfixOpKind::try_);
 
     const syntax::StmtNode& literal_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(literal_stmt.init));
-    const syntax::ExprNode& literal_chain = module.exprs[literal_stmt.init.value];
-    ASSERT_EQ(literal_chain.kind, syntax::ExprKind::postfix_chain);
-    ASSERT_TRUE(syntax::is_valid(literal_chain.postfix_base));
-    const syntax::ExprNode& literal_type = module.exprs[literal_chain.postfix_base.value];
-    ASSERT_EQ(literal_type.kind, syntax::ExprKind::name);
-    EXPECT_EQ(literal_type.text, "Wrap");
-    ASSERT_EQ(literal_chain.postfix_ops.size(), 1U);
-    EXPECT_EQ(literal_chain.postfix_ops[0].kind, syntax::PostfixOpKind::struct_literal);
+    ASSERT_EQ(module.exprs.kind(literal_stmt.init.value), syntax::ExprKind::postfix_chain);
+    const syntax::PostfixChainExprPayload* const literal_chain =
+        module.exprs.postfix_chain_payload(literal_stmt.init.value);
+    ASSERT_NE(literal_chain, nullptr);
+    ASSERT_TRUE(syntax::is_valid(literal_chain->base));
+    ASSERT_EQ(module.exprs.kind(literal_chain->base.value), syntax::ExprKind::name);
+    const syntax::NameExprPayload* const literal_type = module.exprs.name_payload(literal_chain->base.value);
+    ASSERT_NE(literal_type, nullptr);
+    EXPECT_EQ(literal_type->text, "Wrap");
+    ASSERT_EQ(literal_chain->ops.size(), 1U);
+    EXPECT_EQ(literal_chain->ops[0].kind, syntax::PostfixOpKind::struct_literal);
 
     const syntax::StmtNode& shifted_stmt = module.stmts[body.statements[2].value];
     ASSERT_TRUE(syntax::is_valid(shifted_stmt.init));
-    const syntax::ExprNode& shifted = module.exprs[shifted_stmt.init.value];
-    ASSERT_EQ(shifted.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(shifted.binary_op, syntax::BinaryOp::shr);
+    ASSERT_EQ(module.exprs.kind(shifted_stmt.init.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const shifted = module.exprs.binary_payload(shifted_stmt.init.value);
+    ASSERT_NE(shifted, nullptr);
+    EXPECT_EQ(shifted->op, syntax::BinaryOp::shr);
 }
 
 TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
@@ -1855,35 +1866,42 @@ TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
 
     const syntax::StmtNode& chain_stmt = module.stmts[body.statements[0].value];
     ASSERT_TRUE(syntax::is_valid(chain_stmt.init));
-    const syntax::ExprNode& chain = module.exprs[chain_stmt.init.value];
-    ASSERT_EQ(chain.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(chain.binary_op, syntax::BinaryOp::sub);
-    ASSERT_TRUE(syntax::is_valid(chain.binary_lhs));
-    const syntax::ExprNode& chain_lhs = module.exprs[chain.binary_lhs.value];
-    ASSERT_EQ(chain_lhs.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(chain_lhs.binary_op, syntax::BinaryOp::sub);
+    ASSERT_EQ(module.exprs.kind(chain_stmt.init.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const chain = module.exprs.binary_payload(chain_stmt.init.value);
+    ASSERT_NE(chain, nullptr);
+    EXPECT_EQ(chain->op, syntax::BinaryOp::sub);
+    ASSERT_TRUE(syntax::is_valid(chain->lhs));
+    ASSERT_EQ(module.exprs.kind(chain->lhs.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const chain_lhs = module.exprs.binary_payload(chain->lhs.value);
+    ASSERT_NE(chain_lhs, nullptr);
+    EXPECT_EQ(chain_lhs->op, syntax::BinaryOp::sub);
 
     const syntax::StmtNode& mixed_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(mixed_stmt.init));
-    const syntax::ExprNode& mixed = module.exprs[mixed_stmt.init.value];
-    ASSERT_EQ(mixed.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(mixed.binary_op, syntax::BinaryOp::logical_or);
-    ASSERT_TRUE(syntax::is_valid(mixed.binary_lhs));
-    const syntax::ExprNode& logical_and = module.exprs[mixed.binary_lhs.value];
-    ASSERT_EQ(logical_and.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(logical_and.binary_op, syntax::BinaryOp::logical_and);
-    ASSERT_TRUE(syntax::is_valid(logical_and.binary_lhs));
-    const syntax::ExprNode& comparison = module.exprs[logical_and.binary_lhs.value];
-    ASSERT_EQ(comparison.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(comparison.binary_op, syntax::BinaryOp::less);
-    ASSERT_TRUE(syntax::is_valid(comparison.binary_lhs));
-    const syntax::ExprNode& addition = module.exprs[comparison.binary_lhs.value];
-    ASSERT_EQ(addition.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(addition.binary_op, syntax::BinaryOp::add);
-    ASSERT_TRUE(syntax::is_valid(addition.binary_rhs));
-    const syntax::ExprNode& multiplication = module.exprs[addition.binary_rhs.value];
-    ASSERT_EQ(multiplication.kind, syntax::ExprKind::binary);
-    EXPECT_EQ(multiplication.binary_op, syntax::BinaryOp::mul);
+    ASSERT_EQ(module.exprs.kind(mixed_stmt.init.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const mixed = module.exprs.binary_payload(mixed_stmt.init.value);
+    ASSERT_NE(mixed, nullptr);
+    EXPECT_EQ(mixed->op, syntax::BinaryOp::logical_or);
+    ASSERT_TRUE(syntax::is_valid(mixed->lhs));
+    ASSERT_EQ(module.exprs.kind(mixed->lhs.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const logical_and = module.exprs.binary_payload(mixed->lhs.value);
+    ASSERT_NE(logical_and, nullptr);
+    EXPECT_EQ(logical_and->op, syntax::BinaryOp::logical_and);
+    ASSERT_TRUE(syntax::is_valid(logical_and->lhs));
+    ASSERT_EQ(module.exprs.kind(logical_and->lhs.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const comparison = module.exprs.binary_payload(logical_and->lhs.value);
+    ASSERT_NE(comparison, nullptr);
+    EXPECT_EQ(comparison->op, syntax::BinaryOp::less);
+    ASSERT_TRUE(syntax::is_valid(comparison->lhs));
+    ASSERT_EQ(module.exprs.kind(comparison->lhs.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const addition = module.exprs.binary_payload(comparison->lhs.value);
+    ASSERT_NE(addition, nullptr);
+    EXPECT_EQ(addition->op, syntax::BinaryOp::add);
+    ASSERT_TRUE(syntax::is_valid(addition->rhs));
+    ASSERT_EQ(module.exprs.kind(addition->rhs.value), syntax::ExprKind::binary);
+    const syntax::BinaryExprPayload* const multiplication = module.exprs.binary_payload(addition->rhs.value);
+    ASSERT_NE(multiplication, nullptr);
+    EXPECT_EQ(multiplication->op, syntax::BinaryOp::mul);
 }
 
 TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
@@ -1923,26 +1941,28 @@ TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
     syntax::ExprId unary = unary_stmt.init;
     for (base::usize depth = 0; depth < PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH; ++depth) {
         ASSERT_TRUE(syntax::is_valid(unary));
-        const syntax::ExprNode& node = module.exprs[unary.value];
-        ASSERT_EQ(node.kind, syntax::ExprKind::unary);
-        EXPECT_EQ(node.unary_op, syntax::UnaryOp::numeric_negate);
-        unary = node.unary_operand;
+        ASSERT_EQ(module.exprs.kind(unary.value), syntax::ExprKind::unary);
+        const syntax::UnaryExprPayload* const node = module.exprs.unary_payload(unary.value);
+        ASSERT_NE(node, nullptr);
+        EXPECT_EQ(node->op, syntax::UnaryOp::numeric_negate);
+        unary = node->operand;
     }
     ASSERT_TRUE(syntax::is_valid(unary));
-    EXPECT_EQ(module.exprs[unary.value].kind, syntax::ExprKind::integer_literal);
+    EXPECT_EQ(module.exprs.kind(unary.value), syntax::ExprKind::integer_literal);
 
     const syntax::StmtNode& binary_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(binary_stmt.init));
     syntax::ExprId binary = binary_stmt.init;
     for (base::usize depth = 0; depth < PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH; ++depth) {
         ASSERT_TRUE(syntax::is_valid(binary));
-        const syntax::ExprNode& node = module.exprs[binary.value];
-        ASSERT_EQ(node.kind, syntax::ExprKind::binary);
-        EXPECT_EQ(node.binary_op, syntax::BinaryOp::add);
-        binary = node.binary_lhs;
+        ASSERT_EQ(module.exprs.kind(binary.value), syntax::ExprKind::binary);
+        const syntax::BinaryExprPayload* const node = module.exprs.binary_payload(binary.value);
+        ASSERT_NE(node, nullptr);
+        EXPECT_EQ(node->op, syntax::BinaryOp::add);
+        binary = node->lhs;
     }
     ASSERT_TRUE(syntax::is_valid(binary));
-    EXPECT_EQ(module.exprs[binary.value].kind, syntax::ExprKind::integer_literal);
+    EXPECT_EQ(module.exprs.kind(binary.value), syntax::ExprKind::integer_literal);
 }
 
 TEST(CoreUnit, ParserHandlesLongBinaryChainsWithoutRecursiveDescent) {
@@ -1998,9 +2018,10 @@ TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression) {
     ASSERT_GE(body.statements.size(), 2U);
     const syntax::StmtNode& local = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(local.init));
-    const syntax::ExprNode& init = module.exprs[local.init.value];
-    ASSERT_EQ(init.kind, syntax::ExprKind::unary);
-    EXPECT_EQ(init.unary_op, syntax::UnaryOp::address_of_mut);
+    ASSERT_EQ(module.exprs.kind(local.init.value), syntax::ExprKind::unary);
+    const syntax::UnaryExprPayload* const init = module.exprs.unary_payload(local.init.value);
+    ASSERT_NE(init, nullptr);
+    EXPECT_EQ(init->op, syntax::UnaryOp::address_of_mut);
 }
 
 TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {
@@ -2585,14 +2606,8 @@ TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
     const base::SourceRange end_range = tokens.value()[PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET].range;
     const base::SourceRange fallback_range = tokens.value().back().range;
 
-    const syntax::ExprId expr_id = reader.module().push_expr(
-        [&] {
-            syntax::ExprNode expr;
-            expr.kind = syntax::ExprKind::integer_literal;
-            expr.range = begin_range;
-            return expr;
-        }()
-    );
+    const syntax::ExprId expr_id =
+        reader.module().push_literal_expr(syntax::ExprKind::integer_literal, begin_range, "0");
     const syntax::StmtId stmt_id = reader.module().push_stmt(
         [&] {
             syntax::StmtNode stmt;

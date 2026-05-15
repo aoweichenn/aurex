@@ -2,6 +2,8 @@
 
 #include <aurex/parse/parser_messages.hpp>
 
+#include <utility>
+
 namespace aurex::parse {
 
 namespace {
@@ -16,11 +18,9 @@ syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext co
 }
 
 syntax::ExprId NameExprParser::make_name_expr(const syntax::Token& name) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::name;
-    expr.range = name.range;
-    expr.text = name.text;
-    return this->session_.module.push_expr(expr);
+    syntax::NameExprPayload payload;
+    payload.text = name.text;
+    return this->session_.module.push_name_expr(name.range, std::move(payload));
 }
 
 } // namespace aurex::parse

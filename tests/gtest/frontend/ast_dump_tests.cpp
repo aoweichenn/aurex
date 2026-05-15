@@ -4,6 +4,8 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace aurex::test {
@@ -32,6 +34,23 @@ constexpr std::size_t AST_FAT_NODE_HEADER_RATIO = 4;
     return module.push_stmt(stmt);
 }
 
+[[nodiscard]] syntax::ExprId push_name_expr(
+    syntax::AstModule& module,
+    const std::string_view text,
+    const std::string_view scope_name = {},
+    std::vector<syntax::TypeId> type_args = {}
+) {
+    syntax::NameExprPayload payload;
+    payload.scope_name = scope_name;
+    payload.text = text;
+    payload.type_args = std::move(type_args);
+    return module.push_name_expr({}, std::move(payload));
+}
+
+[[nodiscard]] syntax::ExprId push_float_literal(syntax::AstModule& module, const std::string_view text) {
+    return module.push_literal_expr(syntax::ExprKind::float_literal, {}, text);
+}
+
 } // namespace
 
 TEST(CoreUnit, AstStorageUsesCompactHeaders) {
@@ -41,7 +60,6 @@ TEST(CoreUnit, AstStorageUsesCompactHeaders) {
     EXPECT_LE(sizeof(syntax::StmtNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LE(sizeof(syntax::ItemNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LT(sizeof(syntax::TypeNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::TypeNode));
-    EXPECT_LT(sizeof(syntax::ExprNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ExprNode));
     EXPECT_LT(sizeof(syntax::PatternNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::PatternNode));
     EXPECT_LT(sizeof(syntax::StmtNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::StmtNode));
     EXPECT_LT(sizeof(syntax::ItemNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ItemNode));
@@ -70,36 +88,29 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     named_type.name = "Buffer";
     const syntax::TypeId type_id = module.push_type(named_type);
 
-    syntax::ExprNode name_expr;
-    name_expr.kind = syntax::ExprKind::name;
-    name_expr.scope_name = "mem";
-    name_expr.text = "value";
-    const syntax::ExprId name_expr_id = module.push_expr(name_expr);
+    const syntax::ExprId name_expr_id = push_name_expr(module, "value", "mem");
 
-    syntax::ExprNode field_expr;
-    field_expr.kind = syntax::ExprKind::field;
+    syntax::FieldExprPayload field_expr;
     field_expr.object = name_expr_id;
     field_expr.field_name = "len";
-    const syntax::ExprId field_expr_id = module.push_expr(field_expr);
+    const syntax::ExprId field_expr_id = module.push_field_expr({}, field_expr);
 
-    syntax::ExprNode struct_literal;
-    struct_literal.kind = syntax::ExprKind::struct_literal;
+    syntax::StructLiteralExprPayload struct_literal;
     struct_literal.scope_name = "core";
-    struct_literal.struct_name = "Buffer";
+    struct_literal.name = "Buffer";
     syntax::FieldInit count_init;
     count_init.name = "count";
     count_init.value = name_expr_id;
     struct_literal.field_inits = {count_init};
-    const syntax::ExprId struct_literal_id = module.push_expr(struct_literal);
+    const syntax::ExprId struct_literal_id = module.push_struct_literal_expr({}, std::move(struct_literal));
 
     syntax::PostfixOp postfix_select;
     postfix_select.kind = syntax::PostfixOpKind::select;
     postfix_select.name = "next";
-    syntax::ExprNode postfix_expr;
-    postfix_expr.kind = syntax::ExprKind::postfix_chain;
-    postfix_expr.postfix_base = name_expr_id;
-    postfix_expr.postfix_ops = {postfix_select};
-    const syntax::ExprId postfix_expr_id = module.push_expr(postfix_expr);
+    syntax::PostfixChainExprPayload postfix_expr;
+    postfix_expr.base = name_expr_id;
+    postfix_expr.ops = {postfix_select};
+    const syntax::ExprId postfix_expr_id = module.push_postfix_chain_expr({}, std::move(postfix_expr));
 
     syntax::PatternNode binding_pattern;
     binding_pattern.kind = syntax::PatternKind::binding;
@@ -270,39 +281,35 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     EXPECT_TRUE(moved_type.function_is_unsafe);
     EXPECT_EQ(moved_type.function_params.back().value, 2U);
 
-    syntax::ExprNode call_expr;
-    call_expr.kind = syntax::ExprKind::call;
+    syntax::CallExprPayload call_expr;
     call_expr.callee = syntax::ExprId {4};
     call_expr.args = {syntax::ExprId {5}, syntax::ExprId {6}};
 
     syntax::ExprNodeList exprs;
-    exprs.push_back(call_expr);
-    EXPECT_EQ(exprs[0].args.size(), 2U);
-    syntax::ExprNode moved_expr = exprs.take(0);
-    EXPECT_EQ(moved_expr.callee.value, 4U);
-    EXPECT_EQ(moved_expr.args.back().value, 6U);
+    const syntax::ExprId call_id = exprs.append_call(syntax::ExprKind::call, {}, call_expr);
+    const syntax::CallExprPayload* const stored_call = exprs.call_payload(call_id.value);
+    ASSERT_NE(stored_call, nullptr);
+    EXPECT_EQ(stored_call->args.size(), 2U);
+    EXPECT_EQ(stored_call->callee.value, 4U);
+    EXPECT_EQ(stored_call->args.back().value, 6U);
 
-    syntax::ExprNode typed_name;
-    typed_name.kind = syntax::ExprKind::name;
+    syntax::NameExprPayload typed_name;
     typed_name.text = "make";
     typed_name.type_args = {syntax::TypeId {8}, syntax::TypeId {9}};
     syntax::ExprNodeList names;
-    names.push_back(typed_name);
-    EXPECT_EQ(names[0].type_args.back().value, 9U);
-    syntax::ExprNode moved_name = names.take(0);
-    EXPECT_EQ(moved_name.type_args.front().value, 8U);
+    const syntax::ExprId typed_name_id = names.append_name({}, typed_name);
+    const syntax::NameExprPayload* const moved_name = names.name_payload(typed_name_id.value);
+    ASSERT_NE(moved_name, nullptr);
+    EXPECT_EQ(moved_name->type_args.back().value, 9U);
+    EXPECT_EQ(moved_name->type_args.front().value, 8U);
 
-    syntax::ExprNode bool_expr;
-    bool_expr.kind = syntax::ExprKind::bool_literal;
-    bool_expr.text = "true";
-    syntax::ExprNode null_expr;
-    null_expr.kind = syntax::ExprKind::null_literal;
-    null_expr.text = "null";
     syntax::ExprNodeList literals;
-    literals.push_back(bool_expr);
-    literals.push_back(null_expr);
-    EXPECT_EQ(literals[0].text, "true");
-    EXPECT_EQ(literals[1].text, "null");
+    const syntax::ExprId bool_id = literals.append_literal(syntax::ExprKind::bool_literal, {}, "true");
+    const syntax::ExprId null_id = literals.append_literal(syntax::ExprKind::null_literal, {}, "null");
+    ASSERT_NE(literals.literal_payload(bool_id.value), nullptr);
+    ASSERT_NE(literals.literal_payload(null_id.value), nullptr);
+    EXPECT_EQ(literals.literal_payload(bool_id.value)->text, "true");
+    EXPECT_EQ(literals.literal_payload(null_id.value)->text, "null");
 
     syntax::PatternNode enum_pattern;
     enum_pattern.kind = syntax::PatternKind::enum_case;
@@ -374,119 +381,109 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     syntax::ExprNodeList exprs;
 
-    syntax::ExprNode literal;
-    literal.kind = syntax::ExprKind::integer_literal;
-    literal.text = "42";
-    const syntax::ExprId literal_id = exprs.append(literal);
+    const syntax::ExprId literal_id = exprs.append_literal(syntax::ExprKind::integer_literal, {}, "42");
 
-    syntax::ExprNode name;
-    name.kind = syntax::ExprKind::name;
+    syntax::NameExprPayload name;
     name.scope_name = "math";
     name.text = "add";
     name.type_args = {syntax::TypeId {1}, syntax::TypeId {2}};
-    const syntax::ExprId name_id = exprs.append(name);
+    const syntax::ExprId name_id = exprs.append_name({}, name);
 
-    syntax::ExprNode generic;
-    generic.kind = syntax::ExprKind::generic_apply;
+    syntax::GenericApplyExprPayload generic;
     generic.callee = name_id;
     generic.type_args = {syntax::TypeId {3}};
-    const syntax::ExprId generic_id = exprs.append(generic);
+    const syntax::ExprId generic_id = exprs.append_generic_apply({}, generic);
 
-    syntax::ExprNode unary;
-    unary.kind = syntax::ExprKind::unary;
-    unary.unary_op = syntax::UnaryOp::numeric_negate;
-    unary.unary_operand = literal_id;
-    const syntax::ExprId unary_id = exprs.append(unary);
+    const syntax::ExprId unary_id = exprs.append_unary(
+        syntax::ExprKind::unary,
+        {},
+        syntax::UnaryExprPayload {
+            syntax::UnaryOp::numeric_negate,
+            literal_id,
+        }
+    );
 
-    syntax::ExprNode binary;
-    binary.kind = syntax::ExprKind::binary;
-    binary.binary_op = syntax::BinaryOp::add;
-    binary.binary_lhs = literal_id;
-    binary.binary_rhs = unary_id;
-    const syntax::ExprId binary_id = exprs.append(binary);
+    const syntax::ExprId binary_id = exprs.append_binary(
+        {},
+        syntax::BinaryExprPayload {
+            syntax::BinaryOp::add,
+            literal_id,
+            unary_id,
+        }
+    );
 
-    syntax::ExprNode call;
-    call.kind = syntax::ExprKind::call;
+    syntax::CallExprPayload call;
     call.callee = generic_id;
     call.args = {literal_id, binary_id};
-    const syntax::ExprId call_id = exprs.append(call);
+    const syntax::ExprId call_id = exprs.append_call(syntax::ExprKind::call, {}, call);
 
-    syntax::ExprNode if_expr;
-    if_expr.kind = syntax::ExprKind::if_expr;
+    syntax::IfExprPayload if_expr;
     if_expr.condition = literal_id;
     if_expr.condition_pattern = syntax::PatternId {4};
     if_expr.then_expr = name_id;
     if_expr.else_expr = call_id;
-    const syntax::ExprId if_id = exprs.append(if_expr);
+    const syntax::ExprId if_id = exprs.append_if({}, if_expr);
 
-    syntax::ExprNode block;
-    block.kind = syntax::ExprKind::unsafe_block;
+    syntax::BlockExprPayload block;
     block.block = syntax::StmtId {5};
-    block.block_result = if_id;
-    const syntax::ExprId block_id = exprs.append(block);
+    block.result = if_id;
+    const syntax::ExprId block_id = exprs.append_block(syntax::ExprKind::unsafe_block, {}, block);
 
-    syntax::ExprNode match;
-    match.kind = syntax::ExprKind::match_expr;
-    match.match_value = literal_id;
-    match.match_arms = {
+    syntax::MatchExprPayload match;
+    match.value = literal_id;
+    match.arms = {
         syntax::MatchArm {syntax::PatternId {6}, syntax::ExprId {7}, name_id, {}},
     };
-    const syntax::ExprId match_id = exprs.append(match);
+    const syntax::ExprId match_id = exprs.append_match({}, match);
 
-    syntax::ExprNode array;
-    array.kind = syntax::ExprKind::array_literal;
-    array.array_elements = {literal_id, name_id};
-    array.array_repeat_value = unary_id;
-    array.array_repeat_count = binary_id;
-    const syntax::ExprId array_id = exprs.append(array);
+    syntax::ArrayExprPayload array;
+    array.elements = {literal_id, name_id};
+    array.repeat_value = unary_id;
+    array.repeat_count = binary_id;
+    const syntax::ExprId array_id = exprs.append_array({}, array);
 
-    syntax::ExprNode tuple;
-    tuple.kind = syntax::ExprKind::tuple_literal;
-    tuple.tuple_elements = {literal_id, call_id};
-    const syntax::ExprId tuple_id = exprs.append(tuple);
+    const syntax::ExprId tuple_id = exprs.append_tuple({}, {literal_id, call_id});
 
     syntax::PostfixOp postfix_op;
     postfix_op.kind = syntax::PostfixOpKind::call;
     postfix_op.args = {literal_id, name_id};
-    syntax::ExprNode postfix;
-    postfix.kind = syntax::ExprKind::postfix_chain;
-    postfix.postfix_base = name_id;
-    postfix.postfix_ops = {postfix_op};
-    const syntax::ExprId postfix_id = exprs.append(postfix);
+    syntax::PostfixChainExprPayload postfix;
+    postfix.base = name_id;
+    postfix.ops = {postfix_op};
+    const syntax::ExprId postfix_id = exprs.append_postfix_chain({}, postfix);
 
-    syntax::ExprNode field;
-    field.kind = syntax::ExprKind::field;
+    syntax::FieldExprPayload field;
     field.object = name_id;
     field.field_name = "value";
-    const syntax::ExprId field_id = exprs.append(field);
+    const syntax::ExprId field_id = exprs.append_field({}, field);
 
-    syntax::ExprNode index;
-    index.kind = syntax::ExprKind::index;
+    syntax::IndexExprPayload index;
     index.object = field_id;
     index.index = literal_id;
-    const syntax::ExprId index_id = exprs.append(index);
+    const syntax::ExprId index_id = exprs.append_index({}, index);
 
-    syntax::ExprNode slice;
-    slice.kind = syntax::ExprKind::slice;
+    syntax::SliceExprPayload slice;
     slice.object = field_id;
-    slice.slice_start = literal_id;
-    slice.slice_end = binary_id;
-    const syntax::ExprId slice_id = exprs.append(slice);
+    slice.start = literal_id;
+    slice.end = binary_id;
+    const syntax::ExprId slice_id = exprs.append_slice({}, slice);
 
-    syntax::ExprNode struct_literal;
-    struct_literal.kind = syntax::ExprKind::struct_literal;
+    syntax::StructLiteralExprPayload struct_literal;
     struct_literal.object = name_id;
     struct_literal.scope_name = "pkg";
-    struct_literal.struct_name = "Pair";
+    struct_literal.name = "Pair";
     struct_literal.type_args = {syntax::TypeId {8}};
     struct_literal.field_inits = {syntax::FieldInit {"left", literal_id, {}}};
-    const syntax::ExprId struct_id = exprs.append(struct_literal);
+    const syntax::ExprId struct_id = exprs.append_struct_literal({}, struct_literal);
 
-    syntax::ExprNode cast;
-    cast.kind = syntax::ExprKind::pcast;
-    cast.cast_type = syntax::TypeId {9};
-    cast.cast_expr = field_id;
-    const syntax::ExprId cast_id = exprs.append(cast);
+    const syntax::ExprId cast_id = exprs.append_cast_like(
+        syntax::ExprKind::pcast,
+        {},
+        syntax::CastExprPayload {
+            syntax::TypeId {9},
+            field_id,
+        }
+    );
 
     const syntax::LiteralExprPayload* const literal_payload = exprs.literal_payload(literal_id.value);
     ASSERT_NE(literal_payload, nullptr);
@@ -634,27 +631,28 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     scoped_pattern.binding_names = {"value", "shade"};
     module.patterns.push_back(scoped_pattern);
 
-    syntax::ExprNode invalid_expr;
-    invalid_expr.kind = syntax::ExprKind::invalid;
-    module.exprs.push_back(invalid_expr);
+    static_cast<void>(module.push_invalid_expr({}));
 
-    syntax::ExprNode unknown_expr;
-    unknown_expr.kind = static_cast<syntax::ExprKind>(255);
-    module.exprs.push_back(unknown_expr);
+    static_cast<void>(module.exprs.append_cast_like(
+        static_cast<syntax::ExprKind>(255),
+        {},
+        syntax::CastExprPayload {}
+    ));
 
-    syntax::ExprNode struct_literal;
-    struct_literal.kind = syntax::ExprKind::struct_literal;
-    struct_literal.struct_name = "Pair";
-    module.exprs.push_back(struct_literal);
+    syntax::StructLiteralExprPayload struct_literal;
+    struct_literal.name = "Pair";
+    static_cast<void>(module.push_struct_literal_expr({}, struct_literal));
 
-    syntax::ExprNode match_expr;
-    match_expr.kind = syntax::ExprKind::match_expr;
-    match_expr.match_value = syntax::ExprId {2};
-    match_expr.match_arms = {
-        syntax::MatchArm {syntax::PatternId {0}, syntax::INVALID_EXPR_ID, syntax::ExprId {1}, {}},
-        syntax::MatchArm {syntax::INVALID_PATTERN_ID, syntax::INVALID_EXPR_ID, syntax::ExprId {99}, {}},
-    };
-    module.exprs.push_back(match_expr);
+    static_cast<void>(module.push_match_expr(
+        {},
+        syntax::MatchExprPayload {
+            syntax::ExprId {2},
+            {
+                syntax::MatchArm {syntax::PatternId {0}, syntax::INVALID_EXPR_ID, syntax::ExprId {1}, {}},
+                syntax::MatchArm {syntax::INVALID_PATTERN_ID, syntax::INVALID_EXPR_ID, syntax::ExprId {99}, {}},
+            },
+        }
+    ));
 
     syntax::StmtNode unknown_stmt;
     unknown_stmt.kind = static_cast<syntax::StmtKind>(255);
@@ -822,72 +820,105 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
     or_pattern.alternatives = {const_pattern_id, enum_payload_pattern_id};
     const syntax::PatternId or_pattern_id = module.push_pattern(or_pattern);
 
-    syntax::ExprNode scoped_name;
-    scoped_name.kind = syntax::ExprKind::name;
-    scoped_name.scope_name = "pkg";
-    scoped_name.text = "make";
-    scoped_name.type_args = {i32_type, bool_type};
-    const syntax::ExprId scoped_name_id = module.push_expr(scoped_name);
-    syntax::ExprNode float_literal;
-    float_literal.kind = syntax::ExprKind::float_literal;
-    float_literal.text = "1.0";
-    const syntax::ExprId float_literal_id = module.push_expr(float_literal);
-    syntax::ExprNode call;
-    call.kind = syntax::ExprKind::call;
-    call.callee = scoped_name_id;
-    call.args = {float_literal_id};
-    const syntax::ExprId call_id = module.push_expr(call);
-    syntax::ExprNode generic_apply;
-    generic_apply.kind = syntax::ExprKind::generic_apply;
-    generic_apply.callee = scoped_name_id;
-    generic_apply.type_args = {reference_type_id, fn_type_id};
-    const syntax::ExprId generic_apply_id = module.push_expr(generic_apply);
-    syntax::ExprNode field;
-    field.kind = syntax::ExprKind::field;
-    field.object = scoped_name_id;
-    field.field_name = "fd";
-    const syntax::ExprId field_id = module.push_expr(field);
-    syntax::ExprNode index;
-    index.kind = syntax::ExprKind::index;
-    index.object = scoped_name_id;
-    index.index = float_literal_id;
-    const syntax::ExprId index_id = module.push_expr(index);
-    syntax::ExprNode slice;
-    slice.kind = syntax::ExprKind::slice;
-    slice.object = scoped_name_id;
-    slice.slice_start = float_literal_id;
-    slice.slice_end = call_id;
-    const syntax::ExprId slice_id = module.push_expr(slice);
-    syntax::ExprNode typed_struct_literal;
-    typed_struct_literal.kind = syntax::ExprKind::struct_literal;
-    typed_struct_literal.scope_name = "pkg";
-    typed_struct_literal.struct_name = "Box";
-    typed_struct_literal.type_args = {i32_type, bool_type};
-    typed_struct_literal.field_inits = {syntax::FieldInit {"value", call_id, {}}};
-    const syntax::ExprId typed_struct_literal_id = module.push_expr(typed_struct_literal);
-    syntax::ExprNode selector_struct_literal;
-    selector_struct_literal.kind = syntax::ExprKind::struct_literal;
-    selector_struct_literal.object = field_id;
-    selector_struct_literal.field_inits = {syntax::FieldInit {"fd", index_id, {}}};
-    const syntax::ExprId selector_struct_literal_id = module.push_expr(selector_struct_literal);
-    syntax::ExprNode if_expr;
-    if_expr.kind = syntax::ExprKind::if_expr;
-    if_expr.condition = scoped_name_id;
-    if_expr.condition_pattern = tuple_pattern_id;
-    if_expr.then_expr = call_id;
-    if_expr.else_expr = selector_struct_literal_id;
-    const syntax::ExprId if_expr_id = module.push_expr(if_expr);
-    syntax::ExprNode strvalid_expr;
-    strvalid_expr.kind = syntax::ExprKind::str_is_valid_utf8;
-    strvalid_expr.args = {scoped_name_id, float_literal_id};
-    const syntax::ExprId strvalid_expr_id = module.push_expr(strvalid_expr);
-    syntax::ExprNode strfromutf8_expr = strvalid_expr;
-    strfromutf8_expr.kind = syntax::ExprKind::str_from_utf8_checked;
-    const syntax::ExprId strfromutf8_expr_id = module.push_expr(strfromutf8_expr);
-    syntax::ExprNode try_expr;
-    try_expr.kind = syntax::ExprKind::try_expr;
-    try_expr.callee = call_id;
-    const syntax::ExprId try_expr_id = module.push_expr(try_expr);
+    const syntax::ExprId scoped_name_id = push_name_expr(module, "make", "pkg", {i32_type, bool_type});
+    const syntax::ExprId float_literal_id = push_float_literal(module, "1.0");
+    const syntax::ExprId call_id = module.push_call_expr(
+        syntax::ExprKind::call,
+        {},
+        syntax::CallExprPayload {
+            scoped_name_id,
+            {float_literal_id},
+        }
+    );
+    const syntax::ExprId generic_apply_id = module.push_generic_apply_expr(
+        {},
+        syntax::GenericApplyExprPayload {
+            scoped_name_id,
+            {reference_type_id, fn_type_id},
+        }
+    );
+    const syntax::ExprId field_id = module.push_field_expr(
+        {},
+        syntax::FieldExprPayload {
+            scoped_name_id,
+            "fd",
+            syntax::INVALID_IDENT_ID,
+        }
+    );
+    const syntax::ExprId index_id = module.push_index_expr(
+        {},
+        syntax::IndexExprPayload {
+            scoped_name_id,
+            float_literal_id,
+        }
+    );
+    const syntax::ExprId slice_id = module.push_slice_expr(
+        {},
+        syntax::SliceExprPayload {
+            scoped_name_id,
+            float_literal_id,
+            call_id,
+        }
+    );
+    const syntax::ExprId typed_struct_literal_id = module.push_struct_literal_expr(
+        {},
+        syntax::StructLiteralExprPayload {
+            syntax::INVALID_EXPR_ID,
+            "pkg",
+            {},
+            "Box",
+            syntax::INVALID_IDENT_ID,
+            syntax::INVALID_IDENT_ID,
+            {i32_type, bool_type},
+            {syntax::FieldInit {"value", call_id, {}}},
+        }
+    );
+    const syntax::ExprId selector_struct_literal_id = module.push_struct_literal_expr(
+        {},
+        syntax::StructLiteralExprPayload {
+            field_id,
+            {},
+            {},
+            {},
+            syntax::INVALID_IDENT_ID,
+            syntax::INVALID_IDENT_ID,
+            {},
+            {syntax::FieldInit {"fd", index_id, {}}},
+        }
+    );
+    const syntax::ExprId if_expr_id = module.push_if_expr(
+        {},
+        syntax::IfExprPayload {
+            scoped_name_id,
+            tuple_pattern_id,
+            call_id,
+            selector_struct_literal_id,
+        }
+    );
+    const syntax::ExprId strvalid_expr_id = module.push_cast_like_expr(
+        syntax::ExprKind::str_is_valid_utf8,
+        {},
+        syntax::CastExprPayload {
+            syntax::INVALID_TYPE_ID,
+            scoped_name_id,
+        }
+    );
+    const syntax::ExprId strfromutf8_expr_id = module.push_cast_like_expr(
+        syntax::ExprKind::str_from_utf8_checked,
+        {},
+        syntax::CastExprPayload {
+            syntax::INVALID_TYPE_ID,
+            scoped_name_id,
+        }
+    );
+    const syntax::ExprId try_expr_id = module.push_unary_expr(
+        syntax::ExprKind::try_expr,
+        {},
+        syntax::UnaryExprPayload {
+            syntax::UnaryOp::logical_not,
+            call_id,
+        }
+    );
 
     syntax::StmtNode for_range;
     for_range.kind = syntax::StmtKind::for_range;

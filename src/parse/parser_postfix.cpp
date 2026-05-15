@@ -69,15 +69,14 @@ syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
         return base;
     }
 
-    syntax::ExprNode node;
-    node.kind = syntax::ExprKind::postfix_chain;
-    node.postfix_base = base;
-    node.postfix_ops = std::move(ops);
-    node.range = this->merge(
-        this->expr_range_or(base, node.postfix_ops.back().range),
-        node.postfix_ops.back().range
+    const base::SourceRange last_op_range = ops.back().range;
+    return this->session_.module.push_postfix_chain_expr(
+        this->merge(this->expr_range_or(base, last_op_range), last_op_range),
+        syntax::PostfixChainExprPayload {
+            base,
+            std::move(ops),
+        }
     );
-    return this->session_.module.push_expr(std::move(node));
 }
 
 std::optional<syntax::PostfixOp> PostfixExprParser::parse_next_suffix(const ExprContext context) {

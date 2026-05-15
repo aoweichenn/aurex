@@ -11,6 +11,8 @@ namespace {
 
 using syntax::TokenKind;
 
+constexpr base::usize PARSER_STRRAW_ARG_COUNT = 2;
+
 [[nodiscard]] std::string parser_builtin_type_start_message(const std::string& name) {
     return std::string(PARSER_EXPECT_BUILTIN_TYPE_START_PREFIX) +
            name +
@@ -58,12 +60,14 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_expr_end_message(name));
 
-    syntax::ExprNode expr;
-    expr.kind = kind;
-    expr.range = this->merge(begin.range, end.range);
-    expr.cast_type = type;
-    expr.cast_expr = value;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_cast_like_expr(
+        kind,
+        this->merge(begin.range, end.range),
+        syntax::CastExprPayload {
+            type,
+            value,
+        }
+    );
 }
 
 syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind) {
@@ -73,11 +77,14 @@ syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind
     const syntax::TypeId type = this->parse_type();
     const syntax::Token& end = this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name));
 
-    syntax::ExprNode expr;
-    expr.kind = kind;
-    expr.range = this->merge(begin.range, end.range);
-    expr.cast_type = type;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_cast_like_expr(
+        kind,
+        this->merge(begin.range, end.range),
+        syntax::CastExprPayload {
+            type,
+            syntax::INVALID_EXPR_ID,
+        }
+    );
 }
 
 syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context) {
@@ -86,11 +93,14 @@ syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context) {
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRADDR_END));
 
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::ptr_addr;
-    expr.range = this->merge(begin.range, end.range);
-    expr.cast_expr = value;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_cast_like_expr(
+        syntax::ExprKind::ptr_addr,
+        this->merge(begin.range, end.range),
+        syntax::CastExprPayload {
+            syntax::INVALID_TYPE_ID,
+            value,
+        }
+    );
 }
 
 syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context) {
@@ -103,12 +113,14 @@ syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context) {
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(std::string(PARSER_EXPECT_BUILTIN_PTRAT_END));
 
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::paddr;
-    expr.range = this->merge(begin.range, end.range);
-    expr.cast_type = type;
-    expr.cast_expr = value;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_cast_like_expr(
+        syntax::ExprKind::paddr,
+        this->merge(begin.range, end.range),
+        syntax::CastExprPayload {
+            type,
+            value,
+        }
+    );
 }
 
 syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
@@ -121,11 +133,14 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_arg_end_message(name));
 
-    syntax::ExprNode expr;
-    expr.kind = kind;
-    expr.range = this->merge(begin.range, end.range);
-    expr.cast_expr = value;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_cast_like_expr(
+        kind,
+        this->merge(begin.range, end.range),
+        syntax::CastExprPayload {
+            syntax::INVALID_TYPE_ID,
+            value,
+        }
+    );
 }
 
 syntax::ExprId BuiltinExprParser::parse_str_slice_unary(
@@ -138,11 +153,14 @@ syntax::ExprId BuiltinExprParser::parse_str_slice_unary(
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_arg_end_message(name));
 
-    syntax::ExprNode expr;
-    expr.kind = kind;
-    expr.range = this->merge(begin.range, end.range);
-    expr.cast_expr = value;
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_cast_like_expr(
+        kind,
+        this->merge(begin.range, end.range),
+        syntax::CastExprPayload {
+            syntax::INVALID_TYPE_ID,
+            value,
+        }
+    );
 }
 
 syntax::ExprId BuiltinExprParser::parse_strraw(const ExprContext context) {
@@ -155,12 +173,18 @@ syntax::ExprId BuiltinExprParser::parse_strraw(const ExprContext context) {
         std::string(PARSER_EXPECT_BUILTIN_STRRAW_END)
     );
 
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::str_from_bytes_unchecked;
-    expr.range = this->merge(begin.range, end.range);
-    expr.args.push_back(data);
-    expr.args.push_back(len);
-    return this->session_.module.push_expr(std::move(expr));
+    std::vector<syntax::ExprId> args;
+    args.reserve(PARSER_STRRAW_ARG_COUNT);
+    args.push_back(data);
+    args.push_back(len);
+    return this->session_.module.push_call_expr(
+        syntax::ExprKind::str_from_bytes_unchecked,
+        this->merge(begin.range, end.range),
+        syntax::CallExprPayload {
+            syntax::INVALID_EXPR_ID,
+            std::move(args),
+        }
+    );
 }
 
 void BuiltinExprParser::expect_builtin_arg_list_start(std::string message) {

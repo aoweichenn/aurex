@@ -212,35 +212,32 @@ syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext cont
 
 syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
     const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ARRAY_LITERAL_START));
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::array_literal;
+    syntax::ArrayExprPayload payload;
 
     if (this->check(TokenKind::r_bracket)) {
         const syntax::Token& end = this->expect_array_literal_end();
-        expr.range = this->merge(begin.range, end.range);
-        return this->session_.module.push_expr(std::move(expr));
+        return this->session_.module.push_array_expr(this->merge(begin.range, end.range), std::move(payload));
     }
 
     const syntax::ExprId first = this->parse_expr(ExprContext::normal);
     if (this->match(TokenKind::semicolon)) {
-        expr.array_repeat_value = first;
+        payload.repeat_value = first;
         if (this->check(TokenKind::r_bracket)) {
             this->report_here(std::string(PARSER_EXPECT_ARRAY_REPEAT_COUNT));
         } else {
-            expr.array_repeat_count = this->parse_expr(ExprContext::normal);
+            payload.repeat_count = this->parse_expr(ExprContext::normal);
         }
     } else {
-        expr.array_elements.push_back(first);
+        payload.elements.push_back(first);
         while (this->recover_array_literal_separator()) {
-            expr.array_elements.push_back(this->parse_expr(ExprContext::normal));
+            payload.elements.push_back(this->parse_expr(ExprContext::normal));
             this->reset_panic();
         }
     }
 
     const syntax::Token& end = this->expect_array_literal_end();
-    expr.range = this->merge(begin.range, end.range);
     this->reset_panic();
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_array_expr(this->merge(begin.range, end.range), std::move(payload));
 }
 
 bool PrimaryExprParser::recover_array_literal_separator() {
@@ -277,20 +274,14 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
     if (this->session_.expression_nesting_depth >= PARSER_MAX_EXPRESSION_NESTING_DEPTH) {
         this->report_at(begin, std::string(PARSER_EXPRESSION_NESTING_LIMIT));
         this->skip_grouped_expression_remainder();
-        syntax::ExprNode expr;
-        expr.kind = syntax::ExprKind::invalid;
-        expr.range = this->merge(begin.range, this->previous().range);
-        return this->session_.module.push_expr(std::move(expr));
+        return this->session_.module.push_invalid_expr(this->merge(begin.range, this->previous().range));
     }
 
     const ExpressionNestingGuard nesting_guard(this->session_);
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_LITERAL_UNSUPPORTED));
         const syntax::Token& end = this->expect_tuple_literal_end();
-        syntax::ExprNode expr;
-        expr.kind = syntax::ExprKind::invalid;
-        expr.range = this->merge(begin.range, end.range);
-        return this->session_.module.push_expr(std::move(expr));
+        return this->session_.module.push_invalid_expr(this->merge(begin.range, end.range));
     }
 
     const syntax::ExprId first = this->parse_expr(context);
@@ -299,11 +290,10 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
         return first;
     }
 
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::tuple_literal;
-    expr.tuple_elements.push_back(first);
+    std::vector<syntax::ExprId> elements;
+    elements.push_back(first);
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
-        expr.tuple_elements.push_back(this->parse_expr(ExprContext::normal));
+        elements.push_back(this->parse_expr(ExprContext::normal));
         this->reset_panic();
         if (!this->recover_tuple_literal_separator()) {
             break;
@@ -311,9 +301,8 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
     }
 
     const syntax::Token& end = this->expect_tuple_literal_end();
-    expr.range = this->merge(begin.range, end.range);
     this->reset_panic();
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_tuple_expr(this->merge(begin.range, end.range), std::move(elements));
 }
 
 bool PrimaryExprParser::recover_tuple_literal_separator() {
@@ -384,21 +373,15 @@ void PrimaryExprParser::skip_grouped_expression_remainder() {
 
 syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) {
     const syntax::Token& token = this->previous();
-    syntax::ExprNode expr;
-    expr.kind = kind;
-    expr.range = token.range;
-    expr.text = token.text;
-    return this->session_.module.push_expr(expr);
+    return this->session_.module.push_literal_expr(kind, token.range, token.text);
 }
 
 syntax::ExprId PrimaryExprParser::make_invalid_expr() {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::invalid;
-    expr.range = this->peek().range;
+    const base::SourceRange range = this->peek().range;
     if (!this->is_eof()) {
         this->advance();
     }
-    return this->session_.module.push_expr(expr);
+    return this->session_.module.push_invalid_expr(range);
 }
 
 } // namespace aurex::parse

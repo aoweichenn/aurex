@@ -112,13 +112,15 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
     );
 
     const base::SourceRange block_range = this->stmt_range_or(body.block, this->previous().range);
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::block_expr;
-    expr.range = block_range;
-    expr.block = body.block;
-    expr.block_result = body.result;
     this->reset_panic();
-    return this->session_.module.push_expr(std::move(expr));
+    return this->session_.module.push_block_expr(
+        syntax::ExprKind::block_expr,
+        block_range,
+        syntax::BlockExprPayload {
+            body.block,
+            body.result,
+        }
+    );
 }
 
 BlockParser::BlockBody BlockParser::parse_block_body(

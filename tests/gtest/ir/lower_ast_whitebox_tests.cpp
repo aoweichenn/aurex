@@ -1,6 +1,7 @@
 #include <aurex/ir/lower_ast.hpp>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(__clang__)
@@ -48,23 +49,17 @@ using syntax::StmtId;
 using syntax::TypeId;
 
 [[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text) {
-    syntax::ExprNode expr;
-    expr.kind = ExprKind::name;
-    expr.text = text;
-    return ast.push_expr(expr);
+    syntax::NameExprPayload payload;
+    payload.text = text;
+    return ast.push_name_expr({}, std::move(payload));
 }
 
 [[nodiscard]] ExprId push_integer(syntax::AstModule& ast, const std::string_view text = "1") {
-    syntax::ExprNode expr;
-    expr.kind = ExprKind::integer_literal;
-    expr.text = text;
-    return ast.push_expr(expr);
+    return ast.push_literal_expr(ExprKind::integer_literal, {}, text);
 }
 
 [[nodiscard]] ExprId push_invalid_expr(syntax::AstModule& ast) {
-    syntax::ExprNode expr;
-    expr.kind = ExprKind::invalid;
-    return ast.push_expr(expr);
+    return ast.push_invalid_expr({});
 }
 
 void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle type) {
@@ -186,12 +181,14 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     const ExprId integer = push_integer(ast);
     const ExprId condition_lhs = push_integer(ast, "0");
     const ExprId condition_rhs = push_integer(ast, "1");
-    syntax::ExprNode logical_expr;
-    logical_expr.kind = ExprKind::binary;
-    logical_expr.binary_op = syntax::BinaryOp::logical_and;
-    logical_expr.binary_lhs = condition_lhs;
-    logical_expr.binary_rhs = condition_rhs;
-    const ExprId logical = ast.push_expr(logical_expr);
+    const ExprId logical = ast.push_binary_expr(
+        {},
+        syntax::BinaryExprPayload {
+            syntax::BinaryOp::logical_and,
+            condition_lhs,
+            condition_rhs,
+        }
+    );
 
     set_expr_type(checked, missing_place, i32);
     set_expr_type(checked, integer, i32);
@@ -261,50 +258,40 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     const TypeHandle byte_array = checked.types.array(3, u8);
     const TypeHandle const_u8_ptr = checked.types.pointer(PointerMutability::const_, u8);
 
-    syntax::ExprNode str_value;
-    str_value.kind = ExprKind::string_literal;
-    str_value.text = "\"bytes\"";
-    const ExprId str_value_id = ast.push_expr(str_value);
-    syntax::ExprNode length_value;
-    length_value.kind = ExprKind::integer_literal;
-    length_value.text = "5";
-    const ExprId length_value_id = ast.push_expr(length_value);
-
-    syntax::ExprNode str_data;
-    str_data.kind = ExprKind::str_data;
-    str_data.cast_expr = str_value_id;
-    const ExprId str_data_id = ast.push_expr(str_data);
-    syntax::ExprNode str_byte_len = str_data;
-    str_byte_len.kind = ExprKind::str_byte_len;
-    const ExprId str_byte_len_id = ast.push_expr(str_byte_len);
-    syntax::ExprNode str_from_bytes;
-    str_from_bytes.kind = ExprKind::str_from_bytes_unchecked;
-    str_from_bytes.args = {str_data_id, length_value_id};
-    const ExprId str_from_bytes_id = ast.push_expr(str_from_bytes);
-    syntax::ExprNode str_slice;
-    str_slice.kind = ExprKind::slice;
-    str_slice.object = str_value_id;
-    str_slice.slice_start = length_value_id;
-    str_slice.slice_end = length_value_id;
-    const ExprId str_slice_id = ast.push_expr(str_slice);
-    syntax::ExprNode str_suffix = str_slice;
-    str_suffix.slice_end = syntax::INVALID_EXPR_ID;
-    const ExprId str_suffix_id = ast.push_expr(str_suffix);
-    syntax::ExprNode malformed_str_from_bytes = str_from_bytes;
-    malformed_str_from_bytes.args = {str_data_id};
-    const ExprId malformed_str_from_bytes_id = ast.push_expr(malformed_str_from_bytes);
-    syntax::ExprNode raw_literal;
-    raw_literal.kind = ExprKind::raw_string_literal;
-    raw_literal.text = "r\"C:\\tmp\\a\"";
-    const ExprId raw_literal_id = ast.push_expr(raw_literal);
-    syntax::ExprNode byte_string_literal;
-    byte_string_literal.kind = ExprKind::byte_string_literal;
-    byte_string_literal.text = "b\"a\\n\\0\"";
-    const ExprId byte_string_literal_id = ast.push_expr(byte_string_literal);
-    syntax::ExprNode char_literal;
-    char_literal.kind = ExprKind::char_literal;
-    char_literal.text = "'\\u{03BB}'";
-    const ExprId char_literal_id = ast.push_expr(char_literal);
+    const ExprId str_value_id = ast.push_literal_expr(ExprKind::string_literal, {}, "\"bytes\"");
+    const ExprId length_value_id = ast.push_literal_expr(ExprKind::integer_literal, {}, "5");
+    const ExprId str_data_id = ast.push_cast_like_expr(
+        ExprKind::str_data,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, str_value_id}
+    );
+    const ExprId str_byte_len_id = ast.push_cast_like_expr(
+        ExprKind::str_byte_len,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, str_value_id}
+    );
+    const ExprId str_from_bytes_id = ast.push_call_expr(
+        ExprKind::str_from_bytes_unchecked,
+        {},
+        syntax::CallExprPayload {syntax::INVALID_EXPR_ID, {str_data_id, length_value_id}}
+    );
+    const ExprId str_slice_id = ast.push_slice_expr(
+        {},
+        syntax::SliceExprPayload {str_value_id, length_value_id, length_value_id}
+    );
+    const ExprId str_suffix_id = ast.push_slice_expr(
+        {},
+        syntax::SliceExprPayload {str_value_id, length_value_id, syntax::INVALID_EXPR_ID}
+    );
+    const ExprId malformed_str_from_bytes_id = ast.push_call_expr(
+        ExprKind::str_from_bytes_unchecked,
+        {},
+        syntax::CallExprPayload {syntax::INVALID_EXPR_ID, {str_data_id}}
+    );
+    const ExprId raw_literal_id = ast.push_literal_expr(ExprKind::raw_string_literal, {}, "r\"C:\\tmp\\a\"");
+    const ExprId byte_string_literal_id =
+        ast.push_literal_expr(ExprKind::byte_string_literal, {}, "b\"a\\n\\0\"");
+    const ExprId char_literal_id = ast.push_literal_expr(ExprKind::char_literal, {}, "'\\u{03BB}'");
 
     set_expr_type(checked, str_value_id, str);
     set_expr_type(checked, length_value_id, usize);

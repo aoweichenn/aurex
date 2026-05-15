@@ -815,7 +815,6 @@ private:
     [[nodiscard]] std::vector<TypeHandle>& active_stmt_local_types() noexcept;
     [[nodiscard]] PlaceInfo analyze_place_info(syntax::ExprId expr_id, bool emit_diagnostics);
     void require_place_projection_safety(const PlaceInfo& place, base::SourceRange range);
-    [[nodiscard]] syntax::ExprId push_synthetic_expr(syntax::ExprNode node);
     [[nodiscard]] syntax::TypeId push_synthetic_type(syntax::TypeNode node);
     void ensure_expr_side_table_size(base::usize size);
     void ensure_type_side_table_size(base::usize size);

@@ -175,11 +175,10 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const std::string_view text,
     const std::string_view scope = {}
 ) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::name;
-    expr.text = text;
-    expr.scope_name = scope;
-    return module.push_expr(expr);
+    syntax::NameExprPayload payload;
+    payload.text = text;
+    payload.scope_name = scope;
+    return module.push_name_expr({}, std::move(payload));
 }
 
 [[nodiscard]] ExprId push_field(
@@ -187,11 +186,10 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const ExprId object,
     const std::string_view field_name
 ) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::field;
-    expr.object = object;
-    expr.field_name = field_name;
-    return module.push_expr(expr);
+    syntax::FieldExprPayload payload;
+    payload.object = object;
+    payload.field_name = field_name;
+    return module.push_field_expr({}, payload);
 }
 
 [[nodiscard]] ExprId push_generic_apply(
@@ -199,11 +197,10 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const ExprId callee,
     const std::initializer_list<TypeId> type_args
 ) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::generic_apply;
-    expr.callee = callee;
-    expr.type_args.assign(type_args.begin(), type_args.end());
-    return module.push_expr(expr);
+    syntax::GenericApplyExprPayload payload;
+    payload.callee = callee;
+    payload.type_args.assign(type_args.begin(), type_args.end());
+    return module.push_generic_apply_expr({}, std::move(payload));
 }
 
 [[nodiscard]] ExprId push_unary(
@@ -211,11 +208,41 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const syntax::UnaryOp op,
     const ExprId operand
 ) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::unary;
-    expr.unary_op = op;
-    expr.unary_operand = operand;
-    return module.push_expr(expr);
+    return module.push_unary_expr(
+        syntax::ExprKind::unary,
+        {},
+        syntax::UnaryExprPayload {
+            op,
+            operand,
+        }
+    );
+}
+
+[[nodiscard]] ExprId push_binary(
+    syntax::AstModule& module,
+    const syntax::BinaryOp op,
+    const ExprId lhs,
+    const ExprId rhs
+) {
+    return module.push_binary_expr(
+        {},
+        syntax::BinaryExprPayload {
+            op,
+            lhs,
+            rhs,
+        }
+    );
+}
+
+[[nodiscard]] ExprId push_call(
+    syntax::AstModule& module,
+    const ExprId callee,
+    const std::initializer_list<ExprId> args = {}
+) {
+    syntax::CallExprPayload payload;
+    payload.callee = callee;
+    payload.args.assign(args.begin(), args.end());
+    return module.push_call_expr(syntax::ExprKind::call, {}, std::move(payload));
 }
 
 [[nodiscard]] syntax::PostfixBracketArg bracket_expr_arg(const ExprId expr) {
@@ -267,32 +294,22 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const ExprId base,
     const std::initializer_list<syntax::PostfixOp> ops
 ) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::postfix_chain;
-    expr.postfix_base = base;
-    expr.postfix_ops.assign(ops.begin(), ops.end());
-    return module.push_expr(expr);
+    syntax::PostfixChainExprPayload payload;
+    payload.base = base;
+    payload.ops.assign(ops.begin(), ops.end());
+    return module.push_postfix_chain_expr({}, std::move(payload));
 }
 
 [[nodiscard]] ExprId push_integer(syntax::AstModule& module) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::integer_literal;
-    expr.text = SEMA_TEST_INTEGER_LITERAL_ONE;
-    return module.push_expr(expr);
+    return module.push_literal_expr(syntax::ExprKind::integer_literal, {}, SEMA_TEST_INTEGER_LITERAL_ONE);
 }
 
 [[nodiscard]] ExprId push_integer_text(syntax::AstModule& module, const std::string_view text) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::integer_literal;
-    expr.text = text;
-    return module.push_expr(expr);
+    return module.push_literal_expr(syntax::ExprKind::integer_literal, {}, text);
 }
 
 [[nodiscard]] ExprId push_bool(syntax::AstModule& module, const std::string_view text) {
-    syntax::ExprNode expr;
-    expr.kind = syntax::ExprKind::bool_literal;
-    expr.text = text;
-    return module.push_expr(expr);
+    return module.push_literal_expr(syntax::ExprKind::bool_literal, {}, text);
 }
 
 [[nodiscard]] syntax::StmtId push_stmt(syntax::AstModule& module, const syntax::StmtKind kind) {
@@ -336,43 +353,24 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     const ExprId ptr_expr = push_name(module, "ptr");
     const ExprId record_expr = push_name(module, "record");
     const ExprId array_expr = push_name(module, "array");
-    syntax::ExprNode field_expr;
-    field_expr.kind = syntax::ExprKind::field;
-    field_expr.object = ptr_expr;
-    field_expr.field_name = "field";
-    const ExprId field_id = module.push_expr(field_expr);
-    syntax::ExprNode value_field_expr = field_expr;
-    value_field_expr.object = record_expr;
-    const ExprId value_field_id = module.push_expr(value_field_expr);
-    syntax::ExprNode nested_value_field_expr = field_expr;
-    nested_value_field_expr.object = value_field_id;
-    const ExprId nested_value_field_id = module.push_expr(nested_value_field_expr);
-    syntax::ExprNode index_expr;
-    index_expr.kind = syntax::ExprKind::index;
-    index_expr.object = ptr_expr;
-    index_expr.index = push_integer(module);
-    const ExprId index_id = module.push_expr(index_expr);
-    syntax::ExprNode value_index_expr = index_expr;
-    value_index_expr.object = array_expr;
-    const ExprId value_index_id = module.push_expr(value_index_expr);
-    syntax::ExprNode nested_value_index_expr = index_expr;
-    nested_value_index_expr.object = value_index_id;
-    const ExprId nested_value_index_id = module.push_expr(nested_value_index_expr);
-    syntax::ExprNode deref_expr;
-    deref_expr.kind = syntax::ExprKind::unary;
-    deref_expr.unary_op = syntax::UnaryOp::dereference;
-    deref_expr.unary_operand = ptr_expr;
-    const ExprId deref_id = module.push_expr(deref_expr);
-    syntax::ExprNode invalid_deref_expr = deref_expr;
-    invalid_deref_expr.unary_operand = value_expr;
-    const ExprId invalid_deref_id = module.push_expr(invalid_deref_expr);
-    syntax::ExprNode not_expr = deref_expr;
-    not_expr.unary_op = syntax::UnaryOp::logical_not;
-    const ExprId not_id = module.push_expr(not_expr);
+    const ExprId field_id = push_field(module, ptr_expr, "field");
+    const ExprId value_field_id = push_field(module, record_expr, "field");
+    const ExprId nested_value_field_id = push_field(module, value_field_id, "field");
+    const ExprId index_arg = push_integer(module);
+    const ExprId index_id = module.push_index_expr({}, syntax::IndexExprPayload {ptr_expr, index_arg});
+    const ExprId value_index_id = module.push_index_expr({}, syntax::IndexExprPayload {array_expr, index_arg});
+    const ExprId nested_value_index_id = module.push_index_expr(
+        {},
+        syntax::IndexExprPayload {value_index_id, index_arg}
+    );
+    const ExprId deref_id = push_unary(module, syntax::UnaryOp::dereference, ptr_expr);
+    const ExprId invalid_deref_id = push_unary(module, syntax::UnaryOp::dereference, value_expr);
+    const ExprId not_id = push_unary(module, syntax::UnaryOp::logical_not, ptr_expr);
     const ExprId array_ref_expr = push_name(module, "array_ref");
-    syntax::ExprNode array_ref_index_expr = index_expr;
-    array_ref_index_expr.object = array_ref_expr;
-    const ExprId array_ref_index_id = module.push_expr(array_ref_index_expr);
+    const ExprId array_ref_index_id = module.push_index_expr(
+        {},
+        syntax::IndexExprPayload {array_ref_expr, index_arg}
+    );
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -900,11 +898,7 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
     const ExprId choice_missing = push_field(analyzer.module_, choice_name, "missing");
     const ExprId choice_yes = push_field(analyzer.module_, choice_name, "yes");
     const ExprId payload_value = push_name(analyzer.module_, "payload");
-    syntax::ExprNode enum_call;
-    enum_call.kind = syntax::ExprKind::call;
-    enum_call.callee = choice_yes;
-    enum_call.args = {payload_value};
-    const ExprId enum_call_id = analyzer.module_.push_expr(enum_call);
+    const ExprId enum_call_id = push_call(analyzer.module_, choice_yes, {payload_value});
 
     analyzer.checked_.expr_types.assign(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_c_names.assign(analyzer.module_.exprs.size(), {});
@@ -921,13 +915,10 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
         enum_type
     ));
 
-    syntax::ExprNode argument_call;
-    argument_call.kind = syntax::ExprKind::call;
-    argument_call.args = {payload_value};
-    const ExprId argument_call_id = analyzer.module_.push_expr(argument_call);
+    const ExprId argument_call_id = push_call(analyzer.module_, syntax::INVALID_EXPR_ID, {payload_value});
     analyzer.validate_call_arguments(analyzer.expr_view(argument_call_id), "array_arg", {array_i32}, 0, false);
-    argument_call.args = {payload_value, payload_value};
-    const ExprId variadic_argument_call_id = analyzer.module_.push_expr(argument_call);
+    const ExprId variadic_argument_call_id =
+        push_call(analyzer.module_, syntax::INVALID_EXPR_ID, {payload_value, payload_value});
     analyzer.validate_call_arguments(analyzer.expr_view(variadic_argument_call_id), "array_vararg", {}, 0, true);
 }
 
@@ -1305,9 +1296,7 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     const syntax::ItemId function_item = module.push_item(function);
     module.item_modules[function_item.value] = module_id(0);
 
-    syntax::ExprNode invalid_expr;
-    invalid_expr.kind = syntax::ExprKind::invalid;
-    const ExprId INVALID_EXPR_ID = module.push_expr(invalid_expr);
+    const ExprId INVALID_EXPR_ID = module.push_invalid_expr({});
 
     syntax::StmtNode empty_return_stmt;
     empty_return_stmt.kind = syntax::StmtKind::return_;
@@ -1459,18 +1448,20 @@ TEST(CoreUnit, SemanticWhiteBoxPostfixMaterializationEdges) {
     sync_side_tables();
 
     EXPECT_EQ(analyzer.materialize_postfix_chain(invalid_base_chain).value, invalid_base_chain.value);
-    EXPECT_EQ(analyzer.module_.exprs[invalid_base_chain.value].kind, syntax::ExprKind::field);
+    EXPECT_EQ(analyzer.module_.exprs.kind(invalid_base_chain.value), syntax::ExprKind::field);
     EXPECT_EQ(analyzer.materialize_postfix_chain(empty_select_chain).value, empty_select_chain.value);
-    EXPECT_EQ(analyzer.module_.exprs[empty_select_chain.value].kind, syntax::ExprKind::invalid);
+    EXPECT_EQ(analyzer.module_.exprs.kind(empty_select_chain.value), syntax::ExprKind::invalid);
     EXPECT_EQ(analyzer.materialize_postfix_chain(outer_chain).value, outer_chain.value);
-    ASSERT_EQ(analyzer.module_.exprs[outer_chain.value].kind, syntax::ExprKind::call);
-    ASSERT_TRUE(syntax::is_valid(analyzer.module_.exprs[outer_chain.value].callee));
+    ASSERT_EQ(analyzer.module_.exprs.kind(outer_chain.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const outer_call = analyzer.module_.exprs.call_payload(outer_chain.value);
+    ASSERT_NE(outer_call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(outer_call->callee));
     EXPECT_EQ(
-        analyzer.module_.exprs[analyzer.module_.exprs[outer_chain.value].callee.value].kind,
+        analyzer.module_.exprs.kind(outer_call->callee.value),
         syntax::ExprKind::field
     );
     EXPECT_EQ(analyzer.materialize_postfix_chain(multi_index_chain).value, multi_index_chain.value);
-    EXPECT_EQ(analyzer.module_.exprs[multi_index_chain.value].kind, syntax::ExprKind::index);
+    EXPECT_EQ(analyzer.module_.exprs.kind(multi_index_chain.value), syntax::ExprKind::index);
 
     const syntax::PostfixOp unresolved_type_bracket = bracket_op({bracket_expr_arg(t_name)});
     const syntax::PostfixOp concrete_type_bracket = bracket_op({bracket_type_arg(i32_type_id)});
@@ -1602,10 +1593,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     syntax::TypeNode i32_type_node = primitive_node(syntax::PrimitiveTypeKind::i32);
     const TypeId i32_type = module.push_type(i32_type_node);
 
-    syntax::ExprNode value_expr;
-    value_expr.kind = syntax::ExprKind::name;
-    value_expr.text = "value";
-    const ExprId value = module.push_expr(value_expr);
+    const ExprId value = push_name(module, "value");
 
     syntax::StmtNode return_stmt;
     return_stmt.kind = syntax::StmtKind::return_;
@@ -1625,11 +1613,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
 
     const ExprId call_callee = push_name(module, "id");
     const ExprId call_arg = push_integer(module);
-    syntax::ExprNode call_expr;
-    call_expr.kind = syntax::ExprKind::call;
-    call_expr.callee = call_callee;
-    call_expr.args = {call_arg};
-    const ExprId call = module.push_expr(call_expr);
+    const ExprId call = push_call(module, call_callee, {call_arg});
 
     syntax::StmtNode main_return;
     main_return.kind = syntax::StmtKind::return_;
@@ -1875,10 +1859,7 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
     syntax::TypeNode i32_type_node = primitive_node(syntax::PrimitiveTypeKind::i32);
     const TypeId i32_type = module.push_type(i32_type_node);
 
-    syntax::ExprNode zero_expr;
-    zero_expr.kind = syntax::ExprKind::integer_literal;
-    zero_expr.text = "0";
-    const ExprId zero = module.push_expr(zero_expr);
+    const ExprId zero = push_integer_text(module, "0");
 
     syntax::StmtNode return_stmt;
     return_stmt.kind = syntax::StmtKind::return_;
@@ -1991,35 +1972,34 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     const ExprId str_value = push_name(module, "text");
     const ExprId data_value = push_name(module, "data");
     const ExprId length_value = push_name(module, "len");
-    syntax::ExprNode str_data;
-    str_data.kind = syntax::ExprKind::str_data;
-    str_data.cast_expr = str_value;
-    const ExprId str_data_id = module.push_expr(str_data);
-    syntax::ExprNode str_byte_len = str_data;
-    str_byte_len.kind = syntax::ExprKind::str_byte_len;
-    const ExprId str_byte_len_id = module.push_expr(str_byte_len);
-    syntax::ExprNode str_from_bytes;
-    str_from_bytes.kind = syntax::ExprKind::str_from_bytes_unchecked;
-    str_from_bytes.args = {data_value, length_value};
-    const ExprId str_from_bytes_id = module.push_expr(str_from_bytes);
-    syntax::ExprNode malformed = str_from_bytes;
-    malformed.args = {data_value};
-    const ExprId malformed_id = module.push_expr(malformed);
-    syntax::ExprNode raw_literal;
-    raw_literal.kind = syntax::ExprKind::raw_string_literal;
-    raw_literal.text = "r\"C:\\tmp\\a\"";
-    const ExprId raw_literal_id = module.push_expr(raw_literal);
-    syntax::ExprNode byte_string_literal;
-    byte_string_literal.kind = syntax::ExprKind::byte_string_literal;
-    byte_string_literal.text = "b\"a\\n\\0\"";
-    const ExprId byte_string_literal_id = module.push_expr(byte_string_literal);
-    syntax::ExprNode invalid_byte_string_literal = byte_string_literal;
-    invalid_byte_string_literal.text = "b\"\\u{41}\"";
-    const ExprId invalid_byte_string_literal_id = module.push_expr(invalid_byte_string_literal);
-    syntax::ExprNode char_literal;
-    char_literal.kind = syntax::ExprKind::char_literal;
-    char_literal.text = "'\\u{03BB}'";
-    const ExprId char_literal_id = module.push_expr(char_literal);
+    const ExprId str_data_id = module.push_cast_like_expr(
+        syntax::ExprKind::str_data,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, str_value}
+    );
+    const ExprId str_byte_len_id = module.push_cast_like_expr(
+        syntax::ExprKind::str_byte_len,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, str_value}
+    );
+    const ExprId str_from_bytes_id = module.push_call_expr(
+        syntax::ExprKind::str_from_bytes_unchecked,
+        {},
+        syntax::CallExprPayload {syntax::INVALID_EXPR_ID, {data_value, length_value}}
+    );
+    const ExprId malformed_id = module.push_call_expr(
+        syntax::ExprKind::str_from_bytes_unchecked,
+        {},
+        syntax::CallExprPayload {syntax::INVALID_EXPR_ID, {data_value}}
+    );
+    const ExprId raw_literal_id =
+        module.push_literal_expr(syntax::ExprKind::raw_string_literal, {}, "r\"C:\\tmp\\a\"");
+    const ExprId byte_string_literal_id =
+        module.push_literal_expr(syntax::ExprKind::byte_string_literal, {}, "b\"a\\n\\0\"");
+    const ExprId invalid_byte_string_literal_id =
+        module.push_literal_expr(syntax::ExprKind::byte_string_literal, {}, "b\"\\u{41}\"");
+    const ExprId char_literal_id =
+        module.push_literal_expr(syntax::ExprKind::char_literal, {}, "'\\u{03BB}'");
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -2070,10 +2050,14 @@ TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges) {
     module.modules = {module_info({"root"})};
 
     const ExprId repeat_value = push_integer(module);
-    syntax::ExprNode repeat_literal;
-    repeat_literal.kind = syntax::ExprKind::array_literal;
-    repeat_literal.array_repeat_value = repeat_value;
-    const ExprId repeat_literal_id = module.push_expr(repeat_literal);
+    const ExprId repeat_literal_id = module.push_array_expr(
+        {},
+        syntax::ArrayExprPayload {
+            {},
+            repeat_value,
+            syntax::INVALID_EXPR_ID,
+        }
+    );
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -2096,9 +2080,7 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
 
     const ExprId integer_literal = push_integer_text(module, "2147483648");
     const ExprId small_integer_literal = push_integer_text(module, "7");
-    syntax::ExprNode null_literal;
-    null_literal.kind = syntax::ExprKind::null_literal;
-    const ExprId null_literal_id = module.push_expr(null_literal);
+    const ExprId null_literal_id = module.push_literal_expr(syntax::ExprKind::null_literal, {}, "null");
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -2277,22 +2259,16 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     const ExprId suffixed_u8_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_U8_SUFFIX);
     const ExprId suffixed_i8_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_I8_SUFFIX);
     const ExprId invalid_suffix_expr = push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_INVALID_SUFFIX);
-    syntax::ExprNode float_overflow_expr;
-    float_overflow_expr.kind = syntax::ExprKind::float_literal;
-    float_overflow_expr.text = SEMA_TEST_FLOAT_OVERFLOW_LITERAL;
-    const ExprId float_overflow_expr_id = module.push_expr(float_overflow_expr);
-    syntax::ExprNode separated_float_expr = float_overflow_expr;
-    separated_float_expr.text = SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL;
-    const ExprId separated_float_expr_id = module.push_expr(separated_float_expr);
-    syntax::ExprNode invalid_float_expr = float_overflow_expr;
-    invalid_float_expr.text = SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL;
-    const ExprId invalid_float_expr_id = module.push_expr(invalid_float_expr);
-    syntax::ExprNode suffixed_float_expr = float_overflow_expr;
-    suffixed_float_expr.text = SEMA_TEST_FLOAT_LITERAL_F32_SUFFIX;
-    const ExprId suffixed_float_expr_id = module.push_expr(suffixed_float_expr);
-    syntax::ExprNode invalid_suffix_float_expr = float_overflow_expr;
-    invalid_suffix_float_expr.text = SEMA_TEST_FLOAT_LITERAL_INVALID_SUFFIX;
-    const ExprId invalid_suffix_float_expr_id = module.push_expr(invalid_suffix_float_expr);
+    const ExprId float_overflow_expr_id =
+        module.push_literal_expr(syntax::ExprKind::float_literal, {}, SEMA_TEST_FLOAT_OVERFLOW_LITERAL);
+    const ExprId separated_float_expr_id =
+        module.push_literal_expr(syntax::ExprKind::float_literal, {}, SEMA_TEST_FLOAT_WITH_SEPARATOR_LITERAL);
+    const ExprId invalid_float_expr_id =
+        module.push_literal_expr(syntax::ExprKind::float_literal, {}, SEMA_TEST_FLOAT_INVALID_TRAILING_LITERAL);
+    const ExprId suffixed_float_expr_id =
+        module.push_literal_expr(syntax::ExprKind::float_literal, {}, SEMA_TEST_FLOAT_LITERAL_F32_SUFFIX);
+    const ExprId invalid_suffix_float_expr_id =
+        module.push_literal_expr(syntax::ExprKind::float_literal, {}, SEMA_TEST_FLOAT_LITERAL_INVALID_SUFFIX);
 
     syntax::TypeNode scoped_missing_alias_type = named_node("Missing");
     scoped_missing_alias_type.scope_name = "missing";
@@ -2461,42 +2437,19 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges) {
     analyzer.checked_.functions.emplace(analyzer.method_key(module_id(0), record_type, "takes_array"), takes_array);
 
     const ExprId record_name = push_name(module, "Record");
-    syntax::ExprNode static_method_field;
-    static_method_field.kind = syntax::ExprKind::field;
-    static_method_field.object = record_name;
-    static_method_field.field_name = "needs";
-    const ExprId static_method_field_id = module.push_expr(static_method_field);
-    syntax::ExprNode static_method_call;
-    static_method_call.kind = syntax::ExprKind::call;
-    static_method_call.callee = static_method_field_id;
-    const ExprId static_method_call_id = module.push_expr(static_method_call);
+    const ExprId static_method_field_id = push_field(module, record_name, "needs");
+    const ExprId static_method_call_id = push_call(module, static_method_field_id);
 
-    syntax::ExprNode missing_arg_field = static_method_field;
-    missing_arg_field.field_name = "needs_arg";
-    const ExprId missing_arg_field_id = module.push_expr(missing_arg_field);
-    syntax::ExprNode missing_arg_call = static_method_call;
-    missing_arg_call.callee = missing_arg_field_id;
-    const ExprId missing_arg_call_id = module.push_expr(missing_arg_call);
+    const ExprId missing_arg_field_id = push_field(module, record_name, "needs_arg");
+    const ExprId missing_arg_call_id = push_call(module, missing_arg_field_id);
 
     const ExprId array_value = push_name(module, "array_value");
-    syntax::ExprNode array_arg_field = missing_arg_field;
-    array_arg_field.field_name = "takes_array";
-    const ExprId array_arg_field_id = module.push_expr(array_arg_field);
-    syntax::ExprNode array_arg_call = static_method_call;
-    array_arg_call.callee = array_arg_field_id;
-    array_arg_call.args = {array_value};
-    const ExprId array_arg_call_id = module.push_expr(array_arg_call);
+    const ExprId array_arg_field_id = push_field(module, record_name, "takes_array");
+    const ExprId array_arg_call_id = push_call(module, array_arg_field_id, {array_value});
 
     const ExprId choice_name = push_name(module, "Choice");
-    syntax::ExprNode none_field;
-    none_field.kind = syntax::ExprKind::field;
-    none_field.object = choice_name;
-    none_field.field_name = "none";
-    const ExprId none_field_id = module.push_expr(none_field);
-    syntax::ExprNode none_call;
-    none_call.kind = syntax::ExprKind::call;
-    none_call.callee = none_field_id;
-    const ExprId none_call_id = module.push_expr(none_call);
+    const ExprId none_field_id = push_field(module, choice_name, "none");
+    const ExprId none_call_id = push_call(module, none_field_id);
 
     analyzer.checked_.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_c_names.resize(module.exprs.size());
@@ -2539,30 +2492,32 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     unsupported_literal_pattern.case_name = "1";
     const syntax::PatternId unsupported_literal_pattern_id = module.push_pattern(unsupported_literal_pattern);
 
-    syntax::ExprNode enum_match;
-    enum_match.kind = syntax::ExprKind::match_expr;
-    enum_match.match_value = choice_value;
-    enum_match.match_arms = {
-        syntax::MatchArm {payload_pattern_id, int_guard, bool_result, {}},
-    };
-    const ExprId enum_match_id = module.push_expr(enum_match);
+    const ExprId enum_match_id = module.push_match_expr(
+        {},
+        syntax::MatchExprPayload {
+            choice_value,
+            {syntax::MatchArm {payload_pattern_id, int_guard, bool_result, {}}},
+        }
+    );
 
-    syntax::ExprNode binding_value_match;
-    binding_value_match.kind = syntax::ExprKind::match_expr;
-    binding_value_match.match_value = bool_subject;
-    binding_value_match.match_arms = {
-        syntax::MatchArm {true_binding_pattern_id, syntax::INVALID_EXPR_ID, int_result, {}},
-        syntax::MatchArm {wildcard_pattern_id, syntax::INVALID_EXPR_ID, int_result, {}},
-    };
-    const ExprId binding_value_match_id = module.push_expr(binding_value_match);
+    const ExprId binding_value_match_id = module.push_match_expr(
+        {},
+        syntax::MatchExprPayload {
+            bool_subject,
+            {
+                syntax::MatchArm {true_binding_pattern_id, syntax::INVALID_EXPR_ID, int_result, {}},
+                syntax::MatchArm {wildcard_pattern_id, syntax::INVALID_EXPR_ID, int_result, {}},
+            },
+        }
+    );
 
-    syntax::ExprNode void_match;
-    void_match.kind = syntax::ExprKind::match_expr;
-    void_match.match_value = bool_subject;
-    void_match.match_arms = {
-        syntax::MatchArm {wildcard_pattern_id, syntax::INVALID_EXPR_ID, void_value, {}},
-    };
-    const ExprId void_match_id = module.push_expr(void_match);
+    const ExprId void_match_id = module.push_match_expr(
+        {},
+        syntax::MatchExprPayload {
+            bool_subject,
+            {syntax::MatchArm {wildcard_pattern_id, syntax::INVALID_EXPR_ID, void_value, {}}},
+        }
+    );
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -2642,9 +2597,7 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal) {
 
     const ExprId scoped_value_expr = push_name(module, SEMA_TEST_CONST_VALUE_NAME, SEMA_TEST_IMPORT_ALIAS_ONE);
 
-    syntax::ExprNode field_expr;
-    field_expr.kind = syntax::ExprKind::field;
-    const ExprId field_expr_id = module.push_expr(field_expr);
+    const ExprId field_expr_id = module.push_field_expr({}, syntax::FieldExprPayload {});
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -2686,31 +2639,20 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationRejectsUnsupportedShapes) {
     const ExprId enum_name = push_name(module, SEMA_TEST_ENUM_VALUE_NAME);
     const ExprId integer_literal = push_integer(module);
 
-    syntax::ExprNode unsupported_unary;
-    unsupported_unary.kind = syntax::ExprKind::unary;
-    unsupported_unary.unary_op = syntax::UnaryOp::address_of;
-    unsupported_unary.unary_operand = integer_literal;
-    const ExprId unsupported_unary_id = module.push_expr(unsupported_unary);
-
-    syntax::ExprNode invalid_child_cast;
-    invalid_child_cast.kind = syntax::ExprKind::cast;
-    invalid_child_cast.cast_expr = syntax::INVALID_EXPR_ID;
-    const ExprId invalid_child_cast_id = module.push_expr(invalid_child_cast);
-
-    syntax::ExprNode empty_struct_literal;
-    empty_struct_literal.kind = syntax::ExprKind::struct_literal;
-    const ExprId empty_struct_literal_id = module.push_expr(empty_struct_literal);
-
-    syntax::ExprNode invalid_binary;
-    invalid_binary.kind = syntax::ExprKind::binary;
-    invalid_binary.binary_op = SEMA_TEST_INVALID_BINARY_OP;
-    invalid_binary.binary_lhs = integer_literal;
-    invalid_binary.binary_rhs = integer_literal;
-    const ExprId invalid_binary_id = module.push_expr(invalid_binary);
-
-    syntax::ExprNode plain_field;
-    plain_field.kind = syntax::ExprKind::field;
-    const ExprId plain_field_id = module.push_expr(plain_field);
+    const ExprId unsupported_unary_id = push_unary(module, syntax::UnaryOp::address_of, integer_literal);
+    const ExprId invalid_child_cast_id = module.push_cast_like_expr(
+        syntax::ExprKind::cast,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, syntax::INVALID_EXPR_ID}
+    );
+    const ExprId empty_struct_literal_id = module.push_struct_literal_expr({}, syntax::StructLiteralExprPayload {});
+    const ExprId invalid_binary_id = push_binary(
+        module,
+        SEMA_TEST_INVALID_BINARY_OP,
+        integer_literal,
+        integer_literal
+    );
+    const ExprId plain_field_id = module.push_field_expr({}, syntax::FieldExprPayload {});
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);

@@ -132,14 +132,18 @@ reusable global bump allocator behind the syntax-layer `IdentifierInterner`;
 AST type/expr/pattern/stmt/item/module/import name-bearing fields now carry
 native `IdentId` payload fields, parser/module-loader/postfix writes intern
 through the current `AstModule`, and sema typed lookup keys reuse that AST
-module interner instead of maintaining a second private interner. On the local
+module interner instead of maintaining a second private interner. The 2026-05-16
+performance line then removed the old fat `ExprNode` production type entirely:
+parser construction, `AstModule` storage, module-loader append, and postfix
+materialization now create compact expression headers plus per-kind payloads
+directly. On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 180 MiB RSS / 112 ms. Google Benchmark `sema_ast_bulk/1024` is now
-roughly 174 ns/expr, and the local `tools/frontend_compare.py` baseline has
-Aurex `--check` at roughly 8.4 ms for lookup/96 and 9.1 ms for generics/96,
-versus Clang++ at roughly 20.6 ms / 22.4 ms and G++ at roughly 25.8 ms /
-24.4 ms. Cross-module stable hashes / parallel global IDs and CI perf
+roughly 180.1 MiB RSS / 70.9 ms. Google Benchmark `sema_ast_bulk/1024` is now
+roughly 117 ns/expr, and the local `tools/frontend_compare.py` baseline has
+Aurex `--check` at roughly 8.1 ms for lookup/96 and 8.6 ms for generics/96,
+versus Clang++ at roughly 20.1 ms / 22.9 ms and G++ at roughly 22.4 ms /
+23.1 ms. Cross-module stable hashes / parallel global IDs and CI perf
 thresholds remain later performance work.
 
 ## M2 Gaps

@@ -67,11 +67,26 @@ TEST_F(AurexIntegrationTest, FunctionReturnInference) {
 
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
+    const fs::path null_pointer = positive_sample("inference", "return_inference_null_pointer.ax");
+    const std::string null_pointer_checked =
+        require_success(aurexc() + " --emit=checked " + q(null_pointer)).output;
+    expect_contains_all(null_pointer_checked, {
+        "fn priv null_first -> *const i32",
+        "fn priv null_last -> *const i32",
+    });
+    require_success(aurexc() + " --emit=llvm-ir " + q(null_pointer));
+
     const fs::path mismatch = negative_sample("inference", "return_inference_mismatch.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "inferred function return types do not match");
 
     const fs::path null_source = negative_sample("inference", "return_inference_null.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(null_source)).output, "function return type cannot be inferred");
+
+    const fs::path null_non_pointer = negative_sample("inference", "return_inference_null_non_pointer.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(null_non_pointer)).output,
+        "inferred function return types do not match"
+    );
 
     const fs::path recursive = negative_sample("inference", "return_inference_recursive.ax");
     expect_contains(

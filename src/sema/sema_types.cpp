@@ -1681,6 +1681,15 @@ bool SemanticAnalyzer::is_null_literal(const syntax::ExprId expr_id) const noexc
            module_.exprs[expr_id.value].kind == syntax::ExprKind::null_literal;
 }
 
+bool SemanticAnalyzer::is_null_result_expr(const syntax::ExprId expr_id) const noexcept {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+        return false;
+    }
+    const syntax::ExprNode& expr = this->module_.exprs[expr_id.value];
+    return expr.kind == syntax::ExprKind::null_literal ||
+           (expr.kind == syntax::ExprKind::block_expr && this->is_null_literal(expr.block_result));
+}
+
 SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     const syntax::ExprId expr_id,
     const bool emit_diagnostics

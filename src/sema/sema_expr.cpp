@@ -264,10 +264,11 @@ TypeHandle SemanticAnalyzer::analyze_expr(
     case syntax::ExprKind::bool_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
     case syntax::ExprKind::null_literal:
-        return this->record_expr_type(
-            expr_id,
-            this->checked_.types.is_pointer(expected_type) ? expected_type : INVALID_TYPE_HANDLE
-        );
+        if (this->checked_.types.is_pointer(expected_type)) {
+            this->record_coercion(expr_id, INVALID_TYPE_HANDLE, expected_type, CoercionKind::null_to_pointer);
+            return this->record_expr_type(expr_id, expected_type);
+        }
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     case syntax::ExprKind::string_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     case syntax::ExprKind::raw_string_literal:
@@ -1167,27 +1168,25 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
         return result;
     };
 
-    const auto is_null_result_expr = [&](const syntax::ExprId candidate) {
-        if (!syntax::is_valid(candidate) || candidate.value >= module_.exprs.size()) {
-            return false;
-        }
-        const syntax::ExprNode& candidate_expr = module_.exprs[candidate.value];
-        return candidate_expr.kind == syntax::ExprKind::null_literal ||
-            (candidate_expr.kind == syntax::ExprKind::block_expr && is_null_literal(candidate_expr.block_result));
-    };
     TypeHandle then_type = INVALID_TYPE_HANDLE;
     TypeHandle else_type = INVALID_TYPE_HANDLE;
-    if (!is_valid(expected_type) && is_null_result_expr(expr.then_expr) && !is_null_result_expr(expr.else_expr)) {
-        else_type = analyze_expr(expr.else_expr);
+    if (!is_valid(expected_type) &&
+        this->is_null_result_expr(expr.then_expr) &&
+        !this->is_null_result_expr(expr.else_expr)) {
+        else_type = this->analyze_expr(expr.else_expr);
         then_type = analyze_then_branch(else_type);
     } else {
         then_type = analyze_then_branch(expected_type);
-        else_type = analyze_expr(expr.else_expr, is_valid(then_type) ? then_type : expected_type);
-        if (!is_valid(then_type) && checked_.types.is_pointer(else_type) && is_null_result_expr(expr.then_expr)) {
+        else_type = this->analyze_expr(expr.else_expr, is_valid(then_type) ? then_type : expected_type);
+        if (!is_valid(then_type) &&
+            this->checked_.types.is_pointer(else_type) &&
+            this->is_null_result_expr(expr.then_expr)) {
             then_type = analyze_then_branch(else_type);
         }
-        if (!is_valid(else_type) && checked_.types.is_pointer(then_type) && is_null_result_expr(expr.else_expr)) {
-            else_type = analyze_expr(expr.else_expr, then_type);
+        if (!is_valid(else_type) &&
+            this->checked_.types.is_pointer(then_type) &&
+            this->is_null_result_expr(expr.else_expr)) {
+            else_type = this->analyze_expr(expr.else_expr, then_type);
         }
     }
     if (!checked_.types.same(then_type, else_type)) {

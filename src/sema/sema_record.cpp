@@ -159,10 +159,15 @@ void SemanticAnalyzer::record_coercion(
     const TypeHandle to_type,
     const CoercionKind kind
 ) {
+    const bool null_to_pointer =
+        kind == CoercionKind::null_to_pointer &&
+        !is_valid(from_type) &&
+        is_valid(to_type) &&
+        this->checked_.types.is_pointer(to_type);
     if (!syntax::is_valid(expr) ||
-        !is_valid(from_type) ||
         !is_valid(to_type) ||
-        this->checked_.types.same(from_type, to_type)) {
+        (!is_valid(from_type) && !null_to_pointer) ||
+        (is_valid(from_type) && this->checked_.types.same(from_type, to_type))) {
         return;
     }
     this->checked_.coercions.push_back(CoercionRecord {

@@ -935,10 +935,12 @@ void SemanticAnalyzer::record_inferred_return(
 ) {
     inference.returns.push_back(stmt_id);
     if (!is_valid(actual)) {
-        if (syntax::is_valid(stmt_id) && stmt_id.value < this->module_.stmts.size()) {
-            const syntax::StmtNode& stmt = this->module_.stmts[stmt_id.value];
-            this->report(stmt.range, std::string(SEMA_RETURN_TYPE_INFER));
+        const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
+        if (stmt != nullptr && this->is_null_result_expr(stmt->return_value)) {
+            inference.pending_null_returns.push_back(stmt_id);
+            return;
         }
+        this->report_return_inference_diagnostic(stmt_id, SEMA_RETURN_TYPE_INFER);
         return;
     }
     if (!is_valid(inference.inferred_type)) {
@@ -946,10 +948,7 @@ void SemanticAnalyzer::record_inferred_return(
         return;
     }
     if (!this->checked_.types.same(inference.inferred_type, actual)) {
-        if (syntax::is_valid(stmt_id) && stmt_id.value < this->module_.stmts.size()) {
-            const syntax::StmtNode& stmt = this->module_.stmts[stmt_id.value];
-            this->report(stmt.range, std::string(SEMA_INFERRED_RETURN_TYPE_MISMATCH));
-        }
+        this->report_return_inference_diagnostic(stmt_id, SEMA_INFERRED_RETURN_TYPE_MISMATCH);
     }
 }
 
@@ -958,6 +957,7 @@ void SemanticAnalyzer::finalize_inferred_return(
     const std::string& key,
     ReturnTypeInference& inference
 ) {
+    this->resolve_pending_null_returns(inference);
     TypeHandle return_type = inference.inferred_type;
     if (inference.returns.empty()) {
         return_type = this->checked_.types.builtin(BuiltinType::void_);
@@ -972,6 +972,43 @@ void SemanticAnalyzer::finalize_inferred_return(
             global->second.type = this->function_type_from_signature(found->second);
         }
     }
+}
+
+void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inference) {
+    if (inference.pending_null_returns.empty()) {
+        return;
+    }
+    if (!is_valid(inference.inferred_type)) {
+        this->report_return_inference_diagnostic(inference.pending_null_returns.front(), SEMA_RETURN_TYPE_INFER);
+        return;
+    }
+    if (!this->checked_.types.is_pointer(inference.inferred_type)) {
+        for (const syntax::StmtId stmt_id : inference.pending_null_returns) {
+            this->report_return_inference_diagnostic(stmt_id, SEMA_INFERRED_RETURN_TYPE_MISMATCH);
+        }
+        return;
+    }
+    for (const syntax::StmtId stmt_id : inference.pending_null_returns) {
+        const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
+        if (stmt == nullptr || !syntax::is_valid(stmt->return_value)) {
+            continue;
+        }
+        const TypeHandle actual = this->analyze_expr(stmt->return_value, inference.inferred_type);
+        if (!is_valid(actual) || !this->can_assign(inference.inferred_type, actual, stmt->return_value)) {
+            this->report_return_inference_diagnostic(stmt_id, SEMA_INFERRED_RETURN_TYPE_MISMATCH);
+        }
+    }
+}
+
+void SemanticAnalyzer::report_return_inference_diagnostic(
+    const syntax::StmtId stmt_id,
+    const std::string_view message
+) {
+    const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
+    if (stmt == nullptr) {
+        return;
+    }
+    this->report(stmt->range, std::string(message));
 }
 
 void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) {

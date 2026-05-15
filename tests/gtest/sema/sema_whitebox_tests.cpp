@@ -936,6 +936,15 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     invalid_expr.kind = syntax::ExprKind::invalid;
     const ExprId INVALID_EXPR_ID = module.push_expr(invalid_expr);
 
+    syntax::StmtNode empty_return_stmt;
+    empty_return_stmt.kind = syntax::StmtKind::return_;
+    const syntax::StmtId empty_return_stmt_id = module.push_stmt(empty_return_stmt);
+
+    syntax::StmtNode invalid_expr_return_stmt;
+    invalid_expr_return_stmt.kind = syntax::StmtKind::return_;
+    invalid_expr_return_stmt.return_value = INVALID_EXPR_ID;
+    const syntax::StmtId invalid_expr_return_stmt_id = module.push_stmt(invalid_expr_return_stmt);
+
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
     analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
@@ -943,6 +952,7 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     analyzer.checked_.stmt_local_types.assign(module.stmts.size(), INVALID_TYPE_HANDLE);
     analyzer.current_module_ = module_id(0);
     const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
+    const TypeHandle ptr_i32 = analyzer.checked_.types.pointer(PointerMutability::const_, i32);
     const TypeHandle plain_type = analyzer.checked_.types.named_struct("Plain", "Plain", false);
     analyzer.named_types_.emplace(analyzer.module_key(module_id(0), "Plain"), plain_type);
 
@@ -959,6 +969,23 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     analyzer.analyze_stmt(syntax::INVALID_STMT_ID, i32, nullptr);
     sema::SemanticAnalyzer::ReturnTypeInference inference;
     analyzer.finalize_inferred_return(function, "0:infer", inference);
+
+    sema::SemanticAnalyzer::ReturnTypeInference invalid_pending_null_return;
+    invalid_pending_null_return.inferred_type = ptr_i32;
+    invalid_pending_null_return.pending_null_returns.push_back(syntax::INVALID_STMT_ID);
+    analyzer.resolve_pending_null_returns(invalid_pending_null_return);
+
+    sema::SemanticAnalyzer::ReturnTypeInference empty_pending_null_return;
+    empty_pending_null_return.inferred_type = ptr_i32;
+    empty_pending_null_return.pending_null_returns.push_back(empty_return_stmt_id);
+    analyzer.resolve_pending_null_returns(empty_pending_null_return);
+
+    sema::SemanticAnalyzer::ReturnTypeInference invalid_expr_pending_null_return;
+    invalid_expr_pending_null_return.inferred_type = ptr_i32;
+    invalid_expr_pending_null_return.pending_null_returns.push_back(invalid_expr_return_stmt_id);
+    analyzer.resolve_pending_null_returns(invalid_expr_pending_null_return);
+    analyzer.report_return_inference_diagnostic(syntax::INVALID_STMT_ID, "ignored diagnostic");
+
     conflict_signature.has_conflict = false;
     analyzer.ensure_function_return_known(conflict_signature, {});
     EXPECT_FALSE(is_valid(analyzer.analyze_expr(syntax::INVALID_EXPR_ID)));
@@ -1581,9 +1608,16 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
     EXPECT_EQ(coercion.kind, sema::CoercionKind::contextual_integer_literal);
 
     EXPECT_FALSE(is_valid(analyzer.analyze_expr(null_literal_id)));
+    const std::size_t null_coercion_index = analyzer.checked_.coercions.size();
     EXPECT_TRUE(types.same(analyzer.analyze_expr(null_literal_id, ptr_i32), ptr_i32));
     EXPECT_TRUE(types.same(analyzer.checked_.expr_types[null_literal_id.value], ptr_i32));
     EXPECT_TRUE(types.same(analyzer.checked_.expr_expected_types[null_literal_id.value], ptr_i32));
+    ASSERT_GT(analyzer.checked_.coercions.size(), null_coercion_index);
+    const sema::CoercionRecord& null_coercion = analyzer.checked_.coercions.back();
+    EXPECT_EQ(null_coercion.expr.value, null_literal_id.value);
+    EXPECT_FALSE(is_valid(null_coercion.from_type));
+    EXPECT_TRUE(types.same(null_coercion.to_type, ptr_i32));
+    EXPECT_EQ(null_coercion.kind, sema::CoercionKind::null_to_pointer);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {

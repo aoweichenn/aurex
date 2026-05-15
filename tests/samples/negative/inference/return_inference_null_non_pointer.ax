@@ -1,0 +1,12 @@
+module return_inference_null_non_pointer;
+
+fn bad(flag: bool) {
+    if flag {
+        return null;
+    }
+    return 1;
+}
+
+fn main() -> i32 {
+    return bad(false);
+}

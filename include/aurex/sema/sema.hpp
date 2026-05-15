@@ -49,6 +49,7 @@ private:
     struct ReturnTypeInference {
         TypeHandle inferred_type = INVALID_TYPE_HANDLE;
         std::vector<syntax::StmtId> returns;
+        std::vector<syntax::StmtId> pending_null_returns;
     };
 
     struct GenericTemplateInfo {
@@ -245,6 +246,8 @@ private:
     [[nodiscard]] bool stmt_may_fallthrough(syntax::StmtId stmt) const;
     void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
     void finalize_inferred_return(const syntax::ItemNode& function, const std::string& key, ReturnTypeInference& inference);
+    void resolve_pending_null_returns(ReturnTypeInference& inference);
+    void report_return_inference_diagnostic(syntax::StmtId stmt, std::string_view message);
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
     void ensure_function_return_known(const FunctionSignature& signature, base::SourceRange use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
@@ -507,6 +510,7 @@ private:
     [[nodiscard]] base::u64 abi_align(TypeHandle type) const;
     [[nodiscard]] bool is_integer_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_null_literal(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] bool is_null_result_expr(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_place_expr(syntax::ExprId expr);
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
     [[nodiscard]] bool is_array_containing_value_type(TypeHandle type) const noexcept;

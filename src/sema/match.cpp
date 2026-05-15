@@ -508,14 +508,6 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     std::vector<std::string> covered;
     TypeHandle result = INVALID_TYPE_HANDLE;
     std::vector<base::SourceRange> pending_null_arm_ranges;
-    const auto is_null_result_expr = [&](const syntax::ExprId candidate) {
-        if (!syntax::is_valid(candidate) || candidate.value >= this->module_.exprs.size()) {
-            return false;
-        }
-        const syntax::ExprNode& candidate_expr = this->module_.exprs[candidate.value];
-        return candidate_expr.kind == syntax::ExprKind::null_literal ||
-            (candidate_expr.kind == syntax::ExprKind::block_expr && this->is_null_literal(candidate_expr.block_result));
-    };
     const auto resolve_pending_null_arms = [&]() {
         if (!is_valid(result) || pending_null_arm_ranges.empty()) {
             return;
@@ -934,7 +926,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         } else {
             arm_type = analyze_guard_and_arm_value();
         }
-        const bool null_result_arm = is_null_result_expr(arm.value);
+        const bool null_result_arm = this->is_null_result_expr(arm.value);
         if (!is_valid(arm_type) && null_result_arm && this->checked_.types.is_pointer(result)) {
             arm_type = this->analyze_expr(arm.value, result);
         }

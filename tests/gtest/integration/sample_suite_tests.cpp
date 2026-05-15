@@ -71,6 +71,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"raw_pointer_index_requires_unsafe", "raw pointer projection requires unsafe context"},
     {"raw_pointer_index_write_requires_unsafe", "raw pointer projection requires unsafe context"},
     {"implicit_address_to_raw_pointer_rejected", "initializer type does not match declared type"},
+    {"return_inference_null_non_pointer", "inferred function return types do not match"},
     {"str_slice_bound_non_integer", "slice bound must be an integer"},
     {"strfromutf8_non_slice", "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"},
     {"try_result_return_mismatch", "try expression on result-like enum requires enclosing function"},

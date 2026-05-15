@@ -554,31 +554,22 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::greater:
     case syntax::BinaryOp::greater_equal:
         if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, "Ord")) {
+            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, CapabilityKind::ord)) {
                 this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
             }
             return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
         }
-        if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
+        if (!this->type_supports_ordering_operator(lhs)) {
             this->report(expr.range, std::string(SEMA_COMPARISON_NUMERIC));
         }
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
     case syntax::BinaryOp::equal:
     case syntax::BinaryOp::not_equal: {
-        const bool scalar =
-            this->checked_.types.is_bool(lhs) ||
-            this->checked_.types.is_char(lhs) ||
-            this->checked_.types.is_integer(lhs) ||
-            this->checked_.types.is_float(lhs) ||
-            this->checked_.types.is_pointer(lhs) ||
-            (is_valid(lhs) &&
-             this->checked_.types.get(lhs).kind == TypeKind::enum_ &&
-             !is_valid(this->checked_.types.get(lhs).enum_payload_storage));
         if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, "Eq")) {
+            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, CapabilityKind::eq)) {
                 this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
             }
-        } else if (!scalar && !is_null_pointer_comparison) {
+        } else if (!this->type_supports_equality_operator(lhs) && !is_null_pointer_comparison) {
             this->report(expr.range, std::string(SEMA_EQUALITY_SCALAR));
         }
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
@@ -1045,7 +1036,7 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
 ) {
     const TypeHandle queried = this->resolve_type(expr.cast_type);
     if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::generic_param) {
-        if (!this->generic_param_has_capability(this->checked_.types.get(queried).name, "Sized")) {
+        if (!this->generic_param_has_capability(this->checked_.types.get(queried).name, CapabilityKind::sized)) {
             this->report(expr.range, std::string(SEMA_GENERIC_SIZEOF_ALIGNOF));
         }
     } else if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {

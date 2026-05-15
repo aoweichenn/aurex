@@ -8,6 +8,7 @@
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -15,6 +16,21 @@
 #include <vector>
 
 namespace aurex::sema {
+
+enum class CapabilityKind {
+    sized,
+    eq,
+    ord,
+    hash,
+};
+
+struct CapabilityKindHash {
+    [[nodiscard]] std::size_t operator()(const CapabilityKind kind) const noexcept {
+        return static_cast<std::size_t>(kind);
+    }
+};
+
+[[nodiscard]] std::string_view capability_name(CapabilityKind capability) noexcept;
 
 class SemanticAnalyzer final {
 public:
@@ -40,14 +56,14 @@ private:
         std::string name;
         std::string key;
         std::vector<std::string> params;
-        std::unordered_map<std::string, std::unordered_set<std::string>> constraints;
+        std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
     };
 
     struct GenericContext {
         std::unordered_map<std::string, TypeHandle> params;
-        std::unordered_map<std::string, std::unordered_set<std::string>> constraints;
+        std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
     };
 
     struct GenericSideTableScope {
@@ -120,8 +136,11 @@ private:
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
-    [[nodiscard]] bool generic_param_has_capability(std::string_view param, std::string_view capability) const;
-    [[nodiscard]] bool type_satisfies_capability(TypeHandle type, std::string_view capability) const;
+    [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
+    [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
+    [[nodiscard]] bool type_supports_equality_operator(TypeHandle type) const;
+    [[nodiscard]] bool type_supports_ordering_operator(TypeHandle type) const;
+    [[nodiscard]] bool type_supports_hash_capability(TypeHandle type) const;
     [[nodiscard]] bool validate_generic_arguments(
         const GenericTemplateInfo& info,
         const std::vector<TypeHandle>& args,

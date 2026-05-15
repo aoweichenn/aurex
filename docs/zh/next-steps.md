@@ -87,7 +87,7 @@
    - capability parser、where clause、generic instantiation、operator checking 和诊断共用一套 capability 表。
    - `Eq` / `Ord` 的规则必须和 `==` / `<` 等 operator 支持集一致；如果 float、reference 或其他类型不能提供可靠能力，就必须在 capability 和 operator 两边同步拒绝或同步说明例外。
    - `Hash` 不能只是名字存在，M2.1 至少要定义“可接受但无运行时 hash operator”的明确边界，或暂时拒绝没有操作锚点的类型。
-   - 新增 negative：`float_eq_capability`、`reference_does_not_satisfy_eq`、`where_unknown_capability_structured`。
+   - 新增 negative：`reference_does_not_satisfy_eq`、`reference_hash_rejected`、`enum_hash_rejected`、`where_unknown_capability_structured`；float equality 继续跟随当前 `==` 支持集作为 `Eq` 正例。
 6. 补齐数组常量索引边界检查。
    - 对固定数组和可静态求值的整数 index，在 sema 阶段检查 `0 <= index < length`。
    - 变量 index 仍按当前 M2 运行时/后端边界处理，但不能把常量越界留到 LLVM 或 native crash。
@@ -216,7 +216,7 @@ M2.1 至少新增或更新以下测试类别：
 |:-----|:---------|
 | unsafe/raw pointer | raw pointer field/index/read/write 需要 unsafe；reference field/index 不误报；unsafe block 内通过 |
 | contextual typing | literal/null/reference/generic call/aggregate literal 在不同 expected type 下不读旧 final cache |
-| capability/generic | float/reference capability 拒绝；imported generic lookup；generic param identity；mangling collision |
+| capability/generic | reference capability 拒绝；Hash 无操作锚点类型拒绝；float Eq 跟随 `==` 支持集；imported generic lookup；generic param identity；mangling collision |
 | `[]` 语义 | generic apply、type apply、index、slice 的正反例和诊断区分 |
 | array bounds | 常量 index 越界拒绝；变量 index 保持当前策略 |
 | parser/type stress | 3000 token 操作链、深括号、深泛型、深 pattern、deep type nesting 不崩溃 |

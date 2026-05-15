@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -17,10 +18,6 @@ constexpr std::string_view SEMA_GENERIC_ARG_LIST_OPEN = "[";
 constexpr std::string_view SEMA_GENERIC_ARG_LIST_CLOSE = "]";
 constexpr std::string_view SEMA_GENERIC_ARG_LIST_SEPARATOR = ",";
 constexpr char SEMA_GENERIC_MANGLE_FALLBACK_CHAR = '_';
-constexpr std::string_view SEMA_CAPABILITY_SIZED = "Sized";
-constexpr std::string_view SEMA_CAPABILITY_EQ = "Eq";
-constexpr std::string_view SEMA_CAPABILITY_ORD = "Ord";
-constexpr std::string_view SEMA_CAPABILITY_HASH = "Hash";
 constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 
@@ -47,11 +44,20 @@ constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
     return text;
 }
 
-[[nodiscard]] bool is_supported_capability(const std::string_view name) noexcept {
-    return name == SEMA_CAPABILITY_SIZED ||
-           name == SEMA_CAPABILITY_EQ ||
-           name == SEMA_CAPABILITY_ORD ||
-           name == SEMA_CAPABILITY_HASH;
+[[nodiscard]] std::optional<CapabilityKind> parse_capability_kind(const std::string_view name) noexcept {
+    if (name == capability_name(CapabilityKind::sized)) {
+        return CapabilityKind::sized;
+    }
+    if (name == capability_name(CapabilityKind::eq)) {
+        return CapabilityKind::eq;
+    }
+    if (name == capability_name(CapabilityKind::ord)) {
+        return CapabilityKind::ord;
+    }
+    if (name == capability_name(CapabilityKind::hash)) {
+        return CapabilityKind::hash;
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] bool is_resource_capability(const std::string_view name) noexcept {
@@ -59,6 +65,20 @@ constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 }
 
 } // namespace
+
+std::string_view capability_name(const CapabilityKind capability) noexcept {
+    switch (capability) {
+    case CapabilityKind::sized:
+        return "Sized";
+    case CapabilityKind::eq:
+        return "Eq";
+    case CapabilityKind::ord:
+        return "Ord";
+    case CapabilityKind::hash:
+        return "Hash";
+    }
+    return "<invalid>";
+}
 
 bool SemanticAnalyzer::has_generic_params(const syntax::ItemNode& item) const noexcept {
     return !item.generic_params.empty();
@@ -100,7 +120,7 @@ void SemanticAnalyzer::validate_generic_constraints(
             this->report(constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
             continue;
         }
-        std::unordered_set<std::string>& capabilities = info.constraints[param_name];
+        std::unordered_set<CapabilityKind, CapabilityKindHash>& capabilities = info.constraints[param_name];
         for (base::usize i = 0; i < constraint.capability_names.size(); ++i) {
             const std::string_view capability_name = constraint.capability_names[i];
             const base::SourceRange capability_range =
@@ -109,11 +129,12 @@ void SemanticAnalyzer::validate_generic_constraints(
                 this->report(capability_range, std::string(SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED));
                 continue;
             }
-            if (!is_supported_capability(capability_name)) {
+            const std::optional<CapabilityKind> capability = parse_capability_kind(capability_name);
+            if (!capability.has_value()) {
                 this->report(capability_range, sema_unknown_capability_message(capability_name));
                 continue;
             }
-            if (!capabilities.insert(std::string(capability_name)).second) {
+            if (!capabilities.insert(*capability).second) {
                 this->report(capability_range, sema_duplicate_capability_message(constraint.param_name, capability_name));
             }
         }
@@ -122,19 +143,19 @@ void SemanticAnalyzer::validate_generic_constraints(
 
 bool SemanticAnalyzer::generic_param_has_capability(
     const std::string_view param,
-    const std::string_view capability
+    const CapabilityKind capability
 ) const {
     if (this->current_generic_context_ == nullptr) {
         return false;
     }
     const auto found = this->current_generic_context_->constraints.find(std::string(param));
     return found != this->current_generic_context_->constraints.end() &&
-           found->second.contains(std::string(capability));
+           found->second.contains(capability);
 }
 
 bool SemanticAnalyzer::type_satisfies_capability(
     const TypeHandle type,
-    const std::string_view capability
+    const CapabilityKind capability
 ) const {
     if (!is_valid(type)) {
         return false;
@@ -143,30 +164,46 @@ bool SemanticAnalyzer::type_satisfies_capability(
     if (info.kind == TypeKind::generic_param) {
         return this->generic_param_has_capability(info.name, capability);
     }
-    if (capability == SEMA_CAPABILITY_SIZED) {
+    if (capability == CapabilityKind::sized) {
         return this->is_valid_storage_type(type);
     }
-    if (capability == SEMA_CAPABILITY_EQ) {
-        return this->checked_.types.is_bool(type) ||
-               this->checked_.types.is_char(type) ||
-               this->checked_.types.is_integer(type) ||
-               this->checked_.types.is_float(type) ||
-               this->checked_.types.is_pointer(type) ||
-               this->checked_.types.is_reference(type) ||
-               (info.kind == TypeKind::enum_ && !is_valid(info.enum_payload_storage));
+    if (capability == CapabilityKind::eq) {
+        return this->type_supports_equality_operator(type);
     }
-    if (capability == SEMA_CAPABILITY_ORD) {
-        return this->checked_.types.is_integer(type) || this->checked_.types.is_float(type);
+    if (capability == CapabilityKind::ord) {
+        return this->type_supports_ordering_operator(type);
     }
-    if (capability == SEMA_CAPABILITY_HASH) {
-        return this->checked_.types.is_bool(type) ||
-               this->checked_.types.is_char(type) ||
-               this->checked_.types.is_integer(type) ||
-               this->checked_.types.is_pointer(type) ||
-               this->checked_.types.is_reference(type) ||
-               (info.kind == TypeKind::enum_ && !is_valid(info.enum_payload_storage));
+    if (capability == CapabilityKind::hash) {
+        return this->type_supports_hash_capability(type);
     }
     return false;
+}
+
+bool SemanticAnalyzer::type_supports_equality_operator(const TypeHandle type) const {
+    if (!is_valid(type)) {
+        return false;
+    }
+    const TypeInfo& info = this->checked_.types.get(type);
+    return this->checked_.types.is_bool(type) ||
+           this->checked_.types.is_char(type) ||
+           this->checked_.types.is_integer(type) ||
+           this->checked_.types.is_float(type) ||
+           this->checked_.types.is_pointer(type) ||
+           (info.kind == TypeKind::enum_ && !is_valid(info.enum_payload_storage));
+}
+
+bool SemanticAnalyzer::type_supports_ordering_operator(const TypeHandle type) const {
+    return this->checked_.types.is_integer(type) || this->checked_.types.is_float(type);
+}
+
+bool SemanticAnalyzer::type_supports_hash_capability(const TypeHandle type) const {
+    if (!is_valid(type)) {
+        return false;
+    }
+    return this->checked_.types.is_bool(type) ||
+           this->checked_.types.is_char(type) ||
+           this->checked_.types.is_integer(type) ||
+           this->checked_.types.is_pointer(type);
 }
 
 bool SemanticAnalyzer::validate_generic_arguments(
@@ -180,13 +217,13 @@ bool SemanticAnalyzer::validate_generic_arguments(
         if (found == info.constraints.end()) {
             continue;
         }
-        for (const std::string& capability : found->second) {
+        for (const CapabilityKind capability : found->second) {
             if (!this->type_satisfies_capability(args[i], capability)) {
                 this->report(
                     use_range,
                     sema_generic_capability_not_satisfied_message(
                         this->checked_.types.display_name(args[i]),
-                        capability
+                        capability_name(capability)
                     )
                 );
                 ok = false;

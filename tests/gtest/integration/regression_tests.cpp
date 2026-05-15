@@ -981,6 +981,10 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
         "struct Box[T] { value: T; }\n"
         "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
         "fn accept_hash[T](value: T) -> i32 where T: Hash { return 1; }\n"
+        "fn same[T](left: T, right: T) -> i32 where T: Eq {\n"
+        "  if left == right { return 1; }\n"
+        "  return 0;\n"
+        "}\n"
         "fn less_than[T](left: T, right: T) -> i32 where T: Ord {\n"
         "  if left < right { return 1; }\n"
         "  return 0;\n"
@@ -993,13 +997,12 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
         "  var right: i32 = 2;\n"
         "  let left_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&left)) };\n"
         "  let right_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&right)) };\n"
-        "  let left_ref: &i32 = &left;\n"
         "  let flag: Flag = Flag.yes;\n"
         "  let box: Box[i32] = Box[i32] { value: 1 };\n"
         "  return accept_eq(true) + accept_eq('\\u{03BB}') + accept_eq(cast[f64](1)) +\n"
-        "    accept_eq(left_ptr) + accept_eq(left_ref) + accept_eq(flag) +\n"
-        "    accept_hash(right_ptr) + accept_hash(left_ref) + accept_hash(flag) +\n"
-        "    less_than(cast[f64](1), cast[f64](2)) + box.get() + box.get() - 12;\n"
+        "    accept_eq(left_ptr) + accept_eq(flag) +\n"
+        "    accept_hash(true) + accept_hash('\\u{03BB}') + accept_hash(left) + accept_hash(right_ptr) +\n"
+        "    same(flag, Flag.yes) + less_than(cast[f64](1), cast[f64](2)) + box.get() + box.get() - 13;\n"
         "}\n"
     );
 
@@ -1009,14 +1012,60 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
         "accept_eq[char] -> i32",
         "accept_eq[f64] -> i32",
         "accept_eq[*const i32] -> i32",
-        "accept_eq[&i32] -> i32",
         "accept_eq[generic_capability_concrete_types.Flag] -> i32",
+        "accept_hash[bool] -> i32",
+        "accept_hash[char] -> i32",
+        "accept_hash[i32] -> i32",
         "accept_hash[*const i32] -> i32",
-        "accept_hash[&i32] -> i32",
-        "accept_hash[generic_capability_concrete_types.Flag] -> i32",
+        "same[generic_capability_concrete_types.Flag] -> i32",
         "less_than[f64] -> i32",
         "method generic_capability_concrete_types.Box[i32].get[i32] -> i32",
     });
+
+    const fs::path reference_eq = write_source_file(
+        tmp_root() / "generic_reference_eq_rejected.ax",
+        "module generic_reference_eq_rejected;\n"
+        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = &value;\n"
+        "  return accept_eq(ref);\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(reference_eq)).output,
+        "type &i32 does not satisfy capability `Eq`"
+    );
+
+    const fs::path reference_hash = write_source_file(
+        tmp_root() / "generic_reference_hash_rejected.ax",
+        "module generic_reference_hash_rejected;\n"
+        "fn accept_hash[T](value: T) -> i32 where T: Hash { return 1; }\n"
+        "fn main() -> i32 {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = &value;\n"
+        "  return accept_hash(ref);\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(reference_hash)).output,
+        "type &i32 does not satisfy capability `Hash`"
+    );
+
+    const fs::path enum_hash = write_source_file(
+        tmp_root() / "generic_enum_hash_rejected.ax",
+        "module generic_enum_hash_rejected;\n"
+        "enum Flag { no, yes }\n"
+        "fn accept_hash[T](value: T) -> i32 where T: Hash { return 1; }\n"
+        "fn main() -> i32 {\n"
+        "  let flag: Flag = Flag.yes;\n"
+        "  return accept_hash(flag);\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(enum_hash)).output,
+        "does not satisfy capability `Hash`"
+    );
 }
 
 TEST_F(AurexIntegrationTest, M2GenericImplNestedOwnerRegressions) {

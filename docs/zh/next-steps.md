@@ -4,6 +4,235 @@
 
 旧标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证；库层必须等基础语法、类型系统和模块边界稳定后重新设计，不复用旧 std 路线。
 
+## M2 优化目标（最高优先级）
+
+本节根据 `docs/review/AUREX_M2_完整报告.md` 制定，优先级高于下面的“优先路线”。在完成本节定义的 M2.1 Semantic + Performance + Security Closure 之前，不继续扩张 std、trait/interface/protocol、borrow checker、macro、async、package manager、通用 iterator protocol、selfhost 或 M1 build-tool 路线。后续新增能力必须先证明不会扩大当前 review 已经指出的语义漏洞、性能爆点和攻击面。
+
+### 总目标
+
+1. 语义闭包优先于新特性：safe surface 不允许隐式穿过 raw pointer，contextual typing 不能被旧缓存污染，泛型和 capability 必须用结构化身份表达，`[]` 的泛型/索引/slice 语义必须在 AST 或 checked 层变成可验证的显式节点。
+2. 性能和抗攻击能力进入质量门：泛型实例化、大表达式、错误输入、二进制输入、深层括号、长操作符链和海量诊断都必须有可测上限，不能依赖“正常源码不会这么写”的假设。
+3. 诊断从“能报错”升级到“可定位、可解释、可修复”：保留当前 `^` 精确定位优势，补齐 expected/actual 类型、previous declaration note、`did you mean`、配对 token 位置和诊断数量上限。
+4. 所有修复必须落到测试矩阵：每个 P0/P1 语义修复至少有 negative sample 或 gtest；每个 P0 性能/安全修复至少有 stress/perf 用例和阈值记录；修复完成后再更新语法、unsupported 和 progress 文档。
+
+### 硬性验收指标
+
+| 维度 | 当前 review 暴露的问题 | M2.1 目标 |
+|:-----|:----------------------|:----------|
+| raw pointer safety | `p.x` / `p[i]` 可在 safe context 访问 raw pointer pointee | 所有 raw pointer dereference、field projection、index projection、write projection 都必须要求 unsafe context；safe reference projection 保持 safe |
+| `&expr` 语义 | `&x` 根据 expected type 可隐式变成 raw pointer | `&x` / `&mut x` 只产生 safe reference；raw pointer 地址必须走显式 builtin 或显式 unsafe 边界 |
+| contextual typing | expression type cache 忽略 `expected_type` | literal、`null`、reference、generic call、struct/array/tuple literal 不再被跨上下文缓存污染 |
+| capability | `Eq` / `Ord` / `Hash` 是字符串 predicate，和实际 operator 不一致 | 改为 `CapabilityKind` 与结构化规则；能力判断和 operator/type checker 使用同一套 predicate |
+| `[]` 后缀 | generic/index/slice 混在同一语法节点后由 sema 猜 | checked 层必须能区分 generic apply、index、slice、type apply；错误信息指出用户写的是哪一类 |
+| 泛型实例化 | 2000 实例约 1.15GB RSS | side table 局部化或稀疏化后，2000 实例目标 RSS 降到约 150MB 量级，增长曲线接近线性 |
+| match exhaustiveness | 结构化 pattern 笛卡尔积可指数爆炸 | M2.1 先设置可解释上限；超限时保守失败并要求 wildcard 或更窄 pattern，不能把未知当作 complete |
+| parser 深度 | 3000 token `+` 链和 2000 层括号可栈溢出 | 左结合操作链循环化；嵌套分组有深度预算和诊断，不崩溃 |
+| lexer 错误输入 | 10KB 全 null / 0xFF / 0x80 约 12s | 无效字节聚合诊断和 error budget；10KB 二进制拒绝目标 < 50ms |
+| diagnostics | 诊断质量约 80/100，缺 note/help | 目标约 92/100；补齐低成本高收益诊断信息 |
+| 综合性能 | 部分场景落后 Clang/Zig 5-17 倍 | 完成核心 6 项后，综合差距目标收敛到 2 倍以内或给出不可达原因 |
+
+### Review 覆盖映射
+
+| Review 章节 | 必须进入 M2.1 的处理结果 |
+|:------------|:--------------------------|
+| 总体评价 | 把“语义靠上下文和后期 sema 猜”的路径改成显式 typed identity、显式 unsafe boundary、显式 checked node |
+| P0 语义缺陷 | `expected_type` cache、`&expr` 双语义、raw pointer projection、`[]` 多义、capability 字符串 predicate 全部作为 Phase 1 阻塞项 |
+| P1 语义缺陷 | generic lookup、generic param identity、mangling key、`?` 形状识别、M2 unsupported 分类全部作为 Phase 2 阻塞项 |
+| P2 工程质量 | reference slice index、syntax cache 禁读、Parser→Sema 契约、`analyze_expr` 拆分、record/enum/member index、frontend-only CMake、lookup reserve、error budget 全部纳入 Phase 2-5 |
+| P0-Perf | generic side table、match 笛卡尔积、identifier 临时 string、AST 胖节点/复制全部作为 Phase 3 阻塞项 |
+| P1-Perf | Lowerer scope、module export 缓存、generic key、diagnostic line table、member lookup、unordered_map reserve 全部纳入 Phase 3 |
+| 性能实测和极限压力 | 保留 200/500/1000/2000 泛型实例、大表达式、冷启动、千函数/万函数等基线，作为复测阈值 |
+| 工业级攻击测试 | parser 栈溢出、binary lexer 挂起、错误恢复退化全部必须有 budget、stress case 和“不崩溃”验收 |
+| 诊断质量测试 | 数组常量越界是真缺口；`did you mean`、expected/actual、previous declaration note、paired-token note、warning/note/help、颜色/多行 span 分批补齐 |
+| M2.1 收口清单 | 21 个建议测试必须进入测试矩阵或被等价测试覆盖 |
+| 最终总结和性能目标 | Semantic + Performance + Security Closure 完成前，不推进更高层语言/库路线；综合性能目标按“5-17× 收敛到 2× 内”管理 |
+
+### Phase 0：基线冻结和红线建立
+
+1. 复现 review 中的关键数据，并把命令、机器环境和阈值写入性能记录：
+   - `--check` 冷启动、小文件、千函数、万函数、1000/2000 泛型实例。
+   - 大表达式二元树、长左结合操作链、深层括号、深层 block。
+   - 10KB 二进制输入、全 null、全 0xFF、全 0x80、分号风暴、海量错误诊断。
+2. 把 stress case 固化为可重复工具或测试，不要求每次普通单测都跑最重版本，但必须能在 release 前手动或 CI perf lane 复测。
+3. 建立 M2.1 禁止线：
+   - 不允许新增会绕过 unsafe 的 raw pointer 入口。
+   - 不允许新增依赖 display string 的语义身份。
+   - 不允许新增整模块按实例复制的 side table。
+   - 不允许新增无上限递归、无上限错误恢复或无上限诊断输出。
+
+### Phase 1：P0 语义闭包
+
+1. raw pointer projection 统一 unsafe 检查。
+   - 引入统一的 place/projection 表示，例如 `PlaceInfo { is_place, is_writable, crosses_raw_pointer }`。
+   - `*p`、`p.field`、`p.field = v`、`p[i]`、`p[i] = v` 只要 projection 链上穿过 raw pointer，就必须调用同一套 unsafe context 检查。
+   - `&T` / `&mut T` reference 的 field/index projection 保持 safe，但 mutability、writable place 和 const pointee 规则必须继续生效。
+   - 新增 negative：`raw_pointer_field_requires_unsafe`、`raw_pointer_field_write_requires_unsafe`、`raw_pointer_index_requires_unsafe`、`raw_pointer_index_write_requires_unsafe`。
+   - 新增 positive：同样操作包在 `unsafe { ... }` 内可通过，并验证 write lowering 不生成无效 IR。
+2. 拆除 `&expr` 的 raw pointer 兼容语义。
+   - `&place` 永远产生 `&T`，`&mut place` 永远产生 `&mut T`。
+   - 需要 raw pointer 时使用显式 `ptraddr(...)` / `ptrat[T](...)` 这类 builtin，并按 unsafe/ABI 边界诊断。
+   - 所有函数调用、变量初始化、return、struct literal 字段填充都不能因为 expected type 是 `*const T` / `*mut T` 而把 `&x` 改判为 raw pointer。
+   - 新增 negative：`ref_ptr_diverge`、`implicit_address_to_raw_pointer_rejected`。
+3. 修复 expression type cache 的 contextual typing 污染。
+   - 把表达式分析拆成 intrinsic type、contextual final type 和 coercion/adjustment 三层；或者把缓存键显式包含 expected type，并禁止 context-sensitive 节点读旧 final cache。
+   - integer/float literal、`null`、reference literal、generic call、array literal、struct literal、tuple literal、block/match/if expression 的 final type 不能跨 expected type 复用。
+   - generic body checking 期间，`cache_syntax_types` 关闭时必须既禁写也禁读，避免实例化读到模板上下文残留类型。
+   - 新增 negative：`contextual_type_cache_attack`、`null_context_attack`、`generic_context_cache_no_read`。
+4. 拆清 `[]` 的语义节点。
+   - type context 中的 `Name[Args]` 进入 type apply；expression context 中含 `:` 的后缀进入 slice；确定是 generic call/value index 后 checked 层必须记录为不同节点。
+   - 诊断必须区分：非泛型类型被 type apply、非泛型函数被 explicit generic call、非 indexable 值被 index、slice bound 非整数、slice 对象不是 array/slice/str。
+   - 后端和 IR lower 不再通过“看起来像 bracket postfix”猜语义。
+5. Capability 改成结构化能力。
+   - 用 `enum class CapabilityKind { Sized, Eq, Ord, Hash }` 或等价结构替代字符串 predicate。
+   - capability parser、where clause、generic instantiation、operator checking 和诊断共用一套 capability 表。
+   - `Eq` / `Ord` 的规则必须和 `==` / `<` 等 operator 支持集一致；如果 float、reference 或其他类型不能提供可靠能力，就必须在 capability 和 operator 两边同步拒绝或同步说明例外。
+   - `Hash` 不能只是名字存在，M2.1 至少要定义“可接受但无运行时 hash operator”的明确边界，或暂时拒绝没有操作锚点的类型。
+   - 新增 negative：`float_eq_capability`、`reference_does_not_satisfy_eq`、`where_unknown_capability_structured`。
+6. 补齐数组常量索引边界检查。
+   - 对固定数组和可静态求值的整数 index，在 sema 阶段检查 `0 <= index < length`。
+   - 变量 index 仍按当前 M2 运行时/后端边界处理，但不能把常量越界留到 LLVM 或 native crash。
+   - 新增 negative：`array_constant_index_out_of_bounds`。
+7. 收紧 `return null` 和复合表达式 null 推导。
+   - `return null`、if/block/match tail `null`、`?` 错误路径中的 `null` 必须按函数返回类型或 expected type 进行 contextual typing。
+   - 无指针 expected type 时拒绝 `null`，有指针 expected type 时保留正确 pointee/mutability，不把 `null` 降成 invalid type 后污染外层表达式。
+   - 新增 positive/negative：`return_null_infer`、`null_if_expr_expected_pointer`、`null_match_expr_expected_pointer`、`null_without_pointer_context_rejected`。
+
+### Phase 2：P1 语义一致性和可扩展身份
+
+1. 统一 generic lookup 与普通 lookup。
+   - generic struct/enum/type alias/function/impl lookup 必须走和普通类型/值同源的模块可见性与 import resolver。
+   - 修复 visible modules、qualified import、ambiguous import 和 private generic item 的不一致。
+   - 新增 mixed：`imported_generic_lookup`、`private_generic_import_rejected`。
+2. generic parameter identity 改为结构化身份。
+   - `T` 不能只按名字成为全局等价类型；身份至少包含 template key、parameter index、decl source range。
+   - 嵌套 generic、generic alias、generic impl、同名类型参数 shadowing 必须可区分并可诊断。
+3. mangling 和实例化 key 不能依赖 display string。
+   - 使用 module id、symbol id、generic args type ids、ABI namespace 组成结构化 key。
+   - display name 只用于诊断和 dump，不能决定链接名唯一性。
+   - 新增 negative：`generic_mangle_collision`、`module_mangle_display_collision`。
+4. `?` / try-like 语义摆脱纯 name-based magic。
+   - 当前如果继续支持 `Result` / `Option` 形状约定，必须改成结构化识别：enum identity、case identity、payload 形状、错误类型转换规则。
+   - 用户定义同名 `ok` / `err` / `some` / `none` 不能被误识别。
+   - 新增 mixed：`option_result_magic_name_collision`。
+5. 区分 M2 unsupported 与 semantic error。
+   - array by-value 参数/返回、array-containing assignment、generic C ABI/prototype、foreign impl、method-local generics 等应给出 `M2Unsupported` 或等价诊断类别。
+   - 不再把后端限制伪装成语言语义错误；文档和测试应能说明这是阶段限制还是永久规则。
+6. reference slice index 一致性。
+   - `&[]const T` / `&[]mut T` 在 safe deref 后应按 slice 规则 index，或者明确诊断当前 M2 不支持 reference-to-slice index。
+   - 新增 positive：`reference_slice_index`。
+7. Parser 到 Sema 的隐藏契约显式化。
+   - `item_modules`、source ranges、module ownership 等必须在 sema 入口做 assert/diagnostic，而不是默认由某条 driver 路径填好。
+   - 新增 unit：`parser_ast_requires_item_modules`。
+8. record/member 查询做二次验证。
+   - `find_record` / member map 命中后验证 type identity，防止哈希或 display key 退化造成错绑。
+   - `find_enum_case` fallback 全表扫描只能作为 debug/assert 辅助，不应掩盖索引失效。
+9. 拆分 `analyze_expr` 的职责。
+   - 把 name resolution、place analysis、contextual typing、operator checking、aggregate checking、generic instantiation、coercion/adjustment、diagnostic emission 分成明确 helper 或小型阶段。
+   - 每个 helper 声明输入不变量、是否可读写 expr type cache、是否依赖 expected type、是否允许产生 coercion。
+   - 拆分后的行为必须先由现有 tests 保护，再逐步替换大函数内部逻辑，避免一次性重写造成诊断回退。
+10. foreign impl 和 unsupported policy 定死。
+   - `impl` target、pointer impl、generic extern/prototype、method-local generic 等边界要么实现，要么统一用 M2 unsupported 诊断拒绝。
+   - 新增 negative：`foreign_impl_policy`、`generic_extern_unsupported_category`。
+
+### Phase 3：P0 性能和安全收口
+
+1. 泛型 side table 局部化或稀疏化。
+   - 当前按全模块 `exprs.size()` / `patterns.size()` 为每个实例分配 side table，是 2000 实例内存爆炸的直接原因。
+   - M2.1 先改为函数 body 节点区间、实例相关节点切片或 sparse map；只有实际分析到的 expr/pattern 才占内存。
+   - 实例结束后释放临时上下文；跨实例共享只保留 canonical type、checked signature 和必要 memo。
+   - 验收：200、500、1000、2000 实例 RSS 接近线性；2000 实例不再超过 200MB，目标约 150MB。
+2. match exhaustiveness 防指数爆炸。
+   - M2.1 立即加组合上限，例如 4096 个 witness/combination。
+   - 超限时采用保守策略：不能证明 complete 就报“覆盖检查超出 M2.1 上限，需要 wildcard 或拆分 pattern”，不能默认通过。
+   - 长期替换为 pattern matrix / witness search，避免字符串拼接笛卡尔积。
+   - 验收：bool/enum 小结构保持精确；大结构不超时、不爆内存、不误判完整。
+3. parser 左结合操作链循环化，深层分组加预算。
+   - `a+b+c+...`、长比较/逻辑链、postfix 链采用 loop/Pratt climb，不用线性递归堆栈。
+   - 括号、泛型参数、pattern 嵌套、block 嵌套设置明确 recursion/depth budget，超限给诊断。
+   - 验收：`token_chain_3000` 不崩溃；深括号输入给出单个清晰诊断。
+4. lexer error budget 和无效字节聚合。
+   - 连续 invalid byte 作为 range 聚合诊断，不逐字节做昂贵恢复。
+   - 单文件诊断数量、无效字符扫描、错误恢复 token 消耗都应有 budget。
+   - 验收：10KB 全 null / 0xFF / 0x80 在 < 50ms 内拒绝；诊断输出不超过上限。
+5. diagnostic line table 和输出上限。
+   - SourceFile 建立 line starts，line/column 查询从线性扫描改为 O(log lines) 或 O(1) amortized。
+   - 大量错误默认截断并输出“too many errors” summary；保留开关给调试模式输出更多。
+   - 验收：5000 errors 场景目标约 0.2s 级别，输出大小受控。
+6. 延迟 LLVM 初始化。
+   - `--check`、parser/sema-only、dump tokens/ast 等路径不得初始化 LLVM backend 或 clang/toolchain。
+   - 验收：小文件 `--check` 保持约 6ms；`--emit=ir` / native 路径只在需要时付 LLVM 成本。
+7. Identifier interner 和 typed lookup key。
+   - identifier、module name、qualified name、field name、case name 改为 `IdentId` / `QualifiedNameKey` 或等价结构。
+   - hot path 不再反复构造 `std::string`；lookup map 建表前 reserve。
+   - display string 延迟生成，只用于诊断/dump。
+8. Sema 不再复制整棵 AST。
+   - Sema 读取 parser/module AST 引用；normalized AST 使用 overlay 或 per-node adjustment，不复制胖节点。
+   - 大表达式和大模块场景优先减少 3-4 次整树复制。
+   - 验收：2M AST 节点 RSS 从约 3GB 降到约 1.5GB 或更低；如果未达成，必须记录剩余大头。
+9. Lowerer scope stack 和 module export 缓存。
+   - Lowerer 不在每个 scope 复制整个 `locals_` map，改为 scope stack + shadow log。
+   - `module_export_modules()` / qualified lookup 结果缓存，失效点明确。
+10. 成员索引、enum case 索引和 map reserve。
+   - struct field、method、enum case、module export、function/type/value registry 建表前统一 reserve。
+   - 成员查找优先使用 `(type_id, ident_id)` typed key；线性扫描只作为小集合 fallback 或 debug 验证。
+   - enum case 索引 miss 时不再静默全表扫描通过；debug 模式可以 assert 索引一致性，release 模式给内部错误或保守诊断。
+11. Generic key 结构化并延迟 display。
+   - 泛型实例化 key 使用 template id + canonical type args + capability/where context，不使用 `display_name()`。
+   - dump 和诊断需要字符串时延迟生成，避免 hot path 分配。
+12. Compact AST 和 bump allocator 作为 M2.1 后半段优化。
+   - 短期先消除复制和 side table 爆炸；确认收益后再做 compact AST layout。
+   - 长期目标：胖节点拆成 header + per-kind payload，把 `ExprNode` 从数百字节量级压到几十字节量级。
+
+### Phase 4：诊断信息升级
+
+1. `did you mean` 建议。
+   - 对变量、函数、类型、module alias、field、enum case 使用同 scope 候选和编辑距离。
+   - 候选必须受可见性和命名空间限制，不能建议 private 或错误 namespace 的名字。
+2. expected/actual 类型显示。
+   - call argument、return、assignment、field init、array element、match arm、if branch 都显示 expected 与 actual。
+   - 类型显示使用 canonical display，避免 mangled/internal name 泄漏给用户。
+3. previous declaration note。
+   - duplicate function/type/const/field/enum case、ABI collision、shadowing restriction 都标记上一处声明。
+4. parser paired-token note。
+   - 缺 `)` / `]` / `}` 时，如果有 opening token，输出 opening token 位置。
+5. warning 和 note/help 级别。
+   - Diagnostic 支持 error/warning/note/help；M2.1 默认仍以 error 为主，但基础设施先支持分级。
+6. 多行 span 和颜色输出后置为低风险增强。
+   - 不影响语义修复；在前四项完成后再做。
+
+### Phase 5：测试矩阵和完成定义
+
+1. 补 frontend-only 构建和测试模式。
+   - CMake 增加不依赖 LLVM backend 的 frontend-only 配置或 target，至少能跑 lexer/parser/sema/diagnostic/golden 前端测试。
+   - 普通 frontend 变更不应被 LLVM 安装、链接或 backend 初始化问题阻塞。
+   - CI 或本地质量门区分 frontend-only、IR、LLVM backend、native execution 四层，便于快速定位回归来源。
+2. 建立 stress/perf 测试分层。
+   - 常规单测只跑轻量阈值；release/perf lane 跑 2000 泛型实例、2M AST 节点、二进制输入、5000 errors、深括号和长操作链。
+   - 每个 perf case 记录基线、目标、允许波动和机器说明。
+
+M2.1 至少新增或更新以下测试类别：
+
+| 类别 | 必须覆盖 |
+|:-----|:---------|
+| unsafe/raw pointer | raw pointer field/index/read/write 需要 unsafe；reference field/index 不误报；unsafe block 内通过 |
+| contextual typing | literal/null/reference/generic call/aggregate literal 在不同 expected type 下不读旧 final cache |
+| capability/generic | float/reference capability 拒绝；imported generic lookup；generic param identity；mangling collision |
+| `[]` 语义 | generic apply、type apply、index、slice 的正反例和诊断区分 |
+| array bounds | 常量 index 越界拒绝；变量 index 保持当前策略 |
+| parser/type stress | 3000 token 操作链、深括号、深泛型、深 pattern、deep type nesting 不崩溃 |
+| lexer stress | 二进制、全 null、全 0xFF、控制字符风暴快速拒绝 |
+| match stress | 小结构精确 exhaustiveness；大结构超限保守诊断 |
+| diagnostics | expected/actual、did-you-mean、previous declaration note、too many errors |
+| perf | 200/500/1000/2000 泛型实例 RSS/耗时；2M AST 节点 RSS；5000 errors 耗时 |
+
+完成定义：
+
+1. `tools/run_tests.sh` 通过，新增 negative/positive samples 全部纳入 suite。
+2. P0 stress/perf case 不能崩溃、不能超出预算、不能产生无上限诊断。
+3. `docs/spec/m2_grammar.md`、`docs/spec/m2_syntax_matrix.md`、`docs/spec/m2_unsupported.md` 和 `docs/zh/progress.md` 与实际实现同步。
+4. review 中 P0 语义项和 P0-Perf 项全部关闭；未关闭的 P1/P2 必须有 issue、测试或文档说明。
+5. 在完成上述闭包前，下面的语言特性路线只允许做文档澄清、测试补强和 bug fix，不作为新能力扩张入口。
+
 ## 优先路线
 
 1. 现代基础语法第一优先级

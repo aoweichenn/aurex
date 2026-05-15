@@ -369,9 +369,13 @@ void SemanticAnalyzer::ensure_expr_side_table_size(const base::usize size) {
         return;
     }
     std::vector<TypeHandle>& expr_types = this->active_expr_types();
+    std::vector<TypeHandle>& expr_expected_types = this->active_expr_expected_types();
     std::vector<std::string>& expr_c_names = this->active_expr_c_names();
     if (expr_types.size() < size) {
         expr_types.resize(size, INVALID_TYPE_HANDLE);
+    }
+    if (expr_expected_types.size() < size) {
+        expr_expected_types.resize(size, INVALID_TYPE_HANDLE);
     }
     if (expr_c_names.size() < size) {
         expr_c_names.resize(size);

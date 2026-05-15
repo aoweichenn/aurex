@@ -136,6 +136,43 @@ TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const T
     return type;
 }
 
+void SemanticAnalyzer::record_expr_expected_type(
+    const syntax::ExprId expr,
+    const TypeHandle expected_type
+) {
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        if (syntax::is_valid(expr)) {
+            this->current_side_tables_.side_tables->sparse_expr_expected_types[expr.value] = expected_type;
+        }
+        return;
+    }
+    std::vector<TypeHandle>& expr_expected_types = this->active_expr_expected_types();
+    if (syntax::is_valid(expr)) {
+        ensure_side_table_slot(expr_expected_types, expr.value);
+        expr_expected_types[expr.value] = expected_type;
+    }
+}
+
+void SemanticAnalyzer::record_coercion(
+    const syntax::ExprId expr,
+    const TypeHandle from_type,
+    const TypeHandle to_type,
+    const CoercionKind kind
+) {
+    if (!syntax::is_valid(expr) ||
+        !is_valid(from_type) ||
+        !is_valid(to_type) ||
+        this->checked_.types.same(from_type, to_type)) {
+        return;
+    }
+    this->checked_.coercions.push_back(CoercionRecord {
+        expr,
+        from_type,
+        to_type,
+        kind,
+    });
+}
+
 TypeHandle SemanticAnalyzer::cached_expr_type(const syntax::ExprId expr) const noexcept {
     if (!syntax::is_valid(expr)) {
         return INVALID_TYPE_HANDLE;
@@ -150,6 +187,36 @@ TypeHandle SemanticAnalyzer::cached_expr_type(const syntax::ExprId expr) const n
         ? this->checked_.expr_types
         : this->current_side_tables_.side_tables->expr_types;
     return expr.value < expr_types.size() ? expr_types[expr.value] : INVALID_TYPE_HANDLE;
+}
+
+TypeHandle SemanticAnalyzer::cached_expr_expected_type(const syntax::ExprId expr) const noexcept {
+    if (!syntax::is_valid(expr)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        const auto found = this->current_side_tables_.side_tables->sparse_expr_expected_types.find(expr.value);
+        return found == this->current_side_tables_.side_tables->sparse_expr_expected_types.end()
+            ? INVALID_TYPE_HANDLE
+            : found->second;
+    }
+    const std::vector<TypeHandle>& expr_expected_types = this->current_side_tables_.side_tables == nullptr
+        ? this->checked_.expr_expected_types
+        : this->current_side_tables_.side_tables->expr_expected_types;
+    return expr.value < expr_expected_types.size() ? expr_expected_types[expr.value] : INVALID_TYPE_HANDLE;
+}
+
+TypeHandle SemanticAnalyzer::cached_expr_type_for_expected(
+    const syntax::ExprId expr,
+    const TypeHandle expected_type
+) const noexcept {
+    const TypeHandle cached_type = this->cached_expr_type(expr);
+    if (!is_valid(cached_type)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    const TypeHandle cached_expected = this->cached_expr_expected_type(expr);
+    return this->checked_.types.same(cached_expected, expected_type)
+        ? cached_type
+        : INVALID_TYPE_HANDLE;
 }
 
 TypeHandle SemanticAnalyzer::cached_syntax_type(const syntax::TypeId type) const noexcept {
@@ -188,6 +255,12 @@ std::vector<TypeHandle>& SemanticAnalyzer::active_expr_types() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_types
         : this->current_side_tables_.side_tables->expr_types;
+}
+
+std::vector<TypeHandle>& SemanticAnalyzer::active_expr_expected_types() noexcept {
+    return this->current_side_tables_.side_tables == nullptr
+        ? this->checked_.expr_expected_types
+        : this->current_side_tables_.side_tables->expr_expected_types;
 }
 
 std::vector<std::string>& SemanticAnalyzer::active_expr_c_names() noexcept {

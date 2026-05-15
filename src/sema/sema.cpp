@@ -44,6 +44,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     }
 
     this->checked_.expr_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
+    this->checked_.expr_expected_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
     this->checked_.expr_c_names.assign(this->module_.exprs.size(), {});
     this->checked_.pattern_c_names.assign(this->module_.patterns.size(), {});
     this->checked_.pattern_case_sets.assign(this->module_.patterns.size(), {});

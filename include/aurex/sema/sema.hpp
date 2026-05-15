@@ -74,6 +74,13 @@ private:
         bool cache_syntax_types = true;
     };
 
+    struct PlaceInfo {
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        bool is_place = false;
+        bool is_writable = false;
+        bool crosses_raw_pointer = false;
+    };
+
     struct TryShape {
         enum class Kind {
             none,
@@ -156,6 +163,8 @@ private:
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
     [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
+    [[nodiscard]] bool type_satisfies_equality_capability(TypeHandle type) const;
+    [[nodiscard]] bool type_satisfies_ordering_capability(TypeHandle type) const;
     [[nodiscard]] bool type_supports_equality_operator(TypeHandle type) const;
     [[nodiscard]] bool type_supports_ordering_operator(TypeHandle type) const;
     [[nodiscard]] bool type_supports_hash_capability(TypeHandle type) const;
@@ -628,15 +637,22 @@ private:
     [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type);
+    void record_expr_expected_type(syntax::ExprId expr, TypeHandle expected_type);
+    void record_coercion(syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, CoercionKind kind);
     [[nodiscard]] TypeHandle cached_expr_type(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] TypeHandle cached_expr_expected_type(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] TypeHandle cached_expr_type_for_expected(syntax::ExprId expr, TypeHandle expected_type) const noexcept;
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_expr_types() noexcept;
+    [[nodiscard]] std::vector<TypeHandle>& active_expr_expected_types() noexcept;
     [[nodiscard]] std::vector<std::string>& active_expr_c_names() noexcept;
     [[nodiscard]] std::vector<std::string>& active_pattern_c_names() noexcept;
     [[nodiscard]] std::vector<std::unordered_set<std::string>>& active_pattern_case_sets() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_syntax_type_handles() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_stmt_local_types() noexcept;
+    [[nodiscard]] PlaceInfo analyze_place_info(syntax::ExprId expr_id, bool emit_diagnostics);
+    void require_place_projection_safety(const PlaceInfo& place, base::SourceRange range);
     [[nodiscard]] syntax::ExprId push_synthetic_expr(syntax::ExprNode node);
     [[nodiscard]] syntax::TypeId push_synthetic_type(syntax::TypeNode node);
     void ensure_expr_side_table_size(base::usize size);

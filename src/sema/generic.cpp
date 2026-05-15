@@ -183,15 +183,31 @@ bool SemanticAnalyzer::type_satisfies_capability(
         return this->is_valid_storage_type(type);
     }
     if (capability == CapabilityKind::eq) {
-        return this->type_supports_equality_operator(type);
+        return this->type_satisfies_equality_capability(type);
     }
     if (capability == CapabilityKind::ord) {
-        return this->type_supports_ordering_operator(type);
+        return this->type_satisfies_ordering_capability(type);
     }
     if (capability == CapabilityKind::hash) {
         return this->type_supports_hash_capability(type);
     }
     return false;
+}
+
+bool SemanticAnalyzer::type_satisfies_equality_capability(const TypeHandle type) const {
+    if (!is_valid(type)) {
+        return false;
+    }
+    const TypeInfo& info = this->checked_.types.get(type);
+    return this->checked_.types.is_bool(type) ||
+           this->checked_.types.is_char(type) ||
+           this->checked_.types.is_integer(type) ||
+           this->checked_.types.is_pointer(type) ||
+           (info.kind == TypeKind::enum_ && !is_valid(info.enum_payload_storage));
+}
+
+bool SemanticAnalyzer::type_satisfies_ordering_capability(const TypeHandle type) const {
+    return this->checked_.types.is_integer(type);
 }
 
 bool SemanticAnalyzer::type_supports_equality_operator(const TypeHandle type) const {

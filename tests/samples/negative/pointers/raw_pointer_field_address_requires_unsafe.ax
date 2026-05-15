@@ -1,0 +1,16 @@
+module raw_pointer_field_address_requires_unsafe;
+
+struct Pair {
+    value: i32;
+}
+
+fn as_const_pair_ptr(value: &Pair) -> *const Pair {
+    return unsafe { ptrat[*const Pair](ptraddr(value)) };
+}
+
+fn main() -> i32 {
+    let pair: Pair = Pair { value: 1 };
+    let ptr: *const Pair = as_const_pair_ptr(&pair);
+    let value_ref: &i32 = &ptr.value;
+    return *value_ref;
+}

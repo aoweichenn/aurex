@@ -330,13 +330,15 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     const ExprId scoped_value_expr = push_name(module, "shared", "one");
     const ExprId missing_scoped_value_expr = push_name(module, "shared", "missing");
     const ExprId ptr_expr = push_name(module, "ptr");
+    const ExprId record_expr = push_name(module, "record");
+    const ExprId array_expr = push_name(module, "array");
     syntax::ExprNode field_expr;
     field_expr.kind = syntax::ExprKind::field;
     field_expr.object = ptr_expr;
     field_expr.field_name = "field";
     const ExprId field_id = module.push_expr(field_expr);
     syntax::ExprNode value_field_expr = field_expr;
-    value_field_expr.object = value_expr;
+    value_field_expr.object = record_expr;
     const ExprId value_field_id = module.push_expr(value_field_expr);
     syntax::ExprNode nested_value_field_expr = field_expr;
     nested_value_field_expr.object = value_field_id;
@@ -347,19 +349,26 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     index_expr.index = push_integer(module);
     const ExprId index_id = module.push_expr(index_expr);
     syntax::ExprNode value_index_expr = index_expr;
-    value_index_expr.object = value_expr;
+    value_index_expr.object = array_expr;
     const ExprId value_index_id = module.push_expr(value_index_expr);
     syntax::ExprNode nested_value_index_expr = index_expr;
-    nested_value_index_expr.object = nested_value_field_id;
+    nested_value_index_expr.object = value_index_id;
     const ExprId nested_value_index_id = module.push_expr(nested_value_index_expr);
     syntax::ExprNode deref_expr;
     deref_expr.kind = syntax::ExprKind::unary;
     deref_expr.unary_op = syntax::UnaryOp::dereference;
     deref_expr.unary_operand = ptr_expr;
     const ExprId deref_id = module.push_expr(deref_expr);
+    syntax::ExprNode invalid_deref_expr = deref_expr;
+    invalid_deref_expr.unary_operand = value_expr;
+    const ExprId invalid_deref_id = module.push_expr(invalid_deref_expr);
     syntax::ExprNode not_expr = deref_expr;
     not_expr.unary_op = syntax::UnaryOp::logical_not;
     const ExprId not_id = module.push_expr(not_expr);
+    const ExprId array_ref_expr = push_name(module, "array_ref");
+    syntax::ExprNode array_ref_index_expr = index_expr;
+    array_ref_index_expr.object = array_ref_expr;
+    const ExprId array_ref_index_id = module.push_expr(array_ref_index_expr);
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
@@ -395,6 +404,9 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     const TypeHandle array_void = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, void_type);
     const TypeHandle array_opaque = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, opaque_type);
     const TypeHandle overflowing_array = types.array(SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT, array_i16);
+    const TypeHandle place_record_type = types.named_struct("root.PlaceRecord", "root_PlaceRecord", false);
+    const TypeHandle ptr_place_record = types.pointer(PointerMutability::mut, place_record_type);
+    const TypeHandle ref_nested_array_i16 = types.reference(PointerMutability::mut, nested_array_i16);
     types.set_enum_underlying(enum_type, u16);
     types.set_enum_underlying(payload_enum_type, u8);
     types.set_enum_payload_layout(payload_enum_type, u64, sizeof(std::uint64_t), alignof(std::uint64_t));
@@ -408,6 +420,15 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
         StructFieldInfo {"value", "value", module_id(1), u64},
     };
     analyzer.checked_.structs.emplace(analyzer.module_key(module_id(1), "Record"), record);
+
+    StructInfo place_record;
+    place_record.name = "PlaceRecord";
+    place_record.module = module_id(0);
+    place_record.type = place_record_type;
+    place_record.fields = {
+        StructFieldInfo {"field", "field", module_id(0), place_record_type},
+    };
+    analyzer.checked_.structs.emplace(analyzer.module_key(module_id(0), "PlaceRecord"), place_record);
 
     EXPECT_EQ(analyzer.abi_size(INVALID_TYPE_HANDLE), SEMA_TEST_ABI_INVALID_SIZE);
     EXPECT_EQ(analyzer.abi_align(INVALID_TYPE_HANDLE), SEMA_TEST_ABI_MIN_ALIGNMENT);
@@ -472,7 +493,10 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_FALSE(analyzer.is_valid_storage_type(overflowing_array));
 
     EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "value", module_id(0), i32, true), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "ptr", module_id(0), ptr_i32, true), diagnostics));
+    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "ptr", module_id(0), ptr_place_record, true), diagnostics));
+    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "record", module_id(0), place_record_type, true), diagnostics));
+    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "array", module_id(0), nested_array_i16, true), diagnostics));
+    EXPECT_TRUE(analyzer.symbols_.insert(symbol(SymbolKind::local, "array_ref", module_id(0), ref_nested_array_i16, true), diagnostics));
     analyzer.global_values_.emplace(analyzer.module_key(module_id(1), "shared"), symbol(SymbolKind::local, "shared", module_id(1), i32, true));
 
     EXPECT_TRUE(analyzer.is_place_expr(value_expr));
@@ -494,9 +518,14 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     EXPECT_TRUE(analyzer.is_writable_place(value_index_id));
     EXPECT_TRUE(analyzer.is_writable_place(nested_value_field_id));
     EXPECT_TRUE(analyzer.is_writable_place(nested_value_index_id));
+    EXPECT_TRUE(analyzer.is_writable_place(array_ref_index_id));
     EXPECT_TRUE(analyzer.is_writable_place(deref_id));
     EXPECT_FALSE(analyzer.is_writable_place(not_id));
     EXPECT_FALSE(analyzer.is_writable_place(syntax::INVALID_EXPR_ID));
+    const sema::SemanticAnalyzer::PlaceInfo invalid_deref_place =
+        analyzer.analyze_place_info(invalid_deref_id, true);
+    EXPECT_FALSE(invalid_deref_place.is_place);
+    EXPECT_FALSE(diagnostics.diagnostics().empty());
 
     analyzer.current_module_ = syntax::INVALID_MODULE_ID;
     EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("missing", {})));
@@ -1225,12 +1254,103 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     const sema::GenericSideTables& side_tables = checked.generic_function_instances.front().side_tables;
     EXPECT_TRUE(side_tables.sparse);
     EXPECT_TRUE(side_tables.expr_types.empty());
+    EXPECT_TRUE(side_tables.expr_expected_types.empty());
     EXPECT_TRUE(side_tables.expr_c_names.empty());
     EXPECT_TRUE(side_tables.pattern_c_names.empty());
     EXPECT_TRUE(side_tables.pattern_case_sets.empty());
     EXPECT_TRUE(side_tables.syntax_type_handles.empty());
     EXPECT_TRUE(side_tables.stmt_local_types.empty());
     EXPECT_FALSE(side_tables.sparse_expr_types.empty());
+    EXPECT_FALSE(side_tables.sparse_expr_expected_types.empty());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+    const ExprId expr_id = push_integer(module);
+    const ExprId missing_expr_id {expr_id.value + 100U};
+
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::binding;
+    pattern.binding_name = "value";
+    const syntax::PatternId pattern_id = module.push_pattern(pattern);
+    const syntax::PatternId alternative_pattern_id = module.push_pattern(pattern);
+    const syntax::PatternId missing_pattern_id {alternative_pattern_id.value + 100U};
+
+    const TypeId type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId missing_type_id {type_id.value + 100U};
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::expr;
+    stmt.init = expr_id;
+    const syntax::StmtId stmt_id = module.push_stmt(stmt);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle i64 = types.builtin(BuiltinType::i64);
+
+    sema::GenericSideTables dense_side_tables;
+    analyzer.current_side_tables_.side_tables = &dense_side_tables;
+    static_cast<void>(analyzer.record_expr_type(expr_id, i32));
+    analyzer.record_expr_expected_type(expr_id, i64);
+    analyzer.record_expr_c_name(expr_id, "dense_expr");
+    analyzer.record_pattern_c_name(pattern_id, "dense_pattern");
+    analyzer.record_pattern_case_name(pattern_id, "DenseCase");
+    analyzer.record_pattern_case_name(alternative_pattern_id, "DenseAlternative");
+    analyzer.merge_pattern_case_names(pattern_id, alternative_pattern_id);
+    analyzer.record_syntax_type_handle(type_id, i32);
+    analyzer.record_stmt_local_type(stmt_id, i64);
+
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i32));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_expected_type(expr_id), i64));
+    EXPECT_TRUE(types.same(analyzer.cached_syntax_type(type_id), i32));
+    EXPECT_EQ(analyzer.cached_pattern_c_name(pattern_id), "dense_pattern");
+    EXPECT_TRUE(dense_side_tables.pattern_case_sets[pattern_id.value].contains("DenseAlternative"));
+    EXPECT_TRUE(types.same(dense_side_tables.stmt_local_types[stmt_id.value], i64));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
+    EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(missing_type_id)));
+    EXPECT_TRUE(analyzer.cached_pattern_c_name(missing_pattern_id).empty());
+    EXPECT_EQ(&analyzer.active_expr_types(), &dense_side_tables.expr_types);
+    EXPECT_EQ(&analyzer.active_expr_expected_types(), &dense_side_tables.expr_expected_types);
+    EXPECT_EQ(&analyzer.active_expr_c_names(), &dense_side_tables.expr_c_names);
+    EXPECT_EQ(&analyzer.active_pattern_c_names(), &dense_side_tables.pattern_c_names);
+    EXPECT_EQ(&analyzer.active_pattern_case_sets(), &dense_side_tables.pattern_case_sets);
+    EXPECT_EQ(&analyzer.active_syntax_type_handles(), &dense_side_tables.syntax_type_handles);
+    EXPECT_EQ(&analyzer.active_stmt_local_types(), &dense_side_tables.stmt_local_types);
+
+    sema::GenericSideTables sparse_side_tables;
+    sparse_side_tables.sparse = true;
+    analyzer.current_side_tables_.side_tables = &sparse_side_tables;
+    analyzer.current_side_tables_.cache_syntax_types = true;
+    static_cast<void>(analyzer.record_expr_type(expr_id, i64));
+    static_cast<void>(analyzer.record_expr_type(syntax::INVALID_EXPR_ID, i64));
+    analyzer.record_expr_expected_type(expr_id, i32);
+    analyzer.record_expr_expected_type(syntax::INVALID_EXPR_ID, i32);
+    analyzer.record_expr_c_name(expr_id, "sparse_expr");
+    analyzer.record_pattern_c_name(pattern_id, "sparse_pattern");
+    analyzer.record_pattern_case_name(alternative_pattern_id, "SparseAlternative");
+    analyzer.merge_pattern_case_names(pattern_id, alternative_pattern_id);
+    analyzer.record_syntax_type_handle(type_id, i64);
+    analyzer.record_syntax_type_handle(syntax::INVALID_TYPE_ID, i32);
+    analyzer.record_stmt_local_type(stmt_id, i32);
+
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i64));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_expected_type(expr_id), i32));
+    EXPECT_TRUE(types.same(analyzer.cached_syntax_type(type_id), i64));
+    EXPECT_EQ(analyzer.cached_pattern_c_name(pattern_id), "sparse_pattern");
+    EXPECT_TRUE(sparse_side_tables.sparse_pattern_case_sets[pattern_id.value].contains("SparseAlternative"));
+    EXPECT_TRUE(types.same(sparse_side_tables.sparse_stmt_local_types[stmt_id.value], i32));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_type(syntax::INVALID_EXPR_ID)));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(syntax::INVALID_EXPR_ID)));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
+    EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(syntax::INVALID_TYPE_ID)));
+    EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(missing_type_id)));
+    EXPECT_TRUE(analyzer.cached_pattern_c_name(syntax::INVALID_PATTERN_ID).empty());
+    EXPECT_TRUE(analyzer.cached_pattern_c_name(missing_pattern_id).empty());
 }
 
 TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
@@ -1349,6 +1469,9 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     byte_string_literal.kind = syntax::ExprKind::byte_string_literal;
     byte_string_literal.text = "b\"a\\n\\0\"";
     const ExprId byte_string_literal_id = module.push_expr(byte_string_literal);
+    syntax::ExprNode invalid_byte_string_literal = byte_string_literal;
+    invalid_byte_string_literal.text = "b\"\\u{41}\"";
+    const ExprId invalid_byte_string_literal_id = module.push_expr(invalid_byte_string_literal);
     syntax::ExprNode char_literal;
     char_literal.kind = syntax::ExprKind::char_literal;
     char_literal.text = "'\\u{03BB}'";
@@ -1381,6 +1504,11 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     ASSERT_TRUE(types.is_array(byte_string_type));
     EXPECT_EQ(types.get(byte_string_type).array_count, 3U);
     EXPECT_TRUE(types.same(types.get(byte_string_type).array_element, u8));
+    const base::usize diagnostics_before_invalid_byte_string = diagnostics.diagnostics().size();
+    const TypeHandle invalid_byte_string_type = analyzer.analyze_expr(invalid_byte_string_literal_id);
+    ASSERT_TRUE(types.is_array(invalid_byte_string_type));
+    EXPECT_TRUE(types.same(types.get(invalid_byte_string_type).array_element, u8));
+    EXPECT_GT(diagnostics.diagnostics().size(), diagnostics_before_invalid_byte_string);
     EXPECT_TRUE(types.is_char(analyzer.analyze_expr(char_literal_id)));
 
     analyzer.global_values_[analyzer.module_key(module_id(0), "text")].type = usize;
@@ -1423,6 +1551,7 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
     module.modules = {module_info({"root"})};
 
     const ExprId integer_literal = push_integer_text(module, "2147483648");
+    const ExprId small_integer_literal = push_integer_text(module, "7");
     syntax::ExprNode null_literal;
     null_literal.kind = syntax::ExprKind::null_literal;
     const ExprId null_literal_id = module.push_expr(null_literal);
@@ -1430,6 +1559,7 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
     analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.checked_.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.current_module_ = module_id(0);
 
     sema::TypeTable& types = analyzer.checked_.types;
@@ -1440,10 +1570,20 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal), i32));
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal, i64), i64));
     EXPECT_TRUE(types.same(analyzer.checked_.expr_types[integer_literal.value], i64));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_expected_types[integer_literal.value], i64));
+
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(small_integer_literal, i64), i64));
+    ASSERT_FALSE(analyzer.checked_.coercions.empty());
+    const sema::CoercionRecord& coercion = analyzer.checked_.coercions.back();
+    EXPECT_EQ(coercion.expr.value, small_integer_literal.value);
+    EXPECT_TRUE(types.same(coercion.from_type, i32));
+    EXPECT_TRUE(types.same(coercion.to_type, i64));
+    EXPECT_EQ(coercion.kind, sema::CoercionKind::contextual_integer_literal);
 
     EXPECT_FALSE(is_valid(analyzer.analyze_expr(null_literal_id)));
     EXPECT_TRUE(types.same(analyzer.analyze_expr(null_literal_id, ptr_i32), ptr_i32));
     EXPECT_TRUE(types.same(analyzer.checked_.expr_types[null_literal_id.value], ptr_i32));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_expected_types[null_literal_id.value], ptr_i32));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {

@@ -97,6 +97,23 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
     );
     const std::string llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(underscored)).output;
     expect_contains(llvm_ir, "ret i32 1000");
+
+    const fs::path shift_widths = write_source_file(
+        tmp_root() / "shift_widths.ax",
+        "module shift_widths;\n"
+        "fn main() -> i32 {\n"
+        "  let narrow_signed: i8 = 1i8 << 7i8;\n"
+        "  let narrow_unsigned: u8 = 1u8 << 7u8;\n"
+        "  let medium_signed: i16 = 1i16 << 15i16;\n"
+        "  let medium_unsigned: u16 = 1u16 << 15u16;\n"
+        "  let wide_signed: i64 = 1i64 << 63i64;\n"
+        "  let wide_unsigned: u64 = 1u64 << 63u64;\n"
+        "  let pointer_signed: isize = 1isize << 1isize;\n"
+        "  let pointer_unsigned: usize = 1usize << 1usize;\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    require_success(aurexc() + " --check " + q(shift_widths));
 }
 
 TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {
@@ -144,6 +161,10 @@ TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("pointers", "raw_pointer_field_write_requires_unsafe.ax"))).output,
+        "raw pointer projection requires unsafe context"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("pointers", "raw_pointer_field_address_requires_unsafe.ax"))).output,
         "raw pointer projection requires unsafe context"
     );
     expect_contains(
@@ -1012,10 +1033,10 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
         "  let right_ptr: *const i32 = unsafe { ptrat[*const i32](ptraddr(&right)) };\n"
         "  let flag: Flag = Flag.yes;\n"
         "  let box: Box[i32] = Box[i32] { value: 1 };\n"
-        "  return accept_eq(true) + accept_eq('\\u{03BB}') + accept_eq(cast[f64](1)) +\n"
+        "  return accept_eq(true) + accept_eq('\\u{03BB}') +\n"
         "    accept_eq(left_ptr) + accept_eq(flag) +\n"
         "    accept_hash(true) + accept_hash('\\u{03BB}') + accept_hash(left) + accept_hash(right_ptr) +\n"
-        "    same(flag, Flag.yes) + less_than(cast[f64](1), cast[f64](2)) + box.get() + box.get() - 13;\n"
+        "    same(flag, Flag.yes) + less_than(left, right) + box.get() + box.get() - 12;\n"
         "}\n"
     );
 
@@ -1023,7 +1044,6 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
     expect_contains_all(checked, {
         "accept_eq[bool] -> i32",
         "accept_eq[char] -> i32",
-        "accept_eq[f64] -> i32",
         "accept_eq[*const i32] -> i32",
         "accept_eq[generic_capability_concrete_types.Flag] -> i32",
         "accept_hash[bool] -> i32",
@@ -1031,9 +1051,38 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions) {
         "accept_hash[i32] -> i32",
         "accept_hash[*const i32] -> i32",
         "same[generic_capability_concrete_types.Flag] -> i32",
-        "less_than[f64] -> i32",
+        "less_than[i32] -> i32",
         "method generic_capability_concrete_types.Box[i32].get[i32] -> i32",
     });
+
+    const fs::path float_eq = write_source_file(
+        tmp_root() / "generic_float_eq_rejected.ax",
+        "module generic_float_eq_rejected;\n"
+        "fn accept_eq[T](value: T) -> i32 where T: Eq { return 1; }\n"
+        "fn main() -> i32 {\n"
+        "  return accept_eq(cast[f64](1));\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(float_eq)).output,
+        "type f64 does not satisfy capability `Eq`"
+    );
+
+    const fs::path float_ord = write_source_file(
+        tmp_root() / "generic_float_ord_rejected.ax",
+        "module generic_float_ord_rejected;\n"
+        "fn less_than[T](left: T, right: T) -> i32 where T: Ord {\n"
+        "  if left < right { return 1; }\n"
+        "  return 0;\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  return less_than(cast[f64](1), cast[f64](2));\n"
+        "}\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(float_ord)).output,
+        "type f64 does not satisfy capability `Ord`"
+    );
 
     const fs::path reference_eq = write_source_file(
         tmp_root() / "generic_reference_eq_rejected.ax",

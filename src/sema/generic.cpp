@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <optional>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -23,6 +25,13 @@ constexpr std::string_view SEMA_GENERIC_ABI_SUFFIX_PREFIX = "__aurexg";
 constexpr std::string_view SEMA_GENERIC_ABI_ARG_PREFIX = "_t";
 constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
+constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "#param:";
+constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR = ":";
+constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER = "@";
+constexpr base::usize SEMA_DECIMAL_U64_MAX_DIGITS = 20;
+constexpr base::usize SEMA_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE = 16;
+constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
+constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
 
 [[nodiscard]] GenericSideTables make_generic_side_tables(const syntax::AstModule& module) {
     static_cast<void>(module);
@@ -49,6 +58,24 @@ constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 
 [[nodiscard]] bool is_resource_capability(const std::string_view name) noexcept {
     return name == SEMA_CAPABILITY_COPY || name == SEMA_CAPABILITY_DROP;
+}
+
+void append_decimal(std::string& output, const base::u64 value) {
+    char buffer[SEMA_DECIMAL_U64_MAX_DIGITS] {};
+    const auto [end, error] = std::to_chars(buffer, buffer + sizeof(buffer), value);
+    if (error == std::errc()) {
+        output.append(buffer, end);
+    }
+}
+
+void append_generic_instance_key_suffix(std::string& output, const std::vector<TypeHandle>& args) {
+    output += SEMA_GENERIC_KEY_ARG_PREFIX;
+    for (base::usize i = 0; i < args.size(); ++i) {
+        if (i != 0) {
+            output += SEMA_GENERIC_KEY_ARG_SEPARATOR;
+        }
+        append_decimal(output, args[i].value);
+    }
 }
 
 } // namespace
@@ -282,6 +309,7 @@ void SemanticAnalyzer::register_generic_template(
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         info.params.push_back(std::string(param.name));
     }
+    this->populate_generic_param_identity_keys(info);
     this->validate_generic_constraints(item, info);
 
     if (item.kind == syntax::ItemKind::struct_decl) {
@@ -347,10 +375,11 @@ void SemanticAnalyzer::register_generic_template(
     }
     if (syntax::is_valid(item.impl_type)) {
         std::string method_template_name = "#generic_method:";
-        method_template_name += std::to_string(item_id.value);
+        append_decimal(method_template_name, item_id.value);
         method_template_name.push_back('.');
         method_template_name += item.name;
         info.key = this->module_key(owner, method_template_name);
+        this->populate_generic_param_identity_keys(info);
 
         const syntax::ModuleId previous_module = this->current_module_;
         GenericContext generic_context;
@@ -446,29 +475,47 @@ void SemanticAnalyzer::register_generic_template(
     }
 }
 
-std::string SemanticAnalyzer::generic_param_identity_key(
+void SemanticAnalyzer::populate_generic_param_identity_keys(GenericTemplateInfo& info) const {
+    info.param_identity_keys.clear();
+    info.param_identity_keys.reserve(info.params.size());
+    for (base::usize index = 0; index < info.params.size(); ++index) {
+        info.param_identity_keys.push_back(this->make_generic_param_identity_key(info, index));
+    }
+}
+
+std::string SemanticAnalyzer::make_generic_param_identity_key(
     const GenericTemplateInfo& info,
     const base::usize index
 ) const {
     std::string key = info.key;
-    key += "#param:";
-    key += std::to_string(index);
+    key += SEMA_GENERIC_PARAM_IDENTITY_MARKER;
+    append_decimal(key, index);
     if (index < info.params.size()) {
-        key.push_back(':');
+        key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
         key += info.params[index];
     }
     if (syntax::is_valid(info.item) &&
         info.item.value < this->module_.items.size() &&
         index < this->module_.items[info.item.value].generic_params.size()) {
         const base::SourceRange range = this->module_.items[info.item.value].generic_params[index].range;
-        key.push_back('@');
-        key += std::to_string(range.source.value);
-        key.push_back(':');
-        key += std::to_string(range.begin);
-        key.push_back(':');
-        key += std::to_string(range.end);
+        key += SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER;
+        append_decimal(key, range.source.value);
+        key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
+        append_decimal(key, range.begin);
+        key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
+        append_decimal(key, range.end);
     }
     return key;
+}
+
+std::string SemanticAnalyzer::generic_param_identity_key(
+    const GenericTemplateInfo& info,
+    const base::usize index
+) const {
+    if (index < info.param_identity_keys.size()) {
+        return info.param_identity_keys[index];
+    }
+    return this->make_generic_param_identity_key(info, index);
 }
 
 std::string SemanticAnalyzer::generic_param_identity_key(const TypeInfo& info) const {
@@ -544,6 +591,11 @@ void SemanticAnalyzer::populate_generic_concrete_context(
 
 std::string SemanticAnalyzer::generic_instance_suffix(const std::vector<TypeHandle>& args) const {
     std::string suffix;
+    suffix.reserve(
+        SEMA_GENERIC_ARG_LIST_OPEN.size() +
+        SEMA_GENERIC_ARG_LIST_CLOSE.size() +
+        args.size() * SEMA_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE
+    );
     suffix += SEMA_GENERIC_ARG_LIST_OPEN;
     for (base::usize i = 0; i < args.size(); ++i) {
         if (i != 0) {
@@ -557,51 +609,64 @@ std::string SemanticAnalyzer::generic_instance_suffix(const std::vector<TypeHand
 
 std::string SemanticAnalyzer::generic_instance_key_suffix(const std::vector<TypeHandle>& args) const {
     std::string suffix;
-    suffix += SEMA_GENERIC_KEY_ARG_PREFIX;
-    for (base::usize i = 0; i < args.size(); ++i) {
-        if (i != 0) {
-            suffix += SEMA_GENERIC_KEY_ARG_SEPARATOR;
-        }
-        suffix += std::to_string(args[i].value);
-    }
+    suffix.reserve(SEMA_GENERIC_KEY_ARG_PREFIX.size() + args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
+    append_generic_instance_key_suffix(suffix, args);
     return suffix;
 }
 
 std::string SemanticAnalyzer::generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const {
     std::string suffix(SEMA_GENERIC_ABI_SUFFIX_PREFIX);
+    suffix.reserve(SEMA_GENERIC_ABI_SUFFIX_PREFIX.size() + args.size() * SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE);
     for (const TypeHandle arg : args) {
         suffix += SEMA_GENERIC_ABI_ARG_PREFIX;
-        suffix += std::to_string(arg.value);
+        append_decimal(suffix, arg.value);
     }
     return suffix;
+}
+
+std::string SemanticAnalyzer::generic_instance_key(
+    const GenericTemplateInfo& info,
+    const std::vector<TypeHandle>& args
+) const {
+    std::string key;
+    key.reserve(
+        info.key.size() +
+        SEMA_GENERIC_INSTANCE_SEPARATOR.size() +
+        SEMA_GENERIC_KEY_ARG_PREFIX.size() +
+        args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE
+    );
+    key += info.key;
+    key += SEMA_GENERIC_INSTANCE_SEPARATOR;
+    append_generic_instance_key_suffix(key, args);
+    return key;
 }
 
 std::string SemanticAnalyzer::generic_struct_instance_key(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    return info.key + std::string(SEMA_GENERIC_INSTANCE_SEPARATOR) + this->generic_instance_key_suffix(args);
+    return this->generic_instance_key(info, args);
 }
 
 std::string SemanticAnalyzer::generic_enum_instance_key(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    return info.key + std::string(SEMA_GENERIC_INSTANCE_SEPARATOR) + this->generic_instance_key_suffix(args);
+    return this->generic_instance_key(info, args);
 }
 
 std::string SemanticAnalyzer::generic_type_alias_instance_key(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    return info.key + std::string(SEMA_GENERIC_INSTANCE_SEPARATOR) + this->generic_instance_key_suffix(args);
+    return this->generic_instance_key(info, args);
 }
 
 std::string SemanticAnalyzer::generic_function_instance_key(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args
 ) const {
-    return info.key + std::string(SEMA_GENERIC_INSTANCE_SEPARATOR) + this->generic_instance_key_suffix(args);
+    return this->generic_instance_key(info, args);
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_struct_in_visible_modules(

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fast Google Benchmark redline checks for Aurex frontend hot paths.
+"""Google Benchmark performance report for Aurex frontend hot paths.
 
-Defaults are intentionally broad enough for developer machines. Tighten the
-AUREX_PERF_* environment variables on stable CI hardware when the perf lane is
-ready to become a release gate.
+This reports the current baseline without enforcing thresholds. Keep threshold
+policy out of this script until the cross-compiler comparison lane has a stable
+baseline and machine profile.
 """
 
 from __future__ import annotations
@@ -23,26 +23,12 @@ FRONTEND_BENCH = BUILD / "bin" / "aurex_frontend_bench"
 BENCHMARK_MIN_TIME_SECONDS = "0.01s"
 BENCHMARK_FILTER = "BM_LexMixed/64$|BM_SemaLookup/96$|BM_SemaGenerics/64$"
 
-DEFAULT_LEX_MIXED_NS_PER_BYTE_MAX = 1_000.0
-DEFAULT_SEMA_LOOKUP_NS_PER_ITEM_MAX = 500_000.0
-DEFAULT_SEMA_GENERICS_NS_PER_ITEM_MAX = 1_000_000.0
-
 TIME_UNIT_TO_NS = {
     "ns": 1.0,
     "us": 1_000.0,
     "ms": 1_000_000.0,
     "s": 1_000_000_000.0,
 }
-
-
-def env_float(name: str, fallback: float) -> float:
-    text = os.environ.get(name)
-    if text is None:
-        return fallback
-    try:
-        return float(text)
-    except ValueError:
-        return fallback
 
 
 def run(cmd: list[str]) -> str:
@@ -129,53 +115,37 @@ def ns_per_item(benchmark: dict[str, Any], item_count: float) -> float:
     return cpu_time_ns(benchmark) / item_count
 
 
-def check(name: str, value: float, threshold: float) -> bool:
-    print(f"{name}: {value:.3f} (max {threshold:.3f})")
-    if value <= threshold:
-        return True
-    print(f"performance redline failed: {name} {value:.3f} > {threshold:.3f}", file=sys.stderr)
-    return False
-
-
-def main() -> int:
-    thresholds = {
-        "lex_mixed_ns_per_byte": env_float(
-            "AUREX_PERF_LEX_MIXED_NS_PER_BYTE_MAX",
-            DEFAULT_LEX_MIXED_NS_PER_BYTE_MAX,
-        ),
-        "sema_lookup_ns_per_item": env_float(
-            "AUREX_PERF_SEMA_LOOKUP_NS_PER_ITEM_MAX",
-            DEFAULT_SEMA_LOOKUP_NS_PER_ITEM_MAX,
-        ),
-        "sema_generics_ns_per_item": env_float(
-            "AUREX_PERF_SEMA_GENERICS_NS_PER_ITEM_MAX",
-            DEFAULT_SEMA_GENERICS_NS_PER_ITEM_MAX,
-        ),
-    }
-
-    build_benchmark()
-    data = run_benchmark_json()
+def print_report(data: dict[str, Any]) -> None:
     lex_mixed = find_benchmark(data, "BM_LexMixed/64")
     sema_lookup = find_benchmark(data, "BM_SemaLookup/96")
     sema_generics = find_benchmark(data, "BM_SemaGenerics/64")
 
-    ok = True
-    ok = check(
-        "lex_mixed_ns_per_byte",
-        ns_per_source_byte(lex_mixed),
-        thresholds["lex_mixed_ns_per_byte"],
-    ) and ok
-    ok = check(
-        "sema_lookup_ns_per_item",
-        ns_per_item(sema_lookup, 96.0),
-        thresholds["sema_lookup_ns_per_item"],
-    ) and ok
-    ok = check(
-        "sema_generics_ns_per_item",
-        ns_per_item(sema_generics, 64.0),
-        thresholds["sema_generics_ns_per_item"],
-    ) and ok
-    return 0 if ok else 1
+    print("Aurex frontend Google Benchmark baseline")
+    print(f"build: {BUILD}")
+    print()
+    print(f"{'case':<24} {'cpu_time_ns':>14} {'normalized':>18}")
+    print(f"{'-' * 24} {'-' * 14} {'-' * 18}")
+    print(
+        f"{'lex_mixed/64':<24} "
+        f"{cpu_time_ns(lex_mixed):>14.3f} "
+        f"{ns_per_source_byte(lex_mixed):>14.3f} ns/B"
+    )
+    print(
+        f"{'sema_lookup/96':<24} "
+        f"{cpu_time_ns(sema_lookup):>14.3f} "
+        f"{ns_per_item(sema_lookup, 96.0):>14.3f} ns/item"
+    )
+    print(
+        f"{'sema_generics/64':<24} "
+        f"{cpu_time_ns(sema_generics):>14.3f} "
+        f"{ns_per_item(sema_generics, 64.0):>14.3f} ns/item"
+    )
+
+
+def main() -> int:
+    build_benchmark()
+    print_report(run_benchmark_json())
+    return 0
 
 
 if __name__ == "__main__":

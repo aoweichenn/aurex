@@ -16,7 +16,7 @@ bench:
 	tools/bench.py
 
 perf:
-	tools/check_perf_redlines.py
+	tools/perf_report.py
 
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true

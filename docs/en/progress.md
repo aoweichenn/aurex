@@ -92,9 +92,9 @@ negative samples, modules, visibility, generics, functions, methods, pattern
 matching, error handling, type-system diagnostics, IR lowering, IR verification,
 LLVM lowering, native execution, and installed compiler execution.
 `tools/bench.py` builds a Release `build-perf` tree and uses Google Benchmark
-for frontend hot-path measurements. `make perf` runs the lightweight JSON
-redline checks for lexer, lookup-heavy sema, and generic-instantiation-heavy
-sema paths.
+for frontend hot-path measurements. `make perf` prints the lightweight
+JSON-derived baseline report for lexer, lookup-heavy sema, and
+generic-instantiation-heavy sema paths without enforcing thresholds yet.
 
 ## M2 Gaps
 

@@ -59,6 +59,7 @@ private:
         std::string name;
         std::string key;
         std::vector<std::string> params;
+        std::vector<std::string> param_identity_keys;
         std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
@@ -481,6 +482,8 @@ private:
         bool report_unknown = true
     );
     [[nodiscard]] bool type_contains_generic_param(TypeHandle type) const;
+    void populate_generic_param_identity_keys(GenericTemplateInfo& info) const;
+    [[nodiscard]] std::string make_generic_param_identity_key(const GenericTemplateInfo& info, base::usize index) const;
     [[nodiscard]] std::string generic_param_identity_key(const GenericTemplateInfo& info, base::usize index) const;
     [[nodiscard]] std::string generic_param_identity_key(const TypeInfo& info) const;
     [[nodiscard]] TypeHandle generic_param_placeholder(const GenericTemplateInfo& info, base::usize index);
@@ -493,6 +496,7 @@ private:
     [[nodiscard]] std::string generic_instance_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_struct_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_enum_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_type_alias_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;

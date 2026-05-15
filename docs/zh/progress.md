@@ -67,8 +67,10 @@ make perf
 - native execution 和安装后 compiler 执行。
 
 `tools/bench.py` 使用 Release `build-perf` 构建目录，并用 Google Benchmark
-测量 frontend 热路径。`make perf` 输出基于 JSON 的轻量 baseline 报告，覆盖
-lexer、lookup-heavy sema 和 generic-instantiation-heavy sema 路径；暂不强制阈值。
+测量 frontend 热路径。`make perf` 输出基于 JSON 的 Aurex frontend baseline，
+覆盖 lexer、lookup-heavy sema 和 generic-instantiation-heavy sema 路径，并运行
+Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
+做 frontend/check 模式基线；暂不强制阈值。`make perf-compare` 只运行跨前端对比通道。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 

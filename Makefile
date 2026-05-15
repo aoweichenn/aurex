@@ -17,6 +17,10 @@ bench:
 
 perf:
 	tools/perf_report.py
+	tools/frontend_compare.py
+
+perf-compare:
+	tools/frontend_compare.py
 
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true

@@ -92,8 +92,10 @@ language samples, negative semantic samples, current language features, LLVM
 lowering, native execution, import paths, and install-tree compiler execution.
 `tools/bench.py` uses a Release `build-perf` tree and Google Benchmark for
 frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
-baseline report for lexer, lookup-heavy sema, and generic-instantiation-heavy
-sema paths without enforcing thresholds yet.
+Aurex frontend baseline and the Google Benchmark process-level comparison
+against available modern frontend drivers (`clang++`, `g++`, and `rustc`)
+without enforcing thresholds yet. `make perf-compare` runs only the
+cross-frontend comparison lane.
 
 ## Stage Status
 

@@ -41,6 +41,13 @@ if(AUREX_BUILD_BENCHMARKS)
         aurex_sema
         ${AUREX_GOOGLE_BENCHMARK_TARGET}
     )
+
+    add_executable(aurex_frontend_compare_bench EXCLUDE_FROM_ALL
+        tools/frontend_compare_bench.cpp
+    )
+    target_link_libraries(aurex_frontend_compare_bench PRIVATE
+        ${AUREX_GOOGLE_BENCHMARK_TARGET}
+    )
 endif()
 
 install(TARGETS aurexc DESTINATION bin)

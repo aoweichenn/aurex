@@ -73,6 +73,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->function_definition_items_.reserve(this->module_.items.size());
     this->function_body_states_.reserve(this->module_.items.size());
     this->struct_infos_by_type_.reserve(this->module_.items.size());
+    this->identifiers_.reserve(this->module_.items.size() + enum_cases);
     this->enum_cases_by_type_.reserve(enum_cases);
     this->enum_cases_by_type_and_case_.reserve(enum_cases);
     this->visible_modules_cache_.reserve(this->module_.modules.size());

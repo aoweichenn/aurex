@@ -11,17 +11,6 @@ namespace {
 
 constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
 
-[[nodiscard]] std::string enum_case_lookup_key(
-    const TypeHandle enum_type,
-    const std::string_view case_name
-) {
-    std::string key = std::to_string(enum_type.value);
-    key.reserve(key.size() + 1 + case_name.size());
-    key.push_back(':');
-    key += case_name;
-    return key;
-}
-
 [[nodiscard]] bool module_path_matches_parts(
     const syntax::ModulePath& path,
     const std::vector<std::string_view>& parts
@@ -829,7 +818,14 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
     if (!is_valid(enum_type)) {
         return nullptr;
     }
-    const auto found = this->enum_cases_by_type_and_case_.find(enum_case_lookup_key(enum_type, case_name));
+    const IdentId case_ident = this->identifiers_.find(case_name);
+    if (!is_valid(case_ident)) {
+        return nullptr;
+    }
+    const auto found = this->enum_cases_by_type_and_case_.find(EnumCaseLookupKey {
+        enum_type.value,
+        case_ident,
+    });
     if (found == this->enum_cases_by_type_and_case_.end() ||
         found->second == nullptr ||
         !this->checked_.types.same(found->second->type, enum_type) ||
@@ -853,8 +849,12 @@ void SemanticAnalyzer::index_enum_case(const EnumCaseInfo& info) {
     if (!is_valid(info.type)) {
         return;
     }
-    enum_cases_by_type_and_case_.emplace(enum_case_lookup_key(info.type, info.case_name), &info);
-    enum_cases_by_type_[info.type.value].push_back(&info);
+    const IdentId case_ident = this->identifiers_.intern(info.case_name);
+    this->enum_cases_by_type_and_case_.emplace(EnumCaseLookupKey {
+        info.type.value,
+        case_ident,
+    }, &info);
+    this->enum_cases_by_type_[info.type.value].push_back(&info);
 }
 
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(

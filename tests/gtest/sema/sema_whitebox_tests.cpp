@@ -26,6 +26,8 @@ using base::u32;
 using sema::BuiltinType;
 using sema::EnumCaseInfo;
 using sema::FunctionSignature;
+using sema::IdentId;
+using sema::IdentifierInterner;
 using sema::PointerMutability;
 using sema::StructFieldInfo;
 using sema::StructInfo;
@@ -878,6 +880,15 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
         analyzer.checked_.enum_cases.find(analyzer.module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "Choice_yes"))->second
     );
     ASSERT_NE(analyzer.find_enum_cases_by_type(enum_type), nullptr);
+    const base::usize interned_cases = analyzer.identifiers_.size();
+    const EnumCaseInfo* indexed_yes = analyzer.find_enum_case_by_type_and_case(enum_type, "yes");
+    ASSERT_NE(indexed_yes, nullptr);
+    EXPECT_EQ(indexed_yes->case_name, "yes");
+    EXPECT_EQ(analyzer.find_enum_case_by_type_and_case(record_type, "yes"), nullptr);
+    EXPECT_EQ(analyzer.find_enum_case_by_type_and_case(enum_type, "missing"), nullptr);
+    EXPECT_EQ(analyzer.identifiers_.size(), interned_cases);
+    EXPECT_EQ(analyzer.enum_cases_by_type_and_case_.size(), 1U);
+    EXPECT_TRUE(sema::is_valid(analyzer.identifiers_.find("yes")));
 
     EXPECT_EQ(analyzer.find_enum_case_by_scoped_name("Missing", "case", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_enum_case_by_scoped_name("Record", "case", {}, true), nullptr);
@@ -2292,6 +2303,28 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
     EXPECT_FALSE(kind_table.is_pointer(builtin_type));
     EXPECT_FALSE(kind_table.is_array(builtin_type));
     EXPECT_FALSE(kind_table.contains_array(builtin_type));
+}
+
+TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
+    IdentifierInterner interner;
+    interner.reserve(2);
+
+    EXPECT_FALSE(sema::is_valid(interner.find("alpha")));
+    const IdentId alpha = interner.intern("alpha");
+    const IdentId beta = interner.intern("beta");
+
+    EXPECT_TRUE(sema::is_valid(alpha));
+    EXPECT_TRUE(sema::is_valid(beta));
+    EXPECT_NE(alpha, beta);
+    EXPECT_EQ(interner.intern("alpha"), alpha);
+    EXPECT_EQ(interner.find("alpha"), alpha);
+    EXPECT_EQ(interner.find("beta"), beta);
+    EXPECT_EQ(interner.text(alpha), "alpha");
+    EXPECT_EQ(interner.text(beta), "beta");
+    EXPECT_EQ(interner.text(sema::INVALID_IDENT_ID), "");
+    EXPECT_EQ(interner.text(IdentId {IdentId::INVALID_VALUE - 1}), "");
+    EXPECT_EQ(interner.find("missing"), sema::INVALID_IDENT_ID);
+    EXPECT_EQ(interner.size(), 2U);
 }
 
 TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {

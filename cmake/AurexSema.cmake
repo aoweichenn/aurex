@@ -1,6 +1,7 @@
 add_library(aurex_sema
     src/sema/type.cpp
     src/sema/symbol.cpp
+    src/sema/identifier.cpp
     src/sema/function_registry.cpp
     src/sema/generic.cpp
     src/sema/checked_module.cpp

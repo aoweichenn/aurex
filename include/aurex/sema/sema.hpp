@@ -4,6 +4,7 @@
 #include <aurex/base/result.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/sema/function.hpp>
+#include <aurex/sema/identifier.hpp>
 #include <aurex/sema/symbol.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -686,7 +687,8 @@ private:
     std::unordered_map<std::string, syntax::ItemId> function_definition_items_;
     std::unordered_map<std::string, FunctionBodyState> function_body_states_;
     std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
-    std::unordered_map<std::string, const EnumCaseInfo*> enum_cases_by_type_and_case_;
+    IdentifierInterner identifiers_;
+    std::unordered_map<EnumCaseLookupKey, const EnumCaseInfo*, EnumCaseLookupKeyHash> enum_cases_by_type_and_case_;
     std::unordered_map<base::u32, std::vector<const EnumCaseInfo*>> enum_cases_by_type_;
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> module_export_modules_cache_;

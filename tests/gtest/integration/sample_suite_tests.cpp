@@ -74,6 +74,8 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"str_slice_bound_non_integer", "slice bound must be an integer"},
     {"strfromutf8_non_slice", "str UTF-8 builtin requires a []const u8 or []mut u8 byte slice"},
     {"try_result_return_mismatch", "try expression on result-like enum requires enclosing function"},
+    {"try_result_extra_case", "try expression requires result-like ok/err enum or option-like some/none enum"},
+    {"try_option_extra_case", "try expression requires result-like ok/err enum or option-like some/none enum"},
     {"unknown_module_expr_member", "unknown name in module samplelib.visibility: missing"},
     {"unknown_module_expr_path", "unknown module path: samplelib.missing"},
     {"unknown_module_type_path", "unknown module path: missing.path"},

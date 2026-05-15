@@ -36,119 +36,147 @@ if(BUILD_TESTING)
         COMMAND aurex_lexer_tests --gtest_color=auto
     )
 
-    add_executable(aurex_tests
-        tests/support/test_support.cpp
-        tests/gtest/backend/llvm_constants_tests.cpp
-        tests/gtest/backend/llvm_runtime_tests.cpp
-        tests/gtest/backend/llvm_types_whitebox_tests.cpp
-        tests/gtest/backend/llvm_utility_tests.cpp
+    add_executable(aurex_frontend_tests
         tests/gtest/base/base_tests.cpp
-        tests/gtest/driver/cli_argument_tests.cpp
-        tests/gtest/driver/cli_driver_tests.cpp
-        tests/gtest/driver/install_and_import_tests.cpp
-        tests/gtest/driver/native_toolchain_tests.cpp
         tests/gtest/frontend/ast_dump_tests.cpp
-        tests/gtest/frontend/randomized_frontend_tests.cpp
         tests/gtest/frontend/lexer_tests.cpp
         tests/gtest/frontend/parser_tests.cpp
-        tests/gtest/integration/documentation_tests.cpp
-        tests/gtest/integration/examples_tests.cpp
-        tests/gtest/integration/native_execution_tests.cpp
-        tests/gtest/integration/randomized_integration_tests.cpp
-        tests/gtest/integration/regression_tests.cpp
-        tests/gtest/integration/sample_suite_tests.cpp
-        tests/gtest/ir/ir_dump_tests.cpp
-        tests/gtest/ir/ir_verifier_edge_tests.cpp
-        tests/gtest/ir/ir_verifier_structural_tests.cpp
-        tests/gtest/ir/lower_ast_whitebox_tests.cpp
-        tests/gtest/ir/pass_pipeline_tests.cpp
-        tests/gtest/ir/type_table_tests.cpp
-        tests/gtest/sema/block_expression_tests.cpp
-        tests/gtest/sema/error_handling_tests.cpp
-        tests/gtest/sema/functions_tests.cpp
-        tests/gtest/sema/if_expression_tests.cpp
-        tests/gtest/sema/inference_tests.cpp
-        tests/gtest/sema/modules_visibility_tests.cpp
-        tests/gtest/sema/pattern_matching_tests.cpp
         tests/gtest/sema/sema_whitebox_tests.cpp
-        tests/gtest/sema/type_alias_tests.cpp
     )
-    target_link_libraries(aurex_tests PRIVATE
+    target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
         aurex_base
         aurex_lex
-        aurex_ir
-        aurex_backend_llvm
-        aurex_driver
+        aurex_parse
+        aurex_sema
     )
-    target_include_directories(aurex_tests PRIVATE
+    target_include_directories(aurex_frontend_tests PRIVATE
         tests
         src
     )
-    target_compile_definitions(aurex_tests PRIVATE
-        AUREX_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"
-        AUREX_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
-        AUREX_TEST_CMAKE_COMMAND=\"${CMAKE_COMMAND}\"
-    )
-    set_target_properties(aurex_tests PROPERTIES
+    set_target_properties(aurex_frontend_tests PROPERTIES
         BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
     )
+    add_test(
+        NAME aurex_tests_frontend_only
+        COMMAND aurex_frontend_tests --gtest_color=auto
+    )
 
-    function(aurex_add_gtest name filter)
-        add_test(
-            NAME "${name}"
-            COMMAND aurex_tests --gtest_color=auto "--gtest_filter=${filter}"
+    if(NOT AUREX_FRONTEND_ONLY)
+        add_executable(aurex_tests
+            tests/support/test_support.cpp
+            tests/gtest/backend/llvm_constants_tests.cpp
+            tests/gtest/backend/llvm_runtime_tests.cpp
+            tests/gtest/backend/llvm_types_whitebox_tests.cpp
+            tests/gtest/backend/llvm_utility_tests.cpp
+            tests/gtest/base/base_tests.cpp
+            tests/gtest/driver/cli_argument_tests.cpp
+            tests/gtest/driver/cli_driver_tests.cpp
+            tests/gtest/driver/install_and_import_tests.cpp
+            tests/gtest/driver/native_toolchain_tests.cpp
+            tests/gtest/frontend/ast_dump_tests.cpp
+            tests/gtest/frontend/randomized_frontend_tests.cpp
+            tests/gtest/frontend/lexer_tests.cpp
+            tests/gtest/frontend/parser_tests.cpp
+            tests/gtest/integration/documentation_tests.cpp
+            tests/gtest/integration/examples_tests.cpp
+            tests/gtest/integration/native_execution_tests.cpp
+            tests/gtest/integration/randomized_integration_tests.cpp
+            tests/gtest/integration/regression_tests.cpp
+            tests/gtest/integration/sample_suite_tests.cpp
+            tests/gtest/ir/ir_dump_tests.cpp
+            tests/gtest/ir/ir_verifier_edge_tests.cpp
+            tests/gtest/ir/ir_verifier_structural_tests.cpp
+            tests/gtest/ir/lower_ast_whitebox_tests.cpp
+            tests/gtest/ir/pass_pipeline_tests.cpp
+            tests/gtest/ir/type_table_tests.cpp
+            tests/gtest/sema/block_expression_tests.cpp
+            tests/gtest/sema/error_handling_tests.cpp
+            tests/gtest/sema/functions_tests.cpp
+            tests/gtest/sema/if_expression_tests.cpp
+            tests/gtest/sema/inference_tests.cpp
+            tests/gtest/sema/modules_visibility_tests.cpp
+            tests/gtest/sema/pattern_matching_tests.cpp
+            tests/gtest/sema/sema_whitebox_tests.cpp
+            tests/gtest/sema/type_alias_tests.cpp
         )
-    endfunction()
+        target_link_libraries(aurex_tests PRIVATE
+            GTest::gtest_main
+            aurex_base
+            aurex_lex
+            aurex_ir
+            aurex_backend_llvm
+            aurex_driver
+        )
+        target_include_directories(aurex_tests PRIVATE
+            tests
+            src
+        )
+        target_compile_definitions(aurex_tests PRIVATE
+            AUREX_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"
+            AUREX_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
+            AUREX_TEST_CMAKE_COMMAND=\"${CMAKE_COMMAND}\"
+        )
+        set_target_properties(aurex_tests PROPERTIES
+            BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
+        )
 
-    aurex_add_gtest(aurex_tests_core_unit
-        "CoreUnit.*"
-    )
-    aurex_add_gtest(aurex_tests_driver_and_regressions
-        "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.M2Generic*:AurexIntegrationTest.Randomized*"
-    )
-    aurex_add_gtest(aurex_tests_functions
-        "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndValueSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
-    )
-    aurex_add_gtest(aurex_tests_control_and_modules
-        "AurexIntegrationTest.IfExpression:AurexIntegrationTest.LocalTypeInference:AurexIntegrationTest.FunctionReturnInference:AurexIntegrationTest.ModuleVisibility:AurexIntegrationTest.PublicImportReexport"
-    )
-    aurex_add_gtest(aurex_tests_pattern_and_types
-        "AurexIntegrationTest.MatchExpression:AurexIntegrationTest.EnumPayloadAndMatchBinding:AurexIntegrationTest.MatchWildcardAndScopedCases:AurexIntegrationTest.MatchOrPattern:AurexIntegrationTest.MatchLiteralPattern:AurexIntegrationTest.MatchGuard:AurexIntegrationTest.LayoutAlignment:AurexIntegrationTest.TypeAlias"
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_positive
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Positive*
-    )
-    add_test(
-        NAME aurex_tests_sample_suite_negative
-        COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Negative*
-    )
-    set_tests_properties(
-        aurex_tests_core_unit
-        aurex_tests_driver_and_regressions
-        aurex_tests_functions
-        aurex_tests_control_and_modules
-        aurex_tests_pattern_and_types
-        PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    )
-    set_tests_properties(
-        aurex_tests_sample_suite_positive
-        PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        LABELS "slow;sample-suite"
-        TIMEOUT 300
-    )
-    set_tests_properties(
-        aurex_tests_sample_suite_negative
-        PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        LABELS "slow;sample-suite"
-        TIMEOUT 300
-    )
+        function(aurex_add_gtest name filter)
+            add_test(
+                NAME "${name}"
+                COMMAND aurex_tests --gtest_color=auto "--gtest_filter=${filter}"
+            )
+        endfunction()
 
-    if(AUREX_BUILD_FUZZERS)
+        aurex_add_gtest(aurex_tests_core_unit
+            "CoreUnit.*"
+        )
+        aurex_add_gtest(aurex_tests_driver_and_regressions
+            "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.M2Generic*:AurexIntegrationTest.Randomized*"
+        )
+        aurex_add_gtest(aurex_tests_functions
+            "AurexIntegrationTest.BlockExpression:AurexIntegrationTest.TryExpression*:AurexIntegrationTest.FunctionPrototypes:AurexIntegrationTest.VariadicExternCFunctions:AurexIntegrationTest.DeferScopes:AurexIntegrationTest.ForStatementAndValueSemantics:AurexIntegrationTest.RecursiveFunctions:AurexIntegrationTest.MethodsAndAssociatedFunctions"
+        )
+        aurex_add_gtest(aurex_tests_control_and_modules
+            "AurexIntegrationTest.IfExpression:AurexIntegrationTest.LocalTypeInference:AurexIntegrationTest.FunctionReturnInference:AurexIntegrationTest.ModuleVisibility:AurexIntegrationTest.PublicImportReexport"
+        )
+        aurex_add_gtest(aurex_tests_pattern_and_types
+            "AurexIntegrationTest.MatchExpression:AurexIntegrationTest.EnumPayloadAndMatchBinding:AurexIntegrationTest.MatchWildcardAndScopedCases:AurexIntegrationTest.MatchOrPattern:AurexIntegrationTest.MatchLiteralPattern:AurexIntegrationTest.MatchGuard:AurexIntegrationTest.LayoutAlignment:AurexIntegrationTest.TypeAlias"
+        )
+        add_test(
+            NAME aurex_tests_sample_suite_positive
+            COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Positive*
+        )
+        add_test(
+            NAME aurex_tests_sample_suite_negative
+            COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Negative*
+        )
+        set_tests_properties(
+            aurex_tests_core_unit
+            aurex_tests_driver_and_regressions
+            aurex_tests_functions
+            aurex_tests_control_and_modules
+            aurex_tests_pattern_and_types
+            PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        )
+        set_tests_properties(
+            aurex_tests_sample_suite_positive
+            PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            LABELS "slow;sample-suite"
+            TIMEOUT 300
+        )
+        set_tests_properties(
+            aurex_tests_sample_suite_negative
+            PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            LABELS "slow;sample-suite"
+            TIMEOUT 300
+        )
+    endif()
+
+    if(AUREX_BUILD_FUZZERS AND NOT AUREX_FRONTEND_ONLY)
         if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             message(FATAL_ERROR "AUREX_BUILD_FUZZERS requires Clang for -fsanitize=fuzzer")
         endif()

@@ -19,6 +19,7 @@ constexpr base::u32 SEMA_I32_BIT_WIDTH = 32;
 constexpr base::u32 SEMA_I64_BIT_WIDTH = 64;
 constexpr base::u32 SEMA_I64_SIGN_BIT_INDEX = 63;
 constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
+constexpr base::usize SEMA_TRY_SHAPE_CASE_COUNT = 2;
 
 [[nodiscard]] bool binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
     switch (op) {
@@ -209,6 +210,50 @@ struct IntegerLiteralExpr {
 }
 
 } // namespace
+
+SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle type) const noexcept {
+    if (!is_valid(type) ||
+        type.value >= this->checked_.types.size() ||
+        this->checked_.types.get(type).kind != TypeKind::enum_) {
+        return {};
+    }
+    const std::vector<const EnumCaseInfo*>* const cases = this->find_enum_cases_by_type(type);
+    if (cases == nullptr || cases->size() != SEMA_TRY_SHAPE_CASE_COUNT) {
+        return {};
+    }
+
+    const EnumCaseInfo* const ok_case = this->find_enum_case_by_type_and_case(type, "ok");
+    const EnumCaseInfo* const err_case = this->find_enum_case_by_type_and_case(type, "err");
+    if (ok_case != nullptr || err_case != nullptr) {
+        TryShape shape;
+        shape.kind = ok_case != nullptr &&
+                     err_case != nullptr &&
+                     is_valid(ok_case->payload_type) &&
+                     is_valid(err_case->payload_type)
+            ? TryShape::Kind::result
+            : TryShape::Kind::malformed_result;
+        shape.success_case = ok_case;
+        shape.failure_case = err_case;
+        return shape;
+    }
+
+    const EnumCaseInfo* const some_case = this->find_enum_case_by_type_and_case(type, "some");
+    const EnumCaseInfo* const none_case = this->find_enum_case_by_type_and_case(type, "none");
+    if (some_case != nullptr || none_case != nullptr) {
+        TryShape shape;
+        shape.kind = some_case != nullptr &&
+                     none_case != nullptr &&
+                     is_valid(some_case->payload_type) &&
+                     !is_valid(none_case->payload_type)
+            ? TryShape::Kind::option
+            : TryShape::Kind::malformed_option;
+        shape.success_case = some_case;
+        shape.failure_case = none_case;
+        return shape;
+    }
+
+    return {};
+}
 
 TypeHandle SemanticAnalyzer::analyze_expr(const syntax::ExprId expr_id) {
     return this->analyze_expr(expr_id, INVALID_TYPE_HANDLE);
@@ -559,7 +604,7 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::greater:
     case syntax::BinaryOp::greater_equal:
         if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, CapabilityKind::ord)) {
+            if (!this->generic_param_has_capability(lhs, CapabilityKind::ord)) {
                 this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
             }
             return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
@@ -571,7 +616,7 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     case syntax::BinaryOp::equal:
     case syntax::BinaryOp::not_equal: {
         if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            if (!this->generic_param_has_capability(this->checked_.types.get(lhs).name, CapabilityKind::eq)) {
+            if (!this->generic_param_has_capability(lhs, CapabilityKind::eq)) {
                 this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
             }
         } else if (!this->type_supports_equality_operator(lhs) && !is_null_pointer_comparison) {
@@ -749,6 +794,9 @@ TypeHandle SemanticAnalyzer::analyze_index_expr(
         const TypeHandle pointee = this->checked_.types.get(object).pointee;
         if (this->checked_.types.is_array(pointee)) {
             return this->record_expr_type(expr_id, this->checked_.types.get(pointee).array_element);
+        }
+        if (this->checked_.types.is_slice(pointee)) {
+            return this->record_expr_type(expr_id, this->checked_.types.get(pointee).slice_element);
         }
         this->report(expr.range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
@@ -1054,7 +1102,7 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
 ) {
     const TypeHandle queried = this->resolve_type(expr.cast_type);
     if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::generic_param) {
-        if (!this->generic_param_has_capability(this->checked_.types.get(queried).name, CapabilityKind::sized)) {
+        if (!this->generic_param_has_capability(queried, CapabilityKind::sized)) {
             this->report(expr.range, std::string(SEMA_GENERIC_SIZEOF_ALIGNOF));
         }
     } else if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
@@ -1147,48 +1195,44 @@ TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
 }
 
 TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
-    if (in_const_initializer_) {
-        report(expr.range, std::string(SEMA_TRY_CONST_INITIALIZER));
+    if (this->in_const_initializer_) {
+        this->report(expr.range, std::string(SEMA_TRY_CONST_INITIALIZER));
     }
 
-    const TypeHandle source_type = analyze_expr(expr.unary_operand);
-    const EnumCaseInfo* const ok_case = find_enum_case_by_type_and_case(source_type, "ok");
-    const EnumCaseInfo* const err_case = find_enum_case_by_type_and_case(source_type, "err");
-    if (ok_case != nullptr || err_case != nullptr) {
-        if (ok_case == nullptr || err_case == nullptr || !is_valid(ok_case->payload_type) || !is_valid(err_case->payload_type)) {
-            report(expr.range, std::string(SEMA_TRY_RESULT_SHAPE));
-            return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
-
-        const EnumCaseInfo* const return_err_case = find_enum_case_by_type_and_case(current_function_return_type_, "err");
-        if (return_err_case == nullptr || !is_valid(return_err_case->payload_type)) {
-            report(expr.range, std::string(SEMA_TRY_RESULT_RETURN));
-            return record_expr_type(expr_id, ok_case->payload_type);
-        }
-        if (!checked_.types.same(return_err_case->payload_type, err_case->payload_type)) {
-            report(expr.range, std::string(SEMA_TRY_RESULT_ERR_PAYLOAD));
-        }
-        return record_expr_type(expr_id, ok_case->payload_type);
+    const TypeHandle source_type = this->analyze_expr(expr.unary_operand);
+    const TryShape source_shape = this->classify_try_shape(source_type);
+    if (source_shape.kind == TryShape::Kind::malformed_result) {
+        this->report(expr.range, std::string(SEMA_TRY_RESULT_SHAPE));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    if (source_shape.kind == TryShape::Kind::malformed_option) {
+        this->report(expr.range, std::string(SEMA_TRY_OPTION_SHAPE));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
-    const EnumCaseInfo* const some_case = find_enum_case_by_type_and_case(source_type, "some");
-    const EnumCaseInfo* const none_case = find_enum_case_by_type_and_case(source_type, "none");
-    if (some_case != nullptr || none_case != nullptr) {
-        if (some_case == nullptr || none_case == nullptr || !is_valid(some_case->payload_type) || is_valid(none_case->payload_type)) {
-            report(expr.range, std::string(SEMA_TRY_OPTION_SHAPE));
-            return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    if (source_shape.kind == TryShape::Kind::result) {
+        const TryShape return_shape = this->classify_try_shape(this->current_function_return_type_);
+        if (return_shape.kind != TryShape::Kind::result || return_shape.failure_case == nullptr) {
+            this->report(expr.range, std::string(SEMA_TRY_RESULT_RETURN));
+            return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
         }
-
-        const EnumCaseInfo* const return_none_case = find_enum_case_by_type_and_case(current_function_return_type_, "none");
-        if (return_none_case == nullptr || is_valid(return_none_case->payload_type)) {
-            report(expr.range, std::string(SEMA_TRY_OPTION_RETURN));
-            return record_expr_type(expr_id, some_case->payload_type);
+        if (!this->checked_.types.same(return_shape.failure_case->payload_type, source_shape.failure_case->payload_type)) {
+            this->report(expr.range, std::string(SEMA_TRY_RESULT_ERR_PAYLOAD));
         }
-        return record_expr_type(expr_id, some_case->payload_type);
+        return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
     }
 
-    report(expr.range, std::string(SEMA_TRY_SHAPE));
-    return record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    if (source_shape.kind == TryShape::Kind::option) {
+        const TryShape return_shape = this->classify_try_shape(this->current_function_return_type_);
+        if (return_shape.kind != TryShape::Kind::option) {
+            this->report(expr.range, std::string(SEMA_TRY_OPTION_RETURN));
+            return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
+        }
+        return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
+    }
+
+    this->report(expr.range, std::string(SEMA_TRY_SHAPE));
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_if_expr(

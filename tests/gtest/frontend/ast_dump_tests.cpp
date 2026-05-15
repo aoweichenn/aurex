@@ -1,6 +1,6 @@
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/token.hpp>
-#include <support/test_support.hpp>
+#include <support/frontend_test_support.hpp>
 
 #include <string>
 #include <vector>

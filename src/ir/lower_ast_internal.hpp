@@ -3,6 +3,7 @@
 #include <aurex/ir/lower_ast.hpp>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -45,6 +46,10 @@ struct LocalBinding {
     bool is_mutable = false;
 };
 
+struct LocalScopeFrame {
+    std::unordered_map<std::string, std::optional<LocalBinding>> previous_bindings;
+};
+
 struct PatternBindingSlot {
     std::string name;
     ValueId slot = INVALID_VALUE_ID;
@@ -63,6 +68,18 @@ struct PendingConstant {
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     std::string literal_text;
     bool is_literal = false;
+};
+
+enum class TryShapeKind {
+    none,
+    result,
+    option,
+};
+
+struct TryShape {
+    TryShapeKind kind = TryShapeKind::none;
+    const sema::EnumCaseInfo* success_case = nullptr;
+    const sema::EnumCaseInfo* failure_case = nullptr;
 };
 
 struct EnumCaseTypeKey {
@@ -154,6 +171,7 @@ private:
         sema::TypeHandle enum_type,
         std::string_view case_name
     ) const noexcept;
+    [[nodiscard]] TryShape classify_try_shape(sema::TypeHandle enum_type) const noexcept;
 
     [[nodiscard]] ValueId append_temp_alloca(const std::string& name, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_integer_literal(std::string_view text, sema::TypeHandle value_type);
@@ -212,6 +230,9 @@ private:
     [[nodiscard]] ValueId lower_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const syntax::ExprNode& expr);
 
     void emit_deferred_scopes(base::usize keep_depth);
+    void push_local_scope();
+    void pop_local_scope();
+    void bind_local(std::string name, LocalBinding binding);
     [[nodiscard]] ValueId lower_place_addr(syntax::ExprId expr_id);
     [[nodiscard]] PlaceAddress lower_place_address(syntax::ExprId expr_id);
     [[nodiscard]] PlaceAddress lower_object_place_or_value(syntax::ExprId expr_id);
@@ -251,6 +272,7 @@ private:
     BlockId current_block_ = INVALID_BLOCK_ID;
     bool lowering_constant_initializer_ = false;
     std::unordered_map<std::string, LocalBinding> locals_;
+    std::vector<LocalScopeFrame> local_scopes_;
     std::unordered_map<std::string, FunctionId> function_symbols_;
     std::unordered_map<std::string, GlobalConstantId> constant_symbols_;
     std::unordered_map<std::string_view, const sema::EnumCaseInfo*> enum_cases_by_name_;

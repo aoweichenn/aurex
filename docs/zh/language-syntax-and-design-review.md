@@ -614,8 +614,9 @@ let value: T = maybe_result?;
 规则：
 
 - operand 必须是标准形状的 result-like 或 option-like payload enum。
-- result-like enum 要求当前函数返回同模块、同错误 payload 的 result-like enum。
-- option-like enum 要求当前函数返回同模块的 option-like enum。
+- result-like enum 不依赖 enum 类型名，但必须精确只有 `ok(payload)` 和 `err(payload)` 两个 case；当前函数返回类型也必须是 result-like enum，且错误 payload 类型一致。
+- option-like enum 不依赖 enum 类型名，但必须精确只有 `some(payload)` 和无 payload `none` 两个 case；当前函数返回类型也必须是 option-like enum。
+- 同名 case 但额外 case 或错误 payload 形状不会被 `?` 当作标准 Result/Option。
 - `?` 当前按普通值语义处理 payload；未来资源 payload 需要在后续资源语义专题中重新定义。
 - const initializer 中不能使用。
 
@@ -928,7 +929,7 @@ let Result.ok(value) = result else {
 
 ### 9. 错误处理路线应继续坚持 `Result` / `Option` / `?`
 
-Aurex 现在已经有 `?`，它按名称和形状识别 result-like / option-like enum。建议保持这条线，不要现在引入 exception；未来如果重新设计错误处理库，应提供标准 `Result` / `Option` 形状，泛型拼写统一使用 `Result[T,E]` / `Option[T]`。
+Aurex 现在已经有 `?`，它按 enum identity、完整 case 集和 payload 形状识别 result-like / option-like enum，而不绑定具体类型名。建议保持这条线，不要现在引入 exception；未来如果重新设计错误处理库，应提供标准 `Result` / `Option` 形状，泛型拼写统一使用 `Result[T,E]` / `Option[T]`。
 
 理由：
 

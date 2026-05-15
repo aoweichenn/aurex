@@ -63,6 +63,18 @@ TEST_F(AurexIntegrationTest, TryExpressionDiagnostics) {
         require_failure(aurexc() + " --check " + q(malformed_option)).output,
         "try expression option-like enum must define some(payload) and none cases"
     );
+
+    const fs::path extra_result_case = negative_sample("error_handling", "try_result_extra_case.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(extra_result_case)).output,
+        "try expression requires result-like ok/err enum or option-like some/none enum"
+    );
+
+    const fs::path extra_option_case = negative_sample("error_handling", "try_option_extra_case.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(extra_option_case)).output,
+        "try expression requires result-like ok/err enum or option-like some/none enum"
+    );
 }
 
 } // namespace aurex::test

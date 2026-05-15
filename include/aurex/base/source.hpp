@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/base/text.hpp>
 
 #include <string>
 #include <string_view>
@@ -21,6 +22,11 @@ struct SourceRange {
     [[nodiscard]] bool empty() const noexcept;
 };
 
+struct SourceLineExtent {
+    usize begin = 0;
+    usize end = 0;
+};
+
 class SourceFile {
 public:
     SourceFile(SourceId id, std::string path, std::string text);
@@ -28,11 +34,16 @@ public:
     [[nodiscard]] SourceId id() const noexcept;
     [[nodiscard]] std::string_view path() const noexcept;
     [[nodiscard]] std::string_view text() const noexcept;
+    [[nodiscard]] LineColumn line_column(usize offset) const noexcept;
+    [[nodiscard]] SourceLineExtent line_extent(usize offset) const noexcept;
 
 private:
+    [[nodiscard]] usize line_index(usize offset) const noexcept;
+
     SourceId id_;
     std::string path_;
     std::string text_;
+    std::vector<usize> line_starts_;
 };
 
 class SourceManager {

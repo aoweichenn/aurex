@@ -83,7 +83,7 @@ Aurex 的基础语法方向是对的：花括号、显式类型、`fn`、`let` /
 - 可见性默认值对长期模块 API 不友好。
 - enum 语法过早绑定 C ABI 形态，作为 ADT 过重。
 - 指针语法在基础层承担了 safe borrow、raw pointer、method receiver 和 FFI 多种角色。
-- 错误处理 `?` 已经可用，但仍依赖“形状约定”，缺正式标准核心定义和约束表达。
+- 错误处理 `?` 已经可用，并已收紧为结构化 Result/Option shape 检查；仍缺未来标准库 Result/Option 定义与该 shape 的正式绑定。
 - 泛型基础语法只能列类型参数，不能表达能力约束。
 
 这些都是地基问题，应该先修。否则继续往上加 trait、borrow、class、macro，只会把不一致扩大。

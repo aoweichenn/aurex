@@ -193,6 +193,15 @@ TEST_F(AurexIntegrationTest, M2SafeReferences) {
     require_success(aurexc() + " " + q(positive) + " -o " + q(binary));
     require_success(q(binary));
 
+    const fs::path reference_slice = positive_sample("types", "reference_slice_index.ax");
+    const std::string reference_slice_ir = require_success(aurexc() + " --emit=ir " + q(reference_slice)).output;
+    expect_contains_all(reference_slice_ir, {
+        "fn first(values: &[]const i32)",
+        "slice_data",
+        "index_addr",
+    });
+    require_success(aurexc() + " --emit=llvm-ir " + q(reference_slice));
+
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "reference_mut_from_immutable.ax"))).output,
         "mutable reference requires a writable place expression"

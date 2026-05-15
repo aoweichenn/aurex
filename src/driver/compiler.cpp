@@ -2,7 +2,6 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/source.hpp>
-#include <aurex/base/text.hpp>
 #include <aurex/backend/llvm_backend.hpp>
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/module_loader.hpp>
@@ -15,15 +14,19 @@
 #include <aurex/sema/sema.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <span>
 #include <string>
 
 namespace aurex::driver {
 
 namespace {
+
+constexpr base::usize DRIVER_MAX_PRINTED_DIAGNOSTICS = 128;
 
 [[nodiscard]] base::Result<void> write_file(const std::filesystem::path& path, const std::string_view text) {
     std::ofstream output(path, std::ios::binary);
@@ -51,27 +54,23 @@ namespace {
 }
 
 void print_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics) {
-    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+    const std::span<const base::Diagnostic> all = diagnostics.diagnostics();
+    const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
+    for (base::usize index = 0; index < count; ++index) {
+        const base::Diagnostic& diagnostic = all[index];
         const base::SourceFile& file = sources.get(diagnostic.range.source);
-        const base::LineColumn location = base::line_column(file.text(), diagnostic.range.begin);
+        const base::LineColumn location = file.line_column(diagnostic.range.begin);
         std::cerr << file.path() << ":" << location.line << ":" << location.column << ": "
                   << base::severity_name(diagnostic.severity) << ": "
                   << diagnostic.message << "\n";
 
         const std::string_view text = file.text();
-        base::usize line_begin = diagnostic.range.begin;
-        while (line_begin > 0 && text[line_begin - 1] != '\n') {
-            --line_begin;
-        }
-        base::usize line_end = diagnostic.range.begin;
-        while (line_end < text.size() && text[line_end] != '\n') {
-            ++line_end;
-        }
-        const std::string_view source_line = text.substr(line_begin, line_end - line_begin);
+        const base::SourceLineExtent line = file.line_extent(diagnostic.range.begin);
+        const std::string_view source_line = text.substr(line.begin, line.end - line.begin);
         if (!source_line.empty()) {
             std::cerr << "  " << source_line << "\n";
             std::cerr << "  ";
-            const base::usize caret_column = diagnostic.range.begin - line_begin;
+            const base::usize caret_column = std::min(diagnostic.range.begin, line.end) - line.begin;
             for (base::usize i = 0; i < caret_column; ++i) {
                 std::cerr << (source_line[i] == '\t' ? '\t' : ' ');
             }
@@ -81,6 +80,11 @@ void print_diagnostics(const base::SourceManager& sources, const base::Diagnosti
             }
             std::cerr << "\n";
         }
+    }
+    if (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS) {
+        std::cerr << "error: too many diagnostics; suppressing "
+                  << (all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS)
+                  << " additional diagnostics\n";
     }
 }
 

@@ -37,6 +37,8 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     EXPECT_EQ(sources.get(id).id().value, id.value);
     EXPECT_EQ(sources.get(id).path(), "unit.ax");
     EXPECT_EQ(sources.text(id), "module unit;");
+    EXPECT_EQ(sources.get(id).line_column(0).line, 1U);
+    EXPECT_EQ(sources.get(id).line_column(0).column, 1U);
 
     DiagnosticSink diagnostics;
     EXPECT_FALSE(diagnostics.has_error());
@@ -67,6 +69,36 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     auto failed_void = base::Result<void>::fail({ErrorCode::internal_error, "bad"});
     ASSERT_FALSE(failed_void);
     EXPECT_EQ(failed_void.error().code, ErrorCode::internal_error);
+}
+
+TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents) {
+    base::SourceManager sources;
+    const base::SourceId id = sources.add_source("lines.ax", "first\nsecond\nthird");
+    const base::SourceFile& file = sources.get(id);
+
+    EXPECT_EQ(file.line_column(0).line, 1U);
+    EXPECT_EQ(file.line_column(0).column, 1U);
+    EXPECT_EQ(file.line_column(6).line, 2U);
+    EXPECT_EQ(file.line_column(6).column, 1U);
+    EXPECT_EQ(file.line_column(13).line, 3U);
+    EXPECT_EQ(file.line_column(13).column, 1U);
+    EXPECT_EQ(file.line_column(99).line, 3U);
+    EXPECT_EQ(file.line_column(99).column, 6U);
+
+    const base::SourceLineExtent first = file.line_extent(1);
+    EXPECT_EQ(first.begin, 0U);
+    EXPECT_EQ(first.end, 5U);
+    EXPECT_EQ(file.text().substr(first.begin, first.end - first.begin), "first");
+
+    const base::SourceLineExtent second = file.line_extent(8);
+    EXPECT_EQ(second.begin, 6U);
+    EXPECT_EQ(second.end, 12U);
+    EXPECT_EQ(file.text().substr(second.begin, second.end - second.begin), "second");
+
+    const base::SourceLineExtent third = file.line_extent(99);
+    EXPECT_EQ(third.begin, 13U);
+    EXPECT_EQ(third.end, 18U);
+    EXPECT_EQ(file.text().substr(third.begin, third.end - third.begin), "third");
 }
 
 } // namespace aurex::test

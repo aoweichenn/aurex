@@ -4,7 +4,7 @@
 #include <aurex/parse/parser_part_ranges.hpp>
 #include <aurex/parse/parser.hpp>
 #include <aurex/syntax/ast_dump.hpp>
-#include <support/test_support.hpp>
+#include <support/frontend_test_support.hpp>
 
 #include <array>
 #include <initializer_list>

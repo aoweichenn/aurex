@@ -64,12 +64,28 @@ private:
 
     struct GenericContext {
         std::unordered_map<std::string, TypeHandle> params;
+        std::unordered_map<std::string, std::string> param_identities;
         std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
+        std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints_by_identity;
     };
 
     struct GenericSideTableScope {
         GenericSideTables* side_tables = nullptr;
         bool cache_syntax_types = true;
+    };
+
+    struct TryShape {
+        enum class Kind {
+            none,
+            result,
+            option,
+            malformed_result,
+            malformed_option,
+        };
+
+        Kind kind = Kind::none;
+        const EnumCaseInfo* success_case = nullptr;
+        const EnumCaseInfo* failure_case = nullptr;
     };
 
     struct ModuleSelector {
@@ -138,6 +154,7 @@ private:
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
+    [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
     [[nodiscard]] bool type_supports_equality_operator(TypeHandle type) const;
     [[nodiscard]] bool type_supports_ordering_operator(TypeHandle type) const;
@@ -446,7 +463,18 @@ private:
         bool report_unknown = true
     );
     [[nodiscard]] bool type_contains_generic_param(TypeHandle type) const;
+    [[nodiscard]] std::string generic_param_identity_key(const GenericTemplateInfo& info, base::usize index) const;
+    [[nodiscard]] std::string generic_param_identity_key(const TypeInfo& info) const;
+    [[nodiscard]] TypeHandle generic_param_placeholder(const GenericTemplateInfo& info, base::usize index);
+    void populate_generic_placeholder_context(const GenericTemplateInfo& info, GenericContext& context);
+    void populate_generic_concrete_context(
+        const GenericTemplateInfo& info,
+        const std::vector<TypeHandle>& args,
+        GenericContext& context
+    );
     [[nodiscard]] std::string generic_instance_suffix(const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] std::string generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_struct_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_enum_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_type_alias_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
@@ -524,17 +552,20 @@ private:
     [[nodiscard]] TypeHandle resolve_associated_generic_type_owner(const syntax::ExprNode& apply, bool report_unknown);
     [[nodiscard]] TypeHandle function_type_from_signature(const FunctionSignature& signature);
     [[nodiscard]] TypeHandle function_type_from_symbol(const Symbol& symbol, base::SourceRange range);
+    [[nodiscard]] TryShape classify_try_shape(TypeHandle type) const noexcept;
     [[nodiscard]] bool in_unsafe_context() const noexcept;
     void require_unsafe_context(base::SourceRange range, std::string_view operation);
     void validate_unsafe_call(const FunctionSignature& signature, base::SourceRange range);
     void validate_unsafe_function_value_call(TypeHandle callee_type, base::SourceRange range);
     [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
+    void normalize_parser_only_module_contract();
+    [[nodiscard]] bool validate_ast_contract();
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] std::vector<std::string_view> type_scope_parts(const syntax::TypeNode& type) const;
     [[nodiscard]] syntax::ModuleId resolve_type_scope(const syntax::TypeNode& type, bool report_unknown);
     [[nodiscard]] syntax::ModuleId find_visible_module_path(const std::vector<std::string_view>& parts) const;
     [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;
-    [[nodiscard]] std::vector<syntax::ModuleId> module_export_modules(syntax::ModuleId module) const;
+    [[nodiscard]] const std::vector<syntax::ModuleId>& module_export_modules(syntax::ModuleId module) const;
     void append_public_reexports(syntax::ModuleId module, std::vector<syntax::ModuleId>& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
@@ -638,6 +669,7 @@ private:
     std::unordered_map<std::string, const EnumCaseInfo*> enum_cases_by_type_and_case_;
     std::unordered_map<base::u32, std::vector<const EnumCaseInfo*>> enum_cases_by_type_;
     mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;
+    mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> module_export_modules_cache_;
     syntax::ModuleId current_module_ = syntax::INVALID_MODULE_ID;
     TypeHandle current_function_return_type_ = INVALID_TYPE_HANDLE;
     ReturnTypeInference* current_return_inference_ = nullptr;

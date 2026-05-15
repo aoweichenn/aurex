@@ -10,6 +10,7 @@ namespace aurex::ir::detail {
 namespace {
 
 constexpr char IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
+constexpr base::usize IR_TRY_SHAPE_CASE_COUNT = 2;
 
 } // namespace
 
@@ -48,6 +49,43 @@ const sema::EnumCaseInfo* Lowerer::enum_case_by_type_and_case(
         return found->second;
     }
     return nullptr;
+}
+
+TryShape Lowerer::classify_try_shape(const sema::TypeHandle enum_type) const noexcept {
+    if (!sema::is_valid(enum_type) ||
+        enum_type.value >= this->module_.types.size() ||
+        this->module_.types.get(enum_type).kind != sema::TypeKind::enum_) {
+        return {};
+    }
+    base::usize case_count = 0;
+    for (const auto& entry : this->enum_cases_by_type_and_case_) {
+        if (entry.first.type == enum_type.value) {
+            ++case_count;
+        }
+    }
+    if (case_count != IR_TRY_SHAPE_CASE_COUNT) {
+        return {};
+    }
+
+    const sema::EnumCaseInfo* const ok_case = this->enum_case_by_type_and_case(enum_type, "ok");
+    const sema::EnumCaseInfo* const err_case = this->enum_case_by_type_and_case(enum_type, "err");
+    if (ok_case != nullptr &&
+        err_case != nullptr &&
+        sema::is_valid(ok_case->payload_type) &&
+        sema::is_valid(err_case->payload_type)) {
+        return TryShape {TryShapeKind::result, ok_case, err_case};
+    }
+
+    const sema::EnumCaseInfo* const some_case = this->enum_case_by_type_and_case(enum_type, "some");
+    const sema::EnumCaseInfo* const none_case = this->enum_case_by_type_and_case(enum_type, "none");
+    if (some_case != nullptr &&
+        none_case != nullptr &&
+        sema::is_valid(some_case->payload_type) &&
+        !sema::is_valid(none_case->payload_type)) {
+        return TryShape {TryShapeKind::option, some_case, none_case};
+    }
+
+    return {};
 }
 
 const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) const noexcept {
@@ -544,7 +582,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
         }
 
         current_block_ = arm_block;
-        const auto previous_locals = locals_;
+        this->push_local_scope();
         bind_pattern_locals(arm.pattern, matched_slot, matched_type);
         BlockId arm_body_block = arm_block;
         if (guarded) {
@@ -559,7 +597,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const syntax::Ex
             current_block_ = arm_body_block;
         }
         const ValueId arm_value = lower_expr(arm.value, expr_type(expr_id));
-        locals_ = previous_locals;
+        this->pop_local_scope();
         incoming.push_back(PhiInput {current_block_, arm_value});
         append_branch_if_open(join_block);
         if (is_valid(next_test_block)) {
@@ -584,17 +622,18 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const syntax::Expr
     const sema::TypeHandle result_type = expr_type(expr_id);
     const sema::TypeHandle return_type = current_function_->return_type;
 
-    const sema::EnumCaseInfo* success_case = enum_case_by_type_and_case(source_type, "ok");
-    const sema::EnumCaseInfo* failure_case = enum_case_by_type_and_case(source_type, "err");
-    const sema::EnumCaseInfo* return_failure_case = enum_case_by_type_and_case(return_type, "err");
-    if (success_case == nullptr || failure_case == nullptr || return_failure_case == nullptr) {
-        success_case = enum_case_by_type_and_case(source_type, "some");
-        failure_case = enum_case_by_type_and_case(source_type, "none");
-        return_failure_case = enum_case_by_type_and_case(return_type, "none");
-    }
-    if (success_case == nullptr || failure_case == nullptr || return_failure_case == nullptr) {
+    const TryShape source_shape = this->classify_try_shape(source_type);
+    const TryShape return_shape = this->classify_try_shape(return_type);
+    if (source_shape.kind == TryShapeKind::none ||
+        source_shape.kind != return_shape.kind ||
+        source_shape.success_case == nullptr ||
+        source_shape.failure_case == nullptr ||
+        return_shape.failure_case == nullptr) {
         return INVALID_VALUE_ID;
     }
+    const sema::EnumCaseInfo* const success_case = source_shape.success_case;
+    const sema::EnumCaseInfo* const failure_case = source_shape.failure_case;
+    const sema::EnumCaseInfo* const return_failure_case = return_shape.failure_case;
 
     const ValueId source_value = lower_expr(expr.unary_operand);
     const ValueId source_slot = append_temp_alloca("try.value", source_type);
@@ -851,7 +890,7 @@ void Lowerer::collect_pattern_binding_slots(
                 break;
             }
             const ValueId slot = this->append_temp_alloca(local_name, frame.type);
-            this->locals_[local_name] = LocalBinding {slot, is_mutable};
+            this->bind_local(local_name, LocalBinding {slot, is_mutable});
             slots.emplace(local_name, PatternBindingSlot {local_name, slot, frame.type});
             break;
         }

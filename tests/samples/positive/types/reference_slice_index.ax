@@ -1,0 +1,11 @@
+module reference_slice_index;
+
+fn first(values: &[]const i32) -> i32 {
+  return values[0];
+}
+
+fn main() -> i32 {
+  let data: [2]i32 = [41, 1];
+  let slice: []const i32 = data[:];
+  return first(&slice) - 41;
+}

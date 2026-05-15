@@ -84,6 +84,7 @@ struct TypeInfo {
     base::u64 enum_payload_align = 1;
     std::string name;
     std::string c_name;
+    std::string generic_identity_key;
     std::string generic_origin_key;
     std::vector<TypeHandle> generic_args;
     bool contains_array = false;
@@ -116,6 +117,7 @@ public:
     [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
     [[nodiscard]] TypeHandle generic_param(std::string name);
+    [[nodiscard]] TypeHandle generic_param(std::string identity_key, std::string display_name);
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;

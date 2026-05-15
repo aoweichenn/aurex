@@ -1,0 +1,20 @@
+module try_result_extra_case;
+
+enum ExtraResult: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
+    pending = 3,
+}
+
+fn parse() -> ExtraResult {
+    return ExtraResult.ok(1);
+}
+
+fn run() -> ExtraResult {
+    let value: i32 = parse()?;
+    return ExtraResult.ok(value);
+}
+
+fn main() -> i32 {
+    return 0;
+}

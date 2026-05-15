@@ -15,7 +15,7 @@ M2 当前原则：
 
 ## 总体判断
 
-Aurex 现在已经具备一个小型系统语言核心：模块、import、可见性、函数、C FFI、struct、enum payload、泛型、method、raw pointer、safe reference、array、slice、tuple、`str`、block expression、`if` expression、`match` expression、`defer`、C-style `for`、`Result` / `Option` 形状约定和 `?` 都已经存在。
+Aurex 现在已经具备一个小型系统语言核心：模块、import、可见性、函数、C FFI、struct、enum payload、泛型、method、raw pointer、safe reference、array、slice、tuple、`str`、block expression、`if` expression、`match` expression、`defer`、C-style `for`、结构化 Result/Option shape 识别和 `?` 都已经存在。
 
 但它还不是“基础语法冻结”的语言。最需要先修的是基础层剩余不一致，而不是继续添加更高级特性：
 
@@ -676,9 +676,9 @@ let value = result?;
 规则：
 
 - operand 必须是形状匹配的 payload enum；当前样例使用 `ResultI32I32` / `OptionI32` 这类具体 enum。
-- `Result` 形状要求当前函数返回同模块、同错误 payload 的 result-like enum。
-- `Option` 形状要求当前函数返回同模块的 option-like enum。
-- 形状通过 enum 名称和 case 名称检查：`ok` / `err`，`some` / `none`。
+- `Result` 形状是结构化检查，不依赖 enum 类型名：enum 必须精确只有 `ok(payload)` 和 `err(payload)` 两个 case，当前函数返回类型也必须是 result-like enum，且 `err` payload 类型一致。
+- `Option` 形状是结构化检查，不依赖 enum 类型名：enum 必须精确只有 `some(payload)` 和无 payload `none` 两个 case，当前函数返回类型也必须是 option-like enum。
+- 用户自定义同名 case 但 payload 形状不匹配或额外 case 不会被 `?` 误识别为 Result/Option。
 - const initializer 中不能使用。
 
 内建表达式：
@@ -757,14 +757,14 @@ p1 | p2 | p3
 5. 泛型函数参数推断、显式 `id[T](x)` 调用、generic struct literal、owner generic impl，以及最小 `where` capability 约束。
 6. enum payload 和 enum constructor。
 7. pattern matching：enum/integer/bool、payload binding、guard、or-pattern、exhaustiveness。
-8. `Result` / `Option` 形状约定和 `?` lowering。
+8. 结构化 Result/Option shape 识别和 `?` lowering。
 9. method / associated function 查找，支持跨模块可见性。
 10. block expression 和 `if` expression。
 11. `defer` 和早返回路径中的 lowering 支持。
 12. typed Aurex IR、IR verifier、pass pipeline、LLVM backend 和 native 输出。
 13. 普通 `fn main` 入口：无参数或 `(argc: i32, argv: *mut *mut u8)`，返回 `i32` 或 `void`。
 
-这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前仍依赖形状约定，method receiver 还没有 borrow/lifetime 模型，资源语义也未重新进入 M2。
+这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义，method receiver 还没有 borrow/lifetime 模型，资源语义也未重新进入 M2。
 
 ## 已删除或明确不在 M2 基线的能力
 

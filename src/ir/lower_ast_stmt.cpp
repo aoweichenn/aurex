@@ -30,43 +30,49 @@ constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
 } // namespace
 
 void Lowerer::lower_function_body(const FunctionId function_id, const syntax::ItemNode& item) {
-    if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
+    if (!is_valid(function_id) || function_id.value >= this->module_.functions.size()) {
         return;
     }
-    current_function_ = &module_.functions[function_id.value];
-    locals_.clear();
-    loop_contexts_.clear();
-    defer_scopes_.clear();
-    current_block_ = add_block(*current_function_, "entry");
+    this->current_function_ = &this->module_.functions[function_id.value];
+    this->locals_.clear();
+    this->local_scopes_.clear();
+    this->loop_contexts_.clear();
+    this->defer_scopes_.clear();
+    this->push_local_scope();
+    this->current_block_ = add_block(*this->current_function_, "entry");
 
     for (base::usize i = 0; i < item.params.size(); ++i) {
         const syntax::ParamDecl& param = item.params[i];
-        const sema::TypeHandle param_type = current_function_ != nullptr && i < current_function_->signature_params.size()
-            ? current_function_->signature_params[i].type
-            : syntax_type(param.type);
+        const sema::TypeHandle param_type =
+            this->current_function_ != nullptr && i < this->current_function_->signature_params.size()
+                ? this->current_function_->signature_params[i].type
+                : this->syntax_type(param.type);
         Value param_value;
         param_value.kind = ValueKind::param;
         param_value.name = std::string(param.name);
         param_value.type = param_type;
-        const ValueId param_id = append_value(param_value);
-        current_function_->param_values.push_back(param_id);
+        const ValueId param_id = this->append_value(param_value);
+        this->current_function_->param_values.push_back(param_id);
 
         Value slot;
         slot.kind = ValueKind::alloca;
         slot.name = std::string(param.name);
-        slot.type = module_.types.pointer(sema::PointerMutability::mut, param_value.type);
-        const ValueId slot_id = append_value(slot);
-        locals_[std::string(param.name)] = LocalBinding {slot_id, false};
-        append_store(slot_id, param_id);
+        slot.type = this->module_.types.pointer(sema::PointerMutability::mut, param_value.type);
+        const ValueId slot_id = this->append_value(slot);
+        this->bind_local(std::string(param.name), LocalBinding {slot_id, false});
+        this->append_store(slot_id, param_id);
     }
 
-    lower_block(item.body);
-    if (!has_terminator(current_block_)) {
+    this->lower_block(item.body);
+    if (!this->has_terminator(this->current_block_)) {
         Terminator term;
         term.kind = TerminatorKind::return_;
-        set_terminator(current_block_, term);
+        this->set_terminator(this->current_block_, term);
     }
-    current_function_ = nullptr;
+    this->pop_local_scope();
+    this->locals_.clear();
+    this->local_scopes_.clear();
+    this->current_function_ = nullptr;
 }
 
 void Lowerer::lower_generic_function_body(
@@ -91,15 +97,15 @@ void Lowerer::lower_generic_function_body(
 }
 
 void Lowerer::lower_block(const syntax::StmtId block_id) {
-    const auto previous_locals = locals_;
-    const base::usize scope_depth = defer_scopes_.size();
-    defer_scopes_.push_back({});
-    lower_block_contents(block_id);
-    if (!has_terminator(current_block_)) {
-        emit_deferred_scopes(scope_depth);
+    this->push_local_scope();
+    const base::usize scope_depth = this->defer_scopes_.size();
+    this->defer_scopes_.push_back({});
+    this->lower_block_contents(block_id);
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_deferred_scopes(scope_depth);
     }
-    defer_scopes_.resize(scope_depth);
-    locals_ = previous_locals;
+    this->defer_scopes_.resize(scope_depth);
+    this->pop_local_scope();
 }
 
 void Lowerer::lower_block_contents(const syntax::StmtId block_id) {
@@ -146,13 +152,13 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
                 branch.else_target = failure_block;
                 this->set_terminator(this->current_block_, branch);
 
-                const auto previous_locals = this->locals_;
+                this->push_local_scope();
                 this->current_block_ = failure_block;
                 this->lower_block(stmt.else_block);
                 this->append_branch_if_open(join_block);
 
                 this->current_block_ = success_block;
-                this->locals_ = previous_locals;
+                this->pop_local_scope();
                 this->lower_local_pattern(stmt.pattern, source_slot, local_type, stmt.kind == syntax::StmtKind::var);
                 this->append_branch_if_open(join_block);
                 this->current_block_ = join_block;
@@ -166,7 +172,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         slot.name = std::string(stmt.name);
         slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
         const ValueId slot_id = append_value(slot);
-        locals_[std::string(stmt.name)] = LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var};
+        this->bind_local(std::string(stmt.name), LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var});
         append_store(slot_id, lower_expr(stmt.init, local_type));
         break;
     }
@@ -281,12 +287,12 @@ void Lowerer::lower_if(const syntax::StmtNode& stmt) {
     set_terminator(current_block_, cond);
 
     current_block_ = then_block;
-    const auto previous_then_locals = this->locals_;
+    this->push_local_scope();
     if (syntax::is_valid(stmt.pattern)) {
         this->bind_pattern_locals(stmt.pattern, condition_slot, condition_type);
     }
     lower_block(stmt.then_block);
-    this->locals_ = previous_then_locals;
+    this->pop_local_scope();
     const bool then_open = !has_terminator(current_block_);
     if (then_open) {
         append_branch_if_open(ensure_join_block());
@@ -333,12 +339,12 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
 
     loop_contexts_.push_back(LoopContext {exit_block, condition_block, defer_scopes_.size()});
     current_block_ = body_block;
-    const auto previous_body_locals = this->locals_;
+    this->push_local_scope();
     if (syntax::is_valid(stmt.pattern)) {
         this->bind_pattern_locals(stmt.pattern, condition_slot, condition_type);
     }
     lower_block(stmt.body);
-    this->locals_ = previous_body_locals;
+    this->pop_local_scope();
     append_branch_if_open(condition_block);
     loop_contexts_.pop_back();
 
@@ -346,9 +352,9 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
 }
 
 void Lowerer::lower_for(const syntax::StmtNode& stmt) {
-    const auto previous_locals = locals_;
-    const base::usize scope_depth = defer_scopes_.size();
-    defer_scopes_.push_back({});
+    this->push_local_scope();
+    const base::usize scope_depth = this->defer_scopes_.size();
+    this->defer_scopes_.push_back({});
 
     if (syntax::is_valid(stmt.for_init)) {
         lower_stmt(stmt.for_init);
@@ -385,9 +391,9 @@ void Lowerer::lower_for(const syntax::StmtNode& stmt) {
     append_branch_if_open(condition_block);
     loop_contexts_.pop_back();
 
-    defer_scopes_.resize(scope_depth);
-    locals_ = previous_locals;
-    current_block_ = exit_block;
+    this->defer_scopes_.resize(scope_depth);
+    this->pop_local_scope();
+    this->current_block_ = exit_block;
 }
 
 ValueId Lowerer::append_for_range_condition(
@@ -455,7 +461,7 @@ ValueId Lowerer::append_for_range_condition(
 }
 
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt) {
-    const auto previous_locals = this->locals_;
+    this->push_local_scope();
     const base::usize scope_depth = this->defer_scopes_.size();
     this->defer_scopes_.push_back({});
 
@@ -494,7 +500,7 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     this->current_block_ = body_block;
     const ValueId loop_value = this->append_load(cursor_slot, range_type, std::string(stmt.name));
     const ValueId loop_slot = this->append_temp_alloca(std::string(stmt.name), range_type);
-    this->locals_[std::string(stmt.name)] = LocalBinding {loop_slot, false};
+    this->bind_local(std::string(stmt.name), LocalBinding {loop_slot, false});
     this->append_store(loop_slot, loop_value);
     this->lower_block(stmt.body);
     this->append_branch_if_open(update_block);
@@ -510,7 +516,7 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     this->loop_contexts_.pop_back();
 
     this->defer_scopes_.resize(scope_depth);
-    this->locals_ = previous_locals;
+    this->pop_local_scope();
     this->current_block_ = exit_block;
 }
 
@@ -523,6 +529,39 @@ void Lowerer::emit_deferred_scopes(const base::usize keep_depth) {
         }
         --depth;
     }
+}
+
+void Lowerer::push_local_scope() {
+    this->local_scopes_.push_back(LocalScopeFrame {});
+}
+
+void Lowerer::pop_local_scope() {
+    if (this->local_scopes_.empty()) {
+        return;
+    }
+    LocalScopeFrame frame = std::move(this->local_scopes_.back());
+    this->local_scopes_.pop_back();
+    for (const auto& [name, previous] : frame.previous_bindings) {
+        if (previous.has_value()) {
+            this->locals_[name] = *previous;
+        } else {
+            this->locals_.erase(name);
+        }
+    }
+}
+
+void Lowerer::bind_local(std::string name, const LocalBinding binding) {
+    if (!this->local_scopes_.empty()) {
+        LocalScopeFrame& scope = this->local_scopes_.back();
+        if (!scope.previous_bindings.contains(name)) {
+            if (const auto found = this->locals_.find(name); found != this->locals_.end()) {
+                scope.previous_bindings.emplace(name, found->second);
+            } else {
+                scope.previous_bindings.emplace(name, std::nullopt);
+            }
+        }
+    }
+    this->locals_[std::move(name)] = binding;
 }
 
 } // namespace aurex::ir::detail

@@ -153,7 +153,7 @@ TypeHandle SemanticAnalyzer::cached_expr_type(const syntax::ExprId expr) const n
 }
 
 TypeHandle SemanticAnalyzer::cached_syntax_type(const syntax::TypeId type) const noexcept {
-    if (!syntax::is_valid(type)) {
+    if (!syntax::is_valid(type) || !this->current_side_tables_.cache_syntax_types) {
         return INVALID_TYPE_HANDLE;
     }
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {

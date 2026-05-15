@@ -10,6 +10,12 @@ namespace aurex::sema {
 inline constexpr std::string_view SEMA_ANALYSIS_FAILED =
     "semantic analysis failed";
 
+inline constexpr std::string_view SEMA_AST_ITEM_MODULE_CONTRACT =
+    "semantic AST contract violation: item_modules must contain one module owner per item";
+
+inline constexpr std::string_view SEMA_AST_ITEM_MODULE_INVALID =
+    "semantic AST contract violation: item module owner is invalid";
+
 inline constexpr std::string_view SEMA_DUPLICATE_SYMBOL =
     "duplicate symbol";
 

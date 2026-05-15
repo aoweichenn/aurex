@@ -1233,6 +1233,83 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     EXPECT_FALSE(side_tables.sparse_expr_types.empty());
 }
 
+TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
+    syntax::AstModule module;
+    module.module_path = module_path({"parser_only"});
+
+    syntax::TypeNode i32_type_node = primitive_node(syntax::PrimitiveTypeKind::i32);
+    const TypeId i32_type = module.push_type(i32_type_node);
+
+    syntax::ExprNode zero_expr;
+    zero_expr.kind = syntax::ExprKind::integer_literal;
+    zero_expr.text = "0";
+    const ExprId zero = module.push_expr(zero_expr);
+
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = zero;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode main_function;
+    main_function.kind = syntax::ItemKind::fn_decl;
+    main_function.name = "main";
+    main_function.return_type = i32_type;
+    main_function.body = body;
+    static_cast<void>(module.push_item(main_function));
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    ASSERT_TRUE(checked_result.value().normalized_ast.has_value());
+    EXPECT_EQ(checked_result.value().normalized_ast->modules.size(), 1U);
+    EXPECT_EQ(checked_result.value().normalized_ast->item_modules.size(), 1U);
+    EXPECT_EQ(checked_result.value().normalized_ast->item_modules.front().value, 0U);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxParserAstRequiresItemModulesWhenModulesExist) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    syntax::TypeNode i32_type_node = primitive_node(syntax::PrimitiveTypeKind::i32);
+    const TypeId i32_type = module.push_type(i32_type_node);
+
+    syntax::ItemNode main_function;
+    main_function.kind = syntax::ItemKind::fn_decl;
+    main_function.name = "main";
+    main_function.return_type = i32_type;
+    static_cast<void>(module.push_item(main_function));
+    module.item_modules.clear();
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    ASSERT_TRUE(diagnostics.has_error());
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        found = found || diagnostic.message.find("item_modules must contain one module owner per item") != std::string::npos;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxSyntaxTypeCacheDisabledDoesNotRead) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+    const TypeId bool_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::bool_));
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
+    analyzer.checked_.syntax_type_handles[bool_type_id.value] = bool_type;
+
+    EXPECT_EQ(analyzer.cached_syntax_type(bool_type_id).value, bool_type.value);
+    analyzer.current_side_tables_.cache_syntax_types = false;
+    EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(bool_type_id)));
+}
+
 TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};

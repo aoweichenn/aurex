@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/driver/invocation.hpp>
+#include <support/frontend_test_support.hpp>
 
 #include <gtest/gtest.h>
 
@@ -43,10 +44,6 @@ CommandResult run_compiler(const driver::CompilerInvocation& invocation);
 CommandResult require_compiler_success(const driver::CompilerInvocation& invocation);
 CommandResult require_compiler_failure(const driver::CompilerInvocation& invocation);
 std::string read_text(const fs::path& path);
-
-void expect_contains(std::string_view text, std::string_view needle);
-void expect_contains_all(std::string_view text, const std::vector<std::string_view>& needles);
-void expect_not_contains(std::string_view text, std::string_view needle);
 
 std::vector<fs::path> sorted_files(const fs::path& dir, std::string_view extension);
 std::string stem(const fs::path& path);

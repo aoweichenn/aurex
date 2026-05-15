@@ -67,16 +67,16 @@ constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
 } // namespace
 
 syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) const noexcept {
-    const auto* const begin = module_.items.data();
-    const auto* const end = begin + module_.items.size();
+    const auto* const begin = this->module_.items.data();
+    const auto* const end = begin + this->module_.items.size();
     if (&item < begin || &item >= end) {
         return syntax::INVALID_MODULE_ID;
     }
     const base::usize index = static_cast<base::usize>(&item - begin);
-    if (index >= module_.item_modules.size()) {
+    if (index >= this->module_.item_modules.size()) {
         return syntax::INVALID_MODULE_ID;
     }
-    return module_.item_modules[index];
+    return this->module_.item_modules[index];
 }
 
 syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
@@ -114,13 +114,14 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syn
     if (!syntax::is_valid(module)) {
         return empty;
     }
-    if (const auto found = visible_modules_cache_.find(module.value); found != visible_modules_cache_.end()) {
+    if (const auto found = this->visible_modules_cache_.find(module.value);
+        found != this->visible_modules_cache_.end()) {
         return found->second;
     }
     std::vector<syntax::ModuleId> result;
     result.push_back(module);
     if (module.value >= module_.modules.size()) {
-        auto inserted = visible_modules_cache_.emplace(module.value, std::move(result));
+        auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
     std::unordered_set<base::u32> seen;
@@ -134,7 +135,7 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syn
         }
         append_public_reexports(import.module, result, seen);
     }
-    auto inserted = visible_modules_cache_.emplace(module.value, std::move(result));
+    auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
     return inserted.first->second;
 }
 
@@ -230,19 +231,26 @@ syntax::ModuleId SemanticAnalyzer::resolve_type_scope(
     return module;
 }
 
-std::vector<syntax::ModuleId> SemanticAnalyzer::module_export_modules(const syntax::ModuleId module) const {
-    std::vector<syntax::ModuleId> result;
+const std::vector<syntax::ModuleId>& SemanticAnalyzer::module_export_modules(const syntax::ModuleId module) const {
+    static const std::vector<syntax::ModuleId> empty;
     if (!syntax::is_valid(module)) {
-        return result;
+        return empty;
     }
+    if (const auto found = this->module_export_modules_cache_.find(module.value);
+        found != this->module_export_modules_cache_.end()) {
+        return found->second;
+    }
+    std::vector<syntax::ModuleId> result;
     result.push_back(module);
     if (module.value >= this->module_.modules.size()) {
-        return result;
+        auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
+        return inserted.first->second;
     }
     std::unordered_set<base::u32> seen;
     seen.insert(module.value);
     this->append_public_reexports(module, result, seen);
-    return result;
+    auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
+    return inserted.first->second;
 }
 
 void SemanticAnalyzer::append_public_reexports(
@@ -805,20 +813,17 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
     const TypeHandle enum_type,
     const std::string_view case_name
 ) const {
-    if (is_valid(enum_type)) {
-        if (const auto found = enum_cases_by_type_and_case_.find(enum_case_lookup_key(enum_type, case_name));
-            found != enum_cases_by_type_and_case_.end()) {
-            return found->second;
-        }
+    if (!is_valid(enum_type)) {
+        return nullptr;
     }
-
-    for (const auto& entry : checked_.enum_cases) {
-        const EnumCaseInfo& candidate = entry.second;
-        if (checked_.types.same(candidate.type, enum_type) && candidate.case_name == case_name) {
-            return &candidate;
-        }
+    const auto found = this->enum_cases_by_type_and_case_.find(enum_case_lookup_key(enum_type, case_name));
+    if (found == this->enum_cases_by_type_and_case_.end() ||
+        found->second == nullptr ||
+        !this->checked_.types.same(found->second->type, enum_type) ||
+        found->second->case_name != case_name) {
+        return nullptr;
     }
-    return nullptr;
+    return found->second;
 }
 
 const std::vector<const EnumCaseInfo*>* SemanticAnalyzer::find_enum_cases_by_type(

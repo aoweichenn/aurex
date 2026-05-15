@@ -66,7 +66,24 @@
 | identifier 临时 string | 阶段性关闭最窄热路径 | `SymbolTable` scope lookup 使用 transparent hash，`find(std::string_view)` 不再每层构造临时 `std::string` | 完整 identifier interner、typed module/function key 和 delayed display string 未做 |
 | AST 多次整树复制 | 阶段性关闭低风险复制路径 | module loader append 改为 move 节点；driver 将 parser AST move 进 sema；sema 成功后 move 到 `normalized_ast`；测试 helper 使用 `take_value()` 避免伪 move | normalized overlay、compact AST layout、bump allocator 和 2M 节点 RSS 目标仍是后续性能任务 |
 
-当前仍不应声称已经完成的内容：完整 identifier interner、compact AST、global bump allocator、diagnostic line table、全局 diagnostic 输出预算、完整 pattern matrix、frontend-only CMake lane、P1/P2 语义一致性清单。这些不是本轮 P0 修复的完成定义，后续应按 Phase 2-5 继续推进。
+### 当前 Phase 2-5 收口状态（2026-05-15）
+
+Phase 2-5 已按 M2.1 的“先关闭当前语义漏洞、性能爆点和构建阻塞，再保留大架构重写”的边界推进。下面项目已落地到代码、样例或单测：
+
+| 项目 | 当前状态 | 已落地边界 | 后续保留 |
+|:-----|:---------|:-----------|:---------|
+| generic lookup / identity / key | 已关闭当前语义问题 | generic lookup 复用普通模块可见性/import resolver；generic param identity 使用 template key + param index + source range；实例 key 和 ABI suffix 基于 canonical type id，不再靠 display string | 完整 typed identifier key / global interner 仍后置 |
+| `?` try shape | 已关闭 name-based magic | Result/Option 通过 enum identity、完整 case 集和 payload 形状识别；额外同名 case 或 malformed payload 不被误识别；return enum 的错误/none 路径也做结构化检查 | 未来标准库可提供正式 Result/Option 定义，但不在 M2 绑定 std 名字 |
+| M2 unsupported policy | 已关闭主要边界 | generic C ABI/prototype、method-local generics、resource capability、foreign/pointer impl target 等均以 M2 unsupported 或明确 semantic diagnostic 拒绝，并有回归测试覆盖 | 更细的 diagnostic category enum 可在诊断分级阶段补 |
+| reference slice index | 已关闭 | `&[]const T` / `&[]mut T` safe deref 后按 slice index 规则检查和 lowering；新增 positive sample 覆盖 IR/LLVM IR | 运行时 bounds check 仍按当前 M2 边界处理 |
+| Parser→Sema 契约 | 已关闭 | parser-only AST 自动规范化 root module；带 modules 但 `item_modules` 缺失/非法时 sema 入口诊断失败 | 后续可把契约转成更强 typed AST builder API |
+| syntax cache 禁读 | 已关闭 | generic/contextual 分析关闭 syntax type cache 时禁止读旧 cache，也禁止写入污染 | 长期仍应拆 intrinsic/contextual/coercion side table |
+| record / enum case lookup 索引 | 已关闭当前退化路径 | struct/enum lookup 命中后做 type identity 校验；enum case 索引 miss 不再静默全表扫描通过 | 成员 typed key 仍可继续从 string key 迁移到 IdentId |
+| lowerer scope / module export cache | 已关闭 | lowerer 使用 scope stack + shadow log，不再每个 scope 复制整个 locals map；module export modules 做缓存 | 后续可加更细粒度失效模型给增量编译 |
+| diagnostics line table / 输出上限 | 已关闭 | `SourceFile` 建 line starts 表，诊断位置查询不再线性扫描；driver 输出最多 128 条诊断并打印 summary | did-you-mean、previous declaration note、warning/help 分级仍是增强项 |
+| frontend-only CMake / tests | 已关闭 | 增加 `AUREX_FRONTEND_ONLY` 配置和 `aurex_frontend_tests` 目标，可在无 LLVM/IR/driver/CLI 情况下构建运行前端测试 | CI 分层和 release perf lane 后续接入 |
+
+当前仍不应声称已经完成的内容：完整 identifier interner、compact AST、global bump allocator、完整 pattern matrix / witness search、完整 `analyze_expr` 分层重写、did-you-mean/previous declaration note/warning-help 诊断增强、以及 2000 generic instance / 2M AST 节点的跨机器 perf 红线。这些已从当前爆点中解耦，但仍属于 M2.1 后续架构和 perf lane 工作。
 
 ### Phase 0：基线冻结和红线建立
 
@@ -132,7 +149,7 @@
    - display name 只用于诊断和 dump，不能决定链接名唯一性。
    - 新增 negative：`generic_mangle_collision`、`module_mangle_display_collision`。
 4. `?` / try-like 语义摆脱纯 name-based magic。
-   - 当前如果继续支持 `Result` / `Option` 形状约定，必须改成结构化识别：enum identity、case identity、payload 形状、错误类型转换规则。
+   - 已按本项要求把 `Result` / `Option` shape 规则收紧为结构化识别：enum identity、case identity、payload 形状、错误类型转换规则。
    - 用户定义同名 `ok` / `err` / `some` / `none` 不能被误识别。
    - 新增 mixed：`option_result_magic_name_collision`。
 5. 区分 M2 unsupported 与 semantic error。

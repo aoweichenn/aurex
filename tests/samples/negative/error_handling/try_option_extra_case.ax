@@ -1,0 +1,20 @@
+module try_option_extra_case;
+
+enum ExtraOption: u8 {
+    some(i32) = 1,
+    none = 2,
+    pending = 3,
+}
+
+fn maybe() -> ExtraOption {
+    return ExtraOption.some(1);
+}
+
+fn run() -> ExtraOption {
+    let value: i32 = maybe()?;
+    return ExtraOption.some(value);
+}
+
+fn main() -> i32 {
+    return 0;
+}

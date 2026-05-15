@@ -289,4 +289,22 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_EQ(module.types.c_name(out_of_range), "void");
 }
 
+TEST(CoreUnit, TypeTableGenericParamsUseIdentityKeys) {
+    Module module;
+
+    const TypeHandle first = module.types.generic_param("template_a#param:0:T", "T");
+    const TypeHandle second = module.types.generic_param("template_b#param:0:T", "T");
+    const TypeHandle first_again = module.types.generic_param("template_a#param:0:T", "T");
+    const TypeHandle legacy = module.types.generic_param("T");
+
+    EXPECT_EQ(first.value, first_again.value);
+    EXPECT_NE(first.value, second.value);
+    EXPECT_NE(first.value, legacy.value);
+    EXPECT_EQ(module.types.display_name(first), "T");
+    EXPECT_EQ(module.types.display_name(second), "T");
+    EXPECT_EQ(module.types.get(first).generic_identity_key, "template_a#param:0:T");
+    EXPECT_EQ(module.types.get(second).generic_identity_key, "template_b#param:0:T");
+    EXPECT_EQ(module.types.get(legacy).generic_identity_key, "T");
+}
+
 } // namespace aurex::test

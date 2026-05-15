@@ -256,15 +256,21 @@ TypeHandle TypeTable::opaque_struct(std::string name, std::string c_name) {
 }
 
 TypeHandle TypeTable::generic_param(std::string name) {
-    if (const auto found = this->generic_param_types_.find(name); found != this->generic_param_types_.end()) {
+    std::string identity = name;
+    return this->generic_param(std::move(identity), std::move(name));
+}
+
+TypeHandle TypeTable::generic_param(std::string identity_key, std::string display_name) {
+    if (const auto found = this->generic_param_types_.find(identity_key); found != this->generic_param_types_.end()) {
         return found->second;
     }
 
     TypeInfo info;
     info.kind = TypeKind::generic_param;
-    info.name = name;
+    info.name = std::move(display_name);
+    info.generic_identity_key = identity_key;
     const TypeHandle handle = this->push(std::move(info));
-    this->generic_param_types_.emplace(std::move(name), handle);
+    this->generic_param_types_.emplace(std::move(identity_key), handle);
     return handle;
 }
 

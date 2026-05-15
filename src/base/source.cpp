@@ -1,9 +1,29 @@
 #include <aurex/base/source.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <utility>
 
 namespace aurex::base {
+
+namespace {
+
+constexpr char SOURCE_NEWLINE_CHAR = '\n';
+constexpr usize SOURCE_FIRST_LINE = 1;
+constexpr usize SOURCE_FIRST_COLUMN = 1;
+
+[[nodiscard]] std::vector<usize> build_line_starts(const std::string_view text) {
+    std::vector<usize> starts;
+    starts.push_back(0);
+    for (usize i = 0; i < text.size(); ++i) {
+        if (text[i] == SOURCE_NEWLINE_CHAR) {
+            starts.push_back(i + 1);
+        }
+    }
+    return starts;
+}
+
+} // namespace
 
 usize SourceRange::length() const noexcept {
     return this->end >= this->begin ? this->end - this->begin : 0;
@@ -14,7 +34,10 @@ bool SourceRange::empty() const noexcept {
 }
 
 SourceFile::SourceFile(const SourceId id, std::string path, std::string text)
-    : id_(id), path_(std::move(path)), text_(std::move(text)) {}
+    : id_(id),
+      path_(std::move(path)),
+      text_(std::move(text)),
+      line_starts_(build_line_starts(this->text_)) {}
 
 SourceId SourceFile::id() const noexcept {
     return this->id_;
@@ -26,6 +49,36 @@ std::string_view SourceFile::path() const noexcept {
 
 std::string_view SourceFile::text() const noexcept {
     return this->text_;
+}
+
+LineColumn SourceFile::line_column(const usize offset) const noexcept {
+    const usize index = this->line_index(offset);
+    const usize clamped = std::min(offset, this->text_.size());
+    return LineColumn {
+        index + SOURCE_FIRST_LINE,
+        clamped - this->line_starts_[index] + SOURCE_FIRST_COLUMN,
+    };
+}
+
+SourceLineExtent SourceFile::line_extent(const usize offset) const noexcept {
+    const usize index = this->line_index(offset);
+    const usize begin = this->line_starts_[index];
+    usize end = index + 1 < this->line_starts_.size()
+        ? this->line_starts_[index + 1]
+        : this->text_.size();
+    if (end > begin && this->text_[end - 1] == SOURCE_NEWLINE_CHAR) {
+        --end;
+    }
+    return SourceLineExtent {begin, end};
+}
+
+usize SourceFile::line_index(const usize offset) const noexcept {
+    const usize clamped = std::min(offset, this->text_.size());
+    const auto found = std::upper_bound(this->line_starts_.begin(), this->line_starts_.end(), clamped);
+    if (found == this->line_starts_.begin()) {
+        return 0;
+    }
+    return static_cast<usize>((found - this->line_starts_.begin()) - 1);
 }
 
 SourceId SourceManager::add_source(std::string path, std::string text) {

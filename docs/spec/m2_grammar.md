@@ -534,6 +534,14 @@ until semantic analysis resolves the base kind. For example, `id[i32](1)`,
 but materialize to generic function call, generic type selector, and value
 index respectively.
 
+The postfix `?` operator is accepted only for structurally recognized
+result-like and option-like enums. A result-like enum must have exactly
+`ok(payload)` and `err(payload)` cases, and the enclosing function must return
+a result-like enum whose `err` payload type matches. An option-like enum must
+have exactly `some(payload)` and payload-free `none` cases, and the enclosing
+function must return an option-like enum. The enum type name is not special;
+extra cases or malformed payload shapes are not treated as `?`-compatible.
+
 Array expressions:
 
 ```aurex

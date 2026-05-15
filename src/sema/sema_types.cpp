@@ -1674,7 +1674,11 @@ bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
                 return this->checked_.types.get(object).pointer_mutability == PointerMutability::mut;
             }
             if (this->checked_.types.is_reference(object)) {
-                return this->checked_.types.get(object).pointer_mutability == PointerMutability::mut;
+                const TypeInfo& reference = this->checked_.types.get(object);
+                if (this->checked_.types.is_slice(reference.pointee)) {
+                    return this->checked_.types.get(reference.pointee).slice_mutability == PointerMutability::mut;
+                }
+                return reference.pointer_mutability == PointerMutability::mut;
             }
             if (this->checked_.types.is_slice(object)) {
                 return this->checked_.types.get(object).slice_mutability == PointerMutability::mut;
@@ -1705,10 +1709,13 @@ const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noe
         return nullptr;
     }
     if (const auto found = struct_infos_by_type_.find(type.value); found != struct_infos_by_type_.end()) {
-        return found->second;
+        if (found->second != nullptr && this->checked_.types.same(found->second->type, type)) {
+            return found->second;
+        }
+        return nullptr;
     }
-    for (const auto& entry : checked_.structs) {
-        if (checked_.types.same(entry.second.type, type)) {
+    for (const auto& entry : this->checked_.structs) {
+        if (this->checked_.types.same(entry.second.type, type)) {
             return &entry.second;
         }
     }

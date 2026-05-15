@@ -745,20 +745,6 @@ std::string read_text(const fs::path& path) {
     return buffer.str();
 }
 
-void expect_contains(const std::string_view text, const std::string_view needle) {
-    EXPECT_NE(text.find(needle), std::string_view::npos) << "missing: " << needle;
-}
-
-void expect_contains_all(const std::string_view text, const std::vector<std::string_view>& needles) {
-    for (const std::string_view needle : needles) {
-        expect_contains(text, needle);
-    }
-}
-
-void expect_not_contains(const std::string_view text, const std::string_view needle) {
-    EXPECT_EQ(text.find(needle), std::string_view::npos) << "unexpected: " << needle;
-}
-
 std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view extension) {
     TestContext& context = test_context();
     const std::string cache_key = dir.string() + "\n" + std::string(extension);

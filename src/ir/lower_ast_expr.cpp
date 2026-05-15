@@ -109,12 +109,12 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
     set_terminator(current_block_, cond);
 
     current_block_ = then_block;
-    const auto previous_then_locals = this->locals_;
+    this->push_local_scope();
     if (syntax::is_valid(expr.condition_pattern)) {
         this->bind_pattern_locals(expr.condition_pattern, condition_slot, condition_type);
     }
     const ValueId then_value = lower_expr(expr.then_expr, expr_type(expr_id));
-    this->locals_ = previous_then_locals;
+    this->pop_local_scope();
     const BlockId then_tail_block = current_block_;
     append_branch_if_open(join_block);
 
@@ -133,19 +133,19 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const syntax::ExprN
 }
 
 ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const syntax::ExprNode& expr) {
-    const auto previous_locals = locals_;
-    const base::usize scope_depth = defer_scopes_.size();
-    defer_scopes_.push_back({});
-    lower_block_contents(expr.block);
+    this->push_local_scope();
+    const base::usize scope_depth = this->defer_scopes_.size();
+    this->defer_scopes_.push_back({});
+    this->lower_block_contents(expr.block);
     ValueId result = INVALID_VALUE_ID;
     if (syntax::is_valid(expr.block_result)) {
         result = this->lower_expr(expr.block_result, this->expr_type(expr_id));
     }
-    if (!has_terminator(current_block_)) {
-        emit_deferred_scopes(scope_depth);
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_deferred_scopes(scope_depth);
     }
-    defer_scopes_.resize(scope_depth);
-    locals_ = previous_locals;
+    this->defer_scopes_.resize(scope_depth);
+    this->pop_local_scope();
     return result;
 }
 
@@ -728,95 +728,117 @@ ValueId Lowerer::lower_str_from_bytes_unchecked_expr(
 }
 
 ValueId Lowerer::lower_place_addr(const syntax::ExprId expr_id) {
-    return lower_place_address(expr_id).address;
+    return this->lower_place_address(expr_id).address;
 }
 
 PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= ast_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return {};
     }
-    const syntax::ExprNode& expr = ast_.exprs[expr_id.value];
+    const syntax::ExprNode& expr = this->ast_.exprs[expr_id.value];
     if (expr.kind == syntax::ExprKind::name && expr.scope_name.empty()) {
-        const auto found = locals_.find(std::string(expr.text));
-        if (found == locals_.end()) {
+        const auto found = this->locals_.find(std::string(expr.text));
+        if (found == this->locals_.end()) {
             return {};
         }
         return PlaceAddress {found->second.slot, found->second.is_mutable};
     }
     if (expr.kind == syntax::ExprKind::unary && expr.unary_op == syntax::UnaryOp::dereference) {
-        return PlaceAddress {lower_expr(expr.unary_operand), pointee_is_mutable(expr.unary_operand)};
+        return PlaceAddress {this->lower_expr(expr.unary_operand), this->pointee_is_mutable(expr.unary_operand)};
     }
     if (expr.kind == syntax::ExprKind::field) {
-        const PlaceAddress object = lower_object_place_or_value(expr.object);
+        const PlaceAddress object = this->lower_object_place_or_value(expr.object);
         const sema::PointerMutability mutability = object.is_mutable
             ? sema::PointerMutability::mut
             : sema::PointerMutability::const_;
         Value value;
         value.kind = ValueKind::field_addr;
-        value.type = module_.types.pointer(mutability, expr_type(expr_id));
+        value.type = this->module_.types.pointer(mutability, this->expr_type(expr_id));
         value.name = std::string(expr.field_name);
         value.object = object.address;
-        return PlaceAddress {append_value(value), object.is_mutable};
+        return PlaceAddress {this->append_value(value), object.is_mutable};
     }
     if (expr.kind == syntax::ExprKind::index) {
         const sema::TypeHandle object_type = this->expr_type(expr.object);
+        if (sema::is_valid(object_type) && this->module_.types.is_reference(object_type)) {
+            const sema::TypeHandle pointee = this->module_.types.get(object_type).pointee;
+            if (sema::is_valid(pointee) && this->module_.types.is_slice(pointee)) {
+                const sema::TypeInfo& slice = this->module_.types.get(pointee);
+                const ValueId slice_address = this->lower_expr(expr.object);
+                const ValueId slice_value = this->append_load(slice_address, pointee, "slice.ref");
+                const ValueId data_pointer =
+                    this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
+                Value value;
+                value.kind = ValueKind::index_addr;
+                value.type = this->module_.types.pointer(slice.slice_mutability, this->expr_type(expr_id));
+                value.object = data_pointer;
+                value.index = this->lower_expr(expr.index);
+                return PlaceAddress {
+                    this->append_value(value),
+                    slice.slice_mutability == sema::PointerMutability::mut
+                };
+            }
+        }
         if (sema::is_valid(object_type) && this->module_.types.is_slice(object_type)) {
             const sema::TypeInfo& slice = this->module_.types.get(object_type);
             const ValueId slice_value = this->lower_expr(expr.object);
             const ValueId data_pointer = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
             Value value;
             value.kind = ValueKind::index_addr;
-            value.type = module_.types.pointer(slice.slice_mutability, expr_type(expr_id));
+            value.type = this->module_.types.pointer(slice.slice_mutability, this->expr_type(expr_id));
             value.object = data_pointer;
-            value.index = lower_expr(expr.index);
-            return PlaceAddress {append_value(value), slice.slice_mutability == sema::PointerMutability::mut};
+            value.index = this->lower_expr(expr.index);
+            return PlaceAddress {this->append_value(value), slice.slice_mutability == sema::PointerMutability::mut};
         }
-        const PlaceAddress object = lower_object_place_or_value(expr.object);
+        const PlaceAddress object = this->lower_object_place_or_value(expr.object);
         const sema::PointerMutability mutability = object.is_mutable
             ? sema::PointerMutability::mut
             : sema::PointerMutability::const_;
         Value value;
         value.kind = ValueKind::index_addr;
-        value.type = module_.types.pointer(mutability, expr_type(expr_id));
+        value.type = this->module_.types.pointer(mutability, this->expr_type(expr_id));
         value.object = object.address;
-        value.index = lower_expr(expr.index);
-        return PlaceAddress {append_value(value), object.is_mutable};
+        value.index = this->lower_expr(expr.index);
+        return PlaceAddress {this->append_value(value), object.is_mutable};
     }
     return {};
 }
 
 PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id) {
-    const sema::TypeHandle type = expr_type(expr_id);
-    if (sema::is_valid(type) && (module_.types.is_pointer(type) || module_.types.is_reference(type))) {
-        return PlaceAddress {lower_expr(expr_id), module_.types.get(type).pointer_mutability == sema::PointerMutability::mut};
+    const sema::TypeHandle type = this->expr_type(expr_id);
+    if (sema::is_valid(type) && (this->module_.types.is_pointer(type) || this->module_.types.is_reference(type))) {
+        return PlaceAddress {
+            this->lower_expr(expr_id),
+            this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut
+        };
     }
-    const PlaceAddress place = lower_place_address(expr_id);
+    const PlaceAddress place = this->lower_place_address(expr_id);
     if (is_valid(place.address)) {
         return place;
     }
-    if (!sema::is_valid(type) || module_.types.is_void(type)) {
+    if (!sema::is_valid(type) || this->module_.types.is_void(type)) {
         return {};
     }
-    const ValueId value = lower_expr(expr_id);
+    const ValueId value = this->lower_expr(expr_id);
     if (!is_valid(value)) {
         return {};
     }
-    const ValueId slot = append_temp_alloca("field.object", type);
-    append_store(slot, value);
+    const ValueId slot = this->append_temp_alloca("field.object", type);
+    this->append_store(slot, value);
     return PlaceAddress {slot, false};
 }
 
 bool Lowerer::is_local_slot_type(const sema::TypeHandle type) const noexcept {
     return sema::is_valid(type) &&
-           module_.types.is_pointer(type) &&
-           module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
+           this->module_.types.is_pointer(type) &&
+           this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
 }
 
 bool Lowerer::pointee_is_mutable(const syntax::ExprId expr_id) const noexcept {
-    const sema::TypeHandle type = expr_type(expr_id);
+    const sema::TypeHandle type = this->expr_type(expr_id);
     return sema::is_valid(type) &&
-           (module_.types.is_pointer(type) || module_.types.is_reference(type)) &&
-           module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
+           (this->module_.types.is_pointer(type) || this->module_.types.is_reference(type)) &&
+           this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
 }
 
 ValueId Lowerer::append_slice_data(

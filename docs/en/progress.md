@@ -120,14 +120,15 @@ copies, `CheckedModule::normalized_ast` no longer keeps an AST snapshot by
 default, sema construction no longer reserves `exprs/types` as `size+4096`, and
 postfix materialization no longer copies fat `ExprNode` / `TypeNode` values by
 value. The 2026-05-15 compact AST storage pass now stores `TypeNode`,
-`ExprNode`, and `PatternNode` as 32-byte compact headers plus per-kind payload
-arenas; module loading moves payload-backed nodes before remapping instead of
-depending on fat-vector addresses or `.data()` pointer arithmetic. On the local
+`ExprNode`, `PatternNode`, `StmtNode`, and `ItemNode` as 32-byte compact headers
+plus per-kind payload arenas; module loading moves payload-backed nodes before
+remapping instead of depending on fat-vector addresses or `.data()` pointer
+arithmetic. Sema item-owner lookup is now explicit `ItemId` lookup rather than
+address-derived lookup through `items.data()`. On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 200-215 MiB RSS / 118-127 ms. A global bump allocator, native AST `IdentId`,
-further Stmt/Item compaction, and CI perf thresholds remain later performance
-work.
+roughly 174-180 MiB RSS / 109-115 ms. A global bump allocator, native AST
+`IdentId`, and CI perf thresholds remain later performance work.
 
 ## M2 Gaps
 

@@ -85,12 +85,14 @@ IR/native 输出模式继续保留这些表，保证 codegen 行为不退化。
 AST 主路径也已按 P0-Perf-4 收口：driver 持有 parser/module AST 并把 mutable 引用传给 sema 和 IR lowering，
 `SemanticAnalyzer(const AstModule&)` 被删除以避免隐式整树复制，`CheckedModule::normalized_ast` 默认不再保留 AST
 snapshot，sema 构造期不再对 `exprs/types` 做 `size+4096` reserve，postfix materialization 不再按值复制胖
-`ExprNode` / `TypeNode`。2026-05-15 的 compact AST 主线已继续落地：`TypeNode`、`ExprNode` 和
-`PatternNode` 的主存储从胖节点 vector 改成 32B compact header + per-kind payload arena，module loader
-合并模块时从 payload arena move 出节点后 remap，不再依赖 fat-vector 地址或 `.data()` 指针反推 ID。当前
+`ExprNode` / `TypeNode`。2026-05-15 的 compact AST 主线已继续落地：`TypeNode`、`ExprNode`、
+`PatternNode`、`StmtNode` 和 `ItemNode` 的主存储从胖节点 vector 改成 32B compact header +
+per-kind payload arena，module loader 合并模块时从 payload arena move 出节点后 remap，不再依赖
+fat-vector 地址或 `.data()` 指针反推 ID；sema 的 item owner 查询也改为显式 `ItemId`，不再靠
+`items.data()` 地址反推。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
-从约 575 MiB RSS / 135 ms 收敛到约 200-215 MiB RSS / 118-127 ms。global bump allocator、AST 原生
-`IdentId`、Stmt/Item 进一步压缩和 CI perf 阈值仍是后续性能任务。
+从约 575 MiB RSS / 135 ms 收敛到约 174-180 MiB RSS / 109-115 ms。global bump allocator、AST 原生
+`IdentId` 和 CI perf 阈值仍是后续性能任务。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 

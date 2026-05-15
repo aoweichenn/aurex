@@ -800,11 +800,10 @@ TEST(CoreUnit, SemanticWhiteBoxDotOnlyModuleSelectorAndShadowingEdges) {
     EXPECT_TRUE(analyzer.module_type_or_value_name_exists(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "global"));
     EXPECT_FALSE(analyzer.module_type_or_value_name_exists(module_id(SEMA_TEST_ROOT_MODULE_INDEX), "missing"));
 
-    EXPECT_EQ(analyzer.item_module(analyzer.module_.items[item_id.value]).value, SEMA_TEST_ROOT_MODULE_INDEX);
-    syntax::ItemNode foreign_item;
-    EXPECT_FALSE(syntax::is_valid(analyzer.item_module(foreign_item)));
+    EXPECT_EQ(analyzer.item_module(item_id).value, SEMA_TEST_ROOT_MODULE_INDEX);
+    EXPECT_FALSE(syntax::is_valid(analyzer.item_module(syntax::ItemId {99})));
     analyzer.module_.item_modules.clear();
-    EXPECT_FALSE(syntax::is_valid(analyzer.item_module(analyzer.module_.items[item_id.value])));
+    EXPECT_FALSE(syntax::is_valid(analyzer.item_module(item_id)));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {

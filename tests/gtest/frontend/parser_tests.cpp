@@ -72,9 +72,10 @@ void expect_parse_error(const std::string_view source, const std::string_view me
     const syntax::AstModule& module,
     const std::string_view name
 ) noexcept {
-    for (const syntax::ItemNode& item : module.items) {
-        if (item.name == name) {
-            return &item;
+    for (base::usize i = 0; i < module.items.size(); ++i) {
+        const syntax::ItemNode* item = module.items.ptr(i);
+        if (item != nullptr && item->name == name) {
+            return item;
         }
     }
     return nullptr;

@@ -220,7 +220,7 @@ private:
     void resolve_type_alias_decls();
     void analyze_struct_properties();
     void analyze_const_decls();
-    void analyze_function_body(const syntax::ItemNode& function);
+    void analyze_function_body(const syntax::ItemNode& function, syntax::ItemId function_id);
     void analyze_function_body_with_signature(
         const syntax::ItemNode& function,
         const std::string& key,
@@ -598,7 +598,7 @@ private:
     void require_unsafe_context(base::SourceRange range, std::string_view operation);
     void validate_unsafe_call(const FunctionSignature& signature, base::SourceRange range);
     void validate_unsafe_function_value_call(TypeHandle callee_type, base::SourceRange range);
-    [[nodiscard]] syntax::ModuleId item_module(const syntax::ItemNode& item) const noexcept;
+    [[nodiscard]] syntax::ModuleId item_module(syntax::ItemId item) const noexcept;
     void normalize_parser_only_module_contract();
     [[nodiscard]] bool validate_ast_contract();
     [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, base::SourceRange range, bool report_unknown = true);
@@ -612,7 +612,7 @@ private:
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
-    [[nodiscard]] std::string function_key(const syntax::ItemNode& function) const;
+    [[nodiscard]] std::string function_key(const syntax::ItemNode& function, syntax::ItemId function_id) const;
     [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, std::string_view name);

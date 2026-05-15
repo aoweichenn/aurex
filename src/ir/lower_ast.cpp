@@ -108,8 +108,11 @@ Module Lowerer::lower() {
     this->lower_function_declarations();
     this->lower_global_constant_initializers();
     for (base::u32 index = 0; index < this->ast_.items.size(); ++index) {
-        const syntax::ItemNode& item = this->ast_.items[index];
-        if (item.kind != syntax::ItemKind::fn_decl || item.is_extern_c || !syntax::is_valid(item.body)) {
+        if (this->ast_.items.kind(index) != syntax::ItemKind::fn_decl) {
+            continue;
+        }
+        const syntax::ItemNode item = this->ast_.items[index];
+        if (item.is_extern_c || !syntax::is_valid(item.body)) {
             continue;
         }
         this->lower_function_body(this->item_functions_[index], item);
@@ -195,7 +198,11 @@ void Lowerer::index_enum_cases() {
 
 void Lowerer::declare_global_constants() {
     for (base::u32 index = 0; index < ast_.items.size(); ++index) {
-        const syntax::ItemNode& item = ast_.items[index];
+        const syntax::ItemKind kind = ast_.items.kind(index);
+        if (kind != syntax::ItemKind::const_decl && kind != syntax::ItemKind::enum_decl) {
+            continue;
+        }
+        const syntax::ItemNode item = ast_.items[index];
         if (item.kind == syntax::ItemKind::const_decl) {
             GlobalConstant constant;
             constant.name = std::string(item.name);
@@ -265,8 +272,11 @@ void Lowerer::declare_global_constants() {
 
 void Lowerer::lower_function_declarations() {
     for (base::u32 index = 0; index < this->ast_.items.size(); ++index) {
-        const syntax::ItemNode& item = this->ast_.items[index];
-        if (item.kind != syntax::ItemKind::fn_decl || item.is_prototype || !item.generic_params.empty()) {
+        if (this->ast_.items.kind(index) != syntax::ItemKind::fn_decl) {
+            continue;
+        }
+        const syntax::ItemNode item = this->ast_.items[index];
+        if (item.is_prototype || !item.generic_params.empty()) {
             continue;
         }
         Function function;
@@ -304,7 +314,7 @@ void Lowerer::lower_function_declarations() {
         function.is_variadic = false;
         function.return_type = instance.signature.return_type;
         if (syntax::is_valid(instance.item) && instance.item.value < this->ast_.items.size()) {
-            const syntax::ItemNode& item = this->ast_.items[instance.item.value];
+            const syntax::ItemNode item = this->ast_.items[instance.item.value];
             for (base::usize param_index = 0; param_index < item.params.size(); ++param_index) {
                 const sema::TypeHandle param_type = param_index < instance.signature.param_types.size()
                     ? instance.signature.param_types[param_index]

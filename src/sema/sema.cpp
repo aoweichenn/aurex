@@ -9,16 +9,14 @@ namespace aurex::sema {
 
 namespace {
 
-[[nodiscard]] bool is_function_item(const syntax::ItemNode& item) noexcept {
-    return item.kind == syntax::ItemKind::fn_decl;
-}
-
 [[nodiscard]] base::usize enum_case_count(const syntax::AstModule& module) noexcept {
     base::usize count = 0;
-    for (const syntax::ItemNode& item : module.items) {
-        if (item.kind == syntax::ItemKind::enum_decl) {
-            count += item.enum_cases.size();
+    for (base::usize i = 0; i < module.items.size(); ++i) {
+        if (module.items.kind(i) != syntax::ItemKind::enum_decl) {
+            continue;
         }
+        const syntax::ItemNode item = module.items[i];
+        count += item.enum_cases.size();
     }
     return count;
 }
@@ -106,13 +104,16 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
         this->analyze_generic_function_definition(entry.second);
     }
 
-    for (const syntax::ItemNode& item : this->module_.items) {
-        if (is_function_item(item) &&
-            !this->has_generic_params(item) &&
+    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
+        if (this->module_.items.kind(index) != syntax::ItemKind::fn_decl) {
+            continue;
+        }
+        const syntax::ItemNode item = this->module_.items[index];
+        if (!this->has_generic_params(item) &&
             !item.is_extern_c &&
             !item.is_prototype &&
             syntax::is_valid(item.body)) {
-            this->analyze_function_body(item);
+            this->analyze_function_body(item, syntax::ItemId {index});
         }
     }
 
@@ -154,7 +155,7 @@ bool SemanticAnalyzer::validate_ast_contract() {
     for (base::usize i = 0; i < count; ++i) {
         const syntax::ModuleId owner = this->module_.item_modules[i];
         if (!syntax::is_valid(owner) || owner.value >= this->module_.modules.size()) {
-            this->report(this->module_.items[i].range, std::string(SEMA_AST_ITEM_MODULE_INVALID));
+            this->report(this->module_.items.range(i), std::string(SEMA_AST_ITEM_MODULE_INVALID));
             valid = false;
         }
     }

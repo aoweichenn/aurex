@@ -38,9 +38,13 @@ TEST(CoreUnit, AstStorageUsesCompactHeaders) {
     EXPECT_LE(sizeof(syntax::TypeNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LE(sizeof(syntax::ExprNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LE(sizeof(syntax::PatternNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
+    EXPECT_LE(sizeof(syntax::StmtNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
+    EXPECT_LE(sizeof(syntax::ItemNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LT(sizeof(syntax::TypeNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::TypeNode));
     EXPECT_LT(sizeof(syntax::ExprNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ExprNode));
     EXPECT_LT(sizeof(syntax::PatternNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::PatternNode));
+    EXPECT_LT(sizeof(syntax::StmtNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::StmtNode));
+    EXPECT_LT(sizeof(syntax::ItemNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ItemNode));
 }
 
 TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
@@ -106,6 +110,54 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     EXPECT_TRUE(moved_pattern.scoped);
     EXPECT_EQ(moved_pattern.payload_patterns.front().value, 7U);
     EXPECT_EQ(moved_pattern.binding_names.front(), "value");
+
+    syntax::StmtNode block_stmt;
+    block_stmt.kind = syntax::StmtKind::block;
+    block_stmt.statements = {syntax::StmtId {10}, syntax::StmtId {11}, syntax::StmtId {12}};
+    syntax::StmtNodeList stmts;
+    stmts.push_back(block_stmt);
+    EXPECT_EQ(stmts[0].statements.size(), 3U);
+    syntax::StmtNode moved_stmt = stmts.take(0);
+    EXPECT_EQ(moved_stmt.statements.back().value, 12U);
+
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "map";
+    function_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    function_item.where_constraints = {syntax::GenericConstraintDecl {"T", {}, {"Copy"}, {}, {}}};
+    function_item.params = {syntax::ParamDecl {"value", syntax::TypeId {13}, {}}};
+    function_item.return_type = syntax::TypeId {14};
+    function_item.body = syntax::StmtId {15};
+    function_item.impl_type = syntax::TypeId {16};
+    function_item.is_unsafe = true;
+    function_item.abi_name = "aurex_map";
+
+    syntax::ItemNodeList items;
+    items.push_back(function_item);
+    items.set_visibility(0, syntax::Visibility::public_);
+    EXPECT_EQ(items[0].visibility, syntax::Visibility::public_);
+    EXPECT_TRUE(items[0].is_unsafe);
+    EXPECT_EQ(items[0].where_constraints.front().capability_names.front(), "Copy");
+    syntax::ItemNode moved_item = items.take(0);
+    EXPECT_EQ(moved_item.params.front().type.value, 13U);
+    EXPECT_EQ(moved_item.impl_type.value, 16U);
+    EXPECT_EQ(moved_item.abi_name, "aurex_map");
+
+    syntax::ItemNode enum_item;
+    enum_item.kind = syntax::ItemKind::enum_decl;
+    enum_item.name = "Option";
+    enum_item.enum_base_type = syntax::TypeId {17};
+    enum_item.enum_cases = {
+        syntax::EnumCaseDecl {"some", syntax::TypeId {18}, {syntax::TypeId {18}}, {}, {}},
+        syntax::EnumCaseDecl {"none", syntax::INVALID_TYPE_ID, {}, "0", {}},
+    };
+
+    syntax::ItemNodeList enum_items;
+    enum_items.push_back(enum_item);
+    EXPECT_EQ(enum_items[0].enum_cases.front().payload_types.front().value, 18U);
+    syntax::ItemNode moved_enum = enum_items.take(0);
+    EXPECT_EQ(moved_enum.enum_base_type.value, 17U);
+    EXPECT_EQ(moved_enum.enum_cases.back().value_text, "0");
 }
 
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {

@@ -1474,6 +1474,374 @@ struct StmtNode {
     std::vector<StmtId> statements;
 };
 
+struct StmtNodeHeader {
+    base::SourceRange range {};
+    base::u32 payload = UINT32_MAX;
+    base::u8 kind = static_cast<base::u8>(StmtKind::expr);
+};
+
+struct LocalStmtPayload {
+    std::string_view name;
+    PatternId pattern = INVALID_PATTERN_ID;
+    TypeId declared_type = INVALID_TYPE_ID;
+    ExprId init = INVALID_EXPR_ID;
+    StmtId else_block = INVALID_STMT_ID;
+};
+
+struct AssignStmtPayload {
+    AssignOp op = AssignOp::assign;
+    ExprId lhs = INVALID_EXPR_ID;
+    ExprId rhs = INVALID_EXPR_ID;
+};
+
+struct IfStmtPayload {
+    ExprId condition = INVALID_EXPR_ID;
+    PatternId pattern = INVALID_PATTERN_ID;
+    StmtId then_block = INVALID_STMT_ID;
+    StmtId else_block = INVALID_STMT_ID;
+    StmtId else_if = INVALID_STMT_ID;
+};
+
+struct ForStmtPayload {
+    StmtId init = INVALID_STMT_ID;
+    ExprId condition = INVALID_EXPR_ID;
+    StmtId update = INVALID_STMT_ID;
+    StmtId body = INVALID_STMT_ID;
+};
+
+struct ForRangeStmtPayload {
+    std::string_view name;
+    ExprId start = INVALID_EXPR_ID;
+    ExprId end = INVALID_EXPR_ID;
+    ExprId step = INVALID_EXPR_ID;
+    StmtId body = INVALID_STMT_ID;
+};
+
+struct WhileStmtPayload {
+    ExprId condition = INVALID_EXPR_ID;
+    PatternId pattern = INVALID_PATTERN_ID;
+    StmtId body = INVALID_STMT_ID;
+};
+
+struct ExprStmtPayload {
+    ExprId value = INVALID_EXPR_ID;
+};
+
+struct StmtNodePayloadArena {
+    std::vector<LocalStmtPayload> locals;
+    std::vector<AssignStmtPayload> assigns;
+    std::vector<IfStmtPayload> ifs;
+    std::vector<ForStmtPayload> fors;
+    std::vector<ForRangeStmtPayload> for_ranges;
+    std::vector<WhileStmtPayload> whiles;
+    std::vector<ExprStmtPayload> exprs;
+    std::vector<ExprStmtPayload> defers;
+    std::vector<ExprStmtPayload> returns;
+    std::vector<std::vector<StmtId>> blocks;
+    std::vector<StmtNode> unknowns;
+};
+
+class StmtNodeList final {
+public:
+    [[nodiscard]] base::usize size() const noexcept {
+        return this->headers_.size();
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return this->headers_.empty();
+    }
+
+    [[nodiscard]] StmtKind kind(const base::usize index) const noexcept {
+        return static_cast<StmtKind>(this->headers_[index].kind);
+    }
+
+    [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
+        return this->headers_[index].range;
+    }
+
+    [[nodiscard]] const std::vector<StmtId>* block_statements(const base::usize index) const noexcept {
+        if (this->kind(index) != StmtKind::block) {
+            return nullptr;
+        }
+        return &this->payloads_.blocks[this->headers_[index].payload];
+    }
+
+    void reserve(const base::usize size) {
+        this->headers_.reserve(size);
+    }
+
+    void push_back(StmtNode node) {
+        static_cast<void>(this->append(std::move(node)));
+    }
+
+    [[nodiscard]] StmtId append(StmtNode node) {
+        const StmtId id {static_cast<base::u32>(this->headers_.size())};
+        StmtNodeHeader header;
+        header.kind = pack_kind(node.kind);
+        header.range = node.range;
+        header.payload = this->store_payload(std::move(node));
+        this->headers_.push_back(header);
+        return id;
+    }
+
+    void set(const base::usize index, StmtNode node) {
+        StmtNodeHeader header;
+        header.kind = pack_kind(node.kind);
+        header.range = node.range;
+        header.payload = this->store_payload(std::move(node));
+        this->headers_[index] = header;
+    }
+
+    void set_range(const base::usize index, const base::SourceRange range) {
+        this->headers_[index].range = range;
+    }
+
+    [[nodiscard]] StmtNode take(const base::usize index) {
+        return this->load_moved(index);
+    }
+
+    [[nodiscard]] StmtNode operator[](const base::usize index) const {
+        return this->load(index);
+    }
+
+private:
+    [[nodiscard]] static base::u8 pack_kind(const StmtKind kind) noexcept {
+        return static_cast<base::u8>(kind);
+    }
+
+    [[nodiscard]] base::u32 store_payload(StmtNode node) {
+        switch (node.kind) {
+        case StmtKind::let:
+        case StmtKind::var:
+            return this->push_payload(this->payloads_.locals, LocalStmtPayload {
+                node.name,
+                node.pattern,
+                node.declared_type,
+                node.init,
+                node.else_block,
+            });
+        case StmtKind::assign:
+            return this->push_payload(this->payloads_.assigns, AssignStmtPayload {
+                node.assign_op,
+                node.lhs,
+                node.rhs,
+            });
+        case StmtKind::if_:
+            return this->push_payload(this->payloads_.ifs, IfStmtPayload {
+                node.condition,
+                node.pattern,
+                node.then_block,
+                node.else_block,
+                node.else_if,
+            });
+        case StmtKind::for_:
+            return this->push_payload(this->payloads_.fors, ForStmtPayload {
+                node.for_init,
+                node.condition,
+                node.for_update,
+                node.body,
+            });
+        case StmtKind::for_range:
+            return this->push_payload(this->payloads_.for_ranges, ForRangeStmtPayload {
+                node.name,
+                node.range_start,
+                node.range_end,
+                node.range_step,
+                node.body,
+            });
+        case StmtKind::while_:
+            return this->push_payload(this->payloads_.whiles, WhileStmtPayload {
+                node.condition,
+                node.pattern,
+                node.body,
+            });
+        case StmtKind::expr:
+            return this->push_payload(this->payloads_.exprs, ExprStmtPayload {node.init});
+        case StmtKind::defer:
+            return this->push_payload(this->payloads_.defers, ExprStmtPayload {node.init});
+        case StmtKind::return_:
+            return this->push_payload(this->payloads_.returns, ExprStmtPayload {node.return_value});
+        case StmtKind::block:
+            return this->push_payload(this->payloads_.blocks, std::move(node.statements));
+        case StmtKind::break_:
+        case StmtKind::continue_:
+            break;
+        }
+        return this->push_payload(this->payloads_.unknowns, std::move(node));
+    }
+
+    void load_header(const StmtNodeHeader& header, StmtNode& node) const noexcept {
+        node.kind = static_cast<StmtKind>(header.kind);
+        node.range = header.range;
+    }
+
+    [[nodiscard]] StmtNode load(const base::usize index) const {
+        const StmtNodeHeader& header = this->headers_[index];
+        StmtNode node;
+        this->load_header(header, node);
+        switch (node.kind) {
+        case StmtKind::let:
+        case StmtKind::var: {
+            const LocalStmtPayload& payload = this->payloads_.locals[header.payload];
+            node.name = payload.name;
+            node.pattern = payload.pattern;
+            node.declared_type = payload.declared_type;
+            node.init = payload.init;
+            node.else_block = payload.else_block;
+            break;
+        }
+        case StmtKind::assign: {
+            const AssignStmtPayload& payload = this->payloads_.assigns[header.payload];
+            node.assign_op = payload.op;
+            node.lhs = payload.lhs;
+            node.rhs = payload.rhs;
+            break;
+        }
+        case StmtKind::if_: {
+            const IfStmtPayload& payload = this->payloads_.ifs[header.payload];
+            node.condition = payload.condition;
+            node.pattern = payload.pattern;
+            node.then_block = payload.then_block;
+            node.else_block = payload.else_block;
+            node.else_if = payload.else_if;
+            break;
+        }
+        case StmtKind::for_: {
+            const ForStmtPayload& payload = this->payloads_.fors[header.payload];
+            node.for_init = payload.init;
+            node.condition = payload.condition;
+            node.for_update = payload.update;
+            node.body = payload.body;
+            break;
+        }
+        case StmtKind::for_range: {
+            const ForRangeStmtPayload& payload = this->payloads_.for_ranges[header.payload];
+            node.name = payload.name;
+            node.range_start = payload.start;
+            node.range_end = payload.end;
+            node.range_step = payload.step;
+            node.body = payload.body;
+            break;
+        }
+        case StmtKind::while_: {
+            const WhileStmtPayload& payload = this->payloads_.whiles[header.payload];
+            node.condition = payload.condition;
+            node.pattern = payload.pattern;
+            node.body = payload.body;
+            break;
+        }
+        case StmtKind::expr:
+            node.init = this->payloads_.exprs[header.payload].value;
+            break;
+        case StmtKind::defer:
+            node.init = this->payloads_.defers[header.payload].value;
+            break;
+        case StmtKind::return_:
+            node.return_value = this->payloads_.returns[header.payload].value;
+            break;
+        case StmtKind::block:
+            node.statements = this->payloads_.blocks[header.payload];
+            break;
+        case StmtKind::break_:
+        case StmtKind::continue_:
+            break;
+        default:
+            node = this->payloads_.unknowns[header.payload];
+            this->load_header(header, node);
+            break;
+        }
+        return node;
+    }
+
+    [[nodiscard]] StmtNode load_moved(const base::usize index) {
+        const StmtNodeHeader& header = this->headers_[index];
+        StmtNode node;
+        this->load_header(header, node);
+        switch (node.kind) {
+        case StmtKind::let:
+        case StmtKind::var: {
+            const LocalStmtPayload& payload = this->payloads_.locals[header.payload];
+            node.name = payload.name;
+            node.pattern = payload.pattern;
+            node.declared_type = payload.declared_type;
+            node.init = payload.init;
+            node.else_block = payload.else_block;
+            break;
+        }
+        case StmtKind::assign: {
+            const AssignStmtPayload& payload = this->payloads_.assigns[header.payload];
+            node.assign_op = payload.op;
+            node.lhs = payload.lhs;
+            node.rhs = payload.rhs;
+            break;
+        }
+        case StmtKind::if_: {
+            const IfStmtPayload& payload = this->payloads_.ifs[header.payload];
+            node.condition = payload.condition;
+            node.pattern = payload.pattern;
+            node.then_block = payload.then_block;
+            node.else_block = payload.else_block;
+            node.else_if = payload.else_if;
+            break;
+        }
+        case StmtKind::for_: {
+            const ForStmtPayload& payload = this->payloads_.fors[header.payload];
+            node.for_init = payload.init;
+            node.condition = payload.condition;
+            node.for_update = payload.update;
+            node.body = payload.body;
+            break;
+        }
+        case StmtKind::for_range: {
+            const ForRangeStmtPayload& payload = this->payloads_.for_ranges[header.payload];
+            node.name = payload.name;
+            node.range_start = payload.start;
+            node.range_end = payload.end;
+            node.range_step = payload.step;
+            node.body = payload.body;
+            break;
+        }
+        case StmtKind::while_: {
+            const WhileStmtPayload& payload = this->payloads_.whiles[header.payload];
+            node.condition = payload.condition;
+            node.pattern = payload.pattern;
+            node.body = payload.body;
+            break;
+        }
+        case StmtKind::expr:
+            node.init = this->payloads_.exprs[header.payload].value;
+            break;
+        case StmtKind::defer:
+            node.init = this->payloads_.defers[header.payload].value;
+            break;
+        case StmtKind::return_:
+            node.return_value = this->payloads_.returns[header.payload].value;
+            break;
+        case StmtKind::block:
+            node.statements = std::move(this->payloads_.blocks[header.payload]);
+            break;
+        case StmtKind::break_:
+        case StmtKind::continue_:
+            break;
+        default:
+            node = std::move(this->payloads_.unknowns[header.payload]);
+            this->load_header(header, node);
+            break;
+        }
+        return node;
+    }
+
+    template <typename T>
+    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+        const base::u32 index = static_cast<base::u32>(payloads.size());
+        payloads.push_back(std::move(payload));
+        return index;
+    }
+
+    std::vector<StmtNodeHeader> headers_;
+    StmtNodePayloadArena payloads_;
+};
+
 struct ParamDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
@@ -1533,6 +1901,448 @@ struct ItemNode {
     std::vector<ItemId> impl_items;
 };
 
+struct ItemNodeHeader {
+    base::SourceRange range {};
+    base::u32 payload = UINT32_MAX;
+    base::u8 kind = static_cast<base::u8>(ItemKind::fn_decl);
+    base::u8 visibility = static_cast<base::u8>(Visibility::private_);
+    base::u8 flags = 0;
+};
+
+struct ConstItemPayload {
+    std::string_view name;
+    TypeId type = INVALID_TYPE_ID;
+    ExprId value = INVALID_EXPR_ID;
+};
+
+struct TypeAliasItemPayload {
+    std::string_view name;
+    std::vector<GenericParamDecl> generic_params;
+    std::vector<GenericConstraintDecl> where_constraints;
+    TypeId target = INVALID_TYPE_ID;
+};
+
+struct StructItemPayload {
+    std::string_view name;
+    std::vector<GenericParamDecl> generic_params;
+    std::vector<GenericConstraintDecl> where_constraints;
+    std::vector<FieldDecl> fields;
+};
+
+struct EnumItemPayload {
+    std::string_view name;
+    std::vector<GenericParamDecl> generic_params;
+    std::vector<GenericConstraintDecl> where_constraints;
+    TypeId base_type = INVALID_TYPE_ID;
+    std::vector<EnumCaseDecl> cases;
+};
+
+struct OpaqueStructItemPayload {
+    std::string_view name;
+};
+
+struct FunctionItemPayload {
+    std::string_view name;
+    std::vector<GenericParamDecl> generic_params;
+    std::vector<GenericConstraintDecl> where_constraints;
+    std::vector<ParamDecl> params;
+    TypeId return_type = INVALID_TYPE_ID;
+    StmtId body = INVALID_STMT_ID;
+    TypeId impl_type = INVALID_TYPE_ID;
+    std::string_view abi_name;
+};
+
+struct ExternBlockItemPayload {
+    std::vector<ItemId> items;
+};
+
+struct ImplBlockItemPayload {
+    std::vector<GenericParamDecl> generic_params;
+    std::vector<GenericConstraintDecl> where_constraints;
+    TypeId impl_type = INVALID_TYPE_ID;
+    std::vector<ItemId> items;
+};
+
+struct ItemNodePayloadArena {
+    std::vector<ConstItemPayload> consts;
+    std::vector<TypeAliasItemPayload> type_aliases;
+    std::vector<StructItemPayload> structs;
+    std::vector<EnumItemPayload> enums;
+    std::vector<OpaqueStructItemPayload> opaque_structs;
+    std::vector<FunctionItemPayload> functions;
+    std::vector<ExternBlockItemPayload> extern_blocks;
+    std::vector<ImplBlockItemPayload> impl_blocks;
+    std::vector<ItemNode> unknowns;
+};
+
+class ItemNodeList final {
+public:
+    [[nodiscard]] base::usize size() const noexcept {
+        return this->headers_.size();
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return this->headers_.empty();
+    }
+
+    [[nodiscard]] ItemKind kind(const base::usize index) const noexcept {
+        return static_cast<ItemKind>(this->headers_[index].kind);
+    }
+
+    [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
+        return this->headers_[index].range;
+    }
+
+    [[nodiscard]] Visibility visibility(const base::usize index) const noexcept {
+        return static_cast<Visibility>(this->headers_[index].visibility);
+    }
+
+    void reserve(const base::usize size) {
+        this->headers_.reserve(size);
+    }
+
+    void push_back(ItemNode node) {
+        static_cast<void>(this->append(std::move(node)));
+    }
+
+    [[nodiscard]] ItemId append(ItemNode node) {
+        const ItemId id {static_cast<base::u32>(this->headers_.size())};
+        ItemNodeHeader header;
+        header.kind = pack_kind(node.kind);
+        header.range = node.range;
+        header.visibility = pack_visibility(node.visibility);
+        header.flags = pack_flags(node);
+        header.payload = this->store_payload(std::move(node));
+        this->headers_.push_back(header);
+        return id;
+    }
+
+    void set(const base::usize index, ItemNode node) {
+        ItemNodeHeader header;
+        header.kind = pack_kind(node.kind);
+        header.range = node.range;
+        header.visibility = pack_visibility(node.visibility);
+        header.flags = pack_flags(node);
+        header.payload = this->store_payload(std::move(node));
+        this->headers_[index] = header;
+        this->invalidate_materialized(index);
+    }
+
+    void set_range_begin(const base::usize index, const base::usize begin) {
+        this->headers_[index].range.begin = begin;
+        this->invalidate_materialized(index);
+    }
+
+    void set_visibility(const base::usize index, const Visibility visibility) {
+        this->headers_[index].visibility = pack_visibility(visibility);
+        this->invalidate_materialized(index);
+    }
+
+    [[nodiscard]] ItemNode take(const base::usize index) {
+        this->invalidate_materialized(index);
+        return this->load_moved(index);
+    }
+
+    [[nodiscard]] ItemNode operator[](const base::usize index) const {
+        return this->load(index);
+    }
+
+    [[nodiscard]] const ItemNode* ptr(const base::usize index) const {
+        if (index >= this->headers_.size()) {
+            return nullptr;
+        }
+        return &this->materialized(index);
+    }
+
+private:
+    static constexpr base::u8 ITEM_NODE_FLAG_EXPORT_C = 1U << 0U;
+    static constexpr base::u8 ITEM_NODE_FLAG_EXTERN_C = 1U << 1U;
+    static constexpr base::u8 ITEM_NODE_FLAG_UNSAFE = 1U << 2U;
+    static constexpr base::u8 ITEM_NODE_FLAG_VARIADIC = 1U << 3U;
+    static constexpr base::u8 ITEM_NODE_FLAG_PROTOTYPE = 1U << 4U;
+
+    [[nodiscard]] static base::u8 pack_kind(const ItemKind kind) noexcept {
+        return static_cast<base::u8>(kind);
+    }
+
+    [[nodiscard]] static base::u8 pack_visibility(const Visibility visibility) noexcept {
+        return static_cast<base::u8>(visibility);
+    }
+
+    [[nodiscard]] static bool has_flag(const base::u8 flags, const base::u8 flag) noexcept {
+        return (flags & flag) != 0;
+    }
+
+    [[nodiscard]] static base::u8 pack_flags(const ItemNode& node) noexcept {
+        base::u8 flags = 0;
+        if (node.is_export_c) {
+            flags |= ITEM_NODE_FLAG_EXPORT_C;
+        }
+        if (node.is_extern_c) {
+            flags |= ITEM_NODE_FLAG_EXTERN_C;
+        }
+        if (node.is_unsafe) {
+            flags |= ITEM_NODE_FLAG_UNSAFE;
+        }
+        if (node.is_variadic) {
+            flags |= ITEM_NODE_FLAG_VARIADIC;
+        }
+        if (node.is_prototype) {
+            flags |= ITEM_NODE_FLAG_PROTOTYPE;
+        }
+        return flags;
+    }
+
+    [[nodiscard]] base::u32 store_payload(ItemNode node) {
+        switch (node.kind) {
+        case ItemKind::const_decl:
+            return this->push_payload(this->payloads_.consts, ConstItemPayload {
+                node.name,
+                node.const_type,
+                node.const_value,
+            });
+        case ItemKind::type_alias:
+            return this->push_payload(this->payloads_.type_aliases, TypeAliasItemPayload {
+                node.name,
+                std::move(node.generic_params),
+                std::move(node.where_constraints),
+                node.alias_type,
+            });
+        case ItemKind::struct_decl:
+            return this->push_payload(this->payloads_.structs, StructItemPayload {
+                node.name,
+                std::move(node.generic_params),
+                std::move(node.where_constraints),
+                std::move(node.fields),
+            });
+        case ItemKind::enum_decl:
+            return this->push_payload(this->payloads_.enums, EnumItemPayload {
+                node.name,
+                std::move(node.generic_params),
+                std::move(node.where_constraints),
+                node.enum_base_type,
+                std::move(node.enum_cases),
+            });
+        case ItemKind::opaque_struct_decl:
+            return this->push_payload(this->payloads_.opaque_structs, OpaqueStructItemPayload {
+                node.name,
+            });
+        case ItemKind::fn_decl:
+            return this->push_payload(this->payloads_.functions, FunctionItemPayload {
+                node.name,
+                std::move(node.generic_params),
+                std::move(node.where_constraints),
+                std::move(node.params),
+                node.return_type,
+                node.body,
+                node.impl_type,
+                node.abi_name,
+            });
+        case ItemKind::extern_block:
+            return this->push_payload(this->payloads_.extern_blocks, ExternBlockItemPayload {
+                std::move(node.extern_items),
+            });
+        case ItemKind::impl_block:
+            return this->push_payload(this->payloads_.impl_blocks, ImplBlockItemPayload {
+                std::move(node.generic_params),
+                std::move(node.where_constraints),
+                node.impl_type,
+                std::move(node.impl_items),
+            });
+        }
+        return this->push_payload(this->payloads_.unknowns, std::move(node));
+    }
+
+    void load_header(const ItemNodeHeader& header, ItemNode& node) const noexcept {
+        node.kind = static_cast<ItemKind>(header.kind);
+        node.range = header.range;
+        node.visibility = static_cast<Visibility>(header.visibility);
+        node.is_export_c = has_flag(header.flags, ITEM_NODE_FLAG_EXPORT_C);
+        node.is_extern_c = has_flag(header.flags, ITEM_NODE_FLAG_EXTERN_C);
+        node.is_unsafe = has_flag(header.flags, ITEM_NODE_FLAG_UNSAFE);
+        node.is_variadic = has_flag(header.flags, ITEM_NODE_FLAG_VARIADIC);
+        node.is_prototype = has_flag(header.flags, ITEM_NODE_FLAG_PROTOTYPE);
+    }
+
+    [[nodiscard]] ItemNode load(const base::usize index) const {
+        const ItemNodeHeader& header = this->headers_[index];
+        ItemNode node;
+        this->load_header(header, node);
+        switch (node.kind) {
+        case ItemKind::const_decl: {
+            const ConstItemPayload& payload = this->payloads_.consts[header.payload];
+            node.name = payload.name;
+            node.const_type = payload.type;
+            node.const_value = payload.value;
+            break;
+        }
+        case ItemKind::type_alias: {
+            const TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
+            node.name = payload.name;
+            node.generic_params = payload.generic_params;
+            node.where_constraints = payload.where_constraints;
+            node.alias_type = payload.target;
+            break;
+        }
+        case ItemKind::struct_decl: {
+            const StructItemPayload& payload = this->payloads_.structs[header.payload];
+            node.name = payload.name;
+            node.generic_params = payload.generic_params;
+            node.where_constraints = payload.where_constraints;
+            node.fields = payload.fields;
+            break;
+        }
+        case ItemKind::enum_decl: {
+            const EnumItemPayload& payload = this->payloads_.enums[header.payload];
+            node.name = payload.name;
+            node.generic_params = payload.generic_params;
+            node.where_constraints = payload.where_constraints;
+            node.enum_base_type = payload.base_type;
+            node.enum_cases = payload.cases;
+            break;
+        }
+        case ItemKind::opaque_struct_decl:
+            node.name = this->payloads_.opaque_structs[header.payload].name;
+            break;
+        case ItemKind::fn_decl: {
+            const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
+            node.name = payload.name;
+            node.generic_params = payload.generic_params;
+            node.where_constraints = payload.where_constraints;
+            node.params = payload.params;
+            node.return_type = payload.return_type;
+            node.body = payload.body;
+            node.impl_type = payload.impl_type;
+            node.abi_name = payload.abi_name;
+            break;
+        }
+        case ItemKind::extern_block:
+            node.extern_items = this->payloads_.extern_blocks[header.payload].items;
+            break;
+        case ItemKind::impl_block: {
+            const ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
+            node.generic_params = payload.generic_params;
+            node.where_constraints = payload.where_constraints;
+            node.impl_type = payload.impl_type;
+            node.impl_items = payload.items;
+            break;
+        }
+        default:
+            node = this->payloads_.unknowns[header.payload];
+            this->load_header(header, node);
+            break;
+        }
+        return node;
+    }
+
+    [[nodiscard]] ItemNode load_moved(const base::usize index) {
+        const ItemNodeHeader& header = this->headers_[index];
+        ItemNode node;
+        this->load_header(header, node);
+        switch (node.kind) {
+        case ItemKind::const_decl: {
+            const ConstItemPayload& payload = this->payloads_.consts[header.payload];
+            node.name = payload.name;
+            node.const_type = payload.type;
+            node.const_value = payload.value;
+            break;
+        }
+        case ItemKind::type_alias: {
+            TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
+            node.name = payload.name;
+            node.generic_params = std::move(payload.generic_params);
+            node.where_constraints = std::move(payload.where_constraints);
+            node.alias_type = payload.target;
+            break;
+        }
+        case ItemKind::struct_decl: {
+            StructItemPayload& payload = this->payloads_.structs[header.payload];
+            node.name = payload.name;
+            node.generic_params = std::move(payload.generic_params);
+            node.where_constraints = std::move(payload.where_constraints);
+            node.fields = std::move(payload.fields);
+            break;
+        }
+        case ItemKind::enum_decl: {
+            EnumItemPayload& payload = this->payloads_.enums[header.payload];
+            node.name = payload.name;
+            node.generic_params = std::move(payload.generic_params);
+            node.where_constraints = std::move(payload.where_constraints);
+            node.enum_base_type = payload.base_type;
+            node.enum_cases = std::move(payload.cases);
+            break;
+        }
+        case ItemKind::opaque_struct_decl:
+            node.name = this->payloads_.opaque_structs[header.payload].name;
+            break;
+        case ItemKind::fn_decl: {
+            FunctionItemPayload& payload = this->payloads_.functions[header.payload];
+            node.name = payload.name;
+            node.generic_params = std::move(payload.generic_params);
+            node.where_constraints = std::move(payload.where_constraints);
+            node.params = std::move(payload.params);
+            node.return_type = payload.return_type;
+            node.body = payload.body;
+            node.impl_type = payload.impl_type;
+            node.abi_name = payload.abi_name;
+            break;
+        }
+        case ItemKind::extern_block:
+            node.extern_items = std::move(this->payloads_.extern_blocks[header.payload].items);
+            break;
+        case ItemKind::impl_block: {
+            ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
+            node.generic_params = std::move(payload.generic_params);
+            node.where_constraints = std::move(payload.where_constraints);
+            node.impl_type = payload.impl_type;
+            node.impl_items = std::move(payload.items);
+            break;
+        }
+        default:
+            node = std::move(this->payloads_.unknowns[header.payload]);
+            this->load_header(header, node);
+            break;
+        }
+        return node;
+    }
+
+    [[nodiscard]] const ItemNode& materialized(const base::usize index) const {
+        this->ensure_materialized_capacity(index + 1);
+        if (!this->materialized_valid_[index]) {
+            this->materialized_[index] = this->load(index);
+            this->materialized_valid_[index] = true;
+        }
+        return this->materialized_[index];
+    }
+
+    void ensure_materialized_capacity(const base::usize size) const {
+        if (this->materialized_.size() < size) {
+            this->materialized_.resize(size);
+        }
+        if (this->materialized_valid_.size() < size) {
+            this->materialized_valid_.resize(size, false);
+        }
+    }
+
+    void invalidate_materialized(const base::usize index) {
+        if (index < this->materialized_valid_.size()) {
+            this->materialized_valid_[index] = false;
+        }
+    }
+
+    template <typename T>
+    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+        const base::u32 index = static_cast<base::u32>(payloads.size());
+        payloads.push_back(std::move(payload));
+        return index;
+    }
+
+    std::vector<ItemNodeHeader> headers_;
+    ItemNodePayloadArena payloads_;
+    mutable std::deque<ItemNode> materialized_;
+    mutable std::vector<bool> materialized_valid_;
+};
+
 struct ModulePath {
     std::vector<std::string_view> parts;
     base::SourceRange range {};
@@ -1568,8 +2378,8 @@ struct AstModule {
     TypeNodeList types;
     ExprNodeList exprs;
     PatternNodeList patterns;
-    std::vector<StmtNode> stmts;
-    std::vector<ItemNode> items;
+    StmtNodeList stmts;
+    ItemNodeList items;
     std::vector<ModuleId> item_modules;
 
     AstModule() {
@@ -1593,14 +2403,11 @@ struct AstModule {
     }
 
     [[nodiscard]] StmtId push_stmt(StmtNode node) {
-        const StmtId id {static_cast<base::u32>(stmts.size())};
-        stmts.push_back(std::move(node));
-        return id;
+        return stmts.append(std::move(node));
     }
 
     [[nodiscard]] ItemId push_item(ItemNode node) {
-        const ItemId id {static_cast<base::u32>(items.size())};
-        items.push_back(std::move(node));
+        const ItemId id = items.append(std::move(node));
         item_modules.push_back(INVALID_MODULE_ID);
         return id;
     }

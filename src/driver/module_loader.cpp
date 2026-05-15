@@ -306,13 +306,13 @@ void append_module_into(
         remap_pattern_node(node, map);
         destination.patterns.push_back(std::move(node));
     }
-    for (syntax::StmtNode& source_stmt : source.stmts) {
-        syntax::StmtNode node = std::move(source_stmt);
+    for (base::usize i = 0; i < source_stmt_count; ++i) {
+        syntax::StmtNode node = source.stmts.take(i);
         remap_stmt_node(node, map);
         destination.stmts.push_back(std::move(node));
     }
-    for (syntax::ItemNode& source_item : source.items) {
-        syntax::ItemNode node = std::move(source_item);
+    for (base::usize i = 0; i < source_item_count; ++i) {
+        syntax::ItemNode node = source.items.take(i);
         remap_item_node(node, map);
         destination.items.push_back(std::move(node));
         destination.item_modules.push_back(owner_module);

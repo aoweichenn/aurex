@@ -103,9 +103,11 @@ and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
 `--check` path does not retain codegen-only generic instance side tables, and
 the default sema path no longer copies or retains a full normalized AST
 snapshot. The syntax AST now stores `TypeNode`, `ExprNode`, and `PatternNode`
-as compact 32-byte headers plus per-kind payload arenas; on the local AST bulk
-stress lane, the 100000-statement case is roughly 200-215 MiB RSS / 118-127 ms after
-this layout change.
+as compact 32-byte headers plus per-kind payload arenas; `StmtNode` and
+`ItemNode` now use the same compact header + per-kind payload arena layout.
+The remaining address-based item owner lookup has been replaced with explicit
+`ItemId` ownership. On the local AST bulk stress lane, the 100000-statement case
+is now roughly 174-180 MiB RSS / 109-115 ms after the compact syntax layout.
 
 ## Stage Status
 

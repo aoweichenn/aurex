@@ -3,6 +3,7 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace aurex::sema {
@@ -38,14 +39,14 @@ struct ControlFlowFrame {
     ControlFlowIfStage if_stage = ControlFlowIfStage::evaluate_then;
 };
 
-[[nodiscard]] const syntax::StmtNode* statement_node(
+[[nodiscard]] std::optional<syntax::StmtNode> statement_node(
     const syntax::AstModule& module,
     const syntax::StmtId stmt
-) noexcept {
+) {
     if (!syntax::is_valid(stmt) || stmt.value >= module.stmts.size()) {
-        return nullptr;
+        return std::nullopt;
     }
-    return &module.stmts[stmt.value];
+    return module.stmts[stmt.value];
 }
 
 [[nodiscard]] base::SourceRange expr_range_or(
@@ -178,16 +179,16 @@ void evaluate_control_flow_statement(
     bool& final_result
 ) {
     ControlFlowFrame& frame = stack.back();
-    const syntax::StmtNode* const node = statement_node(module, frame.stmt);
-    if (node == nullptr) {
+    if (!syntax::is_valid(frame.stmt) || frame.stmt.value >= module.stmts.size()) {
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
         return;
     }
-    switch (node->kind) {
+    const syntax::StmtKind kind = module.stmts.kind(frame.stmt.value);
+    switch (kind) {
     case syntax::StmtKind::return_:
     case syntax::StmtKind::break_:
     case syntax::StmtKind::continue_:
-        finish_control_flow_frame(stack, query, abrupt_stmt_result(query, node->kind), has_result, final_result);
+        finish_control_flow_frame(stack, query, abrupt_stmt_result(query, kind), has_result, final_result);
         break;
     case syntax::StmtKind::block:
         frame.kind = ControlFlowFrameKind::block;
@@ -211,20 +212,20 @@ void evaluate_control_flow_block(
     bool& final_result
 ) {
     ControlFlowFrame& frame = stack.back();
-    const syntax::StmtNode* const node = statement_node(module, frame.stmt);
-    if (node == nullptr) {
+    if (!syntax::is_valid(frame.stmt) || frame.stmt.value >= module.stmts.size()) {
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
         return;
     }
-    if (node->kind != syntax::StmtKind::block) {
+    const std::vector<syntax::StmtId>* const statements = module.stmts.block_statements(frame.stmt.value);
+    if (statements == nullptr) {
         frame.kind = ControlFlowFrameKind::statement;
         return;
     }
-    if (frame.next_child >= node->statements.size()) {
+    if (frame.next_child >= statements->size()) {
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
         return;
     }
-    stack.push_back(ControlFlowFrame {ControlFlowFrameKind::statement, node->statements[frame.next_child]});
+    stack.push_back(ControlFlowFrame {ControlFlowFrameKind::statement, (*statements)[frame.next_child]});
 }
 
 void evaluate_control_flow_if_statement(
@@ -235,8 +236,8 @@ void evaluate_control_flow_if_statement(
     bool& final_result
 ) {
     ControlFlowFrame& frame = stack.back();
-    const syntax::StmtNode* const node = statement_node(module, frame.stmt);
-    if (node == nullptr || node->kind != syntax::StmtKind::if_) {
+    const std::optional<syntax::StmtNode> node = statement_node(module, frame.stmt);
+    if (!node.has_value() || node->kind != syntax::StmtKind::if_) {
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
         return;
     }
@@ -343,8 +344,11 @@ void evaluate_control_flow_if_statement(
 
 } // namespace
 
-void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function) {
-    const std::string key = this->function_key(function);
+void SemanticAnalyzer::analyze_function_body(
+    const syntax::ItemNode& function,
+    const syntax::ItemId function_id
+) {
+    const std::string key = this->function_key(function, function_id);
     const auto found = this->checked_.functions.find(key);
     if (found == this->checked_.functions.end()) {
         return;
@@ -551,14 +555,17 @@ void SemanticAnalyzer::analyze_statement_block(
     const syntax::StmtId block,
     std::vector<StatementAnalysisAction>& stack
 ) {
-    const syntax::StmtNode* const stmt = statement_node(this->module_, block);
-    if (stmt == nullptr || stmt->kind != syntax::StmtKind::block) {
+    if (!syntax::is_valid(block) || block.value >= this->module_.stmts.size()) {
         return;
     }
-    for (base::usize i = stmt->statements.size(); i > 0; --i) {
+    const std::vector<syntax::StmtId>* const statements = this->module_.stmts.block_statements(block.value);
+    if (statements == nullptr) {
+        return;
+    }
+    for (base::usize i = statements->size(); i > 0; --i) {
         stack.push_back(StatementAnalysisAction {
             StatementAnalysisActionKind::statement,
-            stmt->statements[i - 1],
+            (*statements)[i - 1],
         });
     }
 }
@@ -578,8 +585,8 @@ void SemanticAnalyzer::analyze_pattern_scoped_block(
 }
 
 void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
-    const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
-    if (stmt == nullptr || stmt->kind != syntax::StmtKind::for_ || !syntax::is_valid(stmt->condition)) {
+    const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+    if (!stmt.has_value() || stmt->kind != syntax::StmtKind::for_ || !syntax::is_valid(stmt->condition)) {
         return;
     }
     const TypeHandle condition = this->analyze_expr(stmt->condition);
@@ -707,11 +714,11 @@ void SemanticAnalyzer::analyze_statement_node(
     const TypeHandle expected_return,
     ReturnTypeInference* const return_inference
 ) {
-    const syntax::StmtNode* const stmt_ptr = statement_node(this->module_, stmt_id);
-    if (stmt_ptr == nullptr) {
+    const std::optional<syntax::StmtNode> stmt_ptr = statement_node(this->module_, stmt_id);
+    if (!stmt_ptr.has_value()) {
         return;
     }
-    const syntax::StmtNode& stmt = *stmt_ptr;
+    const syntax::StmtNode& stmt = stmt_ptr.value();
     switch (stmt.kind) {
     case syntax::StmtKind::let:
     case syntax::StmtKind::var: {
@@ -932,8 +939,8 @@ void SemanticAnalyzer::record_inferred_return(
 ) {
     inference.returns.push_back(stmt_id);
     if (!is_valid(actual)) {
-        const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
-        if (stmt != nullptr && this->is_null_result_expr(stmt->return_value)) {
+        const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+        if (stmt.has_value() && this->is_null_result_expr(stmt->return_value)) {
             inference.pending_null_returns.push_back(stmt_id);
             return;
         }
@@ -986,8 +993,8 @@ void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inferen
         return;
     }
     for (const syntax::StmtId stmt_id : inference.pending_null_returns) {
-        const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
-        if (stmt == nullptr || !syntax::is_valid(stmt->return_value)) {
+        const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+        if (!stmt.has_value() || !syntax::is_valid(stmt->return_value)) {
             continue;
         }
         const TypeHandle actual = this->analyze_expr(stmt->return_value, inference.inferred_type);
@@ -1001,8 +1008,8 @@ void SemanticAnalyzer::report_return_inference_diagnostic(
     const syntax::StmtId stmt_id,
     const std::string_view message
 ) {
-    const syntax::StmtNode* const stmt = statement_node(this->module_, stmt_id);
-    if (stmt == nullptr) {
+    const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+    if (!stmt.has_value()) {
         return;
     }
     this->report(stmt->range, std::string(message));
@@ -1044,7 +1051,7 @@ void SemanticAnalyzer::ensure_function_return_known(
         this->report(use_range, std::string(SEMA_RETURN_TYPE_INFER));
         return;
     }
-    this->analyze_function_body(this->module_.items[item_found->second.value]);
+    this->analyze_function_body(this->module_.items[item_found->second.value], item_found->second);
 }
 
 } // namespace aurex::sema

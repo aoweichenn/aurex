@@ -92,7 +92,8 @@ void Lowerer::lower_generic_function_body(
         &instance.side_tables.syntax_type_handles,
         &instance.side_tables.stmt_local_types,
     };
-    this->lower_function_body(function_id, this->ast_.items[instance.item.value]);
+    const syntax::ItemNode item = this->ast_.items[instance.item.value];
+    this->lower_function_body(function_id, item);
     this->active_side_tables_ = previous_tables;
 }
 
@@ -112,11 +113,11 @@ void Lowerer::lower_block_contents(const syntax::StmtId block_id) {
     if (!syntax::is_valid(block_id) || block_id.value >= ast_.stmts.size()) {
         return;
     }
-    const syntax::StmtNode& block = ast_.stmts[block_id.value];
-    if (block.kind != syntax::StmtKind::block) {
+    const std::vector<syntax::StmtId>* const statements = ast_.stmts.block_statements(block_id.value);
+    if (statements == nullptr) {
         return;
     }
-    for (const syntax::StmtId stmt : block.statements) {
+    for (const syntax::StmtId stmt : *statements) {
         if (has_terminator(current_block_)) {
             break;
         }
@@ -128,7 +129,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
     if (!syntax::is_valid(stmt_id) || stmt_id.value >= ast_.stmts.size()) {
         return;
     }
-    const syntax::StmtNode& stmt = ast_.stmts[stmt_id.value];
+    const syntax::StmtNode stmt = ast_.stmts[stmt_id.value];
     switch (stmt.kind) {
     case syntax::StmtKind::let:
     case syntax::StmtKind::var: {

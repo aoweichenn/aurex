@@ -55,17 +55,11 @@ constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
 
 } // namespace
 
-syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemNode& item) const noexcept {
-    const auto* const begin = this->module_.items.data();
-    const auto* const end = begin + this->module_.items.size();
-    if (&item < begin || &item >= end) {
+syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemId item) const noexcept {
+    if (!syntax::is_valid(item) || item.value >= this->module_.item_modules.size()) {
         return syntax::INVALID_MODULE_ID;
     }
-    const base::usize index = static_cast<base::usize>(&item - begin);
-    if (index >= this->module_.item_modules.size()) {
-        return syntax::INVALID_MODULE_ID;
-    }
-    return this->module_.item_modules[index];
+    return this->module_.item_modules[item.value];
 }
 
 syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
@@ -310,8 +304,11 @@ std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const st
     return key;
 }
 
-std::string SemanticAnalyzer::function_key(const syntax::ItemNode& function) const {
-    const syntax::ModuleId module = this->item_module(function);
+std::string SemanticAnalyzer::function_key(
+    const syntax::ItemNode& function,
+    const syntax::ItemId function_id
+) const {
+    const syntax::ModuleId module = this->item_module(function_id);
     if (this->has_generic_params(function)) {
         return this->module_key(module, function.name);
     }

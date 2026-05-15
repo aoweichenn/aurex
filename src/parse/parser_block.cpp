@@ -22,7 +22,7 @@ constexpr int PARSER_BLOCK_NO_DELIMITER_DEPTH = 0;
 ) noexcept {
     return syntax::is_valid(stmt) &&
            stmt.value < module.stmts.size() &&
-           module.stmts[stmt.value].kind == kind;
+           module.stmts.kind(stmt.value) == kind;
 }
 
 [[nodiscard]] bool token_opens_delimiter(const TokenKind kind) noexcept {
@@ -162,8 +162,10 @@ BlockParser::BlockBody BlockParser::parse_block_body(
                 std::string(PARSER_M2_BLOCK_RESULT_ASSIGNMENT),
                 RecoveryContext::statement_terminator
             );
-            this->session_.module.stmts[stmt.value].range =
-                this->merge(this->stmt_range_or(stmt, end.range), end.range);
+            this->session_.module.stmts.set_range(
+                stmt.value,
+                this->merge(this->stmt_range_or(stmt, end.range), end.range)
+            );
             block.statements.push_back(stmt);
             this->reset_panic();
             continue;
@@ -171,8 +173,10 @@ BlockParser::BlockBody BlockParser::parse_block_body(
 
         if (this->match(TokenKind::semicolon)) {
             if (syntax::is_valid(stmt) && stmt.value < this->session_.module.stmts.size()) {
-                this->session_.module.stmts[stmt.value].range =
-                    this->merge(this->stmt_range_or(stmt, this->previous().range), this->previous().range);
+                this->session_.module.stmts.set_range(
+                    stmt.value,
+                    this->merge(this->stmt_range_or(stmt, this->previous().range), this->previous().range)
+                );
                 block.statements.push_back(stmt);
             }
             this->reset_panic();

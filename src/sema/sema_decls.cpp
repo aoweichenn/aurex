@@ -144,8 +144,9 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() {
     std::unordered_map<std::string, base::SourceRange> value_names;
     type_names.reserve(this->module_.items.size());
     value_names.reserve(this->module_.items.size());
-    for (const syntax::ItemNode& item : this->module_.items) {
-        const syntax::ModuleId owner = this->item_module(item);
+    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
+        const syntax::ItemNode item = this->module_.items[index];
+        const syntax::ModuleId owner = this->item_module(syntax::ItemId {index});
         if (is_top_level_type_item(item.kind)) {
             type_names.emplace(this->module_key(owner, item.name), item.range);
         } else if (is_top_level_value_item(item)) {
@@ -153,11 +154,12 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() {
         }
     }
 
-    for (const syntax::ItemNode& item : this->module_.items) {
+    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
+        const syntax::ItemNode item = this->module_.items[index];
         if (!is_top_level_value_item(item)) {
             continue;
         }
-        const syntax::ModuleId owner = this->item_module(item);
+        const syntax::ModuleId owner = this->item_module(syntax::ItemId {index});
         const std::string key = this->module_key(owner, item.name);
         if (type_names.contains(key)) {
             this->report(item.range, sema_duplicate_namespace_member_message(this->module_name(owner), item.name));
@@ -187,11 +189,10 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() {
 }
 
 void SemanticAnalyzer::register_type_names() {
-    for (const syntax::ItemNode& item : this->module_.items) {
-        const auto* const begin = this->module_.items.data();
-        const base::usize item_index = static_cast<base::usize>(&item - begin);
+    for (base::u32 item_index = 0; item_index < this->module_.items.size(); ++item_index) {
+        const syntax::ItemNode item = this->module_.items[item_index];
         if (this->has_generic_params(item)) {
-            this->register_generic_template(item, syntax::ItemId {static_cast<base::u32>(item_index)});
+            this->register_generic_template(item, syntax::ItemId {item_index});
             continue;
         }
         if (this->has_generic_constraints(item)) {
@@ -199,7 +200,7 @@ void SemanticAnalyzer::register_type_names() {
                 this->report(constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
             }
         }
-        const syntax::ModuleId owner = this->item_module(item);
+        const syntax::ModuleId owner = this->item_module(syntax::ItemId {item_index});
         const std::string key = this->module_key(owner, item.name);
         const std::string qualified = this->qualified_name(owner, item.name);
         const std::string c_name = this->c_symbol_name(owner, item.name);
@@ -472,11 +473,12 @@ void SemanticAnalyzer::register_enum_cases_for_item(
 
 void SemanticAnalyzer::register_value_names() {
     FunctionRegistry functions(this->checked_, this->global_values_, this->diagnostics_);
-    for (const syntax::ItemNode& item : this->module_.items) {
+    for (base::u32 item_index = 0; item_index < this->module_.items.size(); ++item_index) {
+        const syntax::ItemNode item = this->module_.items[item_index];
         if (this->has_generic_params(item)) {
             continue;
         }
-        this->current_module_ = this->item_module(item);
+        this->current_module_ = this->item_module(syntax::ItemId {item_index});
         std::string key = this->module_key(this->current_module_, item.name);
         std::string c_name = this->c_symbol_name(this->current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
@@ -569,8 +571,6 @@ void SemanticAnalyzer::register_value_names() {
             if (has_explicit_return && is_valid(return_type)) {
                 this->validate_function_return_type(item, return_type);
             }
-            const auto* const begin = this->module_.items.data();
-            const base::usize item_index = static_cast<base::usize>(&item - begin);
             functions.register_function(
                 item,
                 this->current_module_,
@@ -579,7 +579,7 @@ void SemanticAnalyzer::register_value_names() {
                 method_owner_type,
                 return_type,
                 std::move(param_types),
-                syntax::ItemId {static_cast<base::u32>(item_index)}
+                syntax::ItemId {item_index}
             );
             if (const auto found = this->checked_.functions.find(key);
                 found != this->checked_.functions.end()) {
@@ -587,13 +587,11 @@ void SemanticAnalyzer::register_value_names() {
                 this->index_function_value(item.name, found->second);
             }
             if (!item.is_prototype && !item.is_extern_c) {
-                this->function_definition_items_[key] = syntax::ItemId {static_cast<base::u32>(item_index)};
+                this->function_definition_items_[key] = syntax::ItemId {item_index};
             }
             this->function_body_states_[key] = FunctionBodyState::not_started;
         } else if (item.kind == syntax::ItemKind::const_decl) {
             TypeHandle type = this->resolve_type(item.const_type);
-            const auto* const begin = this->module_.items.data();
-            const base::usize item_index = static_cast<base::usize>(&item - begin);
             if (item_index < this->checked_.item_c_names.size()) {
                 this->checked_.item_c_names[item_index] = c_name;
             }
@@ -778,11 +776,15 @@ void SemanticAnalyzer::analyze_entry_points() {
 }
 
 void SemanticAnalyzer::analyze_struct_properties() {
-    for (const syntax::ItemNode& item : this->module_.items) {
-        if (item.kind != syntax::ItemKind::struct_decl || this->has_generic_params(item)) {
+    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
+        if (this->module_.items.kind(index) != syntax::ItemKind::struct_decl) {
             continue;
         }
-        this->current_module_ = this->item_module(item);
+        const syntax::ItemNode item = this->module_.items[index];
+        if (this->has_generic_params(item)) {
+            continue;
+        }
+        this->current_module_ = this->item_module(syntax::ItemId {index});
         const std::string key = this->module_key(this->current_module_, item.name);
         bool contains_array = false;
         std::unordered_set<std::string> seen_fields;
@@ -832,11 +834,12 @@ void SemanticAnalyzer::analyze_const_decls() {
     const_ranges.reserve(this->module_.items.size());
     const_names.reserve(this->module_.items.size());
 
-    for (const syntax::ItemNode& item : this->module_.items) {
-        if (item.kind != syntax::ItemKind::const_decl) {
+    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
+        if (this->module_.items.kind(index) != syntax::ItemKind::const_decl) {
             continue;
         }
-        this->current_module_ = this->item_module(item);
+        const syntax::ItemNode item = this->module_.items[index];
+        this->current_module_ = this->item_module(syntax::ItemId {index});
         const std::string const_key = this->module_key(this->current_module_, item.name);
         const_ranges[const_key] = item.range;
         const_names[const_key] = this->qualified_name(this->current_module_, item.name);

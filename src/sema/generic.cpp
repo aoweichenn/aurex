@@ -294,7 +294,7 @@ void SemanticAnalyzer::register_generic_template(
     const syntax::ItemId item_id
 ) {
     this->validate_generic_parameter_list(item);
-    const syntax::ModuleId owner = this->item_module(item);
+    const syntax::ModuleId owner = this->item_module(item_id);
     GenericTemplateInfo info;
     info.item = item_id;
     info.module = owner;
@@ -490,16 +490,17 @@ std::string SemanticAnalyzer::make_generic_param_identity_key(
         key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
         key += info.params[index];
     }
-    if (syntax::is_valid(info.item) &&
-        info.item.value < this->module_.items.size() &&
-        index < this->module_.items[info.item.value].generic_params.size()) {
-        const base::SourceRange range = this->module_.items[info.item.value].generic_params[index].range;
-        key += SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER;
-        append_decimal(key, range.source.value);
-        key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
-        append_decimal(key, range.begin);
-        key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
-        append_decimal(key, range.end);
+    if (syntax::is_valid(info.item) && info.item.value < this->module_.items.size()) {
+        const syntax::ItemNode item = this->module_.items[info.item.value];
+        if (index < item.generic_params.size()) {
+            const base::SourceRange range = item.generic_params[index].range;
+            key += SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER;
+            append_decimal(key, range.source.value);
+            key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
+            append_decimal(key, range.begin);
+            key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
+            append_decimal(key, range.end);
+        }
     }
     return key;
 }
@@ -1137,7 +1138,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
         return found->second;
     }
 
-    const syntax::ItemNode& item = this->module_.items[info.item.value];
+    const syntax::ItemNode item = this->module_.items[info.item.value];
     const std::string abi_suffix = this->generic_instance_abi_suffix(args);
     const std::string qualified = this->qualified_name(info.module, item.name);
     const std::string c_name = this->c_symbol_name(
@@ -1236,7 +1237,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
         return found->second;
     }
 
-    const syntax::ItemNode& item = this->module_.items[info.item.value];
+    const syntax::ItemNode item = this->module_.items[info.item.value];
     const std::string abi_suffix = this->generic_instance_abi_suffix(args);
     const std::string qualified = this->qualified_name(info.module, item.name);
     const std::string c_name = this->c_symbol_name(
@@ -1309,7 +1310,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
         return INVALID_TYPE_HANDLE;
     }
 
-    const syntax::ItemNode& item = this->module_.items[info.item.value];
+    const syntax::ItemNode item = this->module_.items[info.item.value];
     this->resolving_type_aliases_.push_back(instance_key);
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext generic_context;
@@ -1444,7 +1445,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     const syntax::ExprNode& call,
     std::vector<TypeHandle>& args
 ) {
-    const syntax::ItemNode& function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->module_.items[info.item.value];
     if (call.args.size() != function.params.size()) {
         this->report(call.range, sema_argument_count_message(info.name));
         return false;
@@ -1510,7 +1511,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
         );
         return nullptr;
     }
-    const syntax::ItemNode& function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->module_.items[info.item.value];
 
     for (base::usize i = 0; i < info.params.size(); ++i) {
         if (!is_valid(args[i])) {
@@ -1640,7 +1641,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
             return &found->second;
         }
     }
-    const syntax::ItemNode& function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->module_.items[info.item.value];
 
     GenericContext generic_context;
     this->populate_generic_concrete_context(info, args, generic_context);
@@ -1773,7 +1774,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
         return &found->second;
     }
 
-    const syntax::ItemNode& function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->module_.items[info.item.value];
     GenericContext generic_context;
     this->populate_generic_concrete_context(info, args, generic_context);
     const syntax::ModuleId previous_module = this->current_module_;
@@ -1977,7 +1978,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
 }
 
 void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplateInfo& info) {
-    const syntax::ItemNode& function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->module_.items[info.item.value];
     GenericContext generic_context;
     this->populate_generic_placeholder_context(info, generic_context);
 

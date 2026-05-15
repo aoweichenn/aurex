@@ -471,7 +471,7 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
         out << "stmt <invalid>\n";
         return;
     }
-    const StmtNode& stmt = module.stmts[id.value];
+    const StmtNode stmt = module.stmts[id.value];
     indent(out, depth);
     out << "stmt #" << id.value << " " << stmt_kind_name(stmt.kind);
     if (!stmt.name.empty()) {
@@ -737,7 +737,7 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
         out << "item <invalid>\n";
         return;
     }
-    const ItemNode& item = module.items[id.value];
+    const ItemNode item = module.items[id.value];
     indent(out, depth);
     out << "item #" << id.value << " ";
     dump_visibility(out, item.visibility);
@@ -847,7 +847,8 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
 
 [[nodiscard]] std::unordered_set<base::u32> collect_nested_items(const AstModule& module) {
     std::unordered_set<base::u32> nested;
-    for (const ItemNode& item : module.items) {
+    for (base::usize i = 0; i < module.items.size(); ++i) {
+        const ItemNode item = module.items[i];
         if (item.kind == ItemKind::extern_block) {
             for (ItemId id : item.extern_items) {
                 if (is_valid(id)) {

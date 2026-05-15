@@ -18,7 +18,7 @@ base::SourceRange ParserPartRangeReader::expr_range_or(
     if (!syntax::is_valid(id) || id.value >= this->session_.module.exprs.size()) {
         return fallback;
     }
-    return this->session_.module.exprs[id.value].range;
+    return this->session_.module.exprs.range(id.value);
 }
 
 base::SourceRange ParserPartRangeReader::stmt_range_or(
@@ -28,7 +28,7 @@ base::SourceRange ParserPartRangeReader::stmt_range_or(
     if (!syntax::is_valid(id) || id.value >= this->session_.module.stmts.size()) {
         return fallback;
     }
-    return this->session_.module.stmts[id.value].range;
+    return this->session_.module.stmts.range(id.value);
 }
 
 base::SourceRange ParserPartRangeReader::type_range_or(
@@ -38,7 +38,7 @@ base::SourceRange ParserPartRangeReader::type_range_or(
     if (!syntax::is_valid(id) || id.value >= this->session_.module.types.size()) {
         return fallback;
     }
-    return this->session_.module.types[id.value].range;
+    return this->session_.module.types.range(id.value);
 }
 
 base::SourceRange ParserPartRangeReader::pattern_range_or(
@@ -48,7 +48,7 @@ base::SourceRange ParserPartRangeReader::pattern_range_or(
     if (!syntax::is_valid(id) || id.value >= this->session_.module.patterns.size()) {
         return fallback;
     }
-    return this->session_.module.patterns[id.value].range;
+    return this->session_.module.patterns.range(id.value);
 }
 
 } // namespace aurex::parse

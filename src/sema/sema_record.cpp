@@ -252,6 +252,43 @@ TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const T
     return type;
 }
 
+TypeHandle SemanticAnalyzer::record_expr_intrinsic_type(const syntax::ExprId expr, const TypeHandle type) {
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        if (syntax::is_valid(expr)) {
+            const base::usize local_index = this->current_side_tables_.side_tables->local_expr_index(expr);
+            if (record_local_dense_slot(
+                    this->current_side_tables_.side_tables->expr_intrinsic_types,
+                    local_index,
+                    type
+                )) {
+                return type;
+            }
+            record_sparse_fallback(
+                *this->current_side_tables_.side_tables,
+                GenericSparseFallbackKind::expr_intrinsic_type,
+                local_index
+            );
+            this->current_side_tables_.side_tables->sparse_expr_intrinsic_types[expr.value] = type;
+        }
+        return type;
+    }
+    SemaTypeTable& expr_intrinsic_types = this->active_expr_intrinsic_types();
+    if (syntax::is_valid(expr)) {
+        ensure_side_table_slot(expr_intrinsic_types, expr.value);
+        expr_intrinsic_types[expr.value] = type;
+    }
+    return type;
+}
+
+TypeHandle SemanticAnalyzer::record_expr_types(
+    const syntax::ExprId expr,
+    const TypeHandle intrinsic_type,
+    const TypeHandle final_type
+) {
+    static_cast<void>(this->record_expr_intrinsic_type(expr, intrinsic_type));
+    return this->record_expr_type(expr, final_type);
+}
+
 void SemanticAnalyzer::record_expr_expected_type(
     const syntax::ExprId expr,
     const TypeHandle expected_type
@@ -305,6 +342,27 @@ void SemanticAnalyzer::record_coercion(
         to_type,
         kind,
     });
+}
+
+TypeHandle SemanticAnalyzer::cached_expr_intrinsic_type(const syntax::ExprId expr) const noexcept {
+    if (!syntax::is_valid(expr)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        const base::usize local_index = this->current_side_tables_.side_tables->local_expr_index(expr);
+        if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            local_index < this->current_side_tables_.side_tables->expr_intrinsic_types.size()) {
+            return this->current_side_tables_.side_tables->expr_intrinsic_types[local_index];
+        }
+        const auto found = this->current_side_tables_.side_tables->sparse_expr_intrinsic_types.find(expr.value);
+        return found == this->current_side_tables_.side_tables->sparse_expr_intrinsic_types.end()
+            ? INVALID_TYPE_HANDLE
+            : found->second;
+    }
+    const SemaTypeTable& expr_intrinsic_types = this->current_side_tables_.side_tables == nullptr
+        ? this->checked_.expr_intrinsic_types
+        : this->current_side_tables_.side_tables->expr_intrinsic_types;
+    return expr.value < expr_intrinsic_types.size() ? expr_intrinsic_types[expr.value] : INVALID_TYPE_HANDLE;
 }
 
 TypeHandle SemanticAnalyzer::cached_expr_type(const syntax::ExprId expr) const noexcept {
@@ -440,6 +498,12 @@ SemaTypeTable& SemanticAnalyzer::active_expr_types() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_types
         : this->current_side_tables_.side_tables->expr_types;
+}
+
+SemaTypeTable& SemanticAnalyzer::active_expr_intrinsic_types() noexcept {
+    return this->current_side_tables_.side_tables == nullptr
+        ? this->checked_.expr_intrinsic_types
+        : this->current_side_tables_.side_tables->expr_intrinsic_types;
 }
 
 SemaTypeTable& SemanticAnalyzer::active_expr_expected_types() noexcept {

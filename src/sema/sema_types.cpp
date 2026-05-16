@@ -1326,7 +1326,7 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
         integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
-    return record_expr_type(expr_id, literal_type);
+    return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
@@ -1374,7 +1374,7 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
         negative_integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
-    return record_expr_type(expr_id, literal_type);
+    return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
 TypeHandle SemanticAnalyzer::analyze_float_literal(
@@ -1426,7 +1426,7 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
         parse_float_literal_checked<double>(text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_float_literal);
     }
-    return record_expr_type(expr_id, literal_type);
+    return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
 bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const {

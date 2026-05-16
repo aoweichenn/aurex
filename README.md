@@ -137,6 +137,12 @@ pattern-case caches after analysis, and use 1 KiB per-instance side-table
 blocks to keep 2000/5000+ mixed-template stress from paying a 64 KiB floor per
 instance. The remaining work is measurement policy and CI thresholds, not a
 known whole-module side-table retention path.
+Expression typing now keeps intrinsic and contextual final types separate:
+`expr_intrinsic_types` records context-free expression types, `expr_types`
+records final checked types, `expr_expected_types` keys final-cache reuse, and
+`CoercionRecord` captures contextual literal/null/slice adjustments. This closes
+the old expected-type cache-pollution path without changing IR lowering, which
+continues to consume final `expr_types`.
 Match exhaustiveness now uses a pattern matrix / usefulness witness search for
 bool, enum payload, tuple, struct, and fixed-array patterns instead of
 enumerating structural cartesian products or relying on a 4096-combination cap.

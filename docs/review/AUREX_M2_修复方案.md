@@ -77,8 +77,8 @@ let x = 1;       // 1 作为 i32 缓存
 takes_u8(1);     // expected_type=u8，但缓存返回 i32，不会重分析
 ```
 
-**开发者修复状态：** ❌ 错误（过渡态）— 加了 `expr_type_cache_depends_on_expected_type` 白名单跳过缓存，但这是临时修补。白名单会随着新增表达式类型而遗漏，且没有解决 coercion 记录问题。  
-**正确方案：** 拆为 `intrinsic_type` + `final_type` + `coercion` 三层模型，采用 synth/check 双向类型检查
+**开发者修复状态：** ✅ 已关闭 — 当前 checked/generic side table 已拆成 `expr_intrinsic_types`、`expr_types` contextual final table、`expr_expected_types` final-cache key 和 `CoercionRecord` overlay，不再靠白名单跳过 final cache。integer/float/null、unary/binary、slice、array/tuple literal、if/block/match 在 expected type 下保留 intrinsic type，并把 contextual final type 与 coercion 单独记录。
+**正确方案：** 已落地核心数据模型；后续只剩 `analyze_expr` 内部 helper 继续拆小和更丰富 coercion kind，不再是 P0 缓存污染问题。
 
 ---
 
@@ -476,7 +476,7 @@ Aurex vs rustc:  ~1-2×（泛型场景 Aurex 更差，冷启动更好）
 | 问题 | 修复内容 | 状态 |
 |:-----|:---------|:----:|
 | P0-3 raw pointer unsafe | `analyze_field_expr` + `analyze_index_expr` 加 `require_unsafe_context` | ✅ |
-| P0-1 expression cache | 加 `expr_type_cache_depends_on_expected_type` 检查 | ✅ 部分 |
+| P0-1 expression cache | 已拆成 intrinsic/final/expected/coercion overlay，不再靠白名单跳过 cache | ✅ |
 | P0-2 &expr 双语义 | 删除根据 expected type 转 pointer 的代码 | ✅ |
 | 新增测试 | `raw_pointer_field_requires_unsafe` 等 5 个 negative test | ✅ |
 
@@ -670,25 +670,25 @@ let p: *const i32 = unsafe { ptrat[*const i32](ptraddr(&x)) };
 
 #### 问题
 
-`analyze_expr(expr_id, expected_type)` 的缓存 key 只有 `ExprId`，但很多表达式类型依赖 `expected_type`。
+旧实现中 `analyze_expr(expr_id, expected_type)` 的缓存 key 只有 `ExprId`，很多表达式类型依赖 `expected_type`。
 
 **代码位置：** `sema_expr.cpp:192-193`
 
 ```cpp
-// 当前（已加临时修复）：
-const bool can_use_cached =
-    !is_valid(expected_type) ||
-    !expr_type_cache_depends_on_expected_type(expr);
-if (can_use_cached && is_valid(expr_types[expr_id.value])) {
-    return expr_types[expr_id.value];
-}
+// 当前：
+// expr_intrinsic_types[expr] = 表达式自身类型
+// expr_types[expr] = contextual final type
+// expr_expected_types[expr] = final cache key
+// coercions[] = explicit coercion/adjustment overlay
 ```
 
-**问题：** 当前修法只是跳过缓存，没有真正解决 expected_type 感知的类型推导。
+**当前状态：** 已不再靠跳过缓存规避污染；final cache 由 expected type keyed，intrinsic type 与 coercion overlay 独立保存。
 
 #### 修复方案：Bidirectional Type Checking + Coercion Overlay
 
-**改动文件：** `include/aurex/sema/sema.hpp` + `src/sema/sema_expr.cpp` + `include/aurex/sema/checked_module.hpp`
+**当前落地文件：** `include/aurex/sema/checked_module.hpp`、`include/aurex/sema/sema.hpp`、`src/sema/sema_record.cpp`、`src/sema/sema_expr.cpp`、`src/sema/sema_types.cpp`、`src/sema/match.cpp`
+
+**已落地边界：** `expr_intrinsic_types` 保存表达式自身类型，`expr_types` 保存 contextual final type，`expr_expected_types` 作为 final cache key，`CoercionRecord` 记录 contextual integer/float literal、`null_to_pointer` 和 slice coercion。主模块和 generic instance side table 都同步支持 intrinsic/final，dense 和 sparse fallback 行为一致。IR lowering 继续读取 final `expr_types`，不会被 intrinsic overlay 影响。
 
 **Step 1：定义新类型系统**
 
@@ -1115,8 +1115,7 @@ P1 性能缺陷:  6/6  ❌（未开始）
 
 ```
 🔴 第一优先：语义修复（Phase 1）
-   已修复 ✅ raw pointer unsafe、&expr、cache（仍需双层拆法）
-   待修复 ❌ return null LUB
+   已修复 ✅ raw pointer unsafe、&expr、cache（intrinsic/final/coercion 已拆）、return null LUB
 
 🔴 第二优先：性能修复（Phase 2）  
    已修复 ✅ side table 稀疏化、pattern matrix / witness search、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
@@ -1485,8 +1484,7 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
 
 ```
 🔴 第一优先：语义修复（Phase 1）
-   已修复 ✅ raw pointer unsafe、&expr、cache（仍需双层拆法）
-   待修复 ❌ return null LUB
+   已修复 ✅ raw pointer unsafe、&expr、cache（intrinsic/final/coercion 已拆）、return null LUB
 
 🔴 第二优先：性能修复（Phase 2）  
    已修复 ✅ side table 稀疏化、pattern matrix / witness search、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack

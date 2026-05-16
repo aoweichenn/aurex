@@ -828,15 +828,19 @@ private:
         const base::SourceRange& range,
         bool report_unknown = true
     );
+    [[nodiscard]] TypeHandle record_expr_intrinsic_type(syntax::ExprId expr, TypeHandle type);
+    [[nodiscard]] TypeHandle record_expr_types(syntax::ExprId expr, TypeHandle intrinsic_type, TypeHandle final_type);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type);
     void record_expr_expected_type(syntax::ExprId expr, TypeHandle expected_type);
     void record_coercion(syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, CoercionKind kind);
+    [[nodiscard]] TypeHandle cached_expr_intrinsic_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_expected_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type_for_expected(syntax::ExprId expr, TypeHandle expected_type) const noexcept;
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] std::string_view cached_expr_c_name(syntax::ExprId expr) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
+    [[nodiscard]] SemaTypeTable& active_expr_intrinsic_types() noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_types() noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_expected_types() noexcept;
     [[nodiscard]] SemaIdentTable& active_expr_c_name_ids() noexcept;

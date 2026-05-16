@@ -469,9 +469,13 @@ void SemanticAnalyzer::ensure_expr_side_table_size(const base::usize size) {
         static_cast<void>(size);
         return;
     }
+    SemaTypeTable& expr_intrinsic_types = this->active_expr_intrinsic_types();
     SemaTypeTable& expr_types = this->active_expr_types();
     SemaTypeTable& expr_expected_types = this->active_expr_expected_types();
     SemaIdentTable& expr_c_name_ids = this->active_expr_c_name_ids();
+    if (expr_intrinsic_types.size() < size) {
+        expr_intrinsic_types.resize(size, INVALID_TYPE_HANDLE);
+    }
     if (expr_types.size() < size) {
         expr_types.resize(size, INVALID_TYPE_HANDLE);
     }

@@ -151,6 +151,7 @@ struct GenericNodeSpan {
 };
 
 enum class GenericSparseFallbackKind {
+    expr_intrinsic_type,
     expr_type,
     expr_expected_type,
     expr_c_name,
@@ -161,6 +162,7 @@ enum class GenericSparseFallbackKind {
 };
 
 struct GenericSparseFallbackStats {
+    base::usize expr_intrinsic_types = 0;
     base::usize expr_types = 0;
     base::usize expr_expected_types = 0;
     base::usize expr_c_name_ids = 0;
@@ -170,7 +172,8 @@ struct GenericSparseFallbackStats {
     base::usize stmt_local_types = 0;
 
     [[nodiscard]] base::usize total() const noexcept {
-        return this->expr_types +
+        return this->expr_intrinsic_types +
+               this->expr_types +
                this->expr_expected_types +
                this->expr_c_name_ids +
                this->pattern_c_name_ids +
@@ -219,12 +222,14 @@ public:
     SemaIndexTable pattern_node_ids;
     SemaIndexTable type_node_ids;
     SemaIndexTable stmt_node_ids;
+    SemaTypeTable expr_intrinsic_types;
     SemaTypeTable expr_types;
     SemaTypeTable expr_expected_types;
     SemaIdentTable expr_c_name_ids;
     SemaIdentTable pattern_c_name_ids;
     SemaTypeTable syntax_type_handles;
     SemaTypeTable stmt_local_types;
+    SemaMap<base::u32, TypeHandle> sparse_expr_intrinsic_types;
     SemaMap<base::u32, TypeHandle> sparse_expr_types;
     SemaMap<base::u32, TypeHandle> sparse_expr_expected_types;
     SemaMap<base::u32, IdentId> sparse_expr_c_name_ids;
@@ -372,6 +377,7 @@ public:
     // side-table based so AST nodes remain parse-only data.
     IdentifierInterner c_names;
     TypeTable types;
+    SemaTypeTable expr_intrinsic_types;
     SemaTypeTable expr_types;
     SemaTypeTable expr_expected_types;
     SemaIdentTable expr_c_name_ids;

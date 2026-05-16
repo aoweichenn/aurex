@@ -400,6 +400,7 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
         this->module_.stmts.size(),
         this->module_.items.size()
     );
+    this->checked_.expr_intrinsic_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
     this->checked_.expr_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
     this->checked_.prepare_analysis_only_storage(this->module_.exprs.size());
     this->checked_.expr_expected_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);

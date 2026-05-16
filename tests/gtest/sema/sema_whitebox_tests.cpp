@@ -2384,6 +2384,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables) {
         sema::SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX
     );
     EXPECT_EQ(side_tables.layout, nullptr);
+    EXPECT_EQ(side_tables.expr_intrinsic_types.size(), side_tables.expr_span.count);
     EXPECT_EQ(side_tables.expr_types.size(), side_tables.expr_span.count);
     EXPECT_TRUE(side_tables.expr_expected_types.empty());
     EXPECT_EQ(side_tables.expr_c_name_ids.size(), side_tables.expr_span.count);
@@ -2394,7 +2395,9 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables) {
     const base::usize value_local = side_tables.local_expr_index(value);
     ASSERT_NE(value_local, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     ASSERT_LT(value_local, side_tables.expr_types.size());
+    EXPECT_TRUE(sema::is_valid(side_tables.expr_intrinsic_types[value_local]));
     EXPECT_TRUE(sema::is_valid(side_tables.expr_types[value_local]));
+    EXPECT_TRUE(side_tables.sparse_expr_intrinsic_types.empty());
     EXPECT_TRUE(side_tables.sparse_expr_types.empty());
     EXPECT_TRUE(side_tables.sparse_expr_expected_types.empty());
     EXPECT_TRUE(side_tables.sparse_fallbacks.empty());
@@ -2536,6 +2539,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
 
     sema::GenericSideTables dense_side_tables;
     analyzer.current_side_tables_.side_tables = &dense_side_tables;
+    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
     static_cast<void>(analyzer.record_expr_type(expr_id, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
     analyzer.record_expr_c_name(expr_id, "dense_expr");
@@ -2546,6 +2550,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     analyzer.record_syntax_type_handle(type_id, i32);
     analyzer.record_stmt_local_type(stmt_id, i64);
 
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(expr_id), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_expected_type(expr_id), i64));
     EXPECT_TRUE(types.same(analyzer.cached_syntax_type(type_id), i32));
@@ -2556,11 +2561,13 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
         analyzer.checked_.intern_c_name("DenseAlternative")
     ));
     EXPECT_TRUE(types.same(dense_side_tables.stmt_local_types[stmt_id.value], i64));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(missing_type_id)));
     EXPECT_TRUE(analyzer.cached_expr_c_name(missing_expr_id).empty());
     EXPECT_TRUE(analyzer.cached_pattern_c_name(missing_pattern_id).empty());
+    EXPECT_EQ(&analyzer.active_expr_intrinsic_types(), &dense_side_tables.expr_intrinsic_types);
     EXPECT_EQ(&analyzer.active_expr_types(), &dense_side_tables.expr_types);
     EXPECT_EQ(&analyzer.active_expr_expected_types(), &dense_side_tables.expr_expected_types);
     EXPECT_EQ(&analyzer.active_expr_c_name_ids(), &dense_side_tables.expr_c_name_ids);
@@ -2576,6 +2583,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     sparse_side_tables.sparse = true;
     analyzer.current_side_tables_.side_tables = &sparse_side_tables;
     analyzer.current_side_tables_.cache_syntax_types = true;
+    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i64));
     static_cast<void>(analyzer.record_expr_type(expr_id, i64));
     static_cast<void>(analyzer.record_expr_type(syntax::INVALID_EXPR_ID, i64));
     analyzer.record_expr_expected_type(expr_id, i32);
@@ -2588,6 +2596,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     analyzer.record_syntax_type_handle(syntax::INVALID_TYPE_ID, i32);
     analyzer.record_stmt_local_type(stmt_id, i32);
 
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(expr_id), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_expected_type(expr_id), i32));
     EXPECT_TRUE(types.same(analyzer.cached_syntax_type(type_id), i64));
@@ -2598,8 +2607,10 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
         analyzer.checked_.intern_c_name("SparseAlternative")
     ));
     EXPECT_TRUE(types.same(sparse_side_tables.sparse_stmt_local_types[stmt_id.value], i32));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(syntax::INVALID_EXPR_ID)));
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(syntax::INVALID_TYPE_ID)));
@@ -2621,6 +2632,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     );
     analyzer.current_side_tables_.side_tables = &local_side_tables;
     analyzer.current_side_tables_.cache_syntax_types = true;
+    static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
     static_cast<void>(analyzer.record_expr_type(expr_id, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
     analyzer.record_expr_c_name(expr_id, "local_expr");
@@ -2636,12 +2648,14 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     ASSERT_NE(local_pattern, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     ASSERT_NE(local_type, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     ASSERT_NE(local_stmt, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    EXPECT_TRUE(types.same(local_side_tables.expr_intrinsic_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_expected_types[local_expr], i64));
     EXPECT_EQ(analyzer.checked_.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
     EXPECT_EQ(analyzer.checked_.c_name_text(local_side_tables.pattern_c_name_ids[local_pattern]), "local_pattern");
     EXPECT_TRUE(types.same(local_side_tables.syntax_type_handles[local_type], i32));
     EXPECT_TRUE(types.same(local_side_tables.stmt_local_types[local_stmt], i64));
+    EXPECT_TRUE(local_side_tables.sparse_expr_intrinsic_types.empty());
     EXPECT_TRUE(local_side_tables.sparse_expr_types.empty());
     EXPECT_TRUE(local_side_tables.sparse_expr_expected_types.empty());
     EXPECT_TRUE(local_side_tables.sparse_expr_c_name_ids.empty());
@@ -2670,6 +2684,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
         sparse_type_ids,
         sparse_stmt_ids
     );
+    EXPECT_EQ(sparse_local_side_tables.expr_intrinsic_types.size(), sparse_expr_ids.size());
     EXPECT_EQ(sparse_local_side_tables.expr_types.size(), sparse_expr_ids.size());
     EXPECT_EQ(sparse_local_side_tables.pattern_c_name_ids.size(), sparse_pattern_ids.size());
     EXPECT_EQ(sparse_local_side_tables.syntax_type_handles.size(), sparse_type_ids.size());
@@ -2682,6 +2697,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     );
     analyzer.current_side_tables_.side_tables = &sparse_local_side_tables;
     analyzer.current_side_tables_.cache_syntax_types = true;
+    static_cast<void>(analyzer.record_expr_intrinsic_type(ExprId {sparse_expr_ids.front() + 1U}, i32));
     static_cast<void>(analyzer.record_expr_type(ExprId {sparse_expr_ids.front() + 1U}, i32));
     analyzer.record_expr_expected_type(ExprId {sparse_expr_ids.front() + 1U}, i64);
     analyzer.record_expr_c_name(ExprId {sparse_expr_ids.front() + 1U}, "sparse_local_expr");
@@ -2698,6 +2714,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     );
     analyzer.record_syntax_type_handle(TypeId {sparse_type_ids.front() + 1U}, i32);
     analyzer.record_stmt_local_type(syntax::StmtId {sparse_stmt_ids.front() + 1U}, i64);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_intrinsic_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_expected_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_c_name_ids, 1U);
@@ -2705,7 +2722,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.pattern_case_name_ids, 3U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.syntax_type_handles, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.stmt_local_types, 1U);
-    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.total(), 9U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.total(), 10U);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
@@ -2739,6 +2756,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
 
     sema::GenericSideTables side_tables;
     side_tables.sparse = true;
+    side_tables.expr_intrinsic_types.push_back(i32);
     side_tables.expr_types.push_back(i32);
     side_tables.prepare_analysis_only_storage(1U);
     side_tables.expr_expected_types.push_back(i64);
@@ -2746,6 +2764,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     side_tables.pattern_c_name_ids.push_back(beta_id);
     side_tables.syntax_type_handles.push_back(i32);
     side_tables.stmt_local_types.push_back(i64);
+    side_tables.sparse_expr_intrinsic_types.emplace(3U, i32);
     side_tables.sparse_expr_types.emplace(4U, i32);
     side_tables.sparse_expr_expected_types.emplace(5U, i64);
     side_tables.sparse_expr_c_name_ids.emplace(6U, alpha_id);
@@ -2753,6 +2772,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     side_tables.sparse_syntax_type_handles.emplace(8U, i32);
     side_tables.sparse_stmt_local_types.emplace(9U, i64);
     side_tables.pattern_case_name_ids.insert(10, alpha_id);
+    side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_intrinsic_type);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_type);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::stmt_local_type);
     side_tables.release_analysis_only_storage();
@@ -2767,12 +2787,15 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
 
     sema::GenericSideTables side_copy(side_tables);
     EXPECT_TRUE(side_copy.sparse);
+    EXPECT_EQ(side_copy.expr_intrinsic_types.front().value, i32.value);
     EXPECT_EQ(side_copy.expr_types.front().value, i32.value);
+    EXPECT_EQ(side_copy.sparse_expr_intrinsic_types.at(3U).value, i32.value);
     EXPECT_EQ(side_copy.sparse_expr_c_name_ids.at(6U).value, alpha_id.value);
-    EXPECT_EQ(side_copy.sparse_fallbacks.total(), 2U);
+    EXPECT_EQ(side_copy.sparse_fallbacks.total(), 3U);
     sema::GenericSideTables side_assigned;
     side_assigned = side_tables;
     EXPECT_EQ(side_assigned.sparse_stmt_local_types.at(9U).value, i64.value);
+    EXPECT_EQ(side_assigned.sparse_fallbacks.expr_intrinsic_types, 1U);
     EXPECT_EQ(side_assigned.sparse_fallbacks.expr_types, 1U);
     sema::GenericSideTables side_moved(std::move(side_copy));
     EXPECT_TRUE(side_moved.pattern_case_name_ids[10].contains(alpha_id));
@@ -2780,10 +2803,11 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     sema::GenericSideTables side_move_assigned;
     side_move_assigned = std::move(side_assigned);
     EXPECT_EQ(side_move_assigned.syntax_type_handles.front().value, i32.value);
-    EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 2U);
+    EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 3U);
 
     sema::CheckedModule checked;
     const IdentId checked_c_name = checked.intern_c_name("m0_test");
+    checked.expr_intrinsic_types.push_back(i32);
     checked.expr_types.push_back(i32);
     checked.prepare_analysis_only_storage(1U);
     checked.expr_expected_types.push_back(i64);
@@ -2871,12 +2895,14 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
         checked.generic_side_table_layout(instance.side_table_layout_index);
     ASSERT_NE(instance_layout, nullptr);
     instance.side_tables.configure_local_dense(*instance_layout);
+    instance.side_tables.expr_intrinsic_types.front() = i32;
     instance.side_tables.expr_types.front() = i32;
     instance.side_tables.expr_expected_types.front() = i64;
     checked.generic_function_instances.push_back(std::move(instance));
 
     sema::CheckedModule checked_copy(checked);
     ASSERT_EQ(checked_copy.functions.size(), 1U);
+    EXPECT_EQ(checked_copy.expr_intrinsic_types.front().value, i32.value);
     EXPECT_EQ(checked_copy.c_name_text(checked_copy.expr_c_name_ids.front()), "m0_test");
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.name, "f");
     EXPECT_EQ(checked_copy.generic_side_table_layouts.size(), 1U);
@@ -3248,6 +3274,7 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.checked_.prepare_analysis_only_storage(module.exprs.size());
     analyzer.checked_.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
@@ -3260,8 +3287,13 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
 
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal), i32));
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal, i64), i64));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_intrinsic_types[integer_literal.value], i32));
     EXPECT_TRUE(types.same(analyzer.checked_.expr_types[integer_literal.value], i64));
     EXPECT_TRUE(types.same(analyzer.checked_.expr_expected_types[integer_literal.value], i64));
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal), i32));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_intrinsic_types[integer_literal.value], i32));
+    EXPECT_TRUE(types.same(analyzer.checked_.expr_types[integer_literal.value], i32));
+    EXPECT_FALSE(is_valid(analyzer.checked_.expr_expected_types[integer_literal.value]));
 
     EXPECT_TRUE(types.same(analyzer.analyze_expr(small_integer_literal, i64), i64));
     ASSERT_FALSE(analyzer.checked_.coercions.empty());
@@ -3282,6 +3314,66 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache) {
     EXPECT_FALSE(is_valid(null_coercion.from_type));
     EXPECT_TRUE(types.same(null_coercion.to_type, ptr_i32));
     EXPECT_EQ(null_coercion.kind, sema::CoercionKind::null_to_pointer);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxContextualExprKeepsIntrinsicAndFinalTypesSeparate) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId binary_lhs = push_integer_text(module, "1");
+    const ExprId binary_rhs = push_integer_text(module, "2");
+    const ExprId binary = module.push_binary_expr(
+        {},
+        syntax::BinaryExprPayload {syntax::BinaryOp::add, binary_lhs, binary_rhs}
+    );
+
+    const ExprId array_first = push_integer_text(module, "3");
+    const ExprId array_second = push_integer_text(module, "4");
+    const ExprId array = module.push_array_expr({}, std::vector<ExprId> {array_first, array_second});
+
+    const ExprId tuple_first = push_integer_text(module, "5");
+    const ExprId tuple_second = push_integer_text(module, "6");
+    const ExprId tuple = module.push_tuple_expr({}, std::vector<ExprId> {tuple_first, tuple_second});
+
+    const ExprId condition = push_bool(module, "true");
+    const ExprId then_value = push_integer_text(module, "7");
+    const ExprId else_value = push_integer_text(module, "8");
+    const ExprId if_expr = module.push_if_expr(
+        {},
+        syntax::IfExprPayload {condition, syntax::INVALID_PATTERN_ID, then_value, else_value}
+    );
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.checked_.prepare_analysis_only_storage(module.exprs.size());
+    analyzer.checked_.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle i64 = types.builtin(BuiltinType::i64);
+    const TypeHandle array_i64 = types.array(2, i64);
+    const TypeHandle array_i32 = types.array(2, i32);
+    const TypeHandle tuple_i64 = types.tuple(std::vector<TypeHandle> {i64, i64});
+    const TypeHandle tuple_i32 = types.tuple(std::vector<TypeHandle> {i32, i32});
+
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(binary, i64), i64));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(binary), i32));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(binary), i64));
+
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(array, array_i64), array_i64));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(array), array_i32));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(array), array_i64));
+
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(tuple, tuple_i64), tuple_i64));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(tuple), tuple_i32));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(tuple), tuple_i64));
+
+    EXPECT_TRUE(types.same(analyzer.analyze_expr(if_expr, i64), i64));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(if_expr), i32));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(if_expr), i64));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {

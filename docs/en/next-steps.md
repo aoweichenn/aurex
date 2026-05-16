@@ -115,6 +115,19 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    performance thresholds rather than reintroducing whole-AST copies or per-node
    heap string/vector side tables.
 
+11. Expression type-cache closure
+
+   Contextual expression typing no longer relies on a final-only expression type
+   cache. Checked and generic side tables now store `expr_intrinsic_types` for
+   context-free expression types, `expr_types` for contextual final types,
+   `expr_expected_types` as the final-cache key, and `CoercionRecord` entries for
+   explicit adjustments such as contextual integer/float literals, `null` to
+   pointer, and slice coercions. Integer/float/null literals, unary/binary
+   expressions, slices, array/tuple literals, and if/block/match expressions keep
+   intrinsic types separate from final types under an expected type. Future work
+   here is smaller internal `analyze_expr` decomposition and richer coercion
+   categories, not a P0 cache-pollution fix.
+
 ## Explicitly Deferred
 
 - std containers, file/dir/process/console APIs.

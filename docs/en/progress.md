@@ -116,6 +116,15 @@ be stressed independently from IR/codegen; `tools/generic_stress.py
 --shape=templates` covers many distinct generic templates at 2000/5000+ scale.
 IR/native output mode keeps the lowering tables so codegen behavior stays
 unchanged.
+The expression P0 semantics line now separates intrinsic and final expression
+types. Checked and generic side tables contain `expr_intrinsic_types` for
+context-free expression types, `expr_types` for contextual final types,
+`expr_expected_types` as the final-cache key, and `CoercionRecord` overlay
+entries for contextual integer/float literals, `null` to pointer, and slice
+coercions. Integer/float/null literals, unary/binary expressions, slices,
+array/tuple literals, and if/block/match expressions keep intrinsic types
+separate from final types under expected-type analysis. IR lowering continues to
+read the final `expr_types` table.
 The AST main path now follows the P0-Perf-4 plan: the driver owns the
 parser/module AST and passes a mutable reference through sema and IR lowering,
 `SemanticAnalyzer(const AstModule&)` is deleted to prevent implicit whole-tree

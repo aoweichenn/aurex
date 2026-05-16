@@ -1267,6 +1267,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     }
 
     TypeHandle result = INVALID_TYPE_HANDLE;
+    TypeHandle intrinsic_result = INVALID_TYPE_HANDLE;
+    bool intrinsic_result_conflicted = false;
     std::vector<base::SourceRange> pending_null_arm_ranges;
     const auto resolve_pending_null_arms = [&]() {
         if (!is_valid(result) || pending_null_arm_ranges.empty()) {
@@ -1314,6 +1316,16 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             pending_null_arm_ranges.push_back(this->module_.exprs.range(arm.value.value));
             continue;
         }
+        const TypeHandle arm_intrinsic = this->cached_expr_intrinsic_type(arm.value);
+        if (is_valid(arm_intrinsic)) {
+            if (!is_valid(intrinsic_result) && !intrinsic_result_conflicted) {
+                intrinsic_result = arm_intrinsic;
+            } else if (is_valid(intrinsic_result) &&
+                       !this->checked_.types.same(intrinsic_result, arm_intrinsic)) {
+                intrinsic_result = INVALID_TYPE_HANDLE;
+                intrinsic_result_conflicted = true;
+            }
+        }
         if (!is_valid(result)) {
             result = arm_type;
             resolve_pending_null_arms();
@@ -1344,7 +1356,10 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         this->report(expr.range, std::string(SEMA_MATCH_RESULT_VOID));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    return this->record_expr_type(expr_id, result);
+    if (!is_valid(intrinsic_result) && !intrinsic_result_conflicted && !is_valid(expected_type)) {
+        intrinsic_result = result;
+    }
+    return this->record_expr_types(expr_id, intrinsic_result, result);
 }
 
 const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(

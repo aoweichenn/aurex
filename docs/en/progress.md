@@ -142,8 +142,10 @@ through the current `AstModule`, and sema typed lookup keys reuse that AST
 module interner instead of maintaining a second private interner. Function,
 type, value, generic-template, enum-case, struct-field, method/member, and
 local-scope lookup now use `IdentId` typed indexes; checked-module maps no
-longer keep parallel string-key lookup paths, and strings remain only as
-ABI/display, dump, and diagnostic payload text. The 2026-05-16
+longer keep parallel string-key lookup paths. ABI/display/dump text is also
+stored through the bump-backed `IdentifierInterner`; `FunctionSignature`,
+`Symbol`, `StructInfo`, `EnumCaseInfo`, `TypeAliasInfo`, and `TypeInfo` keep
+`InternedText` / typed ids instead of heap-backed `std::string` payloads. The 2026-05-16
 performance line then removed the old fat `ExprNode` production type entirely:
 parser construction, `AstModule` storage, module-loader append, and postfix
 materialization now create compact expression headers plus per-kind payloads
@@ -170,7 +172,10 @@ estimated token capacity that will never be written. Sema persistent storage now
 `SymbolTable`, analyzer lookup/cache tables, sema value payload lists
 (`FunctionSignature` params/generic args, `StructInfo` fields, `EnumCaseInfo`
 payloads, `TypeInfo` tuple/function/generic args), generic template parameter
-lists, and generic constraint buckets; generic function instances use a
+lists, and generic constraint buckets. Persistent sema name / c-name /
+discriminant-text / generic-key fields are `InternedText`, and `CheckedModule`,
+`TypeTable`, and `SymbolTable` copies re-intern text into the destination arena
+instead of cloning string buffers. Generic function instances use a
 bump-backed deque so side-table
 references remain stable during nested generic instantiation; retained generic
 instances use function-local NodeSpan side tables and share module-level sparse

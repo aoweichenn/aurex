@@ -1,6 +1,8 @@
 #include <aurex/ir/pass_pipeline.hpp>
 #include <gtest/support/ir_test_helpers.hpp>
 
+#include <utility>
+
 namespace aurex::test {
 namespace {
 
@@ -15,18 +17,18 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "local_slot", i32);
         FunctionBuilder builder {module, function};
-        Value slot;
+        Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
         const ValueId slot_id = builder.add(slot);
-        const ValueId one = builder.add(integer_value(i32, "1"));
-        Value store;
+        const ValueId one = builder.add(integer_value(module, i32, "1"));
+        Value store = module.make_value();
         store.kind = ValueKind::store;
         store.type = builtin(module, BuiltinType::void_);
         store.object = slot_id;
         store.lhs = one;
         const ValueId store_id = builder.add(store);
-        Value load;
+        Value load = module.make_value();
         load.kind = ValueKind::load;
         load.type = i32;
         load.object = slot_id;
@@ -35,7 +37,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         function.blocks[entry.value].values = {slot_id, one, store_id, load_id};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = load_id;
-        module.functions.push_back(function);
+        append_function(module, function);
 
         PassPipelineOptions options;
         options.optimization_level = ir::OptimizationLevel::basic;
@@ -55,7 +57,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         Function function = make_function(module, "same_target", i32);
         FunctionBuilder builder {module, function};
         const ValueId condition = builder.add(bool_value(module, true));
-        const ValueId result = builder.add(integer_value(i32, "3"));
+        const ValueId result = builder.add(integer_value(module, i32, "3"));
         const BlockId entry = builder.block("entry");
         const BlockId exit = builder.block("exit");
         function.blocks[entry.value].values = {condition};
@@ -66,7 +68,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         function.blocks[exit.value].values = {result};
         function.blocks[exit.value].terminator.kind = TerminatorKind::return_;
         function.blocks[exit.value].terminator.value = result;
-        module.functions.push_back(function);
+        append_function(module, function);
 
         PassPipelineOptions options;
         options.optimization_level = ir::OptimizationLevel::basic;
@@ -85,38 +87,34 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
         const TypeHandle ptr_record = ptr(module, PointerMutability::mut, record_type);
-        module.records.push_back(RecordLayout {
-            record_type,
-            "unit.Record",
-            "unit_Record",
-            false,
-            {RecordField {"x", i32}},
-        });
+        RecordLayout record = record_layout(module, record_type, "unit.Record", "unit_Record", false);
+        record.fields.push_back(record_field(module, "x", i32));
+        append_record(module, std::move(record));
         Function function = make_function(module, "escape_uses", i32);
         FunctionBuilder builder {module, function};
-        Value slot;
+        Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_record;
         const ValueId slot_id = builder.add(slot);
-        Value field;
+        Value field = module.make_value();
         field.kind = ValueKind::field_addr;
         field.type = ptr(module, PointerMutability::mut, i32);
         field.object = slot_id;
-        field.name = "x";
+        set_name(module, field, "x");
         const ValueId field_id = builder.add(field);
-        Value aggregate;
+        Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = record_type;
-        aggregate.fields.push_back({"x", builder.add(integer_value(i32, "1"))});
+        aggregate.fields.push_back(field_value(module, "x", builder.add(integer_value(module, i32, "1"))));
         const ValueId aggregate_id = builder.add(aggregate);
-        Value cast;
+        Value cast = module.make_value();
         cast.kind = ValueKind::cast;
         cast.type = ptr_record;
         cast.target_type = ptr_record;
         cast.cast_kind = CastKind::pointer;
         cast.lhs = slot_id;
         const ValueId cast_id = builder.add(cast);
-        const ValueId result = builder.add(integer_value(i32, "0"));
+        const ValueId result = builder.add(integer_value(module, i32, "0"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values = {
             slot_id,
@@ -128,7 +126,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         };
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = result;
-        module.functions.push_back(function);
+        append_function(module, function);
 
         PassPipelineOptions options;
         options.optimization_level = ir::OptimizationLevel::basic;
@@ -138,7 +136,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
     {
         Module module;
         Function function = make_function(module, "empty", builtin(module, BuiltinType::i32), Linkage::extern_c, AbiCallConv::c);
-        module.functions.push_back(function);
+        append_function(module, function);
         PassPipelineOptions options;
         options.optimization_level = ir::OptimizationLevel::basic;
         ASSERT_TRUE(ir::run_pass_pipeline(module, options));
@@ -150,8 +148,8 @@ TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     Function function = make_function(module, "unreachable_phi", i32);
     FunctionBuilder builder {module, function};
-    const ValueId one = builder.add(integer_value(i32, "1"));
-    const ValueId two = builder.add(integer_value(i32, "2"));
+    const ValueId one = builder.add(integer_value(module, i32, "1"));
+    const ValueId two = builder.add(integer_value(module, i32, "2"));
     const BlockId entry = builder.block("entry");
     const BlockId dead = builder.block("dead");
     const BlockId join = builder.block("join");
@@ -161,7 +159,7 @@ TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
     function.blocks[dead.value].values = {two};
     function.blocks[dead.value].terminator.kind = TerminatorKind::branch;
     function.blocks[dead.value].terminator.target = join;
-    Value phi;
+    Value phi = module.make_value();
     phi.kind = ValueKind::phi;
     phi.type = i32;
     phi.incoming = {PhiInput {entry, one}, PhiInput {dead, two}};
@@ -169,7 +167,7 @@ TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
     function.blocks[join.value].values = {phi_id};
     function.blocks[join.value].terminator.kind = TerminatorKind::return_;
     function.blocks[join.value].terminator.value = phi_id;
-    module.functions.push_back(function);
+    append_function(module, function);
 
     PassPipelineOptions options;
     options.optimization_level = ir::OptimizationLevel::basic;
@@ -200,51 +198,51 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
 
     Function function = make_function(module, "scalar_kinds", i32);
     FunctionBuilder builder {module, function};
-    Value text_value;
+    Value text_value = module.make_value();
     text_value.kind = ValueKind::string_literal;
     text_value.type = str_type;
-    text_value.text = "\"scalar kinds\"";
+    set_text(module, text_value, "\"scalar kinds\"");
     const ValueId string_value = builder.add(text_value);
 
-    Value bool_slot;
+    Value bool_slot = module.make_value();
     bool_slot.kind = ValueKind::alloca;
     bool_slot.type = ptr_bool;
     const ValueId bool_slot_id = builder.add(bool_slot);
-    Value float_slot;
+    Value float_slot = module.make_value();
     float_slot.kind = ValueKind::alloca;
     float_slot.type = ptr_f64;
     const ValueId float_slot_id = builder.add(float_slot);
-    Value pointer_slot;
+    Value pointer_slot = module.make_value();
     pointer_slot.kind = ValueKind::alloca;
     pointer_slot.type = ptr_ptr_i32;
     const ValueId pointer_slot_id = builder.add(pointer_slot);
-    Value enum_slot;
+    Value enum_slot = module.make_value();
     enum_slot.kind = ValueKind::alloca;
     enum_slot.type = ptr_enum;
     const ValueId enum_slot_id = builder.add(enum_slot);
-    Value str_data;
+    Value str_data = module.make_value();
     str_data.kind = ValueKind::str_data;
     str_data.type = const_u8_ptr;
     str_data.object = string_value;
     const ValueId string_data = builder.add(str_data);
-    Value str_byte_len;
+    Value str_byte_len = module.make_value();
     str_byte_len.kind = ValueKind::str_byte_len;
     str_byte_len.type = usize;
     str_byte_len.object = string_value;
     const ValueId string_byte_len = builder.add(str_byte_len);
-    Value from_bytes;
+    Value from_bytes = module.make_value();
     from_bytes.kind = ValueKind::str_from_bytes_unchecked;
     from_bytes.type = str_type;
     from_bytes.args = {string_data, string_byte_len};
     const ValueId rebuilt_string = builder.add(from_bytes);
-    Value str_slice;
+    Value str_slice = module.make_value();
     str_slice.kind = ValueKind::str_slice_checked;
     str_slice.type = str_type;
     str_slice.object = string_value;
     str_slice.lhs = string_byte_len;
     str_slice.rhs = string_byte_len;
     const ValueId sliced_string = builder.add(str_slice);
-    const ValueId result = builder.add(integer_value(i32, "0"));
+    const ValueId result = builder.add(integer_value(module, i32, "0"));
     const BlockId entry = builder.block("entry");
     function.blocks[entry.value].values = {
         bool_slot_id,
@@ -260,7 +258,7 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
     };
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = result;
-    module.functions.push_back(function);
+    append_function(module, function);
 
     PassPipelineOptions options;
     options.optimization_level = ir::OptimizationLevel::basic;
@@ -278,49 +276,49 @@ TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses) {
 
     Function function = make_function(module, "slice_uses", i32);
     FunctionBuilder builder {module, function};
-    Value pointer_slot;
+    Value pointer_slot = module.make_value();
     pointer_slot.kind = ValueKind::alloca;
     pointer_slot.type = ptr(module, PointerMutability::mut, ptr_i32);
     const ValueId pointer_slot_id = builder.add(pointer_slot);
-    Value length_slot;
+    Value length_slot = module.make_value();
     length_slot.kind = ValueKind::alloca;
     length_slot.type = ptr(module, PointerMutability::mut, usize);
     const ValueId length_slot_id = builder.add(length_slot);
-    Value loaded_pointer;
+    Value loaded_pointer = module.make_value();
     loaded_pointer.kind = ValueKind::load;
     loaded_pointer.type = ptr_i32;
     loaded_pointer.object = pointer_slot_id;
     const ValueId loaded_pointer_id = builder.add(loaded_pointer);
-    Value loaded_length;
+    Value loaded_length = module.make_value();
     loaded_length.kind = ValueKind::load;
     loaded_length.type = usize;
     loaded_length.object = length_slot_id;
     const ValueId loaded_length_id = builder.add(loaded_length);
-    Value slice_value;
+    Value slice_value = module.make_value();
     slice_value.kind = ValueKind::slice;
     slice_value.type = slice_i32;
     slice_value.lhs = loaded_pointer_id;
     slice_value.rhs = loaded_length_id;
     const ValueId slice_id = builder.add(slice_value);
-    Value slice_data;
+    Value slice_data = module.make_value();
     slice_data.kind = ValueKind::slice_data;
     slice_data.type = ptr_i32;
     slice_data.object = slice_id;
     const ValueId slice_data_id = builder.add(slice_data);
-    Value slice_len;
+    Value slice_len = module.make_value();
     slice_len.kind = ValueKind::slice_len;
     slice_len.type = usize;
     slice_len.object = slice_id;
     const ValueId slice_len_id = builder.add(slice_len);
-    Value array_value;
+    Value array_value = module.make_value();
     array_value.kind = ValueKind::aggregate;
     array_value.type = array_i32;
     array_value.elements = {
-        builder.add(integer_value(i32, "1")),
-        builder.add(integer_value(i32, "2")),
+        builder.add(integer_value(module, i32, "1")),
+        builder.add(integer_value(module, i32, "2")),
     };
     const ValueId array_id = builder.add(array_value);
-    const ValueId result = builder.add(integer_value(i32, "0"));
+    const ValueId result = builder.add(integer_value(module, i32, "0"));
     const BlockId entry = builder.block("entry");
     function.blocks[entry.value].values = {
         pointer_slot_id,
@@ -337,7 +335,7 @@ TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses) {
     };
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = result;
-    module.functions.push_back(function);
+    append_function(module, function);
 
     PassPipelineOptions options;
     options.optimization_level = ir::OptimizationLevel::basic;
@@ -350,7 +348,7 @@ TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch) {
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     Function function = make_function(module, "merge_redirects", i32);
     FunctionBuilder builder {module, function};
-    const ValueId result = builder.add(integer_value(i32, "7"));
+    const ValueId result = builder.add(integer_value(module, i32, "7"));
     const ValueId condition = builder.add(bool_value(module, true));
     const BlockId entry = builder.block("entry");
     const BlockId then_block = builder.block("then");
@@ -367,7 +365,7 @@ TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch) {
     function.blocks[join.value].values = {result};
     function.blocks[join.value].terminator.kind = TerminatorKind::return_;
     function.blocks[join.value].terminator.value = result;
-    module.functions.push_back(function);
+    append_function(module, function);
 
     PassPipelineOptions options;
     options.optimization_level = ir::OptimizationLevel::basic;
@@ -382,38 +380,34 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle record_type = module.types.named_struct("unit.Box", "unit_Box", false);
-    module.records.push_back(RecordLayout {
-        record_type,
-        "unit.Box",
-        "unit_Box",
-        false,
-        {RecordField {"value", i32}},
-    });
+    RecordLayout record = record_layout(module, record_type, "unit.Box", "unit_Box", false);
+    record.fields.push_back(record_field(module, "value", i32));
+    append_record(module, std::move(record));
 
     Function function = make_function(module, "rewrite_uses", i32);
     FunctionBuilder builder {module, function};
-    Value slot;
+    Value slot = module.make_value();
     slot.kind = ValueKind::alloca;
     slot.type = ptr_i32;
     const ValueId slot_id = builder.add(slot);
-    const ValueId one = builder.add(integer_value(i32, "1"));
-    Value store;
+    const ValueId one = builder.add(integer_value(module, i32, "1"));
+    Value store = module.make_value();
     store.kind = ValueKind::store;
     store.type = builtin(module, BuiltinType::void_);
     store.object = slot_id;
     store.lhs = one;
     const ValueId store_id = builder.add(store);
-    Value load;
+    Value load = module.make_value();
     load.kind = ValueKind::load;
     load.type = i32;
     load.object = slot_id;
     const ValueId load_id = builder.add(load);
-    Value aggregate;
+    Value aggregate = module.make_value();
     aggregate.kind = ValueKind::aggregate;
     aggregate.type = record_type;
-    aggregate.fields.push_back({"value", load_id});
+    aggregate.fields.push_back(field_value(module, "value", load_id));
     const ValueId aggregate_id = builder.add(aggregate);
-    Value phi;
+    Value phi = module.make_value();
     phi.kind = ValueKind::phi;
     phi.type = i32;
     const BlockId entry = builder.block("entry");
@@ -422,7 +416,7 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     function.blocks[entry.value].values = {slot_id, one, store_id, load_id, aggregate_id, phi_id};
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = load_id;
-    module.functions.push_back(function);
+    append_function(module, function);
     const GlobalConstantId constant = add_global_constant(module, GlobalConstant {"folded", "unit_folded", i32, load_id});
 
     PassPipelineOptions options;
@@ -443,29 +437,29 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "escape_shapes", i32);
         FunctionBuilder builder {module, function};
-        Value slot;
+        Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
         const ValueId slot_id = builder.add(slot);
-        const ValueId one = builder.add(integer_value(i32, "1"));
-        Value unary;
+        const ValueId one = builder.add(integer_value(module, i32, "1"));
+        Value unary = module.make_value();
         unary.kind = ValueKind::unary;
         unary.type = ptr_i32;
         unary.unary_op = UnaryOp::address_of;
         unary.lhs = slot_id;
         const ValueId unary_id = builder.add(unary);
-        Value index;
+        Value index = module.make_value();
         index.kind = ValueKind::index_addr;
         index.type = ptr_i32;
         index.object = slot_id;
         index.index = one;
         const ValueId index_id = builder.add(index);
-        const ValueId result = builder.add(integer_value(i32, "0"));
+        const ValueId result = builder.add(integer_value(module, i32, "0"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values = {slot_id, one, unary_id, index_id, result};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = result;
-        module.functions.push_back(function);
+        append_function(module, function);
 
         PassPipelineOptions options;
         options.optimization_level = ir::OptimizationLevel::basic;
@@ -478,18 +472,18 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "invalid_kept", i32);
         FunctionBuilder builder {module, function};
-        Value slot;
+        Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
         const ValueId slot_id = builder.add(slot);
-        const ValueId one = builder.add(integer_value(i32, "1"));
-        Value store;
+        const ValueId one = builder.add(integer_value(module, i32, "1"));
+        Value store = module.make_value();
         store.kind = ValueKind::store;
         store.type = builtin(module, BuiltinType::void_);
         store.object = slot_id;
         store.lhs = one;
         const ValueId store_id = builder.add(store);
-        Value load;
+        Value load = module.make_value();
         load.kind = ValueKind::load;
         load.type = i32;
         load.object = slot_id;
@@ -498,7 +492,7 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
         function.blocks[entry.value].values = {slot_id, ValueId {999}, one, store_id, load_id};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = load_id;
-        module.functions.push_back(function);
+        append_function(module, function);
 
         PassPipelineOptions options;
         options.verify_input = false;
@@ -515,7 +509,7 @@ TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi) {
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     Function function = make_function(module, "phi_target", i32);
     FunctionBuilder builder {module, function};
-    const ValueId one = builder.add(integer_value(i32, "1"));
+    const ValueId one = builder.add(integer_value(module, i32, "1"));
     const BlockId entry = builder.block("entry");
     const BlockId empty = builder.block("empty");
     const BlockId join = builder.block("join");
@@ -524,7 +518,7 @@ TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi) {
     function.blocks[entry.value].terminator.target = empty;
     function.blocks[empty.value].terminator.kind = TerminatorKind::branch;
     function.blocks[empty.value].terminator.target = join;
-    Value phi;
+    Value phi = module.make_value();
     phi.kind = ValueKind::phi;
     phi.type = i32;
     phi.incoming = {PhiInput {empty, one}};
@@ -532,7 +526,7 @@ TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi) {
     function.blocks[join.value].values = {phi_id};
     function.blocks[join.value].terminator.kind = TerminatorKind::return_;
     function.blocks[join.value].terminator.value = phi_id;
-    module.functions.push_back(function);
+    append_function(module, function);
 
     PassPipelineOptions options;
     options.optimization_level = ir::OptimizationLevel::basic;

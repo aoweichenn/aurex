@@ -22,17 +22,18 @@ sema::TypeHandle enum_payload_storage_type(const sema::TypeTable& types, const s
     return types.get(enum_type).enum_payload_storage;
 }
 
-RecordLayout make_payload_enum_record(const sema::TypeTable& types, const sema::TypeHandle enum_type) {
-    RecordLayout record;
+RecordLayout make_payload_enum_record(Module& module, const sema::TypeHandle enum_type) {
+    RecordLayout record = module.make_record_layout();
+    const sema::TypeTable& types = module.types;
     record.type = enum_type;
-    record.name = types.display_name(enum_type);
-    record.symbol = types.c_name(enum_type);
+    record.name = module.intern(types.display_name(enum_type));
+    record.symbol = module.intern(types.c_name(enum_type));
     record.fields.push_back(RecordField {
-        std::string(IR_ENUM_TAG_FIELD_NAME),
+        module.intern(IR_ENUM_TAG_FIELD_NAME),
         enum_tag_type(types, enum_type),
     });
     record.fields.push_back(RecordField {
-        std::string(IR_ENUM_PAYLOAD_FIELD_NAME),
+        module.intern(IR_ENUM_PAYLOAD_FIELD_NAME),
         enum_payload_storage_type(types, enum_type),
     });
     return record;

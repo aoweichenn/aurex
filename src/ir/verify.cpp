@@ -1,7 +1,6 @@
 #include <aurex/ir/verify.hpp>
 
 #include <aurex/ir/ir_messages.hpp>
-#include <aurex/syntax/identifier.hpp>
 
 #include <sstream>
 #include <string>
@@ -13,12 +12,6 @@
 namespace aurex::ir {
 
 namespace {
-
-struct IrVerifyIdentHash {
-    [[nodiscard]] std::size_t operator()(const syntax::IdentId id) const noexcept {
-        return std::hash<base::u32> {}(id.value);
-    }
-};
 
 enum class ConstantWorkItemKind {
     value,
@@ -85,6 +78,10 @@ public:
     }
 
 private:
+    [[nodiscard]] std::string_view text(const IrTextId id) const noexcept {
+        return this->module_.text(id);
+    }
+
     void verify_constant(const GlobalConstantId id, std::unordered_set<base::u32>& constant_stack) {
         const GlobalConstant* constant = find_global_constant(this->module_, id);
         if (constant == nullptr) {
@@ -224,17 +221,15 @@ private:
             this->fail(std::string(IR_VERIFY_AGGREGATE_RESULT_RECORD));
             return;
         }
-        syntax::IdentifierInterner seen_names;
-        seen_names.reserve(value.fields.size());
-        std::unordered_set<syntax::IdentId, IrVerifyIdentHash> seen;
+        std::unordered_set<IrTextId, sema::IdentIdHash> seen;
         seen.reserve(value.fields.size());
         for (auto field = value.fields.rbegin(); field != value.fields.rend(); ++field) {
-            if (!seen.insert(seen_names.intern(field->name)).second) {
-                this->fail(ir_verify_duplicate_aggregate_field_message(field->name));
+            if (!seen.insert(field->name).second) {
+                this->fail(ir_verify_duplicate_aggregate_field_message(this->text(field->name)));
             }
             const RecordField* expected = find_record_field(this->module_, value.type, field->name);
             if (expected == nullptr) {
-                this->fail(ir_verify_unknown_aggregate_field_message(field->name));
+                this->fail(ir_verify_unknown_aggregate_field_message(this->text(field->name)));
                 continue;
             }
             worklist.push_back(make_constant_value_work_item(field->value, expected->type));
@@ -263,18 +258,19 @@ private:
 
     void verify_function(const FunctionId function_id, const Function& function) {
         this->verify_function_symbol(function_id, function);
+        const std::string_view symbol = this->text(function.symbol);
         if (function.linkage == Linkage::extern_c && function.call_conv != AbiCallConv::c) {
-            this->fail(ir_verify_extern_function_c_abi_message(function.symbol));
+            this->fail(ir_verify_extern_function_c_abi_message(symbol));
         }
         if (function.linkage == Linkage::export_c && function.call_conv != AbiCallConv::c) {
-            this->fail(ir_verify_exported_function_c_abi_message(function.symbol));
+            this->fail(ir_verify_exported_function_c_abi_message(symbol));
         }
         if (function.is_entry) {
             if (function.linkage != Linkage::internal) {
-                this->fail(ir_verify_entry_function_internal_linkage_message(function.symbol));
+                this->fail(ir_verify_entry_function_internal_linkage_message(symbol));
             }
             if (function.call_conv != AbiCallConv::aurex) {
-                this->fail(ir_verify_entry_function_aurex_abi_message(function.symbol));
+                this->fail(ir_verify_entry_function_aurex_abi_message(symbol));
             }
             const bool no_params = function.signature_params.empty();
             bool argc_argv_params = false;
@@ -291,30 +287,30 @@ private:
                 }
             }
             if (!no_params && !argc_argv_params) {
-                this->fail(ir_verify_entry_function_parameters_message(function.symbol));
+                this->fail(ir_verify_entry_function_parameters_message(symbol));
             }
             if (!this->module_.types.same(function.return_type, this->module_.types.builtin(sema::BuiltinType::i32)) &&
                 !this->module_.types.same(function.return_type, this->module_.types.builtin(sema::BuiltinType::void_))) {
-                this->fail(ir_verify_entry_function_return_message(function.symbol));
+                this->fail(ir_verify_entry_function_return_message(symbol));
             }
         }
         if (function.linkage != Linkage::extern_c && function.blocks.empty()) {
-            this->fail(ir_verify_function_no_blocks_message(function.symbol));
+            this->fail(ir_verify_function_no_blocks_message(symbol));
         }
         if (function.linkage == Linkage::extern_c && !function.blocks.empty()) {
-            this->fail(ir_verify_extern_function_blocks_message(function.symbol));
+            this->fail(ir_verify_extern_function_blocks_message(symbol));
         }
         if (function.signature_params.size() != function.param_values.size() && !function.blocks.empty()) {
-            this->fail(ir_verify_function_parameter_count_message(function.symbol));
+            this->fail(ir_verify_function_parameter_count_message(symbol));
         }
         for (base::usize i = 0; i < function.param_values.size(); ++i) {
             const Value* value = this->get(function.param_values[i]);
             if (value == nullptr || value->kind != ValueKind::param) {
-                this->fail(ir_verify_function_non_param_message(function.symbol));
+                this->fail(ir_verify_function_non_param_message(symbol));
                 continue;
             }
             if (!this->module_.types.same(value->type, function.signature_params[i].type)) {
-                this->fail(ir_verify_function_parameter_type_message(function.symbol));
+                this->fail(ir_verify_function_parameter_type_message(symbol));
             }
         }
 
@@ -324,14 +320,13 @@ private:
     }
 
     void verify_function_symbol(const FunctionId function_id, const Function& function) {
-        if (function.symbol.empty()) {
+        if (this->text(function.symbol).empty()) {
             this->fail(std::string(IR_VERIFY_FUNCTION_EMPTY_ABI_SYMBOL));
             return;
         }
-        const syntax::IdentId symbol_id = this->symbol_ids_.intern(function.symbol);
-        const auto existing = this->function_symbols_.find(symbol_id);
+        const auto existing = this->function_symbols_.find(function.symbol);
         if (existing == this->function_symbols_.end()) {
-            this->function_symbols_.emplace(symbol_id, function_id);
+            this->function_symbols_.emplace(function.symbol, function_id);
             return;
         }
 
@@ -343,11 +338,11 @@ private:
         const Function& other = this->module_.functions[other_id.value];
         if (other.symbol == function.symbol) {
             if (function.linkage != Linkage::extern_c || other.linkage != Linkage::extern_c) {
-                this->fail(ir_verify_duplicate_non_extern_symbol_message(function.symbol));
+                this->fail(ir_verify_duplicate_non_extern_symbol_message(this->text(function.symbol)));
                 return;
             }
             if (!this->same_signature(function, other)) {
-                this->fail(ir_verify_extern_function_inconsistent_message(function.symbol));
+                this->fail(ir_verify_extern_function_inconsistent_message(this->text(function.symbol)));
                 return;
             }
         }
@@ -359,7 +354,7 @@ private:
         }
         switch (block.terminator.kind) {
         case TerminatorKind::none:
-            this->fail(ir_verify_block_terminator_message(block.name));
+            this->fail(ir_verify_block_terminator_message(this->text(block.name)));
             break;
         case TerminatorKind::branch:
             this->verify_block_id(function, block.terminator.target, "branch target");
@@ -372,7 +367,7 @@ private:
         case TerminatorKind::return_: {
             if (this->module_.types.is_void(function.return_type)) {
                 if (is_valid(block.terminator.value)) {
-                    this->fail(ir_verify_void_function_returns_value_message(function.symbol));
+                    this->fail(ir_verify_void_function_returns_value_message(this->text(function.symbol)));
                 }
             } else {
                 this->verify_value_type(block.terminator.value, function.return_type, "return value");
@@ -657,7 +652,7 @@ private:
         }
         const Function& target = this->module_.functions[value.call_target.value];
         if (target.is_variadic ? value.args.size() < target.signature_params.size() : value.args.size() != target.signature_params.size()) {
-            this->fail(ir_verify_call_argument_count_message(target.symbol));
+            this->fail(ir_verify_call_argument_count_message(this->text(target.symbol)));
             return;
         }
         for (base::usize i = 0; i < target.signature_params.size(); ++i) {
@@ -672,15 +667,15 @@ private:
             this->verify_type(arg->type, "variadic call argument");
         }
         if (!this->module_.types.same(value.type, target.return_type)) {
-            this->fail(ir_verify_call_result_type_message(target.symbol));
+            this->fail(ir_verify_call_result_type_message(this->text(target.symbol)));
         }
     }
 
     void verify_indirect_call(const Value& value) {
         if (!is_valid(value.object)) {
-            this->fail(value.name.empty()
+            this->fail(this->text(value.name).empty()
                 ? std::string(IR_VERIFY_CALL_NO_TARGET)
-                : ir_verify_unresolved_call_target_message(value.name));
+                : ir_verify_unresolved_call_target_message(this->text(value.name)));
             return;
         }
         this->verify_value_id(value.object, "indirect call callee");
@@ -722,9 +717,9 @@ private:
             return;
         }
         if (!is_valid(value.call_target)) {
-            this->fail(value.name.empty()
+            this->fail(this->text(value.name).empty()
                 ? std::string(IR_VERIFY_CALL_NO_TARGET)
-                : ir_verify_unresolved_call_target_message(value.name));
+                : ir_verify_unresolved_call_target_message(this->text(value.name)));
             return;
         }
         if (value.call_target.value >= this->module_.functions.size()) {
@@ -959,7 +954,7 @@ private:
             : object_type;
         const RecordField* field = find_record_field(this->module_, record_type, value.name);
         if (field == nullptr) {
-            this->fail(ir_verify_unknown_field_message(value.name));
+            this->fail(ir_verify_unknown_field_message(this->text(value.name)));
             return;
         }
         const sema::TypeInfo& address = this->module_.types.get(value.type);
@@ -1015,17 +1010,15 @@ private:
             this->fail(std::string(IR_VERIFY_AGGREGATE_RESULT_RECORD));
             return;
         }
-        syntax::IdentifierInterner seen_names;
-        seen_names.reserve(value.fields.size());
-        std::unordered_set<syntax::IdentId, IrVerifyIdentHash> seen;
+        std::unordered_set<IrTextId, sema::IdentIdHash> seen;
         seen.reserve(value.fields.size());
         for (const FieldValue& field : value.fields) {
-            if (!seen.insert(seen_names.intern(field.name)).second) {
-                this->fail(ir_verify_duplicate_aggregate_field_message(field.name));
+            if (!seen.insert(field.name).second) {
+                this->fail(ir_verify_duplicate_aggregate_field_message(this->text(field.name)));
             }
             const RecordField* expected = find_record_field(this->module_, value.type, field.name);
             if (expected == nullptr) {
-                this->fail(ir_verify_unknown_aggregate_field_message(field.name));
+                this->fail(ir_verify_unknown_aggregate_field_message(this->text(field.name)));
                 continue;
             }
             this->verify_value_type(field.value, expected->type, "aggregate field");
@@ -1299,8 +1292,7 @@ private:
 
     const Module& module_;
     std::vector<std::string> errors_;
-    syntax::IdentifierInterner symbol_ids_;
-    std::unordered_map<syntax::IdentId, FunctionId, IrVerifyIdentHash> function_symbols_;
+    std::unordered_map<IrTextId, FunctionId, sema::IdentIdHash> function_symbols_;
 };
 
 } // namespace

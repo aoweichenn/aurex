@@ -801,7 +801,7 @@ void SemanticAnalyzer::register_generic_template(
     GenericTemplateInfo info = this->make_generic_template_info();
     info.item = item_id;
     info.module = owner;
-    info.name = std::string(item.name);
+    info.name = this->checked_.intern_text(item.name);
     info.name_id = item.name_id;
     info.key = this->module_lookup_key(owner, item.name_id);
     info.function_key = this->function_lookup_key(owner, item.name_id);
@@ -989,7 +989,7 @@ std::string SemanticAnalyzer::make_generic_param_identity_key(
     append_decimal(key, info.key.module);
     key.push_back(':');
     key += this->module_.identifier_text(info.name_id).empty()
-        ? std::string_view {info.name}
+        ? info.name.view()
         : this->module_.identifier_text(info.name_id);
     key += SEMA_GENERIC_PARAM_IDENTITY_MARKER;
     append_decimal(key, index);
@@ -1065,7 +1065,7 @@ TypeHandle SemanticAnalyzer::generic_param_placeholder(
     }
     return this->checked_.types.generic_param(
         this->make_generic_param_identity_key(info, index),
-        std::string(this->generic_param_name(info, index))
+        this->generic_param_name(info, index)
     );
 }
 
@@ -1081,11 +1081,10 @@ void SemanticAnalyzer::populate_generic_placeholder_context(
     context.param_identities.reserve(info.params.size());
     context.constraints_by_identity.reserve(info.params.size());
     for (base::usize i = 0; i < info.params.size(); ++i) {
-        const std::string identity = this->make_generic_param_identity_key(info, i);
         const IdentId identity_id = this->generic_param_identity_id(info, i);
         const IdentId param_id = info.params[i];
         context.params.emplace(param_id, this->generic_param_placeholder(info, i));
-        context.param_identities.emplace(param_id, identity);
+        context.param_identities.emplace(param_id, InternedText {identity_id, this->module_.identifier_text(identity_id)});
         if (const auto constraints = info.constraints.find(param_id); constraints != info.constraints.end()) {
             context.constraints_by_identity.emplace(identity_id, this->copy_capability_set(constraints->second));
         }
@@ -1106,11 +1105,10 @@ void SemanticAnalyzer::populate_generic_concrete_context(
     context.param_identities.reserve(info.params.size());
     context.constraints_by_identity.reserve(info.params.size());
     for (base::usize i = 0; i < info.params.size() && i < args.size(); ++i) {
-        const std::string identity = this->make_generic_param_identity_key(info, i);
         const IdentId identity_id = this->generic_param_identity_id(info, i);
         const IdentId param_id = info.params[i];
         context.params.emplace(param_id, args[i]);
-        context.param_identities.emplace(param_id, identity);
+        context.param_identities.emplace(param_id, InternedText {identity_id, this->module_.identifier_text(identity_id)});
         const auto constraints = info.constraints.find(param_id);
         if (constraints == info.constraints.end()) {
             continue;
@@ -1642,8 +1640,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     this->generic_struct_instances_[instance_key_id] = handle;
 
     StructInfo struct_info = this->checked_.make_struct_info();
-    struct_info.name = std::string(item.name);
-    struct_info.c_name = c_name;
+    struct_info.name = this->checked_.intern_text(item.name);
+    struct_info.c_name = this->checked_.intern_text(c_name);
     struct_info.module = info.module;
     struct_info.type = handle;
     struct_info.visibility = info.visibility;
@@ -1675,7 +1673,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
             contains_array = true;
         }
         struct_info.fields.push_back(StructFieldInfo {
-            std::string(field.name),
+            this->checked_.intern_text(field.name),
             field.name_id,
             {},
             syntax::INVALID_MODULE_ID,
@@ -2018,7 +2016,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = info.name;
+    signature.name = this->checked_.intern_text(info.name);
     signature.name_id = info.name_id;
     signature.c_name = signature.name;
     signature.generic_args = this->checked_.copy_type_handle_list(args);
@@ -2145,13 +2143,13 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = info.name;
+    signature.name = this->checked_.intern_text(info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = key;
-    signature.c_name = this->c_symbol_name(
+    signature.c_name = this->checked_.intern_text(this->c_symbol_name(
         info.module,
-        info.name + this->generic_instance_abi_suffix(args)
-    );
+        std::string(info.name.view()) + this->generic_instance_abi_suffix(args)
+    ));
     signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
@@ -2288,10 +2286,10 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = info.name;
+    signature.name = this->checked_.intern_text(info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = key;
-    signature.c_name = this->method_c_symbol_name(owner_type, info.name);
+    signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
     signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
     signature.method_owner_type = owner_type;
@@ -2496,10 +2494,10 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = info.name;
+    signature.name = this->checked_.intern_text(info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = info.function_key;
-    signature.c_name = info.name;
+    signature.c_name = signature.name;
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
         ? this->resolve_type(function.return_type)

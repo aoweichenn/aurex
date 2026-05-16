@@ -13,11 +13,13 @@ namespace {
     return "%" + std::to_string(id.value);
 }
 
-[[nodiscard]] std::string block_ref(const BlockId id, const Function& function) {
+[[nodiscard]] std::string block_ref(const Module& module, const BlockId id, const Function& function) {
     if (!is_valid(id) || id.value >= function.blocks.size()) {
         return "^invalid";
     }
-    return "^" + function.blocks[id.value].name;
+    std::string result {"^"};
+    result.append(module.text(function.blocks[id.value].name));
+    return result;
 }
 
 [[nodiscard]] std::string linkage_name(const Linkage linkage) {
@@ -88,40 +90,40 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     out << "    " << value_ref(id) << " : " << module.types.display_name(value.type) << " = ";
     switch (value.kind) {
     case ValueKind::param:
-        out << "param " << value.name;
+        out << "param " << module.text(value.name);
         break;
     case ValueKind::integer_literal:
     case ValueKind::float_literal:
     case ValueKind::bool_literal:
     case ValueKind::char_literal:
     case ValueKind::byte_literal:
-        out << "literal " << value.text;
+        out << "literal " << module.text(value.text);
         break;
     case ValueKind::undef:
         out << "undef";
         break;
     case ValueKind::constant_ref: {
         const GlobalConstant* constant = find_global_constant(module, value.constant);
-        out << "const_ref @" << (constant == nullptr ? value.name : constant->symbol);
+        out << "const_ref @" << module.text(constant == nullptr ? value.name : constant->symbol);
         break;
     }
     case ValueKind::function_ref:
-        out << "function_ref @" << value.name;
+        out << "function_ref @" << module.text(value.name);
         break;
     case ValueKind::null_literal:
         out << "null";
         break;
     case ValueKind::string_literal:
-        out << "string " << value.text;
+        out << "string " << module.text(value.text);
         break;
     case ValueKind::raw_string_literal:
-        out << "raw_string " << value.text;
+        out << "raw_string " << module.text(value.text);
         break;
     case ValueKind::c_string_literal:
-        out << "c_string " << value.text;
+        out << "c_string " << module.text(value.text);
         break;
     case ValueKind::alloca:
-        out << "alloca " << value.name;
+        out << "alloca " << module.text(value.name);
         break;
     case ValueKind::load:
         out << "load " << value_ref(value.object);
@@ -141,13 +143,13 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             if (i != 0) {
                 out << ", ";
             }
-            out << "[" << block_ref(value.incoming[i].predecessor, function) << ": "
+            out << "[" << block_ref(module, value.incoming[i].predecessor, function) << ": "
                 << value_ref(value.incoming[i].value) << "]";
         }
         break;
     case ValueKind::call:
         if (is_valid(value.call_target)) {
-            out << "call " << value.name << "(";
+            out << "call " << module.text(value.name) << "(";
         } else {
             out << "call " << value_ref(value.object) << "(";
         }
@@ -160,7 +162,7 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
         out << ")";
         break;
     case ValueKind::field_addr:
-        out << "field_addr " << value_ref(value.object) << "." << value.name;
+        out << "field_addr " << value_ref(value.object) << "." << module.text(value.name);
         break;
     case ValueKind::index_addr:
         out << "index_addr " << value_ref(value.object) << "[" << value_ref(value.index) << "]";
@@ -181,7 +183,7 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
                 if (i != 0) {
                     out << ", ";
                 }
-                out << "." << value.fields[i].name << " = " << value_ref(value.fields[i].value);
+                out << "." << module.text(value.fields[i].name) << " = " << value_ref(value.fields[i].value);
             }
             out << "}";
         }
@@ -234,18 +236,18 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
     out << "\n";
 }
 
-void dump_terminator(std::ostream& out, const Function& function, const Terminator& term) {
+void dump_terminator(std::ostream& out, const Module& module, const Function& function, const Terminator& term) {
     switch (term.kind) {
     case TerminatorKind::none:
         out << "    unreachable\n";
         break;
     case TerminatorKind::branch:
-        out << "    br " << block_ref(term.target, function) << "\n";
+        out << "    br " << block_ref(module, term.target, function) << "\n";
         break;
     case TerminatorKind::cond_branch:
         out << "    br_if " << value_ref(term.condition) << ", "
-            << block_ref(term.then_target, function) << ", "
-            << block_ref(term.else_target, function) << "\n";
+            << block_ref(module, term.then_target, function) << ", "
+            << block_ref(module, term.else_target, function) << "\n";
         break;
     case TerminatorKind::return_:
         if (is_valid(term.value)) {
@@ -263,29 +265,29 @@ std::string dump_module(const Module& module) {
     std::ostringstream out;
     out << "aurex_ir v0\n";
     for (const GlobalConstant& constant : module.constants) {
-        out << "const " << constant.name << " @" << constant.symbol
+        out << "const " << module.text(constant.name) << " @" << module.text(constant.symbol)
             << ": " << module.types.display_name(constant.type)
             << " = " << value_ref(constant.initializer) << "\n";
     }
     for (const RecordLayout& record : module.records) {
-        out << "record " << record.name << " @" << record.symbol;
+        out << "record " << module.text(record.name) << " @" << module.text(record.symbol);
         if (record.is_opaque) {
             out << " opaque";
         }
         out << " {\n";
         for (const RecordField& field : record.fields) {
-            out << "  ." << field.name << ": " << module.types.display_name(field.type) << "\n";
+            out << "  ." << module.text(field.name) << ": " << module.types.display_name(field.type) << "\n";
         }
         out << "}\n";
     }
     for (const Function& function : module.functions) {
-        out << "fn " << function.name << "(";
+        out << "fn " << module.text(function.name) << "(";
         for (base::usize i = 0; i < function.signature_params.size(); ++i) {
             if (i != 0) {
                 out << ", ";
             }
             const FunctionParam& param = function.signature_params[i];
-            out << param.name << ": " << module.types.display_name(param.type);
+            out << module.text(param.name) << ": " << module.types.display_name(param.type);
         }
         if (function.is_variadic) {
             if (!function.signature_params.empty()) {
@@ -293,7 +295,7 @@ std::string dump_module(const Module& module) {
             }
             out << "...";
         }
-        out << ") @" << function.symbol
+        out << ") @" << module.text(function.symbol)
             << " linkage(" << linkage_name(function.linkage) << ")"
             << " abi(" << call_conv_name(function.call_conv) << ")";
         if (function.is_entry) {
@@ -312,11 +314,11 @@ std::string dump_module(const Module& module) {
             out << "\n";
         }
         for (const BasicBlock& block : function.blocks) {
-            out << "  ^" << block.name << ":\n";
+            out << "  ^" << module.text(block.name) << ":\n";
             for (ValueId value : block.values) {
                 dump_value(out, module, function, value);
             }
-            dump_terminator(out, function, block.terminator);
+            dump_terminator(out, module, function, block.terminator);
         }
         out << "}\n";
     }

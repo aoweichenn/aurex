@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace llvm {
@@ -34,6 +35,7 @@ using aurex::ir::FunctionId;
 using aurex::ir::FunctionParam;
 using aurex::ir::GlobalConstant;
 using aurex::ir::GlobalConstantId;
+using aurex::ir::IrTextId;
 using aurex::ir::Linkage;
 using aurex::ir::Module;
 using aurex::ir::PhiInput;
@@ -76,8 +78,8 @@ private:
     [[nodiscard]] llvm::Constant* emit_constant_binary(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_cast(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_aggregate(const Value& value);
-    [[nodiscard]] llvm::Constant* emit_constant_string(const std::string& literal, bool c_string);
-    [[nodiscard]] llvm::Constant* emit_constant_raw_string(const std::string& literal);
+    [[nodiscard]] llvm::Constant* emit_constant_string(std::string_view literal, bool c_string);
+    [[nodiscard]] llvm::Constant* emit_constant_raw_string(std::string_view literal);
     [[nodiscard]] llvm::Value* emit_unary(const Value& value);
     [[nodiscard]] llvm::Value* emit_binary(const Value& value);
     [[nodiscard]] llvm::Value* emit_call(const Value& value);
@@ -101,10 +103,10 @@ private:
     [[nodiscard]] llvm::Value* emit_align_of(sema::TypeHandle type);
     void emit_terminator(const Terminator& terminator);
 
-    [[nodiscard]] llvm::Value* integer_constant(sema::TypeHandle type, const std::string& text);
-    [[nodiscard]] llvm::Value* float_constant(sema::TypeHandle type, const std::string& text);
-    [[nodiscard]] llvm::Value* emit_string_literal(const std::string& literal, bool c_string);
-    [[nodiscard]] llvm::Value* emit_raw_string_literal(const std::string& literal);
+    [[nodiscard]] llvm::Value* integer_constant(sema::TypeHandle type, std::string_view text);
+    [[nodiscard]] llvm::Value* float_constant(sema::TypeHandle type, std::string_view text);
+    [[nodiscard]] llvm::Value* emit_string_literal(std::string_view literal, bool c_string);
+    [[nodiscard]] llvm::Value* emit_raw_string_literal(std::string_view literal);
     [[nodiscard]] llvm::Value* global_string_pointer(const std::string& text, const std::string& name, bool add_null);
     [[nodiscard]] llvm::FunctionType* llvm_function_type(const Function& function);
     [[nodiscard]] llvm::FunctionType* llvm_function_type(sema::TypeHandle function_type);
@@ -114,6 +116,8 @@ private:
     [[nodiscard]] bool is_unsigned_integer(sema::TypeHandle type) const noexcept;
     [[nodiscard]] const llvm::DataLayout& data_layout() const;
     [[nodiscard]] llvm::Value* get(ValueId id) const;
+    [[nodiscard]] std::string_view text(IrTextId id) const noexcept;
+    [[nodiscard]] std::string suffixed_name(IrTextId id, std::string_view suffix) const;
 
     const Module& source_;
     llvm::LLVMContext context_;
@@ -124,17 +128,17 @@ private:
     std::unordered_map<base::u32, llvm::StructType*> records_;
     std::unordered_map<base::u32, llvm::GlobalVariable*> constants_;
     std::unordered_map<base::u32, llvm::Function*> functions_;
-    std::unordered_map<std::string, llvm::Function*> extern_functions_;
+    std::unordered_map<IrTextId, llvm::Function*, sema::IdentIdHash> extern_functions_;
     std::unordered_map<base::u32, llvm::BasicBlock*> blocks_;
     std::unordered_map<base::u32, llvm::Value*> values_;
     std::unordered_map<base::u32, llvm::PHINode*> pending_phis_;
 };
 
-[[nodiscard]] bool parse_u64(const std::string& text, std::uint64_t& out) noexcept;
-[[nodiscard]] bool parse_f64(const std::string& text, double& out) noexcept;
-[[nodiscard]] std::string decode_string_literal(const std::string& literal, bool has_c_prefix);
-[[nodiscard]] std::string decode_raw_string_literal(const std::string& literal);
-[[nodiscard]] std::uint64_t parse_byte_literal(const std::string& literal);
-[[nodiscard]] std::uint64_t parse_char_literal(const std::string& literal);
+[[nodiscard]] bool parse_u64(std::string_view text, std::uint64_t& out) noexcept;
+[[nodiscard]] bool parse_f64(std::string_view text, double& out) noexcept;
+[[nodiscard]] std::string decode_string_literal(std::string_view literal, bool has_c_prefix);
+[[nodiscard]] std::string decode_raw_string_literal(std::string_view literal);
+[[nodiscard]] std::uint64_t parse_byte_literal(std::string_view literal);
+[[nodiscard]] std::uint64_t parse_char_literal(std::string_view literal);
 
 } // namespace aurex::backend

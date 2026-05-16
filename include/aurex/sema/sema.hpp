@@ -79,7 +79,7 @@ private:
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
-        std::string name;
+        InternedText name;
         IdentId name_id = INVALID_IDENT_ID;
         ModuleLookupKey key;
         FunctionLookupKey function_key;
@@ -103,7 +103,7 @@ private:
 
     struct GenericContext {
         SemaMap<IdentId, TypeHandle, IdentIdHash> params;
-        SemaMap<IdentId, std::string, IdentIdHash> param_identities;
+        SemaMap<IdentId, InternedText, IdentIdHash> param_identities;
         CapabilityMap constraints;
         CapabilityMap constraints_by_identity;
     };
@@ -203,7 +203,7 @@ private:
     };
 
     struct PatternBinding {
-        std::string name;
+        InternedText name;
         IdentId name_id = INVALID_IDENT_ID;
         TypeHandle type = INVALID_TYPE_HANDLE;
         base::SourceRange range {};

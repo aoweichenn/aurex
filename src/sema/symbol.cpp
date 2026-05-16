@@ -33,6 +33,7 @@ SymbolTable& SymbolTable::operator=(const SymbolTable& other) {
 
 SymbolTable::SymbolTable(SymbolTable&& other) noexcept
     : arena_(std::move(other.arena_)),
+      texts_(std::move(other.texts_)),
       symbols_(std::move(other.symbols_)),
       scopes_(std::move(other.scopes_)) {}
 
@@ -59,14 +60,14 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
         diagnostics.push(base::Diagnostic {
             base::Severity::error,
             symbol.range,
-            std::string(SEMA_DUPLICATE_DEFINITION_OR_SHADOWING) + symbol.name,
+            std::string(SEMA_DUPLICATE_DEFINITION_OR_SHADOWING) + std::string(symbol.name.view()),
         });
         return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, std::string(SEMA_DUPLICATE_SYMBOL)});
     }
 
     const SymbolId id {static_cast<base::u32>(this->symbols_.size())};
     const IdentId name = symbol.name_id;
-    this->symbols_.push_back(std::move(symbol));
+    this->symbols_.push_back(this->clone_symbol(symbol));
     this->scopes_.back().emplace(name, id);
     return base::Result<SymbolId>::ok(id);
 }
@@ -98,8 +99,19 @@ IdentSymbolMap SymbolTable::make_scope(const base::usize expected_symbols) const
     return scope;
 }
 
+Symbol SymbolTable::clone_symbol(const Symbol& symbol) {
+    Symbol copy = symbol;
+    copy.name = sema::intern_text(this->texts_, symbol.name);
+    copy.c_name = sema::intern_text(this->texts_, symbol.c_name);
+    return copy;
+}
+
 void SymbolTable::copy_from(const SymbolTable& other) {
-    this->symbols_.assign(other.symbols_.begin(), other.symbols_.end());
+    this->symbols_.clear();
+    this->symbols_.reserve(other.symbols_.size());
+    for (const Symbol& symbol : other.symbols_) {
+        this->symbols_.push_back(this->clone_symbol(symbol));
+    }
     this->scopes_.clear();
     this->scopes_.reserve(other.scopes_.size());
     for (const IdentSymbolMap& source_scope : other.scopes_) {
@@ -113,6 +125,7 @@ void SymbolTable::swap(SymbolTable& other) noexcept {
     using std::swap;
     this->symbols_.swap(other.symbols_);
     this->scopes_.swap(other.scopes_);
+    swap(this->texts_, other.texts_);
     swap(this->arena_, other.arena_);
 }
 

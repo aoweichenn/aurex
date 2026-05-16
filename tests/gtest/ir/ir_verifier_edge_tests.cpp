@@ -1,6 +1,8 @@
 #include <aurex/ir/verify.hpp>
 #include <gtest/support/ir_test_helpers.hpp>
 
+#include <utility>
+
 namespace aurex::test {
 namespace {
 
@@ -19,7 +21,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
-        Value load;
+        Value load = module.make_value();
         load.kind = ValueKind::load;
         load.type = i32;
         [[maybe_unused]] const GlobalConstantId constant =
@@ -29,7 +31,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
-        Value aggregate;
+        Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = i32;
         [[maybe_unused]] const GlobalConstantId constant =
@@ -43,18 +45,18 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         function.is_entry = true;
         function.call_conv = AbiCallConv::c;
         FunctionBuilder builder {module, function};
-        Value param;
+        Value param = module.make_value();
         param.kind = ValueKind::param;
         param.type = i32;
         const ValueId param_id = builder.add(param);
-        const ValueId result = builder.add(integer_value(i32, "0"));
-        function.signature_params.push_back(FunctionParam {"value", i32});
+        const ValueId result = builder.add(integer_value(module, i32, "0"));
+        function.signature_params.push_back(function_param(module, "value", i32));
         function.param_values.push_back(param_id);
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values = {param_id, result};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = result;
-        module.functions.push_back(function);
+        append_function(module, function);
         const auto verify = ir::verify_module(module);
         ASSERT_FALSE(verify);
         expect_contains_all(verify.error().message, {
@@ -66,14 +68,14 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "param_count", i32);
-        function.signature_params.push_back(FunctionParam {"value", i32});
+        function.signature_params.push_back(function_param(module, "value", i32));
         FunctionBuilder builder {module, function};
-        const ValueId result = builder.add(integer_value(i32, "0"));
+        const ValueId result = builder.add(integer_value(module, i32, "0"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values = {result};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = result;
-        module.functions.push_back(function);
+        append_function(module, function);
         expect_error_contains(ir::verify_module(module), "parameter signature/value count mismatch");
     }
     {
@@ -81,12 +83,12 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "invalid_value", i32);
         FunctionBuilder builder {module, function};
-        const ValueId result = builder.add(integer_value(i32, "0"));
+        const ValueId result = builder.add(integer_value(module, i32, "0"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values = {ValueId {42}, result};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = result;
-        module.functions.push_back(function);
+        append_function(module, function);
         expect_error_contains(ir::verify_module(module), "invalid value in block");
     }
     {
@@ -94,7 +96,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "unresolved_call", i32);
         FunctionBuilder builder {module, function};
-        Value call;
+        Value call = module.make_value();
         call.kind = ValueKind::call;
         call.type = i32;
         const ValueId call_id = builder.add(call);
@@ -102,7 +104,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         function.blocks[entry.value].values = {call_id};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = call_id;
-        module.functions.push_back(function);
+        append_function(module, function);
         expect_error_contains(ir::verify_module(module), "call has no target symbol");
     }
     {
@@ -110,7 +112,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "call_out_of_range", i32);
         FunctionBuilder builder {module, function};
-        Value call;
+        Value call = module.make_value();
         call.kind = ValueKind::call;
         call.type = i32;
         call.call_target = FunctionId {9};
@@ -119,19 +121,19 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         function.blocks[entry.value].values = {call_id};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = call_id;
-        module.functions.push_back(function);
+        append_function(module, function);
         expect_error_contains(ir::verify_module(module), "call target out of range");
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function first = make_function(module, "extern_same_a", i32, Linkage::extern_c, AbiCallConv::c);
-        first.signature_params.push_back(FunctionParam {"value", i32});
+        first.signature_params.push_back(function_param(module, "value", i32));
         Function second = make_function(module, "extern_same_b", i32, Linkage::extern_c, AbiCallConv::c);
         second.symbol = first.symbol;
-        second.signature_params.push_back(FunctionParam {"value", i32});
-        module.functions.push_back(first);
-        module.functions.push_back(second);
+        second.signature_params.push_back(function_param(module, "value", i32));
+        append_function(module, first);
+        append_function(module, second);
         EXPECT_TRUE(ir::verify_module(module));
     }
     {
@@ -139,9 +141,9 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "bad_phi_edge", i32);
         FunctionBuilder builder {module, function};
-        const ValueId one = builder.add(integer_value(i32, "1"));
-        const ValueId two = builder.add(integer_value(i32, "2"));
-        Value phi;
+        const ValueId one = builder.add(integer_value(module, i32, "1"));
+        const ValueId two = builder.add(integer_value(module, i32, "2"));
+        Value phi = module.make_value();
         phi.kind = ValueKind::phi;
         phi.type = i32;
         const ValueId phi_id = builder.add(phi);
@@ -162,7 +164,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         function.blocks[join.value].values = {phi_id};
         function.blocks[join.value].terminator.kind = TerminatorKind::return_;
         function.blocks[join.value].terminator.value = phi_id;
-        module.functions.push_back(function);
+        append_function(module, function);
         expect_error_contains(ir::verify_module(module), "phi predecessor has no edge to block");
     }
     {
@@ -170,9 +172,9 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "missing_phi_incoming", i32);
         FunctionBuilder builder {module, function};
-        const ValueId one = builder.add(integer_value(i32, "1"));
-        const ValueId two = builder.add(integer_value(i32, "2"));
-        Value phi;
+        const ValueId one = builder.add(integer_value(module, i32, "1"));
+        const ValueId two = builder.add(integer_value(module, i32, "2"));
+        Value phi = module.make_value();
         phi.kind = ValueKind::phi;
         phi.type = i32;
         const ValueId phi_id = builder.add(phi);
@@ -190,7 +192,7 @@ TEST(CoreUnit, IrVerifierReportsAdditionalEdgeCaseErrors) {
         function.blocks[join.value].values = {phi_id};
         function.blocks[join.value].terminator.kind = TerminatorKind::return_;
         function.blocks[join.value].terminator.value = phi_id;
-        module.functions.push_back(function);
+        append_function(module, function);
         expect_error_contains(ir::verify_module(module), "phi is missing incoming predecessor");
     }
 }
@@ -201,34 +203,31 @@ TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors) {
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
     const TypeHandle pair_type = module.types.named_struct("unit.Pair", "unit_Pair", false);
-    module.records.push_back(RecordLayout {
-        pair_type,
-        "unit.Pair",
-        "unit_Pair",
-        false,
-        {RecordField {"left", i32}, RecordField {"right", i32}},
-    });
+    RecordLayout pair_record = record_layout(module, pair_type, "unit.Pair", "unit_Pair", false);
+    pair_record.fields.push_back(record_field(module, "left", i32));
+    pair_record.fields.push_back(record_field(module, "right", i32));
+    append_record(module, std::move(pair_record));
 
-    Value constant_value = integer_value(i32, "1");
+    Value constant_value = integer_value(module, i32, "1");
     const GlobalConstantId constant =
         add_global_constant(module, GlobalConstant {"answer", "unit_answer", i32, add_value(module, constant_value)});
-    Value bool_ref;
+    Value bool_ref = module.make_value();
     bool_ref.kind = ValueKind::constant_ref;
     bool_ref.type = bool_type;
     bool_ref.constant = constant;
     [[maybe_unused]] const ValueId bool_ref_id = add_value(module, bool_ref);
 
     Function variadic = make_function(module, "variadic", i32, Linkage::extern_c, AbiCallConv::c);
-    variadic.symbol = "unit_variadic";
+    set_symbol(module, variadic, "unit_variadic");
     variadic.is_variadic = true;
-    variadic.signature_params.push_back(FunctionParam {"fixed", i32});
-    module.functions.push_back(variadic);
+    variadic.signature_params.push_back(function_param(module, "fixed", i32));
+    append_function(module, variadic);
     const FunctionId variadic_id {0};
 
     Function function = make_function(module, "bad_shapes", i32);
     FunctionBuilder builder {module, function};
-    const ValueId one = builder.add(integer_value(i32, "1"));
-    Value call;
+    const ValueId one = builder.add(integer_value(module, i32, "1"));
+    Value call = module.make_value();
     call.kind = ValueKind::call;
     call.type = i32;
     call.call_target = variadic_id;
@@ -238,36 +237,36 @@ TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors) {
     Value constant_ref = bool_ref;
     const ValueId bad_constant_ref = builder.add(constant_ref);
 
-    Value aggregate_non_record;
+    Value aggregate_non_record = module.make_value();
     aggregate_non_record.kind = ValueKind::aggregate;
     aggregate_non_record.type = i32;
-    aggregate_non_record.fields = {{"value", one}};
+    aggregate_non_record.fields = {field_value(module, "value", one)};
     const ValueId aggregate_non_record_id = builder.add(aggregate_non_record);
 
-    Value aggregate_unknown;
+    Value aggregate_unknown = module.make_value();
     aggregate_unknown.kind = ValueKind::aggregate;
     aggregate_unknown.type = pair_type;
-    aggregate_unknown.fields = {{"missing", one}};
+    aggregate_unknown.fields = {field_value(module, "missing", one)};
     const ValueId aggregate_unknown_id = builder.add(aggregate_unknown);
 
-    Value load;
+    Value load = module.make_value();
     load.kind = ValueKind::load;
     load.type = i32;
     load.object = ValueId {1000};
     const ValueId bad_load = builder.add(load);
 
-    Value store;
+    Value store = module.make_value();
     store.kind = ValueKind::store;
     store.type = builtin(module, BuiltinType::void_);
     store.object = one;
     store.lhs = ValueId {1001};
     const ValueId bad_store = builder.add(store);
 
-    Value field;
+    Value field = module.make_value();
     field.kind = ValueKind::field_addr;
     field.type = ptr_i32;
     field.object = one;
-    field.name = "missing";
+    set_name(module, field, "missing");
     const ValueId bad_field = builder.add(field);
 
     const BlockId entry = builder.block("entry");
@@ -283,7 +282,7 @@ TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors) {
     };
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = one;
-    module.functions.push_back(function);
+    append_function(module, function);
 
     const auto verify = ir::verify_module(module);
     ASSERT_FALSE(verify);

@@ -345,7 +345,7 @@ SemanticAnalyzer::GenericTemplateInfo SemanticAnalyzer::make_generic_template_in
 SemanticAnalyzer::GenericContext SemanticAnalyzer::make_generic_context() const {
     GenericContext context;
     context.params = make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {});
-    context.param_identities = make_sema_map<IdentId, std::string, IdentIdHash>(*this->arena_, IdentIdHash {});
+    context.param_identities = make_sema_map<IdentId, InternedText, IdentIdHash>(*this->arena_, IdentIdHash {});
     context.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
     context.constraints_by_identity = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
     return context;

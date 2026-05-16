@@ -1,6 +1,8 @@
 #include <aurex/ir/ir_dump.hpp>
 #include <gtest/support/ir_test_helpers.hpp>
 
+#include <utility>
+
 namespace aurex::test {
 namespace {
 
@@ -24,77 +26,67 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     const TypeHandle str_type = builtin(module, BuiltinType::str);
     const TypeHandle record_type = module.types.named_struct("dump.Record", "dump_Record", false);
     const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
-    module.records.push_back(RecordLayout {
-        record_type,
-        "dump.Record",
-        "dump_Record",
-        false,
-        {RecordField {"value", i32}},
-    });
-    module.records.push_back(RecordLayout {
-        opaque_type,
-        "dump.Opaque",
-        "dump_Opaque",
-        true,
-        {},
-    });
+    RecordLayout record = record_layout(module, record_type, "dump.Record", "dump_Record", false);
+    record.fields.push_back(record_field(module, "value", i32));
+    append_record(module, std::move(record));
+    append_record(module, record_layout(module, opaque_type, "dump.Opaque", "dump_Opaque", true));
 
-    module.constants.push_back(GlobalConstant {"broken", "dump_broken", i32, INVALID_VALUE_ID});
+    static_cast<void>(add_global_constant(module, GlobalConstant {"broken", "dump_broken", i32, INVALID_VALUE_ID}));
 
     Function exported = make_function(module, "exported", void_type, Linkage::export_c, AbiCallConv::c);
-    exported.symbol = "dump_exported";
-    module.functions.push_back(exported);
+    set_symbol(module, exported, "dump_exported");
+    append_function(module, exported);
 
     Function function = make_function(module, "dump_ops", i32);
     FunctionBuilder builder {module, function};
-    const ValueId lhs = builder.add(integer_value(i32, "7"));
-    const ValueId rhs = builder.add(integer_value(i32, "3"));
-    const ValueId len = builder.add(integer_value(usize, "2"));
+    const ValueId lhs = builder.add(integer_value(module, i32, "7"));
+    const ValueId rhs = builder.add(integer_value(module, i32, "3"));
+    const ValueId len = builder.add(integer_value(module, usize, "2"));
     const ValueId flag = builder.add(bool_value(module, true));
 
-    Value pointer;
+    Value pointer = module.make_value();
     pointer.kind = ValueKind::null_literal;
     pointer.type = ptr_i32;
     const ValueId ptr_value = builder.add(pointer);
 
-    Value string_value;
+    Value string_value = module.make_value();
     string_value.kind = ValueKind::string_literal;
     string_value.type = str_type;
-    string_value.text = "\"dump\"";
+    set_text(module, string_value, "\"dump\"");
     const ValueId text = builder.add(string_value);
 
-    Value str_data;
+    Value str_data = module.make_value();
     str_data.kind = ValueKind::str_data;
     str_data.type = const_u8_ptr;
     str_data.object = text;
     const ValueId string_data = builder.add(str_data);
-    Value str_byte_len;
+    Value str_byte_len = module.make_value();
     str_byte_len.kind = ValueKind::str_byte_len;
     str_byte_len.type = usize;
     str_byte_len.object = text;
     const ValueId string_byte_len = builder.add(str_byte_len);
-    Value from_bytes;
+    Value from_bytes = module.make_value();
     from_bytes.kind = ValueKind::str_from_bytes_unchecked;
     from_bytes.type = str_type;
     from_bytes.args = {string_data, string_byte_len};
     const ValueId rebuilt_string = builder.add(from_bytes);
-    Value byte_slice;
+    Value byte_slice = module.make_value();
     byte_slice.kind = ValueKind::slice;
     byte_slice.type = slice_u8;
     byte_slice.lhs = string_data;
     byte_slice.rhs = string_byte_len;
     const ValueId utf8_bytes = builder.add(byte_slice);
-    Value str_valid;
+    Value str_valid = module.make_value();
     str_valid.kind = ValueKind::str_is_valid_utf8;
     str_valid.type = bool_type;
     str_valid.object = utf8_bytes;
     const ValueId utf8_valid = builder.add(str_valid);
-    Value checked_string;
+    Value checked_string = module.make_value();
     checked_string.kind = ValueKind::str_from_utf8_checked;
     checked_string.type = str_type;
     checked_string.object = utf8_bytes;
     const ValueId utf8_checked = builder.add(checked_string);
-    Value checked_slice;
+    Value checked_slice = module.make_value();
     checked_slice.kind = ValueKind::str_slice_checked;
     checked_slice.type = str_type;
     checked_slice.object = text;
@@ -102,42 +94,42 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     checked_slice.rhs = string_byte_len;
     const ValueId string_slice = builder.add(checked_slice);
 
-    Value missing_constant;
+    Value missing_constant = module.make_value();
     missing_constant.kind = ValueKind::constant_ref;
     missing_constant.type = i32;
-    missing_constant.name = "fallback_constant";
+    set_name(module, missing_constant, "fallback_constant");
     missing_constant.constant = INVALID_GLOBAL_CONSTANT_ID;
     const ValueId fallback_constant = builder.add(missing_constant);
 
-    Value function_ref;
+    Value function_ref = module.make_value();
     function_ref.kind = ValueKind::function_ref;
     function_ref.type = callback_type;
-    function_ref.name = "dump_callback";
+    set_name(module, function_ref, "dump_callback");
     const ValueId callback = builder.add(function_ref);
-    Value indirect_call;
+    Value indirect_call = module.make_value();
     indirect_call.kind = ValueKind::call;
     indirect_call.type = i32;
     indirect_call.object = callback;
     indirect_call.args = {lhs};
     const ValueId callback_call = builder.add(indirect_call);
 
-    Value array_aggregate;
+    Value array_aggregate = module.make_value();
     array_aggregate.kind = ValueKind::aggregate;
     array_aggregate.type = array_i32;
     array_aggregate.elements = {lhs, rhs};
     const ValueId array_value = builder.add(array_aggregate);
-    Value slice;
+    Value slice = module.make_value();
     slice.kind = ValueKind::slice;
     slice.type = slice_i32;
     slice.lhs = ptr_value;
     slice.rhs = len;
     const ValueId slice_value = builder.add(slice);
-    Value slice_data;
+    Value slice_data = module.make_value();
     slice_data.kind = ValueKind::slice_data;
     slice_data.type = ptr_i32;
     slice_data.object = slice_value;
     const ValueId slice_data_value = builder.add(slice_data);
-    Value slice_len;
+    Value slice_len = module.make_value();
     slice_len.kind = ValueKind::slice_len;
     slice_len.type = usize;
     slice_len.object = slice_value;
@@ -166,7 +158,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         slice_len_value,
     };
     for (const UnaryOp op : {UnaryOp::bitwise_not, UnaryOp::address_of, UnaryOp::dereference}) {
-        Value unary;
+        Value unary = module.make_value();
         unary.kind = ValueKind::unary;
         unary.type = op == UnaryOp::bitwise_not ? i32 : ptr_i32;
         unary.unary_op = op;
@@ -186,7 +178,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
              BinaryOp::bit_or,
              BinaryOp::logical_and,
          }) {
-        Value binary;
+        Value binary = module.make_value();
         binary.kind = ValueKind::binary;
         const bool is_comparison = op == BinaryOp::less_equal || op == BinaryOp::greater_equal;
         const bool is_logical = op == BinaryOp::logical_and;
@@ -197,7 +189,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
         values.push_back(builder.add(binary));
     }
 
-    Value cast;
+    Value cast = module.make_value();
     cast.kind = ValueKind::cast;
     cast.type = ptr_i32;
     cast.target_type = ptr_i32;
@@ -217,11 +209,11 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
 
     const BlockId entry = builder.block("entry");
     const BlockId dead = builder.block("dead");
-    function.blocks[entry.value].values = values;
+    assign_ir_vector(function.blocks[entry.value].values, values);
     function.blocks[entry.value].terminator.kind = TerminatorKind::none;
     function.blocks[dead.value].terminator.kind = TerminatorKind::branch;
     function.blocks[dead.value].terminator.target = BlockId {99};
-    module.functions.push_back(function);
+    append_function(module, function);
 
     const std::string dump = ir::dump_module(module);
     expect_contains_all(dump, {

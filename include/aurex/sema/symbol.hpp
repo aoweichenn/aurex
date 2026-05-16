@@ -38,9 +38,9 @@ inline constexpr SymbolId INVALID_SYMBOL_ID {SymbolId::INVALID_VALUE};
 
 struct Symbol {
     SymbolKind kind = SymbolKind::local;
-    std::string name;
+    InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::string c_name;
+    InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
     base::SourceRange range {};
@@ -68,10 +68,12 @@ public:
 
 private:
     [[nodiscard]] IdentSymbolMap make_scope(base::usize expected_symbols) const;
+    [[nodiscard]] Symbol clone_symbol(const Symbol& symbol);
     void copy_from(const SymbolTable& other);
     void swap(SymbolTable& other) noexcept;
 
     std::unique_ptr<base::BumpAllocator> arena_;
+    IdentifierInterner texts_;
     SemaVector<Symbol> symbols_;
     SemaVector<IdentSymbolMap> scopes_;
 };

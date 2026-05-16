@@ -27,7 +27,11 @@ void LlvmEmitter::declare_records() {
         if (!sema::is_valid(record.type)) {
             continue;
         }
-        llvm::StructType* type = llvm::StructType::create(this->context_, record.symbol.empty() ? record.name : record.symbol);
+        const std::string_view symbol = this->text(record.symbol);
+        llvm::StructType* type = llvm::StructType::create(
+            this->context_,
+            symbol.empty() ? this->text(record.name) : symbol
+        );
         this->records_[record.type.value] = type;
     }
     for (const RecordLayout& record : this->source_.records) {

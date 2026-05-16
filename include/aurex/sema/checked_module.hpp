@@ -66,9 +66,9 @@ private:
 };
 
 struct StructFieldInfo {
-    std::string name;
+    InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::string c_name;
+    InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
     base::SourceRange range {};
@@ -76,9 +76,9 @@ struct StructFieldInfo {
 };
 
 struct StructInfo {
-    std::string name;
+    InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::string c_name;
+    InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
     SemaVector<StructFieldInfo> fields;
@@ -88,23 +88,23 @@ struct StructInfo {
 };
 
 struct EnumCaseInfo {
-    std::string name;
+    InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::string c_name;
+    InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
     TypeHandle payload_type = INVALID_TYPE_HANDLE;
     TypeHandleList payload_types;
-    std::string value_text;
+    InternedText value_text;
     base::SourceRange range {};
-    std::string enum_name;
-    std::string case_name;
+    InternedText enum_name;
+    InternedText case_name;
     IdentId case_name_id = INVALID_IDENT_ID;
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct TypeAliasInfo {
-    std::string name;
+    InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::TypeId target = syntax::INVALID_TYPE_ID;
@@ -390,7 +390,11 @@ public:
     NormalizedAstOverlay normalized_ast;
 
     [[nodiscard]] IdentId intern_c_name(const std::string_view c_name) {
-        return this->c_names.intern(c_name);
+        return this->intern_text(c_name).id;
+    }
+
+    [[nodiscard]] InternedText intern_text(const std::string_view text) {
+        return sema::intern_text(this->c_names, text);
     }
 
     [[nodiscard]] std::string_view c_name_text(const IdentId id) const noexcept {

@@ -57,30 +57,18 @@ TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges) {
         void_type
     );
     const TypeHandle opaque_record = module.types.opaque_struct("unit.Opaque", "unit_Opaque");
-    module.records.push_back(RecordLayout {
-        sema::INVALID_TYPE_HANDLE,
-        "unit.Invalid",
-        "unit_Invalid",
-        false,
-        {},
-    });
-    module.records.push_back(RecordLayout {
-        opaque_record,
-        "unit.Opaque",
-        "",
-        true,
-        {},
-    });
+    append_record(module, record_layout(module, sema::INVALID_TYPE_HANDLE, "unit.Invalid", "unit_Invalid", false));
+    append_record(module, record_layout(module, opaque_record, "unit.Opaque", "", true));
 
-    Value plain_value;
+    Value plain_value = module.make_value();
     plain_value.kind = ValueKind::param;
     plain_value.type = i32;
     const ValueId plain_value_id = add_value(module, plain_value);
-    Value pointer_value;
+    Value pointer_value = module.make_value();
     pointer_value.kind = ValueKind::param;
     pointer_value.type = ptr_i32;
     const ValueId pointer_value_id = add_value(module, pointer_value);
-    Value reference_value;
+    Value reference_value = module.make_value();
     reference_value.kind = ValueKind::param;
     reference_value.type = ref_i32;
     const ValueId reference_value_id = add_value(module, reference_value);

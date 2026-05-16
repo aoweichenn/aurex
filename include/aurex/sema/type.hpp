@@ -89,10 +89,10 @@ struct TypeInfo {
     TypeHandle enum_payload_storage = INVALID_TYPE_HANDLE;
     base::u64 enum_payload_size = 0;
     base::u64 enum_payload_align = 1;
-    std::string name;
-    std::string c_name;
-    std::string generic_identity_key;
-    std::string generic_origin_key;
+    InternedText name;
+    InternedText c_name;
+    InternedText generic_identity_key;
+    InternedText generic_origin_key;
     TypeHandleList generic_args;
     bool contains_array = false;
 };
@@ -153,18 +153,18 @@ public:
         std::initializer_list<TypeHandle> params,
         TypeHandle return_type
     );
-    [[nodiscard]] TypeHandle named_struct(std::string name, std::string c_name, bool contains_array);
-    [[nodiscard]] TypeHandle named_enum(std::string name, std::string c_name);
-    [[nodiscard]] TypeHandle opaque_struct(std::string name, std::string c_name);
-    [[nodiscard]] TypeHandle generic_param(std::string name);
-    [[nodiscard]] TypeHandle generic_param(std::string identity_key, std::string display_name);
+    [[nodiscard]] TypeHandle named_struct(std::string_view name, std::string_view c_name, bool contains_array);
+    [[nodiscard]] TypeHandle named_enum(std::string_view name, std::string_view c_name);
+    [[nodiscard]] TypeHandle opaque_struct(std::string_view name, std::string_view c_name);
+    [[nodiscard]] TypeHandle generic_param(std::string_view name);
+    [[nodiscard]] TypeHandle generic_param(std::string_view identity_key, std::string_view display_name);
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
     void set_enum_payload_layout(TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
-    void set_generic_instance(TypeHandle handle, std::string origin_key, std::span<const TypeHandle> args);
-    void set_generic_instance(TypeHandle handle, std::string origin_key, const std::vector<TypeHandle>& args);
-    void set_generic_instance(TypeHandle handle, std::string origin_key, std::initializer_list<TypeHandle> args);
+    void set_generic_instance(TypeHandle handle, std::string_view origin_key, std::span<const TypeHandle> args);
+    void set_generic_instance(TypeHandle handle, std::string_view origin_key, const std::vector<TypeHandle>& args);
+    void set_generic_instance(TypeHandle handle, std::string_view origin_key, std::initializer_list<TypeHandle> args);
 
     [[nodiscard]] bool same(TypeHandle lhs, TypeHandle rhs) const noexcept;
     [[nodiscard]] bool is_integer(TypeHandle type) const noexcept;
@@ -267,7 +267,8 @@ private:
     [[nodiscard]] SemaVector<base::u32> copy_type_key_values(std::span<const TypeHandle> values) const;
     [[nodiscard]] SemaVector<base::u32> copy_u32_values(const SemaVector<base::u32>& values) const;
     [[nodiscard]] TypeInfo make_type_info() const;
-    [[nodiscard]] TypeInfo clone_type_info(const TypeInfo& other) const;
+    [[nodiscard]] InternedText intern_text(std::string_view text);
+    [[nodiscard]] TypeInfo clone_type_info(const TypeInfo& other);
     [[nodiscard]] FunctionKey clone_function_key(const FunctionKey& other) const;
     [[nodiscard]] TupleKey clone_tuple_key(const TupleKey& other) const;
     [[nodiscard]] TypeHandle push(TypeInfo info);
@@ -280,7 +281,7 @@ private:
     SemaMap<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
     SemaMap<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;
     SemaMap<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
-    IdentifierInterner generic_identifiers_;
+    IdentifierInterner texts_;
     SemaMap<IdentId, TypeHandle, IdentIdHash> generic_param_types_;
 };
 

@@ -146,9 +146,9 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const IdentId name_id = syntax::INVALID_IDENT_ID
 ) {
     FunctionSignature signature;
-    signature.name = std::string(name);
+    signature.name = sema::InternedText {name_id, name};
     signature.name_id = name_id;
-    signature.c_name = std::string(name);
+    signature.c_name = sema::InternedText {name_id, name};
     signature.module = module;
     signature.return_type = return_type;
     return signature;
@@ -165,9 +165,9 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
 ) {
     return Symbol {
         kind,
-        std::string(name),
+        sema::InternedText {name_id, name},
         name_id,
-        std::string(name),
+        sema::InternedText {name_id, name},
         module,
         type,
         {},
@@ -301,7 +301,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
 ) {
     sema::SemanticAnalyzer::GenericTemplateInfo info = analyzer.make_generic_template_info();
     info.module = module;
-    info.name = std::string(name);
+    info.name = analyzer.checked_.intern_text(name);
     info.name_id = intern_identifier(analyzer, name);
     info.key = analyzer.module_lookup_key(module, info.name_id);
     info.function_key = analyzer.function_lookup_key(module, info.name_id);
@@ -320,14 +320,14 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     std::vector<TypeHandle> payload_types = {}
 ) {
     EnumCaseInfo info = analyzer.checked_.make_enum_case_info();
-    info.name = std::string(name);
+    info.name = analyzer.checked_.intern_text(name);
     info.name_id = intern_identifier(analyzer, name);
-    info.c_name = std::string(name);
+    info.c_name = analyzer.checked_.intern_text(name);
     info.module = module;
     info.type = enum_type;
     info.payload_type = payload_type;
     info.payload_types = analyzer.checked_.copy_type_handle_list(payload_types);
-    info.case_name = std::string(case_name);
+    info.case_name = analyzer.checked_.intern_text(case_name);
     info.case_name_id = intern_identifier(analyzer, case_name);
 
     const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, info.name_id);
@@ -2463,7 +2463,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy) {
     ASSERT_NE(generic_some, nullptr);
     EXPECT_EQ(generic_some->enum_name, "Maybe");
     EXPECT_EQ(checked.types.display_name(generic_some->type), "generic_type_display.Maybe[i32]");
-    EXPECT_EQ(generic_some->name.find("[i32]"), std::string::npos);
+    EXPECT_EQ(generic_some->name.view().find("[i32]"), std::string::npos);
 
     const std::string checked_dump = sema::dump_checked_module(checked);
     EXPECT_NE(checked_dump.find("struct priv Box[i32]"), std::string::npos);
@@ -2782,6 +2782,15 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     struct_info.c_name = "m0_S";
     struct_info.module = module_id(0);
     struct_info.type = i32;
+    struct_info.fields.push_back(StructFieldInfo {
+        checked.intern_text("field"),
+        beta_id,
+        checked.intern_text("m0_S_field"),
+        module_id(0),
+        i32,
+        {},
+        syntax::Visibility::public_,
+    });
     const sema::ModuleLookupKey struct_key {module_id(0).value, alpha_id};
     checked.structs.emplace(struct_key, struct_info);
     EnumCaseInfo enum_case = checked.make_enum_case_info();
@@ -2855,6 +2864,9 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).payload_types.front().value, i32.value);
     sema::CheckedModule checked_moved(std::move(checked_copy));
     EXPECT_EQ(checked_moved.structs.at(struct_key).name, "S");
+    ASSERT_EQ(checked_moved.structs.at(struct_key).fields.size(), 1U);
+    EXPECT_EQ(checked_moved.structs.at(struct_key).fields.front().name, "field");
+    EXPECT_EQ(checked_moved.structs.at(struct_key).fields.front().c_name, "m0_S_field");
     sema::CheckedModule checked_move_assigned;
     checked_move_assigned = std::move(checked_assigned);
     EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).name, "Alias");
@@ -3738,8 +3750,8 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal) {
     EXPECT_EQ(dependencies.count(const_value_key), 1u);
 
     sema::EnumCaseInfo case_info;
-    case_info.c_name = SEMA_TEST_ENUM_CASE_C_NAME;
-    case_info.name = std::string(SEMA_TEST_ENUM_CASE_C_NAME);
+    case_info.c_name = analyzer.checked_.intern_text(SEMA_TEST_ENUM_CASE_C_NAME);
+    case_info.name = analyzer.checked_.intern_text(SEMA_TEST_ENUM_CASE_C_NAME);
     case_info.name_id = intern_identifier(analyzer, SEMA_TEST_ENUM_CASE_C_NAME);
     case_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
     analyzer.checked_.enum_cases.emplace(

@@ -226,7 +226,7 @@ find_function_in_module(module, name_id, name, range);
 find_symbol(name_id, name, range);
 ```
 
-函数、类型、变量、泛型模板、方法、enum case 和本地 scope lookup 已移除生产 string overload/string-map fallback。`module_key`/`method_key` 等 string semantic key 保留给 checked storage、ABI/display、dump 和诊断，不再承担 lookup 热路径。
+函数、类型、变量、泛型模板、方法、enum case 和本地 scope lookup 已移除生产 string overload/string-map fallback。checked storage 的 ABI/display/dump 文本也收口为 bump-backed `IdentifierInterner` + `InternedText` / typed id，不再用堆分配 `std::string` 作为持久 payload；输出和诊断只在边界按需格式化字符串。
 
 ---
 
@@ -244,7 +244,7 @@ find_symbol(name_id, name, range);
 
 **实测：** 2M AST 节点 → **3.0 GB** 🚨
 
-**当前修复状态：** 当前主线已按该建议落地：Sema 读取 parser/module AST 引用，`CheckedModule::normalized_ast` 是轻量 overlay 且不拥有 AST；节点级 C symbol side table 已改为 `IdentId` + checked C-name interner；AST 主存储已改为 compact header + per-kind payload arena；parser 表达式创建直接写 compact payload 并按 token 形态预留/预触页；lexer token 输出已改为 bump-backed `TokenBuffer`；sema 的 checked side tables、generic side tables、pattern case table、type/symbol table、lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args 和 generic constraint bucket 均接入 bump-backed storage，generic function instance 存储用 bump-backed deque 保持 side table 地址稳定。
+**当前修复状态：** 当前主线已按该建议落地：Sema 读取 parser/module AST 引用，`CheckedModule::normalized_ast` 是轻量 overlay 且不拥有 AST；节点级 C symbol side table 已改为 `IdentId` + checked C-name interner；AST 主存储已改为 compact header + per-kind payload arena；parser 表达式创建直接写 compact payload 并按 token 形态预留/预触页；lexer token 输出已改为 bump-backed `TokenBuffer`；sema 的 checked side tables、generic side tables、pattern case table、type/symbol table、lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args、generic constraint bucket 和持久 name/c_name/generic key 文本字段均接入 bump-backed storage / interner，generic function instance 存储用 bump-backed deque 保持 side table 地址稳定。
 
 **剩余边界：** 后续性能工作集中在 generic side table 生命周期/释放策略、跨模块 stable identifier/hash、2M 节点跨机器 RSS/耗时阈值和 CI perf 阈值，不再是整树复制、per-node string side table 或 sema value-payload heap vector。
 

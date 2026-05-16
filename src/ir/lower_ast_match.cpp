@@ -14,31 +14,28 @@ constexpr base::usize IR_TRY_SHAPE_CASE_COUNT = 2;
 
 } // namespace
 
-GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const noexcept {
-    const std::string symbol = enum_case_symbol(name);
-    const auto found = constant_symbols_.find(this->ir_symbol_ids_.find(symbol));
-    return found == constant_symbols_.end() ? INVALID_GLOBAL_CONSTANT_ID : found->second;
+GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) noexcept {
+    const IrTextId symbol = this->enum_case_symbol(name);
+    const auto found = this->constant_symbols_.find(symbol);
+    return found == this->constant_symbols_.end() ? INVALID_GLOBAL_CONSTANT_ID : found->second;
 }
 
-std::string Lowerer::enum_case_symbol(const std::string_view name) const noexcept {
+IrTextId Lowerer::enum_case_symbol(const std::string_view name) noexcept {
     if (const auto found = enum_cases_by_name_.find(this->ast_.find_identifier(name));
         found != enum_cases_by_name_.end()) {
-        return found->second->c_name;
+        return this->module_.intern(found->second->c_name);
     }
-    if (const auto found = enum_cases_by_c_name_.find(this->ir_symbol_ids_.find(name));
-        found != enum_cases_by_c_name_.end()) {
-        return found->second->c_name;
+    const IrTextId existing = this->module_.find_text(name);
+    if (const auto found = this->enum_cases_by_c_name_.find(existing);
+        found != this->enum_cases_by_c_name_.end()) {
+        return existing;
     }
-    return std::string(name);
+    return this->module_.intern(name);
 }
 
-const sema::EnumCaseInfo* Lowerer::enum_case_info(const std::string_view name) const noexcept {
-    if (const auto found = enum_cases_by_name_.find(this->ast_.find_identifier(name));
-        found != enum_cases_by_name_.end()) {
-        return found->second;
-    }
-    if (const auto found = enum_cases_by_c_name_.find(this->ir_symbol_ids_.find(name));
-        found != enum_cases_by_c_name_.end()) {
+const sema::EnumCaseInfo* Lowerer::enum_case_info(const IrTextId symbol) const noexcept {
+    if (const auto found = this->enum_cases_by_c_name_.find(symbol);
+        found != this->enum_cases_by_c_name_.end()) {
         return found->second;
     }
     return nullptr;
@@ -48,9 +45,15 @@ const sema::EnumCaseInfo* Lowerer::enum_case_by_type_and_case(
     const sema::TypeHandle enum_type,
     const std::string_view case_name
 ) const noexcept {
-    const auto found = enum_cases_by_type_and_case_.find(EnumCaseTypeKey {enum_type.value, case_name});
-    if (found != enum_cases_by_type_and_case_.end()) {
+    const sema::IdentId case_name_id = this->ast_.find_identifier(case_name);
+    const auto found = this->enum_cases_by_type_and_case_.find(EnumCaseTypeKey {enum_type.value, case_name_id});
+    if (found != this->enum_cases_by_type_and_case_.end()) {
         return found->second;
+    }
+    for (const auto& entry : this->enum_cases_by_type_and_case_) {
+        if (entry.first.type == enum_type.value && entry.second->case_name == case_name) {
+            return entry.second;
+        }
     }
     return nullptr;
 }
@@ -99,7 +102,7 @@ const syntax::PatternNode* Lowerer::pattern_node(const syntax::PatternId id) con
     return this->ast_.patterns.ptr(id.value);
 }
 
-std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
+IrTextId Lowerer::pattern_case_symbol(const syntax::PatternId id) {
     if (syntax::is_valid(id) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
@@ -110,13 +113,13 @@ std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
             if (const std::string_view c_name =
                     this->checked_.c_name_text((*this->active_side_tables_.pattern_c_name_ids)[local]);
                 !c_name.empty()) {
-                return std::string(c_name);
+                return this->module_.intern(c_name);
             }
         }
         const auto found = this->active_side_tables_.generic->sparse_pattern_c_name_ids.find(id.value);
         if (found != this->active_side_tables_.generic->sparse_pattern_c_name_ids.end()) {
             if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {
-                return std::string(c_name);
+                return this->module_.intern(c_name);
             }
         }
     }
@@ -125,11 +128,11 @@ std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
         id.value < this->active_side_tables_.pattern_c_name_ids->size()) {
         const std::string_view c_name = this->checked_.c_name_text((*this->active_side_tables_.pattern_c_name_ids)[id.value]);
         if (!c_name.empty()) {
-            return std::string(c_name);
+            return this->module_.intern(c_name);
         }
     }
     const syntax::PatternNode* pattern = pattern_node(id);
-    return pattern == nullptr ? "<invalid>" : std::string(pattern->case_name);
+    return pattern == nullptr ? INVALID_IR_TEXT_ID : this->module_.intern(pattern->case_name);
 }
 
 bool Lowerer::is_irrefutable_pattern(
@@ -270,10 +273,10 @@ bool Lowerer::is_irrefutable_pattern(
 }
 
 ValueId Lowerer::append_true_value() {
-    Value value;
+    Value value = this->module_.make_value();
     value.kind = ValueKind::bool_literal;
     value.type = this->module_.types.builtin(sema::BuiltinType::bool_);
-    value.text = "true";
+    value.text = this->module_.intern("true");
     return this->append_value(value);
 }
 
@@ -290,7 +293,8 @@ ValueId Lowerer::append_pattern_source_length(
         return this->append_integer_literal(std::to_string(array.array_count), usize_type);
     }
     if (this->module_.types.is_slice(source_type)) {
-        const ValueId slice_value = this->append_load(source_address, source_type, "pattern.slice");
+        const ValueId slice_value =
+            this->append_load(source_address, source_type, this->module_.intern("pattern.slice"));
         return this->append_slice_len(slice_value);
     }
     return this->append_integer_literal("0", usize_type);
@@ -307,10 +311,11 @@ ValueId Lowerer::append_pattern_element_address(
     if (sema::is_valid(source_type) && this->module_.types.is_slice(source_type)) {
         const sema::TypeInfo& slice = this->module_.types.get(source_type);
         mutability = slice.slice_mutability;
-        const ValueId slice_value = this->append_load(source_address, source_type, "pattern.slice");
+        const ValueId slice_value =
+            this->append_load(source_address, source_type, this->module_.intern("pattern.slice"));
         base_address = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
     }
-    Value value;
+    Value value = this->module_.make_value();
     value.kind = ValueKind::index_addr;
     value.type = this->module_.types.pointer(mutability, element_type);
     value.object = base_address;
@@ -348,13 +353,13 @@ ValueId Lowerer::append_pattern_condition(
         return is_valid(condition) ? condition : this->append_true_value();
     }
     if (pattern->kind == syntax::PatternKind::const_) {
-        const std::string const_symbol = this->pattern_case_symbol(id);
-        const auto constant = this->constant_symbols_.find(this->ir_symbol_ids_.find(const_symbol));
+        const IrTextId const_symbol = this->pattern_case_symbol(id);
+        const auto constant = this->constant_symbols_.find(const_symbol);
         if (constant == this->constant_symbols_.end()) {
             return this->append_true_value();
         }
         const ValueId source = this->append_load(source_address, source_type);
-        Value const_ref;
+        Value const_ref = this->module_.make_value();
         const_ref.kind = ValueKind::constant_ref;
         const_ref.name = const_symbol;
         const_ref.constant = constant->second;
@@ -368,12 +373,12 @@ ValueId Lowerer::append_pattern_condition(
     }
     if (pattern->kind == syntax::PatternKind::literal) {
         const ValueId source = this->append_load(source_address, source_type);
-        Value literal;
+        Value literal = this->module_.make_value();
         literal.kind = (pattern->case_name == "true" || pattern->case_name == "false")
             ? ValueKind::bool_literal
             : ValueKind::integer_literal;
         literal.type = source_type;
-        literal.text = std::string(pattern->case_name);
+        literal.text = this->module_.intern(pattern->case_name);
         return this->append_binary_value(
             BinaryOp::equal,
             this->module_.types.builtin(sema::BuiltinType::bool_),
@@ -389,9 +394,9 @@ ValueId Lowerer::append_pattern_condition(
         ValueId condition = INVALID_VALUE_ID;
         const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
         for (base::usize i = 0; i < count; ++i) {
-            Value field;
+            Value field = this->module_.make_value();
             field.kind = ValueKind::field_addr;
-            field.name = std::to_string(i);
+            field.name = this->module_.intern(std::to_string(i));
             field.object = source_address;
             field.type = this->module_.types.pointer(sema::PointerMutability::mut, tuple.tuple_elements[i]);
             const ValueId element_condition =
@@ -454,9 +459,9 @@ ValueId Lowerer::append_pattern_condition(
         ValueId condition = INVALID_VALUE_ID;
         for (const syntax::FieldPattern& field_pattern : pattern->field_patterns) {
             const sema::TypeHandle field_type = this->aggregate_field_type(source_type, field_pattern.name);
-            Value field;
+            Value field = this->module_.make_value();
             field.kind = ValueKind::field_addr;
-            field.name = std::string(field_pattern.name);
+            field.name = this->module_.intern(field_pattern.name);
             field.object = source_address;
             field.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
             const ValueId field_condition =
@@ -474,17 +479,17 @@ ValueId Lowerer::append_pattern_condition(
     }
 
     const bool payload_enum = is_payload_enum(this->module_.types, source_type);
-    const std::string case_symbol = this->pattern_case_symbol(id);
+    const IrTextId case_symbol = this->pattern_case_symbol(id);
     const ValueId source = payload_enum
         ? this->append_load(
-            this->enum_field_addr(source_address, std::string(IR_ENUM_TAG_FIELD_NAME)),
+            this->enum_field_addr(source_address, this->module_.intern(IR_ENUM_TAG_FIELD_NAME)),
             enum_tag_type(this->module_.types, source_type),
-            "pattern.tag"
+            this->module_.intern("pattern.tag")
         )
         : this->append_load(source_address, source_type);
     const ValueId case_id = payload_enum
-        ? this->append_enum_tag_literal(case_symbol, enum_tag_type(this->module_.types, source_type))
-        : this->append_enum_case_ref(case_symbol, source_type);
+        ? this->append_enum_tag_literal(this->module_.text(case_symbol), enum_tag_type(this->module_.types, source_type))
+        : this->append_enum_case_ref(this->module_.text(case_symbol), source_type);
     ValueId condition = this->append_binary_value(
         BinaryOp::equal,
         this->module_.types.builtin(sema::BuiltinType::bool_),
@@ -500,9 +505,9 @@ ValueId Lowerer::append_pattern_condition(
     }
     const BlockId tag_block = this->current_block_;
     const BlockId payload_block =
-        add_block(*this->current_function_, "pattern.payload" + std::to_string(this->current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_, "pattern.payload" + std::to_string(this->current_function_->blocks.size()));
     const BlockId exit_block =
-        add_block(*this->current_function_, "pattern.join" + std::to_string(this->current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_, "pattern.join" + std::to_string(this->current_function_->blocks.size()));
     Terminator payload_guard;
     payload_guard.kind = TerminatorKind::cond_branch;
     payload_guard.condition = condition;
@@ -511,8 +516,8 @@ ValueId Lowerer::append_pattern_condition(
     this->set_terminator(this->current_block_, payload_guard);
 
     this->current_block_ = payload_block;
-    const ValueId storage_addr = this->enum_field_addr(source_address, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
-    Value cast;
+    const ValueId storage_addr = this->enum_field_addr(source_address, this->module_.intern(IR_ENUM_PAYLOAD_FIELD_NAME));
+    Value cast = this->module_.make_value();
     cast.kind = ValueKind::cast;
     cast.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_type);
     cast.target_type = cast.type;
@@ -529,10 +534,10 @@ ValueId Lowerer::append_pattern_condition(
     } else {
         const base::usize count = std::min(info->payload_types.size(), pattern->payload_patterns.size());
         for (base::usize i = 0; i < count; ++i) {
-            Value field;
+            Value field = this->module_.make_value();
             field.kind = ValueKind::field_addr;
             field.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_types[i]);
-            field.name = std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
+            field.name = this->module_.intern(std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i));
             field.object = payload_addr;
             const ValueId field_condition =
                 this->append_pattern_condition(pattern->payload_patterns[i], this->append_value(field), info->payload_types[i]);
@@ -553,7 +558,7 @@ ValueId Lowerer::append_pattern_condition(
     this->append_branch_if_open(exit_block);
 
     this->current_block_ = exit_block;
-    Value result;
+    Value result = this->module_.make_value();
     result.kind = ValueKind::phi;
     result.type = this->module_.types.builtin(sema::BuiltinType::bool_);
     result.incoming.push_back(PhiInput {tag_block, condition});
@@ -571,21 +576,21 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const ExprView& 
     const ValueId matched_slot = append_temp_alloca("match.value", matched_type);
     append_store(matched_slot, matched);
 
-    const BlockId join_block = add_block(*current_function_, "match.join" + std::to_string(current_function_->blocks.size()));
+    const BlockId join_block = add_block(this->module_, *current_function_, "match.join" + std::to_string(current_function_->blocks.size()));
     std::vector<PhiInput> incoming;
     incoming.reserve(expr.match_arms.size());
 
     for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
         const syntax::MatchArm& arm = expr.match_arms[i];
         const bool fallback = is_irrefutable_pattern(arm.pattern, matched_type);
-        const BlockId arm_block = add_block(*current_function_, "match.arm" + std::to_string(current_function_->blocks.size()));
+        const BlockId arm_block = add_block(this->module_, *current_function_, "match.arm" + std::to_string(current_function_->blocks.size()));
         BlockId next_test_block = INVALID_BLOCK_ID;
         const bool guarded = syntax::is_valid(arm.guard);
         const bool implicit_fallback = !guarded && (fallback || i + 1 == expr.match_arms.size());
         if (implicit_fallback) {
             append_branch_if_open(arm_block);
         } else {
-            next_test_block = add_block(*current_function_, "match.next" + std::to_string(current_function_->blocks.size()));
+            next_test_block = add_block(this->module_, *current_function_, "match.next" + std::to_string(current_function_->blocks.size()));
             if (fallback) {
                 append_branch_if_open(arm_block);
             } else {
@@ -604,7 +609,7 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const ExprView& 
         bind_pattern_locals(arm.pattern, matched_slot, matched_type);
         BlockId arm_body_block = arm_block;
         if (guarded) {
-            arm_body_block = add_block(*current_function_, "match.guard.pass" + std::to_string(current_function_->blocks.size()));
+            arm_body_block = add_block(this->module_, *current_function_, "match.guard.pass" + std::to_string(current_function_->blocks.size()));
             const ValueId guard_condition = lower_expr(arm.guard);
             Terminator guard;
             guard.kind = TerminatorKind::cond_branch;
@@ -624,10 +629,11 @@ ValueId Lowerer::lower_match_expr(const syntax::ExprId expr_id, const ExprView& 
     }
 
     current_block_ = join_block;
-    Value result;
+    Value result = this->module_.make_value();
     result.kind = ValueKind::phi;
     result.type = expr_type(expr_id);
-    result.incoming = std::move(incoming);
+    result.incoming.reserve(incoming.size());
+    result.incoming.insert(result.incoming.end(), incoming.begin(), incoming.end());
     return append_value(result);
 }
 
@@ -658,10 +664,14 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
     append_store(source_slot, source_value);
 
     const sema::TypeHandle tag_type = enum_tag_type(module_.types, source_type);
-    const ValueId tag = append_load(enum_field_addr(source_slot, std::string(IR_ENUM_TAG_FIELD_NAME)), tag_type, "try.tag");
+    const ValueId tag = append_load(
+        enum_field_addr(source_slot, this->module_.intern(IR_ENUM_TAG_FIELD_NAME)),
+        tag_type,
+        this->module_.intern("try.tag")
+    );
     const ValueId success_tag = append_enum_tag_literal(success_case->c_name, tag_type);
 
-    Value condition;
+    Value condition = this->module_.make_value();
     condition.kind = ValueKind::binary;
     condition.type = module_.types.builtin(sema::BuiltinType::bool_);
     condition.binary_op = BinaryOp::equal;
@@ -669,9 +679,9 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
     condition.rhs = success_tag;
     const ValueId condition_id = append_value(condition);
 
-    const BlockId success_block = add_block(*current_function_, "try.ok" + std::to_string(current_function_->blocks.size()));
-    const BlockId failure_block = add_block(*current_function_, "try.err" + std::to_string(current_function_->blocks.size()));
-    const BlockId continue_block = add_block(*current_function_, "try.join" + std::to_string(current_function_->blocks.size()));
+    const BlockId success_block = add_block(this->module_, *current_function_, "try.ok" + std::to_string(current_function_->blocks.size()));
+    const BlockId failure_block = add_block(this->module_, *current_function_, "try.err" + std::to_string(current_function_->blocks.size()));
+    const BlockId continue_block = add_block(this->module_, *current_function_, "try.join" + std::to_string(current_function_->blocks.size()));
 
     Terminator branch;
     branch.kind = TerminatorKind::cond_branch;
@@ -683,7 +693,8 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
     current_block_ = failure_block;
     ValueId return_payload = INVALID_VALUE_ID;
     if (sema::is_valid(failure_case->payload_type)) {
-        return_payload = append_enum_payload_load(source_slot, failure_case->payload_type, "try.err");
+        return_payload =
+            append_enum_payload_load(source_slot, failure_case->payload_type, this->module_.intern("try.err"));
     }
     ValueId return_value = append_enum_constructor(*return_failure_case, return_payload);
     return_value = coerce_value(return_value, return_type);
@@ -694,7 +705,8 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
     set_terminator(current_block_, ret);
 
     current_block_ = success_block;
-    const ValueId success_value = append_enum_payload_load(source_slot, result_type, "try.ok");
+    const ValueId success_value =
+        append_enum_payload_load(source_slot, result_type, this->module_.intern("try.ok"));
     append_branch_if_open(continue_block);
 
     current_block_ = continue_block;
@@ -702,20 +714,20 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
 }
 
 ValueId Lowerer::append_enum_case_ref(const std::string_view case_name, const sema::TypeHandle enum_type) {
-    Value case_value;
+    Value case_value = this->module_.make_value();
     case_value.kind = ValueKind::constant_ref;
     case_value.type = enum_type;
-    case_value.name = enum_case_symbol(case_name);
-    case_value.constant = enum_case_constant(case_name);
+    case_value.name = this->enum_case_symbol(case_name);
+    case_value.constant = this->enum_case_constant(case_name);
     return append_value(case_value);
 }
 
 ValueId Lowerer::append_enum_tag_literal(const std::string_view case_name, const sema::TypeHandle tag_type) {
-    Value value;
+    Value value = this->module_.make_value();
     value.kind = ValueKind::integer_literal;
     value.type = tag_type;
-    if (const sema::EnumCaseInfo* info = enum_case_info(case_name); info != nullptr) {
-        value.text = info->value_text;
+    if (const sema::EnumCaseInfo* info = this->enum_case_info(this->enum_case_symbol(case_name)); info != nullptr) {
+        value.text = this->module_.intern(info->value_text);
     }
     return append_value(value);
 }
@@ -744,7 +756,7 @@ ValueId Lowerer::lower_enum_constructor_call(
         );
     }
 
-    Value aggregate;
+    Value aggregate = this->module_.make_value();
     aggregate.kind = ValueKind::aggregate;
     aggregate.type = enum_case.payload_type;
     const base::usize field_count = std::min(expr.args.size(), enum_case.payload_types.size());
@@ -755,7 +767,7 @@ ValueId Lowerer::lower_enum_constructor_call(
             enum_case.payload_types[i]
         );
         aggregate.fields.push_back(FieldValue {
-            std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i),
+            this->module_.intern(std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i)),
             value,
         });
     }
@@ -763,13 +775,13 @@ ValueId Lowerer::lower_enum_constructor_call(
 }
 
 ValueId Lowerer::append_enum_constructor(const sema::EnumCaseInfo& enum_case, const ValueId payload_value) {
-    Value tag;
+    Value tag = this->module_.make_value();
     tag.kind = ValueKind::integer_literal;
     tag.type = enum_tag_type(module_.types, enum_case.type);
-    tag.text = enum_case.value_text;
+    tag.text = this->module_.intern(enum_case.value_text);
     const ValueId tag_id = append_value(tag);
 
-    Value payload;
+    Value payload = this->module_.make_value();
     if (is_valid(payload_value)) {
         payload.kind = ValueKind::undef;
         payload.type = enum_payload_storage_type(module_.types, enum_case.type);
@@ -777,7 +789,7 @@ ValueId Lowerer::append_enum_constructor(const sema::EnumCaseInfo& enum_case, co
         const ValueId storage_slot = append_temp_alloca("enum.payload.storage", payload.type);
         append_store(storage_slot, storage_undef);
 
-        Value cast;
+        Value cast = this->module_.make_value();
         cast.kind = ValueKind::cast;
         cast.type = module_.types.pointer(sema::PointerMutability::mut, enum_case.payload_type);
         cast.target_type = cast.type;
@@ -795,21 +807,21 @@ ValueId Lowerer::append_enum_constructor(const sema::EnumCaseInfo& enum_case, co
     }
     const ValueId payload_id = append_value(payload);
 
-    Value result;
+    Value result = this->module_.make_value();
     result.kind = ValueKind::aggregate;
     result.type = enum_case.type;
-    result.fields.push_back(FieldValue {std::string(IR_ENUM_TAG_FIELD_NAME), tag_id});
-    result.fields.push_back(FieldValue {std::string(IR_ENUM_PAYLOAD_FIELD_NAME), payload_id});
+    result.fields.push_back(FieldValue {this->module_.intern(IR_ENUM_TAG_FIELD_NAME), tag_id});
+    result.fields.push_back(FieldValue {this->module_.intern(IR_ENUM_PAYLOAD_FIELD_NAME), payload_id});
     return append_value(result);
 }
 
 ValueId Lowerer::append_enum_payload_load(
     const ValueId enum_slot,
     const sema::TypeHandle payload_type,
-    const std::string& name
+    const IrTextId name
 ) {
-    const ValueId storage_addr = enum_field_addr(enum_slot, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
-    Value cast;
+    const ValueId storage_addr = enum_field_addr(enum_slot, this->module_.intern(IR_ENUM_PAYLOAD_FIELD_NAME));
+    Value cast = this->module_.make_value();
     cast.kind = ValueKind::cast;
     cast.type = module_.types.pointer(sema::PointerMutability::mut, payload_type);
     cast.target_type = cast.type;
@@ -819,19 +831,19 @@ ValueId Lowerer::append_enum_payload_load(
     return append_load(payload_addr, payload_type, name);
 }
 
-ValueId Lowerer::append_temp_alloca(const std::string& name, const sema::TypeHandle value_type) {
-    Value slot;
+ValueId Lowerer::append_temp_alloca(const std::string_view name, const sema::TypeHandle value_type) {
+    Value slot = this->module_.make_value();
     slot.kind = ValueKind::alloca;
-    slot.name = name;
+    slot.name = this->module_.intern(name);
     slot.type = module_.types.pointer(sema::PointerMutability::mut, value_type);
     return append_value(slot);
 }
 
 ValueId Lowerer::append_integer_literal(const std::string_view text, const sema::TypeHandle value_type) {
-    Value value;
+    Value value = this->module_.make_value();
     value.kind = ValueKind::integer_literal;
     value.type = value_type;
-    value.text = std::string(text);
+    value.text = this->module_.intern(text);
     return append_value(value);
 }
 
@@ -841,7 +853,7 @@ ValueId Lowerer::append_binary_value(
     const ValueId lhs,
     const ValueId rhs
 ) {
-    Value value;
+    Value value = this->module_.make_value();
     value.kind = ValueKind::binary;
     value.type = type;
     value.binary_op = op;
@@ -850,8 +862,8 @@ ValueId Lowerer::append_binary_value(
     return append_value(value);
 }
 
-ValueId Lowerer::append_load(const ValueId address, const sema::TypeHandle value_type, const std::string& name) {
-    Value value;
+ValueId Lowerer::append_load(const ValueId address, const sema::TypeHandle value_type, const IrTextId name) {
+    Value value = this->module_.make_value();
     value.kind = ValueKind::load;
     value.name = name;
     value.type = value_type;
@@ -859,13 +871,16 @@ ValueId Lowerer::append_load(const ValueId address, const sema::TypeHandle value
     return append_value(value);
 }
 
-ValueId Lowerer::enum_field_addr(const ValueId object, const std::string& field_name) {
+ValueId Lowerer::enum_field_addr(const ValueId object, const IrTextId field_name) {
     const sema::TypeHandle enum_type = local_load_type(object);
-    Value value;
+    Value value = this->module_.make_value();
     value.kind = ValueKind::field_addr;
     value.name = field_name;
     value.object = object;
-    value.type = module_.types.pointer(sema::PointerMutability::mut, aggregate_field_type(enum_type, field_name));
+    value.type = module_.types.pointer(
+        sema::PointerMutability::mut,
+        aggregate_field_type(enum_type, this->module_.text(field_name))
+    );
     return append_value(value);
 }
 
@@ -903,15 +918,14 @@ void Lowerer::collect_pattern_binding_slots(
         case syntax::PatternKind::const_:
             break;
         case syntax::PatternKind::binding: {
-            const std::string local_name(pattern->binding_name);
             if (slots.contains(pattern->binding_name_id)) {
                 break;
             }
-            const ValueId slot = this->append_temp_alloca(local_name, frame.type);
+            const ValueId slot = this->append_temp_alloca(pattern->binding_name, frame.type);
             this->bind_local(pattern->binding_name_id, LocalBinding {slot, is_mutable});
             slots.emplace(
                 pattern->binding_name_id,
-                PatternBindingSlot {local_name, pattern->binding_name_id, slot, frame.type}
+                PatternBindingSlot {this->module_.intern(pattern->binding_name), pattern->binding_name_id, slot, frame.type}
             );
             break;
         }
@@ -1012,10 +1026,9 @@ void Lowerer::store_pattern_bindings(
         case syntax::PatternKind::const_:
             break;
         case syntax::PatternKind::binding: {
-            const std::string local_name(pattern->binding_name);
             const auto slot = slots.find(pattern->binding_name_id);
             if (slot != slots.end()) {
-                this->append_store(slot->second.slot, this->append_load(frame.address, frame.type, local_name));
+                this->append_store(slot->second.slot, this->append_load(frame.address, frame.type, slot->second.name));
             }
             break;
         }
@@ -1027,9 +1040,9 @@ void Lowerer::store_pattern_bindings(
             const base::usize count = std::min(tuple.tuple_elements.size(), pattern->elements.size());
             for (base::usize i = count; i > 0; --i) {
                 const base::usize element_index = i - 1;
-                Value field;
+                Value field = this->module_.make_value();
                 field.kind = ValueKind::field_addr;
-                field.name = std::to_string(element_index);
+                field.name = this->module_.intern(std::to_string(element_index));
                 field.object = frame.address;
                 field.type = this->module_.types.pointer(sema::PointerMutability::mut, tuple.tuple_elements[element_index]);
                 pending.push_back(PatternFrame {
@@ -1081,9 +1094,9 @@ void Lowerer::store_pattern_bindings(
                  field_pattern != pattern->field_patterns.rend();
                  ++field_pattern) {
                 const sema::TypeHandle field_type = this->aggregate_field_type(frame.type, field_pattern->name);
-                Value field;
+                Value field = this->module_.make_value();
                 field.kind = ValueKind::field_addr;
-                field.name = std::string(field_pattern->name);
+                field.name = this->module_.intern(field_pattern->name);
                 field.object = frame.address;
                 field.type = this->module_.types.pointer(sema::PointerMutability::mut, field_type);
                 pending.push_back(PatternFrame {
@@ -1101,8 +1114,9 @@ void Lowerer::store_pattern_bindings(
             if (info == nullptr || !sema::is_valid(info->payload_type)) {
                 break;
             }
-            const ValueId storage_addr = this->enum_field_addr(frame.address, std::string(IR_ENUM_PAYLOAD_FIELD_NAME));
-            Value cast;
+            const ValueId storage_addr =
+                this->enum_field_addr(frame.address, this->module_.intern(IR_ENUM_PAYLOAD_FIELD_NAME));
+            Value cast = this->module_.make_value();
             cast.kind = ValueKind::cast;
             cast.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_type);
             cast.target_type = cast.type;
@@ -1120,10 +1134,11 @@ void Lowerer::store_pattern_bindings(
             const base::usize count = std::min(info->payload_types.size(), pattern->payload_patterns.size());
             for (base::usize i = count; i > 0; --i) {
                 const base::usize payload_index = i - 1;
-                Value field;
+                Value field = this->module_.make_value();
                 field.kind = ValueKind::field_addr;
                 field.type = this->module_.types.pointer(sema::PointerMutability::mut, info->payload_types[payload_index]);
-                field.name = std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(payload_index);
+                field.name =
+                    this->module_.intern(std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(payload_index));
                 field.object = payload_addr;
                 pending.push_back(PatternFrame {
                     pattern->payload_patterns[payload_index],
@@ -1161,17 +1176,17 @@ void Lowerer::bind_pattern_locals_with_mutability(
     }
 
     const BlockId join_block =
-        add_block(*this->current_function_, "pattern.bind.join" + std::to_string(this->current_function_->blocks.size()));
+        add_block(this->module_, *this->current_function_, "pattern.bind.join" + std::to_string(this->current_function_->blocks.size()));
     for (base::usize i = 0; i < pattern->alternatives.size(); ++i) {
         const syntax::PatternId alternative = pattern->alternatives[i];
         const BlockId alternative_block =
-            add_block(*this->current_function_, "pattern.bind.alt" + std::to_string(this->current_function_->blocks.size()));
+            add_block(this->module_, *this->current_function_, "pattern.bind.alt" + std::to_string(this->current_function_->blocks.size()));
         BlockId next_block = INVALID_BLOCK_ID;
         if (i + 1 == pattern->alternatives.size()) {
             this->append_branch_if_open(alternative_block);
         } else {
             next_block =
-                add_block(*this->current_function_, "pattern.bind.next" + std::to_string(this->current_function_->blocks.size()));
+                add_block(this->module_, *this->current_function_, "pattern.bind.next" + std::to_string(this->current_function_->blocks.size()));
             const ValueId condition = this->append_pattern_condition(alternative, source_address, source_type);
             Terminator branch;
             branch.kind = TerminatorKind::cond_branch;

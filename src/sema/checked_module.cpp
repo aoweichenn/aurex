@@ -571,7 +571,18 @@ void CheckedModule::copy_from(const CheckedModule& other) {
     for (const auto& entry : other.enum_cases) {
         this->enum_cases.emplace(entry.first, this->clone_enum_case_info(entry.second));
     }
-    this->type_aliases = other.type_aliases;
+    this->type_aliases.clear();
+    this->type_aliases.reserve(other.type_aliases.size());
+    for (const auto& entry : other.type_aliases) {
+        TypeAliasInfo alias;
+        alias.name = this->intern_text(entry.second.name);
+        alias.name_id = entry.second.name_id;
+        alias.module = entry.second.module;
+        alias.target = entry.second.target;
+        alias.range = entry.second.range;
+        alias.visibility = entry.second.visibility;
+        this->type_aliases.emplace(entry.first, alias);
+    }
     this->generic_side_table_layouts.clear();
     for (const GenericSideTableLayout& layout : other.generic_side_table_layouts) {
         this->generic_side_table_layouts.push_back(this->clone_generic_side_table_layout(layout));
@@ -606,7 +617,17 @@ SemaVector<StructFieldInfo> CheckedModule::copy_struct_field_list(
 ) {
     SemaVector<StructFieldInfo> copy = this->make_struct_field_list();
     copy.reserve(values.size());
-    copy.insert(copy.end(), values.begin(), values.end());
+    for (const StructFieldInfo& field : values) {
+        StructFieldInfo field_copy;
+        field_copy.name = this->intern_text(field.name);
+        field_copy.name_id = field.name_id;
+        field_copy.c_name = this->intern_text(field.c_name);
+        field_copy.module = field.module;
+        field_copy.type = field.type;
+        field_copy.range = field.range;
+        field_copy.visibility = field.visibility;
+        copy.push_back(field_copy);
+    }
     return copy;
 }
 
@@ -694,10 +715,10 @@ const GenericSideTableLayout* CheckedModule::generic_side_table_layout(const bas
 
 FunctionSignature CheckedModule::clone_function_signature(const FunctionSignature& other) {
     FunctionSignature copy = this->make_function_signature();
-    copy.name = other.name;
+    copy.name = this->intern_text(other.name);
     copy.name_id = other.name_id;
     copy.semantic_key = other.semantic_key;
-    copy.c_name = other.c_name;
+    copy.c_name = this->intern_text(other.c_name);
     copy.module = other.module;
     copy.method_owner_type = other.method_owner_type;
     copy.return_type = other.return_type;
@@ -721,9 +742,9 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
 
 StructInfo CheckedModule::clone_struct_info(const StructInfo& other) {
     StructInfo copy = this->make_struct_info();
-    copy.name = other.name;
+    copy.name = this->intern_text(other.name);
     copy.name_id = other.name_id;
-    copy.c_name = other.c_name;
+    copy.c_name = this->intern_text(other.c_name);
     copy.module = other.module;
     copy.type = other.type;
     copy.fields = this->copy_struct_field_list(other.fields);
@@ -735,17 +756,17 @@ StructInfo CheckedModule::clone_struct_info(const StructInfo& other) {
 
 EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other) {
     EnumCaseInfo copy = this->make_enum_case_info();
-    copy.name = other.name;
+    copy.name = this->intern_text(other.name);
     copy.name_id = other.name_id;
-    copy.c_name = other.c_name;
+    copy.c_name = this->intern_text(other.c_name);
     copy.module = other.module;
     copy.type = other.type;
     copy.payload_type = other.payload_type;
     copy.payload_types = this->copy_type_handle_list(other.payload_types);
-    copy.value_text = other.value_text;
+    copy.value_text = this->intern_text(other.value_text);
     copy.range = other.range;
-    copy.enum_name = other.enum_name;
-    copy.case_name = other.case_name;
+    copy.enum_name = this->intern_text(other.enum_name);
+    copy.case_name = this->intern_text(other.case_name);
     copy.case_name_id = other.case_name_id;
     copy.visibility = other.visibility;
     return copy;
@@ -832,17 +853,17 @@ namespace {
 } // namespace
 
 std::string struct_display_name(const TypeTable& types, const StructInfo& info) {
-    return types.display_name(info.name, generic_args_for_type(types, info.type));
+    return types.display_name(info.name.view(), generic_args_for_type(types, info.type));
 }
 
 std::string enum_display_name(const TypeTable& types, const EnumCaseInfo& info) {
-    return types.display_name(info.enum_name, generic_args_for_type(types, info.type));
+    return types.display_name(info.enum_name.view(), generic_args_for_type(types, info.type));
 }
 
 std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& info) {
     std::string display = enum_display_name(types, info);
     display += "_";
-    display += info.case_name;
+    display += info.case_name.view();
     return display;
 }
 
@@ -920,7 +941,7 @@ std::string dump_checked_module(const CheckedModule& checked) {
         alias_names.push_back(&entry.second);
     }
     std::sort(alias_names.begin(), alias_names.end(), [](const TypeAliasInfo* lhs, const TypeAliasInfo* rhs) {
-        return lhs->name < rhs->name;
+        return lhs->name.view() < rhs->name.view();
     });
     out << "  type_aliases " << alias_names.size() << "\n";
     for (const TypeAliasInfo* const alias_ptr : alias_names) {

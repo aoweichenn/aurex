@@ -1,4 +1,5 @@
 #include <array>
+#include <utility>
 #include <vector>
 
 #include <aurex/ir/enum_layout.hpp>
@@ -15,6 +16,13 @@ constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE = 8;
 constexpr base::u64 TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT = 4;
 constexpr base::usize TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT = 2;
 constexpr base::u32 TYPE_TABLE_TEST_OUT_OF_RANGE_TYPE = 9999;
+constexpr base::usize IR_MODULE_COPY_TEST_VALUE_RESERVE = 4;
+constexpr base::usize IR_MODULE_COPY_TEST_FUNCTION_RESERVE = 1;
+constexpr base::usize IR_MODULE_COPY_TEST_RECORD_RESERVE = 1;
+constexpr base::usize IR_MODULE_COPY_TEST_CONSTANT_RESERVE = 1;
+constexpr base::u32 IR_MODULE_COPY_TEST_RECORD_INDEX = 0;
+constexpr base::u32 IR_MODULE_COPY_TEST_ENTRY_INDEX = 0;
+constexpr base::u32 IR_MODULE_COPY_TEST_MISSING_TEXT_OFFSET = 1;
 
 } // namespace
 
@@ -173,28 +181,27 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(ir::enum_payload_storage_type(module.types, record_type).value, sema::INVALID_TYPE_HANDLE.value);
     EXPECT_EQ(ir::enum_payload_storage_type(module.types, sema::INVALID_TYPE_HANDLE).value, sema::INVALID_TYPE_HANDLE.value);
 
-    const RecordLayout payload_record = ir::make_payload_enum_record(module.types, enum_type);
+    const RecordLayout payload_record = ir::make_payload_enum_record(module, enum_type);
     ASSERT_EQ(payload_record.fields.size(), TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT);
-    EXPECT_EQ(payload_record.fields[0].name, ir::IR_ENUM_TAG_FIELD_NAME);
+    EXPECT_EQ(module.text(payload_record.fields[0].name), ir::IR_ENUM_TAG_FIELD_NAME);
     EXPECT_EQ(payload_record.fields[0].type.value, u32.value);
-    EXPECT_EQ(payload_record.fields[1].name, ir::IR_ENUM_PAYLOAD_FIELD_NAME);
+    EXPECT_EQ(module.text(payload_record.fields[1].name), ir::IR_ENUM_PAYLOAD_FIELD_NAME);
     EXPECT_EQ(payload_record.fields[1].type.value, record_type.value);
 
-    RecordLayout record;
-    record.type = record_type;
-    record.name = "unit.Pair";
-    record.symbol = "unit_Pair";
-    record.fields = {RecordField {"left", i32}, RecordField {"right", ptr_i32}};
-    module.records.push_back(record);
+    RecordLayout record = record_layout(module, record_type, "unit.Pair", "unit_Pair", false);
+    record.fields.push_back(record_field(module, "left", i32));
+    record.fields.push_back(record_field(module, "right", ptr_i32));
+    append_record(module, std::move(record));
+    const RecordLayout& stored_record = module.records.back();
 
     EXPECT_NE(ir::find_record(module, record_type), nullptr);
     EXPECT_EQ(ir::find_record(module, sema::INVALID_TYPE_HANDLE), nullptr);
     EXPECT_NE(ir::find_record_field(module, record_type, "right"), nullptr);
     EXPECT_EQ(ir::find_record_field(module, record_type, "missing"), nullptr);
-    EXPECT_EQ(ir::record_field_index(record, "left"), 0U);
-    EXPECT_EQ(ir::record_field_index(record, "missing"), static_cast<base::usize>(-1));
+    EXPECT_EQ(ir::record_field_index(stored_record, text_id(module, "left")), 0U);
+    EXPECT_EQ(ir::record_field_index(stored_record, text_id(module, "missing")), static_cast<base::usize>(-1));
 
-    const ValueId literal = add_value(module, integer_value(i32, "7"));
+    const ValueId literal = add_value(module, integer_value(module, i32, "7"));
     const GlobalConstantId constant = add_global_constant(module, GlobalConstant {"seven", "unit_seven", i32, literal});
     EXPECT_TRUE(is_valid(literal));
     EXPECT_TRUE(is_valid(constant));
@@ -202,9 +209,103 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(ir::find_global_constant(module, INVALID_GLOBAL_CONSTANT_ID), nullptr);
 
     Function function = make_function(module, "helper", i32);
-    const BlockId entry = add_block(function, "entry");
+    const BlockId entry = add_block(module, function, "entry");
     EXPECT_TRUE(is_valid(entry));
     EXPECT_FALSE(is_valid(INVALID_BLOCK_ID));
+}
+
+TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
+    Module module;
+    module.reserve(
+        IR_MODULE_COPY_TEST_VALUE_RESERVE,
+        IR_MODULE_COPY_TEST_FUNCTION_RESERVE,
+        IR_MODULE_COPY_TEST_RECORD_RESERVE,
+        IR_MODULE_COPY_TEST_CONSTANT_RESERVE
+    );
+
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle record_type = module.types.named_struct("copy.Pair", "copy_Pair", false);
+    const IrTextId payload_text = text_id(module, "payload");
+    EXPECT_TRUE(module.has_text(payload_text));
+    EXPECT_EQ(module.find_text("payload").value, payload_text.value);
+    EXPECT_FALSE(module.has_text(IrTextId {payload_text.value + IR_MODULE_COPY_TEST_MISSING_TEXT_OFFSET}));
+    EXPECT_FALSE(module.has_text(module.find_text("missing")));
+
+    Value literal = integer_value(module, i32, "99");
+    set_name(module, literal, "literal");
+    const ValueId literal_id = add_value(module, std::move(literal));
+
+    Value aggregate = module.make_value();
+    aggregate.kind = ValueKind::aggregate;
+    aggregate.type = record_type;
+    set_name(module, aggregate, "aggregate");
+    aggregate.args.push_back(literal_id);
+    aggregate.fields.push_back(field_value(module, "left", literal_id));
+    aggregate.incoming.push_back(PhiInput {BlockId {IR_MODULE_COPY_TEST_ENTRY_INDEX}, literal_id});
+    aggregate.elements.push_back(literal_id);
+    const ValueId aggregate_id = add_value(module, std::move(aggregate));
+
+    RecordLayout record = record_layout(module, record_type, "copy.Pair", "copy_Pair", false);
+    record.fields.push_back(record_field(module, "left", i32));
+    const base::u32 record_index = add_record(module, std::move(record));
+    ASSERT_EQ(record_index, IR_MODULE_COPY_TEST_RECORD_INDEX);
+    module.record_indices.emplace(record_type.value, record_index);
+
+    const GlobalConstantId constant_id = add_global_constant(
+        module,
+        GlobalConstant {"global", "copy_global", i32, literal_id}
+    );
+
+    Function function = make_function(module, "copy", i32);
+    function.signature_params.push_back(function_param(module, "input", i32));
+    function.param_values.push_back(literal_id);
+    const BlockId entry = add_block(module, function, "entry");
+    function.blocks[entry.value].values.push_back(aggregate_id);
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    function.blocks[entry.value].terminator.value = aggregate_id;
+    append_function(module, std::move(function));
+
+    Module copied(module);
+    ASSERT_EQ(copied.values.size(), module.values.size());
+    EXPECT_EQ(copied.text(copied.values[literal_id.value].name), "literal");
+    EXPECT_EQ(copied.text(copied.values[literal_id.value].text), "99");
+    EXPECT_EQ(copied.text(copied.values[aggregate_id.value].name), "aggregate");
+    ASSERT_EQ(copied.values[aggregate_id.value].args.size(), 1U);
+    ASSERT_EQ(copied.values[aggregate_id.value].fields.size(), 1U);
+    ASSERT_EQ(copied.values[aggregate_id.value].incoming.size(), 1U);
+    ASSERT_EQ(copied.values[aggregate_id.value].elements.size(), 1U);
+    EXPECT_EQ(copied.values[aggregate_id.value].args.front().value, literal_id.value);
+    EXPECT_EQ(copied.text(copied.values[aggregate_id.value].fields.front().name), "left");
+    EXPECT_EQ(copied.values[aggregate_id.value].incoming.front().predecessor.value, entry.value);
+    EXPECT_EQ(copied.values[aggregate_id.value].elements.front().value, literal_id.value);
+    ASSERT_EQ(copied.records.size(), 1U);
+    EXPECT_EQ(copied.text(copied.records.front().name), "copy.Pair");
+    EXPECT_EQ(copied.text(copied.records.front().fields.front().name), "left");
+    ASSERT_EQ(copied.constants.size(), 1U);
+    EXPECT_EQ(copied.text(copied.constants[constant_id.value].symbol), "copy_global");
+    ASSERT_EQ(copied.functions.size(), 1U);
+    ASSERT_EQ(copied.functions.front().signature_params.size(), 1U);
+    ASSERT_EQ(copied.functions.front().blocks.size(), 1U);
+    EXPECT_EQ(copied.text(copied.functions.front().signature_params.front().name), "input");
+    EXPECT_EQ(copied.text(copied.functions.front().blocks.front().name), "entry");
+    EXPECT_EQ(copied.record_indices.at(record_type.value), record_index);
+
+    Module assigned;
+    assigned = module;
+    Module& assigned_alias = assigned;
+    assigned = assigned_alias;
+    EXPECT_EQ(assigned.text(assigned.functions.front().symbol), "test_copy");
+    EXPECT_EQ(assigned.text(assigned.records.front().symbol), "copy_Pair");
+
+    Module moved(std::move(assigned));
+    EXPECT_EQ(moved.text(moved.values[aggregate_id.value].fields.front().name), "left");
+
+    Module move_assigned;
+    move_assigned = std::move(moved);
+    Module& move_assigned_alias = move_assigned;
+    move_assigned = std::move(move_assigned_alias);
+    EXPECT_EQ(move_assigned.text(move_assigned.constants[constant_id.value].name), "global");
+    EXPECT_EQ(move_assigned.functions.front().blocks.front().terminator.value.value, aggregate_id.value);
 }
 
 TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {

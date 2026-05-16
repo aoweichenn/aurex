@@ -223,7 +223,7 @@ bool SemanticAnalyzer::analyze_pattern(
                 break;
             case syntax::PatternKind::binding:
                 out.push_back(PatternBinding {
-                    std::string(pattern->binding_name),
+                    this->checked_.intern_text(pattern->binding_name),
                     pattern->binding_name_id,
                     frame.type,
                     pattern->range,
@@ -717,7 +717,7 @@ private:
                 if (lhs == nullptr || rhs == nullptr) {
                     return rhs != nullptr;
                 }
-                return lhs->c_name < rhs->c_name;
+                return lhs->c_name.view() < rhs->c_name.view();
             });
             constructors.reserve(cases.size());
             for (const EnumCaseInfo* case_info : cases) {

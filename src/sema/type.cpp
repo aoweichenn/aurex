@@ -164,7 +164,7 @@ TypeTable::TypeTable(TypeTable&& other) noexcept
       slice_types_(std::move(other.slice_types_)),
       tuple_types_(std::move(other.tuple_types_)),
       function_types_(std::move(other.function_types_)),
-      generic_identifiers_(std::move(other.generic_identifiers_)),
+      texts_(std::move(other.texts_)),
       generic_param_types_(std::move(other.generic_param_types_)) {}
 
 TypeTable& TypeTable::operator=(TypeTable&& other) noexcept {
@@ -194,7 +194,7 @@ void TypeTable::swap(TypeTable& other) noexcept {
     this->slice_types_.swap(other.slice_types_);
     this->tuple_types_.swap(other.tuple_types_);
     this->function_types_.swap(other.function_types_);
-    swap(this->generic_identifiers_, other.generic_identifiers_);
+    swap(this->texts_, other.texts_);
     this->generic_param_types_.swap(other.generic_param_types_);
     swap(this->arena_, other.arena_);
 }
@@ -219,8 +219,13 @@ void TypeTable::copy_from(const TypeTable& other) {
     for (const auto& entry : other.function_types_) {
         this->function_types_.emplace(this->clone_function_key(entry.first), entry.second);
     }
-    this->generic_identifiers_ = other.generic_identifiers_;
-    this->generic_param_types_ = other.generic_param_types_;
+    this->generic_param_types_.clear();
+    for (base::u32 index = 0; index < this->types_.size(); ++index) {
+        const TypeInfo& info = this->types_[index];
+        if (info.kind == TypeKind::generic_param && is_valid(info.generic_identity_key.id)) {
+            this->generic_param_types_.emplace(info.generic_identity_key.id, TypeHandle {index});
+        }
+    }
 }
 
 TypeHandleList TypeTable::make_type_handle_list() const {
@@ -262,7 +267,11 @@ TypeInfo TypeTable::make_type_info() const {
     return info;
 }
 
-TypeInfo TypeTable::clone_type_info(const TypeInfo& other) const {
+InternedText TypeTable::intern_text(const std::string_view text) {
+    return sema::intern_text(this->texts_, text);
+}
+
+TypeInfo TypeTable::clone_type_info(const TypeInfo& other) {
     TypeInfo copy = this->make_type_info();
     copy.kind = other.kind;
     copy.builtin = other.builtin;
@@ -282,10 +291,10 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other) const {
     copy.enum_payload_storage = other.enum_payload_storage;
     copy.enum_payload_size = other.enum_payload_size;
     copy.enum_payload_align = other.enum_payload_align;
-    copy.name = other.name;
-    copy.c_name = other.c_name;
-    copy.generic_identity_key = other.generic_identity_key;
-    copy.generic_origin_key = other.generic_origin_key;
+    copy.name = this->intern_text(other.name);
+    copy.c_name = this->intern_text(other.c_name);
+    copy.generic_identity_key = this->intern_text(other.generic_identity_key);
+    copy.generic_origin_key = this->intern_text(other.generic_origin_key);
     copy.generic_args = this->copy_type_handles(other.generic_args);
     copy.contains_array = other.contains_array;
     return copy;
@@ -501,46 +510,46 @@ TypeHandle TypeTable::function(
     );
 }
 
-TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const bool contains_array) {
+TypeHandle TypeTable::named_struct(const std::string_view name, const std::string_view c_name, const bool contains_array) {
     TypeInfo info = this->make_type_info();
     info.kind = TypeKind::struct_;
-    info.name = std::move(name);
-    info.c_name = std::move(c_name);
+    info.name = this->intern_text(name);
+    info.c_name = this->intern_text(c_name);
     info.contains_array = contains_array;
     return this->push(std::move(info));
 }
 
-TypeHandle TypeTable::named_enum(std::string name, std::string c_name) {
+TypeHandle TypeTable::named_enum(const std::string_view name, const std::string_view c_name) {
     TypeInfo info = this->make_type_info();
     info.kind = TypeKind::enum_;
-    info.name = std::move(name);
-    info.c_name = std::move(c_name);
+    info.name = this->intern_text(name);
+    info.c_name = this->intern_text(c_name);
     return this->push(std::move(info));
 }
 
-TypeHandle TypeTable::opaque_struct(std::string name, std::string c_name) {
+TypeHandle TypeTable::opaque_struct(const std::string_view name, const std::string_view c_name) {
     TypeInfo info = this->make_type_info();
     info.kind = TypeKind::opaque_struct;
-    info.name = std::move(name);
-    info.c_name = std::move(c_name);
+    info.name = this->intern_text(name);
+    info.c_name = this->intern_text(c_name);
     return this->push(std::move(info));
 }
 
-TypeHandle TypeTable::generic_param(std::string name) {
-    std::string identity = name;
-    return this->generic_param(std::move(identity), std::move(name));
+TypeHandle TypeTable::generic_param(const std::string_view name) {
+    return this->generic_param(name, name);
 }
 
-TypeHandle TypeTable::generic_param(std::string identity_key, std::string display_name) {
-    const IdentId identity_id = this->generic_identifiers_.intern(identity_key);
+TypeHandle TypeTable::generic_param(const std::string_view identity_key, const std::string_view display_name) {
+    const InternedText identity = this->intern_text(identity_key);
+    const IdentId identity_id = identity.id;
     if (const auto found = this->generic_param_types_.find(identity_id); found != this->generic_param_types_.end()) {
         return found->second;
     }
 
     TypeInfo info = this->make_type_info();
     info.kind = TypeKind::generic_param;
-    info.name = std::move(display_name);
-    info.generic_identity_key = identity_key;
+    info.name = this->intern_text(display_name);
+    info.generic_identity_key = identity;
     const TypeHandle handle = this->push(std::move(info));
     this->generic_param_types_.emplace(identity_id, handle);
     return handle;
@@ -570,34 +579,34 @@ void TypeTable::set_enum_payload_layout(
 
 void TypeTable::set_generic_instance(
     const TypeHandle handle,
-    std::string origin_key,
+    const std::string_view origin_key,
     const std::span<const TypeHandle> args
 ) {
     assert(handle.value < this->types_.size());
-    this->types_[handle.value].generic_origin_key = std::move(origin_key);
+    this->types_[handle.value].generic_origin_key = this->intern_text(origin_key);
     this->types_[handle.value].generic_args = this->copy_type_handles(args);
 }
 
 void TypeTable::set_generic_instance(
     const TypeHandle handle,
-    std::string origin_key,
+    const std::string_view origin_key,
     const std::vector<TypeHandle>& args
 ) {
     this->set_generic_instance(
         handle,
-        std::move(origin_key),
+        origin_key,
         std::span<const TypeHandle>(args.data(), args.size())
     );
 }
 
 void TypeTable::set_generic_instance(
     const TypeHandle handle,
-    std::string origin_key,
+    const std::string_view origin_key,
     const std::initializer_list<TypeHandle> args
 ) {
     this->set_generic_instance(
         handle,
-        std::move(origin_key),
+        origin_key,
         std::span<const TypeHandle>(args.begin(), args.size())
     );
 }
@@ -801,14 +810,14 @@ std::string TypeTable::display_name(const TypeHandle type) const {
         case TypeKind::struct_:
         case TypeKind::enum_:
         case TypeKind::opaque_struct:
-            name += info.name;
+            name += info.name.view();
             if (!info.generic_args.empty()) {
                 name.append(SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN);
                 push_generic_arg_display_tasks(pending, info.generic_args);
             }
             break;
         case TypeKind::generic_param:
-            name += info.name;
+            name += info.name.view();
             break;
         default:
             name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
@@ -853,7 +862,7 @@ std::string TypeTable::c_name(const TypeHandle type) const {
     if (info.c_name.empty()) {
         return this->display_name(type);
     }
-    return info.c_name;
+    return std::string(info.c_name.view());
 }
 
 const TypeInfo& TypeTable::get(const TypeHandle handle) const noexcept {

@@ -27,6 +27,16 @@ LlvmEmitter::LlvmEmitter(const Module& module, std::string module_name)
       module_(std::make_unique<llvm::Module>(std::move(module_name), context_)),
       builder_(context_) {}
 
+std::string_view LlvmEmitter::text(const IrTextId id) const noexcept {
+    return this->source_.text(id);
+}
+
+std::string LlvmEmitter::suffixed_name(const IrTextId id, const std::string_view suffix) const {
+    std::string result(this->text(id));
+    result.append(suffix);
+    return result;
+}
+
 base::Result<LlvmIrOutput> LlvmEmitter::run() {
     if (auto verified = verify_module(source_); !verified) {
         return base::Result<LlvmIrOutput>::fail(verified.error());
@@ -103,7 +113,7 @@ void LlvmEmitter::declare_constants() {
             true,
             llvm::GlobalValue::InternalLinkage,
             initializer,
-            constant.symbol
+            this->text(constant.symbol)
         );
         global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
         constants_[i] = global;
@@ -124,7 +134,7 @@ llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, cons
         if (const auto found = extern_functions_.find(function.symbol); found != extern_functions_.end()) {
             return found->second;
         }
-        if (llvm::Function* existing = module_->getFunction(function.symbol); existing != nullptr) {
+        if (llvm::Function* existing = module_->getFunction(this->text(function.symbol)); existing != nullptr) {
             extern_functions_[function.symbol] = existing;
             return existing;
         }
@@ -133,7 +143,7 @@ llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, cons
     llvm::Function* llvm_function = llvm::Function::Create(
         function_type,
         function.linkage == Linkage::internal ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage,
-        function.symbol,
+        this->text(function.symbol),
         module_.get()
     );
     llvm_function->setCallingConv(llvm::CallingConv::C);

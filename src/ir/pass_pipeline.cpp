@@ -250,7 +250,7 @@ void run_local_mem2reg(Module& module) {
         for (base::u32 block_index = 0; block_index < function.blocks.size(); ++block_index) {
             BasicBlock& block = function.blocks[block_index];
             std::unordered_map<base::u32, ValueId> current_slot_value;
-            std::vector<ValueId> kept;
+            IrVector<ValueId> kept = module.make_vector<ValueId>();
             kept.reserve(block.values.size());
 
             for (const ValueId value_id : block.values) {
@@ -353,7 +353,7 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
             if (value.kind != ValueKind::phi) {
                 continue;
             }
-            std::vector<PhiInput> kept;
+            IrVector<PhiInput> kept = module.make_vector<PhiInput>();
             kept.reserve(value.incoming.size());
             for (PhiInput incoming : value.incoming) {
                 rewrite_block_id(incoming.predecessor, block_map);
@@ -378,7 +378,7 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     }
 
     BlockMap block_map(function.blocks.size(), INVALID_BLOCK_ID);
-    std::vector<BasicBlock> kept;
+    IrVector<BasicBlock> kept = module.make_vector<BasicBlock>();
     kept.reserve(function.blocks.size());
     for (base::u32 i = 0; i < function.blocks.size(); ++i) {
         if (!reachable[i]) {

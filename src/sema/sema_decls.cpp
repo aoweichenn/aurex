@@ -108,7 +108,7 @@ struct ConstEvalFrame {
 };
 
 struct AbiFunctionInfo {
-    std::string name;
+    InternedText name;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::vector<TypeHandle> param_types;
     base::SourceRange range {};
@@ -127,7 +127,7 @@ struct AbiFunctionInfo {
 }
 
 struct AbiSymbolInfo {
-    std::string name;
+    InternedText name;
     base::SourceRange range {};
     bool is_function = false;
     AbiFunctionInfo function;
@@ -218,7 +218,7 @@ void SemanticAnalyzer::register_type_names() {
         TypeHandle handle = INVALID_TYPE_HANDLE;
         if (item.kind == syntax::ItemKind::type_alias) {
             TypeAliasInfo alias;
-            alias.name = std::string(item.name);
+            alias.name = this->checked_.intern_text(item.name);
             alias.name_id = item.name_id;
             alias.module = owner;
             alias.target = item.alias_type;
@@ -280,9 +280,9 @@ void SemanticAnalyzer::register_type_names() {
 
         if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::opaque_struct_decl) {
             StructInfo info = this->checked_.make_struct_info();
-            info.name = std::string(item.name);
+            info.name = this->checked_.intern_text(item.name);
             info.name_id = item.name_id;
-            info.c_name = c_name;
+            info.c_name = this->checked_.intern_text(c_name);
             info.module = owner;
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
@@ -389,8 +389,8 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                 payload_contains_array
             );
             StructInfo payload_info = this->checked_.make_struct_info();
-            payload_info.name = payload_type_name;
-            payload_info.c_name = payload_type_c_name;
+            payload_info.name = this->checked_.intern_text(payload_type_name);
+            payload_info.c_name = this->checked_.intern_text(payload_type_c_name);
             payload_info.module = owner;
             payload_info.type = payload_type;
             payload_info.visibility = syntax::Visibility::private_;
@@ -399,9 +399,9 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                 const std::string field_name =
                     std::string(SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
                 payload_info.fields.push_back(StructFieldInfo {
-                    field_name,
+                    this->checked_.intern_text(field_name),
                     this->module_.intern_identifier(field_name),
-                    field_name,
+                    this->checked_.intern_text(field_name),
                     owner,
                     payload_types[i],
                     enum_case.range,
@@ -457,17 +457,17 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         }
 
         EnumCaseInfo case_info = this->checked_.make_enum_case_info();
-        case_info.name = full_name;
+        case_info.name = this->checked_.intern_text(full_name);
         case_info.name_id = full_name_id;
-        case_info.c_name = this->c_symbol_name(owner, c_prefix + std::string(enum_case.name));
+        case_info.c_name = this->checked_.intern_text(this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)));
         case_info.module = owner;
         case_info.type = named_enum_type;
         case_info.payload_type = payload_type;
         case_info.payload_types = this->checked_.copy_type_handle_list(payload_types);
-        case_info.value_text = value_text;
+        case_info.value_text = this->checked_.intern_text(value_text);
         case_info.range = enum_case.range;
-        case_info.enum_name = enum_display_name;
-        case_info.case_name = std::string(enum_case.name);
+        case_info.enum_name = this->checked_.intern_text(enum_display_name);
+        case_info.case_name = this->checked_.intern_text(enum_case.name);
         case_info.case_name_id = enum_case.name_id;
         case_info.visibility = visibility;
         const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
@@ -617,9 +617,9 @@ void SemanticAnalyzer::register_value_names() {
             }
             const auto inserted = this->global_values_.emplace(key, Symbol {
                 SymbolKind::const_,
-                std::string(item.name),
+                this->checked_.intern_text(item.name),
                 item.name_id,
-                c_name,
+                this->checked_.intern_text(c_name),
                 this->current_module_,
                 type,
                 item.range,
@@ -687,7 +687,7 @@ void SemanticAnalyzer::validate_abi_symbols() const
         return true;
     };
 
-    const auto insert_function = [&](const std::string& symbol, AbiFunctionInfo function) {
+    const auto insert_function = [&](const std::string_view symbol, AbiFunctionInfo function) {
         if (symbol.empty()) {
             return;
         }
@@ -834,7 +834,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
             }
             if (struct_info != nullptr) {
                 struct_info->fields.push_back(StructFieldInfo {
-                    std::string(field.name),
+                    this->checked_.intern_text(field.name),
                     field.name_id,
                     {},
                     syntax::INVALID_MODULE_ID,
@@ -866,8 +866,8 @@ void SemanticAnalyzer::analyze_const_decls() {
             *this->arena_,
             ModuleLookupKeyHash {}
         );
-    SemaMap<ModuleLookupKey, std::string, ModuleLookupKeyHash> const_names =
-        make_sema_map<ModuleLookupKey, std::string, ModuleLookupKeyHash>(
+    SemaMap<ModuleLookupKey, InternedText, ModuleLookupKeyHash> const_names =
+        make_sema_map<ModuleLookupKey, InternedText, ModuleLookupKeyHash>(
             *this->arena_,
             ModuleLookupKeyHash {}
         );
@@ -889,7 +889,7 @@ void SemanticAnalyzer::analyze_const_decls() {
             continue;
         }
         const_ranges[const_key] = item.range;
-        const_names[const_key] = this->qualified_name(this->current_module_, item.name);
+        const_names[const_key] = this->checked_.intern_text(this->qualified_name(this->current_module_, item.name));
         const TypeHandle declared = this->resolve_type(item.const_type);
         const bool previous_const_initializer = this->in_const_initializer_;
         this->in_const_initializer_ = true;
@@ -952,7 +952,7 @@ void SemanticAnalyzer::analyze_const_decls() {
                 const auto name = const_names.find(frame.key);
                 const std::string_view display_name = name == const_names.end()
                     ? this->module_.identifiers.text(frame.key.name)
-                    : std::string_view {name->second};
+                    : name->second.view();
                 this->report(
                     range == const_ranges.end() ? base::SourceRange {} : range->second,
                     sema_cyclic_const_initializer_message(display_name)

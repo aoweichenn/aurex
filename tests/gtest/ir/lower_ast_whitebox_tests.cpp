@@ -26,6 +26,7 @@ using ir::BlockId;
 using ir::Function;
 using ir::FunctionId;
 using ir::Linkage;
+using ir::add_function;
 using ir::Terminator;
 using ir::TerminatorKind;
 using ir::Value;
@@ -51,6 +52,7 @@ using syntax::TypeId;
 [[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text) {
     syntax::NameExprPayload payload;
     payload.text = text;
+    payload.text_id = ast.intern_identifier(text);
     return ast.push_name_expr({}, std::move(payload));
 }
 
@@ -72,11 +74,18 @@ void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle t
     checked.expr_types[expr.value] = type;
 }
 
-[[nodiscard]] Value typed_value(const ValueKind kind, const TypeHandle type, std::string text = {}) {
-    Value value;
+[[nodiscard]] Value typed_value(
+    ir::Module& module,
+    const ValueKind kind,
+    const TypeHandle type,
+    const std::string_view text = {}
+) {
+    Value value = module.make_value();
     value.kind = kind;
     value.type = type;
-    value.text = std::move(text);
+    if (!text.empty()) {
+        value.text = module.intern(text);
+    }
     return value;
 }
 
@@ -113,6 +122,7 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
 
     set_expr_type(checked, missing_name, INVALID_TYPE_HANDLE);
     set_expr_type(checked, none_name, enum_type);
+    checked.expr_c_name_ids[none_name.value] = checked.intern_c_name(none_case.c_name);
     set_expr_type(checked, integer, i32);
     set_expr_type(checked, invalid_expr, INVALID_TYPE_HANDLE);
 
@@ -133,7 +143,7 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     ASSERT_TRUE(is_valid(unknown_value));
     ASSERT_LT(unknown_value.value, lowerer.module_.values.size());
     EXPECT_EQ(lowerer.module_.values[unknown_value.value].kind, ValueKind::load);
-    EXPECT_EQ(lowerer.module_.values[unknown_value.value].name, "missing");
+    EXPECT_EQ(lowerer.module_.text(lowerer.module_.values[unknown_value.value].name), "missing");
     EXPECT_FALSE(sema::is_valid(lowerer.module_.values[unknown_value.value].type));
 
     const ValueId enum_value = lowerer.lower_name(none_name, lowerer.expr_view(none_name));
@@ -142,24 +152,24 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     EXPECT_EQ(lowerer.module_.values[enum_value.value].kind, ValueKind::aggregate);
     EXPECT_TRUE(lowerer.module_.types.same(lowerer.module_.values[enum_value.value].type, enum_type));
 
-    EXPECT_EQ(lowerer.call_symbol(missing_name), "missing");
-    EXPECT_EQ(lowerer.call_symbol(syntax::INVALID_EXPR_ID), "<invalid>");
+    EXPECT_EQ(lowerer.module_.text(lowerer.call_symbol(missing_name)), "missing");
+    EXPECT_EQ(lowerer.module_.text(lowerer.call_symbol(syntax::INVALID_EXPR_ID)), "<invalid>");
     const ir::detail::CallTarget missing_target = lowerer.call_target(missing_name);
     EXPECT_FALSE(is_valid(missing_target.function));
-    EXPECT_EQ(missing_target.symbol, "missing");
-    EXPECT_EQ(lowerer.value_symbol(missing_name, lowerer.expr_view(missing_name)), "missing");
+    EXPECT_EQ(lowerer.module_.text(missing_target.symbol), "missing");
+    EXPECT_EQ(lowerer.module_.text(lowerer.value_symbol(missing_name, lowerer.expr_view(missing_name))), "missing");
 
     EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(INVALID_FUNCTION_ID, 0)));
     EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(FunctionId {999}, 0)));
     EXPECT_FALSE(sema::is_valid(lowerer.variadic_argument_type(INVALID_TYPE_HANDLE)));
 
     EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(INVALID_VALUE_ID)));
-    const ValueId str_value = lowerer.append_value(typed_value(ValueKind::string_literal, str, "text"));
+    const ValueId str_value = lowerer.append_value(typed_value(lowerer.module_, ValueKind::string_literal, str, "text"));
     ASSERT_TRUE(is_valid(str_value));
     EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(str_value)));
 
     EXPECT_EQ(lowerer.coerce_value(INVALID_VALUE_ID, i32).value, INVALID_VALUE_ID.value);
-    Value null_value;
+    Value null_value = lowerer.module_.make_value();
     null_value.kind = ValueKind::null_literal;
     null_value.type = INVALID_TYPE_HANDLE;
     const ValueId null_id = lowerer.append_value(null_value);
@@ -167,7 +177,7 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     ASSERT_LT(null_id.value, lowerer.module_.values.size());
     EXPECT_TRUE(lowerer.module_.types.same(lowerer.module_.values[null_id.value].type, ptr_i32));
 
-    const ValueId const_pointer = lowerer.append_value(typed_value(ValueKind::undef, const_ptr_i32));
+    const ValueId const_pointer = lowerer.append_value(typed_value(lowerer.module_, ValueKind::undef, const_ptr_i32));
     EXPECT_EQ(lowerer.coerce_value(const_pointer, i32).value, const_pointer.value);
 }
 
@@ -205,7 +215,7 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     EXPECT_EQ(lowerer.lower_place_address(missing_place).address.value, INVALID_VALUE_ID.value);
     EXPECT_EQ(lowerer.lower_place_address(integer).address.value, INVALID_VALUE_ID.value);
 
-    Value slot_value;
+    Value slot_value = lowerer.module_.make_value();
     slot_value.kind = ValueKind::alloca;
     slot_value.type = ptr_i32;
     const ValueId slot_id = lowerer.append_value(slot_value);
@@ -214,14 +224,14 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     EXPECT_EQ(slot_address.address.value, slot_id.value);
     EXPECT_TRUE(slot_address.is_mutable);
 
-    Function function;
-    function.name = "terminators";
-    function.symbol = "terminators";
+    Function function = lowerer.module_.make_function();
+    function.name = lowerer.module_.intern("terminators");
+    function.symbol = lowerer.module_.intern("terminators");
     function.return_type = i32;
-    const BlockId entry = add_block(function, "entry");
-    const BlockId exit = add_block(function, "exit");
-    lowerer.module_.functions.push_back(std::move(function));
-    lowerer.current_function_ = &lowerer.module_.functions.back();
+    const BlockId entry = add_block(lowerer.module_, function, "entry");
+    const BlockId exit = add_block(lowerer.module_, function, "exit");
+    const FunctionId function_id = add_function(lowerer.module_, std::move(function));
+    lowerer.current_function_ = &lowerer.module_.functions[function_id.value];
     lowerer.current_block_ = entry;
 
     Terminator ret;
@@ -367,8 +377,8 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
     lowerer.lower_function_declarations();
 
     ASSERT_EQ(lowerer.module_.functions.size(), 1U);
-    EXPECT_EQ(lowerer.module_.functions[0].name, "exported");
-    EXPECT_EQ(lowerer.module_.functions[0].symbol, "exported");
+    EXPECT_EQ(lowerer.module_.text(lowerer.module_.functions[0].name), "exported");
+    EXPECT_EQ(lowerer.module_.text(lowerer.module_.functions[0].symbol), "exported");
     EXPECT_EQ(lowerer.module_.functions[0].linkage, Linkage::export_c);
     EXPECT_EQ(lowerer.module_.functions[0].call_conv, AbiCallConv::c);
     EXPECT_TRUE(lowerer.module_.types.same(lowerer.module_.functions[0].return_type, checked.syntax_type_handles[return_type.value]));
@@ -376,9 +386,9 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
     syntax::ItemNode abi_named;
     abi_named.name = "plain";
     abi_named.abi_name = "plain_abi";
-    EXPECT_EQ(lowerer.item_symbol(99, abi_named), "plain_abi");
+    EXPECT_EQ(lowerer.module_.text(lowerer.item_symbol(99, abi_named)), "plain_abi");
 
-    EXPECT_FALSE(sema::is_valid(lowerer.enum_case_type("missing")));
+    EXPECT_FALSE(sema::is_valid(lowerer.enum_case_type(lowerer.module_.intern("missing"))));
 }
 
 } // namespace aurex::test

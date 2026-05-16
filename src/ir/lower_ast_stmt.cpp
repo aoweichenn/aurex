@@ -39,7 +39,7 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
     this->loop_contexts_.clear();
     this->defer_scopes_.clear();
     this->push_local_scope();
-    this->current_block_ = add_block(*this->current_function_, "entry");
+    this->current_block_ = add_block(this->module_, *this->current_function_, "entry");
 
     for (base::usize i = 0; i < item.params.size(); ++i) {
         const syntax::ParamDecl& param = item.params[i];
@@ -47,16 +47,16 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
             this->current_function_ != nullptr && i < this->current_function_->signature_params.size()
                 ? this->current_function_->signature_params[i].type
                 : this->syntax_type(param.type);
-        Value param_value;
+        Value param_value = this->module_.make_value();
         param_value.kind = ValueKind::param;
-        param_value.name = std::string(param.name);
+        param_value.name = this->module_.intern(param.name);
         param_value.type = param_type;
         const ValueId param_id = this->append_value(param_value);
         this->current_function_->param_values.push_back(param_id);
 
-        Value slot;
+        Value slot = this->module_.make_value();
         slot.kind = ValueKind::alloca;
-        slot.name = std::string(param.name);
+        slot.name = this->module_.intern(param.name);
         slot.type = this->module_.types.pointer(sema::PointerMutability::mut, param_value.type);
         const ValueId slot_id = this->append_value(slot);
         this->bind_local(param.name_id, LocalBinding {slot_id, false});
@@ -140,11 +140,11 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
             if (syntax::is_valid(stmt.else_block)) {
                 const ValueId condition = this->append_pattern_condition(stmt.pattern, source_slot, local_type);
                 const BlockId success_block =
-                    add_block(*this->current_function_, "let.else.ok" + std::to_string(this->current_function_->blocks.size()));
+                    add_block(this->module_, *this->current_function_, "let.else.ok" + std::to_string(this->current_function_->blocks.size()));
                 const BlockId failure_block =
-                    add_block(*this->current_function_, "let.else.fail" + std::to_string(this->current_function_->blocks.size()));
+                    add_block(this->module_, *this->current_function_, "let.else.fail" + std::to_string(this->current_function_->blocks.size()));
                 const BlockId join_block =
-                    add_block(*this->current_function_, "let.else.join" + std::to_string(this->current_function_->blocks.size()));
+                    add_block(this->module_, *this->current_function_, "let.else.join" + std::to_string(this->current_function_->blocks.size()));
                 Terminator branch;
                 branch.kind = TerminatorKind::cond_branch;
                 branch.condition = condition;
@@ -167,9 +167,9 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
             this->lower_local_pattern(stmt.pattern, source_slot, local_type, stmt.kind == syntax::StmtKind::var);
             break;
         }
-        Value slot;
+        Value slot = this->module_.make_value();
         slot.kind = ValueKind::alloca;
-        slot.name = std::string(stmt.name);
+        slot.name = this->module_.intern(stmt.name);
         slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
         const ValueId slot_id = append_value(slot);
         this->bind_local(stmt.name_id, LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var});
@@ -182,7 +182,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         ValueId source = this->lower_expr(stmt.rhs, lhs_type);
         if (stmt.assign_op != syntax::AssignOp::assign) {
             const ValueId current = this->append_load(target, lhs_type);
-            Value value;
+            Value value = this->module_.make_value();
             value.kind = ValueKind::binary;
             value.type = lhs_type;
             value.binary_op = map_compound_assignment(stmt.assign_op);
@@ -269,12 +269,12 @@ void Lowerer::lower_if(const syntax::StmtNode& stmt) {
     } else {
         condition = lower_expr(stmt.condition);
     }
-    const BlockId then_block = add_block(*current_function_, "if.then" + std::to_string(current_function_->blocks.size()));
-    const BlockId else_block = add_block(*current_function_, "if.else" + std::to_string(current_function_->blocks.size()));
+    const BlockId then_block = add_block(this->module_, *current_function_, "if.then" + std::to_string(current_function_->blocks.size()));
+    const BlockId else_block = add_block(this->module_, *current_function_, "if.else" + std::to_string(current_function_->blocks.size()));
     BlockId join_block = INVALID_BLOCK_ID;
     const auto ensure_join_block = [&]() -> BlockId {
         if (!is_valid(join_block)) {
-            join_block = add_block(*current_function_, "if.join" + std::to_string(current_function_->blocks.size()));
+            join_block = add_block(this->module_, *current_function_, "if.join" + std::to_string(current_function_->blocks.size()));
         }
         return join_block;
     };
@@ -314,7 +314,7 @@ void Lowerer::lower_if(const syntax::StmtNode& stmt) {
 }
 
 void Lowerer::lower_while(const syntax::StmtNode& stmt) {
-    const BlockId condition_block = add_block(*current_function_, "while.cond" + std::to_string(current_function_->blocks.size()));
+    const BlockId condition_block = add_block(this->module_, *current_function_, "while.cond" + std::to_string(current_function_->blocks.size()));
 
     append_branch_if_open(condition_block);
     current_block_ = condition_block;
@@ -328,8 +328,8 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt) {
     } else {
         condition = lower_expr(stmt.condition);
     }
-    const BlockId body_block = add_block(*current_function_, "while.body" + std::to_string(current_function_->blocks.size()));
-    const BlockId exit_block = add_block(*current_function_, "while.exit" + std::to_string(current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *current_function_, "while.body" + std::to_string(current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *current_function_, "while.exit" + std::to_string(current_function_->blocks.size()));
     Terminator cond;
     cond.kind = TerminatorKind::cond_branch;
     cond.condition = condition;
@@ -360,10 +360,10 @@ void Lowerer::lower_for(const syntax::StmtNode& stmt) {
         lower_stmt(stmt.for_init);
     }
 
-    const BlockId condition_block = add_block(*current_function_, "for.cond" + std::to_string(current_function_->blocks.size()));
-    const BlockId body_block = add_block(*current_function_, "for.body" + std::to_string(current_function_->blocks.size()));
-    const BlockId update_block = add_block(*current_function_, "for.update" + std::to_string(current_function_->blocks.size()));
-    const BlockId exit_block = add_block(*current_function_, "for.exit" + std::to_string(current_function_->blocks.size()));
+    const BlockId condition_block = add_block(this->module_, *current_function_, "for.cond" + std::to_string(current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *current_function_, "for.body" + std::to_string(current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *current_function_, "for.update" + std::to_string(current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *current_function_, "for.exit" + std::to_string(current_function_->blocks.size()));
 
     append_branch_if_open(condition_block);
     current_block_ = condition_block;
@@ -403,8 +403,10 @@ ValueId Lowerer::append_for_range_condition(
     const sema::TypeHandle range_type
 ) {
     const sema::TypeHandle bool_type = this->module_.types.builtin(sema::BuiltinType::bool_);
-    const ValueId cursor_condition = this->append_load(cursor_slot, range_type, "for.range.cursor");
-    const ValueId end_condition = this->append_load(end_slot, range_type, "for.range.end");
+    const ValueId cursor_condition =
+        this->append_load(cursor_slot, range_type, this->module_.intern("for.range.cursor"));
+    const ValueId end_condition =
+        this->append_load(end_slot, range_type, this->module_.intern("for.range.end"));
     if (!is_valid(step_slot)) {
         return this->append_binary_value(
             BinaryOp::less,
@@ -414,7 +416,8 @@ ValueId Lowerer::append_for_range_condition(
         );
     }
 
-    const ValueId step_condition = this->append_load(step_slot, range_type, "for.range.step");
+    const ValueId step_condition =
+        this->append_load(step_slot, range_type, this->module_.intern("for.range.step"));
     const ValueId zero = this->append_integer_literal(IR_FOR_RANGE_ZERO_LITERAL, range_type);
     const ValueId positive_step = this->append_binary_value(
         BinaryOp::greater,
@@ -481,10 +484,10 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     this->append_store(cursor_slot, start_value);
     this->append_store(end_slot, end_value);
 
-    const BlockId condition_block = add_block(*this->current_function_, "for.range.cond" + std::to_string(this->current_function_->blocks.size()));
-    const BlockId body_block = add_block(*this->current_function_, "for.range.body" + std::to_string(this->current_function_->blocks.size()));
-    const BlockId update_block = add_block(*this->current_function_, "for.range.update" + std::to_string(this->current_function_->blocks.size()));
-    const BlockId exit_block = add_block(*this->current_function_, "for.range.exit" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId condition_block = add_block(this->module_, *this->current_function_, "for.range.cond" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId body_block = add_block(this->module_, *this->current_function_, "for.range.body" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId update_block = add_block(this->module_, *this->current_function_, "for.range.update" + std::to_string(this->current_function_->blocks.size()));
+    const BlockId exit_block = add_block(this->module_, *this->current_function_, "for.range.exit" + std::to_string(this->current_function_->blocks.size()));
 
     this->append_branch_if_open(condition_block);
     this->current_block_ = condition_block;
@@ -498,17 +501,19 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
 
     this->loop_contexts_.push_back(LoopContext {exit_block, update_block, this->defer_scopes_.size()});
     this->current_block_ = body_block;
-    const ValueId loop_value = this->append_load(cursor_slot, range_type, std::string(stmt.name));
-    const ValueId loop_slot = this->append_temp_alloca(std::string(stmt.name), range_type);
+    const IrTextId loop_name = this->module_.intern(stmt.name);
+    const ValueId loop_value = this->append_load(cursor_slot, range_type, loop_name);
+    const ValueId loop_slot = this->append_temp_alloca(stmt.name, range_type);
     this->bind_local(stmt.name_id, LocalBinding {loop_slot, false});
     this->append_store(loop_slot, loop_value);
     this->lower_block(stmt.body);
     this->append_branch_if_open(update_block);
 
     this->current_block_ = update_block;
-    const ValueId current = this->append_load(cursor_slot, range_type, "for.range.cursor");
+    const ValueId current =
+        this->append_load(cursor_slot, range_type, this->module_.intern("for.range.cursor"));
     const ValueId step = is_valid(step_slot)
-        ? this->append_load(step_slot, range_type, "for.range.step")
+        ? this->append_load(step_slot, range_type, this->module_.intern("for.range.step"))
         : this->append_integer_literal(IR_FOR_RANGE_ONE_LITERAL, range_type);
     const ValueId next = this->append_binary_value(BinaryOp::add, range_type, current, step);
     this->append_store(cursor_slot, next);

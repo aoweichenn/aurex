@@ -33,7 +33,7 @@ struct ActiveSideTables {
 
 struct CallTarget {
     FunctionId function = INVALID_FUNCTION_ID;
-    std::string symbol;
+    IrTextId symbol = INVALID_IR_TEXT_ID;
 };
 
 struct PlaceAddress {
@@ -51,7 +51,7 @@ struct LocalScopeFrame {
 };
 
 struct PatternBindingSlot {
-    std::string name;
+    IrTextId name = INVALID_IR_TEXT_ID;
     sema::IdentId name_id = sema::INVALID_IDENT_ID;
     ValueId slot = INVALID_VALUE_ID;
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
@@ -67,7 +67,7 @@ struct PendingConstant {
     GlobalConstantId id = INVALID_GLOBAL_CONSTANT_ID;
     syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
-    std::string literal_text;
+    IrTextId literal_text = INVALID_IR_TEXT_ID;
     bool is_literal = false;
 };
 
@@ -85,7 +85,7 @@ struct TryShape {
 
 struct EnumCaseTypeKey {
     base::u32 type = sema::TypeHandle::INVALID_VALUE;
-    std::string_view case_name;
+    sema::IdentId case_name = sema::INVALID_IDENT_ID;
 
     [[nodiscard]] bool operator==(const EnumCaseTypeKey& other) const noexcept {
         return type == other.type && case_name == other.case_name;
@@ -95,7 +95,7 @@ struct EnumCaseTypeKey {
 struct EnumCaseTypeKeyHash {
     [[nodiscard]] std::size_t operator()(const EnumCaseTypeKey& key) const noexcept {
         const std::size_t type_hash = std::hash<base::u32> {}(key.type);
-        const std::size_t name_hash = std::hash<std::string_view> {}(key.case_name);
+        const std::size_t name_hash = sema::IdentIdHash {}(key.case_name);
         return type_hash ^ (name_hash + 0x9e3779b9U + (type_hash << 6U) + (type_hash >> 2U));
     }
 };
@@ -153,19 +153,20 @@ private:
     void lower_global_constant_initializers();
     void index_enum_cases();
 
-    [[nodiscard]] std::string item_symbol(base::u32 index, const syntax::ItemNode& item) const;
-    [[nodiscard]] std::string enum_case_symbol(
+    [[nodiscard]] std::string_view item_symbol_text(base::u32 index, const syntax::ItemNode& item) const;
+    [[nodiscard]] IrTextId item_symbol(base::u32 index, const syntax::ItemNode& item);
+    [[nodiscard]] IrTextId enum_case_symbol(
         base::u32 index,
         const syntax::ItemNode& item,
         const syntax::EnumCaseDecl& enum_case
-    ) const;
-    [[nodiscard]] sema::TypeHandle enum_case_type(const std::string& symbol) const noexcept;
-    [[nodiscard]] GlobalConstantId enum_case_constant(std::string_view name) const noexcept;
-    [[nodiscard]] std::string enum_case_symbol(std::string_view name) const noexcept;
-    [[nodiscard]] const sema::EnumCaseInfo* enum_case_info(std::string_view name) const noexcept;
+    );
+    [[nodiscard]] sema::TypeHandle enum_case_type(IrTextId symbol) const noexcept;
+    [[nodiscard]] GlobalConstantId enum_case_constant(std::string_view name) noexcept;
+    [[nodiscard]] IrTextId enum_case_symbol(std::string_view name) noexcept;
+    [[nodiscard]] const sema::EnumCaseInfo* enum_case_info(IrTextId symbol) const noexcept;
 
     [[nodiscard]] const syntax::PatternNode* pattern_node(syntax::PatternId id) const;
-    [[nodiscard]] std::string pattern_case_symbol(syntax::PatternId id) const;
+    [[nodiscard]] IrTextId pattern_case_symbol(syntax::PatternId id);
     [[nodiscard]] bool is_irrefutable_pattern(syntax::PatternId id, sema::TypeHandle matched_type) const;
     [[nodiscard]] ValueId append_true_value();
     [[nodiscard]] ValueId append_pattern_condition(syntax::PatternId id, ValueId source_address, sema::TypeHandle source_type);
@@ -207,14 +208,14 @@ private:
         const ExprView& expr
     );
     [[nodiscard]] ValueId append_enum_constructor(const sema::EnumCaseInfo& enum_case, ValueId payload_value);
-    [[nodiscard]] ValueId append_enum_payload_load(ValueId enum_slot, sema::TypeHandle payload_type, const std::string& name);
+    [[nodiscard]] ValueId append_enum_payload_load(ValueId enum_slot, sema::TypeHandle payload_type, IrTextId name);
     [[nodiscard]] const sema::EnumCaseInfo* enum_case_by_type_and_case(
         sema::TypeHandle enum_type,
         std::string_view case_name
     ) const noexcept;
     [[nodiscard]] TryShape classify_try_shape(sema::TypeHandle enum_type) const noexcept;
 
-    [[nodiscard]] ValueId append_temp_alloca(const std::string& name, sema::TypeHandle value_type);
+    [[nodiscard]] ValueId append_temp_alloca(std::string_view name, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_integer_literal(std::string_view text, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_for_range_condition(
@@ -226,9 +227,9 @@ private:
     [[nodiscard]] ValueId append_load(
         ValueId address,
         sema::TypeHandle value_type,
-        const std::string& name = {}
+        IrTextId name = INVALID_IR_TEXT_ID
     );
-    [[nodiscard]] ValueId enum_field_addr(ValueId object, const std::string& field_name);
+    [[nodiscard]] ValueId enum_field_addr(ValueId object, IrTextId field_name);
     void bind_pattern_locals(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type);
     void bind_pattern_locals_with_mutability(
         syntax::PatternId pattern,
@@ -253,7 +254,7 @@ private:
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_literal_expr(syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const ExprView& expr);
-    [[nodiscard]] ValueId lower_bound_value_ref(syntax::ExprId expr_id, const std::string& symbol);
+    [[nodiscard]] ValueId lower_bound_value_ref(syntax::ExprId expr_id, IrTextId symbol);
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
@@ -283,14 +284,14 @@ private:
     [[nodiscard]] ValueId append_slice_data(ValueId slice_value, sema::PointerMutability mutability, sema::TypeHandle element_type);
     [[nodiscard]] ValueId append_slice_len(ValueId slice_value);
 
-    [[nodiscard]] CallTarget call_target(syntax::ExprId callee) const;
-    [[nodiscard]] std::string call_symbol(syntax::ExprId callee) const;
-    [[nodiscard]] std::string value_symbol(syntax::ExprId expr_id, const ExprView& expr) const;
+    [[nodiscard]] CallTarget call_target(syntax::ExprId callee);
+    [[nodiscard]] IrTextId call_symbol(syntax::ExprId callee);
+    [[nodiscard]] IrTextId value_symbol(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] sema::TypeHandle call_param_type(FunctionId function_id, base::usize index) const noexcept;
     [[nodiscard]] sema::TypeHandle variadic_argument_type(sema::TypeHandle source_type) const noexcept;
     [[nodiscard]] sema::TypeHandle expr_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] sema::TypeHandle syntax_type(syntax::TypeId type) const noexcept;
-    [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) const noexcept;
+    [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) noexcept;
     [[nodiscard]] sema::TypeHandle stmt_local_type(syntax::StmtId stmt) const noexcept;
     [[nodiscard]] sema::TypeHandle aggregate_field_type(
         sema::TypeHandle aggregate_type,
@@ -314,11 +315,10 @@ private:
     bool lowering_constant_initializer_ = false;
     std::unordered_map<sema::IdentId, LocalBinding, sema::IdentIdHash> locals_;
     std::vector<LocalScopeFrame> local_scopes_;
-    sema::IdentifierInterner ir_symbol_ids_;
-    std::unordered_map<sema::IdentId, FunctionId, sema::IdentIdHash> function_symbols_;
-    std::unordered_map<sema::IdentId, GlobalConstantId, sema::IdentIdHash> constant_symbols_;
+    std::unordered_map<IrTextId, FunctionId, sema::IdentIdHash> function_symbols_;
+    std::unordered_map<IrTextId, GlobalConstantId, sema::IdentIdHash> constant_symbols_;
     std::unordered_map<sema::IdentId, const sema::EnumCaseInfo*, sema::IdentIdHash> enum_cases_by_name_;
-    std::unordered_map<sema::IdentId, const sema::EnumCaseInfo*, sema::IdentIdHash> enum_cases_by_c_name_;
+    std::unordered_map<IrTextId, const sema::EnumCaseInfo*, sema::IdentIdHash> enum_cases_by_c_name_;
     std::unordered_map<EnumCaseTypeKey, const sema::EnumCaseInfo*, EnumCaseTypeKeyHash> enum_cases_by_type_and_case_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;

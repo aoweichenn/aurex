@@ -150,7 +150,7 @@ struct NumericParts {
 
 } // namespace
 
-bool parse_u64(const std::string& text, std::uint64_t& out) noexcept {
+bool parse_u64(const std::string_view text, std::uint64_t& out) noexcept {
     int base = LLVM_BACKEND_UTIL_DECIMAL_BASE;
     const NumericParts parts = split_integer_literal(text, base);
     if (!integer_suffix_is_valid(parts.suffix)) {
@@ -174,7 +174,7 @@ bool parse_u64(const std::string& text, std::uint64_t& out) noexcept {
     return result.ec == std::errc {} && result.ptr == end;
 }
 
-bool parse_f64(const std::string& text, double& out) noexcept {
+bool parse_f64(const std::string_view text, double& out) noexcept {
     const NumericParts parts = split_float_literal(text);
     if (!float_suffix_is_valid(parts.suffix)) {
         return false;
@@ -192,7 +192,7 @@ bool parse_f64(const std::string& text, double& out) noexcept {
     return result.ec == std::errc {} && result.ptr == end;
 }
 
-std::string decode_string_literal(const std::string& literal, const bool has_c_prefix) {
+std::string decode_string_literal(const std::string_view literal, const bool has_c_prefix) {
     base::StringLiteralDecode decoded = base::decode_string_literal(
         literal,
         has_c_prefix ? base::StringLiteralKind::c_string : base::StringLiteralKind::string
@@ -200,18 +200,18 @@ std::string decode_string_literal(const std::string& literal, const bool has_c_p
     return std::move(decoded.decoded);
 }
 
-std::string decode_raw_string_literal(const std::string& literal) {
+std::string decode_raw_string_literal(const std::string_view literal) {
     base::StringLiteralDecode decoded =
         base::decode_string_literal(literal, base::StringLiteralKind::raw_string);
     return std::move(decoded.decoded);
 }
 
-std::uint64_t parse_byte_literal(const std::string& literal) {
+std::uint64_t parse_byte_literal(const std::string_view literal) {
     const base::ByteLiteralDecode decoded = base::decode_byte_literal(literal);
     return decoded.value;
 }
 
-std::uint64_t parse_char_literal(const std::string& literal) {
+std::uint64_t parse_char_literal(const std::string_view literal) {
     const base::CharLiteralDecode decoded = base::decode_char_literal(literal);
     return decoded.value;
 }

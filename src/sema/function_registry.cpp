@@ -56,10 +56,10 @@ void FunctionRegistry::register_function(
     const bool is_prototype = item.is_prototype;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = std::string(item.name);
+    signature.name = this->checked_.intern_text(item.name);
     signature.name_id = item.name_id;
     signature.semantic_key = key;
-    signature.c_name = abi_or_c_name(item, c_name);
+    signature.c_name = this->checked_.intern_text(abi_or_c_name(item, c_name));
     signature.module = owner;
     signature.method_owner_type = method_owner_type;
     signature.return_type = return_type;
@@ -78,7 +78,7 @@ void FunctionRegistry::register_function(
     signature.definition_item = signature.has_definition ? item_id : syntax::INVALID_ITEM_ID;
 
     if (syntax::is_valid(item_id) && item_id.value < this->checked_.item_c_name_ids.size()) {
-        this->checked_.item_c_name_ids[item_id.value] = this->checked_.intern_c_name(signature.c_name);
+        this->checked_.item_c_name_ids[item_id.value] = signature.c_name.id;
     }
 
     this->merge_function(key, std::move(signature), is_prototype);

@@ -8,12 +8,12 @@
 #include <vector>
 
 namespace aurex::backend {
-[[nodiscard]] bool parse_u64(const std::string& text, std::uint64_t& out) noexcept;
-[[nodiscard]] bool parse_f64(const std::string& text, double& out) noexcept;
-[[nodiscard]] std::string decode_string_literal(const std::string& literal, bool has_c_prefix);
-[[nodiscard]] std::string decode_raw_string_literal(const std::string& literal);
-[[nodiscard]] std::uint64_t parse_byte_literal(const std::string& literal);
-[[nodiscard]] std::uint64_t parse_char_literal(const std::string& literal);
+[[nodiscard]] bool parse_u64(std::string_view text, std::uint64_t& out) noexcept;
+[[nodiscard]] bool parse_f64(std::string_view text, double& out) noexcept;
+[[nodiscard]] std::string decode_string_literal(std::string_view literal, bool has_c_prefix);
+[[nodiscard]] std::string decode_raw_string_literal(std::string_view literal);
+[[nodiscard]] std::uint64_t parse_byte_literal(std::string_view literal);
+[[nodiscard]] std::uint64_t parse_char_literal(std::string_view literal);
 } // namespace aurex::backend
 
 namespace aurex::test {

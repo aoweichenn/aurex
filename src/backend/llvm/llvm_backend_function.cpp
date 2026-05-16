@@ -14,7 +14,7 @@ void LlvmEmitter::emit_function(const FunctionId function_id, const Function& fu
     pending_phis_.clear();
 
     for (base::u32 i = 0; i < function.blocks.size(); ++i) {
-        blocks_[i] = llvm::BasicBlock::Create(context_, function.blocks[i].name, llvm_function);
+        blocks_[i] = llvm::BasicBlock::Create(context_, this->text(function.blocks[i].name), llvm_function);
     }
 
     base::usize param_index = 0;

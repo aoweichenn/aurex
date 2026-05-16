@@ -15,7 +15,7 @@ constexpr base::usize SEMA_FUNCTION_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE = 16;
 
 std::string function_display_name(const TypeTable& types, const FunctionSignature& signature) {
     if (signature.generic_args.empty()) {
-        return signature.name;
+        return std::string(signature.name.view());
     }
 
     std::string display;
@@ -25,7 +25,7 @@ std::string function_display_name(const TypeTable& types, const FunctionSignatur
         SEMA_FUNCTION_GENERIC_ARG_LIST_CLOSE.size() +
         signature.generic_args.size() * SEMA_FUNCTION_GENERIC_DISPLAY_ARG_SIZE_ESTIMATE
     );
-    display += signature.name;
+    display += signature.name.view();
     display += SEMA_FUNCTION_GENERIC_ARG_LIST_OPEN;
     for (base::usize index = 0; index < signature.generic_args.size(); ++index) {
         if (index != 0) {

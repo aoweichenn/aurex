@@ -11,10 +11,10 @@
 namespace aurex::sema {
 
 struct FunctionSignature {
-    std::string name;
+    InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
     FunctionLookupKey semantic_key;
-    std::string c_name;
+    InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;

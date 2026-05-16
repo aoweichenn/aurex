@@ -18,6 +18,11 @@ constexpr base::usize SEMA_LOOKUP_MEDIUM_SUGGESTION_NAME_LENGTH = 8;
 constexpr base::usize SEMA_LOOKUP_SHORT_SUGGESTION_MAX_DISTANCE = 1;
 constexpr base::usize SEMA_LOOKUP_MEDIUM_SUGGESTION_MAX_DISTANCE = 2;
 constexpr base::usize SEMA_LOOKUP_LONG_SUGGESTION_MAX_DISTANCE = 3;
+constexpr base::usize SEMA_INCREMENTAL_FINGERPRINT_TYPE_TEXT_BUDGET = 12;
+constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_METHOD_TAG = "method";
+constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_FUNCTION_TAG = "function";
+constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_VARIADIC_TAG = "variadic";
+constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_FIXED_TAG = "fixed";
 
 struct NameSuggestion {
     std::string_view name;
@@ -151,27 +156,28 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
     const bool report_unknown
 ) const
 {
-    if (!syntax::is_valid(current_module_) || current_module_.value >= module_.modules.size()) {
+    if (!syntax::is_valid(this->current_module_) || this->current_module_.value >= this->module_.modules.size()) {
         if (report_unknown) {
-            report(range, sema_unknown_import_alias_message(alias));
+            this->report(range, sema_unknown_import_alias_message(alias));
         }
         return syntax::INVALID_MODULE_ID;
     }
     syntax::ModuleId resolved = syntax::INVALID_MODULE_ID;
-    for (const syntax::ResolvedImport& import : module_.modules[current_module_.value].imports) {
+    for (const syntax::ResolvedImport& import : this->module_.modules[this->current_module_.value].imports) {
         if (import.alias != alias) {
             continue;
         }
         if (syntax::is_valid(resolved)) {
             if (report_unknown) {
-                report(range, sema_ambiguous_import_alias_message(alias));
+                this->report(range, sema_ambiguous_import_alias_message(alias));
             }
             return syntax::INVALID_MODULE_ID;
         }
         resolved = import.module;
     }
     if (!syntax::is_valid(resolved) && report_unknown) {
-        report(range, sema_unknown_import_alias_message(alias));
+        this->report(range, sema_unknown_import_alias_message(alias));
+        this->report_lookup_suggestion(range, this->nearest_import_alias_name(alias));
     }
     return resolved;
 }
@@ -537,6 +543,67 @@ std::string_view SemanticAnalyzer::nearest_function_name_in_module(
     return best.name;
 }
 
+std::string_view SemanticAnalyzer::nearest_import_alias_name(const std::string_view name) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(this->current_module_) ||
+        this->current_module_.value >= this->module_.modules.size()) {
+        return best.name;
+    }
+    for (const syntax::ResolvedImport& import : this->module_.modules[this->current_module_.value].imports) {
+        consider_suggestion(best, name, import.alias);
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_field_name(
+    const StructInfo& info,
+    const std::string_view name
+) const {
+    NameSuggestion best;
+    for (const StructFieldInfo& field : info.fields) {
+        if (!this->can_access(info.module, field.visibility)) {
+            continue;
+        }
+        consider_suggestion(best, name, field.name);
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_enum_case_name(
+    const TypeHandle enum_type,
+    const std::string_view name
+) const {
+    NameSuggestion best;
+    const EnumCaseList* const cases = this->find_enum_cases_by_type(enum_type);
+    if (cases == nullptr) {
+        return best.name;
+    }
+    for (const EnumCaseInfo* const enum_case : *cases) {
+        if (enum_case == nullptr || !this->can_access(enum_case->module, enum_case->visibility)) {
+            continue;
+        }
+        consider_suggestion(best, name, enum_case->case_name);
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_visible_enum_case_name(const std::string_view name) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(this->current_module_)) {
+        return best.name;
+    }
+    for (const auto& entry : this->enum_cases_by_module_name_) {
+        const syntax::ModuleId owner {entry.first.module};
+        if (entry.second == nullptr ||
+            owner.value != this->current_module_.value ||
+            !this->can_access(owner, entry.second->visibility)) {
+            continue;
+        }
+        consider_suggestion(best, name, entry.second->case_name);
+    }
+    return best.name;
+}
+
 std::string SemanticAnalyzer::c_symbol_name(const syntax::ModuleId module, const std::string_view name) const {
     if (!syntax::is_valid(module) || module.value >= module_.modules.size()) {
         return std::string(name);
@@ -629,6 +696,78 @@ FunctionLookupKey SemanticAnalyzer::function_lookup_key_from_method(
         key.owner_type,
         key.name,
     };
+}
+
+StableModuleId SemanticAnalyzer::stable_module_id(const syntax::ModuleId module) const noexcept {
+    if (!syntax::is_valid(module) || module.value >= this->module_.modules.size()) {
+        return sema::stable_module_id(std::span<const std::string_view> {});
+    }
+    return sema::stable_module_id(this->module_.modules[module.value].path.parts);
+}
+
+StableDefId SemanticAnalyzer::stable_definition_id(
+    const syntax::ModuleId module,
+    const StableSymbolKind kind,
+    const IdentId name_id,
+    const std::string_view fallback_name,
+    const base::u32 disambiguator
+) const {
+    const std::string_view name = this->module_.identifier_text(name_id).empty()
+        ? fallback_name
+        : this->module_.identifier_text(name_id);
+    return sema::stable_definition_id(
+        this->stable_module_id(module),
+        kind,
+        name,
+        disambiguator
+    );
+}
+
+StableMemberKey SemanticAnalyzer::stable_member_key(
+    const StableDefId owner,
+    const StableSymbolKind kind,
+    const IdentId name_id,
+    const std::string_view fallback_name,
+    const base::u32 disambiguator
+) const {
+    const std::string_view name = this->module_.identifier_text(name_id).empty()
+        ? fallback_name
+        : this->module_.identifier_text(name_id);
+    return sema::stable_member_key(owner, kind, name, disambiguator);
+}
+
+IncrementalKey SemanticAnalyzer::stable_incremental_key(
+    const StableDefId definition,
+    const std::string_view semantic_fingerprint
+) const {
+    return sema::stable_incremental_key(definition, semantic_fingerprint);
+}
+
+std::string SemanticAnalyzer::function_incremental_fingerprint(
+    const std::string_view name,
+    const TypeHandle return_type,
+    const std::span<const TypeHandle> param_types,
+    const bool is_method,
+    const bool is_variadic
+) const {
+    std::string fingerprint;
+    fingerprint.reserve(name.size() + (param_types.size() + 1U) * SEMA_INCREMENTAL_FINGERPRINT_TYPE_TEXT_BUDGET);
+    fingerprint += name;
+    fingerprint.push_back('|');
+    fingerprint += is_method
+        ? SEMA_INCREMENTAL_FINGERPRINT_METHOD_TAG
+        : SEMA_INCREMENTAL_FINGERPRINT_FUNCTION_TAG;
+    fingerprint.push_back('|');
+    fingerprint += is_variadic
+        ? SEMA_INCREMENTAL_FINGERPRINT_VARIADIC_TAG
+        : SEMA_INCREMENTAL_FINGERPRINT_FIXED_TAG;
+    fingerprint.push_back('|');
+    fingerprint += std::to_string(return_type.value);
+    for (const TypeHandle param_type : param_types) {
+        fingerprint.push_back(',');
+        fingerprint += std::to_string(param_type.value);
+    }
+    return fingerprint;
 }
 
 InternedText SemanticAnalyzer::source_name_text(
@@ -1351,6 +1490,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
 
     if (report_unknown) {
         this->report(range, sema_unknown_enum_case_message(name));
+        this->report_lookup_suggestion(range, this->nearest_visible_enum_case_name(name));
     }
     return nullptr;
 }
@@ -1435,6 +1575,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     }
     if (report_unknown) {
         this->report(range, sema_unknown_scoped_enum_case_message(enum_name, case_name));
+        this->report_lookup_suggestion(range, this->nearest_enum_case_name(enum_type, case_name));
     }
     return nullptr;
 }
@@ -1458,6 +1599,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
         return result;
     }
     this->report(range, sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), case_name));
+    this->report_lookup_suggestion(range, this->nearest_enum_case_name(enum_type, case_name));
     return nullptr;
 }
 
@@ -1490,6 +1632,10 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
         this->report(
             this->module_.exprs.range(callee_id.value),
             sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), callee->field_name)
+        );
+        this->report_lookup_suggestion(
+            this->module_.exprs.range(callee_id.value),
+            this->nearest_enum_case_name(enum_type, callee->field_name)
         );
     }
     return nullptr;

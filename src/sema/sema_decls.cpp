@@ -18,6 +18,8 @@ namespace {
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX[] = ".payload";
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX[] = "_payload";
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
+constexpr std::string_view SEMA_STABLE_TYPE_ALIAS_INCREMENTAL_TAG = "|type_alias";
+constexpr std::string_view SEMA_STABLE_STRUCT_INCREMENTAL_TAG = "|struct";
 
 [[nodiscard]] bool is_main_argv_type(const TypeTable& types, const TypeHandle type) noexcept {
     if (!types.is_pointer(type)) {
@@ -241,6 +243,16 @@ void SemanticAnalyzer::register_type_names() {
             alias.target = item.alias_type;
             alias.range = item.range;
             alias.visibility = item.visibility;
+            alias.stable_id = this->stable_definition_id(
+                owner,
+                StableSymbolKind::type,
+                item.name_id,
+                item.name
+            );
+            alias.incremental_key = this->stable_incremental_key(
+                alias.stable_id,
+                std::string(item.name) + std::string(SEMA_STABLE_TYPE_ALIAS_INCREMENTAL_TAG)
+            );
             auto alias_inserted = this->checked_.type_aliases.emplace(key, std::move(alias));
             if (!alias_inserted.second) {
                 report_duplicate_type(key, owner, item.range, item.name);
@@ -304,6 +316,16 @@ void SemanticAnalyzer::register_type_names() {
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
             info.visibility = item.visibility;
+            info.stable_id = this->stable_definition_id(
+                owner,
+                StableSymbolKind::type,
+                item.name_id,
+                item.name
+            );
+            info.incremental_key = this->stable_incremental_key(
+                info.stable_id,
+                std::string(item.name) + std::string(SEMA_STABLE_STRUCT_INCREMENTAL_TAG)
+            );
             auto struct_inserted = this->checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
                 this->report(item.range, sema_duplicate_struct_definition_message(this->module_name(owner), item.name));
@@ -414,6 +436,15 @@ void SemanticAnalyzer::register_enum_cases_for_item(
             payload_info.module = owner;
             payload_info.type = payload_type;
             payload_info.visibility = syntax::Visibility::private_;
+            payload_info.stable_id = sema::stable_definition_id(
+                this->stable_module_id(owner),
+                StableSymbolKind::synthetic,
+                payload_type_name
+            );
+            payload_info.incremental_key = this->stable_incremental_key(
+                payload_info.stable_id,
+                payload_type_name
+            );
             payload_info.fields.reserve(payload_types.size());
             for (base::usize i = 0; i < payload_types.size(); ++i) {
                 const std::string field_name =
@@ -426,6 +457,12 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                     payload_types[i],
                     enum_case.range,
                     syntax::Visibility::public_,
+                    sema::stable_member_key(
+                        payload_info.stable_id,
+                        StableSymbolKind::struct_field,
+                        field_name,
+                        static_cast<base::u32>(i)
+                    ),
                 });
             }
             const auto payload_inserted = this->checked_.structs.emplace(
@@ -490,6 +527,18 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         case_info.case_name = this->source_name_text(enum_case.name_id, enum_case.name);
         case_info.case_name_id = enum_case.name_id;
         case_info.visibility = visibility;
+        case_info.stable_id = sema::stable_definition_id(
+            this->stable_module_id(owner),
+            StableSymbolKind::enum_case,
+            full_name
+        );
+        case_info.stable_case_key = this->stable_member_key(
+            this->stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name),
+            StableSymbolKind::enum_case,
+            enum_case.name_id,
+            enum_case.name
+        );
+        case_info.incremental_key = this->stable_incremental_key(case_info.stable_id, value_text);
         const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
             this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
@@ -617,6 +666,27 @@ void SemanticAnalyzer::register_value_names() {
             if (has_explicit_return && is_valid(return_type)) {
                 this->validate_function_return_type(item, return_type);
             }
+            std::string stable_function_name(item.name);
+            StableSymbolKind stable_function_kind = StableSymbolKind::function;
+            if (is_method && is_valid(method_owner_type)) {
+                stable_function_name = this->checked_.types.display_name(method_owner_type) + "." + std::string(item.name);
+                stable_function_kind = StableSymbolKind::method;
+            }
+            const StableDefId stable_id = sema::stable_definition_id(
+                this->stable_module_id(this->current_module_),
+                stable_function_kind,
+                stable_function_name
+            );
+            const IncrementalKey incremental_key = this->stable_incremental_key(
+                stable_id,
+                this->function_incremental_fingerprint(
+                    stable_function_name,
+                    return_type,
+                    param_types,
+                    is_method,
+                    item.is_variadic
+                )
+            );
             functions.register_function(
                 item,
                 this->current_module_,
@@ -625,7 +695,9 @@ void SemanticAnalyzer::register_value_names() {
                 method_owner_type,
                 return_type,
                 param_types,
-                syntax::ItemId {item_index}
+                syntax::ItemId {item_index},
+                stable_id,
+                incremental_key
             );
             if (const auto found = this->checked_.functions.find(key);
                 found != this->checked_.functions.end()) {
@@ -651,6 +723,12 @@ void SemanticAnalyzer::register_value_names() {
                 item.range,
                 false,
                 item.visibility,
+                this->stable_definition_id(
+                    this->current_module_,
+                    StableSymbolKind::value,
+                    item.name_id,
+                    item.name
+                ),
             });
             if (!inserted.second) {
                 this->report(
@@ -863,10 +941,16 @@ void SemanticAnalyzer::analyze_struct_properties() {
                     this->source_name_text(field.name_id, field.name),
                     field.name_id,
                     {},
-                    syntax::INVALID_MODULE_ID,
+                    this->current_module_,
                     field_type,
                     field.range,
                     field.visibility,
+                    this->stable_member_key(
+                        struct_info->stable_id,
+                        StableSymbolKind::struct_field,
+                        field.name_id,
+                        field.name
+                    ),
                 });
             }
             if (this->checked_.types.contains_array(field_type)) {

@@ -605,6 +605,8 @@ void CheckedModule::copy_from(const CheckedModule& other) {
         alias.target = entry.second.target;
         alias.range = entry.second.range;
         alias.visibility = entry.second.visibility;
+        alias.stable_id = entry.second.stable_id;
+        alias.incremental_key = entry.second.incremental_key;
         this->type_aliases.emplace(entry.first, alias);
     }
     this->generic_side_table_layouts.clear();
@@ -650,6 +652,7 @@ SemaVector<StructFieldInfo> CheckedModule::copy_struct_field_list(
         field_copy.type = field.type;
         field_copy.range = field.range;
         field_copy.visibility = field.visibility;
+        field_copy.stable_key = field.stable_key;
         copy.push_back(field_copy);
     }
     return copy;
@@ -742,6 +745,8 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.name = this->intern_text(other.name);
     copy.name_id = other.name_id;
     copy.semantic_key = other.semantic_key;
+    copy.stable_id = other.stable_id;
+    copy.incremental_key = other.incremental_key;
     copy.c_name = this->intern_text(other.c_name);
     copy.module = other.module;
     copy.method_owner_type = other.method_owner_type;
@@ -775,6 +780,8 @@ StructInfo CheckedModule::clone_struct_info(const StructInfo& other) {
     copy.is_opaque = other.is_opaque;
     copy.is_generic_placeholder = other.is_generic_placeholder;
     copy.visibility = other.visibility;
+    copy.stable_id = other.stable_id;
+    copy.incremental_key = other.incremental_key;
     return copy;
 }
 
@@ -793,6 +800,9 @@ EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other) {
     copy.case_name = this->intern_text(other.case_name);
     copy.case_name_id = other.case_name_id;
     copy.visibility = other.visibility;
+    copy.stable_id = other.stable_id;
+    copy.stable_case_key = other.stable_case_key;
+    copy.incremental_key = other.incremental_key;
     return copy;
 }
 

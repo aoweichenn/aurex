@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <limits>
 #include <ostream>
+#include <span>
 #include <string_view>
 
 namespace aurex::sema {
@@ -168,6 +169,97 @@ struct IdentIdHash {
 struct GenericParamIdentityHash {
     [[nodiscard]] std::size_t operator()(GenericParamIdentity identity) const noexcept;
 };
+
+struct StableFingerprint128 {
+    base::u64 primary = 0;
+    base::u64 secondary = 0;
+    base::u32 byte_count = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        StableFingerprint128 lhs,
+        StableFingerprint128 rhs
+    ) noexcept = default;
+};
+
+struct StableModuleId {
+    StableFingerprint128 path;
+    base::u32 part_count = 0;
+    base::u64 global_id = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        StableModuleId lhs,
+        StableModuleId rhs
+    ) noexcept = default;
+};
+
+enum class StableSymbolKind : base::u8 {
+    invalid = 0,
+    type,
+    function,
+    method,
+    value,
+    enum_case,
+    struct_field,
+    generic_template,
+    synthetic,
+};
+
+struct StableDefId {
+    StableModuleId module;
+    StableFingerprint128 name;
+    base::u64 global_id = 0;
+    base::u32 disambiguator = 0;
+    StableSymbolKind kind = StableSymbolKind::invalid;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        StableDefId lhs,
+        StableDefId rhs
+    ) noexcept = default;
+};
+
+struct StableMemberKey {
+    StableDefId owner;
+    StableFingerprint128 member_name;
+    base::u64 global_id = 0;
+    base::u32 disambiguator = 0;
+    StableSymbolKind kind = StableSymbolKind::invalid;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        StableMemberKey lhs,
+        StableMemberKey rhs
+    ) noexcept = default;
+};
+
+struct IncrementalKey {
+    StableDefId definition;
+    StableFingerprint128 fingerprint;
+    base::u64 global_id = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        IncrementalKey lhs,
+        IncrementalKey rhs
+    ) noexcept = default;
+};
+
+[[nodiscard]] StableFingerprint128 stable_fingerprint(std::string_view text) noexcept;
+[[nodiscard]] StableFingerprint128 stable_fingerprint(std::span<const std::string_view> parts) noexcept;
+[[nodiscard]] StableModuleId stable_module_id(std::span<const std::string_view> module_path) noexcept;
+[[nodiscard]] StableDefId stable_definition_id(
+    StableModuleId module,
+    StableSymbolKind kind,
+    std::string_view name,
+    base::u32 disambiguator = 0
+) noexcept;
+[[nodiscard]] StableMemberKey stable_member_key(
+    StableDefId owner,
+    StableSymbolKind kind,
+    std::string_view member_name,
+    base::u32 disambiguator = 0
+) noexcept;
+[[nodiscard]] IncrementalKey stable_incremental_key(
+    StableDefId definition,
+    std::string_view semantic_fingerprint
+) noexcept;
 
 struct MethodLookupKey {
     base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;

@@ -73,6 +73,7 @@ struct StructFieldInfo {
     TypeHandle type = INVALID_TYPE_HANDLE;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
+    StableMemberKey stable_key;
 };
 
 struct StructInfo {
@@ -85,6 +86,8 @@ struct StructInfo {
     bool is_opaque = false;
     bool is_generic_placeholder = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
 };
 
 struct EnumCaseInfo {
@@ -101,6 +104,9 @@ struct EnumCaseInfo {
     InternedText case_name;
     IdentId case_name_id = INVALID_IDENT_ID;
     syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
+    StableMemberKey stable_case_key;
+    IncrementalKey incremental_key;
 };
 
 struct TypeAliasInfo {
@@ -110,6 +116,8 @@ struct TypeAliasInfo {
     syntax::TypeId target = syntax::INVALID_TYPE_ID;
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
 };
 
 using CheckedFunctionMap = SemaMap<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>;

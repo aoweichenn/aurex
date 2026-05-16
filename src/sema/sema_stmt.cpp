@@ -423,6 +423,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
             param.range,
             false,
             syntax::Visibility::private_,
+            {},
         }, this->diagnostics_);
         static_cast<void>(inserted);
     }
@@ -695,6 +696,7 @@ void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, cons
         stmt.range,
         false,
         syntax::Visibility::private_,
+        {},
     }, this->diagnostics_);
     static_cast<void>(inserted);
 }
@@ -779,6 +781,7 @@ void SemanticAnalyzer::analyze_statement_node(
             stmt.range,
             stmt.kind == syntax::StmtKind::var,
             syntax::Visibility::private_,
+            {},
         }, this->diagnostics_);
         static_cast<void>(inserted);
         break;

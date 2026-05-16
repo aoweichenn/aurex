@@ -2,11 +2,14 @@
 
 #include <fstream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <system_error>
 
 namespace aurex::test {
 namespace {
+
+constexpr int DIAGNOSTIC_STRESS_ERROR_COUNT = 140;
 
 fs::path write_source_file(const fs::path& path, const std::string_view text) {
     std::ofstream out(path);
@@ -174,6 +177,121 @@ TEST_F(AurexIntegrationTest, DiagnosticQualityRegressions) {
             "unknown function in module samplelib.visibility: exproted",
             "help: did you mean `exported`?",
         }
+    );
+
+    const fs::path alias_suggestion = write_source_file(
+        tmp_root() / "diagnostic_alias_suggestion.ax",
+        "module diagnostic_alias_suggestion;\n"
+        "import samplelib.visibility as vis;\n"
+        "fn main() -> i32 {\n"
+        "  let value: vix.PublicInt = 1;\n"
+        "  return value;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " " + sample_import_flags() + " --check " + q(alias_suggestion)).output,
+        {
+            "unknown import alias: vix",
+            "help: did you mean `vis`?",
+        }
+    );
+
+    const fs::path field_suggestion = write_source_file(
+        tmp_root() / "diagnostic_field_suggestion.ax",
+        "module diagnostic_field_suggestion;\n"
+        "struct Point { count: i32; }\n"
+        "fn main() -> i32 {\n"
+        "  let value = Point { coutn: 1 };\n"
+        "  return value.coutn;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(field_suggestion)).output,
+        {
+            "unknown field in struct literal: coutn",
+            "unknown field: coutn",
+            "help: did you mean `count`?",
+        }
+    );
+
+    const fs::path enum_case_suggestion = write_source_file(
+        tmp_root() / "diagnostic_enum_case_suggestion.ax",
+        "module diagnostic_enum_case_suggestion;\n"
+        "enum Choice { ready, failed }\n"
+        "fn main() -> i32 {\n"
+        "  let value: Choice = Choice.reday;\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(enum_case_suggestion)).output,
+        {
+            "unknown enum case:",
+            "Choice.reday",
+            "help: did you mean `ready`?",
+        }
+    );
+
+    const fs::path multiline = write_source_file(
+        tmp_root() / "diagnostic_multiline_span.ax",
+        "module diagnostic_multiline_span;\n"
+        "struct Pair { left: i32; right: i32; }\n"
+        "fn main() -> i32 {\n"
+        "  let value = Pair {\n"
+        "    left: 1\n"
+        "  };\n"
+        "  return value.left;\n"
+        "}\n"
+    );
+    const std::string multiline_output = require_failure(aurexc() + " --check " + q(multiline)).output;
+    expect_contains_all(multiline_output, {
+        "struct literal is missing field: right",
+        "  let value = Pair {",
+        "    left: 1",
+    });
+
+    const std::string color_output = require_failure(
+        "AUREX_COLOR_DIAGNOSTICS=always " + aurexc() + " --check " + q(enum_case_suggestion)
+    ).output;
+    expect_contains(color_output, "\033[1;31merror\033[0m");
+    expect_contains(color_output, "\033[1;32m^\033[0m");
+
+    const std::string no_color_output = require_failure(
+        "AUREX_COLOR_DIAGNOSTICS=never " + aurexc() + " --check " + q(enum_case_suggestion)
+    ).output;
+    EXPECT_EQ(no_color_output.find("\033["), std::string::npos);
+
+    const std::string invalid_color_mode_output = require_failure(
+        "AUREX_COLOR_DIAGNOSTICS=bogus " + aurexc() + " --check " + q(enum_case_suggestion)
+    ).output;
+    EXPECT_EQ(invalid_color_mode_output.find("\033["), std::string::npos);
+
+    const std::string no_color_env_output = require_failure(
+        "NO_COLOR=1 AUREX_COLOR_DIAGNOSTICS=auto " + aurexc() + " --check " + q(enum_case_suggestion)
+    ).output;
+    EXPECT_EQ(no_color_env_output.find("\033["), std::string::npos);
+
+    const std::string auto_color_output = require_failure(
+        "env -u NO_COLOR AUREX_COLOR_DIAGNOSTICS=auto " + aurexc() + " --check " + q(enum_case_suggestion)
+    ).output;
+    EXPECT_EQ(auto_color_output.find("\033["), std::string::npos);
+
+    std::string many_errors_source = "module diagnostic_many_errors;\nfn main() -> i32 {\n";
+    for (int index = 0; index < DIAGNOSTIC_STRESS_ERROR_COUNT; ++index) {
+        many_errors_source += "  let value";
+        many_errors_source += std::to_string(index);
+        many_errors_source += " = missing";
+        many_errors_source += std::to_string(index);
+        many_errors_source += ";\n";
+    }
+    many_errors_source += "  return 0;\n}\n";
+    const fs::path many_errors = write_source_file(
+        tmp_root() / "diagnostic_many_errors.ax",
+        many_errors_source
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(many_errors)).output,
+        "error: too many diagnostics; suppressing"
     );
 }
 

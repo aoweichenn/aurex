@@ -1843,6 +1843,10 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 }
                 if (!saw_field && emit_diagnostics) {
                     this->report(projection_range, sema_unknown_field_message(field_name));
+                    this->report_lookup_suggestion(
+                        projection_range,
+                        this->nearest_field_name(*info, field_name)
+                    );
                 }
             } else if (emit_diagnostics) {
                 this->report(projection_range, std::string(SEMA_FIELD_STRUCT_VALUE));

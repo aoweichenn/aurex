@@ -30,7 +30,9 @@ public:
         TypeHandle method_owner_type,
         TypeHandle return_type,
         std::span<const TypeHandle> param_types,
-        syntax::ItemId item_id
+        syntax::ItemId item_id,
+        StableDefId stable_id,
+        IncrementalKey incremental_key
     );
 
 private:

@@ -16,17 +16,32 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <span>
 #include <string>
 
+#include <unistd.h>
+
 namespace aurex::driver {
 
 namespace {
 
 constexpr base::usize DRIVER_MAX_PRINTED_DIAGNOSTICS = 128;
+constexpr base::usize DRIVER_MAX_DIAGNOSTIC_SPAN_LINES = 8;
+constexpr std::string_view DRIVER_COLOR_ENV = "AUREX_COLOR_DIAGNOSTICS";
+constexpr std::string_view DRIVER_COLOR_ALWAYS = "always";
+constexpr std::string_view DRIVER_COLOR_NEVER = "never";
+constexpr std::string_view DRIVER_COLOR_AUTO = "auto";
+constexpr std::string_view DRIVER_NO_COLOR_ENV = "NO_COLOR";
+constexpr std::string_view DRIVER_COLOR_RESET = "\033[0m";
+constexpr std::string_view DRIVER_COLOR_ERROR = "\033[1;31m";
+constexpr std::string_view DRIVER_COLOR_WARNING = "\033[1;33m";
+constexpr std::string_view DRIVER_COLOR_NOTE = "\033[1;36m";
+constexpr std::string_view DRIVER_COLOR_HELP = "\033[1;32m";
+constexpr std::string_view DRIVER_COLOR_CARET = "\033[1;32m";
 
 [[nodiscard]] bool emit_kind_requires_ir_lowering(const EmitKind emit_kind) noexcept {
     return emit_kind == EmitKind::ir ||
@@ -61,33 +76,132 @@ constexpr base::usize DRIVER_MAX_PRINTED_DIAGNOSTICS = 128;
     return base::Result<std::filesystem::path>::ok(path);
 }
 
+[[nodiscard]] bool env_equals(const char* const value, const std::string_view expected) noexcept {
+    return value != nullptr && std::string_view {value} == expected;
+}
+
+[[nodiscard]] bool diagnostic_color_enabled() noexcept {
+    const char* const color_env = std::getenv(DRIVER_COLOR_ENV.data());
+    if (env_equals(color_env, DRIVER_COLOR_ALWAYS)) {
+        return true;
+    }
+    if (env_equals(color_env, DRIVER_COLOR_NEVER)) {
+        return false;
+    }
+    if (color_env != nullptr && std::string_view {color_env} != DRIVER_COLOR_AUTO) {
+        return false;
+    }
+    if (std::getenv(DRIVER_NO_COLOR_ENV.data()) != nullptr) {
+        return false;
+    }
+    return ::isatty(STDERR_FILENO) != 0;
+}
+
+[[nodiscard]] std::string_view severity_color(const base::Severity severity) noexcept {
+    switch (severity) {
+    case base::Severity::error:
+    case base::Severity::fatal:
+        return DRIVER_COLOR_ERROR;
+    case base::Severity::warning:
+        return DRIVER_COLOR_WARNING;
+    case base::Severity::note:
+        return DRIVER_COLOR_NOTE;
+    case base::Severity::help:
+        return DRIVER_COLOR_HELP;
+    }
+    return {};
+}
+
+void print_colored(
+    const bool color,
+    const std::string_view color_code,
+    const std::string_view text
+) {
+    if (color && !color_code.empty()) {
+        std::cerr << color_code << text << DRIVER_COLOR_RESET;
+        return;
+    }
+    std::cerr << text;
+}
+
+[[nodiscard]] base::usize diagnostic_span_end(
+    const base::SourceRange& range,
+    const std::string_view text
+) noexcept {
+    if (range.end > range.begin) {
+        return std::min(range.end, text.size());
+    }
+    return std::min(range.begin + 1, text.size());
+}
+
+void print_diagnostic_source_line(
+    const base::SourceFile& file,
+    const base::SourceRange& range,
+    const base::usize line_offset,
+    const base::usize span_end,
+    const bool color
+) {
+    const std::string_view text = file.text();
+    const base::SourceLineExtent line = file.line_extent(line_offset);
+    const std::string_view source_line = text.substr(line.begin, line.end - line.begin);
+    std::cerr << "  " << source_line << "\n";
+    std::cerr << "  ";
+
+    const base::usize highlight_begin = std::max(range.begin, line.begin);
+    const base::usize highlight_end = std::max(
+        highlight_begin + 1,
+        std::min(span_end, line.end)
+    );
+    const base::usize caret_column = std::min(highlight_begin, line.end) - line.begin;
+    for (base::usize i = 0; i < caret_column && i < source_line.size(); ++i) {
+        std::cerr << (source_line[i] == '\t' ? '\t' : ' ');
+    }
+    print_colored(color, DRIVER_COLOR_CARET, "^");
+    for (base::usize i = highlight_begin + 1; i < highlight_end && i < line.end; ++i) {
+        print_colored(color, DRIVER_COLOR_CARET, "~");
+    }
+    std::cerr << "\n";
+}
+
+void print_diagnostic_source(
+    const base::SourceFile& file,
+    const base::Diagnostic& diagnostic,
+    const bool color
+) {
+    const std::string_view text = file.text();
+    if (text.empty()) {
+        return;
+    }
+    const base::usize span_begin = std::min(diagnostic.range.begin, text.size());
+    const base::usize span_end = diagnostic_span_end(diagnostic.range, text);
+    base::usize line_offset = span_begin;
+    base::usize printed_lines = 0;
+    while (line_offset <= span_end && printed_lines < DRIVER_MAX_DIAGNOSTIC_SPAN_LINES) {
+        const base::SourceLineExtent line = file.line_extent(line_offset);
+        print_diagnostic_source_line(file, diagnostic.range, line_offset, span_end, color);
+        printed_lines += 1;
+        if (span_end <= line.end || line.end >= text.size()) {
+            return;
+        }
+        line_offset = line.end + 1;
+    }
+    if (line_offset <= span_end) {
+        std::cerr << "  ...\n";
+    }
+}
+
 void print_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics) {
     const std::span<const base::Diagnostic> all = diagnostics.diagnostics();
     const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
+    const bool color = diagnostic_color_enabled();
     for (base::usize index = 0; index < count; ++index) {
         const base::Diagnostic& diagnostic = all[index];
         const base::SourceFile& file = sources.get(diagnostic.range.source);
         const base::LineColumn location = file.line_column(diagnostic.range.begin);
-        std::cerr << file.path() << ":" << location.line << ":" << location.column << ": "
-                  << base::severity_name(diagnostic.severity) << ": "
-                  << diagnostic.message << "\n";
-
-        const std::string_view text = file.text();
-        const base::SourceLineExtent line = file.line_extent(diagnostic.range.begin);
-        const std::string_view source_line = text.substr(line.begin, line.end - line.begin);
-        if (!source_line.empty()) {
-            std::cerr << "  " << source_line << "\n";
-            std::cerr << "  ";
-            const base::usize caret_column = std::min(diagnostic.range.begin, line.end) - line.begin;
-            for (base::usize i = 0; i < caret_column; ++i) {
-                std::cerr << (source_line[i] == '\t' ? '\t' : ' ');
-            }
-            const base::usize caret_count = diagnostic.range.empty() ? 1 : diagnostic.range.length();
-            for (base::usize i = 0; i < caret_count && caret_column + i < source_line.size(); ++i) {
-                std::cerr << '^';
-            }
-            std::cerr << "\n";
-        }
+        std::cerr << file.path() << ":" << location.line << ":" << location.column << ": ";
+        print_colored(color, severity_color(diagnostic.severity), base::severity_name(diagnostic.severity));
+        std::cerr << ": " << diagnostic.message << "\n";
+        print_diagnostic_source(file, diagnostic, color);
     }
     if (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS) {
         std::cerr << "error: too many diagnostics; suppressing "

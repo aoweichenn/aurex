@@ -1,6 +1,7 @@
 #include <array>
 #include <cstddef>
 #include <limits>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -178,6 +179,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
         {},
         is_mutable,
         visibility,
+        {},
     };
 }
 
@@ -210,6 +212,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
         type,
         {},
         visibility,
+        {},
     };
 }
 
@@ -2576,6 +2579,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
         i32,
         {},
         syntax::Visibility::public_,
+        {},
     });
     const sema::ModuleLookupKey struct_key {module_id(0).value, alpha_id};
     checked.structs.emplace(struct_key, struct_info);
@@ -4107,6 +4111,76 @@ TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
     IdentifierInterner* const move_assigned_ref = &move_assigned;
     move_assigned = std::move(*move_assigned_ref);
     EXPECT_EQ(move_assigned.find("alpha"), alpha);
+}
+
+TEST(CoreUnit, StableSemanticIdsSeparateModulesMembersAndIncrementalKeys) {
+    const std::array<std::string_view, 2> dotted_path {"a", "b_c"};
+    const std::array<std::string_view, 2> underscore_path {"a_b", "c"};
+    const sema::StableModuleId empty_module = sema::stable_module_id(std::span<const std::string_view> {});
+    const sema::StableModuleId dotted_module = sema::stable_module_id(dotted_path);
+    const sema::StableModuleId repeated_dotted_module = sema::stable_module_id(dotted_path);
+    const sema::StableModuleId underscore_module = sema::stable_module_id(underscore_path);
+
+    EXPECT_EQ(empty_module.part_count, 0U);
+    EXPECT_NE(empty_module.global_id, 0U);
+    EXPECT_EQ(dotted_module, repeated_dotted_module);
+    EXPECT_NE(dotted_module, underscore_module);
+    EXPECT_NE(dotted_module.global_id, underscore_module.global_id);
+
+    const sema::StableFingerprint128 empty_text = sema::stable_fingerprint("");
+    const sema::StableFingerprint128 non_empty_text = sema::stable_fingerprint("compute");
+    EXPECT_EQ(empty_text.byte_count, 0U);
+    EXPECT_GT(non_empty_text.byte_count, 0U);
+    EXPECT_NE(empty_text, non_empty_text);
+
+    const sema::StableDefId function_id = sema::stable_definition_id(
+        dotted_module,
+        sema::StableSymbolKind::function,
+        "compute"
+    );
+    const sema::StableDefId overloaded_function_id = sema::stable_definition_id(
+        dotted_module,
+        sema::StableSymbolKind::function,
+        "compute",
+        1
+    );
+    const sema::StableDefId value_id = sema::stable_definition_id(
+        dotted_module,
+        sema::StableSymbolKind::value,
+        "compute"
+    );
+    EXPECT_NE(function_id, value_id);
+    EXPECT_NE(function_id, overloaded_function_id);
+    EXPECT_NE(function_id.global_id, value_id.global_id);
+
+    const sema::StableMemberKey x_field = sema::stable_member_key(
+        function_id,
+        sema::StableSymbolKind::struct_field,
+        "x"
+    );
+    const sema::StableMemberKey y_field = sema::stable_member_key(
+        function_id,
+        sema::StableSymbolKind::struct_field,
+        "y"
+    );
+    EXPECT_NE(x_field, y_field);
+    EXPECT_NE(x_field.global_id, y_field.global_id);
+
+    const sema::IncrementalKey first_fingerprint = sema::stable_incremental_key(
+        function_id,
+        "i32(i32)"
+    );
+    const sema::IncrementalKey same_fingerprint = sema::stable_incremental_key(
+        function_id,
+        "i32(i32)"
+    );
+    const sema::IncrementalKey changed_fingerprint = sema::stable_incremental_key(
+        function_id,
+        "i64(i32)"
+    );
+    EXPECT_EQ(first_fingerprint, same_fingerprint);
+    EXPECT_NE(first_fingerprint, changed_fingerprint);
+    EXPECT_EQ(first_fingerprint.definition, function_id);
 }
 
 TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {

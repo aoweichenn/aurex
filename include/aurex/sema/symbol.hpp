@@ -47,6 +47,7 @@ struct Symbol {
     base::SourceRange range {};
     bool is_mutable = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
 };
 
 using IdentSymbolMap = SemaMap<IdentId, SymbolId, IdentIdHash>;

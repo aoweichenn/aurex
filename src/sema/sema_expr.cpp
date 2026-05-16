@@ -1210,6 +1210,10 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
                     expr.range,
                     sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), expr.field_name)
                 );
+                this->report_lookup_suggestion(
+                    expr.range,
+                    this->nearest_enum_case_name(enum_type, expr.field_name)
+                );
                 return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             const bool recorded = this->record_no_payload_enum_case_expr(expr_id, *enum_case, expr.range);
@@ -1606,6 +1610,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         }
         if (field_info == nullptr) {
             this->report(init.range, sema_unknown_struct_literal_field_message(init.name));
+            this->report_lookup_suggestion(init.range, this->nearest_field_name(*info, init.name));
             continue;
         }
         if (!this->can_access(info->module, field_info->visibility)) {

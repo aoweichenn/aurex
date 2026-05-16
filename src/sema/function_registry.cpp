@@ -53,7 +53,9 @@ void FunctionRegistry::register_function(
     const TypeHandle method_owner_type,
     const TypeHandle return_type,
     const std::span<const TypeHandle> param_types,
-    const syntax::ItemId item_id
+    const syntax::ItemId item_id,
+    const StableDefId stable_id,
+    const IncrementalKey incremental_key
 ) {
     const bool is_prototype = item.is_prototype;
 
@@ -61,6 +63,8 @@ void FunctionRegistry::register_function(
     signature.name = this->source_name_text(item.name_id, item.name);
     signature.name_id = item.name_id;
     signature.semantic_key = key;
+    signature.stable_id = stable_id;
+    signature.incremental_key = incremental_key;
     signature.c_name = this->checked_.intern_text(abi_or_c_name(item, c_name));
     signature.module = owner;
     signature.method_owner_type = method_owner_type;
@@ -193,6 +197,7 @@ void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const
         signature.range,
         false,
         signature.visibility,
+        signature.stable_id,
     });
     if (!value_inserted.second) {
         this->report(signature.range, sema_duplicate_value_definition_in_module_message(signature.name));
@@ -213,6 +218,7 @@ void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, cons
     found->second.c_name = signature.c_name;
     found->second.type = signature_function_type(this->checked_.types, signature);
     found->second.range = signature.range;
+    found->second.stable_id = signature.stable_id;
 }
 
 void FunctionRegistry::report(const base::SourceRange& range, std::string message) const

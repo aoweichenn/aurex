@@ -16,7 +16,8 @@ namespace aurex::lex {
 
 namespace {
 
-constexpr base::usize LEXER_ESTIMATED_BYTES_PER_TOKEN = 2;
+constexpr base::usize LEXER_TOKEN_ESTIMATE_EOF_TOKEN = 1;
+constexpr base::usize LEXER_TOKEN_PREFIX_TAIL_OFFSET = LEXEME_SINGLE_BYTE_WIDTH;
 constexpr base::usize LEXER_MAX_ERROR_DIAGNOSTICS = 128;
 constexpr std::string_view LEXER_ERROR_BUDGET_EXHAUSTED_MESSAGE =
     "too many lexical errors; suppressing further lexer diagnostics";
@@ -99,10 +100,134 @@ constexpr void mark_token_start_range(
 
 inline constexpr std::array TOKEN_START_ACTIONS = build_token_start_actions();
 
-[[nodiscard]] base::usize initial_token_capacity(const base::usize source_size) noexcept {
+[[nodiscard]] bool estimate_two_byte_prefix(
+    const std::string_view source,
+    const base::usize index,
+    const std::string_view prefix
+) noexcept {
+    return index + prefix.size() <= source.size() &&
+           source.substr(index, prefix.size()) == prefix;
+}
+
+[[nodiscard]] base::usize estimate_quoted_token_end(
+    const std::string_view source,
+    base::usize index,
+    const char quote
+) noexcept {
+    while (index < source.size()) {
+        const char current = source[index];
+        ++index;
+        if (current == LEXEME_ESCAPE && index < source.size()) {
+            ++index;
+            continue;
+        }
+        if (current == quote) {
+            break;
+        }
+    }
+    return index;
+}
+
+[[nodiscard]] base::usize estimate_line_comment_end(
+    const std::string_view source,
+    base::usize index
+) noexcept {
+    while (index < source.size() && source[index] != LEXEME_LINE_FEED) {
+        ++index;
+    }
+    return index;
+}
+
+[[nodiscard]] base::usize estimate_block_comment_end(
+    const std::string_view source,
+    base::usize index
+) noexcept {
+    while (index + LEXEME_BLOCK_COMMENT_SUFFIX.size() <= source.size()) {
+        if (source.substr(index, LEXEME_BLOCK_COMMENT_SUFFIX.size()) == LEXEME_BLOCK_COMMENT_SUFFIX) {
+            return index + LEXEME_BLOCK_COMMENT_SUFFIX.size();
+        }
+        ++index;
+    }
+    return source.size();
+}
+
+[[nodiscard]] base::usize estimate_identifier_token_end(
+    const std::string_view source,
+    base::usize index
+) noexcept {
+    while (index < source.size() && is_ident_continue(source[index])) {
+        ++index;
+    }
+    return index;
+}
+
+[[nodiscard]] base::usize estimate_number_token_end(
+    const std::string_view source,
+    base::usize index
+) noexcept {
+    while (index < source.size() && is_ident_continue(source[index])) {
+        ++index;
+    }
+    return index;
+}
+
+[[nodiscard]] bool estimate_prefixed_quote(
+    const std::string_view source,
+    const base::usize index,
+    const std::string_view prefix
+) noexcept {
+    return source[index] == prefix.front() &&
+           index + LEXER_TOKEN_PREFIX_TAIL_OFFSET < source.size() &&
+           source[index + LEXER_TOKEN_PREFIX_TAIL_OFFSET] == prefix.back();
+}
+
+[[nodiscard]] base::usize estimate_token_capacity(const std::string_view source) noexcept {
     const base::usize configured_minimum = base::config::AUREX_INITIAL_TOKEN_CAPACITY;
-    const base::usize estimated_capacity = (source_size / LEXER_ESTIMATED_BYTES_PER_TOKEN) + 1;
-    return std::max(configured_minimum, estimated_capacity);
+    base::usize tokens = LEXER_TOKEN_ESTIMATE_EOF_TOKEN;
+    base::usize index = 0;
+    while (index < source.size()) {
+        const char current = source[index];
+        if (is_trivia_space(current)) {
+            ++index;
+            continue;
+        }
+        if (estimate_two_byte_prefix(source, index, LEXEME_LINE_COMMENT_PREFIX)) {
+            index = estimate_line_comment_end(source, index + LEXEME_LINE_COMMENT_PREFIX.size());
+            continue;
+        }
+        if (estimate_two_byte_prefix(source, index, LEXEME_BLOCK_COMMENT_PREFIX)) {
+            index = estimate_block_comment_end(source, index + LEXEME_BLOCK_COMMENT_PREFIX.size());
+            continue;
+        }
+        ++tokens;
+        if (current == LEXEME_DOUBLE_QUOTE || current == LEXEME_SINGLE_QUOTE) {
+            index = estimate_quoted_token_end(source, index + 1U, current);
+            continue;
+        }
+        if (estimate_prefixed_quote(source, index, LEXEME_C_STRING_PREFIX) ||
+            estimate_prefixed_quote(source, index, LEXEME_RAW_STRING_PREFIX) ||
+            estimate_prefixed_quote(source, index, LEXEME_BYTE_STRING_PREFIX)) {
+            index = estimate_quoted_token_end(source, index + LEXEME_C_STRING_PREFIX.size(), LEXEME_DOUBLE_QUOTE);
+            continue;
+        }
+        if (estimate_prefixed_quote(source, index, LEXEME_BYTE_LITERAL_PREFIX)) {
+            index = estimate_quoted_token_end(source, index + LEXEME_BYTE_LITERAL_PREFIX.size(), LEXEME_SINGLE_QUOTE);
+            continue;
+        }
+        if (is_ident_start(current)) {
+            index = estimate_identifier_token_end(source, index + LEXEME_SINGLE_BYTE_WIDTH);
+            continue;
+        }
+        if (is_decimal_digit(current) ||
+            (current == LEXEME_DOT &&
+             index + LEXEME_SINGLE_BYTE_WIDTH < source.size() &&
+             is_decimal_digit(source[index + LEXEME_SINGLE_BYTE_WIDTH]))) {
+            index = estimate_number_token_end(source, index + LEXEME_SINGLE_BYTE_WIDTH);
+            continue;
+        }
+        ++index;
+    }
+    return std::max(configured_minimum, tokens);
 }
 
 } // namespace
@@ -117,7 +242,7 @@ Lexer::Lexer(
       cursor_(source_text),
       diagnostics_(diagnostics),
       options_(options) {
-    this->tokens_.reserve(initial_token_capacity(source_text.size()));
+    this->tokens_.reserve(estimate_token_capacity(source_text));
 }
 
 base::Result<TokenBuffer> Lexer::tokenize() {

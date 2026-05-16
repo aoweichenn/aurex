@@ -85,6 +85,8 @@ private:
         IdentId name_id = INVALID_IDENT_ID;
         ModuleLookupKey key;
         FunctionLookupKey function_key;
+        StableDefId stable_id;
+        IncrementalKey incremental_key;
         SemaVector<IdentId> params;
         SemaVector<GenericParamIdentity> param_identities;
         CapabilityMap constraints;
@@ -753,6 +755,10 @@ private:
     [[nodiscard]] std::string_view nearest_type_name_in_module(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string_view nearest_visible_function_name(std::string_view name) const;
     [[nodiscard]] std::string_view nearest_function_name_in_module(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_import_alias_name(std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_field_name(const StructInfo& info, std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_enum_case_name(TypeHandle enum_type, std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_visible_enum_case_name(std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string generic_template_key_prefix(
         syntax::ModuleId module,
@@ -766,6 +772,32 @@ private:
     [[nodiscard]] FunctionLookupKey function_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] FunctionLookupKey method_function_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
     [[nodiscard]] FunctionLookupKey function_lookup_key_from_method(MethodLookupKey key) const noexcept;
+    [[nodiscard]] StableModuleId stable_module_id(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] StableDefId stable_definition_id(
+        syntax::ModuleId module,
+        StableSymbolKind kind,
+        IdentId name_id,
+        std::string_view fallback_name,
+        base::u32 disambiguator = 0
+    ) const;
+    [[nodiscard]] StableMemberKey stable_member_key(
+        StableDefId owner,
+        StableSymbolKind kind,
+        IdentId name_id,
+        std::string_view fallback_name,
+        base::u32 disambiguator = 0
+    ) const;
+    [[nodiscard]] IncrementalKey stable_incremental_key(
+        StableDefId definition,
+        std::string_view semantic_fingerprint
+    ) const;
+    [[nodiscard]] std::string function_incremental_fingerprint(
+        std::string_view name,
+        TypeHandle return_type,
+        std::span<const TypeHandle> param_types,
+        bool is_method,
+        bool is_variadic
+    ) const;
     [[nodiscard]] InternedText source_name_text(IdentId name_id, std::string_view fallback_name);
     [[nodiscard]] IdentId intern_generated_key(std::string_view key);
     [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;

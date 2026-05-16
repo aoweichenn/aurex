@@ -507,6 +507,30 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map) {
     }
 }
 
+[[nodiscard]] bool ast_payloads_empty(const syntax::AstModule& module) noexcept {
+    return module.types.empty() &&
+           module.exprs.empty() &&
+           module.patterns.empty() &&
+           module.stmts.empty() &&
+           module.items.empty() &&
+           module.item_modules.empty();
+}
+
+void move_root_module_into_empty_combined(
+    syntax::AstModule& combined,
+    syntax::AstModule&& module,
+    const syntax::ModuleId owner_module
+) {
+    syntax::ModuleInfo root_info;
+    root_info.path = module.module_path;
+    module.intern_module_path(root_info.path);
+
+    combined = std::move(module);
+    combined.modules.clear();
+    combined.modules.push_back(std::move(root_info));
+    combined.item_modules.assign(combined.items.size(), owner_module);
+}
+
 void append_module_into(
     syntax::AstModule& destination,
     syntax::AstModule&& source,
@@ -757,11 +781,18 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         combined.intern_resolved_import(resolved);
         direct_imports.push_back(std::move(resolved));
     }
-    if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
-        combined.modules[module_id.value].imports = std::move(direct_imports);
+    if (is_root &&
+        imports.empty() &&
+        module_id.value == 0 &&
+        combined.modules.size() == 1 &&
+        ast_payloads_empty(combined)) {
+        move_root_module_into_empty_combined(combined, std::move(module), module_id);
+    } else {
+        if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
+            combined.modules[module_id.value].imports = std::move(direct_imports);
+        }
+        append_module_into(combined, std::move(module), is_root, module_id);
     }
-
-    append_module_into(combined, std::move(module), is_root, module_id);
     this->loading_files_.erase(key);
     this->loaded_file_modules_.emplace(key, module_id);
     return base::Result<syntax::ModuleId>::ok(module_id);

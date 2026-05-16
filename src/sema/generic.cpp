@@ -22,6 +22,7 @@ constexpr std::string_view SEMA_GENERIC_ABI_ARG_PREFIX = "_t";
 constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG = "|generic_template";
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_OFFSET = 14695981039346656037ULL;
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_PRIME = 1099511628211ULL;
 constexpr base::u32 SEMA_GENERIC_PARAM_IDENTITY_U64_BITS = 64;
@@ -821,6 +822,16 @@ void SemanticAnalyzer::register_generic_template(
     info.key = this->module_lookup_key(owner, item.name_id);
     info.function_key = this->function_lookup_key(owner, item.name_id);
     info.visibility = item.visibility;
+    info.stable_id = this->stable_definition_id(
+        owner,
+        StableSymbolKind::generic_template,
+        item.name_id,
+        item.name
+    );
+    info.incremental_key = this->stable_incremental_key(
+        info.stable_id,
+        std::string(item.name) + std::string(SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG)
+    );
     info.params.reserve(item.generic_params.size());
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         info.params.push_back(param.name_id);
@@ -1648,6 +1659,15 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     struct_info.module = info.module;
     struct_info.type = handle;
     struct_info.visibility = info.visibility;
+    struct_info.stable_id = sema::stable_definition_id(
+        this->stable_module_id(info.module),
+        StableSymbolKind::type,
+        this->generic_struct_instance_key(info, args)
+    );
+    struct_info.incremental_key = this->stable_incremental_key(
+        struct_info.stable_id,
+        this->generic_instance_key(info, args)
+    );
     struct_info.is_generic_placeholder = std::ranges::any_of(args,[&](const TypeHandle arg) {
         return is_valid(arg) && this->checked_.types.get(arg).kind == TypeKind::generic_param;
     });
@@ -1679,10 +1699,16 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
             this->source_name_text(field.name_id, field.name),
             field.name_id,
             {},
-            syntax::INVALID_MODULE_ID,
+            info.module,
             field_type,
             field.range,
             field.visibility,
+            this->stable_member_key(
+                struct_info.stable_id,
+                StableSymbolKind::struct_field,
+                field.name_id,
+                field.name
+            ),
         });
     }
 
@@ -2022,6 +2048,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.c_name = signature.name;
+    signature.stable_id = info.stable_id;
     signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
@@ -2035,6 +2062,16 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     for (const syntax::ParamDecl& param : function.params) {
         signature.param_types.push_back(this->resolve_type(param.type));
     }
+    signature.incremental_key = this->stable_incremental_key(
+        signature.stable_id,
+        this->function_incremental_fingerprint(
+            info.name,
+            signature.return_type,
+            signature.param_types,
+            false,
+            signature.is_variadic
+        )
+    );
 
     this->current_module_ = previous_module;
     this->current_generic_context_ = previous_generic_context;
@@ -2149,6 +2186,11 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = key;
+    signature.stable_id = sema::stable_definition_id(
+        this->stable_module_id(info.module),
+        StableSymbolKind::function,
+        this->generic_function_instance_key(info, args)
+    );
     signature.c_name = this->checked_.intern_text(this->c_symbol_name(
         info.module,
         std::string(info.name.view()) + this->generic_instance_abi_suffix(args)
@@ -2166,6 +2208,16 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     for (const syntax::ParamDecl& param : function.params) {
         signature.param_types.push_back(this->resolve_type(param.type));
     }
+    signature.incremental_key = this->stable_incremental_key(
+        signature.stable_id,
+        this->function_incremental_fingerprint(
+            info.name,
+            signature.return_type,
+            signature.param_types,
+            false,
+            signature.is_variadic
+        )
+    );
     this->current_module_ = previous_module;
     this->current_generic_context_ = previous_generic_context;
     this->current_side_tables_ = previous_side_tables;
@@ -2292,6 +2344,11 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = key;
+    signature.stable_id = sema::stable_definition_id(
+        this->stable_module_id(info.module),
+        StableSymbolKind::method,
+        this->checked_.types.display_name(owner_type) + "." + std::string(info.name.view())
+    );
     signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
     signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
@@ -2309,6 +2366,16 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     for (const syntax::ParamDecl& param : function.params) {
         signature.param_types.push_back(this->resolve_type(param.type));
     }
+    signature.incremental_key = this->stable_incremental_key(
+        signature.stable_id,
+        this->function_incremental_fingerprint(
+            info.name,
+            signature.return_type,
+            signature.param_types,
+            true,
+            signature.is_variadic
+        )
+    );
 
     this->current_module_ = previous_module;
     this->current_generic_context_ = previous_generic_context;
@@ -2500,6 +2567,7 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = info.function_key;
+    signature.stable_id = info.stable_id;
     signature.c_name = signature.name;
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
@@ -2512,6 +2580,16 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     for (const syntax::ParamDecl& param : function.params) {
         signature.param_types.push_back(this->resolve_type(param.type));
     }
+    signature.incremental_key = this->stable_incremental_key(
+        signature.stable_id,
+        this->function_incremental_fingerprint(
+            info.name,
+            signature.return_type,
+            signature.param_types,
+            false,
+            signature.is_variadic
+        )
+    );
     auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.function_key, signature);
     if (!placeholder_inserted.second) {
         placeholder_inserted.first->second = signature;

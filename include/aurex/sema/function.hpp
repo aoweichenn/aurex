@@ -14,6 +14,8 @@ struct FunctionSignature {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
     FunctionLookupKey semantic_key;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
     InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;

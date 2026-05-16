@@ -365,6 +365,7 @@ bool SemanticAnalyzer::analyze_pattern(
                     const StructFieldInfo* field_info = find_struct_field(*info, field->name_id);
                     if (field_info == nullptr) {
                         this->report(field->range, std::string(SEMA_STRUCT_PATTERN_FIELD));
+                        this->report_lookup_suggestion(field->range, this->nearest_field_name(*info, field->name));
                         pending.push_back(PatternFrame {field->pattern, INVALID_TYPE_HANDLE});
                         continue;
                     }
@@ -533,6 +534,7 @@ void SemanticAnalyzer::define_pattern_bindings(
             binding.range,
             is_mutable,
             syntax::Visibility::private_,
+            {},
         }, this->diagnostics_);
         static_cast<void>(inserted);
     }

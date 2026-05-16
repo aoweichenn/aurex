@@ -125,9 +125,12 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    explicit adjustments such as contextual integer/float literals, `null` to
    pointer, and slice coercions. Integer/float/null literals, unary/binary
    expressions, slices, array/tuple literals, and if/block/match expressions keep
-   intrinsic types separate from final types under an expected type. Future work
-   here is smaller internal `analyze_expr` decomposition and richer coercion
-   categories, not a P0 cache-pollution fix.
+   intrinsic types separate from final types under an expected type. Internal
+   `analyze_expr` dispatch is now split into literal, value, control,
+   aggregate, projection, operator, and builtin helpers; binary expression
+   analysis separately handles operand contextual typing, mismatch diagnostics,
+   literal hazard checks, and operator result recording. Future work here is
+   richer coercion categories, not a P0 cache-pollution fix.
 
 ## Explicitly Deferred
 

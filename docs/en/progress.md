@@ -134,6 +134,14 @@ coercions. Integer/float/null literals, unary/binary expressions, slices,
 array/tuple literals, and if/block/match expressions keep intrinsic types
 separate from final types under expected-type analysis. IR lowering continues to
 read the final `expr_types` table.
+The follow-up expression engineering pass splits the single dispatch body into
+one canonical path: `analyze_expr(expr, expected)` owns final-cache lookup and
+expected-key recording, `analyze_expr(expr, view, expected)` only classifies the
+node, and literal, value/name/call, control, aggregate, projection, operator,
+and builtin expressions enter separate helpers. Binary expression checking is
+also split into operand contextual typing, operand mismatch diagnostics, integer
+literal hazard diagnostics, and operator-result recording, without keeping a
+parallel old/new analyzer.
 The AST main path now follows the P0-Perf-4 plan: the driver owns the
 parser/module AST and passes a mutable reference through sema and IR lowering,
 `SemanticAnalyzer(const AstModule&)` is deleted to prevent implicit whole-tree

@@ -58,6 +58,7 @@ constexpr base::u64 SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_ALIGN = 0;
 constexpr base::u64 SEMA_TEST_NESTED_ARRAY_COUNT = 5;
 constexpr base::u64 SEMA_TEST_INVALID_ARRAY_COUNT = 2;
 constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
+constexpr int SEMA_TEST_UNKNOWN_EXPR_KIND_VALUE = 255;
 constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
 constexpr base::usize SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT = 70;
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
@@ -3374,6 +3375,88 @@ TEST(CoreUnit, SemanticWhiteBoxContextualExprKeepsIntrinsicAndFinalTypesSeparate
     EXPECT_TRUE(types.same(analyzer.analyze_expr(if_expr, i64), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(if_expr), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(if_expr), i64));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxExpressionCategoryHelpersRejectMismatchedViews) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.current_module_ = module_id(0);
+
+    sema::SemanticAnalyzer::ExprView name_view;
+    name_view.kind = syntax::ExprKind::name;
+    EXPECT_FALSE(is_valid(analyzer.analyze_literal_expr(
+        syntax::INVALID_EXPR_ID,
+        name_view,
+        INVALID_TYPE_HANDLE
+    )));
+
+    sema::SemanticAnalyzer::ExprView integer_view;
+    integer_view.kind = syntax::ExprKind::integer_literal;
+    EXPECT_FALSE(is_valid(analyzer.analyze_value_expr(
+        syntax::INVALID_EXPR_ID,
+        integer_view,
+        INVALID_TYPE_HANDLE
+    )));
+    EXPECT_FALSE(is_valid(analyzer.analyze_control_expr(
+        syntax::INVALID_EXPR_ID,
+        integer_view,
+        INVALID_TYPE_HANDLE
+    )));
+    EXPECT_FALSE(is_valid(analyzer.analyze_aggregate_expr(
+        syntax::INVALID_EXPR_ID,
+        integer_view,
+        INVALID_TYPE_HANDLE
+    )));
+    EXPECT_FALSE(is_valid(analyzer.analyze_projection_expr(
+        syntax::INVALID_EXPR_ID,
+        integer_view,
+        INVALID_TYPE_HANDLE
+    )));
+    EXPECT_FALSE(is_valid(analyzer.analyze_operator_expr(
+        syntax::INVALID_EXPR_ID,
+        integer_view,
+        INVALID_TYPE_HANDLE
+    )));
+    EXPECT_FALSE(is_valid(analyzer.analyze_builtin_expr(
+        syntax::INVALID_EXPR_ID,
+        integer_view
+    )));
+
+    sema::SemanticAnalyzer::ExprView unknown_view;
+    unknown_view.kind = static_cast<syntax::ExprKind>(SEMA_TEST_UNKNOWN_EXPR_KIND_VALUE);
+    EXPECT_FALSE(is_valid(analyzer.analyze_expr(
+        syntax::INVALID_EXPR_ID,
+        unknown_view,
+        INVALID_TYPE_HANDLE
+    )));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBinaryOperatorSplitCoversGenericIntegerPath) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.current_module_ = module_id(0);
+
+    sema::SemanticAnalyzer::ExprView expr;
+    expr.kind = syntax::ExprKind::binary;
+    expr.binary_op = syntax::BinaryOp::bit_and;
+    const TypeHandle generic = analyzer.checked_.types.generic_param("test.T", "T");
+
+    EXPECT_TRUE(analyzer.checked_.types.same(
+        analyzer.record_integer_binary_expr(
+            syntax::INVALID_EXPR_ID,
+            expr,
+            generic,
+            generic
+        ),
+        generic
+    ));
+    EXPECT_TRUE(diagnostics.has_error());
 }
 
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries) {

@@ -25,6 +25,17 @@ constexpr std::string_view SEMA_RESULT_ERR_CASE_NAME = "err";
 constexpr std::string_view SEMA_OPTION_SOME_CASE_NAME = "some";
 constexpr std::string_view SEMA_OPTION_NONE_CASE_NAME = "none";
 
+enum class ExprAnalysisCategory {
+    invalid,
+    literal,
+    value,
+    control,
+    aggregate,
+    projection,
+    operator_,
+    builtin,
+};
+
 struct IntegerLiteralExpr {
     syntax::ExprId literal = syntax::INVALID_EXPR_ID;
     bool negated = false;
@@ -140,6 +151,60 @@ template <typename T, typename Allocator>
     default:
         return false;
     }
+}
+
+[[nodiscard]] ExprAnalysisCategory expr_analysis_category(const syntax::ExprKind kind) noexcept {
+    switch (kind) {
+    case syntax::ExprKind::integer_literal:
+    case syntax::ExprKind::float_literal:
+    case syntax::ExprKind::bool_literal:
+    case syntax::ExprKind::null_literal:
+    case syntax::ExprKind::string_literal:
+    case syntax::ExprKind::c_string_literal:
+    case syntax::ExprKind::raw_string_literal:
+    case syntax::ExprKind::byte_string_literal:
+    case syntax::ExprKind::byte_literal:
+    case syntax::ExprKind::char_literal:
+        return ExprAnalysisCategory::literal;
+    case syntax::ExprKind::name:
+    case syntax::ExprKind::generic_apply:
+    case syntax::ExprKind::call:
+        return ExprAnalysisCategory::value;
+    case syntax::ExprKind::try_expr:
+    case syntax::ExprKind::if_expr:
+    case syntax::ExprKind::block_expr:
+    case syntax::ExprKind::unsafe_block:
+    case syntax::ExprKind::match_expr:
+        return ExprAnalysisCategory::control;
+    case syntax::ExprKind::array_literal:
+    case syntax::ExprKind::tuple_literal:
+    case syntax::ExprKind::struct_literal:
+        return ExprAnalysisCategory::aggregate;
+    case syntax::ExprKind::postfix_chain:
+    case syntax::ExprKind::field:
+    case syntax::ExprKind::index:
+    case syntax::ExprKind::slice:
+        return ExprAnalysisCategory::projection;
+    case syntax::ExprKind::unary:
+    case syntax::ExprKind::binary:
+        return ExprAnalysisCategory::operator_;
+    case syntax::ExprKind::cast:
+    case syntax::ExprKind::pcast:
+    case syntax::ExprKind::bcast:
+    case syntax::ExprKind::size_of:
+    case syntax::ExprKind::align_of:
+    case syntax::ExprKind::ptr_addr:
+    case syntax::ExprKind::paddr:
+    case syntax::ExprKind::str_data:
+    case syntax::ExprKind::str_byte_len:
+    case syntax::ExprKind::str_is_valid_utf8:
+    case syntax::ExprKind::str_from_utf8_checked:
+    case syntax::ExprKind::str_from_bytes_unchecked:
+        return ExprAnalysisCategory::builtin;
+    case syntax::ExprKind::invalid:
+        return ExprAnalysisCategory::invalid;
+    }
+    return ExprAnalysisCategory::invalid;
 }
 
 [[nodiscard]] syntax::ExprId unary_operand_or_invalid(
@@ -515,6 +580,32 @@ TypeHandle SemanticAnalyzer::analyze_expr(
     const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
+    switch (expr_analysis_category(expr.kind)) {
+    case ExprAnalysisCategory::literal:
+        return this->analyze_literal_expr(expr_id, expr, expected_type);
+    case ExprAnalysisCategory::value:
+        return this->analyze_value_expr(expr_id, expr, expected_type);
+    case ExprAnalysisCategory::control:
+        return this->analyze_control_expr(expr_id, expr, expected_type);
+    case ExprAnalysisCategory::aggregate:
+        return this->analyze_aggregate_expr(expr_id, expr, expected_type);
+    case ExprAnalysisCategory::projection:
+        return this->analyze_projection_expr(expr_id, expr, expected_type);
+    case ExprAnalysisCategory::operator_:
+        return this->analyze_operator_expr(expr_id, expr, expected_type);
+    case ExprAnalysisCategory::builtin:
+        return this->analyze_builtin_expr(expr_id, expr);
+    case ExprAnalysisCategory::invalid:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+}
+
+TypeHandle SemanticAnalyzer::analyze_literal_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
     switch (expr.kind) {
     case syntax::ExprKind::integer_literal:
         return this->analyze_integer_literal(expr_id, expr.text, expr.range, expected_type);
@@ -562,12 +653,34 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::u8));
     case syntax::ExprKind::char_literal:
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::char_));
+    default:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_value_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
+    switch (expr.kind) {
     case syntax::ExprKind::name:
         return this->analyze_name_expr(expr_id, expr);
     case syntax::ExprKind::generic_apply:
         return this->analyze_generic_apply_expr(expr_id, expr);
     case syntax::ExprKind::call:
         return this->analyze_call_expr(expr_id, expr, expected_type);
+    default:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_control_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
+    switch (expr.kind) {
     case syntax::ExprKind::try_expr:
         return this->analyze_try_expr(expr_id, expr);
     case syntax::ExprKind::if_expr:
@@ -578,24 +691,67 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_unsafe_block_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::match_expr:
         return this->analyze_match_expr(expr_id, expr, expected_type);
+    default:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_aggregate_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
+    switch (expr.kind) {
     case syntax::ExprKind::array_literal:
         return this->analyze_array_literal_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::tuple_literal:
         return this->analyze_tuple_literal_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::struct_literal:
+        return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
+    default:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_projection_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
+    switch (expr.kind) {
     case syntax::ExprKind::postfix_chain:
         return this->analyze_postfix_chain_expr(expr_id, expected_type);
-    case syntax::ExprKind::unary:
-        return this->analyze_unary_expr(expr_id, expr, expected_type);
-    case syntax::ExprKind::binary:
-        return this->analyze_binary_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::field:
         return this->analyze_field_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::index:
         return this->analyze_index_expr(expr_id, expr);
     case syntax::ExprKind::slice:
         return this->analyze_slice_expr(expr_id, expr, expected_type);
-    case syntax::ExprKind::struct_literal:
-        return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
+    default:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_operator_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
+    switch (expr.kind) {
+    case syntax::ExprKind::unary:
+        return this->analyze_unary_expr(expr_id, expr, expected_type);
+    case syntax::ExprKind::binary:
+        return this->analyze_binary_expr(expr_id, expr, expected_type);
+    default:
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+}
+
+TypeHandle SemanticAnalyzer::analyze_builtin_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr
+) {
+    switch (expr.kind) {
     case syntax::ExprKind::cast:
     case syntax::ExprKind::pcast:
     case syntax::ExprKind::bcast:
@@ -615,10 +771,9 @@ TypeHandle SemanticAnalyzer::analyze_expr(
         return this->analyze_str_utf8_slice_expr(expr_id, expr);
     case syntax::ExprKind::str_from_bytes_unchecked:
         return this->analyze_str_from_bytes_unchecked_expr(expr_id, expr);
-    case syntax::ExprKind::invalid:
+    default:
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
 TypeHandle SemanticAnalyzer::analyze_name_expr(
@@ -774,168 +929,270 @@ TypeHandle SemanticAnalyzer::analyze_binary_expr(
     const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
-    const TypeHandle operand_expected =
+    const BinaryExprAnalysis analysis = this->analyze_binary_operands(expr, expected_type);
+    this->diagnose_binary_operand_mismatch(expr, analysis);
+    this->diagnose_binary_literal_hazards(expr, analysis.lhs);
+    return this->record_binary_operator_expr(expr_id, expr, analysis);
+}
+
+SemanticAnalyzer::BinaryExprAnalysis SemanticAnalyzer::analyze_binary_operands(
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle expected_type
+) {
+    BinaryExprAnalysis analysis;
+    analysis.operand_expected =
         binary_result_uses_operand_type(expr.binary_op) &&
         (this->checked_.types.is_integer(expected_type) || this->checked_.types.is_float(expected_type))
             ? expected_type
             : INVALID_TYPE_HANDLE;
-    TypeHandle lhs = INVALID_TYPE_HANDLE;
-    TypeHandle rhs = INVALID_TYPE_HANDLE;
-    if (!is_valid(operand_expected) &&
+    if (!is_valid(analysis.operand_expected) &&
         is_contextual_integer_expr(this->module_, expr.binary_lhs) &&
         !is_contextual_integer_expr(this->module_, expr.binary_rhs)) {
-        rhs = this->analyze_expr(expr.binary_rhs);
-        lhs = this->analyze_expr(expr.binary_lhs, rhs);
+        analysis.rhs = this->analyze_expr(expr.binary_rhs);
+        analysis.lhs = this->analyze_expr(expr.binary_lhs, analysis.rhs);
     } else {
-        lhs = this->analyze_expr(expr.binary_lhs, operand_expected);
-        rhs = this->analyze_expr(expr.binary_rhs, is_valid(lhs) ? lhs : operand_expected);
+        analysis.lhs = this->analyze_expr(expr.binary_lhs, analysis.operand_expected);
+        analysis.rhs = this->analyze_expr(
+            expr.binary_rhs,
+            is_valid(analysis.lhs) ? analysis.lhs : analysis.operand_expected
+        );
     }
 
     const bool is_equality =
         expr.binary_op == syntax::BinaryOp::equal ||
         expr.binary_op == syntax::BinaryOp::not_equal;
-    const bool is_null_pointer_comparison =
+    analysis.null_pointer_comparison =
         is_equality &&
-        ((this->checked_.types.is_pointer(lhs) && this->is_null_literal(expr.binary_rhs)) ||
-         (this->checked_.types.is_pointer(rhs) && this->is_null_literal(expr.binary_lhs)));
-    if (!this->checked_.types.same(lhs, rhs) && !is_null_pointer_comparison) {
-        this->report(expr.range, std::string(SEMA_BINARY_OPERANDS_SAME_TYPE));
-    }
+        ((this->checked_.types.is_pointer(analysis.lhs) && this->is_null_literal(expr.binary_rhs)) ||
+         (this->checked_.types.is_pointer(analysis.rhs) && this->is_null_literal(expr.binary_lhs)));
 
-    const IntegerLiteralExpr rhs_integer_literal = integer_literal_expr(this->module_, expr.binary_rhs);
-    if (syntax::is_valid(rhs_integer_literal.literal)) {
-        base::u64 rhs_literal_value = 0;
-        const std::string_view literal_text = expr_literal_text_or_empty(this->module_, rhs_integer_literal.literal);
-        const base::SourceRange rhs_range =
-            expr_range_or(this->module_, expr.binary_rhs, expr_range_or(this->module_, rhs_integer_literal.literal, expr.range));
-        if (this->parse_integer_literal_text(literal_text, rhs_literal_value)) {
-            if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
-                this->checked_.types.is_integer(lhs) &&
-                rhs_literal_value == 0) {
-                this->report(
-                    rhs_range,
-                    expr.binary_op == syntax::BinaryOp::div
-                        ? std::string(SEMA_INTEGER_DIVISION_BY_ZERO)
-                        : std::string(SEMA_INTEGER_MODULO_BY_ZERO)
-                );
-            }
-            if (expr.binary_op == syntax::BinaryOp::shl || expr.binary_op == syntax::BinaryOp::shr) {
-                const base::u32 bit_width = integer_bit_width(this->checked_.types, lhs);
-                if (rhs_integer_literal.negated && rhs_literal_value != 0) {
-                    this->report(rhs_range, std::string(SEMA_SHIFT_NEGATIVE));
-                } else if (!rhs_integer_literal.negated &&
-                           bit_width != 0 &&
-                           rhs_literal_value >= bit_width) {
-                    this->report(rhs_range, std::string(SEMA_SHIFT_OUT_OF_RANGE));
-                }
-            }
-        }
-    }
-
-    if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
-        is_signed_integer_type(this->checked_.types, lhs)) {
-        const IntegerLiteralExpr lhs_integer_literal = integer_literal_expr(this->module_, expr.binary_lhs);
-        if (syntax::is_valid(lhs_integer_literal.literal) &&
-            syntax::is_valid(rhs_integer_literal.literal)) {
-            base::u64 lhs_literal_value = 0;
-            base::u64 rhs_literal_value = 0;
-            if (this->parse_integer_literal_text(
-                    expr_literal_text_or_empty(this->module_, lhs_integer_literal.literal),
-                    lhs_literal_value
-                ) &&
-                this->parse_integer_literal_text(
-                    expr_literal_text_or_empty(this->module_, rhs_integer_literal.literal),
-                    rhs_literal_value
-                ) &&
-                is_signed_min_integer_literal(
-                    lhs_integer_literal,
-                    lhs_literal_value,
-                    integer_bit_width(this->checked_.types, lhs)
-                ) &&
-                rhs_integer_literal.negated &&
-                rhs_literal_value == 1) {
-                this->report(
-                    expr.range,
-                    expr.binary_op == syntax::BinaryOp::div
-                        ? std::string(SEMA_SIGNED_DIVISION_OVERFLOW)
-                        : std::string(SEMA_SIGNED_MODULO_OVERFLOW)
-                );
-            }
-        }
-    }
-
-    TypeHandle result_intrinsic = lhs;
-    if (is_valid(operand_expected)) {
+    analysis.result_intrinsic = analysis.lhs;
+    if (is_valid(analysis.operand_expected)) {
         const TypeHandle lhs_intrinsic = this->cached_expr_intrinsic_type(expr.binary_lhs);
         const TypeHandle rhs_intrinsic = this->cached_expr_intrinsic_type(expr.binary_rhs);
         if (is_valid(lhs_intrinsic) &&
             (!is_valid(rhs_intrinsic) || this->checked_.types.same(lhs_intrinsic, rhs_intrinsic))) {
-            result_intrinsic = lhs_intrinsic;
+            analysis.result_intrinsic = lhs_intrinsic;
         }
     }
 
+    return analysis;
+}
+
+void SemanticAnalyzer::diagnose_binary_operand_mismatch(
+    const SemanticAnalyzer::ExprView& expr,
+    const SemanticAnalyzer::BinaryExprAnalysis& analysis
+) const {
+    if (!this->checked_.types.same(analysis.lhs, analysis.rhs) && !analysis.null_pointer_comparison) {
+        this->report(expr.range, std::string(SEMA_BINARY_OPERANDS_SAME_TYPE));
+    }
+}
+
+void SemanticAnalyzer::diagnose_binary_literal_hazards(
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle lhs
+) const {
+    this->diagnose_binary_rhs_literal_hazards(expr, lhs);
+    this->diagnose_signed_binary_literal_overflow(expr, lhs);
+}
+
+void SemanticAnalyzer::diagnose_binary_rhs_literal_hazards(
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle lhs
+) const {
+    const IntegerLiteralExpr rhs_integer_literal = integer_literal_expr(this->module_, expr.binary_rhs);
+    if (!syntax::is_valid(rhs_integer_literal.literal)) {
+        return;
+    }
+
+    base::u64 rhs_literal_value = 0;
+    const std::string_view literal_text = expr_literal_text_or_empty(this->module_, rhs_integer_literal.literal);
+    const base::SourceRange rhs_range =
+        expr_range_or(this->module_, expr.binary_rhs, expr_range_or(this->module_, rhs_integer_literal.literal, expr.range));
+    if (!this->parse_integer_literal_text(literal_text, rhs_literal_value)) {
+        return;
+    }
+
+    if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
+        this->checked_.types.is_integer(lhs) &&
+        rhs_literal_value == 0) {
+        this->report(
+            rhs_range,
+            expr.binary_op == syntax::BinaryOp::div
+                ? std::string(SEMA_INTEGER_DIVISION_BY_ZERO)
+                : std::string(SEMA_INTEGER_MODULO_BY_ZERO)
+        );
+    }
+
+    if (expr.binary_op != syntax::BinaryOp::shl && expr.binary_op != syntax::BinaryOp::shr) {
+        return;
+    }
+
+    const base::u32 bit_width = integer_bit_width(this->checked_.types, lhs);
+    if (rhs_integer_literal.negated && rhs_literal_value != 0) {
+        this->report(rhs_range, std::string(SEMA_SHIFT_NEGATIVE));
+    } else if (!rhs_integer_literal.negated &&
+               bit_width != 0 &&
+               rhs_literal_value >= bit_width) {
+        this->report(rhs_range, std::string(SEMA_SHIFT_OUT_OF_RANGE));
+    }
+}
+
+void SemanticAnalyzer::diagnose_signed_binary_literal_overflow(
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle lhs
+) const {
+    if ((expr.binary_op != syntax::BinaryOp::div && expr.binary_op != syntax::BinaryOp::mod) ||
+        !is_signed_integer_type(this->checked_.types, lhs)) {
+        return;
+    }
+
+    const IntegerLiteralExpr lhs_integer_literal = integer_literal_expr(this->module_, expr.binary_lhs);
+    const IntegerLiteralExpr rhs_integer_literal = integer_literal_expr(this->module_, expr.binary_rhs);
+    if (!syntax::is_valid(lhs_integer_literal.literal) ||
+        !syntax::is_valid(rhs_integer_literal.literal)) {
+        return;
+    }
+
+    base::u64 lhs_literal_value = 0;
+    base::u64 rhs_literal_value = 0;
+    if (this->parse_integer_literal_text(
+            expr_literal_text_or_empty(this->module_, lhs_integer_literal.literal),
+            lhs_literal_value
+        ) &&
+        this->parse_integer_literal_text(
+            expr_literal_text_or_empty(this->module_, rhs_integer_literal.literal),
+            rhs_literal_value
+        ) &&
+        is_signed_min_integer_literal(
+            lhs_integer_literal,
+            lhs_literal_value,
+            integer_bit_width(this->checked_.types, lhs)
+        ) &&
+        rhs_integer_literal.negated &&
+        rhs_literal_value == 1) {
+        this->report(
+            expr.range,
+            expr.binary_op == syntax::BinaryOp::div
+                ? std::string(SEMA_SIGNED_DIVISION_OVERFLOW)
+                : std::string(SEMA_SIGNED_MODULO_OVERFLOW)
+        );
+    }
+}
+
+TypeHandle SemanticAnalyzer::record_binary_operator_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const SemanticAnalyzer::BinaryExprAnalysis& analysis
+) {
     switch (expr.binary_op) {
     case syntax::BinaryOp::less:
     case syntax::BinaryOp::less_equal:
     case syntax::BinaryOp::greater:
-    case syntax::BinaryOp::greater_equal: {
-        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            if (!this->generic_param_has_capability(lhs, CapabilityKind::ord)) {
-                this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
-            }
-            const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
-            return this->record_expr_types(expr_id, bool_type, bool_type);
-        }
-        if (!this->type_supports_ordering_operator(lhs)) {
-            this->report(expr.range, std::string(SEMA_COMPARISON_NUMERIC));
-        }
-        const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
-        return this->record_expr_types(expr_id, bool_type, bool_type);
-    }
+    case syntax::BinaryOp::greater_equal:
+        return this->record_ordering_binary_expr(expr_id, expr, analysis.lhs);
     case syntax::BinaryOp::equal:
-    case syntax::BinaryOp::not_equal: {
-        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            if (!this->generic_param_has_capability(lhs, CapabilityKind::eq)) {
-                this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
-            }
-        } else if (!this->type_supports_equality_operator(lhs) && !is_null_pointer_comparison) {
-            this->report(expr.range, std::string(SEMA_EQUALITY_SCALAR));
-        }
-        const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
-        return this->record_expr_types(expr_id, bool_type, bool_type);
-    }
+    case syntax::BinaryOp::not_equal:
+        return this->record_equality_binary_expr(
+            expr_id,
+            expr,
+            analysis.lhs,
+            analysis.null_pointer_comparison
+        );
     case syntax::BinaryOp::logical_and:
-    case syntax::BinaryOp::logical_or: {
-        if (!this->checked_.types.is_bool(lhs) || !this->checked_.types.is_bool(rhs)) {
-            this->report(expr.range, std::string(SEMA_LOGICAL_BOOL));
-        }
-        const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
-        return this->record_expr_types(expr_id, bool_type, bool_type);
-    }
+    case syntax::BinaryOp::logical_or:
+        return this->record_logical_binary_expr(expr_id, expr, analysis.lhs, analysis.rhs);
     case syntax::BinaryOp::bit_and:
     case syntax::BinaryOp::bit_xor:
     case syntax::BinaryOp::bit_or:
     case syntax::BinaryOp::shl:
     case syntax::BinaryOp::shr:
     case syntax::BinaryOp::mod:
-        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            this->report(expr.range, sema_generic_integer_operator_message(this->checked_.types.display_name(lhs)));
-            return this->record_expr_types(expr_id, result_intrinsic, lhs);
-        }
-        if (!this->checked_.types.is_integer(lhs)) {
-            this->report(expr.range, std::string(SEMA_INTEGER_OPERATOR_INTEGER));
-        }
-        return this->record_expr_types(expr_id, result_intrinsic, lhs);
+        return this->record_integer_binary_expr(expr_id, expr, analysis.result_intrinsic, analysis.lhs);
     default:
-        if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-            this->report(expr.range, sema_generic_operator_message(this->checked_.types.display_name(lhs)));
-            return this->record_expr_types(expr_id, result_intrinsic, lhs);
+        return this->record_numeric_binary_expr(expr_id, expr, analysis.result_intrinsic, analysis.lhs);
+    }
+}
+
+TypeHandle SemanticAnalyzer::record_ordering_binary_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle lhs
+) {
+    if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+        if (!this->generic_param_has_capability(lhs, CapabilityKind::ord)) {
+            this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
         }
-        if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
-            this->report(expr.range, std::string(SEMA_BINARY_NUMERIC));
+        const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
+        return this->record_expr_types(expr_id, bool_type, bool_type);
+    }
+    if (!this->type_supports_ordering_operator(lhs)) {
+        this->report(expr.range, std::string(SEMA_COMPARISON_NUMERIC));
+    }
+    const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
+    return this->record_expr_types(expr_id, bool_type, bool_type);
+}
+
+TypeHandle SemanticAnalyzer::record_equality_binary_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle lhs,
+    const bool null_pointer_comparison
+) {
+    if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+        if (!this->generic_param_has_capability(lhs, CapabilityKind::eq)) {
+            this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
         }
+    } else if (!this->type_supports_equality_operator(lhs) && !null_pointer_comparison) {
+        this->report(expr.range, std::string(SEMA_EQUALITY_SCALAR));
+    }
+    const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
+    return this->record_expr_types(expr_id, bool_type, bool_type);
+}
+
+TypeHandle SemanticAnalyzer::record_logical_binary_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle lhs,
+    const TypeHandle rhs
+) {
+    if (!this->checked_.types.is_bool(lhs) || !this->checked_.types.is_bool(rhs)) {
+        this->report(expr.range, std::string(SEMA_LOGICAL_BOOL));
+    }
+    const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
+    return this->record_expr_types(expr_id, bool_type, bool_type);
+}
+
+TypeHandle SemanticAnalyzer::record_integer_binary_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle result_intrinsic,
+    const TypeHandle lhs
+) {
+    if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+        this->report(expr.range, sema_generic_integer_operator_message(this->checked_.types.display_name(lhs)));
         return this->record_expr_types(expr_id, result_intrinsic, lhs);
     }
+    if (!this->checked_.types.is_integer(lhs)) {
+        this->report(expr.range, std::string(SEMA_INTEGER_OPERATOR_INTEGER));
+    }
+    return this->record_expr_types(expr_id, result_intrinsic, lhs);
+}
+
+TypeHandle SemanticAnalyzer::record_numeric_binary_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr,
+    const TypeHandle result_intrinsic,
+    const TypeHandle lhs
+) {
+    if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
+        this->report(expr.range, sema_generic_operator_message(this->checked_.types.display_name(lhs)));
+        return this->record_expr_types(expr_id, result_intrinsic, lhs);
+    }
+    if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
+        this->report(expr.range, std::string(SEMA_BINARY_NUMERIC));
+    }
+    return this->record_expr_types(expr_id, result_intrinsic, lhs);
 }
 
 TypeHandle SemanticAnalyzer::analyze_field_expr(

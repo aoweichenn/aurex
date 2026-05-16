@@ -202,6 +202,14 @@ private:
         syntax::ExprId cast_expr = syntax::INVALID_EXPR_ID;
     };
 
+    struct BinaryExprAnalysis {
+        TypeHandle lhs = INVALID_TYPE_HANDLE;
+        TypeHandle rhs = INVALID_TYPE_HANDLE;
+        TypeHandle operand_expected = INVALID_TYPE_HANDLE;
+        TypeHandle result_intrinsic = INVALID_TYPE_HANDLE;
+        bool null_pointer_comparison = false;
+    };
+
     struct PatternBinding {
         InternedText name;
         IdentId name_id = INVALID_IDENT_ID;
@@ -356,10 +364,22 @@ private:
     void report_return_inference_diagnostic(syntax::StmtId stmt, std::string_view message) const;
     void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type) const;
     void ensure_function_return_known(const FunctionSignature& signature, const base::SourceRange& use_range);
+
+    // Expression analysis contract:
+    // - analyze_expr(expr, expected) owns final-type cache lookup and expected-type key recording.
+    // - category helpers may recurse through analyze_expr and must record the current expr result.
+    // - intrinsic/final split and coercion recording stay in the typed helper that creates the adjustment.
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
     [[nodiscard]] ExprView expr_view(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_literal_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_value_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_control_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_operator_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_projection_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_aggregate_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_builtin_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_postfix_chain_expr(syntax::ExprId expr_id, TypeHandle expected_type);
     [[nodiscard]] syntax::ExprId materialize_postfix_chain(syntax::ExprId expr_id);
     [[nodiscard]] syntax::ExprId materialize_postfix_op(
@@ -393,6 +413,41 @@ private:
     [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_binary_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] BinaryExprAnalysis analyze_binary_operands(const ExprView& expr, TypeHandle expected_type);
+    void diagnose_binary_operand_mismatch(const ExprView& expr, const BinaryExprAnalysis& analysis) const;
+    void diagnose_binary_literal_hazards(const ExprView& expr, TypeHandle lhs) const;
+    void diagnose_binary_rhs_literal_hazards(const ExprView& expr, TypeHandle lhs) const;
+    void diagnose_signed_binary_literal_overflow(const ExprView& expr, TypeHandle lhs) const;
+    [[nodiscard]] TypeHandle record_binary_operator_expr(
+        syntax::ExprId expr_id,
+        const ExprView& expr,
+        const BinaryExprAnalysis& analysis
+    );
+    [[nodiscard]] TypeHandle record_ordering_binary_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle lhs);
+    [[nodiscard]] TypeHandle record_equality_binary_expr(
+        syntax::ExprId expr_id,
+        const ExprView& expr,
+        TypeHandle lhs,
+        bool null_pointer_comparison
+    );
+    [[nodiscard]] TypeHandle record_logical_binary_expr(
+        syntax::ExprId expr_id,
+        const ExprView& expr,
+        TypeHandle lhs,
+        TypeHandle rhs
+    );
+    [[nodiscard]] TypeHandle record_integer_binary_expr(
+        syntax::ExprId expr_id,
+        const ExprView& expr,
+        TypeHandle result_intrinsic,
+        TypeHandle lhs
+    );
+    [[nodiscard]] TypeHandle record_numeric_binary_expr(
+        syntax::ExprId expr_id,
+        const ExprView& expr,
+        TypeHandle result_intrinsic,
+        TypeHandle lhs
+    );
     [[nodiscard]] TypeHandle analyze_field_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_index_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_slice_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);

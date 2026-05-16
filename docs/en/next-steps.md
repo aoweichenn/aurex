@@ -105,8 +105,11 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    payloads, `TypeInfo` tuple/function/generic args, generic template params,
    and generic constraint buckets) are arena-backed. Persistent sema text fields
    (`FunctionSignature`, `Symbol`, `StructInfo`, `EnumCaseInfo`, `TypeAliasInfo`,
-   `TypeInfo`, and generic template names/keys) now store `InternedText` from a
-   bump-backed interner instead of heap-backed `std::string` buffers. IR lowering source-local
+   `TypeInfo`, and generic template names/keys) now store `InternedText`: source
+   names borrow the AST identifier interner, while generated ABI/display names
+   use the checked bump-backed interner instead of heap-backed `std::string`
+   buffers. ABI symbol validation borrows those strings through `std::string_view`
+   keys rather than building a second interner. IR lowering source-local
    lookup also uses interned typed identifiers. Keep future work focused on cross-module
    stable identifiers, measured generic/AST stress thresholds, and CI
    performance thresholds rather than reintroducing whole-AST copies or per-node

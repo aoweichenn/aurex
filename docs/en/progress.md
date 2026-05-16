@@ -142,7 +142,7 @@ through the current `AstModule`, and sema typed lookup keys reuse that AST
 module interner instead of maintaining a second private interner. Function,
 type, value, generic-template, enum-case, struct-field, method/member, and
 local-scope lookup now use `IdentId` typed indexes; checked-module maps no
-longer keep parallel string-key lookup paths. ABI/display/dump text is also
+longer keep parallel string-key lookup paths. Generated ABI/display/dump text is
 stored through the bump-backed `IdentifierInterner`; `FunctionSignature`,
 `Symbol`, `StructInfo`, `EnumCaseInfo`, `TypeAliasInfo`, and `TypeInfo` keep
 `InternedText` / typed ids instead of heap-backed `std::string` payloads. The 2026-05-16
@@ -183,6 +183,14 @@ NodeSpan layouts only for templates with non-contiguous node-id mappings;
 generic-method,
 enum-case, and visible-module cache buckets are created explicitly from the
 analyzer arena instead of default heap vectors from `operator[]`.
+The later source-name compaction pass makes `FunctionSignature.name`,
+`Symbol.name`, `StructInfo.name`, `StructFieldInfo.name`, `TypeAliasInfo.name`,
+and enum case source-name fields borrow `AstModule::identifiers` on the normal
+driver path, so source identifiers are not copied into the checked C-name
+interner. `CheckedModule` moves now rebind only texts that originally belonged
+to the moved module's `c_names`; explicit copies still re-intern into the
+destination. ABI symbol validation also uses `std::string_view` keys instead of
+building a second temporary `IdentifierInterner` for every C symbol.
 IR lowering source-local lookup and verifier symbol de-duplication now also use
 interned typed identifiers instead of persistent string-key maps.
 On the local

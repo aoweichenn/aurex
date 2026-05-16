@@ -105,13 +105,13 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     checked.types.set_enum_payload_layout(enum_type, i64, 8, 8);
 
     EnumCaseInfo none_case;
-    none_case.name = "None";
+    none_case.name = checked.intern_text("None");
     none_case.name_id = ast.intern_identifier("None");
-    none_case.c_name = "OptionI32_None";
+    none_case.c_name = checked.intern_text("OptionI32_None");
     none_case.type = enum_type;
-    none_case.value_text = "0";
-    none_case.enum_name = "OptionI32";
-    none_case.case_name = "None";
+    none_case.value_text = checked.intern_text("0");
+    none_case.enum_name = checked.intern_text("OptionI32");
+    none_case.case_name = checked.intern_text("None");
     none_case.case_name_id = none_case.name_id;
     checked.enum_cases.emplace(sema::ModuleLookupKey {0, none_case.name_id}, none_case);
 

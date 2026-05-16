@@ -37,11 +37,13 @@ namespace {
 FunctionRegistry::FunctionRegistry(
     CheckedModule& checked,
     SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values,
-    base::DiagnosticSink& diagnostics
+    base::DiagnosticSink& diagnostics,
+    const IdentifierInterner* const source_names
 ) noexcept
     : checked_(checked),
       global_values_(global_values),
-      diagnostics_(diagnostics) {}
+      diagnostics_(diagnostics),
+      source_names_(source_names) {}
 
 void FunctionRegistry::register_function(
     const syntax::ItemNode& item,
@@ -56,7 +58,7 @@ void FunctionRegistry::register_function(
     const bool is_prototype = item.is_prototype;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->checked_.intern_text(item.name);
+    signature.name = this->source_name_text(item.name_id, item.name);
     signature.name_id = item.name_id;
     signature.semantic_key = key;
     signature.c_name = this->checked_.intern_text(abi_or_c_name(item, c_name));
@@ -163,6 +165,16 @@ bool FunctionRegistry::same_signature(
         }
     }
     return true;
+}
+
+InternedText FunctionRegistry::source_name_text(
+    const IdentId name_id,
+    const std::string_view fallback_name
+) {
+    if (this->source_names_ != nullptr && is_valid(name_id) && !this->source_names_->text(name_id).empty()) {
+        return InternedText {name_id, this->source_names_};
+    }
+    return this->checked_.intern_text(fallback_name);
 }
 
 void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature) {

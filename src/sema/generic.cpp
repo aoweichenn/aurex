@@ -801,7 +801,7 @@ void SemanticAnalyzer::register_generic_template(
     GenericTemplateInfo info = this->make_generic_template_info();
     info.item = item_id;
     info.module = owner;
-    info.name = this->checked_.intern_text(item.name);
+    info.name = this->source_name_text(item.name_id, item.name);
     info.name_id = item.name_id;
     info.key = this->module_lookup_key(owner, item.name_id);
     info.function_key = this->function_lookup_key(owner, item.name_id);
@@ -1084,7 +1084,7 @@ void SemanticAnalyzer::populate_generic_placeholder_context(
         const IdentId identity_id = this->generic_param_identity_id(info, i);
         const IdentId param_id = info.params[i];
         context.params.emplace(param_id, this->generic_param_placeholder(info, i));
-        context.param_identities.emplace(param_id, InternedText {identity_id, this->module_.identifier_text(identity_id)});
+        context.param_identities.emplace(param_id, InternedText {identity_id, &this->module_.identifiers});
         if (const auto constraints = info.constraints.find(param_id); constraints != info.constraints.end()) {
             context.constraints_by_identity.emplace(identity_id, this->copy_capability_set(constraints->second));
         }
@@ -1108,7 +1108,7 @@ void SemanticAnalyzer::populate_generic_concrete_context(
         const IdentId identity_id = this->generic_param_identity_id(info, i);
         const IdentId param_id = info.params[i];
         context.params.emplace(param_id, args[i]);
-        context.param_identities.emplace(param_id, InternedText {identity_id, this->module_.identifier_text(identity_id)});
+        context.param_identities.emplace(param_id, InternedText {identity_id, &this->module_.identifiers});
         const auto constraints = info.constraints.find(param_id);
         if (constraints == info.constraints.end()) {
             continue;
@@ -1640,7 +1640,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     this->generic_struct_instances_[instance_key_id] = handle;
 
     StructInfo struct_info = this->checked_.make_struct_info();
-    struct_info.name = this->checked_.intern_text(item.name);
+    struct_info.name = this->source_name_text(item.name_id, item.name);
     struct_info.c_name = this->checked_.intern_text(c_name);
     struct_info.module = info.module;
     struct_info.type = handle;
@@ -1673,7 +1673,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
             contains_array = true;
         }
         struct_info.fields.push_back(StructFieldInfo {
-            this->checked_.intern_text(field.name),
+            this->source_name_text(field.name_id, field.name),
             field.name_id,
             {},
             syntax::INVALID_MODULE_ID,
@@ -2016,7 +2016,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->checked_.intern_text(info.name);
+    signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.c_name = signature.name;
     signature.generic_args = this->checked_.copy_type_handle_list(args);
@@ -2143,7 +2143,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->checked_.intern_text(info.name);
+    signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = key;
     signature.c_name = this->checked_.intern_text(this->c_symbol_name(
@@ -2286,7 +2286,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->checked_.intern_text(info.name);
+    signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = key;
     signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
@@ -2494,7 +2494,7 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->checked_.intern_text(info.name);
+    signature.name = this->source_name_text(info.name_id, info.name);
     signature.name_id = info.name_id;
     signature.semantic_key = info.function_key;
     signature.c_name = signature.name;

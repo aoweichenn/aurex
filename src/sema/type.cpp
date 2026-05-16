@@ -165,7 +165,9 @@ TypeTable::TypeTable(TypeTable&& other) noexcept
       tuple_types_(std::move(other.tuple_types_)),
       function_types_(std::move(other.function_types_)),
       texts_(std::move(other.texts_)),
-      generic_param_types_(std::move(other.generic_param_types_)) {}
+      generic_param_types_(std::move(other.generic_param_types_)) {
+    this->rebind_interned_texts();
+}
 
 TypeTable& TypeTable::operator=(TypeTable&& other) noexcept {
     if (this == &other) {
@@ -197,6 +199,8 @@ void TypeTable::swap(TypeTable& other) noexcept {
     swap(this->texts_, other.texts_);
     this->generic_param_types_.swap(other.generic_param_types_);
     swap(this->arena_, other.arena_);
+    this->rebind_interned_texts();
+    other.rebind_interned_texts();
 }
 
 void TypeTable::copy_from(const TypeTable& other) {
@@ -225,6 +229,15 @@ void TypeTable::copy_from(const TypeTable& other) {
         if (info.kind == TypeKind::generic_param && is_valid(info.generic_identity_key.id)) {
             this->generic_param_types_.emplace(info.generic_identity_key.id, TypeHandle {index});
         }
+    }
+}
+
+void TypeTable::rebind_interned_texts() noexcept {
+    for (TypeInfo& info : this->types_) {
+        rebind_interned_text(info.name, this->texts_);
+        rebind_interned_text(info.c_name, this->texts_);
+        rebind_interned_text(info.generic_identity_key, this->texts_);
+        rebind_interned_text(info.generic_origin_key, this->texts_);
     }
 }
 

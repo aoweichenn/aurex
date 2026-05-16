@@ -384,6 +384,18 @@ FunctionLookupKey SemanticAnalyzer::function_lookup_key_from_method(
     };
 }
 
+InternedText SemanticAnalyzer::source_name_text(
+    const IdentId name_id,
+    const std::string_view fallback_name
+) {
+    if (!this->owned_module_.has_value() && is_valid(name_id)) {
+        if (!this->module_.identifier_text(name_id).empty()) {
+            return InternedText {name_id, &this->module_.identifiers};
+        }
+    }
+    return this->checked_.intern_text(fallback_name);
+}
+
 IdentId SemanticAnalyzer::intern_generated_key(const std::string_view key) {
     return this->module_.intern_identifier(key);
 }

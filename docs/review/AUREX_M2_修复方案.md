@@ -237,7 +237,7 @@ find_function_in_module(module, name_id, name, range);
 find_symbol(name_id, name, range);
 ```
 
-**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix materialization set 和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，函数、类型、值、generic template、enum case、struct field、method/member 和局部 scope lookup 直接使用 `{ModuleId, IdentId}` / `{ModuleId, TypeHandle, IdentId}` typed key；生产查找 API 已移除 string lookup fallback，checked-module map 不再保留并行 string-key lookup 路径；checked storage 的 ABI/dump/display 文本也统一为 bump-backed `IdentifierInterner` + `InternedText` / typed id，输出和诊断只在边界按需格式化字符串；IR lowering 源码 local lookup 也使用 interned typed id。跨模块 stable hash / parallel global ID 仍后置。
+**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix materialization set 和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，函数、类型、值、generic template、enum case、struct field、method/member 和局部 scope lookup 直接使用 `{ModuleId, IdentId}` / `{ModuleId, TypeHandle, IdentId}` typed key；生产查找 API 已移除 string lookup fallback，checked-module map 不再保留并行 string-key lookup 路径；source name 持久字段借用 AST `IdentifierInterner`，生成的 ABI/dump/display 文本才进入 checked bump-backed `IdentifierInterner` + `InternedText` / typed id；ABI symbol 校验借用 `std::string_view` key，不再复制第二套 C symbol interner；输出和诊断只在边界按需格式化字符串；IR lowering 源码 local lookup 也使用 interned typed id。跨模块 stable hash / parallel global ID 仍后置。
 
 ---
 

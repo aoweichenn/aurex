@@ -452,6 +452,7 @@ public:
 private:
     void swap(CheckedModule& other) noexcept;
     void copy_from(const CheckedModule& other);
+    void rebind_interned_texts(const IdentifierInterner* from, const IdentifierInterner& to) noexcept;
     void rebind_generic_instance_layouts() noexcept;
 };
 

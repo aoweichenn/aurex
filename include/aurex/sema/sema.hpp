@@ -731,6 +731,7 @@ private:
     [[nodiscard]] FunctionLookupKey function_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] FunctionLookupKey method_function_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
     [[nodiscard]] FunctionLookupKey function_lookup_key_from_method(MethodLookupKey key) const noexcept;
+    [[nodiscard]] InternedText source_name_text(IdentId name_id, std::string_view fallback_name);
     [[nodiscard]] IdentId intern_generated_key(std::string_view key);
     [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;

@@ -223,7 +223,7 @@ bool SemanticAnalyzer::analyze_pattern(
                 break;
             case syntax::PatternKind::binding:
                 out.push_back(PatternBinding {
-                    this->checked_.intern_text(pattern->binding_name),
+                    this->source_name_text(pattern->binding_name_id, pattern->binding_name),
                     pattern->binding_name_id,
                     frame.type,
                     pattern->range,

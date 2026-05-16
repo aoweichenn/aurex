@@ -143,12 +143,13 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const std::string_view name,
     const ModuleId module,
     const TypeHandle return_type,
-    const IdentId name_id = syntax::INVALID_IDENT_ID
+    const IdentId name_id,
+    sema::CheckedModule& checked
 ) {
     FunctionSignature signature;
-    signature.name = sema::InternedText {name_id, name};
+    signature.name = checked.intern_text(name);
     signature.name_id = name_id;
-    signature.c_name = sema::InternedText {name_id, name};
+    signature.c_name = signature.name;
     signature.module = module;
     signature.return_type = return_type;
     return signature;
@@ -161,13 +162,15 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const TypeHandle type,
     const bool is_mutable = false,
     const syntax::Visibility visibility = syntax::Visibility::public_,
-    const IdentId name_id = syntax::INVALID_IDENT_ID
+    const IdentId name_id = syntax::INVALID_IDENT_ID,
+    sema::CheckedModule* checked = nullptr
 ) {
+    const sema::InternedText interned_name = checked == nullptr ? sema::InternedText {} : checked->intern_text(name);
     return Symbol {
         kind,
-        sema::InternedText {name_id, name},
+        interned_name,
         name_id,
-        sema::InternedText {name_id, name},
+        interned_name,
         module,
         type,
         {},
@@ -181,6 +184,31 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const std::string_view name
 ) {
     return analyzer.module_.intern_identifier(name);
+}
+
+[[nodiscard]] sema::InternedText checked_text(
+    sema::CheckedModule& checked,
+    const std::string_view text
+) {
+    return checked.intern_text(text);
+}
+
+[[nodiscard]] StructFieldInfo struct_field_info(
+    sema::SemanticAnalyzer& analyzer,
+    const std::string_view name,
+    const ModuleId module,
+    const TypeHandle type,
+    const syntax::Visibility visibility = syntax::Visibility::public_
+) {
+    return StructFieldInfo {
+        checked_text(analyzer.checked_, name),
+        intern_identifier(analyzer, name),
+        checked_text(analyzer.checked_, name),
+        module,
+        type,
+        {},
+        visibility,
+    };
 }
 
 [[nodiscard]] sema::ModuleLookupKey semantic_module_key(
@@ -214,7 +242,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const ModuleId module,
     const TypeHandle return_type
 ) {
-    return function_signature(name, module, return_type, intern_identifier(analyzer, name));
+    return function_signature(name, module, return_type, intern_identifier(analyzer, name), analyzer.checked_);
 }
 
 [[nodiscard]] Symbol indexed_symbol(
@@ -226,7 +254,16 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const bool is_mutable = false,
     const syntax::Visibility visibility = syntax::Visibility::public_
 ) {
-    return symbol(kind, name, module, type, is_mutable, visibility, intern_identifier(analyzer, name));
+    return symbol(
+        kind,
+        name,
+        module,
+        type,
+        is_mutable,
+        visibility,
+        intern_identifier(analyzer, name),
+        &analyzer.checked_
+    );
 }
 
 [[nodiscard]] sema::ModuleLookupKey add_named_type(
@@ -287,7 +324,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const sema::FunctionLookupKey key = analyzer.function_lookup_key(module, name_id);
     auto inserted = analyzer.global_values_.emplace(
         key,
-        symbol(kind, name, module, type, is_mutable, visibility, name_id)
+        symbol(kind, name, module, type, is_mutable, visibility, name_id, &analyzer.checked_)
     );
     analyzer.index_global_value(inserted.first->second);
     return {inserted.first->first, &inserted.first->second};
@@ -580,23 +617,23 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     types.set_enum_payload_layout(payload_enum_type, u64, sizeof(std::uint64_t), alignof(std::uint64_t));
 
     StructInfo record;
-    record.name = "Record";
+    record.name = checked_text(analyzer.checked_, "Record");
     record.name_id = intern_identifier(analyzer, "Record");
     record.module = module_id(1);
     record.type = record_type;
     record.fields = {
-        StructFieldInfo {"tag", intern_identifier(analyzer, "tag"), "tag", module_id(1), u8},
-        StructFieldInfo {"value", intern_identifier(analyzer, "value"), "value", module_id(1), u64},
+        struct_field_info(analyzer, "tag", module_id(1), u8),
+        struct_field_info(analyzer, "value", module_id(1), u64),
     };
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(1), "Record"), record);
 
     StructInfo place_record;
-    place_record.name = "PlaceRecord";
+    place_record.name = checked_text(analyzer.checked_, "PlaceRecord");
     place_record.name_id = intern_identifier(analyzer, "PlaceRecord");
     place_record.module = module_id(0);
     place_record.type = place_record_type;
     place_record.fields = {
-        StructFieldInfo {"field", intern_identifier(analyzer, "field"), "field", module_id(0), place_record_type},
+        struct_field_info(analyzer, "field", module_id(0), place_record_type),
     };
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "PlaceRecord"), place_record);
 
@@ -779,9 +816,9 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers) {
     EXPECT_EQ(analyzer.find_function_in_module(syntax::INVALID_MODULE_ID, missing_id, "missing", {}), nullptr);
 
     EnumCaseInfo one_case;
-    one_case.name = "same";
+    one_case.name = checked_text(analyzer.checked_, "same");
     one_case.name_id = same_id;
-    one_case.case_name = "same";
+    one_case.case_name = checked_text(analyzer.checked_, "same");
     one_case.case_name_id = same_id;
     one_case.module = module_id(1);
     one_case.type = enum_type;
@@ -1132,8 +1169,8 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges) {
 
     EXPECT_FALSE(analyzer.find_enum_cases_by_type(INVALID_TYPE_HANDLE));
     EnumCaseInfo invalid_case;
-    invalid_case.name = "invalid";
-    invalid_case.case_name = "invalid";
+    invalid_case.name = checked_text(analyzer.checked_, "invalid");
+    invalid_case.case_name = checked_text(analyzer.checked_, "invalid");
     invalid_case.type = INVALID_TYPE_HANDLE;
     analyzer.index_enum_case(invalid_case);
     EXPECT_TRUE(analyzer.enum_cases_by_type_.empty());
@@ -1267,7 +1304,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
         record_type
     );
     StructInfo record_info;
-    record_info.name = "Record";
+    record_info.name = checked_text(analyzer.checked_, "Record");
     record_info.name_id = record_id;
     record_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     record_info.type = record_type;
@@ -1277,7 +1314,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
 
     const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
     sema::TypeAliasInfo alias;
-    alias.name = "Alias";
+    alias.name = checked_text(analyzer.checked_, "Alias");
     alias.name_id = alias_id;
     alias.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     alias.target = i32_type_id;
@@ -1291,7 +1328,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
 
     sema::SemanticAnalyzer::GenericTemplateInfo generic_type;
     generic_type.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    generic_type.name = "Box";
+    generic_type.name = checked_text(analyzer.checked_, "Box");
     generic_type.name_id = box_id;
     generic_type.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Box");
     generic_type.visibility = syntax::Visibility::public_;
@@ -1301,7 +1338,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
 
     sema::SemanticAnalyzer::GenericTemplateInfo generic_function;
     generic_function.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    generic_function.name = "make";
+    generic_function.name = checked_text(analyzer.checked_, "make");
     generic_function.name_id = make_id;
     generic_function.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "make");
     generic_function.visibility = syntax::Visibility::public_;
@@ -1314,7 +1351,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
 
     sema::SemanticAnalyzer::GenericTemplateInfo generic_method;
     generic_method.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    generic_method.name = "generic_method";
+    generic_method.name = checked_text(analyzer.checked_, "generic_method");
     generic_method.name_id = generic_method_id;
     generic_method.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "generic_method");
     generic_method.function_key = semantic_method_key(
@@ -1363,9 +1400,9 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
     analyzer.index_global_value(value_inserted.first->second);
 
     EnumCaseInfo case_info;
-    case_info.name = "Choice_yes";
+    case_info.name = checked_text(analyzer.checked_, "Choice_yes");
     case_info.name_id = choice_yes_id;
-    case_info.case_name = "yes";
+    case_info.case_name = checked_text(analyzer.checked_, "yes");
     case_info.case_name_id = yes_id;
     case_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     case_info.type = enum_type;
@@ -1447,7 +1484,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
     analyzer.named_types_.emplace(record_key, record_type);
 
     StructInfo record_info;
-    record_info.name = "LegacyRecord";
+    record_info.name = checked_text(analyzer.checked_, "LegacyRecord");
     record_info.name_id = legacy_record_id;
     record_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     record_info.type = record_type;
@@ -1457,7 +1494,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
 
     const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
     sema::TypeAliasInfo alias;
-    alias.name = "LegacyAlias";
+    alias.name = checked_text(analyzer.checked_, "LegacyAlias");
     alias.name_id = legacy_alias_id;
     alias.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     alias.target = i32_type_id;
@@ -1520,9 +1557,9 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
     ASSERT_TRUE(value_inserted.second);
 
     EnumCaseInfo enum_case;
-    enum_case.name = "LegacyChoice_yes";
+    enum_case.name = checked_text(analyzer.checked_, "LegacyChoice_yes");
     enum_case.name_id = legacy_choice_yes_id;
-    enum_case.case_name = "yes";
+    enum_case.case_name = checked_text(analyzer.checked_, "yes");
     enum_case.case_name_id = yes_id;
     enum_case.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     enum_case.type = enum_type;
@@ -2764,22 +2801,22 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     });
 
     FunctionSignature signature = checked.make_function_signature();
-    signature.name = "f";
+    signature.name = checked.intern_text("f");
     signature.name_id = alpha_id;
     signature.semantic_key = sema::FunctionLookupKey {
         module_id(0).value,
         sema::SEMA_LOOKUP_INVALID_KEY_PART,
         alpha_id,
     };
-    signature.c_name = "m0_f";
+    signature.c_name = checked.intern_text("m0_f");
     signature.param_types.push_back(i32);
     signature.generic_args.push_back(i64);
     signature.return_type = i32;
     checked.functions.emplace(signature.semantic_key, signature);
     StructInfo struct_info = checked.make_struct_info();
-    struct_info.name = "S";
+    struct_info.name = checked.intern_text("S");
     struct_info.name_id = alpha_id;
-    struct_info.c_name = "m0_S";
+    struct_info.c_name = checked.intern_text("m0_S");
     struct_info.module = module_id(0);
     struct_info.type = i32;
     struct_info.fields.push_back(StructFieldInfo {
@@ -2794,17 +2831,17 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     const sema::ModuleLookupKey struct_key {module_id(0).value, alpha_id};
     checked.structs.emplace(struct_key, struct_info);
     EnumCaseInfo enum_case = checked.make_enum_case_info();
-    enum_case.name = "E_case";
+    enum_case.name = checked.intern_text("E_case");
     enum_case.name_id = beta_id;
-    enum_case.case_name = "case";
+    enum_case.case_name = checked.intern_text("case");
     enum_case.case_name_id = beta_id;
-    enum_case.c_name = "m0_E_case";
+    enum_case.c_name = checked.intern_text("m0_E_case");
     enum_case.type = i64;
     enum_case.payload_types.push_back(i32);
     const sema::ModuleLookupKey enum_case_key {module_id(0).value, beta_id};
     checked.enum_cases.emplace(enum_case_key, enum_case);
     sema::TypeAliasInfo alias_info;
-    alias_info.name = "Alias";
+    alias_info.name = checked.intern_text("Alias");
     alias_info.name_id = alpha_id;
     alias_info.module = module_id(0);
     alias_info.target = TypeId {0};
@@ -2870,6 +2907,47 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     sema::CheckedModule checked_move_assigned;
     checked_move_assigned = std::move(checked_assigned);
     EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).name, "Alias");
+}
+
+TEST(CoreUnit, SemanticWhiteBoxSourceNamesBorrowAstInternerAcrossCheckedModuleMoves) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+    const IdentId name_id = module.intern_identifier("borrowed");
+    module.finalize_identifiers();
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    const sema::InternedText source_name = analyzer.source_name_text(name_id, "borrowed");
+    ASSERT_EQ(source_name.interner, &module.identifiers);
+    EXPECT_EQ(source_name, "borrowed");
+
+    sema::CheckedModule checked;
+    FunctionSignature signature = checked.make_function_signature();
+    signature.name = source_name;
+    signature.name_id = name_id;
+    signature.semantic_key = sema::FunctionLookupKey {
+        module_id(0).value,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        name_id,
+    };
+    signature.c_name = checked.intern_text("m0_borrowed");
+    checked.functions.emplace(signature.semantic_key, signature);
+
+    sema::CheckedModule moved(std::move(checked));
+    ASSERT_EQ(moved.functions.size(), 1U);
+    const FunctionSignature& moved_signature = moved.functions.begin()->second;
+    EXPECT_EQ(moved_signature.name.interner, &module.identifiers);
+    EXPECT_EQ(moved_signature.c_name.interner, &moved.c_names);
+    EXPECT_EQ(moved_signature.name, "borrowed");
+    EXPECT_EQ(moved_signature.c_name, "m0_borrowed");
+
+    sema::CheckedModule copied(moved);
+    ASSERT_EQ(copied.functions.size(), 1U);
+    const FunctionSignature& copied_signature = copied.functions.begin()->second;
+    EXPECT_EQ(copied_signature.name.interner, &copied.c_names);
+    EXPECT_EQ(copied_signature.c_name.interner, &copied.c_names);
+    EXPECT_EQ(copied_signature.name, "borrowed");
+    EXPECT_EQ(copied_signature.c_name, "m0_borrowed");
 }
 
 TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
@@ -3299,22 +3377,22 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges) {
 
     const TypeHandle overflow_struct_type = types.named_struct("OverflowStruct", "OverflowStruct", true);
     StructInfo overflow_struct;
-    overflow_struct.name = "OverflowStruct";
+    overflow_struct.name = analyzer.checked_.intern_text("OverflowStruct");
     overflow_struct.name_id = intern_identifier(analyzer, "OverflowStruct");
     overflow_struct.module = module_id(0);
     overflow_struct.type = overflow_struct_type;
     overflow_struct.fields = {
-        StructFieldInfo {"huge", intern_identifier(analyzer, "huge"), "huge", module_id(0), max_array_u8},
-        StructFieldInfo {"tail", intern_identifier(analyzer, "tail"), "tail", module_id(0), u64},
+        struct_field_info(analyzer, "huge", module_id(0), max_array_u8),
+        struct_field_info(analyzer, "tail", module_id(0), u64),
     };
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "OverflowStruct"), overflow_struct);
 
     const TypeHandle overflow_enum_type = types.named_enum("OverflowEnum", "OverflowEnum");
     types.set_enum_underlying(overflow_enum_type, max_array_u8);
     EnumCaseInfo overflow_case;
-    overflow_case.name = "payload";
+    overflow_case.name = analyzer.checked_.intern_text("payload");
     overflow_case.name_id = intern_identifier(analyzer, "payload");
-    overflow_case.case_name = "payload";
+    overflow_case.case_name = analyzer.checked_.intern_text("payload");
     overflow_case.case_name_id = intern_identifier(analyzer, "payload");
     overflow_case.module = module_id(0);
     overflow_case.type = overflow_enum_type;
@@ -3980,6 +4058,7 @@ TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
 TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
     base::DiagnosticSink diagnostics;
     sema::SymbolTable symbols;
+    sema::CheckedModule checked;
     IdentifierInterner identifiers;
     const IdentId outer_id = identifiers.intern(SEMA_TEST_SYMBOL_OUTER_NAME);
     const IdentId inner_id = identifiers.intern(SEMA_TEST_SYMBOL_INNER_NAME);
@@ -3988,7 +4067,7 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
     EXPECT_EQ(symbols.find(syntax::INVALID_IDENT_ID), nullptr);
 
     const auto outer_inserted = symbols.insert(
-        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_OUTER_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, outer_id),
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_OUTER_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, outer_id, &checked),
         diagnostics
     );
     ASSERT_TRUE(outer_inserted) << outer_inserted.error().message;
@@ -3999,14 +4078,14 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
 
     symbols.push_scope();
     const auto inner_inserted = symbols.insert(
-        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_INNER_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, inner_id),
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_INNER_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, inner_id, &checked),
         diagnostics
     );
     ASSERT_TRUE(inner_inserted) << inner_inserted.error().message;
     EXPECT_NE(symbols.find(inner_id), nullptr);
     EXPECT_NE(symbols.find(outer_id), nullptr);
     const auto shadowed_outer_inserted = symbols.insert(
-        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_OUTER_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, outer_id),
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_OUTER_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, outer_id, &checked),
         diagnostics
     );
     ASSERT_TRUE(shadowed_outer_inserted) << shadowed_outer_inserted.error().message;
@@ -4025,12 +4104,12 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
     EXPECT_NE(move_assigned_symbols.find(inner_id), nullptr);
 
     const auto duplicate_name_inserted = symbols.insert(
-        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, duplicate_id),
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, duplicate_id, &checked),
         diagnostics
     );
     ASSERT_TRUE(duplicate_name_inserted) << duplicate_name_inserted.error().message;
     const auto duplicate_shadow = symbols.insert(
-        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, duplicate_id),
+        symbol(SymbolKind::local, SEMA_TEST_SYMBOL_DUPLICATE_NAME, module_id(0), INVALID_TYPE_HANDLE, false, syntax::Visibility::public_, duplicate_id, &checked),
         diagnostics
     );
     ASSERT_FALSE(duplicate_shadow);

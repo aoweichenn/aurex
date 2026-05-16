@@ -18,7 +18,8 @@ public:
     FunctionRegistry(
         CheckedModule& checked,
         SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values,
-        base::DiagnosticSink& diagnostics
+        base::DiagnosticSink& diagnostics,
+        const IdentifierInterner* source_names = nullptr
     ) noexcept;
 
     void register_function(
@@ -39,6 +40,7 @@ private:
         std::span<const TypeHandle> param_types,
         bool is_variadic
     ) const noexcept;
+    [[nodiscard]] InternedText source_name_text(IdentId name_id, std::string_view fallback_name);
     void merge_function(FunctionLookupKey key, FunctionSignature signature, bool is_prototype);
     void insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
     void refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
@@ -47,6 +49,7 @@ private:
     CheckedModule& checked_;
     SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values_;
     base::DiagnosticSink& diagnostics_;
+    const IdentifierInterner* source_names_ = nullptr;
 };
 
 } // namespace aurex::sema

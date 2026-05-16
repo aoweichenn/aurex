@@ -19,45 +19,39 @@ using syntax::is_valid;
 
 struct InternedText {
     IdentId id = INVALID_IDENT_ID;
-    std::string_view text {};
+    const IdentifierInterner* interner = nullptr;
 
     InternedText() = default;
 
-    constexpr InternedText(const IdentId text_id, const std::string_view text_value) noexcept
+    constexpr InternedText(const IdentId text_id, const IdentifierInterner* const owner) noexcept
         : id(text_id),
-          text(text_value) {}
-
-    InternedText(const char* const literal) noexcept
-        : text(literal == nullptr ? std::string_view {} : std::string_view {literal}) {}
-
-    InternedText& operator=(const char* const literal) noexcept {
-        this->id = INVALID_IDENT_ID;
-        this->text = literal == nullptr ? std::string_view {} : std::string_view {literal};
-        return *this;
-    }
+          interner(owner) {}
 
     [[nodiscard]] bool empty() const noexcept {
-        return this->text.empty();
+        return this->view().empty();
     }
 
     [[nodiscard]] base::usize size() const noexcept {
-        return this->text.size();
+        return this->view().size();
     }
 
     [[nodiscard]] const char* data() const noexcept {
-        return this->text.data();
+        return this->view().data();
     }
 
     [[nodiscard]] std::string_view view() const noexcept {
-        return this->text;
+        return this->interner == nullptr ? std::string_view {} : this->interner->text(this->id);
     }
 
     [[nodiscard]] operator std::string_view() const noexcept {
-        return this->text;
+        return this->view();
     }
 
     [[nodiscard]] friend bool operator==(const InternedText lhs, const InternedText rhs) noexcept {
-        return lhs.text == rhs.text;
+        if (lhs.interner == rhs.interner) {
+            return lhs.id == rhs.id;
+        }
+        return lhs.view() == rhs.view();
     }
 
     [[nodiscard]] friend bool operator!=(const InternedText lhs, const InternedText rhs) noexcept {
@@ -65,19 +59,19 @@ struct InternedText {
     }
 
     [[nodiscard]] friend bool operator==(const InternedText lhs, const std::string_view rhs) noexcept {
-        return lhs.text == rhs;
+        return lhs.view() == rhs;
     }
 
     [[nodiscard]] friend bool operator==(const std::string_view lhs, const InternedText rhs) noexcept {
-        return lhs == rhs.text;
+        return lhs == rhs.view();
     }
 
     [[nodiscard]] friend bool operator==(const InternedText lhs, const char* const rhs) noexcept {
-        return lhs.text == (rhs == nullptr ? std::string_view {} : std::string_view {rhs});
+        return lhs.view() == (rhs == nullptr ? std::string_view {} : std::string_view {rhs});
     }
 
     [[nodiscard]] friend bool operator==(const char* const lhs, const InternedText rhs) noexcept {
-        return (lhs == nullptr ? std::string_view {} : std::string_view {lhs}) == rhs.text;
+        return (lhs == nullptr ? std::string_view {} : std::string_view {lhs}) == rhs.view();
     }
 
     [[nodiscard]] friend bool operator!=(const InternedText lhs, const std::string_view rhs) noexcept {
@@ -107,7 +101,23 @@ inline std::ostream& operator<<(std::ostream& out, const InternedText text) {
         return {};
     }
     const IdentId id = interner.intern(text);
-    return InternedText {id, interner.text(id)};
+    return InternedText {id, &interner};
+}
+
+inline void rebind_interned_text(InternedText& text, const IdentifierInterner& interner) noexcept {
+    if (is_valid(text.id)) {
+        text.interner = &interner;
+    }
+}
+
+inline void rebind_interned_text(
+    InternedText& text,
+    const IdentifierInterner* const from,
+    const IdentifierInterner& to
+) noexcept {
+    if (is_valid(text.id) && text.interner == from) {
+        text.interner = &to;
+    }
 }
 
 struct ModuleLookupKey {

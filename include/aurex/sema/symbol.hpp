@@ -68,12 +68,10 @@ public:
 
 private:
     [[nodiscard]] IdentSymbolMap make_scope(base::usize expected_symbols) const;
-    [[nodiscard]] Symbol clone_symbol(const Symbol& symbol);
     void copy_from(const SymbolTable& other);
     void swap(SymbolTable& other) noexcept;
 
     std::unique_ptr<base::BumpAllocator> arena_;
-    IdentifierInterner texts_;
     SemaVector<Symbol> symbols_;
     SemaVector<IdentSymbolMap> scopes_;
 };

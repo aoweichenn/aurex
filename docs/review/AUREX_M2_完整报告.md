@@ -226,7 +226,7 @@ find_function_in_module(module, name_id, name, range);
 find_symbol(name_id, name, range);
 ```
 
-函数、类型、变量、泛型模板、方法、enum case 和本地 scope lookup 已移除生产 string overload/string-map fallback。checked storage 的 ABI/display/dump 文本也收口为 bump-backed `IdentifierInterner` + `InternedText` / typed id，不再用堆分配 `std::string` 作为持久 payload；输出和诊断只在边界按需格式化字符串。
+函数、类型、变量、泛型模板、方法、enum case 和本地 scope lookup 已移除生产 string overload/string-map fallback。普通 source name 持久字段借用 AST `IdentifierInterner`，生成的 ABI/display/dump 文本收口为 checked bump-backed `IdentifierInterner` + `InternedText` / typed id，不再用堆分配 `std::string` 作为持久 payload；ABI symbol 校验也借用 `std::string_view` key，不再复制第二套 C symbol interner；输出和诊断只在边界按需格式化字符串。
 
 ---
 

@@ -98,7 +98,7 @@ global bump allocator + syntax 层 `IdentifierInterner`，AST 的 type/expr/patt
 名字字段携带原生 `IdentId`，parser、module loader、postfix materialization 和 sema 入口都会把节点/metadata
 重新收口到当前 `AstModule` 的 identifier arena，sema typed lookup key 不再维护第二套私有 interner；函数、类型、值、
 generic template、enum case、struct field、method/member 和局部 scope lookup 都使用 `IdentId` typed 索引，
-checked-module map 不再保留并行 string-key lookup 路径；ABI/display/dump 所需文本也统一进入 bump-backed
+checked-module map 不再保留并行 string-key lookup 路径；生成的 ABI/display/dump 文本进入 bump-backed
 `IdentifierInterner`，`FunctionSignature`、`Symbol`、`StructInfo`、`EnumCaseInfo`、`TypeAliasInfo` 和 `TypeInfo`
 只保存 `InternedText` / typed id，不再持有堆分配 `std::string` payload。2026-05-16
 性能线随后删除旧胖 `ExprNode` 生产类型，parser 创建、`AstModule` 存储、module loader append 和 postfix
@@ -109,7 +109,13 @@ generic apply/struct literal/try 改写路径也直接写 compact payload。2026
 `TypeNodeList` / `ExprNodeList` / `PatternNodeList` / `StmtNodeList` / `ItemNodeList` 的 header vector 和
 per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的 text vector、hash bucket/node
 也进入同一个 bump arena；parser 会根据 token 形态估算 statement/item/type/pattern/identifier 规模，并在 AST
-模块创建初期按 token 形态对 expression header 和每类 payload 计算容量上界，直接从 bump arena 取好 vector backing storage 并对表达式 arena page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。后续 lexer/sema bump pass 已把 lexer token 输出改为 `TokenBuffer`，token vector backing storage 由 bump arena 持有并一次性 reserve；token 容量不再被 262144 上限截断，也不再预触永远不会写入的估算余量页，避免 bump vector 扩容留下旧 backing storage。sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、`FunctionSignature` 参数/generic args、`StructInfo` 字段、`EnumCaseInfo` payload 列表、`TypeInfo` tuple/function/generic args、generic template 参数列表和 generic constraint bucket 也改为 bump-backed storage；sema 持久 name / c_name / value_text / generic key 字段改为 `InternedText`，复制 `CheckedModule` / `TypeTable` / `SymbolTable` 时会重新 intern 到目标 arena，不再复制字符串 buffer。generic function instance 列表使用 bump-backed deque 保持元素地址稳定；retained generic instance 使用函数体局部 NodeSpan side table，只有非连续节点 ID 映射才共享 module-level sparse layout，不再按实例复制 sparse ID mapping vector；generic method / enum-case / visible-module cache bucket 不再由 `operator[]` 创建普通 heap vector；IR lowering 的源码 local lookup 和 IR verifier 的 symbol 去重也改为 interned typed id，不再保留持久 string-key map。当前
+模块创建初期按 token 形态对 expression header 和每类 payload 计算容量上界，直接从 bump arena 取好 vector backing storage 并对表达式 arena page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。后续 lexer/sema bump pass 已把 lexer token 输出改为 `TokenBuffer`，token vector backing storage 由 bump arena 持有并一次性 reserve；token 容量不再被 262144 上限截断，也不再预触永远不会写入的估算余量页，避免 bump vector 扩容留下旧 backing storage。sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、`FunctionSignature` 参数/generic args、`StructInfo` 字段、`EnumCaseInfo` payload 列表、`TypeInfo` tuple/function/generic args、generic template 参数列表和 generic constraint bucket 也改为 bump-backed storage；sema 持久 name / c_name / value_text / generic key 字段改为 `InternedText`，复制 `CheckedModule` / `TypeTable` / `SymbolTable` 时会重新 intern 到目标 arena，不再复制字符串 buffer。generic function instance 列表使用 bump-backed deque 保持元素地址稳定；retained generic instance 使用函数体局部 NodeSpan side table，只有非连续节点 ID 映射才共享 module-level sparse layout，不再按实例复制 sparse ID mapping vector；generic method / enum-case / visible-module cache bucket 不再由 `operator[]` 创建普通 heap vector；IR lowering 的源码 local lookup 和 IR verifier 的 symbol 去重也改为 interned typed id，不再保留持久 string-key map。
+2026-05-16 后续补齐了 source-name 去重：`FunctionSignature.name`、`Symbol.name`、`StructInfo.name`、
+`StructFieldInfo.name`、`TypeAliasInfo.name`、`EnumCaseInfo.name/case_name/enum_name`
+等源代码已有 identifier 的字段在普通 driver 路径直接借用 `AstModule::identifiers`，不再把函数名、字段名、
+局部名再复制进 checked C-name interner；`CheckedModule` move 只重绑原本属于自身 `c_names` 的
+`InternedText`，不会把 borrowed AST name 错绑到 checked interner，显式 copy 才重新 intern 到目标模块。
+ABI 校验也从临时 `IdentifierInterner` 改为 `std::string_view` key，避免校验阶段把所有 C symbol 再复制一遍。
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
 从约 575 MiB RSS / 135 ms 收敛到约 140.8 MiB RSS / 72.4 ms；Google Benchmark `sema_ast_bulk/1024`
 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、

@@ -415,7 +415,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         static_cast<void>(this->can_define_local_name(param.name_id, param.name, param.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::parameter,
-            this->checked_.intern_text(param.name),
+            this->source_name_text(param.name_id, param.name),
             param.name_id,
             {},
             syntax::INVALID_MODULE_ID,
@@ -687,7 +687,7 @@ void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, cons
     static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
     const auto inserted = this->symbols_.insert(Symbol {
         SymbolKind::local,
-        this->checked_.intern_text(stmt.name),
+        this->source_name_text(stmt.name_id, stmt.name),
         stmt.name_id,
         {},
         syntax::INVALID_MODULE_ID,
@@ -771,7 +771,7 @@ void SemanticAnalyzer::analyze_statement_node(
         static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,
-            this->checked_.intern_text(stmt.name),
+            this->source_name_text(stmt.name_id, stmt.name),
             stmt.name_id,
             {},
             syntax::INVALID_MODULE_ID,

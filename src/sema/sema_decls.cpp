@@ -218,7 +218,7 @@ void SemanticAnalyzer::register_type_names() {
         TypeHandle handle = INVALID_TYPE_HANDLE;
         if (item.kind == syntax::ItemKind::type_alias) {
             TypeAliasInfo alias;
-            alias.name = this->checked_.intern_text(item.name);
+            alias.name = this->source_name_text(item.name_id, item.name);
             alias.name_id = item.name_id;
             alias.module = owner;
             alias.target = item.alias_type;
@@ -280,7 +280,7 @@ void SemanticAnalyzer::register_type_names() {
 
         if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::opaque_struct_decl) {
             StructInfo info = this->checked_.make_struct_info();
-            info.name = this->checked_.intern_text(item.name);
+            info.name = this->source_name_text(item.name_id, item.name);
             info.name_id = item.name_id;
             info.c_name = this->checked_.intern_text(c_name);
             info.module = owner;
@@ -457,7 +457,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         }
 
         EnumCaseInfo case_info = this->checked_.make_enum_case_info();
-        case_info.name = this->checked_.intern_text(full_name);
+        case_info.name = this->source_name_text(full_name_id, full_name);
         case_info.name_id = full_name_id;
         case_info.c_name = this->checked_.intern_text(this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)));
         case_info.module = owner;
@@ -466,8 +466,8 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         case_info.payload_types = this->checked_.copy_type_handle_list(payload_types);
         case_info.value_text = this->checked_.intern_text(value_text);
         case_info.range = enum_case.range;
-        case_info.enum_name = this->checked_.intern_text(enum_display_name);
-        case_info.case_name = this->checked_.intern_text(enum_case.name);
+        case_info.enum_name = this->source_name_text(item.name_id, enum_display_name);
+        case_info.case_name = this->source_name_text(enum_case.name_id, enum_case.name);
         case_info.case_name_id = enum_case.name_id;
         case_info.visibility = visibility;
         const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
@@ -491,7 +491,12 @@ void SemanticAnalyzer::register_enum_cases_for_item(
 }
 
 void SemanticAnalyzer::register_value_names() {
-    FunctionRegistry functions(this->checked_, this->global_values_, this->diagnostics_);
+    FunctionRegistry functions(
+        this->checked_,
+        this->global_values_,
+        this->diagnostics_,
+        this->owned_module_.has_value() ? nullptr : &this->module_.identifiers
+    );
     for (base::u32 item_index = 0; item_index < this->module_.items.size(); ++item_index) {
         const syntax::ItemNode item = this->module_.items[item_index];
         if (this->has_generic_params(item)) {
@@ -617,7 +622,7 @@ void SemanticAnalyzer::register_value_names() {
             }
             const auto inserted = this->global_values_.emplace(key, Symbol {
                 SymbolKind::const_,
-                this->checked_.intern_text(item.name),
+                this->source_name_text(item.name_id, item.name),
                 item.name_id,
                 this->checked_.intern_text(c_name),
                 this->current_module_,
@@ -668,9 +673,7 @@ void SemanticAnalyzer::validate_function_prototypes() const
 
 void SemanticAnalyzer::validate_abi_symbols() const
 {
-    IdentifierInterner symbol_ids;
-    symbol_ids.reserve(this->checked_.functions.size() + this->global_values_.size());
-    std::unordered_map<IdentId, AbiSymbolInfo, IdentIdHash> symbols;
+    std::unordered_map<std::string_view, AbiSymbolInfo> symbols;
     symbols.reserve(this->checked_.functions.size() + this->global_values_.size());
 
     const auto same_function_type = [&](const AbiFunctionInfo& lhs, const AbiFunctionInfo& rhs) {
@@ -691,15 +694,14 @@ void SemanticAnalyzer::validate_abi_symbols() const
         if (symbol.empty()) {
             return;
         }
-        const IdentId symbol_id = symbol_ids.intern(symbol);
-        const auto found = symbols.find(symbol_id);
+        const auto found = symbols.find(symbol);
         if (found == symbols.end()) {
             AbiSymbolInfo info;
             info.name = function.name;
             info.range = function.range;
             info.is_function = true;
             info.function = std::move(function);
-            symbols.emplace(symbol_id, std::move(info));
+            symbols.emplace(symbol, std::move(info));
             return;
         }
 
@@ -733,14 +735,14 @@ void SemanticAnalyzer::validate_abi_symbols() const
         if (symbol.kind == SymbolKind::function || symbol.c_name.empty()) {
             continue;
         }
-        const IdentId symbol_id = symbol_ids.intern(symbol.c_name);
-        const auto found = symbols.find(symbol_id);
+        const std::string_view symbol_name = symbol.c_name;
+        const auto found = symbols.find(symbol_name);
         if (found == symbols.end()) {
             AbiSymbolInfo info;
             info.name = symbol.name;
             info.range = symbol.range;
             info.is_function = false;
-            symbols.emplace(symbol_id, std::move(info));
+            symbols.emplace(symbol_name, std::move(info));
             continue;
         }
         report(symbol.range, sema_duplicate_abi_symbol_message(symbol.c_name));
@@ -834,7 +836,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
             }
             if (struct_info != nullptr) {
                 struct_info->fields.push_back(StructFieldInfo {
-                    this->checked_.intern_text(field.name),
+                    this->source_name_text(field.name_id, field.name),
                     field.name_id,
                     {},
                     syntax::INVALID_MODULE_ID,

@@ -491,6 +491,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_function_instances(std::move(other.generic_function_instances)),
       normalized_ast(other.normalized_ast) {
+    this->rebind_interned_texts(&other.c_names, this->c_names);
     this->rebind_generic_instance_layouts();
 }
 
@@ -514,6 +515,8 @@ base::usize CheckedModule::arena_blocks() const noexcept {
 
 void CheckedModule::swap(CheckedModule& other) noexcept {
     using std::swap;
+    const IdentifierInterner* const this_c_names = &this->c_names;
+    const IdentifierInterner* const other_c_names = &other.c_names;
     swap(this->arena_, other.arena_);
     swap(this->analysis_arena_, other.analysis_arena_);
     swap(this->c_names, other.c_names);
@@ -534,6 +537,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept {
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
     this->generic_function_instances.swap(other.generic_function_instances);
     swap(this->normalized_ast, other.normalized_ast);
+    this->rebind_interned_texts(other_c_names, this->c_names);
+    other.rebind_interned_texts(this_c_names, other.c_names);
     this->rebind_generic_instance_layouts();
     other.rebind_generic_instance_layouts();
 }
@@ -812,6 +817,65 @@ void CheckedModule::release_analysis_only_storage() {
     this->pattern_case_name_ids = PatternCaseNameTable {};
     for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
         instance.side_tables.release_analysis_only_storage();
+    }
+}
+
+namespace {
+
+void rebind_function_signature_texts(
+    FunctionSignature& signature,
+    const IdentifierInterner* const from,
+    const IdentifierInterner& to
+) noexcept {
+    rebind_interned_text(signature.name, from, to);
+    rebind_interned_text(signature.c_name, from, to);
+}
+
+void rebind_struct_info_texts(
+    StructInfo& info,
+    const IdentifierInterner* const from,
+    const IdentifierInterner& to
+) noexcept {
+    rebind_interned_text(info.name, from, to);
+    rebind_interned_text(info.c_name, from, to);
+    for (StructFieldInfo& field : info.fields) {
+        rebind_interned_text(field.name, from, to);
+        rebind_interned_text(field.c_name, from, to);
+    }
+}
+
+void rebind_enum_case_info_texts(
+    EnumCaseInfo& info,
+    const IdentifierInterner* const from,
+    const IdentifierInterner& to
+) noexcept {
+    rebind_interned_text(info.name, from, to);
+    rebind_interned_text(info.c_name, from, to);
+    rebind_interned_text(info.value_text, from, to);
+    rebind_interned_text(info.enum_name, from, to);
+    rebind_interned_text(info.case_name, from, to);
+}
+
+} // namespace
+
+void CheckedModule::rebind_interned_texts(
+    const IdentifierInterner* const from,
+    const IdentifierInterner& to
+) noexcept {
+    for (auto& entry : this->functions) {
+        rebind_function_signature_texts(entry.second, from, to);
+    }
+    for (auto& entry : this->structs) {
+        rebind_struct_info_texts(entry.second, from, to);
+    }
+    for (auto& entry : this->enum_cases) {
+        rebind_enum_case_info_texts(entry.second, from, to);
+    }
+    for (auto& entry : this->type_aliases) {
+        rebind_interned_text(entry.second.name, from, to);
+    }
+    for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
+        rebind_function_signature_texts(instance.signature, from, to);
     }
 }
 

@@ -261,6 +261,7 @@ private:
     void initialize_builtins();
     void swap(TypeTable& other) noexcept;
     void copy_from(const TypeTable& other);
+    void rebind_interned_texts() noexcept;
     [[nodiscard]] TypeHandleList make_type_handle_list() const;
     [[nodiscard]] TypeHandleList copy_type_handles(std::span<const TypeHandle> values) const;
     [[nodiscard]] SemaVector<base::u32> make_type_key_list() const;

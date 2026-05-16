@@ -245,7 +245,7 @@ syntax::TypeId TypeParser::parse_type() {
             const syntax::Token& count = this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ARRAY_LENGTH));
             this->expect_array_length_end();
             base::u64 array_count = 0;
-            if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text, array_count)) {
+            if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text(), array_count)) {
                 this->report_at(count, std::string(PARSER_ARRAY_LENGTH_OUT_OF_RANGE));
             }
             constructors.push_back(TypeConstructor {
@@ -318,12 +318,12 @@ syntax::TypeId TypeParser::parse_named_type() {
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::named;
     type.range = this->merge(parts.front().range, parts.back().range);
-    type.name = parts.back().text;
+    type.name = parts.back().text();
     if (parts.size() > 1) {
         type.scope_range = this->merge(parts.front().range, parts[parts.size() - 2].range);
         type.scope_parts.reserve(parts.size() - 1);
         for (base::usize i = 0; i + 1 < parts.size(); ++i) {
-            type.scope_parts.push_back(parts[i].text);
+            type.scope_parts.push_back(parts[i].text());
         }
         type.scope_name = type.scope_parts.front();
     }

@@ -35,6 +35,25 @@ void push_error(base::DiagnosticSink& diagnostics, const base::SourceRange& rang
     });
 }
 
+[[nodiscard]] base::Result<syntax::AstModule> lex_and_parse_module(
+    const base::SourceId source_id,
+    const std::string_view source_text,
+    base::DiagnosticSink& diagnostics
+) {
+    lex::Lexer lexer(source_id, source_text, diagnostics);
+    auto token_result = lexer.tokenize();
+    if (!token_result) {
+        return base::Result<syntax::AstModule>::fail(token_result.error());
+    }
+
+    parse::Parser parser(token_result.value(), diagnostics);
+    auto ast_result = parser.parse_module();
+    if (!ast_result) {
+        return base::Result<syntax::AstModule>::fail(ast_result.error());
+    }
+    return base::Result<syntax::AstModule>::ok(ast_result.take_value());
+}
+
 [[nodiscard]] std::optional<std::filesystem::path> find_import_file(
     const syntax::ModulePath& path,
     const std::filesystem::path& importer_dir,
@@ -686,14 +705,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     }
 
     const base::SourceId source_id = this->sources_.add_source(canonical.string(), source_result.take_value());
-    lex::Lexer lexer(source_id, this->sources_.text(source_id), this->diagnostics_);
-    auto token_result = lexer.tokenize();
-    if (!token_result) {
-        this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail(token_result.error());
-    }
-    parse::Parser parser(token_result.value(), this->diagnostics_);
-    auto ast_result = parser.parse_module();
+    auto ast_result = lex_and_parse_module(source_id, this->sources_.text(source_id), this->diagnostics_);
     if (!ast_result) {
         this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(ast_result.error());

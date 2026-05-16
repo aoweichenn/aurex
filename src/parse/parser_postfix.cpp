@@ -25,12 +25,13 @@ constexpr char PARSER_TYPE_LIKE_LAST_UPPER = 'Z';
 constexpr base::usize PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY = 8;
 
 [[nodiscard]] bool is_leading_dot_numeric_field_token(const syntax::Token& token) noexcept {
+    const std::string_view text = token.text();
     if (token.kind != TokenKind::float_literal ||
-        token.text.size() <= PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH ||
-        token.text.front() != PARSER_TUPLE_FIELD_DOT) {
+        text.size() <= PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH ||
+        text.front() != PARSER_TUPLE_FIELD_DOT) {
         return false;
     }
-    for (const char c : token.text.substr(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH)) {
+    for (const char c : text.substr(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH)) {
         if (c < PARSER_TUPLE_FIELD_FIRST_DIGIT || c > PARSER_TUPLE_FIELD_LAST_DIGIT) {
             return false;
         }
@@ -641,7 +642,7 @@ syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId base) 
     return this->session_.module.push_field_expr(
         this->merge(this->expr_range_or(base, field.range), field.range),
         base,
-        field.text
+        field.text()
     );
 }
 
@@ -698,7 +699,7 @@ syntax::FieldInit PostfixExprParser::parse_struct_field(const ExprContext contex
     this->expect_type_annotation_colon(std::string(PARSER_EXPECT_FIELD_TYPE_COLON));
     const syntax::ExprId value = this->parse_expr(context);
     return syntax::FieldInit {
-        field.text,
+        field.text(),
         value,
         this->merge(field.range, this->expr_range_or(value, field.range)),
     };

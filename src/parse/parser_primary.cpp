@@ -384,7 +384,7 @@ void PrimaryExprParser::skip_grouped_expression_remainder() {
 syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) const
 {
     const syntax::Token& token = this->previous();
-    return this->session_.module.push_literal_expr(kind, token.range, token.text);
+    return this->session_.module.push_literal_expr(kind, token.range, token.text());
 }
 
 syntax::ExprId PrimaryExprParser::make_invalid_expr() {

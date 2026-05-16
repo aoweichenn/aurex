@@ -118,7 +118,7 @@ syntax::ItemId ItemParser::parse_const_decl() {
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::const_decl;
     item.range = this->merge(begin.range, end.range);
-    item.name = name.text;
+    item.name = name.text();
     item.const_type = type;
     item.const_value = value;
     this->reset_panic();
@@ -137,7 +137,7 @@ syntax::ItemId ItemParser::parse_type_alias_decl() {
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::type_alias;
     item.range = this->merge(begin.range, end.range);
-    item.name = name.text;
+    item.name = name.text();
     item.generic_params = std::move(generic_params);
     item.where_constraints = std::move(where_constraints);
     item.alias_type = target;

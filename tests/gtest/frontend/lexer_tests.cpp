@@ -57,7 +57,7 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
     buffer.push_back(Token {TokenKind::identifier, {{1}, 0, 5}, "alpha"});
     buffer.push_back(Token {TokenKind::eof, {{1}, 5, 5}, {}});
     ASSERT_EQ(buffer.size(), 2U);
-    EXPECT_EQ(buffer.front().text, "alpha");
+    EXPECT_EQ(buffer.front().text(), "alpha");
     EXPECT_EQ(buffer.back().kind, TokenKind::eof);
 
     const std::span<const Token> span = buffer.span();
@@ -69,21 +69,21 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
 
     lex::TokenBuffer copied = buffer;
     ASSERT_EQ(copied.size(), buffer.size());
-    EXPECT_EQ(copied.front().text, "alpha");
+    EXPECT_EQ(copied.front().text(), "alpha");
     EXPECT_GT(copied.arena_bytes(), 0U);
 
     lex::TokenBuffer moved = std::move(buffer);
     ASSERT_EQ(moved.size(), 2U);
     EXPECT_EQ(moved.front().kind, TokenKind::identifier);
     EXPECT_GT(moved.arena_bytes(), 0U);
-    EXPECT_EQ(moved[0].text, "alpha");
+    EXPECT_EQ(moved[0].text(), "alpha");
     EXPECT_EQ(std::distance(moved.begin(), moved.end()), 2);
 
     EXPECT_TRUE(buffer.empty());
     EXPECT_EQ(buffer.arena_blocks(), 0U);
     buffer.push_back(Token {TokenKind::identifier, {{1}, 0, 4}, "beta"});
     ASSERT_EQ(buffer.size(), 1U);
-    EXPECT_EQ(buffer.front().text, "beta");
+    EXPECT_EQ(buffer.front().text(), "beta");
     EXPECT_GT(buffer.arena_blocks(), 0U);
 
     lex::TokenBuffer copy_assigned;
@@ -92,12 +92,12 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
     EXPECT_EQ(copy_assigned.back().kind, TokenKind::eof);
     lex::TokenBuffer* const copy_assigned_ref = &copy_assigned;
     copy_assigned = *copy_assigned_ref;
-    EXPECT_EQ(copy_assigned.front().text, "alpha");
+    EXPECT_EQ(copy_assigned.front().text(), "alpha");
 
     lex::TokenBuffer move_assigned;
     move_assigned = std::move(copy_assigned);
     ASSERT_FALSE(move_assigned.empty());
-    EXPECT_EQ(move_assigned.front().text, "alpha");
+    EXPECT_EQ(move_assigned.front().text(), "alpha");
     lex::TokenBuffer* const move_assigned_ref = &move_assigned;
     move_assigned = std::move(*move_assigned_ref);
     EXPECT_EQ(move_assigned.back().kind, TokenKind::eof);
@@ -229,7 +229,7 @@ TEST(CoreUnit, LexerTokenizesEmptySourceToEofOnly) {
     ASSERT_EQ(result.value().size(), 1U);
     EXPECT_FALSE(diagnostics.has_error());
     EXPECT_EQ(result.value().front().kind, TokenKind::eof);
-    EXPECT_TRUE(result.value().front().text.empty());
+    EXPECT_TRUE(result.value().front().text().empty());
     EXPECT_EQ(result.value().front().range.begin, 0U);
     EXPECT_EQ(result.value().front().range.end, 0U);
 }

@@ -18,14 +18,14 @@ syntax::ModulePath ItemParser::parse_path() {
     std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER));
     base::SourceRange range = first.has_value() ? first->range : this->peek().range;
     if (first.has_value()) {
-        path.parts.push_back(first->text);
+        path.parts.push_back(first->text());
     }
     while (this->match(TokenKind::dot)) {
         std::optional<syntax::Token> part = this->parse_path_segment(
             std::string(PARSER_EXPECT_PATH_IDENTIFIER_AFTER_DOT)
         );
         if (part.has_value()) {
-            path.parts.push_back(part->text);
+            path.parts.push_back(part->text());
             range = this->merge(range, part->range);
         }
     }
@@ -108,7 +108,7 @@ void ItemParser::parse_import_alias(syntax::ImportDecl& import) {
     const syntax::Token& alias =
         this->expect_identifier_recovered(std::string(PARSER_EXPECT_IMPORT_ALIAS));
     if (alias.kind == TokenKind::identifier) {
-        import.alias = alias.text;
+        import.alias = alias.text();
         import.alias_range = alias.range;
         return;
     }

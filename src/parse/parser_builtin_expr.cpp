@@ -51,7 +51,7 @@ constexpr base::usize PARSER_STRRAW_ARG_COUNT = 2;
 
 syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    const std::string name {begin.text};
+    const std::string name {begin.text()};
     this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
     const syntax::TypeId type = this->parse_type();
     [[maybe_unused]] const syntax::Token& type_end =
@@ -70,7 +70,7 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
 
 syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind) {
     const syntax::Token& begin = this->previous();
-    const std::string name {begin.text};
+    const std::string name {begin.text()};
     this->expect_builtin_type_arg_list_start(parser_builtin_type_start_message(name));
     const syntax::TypeId type = this->parse_type();
     const syntax::Token& end = this->expect_builtin_type_arg_list_end(parser_builtin_type_end_message(name));
@@ -117,7 +117,7 @@ syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context) {
 
 syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    const std::string name {begin.text};
+    const std::string name {begin.text()};
     const syntax::ExprKind kind = begin.kind == TokenKind::kw_strptr
         ? syntax::ExprKind::str_data
         : syntax::ExprKind::str_byte_len;
@@ -138,7 +138,7 @@ syntax::ExprId BuiltinExprParser::parse_str_slice_unary(
     const ExprContext context
 ) {
     const syntax::Token& begin = this->previous();
-    const std::string name {begin.text};
+    const std::string name {begin.text()};
     this->expect_builtin_arg_list_start(parser_builtin_arg_start_message(name));
     const syntax::ExprId value = this->parse_expr(context);
     const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_arg_end_message(name));

@@ -51,7 +51,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::fn_decl;
-    item.name = name.text;
+    item.name = name.text();
     item.generic_params = std::move(generic_params);
     item.params = std::move(params);
     item.return_type = return_type;
@@ -144,7 +144,7 @@ std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param() {
         this->report_here(std::string(PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED));
     }
     return syntax::GenericParamDecl {
-        name.text,
+        name.text(),
         name.range,
     };
 }
@@ -210,7 +210,7 @@ std::optional<syntax::ParamDecl> ItemParser::parse_param() {
         return std::nullopt;
     }
     return syntax::ParamDecl {
-        name.text,
+        name.text(),
         type,
         this->merge(name.range, this->type_range_or(type, name.range)),
     };
@@ -259,7 +259,7 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
         return;
     }
     const syntax::Token& attr = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ABI_NAME_ATTRIBUTE));
-    if (attr.text != "name") {
+    if (attr.text() != "name") {
         this->report_at(attr, std::string(PARSER_EXPECT_ABI_NAME_ATTRIBUTE));
     }
     this->expect_abi_attribute_argument_start();
@@ -306,7 +306,7 @@ std::optional<syntax::GenericConstraintDecl> ItemParser::parse_where_constraint(
     }
 
     syntax::GenericConstraintDecl constraint;
-    constraint.param_name = param.text;
+    constraint.param_name = param.text();
     constraint.param_range = param.range;
     constraint.capability_names = this->session_.module.make_item_list<std::string_view>();
     constraint.capability_ranges = this->session_.module.make_item_list<base::SourceRange>();
@@ -324,7 +324,7 @@ void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constra
         const syntax::Token& capability =
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_CAPABILITY));
         if (capability.kind == TokenKind::identifier) {
-            constraint.capability_names.push_back(capability.text);
+            constraint.capability_names.push_back(capability.text());
             constraint.capability_ranges.push_back(capability.range);
         }
         if (!this->match(TokenKind::plus)) {
@@ -372,7 +372,7 @@ void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) const
 {
     const syntax::Token& value = this->expect(TokenKind::string_literal, std::string(PARSER_EXPECT_ABI_NAME_STRING));
     if (value.kind == TokenKind::string_literal) {
-        item.abi_name = unquote_string_literal(value.text);
+        item.abi_name = unquote_string_literal(value.text());
     }
 }
 

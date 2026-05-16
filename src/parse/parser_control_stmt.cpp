@@ -114,7 +114,7 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
     const syntax::Token& name = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_FOR_RANGE_VARIABLE));
     this->expect(TokenKind::kw_in, std::string(PARSER_EXPECT_IN_AFTER_LOOP_VARIABLE));
     const syntax::Token& callee = this->expect_identifier_recovered(std::string(PARSER_EXPECT_RANGE_AFTER_IN));
-    if (callee.text != PARSER_FOR_RANGE_CALLEE) {
+    if (callee.text() != PARSER_FOR_RANGE_CALLEE) {
         this->report_at(callee, std::string(PARSER_M2_RANGE_FOR_ONLY_RANGE));
     }
     std::vector<syntax::ExprId> args;
@@ -138,7 +138,7 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::for_range;
     stmt.range = this->merge(begin.range, this->stmt_range_or(body, end->range));
-    stmt.name = name.text;
+    stmt.name = name.text();
     if (args.size() == PARSER_FOR_RANGE_MIN_ARG_COUNT) {
         stmt.range_end = args[0];
     } else if (args.size() >= PARSER_FOR_RANGE_START_END_ARG_COUNT) {

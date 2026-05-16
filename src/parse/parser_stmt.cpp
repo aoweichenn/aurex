@@ -129,7 +129,7 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     syntax::StmtNode stmt;
     stmt.kind = kind;
     stmt.range = this->merge(begin.range, end_range);
-    stmt.name = name.text;
+    stmt.name = name.text();
     stmt.pattern = pattern;
     stmt.declared_type = type;
     stmt.init = init;

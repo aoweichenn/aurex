@@ -264,7 +264,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
             prefixes.push_back(PrefixOperator {
                 op.kind,
                 syntax::UnaryOp::logical_not,
-                op.text,
+                op.text(),
                 op.range,
             });
             continue;
@@ -281,7 +281,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
             prefixes.push_back(PrefixOperator {
                 op.kind,
                 unary_op,
-                op.text,
+                op.text(),
                 range,
             });
             continue;
@@ -295,7 +295,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
         prefixes.push_back(PrefixOperator {
             op.kind,
             unary_op.value(),
-            op.text,
+            op.text(),
             op.range,
         });
     }

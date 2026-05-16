@@ -17,7 +17,7 @@ syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext co
 
 syntax::ExprId NameExprParser::make_name_expr(const syntax::Token& name) const
 {
-    return this->session_.module.push_name_expr(name.range, name.text);
+    return this->session_.module.push_name_expr(name.range, name.text());
 }
 
 } // namespace aurex::parse

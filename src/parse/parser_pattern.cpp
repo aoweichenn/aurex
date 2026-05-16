@@ -47,7 +47,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::const_;
-        pattern.binding_name = name.text;
+        pattern.binding_name = name.text();
         pattern.range = this->merge(keyword.range, name.range);
         return this->session_.module.push_pattern(pattern);
     }
@@ -68,7 +68,7 @@ syntax::PatternId PatternParser::parse_destructure_pattern_atom() {
 }
 
 syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& first) {
-    if (first.text == "_") {
+    if (first.text() == "_") {
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::wildcard;
         pattern.range = first.range;
@@ -81,7 +81,7 @@ syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& f
         this->report_here(std::string(PARSER_BARE_ENUM_CASE_PATTERN_UNSUPPORTED));
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::binding;
-        pattern.binding_name = first.text;
+        pattern.binding_name = first.text();
         pattern.range = first.range;
         this->consume_bare_enum_case_payload_recovery(first, pattern.range);
         return this->session_.module.push_pattern(std::move(pattern));
@@ -92,7 +92,7 @@ syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& f
 
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::binding;
-    pattern.binding_name = first.text;
+    pattern.binding_name = first.text();
     pattern.range = first.range;
     return this->session_.module.push_pattern(std::move(pattern));
 }
@@ -105,7 +105,7 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::enum_case;
         pattern.enum_type = enum_type;
-        pattern.case_name = case_name.text;
+        pattern.case_name = case_name.text();
         pattern.scoped = true;
         pattern.range = this->merge(first.range, case_name.range);
         if (this->match(TokenKind::l_paren)) {
@@ -129,7 +129,7 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
             this->report_here(std::string(PARSER_EXPECT_ENUM_CASE_PATTERN_DOT));
             syntax::PatternNode pattern;
             pattern.kind = syntax::PatternKind::binding;
-            pattern.binding_name = first.text;
+            pattern.binding_name = first.text();
             pattern.range = this->merge(first.range, end.range);
             return this->session_.module.push_pattern(std::move(pattern));
         }
@@ -155,7 +155,7 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
                 this->report_here(std::string(PARSER_EXPECT_ENUM_CASE_PATTERN_DOT));
                 syntax::PatternNode pattern;
                 pattern.kind = syntax::PatternKind::binding;
-                pattern.binding_name = first.text;
+                pattern.binding_name = first.text();
                 pattern.range = this->merge(first.range, end.range);
                 return this->session_.module.push_pattern(std::move(pattern));
             }
@@ -181,7 +181,7 @@ syntax::PatternId PatternParser::parse_shorthand_enum_case_pattern(const syntax:
         this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::enum_case;
-    pattern.case_name = case_name.text;
+    pattern.case_name = case_name.text();
     pattern.scoped = true;
     pattern.range = this->merge(dot.range, case_name.range);
     if (this->match(TokenKind::l_paren)) {
@@ -194,7 +194,7 @@ syntax::PatternId PatternParser::parse_literal_pattern(const syntax::Token& toke
 {
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::literal;
-    pattern.case_name = token.text;
+    pattern.case_name = token.text();
     pattern.range = token.range;
     return this->session_.module.push_pattern(pattern);
 }
@@ -219,13 +219,13 @@ syntax::TypeId PatternParser::push_explicit_enum_case_type(
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::named;
     type.range = type_range;
-    type.name = parts[type_part_count - 1].text;
+    type.name = parts[type_part_count - 1].text();
     type.type_args = std::move(type_args);
     if (type_part_count > 1) {
         type.scope_range = this->merge(parts.front().range, parts[type_part_count - 2].range);
         type.scope_parts.reserve(type_part_count - 1);
         for (base::usize i = 0; i + 1 < type_part_count; ++i) {
-            type.scope_parts.push_back(parts[i].text);
+            type.scope_parts.push_back(parts[i].text());
         }
         type.scope_name = type.scope_parts.front();
     }
@@ -302,7 +302,7 @@ syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name)
     const syntax::Token& begin = this->expect(TokenKind::l_brace, std::string(PARSER_EXPECT_STRUCT_PATTERN_END));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::struct_;
-    pattern.struct_name = name.text;
+    pattern.struct_name = name.text();
     pattern.range = this->merge(name.range, begin.range);
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         const syntax::Token& field_name =
@@ -312,13 +312,13 @@ syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name)
             field_pattern = this->parse_destructure_pattern_atom();
         } else {
             syntax::PatternNode binding;
-            binding.kind = field_name.text == "_" ? syntax::PatternKind::wildcard : syntax::PatternKind::binding;
-            binding.binding_name = field_name.text == "_" ? std::string_view {} : field_name.text;
+            binding.kind = field_name.text() == "_" ? syntax::PatternKind::wildcard : syntax::PatternKind::binding;
+            binding.binding_name = field_name.text() == "_" ? std::string_view {} : field_name.text();
             binding.range = field_name.range;
             field_pattern = this->session_.module.push_pattern(binding);
         }
         pattern.field_patterns.push_back(syntax::FieldPattern {
-            field_name.text,
+            field_name.text(),
             field_pattern,
             this->merge(field_name.range, this->pattern_range_or(field_pattern, field_name.range)),
         });
@@ -475,7 +475,7 @@ void PatternParser::consume_bare_enum_case_payload_recovery(
 ) {
     syntax::PatternNode recovery;
     recovery.kind = syntax::PatternKind::enum_case;
-    recovery.case_name = first.text;
+    recovery.case_name = first.text();
     recovery.range = first.range;
     this->advance();
     this->parse_payload_patterns(recovery, this->previous());

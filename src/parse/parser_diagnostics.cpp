@@ -20,7 +20,7 @@ constexpr std::string_view PARSER_OPENING_DELIMITER_NOTE =
 bool Parser::check_contextual_c_keyword() const noexcept {
     const syntax::Token& token = this->peek();
     return token.kind == TokenKind::identifier &&
-           token.text == PARSER_CONTEXTUAL_C_KEYWORD_TEXT;
+           token.text() == PARSER_CONTEXTUAL_C_KEYWORD_TEXT;
 }
 
 const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {

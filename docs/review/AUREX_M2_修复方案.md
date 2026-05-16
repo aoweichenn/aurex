@@ -6,6 +6,18 @@
 > **测试覆盖：** 性能基准 · 极限压力 · 工业级攻击 (70+ 场景) · 错误诊断 (86 场景)  
 > **日期：** 2026-05-15
 
+> **当前状态（2026-05-17）：** 本文保留为 M2 审计历史快照和修复方案说明，下面的原始问题证据仍用于追溯，但“未修 / 过渡态 / 剩余 17 项”等旧状态不再代表当前 `m2`。当前权威状态以 `docs/zh/next-steps.md`、`docs/zh/language-feature-inventory.md` 和本节状态快照为准。
+
+### 当前实现状态快照
+
+| 领域 | 当前状态 | 说明 |
+|:-----|:---------|:-----|
+| P0 语义安全 | 已关闭 | raw pointer projection unsafe、`&expr` 双语义、contextual expression cache、`[]` 多义、capability predicate、数组常量越界均已收口 |
+| P0 性能爆点 | 已关闭当前主爆点 | compact AST、bump-backed AST/token/sema storage、`IdentId` typed lookup、normalized AST overlay、generic side table 局部化、pattern matrix、diagnostic budget/line table、release perf gate 已落地 |
+| 过渡态清理 | 当前主路径不保留双逻辑 | 旧胖 `ExprNode` 生产路径、旧 raw postfix lowering、string-key lookup fallback、per-node C-name string side table、Sema AST 整树复制已删除 |
+| 本次补充修复 | 已纳入 | `syntax::Token` 不再持有 `std::string_view` 大字段；token text 由 source pointer + range 计算；`ModuleLoader` 的 lex+parse 局部化，parse 后立即释放 token arena |
+| 后续保留 | 非当前阻塞 | 增量编译缓存文件格式、LSP 结构化诊断 protocol、跨机器 release 阈值最终数值校准、M2.5 query/lossless syntax/IDE-native 方向 |
+
 ---
 
 ## 目录
@@ -27,8 +39,8 @@
 
 ---
 
-> **文档状态：** 持续更新中 · 随开发者修复进度同步  
-> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径；AST header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并增加 parser token-shape 预留来避免 bump vector 扩容放大 RSS。match exhaustiveness 已从结构化笛卡尔积枚举和 4096 组合上限替换为 pattern matrix / usefulness witness search。
+> **文档状态：** 历史审计快照 + 当前状态索引。本文中的早期“未修/过渡态”段落若与上方快照冲突，以上方快照和 `docs/zh/next-steps.md` 为准。
+> **最新同步：** compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径；AST header/payload vectors、identifier interner text/hash、lexer token buffer、sema checked/generic/type/symbol storage 均已 bump-backed；parser 按 token 形态预留/预触表达式 arena，表达式节点创建直接写 compact payload；`syntax::Token` 已压缩为 source pointer + range，`ModuleLoader` lex+parse 完成后立即释放 token arena。match exhaustiveness 已从结构化笛卡尔积枚举和 4096 组合上限替换为 pattern matrix / usefulness witness search。
 
 ---
 
@@ -129,8 +141,8 @@ if (types.is_pointer(object)) {
 | **`p[0]`** | ❌ **safe 通过** | **应要求 unsafe** |
 | **`p[0] = v`** | ❌ **safe 通过** | **应要求 unsafe** 🔴 |
 
-**开发者修复状态：** ❌ 错误（过渡态）— 在每个 field/index 访问点分散加 `require_unsafe_context`，没有统一模型。容易遗漏（如 `&p.x`、嵌套 projection）。  
-**正确方案：** 引入 `PlaceInfo { is_place, is_writable, crosses_raw_pointer }`。projection 链上任何一步穿过 raw pointer → 需要 unsafe。
+**开发者修复状态：** ✅ 已关闭 — raw pointer projection 已按统一 place/projection 信息收口，`*p`、`p.x`、`p.x = v`、`p[i]`、`p[i] = v` 都要求 unsafe，reference projection 保持 safe。
+**正确方案：** 已落地当前 M2.1 边界；后续 borrow/lifetime 设计另行进入资源语义专题。
 
 ---
 
@@ -156,8 +168,8 @@ constexpr string_view SEMA_CAPABILITY_EQ = "Eq";  // ❌ 硬编码字符串
 2. **Eq 允许 reference 但 concrete `==` 不允许** — 约束与操作符不一致
 3. **Hash 无实际操作锚点** — 名义存在不可验证
 
-**开发者修复状态：** ❌ 未修  
-**方案：** 改为 `enum class CapabilityKind`。Eq 排除 float/reference。Ord 排除 float。Hash 需要有操作锚点。
+**开发者修复状态：** ✅ 已关闭 — capability 已改为结构化 `CapabilityKind`，where clause、generic instantiation 和 operator predicate 共享规则；Eq/Ord 排除 float，Eq 不再接受 reference，Hash 无操作锚点时拒绝。
+**方案：** 当前 M2.1 内建 capability 规则已闭合；用户自定义 trait/protocol、associated type 和资源 capability 后置。
 
 ---
 
@@ -165,19 +177,19 @@ constexpr string_view SEMA_CAPABILITY_EQ = "Eq";  // ❌ 硬编码字符串
 
 | # | 问题 | 说明 | 状态 |
 |:-:|:-----|:------|:----:|
-| P1-6 | generic 与普通 type lookup 不一致 | 泛型 visible_modules 与普通 lookup 走不同 resolver | ❌ |
+| P1-6 | generic 与普通 type lookup 不一致 | generic lookup 已复用普通模块可见性/import resolver | ✅ |
 | P1-7 | Generic param identity 仅按名字 | 已改为 `GenericParamIdentity` 稳定数值身份，混入 template module/name、param index/name 和 source range；`TypeInfo` 不再保存 string identity key | ✅ |
-| P1-8 | Mangling 依赖 display string | 字符清洗导致 `a.b.C` 和 `a_b.C` 可能碰撞 | ❌ |
-| P1-9 | ? try-like 是 name-based magic | 根据 ok/err 名字判断，用户定义同名 enum 会被误识别 | ❌ |
-| P1-10 | Backend limit 伪装成 language semantics | 诊断未区分 M2Unsupported vs SemanticError | ❌ |
-| P1-11 | `&[]T` slice reference 无法 index | reference auto-deref 未处理 slice | ❌ |
-| P1-12 | `cache_syntax_types` 禁写不禁读 | 泛型上下文可能读到旧缓存 | ❌ |
-| P1-13 | Parser→Sema 隐藏契约 | `item_modules` 必须由 ModuleLoader 填充 | ❌ |
-| P1-14 | `analyze_expr` 过度中心化 | 8 种职责揉在一个函数 | ❌ |
-| P1-15 | `find_record` 哈希表退化 | 命中后无二次类型验证 | ❌ |
-| P1-16 | CMake 无 frontend-only 模式 | 前端测试被 LLVM 绑架 | ❌ |
-| P1-17 | `find_enum_case` fallback 掩盖索引问题 | 索引 miss 时全表扫描 | ❌ |
-| P1-18 | lookup map 缺少 reserve | 注册阶段反复 rehash | ❌ |
+| P1-8 | Mangling 依赖 display string | 实例 key / ABI suffix 改为 canonical type id 和结构化 key，展示名延迟生成 | ✅ |
+| P1-9 | ? try-like 是 name-based magic | Result/Option 已按 enum identity、case 集和 payload shape 识别 | ✅ |
+| P1-10 | Backend limit 伪装成 language semantics | M2 unsupported policy 已以明确 semantic diagnostic 拒绝 | ✅ |
+| P1-11 | `&[]T` slice reference 无法 index | `&[]const T` / `&[]mut T` 已 safe deref 后按 slice index 规则检查和 lowering | ✅ |
+| P1-12 | `cache_syntax_types` 禁写不禁读 | 泛型/contextual 分析关闭 syntax type cache 时禁止读旧 cache，也禁止写污染 | ✅ |
+| P1-13 | Parser→Sema 隐藏契约 | parser-only AST 自动规范化 root module；非法 module metadata 在 sema 入口诊断失败 | ✅ |
+| P1-14 | `analyze_expr` 过度中心化 | 入口已拆成 cache、dispatch、literal/value/control/aggregate/projection/operator/builtin helper | ✅ |
+| P1-15 | `find_record` 哈希表退化 | struct/enum lookup 命中后做 type identity 校验 | ✅ |
+| P1-16 | CMake 无 frontend-only 模式 | 已增加 `AUREX_FRONTEND_ONLY` 和 `aurex_frontend_tests` | ✅ |
+| P1-17 | `find_enum_case` fallback 掩盖索引问题 | enum case 索引 miss 不再静默全表扫描通过 | ✅ |
+| P1-18 | lookup map 缺少 reserve | sema 全局表、generic 实例表、visibility/export cache、ABI 临时表和 scope 按规模 reserve | ✅ |
 | P1-19 | 错误恢复缺少 error budget | 极端坏输入可耗尽编译时间 | ✅ 已修 |
 
 ---
@@ -203,8 +215,8 @@ side_tables.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
 | 1000 | 0.415s | 322 MB |
 | **2000** | **1.576s** | **1153 MB** 🚨 |
 
-**开发者修复状态：** ❌ 错误（过渡态）— 加了 `side_tables.sparse = true` 标记，但稀疏化的粒度不够。仍然按全模块节点数分配，没有按函数 body 范围裁剪。  
-**方案：** 按函数 body 节点区间分配，或使用稀疏 DenseMap。目标 2000 实例 ~150MB。
+**开发者修复状态：** ✅ 已关闭当前爆点 — generic instance side table 已改为函数体 NodeSpan 局部表；retained instance 只在非连续节点 ID 映射时共享 module-level sparse layout；sema-only expected-type / pattern-case cache 使用可释放 arena；不同泛型模板的 per-instance arena floor 降到 1 KiB；IR lower 支持 local dense + sparse fallback。
+**方案：** 当前 2000 generic instance 已低于 M2.1 约 150 MiB 目标；后续只保留跨机器 perf 阈值校准。
 
 ---
 
@@ -258,7 +270,7 @@ find_symbol(name_id, name, range);
 **开发者修复状态：** ✅ 已修当前整树复制爆点；`TypeNode` / `ExprNode` / `PatternNode` / `StmtNode` / `ItemNode` 已落 compact layout
 **方案：** Sema 用引用不复制；normalized_ast 改轻量 overlay 且不拥有 AST snapshot；节点级 C symbol side table 用 `IdentId` + C-name interner；AST 主存储使用 compact header + per-kind payload arena
 
-**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；`CheckedModule::normalized_ast` 已改为轻量 normalization overlay，彻底不拥有 `AstModule` snapshot；`expr_c_name_ids` / `pattern_c_name_ids` / `item_c_name_ids` 只保存 `IdentId`，实际 C symbol 文本进入 checked module C-name interner 去重，避免 per-node `std::string` 堆分配；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；旧 raw postfix lowering 路径已删除；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena；旧胖 `ExprNode` 生产类型已删除，parser 创建、`AstModule` 存储、module loader append 和 postfix suffix 都直接写 compact expression header + per-kind payload；module loader 按 source payload remap 并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径；AST list header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并由 parser token-shape estimate 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer；lexer token 输出已改为 bump-backed `TokenBuffer`，一次性 reserve 且不再被 262144 token 上限截断，也不再预触不会写入的估算余量页；sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args、generic template 参数列表、generic constraint bucket 和持久 name/c_name/generic key 文本字段已接入 bump arena / interner，复制 checked/type/symbol storage 时重新 intern 到目标 arena，不再复制字符串 buffer；generic function instance 存储使用 bump-backed deque 维持嵌套实例化时的 side table 地址稳定，generic method / enum-case / visible-module cache bucket 不再由默认 heap vector 创建；IR lowering 源码 local lookup 和 IR verifier symbol 去重使用 interned typed id，不再保留持久 string-key map。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 140.8 MiB RSS / 72.4 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 10.1 ms、generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms；2000 generic instance stress 当前约 148.4 MiB RSS / 439.8 ms，仍低于 M2.1 约 150 MiB 目标，剩余后续集中在 generic side table 生命周期/释放策略、跨模块 stable ID、2M AST 跨机器阈值和后续 CI 阈值。
+**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；`CheckedModule::normalized_ast` 已改为轻量 normalization overlay，彻底不拥有 `AstModule` snapshot；`expr_c_name_ids` / `pattern_c_name_ids` / `item_c_name_ids` 只保存 `IdentId`，实际 C symbol 文本进入 checked module C-name interner 去重，避免 per-node `std::string` 堆分配；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；旧 raw postfix lowering 路径已删除；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena；旧胖 `ExprNode` 生产类型已删除，parser 创建、`AstModule` 存储、module loader append 和 postfix suffix 都直接写 compact expression header + per-kind payload；module loader 按 source payload remap 并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径；AST list header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并由 parser token-shape estimate 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer；lexer token 输出已改为 bump-backed `TokenBuffer`，一次性 reserve 且不再被 262144 token 上限截断，也不再预触不会写入的估算余量页；`syntax::Token` 已压缩为 source pointer + range 计算 text，`ModuleLoader` lex+parse 完成后立即释放 token arena；sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args、generic template 参数列表、generic constraint bucket 和持久 name/c_name/generic key 文本字段已接入 bump arena / interner，复制 checked/type/symbol storage 时重新 intern 到目标 arena，不再复制字符串 buffer；generic function instance 存储使用 bump-backed deque 维持嵌套实例化时的 side table 地址稳定，generic method / enum-case / visible-module cache bucket 不再由默认 heap vector 创建；IR lowering 源码 local lookup 和 IR verifier symbol 去重使用 interned typed id，不再保留持久 string-key map。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 140.8 MiB RSS / 72.4 ms；当前 release gate 5000 generic 约 240.6 MiB / 2801.9 ms，2M AST statements 约 1594.8 MiB / 1089.4 ms，5000 errors 约 31.1 MiB / 270.2 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 10.1 ms、generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms；后续只保留跨机器阈值校准。
 
 ---
 
@@ -266,12 +278,12 @@ find_symbol(name_id, name, range);
 
 | # | 问题 | 现状 | 方案 |
 |:-:|:-----|:----:|:------|
-| 5 | Lowerer 复制整个 `locals_` map | ❌ | scope stack + rollback |
-| 6 | `module_export_modules()` 不缓存 | ❌ | ModuleVisibilityGraph 预计算 |
-| 7 | 泛型 key 基于 `display_name()` | ❌ | 结构化 key + 延迟生成 |
-| 8 | Diagnostics line/column 线性扫描 | ❌ | 建立 `line_starts` 表 |
-| 9 | 成员查找部分线性扫描 | ❌ | 建立按 type 索引的成员 map |
-| 10 | unordered_map 缺少 reserve | ❌ | `analyze()` 开头统一 reserve |
+| 5 | Lowerer 复制整个 `locals_` map | ✅ | 已改为 scope stack + shadow log |
+| 6 | `module_export_modules()` 不缓存 | ✅ | module export modules 已缓存 |
+| 7 | 泛型 key 基于 `display_name()` | ✅ | 已改为结构化 semantic key + 延迟展示名 |
+| 8 | Diagnostics line/column 线性扫描 | ✅ | `SourceFile` 已建立 `line_starts` 表 |
+| 9 | 成员查找部分线性扫描 | ✅ | method/member、enum case、struct field lookup 已走 `IdentId` typed key / stable member key |
+| 10 | unordered_map 缺少 reserve | ✅ | sema/lookup/registry/cache 主表已按规模 reserve |
 
 ---
 
@@ -370,8 +382,8 @@ fn main() -> i32 { return ((((...((1))...)))); }  // 💥>2000层
 
 | 指标 | 数值 |
 |:-----|:----:|
-| ✅ 正确报错 | **83 (96.5%)** |
-| ❌ 遗漏 | 3（1 个真实缺口：数组越界 + 2 个测试误报） |
+| ✅ 正确报错 | **历史 83 (96.5%)；当前数组越界真实缺口已关闭** |
+| 历史遗漏 | 3（1 个真实缺口：数组越界已修 + 2 个测试误报） |
 | 💥 崩溃 | **0** |
 | ⏰ 超时 | **0** |
 | 📍 定位精度 | 全部带 `^` 精确标注 |
@@ -383,19 +395,19 @@ fn main() -> i32 { return ((((...((1))...)))); }  // 💥>2000层
 | 错误检测率 | 99% | 99% | **96.5%** | ~2-3% |
 | 定位精度 (^) | ✅ | ✅ | ✅ | 相同 |
 | 信息清晰度 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 略低 |
-| `did you mean` 建议 | ✅ | ✅ | ❌ | 缺失 |
-| 显示预期 vs 实际类型 | ✅ | ✅ | ❌ | 缺失 |
-| 标记前一声明位置 | ✅ | ✅ | ❌ | 缺失 |
-| note/help 辅助信息 | ✅丰富 | ✅丰富 | ❌ | 缺失 |
-| **综合评分** | **95/100** | **92/100** | **80/100** | **-15** |
+| `did you mean` 建议 | ✅ | ✅ | ✅ | 已覆盖主路径 |
+| 显示预期 vs 实际类型 | ✅ | ✅ | ✅ | mismatch 主路径已有 note |
+| 标记前一声明位置 | ✅ | ✅ | ✅ | duplicate 主路径已有 note |
+| note/help 辅助信息 | ✅丰富 | ✅丰富 | ✅ | Diagnostic severity 已支持 |
+| **综合评分** | **95/100** | **92/100** | **当前主路径约 92/100** | **后续 LSP 结构化输出** |
 
-### 缺失的关键特性
+### 历史缺失关键特性的当前状态
 
 | # | 特性 | 难度 | 收益 |
 |:-:|:-----|:----:|:----:|
-| 1 | `did you mean` 建议 | 🟢 低 | 极高 |
-| 2 | 显示预期/实际类型 | 🟢 低 | 高 |
-| 3 | 标记前一声明位置 | 🟢 低 | 高 |
+| 1 | `did you mean` 建议 | ✅ 已落地 | 极高 |
+| 2 | 显示预期/实际类型 | ✅ 已落地 | 高 |
+| 3 | 标记前一声明位置 | ✅ 已落地 | 高 |
 | 4 | note 辅助信息 | 🟢 低 | 中 |
 | 5 | warning 级别支持 | 🟡 中 | 高 |
 
@@ -1073,12 +1085,12 @@ Phase 4: 工程化测试闭环      ██████████░░░░  
 ### 当前状态
 
 ```
-P0 语义缺陷:  3/3  ✅（全部修复）
-P0 性能缺陷:  4/4  ✅（当前爆点已收口，pattern matrix 已落地；CI 阈值后续）
+P0 语义缺陷:  6/6  ✅（全部修复）
+P0 性能缺陷:  4/4  ✅（当前爆点已收口，pattern matrix / compact AST / bump-backed storage 已落地）
 P0 攻击面:    2/2  ✅（全部修复）
 P0 功能缺口:  1/1  ✅（已修复）
-P1 语义缺陷:  14/14 ❌（未开始）
-P1 性能缺陷:  6/6  ❌（未开始）
+P1 语义缺陷:  14/14 ✅（当前 M2.1 边界已收口）
+P1 性能缺陷:  6/6  ✅（当前 M2.1 边界已收口）
 ```
 
 ### 硬性验收指标
@@ -1100,7 +1112,7 @@ P1 性能缺陷:  6/6  ❌（未开始）
 
 ### 一句话
 
-> **M2 语法表面已接近可用，但语义闭包未完成、性能模型未收敛、攻击面有 3 个崩溃点（已全修）。开发者已快速响应修复了 6 个关键问题，剩余 17 项需在 M2.1 中完成 Semantic + Performance + Security Closure。** 🎯
+> **M2 语法表面已接近可用；当前 M2.1 主线已经关闭 P0 语义安全、P0 性能爆点、P1 当前边界和主要攻击面。后续工作集中在增量编译缓存文件格式、LSP 结构化诊断 protocol、跨机器 perf 阈值校准，以及 M2.5 query / lossless syntax / IDE-native 架构。**
 
 ### 开发者响应评价
 
@@ -1119,10 +1131,10 @@ P1 性能缺陷:  6/6  ❌（未开始）
 
 🔴 第二优先：性能修复（Phase 2）  
    已修复 ✅ side table 稀疏化、pattern matrix / witness search、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
-   待修复 ❌ 跨模块 stable hash / parallel global ID、CI perf 阈值
+   已修复 ✅ 跨模块 stable hash / parallel global ID、CI perf/release gate；后续保留跨机器阈值校准
 
 🟡 第三优先：工程闭环（Phase 3+4）
-   待修复 ❌ Capability enum、GenericParamId、Mangling、Resolver 等 15 项
+   已修复 ✅ Capability enum、GenericParamId、Mangling、Resolver 等当前 M2.1 项；后续保留增量缓存落盘和 IDE/LSP protocol
 ```
 
 ### 最终目标
@@ -1468,7 +1480,7 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
 
 ### 一句话
 
-> **M2 语法表面已接近可用，但语义闭包未完成、性能模型未收敛、攻击面有 3 个崩溃点（已全修）。开发者已快速响应修复了 6 个关键问题，剩余 17 项需在 M2.1 中完成 Semantic + Performance + Security Closure。** 🎯
+> **M2 语法表面已接近可用；当前 M2.1 主线已经关闭 P0 语义安全、P0 性能爆点、P1 当前边界和主要攻击面。后续工作集中在增量编译缓存文件格式、LSP 结构化诊断 protocol、跨机器 perf 阈值校准，以及 M2.5 query / lossless syntax / IDE-native 架构。**
 
 ### 开发者响应评价
 
@@ -1488,10 +1500,10 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
 
 🔴 第二优先：性能修复（Phase 2）  
    已修复 ✅ side table 稀疏化、pattern matrix / witness search、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
-   待修复 ❌ 跨模块 stable hash / parallel global ID、CI perf 阈值
+   已修复 ✅ 跨模块 stable hash / parallel global ID、CI perf/release gate；后续保留跨机器阈值校准
 
 🟡 第三优先：工程闭环（Phase 3+4）
-   待修复 ❌ Capability enum、GenericParamId、Mangling、Resolver 等 15 项
+   已修复 ✅ Capability enum、GenericParamId、Mangling、Resolver 等当前 M2.1 项；后续保留增量缓存落盘和 IDE/LSP protocol
 ```
 
 ### 最终目标

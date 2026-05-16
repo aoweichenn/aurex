@@ -23,7 +23,7 @@ syntax::ItemId ItemParser::parse_struct_decl() {
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::struct_decl;
-    item.name = name.text;
+    item.name = name.text();
     item.generic_params = std::move(generic_params);
     item.where_constraints = std::move(where_constraints);
 
@@ -60,7 +60,7 @@ syntax::ItemId ItemParser::parse_enum_decl() {
 
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::enum_decl;
-    item.name = name.text;
+    item.name = name.text();
     item.generic_params = std::move(generic_params);
     item.where_constraints = std::move(where_constraints);
     item.enum_base_type = base_type;
@@ -93,7 +93,7 @@ std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
         ? this->peek().range
         : this->type_range_or(field_type, field_name.range);
     return syntax::FieldDecl {
-        field_name.text,
+        field_name.text(),
         field_type,
         this->merge(field_name.range, end_range),
         field_visibility.visibility,
@@ -153,7 +153,7 @@ std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
     base::SourceRange value_range = payload_types.empty() ? case_name.range : payload_end_range;
     if (this->match(TokenKind::equal)) {
         const syntax::Token& value = this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ENUM_VALUE));
-        value_text = value.text;
+        value_text = value.text();
         value_range = value.range;
     }
     if (case_name.kind != TokenKind::identifier) {
@@ -163,7 +163,7 @@ std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
         ? this->peek().range
         : value_range;
     return syntax::EnumCaseDecl {
-        case_name.text,
+        case_name.text(),
         payload_type,
         std::move(payload_types),
         value_text,
@@ -202,7 +202,7 @@ syntax::ItemId ItemParser::parse_opaque_struct_decl() {
     syntax::ItemNode item;
     item.kind = syntax::ItemKind::opaque_struct_decl;
     item.range = this->merge(begin.range, end.range);
-    item.name = name.text;
+    item.name = name.text();
     item.is_extern_c = true;
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));

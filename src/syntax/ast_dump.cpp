@@ -995,8 +995,9 @@ std::string dump_tokens(const std::span<const Token> tokens) {
     for (const Token& token : tokens) {
         out << token.range.begin << ".." << token.range.end << " "
             << token_kind_name(token.kind);
-        if (!token.text.empty()) {
-            out << " `" << token.text << "`";
+        const std::string_view text = token.text();
+        if (!text.empty()) {
+            out << " `" << text << "`";
         }
         out << "\n";
     }

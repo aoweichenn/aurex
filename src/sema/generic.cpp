@@ -560,7 +560,8 @@ void SemanticAnalyzer::populate_generic_concrete_context(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args,
     GenericContext& context
-) {
+) const
+{
     context.params.clear();
     context.param_identities.clear();
     this->copy_capability_map(context.constraints, info.constraints);
@@ -1104,13 +1105,9 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     struct_info.module = info.module;
     struct_info.type = handle;
     struct_info.visibility = info.visibility;
-    struct_info.is_generic_placeholder = std::any_of(
-        args.begin(),
-        args.end(),
-        [&](const TypeHandle arg) {
-            return is_valid(arg) && this->checked_.types.get(arg).kind == TypeKind::generic_param;
-        }
-    );
+    struct_info.is_generic_placeholder = std::ranges::any_of(args,[&](const TypeHandle arg) {
+        return is_valid(arg) && this->checked_.types.get(arg).kind == TypeKind::generic_param;
+    });
 
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext generic_context = this->make_generic_context();
@@ -1250,7 +1247,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
         found != this->resolved_generic_type_aliases_.end()) {
         return found->second;
     }
-    if (std::find(this->resolving_type_aliases_.begin(), this->resolving_type_aliases_.end(), instance_key) !=
+    if (std::ranges::find(this->resolving_type_aliases_, instance_key) !=
         this->resolving_type_aliases_.end()) {
         this->report(use_type.range, sema_cyclic_type_alias_message(info.name));
         this->resolved_generic_type_aliases_[instance_key] = INVALID_TYPE_HANDLE;
@@ -1568,7 +1565,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     if (!this->validate_generic_arguments(info, args, use_range)) {
         return nullptr;
     }
-    if (std::any_of(args.begin(), args.end(), [&](const TypeHandle arg) {
+    if (std::ranges::any_of(args, [&](const TypeHandle arg) {
             return this->type_contains_generic_param(arg);
         })) {
         return this->instantiate_generic_placeholder_function(info, args, use_range);
@@ -1847,7 +1844,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
         }
         std::vector<const GenericTemplateInfo*> candidates;
         const auto append_candidate = [&candidates](const GenericTemplateInfo* const info) {
-            if (std::find(candidates.begin(), candidates.end(), info) == candidates.end()) {
+            if (std::ranges::find(candidates, info) == candidates.end()) {
                 candidates.push_back(info);
             }
         };

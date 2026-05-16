@@ -3,10 +3,13 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace aurex::sema {
@@ -15,8 +18,7 @@ namespace {
 
 constexpr std::string_view SEMA_MATCH_BOOL_TRUE_NAME = "true";
 constexpr std::string_view SEMA_MATCH_BOOL_FALSE_NAME = "false";
-constexpr base::u64 SEMA_MATCH_STRUCTURAL_ARRAY_MAX_ELEMENTS = 8;
-constexpr base::usize SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096;
+constexpr base::u64 SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS = 4096;
 
 [[nodiscard]] const syntax::PatternNode* pattern_node(
     const syntax::AstModule& module,
@@ -499,6 +501,732 @@ void SemanticAnalyzer::define_pattern_bindings(
     }
 }
 
+struct SemanticAnalyzer::MatchUsefulnessChecker final {
+    struct MatrixSlot {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        bool wildcard = true;
+    };
+
+    struct MatrixConstructor {
+        enum class Kind {
+            bool_true,
+            bool_false,
+            tuple,
+            struct_,
+            array,
+            enum_case,
+        };
+
+        Kind kind = Kind::tuple;
+        std::vector<TypeHandle> fields;
+        const EnumCaseInfo* enum_case = nullptr;
+    };
+
+    using MatrixRow = std::vector<MatrixSlot>;
+    using PatternMatrix = std::vector<MatrixRow>;
+
+    struct UsefulnessState {
+        PatternMatrix matrix;
+        MatrixRow row;
+        std::vector<TypeHandle> types;
+    };
+
+    MatchUsefulnessChecker(
+        SemanticAnalyzer& analyzer,
+        const TypeHandle matched,
+        const bool enum_match
+    ) noexcept
+        : analyzer_(analyzer),
+          matched_(matched),
+          enum_match_(enum_match) {}
+
+    void add_unguarded_arm(const syntax::PatternId root) {
+        const syntax::PatternNode* pattern = pattern_node(this->analyzer_.module_, root);
+        if (pattern == nullptr) {
+            return;
+        }
+
+        bool arm_is_useful = false;
+        std::vector<MatrixRow> rows = this->expand_or_rows(MatrixRow {MatchUsefulnessChecker::pattern_slot(root)});
+        for (MatrixRow& row : rows) {
+            if (!this->row_is_useful(row)) {
+                continue;
+            }
+            arm_is_useful = true;
+            this->coverage_matrix_.push_back(std::move(row));
+        }
+        if (!arm_is_useful) {
+            this->analyzer_.report(pattern->range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
+        }
+        this->record_enum_case_coverage(root);
+    }
+
+    [[nodiscard]] bool has_missing_witness() const {
+        return this->matrix_row_is_useful(
+            this->coverage_matrix_,
+            MatchUsefulnessChecker::wildcard_row(1),
+            std::vector<TypeHandle> {this->matched_}
+        );
+    }
+
+    [[nodiscard]] const EnumCaseInfo* missing_enum_case() const {
+        const std::vector<MatrixConstructor> constructors = this->constructors_for_type(this->matched_);
+        for (const MatrixConstructor& constructor : constructors) {
+            if (constructor.kind != MatrixConstructor::Kind::enum_case ||
+                constructor.enum_case == nullptr ||
+                !this->enum_case_has_missing_witness(constructor)) {
+                continue;
+            }
+            return constructor.enum_case;
+        }
+        return nullptr;
+    }
+
+private:
+    [[nodiscard]] static MatrixSlot wildcard_slot() noexcept {
+        return MatrixSlot {};
+    }
+
+    [[nodiscard]] static MatrixSlot pattern_slot(const syntax::PatternId pattern) noexcept {
+        return MatrixSlot {pattern, false};
+    }
+
+    [[nodiscard]] static MatrixRow wildcard_row(const base::usize count) {
+        return MatrixRow(count, MatchUsefulnessChecker::wildcard_slot());
+    }
+
+    [[nodiscard]] static MatrixRow tail_row(const MatrixRow& row) {
+        if (row.empty()) {
+            return MatrixRow {};
+        }
+        return MatrixRow(row.begin() + 1, row.end());
+    }
+
+    [[nodiscard]] static std::vector<TypeHandle> tail_types(const std::vector<TypeHandle>& types) {
+        if (types.empty()) {
+            return std::vector<TypeHandle> {};
+        }
+        return std::vector<TypeHandle>(types.begin() + 1, types.end());
+    }
+
+    [[nodiscard]] static MatrixRow append_row(MatrixRow prefix, const MatrixRow& tail) {
+        prefix.insert(prefix.end(), tail.begin(), tail.end());
+        return prefix;
+    }
+
+    [[nodiscard]] static std::vector<TypeHandle> append_types(
+        std::vector<TypeHandle> prefix,
+        const std::vector<TypeHandle>& tail
+    ) {
+        prefix.insert(prefix.end(), tail.begin(), tail.end());
+        return prefix;
+    }
+
+    [[nodiscard]] static bool same_constructor(
+        const MatrixConstructor& lhs,
+        const MatrixConstructor& rhs
+    ) noexcept {
+        if (lhs.kind != rhs.kind) {
+            return false;
+        }
+        if (lhs.kind == MatrixConstructor::Kind::enum_case) {
+            return lhs.enum_case == rhs.enum_case;
+        }
+        return true;
+    }
+
+    [[nodiscard]] const syntax::PatternNode* slot_node(const MatrixSlot& slot) const {
+        if (slot.wildcard) {
+            return nullptr;
+        }
+        return pattern_node(this->analyzer_.module_, slot.pattern);
+    }
+
+    [[nodiscard]] bool slot_is_any(const MatrixSlot& slot) const {
+        if (slot.wildcard) {
+            return true;
+        }
+        const syntax::PatternNode* pattern = this->slot_node(slot);
+        return pattern == nullptr ||
+            pattern->kind == syntax::PatternKind::wildcard ||
+            pattern->kind == syntax::PatternKind::binding;
+    }
+
+    [[nodiscard]] std::vector<MatrixConstructor> constructors_for_type(const TypeHandle type) const {
+        std::vector<MatrixConstructor> constructors;
+        if (!is_valid(type)) {
+            return constructors;
+        }
+        if (this->analyzer_.checked_.types.is_bool(type)) {
+            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::bool_true, {}, nullptr});
+            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::bool_false, {}, nullptr});
+            return constructors;
+        }
+
+        const TypeInfo& info = this->analyzer_.checked_.types.get(type);
+        if (info.kind == TypeKind::tuple) {
+            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::tuple, info.tuple_elements, nullptr});
+            return constructors;
+        }
+        if (info.kind == TypeKind::struct_) {
+            const StructInfo* struct_info = this->analyzer_.find_struct(type);
+            if (struct_info == nullptr) {
+                return constructors;
+            }
+            MatrixConstructor constructor;
+            constructor.kind = MatrixConstructor::Kind::struct_;
+            constructor.fields.reserve(struct_info->fields.size());
+            for (const StructFieldInfo& field : struct_info->fields) {
+                constructor.fields.push_back(field.type);
+            }
+            constructors.push_back(std::move(constructor));
+            return constructors;
+        }
+        if (info.kind == TypeKind::array && info.array_count <= SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS) {
+            MatrixConstructor constructor;
+            constructor.kind = MatrixConstructor::Kind::array;
+            constructor.fields.assign(static_cast<base::usize>(info.array_count), info.array_element);
+            constructors.push_back(std::move(constructor));
+            return constructors;
+        }
+        if (info.kind == TypeKind::enum_) {
+            std::vector<const EnumCaseInfo*> cases;
+            if (const std::vector<const EnumCaseInfo*>* indexed_cases =
+                    this->analyzer_.find_enum_cases_by_type(type);
+                indexed_cases != nullptr) {
+                cases = *indexed_cases;
+            } else {
+                for (const auto& entry : this->analyzer_.checked_.enum_cases) {
+                    const EnumCaseInfo& case_info = entry.second;
+                    if (this->analyzer_.checked_.types.same(case_info.type, type)) {
+                        cases.push_back(&case_info);
+                    }
+                }
+            }
+            std::sort(cases.begin(), cases.end(), [](const EnumCaseInfo* lhs, const EnumCaseInfo* rhs) {
+                if (lhs == nullptr || rhs == nullptr) {
+                    return rhs != nullptr;
+                }
+                return lhs->c_name < rhs->c_name;
+            });
+            constructors.reserve(cases.size());
+            for (const EnumCaseInfo* case_info : cases) {
+                if (case_info == nullptr) {
+                    continue;
+                }
+                MatrixConstructor constructor;
+                constructor.kind = MatrixConstructor::Kind::enum_case;
+                constructor.fields = case_info->payload_types;
+                constructor.enum_case = case_info;
+                constructors.push_back(std::move(constructor));
+            }
+        }
+        return constructors;
+    }
+
+    [[nodiscard]] std::optional<MatrixConstructor> pattern_constructor(
+        const MatrixSlot& slot,
+        const TypeHandle type
+    ) const {
+        if (this->slot_is_any(slot)) {
+            return std::nullopt;
+        }
+        const syntax::PatternNode* pattern = this->slot_node(slot);
+        if (pattern == nullptr || !is_valid(type)) {
+            return std::nullopt;
+        }
+        if (this->analyzer_.checked_.types.is_bool(type) && pattern->kind == syntax::PatternKind::literal) {
+            if (pattern->case_name == SEMA_MATCH_BOOL_TRUE_NAME) {
+                return MatrixConstructor {MatrixConstructor::Kind::bool_true, {}, nullptr};
+            }
+            if (pattern->case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
+                return MatrixConstructor {MatrixConstructor::Kind::bool_false, {}, nullptr};
+            }
+            return std::nullopt;
+        }
+
+        const TypeInfo& info = this->analyzer_.checked_.types.get(type);
+        if (info.kind == TypeKind::tuple && pattern->kind == syntax::PatternKind::tuple) {
+            return MatrixConstructor {MatrixConstructor::Kind::tuple, info.tuple_elements, nullptr};
+        }
+        if (info.kind == TypeKind::struct_ && pattern->kind == syntax::PatternKind::struct_) {
+            const StructInfo* struct_info = this->analyzer_.find_struct(type);
+            if (struct_info == nullptr) {
+                return std::nullopt;
+            }
+            MatrixConstructor constructor;
+            constructor.kind = MatrixConstructor::Kind::struct_;
+            constructor.fields.reserve(struct_info->fields.size());
+            for (const StructFieldInfo& field : struct_info->fields) {
+                constructor.fields.push_back(field.type);
+            }
+            return constructor;
+        }
+        if (info.kind == TypeKind::array && pattern->kind == syntax::PatternKind::slice &&
+            info.array_count <= SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS) {
+            MatrixConstructor constructor;
+            constructor.kind = MatrixConstructor::Kind::array;
+            constructor.fields.assign(static_cast<base::usize>(info.array_count), info.array_element);
+            return constructor;
+        }
+        if (info.kind == TypeKind::enum_ && pattern->kind == syntax::PatternKind::enum_case) {
+            const EnumCaseInfo* case_info = this->analyzer_.find_enum_case_by_type_and_case(
+                type,
+                pattern->case_name_id,
+                pattern->case_name
+            );
+            if (case_info == nullptr) {
+                return std::nullopt;
+            }
+            MatrixConstructor constructor;
+            constructor.kind = MatrixConstructor::Kind::enum_case;
+            constructor.fields = case_info->payload_types;
+            constructor.enum_case = case_info;
+            return constructor;
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<MatrixRow> specialize_slot(
+        const MatrixSlot& slot,
+        const MatrixConstructor& constructor,
+        const TypeHandle type
+    ) const {
+        if (this->slot_is_any(slot)) {
+            return MatchUsefulnessChecker::wildcard_row(constructor.fields.size());
+        }
+        const syntax::PatternNode* pattern = this->slot_node(slot);
+        if (pattern == nullptr) {
+            return std::nullopt;
+        }
+        const std::optional<MatrixConstructor> slot_constructor = this->pattern_constructor(slot, type);
+        if (!slot_constructor.has_value() ||
+            !MatchUsefulnessChecker::same_constructor(*slot_constructor, constructor)) {
+            return std::nullopt;
+        }
+
+        switch (constructor.kind) {
+        case MatrixConstructor::Kind::bool_true:
+        case MatrixConstructor::Kind::bool_false:
+            return MatrixRow {};
+        case MatrixConstructor::Kind::tuple:
+            return this->specialize_tuple_pattern(*pattern, constructor);
+        case MatrixConstructor::Kind::struct_:
+            return this->specialize_struct_pattern(*pattern, type);
+        case MatrixConstructor::Kind::array:
+            return this->specialize_array_pattern(*pattern, constructor);
+        case MatrixConstructor::Kind::enum_case:
+            return this->specialize_enum_case_pattern(*pattern, constructor);
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<MatrixRow> specialize_tuple_pattern(
+        const syntax::PatternNode& pattern,
+        const MatrixConstructor& constructor
+    ) const {
+        if (pattern.kind != syntax::PatternKind::tuple ||
+            pattern.elements.size() != constructor.fields.size()) {
+            return std::nullopt;
+        }
+        MatrixRow row;
+        row.reserve(pattern.elements.size());
+        for (const syntax::PatternId element : pattern.elements) {
+            row.push_back(MatchUsefulnessChecker::pattern_slot(element));
+        }
+        return row;
+    }
+
+    [[nodiscard]] std::optional<MatrixRow> specialize_struct_pattern(
+        const syntax::PatternNode& pattern,
+        const TypeHandle type
+    ) const {
+        const StructInfo* struct_info = this->analyzer_.find_struct(type);
+        if (struct_info == nullptr) {
+            return std::nullopt;
+        }
+        std::unordered_map<std::string_view, syntax::PatternId> field_patterns;
+        field_patterns.reserve(pattern.field_patterns.size());
+        for (const syntax::FieldPattern& field : pattern.field_patterns) {
+            field_patterns.emplace(field.name, field.pattern);
+        }
+        MatrixRow row;
+        row.reserve(struct_info->fields.size());
+        for (const StructFieldInfo& field : struct_info->fields) {
+            if (const auto found = field_patterns.find(field.name); found != field_patterns.end()) {
+                row.push_back(MatchUsefulnessChecker::pattern_slot(found->second));
+            } else {
+                row.push_back(MatchUsefulnessChecker::wildcard_slot());
+            }
+        }
+        return row;
+    }
+
+    [[nodiscard]] std::optional<MatrixRow> specialize_array_pattern(
+        const syntax::PatternNode& pattern,
+        const MatrixConstructor& constructor
+    ) const {
+        if (pattern.kind != syntax::PatternKind::slice) {
+            return std::nullopt;
+        }
+        const base::usize array_count = constructor.fields.size();
+        if (!pattern.has_slice_rest && pattern.elements.size() != array_count) {
+            return std::nullopt;
+        }
+        if (pattern.has_slice_rest && pattern.elements.size() > array_count) {
+            return std::nullopt;
+        }
+        if (!pattern.has_slice_rest) {
+            MatrixRow row;
+            row.reserve(pattern.elements.size());
+            for (const syntax::PatternId element : pattern.elements) {
+                row.push_back(MatchUsefulnessChecker::pattern_slot(element));
+            }
+            return row;
+        }
+
+        const base::usize prefix_count = std::min(pattern.slice_rest_index, pattern.elements.size());
+        const base::usize suffix_count = pattern.elements.size() - prefix_count;
+        MatrixRow row;
+        row.reserve(array_count);
+        for (base::usize i = 0; i < array_count; ++i) {
+            if (i < prefix_count) {
+                row.push_back(MatchUsefulnessChecker::pattern_slot(pattern.elements[i]));
+            } else if (i >= array_count - suffix_count) {
+                const base::usize suffix_index = prefix_count + (i - (array_count - suffix_count));
+                row.push_back(MatchUsefulnessChecker::pattern_slot(pattern.elements[suffix_index]));
+            } else {
+                row.push_back(MatchUsefulnessChecker::wildcard_slot());
+            }
+        }
+        return row;
+    }
+
+    [[nodiscard]] std::optional<MatrixRow> specialize_enum_case_pattern(
+        const syntax::PatternNode& pattern,
+        const MatrixConstructor& constructor
+    ) const {
+        if (pattern.kind != syntax::PatternKind::enum_case) {
+            return std::nullopt;
+        }
+        if (pattern.payload_patterns.empty()) {
+            return MatchUsefulnessChecker::wildcard_row(constructor.fields.size());
+        }
+        if (pattern.payload_patterns.size() != constructor.fields.size()) {
+            return std::nullopt;
+        }
+        MatrixRow row;
+        row.reserve(pattern.payload_patterns.size());
+        for (const syntax::PatternId payload : pattern.payload_patterns) {
+            row.push_back(MatchUsefulnessChecker::pattern_slot(payload));
+        }
+        return row;
+    }
+
+    [[nodiscard]] std::vector<MatrixRow> expand_or_rows(MatrixRow row) const {
+        std::vector<MatrixRow> expanded;
+        std::vector<MatrixRow> pending;
+        pending.push_back(std::move(row));
+        while (!pending.empty()) {
+            MatrixRow current = std::move(pending.back());
+            pending.pop_back();
+            bool split = false;
+            for (base::usize slot_index = 0; slot_index < current.size(); ++slot_index) {
+                const syntax::PatternNode* pattern = this->slot_node(current[slot_index]);
+                if (pattern == nullptr || pattern->kind != syntax::PatternKind::or_pattern) {
+                    continue;
+                }
+                for (const syntax::PatternId alternative : pattern->alternatives) {
+                    MatrixRow alternative_row = current;
+                    alternative_row[slot_index] = MatchUsefulnessChecker::pattern_slot(alternative);
+                    pending.push_back(std::move(alternative_row));
+                }
+                split = true;
+                break;
+            }
+            if (split) {
+                continue;
+            }
+            expanded.push_back(std::move(current));
+        }
+        return expanded;
+    }
+
+    [[nodiscard]] PatternMatrix expand_or_matrix(const PatternMatrix& matrix) const {
+        PatternMatrix expanded;
+        for (const MatrixRow& row : matrix) {
+            std::vector<MatrixRow> rows = this->expand_or_rows(row);
+            expanded.insert(
+                expanded.end(),
+                std::make_move_iterator(rows.begin()),
+                std::make_move_iterator(rows.end())
+            );
+        }
+        return expanded;
+    }
+
+    [[nodiscard]] bool row_is_irrefutable_for_types(
+        const MatrixRow& row,
+        const std::vector<TypeHandle>& types
+    ) const {
+        if (row.size() != types.size()) {
+            return false;
+        }
+        for (base::usize i = 0; i < row.size(); ++i) {
+            if (this->slot_is_any(row[i])) {
+                continue;
+            }
+            if (!this->analyzer_.pattern_is_irrefutable(row[i].pattern, types[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool matrix_has_irrefutable_row(
+        const PatternMatrix& matrix,
+        const std::vector<TypeHandle>& types
+    ) const {
+        for (const MatrixRow& row : matrix) {
+            if (this->row_is_irrefutable_for_types(row, types)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] PatternMatrix specialize_matrix(
+        const PatternMatrix& matrix,
+        const MatrixConstructor& constructor,
+        const TypeHandle type
+    ) const {
+        PatternMatrix specialized;
+        for (const MatrixRow& row : matrix) {
+            if (row.empty()) {
+                continue;
+            }
+            std::optional<MatrixRow> prefix = this->specialize_slot(row.front(), constructor, type);
+            if (!prefix.has_value()) {
+                continue;
+            }
+            std::vector<MatrixRow> expanded_rows = this->expand_or_rows(
+                MatchUsefulnessChecker::append_row(std::move(*prefix), MatchUsefulnessChecker::tail_row(row))
+            );
+            specialized.insert(
+                specialized.end(),
+                std::make_move_iterator(expanded_rows.begin()),
+                std::make_move_iterator(expanded_rows.end())
+            );
+        }
+        return specialized;
+    }
+
+    [[nodiscard]] PatternMatrix default_matrix(const PatternMatrix& matrix) const {
+        PatternMatrix result_matrix;
+        for (const MatrixRow& row : matrix) {
+            if (row.empty() || !this->slot_is_any(row.front())) {
+                continue;
+            }
+            result_matrix.push_back(MatchUsefulnessChecker::tail_row(row));
+        }
+        return result_matrix;
+    }
+
+    [[nodiscard]] bool first_column_covers_constructor(
+        const PatternMatrix& matrix,
+        const MatrixConstructor& constructor,
+        const TypeHandle type
+    ) const {
+        for (const MatrixRow& row : matrix) {
+            if (row.empty()) {
+                continue;
+            }
+            if (this->slot_is_any(row.front())) {
+                return true;
+            }
+            const std::optional<MatrixConstructor> row_constructor = this->pattern_constructor(row.front(), type);
+            if (row_constructor.has_value() &&
+                MatchUsefulnessChecker::same_constructor(*row_constructor, constructor)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] bool matrix_row_is_useful(
+        const PatternMatrix& initial_matrix,
+        const MatrixRow& initial_row,
+        std::vector<TypeHandle> initial_types
+    ) const {
+        std::vector<UsefulnessState> pending;
+        pending.push_back(UsefulnessState {
+            this->expand_or_matrix(initial_matrix),
+            initial_row,
+            std::move(initial_types),
+        });
+        while (!pending.empty()) {
+            UsefulnessState state = std::move(pending.back());
+            pending.pop_back();
+
+            std::vector<MatrixRow> expanded_rows = this->expand_or_rows(std::move(state.row));
+            if (expanded_rows.size() > 1) {
+                for (MatrixRow& row : expanded_rows) {
+                    pending.push_back(UsefulnessState {state.matrix, std::move(row), state.types});
+                }
+                continue;
+            }
+            state.row = expanded_rows.empty() ? MatrixRow {} : std::move(expanded_rows.front());
+
+            if (state.row.empty() || state.types.empty()) {
+                if (state.matrix.empty()) {
+                    return true;
+                }
+                continue;
+            }
+            if (this->matrix_has_irrefutable_row(state.matrix, state.types)) {
+                continue;
+            }
+
+            const TypeHandle column_type = state.types.front();
+            const MatrixSlot column_pattern = state.row.front();
+            if (std::optional<MatrixConstructor> constructor = this->pattern_constructor(column_pattern, column_type);
+                constructor.has_value()) {
+                std::optional<MatrixRow> specialized_row =
+                    this->specialize_slot(column_pattern, *constructor, column_type);
+                if (!specialized_row.has_value()) {
+                    continue;
+                }
+                pending.push_back(UsefulnessState {
+                    this->specialize_matrix(state.matrix, *constructor, column_type),
+                    MatchUsefulnessChecker::append_row(
+                        std::move(*specialized_row),
+                        MatchUsefulnessChecker::tail_row(state.row)
+                    ),
+                    MatchUsefulnessChecker::append_types(
+                        constructor->fields,
+                        MatchUsefulnessChecker::tail_types(state.types)
+                    ),
+                });
+                continue;
+            }
+
+            const std::vector<MatrixConstructor> constructors = this->constructors_for_type(column_type);
+            if (!constructors.empty()) {
+                bool missing_constructor = false;
+                for (const MatrixConstructor& constructor : constructors) {
+                    if (!this->first_column_covers_constructor(state.matrix, constructor, column_type)) {
+                        missing_constructor = true;
+                        break;
+                    }
+                }
+                if (missing_constructor) {
+                    return true;
+                }
+                for (auto constructor = constructors.rbegin(); constructor != constructors.rend(); ++constructor) {
+                    pending.push_back(UsefulnessState {
+                        this->specialize_matrix(state.matrix, *constructor, column_type),
+                        MatchUsefulnessChecker::append_row(
+                            MatchUsefulnessChecker::wildcard_row(constructor->fields.size()),
+                            MatchUsefulnessChecker::tail_row(state.row)
+                        ),
+                        MatchUsefulnessChecker::append_types(
+                            constructor->fields,
+                            MatchUsefulnessChecker::tail_types(state.types)
+                        ),
+                    });
+                }
+                continue;
+            }
+
+            pending.push_back(UsefulnessState {
+                this->default_matrix(state.matrix),
+                MatchUsefulnessChecker::tail_row(state.row),
+                MatchUsefulnessChecker::tail_types(state.types),
+            });
+        }
+        return false;
+    }
+
+    [[nodiscard]] bool row_is_useful(const MatrixRow& row) const {
+        return this->matrix_row_is_useful(
+            this->coverage_matrix_,
+            row,
+            std::vector<TypeHandle> {this->matched_}
+        );
+    }
+
+    [[nodiscard]] bool enum_case_has_missing_witness(const MatrixConstructor& constructor) const {
+        return this->matrix_row_is_useful(
+            this->specialize_matrix(this->coverage_matrix_, constructor, this->matched_),
+            MatchUsefulnessChecker::wildcard_row(constructor.fields.size()),
+            constructor.fields
+        );
+    }
+
+    [[nodiscard]] bool enum_case_payloads_cover_case(const syntax::PatternNode& enum_pattern) const {
+        if (enum_pattern.payload_patterns.empty()) {
+            return true;
+        }
+        const EnumCaseInfo* case_info = this->analyzer_.find_enum_case_by_type_and_case(
+            this->matched_,
+            enum_pattern.case_name_id,
+            enum_pattern.case_name
+        );
+        if (case_info == nullptr || case_info->payload_types.size() != enum_pattern.payload_patterns.size()) {
+            return false;
+        }
+        for (base::usize i = 0; i < enum_pattern.payload_patterns.size(); ++i) {
+            if (!this->analyzer_.pattern_is_irrefutable(enum_pattern.payload_patterns[i], case_info->payload_types[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void record_enum_case_coverage(const syntax::PatternId root) {
+        std::vector<syntax::PatternId> pending;
+        pending.push_back(root);
+        while (!pending.empty()) {
+            const syntax::PatternId current = pending.back();
+            pending.pop_back();
+            const syntax::PatternNode* current_pattern = pattern_node(this->analyzer_.module_, current);
+            if (current_pattern == nullptr) {
+                continue;
+            }
+            if (current_pattern->kind == syntax::PatternKind::or_pattern) {
+                for (const syntax::PatternId alternative : current_pattern->alternatives) {
+                    pending.push_back(alternative);
+                }
+                continue;
+            }
+            if (!this->enum_match_ ||
+                current_pattern->kind != syntax::PatternKind::enum_case ||
+                !this->enum_case_payloads_cover_case(*current_pattern)) {
+                continue;
+            }
+            const std::string_view pattern_name = this->analyzer_.cached_pattern_c_name(current);
+            if (pattern_name.empty()) {
+                continue;
+            }
+            if (std::find(this->covered_enum_cases_.begin(), this->covered_enum_cases_.end(), pattern_name) !=
+                this->covered_enum_cases_.end()) {
+                this->analyzer_.report(
+                    current_pattern->range,
+                    sema_duplicate_match_enum_case_message(current_pattern->case_name)
+                );
+            } else {
+                this->covered_enum_cases_.emplace_back(pattern_name);
+            }
+        }
+    }
+
+    SemanticAnalyzer& analyzer_;
+    TypeHandle matched_ = INVALID_TYPE_HANDLE;
+    bool enum_match_ = false;
+    std::vector<std::string> covered_enum_cases_;
+    PatternMatrix coverage_matrix_;
+};
+
 TypeHandle SemanticAnalyzer::analyze_match_expr(
     const syntax::ExprId expr_id,
     const SemanticAnalyzer::ExprView& expr,
@@ -524,7 +1252,6 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
-    std::vector<std::string> covered;
     TypeHandle result = INVALID_TYPE_HANDLE;
     std::vector<base::SourceRange> pending_null_arm_ranges;
     const auto resolve_pending_null_arms = [&]() {
@@ -538,399 +1265,13 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
         pending_null_arm_ranges.clear();
     };
-    bool saw_wildcard = false;
-    bool covered_true = false;
-    bool covered_false = false;
-    bool saw_irrefutable = false;
-    const auto enum_case_payloads_cover_case = [&](const syntax::PatternNode& enum_pattern) {
-        if (enum_pattern.payload_patterns.empty()) {
-            return true;
-        }
-        const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(
-            matched,
-            enum_pattern.case_name_id,
-            enum_pattern.case_name
-        );
-        if (case_info == nullptr || case_info->payload_types.size() != enum_pattern.payload_patterns.size()) {
-            return false;
-        }
-        bool payloads_cover_case = true;
-        for (base::usize i = 0; i < enum_pattern.payload_patterns.size(); ++i) {
-            payloads_cover_case = payloads_cover_case &&
-                this->pattern_is_irrefutable(enum_pattern.payload_patterns[i], case_info->payload_types[i]);
-        }
-        return payloads_cover_case;
-    };
-
-    const auto leaf_domain = [&](const TypeHandle type) {
-        std::vector<std::string> domain;
-        if (!is_valid(type)) {
-            return domain;
-        }
-        if (this->checked_.types.is_bool(type)) {
-            domain.emplace_back(SEMA_MATCH_BOOL_TRUE_NAME);
-            domain.emplace_back(SEMA_MATCH_BOOL_FALSE_NAME);
-            return domain;
-        }
-        if (this->checked_.types.get(type).kind == TypeKind::enum_) {
-            const std::vector<const EnumCaseInfo*>* cases = this->find_enum_cases_by_type(type);
-            if (cases == nullptr || cases->empty()) {
-                return std::vector<std::string> {};
-            }
-            domain.reserve(cases->size());
-            for (const EnumCaseInfo* case_info : *cases) {
-                if (case_info == nullptr || !case_info->payload_types.empty()) {
-                    return std::vector<std::string> {};
-                }
-                domain.push_back(case_info->c_name);
-            }
-        }
-        return domain;
-    };
-
-    const auto combination_count_exceeds_limit = [](const std::vector<std::vector<std::string>>& option_sets) {
-        base::usize combinations = 1;
-        for (const std::vector<std::string>& options : option_sets) {
-            if (options.empty()) {
-                return false;
-            }
-            if (combinations > SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT / options.size()) {
-                return true;
-            }
-            combinations *= options.size();
-        }
-        return combinations > SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT;
-    };
-
-    bool structural_exhaustiveness_limited = false;
-    const auto combine_option_sets = [&](const std::vector<std::vector<std::string>>& option_sets) {
-        std::vector<std::string> combinations;
-        combinations.emplace_back();
-        for (const std::vector<std::string>& options : option_sets) {
-            if (options.empty()) {
-                return std::vector<std::string> {};
-            }
-            if (combinations.size() > SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT / options.size()) {
-                structural_exhaustiveness_limited = true;
-                return std::vector<std::string> {};
-            }
-            std::vector<std::string> next;
-            next.reserve(combinations.size() * options.size());
-            for (const std::string& prefix : combinations) {
-                for (const std::string& option : options) {
-                    std::string value = prefix;
-                    if (!value.empty()) {
-                        value.push_back('|');
-                    }
-                    value += option;
-                    next.push_back(std::move(value));
-                }
-            }
-            combinations = std::move(next);
-        }
-        return combinations;
-    };
-
-    struct StructuralSlot {
-        std::string name;
-        TypeHandle type = INVALID_TYPE_HANDLE;
-    };
-
-    const auto structural_slots = [&](const TypeHandle type) {
-        std::vector<StructuralSlot> slots;
-        if (!is_valid(type)) {
-            return slots;
-        }
-        if (!leaf_domain(type).empty()) {
-            slots.push_back(StructuralSlot {{}, type});
-            return slots;
-        }
-        const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::tuple) {
-            slots.reserve(info.tuple_elements.size());
-            for (base::usize i = 0; i < info.tuple_elements.size(); ++i) {
-                if (leaf_domain(info.tuple_elements[i]).empty()) {
-                    return std::vector<StructuralSlot> {};
-                }
-                slots.push_back(StructuralSlot {std::to_string(i), info.tuple_elements[i]});
-            }
-            return slots;
-        }
-        if (info.kind == TypeKind::struct_) {
-            const StructInfo* struct_info = this->find_struct(type);
-            if (struct_info == nullptr) {
-                return slots;
-            }
-            slots.reserve(struct_info->fields.size());
-            for (const StructFieldInfo& field : struct_info->fields) {
-                if (leaf_domain(field.type).empty()) {
-                    return std::vector<StructuralSlot> {};
-                }
-                slots.push_back(StructuralSlot {field.name, field.type});
-            }
-            return slots;
-        }
-        if (info.kind == TypeKind::array &&
-            info.array_count <= SEMA_MATCH_STRUCTURAL_ARRAY_MAX_ELEMENTS &&
-            !leaf_domain(info.array_element).empty()) {
-            slots.reserve(static_cast<base::usize>(info.array_count));
-            for (base::u64 i = 0; i < info.array_count; ++i) {
-                slots.push_back(StructuralSlot {std::to_string(i), info.array_element});
-            }
-        }
-        return slots;
-    };
-
-    const auto total_structural_cases = [&]() {
-        const std::vector<StructuralSlot> slots = structural_slots(matched);
-        std::vector<std::vector<std::string>> option_sets;
-        option_sets.reserve(slots.size());
-        for (const StructuralSlot& slot : slots) {
-            option_sets.push_back(leaf_domain(slot.type));
-        }
-        if (combination_count_exceeds_limit(option_sets)) {
-            structural_exhaustiveness_limited = true;
-            return std::vector<std::string> {};
-        }
-        return combine_option_sets(option_sets);
-    };
-
-    const auto append_unique_option = [](
-        std::vector<std::string>& options,
-        std::unordered_set<std::string>& seen,
-        std::string option
-    ) {
-        if (seen.insert(option).second) {
-            options.push_back(std::move(option));
-        }
-    };
-
-    const auto append_unique_options = [&append_unique_option](
-        std::vector<std::string>& options,
-        std::unordered_set<std::string>& seen,
-        std::vector<std::string> values
-    ) {
-        for (std::string& value : values) {
-            append_unique_option(options, seen, std::move(value));
-        }
-    };
-
-    const auto non_or_leaf_pattern_options = [&](const syntax::PatternNode& leaf_pattern, const TypeHandle leaf_type) {
-        if (leaf_pattern.kind == syntax::PatternKind::wildcard ||
-            leaf_pattern.kind == syntax::PatternKind::binding) {
-            return leaf_domain(leaf_type);
-        }
-        if (leaf_pattern.kind == syntax::PatternKind::const_) {
-            return std::vector<std::string> {};
-        }
-        if (this->checked_.types.is_bool(leaf_type) && leaf_pattern.kind == syntax::PatternKind::literal) {
-            if (leaf_pattern.case_name == SEMA_MATCH_BOOL_TRUE_NAME ||
-                leaf_pattern.case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
-                return std::vector<std::string> {std::string(leaf_pattern.case_name)};
-            }
-            return std::vector<std::string> {};
-        }
-        if (is_valid(leaf_type) &&
-            this->checked_.types.get(leaf_type).kind == TypeKind::enum_ &&
-            leaf_pattern.kind == syntax::PatternKind::enum_case &&
-            enum_case_payloads_cover_case(leaf_pattern)) {
-            const EnumCaseInfo* case_info = this->find_enum_case_by_type_and_case(
-                leaf_type,
-                leaf_pattern.case_name_id,
-                leaf_pattern.case_name
-            );
-            if (case_info != nullptr && case_info->payload_types.empty()) {
-                return std::vector<std::string> {case_info->c_name};
-            }
-        }
-        return std::vector<std::string> {};
-    };
-
-    const auto non_or_structural_pattern_cases = [&](const syntax::PatternNode& root_pattern) {
-        const std::vector<StructuralSlot> slots = structural_slots(matched);
-        if (slots.empty()) {
-            return std::vector<std::string> {};
-        }
-        if (root_pattern.kind == syntax::PatternKind::wildcard ||
-            root_pattern.kind == syntax::PatternKind::binding) {
-            return total_structural_cases();
-        }
-        if (slots.size() == 1 &&
-            !array_match &&
-            !this->checked_.types.is_tuple(matched) &&
-            this->find_struct(matched) == nullptr) {
-            return non_or_leaf_pattern_options(root_pattern, matched);
-        }
-        std::vector<std::vector<std::string>> option_sets;
-        option_sets.reserve(slots.size());
-        if (root_pattern.kind == syntax::PatternKind::tuple && this->checked_.types.is_tuple(matched)) {
-            if (root_pattern.elements.size() != slots.size()) {
-                return std::vector<std::string> {};
-            }
-            const TypeInfo& tuple = this->checked_.types.get(matched);
-            for (base::usize i = 0; i < root_pattern.elements.size(); ++i) {
-                const syntax::PatternNode* element_pattern = pattern_node(this->module_, root_pattern.elements[i]);
-                if (element_pattern == nullptr) {
-                    return std::vector<std::string> {};
-                }
-                option_sets.push_back(non_or_leaf_pattern_options(*element_pattern, tuple.tuple_elements[i]));
-            }
-            return combine_option_sets(option_sets);
-        }
-        if (root_pattern.kind == syntax::PatternKind::struct_ && this->find_struct(matched) != nullptr) {
-            std::unordered_map<std::string_view, syntax::PatternId> field_patterns;
-            for (const syntax::FieldPattern& field : root_pattern.field_patterns) {
-                field_patterns.emplace(field.name, field.pattern);
-            }
-            for (const StructuralSlot& slot : slots) {
-                const auto found = field_patterns.find(slot.name);
-                if (found == field_patterns.end()) {
-                    option_sets.push_back(leaf_domain(slot.type));
-                    continue;
-                }
-                const syntax::PatternNode* field_pattern = pattern_node(this->module_, found->second);
-                if (field_pattern == nullptr) {
-                    return std::vector<std::string> {};
-                }
-                option_sets.push_back(non_or_leaf_pattern_options(*field_pattern, slot.type));
-            }
-            return combine_option_sets(option_sets);
-        }
-        if (root_pattern.kind == syntax::PatternKind::slice && array_match && !root_pattern.has_slice_rest) {
-            if (root_pattern.elements.size() != slots.size()) {
-                return std::vector<std::string> {};
-            }
-            const TypeInfo& array = this->checked_.types.get(matched);
-            for (const syntax::PatternId element : root_pattern.elements) {
-                const syntax::PatternNode* element_pattern = pattern_node(this->module_, element);
-                if (element_pattern == nullptr) {
-                    return std::vector<std::string> {};
-                }
-                option_sets.push_back(non_or_leaf_pattern_options(*element_pattern, array.array_element));
-            }
-            return combine_option_sets(option_sets);
-        }
-        return std::vector<std::string> {};
-    };
-
-    const auto structural_pattern_cases = [&](const syntax::PatternNode& root_pattern) {
-        if (root_pattern.kind != syntax::PatternKind::or_pattern) {
-            return non_or_structural_pattern_cases(root_pattern);
-        }
-
-        std::vector<std::string> cases;
-        std::unordered_set<std::string> seen;
-        std::vector<const syntax::PatternNode*> pending;
-        pending.push_back(&root_pattern);
-        while (!pending.empty()) {
-            const syntax::PatternNode* pattern = pending.back();
-            pending.pop_back();
-            if (pattern == nullptr) {
-                continue;
-            }
-            if (pattern->kind == syntax::PatternKind::or_pattern) {
-                for (const syntax::PatternId alternative : pattern->alternatives) {
-                    pending.push_back(pattern_node(this->module_, alternative));
-                }
-                continue;
-            }
-            append_unique_options(cases, seen, non_or_structural_pattern_cases(*pattern));
-        }
-        return cases;
-    };
-
-    const std::vector<std::string> structural_total = total_structural_cases();
-    std::unordered_set<std::string> structural_covered;
+    MatchUsefulnessChecker usefulness(*this, matched, enum_match);
     for (const syntax::MatchArm& arm : expr.match_arms) {
         const bool guarded = syntax::is_valid(arm.guard);
-        const syntax::PatternNode* pattern = this->module_.patterns.ptr(arm.pattern.value);
-        if (!guarded && (saw_wildcard || saw_irrefutable) && pattern != nullptr) {
-            this->report(pattern->range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
-        }
         std::vector<PatternBinding> bindings;
-        const bool irrefutable = this->analyze_pattern(arm.pattern, matched, bindings);
-        if (!guarded && irrefutable) {
-            saw_irrefutable = true;
-        }
-        if (!guarded && pattern != nullptr && !structural_total.empty()) {
-            const std::vector<std::string> arm_cases = structural_pattern_cases(*pattern);
-            if (!arm_cases.empty()) {
-                bool already_covered = true;
-                for (const std::string& arm_case : arm_cases) {
-                    if (!structural_covered.contains(arm_case)) {
-                        already_covered = false;
-                        break;
-                    }
-                }
-                if (already_covered) {
-                    this->report(pattern->range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
-                }
-                for (const std::string& arm_case : arm_cases) {
-                    structural_covered.insert(arm_case);
-                }
-            }
-        }
-        if (!guarded && pattern != nullptr) {
-            if (pattern->kind == syntax::PatternKind::wildcard ||
-                pattern->kind == syntax::PatternKind::binding) {
-                saw_wildcard = true;
-            } else if (enum_match && pattern->kind == syntax::PatternKind::enum_case) {
-                if (enum_case_payloads_cover_case(*pattern)) {
-                    const std::string_view pattern_name = this->cached_pattern_c_name(arm.pattern);
-                    if (!pattern_name.empty()) {
-                        if (std::find(covered.begin(), covered.end(), pattern_name) != covered.end()) {
-                            this->report(pattern->range, sema_duplicate_match_enum_case_message(pattern->case_name));
-                        } else {
-                            covered.emplace_back(pattern_name);
-                        }
-                    }
-                }
-            } else if (literal_match && pattern->kind == syntax::PatternKind::literal) {
-                if (this->checked_.types.is_bool(matched)) {
-                    if (pattern->case_name == SEMA_MATCH_BOOL_TRUE_NAME) {
-                        covered_true = true;
-                    } else if (pattern->case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
-                        covered_false = true;
-                    }
-                }
-            } else if (pattern->kind == syntax::PatternKind::or_pattern) {
-                std::vector<syntax::PatternId> alternatives = pattern->alternatives;
-                while (!alternatives.empty()) {
-                    const syntax::PatternId alternative = alternatives.back();
-                    alternatives.pop_back();
-                    const syntax::PatternNode* alternative_pattern = pattern_node(this->module_, alternative);
-                    if (alternative_pattern == nullptr) {
-                        continue;
-                    }
-                    if (alternative_pattern->kind == syntax::PatternKind::or_pattern) {
-                        for (const syntax::PatternId nested : alternative_pattern->alternatives) {
-                            alternatives.push_back(nested);
-                        }
-                        continue;
-                    }
-                    if (alternative_pattern->kind == syntax::PatternKind::wildcard ||
-                        alternative_pattern->kind == syntax::PatternKind::binding) {
-                        saw_wildcard = true;
-                        continue;
-                    }
-                    if (enum_match &&
-                        alternative_pattern->kind == syntax::PatternKind::enum_case &&
-                        enum_case_payloads_cover_case(*alternative_pattern)) {
-                        const std::string_view pattern_name = this->cached_pattern_c_name(alternative);
-                        if (pattern_name.empty()) {
-                            continue;
-                        }
-                        if (std::find(covered.begin(), covered.end(), pattern_name) != covered.end()) {
-                            this->report(
-                                alternative_pattern->range,
-                                sema_duplicate_match_enum_case_message(alternative_pattern->case_name)
-                            );
-                        } else {
-                            covered.emplace_back(pattern_name);
-                        }
-                    }
-                }
-            }
+        static_cast<void>(this->analyze_pattern(arm.pattern, matched, bindings));
+        if (!guarded) {
+            usefulness.add_unguarded_arm(arm.pattern);
         }
         const auto analyze_guard_and_arm_value = [&]() {
             if (guarded) {
@@ -967,36 +1308,23 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
         }
     }
 
-    if (enum_match) {
-        const auto check_case = [&](const EnumCaseInfo& case_info) {
-            if (!saw_wildcard && std::find(covered.begin(), covered.end(), case_info.c_name) == covered.end()) {
+    if (usefulness.has_missing_witness()) {
+        if (enum_match) {
+            if (const EnumCaseInfo* missing_case = usefulness.missing_enum_case(); missing_case != nullptr) {
                 this->report(
                     expr.range,
-                    sema_match_missing_enum_case_message(enum_case_display_name(this->checked_.types, case_info))
+                    sema_match_missing_enum_case_message(
+                        enum_case_display_name(this->checked_.types, *missing_case)
+                    )
                 );
+            } else {
+                this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
             }
-        };
-        if (const std::vector<const EnumCaseInfo*>* cases = this->find_enum_cases_by_type(matched); cases != nullptr) {
-            for (const EnumCaseInfo* case_info : *cases) {
-                check_case(*case_info);
-            }
-        } else {
-            for (const auto& entry : this->checked_.enum_cases) {
-                const EnumCaseInfo& case_info = entry.second;
-                if (this->checked_.types.same(case_info.type, matched)) {
-                    check_case(case_info);
-                }
-            }
+        } else if (literal_match) {
+            this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
+        } else if (tuple_match || struct_match || array_match || slice_match) {
+            this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
         }
-    } else if (literal_match && !saw_wildcard && !saw_irrefutable && (!this->checked_.types.is_bool(matched) || !covered_true || !covered_false)) {
-        this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
-    } else if (structural_exhaustiveness_limited) {
-        this->report(expr.range, std::string(SEMA_MATCH_EXHAUSTIVENESS_LIMIT));
-    } else if ((tuple_match || struct_match || array_match || slice_match) &&
-               !saw_irrefutable &&
-               !saw_wildcard &&
-               (structural_total.empty() || structural_covered.size() != structural_total.size())) {
-        this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
     }
     if (is_valid(result) && this->checked_.types.is_void(result)) {
         this->report(expr.range, std::string(SEMA_MATCH_RESULT_VOID));

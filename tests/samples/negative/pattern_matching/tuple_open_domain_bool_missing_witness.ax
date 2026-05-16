@@ -1,0 +1,11 @@
+module tuple_open_domain_bool_missing_witness;
+
+fn score(value: (i32, bool)) -> i32 {
+    return match value {
+        (_, true) => 1,
+    };
+}
+
+fn main() -> i32 {
+    return score((7, true));
+}

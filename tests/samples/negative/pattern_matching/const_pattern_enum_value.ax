@@ -1,0 +1,15 @@
+module const_pattern_enum_value;
+
+enum Choice {
+    one,
+    two,
+}
+
+const OK: i32 = 0;
+
+fn main() -> i32 {
+    return match Choice.one {
+        const OK => 1,
+        _ => 0,
+    };
+}

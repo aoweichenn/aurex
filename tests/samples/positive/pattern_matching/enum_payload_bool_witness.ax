@@ -1,0 +1,18 @@
+module enum_payload_bool_witness;
+
+enum MaybeBool {
+    some(bool),
+    none,
+}
+
+fn score(value: MaybeBool) -> i32 {
+    return match value {
+        .some(true) => 1,
+        .some(false) => 2,
+        .none => 0,
+    };
+}
+
+fn main() -> i32 {
+    return score(MaybeBool.some(true)) + score(MaybeBool.some(false)) + score(MaybeBool.none) - 3;
+}

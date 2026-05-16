@@ -106,6 +106,10 @@ per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的
 generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms。
 2000 generic instance stress 当前约 124.4 MiB RSS / 389.8 ms；剩余内存大头已不在 AST header/payload 主存储，
 而在 payload 内部小 vector 和 generic side table 生命周期。跨模块 stable hash / 并行全局 ID 和 CI perf 阈值仍是后续性能任务。
+2026-05-16 后续 match 性能/正确性线又把结构化穷尽检查从“枚举 bool / enum 叶子笛卡尔积 + 4096 组合上限”替换为
+pattern matrix / usefulness witness search：bool、enum payload、tuple、struct 和 fixed array 通过 constructor
+specialization 与 default matrix 判定覆盖和 unreachable arm，guarded arm 不计入穷尽覆盖，动态 slice/open integer domain
+继续按当前 M2 边界要求 wildcard 或 irrefutable arm。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 
@@ -137,4 +141,4 @@ M2 的核心短板集中在语言地基，不在标准库规模：
 
 M2 的正确目标是先把基础语法和核心语义做窄做稳，再谈标准库、自举和构建工具。当前编译器已经能支撑语言核心实验和 native 输出，但不应把 M1 的 std/selfhost 经验继续当作有效路线推进。
 
-下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、generic enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界、最小 safe reference、M2 pattern ergonomics、最小非资源类 `where` capability 和 `str` checked UTF-8 边界已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。结构化 match 已能证明 bool / no-payload enum 叶子组成的 tuple、struct 和小 fixed array 覆盖；更复杂的 guard、slice 和开放域 exhaustiveness 继续后置。
+下一步最重要的是继续冻结 M2 语法基线。ADT-first enum、generic enum、enum multi-payload destructuring、数组值语法、slice type/expression、tuple/destructuring、function pointer / function type、字面量体系、最小 unsafe 边界、最小 safe reference、M2 pattern ergonomics、最小非资源类 `where` capability 和 `str` checked UTF-8 边界已经落地；pattern 当前支持 tuple match pattern、slice pattern、struct pattern、nested enum payload destructuring、局部 struct/slice/enum destructuring、binding or-pattern alternatives、`let ... else`、`if value is pattern` / `while value is pattern`，以及 if 表达式 pattern condition。结构化 match 穷尽检查已使用 pattern matrix / usefulness witness search 覆盖 bool、enum payload、tuple、struct 和 fixed array，不再枚举笛卡尔积；更复杂的 guard 精确可用性、动态 slice 长度和开放域 exhaustiveness 继续后置。

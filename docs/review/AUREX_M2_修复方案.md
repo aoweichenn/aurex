@@ -28,7 +28,7 @@
 ---
 
 > **文档状态：** 持续更新中 · 随开发者修复进度同步  
-> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径；AST header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并增加 parser token-shape 预留来避免 bump vector 扩容放大 RSS。
+> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径；AST header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并增加 parser token-shape 预留来避免 bump vector 扩容放大 RSS。match exhaustiveness 已从结构化笛卡尔积枚举和 4096 组合上限替换为 pattern matrix / usefulness witness search。
 
 ---
 
@@ -223,10 +223,8 @@ for (const std::string& prefix : combinations) {
 
 **理论爆炸：** 32 个 bool 字段 → 2³² ≈ 4.3B 组合
 
-**开发者修复状态：** ❌ 错误（过渡态）— 加了硬上限 4096，但这是用截断代替正确算法。结构体字段增多时仍会跳过检查导致 false negative。  
-**问题：** 超过上限静默跳过导致 false negative  
-**正确方案：** 改用 witness search / pattern matrix，O(patterns × columns)  
-**短期止损：** 超过上限时要求 wildcard，不跳过检查
+**开发者修复状态：** ✅ 已替换为正确主线 — `src/sema/match.cpp` 使用 pattern matrix / usefulness witness search，按 constructor specialization 和 default matrix 检查 bool、enum payload、tuple、struct 和 fixed array，不再生成结构化叶子笛卡尔积字符串，也不再依赖 4096 组合上限。guarded arm 不计入穷尽覆盖；动态 slice/open integer domain 仍按 M2 边界保守处理。
+**已验证：** 13 bool 字段结构体的 partial-field 穷尽正例通过；13 bool 字段全字段少量 case 的非穷尽负例报错；enum bool payload split 正例通过，缺 payload witness 负例报错。
 
 ---
 
@@ -489,27 +487,27 @@ Aurex vs rustc:  ~1-2×（泛型场景 Aurex 更差，冷启动更好）
 
 | 问题 | 修复内容 | 状态 |
 |:-----|:---------|:----:|
-| P0-Perf-2 match 笛卡尔积 | 加 `SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096` | ⚠️ bug（见下） |
+| P0-Perf-2 match 笛卡尔积 | 早期先加 `SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096`，后续已替换为 pattern matrix / usefulness witness search | ✅ |
 | Lexer error budget | `LEXER_MAX_ERROR_DIAGNOSTICS = 128` + `scan_invalid_run()` | ✅ |
 | 数组常量越界 | 新增 `array_constant_index_out_of_bounds.ax` | ✅ |
 | Parser 嵌套深度上限 | `PARSER_MAX_EXPRESSION_NESTING_DEPTH = 512` | ✅ |
 | 泛型 side table 稀疏化 | `side_tables.sparse = true` | ⚠️ 起步 |
 | sema_record 稀疏 side table | 支持按需分配 side table slot | ✅ |
 
-### 已知问题（match 硬上限漏报）
+### 已关闭问题（match 硬上限漏报）
 
-当前 match exhaustiveness 超过 4096 时静默跳过检查，导致：
+早期 match exhaustiveness 超过 4096 时会跳过结构化组合检查。当前已删除该组合枚举路线，改用 witness search。注意：partial struct pattern 中未写出的字段本来就是 wildcard；因此下面这种写法在当前语义下应当通过：
 
 ```rust
 struct Flags13 { f0: bool; /* ... f12: bool; */ }
 match flags {
     Flags13 { f0: true } => 1,
     Flags13 { f0: false } => 0,
-    // ❌ f1~f12 没覆盖，但不报错！
+    // ✅ f1~f12 未写出，按 wildcard 处理
 };
 ```
 
-**需要修：** 超过上限时要求 wildcard，而不是跳过检查。长期改用 witness search。
+真正的非穷尽大结构负例改为只列举少数全字段组合，witness search 会构造未覆盖反例并报错；不再有 4096 组合上限诊断。
 
 ---
 
@@ -917,120 +915,80 @@ fn bad() -> i32 {
 
 ---
 
-### 🔴 问题 2.1：match exhaustiveness 硬上限 4096 漏报
+### ✅ 问题 2.1：match exhaustiveness 硬上限 4096 漏报
 
 #### 问题
 
-当前 `SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096`，超过上限时跳过检查。
+早期 `SEMA_MATCH_EXHAUSTIVENESS_COMBINATION_LIMIT = 4096` 用结构化组合枚举做穷尽检查。这个方向即使不跳过，也会在 `bool` / no-payload enum 叶子组合上指数爆炸。
 
 **代码位置：** `src/sema/match.cpp`
 
 ```cpp
-// 当前（有 bug）
-if (structural_exhaustiveness_limited) {
-    // 跳过检查，不报错 ← 导致 false negative
-    return;
-}
+// 旧路线的问题：先生成所有结构化组合，再和 arm 覆盖集合比较
+std::vector<std::string> combinations;
 ```
 
 ```rust
-// 13 bool 字段，2¹²=4096 子组合，刚好卡阈值
+// 13 bool 字段：全字段少量 case 不穷尽，但不能靠枚举 2^13 个字符串判断
+struct Flags13 { f0: bool; /* ... f12: bool; */ }
+match flags {
+    Flags13 { f0: true, f1: true, /* ... */ f12: true } => 1,
+    Flags13 { f0: false, f1: false, /* ... */ f12: false } => 0,
+    // ✅ 当前会报 non-exhaustive
+};
+```
+
+#### 已落地方案：Pattern Matrix / Usefulness Witness Search
+
+**改动文件：** `src/sema/match.cpp`（重构）
+
+**算法核心：** Pattern Matrix + Usefulness，不枚举所有组合，只判断 wildcard 向量相对已有矩阵是否仍 useful；如果 useful，说明存在 missing witness。
+
+```python
+def useful(matrix, vector, column_types):
+    if vector is empty:
+        return matrix is empty
+
+    first = vector[0]
+    if first is constructor C:
+        return useful(specialize(matrix, C), specialize(vector, C), C.fields + tail_types)
+
+    ctors = constructors(column_types[0])
+    if ctors is finite:
+        if any constructor is absent from matrix first column:
+            return True
+        return any(useful(specialize(matrix, C), wildcards(C.fields) + tail, C.fields + tail_types)
+                   for C in ctors)
+
+    return useful(default(matrix), tail(vector), tail_types)
+```
+
+**当前实现边界：**
+- bool、enum payload、tuple、struct、fixed array 使用 constructor specialization / default matrix。
+- guarded arm 不计入穷尽覆盖。
+- dynamic slice 和 open integer domain 仍要求 wildcard 或 irrefutable arm。
+- C++ 实现使用显式 worklist，避免递归遍历。
+
+**新增/更新验收：**
+```rust
+// partial struct fields are wildcard, so this is exhaustive and now passes
 struct Flags13 { f0: bool; /* ... f12: bool; */ }
 match flags {
     Flags13 { f0: true } => 1,
     Flags13 { f0: false } => 0,
-    // ❌ f1~f12 没覆盖，编译器不报错！
-};
-```
+}
 
-#### 修复方案：Witness Search / Usefulness Algorithm
+// enum payload split is exhaustive and now passes
+match value {
+    .some(true) => 1,
+    .some(false) => 2,
+    .none => 0,
+}
 
-**改动文件：** `src/sema/match.cpp`（重构）
-
-**算法核心：** Pattern Matrix + Witness Search，不枚举所有组合，只构造一个反例。
-
-```python
-def find_missing_witness(matrix, type):
-    """返回一个没有被任何 pattern 覆盖的值，或 None"""
-    if matrix 为空:
-        return Wildcard
-    
-    first_col = matrix.第一列
-    for ctor in type 的所有 constructor:
-        sub = matrix.specialize(ctor)  # 筛选匹配当前 ctor 的行
-        witness = find_missing_witness(sub)
-        if witness 存在:
-            return ctor(witness)  # 拼上当前层的 constructor
-    return None  # 全部覆盖
-```
-
-**复杂度：** O(patterns × columns)，不是 O(2ⁿ)
-
-**参考实现：**
-- OCaml `parmatch.ml`
-- Rust `compiler/rustc_mir_build/src/thir/pattern/usefulness.rs`
-
-**验收：**
-```rust
-// 13 bool 字段 → 2¹³ = 8192，但 witness search 只检查列数
-struct Flags13 { f0: bool; /* ... f12: bool; */ }
-match flags {
-    Flags13 { f0: true } => 1,   // 只看 f0 → f1~f12 没约束
-    Flags13 { f0: false } => 0,  // → 构造 missing witness 并报错
-};  // ✅ 正确报 "non-exhaustive match"
-
-// 有 wildcard 时通过
-match flags {
-    Flags13 { f0: true } => 1,
-    _ => 0,
-};  // ✅ 通过
-
-**核心算法：**
-
-```cpp
-// Pattern Matrix 表示
-struct PatternRow {
-    SmallVector<PatternId, 4> patterns;  // 每列一个 pattern
-};
-
-struct PatternMatrix {
-    SmallVector<PatternRow, 16> rows;
-    TypeHandle scrutinee_type;
-};
-
-// Constructor 集合
-struct ConstructorSet {
-    SmallVector<Constructor, 8> constructors;
-    // 对 struct：每个字段一个 constructor
-    // 对 enum：每个 case 一个 constructor
-    // 对 bool：true/false
-};
-
-// 核心：找到一个 missing witness
-// 不枚举所有组合，只构造一个反例
-std::optional<Pattern> find_missing_witness(PatternMatrix& matrix) {
-    if (matrix.rows.empty()) {
-        // 空矩阵 → 任意值都是 missing
-        return Pattern::wildcard();
-    }
-    
-    // 取第一列
-    PatternId first_col = /* 第一列所有 pattern */;
-    ConstructorSet ctors = constructors_for(matrix.scrutinee_type);
-    
-    for (auto& ctor : ctors) {
-        // 筛选匹配当前 constructor 的行
-        PatternMatrix sub = matrix.specialize(ctor);
-        // 递归检查子矩阵
-        auto witness = find_missing_witness(sub);
-        if (witness.has_value()) {
-            // 构造 witness：当前 constructor + 子 witness
-            return Pattern::constructor(ctor, witness);
-        }
-    }
-    
-    // 所有 constructor 都覆盖了
-    return std::nullopt;
+// missing payload witness is rejected
+match value {
+    .some(true) => 1,
+    .none => 0,
 }
 ```
 
@@ -1119,7 +1077,7 @@ Phase 4: 工程化测试闭环      ██████████░░░░  
 
 ```
 P0 语义缺陷:  3/3  ✅（全部修复）
-P0 性能缺陷:  4/4  ✅（当前爆点已收口，长期 pattern matrix / CI 阈值后续）
+P0 性能缺陷:  4/4  ✅（当前爆点已收口，pattern matrix 已落地；CI 阈值后续）
 P0 攻击面:    2/2  ✅（全部修复）
 P0 功能缺口:  1/1  ✅（已修复）
 P1 语义缺陷:  14/14 ❌（未开始）
@@ -1133,7 +1091,7 @@ P1 性能缺陷:  6/6  ❌（未开始）
 | raw pointer safety | `p.x`/`p[i]` 需 unsafe | ✅ 已达标 |
 | `&expr` 语义 | `&x` 只产生 reference | ✅ 已达标 |
 | 泛型 2000 实例 RSS | ~124.4 MB | ~150 MB 已达；继续向 <100 MB 收紧 |
-| match exhaustiveness | 硬上限 4096 有漏报 | witness search 不漏报 |
+| match exhaustiveness | pattern matrix / usefulness witness search | ✅ 已达标；guard/slice/open-domain 精细化后续 |
 | parser 3000 token 链 | SIGSEGV | ✅ 不崩溃 |
 | 二进制 10KB 拒绝 | 12s | ✅ <50ms |
 | 诊断质量 | 80/100 | 92/100 |
@@ -1164,8 +1122,8 @@ P1 性能缺陷:  6/6  ❌（未开始）
    待修复 ❌ return null LUB
 
 🔴 第二优先：性能修复（Phase 2）  
-   已修复 ✅ side table 稀疏化、match 超限保守诊断、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
-   待修复 ❌ pattern matrix / witness search、跨模块 stable hash / parallel global ID、CI perf 阈值
+   已修复 ✅ side table 稀疏化、pattern matrix / witness search、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
+   待修复 ❌ 跨模块 stable hash / parallel global ID、CI perf 阈值
 
 🟡 第三优先：工程闭环（Phase 3+4）
    待修复 ❌ Capability enum、GenericParamId、Mangling、Resolver 等 15 项
@@ -1244,7 +1202,7 @@ P1 性能缺陷:  6/6  ❌（未开始）
 
 | 问题 | 过渡态（❌ 不允许） | 正确方案（✅ 第一优先） |
 |:-----|:------------------|:----------------------|
-| Match 穷尽性 | 加硬上限 4096，超过跳过 | Witness Search / Usefulness Algorithm |
+| Match 穷尽性 | 加硬上限 4096，超过跳过 | ✅ 已改为 Witness Search / Usefulness Algorithm |
 | Expression cache | is_dependent 白名单跳过 | synth/check 双向类型检查 + coercion overlay |
 | Raw pointer unsafe | 在每个访问点加 require_unsafe | Place Projection Chain 统一模型 |
 | Capability | 字符串→enum 保留 float | enum + 统一规则表 + 排除 float/reference |
@@ -1344,7 +1302,7 @@ class QueryArena {
 
 | 场景 | 当前行为 | 修复后行为 |
 |:-----|:---------|:-----------|
-| Match 超限 | 跳过检查（false negative） | 要求加 wildcard |
+| Match 超限 | 旧实现跳过检查（false negative） | ✅ 已删除组合枚举；open-domain/dynamic slice 仍要求 wildcard |
 | 泛型深度超限 | 崩溃/报错 | 要求显式类型标注 |
 | 类型推导超限 | 报错 | 要求显式类型标注 |
 | 递归泛型超限 | 报错 | 要求加递归限制标注 |
@@ -1524,7 +1482,7 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
 | 🔧 修复数量 | 6 项（含 3 个 P0 语义 + Parser 安全 + Lexer budget + 数组检查） |
 | 📋 采纳程度 | 审计报告已入库，创建了 229 行 next-steps.md 详细计划 |
 | 🧪 新增测试 | 7 个（5 个 unsafe + match 上限 + 数组越界） |
-| 🐛 遗留问题 | match hard cap 漏报（需改 witness search） |
+| 🐛 遗留问题 | 跨模块 stable hash / parallel global ID、CI perf 阈值 |
 
 ### 三大优先级
 
@@ -1534,8 +1492,8 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
    待修复 ❌ return null LUB
 
 🔴 第二优先：性能修复（Phase 2）  
-   已修复 ✅ side table 稀疏化、match 超限保守诊断、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
-   待修复 ❌ pattern matrix / witness search、跨模块 stable hash / parallel global ID、CI perf 阈值
+   已修复 ✅ side table 稀疏化、pattern matrix / witness search、compact AST、global bump allocator、AST 原生 IdentId、line table、scope stack
+   待修复 ❌ 跨模块 stable hash / parallel global ID、CI perf 阈值
 
 🟡 第三优先：工程闭环（Phase 3+4）
    待修复 ❌ Capability enum、GenericParamId、Mangling、Resolver 等 15 项

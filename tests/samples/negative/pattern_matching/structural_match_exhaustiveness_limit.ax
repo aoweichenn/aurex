@@ -18,8 +18,36 @@ struct Flags13 {
 
 fn score(flags: Flags13) -> i32 {
     return match flags {
-        Flags13 { f0: true } => 1,
-        Flags13 { f0: false } => 0,
+        Flags13 {
+            f0: true,
+            f1: true,
+            f2: true,
+            f3: true,
+            f4: true,
+            f5: true,
+            f6: true,
+            f7: true,
+            f8: true,
+            f9: true,
+            f10: true,
+            f11: true,
+            f12: true,
+        } => 1,
+        Flags13 {
+            f0: false,
+            f1: false,
+            f2: false,
+            f3: false,
+            f4: false,
+            f5: false,
+            f6: false,
+            f7: false,
+            f8: false,
+            f9: false,
+            f10: false,
+            f11: false,
+            f12: false,
+        } => 0,
     };
 }
 

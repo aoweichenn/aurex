@@ -153,6 +153,13 @@ RSS / 389.8 ms; remaining memory work is in payload-local small vectors and
 generic side-table lifetime rather than the main AST header/payload storage.
 Cross-module stable hashes / parallel global IDs and CI perf thresholds remain
 later performance work.
+The follow-up match-exhaustiveness pass replaced the former structural
+cartesian-product enumerator and 4096-combination cap with a pattern matrix /
+usefulness witness search. Bool, enum payloads, tuples, structs, and fixed
+arrays are checked through constructor specialization and default matrices;
+guarded arms do not contribute to exhaustiveness, while dynamic slices and open
+integer domains still require a wildcard or irrefutable arm under the current
+M2 boundary.
 
 ## M2 Gaps
 
@@ -172,7 +179,8 @@ later performance work.
   destructuring, local struct/slice/enum destructuring, binding or-pattern
   alternatives with same-name/same-type consistency, `let ... else`,
   `if value is pattern` / `while value is pattern`, and `if` expression pattern
-  conditions.
+  conditions. Structural match exhaustiveness now uses pattern matrix /
+  usefulness witness search instead of cartesian-product enumeration.
 - Generics support minimal `where` capability predicates for `Sized`, `Eq`,
   `Ord`, and `Hash`. User-defined traits, associated types, const generics,
   trait objects, and resource capabilities are still outside M2.

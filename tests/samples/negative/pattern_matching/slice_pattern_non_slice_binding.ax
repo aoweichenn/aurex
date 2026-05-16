@@ -1,0 +1,9 @@
+module slice_pattern_non_slice_binding;
+
+fn main() -> i32 {
+    let value = 1;
+    if value is [head] {
+        return head;
+    }
+    return 0;
+}

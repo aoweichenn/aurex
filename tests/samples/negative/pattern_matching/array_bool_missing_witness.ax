@@ -1,0 +1,12 @@
+module array_bool_missing_witness;
+
+fn score(values: [2]bool) -> i32 {
+    return match values {
+        [true, true] => 1,
+    };
+}
+
+fn main() -> i32 {
+    let values: [2]bool = [true, true];
+    return score(values);
+}

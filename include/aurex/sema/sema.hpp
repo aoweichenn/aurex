@@ -191,6 +191,8 @@ private:
         base::SourceRange range {};
     };
 
+    struct MatchUsefulnessChecker;
+
     static constexpr base::u64 SEMA_TYPE_ABI_INVALID_SIZE = 0;
     static constexpr base::u64 SEMA_TYPE_ABI_MIN_ALIGNMENT = 1;
     static constexpr int SEMA_NO_LOOP_DEPTH = 0;

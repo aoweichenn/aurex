@@ -1,0 +1,12 @@
+module slice_missing_witness;
+
+fn score(values: []const i32) -> i32 {
+    return match values {
+        [head] => head,
+    };
+}
+
+fn main() -> i32 {
+    let values: [1]i32 = [1];
+    return score(values[:]);
+}

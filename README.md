@@ -126,6 +126,9 @@ and G++ at about 25.1 ms / 24.3 ms. The current 2000 generic-instance stress
 case is about 124.4 MiB RSS / 389.8 ms; the remaining memory work is inside
 payload-local small vectors and generic side-table lifetime, not the main AST
 header/payload storage.
+Match exhaustiveness now uses a pattern matrix / usefulness witness search for
+bool, enum payload, tuple, struct, and fixed-array patterns instead of
+enumerating structural cartesian products or relying on a 4096-combination cap.
 
 ## Stage Status
 

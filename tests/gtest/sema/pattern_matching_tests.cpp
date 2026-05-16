@@ -88,6 +88,9 @@ TEST_F(AurexIntegrationTest, EnumPayloadAndMatchBinding) {
 
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
+    const fs::path bool_payload_witness = positive_sample("pattern_matching", "enum_payload_bool_witness.ax");
+    require_success(aurexc() + " --check " + q(bool_payload_witness));
+
     const fs::path missing_arg = negative_sample("pattern_matching", "enum_payload_constructor_missing_arg.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(missing_arg)).output, "enum payload constructor requires exactly one argument");
 
@@ -111,6 +114,10 @@ TEST_F(AurexIntegrationTest, EnumPayloadAndMatchBinding) {
 
     const fs::path array_storage = negative_sample("pattern_matching", "enum_payload_array_storage.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(array_storage)).output, "enum payload cannot contain array storage");
+
+    const fs::path bool_payload_missing =
+        negative_sample("pattern_matching", "enum_payload_bool_missing_witness.ax");
+    expect_contains(require_failure(aurexc() + " --check " + q(bool_payload_missing)).output, "match expression is not exhaustive");
 }
 
 TEST_F(AurexIntegrationTest, MatchWildcardAndScopedCases) {
@@ -146,6 +153,9 @@ TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
     const fs::path array_or_source = positive_sample("pattern_matching", "structural_array_or_exhaustiveness.ax");
     require_success(aurexc() + " --check " + q(array_or_source));
 
+    const fs::path large_witness_source = positive_sample("pattern_matching", "structural_match_large_witness.ax");
+    require_success(aurexc() + " --check " + q(large_witness_source));
+
     const fs::path unreachable = negative_sample("pattern_matching", "structural_match_unreachable.ax");
     expect_contains(
         require_failure(aurexc() + " --check " + q(unreachable)).output,
@@ -158,10 +168,35 @@ TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"
     );
 
+    const fs::path tuple_open = negative_sample("pattern_matching", "tuple_open_domain_bool_missing_witness.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(tuple_open)).output,
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
+    );
+
+    const fs::path tuple_bool_wildcard =
+        negative_sample("pattern_matching", "tuple_bool_wildcard_tail_missing_witness.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(tuple_bool_wildcard)).output,
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
+    );
+
+    const fs::path array_missing = negative_sample("pattern_matching", "array_bool_missing_witness.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(array_missing)).output,
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
+    );
+
+    const fs::path slice_missing = negative_sample("pattern_matching", "slice_missing_witness.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(slice_missing)).output,
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
+    );
+
     const fs::path limit = negative_sample("pattern_matching", "structural_match_exhaustiveness_limit.ax");
     expect_contains(
         require_failure(aurexc() + " --check " + q(limit)).output,
-        "match exhaustiveness check exceeded M2.1 structural combination limit"
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
     );
 }
 

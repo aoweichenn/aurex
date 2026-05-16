@@ -1,0 +1,11 @@
+module tuple_bool_wildcard_tail_missing_witness;
+
+fn score(value: (bool, bool)) -> i32 {
+    return match value {
+        (_, true) => 1,
+    };
+}
+
+fn main() -> i32 {
+    return score((true, true));
+}

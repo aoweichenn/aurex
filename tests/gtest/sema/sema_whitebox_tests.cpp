@@ -2492,6 +2492,11 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     unsupported_literal_pattern.case_name = "1";
     const syntax::PatternId unsupported_literal_pattern_id = module.push_pattern(unsupported_literal_pattern);
 
+    syntax::PatternNode missing_const_pattern;
+    missing_const_pattern.kind = syntax::PatternKind::const_;
+    missing_const_pattern.binding_name = "MISSING";
+    const syntax::PatternId missing_const_pattern_id = module.push_pattern(missing_const_pattern);
+
     const ExprId enum_match_id = module.push_match_expr(
         {},
         syntax::MatchExprPayload {
@@ -2557,6 +2562,8 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     std::vector<sema::SemanticAnalyzer::PatternBinding> invalid_bindings;
     EXPECT_FALSE(analyzer.analyze_pattern(syntax::INVALID_PATTERN_ID, choice_type, invalid_bindings));
     EXPECT_FALSE(analyzer.pattern_is_irrefutable(syntax::INVALID_PATTERN_ID, choice_type));
+    std::vector<sema::SemanticAnalyzer::PatternBinding> missing_const_bindings;
+    EXPECT_FALSE(analyzer.analyze_pattern(missing_const_pattern_id, i32, missing_const_bindings));
 
     EXPECT_TRUE(types.is_bool(analyzer.analyze_match_expr(enum_match_id, analyzer.expr_view(enum_match_id), INVALID_TYPE_HANDLE)));
     EXPECT_TRUE(types.is_integer(analyzer.analyze_match_expr(
@@ -2579,6 +2586,29 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     EXPECT_EQ(analyzer.analyze_single_value_pattern(
         unsupported_literal_pattern_id,
         record_type,
+        covered_true,
+        covered_false,
+        value_saw_wildcard
+    ), nullptr);
+    value_saw_wildcard = true;
+    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+        unsupported_literal_pattern_id,
+        types.builtin(BuiltinType::bool_),
+        covered_true,
+        covered_false,
+        value_saw_wildcard
+    ), nullptr);
+    value_saw_wildcard = false;
+    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+        wildcard_pattern_id,
+        types.builtin(BuiltinType::bool_),
+        covered_true,
+        covered_false,
+        value_saw_wildcard
+    ), nullptr);
+    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+        payload_pattern_id,
+        types.builtin(BuiltinType::bool_),
         covered_true,
         covered_false,
         value_saw_wildcard

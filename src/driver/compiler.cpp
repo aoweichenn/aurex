@@ -142,7 +142,9 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     }
 
     sema::SemanticOptions sema_options;
-    sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(invocation.emit_kind);
+    sema_options.retain_generic_side_tables =
+        emit_kind_requires_ir_lowering(invocation.emit_kind) ||
+        invocation.emit_kind == EmitKind::typed;
     sema::SemanticAnalyzer analyzer(ast, diagnostics, sema_options);
     auto checked_result = analyzer.analyze();
     if (!checked_result) {
@@ -151,6 +153,10 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     }
 
     if (invocation.emit_kind == EmitKind::check) {
+        return base::Result<void>::ok();
+    }
+
+    if (invocation.emit_kind == EmitKind::typed) {
         return base::Result<void>::ok();
     }
 

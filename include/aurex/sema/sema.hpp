@@ -96,6 +96,9 @@ private:
         SemaIndexTable pattern_node_ids;
         SemaIndexTable type_node_ids;
         SemaIndexTable stmt_node_ids;
+        mutable base::usize checked_side_table_layout_index = SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX;
+
+        [[nodiscard]] bool has_sparse_node_ids() const noexcept;
     };
 
     struct GenericContext {
@@ -257,6 +260,8 @@ private:
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
     [[nodiscard]] GenericTemplateInfo make_generic_template_info() const;
     void populate_generic_template_node_spans(GenericTemplateInfo& info, const syntax::ItemNode& item) const;
+    [[nodiscard]] GenericSideTables make_generic_instance_side_tables(const GenericTemplateInfo& info);
+    [[nodiscard]] base::usize generic_side_table_layout_index(const GenericTemplateInfo& info);
     [[nodiscard]] GenericContext make_generic_context() const;
     [[nodiscard]] CapabilitySet make_capability_set() const;
     [[nodiscard]] CapabilitySet copy_capability_set(const CapabilitySet& source) const;

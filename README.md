@@ -98,11 +98,14 @@ Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`)
 without enforcing thresholds yet. `make perf-compare` runs only the
 cross-frontend comparison lane. `make perf-stress` runs the generated
-200/500/1000/2000 generic-instantiation baseline plus the AST bulk elapsed-time
+500/1000/2000/5000 generic-instantiation baseline plus the AST bulk elapsed-time
 and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
-`--check` path does not retain codegen-only generic instance side tables, and
-the default sema path no longer copies or retains a full normalized AST
-snapshot. The syntax AST now stores `TypeNode`, `ExprNode`, and `PatternNode`
+`--check` path does not retain generic instance side tables; `--emit=typed`
+keeps typed generic bodies without lowering so retained-side-table memory can be
+stressed separately from IR/codegen. `tools/generic_stress.py --shape=templates`
+covers the many-distinct-generic-template 2000/5000+ case as well as the default
+many-instantiations case. The default sema path no longer copies or
+retains a full normalized AST snapshot. The syntax AST now stores `TypeNode`, `ExprNode`, and `PatternNode`
 as compact 32-byte headers plus per-kind payload arenas; `StmtNode` and
 `ItemNode` now use the same compact header + per-kind payload arena layout.
 Sema, IR lowering, and AST dump hot paths read `ExprNode` payloads through
@@ -125,10 +128,14 @@ compact syntax storage, AST-native identifiers, and bump-backed AST arenas;
 Google Benchmark `sema_ast_bulk/1024` is roughly 128 ns/expr, and the local
 `tools/frontend_compare.py` baseline has Aurex `--check` at about 10.1 ms for
 lookup/96 and 9.6 ms for generics/96 versus Clang++ at about 21.2 ms / 24.3 ms
-and G++ at about 25.1 ms / 24.3 ms. The current 2000 generic-instance stress
-case is about 124.4 MiB RSS / 389.8 ms; the remaining memory work is inside
-payload-local small vectors and generic side-table lifetime, not the main AST
-header/payload storage.
+and G++ at about 25.1 ms / 24.3 ms. Generic side-table lifetime is now closed
+on the main path: retained instances use function-local NodeSpan side tables,
+share module-level sparse NodeSpan layouts only when a template needs
+non-contiguous node-id mappings, release sema-only expected-type and
+pattern-case caches after analysis, and use 1 KiB per-instance side-table
+blocks to keep 2000/5000+ mixed-template stress from paying a 64 KiB floor per
+instance. The remaining work is measurement policy and CI thresholds, not a
+known whole-module side-table retention path.
 Match exhaustiveness now uses a pattern matrix / usefulness witness search for
 bool, enum payload, tuple, struct, and fixed-array patterns instead of
 enumerating structural cartesian products or relying on a 4096-combination cap.

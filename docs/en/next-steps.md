@@ -105,7 +105,7 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    payloads, `TypeInfo` tuple/function/generic args, generic template params,
    and generic constraint buckets) are arena-backed. IR lowering source-local
    lookup also uses interned typed identifiers. Keep future work focused on cross-module
-   stable identifiers, generic side-table lifetime/release policy, and CI
+   stable identifiers, measured generic/AST stress thresholds, and CI
    performance thresholds rather than reintroducing whole-AST copies or per-node
    heap string/vector side tables.
 

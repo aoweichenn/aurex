@@ -346,7 +346,7 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         OptionValueStyle::separate,
         CLI_EFFECT_PARSE_EMIT_KIND,
         "kind",
-        "emit kind; examples: --emit=ast, --emit=checked, --emit=ir, --emit=llvm-ir, --emit=asm, --emit=obj, --emit=exe",
+        "emit kind; examples: --emit=ast, --emit=checked, --emit=typed, --emit=ir, --emit=llvm-ir, --emit=asm, --emit=obj, --emit=exe",
     },
     {
         OptionLevel::secondary,
@@ -504,6 +504,7 @@ struct ParsedOption {
         {"ast", EmitKind::ast},
         {"modules", EmitKind::modules},
         {"checked", EmitKind::checked},
+        {"typed", EmitKind::typed},
         {"ir", EmitKind::ir},
         {"llvm-ir", EmitKind::llvm_ir},
         {"check", EmitKind::check},

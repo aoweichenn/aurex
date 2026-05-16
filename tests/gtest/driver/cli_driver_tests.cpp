@@ -68,6 +68,14 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult separate_emit_parse = require_parse_cli(separate_emit_args);
     EXPECT_EQ(separate_emit_parse.invocation.emit_kind, driver::EmitKind::check);
 
+    const std::vector<std::string_view> typed_emit_args {
+        "aurexc",
+        "--emit=typed",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult typed_emit_parse = require_parse_cli(typed_emit_args);
+    EXPECT_EQ(typed_emit_parse.invocation.emit_kind, driver::EmitKind::typed);
+
     const std::vector<std::string_view> inference_reset_args {
         "aurexc",
         "-S",
@@ -159,6 +167,7 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
         "native backend:",
         "--check",
         "--emit=ast",
+        "--emit=typed",
         "--emit=ir",
         "--emit=llvm-ir",
         "--emit=asm",
@@ -171,6 +180,7 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
     const fs::path hello = source_root() / "examples" / "hello.ax";
     require_success(aurexc() + " --check " + q(hello));
     require_success(aurexc() + " --emit=check " + q(hello));
+    require_success(aurexc() + " --emit=typed " + q(hello));
 
     const std::string tokens = require_success(aurexc() + " --dump-tokens " + q(hello)).output;
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(hello)).output;

@@ -755,6 +755,43 @@ void SemanticAnalyzer::populate_generic_template_node_spans(
     assign_node_ids(info.stmt_node_ids, builder.stmt_ids());
 }
 
+bool SemanticAnalyzer::GenericTemplateInfo::has_sparse_node_ids() const noexcept {
+    return !this->expr_node_ids.empty() ||
+           !this->pattern_node_ids.empty() ||
+           !this->type_node_ids.empty() ||
+           !this->stmt_node_ids.empty();
+}
+
+GenericSideTables SemanticAnalyzer::make_generic_instance_side_tables(const GenericTemplateInfo& info) {
+    if (!info.has_sparse_node_ids()) {
+        return make_generic_side_tables(info);
+    }
+    const base::usize layout_index = this->generic_side_table_layout_index(info);
+    const GenericSideTableLayout* const layout = this->checked_.generic_side_table_layout(layout_index);
+    GenericSideTables side_tables;
+    if (layout != nullptr) {
+        side_tables.configure_local_dense(*layout);
+    }
+    return side_tables;
+}
+
+base::usize SemanticAnalyzer::generic_side_table_layout_index(const GenericTemplateInfo& info) {
+    if (info.checked_side_table_layout_index != SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX) {
+        return info.checked_side_table_layout_index;
+    }
+    info.checked_side_table_layout_index = this->checked_.append_generic_side_table_layout(
+        info.expr_span,
+        info.pattern_span,
+        info.type_span,
+        info.stmt_span,
+        info.expr_node_ids,
+        info.pattern_node_ids,
+        info.type_node_ids,
+        info.stmt_node_ids
+    );
+    return info.checked_side_table_layout_index;
+}
+
 void SemanticAnalyzer::register_generic_template(
     const syntax::ItemNode& item,
     const syntax::ItemId item_id
@@ -2169,9 +2206,18 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     instance.key = key;
     instance.item = info.item;
     instance.signature = std::move(signature);
-    instance.side_tables = make_generic_side_tables(info);
+    if (info.has_sparse_node_ids()) {
+        instance.side_table_layout_index = this->generic_side_table_layout_index(info);
+    }
+    instance.side_tables = this->make_generic_instance_side_tables(info);
     const base::usize instance_index = this->checked_.generic_function_instances.size();
     this->checked_.generic_function_instances.push_back(std::move(instance));
+    if (const GenericSideTableLayout* const layout = this->checked_.generic_side_table_layout(
+            this->checked_.generic_function_instances[instance_index].side_table_layout_index
+        );
+        layout != nullptr) {
+        this->checked_.generic_function_instances[instance_index].side_tables.bind_local_dense_layout(*layout);
+    }
     this->generic_function_instances_[key] = instance_index;
 
     FunctionSignature checked_signature = this->checked_.generic_function_instances[instance_index].signature;
@@ -2200,6 +2246,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->current_generic_context_ = previous_body_generic_context;
     this->current_side_tables_ = previous_body_side_tables;
     this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
+    this->checked_.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
     return &this->checked_.generic_function_instances[instance_index].signature;
 }
 
@@ -2304,9 +2351,18 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     instance.key = key;
     instance.item = info.item;
     instance.signature = std::move(signature);
-    instance.side_tables = make_generic_side_tables(info);
+    if (info.has_sparse_node_ids()) {
+        instance.side_table_layout_index = this->generic_side_table_layout_index(info);
+    }
+    instance.side_tables = this->make_generic_instance_side_tables(info);
     const base::usize instance_index = this->checked_.generic_function_instances.size();
     this->checked_.generic_function_instances.push_back(std::move(instance));
+    if (const GenericSideTableLayout* const layout = this->checked_.generic_side_table_layout(
+            this->checked_.generic_function_instances[instance_index].side_table_layout_index
+        );
+        layout != nullptr) {
+        this->checked_.generic_function_instances[instance_index].side_tables.bind_local_dense_layout(*layout);
+    }
     this->generic_function_instances_[key] = instance_index;
 
     FunctionSignature checked_signature = this->checked_.generic_function_instances[instance_index].signature;
@@ -2336,6 +2392,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->current_generic_context_ = previous_body_generic_context;
     this->current_side_tables_ = previous_body_side_tables;
     this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
+    this->checked_.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
     return &this->checked_.functions.at(key);
 }
 

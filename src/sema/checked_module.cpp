@@ -8,8 +8,7 @@
 namespace aurex::sema {
 
 PatternCaseNameTable::PatternCaseNameTable()
-    : arena_(std::make_unique<base::BumpAllocator>()),
-      names_(make_sema_map<base::u32, CNameIdSet>(*this->arena_)) {}
+    : names_() {}
 
 PatternCaseNameTable::PatternCaseNameTable(const PatternCaseNameTable& other)
     : PatternCaseNameTable() {
@@ -52,6 +51,9 @@ bool PatternCaseNameTable::contains(const base::u32 pattern) const {
 }
 
 void PatternCaseNameTable::reserve(const base::usize pattern_count) {
+    if (pattern_count == 0) {
+        return;
+    }
     this->ensure_storage();
     this->names_.reserve(pattern_count);
 }
@@ -122,7 +124,7 @@ void PatternCaseNameTable::ensure_storage() {
     if (this->arena_ != nullptr) {
         return;
     }
-    this->arena_ = std::make_unique<base::BumpAllocator>();
+    this->arena_ = std::make_unique<base::BumpAllocator>(SEMA_PATTERN_CASE_NAME_TABLE_BLOCK_BYTES);
     this->names_ = make_sema_map<base::u32, CNameIdSet>(*this->arena_);
 }
 
@@ -133,6 +135,9 @@ void PatternCaseNameTable::swap(PatternCaseNameTable& other) noexcept {
 }
 
 void PatternCaseNameTable::copy_from(const PatternCaseNameTable& other) {
+    if (other.empty()) {
+        return;
+    }
     this->reserve(other.size());
     for (const auto& entry : other) {
         CNameIdSet& bucket = (*this)[entry.first];
@@ -142,19 +147,17 @@ void PatternCaseNameTable::copy_from(const PatternCaseNameTable& other) {
 }
 
 GenericSideTables::GenericSideTables()
-    : arena_(std::make_unique<base::BumpAllocator>()),
+    : arena_(std::make_unique<base::BumpAllocator>(SEMA_GENERIC_SIDE_TABLE_BLOCK_BYTES)),
       expr_node_ids(make_sema_vector<base::u32>(*this->arena_)),
       pattern_node_ids(make_sema_vector<base::u32>(*this->arena_)),
       type_node_ids(make_sema_vector<base::u32>(*this->arena_)),
       stmt_node_ids(make_sema_vector<base::u32>(*this->arena_)),
       expr_types(make_sema_vector<TypeHandle>(*this->arena_)),
-      expr_expected_types(make_sema_vector<TypeHandle>(*this->arena_)),
       expr_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       pattern_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       syntax_type_handles(make_sema_vector<TypeHandle>(*this->arena_)),
       stmt_local_types(make_sema_vector<TypeHandle>(*this->arena_)),
       sparse_expr_types(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
-      sparse_expr_expected_types(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
       sparse_expr_c_name_ids(make_sema_map<base::u32, IdentId>(*this->arena_)),
       sparse_pattern_c_name_ids(make_sema_map<base::u32, IdentId>(*this->arena_)),
       sparse_syntax_type_handles(make_sema_map<base::u32, TypeHandle>(*this->arena_)),
@@ -176,12 +179,14 @@ GenericSideTables& GenericSideTables::operator=(const GenericSideTables& other) 
 
 GenericSideTables::GenericSideTables(GenericSideTables&& other) noexcept
     : arena_(std::move(other.arena_)),
+      analysis_arena_(std::move(other.analysis_arena_)),
       sparse(other.sparse),
       local_dense(other.local_dense),
       expr_span(other.expr_span),
       pattern_span(other.pattern_span),
       type_span(other.type_span),
       stmt_span(other.stmt_span),
+      layout(other.layout),
       expr_node_ids(std::move(other.expr_node_ids)),
       pattern_node_ids(std::move(other.pattern_node_ids)),
       type_node_ids(std::move(other.type_node_ids)),
@@ -210,11 +215,13 @@ GenericSideTables& GenericSideTables::operator=(GenericSideTables&& other) noexc
 }
 
 base::usize GenericSideTables::arena_bytes() const noexcept {
-    return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    return (this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes()) +
+           (this->analysis_arena_ == nullptr ? 0 : this->analysis_arena_->allocated_bytes());
 }
 
 base::usize GenericSideTables::arena_blocks() const noexcept {
-    return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+    return (this->arena_ == nullptr ? 0 : this->arena_->block_count()) +
+           (this->analysis_arena_ == nullptr ? 0 : this->analysis_arena_->block_count());
 }
 
 void GenericSideTables::record_sparse_fallback(const GenericSparseFallbackKind kind) noexcept {
@@ -268,6 +275,7 @@ void GenericSideTables::configure_local_dense(
     this->pattern_span = pattern;
     this->type_span = type;
     this->stmt_span = stmt;
+    this->layout = nullptr;
     this->expr_node_ids.assign(expr_ids.begin(), expr_ids.end());
     this->pattern_node_ids.assign(pattern_ids.begin(), pattern_ids.end());
     this->type_node_ids.assign(type_ids.begin(), type_ids.end());
@@ -277,18 +285,83 @@ void GenericSideTables::configure_local_dense(
     const base::usize type_count = this->type_node_ids.empty() ? type.count : this->type_node_ids.size();
     const base::usize stmt_count = this->stmt_node_ids.empty() ? stmt.count : this->stmt_node_ids.size();
     this->expr_types.assign(expr_count, INVALID_TYPE_HANDLE);
+    this->prepare_analysis_only_storage(expr_count);
     this->expr_expected_types.assign(expr_count, INVALID_TYPE_HANDLE);
     this->expr_c_name_ids.assign(expr_count, INVALID_IDENT_ID);
     this->pattern_c_name_ids.assign(pattern_count, INVALID_IDENT_ID);
     this->syntax_type_handles.assign(type_count, INVALID_TYPE_HANDLE);
     this->stmt_local_types.assign(stmt_count, INVALID_TYPE_HANDLE);
     this->sparse_expr_types.clear();
-    this->sparse_expr_expected_types.clear();
     this->sparse_expr_c_name_ids.clear();
     this->sparse_pattern_c_name_ids.clear();
     this->sparse_syntax_type_handles.clear();
     this->sparse_stmt_local_types.clear();
     this->sparse_fallbacks = {};
+}
+
+void GenericSideTables::configure_local_dense(const GenericSideTableLayout& shared_layout) {
+    this->sparse = true;
+    this->local_dense = true;
+    this->expr_span = shared_layout.expr_span;
+    this->pattern_span = shared_layout.pattern_span;
+    this->type_span = shared_layout.type_span;
+    this->stmt_span = shared_layout.stmt_span;
+    this->layout = &shared_layout;
+    this->expr_node_ids.clear();
+    this->pattern_node_ids.clear();
+    this->type_node_ids.clear();
+    this->stmt_node_ids.clear();
+    const base::usize expr_count = shared_layout.expr_node_ids.empty()
+        ? shared_layout.expr_span.count
+        : shared_layout.expr_node_ids.size();
+    const base::usize pattern_count = shared_layout.pattern_node_ids.empty()
+        ? shared_layout.pattern_span.count
+        : shared_layout.pattern_node_ids.size();
+    const base::usize type_count = shared_layout.type_node_ids.empty()
+        ? shared_layout.type_span.count
+        : shared_layout.type_node_ids.size();
+    const base::usize stmt_count = shared_layout.stmt_node_ids.empty()
+        ? shared_layout.stmt_span.count
+        : shared_layout.stmt_node_ids.size();
+    this->expr_types.assign(expr_count, INVALID_TYPE_HANDLE);
+    this->prepare_analysis_only_storage(expr_count);
+    this->expr_expected_types.assign(expr_count, INVALID_TYPE_HANDLE);
+    this->expr_c_name_ids.assign(expr_count, INVALID_IDENT_ID);
+    this->pattern_c_name_ids.assign(pattern_count, INVALID_IDENT_ID);
+    this->syntax_type_handles.assign(type_count, INVALID_TYPE_HANDLE);
+    this->stmt_local_types.assign(stmt_count, INVALID_TYPE_HANDLE);
+    this->sparse_expr_types.clear();
+    this->sparse_expr_c_name_ids.clear();
+    this->sparse_pattern_c_name_ids.clear();
+    this->sparse_syntax_type_handles.clear();
+    this->sparse_stmt_local_types.clear();
+    this->sparse_fallbacks = {};
+}
+
+void GenericSideTables::bind_local_dense_layout(const GenericSideTableLayout& shared_layout) noexcept {
+    this->sparse = true;
+    this->local_dense = true;
+    this->expr_span = shared_layout.expr_span;
+    this->pattern_span = shared_layout.pattern_span;
+    this->type_span = shared_layout.type_span;
+    this->stmt_span = shared_layout.stmt_span;
+    this->layout = &shared_layout;
+}
+
+void GenericSideTables::prepare_analysis_only_storage(const base::usize expr_count) {
+    this->expr_expected_types = SemaTypeTable {};
+    this->sparse_expr_expected_types = SemaMap<base::u32, TypeHandle> {};
+    this->analysis_arena_ = std::make_unique<base::BumpAllocator>(SEMA_GENERIC_SIDE_TABLE_BLOCK_BYTES);
+    this->expr_expected_types = make_sema_vector<TypeHandle>(*this->analysis_arena_);
+    this->sparse_expr_expected_types = make_sema_map<base::u32, TypeHandle>(*this->analysis_arena_);
+    this->expr_expected_types.reserve(expr_count);
+}
+
+void GenericSideTables::release_analysis_only_storage() {
+    this->expr_expected_types = SemaTypeTable {};
+    this->sparse_expr_expected_types = SemaMap<base::u32, TypeHandle> {};
+    this->analysis_arena_.reset();
+    this->pattern_case_name_ids = PatternCaseNameTable {};
 }
 
 void GenericSideTables::swap(GenericSideTables& other) noexcept {
@@ -299,6 +372,7 @@ void GenericSideTables::swap(GenericSideTables& other) noexcept {
     swap(this->pattern_span, other.pattern_span);
     swap(this->type_span, other.type_span);
     swap(this->stmt_span, other.stmt_span);
+    swap(this->layout, other.layout);
     this->expr_node_ids.swap(other.expr_node_ids);
     this->pattern_node_ids.swap(other.pattern_node_ids);
     this->type_node_ids.swap(other.type_node_ids);
@@ -318,6 +392,7 @@ void GenericSideTables::swap(GenericSideTables& other) noexcept {
     this->sparse_stmt_local_types.swap(other.sparse_stmt_local_types);
     swap(this->sparse_fallbacks, other.sparse_fallbacks);
     swap(this->arena_, other.arena_);
+    swap(this->analysis_arena_, other.analysis_arena_);
 }
 
 void GenericSideTables::copy_from(const GenericSideTables& other) {
@@ -327,18 +402,24 @@ void GenericSideTables::copy_from(const GenericSideTables& other) {
     this->pattern_span = other.pattern_span;
     this->type_span = other.type_span;
     this->stmt_span = other.stmt_span;
+    this->layout = other.layout;
     this->expr_node_ids.assign(other.expr_node_ids.begin(), other.expr_node_ids.end());
     this->pattern_node_ids.assign(other.pattern_node_ids.begin(), other.pattern_node_ids.end());
     this->type_node_ids.assign(other.type_node_ids.begin(), other.type_node_ids.end());
     this->stmt_node_ids.assign(other.stmt_node_ids.begin(), other.stmt_node_ids.end());
     this->expr_types.assign(other.expr_types.begin(), other.expr_types.end());
-    this->expr_expected_types.assign(other.expr_expected_types.begin(), other.expr_expected_types.end());
+    if (other.expr_expected_types.empty() && other.sparse_expr_expected_types.empty()) {
+        this->release_analysis_only_storage();
+    } else {
+        this->prepare_analysis_only_storage(other.expr_expected_types.size());
+        this->expr_expected_types.assign(other.expr_expected_types.begin(), other.expr_expected_types.end());
+        this->sparse_expr_expected_types = other.sparse_expr_expected_types;
+    }
     this->expr_c_name_ids.assign(other.expr_c_name_ids.begin(), other.expr_c_name_ids.end());
     this->pattern_c_name_ids.assign(other.pattern_c_name_ids.begin(), other.pattern_c_name_ids.end());
     this->syntax_type_handles.assign(other.syntax_type_handles.begin(), other.syntax_type_handles.end());
     this->stmt_local_types.assign(other.stmt_local_types.begin(), other.stmt_local_types.end());
     this->sparse_expr_types = other.sparse_expr_types;
-    this->sparse_expr_expected_types = other.sparse_expr_expected_types;
     this->sparse_expr_c_name_ids = other.sparse_expr_c_name_ids;
     this->sparse_pattern_c_name_ids = other.sparse_pattern_c_name_ids;
     this->pattern_case_name_ids = other.pattern_case_name_ids;
@@ -350,7 +431,6 @@ void GenericSideTables::copy_from(const GenericSideTables& other) {
 CheckedModule::CheckedModule()
     : arena_(std::make_unique<base::BumpAllocator>()),
       expr_types(make_sema_vector<TypeHandle>(*this->arena_)),
-      expr_expected_types(make_sema_vector<TypeHandle>(*this->arena_)),
       expr_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       pattern_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       syntax_type_handles(make_sema_vector<TypeHandle>(*this->arena_)),
@@ -373,6 +453,7 @@ CheckedModule::CheckedModule()
           *this->arena_,
           ModuleLookupKeyHash {}
       )),
+      generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
       generic_function_instances(make_sema_deque<GenericFunctionInstanceInfo>(*this->arena_)) {}
 
 CheckedModule::CheckedModule(const CheckedModule& other)
@@ -391,6 +472,7 @@ CheckedModule& CheckedModule::operator=(const CheckedModule& other) {
 
 CheckedModule::CheckedModule(CheckedModule&& other) noexcept
     : arena_(std::move(other.arena_)),
+      analysis_arena_(std::move(other.analysis_arena_)),
       c_names(std::move(other.c_names)),
       types(std::move(other.types)),
       expr_types(std::move(other.expr_types)),
@@ -406,8 +488,11 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       structs(std::move(other.structs)),
       enum_cases(std::move(other.enum_cases)),
       type_aliases(std::move(other.type_aliases)),
+      generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_function_instances(std::move(other.generic_function_instances)),
-      normalized_ast(other.normalized_ast) {}
+      normalized_ast(other.normalized_ast) {
+    this->rebind_generic_instance_layouts();
+}
 
 CheckedModule& CheckedModule::operator=(CheckedModule&& other) noexcept {
     if (this == &other) {
@@ -418,16 +503,19 @@ CheckedModule& CheckedModule::operator=(CheckedModule&& other) noexcept {
 }
 
 base::usize CheckedModule::arena_bytes() const noexcept {
-    return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    return (this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes()) +
+           (this->analysis_arena_ == nullptr ? 0 : this->analysis_arena_->allocated_bytes());
 }
 
 base::usize CheckedModule::arena_blocks() const noexcept {
-    return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+    return (this->arena_ == nullptr ? 0 : this->arena_->block_count()) +
+           (this->analysis_arena_ == nullptr ? 0 : this->analysis_arena_->block_count());
 }
 
 void CheckedModule::swap(CheckedModule& other) noexcept {
     using std::swap;
     swap(this->arena_, other.arena_);
+    swap(this->analysis_arena_, other.analysis_arena_);
     swap(this->c_names, other.c_names);
     swap(this->types, other.types);
     this->expr_types.swap(other.expr_types);
@@ -443,15 +531,24 @@ void CheckedModule::swap(CheckedModule& other) noexcept {
     this->structs.swap(other.structs);
     this->enum_cases.swap(other.enum_cases);
     this->type_aliases.swap(other.type_aliases);
+    this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
     this->generic_function_instances.swap(other.generic_function_instances);
     swap(this->normalized_ast, other.normalized_ast);
+    this->rebind_generic_instance_layouts();
+    other.rebind_generic_instance_layouts();
 }
 
 void CheckedModule::copy_from(const CheckedModule& other) {
     this->c_names = other.c_names;
     this->types = other.types;
     this->expr_types.assign(other.expr_types.begin(), other.expr_types.end());
-    this->expr_expected_types.assign(other.expr_expected_types.begin(), other.expr_expected_types.end());
+    if (other.expr_expected_types.empty()) {
+        this->expr_expected_types = SemaTypeTable {};
+        this->analysis_arena_.reset();
+    } else {
+        this->prepare_analysis_only_storage(other.expr_expected_types.size());
+        this->expr_expected_types.assign(other.expr_expected_types.begin(), other.expr_expected_types.end());
+    }
     this->expr_c_name_ids.assign(other.expr_c_name_ids.begin(), other.expr_c_name_ids.end());
     this->pattern_c_name_ids.assign(other.pattern_c_name_ids.begin(), other.pattern_c_name_ids.end());
     this->pattern_case_name_ids = other.pattern_case_name_ids;
@@ -475,10 +572,15 @@ void CheckedModule::copy_from(const CheckedModule& other) {
         this->enum_cases.emplace(entry.first, this->clone_enum_case_info(entry.second));
     }
     this->type_aliases = other.type_aliases;
+    this->generic_side_table_layouts.clear();
+    for (const GenericSideTableLayout& layout : other.generic_side_table_layouts) {
+        this->generic_side_table_layouts.push_back(this->clone_generic_side_table_layout(layout));
+    }
     this->generic_function_instances.clear();
     for (const GenericFunctionInstanceInfo& instance : other.generic_function_instances) {
         this->generic_function_instances.push_back(this->clone_generic_function_instance(instance));
     }
+    this->rebind_generic_instance_layouts();
     this->normalized_ast = other.normalized_ast;
 }
 
@@ -508,6 +610,17 @@ SemaVector<StructFieldInfo> CheckedModule::copy_struct_field_list(
     return copy;
 }
 
+SemaIndexTable CheckedModule::make_index_table() const {
+    return make_sema_vector<base::u32>(*this->arena_);
+}
+
+SemaIndexTable CheckedModule::copy_index_table(const std::span<const base::u32> values) const {
+    SemaIndexTable copy = this->make_index_table();
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
 FunctionSignature CheckedModule::make_function_signature() {
     FunctionSignature signature;
     signature.param_types = this->make_type_handle_list();
@@ -525,6 +638,58 @@ EnumCaseInfo CheckedModule::make_enum_case_info() {
     EnumCaseInfo info;
     info.payload_types = this->make_type_handle_list();
     return info;
+}
+
+GenericSideTableLayout CheckedModule::make_generic_side_table_layout(
+    const GenericNodeSpan expr,
+    const GenericNodeSpan pattern,
+    const GenericNodeSpan type,
+    const GenericNodeSpan stmt,
+    const std::span<const base::u32> expr_ids,
+    const std::span<const base::u32> pattern_ids,
+    const std::span<const base::u32> type_ids,
+    const std::span<const base::u32> stmt_ids
+) const {
+    GenericSideTableLayout layout;
+    layout.expr_span = expr;
+    layout.pattern_span = pattern;
+    layout.type_span = type;
+    layout.stmt_span = stmt;
+    layout.expr_node_ids = this->copy_index_table(expr_ids);
+    layout.pattern_node_ids = this->copy_index_table(pattern_ids);
+    layout.type_node_ids = this->copy_index_table(type_ids);
+    layout.stmt_node_ids = this->copy_index_table(stmt_ids);
+    return layout;
+}
+
+base::usize CheckedModule::append_generic_side_table_layout(
+    const GenericNodeSpan expr,
+    const GenericNodeSpan pattern,
+    const GenericNodeSpan type,
+    const GenericNodeSpan stmt,
+    const std::span<const base::u32> expr_ids,
+    const std::span<const base::u32> pattern_ids,
+    const std::span<const base::u32> type_ids,
+    const std::span<const base::u32> stmt_ids
+) {
+    const base::usize index = this->generic_side_table_layouts.size();
+    this->generic_side_table_layouts.push_back(this->make_generic_side_table_layout(
+        expr,
+        pattern,
+        type,
+        stmt,
+        expr_ids,
+        pattern_ids,
+        type_ids,
+        stmt_ids
+    ));
+    return index;
+}
+
+const GenericSideTableLayout* CheckedModule::generic_side_table_layout(const base::usize index) const noexcept {
+    return index < this->generic_side_table_layouts.size()
+        ? &this->generic_side_table_layouts[index]
+        : nullptr;
 }
 
 FunctionSignature CheckedModule::clone_function_signature(const FunctionSignature& other) {
@@ -586,6 +751,21 @@ EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other) {
     return copy;
 }
 
+GenericSideTableLayout CheckedModule::clone_generic_side_table_layout(
+    const GenericSideTableLayout& other
+) const {
+    return this->make_generic_side_table_layout(
+        other.expr_span,
+        other.pattern_span,
+        other.type_span,
+        other.stmt_span,
+        other.expr_node_ids,
+        other.pattern_node_ids,
+        other.type_node_ids,
+        other.stmt_node_ids
+    );
+}
+
 GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(
     const GenericFunctionInstanceInfo& other
 ) {
@@ -593,8 +773,35 @@ GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(
     copy.key = other.key;
     copy.item = other.item;
     copy.signature = this->clone_function_signature(other.signature);
+    copy.side_table_layout_index = other.side_table_layout_index;
     copy.side_tables = other.side_tables;
     return copy;
+}
+
+void CheckedModule::prepare_analysis_only_storage(const base::usize expr_count) {
+    this->expr_expected_types = SemaTypeTable {};
+    this->analysis_arena_ = std::make_unique<base::BumpAllocator>(SEMA_GENERIC_SIDE_TABLE_BLOCK_BYTES);
+    this->expr_expected_types = make_sema_vector<TypeHandle>(*this->analysis_arena_);
+    this->expr_expected_types.reserve(expr_count);
+}
+
+void CheckedModule::release_analysis_only_storage() {
+    this->expr_expected_types = SemaTypeTable {};
+    this->analysis_arena_.reset();
+    this->pattern_case_name_ids = PatternCaseNameTable {};
+    for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
+        instance.side_tables.release_analysis_only_storage();
+    }
+}
+
+void CheckedModule::rebind_generic_instance_layouts() noexcept {
+    for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
+        const GenericSideTableLayout* const layout =
+            this->generic_side_table_layout(instance.side_table_layout_index);
+        if (layout != nullptr && instance.side_tables.local_dense) {
+            instance.side_tables.bind_local_dense_layout(*layout);
+        }
+    }
 }
 
 void CheckedModule::reserve_side_table_storage(
@@ -605,7 +812,7 @@ void CheckedModule::reserve_side_table_storage(
     const base::usize item_count
 ) const
 {
-    const base::usize type_handle_slots = expr_count + expr_count + type_count + stmt_count;
+    const base::usize type_handle_slots = expr_count + type_count + stmt_count;
     const base::usize ident_slots = expr_count + pattern_count + item_count;
     const base::usize bytes =
         type_handle_slots * sizeof(TypeHandle) +

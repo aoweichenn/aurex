@@ -101,7 +101,7 @@ process-level comparison against available modern frontend drivers (`clang++`,
 `g++`, and `rustc`) without enforcing thresholds yet. `make perf-compare` runs
 only the cross-frontend comparison lane.
 `make perf-stress` runs `tools/generic_stress.py` and `tools/ast_stress.py`,
-generating 200/500/1000/2000 generic-instantiation sources and
+generating 500/1000/2000/5000 generic-instantiation sources and
 10000/50000/100000 AST bulk statement sources, then recording `aurexc --check`
 elapsed time plus peak RSS baselines. `make perf-ast-stress` runs only the AST
 bulk RSS/time lane. Generic function instance signatures, generic struct/enum
@@ -110,9 +110,12 @@ TypeHandle arguments separate from display names, so `--check` does not format
 names such as `id[i32]`, `Box[i32]`, or `Maybe[i32]_some` on the hot path;
 checked dumps, IR lowering, and diagnostics format them lazily when output
 needs them.
-`--check` / checked-dump mode also releases backend-lowering sparse side tables
-after each generic function instance is analyzed; IR/native output mode keeps
-those tables so codegen behavior stays unchanged.
+`--check` mode no longer retains generic instance side tables. `--emit=typed`
+keeps typed generic bodies without lowering, so retained-side-table memory can
+be stressed independently from IR/codegen; `tools/generic_stress.py
+--shape=templates` covers many distinct generic templates at 2000/5000+ scale.
+IR/native output mode keeps the lowering tables so codegen behavior stays
+unchanged.
 The AST main path now follows the P0-Perf-4 plan: the driver owns the
 parser/module AST and passes a mutable reference through sema and IR lowering,
 `SemanticAnalyzer(const AstModule&)` is deleted to prevent implicit whole-tree
@@ -169,7 +172,10 @@ estimated token capacity that will never be written. Sema persistent storage now
 payloads, `TypeInfo` tuple/function/generic args), generic template parameter
 lists, and generic constraint buckets; generic function instances use a
 bump-backed deque so side-table
-references remain stable during nested generic instantiation; generic-method,
+references remain stable during nested generic instantiation; retained generic
+instances use function-local NodeSpan side tables and share module-level sparse
+NodeSpan layouts only for templates with non-contiguous node-id mappings;
+generic-method,
 enum-case, and visible-module cache buckets are created explicitly from the
 analyzer arena instead of default heap vectors from `operator[]`.
 IR lowering source-local lookup and verifier symbol de-duplication now also use
@@ -181,12 +187,16 @@ roughly 140.8 MiB RSS / 72.4 ms. Google Benchmark `sema_ast_bulk/1024` is now
 roughly 128 ns/expr, and the local `tools/frontend_compare.py` baseline has
 Aurex `--check` at roughly 10.1 ms for lookup/96 and 9.6 ms for generics/96,
 versus Clang++ at roughly 21.2 ms / 24.3 ms and G++ at roughly 25.1 ms /
-24.3 ms. The current 2000 generic-instance stress case is roughly 148.4 MiB
-RSS / 439.8 ms, still below the M2.1 target of about 150 MiB; remaining memory
-work is in generic side-table lifetime/release policy rather than the main AST
-header/payload or sema value-payload storage.
+24.3 ms. Generic side-table lifetime is now closed on the main path: sema-only
+expected-type and pattern-case caches live in releasable arenas and are dropped
+after analysis, retained instances keep only lowering-relevant tables,
+non-contiguous NodeSpan sparse ID mappings are shared per template, and tiny
+per-instance side-table arenas use 1 KiB blocks instead of the default 64 KiB
+floor. The stress lane now includes 5000 generic instances; exact RSS/time
+baselines are measurement work rather than a known retained-storage design gap.
 Cross-module stable hashes / parallel global IDs, 2M-node cross-machine
-RSS/time thresholds, and CI perf thresholds remain later performance work.
+RSS/time thresholds, generic stress thresholds, and CI perf thresholds remain
+later performance work.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
 usefulness witness search. Bool, enum payloads, tuples, structs, and fixed

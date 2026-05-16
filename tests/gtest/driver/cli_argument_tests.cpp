@@ -81,6 +81,7 @@ TEST_F(AurexIntegrationTest, CliArgumentFormsCoverOptimizationAndNativeEmissionA
         " --emit=ast " + q(hello),
         " --emit=modules " + q(hello),
         " --emit=checked " + q(hello),
+        " --emit=typed " + q(hello),
         " --emit=ir " + q(hello),
         " --emit=llvm-ir " + q(hello),
         " --emit llvm-ir " + q(hello),

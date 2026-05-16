@@ -13,6 +13,7 @@ enum class EmitKind {
     ast,
     modules,
     checked,
+    typed,
     ir,
     llvm_ir,
     check,

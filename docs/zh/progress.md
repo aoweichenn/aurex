@@ -73,15 +73,15 @@ make perf-ast-stress
 覆盖 lexer、lookup-heavy sema、generic-instantiation-heavy sema 和 AST bulk sema 路径，并运行
 Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
 做 frontend/check 模式基线；暂不强制阈值。`make perf-compare` 只运行跨前端对比通道。
-`make perf-stress` 运行 `tools/generic_stress.py` 和 `tools/ast_stress.py`，生成 200/500/1000/2000
+`make perf-stress` 运行 `tools/generic_stress.py` 和 `tools/ast_stress.py`，生成 500/1000/2000/5000
 规模的泛型实例源码以及 10000/50000/100000 AST bulk statements 源码，并记录 `aurexc --check`
 elapsed time + peak RSS baseline；`make perf-ast-stress` 只运行 AST bulk RSS/time lane。
 generic function instance 签名、
 generic struct/enum `TypeInfo` 和 checked enum case display 已经把内部 semantic key / TypeHandle
 args 和展示名分离，`--check` 热路径不再为了 checked signature 或泛型类型实例生成
 `id[i32]`、`Box[i32]`、`Maybe[i32]_some` 这类展示字符串，dump、IR lowering 和诊断需要时再延迟格式化。
-`--check` / checked dump 模式还会在每个泛型函数实例分析完成后释放后端 lowering 专用 sparse side table；
-IR/native 输出模式继续保留这些表，保证 codegen 行为不退化。
+`--check` 模式不再保留泛型实例 side table；`--emit=typed` 会保留 typed generic body 但不做 lowering，
+用于把 retained-side-table 内存和 IR/codegen 成本分开压测。`tools/generic_stress.py --shape=templates` 覆盖 2000/5000+ 不同泛型模板场景；IR/native 输出模式继续保留 lowering 所需表，保证 codegen 行为不退化。
 AST 主路径也已按 P0-Perf-4 收口：driver 持有 parser/module AST 并把 mutable 引用传给 sema 和 IR lowering，
 `SemanticAnalyzer(const AstModule&)` 被删除以避免隐式整树复制，`CheckedModule::normalized_ast` 已改成轻量
 normalization overlay，彻底不拥有 `AstModule` snapshot，sema 构造期不再对 `exprs/types` 做 `size+4096`
@@ -107,13 +107,12 @@ generic apply/struct literal/try 改写路径也直接写 compact payload。2026
 `TypeNodeList` / `ExprNodeList` / `PatternNodeList` / `StmtNodeList` / `ItemNodeList` 的 header vector 和
 per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的 text vector、hash bucket/node
 也进入同一个 bump arena；parser 会根据 token 形态估算 statement/item/type/pattern/identifier 规模，并在 AST
-模块创建初期按 token 形态对 expression header 和每类 payload 计算容量上界，直接从 bump arena 取好 vector backing storage 并对表达式 arena page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。后续 lexer/sema bump pass 已把 lexer token 输出改为 `TokenBuffer`，token vector backing storage 由 bump arena 持有并一次性 reserve；token 容量不再被 262144 上限截断，也不再预触永远不会写入的估算余量页，避免 bump vector 扩容留下旧 backing storage。sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、`FunctionSignature` 参数/generic args、`StructInfo` 字段、`EnumCaseInfo` payload 列表、`TypeInfo` tuple/function/generic args、generic template 参数列表和 generic constraint bucket 也改为 bump-backed storage，generic function instance 列表使用 bump-backed deque 保持元素地址稳定，generic method / enum-case / visible-module cache bucket 不再由 `operator[]` 创建普通 heap vector；IR lowering 的源码 local lookup 和 IR verifier 的 symbol 去重也改为 interned typed id，不再保留持久 string-key map。当前
+模块创建初期按 token 形态对 expression header 和每类 payload 计算容量上界，直接从 bump arena 取好 vector backing storage 并对表达式 arena page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。后续 lexer/sema bump pass 已把 lexer token 输出改为 `TokenBuffer`，token vector backing storage 由 bump arena 持有并一次性 reserve；token 容量不再被 262144 上限截断，也不再预触永远不会写入的估算余量页，避免 bump vector 扩容留下旧 backing storage。sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、`FunctionSignature` 参数/generic args、`StructInfo` 字段、`EnumCaseInfo` payload 列表、`TypeInfo` tuple/function/generic args、generic template 参数列表和 generic constraint bucket 也改为 bump-backed storage，generic function instance 列表使用 bump-backed deque 保持元素地址稳定；retained generic instance 使用函数体局部 NodeSpan side table，只有非连续节点 ID 映射才共享 module-level sparse layout，不再按实例复制 sparse ID mapping vector；generic method / enum-case / visible-module cache bucket 不再由 `operator[]` 创建普通 heap vector；IR lowering 的源码 local lookup 和 IR verifier 的 symbol 去重也改为 interned typed id，不再保留持久 string-key map。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
 从约 575 MiB RSS / 135 ms 收敛到约 140.8 MiB RSS / 72.4 ms；Google Benchmark `sema_ast_bulk/1024`
 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、
 generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms。
-2000 generic instance stress 当前约 148.4 MiB RSS / 439.8 ms，仍低于 M2.1 约 150 MiB 目标；剩余内存大头已不在 AST header/payload 主存储或 sema value-payload 存储，
-后续集中在 generic side table 生命周期/释放策略、跨模块 stable hash / 并行全局 ID、2M 节点跨机器 RSS/耗时阈值和 CI perf lane。
+generic side table 生命周期已在主路径收口：sema-only expected-type 和 pattern-case cache 进入可释放 arena 并在分析后丢弃；retained instance 只保留 lowering 需要的表；非连续 NodeSpan sparse ID mapping 按模板共享；小型 per-instance side table arena 从默认 64 KiB floor 降到 1 KiB block，覆盖 2000/5000+ 不同泛型模板的固定开销。后续集中在实际 RSS/耗时 baseline、跨模块 stable hash / 并行全局 ID、2M 节点跨机器阈值和 CI perf lane。
 2026-05-16 后续 match 性能/正确性线又把结构化穷尽检查从“枚举 bool / enum 叶子笛卡尔积 + 4096 组合上限”替换为
 pattern matrix / usefulness witness search：bool、enum payload、tuple、struct 和 fixed array 通过 constructor
 specialization 与 default matrix 判定覆盖和 unreachable arm，guarded arm 不计入穷尽覆盖，动态 slice/open integer domain

@@ -19,6 +19,9 @@ using SemaIdentTable = SemaVector<IdentId>;
 using SemaIndexTable = SemaVector<base::u32>;
 
 inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX = static_cast<base::usize>(-1);
+inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_BLOCK_BYTES = 1024U;
+inline constexpr base::usize SEMA_PATTERN_CASE_NAME_TABLE_BLOCK_BYTES = 1024U;
+inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX = static_cast<base::usize>(-1);
 
 class PatternCaseNameTable final {
 public:
@@ -181,9 +184,21 @@ struct GenericSparseFallbackStats {
     }
 };
 
+struct GenericSideTableLayout {
+    GenericNodeSpan expr_span;
+    GenericNodeSpan pattern_span;
+    GenericNodeSpan type_span;
+    GenericNodeSpan stmt_span;
+    SemaIndexTable expr_node_ids;
+    SemaIndexTable pattern_node_ids;
+    SemaIndexTable type_node_ids;
+    SemaIndexTable stmt_node_ids;
+};
+
 struct GenericSideTables {
 private:
     std::unique_ptr<base::BumpAllocator> arena_;
+    std::unique_ptr<base::BumpAllocator> analysis_arena_;
 
 public:
     GenericSideTables();
@@ -199,6 +214,7 @@ public:
     GenericNodeSpan pattern_span;
     GenericNodeSpan type_span;
     GenericNodeSpan stmt_span;
+    const GenericSideTableLayout* layout = nullptr;
     SemaIndexTable expr_node_ids;
     SemaIndexTable pattern_node_ids;
     SemaIndexTable type_node_ids;
@@ -237,32 +253,68 @@ public:
         std::span<const base::u32> type_ids,
         std::span<const base::u32> stmt_ids
     );
+    void configure_local_dense(const GenericSideTableLayout& shared_layout);
+    void bind_local_dense_layout(const GenericSideTableLayout& shared_layout) noexcept;
+    void prepare_analysis_only_storage(base::usize expr_count);
+    void release_analysis_only_storage();
 
     [[nodiscard]] base::usize local_expr_index(syntax::ExprId expr) const noexcept {
         return syntax::is_valid(expr) && this->local_dense
-            ? this->local_index(expr.value, this->expr_span, this->expr_node_ids)
+            ? this->local_index(expr.value, this->active_expr_span(), this->active_expr_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
     [[nodiscard]] base::usize local_pattern_index(syntax::PatternId pattern) const noexcept {
         return syntax::is_valid(pattern) && this->local_dense
-            ? this->local_index(pattern.value, this->pattern_span, this->pattern_node_ids)
+            ? this->local_index(pattern.value, this->active_pattern_span(), this->active_pattern_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
     [[nodiscard]] base::usize local_type_index(syntax::TypeId type) const noexcept {
         return syntax::is_valid(type) && this->local_dense
-            ? this->local_index(type.value, this->type_span, this->type_node_ids)
+            ? this->local_index(type.value, this->active_type_span(), this->active_type_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
     [[nodiscard]] base::usize local_stmt_index(syntax::StmtId stmt) const noexcept {
         return syntax::is_valid(stmt) && this->local_dense
-            ? this->local_index(stmt.value, this->stmt_span, this->stmt_node_ids)
+            ? this->local_index(stmt.value, this->active_stmt_span(), this->active_stmt_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
 private:
+    [[nodiscard]] GenericNodeSpan active_expr_span() const noexcept {
+        return this->layout == nullptr ? this->expr_span : this->layout->expr_span;
+    }
+
+    [[nodiscard]] GenericNodeSpan active_pattern_span() const noexcept {
+        return this->layout == nullptr ? this->pattern_span : this->layout->pattern_span;
+    }
+
+    [[nodiscard]] GenericNodeSpan active_type_span() const noexcept {
+        return this->layout == nullptr ? this->type_span : this->layout->type_span;
+    }
+
+    [[nodiscard]] GenericNodeSpan active_stmt_span() const noexcept {
+        return this->layout == nullptr ? this->stmt_span : this->layout->stmt_span;
+    }
+
+    [[nodiscard]] const SemaIndexTable& active_expr_node_ids() const noexcept {
+        return this->layout == nullptr ? this->expr_node_ids : this->layout->expr_node_ids;
+    }
+
+    [[nodiscard]] const SemaIndexTable& active_pattern_node_ids() const noexcept {
+        return this->layout == nullptr ? this->pattern_node_ids : this->layout->pattern_node_ids;
+    }
+
+    [[nodiscard]] const SemaIndexTable& active_type_node_ids() const noexcept {
+        return this->layout == nullptr ? this->type_node_ids : this->layout->type_node_ids;
+    }
+
+    [[nodiscard]] const SemaIndexTable& active_stmt_node_ids() const noexcept {
+        return this->layout == nullptr ? this->stmt_node_ids : this->layout->stmt_node_ids;
+    }
+
     [[nodiscard]] static base::usize local_index(
         base::u32 value,
         GenericNodeSpan span,
@@ -285,6 +337,7 @@ struct GenericFunctionInstanceInfo {
     FunctionLookupKey key;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
     FunctionSignature signature;
+    base::usize side_table_layout_index = SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX;
     GenericSideTables side_tables;
 };
 
@@ -305,6 +358,7 @@ struct NormalizedAstOverlay {
 struct CheckedModule {
 private:
     std::unique_ptr<base::BumpAllocator> arena_;
+    std::unique_ptr<base::BumpAllocator> analysis_arena_;
 
 public:
     CheckedModule();
@@ -331,6 +385,7 @@ public:
     CheckedModuleInfoMap structs;
     CheckedEnumCaseMap enum_cases;
     CheckedTypeAliasMap type_aliases;
+    SemaDeque<GenericSideTableLayout> generic_side_table_layouts;
     SemaDeque<GenericFunctionInstanceInfo> generic_function_instances;
     NormalizedAstOverlay normalized_ast;
 
@@ -346,13 +401,39 @@ public:
     [[nodiscard]] TypeHandleList copy_type_handle_list(std::span<const TypeHandle> values);
     [[nodiscard]] SemaVector<StructFieldInfo> make_struct_field_list() const;
     [[nodiscard]] SemaVector<StructFieldInfo> copy_struct_field_list(std::span<const StructFieldInfo> values);
+    [[nodiscard]] SemaIndexTable make_index_table() const;
+    [[nodiscard]] SemaIndexTable copy_index_table(std::span<const base::u32> values) const;
     [[nodiscard]] FunctionSignature make_function_signature();
     [[nodiscard]] StructInfo make_struct_info();
     [[nodiscard]] EnumCaseInfo make_enum_case_info();
+    [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(
+        GenericNodeSpan expr,
+        GenericNodeSpan pattern,
+        GenericNodeSpan type,
+        GenericNodeSpan stmt,
+        std::span<const base::u32> expr_ids,
+        std::span<const base::u32> pattern_ids,
+        std::span<const base::u32> type_ids,
+        std::span<const base::u32> stmt_ids
+    ) const;
+    [[nodiscard]] base::usize append_generic_side_table_layout(
+        GenericNodeSpan expr,
+        GenericNodeSpan pattern,
+        GenericNodeSpan type,
+        GenericNodeSpan stmt,
+        std::span<const base::u32> expr_ids,
+        std::span<const base::u32> pattern_ids,
+        std::span<const base::u32> type_ids,
+        std::span<const base::u32> stmt_ids
+    );
+    [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
+    [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericFunctionInstanceInfo clone_generic_function_instance(const GenericFunctionInstanceInfo& other);
+    void prepare_analysis_only_storage(base::usize expr_count);
+    void release_analysis_only_storage();
     void reserve_side_table_storage(
         base::usize expr_count,
         base::usize pattern_count,
@@ -367,6 +448,7 @@ public:
 private:
     void swap(CheckedModule& other) noexcept;
     void copy_from(const CheckedModule& other);
+    void rebind_generic_instance_layouts() noexcept;
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);

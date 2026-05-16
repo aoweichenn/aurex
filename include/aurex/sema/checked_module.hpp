@@ -147,6 +147,40 @@ struct GenericNodeSpan {
     }
 };
 
+enum class GenericSparseFallbackKind {
+    expr_type,
+    expr_expected_type,
+    expr_c_name,
+    pattern_c_name,
+    pattern_case_name,
+    syntax_type,
+    stmt_local_type,
+};
+
+struct GenericSparseFallbackStats {
+    base::usize expr_types = 0;
+    base::usize expr_expected_types = 0;
+    base::usize expr_c_name_ids = 0;
+    base::usize pattern_c_name_ids = 0;
+    base::usize pattern_case_name_ids = 0;
+    base::usize syntax_type_handles = 0;
+    base::usize stmt_local_types = 0;
+
+    [[nodiscard]] base::usize total() const noexcept {
+        return this->expr_types +
+               this->expr_expected_types +
+               this->expr_c_name_ids +
+               this->pattern_c_name_ids +
+               this->pattern_case_name_ids +
+               this->syntax_type_handles +
+               this->stmt_local_types;
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return this->total() == 0;
+    }
+};
+
 struct GenericSideTables {
 private:
     std::unique_ptr<base::BumpAllocator> arena_;
@@ -182,9 +216,11 @@ public:
     PatternCaseNameTable pattern_case_name_ids;
     SemaMap<base::u32, TypeHandle> sparse_syntax_type_handles;
     SemaMap<base::u32, TypeHandle> sparse_stmt_local_types;
+    GenericSparseFallbackStats sparse_fallbacks;
 
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;
+    void record_sparse_fallback(GenericSparseFallbackKind kind) noexcept;
     void configure_local_dense(
         GenericNodeSpan expr,
         GenericNodeSpan pattern,

@@ -59,6 +59,7 @@ constexpr base::u64 SEMA_TEST_NESTED_ARRAY_COUNT = 5;
 constexpr base::u64 SEMA_TEST_INVALID_ARRAY_COUNT = 2;
 constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
 constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
+constexpr base::usize SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT = 70;
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
 constexpr std::string_view SEMA_TEST_IMPORT_ALIAS_ONE = "one";
 constexpr std::string_view SEMA_TEST_CONST_VALUE_NAME = "VALUE";
@@ -2239,6 +2240,42 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly) {
     EXPECT_EQ(side_tables.stmt_local_types.size(), info.stmt_node_ids.size());
 }
 
+TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansSwitchToHashDedupForLargeBodies) {
+    syntax::AstModule module;
+    module.modules = {module_info({"generic_large_span"})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    std::vector<ExprId> values;
+    values.reserve(SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT);
+    for (base::usize index = 0; index < SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT; ++index) {
+        values.push_back(push_integer_text(module, SEMA_TEST_INTEGER_LITERAL_ONE));
+    }
+    values.push_back(values.front());
+
+    const ExprId tuple_expr = module.push_tuple_expr({}, values);
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = tuple_expr;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body_id = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode generic_function;
+    generic_function.kind = syntax::ItemKind::fn_decl;
+    generic_function.name = "large_span";
+    generic_function.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    generic_function.return_type = i32_type;
+    generic_function.body = body_id;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzer::GenericTemplateInfo info = analyzer.make_generic_template_info();
+    analyzer.populate_generic_template_node_spans(info, generic_function);
+
+    EXPECT_TRUE(info.expr_span.contains(tuple_expr.value));
+    EXPECT_GE(info.expr_span.count, SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT);
+    EXPECT_TRUE(info.expr_node_ids.empty());
+}
+
 TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables) {
     syntax::AstModule module;
     module.modules = {module_info({"generic_sparse"})};
@@ -2317,6 +2354,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables) {
     EXPECT_TRUE(sema::is_valid(side_tables.expr_types[value_local]));
     EXPECT_TRUE(side_tables.sparse_expr_types.empty());
     EXPECT_TRUE(side_tables.sparse_expr_expected_types.empty());
+    EXPECT_TRUE(side_tables.sparse_fallbacks.empty());
 
     sema::SemanticOptions discard_options;
     discard_options.retain_generic_side_tables = false;
@@ -2565,6 +2603,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     EXPECT_TRUE(local_side_tables.sparse_pattern_c_name_ids.empty());
     EXPECT_TRUE(local_side_tables.sparse_syntax_type_handles.empty());
     EXPECT_TRUE(local_side_tables.sparse_stmt_local_types.empty());
+    EXPECT_TRUE(local_side_tables.sparse_fallbacks.empty());
 
     sema::GenericSideTables sparse_local_side_tables;
     constexpr base::u32 SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN = 10U;
@@ -2573,23 +2612,55 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
         SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN,
         SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN + SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT - 1U,
     };
+    const std::array<base::u32, 2> sparse_pattern_ids = sparse_expr_ids;
+    const std::array<base::u32, 2> sparse_type_ids = sparse_expr_ids;
+    const std::array<base::u32, 2> sparse_stmt_ids = sparse_expr_ids;
     sparse_local_side_tables.configure_local_dense(
         sema::GenericNodeSpan {SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
-        {},
-        {},
-        {},
+        sema::GenericNodeSpan {SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
+        sema::GenericNodeSpan {SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
+        sema::GenericNodeSpan {SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
         sparse_expr_ids,
-        {},
-        {},
-        {}
+        sparse_pattern_ids,
+        sparse_type_ids,
+        sparse_stmt_ids
     );
     EXPECT_EQ(sparse_local_side_tables.expr_types.size(), sparse_expr_ids.size());
+    EXPECT_EQ(sparse_local_side_tables.pattern_c_name_ids.size(), sparse_pattern_ids.size());
+    EXPECT_EQ(sparse_local_side_tables.syntax_type_handles.size(), sparse_type_ids.size());
+    EXPECT_EQ(sparse_local_side_tables.stmt_local_types.size(), sparse_stmt_ids.size());
     EXPECT_EQ(sparse_local_side_tables.local_expr_index(ExprId {sparse_expr_ids.front()}), 0U);
     EXPECT_EQ(sparse_local_side_tables.local_expr_index(ExprId {sparse_expr_ids.back()}), 1U);
     EXPECT_EQ(
         sparse_local_side_tables.local_expr_index(ExprId {sparse_expr_ids.front() + 1U}),
         sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
     );
+    analyzer.current_side_tables_.side_tables = &sparse_local_side_tables;
+    analyzer.current_side_tables_.cache_syntax_types = true;
+    static_cast<void>(analyzer.record_expr_type(ExprId {sparse_expr_ids.front() + 1U}, i32));
+    analyzer.record_expr_expected_type(ExprId {sparse_expr_ids.front() + 1U}, i64);
+    analyzer.record_expr_c_name(ExprId {sparse_expr_ids.front() + 1U}, "sparse_local_expr");
+    analyzer.record_pattern_c_name(syntax::PatternId {sparse_pattern_ids.front() + 1U}, "sparse_local_pattern");
+    analyzer.record_pattern_case_name(syntax::PatternId {sparse_pattern_ids.front()}, "SparseLocalAlternative");
+    analyzer.record_pattern_case_name(syntax::PatternId {sparse_pattern_ids.front() + 1U}, "SparseLocalCase");
+    analyzer.merge_pattern_case_names(
+        syntax::PatternId {sparse_pattern_ids.front() + 1U},
+        syntax::PatternId {sparse_pattern_ids.front()}
+    );
+    analyzer.merge_pattern_case_names(
+        syntax::PatternId {sparse_pattern_ids.front()},
+        syntax::PatternId {sparse_pattern_ids.front() + 1U}
+    );
+    analyzer.record_syntax_type_handle(TypeId {sparse_type_ids.front() + 1U}, i32);
+    analyzer.record_stmt_local_type(syntax::StmtId {sparse_stmt_ids.front() + 1U}, i64);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_types, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_expected_types, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_c_name_ids, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.pattern_c_name_ids, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.pattern_case_name_ids, 3U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.syntax_type_handles, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.stmt_local_types, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.total(), 9U);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
@@ -2636,19 +2707,25 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     side_tables.sparse_syntax_type_handles.emplace(8U, i32);
     side_tables.sparse_stmt_local_types.emplace(9U, i64);
     side_tables.pattern_case_name_ids.insert(10, alpha_id);
+    side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_type);
+    side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::stmt_local_type);
 
     sema::GenericSideTables side_copy(side_tables);
     EXPECT_TRUE(side_copy.sparse);
     EXPECT_EQ(side_copy.expr_types.front().value, i32.value);
     EXPECT_EQ(side_copy.sparse_expr_c_name_ids.at(6U).value, alpha_id.value);
+    EXPECT_EQ(side_copy.sparse_fallbacks.total(), 2U);
     sema::GenericSideTables side_assigned;
     side_assigned = side_tables;
     EXPECT_EQ(side_assigned.sparse_stmt_local_types.at(9U).value, i64.value);
+    EXPECT_EQ(side_assigned.sparse_fallbacks.expr_types, 1U);
     sema::GenericSideTables side_moved(std::move(side_copy));
     EXPECT_TRUE(side_moved.pattern_case_name_ids[10].contains(alpha_id));
+    EXPECT_EQ(side_moved.sparse_fallbacks.stmt_local_types, 1U);
     sema::GenericSideTables side_move_assigned;
     side_move_assigned = std::move(side_assigned);
     EXPECT_EQ(side_move_assigned.syntax_type_handles.front().value, i32.value);
+    EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 2U);
 
     sema::CheckedModule checked;
     const IdentId checked_c_name = checked.intern_c_name("m0_test");

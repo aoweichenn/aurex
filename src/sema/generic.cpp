@@ -27,6 +27,7 @@ constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER = "@";
 constexpr base::usize SEMA_DECIMAL_U64_MAX_DIGITS = 20;
 constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
 constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
+constexpr base::usize SEMA_GENERIC_SPAN_LINEAR_DEDUP_LIMIT = 64;
 
 [[nodiscard]] GenericSideTables make_generic_side_tables(
     const GenericNodeSpan expr,
@@ -88,6 +89,7 @@ struct GenericNodeSpanBuilder {
     }
 
     void collect(const syntax::ItemNode& item) {
+        this->reserve_initial_worklists(item);
         for (const syntax::ParamDecl& param : item.params) {
             this->add_type(param.type);
         }
@@ -130,6 +132,13 @@ struct GenericNodeSpanBuilder {
     }
 
 private:
+    void reserve_initial_worklists(const syntax::ItemNode& item) {
+        this->types.reserve(item.params.size() + 2U);
+        this->stmts.reserve(syntax::is_valid(item.body) ? 1U : 0U);
+        this->exprs.reserve(0U);
+        this->patterns.reserve(0U);
+    }
+
     template <typename Id>
     void add_id(
         const Id id,
@@ -137,7 +146,24 @@ private:
         std::unordered_set<base::u32>& seen,
         std::vector<Id>& ids
     ) {
-        if (!syntax::is_valid(id) || id.value >= node_count || !seen.insert(id.value).second) {
+        if (!syntax::is_valid(id) || id.value >= node_count) {
+            return;
+        }
+        if (seen.empty()) {
+            const auto duplicate = std::ranges::find(ids, id.value, &Id::value);
+            if (duplicate != ids.end()) {
+                return;
+            }
+            if (ids.size() < SEMA_GENERIC_SPAN_LINEAR_DEDUP_LIMIT) {
+                ids.push_back(id);
+                return;
+            }
+            seen.reserve(ids.size() + 1U);
+            for (const Id existing : ids) {
+                seen.insert(existing.value);
+            }
+        }
+        if (!seen.insert(id.value).second) {
             return;
         }
         ids.push_back(id);

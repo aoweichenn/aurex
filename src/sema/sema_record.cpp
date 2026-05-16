@@ -50,18 +50,34 @@ template <typename T>
         : fallback;
 }
 
+void record_sparse_fallback(
+    GenericSideTables& side_tables,
+    const GenericSparseFallbackKind kind,
+    const base::usize local_index
+) noexcept {
+    if (side_tables.local_dense && local_index == SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
+        side_tables.record_sparse_fallback(kind);
+    }
+}
+
 } // namespace
 
 void SemanticAnalyzer::record_stmt_local_type(const syntax::StmtId stmt, const TypeHandle type) {
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
         if (syntax::is_valid(stmt)) {
+            const base::usize local_index = this->current_side_tables_.side_tables->local_stmt_index(stmt);
             if (record_local_dense_slot(
                     this->current_side_tables_.side_tables->stmt_local_types,
-                    this->current_side_tables_.side_tables->local_stmt_index(stmt),
+                    local_index,
                     type
                 )) {
                 return;
             }
+            record_sparse_fallback(
+                *this->current_side_tables_.side_tables,
+                GenericSparseFallbackKind::stmt_local_type,
+                local_index
+            );
             this->current_side_tables_.side_tables->sparse_stmt_local_types[stmt.value] = type;
         }
         return;
@@ -79,13 +95,19 @@ void SemanticAnalyzer::record_expr_c_name(const syntax::ExprId expr, const std::
     }
     const IdentId c_name_id = this->checked_.intern_c_name(c_name);
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        const base::usize local_index = this->current_side_tables_.side_tables->local_expr_index(expr);
         if (record_local_dense_slot(
                 this->current_side_tables_.side_tables->expr_c_name_ids,
-                this->current_side_tables_.side_tables->local_expr_index(expr),
+                local_index,
                 c_name_id
             )) {
             return;
         }
+        record_sparse_fallback(
+            *this->current_side_tables_.side_tables,
+            GenericSparseFallbackKind::expr_c_name,
+            local_index
+        );
         this->current_side_tables_.side_tables->sparse_expr_c_name_ids[expr.value] = c_name_id;
         return;
     }
@@ -100,13 +122,19 @@ void SemanticAnalyzer::record_pattern_c_name(const syntax::PatternId pattern, co
     }
     const IdentId c_name_id = this->checked_.intern_c_name(c_name);
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        const base::usize local_index = this->current_side_tables_.side_tables->local_pattern_index(pattern);
         if (record_local_dense_slot(
                 this->current_side_tables_.side_tables->pattern_c_name_ids,
-                this->current_side_tables_.side_tables->local_pattern_index(pattern),
+                local_index,
                 c_name_id
             )) {
             return;
         }
+        record_sparse_fallback(
+            *this->current_side_tables_.side_tables,
+            GenericSparseFallbackKind::pattern_c_name,
+            local_index
+        );
         this->current_side_tables_.side_tables->sparse_pattern_c_name_ids[pattern.value] = c_name_id;
         return;
     }
@@ -127,6 +155,9 @@ void SemanticAnalyzer::record_pattern_case_name(const syntax::PatternId pattern,
             this->active_pattern_case_name_ids().insert(static_cast<base::u32>(local_index), c_name_id);
             return;
         }
+        this->current_side_tables_.side_tables->record_sparse_fallback(
+            GenericSparseFallbackKind::pattern_case_name
+        );
     }
     this->active_pattern_case_name_ids().insert(pattern.value, c_name_id);
 }
@@ -142,10 +173,19 @@ void SemanticAnalyzer::merge_pattern_case_names(const syntax::PatternId pattern,
         this->current_side_tables_.side_tables->local_dense) {
         const base::usize target_local = this->current_side_tables_.side_tables->local_pattern_index(pattern);
         const base::usize alternative_local = this->current_side_tables_.side_tables->local_pattern_index(alternative);
-        if (target_local != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
-            alternative_local != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
+        if (target_local != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
             target_index = static_cast<base::u32>(target_local);
+        } else {
+            this->current_side_tables_.side_tables->record_sparse_fallback(
+                GenericSparseFallbackKind::pattern_case_name
+            );
+        }
+        if (alternative_local != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX) {
             alternative_index = static_cast<base::u32>(alternative_local);
+        } else {
+            this->current_side_tables_.side_tables->record_sparse_fallback(
+                GenericSparseFallbackKind::pattern_case_name
+            );
         }
     }
     const auto found = pattern_case_name_ids.find(alternative_index);
@@ -160,13 +200,19 @@ void SemanticAnalyzer::record_syntax_type_handle(const syntax::TypeId type, cons
     }
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
         if (syntax::is_valid(type)) {
+            const base::usize local_index = this->current_side_tables_.side_tables->local_type_index(type);
             if (record_local_dense_slot(
                     this->current_side_tables_.side_tables->syntax_type_handles,
-                    this->current_side_tables_.side_tables->local_type_index(type),
+                    local_index,
                     resolved
                 )) {
                 return;
             }
+            record_sparse_fallback(
+                *this->current_side_tables_.side_tables,
+                GenericSparseFallbackKind::syntax_type,
+                local_index
+            );
             this->current_side_tables_.side_tables->sparse_syntax_type_handles[type.value] = resolved;
         }
         return;
@@ -181,13 +227,19 @@ void SemanticAnalyzer::record_syntax_type_handle(const syntax::TypeId type, cons
 TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const TypeHandle type) {
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
         if (syntax::is_valid(expr)) {
+            const base::usize local_index = this->current_side_tables_.side_tables->local_expr_index(expr);
             if (record_local_dense_slot(
                     this->current_side_tables_.side_tables->expr_types,
-                    this->current_side_tables_.side_tables->local_expr_index(expr),
+                    local_index,
                     type
                 )) {
                 return type;
             }
+            record_sparse_fallback(
+                *this->current_side_tables_.side_tables,
+                GenericSparseFallbackKind::expr_type,
+                local_index
+            );
             this->current_side_tables_.side_tables->sparse_expr_types[expr.value] = type;
         }
         return type;
@@ -206,13 +258,19 @@ void SemanticAnalyzer::record_expr_expected_type(
 ) {
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
         if (syntax::is_valid(expr)) {
+            const base::usize local_index = this->current_side_tables_.side_tables->local_expr_index(expr);
             if (record_local_dense_slot(
                     this->current_side_tables_.side_tables->expr_expected_types,
-                    this->current_side_tables_.side_tables->local_expr_index(expr),
+                    local_index,
                     expected_type
                 )) {
                 return;
             }
+            record_sparse_fallback(
+                *this->current_side_tables_.side_tables,
+                GenericSparseFallbackKind::expr_expected_type,
+                local_index
+            );
             this->current_side_tables_.side_tables->sparse_expr_expected_types[expr.value] = expected_type;
         }
         return;

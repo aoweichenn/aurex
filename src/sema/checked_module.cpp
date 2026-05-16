@@ -198,7 +198,8 @@ GenericSideTables::GenericSideTables(GenericSideTables&& other) noexcept
       sparse_pattern_c_name_ids(std::move(other.sparse_pattern_c_name_ids)),
       pattern_case_name_ids(std::move(other.pattern_case_name_ids)),
       sparse_syntax_type_handles(std::move(other.sparse_syntax_type_handles)),
-      sparse_stmt_local_types(std::move(other.sparse_stmt_local_types)) {}
+      sparse_stmt_local_types(std::move(other.sparse_stmt_local_types)),
+      sparse_fallbacks(other.sparse_fallbacks) {}
 
 GenericSideTables& GenericSideTables::operator=(GenericSideTables&& other) noexcept {
     if (this == &other) {
@@ -214,6 +215,32 @@ base::usize GenericSideTables::arena_bytes() const noexcept {
 
 base::usize GenericSideTables::arena_blocks() const noexcept {
     return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+}
+
+void GenericSideTables::record_sparse_fallback(const GenericSparseFallbackKind kind) noexcept {
+    switch (kind) {
+    case GenericSparseFallbackKind::expr_type:
+        this->sparse_fallbacks.expr_types += 1;
+        break;
+    case GenericSparseFallbackKind::expr_expected_type:
+        this->sparse_fallbacks.expr_expected_types += 1;
+        break;
+    case GenericSparseFallbackKind::expr_c_name:
+        this->sparse_fallbacks.expr_c_name_ids += 1;
+        break;
+    case GenericSparseFallbackKind::pattern_c_name:
+        this->sparse_fallbacks.pattern_c_name_ids += 1;
+        break;
+    case GenericSparseFallbackKind::pattern_case_name:
+        this->sparse_fallbacks.pattern_case_name_ids += 1;
+        break;
+    case GenericSparseFallbackKind::syntax_type:
+        this->sparse_fallbacks.syntax_type_handles += 1;
+        break;
+    case GenericSparseFallbackKind::stmt_local_type:
+        this->sparse_fallbacks.stmt_local_types += 1;
+        break;
+    }
 }
 
 void GenericSideTables::configure_local_dense(
@@ -261,6 +288,7 @@ void GenericSideTables::configure_local_dense(
     this->sparse_pattern_c_name_ids.clear();
     this->sparse_syntax_type_handles.clear();
     this->sparse_stmt_local_types.clear();
+    this->sparse_fallbacks = {};
 }
 
 void GenericSideTables::swap(GenericSideTables& other) noexcept {
@@ -288,6 +316,7 @@ void GenericSideTables::swap(GenericSideTables& other) noexcept {
     swap(this->pattern_case_name_ids, other.pattern_case_name_ids);
     this->sparse_syntax_type_handles.swap(other.sparse_syntax_type_handles);
     this->sparse_stmt_local_types.swap(other.sparse_stmt_local_types);
+    swap(this->sparse_fallbacks, other.sparse_fallbacks);
     swap(this->arena_, other.arena_);
 }
 
@@ -315,6 +344,7 @@ void GenericSideTables::copy_from(const GenericSideTables& other) {
     this->pattern_case_name_ids = other.pattern_case_name_ids;
     this->sparse_syntax_type_handles = other.sparse_syntax_type_handles;
     this->sparse_stmt_local_types = other.sparse_stmt_local_types;
+    this->sparse_fallbacks = other.sparse_fallbacks;
 }
 
 CheckedModule::CheckedModule()

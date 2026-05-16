@@ -244,7 +244,7 @@ find_symbol(name_id, name, range);
 
 **实测：** 2M AST 节点 → **3.0 GB** 🚨
 
-**建议：** Sema 用引用不复制；normalized_ast 改 overlay；长期改 compact AST (header + per-kind payload)。
+**建议：** Sema 用引用不复制；normalized_ast 改 overlay 且不拥有 AST；节点级 C symbol side table 用 `IdentId` + C-name interner；长期改 compact AST (header + per-kind payload)。
 
 ---
 

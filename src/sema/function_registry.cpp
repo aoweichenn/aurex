@@ -77,8 +77,8 @@ void FunctionRegistry::register_function(
     signature.prototype_item = is_prototype ? item_id : syntax::INVALID_ITEM_ID;
     signature.definition_item = signature.has_definition ? item_id : syntax::INVALID_ITEM_ID;
 
-    if (syntax::is_valid(item_id) && item_id.value < this->checked_.item_c_names.size()) {
-        this->checked_.item_c_names[item_id.value] = signature.c_name;
+    if (syntax::is_valid(item_id) && item_id.value < this->checked_.item_c_name_ids.size()) {
+        this->checked_.item_c_name_ids[item_id.value] = this->checked_.intern_c_name(signature.c_name);
     }
 
     this->merge_function(std::move(key), std::move(signature), is_prototype);

@@ -93,9 +93,8 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     this->active_side_tables_ = ActiveSideTables {
         nullptr,
         &this->checked_.expr_types,
-        &this->checked_.expr_c_names,
-        &this->checked_.pattern_c_names,
-        &this->checked_.pattern_case_sets,
+        &this->checked_.expr_c_name_ids,
+        &this->checked_.pattern_c_name_ids,
         &this->checked_.syntax_type_handles,
         &this->checked_.stmt_local_types,
     };
@@ -356,8 +355,11 @@ void Lowerer::lower_global_constant_initializers() {
 }
 
 std::string Lowerer::item_symbol(const base::u32 index, const syntax::ItemNode& item) const {
-    if (index < checked_.item_c_names.size() && !checked_.item_c_names[index].empty()) {
-        return checked_.item_c_names[index];
+    if (index < this->checked_.item_c_name_ids.size()) {
+        const std::string_view c_name = this->checked_.c_name_text(this->checked_.item_c_name_ids[index]);
+        if (!c_name.empty()) {
+            return std::string(c_name);
+        }
     }
     if (!item.abi_name.empty()) {
         return std::string(item.abi_name);
@@ -397,10 +399,7 @@ sema::TypeHandle Lowerer::function_return_type(const base::u32 index, const synt
 namespace aurex::ir {
 
 base::Result<Module> lower_ast(const syntax::AstModule& ast, const sema::CheckedModule& checked) {
-    const syntax::AstModule& lowered_ast = checked.normalized_ast.has_value()
-        ? checked.normalized_ast.value()
-        : ast;
-    detail::Lowerer lowerer(lowered_ast, checked);
+    detail::Lowerer lowerer(ast, checked);
     return base::Result<Module>::ok(lowerer.lower());
 }
 

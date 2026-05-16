@@ -116,10 +116,14 @@ those tables so codegen behavior stays unchanged.
 The AST main path now follows the P0-Perf-4 plan: the driver owns the
 parser/module AST and passes a mutable reference through sema and IR lowering,
 `SemanticAnalyzer(const AstModule&)` is deleted to prevent implicit whole-tree
-copies, `CheckedModule::normalized_ast` no longer keeps an AST snapshot by
-default, sema construction no longer reserves `exprs/types` as `size+4096`, and
-postfix materialization no longer copies fat `ExprNode` / `TypeNode` values by
-value. The 2026-05-15 compact AST storage pass now stores `TypeNode`,
+copies, `CheckedModule::normalized_ast` is a lightweight normalization overlay
+and never owns an `AstModule`, sema construction no longer reserves
+`exprs/types` as `size+4096`, and postfix materialization no longer copies fat
+`ExprNode` / `TypeNode` values by value. Per-node C symbol side tables now store
+`IdentId` entries in `expr_c_name_ids`, `pattern_c_name_ids`, and
+`item_c_name_ids`, with the actual text deduplicated in the checked module
+C-name interner instead of allocating one `std::string` per node. The
+2026-05-15 compact AST storage pass now stores `TypeNode`,
 `ExprNode`, `PatternNode`, `StmtNode`, and `ItemNode` as 32-byte compact headers
 plus per-kind payload arenas; module loading moves payload-backed nodes before
 remapping instead of depending on fat-vector addresses or `.data()` pointer

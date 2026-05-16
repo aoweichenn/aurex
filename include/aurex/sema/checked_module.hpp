@@ -5,13 +5,14 @@
 #include <aurex/syntax/ast.hpp>
 
 #include <deque>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace aurex::sema {
+
+using CNameIdSet = std::unordered_set<IdentId, IdentIdHash>;
 
 struct StructFieldInfo {
     std::string name;
@@ -77,16 +78,15 @@ struct GenericSideTables {
     bool sparse = false;
     std::vector<TypeHandle> expr_types;
     std::vector<TypeHandle> expr_expected_types;
-    std::vector<std::string> expr_c_names;
-    std::vector<std::string> pattern_c_names;
-    std::vector<std::unordered_set<std::string>> pattern_case_sets;
+    std::vector<IdentId> expr_c_name_ids;
+    std::vector<IdentId> pattern_c_name_ids;
     std::vector<TypeHandle> syntax_type_handles;
     std::vector<TypeHandle> stmt_local_types;
     std::unordered_map<base::u32, TypeHandle> sparse_expr_types;
     std::unordered_map<base::u32, TypeHandle> sparse_expr_expected_types;
-    std::unordered_map<base::u32, std::string> sparse_expr_c_names;
-    std::unordered_map<base::u32, std::string> sparse_pattern_c_names;
-    std::unordered_map<base::u32, std::unordered_set<std::string>> sparse_pattern_case_sets;
+    std::unordered_map<base::u32, IdentId> sparse_expr_c_name_ids;
+    std::unordered_map<base::u32, IdentId> sparse_pattern_c_name_ids;
+    std::unordered_map<base::u32, CNameIdSet> pattern_case_name_ids;
     std::unordered_map<base::u32, TypeHandle> sparse_syntax_type_handles;
     std::unordered_map<base::u32, TypeHandle> sparse_stmt_local_types;
 };
@@ -98,25 +98,48 @@ struct GenericFunctionInstanceInfo {
     GenericSideTables side_tables;
 };
 
+struct NormalizedAstOverlay {
+    // Sema normalizes the caller-owned AST in place. The checked module keeps
+    // only normalization bounds/flags, never an owning AST snapshot.
+    base::usize original_expr_count = 0;
+    base::usize original_type_count = 0;
+    base::usize final_expr_count = 0;
+    base::usize final_type_count = 0;
+    bool parser_only_module_contract_added = false;
+
+    [[nodiscard]] bool added_syntax_nodes() const noexcept {
+        return final_expr_count > original_expr_count || final_type_count > original_type_count;
+    }
+};
+
 struct CheckedModule {
     // CheckedModule is the bridge between syntax and codegen. It is deliberately
     // side-table based so AST nodes remain parse-only data.
+    IdentifierInterner c_names;
     TypeTable types;
     std::vector<TypeHandle> expr_types;
     std::vector<TypeHandle> expr_expected_types;
-    std::vector<std::string> expr_c_names;
-    std::vector<std::string> pattern_c_names;
-    std::vector<std::unordered_set<std::string>> pattern_case_sets;
+    std::vector<IdentId> expr_c_name_ids;
+    std::vector<IdentId> pattern_c_name_ids;
+    std::unordered_map<base::u32, CNameIdSet> pattern_case_name_ids;
     std::vector<TypeHandle> syntax_type_handles;
     std::vector<TypeHandle> stmt_local_types;
-    std::vector<std::string> item_c_names;
+    std::vector<IdentId> item_c_name_ids;
     std::vector<CoercionRecord> coercions;
     std::unordered_map<std::string, FunctionSignature> functions;
     std::unordered_map<std::string, StructInfo> structs;
     std::unordered_map<std::string, EnumCaseInfo> enum_cases;
     std::unordered_map<std::string, TypeAliasInfo> type_aliases;
     std::deque<GenericFunctionInstanceInfo> generic_function_instances;
-    std::optional<syntax::AstModule> normalized_ast;
+    NormalizedAstOverlay normalized_ast;
+
+    [[nodiscard]] IdentId intern_c_name(const std::string_view c_name) {
+        return this->c_names.intern(c_name);
+    }
+
+    [[nodiscard]] std::string_view c_name_text(const IdentId id) const noexcept {
+        return this->c_names.text(id);
+    }
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);

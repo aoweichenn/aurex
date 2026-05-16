@@ -37,7 +37,6 @@ struct CapabilityKindHash {
 
 struct SemanticOptions {
     bool retain_generic_side_tables = true;
-    bool retain_normalized_ast = false;
 };
 
 class SemanticAnalyzer final {
@@ -798,12 +797,13 @@ private:
     [[nodiscard]] TypeHandle cached_expr_expected_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type_for_expected(syntax::ExprId expr, TypeHandle expected_type) const noexcept;
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
+    [[nodiscard]] std::string_view cached_expr_c_name(syntax::ExprId expr) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_expr_types() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_expr_expected_types() noexcept;
-    [[nodiscard]] std::vector<std::string>& active_expr_c_names() noexcept;
-    [[nodiscard]] std::vector<std::string>& active_pattern_c_names() noexcept;
-    [[nodiscard]] std::vector<std::unordered_set<std::string>>& active_pattern_case_sets() noexcept;
+    [[nodiscard]] std::vector<IdentId>& active_expr_c_name_ids() noexcept;
+    [[nodiscard]] std::vector<IdentId>& active_pattern_c_name_ids() noexcept;
+    [[nodiscard]] std::unordered_map<base::u32, CNameIdSet>& active_pattern_case_name_ids() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_syntax_type_handles() noexcept;
     [[nodiscard]] std::vector<TypeHandle>& active_stmt_local_types() noexcept;
     [[nodiscard]] PlaceInfo analyze_place_info(syntax::ExprId expr_id, bool emit_diagnostics);

@@ -99,16 +99,20 @@ std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
     if (syntax::is_valid(id) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
-        const auto found = this->active_side_tables_.generic->sparse_pattern_c_names.find(id.value);
-        if (found != this->active_side_tables_.generic->sparse_pattern_c_names.end() && !found->second.empty()) {
-            return found->second;
+        const auto found = this->active_side_tables_.generic->sparse_pattern_c_name_ids.find(id.value);
+        if (found != this->active_side_tables_.generic->sparse_pattern_c_name_ids.end()) {
+            if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {
+                return std::string(c_name);
+            }
         }
     }
     if (syntax::is_valid(id) &&
-        this->active_side_tables_.pattern_c_names != nullptr &&
-        id.value < this->active_side_tables_.pattern_c_names->size() &&
-        !(*this->active_side_tables_.pattern_c_names)[id.value].empty()) {
-        return (*this->active_side_tables_.pattern_c_names)[id.value];
+        this->active_side_tables_.pattern_c_name_ids != nullptr &&
+        id.value < this->active_side_tables_.pattern_c_name_ids->size()) {
+        const std::string_view c_name = this->checked_.c_name_text((*this->active_side_tables_.pattern_c_name_ids)[id.value]);
+        if (!c_name.empty()) {
+            return std::string(c_name);
+        }
     }
     const syntax::PatternNode* pattern = pattern_node(id);
     return pattern == nullptr ? "<invalid>" : std::string(pattern->case_name);

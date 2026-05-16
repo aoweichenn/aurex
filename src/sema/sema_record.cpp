@@ -46,61 +46,47 @@ void SemanticAnalyzer::record_expr_c_name(const syntax::ExprId expr, const std::
     if (!syntax::is_valid(expr) || c_name.empty()) {
         return;
     }
+    const IdentId c_name_id = this->checked_.intern_c_name(c_name);
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
-        this->current_side_tables_.side_tables->sparse_expr_c_names[expr.value] = std::string(c_name);
+        this->current_side_tables_.side_tables->sparse_expr_c_name_ids[expr.value] = c_name_id;
         return;
     }
-    std::vector<std::string>& expr_c_names = this->active_expr_c_names();
-    ensure_side_table_slot(expr_c_names, expr.value);
-    expr_c_names[expr.value] = std::string(c_name);
+    std::vector<IdentId>& expr_c_name_ids = this->active_expr_c_name_ids();
+    ensure_side_table_slot(expr_c_name_ids, expr.value);
+    expr_c_name_ids[expr.value] = c_name_id;
 }
 
 void SemanticAnalyzer::record_pattern_c_name(const syntax::PatternId pattern, const std::string_view c_name) {
     if (!syntax::is_valid(pattern) || c_name.empty()) {
         return;
     }
+    const IdentId c_name_id = this->checked_.intern_c_name(c_name);
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
-        this->current_side_tables_.side_tables->sparse_pattern_c_names[pattern.value] = std::string(c_name);
+        this->current_side_tables_.side_tables->sparse_pattern_c_name_ids[pattern.value] = c_name_id;
         return;
     }
-    std::vector<std::string>& pattern_c_names = this->active_pattern_c_names();
-    ensure_side_table_slot(pattern_c_names, pattern.value);
-    pattern_c_names[pattern.value] = std::string(c_name);
+    std::vector<IdentId>& pattern_c_name_ids = this->active_pattern_c_name_ids();
+    ensure_side_table_slot(pattern_c_name_ids, pattern.value);
+    pattern_c_name_ids[pattern.value] = c_name_id;
 }
 
 void SemanticAnalyzer::record_pattern_case_name(const syntax::PatternId pattern, const std::string_view c_name) {
     if (!syntax::is_valid(pattern) || c_name.empty()) {
         return;
     }
-    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
-        this->current_side_tables_.side_tables->sparse_pattern_case_sets[pattern.value].insert(std::string(c_name));
-        return;
-    }
-    std::vector<std::unordered_set<std::string>>& pattern_case_sets = this->active_pattern_case_sets();
-    ensure_side_table_slot(pattern_case_sets, pattern.value);
-    pattern_case_sets[pattern.value].insert(std::string(c_name));
+    const IdentId c_name_id = this->checked_.intern_c_name(c_name);
+    this->active_pattern_case_name_ids()[pattern.value].insert(c_name_id);
 }
 
 void SemanticAnalyzer::merge_pattern_case_names(const syntax::PatternId pattern, const syntax::PatternId alternative) {
     if (!syntax::is_valid(pattern) || !syntax::is_valid(alternative)) {
         return;
     }
-    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
-        const auto found = this->current_side_tables_.side_tables->sparse_pattern_case_sets.find(alternative.value);
-        if (found != this->current_side_tables_.side_tables->sparse_pattern_case_sets.end()) {
-            std::unordered_set<std::string>& target =
-                this->current_side_tables_.side_tables->sparse_pattern_case_sets[pattern.value];
-            target.insert(found->second.begin(), found->second.end());
-        }
-        return;
-    }
-    std::vector<std::unordered_set<std::string>>& pattern_case_sets = this->active_pattern_case_sets();
-    if (alternative.value < pattern_case_sets.size()) {
-        ensure_side_table_slot(pattern_case_sets, pattern.value);
-        pattern_case_sets[pattern.value].insert(
-            pattern_case_sets[alternative.value].begin(),
-            pattern_case_sets[alternative.value].end()
-        );
+    std::unordered_map<base::u32, CNameIdSet>& pattern_case_name_ids = this->active_pattern_case_name_ids();
+    const auto found = pattern_case_name_ids.find(alternative.value);
+    if (found != pattern_case_name_ids.end()) {
+        CNameIdSet& target = pattern_case_name_ids[pattern.value];
+        target.insert(found->second.begin(), found->second.end());
     }
 }
 
@@ -240,20 +226,40 @@ TypeHandle SemanticAnalyzer::cached_syntax_type(const syntax::TypeId type) const
     return type.value < syntax_type_handles.size() ? syntax_type_handles[type.value] : INVALID_TYPE_HANDLE;
 }
 
+std::string_view SemanticAnalyzer::cached_expr_c_name(const syntax::ExprId expr) const noexcept {
+    if (!syntax::is_valid(expr)) {
+        return {};
+    }
+    if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
+        const auto found = this->current_side_tables_.side_tables->sparse_expr_c_name_ids.find(expr.value);
+        return found == this->current_side_tables_.side_tables->sparse_expr_c_name_ids.end()
+            ? std::string_view {}
+            : this->checked_.c_name_text(found->second);
+    }
+    const std::vector<IdentId>& expr_c_name_ids = this->current_side_tables_.side_tables == nullptr
+        ? this->checked_.expr_c_name_ids
+        : this->current_side_tables_.side_tables->expr_c_name_ids;
+    return expr.value < expr_c_name_ids.size()
+        ? this->checked_.c_name_text(expr_c_name_ids[expr.value])
+        : std::string_view {};
+}
+
 std::string_view SemanticAnalyzer::cached_pattern_c_name(const syntax::PatternId pattern) const noexcept {
     if (!syntax::is_valid(pattern)) {
         return {};
     }
     if (this->current_side_tables_.side_tables != nullptr && this->current_side_tables_.side_tables->sparse) {
-        const auto found = this->current_side_tables_.side_tables->sparse_pattern_c_names.find(pattern.value);
-        return found == this->current_side_tables_.side_tables->sparse_pattern_c_names.end()
+        const auto found = this->current_side_tables_.side_tables->sparse_pattern_c_name_ids.find(pattern.value);
+        return found == this->current_side_tables_.side_tables->sparse_pattern_c_name_ids.end()
             ? std::string_view {}
-            : std::string_view {found->second};
+            : this->checked_.c_name_text(found->second);
     }
-    const std::vector<std::string>& pattern_c_names = this->current_side_tables_.side_tables == nullptr
-        ? this->checked_.pattern_c_names
-        : this->current_side_tables_.side_tables->pattern_c_names;
-    return pattern.value < pattern_c_names.size() ? std::string_view {pattern_c_names[pattern.value]} : std::string_view {};
+    const std::vector<IdentId>& pattern_c_name_ids = this->current_side_tables_.side_tables == nullptr
+        ? this->checked_.pattern_c_name_ids
+        : this->current_side_tables_.side_tables->pattern_c_name_ids;
+    return pattern.value < pattern_c_name_ids.size()
+        ? this->checked_.c_name_text(pattern_c_name_ids[pattern.value])
+        : std::string_view {};
 }
 
 std::vector<TypeHandle>& SemanticAnalyzer::active_expr_types() noexcept {
@@ -268,22 +274,22 @@ std::vector<TypeHandle>& SemanticAnalyzer::active_expr_expected_types() noexcept
         : this->current_side_tables_.side_tables->expr_expected_types;
 }
 
-std::vector<std::string>& SemanticAnalyzer::active_expr_c_names() noexcept {
+std::vector<IdentId>& SemanticAnalyzer::active_expr_c_name_ids() noexcept {
     return this->current_side_tables_.side_tables == nullptr
-        ? this->checked_.expr_c_names
-        : this->current_side_tables_.side_tables->expr_c_names;
+        ? this->checked_.expr_c_name_ids
+        : this->current_side_tables_.side_tables->expr_c_name_ids;
 }
 
-std::vector<std::string>& SemanticAnalyzer::active_pattern_c_names() noexcept {
+std::vector<IdentId>& SemanticAnalyzer::active_pattern_c_name_ids() noexcept {
     return this->current_side_tables_.side_tables == nullptr
-        ? this->checked_.pattern_c_names
-        : this->current_side_tables_.side_tables->pattern_c_names;
+        ? this->checked_.pattern_c_name_ids
+        : this->current_side_tables_.side_tables->pattern_c_name_ids;
 }
 
-std::vector<std::unordered_set<std::string>>& SemanticAnalyzer::active_pattern_case_sets() noexcept {
+std::unordered_map<base::u32, CNameIdSet>& SemanticAnalyzer::active_pattern_case_name_ids() noexcept {
     return this->current_side_tables_.side_tables == nullptr
-        ? this->checked_.pattern_case_sets
-        : this->current_side_tables_.side_tables->pattern_case_sets;
+        ? this->checked_.pattern_case_name_ids
+        : this->current_side_tables_.side_tables->pattern_case_name_ids;
 }
 
 std::vector<TypeHandle>& SemanticAnalyzer::active_syntax_type_handles() noexcept {
@@ -299,7 +305,7 @@ std::vector<TypeHandle>& SemanticAnalyzer::active_stmt_local_types() noexcept {
 }
 
 void SemanticAnalyzer::report(base::SourceRange range, std::string message) {
-    diagnostics_.push(base::Diagnostic {
+    this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,
         std::move(message),

@@ -38,6 +38,8 @@ SemanticAnalyzer::SemanticAnalyzer(
     : owned_module_(std::move(module)), module_(*this->owned_module_), diagnostics_(diagnostics), options_(options) {}
 
 base::Result<CheckedModule> SemanticAnalyzer::analyze() {
+    this->checked_.normalized_ast.original_expr_count = this->module_.exprs.size();
+    this->checked_.normalized_ast.original_type_count = this->module_.types.size();
     if (!this->module_.identifiers_ready()) {
         this->module_.intern_identifiers();
     }
@@ -49,12 +51,11 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
 
     this->checked_.expr_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
     this->checked_.expr_expected_types.assign(this->module_.exprs.size(), INVALID_TYPE_HANDLE);
-    this->checked_.expr_c_names.assign(this->module_.exprs.size(), {});
-    this->checked_.pattern_c_names.assign(this->module_.patterns.size(), {});
-    this->checked_.pattern_case_sets.assign(this->module_.patterns.size(), {});
+    this->checked_.expr_c_name_ids.assign(this->module_.exprs.size(), INVALID_IDENT_ID);
+    this->checked_.pattern_c_name_ids.assign(this->module_.patterns.size(), INVALID_IDENT_ID);
     this->checked_.syntax_type_handles.assign(this->module_.types.size(), INVALID_TYPE_HANDLE);
     this->checked_.stmt_local_types.assign(this->module_.stmts.size(), INVALID_TYPE_HANDLE);
-    this->checked_.item_c_names.assign(this->module_.items.size(), {});
+    this->checked_.item_c_name_ids.assign(this->module_.items.size(), INVALID_IDENT_ID);
     const base::usize enum_cases = enum_case_count(this->module_);
     this->checked_.functions.reserve(this->module_.items.size());
     this->checked_.structs.reserve(this->module_.items.size());
@@ -134,24 +135,21 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     if (this->diagnostics_.has_error()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, std::string(SEMA_ANALYSIS_FAILED)});
     }
-    if (this->options_.retain_normalized_ast) {
-        if (this->owned_module_.has_value()) {
-            this->checked_.normalized_ast.emplace(std::move(*this->owned_module_));
-        } else {
-            this->checked_.normalized_ast.emplace(this->module_);
-        }
-    }
+    this->checked_.normalized_ast.final_expr_count = this->module_.exprs.size();
+    this->checked_.normalized_ast.final_type_count = this->module_.types.size();
     return base::Result<CheckedModule>::ok(std::move(this->checked_));
 }
 
 void SemanticAnalyzer::normalize_parser_only_module_contract() {
     if (!this->module_.modules.empty()) {
+        this->checked_.normalized_ast.parser_only_module_contract_added = false;
         return;
     }
     syntax::ModuleInfo root;
     root.path = this->module_.module_path;
     this->module_.modules.push_back(std::move(root));
     this->module_.item_modules.assign(this->module_.items.size(), syntax::ModuleId {0});
+    this->checked_.normalized_ast.parser_only_module_contract_added = true;
 }
 
 bool SemanticAnalyzer::validate_ast_contract() {

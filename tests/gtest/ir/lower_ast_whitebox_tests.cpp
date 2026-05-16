@@ -66,8 +66,8 @@ void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle t
     if (checked.expr_types.size() <= expr.value) {
         checked.expr_types.resize(expr.value + 1, INVALID_TYPE_HANDLE);
     }
-    if (checked.expr_c_names.size() <= expr.value) {
-        checked.expr_c_names.resize(expr.value + 1);
+    if (checked.expr_c_name_ids.size() <= expr.value) {
+        checked.expr_c_name_ids.resize(expr.value + 1, sema::INVALID_IDENT_ID);
     }
     checked.expr_types[expr.value] = type;
 }

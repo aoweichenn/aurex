@@ -253,8 +253,8 @@ void SemanticAnalyzer::register_type_names() {
         if (!is_valid(handle)) {
             continue;
         }
-        if (item_index < this->checked_.item_c_names.size()) {
-            this->checked_.item_c_names[item_index] = c_name;
+        if (item_index < this->checked_.item_c_name_ids.size()) {
+            this->checked_.item_c_name_ids[item_index] = this->checked_.intern_c_name(c_name);
         }
         auto inserted = this->named_types_.emplace(key, handle);
         if (!inserted.second) {
@@ -597,8 +597,8 @@ void SemanticAnalyzer::register_value_names() {
             this->function_body_states_[key] = FunctionBodyState::not_started;
         } else if (item.kind == syntax::ItemKind::const_decl) {
             TypeHandle type = this->resolve_type(item.const_type);
-            if (item_index < this->checked_.item_c_names.size()) {
-                this->checked_.item_c_names[item_index] = c_name;
+            if (item_index < this->checked_.item_c_name_ids.size()) {
+                this->checked_.item_c_name_ids[item_index] = this->checked_.intern_c_name(c_name);
             }
             const auto inserted = this->global_values_.emplace(key, Symbol {
                 SymbolKind::const_,
@@ -990,9 +990,10 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
             }
             case syntax::ExprKind::field: {
                 bool const_evaluable = false;
-                if (frame.expr_id.value < this->checked_.expr_c_names.size() && !this->checked_.expr_c_names[frame.expr_id.value].empty()) {
+                const std::string_view expr_c_name = this->cached_expr_c_name(frame.expr_id);
+                if (!expr_c_name.empty()) {
                     for (const auto& entry : this->checked_.enum_cases) {
-                        if (entry.second.c_name == this->checked_.expr_c_names[frame.expr_id.value]) {
+                        if (entry.second.c_name == expr_c_name) {
                             const_evaluable = true;
                             break;
                         }

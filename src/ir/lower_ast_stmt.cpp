@@ -86,9 +86,8 @@ void Lowerer::lower_generic_function_body(
     this->active_side_tables_ = ActiveSideTables {
         &instance.side_tables,
         &instance.side_tables.expr_types,
-        &instance.side_tables.expr_c_names,
-        &instance.side_tables.pattern_c_names,
-        &instance.side_tables.pattern_case_sets,
+        &instance.side_tables.expr_c_name_ids,
+        &instance.side_tables.pattern_c_name_ids,
         &instance.side_tables.syntax_type_handles,
         &instance.side_tables.stmt_local_types,
     };

@@ -25,9 +25,8 @@ namespace aurex::ir::detail {
 struct ActiveSideTables {
     const sema::GenericSideTables* generic = nullptr;
     const std::vector<sema::TypeHandle>* expr_types = nullptr;
-    const std::vector<std::string>* expr_c_names = nullptr;
-    const std::vector<std::string>* pattern_c_names = nullptr;
-    const std::vector<std::unordered_set<std::string>>* pattern_case_sets = nullptr;
+    const std::vector<sema::IdentId>* expr_c_name_ids = nullptr;
+    const std::vector<sema::IdentId>* pattern_c_name_ids = nullptr;
     const std::vector<sema::TypeHandle>* syntax_type_handles = nullptr;
     const std::vector<sema::TypeHandle>* stmt_local_types = nullptr;
 };

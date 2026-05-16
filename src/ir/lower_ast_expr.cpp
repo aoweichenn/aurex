@@ -1019,16 +1019,20 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
     if (syntax::is_valid(callee) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
-        const auto found = this->active_side_tables_.generic->sparse_expr_c_names.find(callee.value);
-        if (found != this->active_side_tables_.generic->sparse_expr_c_names.end() && !found->second.empty()) {
-            return found->second;
+        const auto found = this->active_side_tables_.generic->sparse_expr_c_name_ids.find(callee.value);
+        if (found != this->active_side_tables_.generic->sparse_expr_c_name_ids.end()) {
+            if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {
+                return std::string(c_name);
+            }
         }
     }
     if (syntax::is_valid(callee) &&
-        this->active_side_tables_.expr_c_names != nullptr &&
-        callee.value < this->active_side_tables_.expr_c_names->size() &&
-        !(*this->active_side_tables_.expr_c_names)[callee.value].empty()) {
-        return (*this->active_side_tables_.expr_c_names)[callee.value];
+        this->active_side_tables_.expr_c_name_ids != nullptr &&
+        callee.value < this->active_side_tables_.expr_c_name_ids->size()) {
+        const std::string_view c_name = this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[callee.value]);
+        if (!c_name.empty()) {
+            return std::string(c_name);
+        }
     }
     if (syntax::is_valid(callee) && callee.value < this->ast_.exprs.size()) {
         return std::string(this->expr_view(callee).text);
@@ -1040,16 +1044,20 @@ std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& 
     if (syntax::is_valid(expr_id) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
-        const auto found = this->active_side_tables_.generic->sparse_expr_c_names.find(expr_id.value);
-        if (found != this->active_side_tables_.generic->sparse_expr_c_names.end() && !found->second.empty()) {
-            return found->second;
+        const auto found = this->active_side_tables_.generic->sparse_expr_c_name_ids.find(expr_id.value);
+        if (found != this->active_side_tables_.generic->sparse_expr_c_name_ids.end()) {
+            if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {
+                return std::string(c_name);
+            }
         }
     }
     if (syntax::is_valid(expr_id) &&
-        this->active_side_tables_.expr_c_names != nullptr &&
-        expr_id.value < this->active_side_tables_.expr_c_names->size() &&
-        !(*this->active_side_tables_.expr_c_names)[expr_id.value].empty()) {
-        return (*this->active_side_tables_.expr_c_names)[expr_id.value];
+        this->active_side_tables_.expr_c_name_ids != nullptr &&
+        expr_id.value < this->active_side_tables_.expr_c_name_ids->size()) {
+        const std::string_view c_name = this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[expr_id.value]);
+        if (!c_name.empty()) {
+            return std::string(c_name);
+        }
     }
     if (expr.kind == syntax::ExprKind::field) {
         return std::string(expr.field_name);

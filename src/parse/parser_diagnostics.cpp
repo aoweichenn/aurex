@@ -2,17 +2,61 @@
 
 #include <aurex/parse/recovery.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::parse {
 
 using syntax::TokenKind;
 
+namespace {
+
+constexpr std::string_view PARSER_CONTEXTUAL_C_KEYWORD_TEXT = "c";
+
+} // namespace
+
+bool Parser::check_contextual_c_keyword() const noexcept {
+    const syntax::Token& token = this->peek();
+    return token.kind == TokenKind::identifier &&
+           token.text == PARSER_CONTEXTUAL_C_KEYWORD_TEXT;
+}
+
 const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
     if (this->check(kind)) {
         return this->advance();
     }
     this->report_here(std::move(message));
+    static const syntax::Token fallback {};
+    return fallback;
+}
+
+const syntax::Token& Parser::expect_contextual_c_keyword(std::string message) {
+    if (this->check_contextual_c_keyword()) {
+        return this->advance();
+    }
+    this->report_here(std::move(message));
+    static const syntax::Token fallback {};
+    return fallback;
+}
+
+const syntax::Token& Parser::expect_contextual_c_keyword_recovered(
+    std::string message,
+    const RecoveryContext context
+) {
+    if (this->check_contextual_c_keyword()) {
+        return this->advance();
+    }
+
+    this->report_here(std::move(message));
+    if (!token_matches_recovery_context(this->peek().kind, context)) {
+        this->synchronize(context);
+    }
+    if (this->check_contextual_c_keyword()) {
+        const syntax::Token& token = this->advance();
+        this->reset_panic();
+        return token;
+    }
+    this->reset_panic();
     static const syntax::Token fallback {};
     return fallback;
 }

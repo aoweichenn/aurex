@@ -183,7 +183,6 @@ bool token_starts_enum_case(const TokenKind kind) noexcept {
 
 bool token_starts_path_segment(const TokenKind kind) noexcept {
     return kind == TokenKind::identifier ||
-           kind == TokenKind::kw_c ||
            kind == TokenKind::kw_str;
 }
 

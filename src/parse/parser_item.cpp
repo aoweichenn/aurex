@@ -68,7 +68,7 @@ syntax::ItemId ItemParser::parse_item() {
             this->report_here(std::string(PARSER_EXPORT_C_PRIVATE_UNSUPPORTED));
         }
         const syntax::Token& begin = this->advance();
-        this->expect(TokenKind::kw_c, std::string(PARSER_EXPECT_EXPORT_C_KEYWORD));
+        this->expect_contextual_c_keyword(std::string(PARSER_EXPECT_EXPORT_C_KEYWORD));
         const bool is_unsafe = this->check(TokenKind::kw_unsafe);
         if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
             this->report_here(std::string(PARSER_EXPECT_EXPORT_C_FN));

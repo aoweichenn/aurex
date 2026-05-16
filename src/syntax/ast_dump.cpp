@@ -27,7 +27,6 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_extern: return "kw_extern";
     case TokenKind::kw_export: return "kw_export";
     case TokenKind::kw_unsafe: return "kw_unsafe";
-    case TokenKind::kw_c: return "kw_c";
     case TokenKind::kw_fn: return "kw_fn";
     case TokenKind::kw_struct: return "kw_struct";
     case TokenKind::kw_opaque: return "kw_opaque";

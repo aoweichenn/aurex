@@ -1,0 +1,22 @@
+module multi_param_c_identifier;
+
+fn c(value: i32) -> i32 {
+    return value;
+}
+
+fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+fn mul_add(a: i32, b: i32, c: i32) -> i32 {
+    return a * b + c;
+}
+
+fn use_local(seed: i32) -> i32 {
+    let c: i32 = seed;
+    return c;
+}
+
+fn main() -> i32 {
+    return mul_add(add(1, 2), 3, use_local(c(4))) - 13;
+}

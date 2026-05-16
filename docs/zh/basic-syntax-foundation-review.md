@@ -578,7 +578,8 @@ let x = result.ok(1);
 - 语义按 base kind 区分 module / type / value / member。
 - 不加 `common.result.Type` 这种混合长路径表达式，强制通过 `import ... as alias` 控制局部命名。
 - `::` 不作为 Aurex 源语法保留。
-- `c`、`str` 这类关键字是否允许作为 path segment 要明确定义。当前 parser 特许 `c` 和 `str`，这属于历史兼容，不宜继续扩大。
+- `c` 已收敛为 C ABI 上下文标记，普通参数名、局部名、函数名和 path segment
+  都按 identifier 处理；`str` 仍是内建类型关键字，path segment 保留 parser 兼容。
 
 优先级：中。
 

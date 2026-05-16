@@ -454,8 +454,7 @@ syntax::TypeId TypeParser::parse_function_type() {
             begin_range = this->previous().range;
         }
         call_conv = syntax::FunctionCallConv::c;
-        this->expect_recovered(
-            TokenKind::kw_c,
+        this->expect_contextual_c_keyword_recovered(
             std::string(PARSER_EXPECT_C_AFTER_EXTERN_FUNCTION_TYPE),
             RecoveryContext::type_annotation
         );

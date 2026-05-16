@@ -54,6 +54,18 @@ const syntax::Token& ParserPartCore::expect(const syntax::TokenKind kind, std::s
     return this->parser_.expect(kind, std::move(message));
 }
 
+const syntax::Token& ParserPartCore::expect_contextual_c_keyword(std::string message) const {
+    return this->parser_.expect_contextual_c_keyword(std::move(message));
+}
+
+const syntax::Token& ParserPartCore::expect_contextual_c_keyword_recovered(
+    std::string message,
+    const RecoveryContext context
+) const
+{
+    return this->parser_.expect_contextual_c_keyword_recovered(std::move(message), context);
+}
+
 const syntax::Token& ParserPartCore::expect_recovered(
     const syntax::TokenKind kind,
     std::string message,

@@ -341,6 +341,33 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes) {
     });
 }
 
+TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier) {
+    constexpr std::string_view source =
+        "module parser.c_identifier;\n"
+        "fn c(value: i32) -> i32 { return value; }\n"
+        "fn mul_add(a: i32, b: i32, c: i32) -> i32 {\n"
+        "  return a * b + c;\n"
+        "}\n"
+        "fn use_local(seed: i32) -> i32 {\n"
+        "  let c: i32 = seed;\n"
+        "  return c;\n"
+        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const function = find_item(module, "mul_add");
+    ASSERT_NE(function, nullptr);
+    ASSERT_EQ(function->params.size(), 3U);
+    EXPECT_EQ(function->params[2].name, "c");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "priv fn c",
+        "param c : i32",
+        "let c : i32",
+        "name `c`",
+    });
+}
+
 TEST(CoreUnit, ParserRejectsBareSliceType) {
     expect_parse_error(
         "module parser.bad_slice_type;\n"
@@ -2315,6 +2342,26 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches) {
         "expected function declaration after 'export c'"
     );
     expect_parse_error(
+        "module parser.bad_export_abi;\n"
+        "export x fn main() -> i32 { return 0; }\n",
+        "expected 'c' after 'export'"
+    );
+    expect_parse_error(
+        "module parser.bad_extern_abi;\n"
+        "extern x { fn puts(s: *const u8) -> i32; }\n",
+        "expected 'c' after 'extern'"
+    );
+    expect_parse_error(
+        "module parser.bad_function_type_abi;\n"
+        "type Bad = extern x fn(i32) -> i32;\n",
+        "expected 'c' after 'extern' in function type"
+    );
+    expect_parse_error(
+        "module parser.recovered_function_type_abi;\n"
+        "type Bad = extern @ c fn(i32) -> i32;\n",
+        "expected 'c' after 'extern' in function type"
+    );
+    expect_parse_error(
         "module parser.bad_abi;\n"
         "fn f() -> i32 @wrong(\"x\") { return 0; }\n",
         "expected ABI attribute 'name'"
@@ -2511,7 +2558,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
 
     expect_true_all(
         parse::token_starts_path_segment,
-        {TokenKind::identifier, TokenKind::kw_c, TokenKind::kw_str}
+        {TokenKind::identifier, TokenKind::kw_str}
     );
     expect_false_on(parse::token_starts_path_segment, TokenKind::kw_fn);
 

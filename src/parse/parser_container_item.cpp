@@ -66,7 +66,7 @@ syntax::ItemId ItemParser::parse_impl_block() {
 
 syntax::ItemId ItemParser::parse_extern_block() {
     const syntax::Token& begin = this->expect(TokenKind::kw_extern, std::string(PARSER_EXPECT_EXTERN_KEYWORD));
-    this->expect(TokenKind::kw_c, std::string(PARSER_EXPECT_C_AFTER_EXTERN));
+    this->expect_contextual_c_keyword(std::string(PARSER_EXPECT_C_AFTER_EXTERN));
     this->expect_item_container_start(std::string(PARSER_EXPECT_EXTERN_BODY));
 
     syntax::ItemNode block;

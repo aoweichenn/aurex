@@ -44,7 +44,13 @@ private:
     void rewind(base::usize position) noexcept;
     bool match(syntax::TokenKind kind) noexcept;
     const syntax::Token& advance() noexcept;
+    [[nodiscard]] bool check_contextual_c_keyword() const noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
+    const syntax::Token& expect_contextual_c_keyword(std::string message);
+    const syntax::Token& expect_contextual_c_keyword_recovered(
+        std::string message,
+        RecoveryContext context
+    );
     const syntax::Token& expect_recovered(
         syntax::TokenKind kind,
         std::string message,

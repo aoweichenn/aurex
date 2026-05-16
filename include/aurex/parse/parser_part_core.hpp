@@ -25,6 +25,11 @@ protected:
     bool match(syntax::TokenKind kind) const noexcept;
     const syntax::Token& advance() const noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message) const;
+    const syntax::Token& expect_contextual_c_keyword(std::string message) const;
+    const syntax::Token& expect_contextual_c_keyword_recovered(
+        std::string message,
+        RecoveryContext context
+    ) const;
     const syntax::Token& expect_recovered(
         syntax::TokenKind kind,
         std::string message,

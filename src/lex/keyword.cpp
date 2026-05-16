@@ -12,8 +12,6 @@ struct KeywordEntry final {
 };
 
 inline constexpr std::array KEYWORD_ENTRIES {
-    KeywordEntry {"c", syntax::TokenKind::kw_c},
-
     KeywordEntry {"as", syntax::TokenKind::kw_as},
     KeywordEntry {"fn", syntax::TokenKind::kw_fn},
     KeywordEntry {"if", syntax::TokenKind::kw_if},

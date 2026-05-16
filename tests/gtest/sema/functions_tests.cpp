@@ -70,6 +70,24 @@ TEST_F(AurexIntegrationTest, FunctionPrototypes) {
     );
 }
 
+TEST_F(AurexIntegrationTest, MultiParameterFunctionAcceptsCIdentifier) {
+    const fs::path source = positive_sample("functions", "multi_param_c_identifier.ax");
+
+    const std::string ast = require_success(aurexc() + " --emit=ast " + q(source)).output;
+    expect_contains_all(ast, {
+        "priv fn mul_add",
+        "param c : i32",
+        "let c : i32",
+    });
+
+    const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
+    expect_contains(ir, "fn mul_add(a: i32, b: i32, c: i32)");
+
+    const fs::path bin = test_bin_root() / "multi_param_c_identifier";
+    require_success(aurexc() + " " + q(source) + " -o " + q(bin));
+    require_success(q(bin));
+}
+
 TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
     const fs::path source = positive_sample("functions", "variadic_extern_c.ax");
 

@@ -12,6 +12,11 @@ comments.
 Identifiers are ASCII-oriented names accepted by the current lexer. `_` is a
 valid identifier and is also used as a wildcard pattern.
 
+The single-letter `c` is not a global keyword. It is a contextual ABI marker in
+`extern c`, `export c fn`, and `extern c fn` type syntax; in all other
+identifier positions, including parameter, local, function, and module path
+names, `c` is an ordinary identifier.
+
 Comments:
 
 ```text

@@ -57,7 +57,7 @@ identifier = [A-Za-z_][A-Za-z0-9_]*
 关键字包括：
 
 ```text
-module import as pub priv extern export c
+module import as pub priv extern export
 fn struct opaque enum const type impl match
 let var if else for in while break continue defer return
 true false null
@@ -65,6 +65,9 @@ void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char
 mut cast ptrcast bitcast sizeof alignof
 ptraddr ptrat strptr strblen strvalid strfromutf8 strraw
 ```
+
+`c` 不是全局关键字，只在 `extern c`、`export c fn` 和 `extern c fn` 类型里作为
+C ABI 上下文标记；参数名、局部名、函数名和模块路径段里的 `c` 都是普通标识符。
 
 字面量：
 

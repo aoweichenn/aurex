@@ -156,6 +156,17 @@ from token shape, takes the vector backing storage from the bump arena up front,
 and page-pre-touches it. Expression creation then only sequentially emplaces into
 those reserved ranges, avoiding parser-time vector growth and first touches of
 fresh pages on large modules.
+The later lexer/sema bump pass moved lexer output to `TokenBuffer`, with token
+vector backing storage owned by a bump arena and page-pre-touched during
+reserve. Sema persistent storage now uses bump-backed containers for
+`CheckedModule`, `GenericSideTables`, `PatternCaseNameTable`, `TypeTable`,
+`SymbolTable`, analyzer lookup/cache tables, sema value payload lists
+(`FunctionSignature` params/generic args, `StructInfo` fields, `EnumCaseInfo`
+payloads, `TypeInfo` tuple/function/generic args), and generic constraint
+buckets; generic function instances use a bump-backed deque so side-table
+references remain stable during nested generic instantiation; generic-method,
+enum-case, and visible-module cache buckets are created explicitly from the
+analyzer arena instead of default heap vectors from `operator[]`.
 On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
@@ -164,10 +175,10 @@ roughly 128 ns/expr, and the local `tools/frontend_compare.py` baseline has
 Aurex `--check` at roughly 10.1 ms for lookup/96 and 9.6 ms for generics/96,
 versus Clang++ at roughly 21.2 ms / 24.3 ms and G++ at roughly 25.1 ms /
 24.3 ms. The current 2000 generic-instance stress case is roughly 124.4 MiB
-RSS / 389.8 ms; remaining memory work is in payload-local small vectors and
-generic side-table lifetime rather than the main AST header/payload storage.
-Cross-module stable hashes / parallel global IDs and CI perf thresholds remain
-later performance work.
+RSS / 389.8 ms; remaining memory work is in generic side-table lifetime/release
+policy rather than the main AST header/payload or sema value-payload storage.
+Cross-module stable hashes / parallel global IDs, 2M-node cross-machine
+RSS/time thresholds, and CI perf thresholds remain later performance work.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
 usefulness witness search. Bool, enum payloads, tuples, structs, and fixed

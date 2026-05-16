@@ -469,9 +469,9 @@ void SemanticAnalyzer::ensure_expr_side_table_size(const base::usize size) {
         static_cast<void>(size);
         return;
     }
-    std::vector<TypeHandle>& expr_types = this->active_expr_types();
-    std::vector<TypeHandle>& expr_expected_types = this->active_expr_expected_types();
-    std::vector<IdentId>& expr_c_name_ids = this->active_expr_c_name_ids();
+    SemaTypeTable& expr_types = this->active_expr_types();
+    SemaTypeTable& expr_expected_types = this->active_expr_expected_types();
+    SemaIdentTable& expr_c_name_ids = this->active_expr_c_name_ids();
     if (expr_types.size() < size) {
         expr_types.resize(size, INVALID_TYPE_HANDLE);
     }
@@ -488,7 +488,7 @@ void SemanticAnalyzer::ensure_type_side_table_size(const base::usize size) {
         static_cast<void>(size);
         return;
     }
-    std::vector<TypeHandle>& syntax_type_handles = this->active_syntax_type_handles();
+    SemaTypeTable& syntax_type_handles = this->active_syntax_type_handles();
     if (syntax_type_handles.size() < size) {
         syntax_type_handles.resize(size, INVALID_TYPE_HANDLE);
     }

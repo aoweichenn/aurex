@@ -3,17 +3,49 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <cassert>
+#include <memory>
 #include <utility>
 
 namespace aurex::sema {
 
-SymbolTable::SymbolTable() {
+SymbolTable::SymbolTable()
+    : arena_(std::make_unique<base::BumpAllocator>()),
+      symbols_(make_sema_vector<Symbol>(*this->arena_)),
+      scopes_(make_sema_vector<IdentSymbolMap>(*this->arena_)) {
     this->push_scope();
 }
 
+SymbolTable::SymbolTable(const SymbolTable& other)
+    : arena_(std::make_unique<base::BumpAllocator>()),
+      symbols_(make_sema_vector<Symbol>(*this->arena_)),
+      scopes_(make_sema_vector<IdentSymbolMap>(*this->arena_)) {
+    this->copy_from(other);
+}
+
+SymbolTable& SymbolTable::operator=(const SymbolTable& other) {
+    if (this == &other) {
+        return *this;
+    }
+    SymbolTable copy(other);
+    *this = std::move(copy);
+    return *this;
+}
+
+SymbolTable::SymbolTable(SymbolTable&& other) noexcept
+    : arena_(std::move(other.arena_)),
+      symbols_(std::move(other.symbols_)),
+      scopes_(std::move(other.scopes_)) {}
+
+SymbolTable& SymbolTable::operator=(SymbolTable&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    this->swap(other);
+    return *this;
+}
+
 void SymbolTable::push_scope(const base::usize expected_symbols) {
-    IdentSymbolMap& scope = this->scopes_.emplace_back();
-    scope.reserve(expected_symbols);
+    this->scopes_.push_back(this->make_scope(expected_symbols));
 }
 
 void SymbolTable::pop_scope() noexcept {
@@ -57,6 +89,30 @@ const Symbol* SymbolTable::get(const SymbolId id) const noexcept {
         return nullptr;
     }
     return &this->symbols_[id.value];
+}
+
+IdentSymbolMap SymbolTable::make_scope(const base::usize expected_symbols) {
+    IdentSymbolMap scope = make_sema_map<IdentId, SymbolId, IdentIdHash>(*this->arena_, IdentIdHash {});
+    scope.reserve(expected_symbols);
+    return scope;
+}
+
+void SymbolTable::copy_from(const SymbolTable& other) {
+    this->symbols_.assign(other.symbols_.begin(), other.symbols_.end());
+    this->scopes_.clear();
+    this->scopes_.reserve(other.scopes_.size());
+    for (const IdentSymbolMap& source_scope : other.scopes_) {
+        IdentSymbolMap scope = this->make_scope(source_scope.size());
+        scope.insert(source_scope.begin(), source_scope.end());
+        this->scopes_.push_back(std::move(scope));
+    }
+}
+
+void SymbolTable::swap(SymbolTable& other) noexcept {
+    using std::swap;
+    this->symbols_.swap(other.symbols_);
+    this->scopes_.swap(other.scopes_);
+    swap(this->arena_, other.arena_);
 }
 
 } // namespace aurex::sema

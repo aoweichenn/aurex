@@ -121,7 +121,7 @@ Lexer::Lexer(
     this->tokens_.reserve(initial_token_capacity(source_text.size()));
 }
 
-base::Result<std::vector<syntax::Token>> Lexer::tokenize() {
+base::Result<TokenBuffer> Lexer::tokenize() {
     while (!this->is_at_end()) {
         this->skip_trivia();
         if (!this->is_at_end()) {
@@ -131,11 +131,11 @@ base::Result<std::vector<syntax::Token>> Lexer::tokenize() {
 
     this->add_token(syntax::TokenKind::eof, this->cursor_.source_size(), this->cursor_.source_size());
     if (this->diagnostics_.has_error()) {
-        return base::Result<std::vector<syntax::Token>>::fail(
+        return base::Result<TokenBuffer>::fail(
             {base::ErrorCode::lex_error, std::string(LEXEME_LEXING_FAILED_MESSAGE)}
         );
     }
-    return base::Result<std::vector<syntax::Token>>::ok(std::move(this->tokens_));
+    return base::Result<TokenBuffer>::ok(std::move(this->tokens_));
 }
 
 bool Lexer::is_at_end() const noexcept {

@@ -8,7 +8,7 @@ namespace {
 
 template <typename T>
 void ensure_side_table_slot(
-    std::vector<T>& table,
+    SemaVector<T>& table,
     const base::usize index
 ) {
     if (index >= table.size()) {
@@ -18,7 +18,7 @@ void ensure_side_table_slot(
 
 template <>
 void ensure_side_table_slot<TypeHandle>(
-    std::vector<TypeHandle>& table,
+    SemaVector<TypeHandle>& table,
     const base::usize index
 ) {
     if (index >= table.size()) {
@@ -35,7 +35,7 @@ void SemanticAnalyzer::record_stmt_local_type(const syntax::StmtId stmt, const T
         }
         return;
     }
-    std::vector<TypeHandle>& stmt_local_types = this->active_stmt_local_types();
+    SemaTypeTable& stmt_local_types = this->active_stmt_local_types();
     if (syntax::is_valid(stmt)) {
         ensure_side_table_slot(stmt_local_types, stmt.value);
         stmt_local_types[stmt.value] = type;
@@ -51,7 +51,7 @@ void SemanticAnalyzer::record_expr_c_name(const syntax::ExprId expr, const std::
         this->current_side_tables_.side_tables->sparse_expr_c_name_ids[expr.value] = c_name_id;
         return;
     }
-    std::vector<IdentId>& expr_c_name_ids = this->active_expr_c_name_ids();
+    SemaIdentTable& expr_c_name_ids = this->active_expr_c_name_ids();
     ensure_side_table_slot(expr_c_name_ids, expr.value);
     expr_c_name_ids[expr.value] = c_name_id;
 }
@@ -65,7 +65,7 @@ void SemanticAnalyzer::record_pattern_c_name(const syntax::PatternId pattern, co
         this->current_side_tables_.side_tables->sparse_pattern_c_name_ids[pattern.value] = c_name_id;
         return;
     }
-    std::vector<IdentId>& pattern_c_name_ids = this->active_pattern_c_name_ids();
+    SemaIdentTable& pattern_c_name_ids = this->active_pattern_c_name_ids();
     ensure_side_table_slot(pattern_c_name_ids, pattern.value);
     pattern_c_name_ids[pattern.value] = c_name_id;
 }
@@ -75,18 +75,17 @@ void SemanticAnalyzer::record_pattern_case_name(const syntax::PatternId pattern,
         return;
     }
     const IdentId c_name_id = this->checked_.intern_c_name(c_name);
-    this->active_pattern_case_name_ids()[pattern.value].insert(c_name_id);
+    this->active_pattern_case_name_ids().insert(pattern.value, c_name_id);
 }
 
 void SemanticAnalyzer::merge_pattern_case_names(const syntax::PatternId pattern, const syntax::PatternId alternative) {
     if (!syntax::is_valid(pattern) || !syntax::is_valid(alternative)) {
         return;
     }
-    std::unordered_map<base::u32, CNameIdSet>& pattern_case_name_ids = this->active_pattern_case_name_ids();
+    PatternCaseNameTable& pattern_case_name_ids = this->active_pattern_case_name_ids();
     const auto found = pattern_case_name_ids.find(alternative.value);
     if (found != pattern_case_name_ids.end()) {
-        CNameIdSet& target = pattern_case_name_ids[pattern.value];
-        target.insert(found->second.begin(), found->second.end());
+        pattern_case_name_ids.merge(pattern.value, found->second);
     }
 }
 
@@ -100,7 +99,7 @@ void SemanticAnalyzer::record_syntax_type_handle(const syntax::TypeId type, cons
         }
         return;
     }
-    std::vector<TypeHandle>& syntax_type_handles = this->active_syntax_type_handles();
+    SemaTypeTable& syntax_type_handles = this->active_syntax_type_handles();
     if (syntax::is_valid(type)) {
         ensure_side_table_slot(syntax_type_handles, type.value);
         syntax_type_handles[type.value] = resolved;
@@ -114,7 +113,7 @@ TypeHandle SemanticAnalyzer::record_expr_type(const syntax::ExprId expr, const T
         }
         return type;
     }
-    std::vector<TypeHandle>& expr_types = this->active_expr_types();
+    SemaTypeTable& expr_types = this->active_expr_types();
     if (syntax::is_valid(expr)) {
         ensure_side_table_slot(expr_types, expr.value);
         expr_types[expr.value] = type;
@@ -132,7 +131,7 @@ void SemanticAnalyzer::record_expr_expected_type(
         }
         return;
     }
-    std::vector<TypeHandle>& expr_expected_types = this->active_expr_expected_types();
+    SemaTypeTable& expr_expected_types = this->active_expr_expected_types();
     if (syntax::is_valid(expr)) {
         ensure_side_table_slot(expr_expected_types, expr.value);
         expr_expected_types[expr.value] = expected_type;
@@ -174,7 +173,7 @@ TypeHandle SemanticAnalyzer::cached_expr_type(const syntax::ExprId expr) const n
             ? INVALID_TYPE_HANDLE
             : found->second;
     }
-    const std::vector<TypeHandle>& expr_types = this->current_side_tables_.side_tables == nullptr
+    const SemaTypeTable& expr_types = this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_types
         : this->current_side_tables_.side_tables->expr_types;
     return expr.value < expr_types.size() ? expr_types[expr.value] : INVALID_TYPE_HANDLE;
@@ -190,7 +189,7 @@ TypeHandle SemanticAnalyzer::cached_expr_expected_type(const syntax::ExprId expr
             ? INVALID_TYPE_HANDLE
             : found->second;
     }
-    const std::vector<TypeHandle>& expr_expected_types = this->current_side_tables_.side_tables == nullptr
+    const SemaTypeTable& expr_expected_types = this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_expected_types
         : this->current_side_tables_.side_tables->expr_expected_types;
     return expr.value < expr_expected_types.size() ? expr_expected_types[expr.value] : INVALID_TYPE_HANDLE;
@@ -220,7 +219,7 @@ TypeHandle SemanticAnalyzer::cached_syntax_type(const syntax::TypeId type) const
             ? INVALID_TYPE_HANDLE
             : found->second;
     }
-    const std::vector<TypeHandle>& syntax_type_handles = this->current_side_tables_.side_tables == nullptr
+    const SemaTypeTable& syntax_type_handles = this->current_side_tables_.side_tables == nullptr
         ? this->checked_.syntax_type_handles
         : this->current_side_tables_.side_tables->syntax_type_handles;
     return type.value < syntax_type_handles.size() ? syntax_type_handles[type.value] : INVALID_TYPE_HANDLE;
@@ -236,7 +235,7 @@ std::string_view SemanticAnalyzer::cached_expr_c_name(const syntax::ExprId expr)
             ? std::string_view {}
             : this->checked_.c_name_text(found->second);
     }
-    const std::vector<IdentId>& expr_c_name_ids = this->current_side_tables_.side_tables == nullptr
+    const SemaIdentTable& expr_c_name_ids = this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_c_name_ids
         : this->current_side_tables_.side_tables->expr_c_name_ids;
     return expr.value < expr_c_name_ids.size()
@@ -254,7 +253,7 @@ std::string_view SemanticAnalyzer::cached_pattern_c_name(const syntax::PatternId
             ? std::string_view {}
             : this->checked_.c_name_text(found->second);
     }
-    const std::vector<IdentId>& pattern_c_name_ids = this->current_side_tables_.side_tables == nullptr
+    const SemaIdentTable& pattern_c_name_ids = this->current_side_tables_.side_tables == nullptr
         ? this->checked_.pattern_c_name_ids
         : this->current_side_tables_.side_tables->pattern_c_name_ids;
     return pattern.value < pattern_c_name_ids.size()
@@ -262,43 +261,43 @@ std::string_view SemanticAnalyzer::cached_pattern_c_name(const syntax::PatternId
         : std::string_view {};
 }
 
-std::vector<TypeHandle>& SemanticAnalyzer::active_expr_types() noexcept {
+SemaTypeTable& SemanticAnalyzer::active_expr_types() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_types
         : this->current_side_tables_.side_tables->expr_types;
 }
 
-std::vector<TypeHandle>& SemanticAnalyzer::active_expr_expected_types() noexcept {
+SemaTypeTable& SemanticAnalyzer::active_expr_expected_types() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_expected_types
         : this->current_side_tables_.side_tables->expr_expected_types;
 }
 
-std::vector<IdentId>& SemanticAnalyzer::active_expr_c_name_ids() noexcept {
+SemaIdentTable& SemanticAnalyzer::active_expr_c_name_ids() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.expr_c_name_ids
         : this->current_side_tables_.side_tables->expr_c_name_ids;
 }
 
-std::vector<IdentId>& SemanticAnalyzer::active_pattern_c_name_ids() noexcept {
+SemaIdentTable& SemanticAnalyzer::active_pattern_c_name_ids() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.pattern_c_name_ids
         : this->current_side_tables_.side_tables->pattern_c_name_ids;
 }
 
-std::unordered_map<base::u32, CNameIdSet>& SemanticAnalyzer::active_pattern_case_name_ids() noexcept {
+PatternCaseNameTable& SemanticAnalyzer::active_pattern_case_name_ids() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.pattern_case_name_ids
         : this->current_side_tables_.side_tables->pattern_case_name_ids;
 }
 
-std::vector<TypeHandle>& SemanticAnalyzer::active_syntax_type_handles() noexcept {
+SemaTypeTable& SemanticAnalyzer::active_syntax_type_handles() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.syntax_type_handles
         : this->current_side_tables_.side_tables->syntax_type_handles;
 }
 
-std::vector<TypeHandle>& SemanticAnalyzer::active_stmt_local_types() noexcept {
+SemaTypeTable& SemanticAnalyzer::active_stmt_local_types() noexcept {
     return this->current_side_tables_.side_tables == nullptr
         ? this->checked_.stmt_local_types
         : this->current_side_tables_.side_tables->stmt_local_types;

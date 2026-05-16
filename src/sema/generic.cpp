@@ -131,7 +131,7 @@ void SemanticAnalyzer::validate_generic_constraints(
             this->report(constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
             continue;
         }
-        std::unordered_set<CapabilityKind, CapabilityKindHash>& capabilities = info.constraints[param_name];
+        CapabilitySet& capabilities = this->capability_bucket(info.constraints, param_name);
         for (base::usize i = 0; i < constraint.capability_names.size(); ++i) {
             const std::string_view capability_name = constraint.capability_names[i];
             const base::SourceRange capability_range =
@@ -295,7 +295,7 @@ void SemanticAnalyzer::register_generic_template(
 ) {
     this->validate_generic_parameter_list(item);
     const syntax::ModuleId owner = this->item_module(item_id);
-    GenericTemplateInfo info;
+    GenericTemplateInfo info = this->make_generic_template_info();
     info.item = item_id;
     info.module = owner;
     info.name = std::string(item.name);
@@ -381,7 +381,7 @@ void SemanticAnalyzer::register_generic_template(
         this->populate_generic_param_identity_keys(info);
 
         const syntax::ModuleId previous_module = this->current_module_;
-        GenericContext generic_context;
+        GenericContext generic_context = this->make_generic_context();
         this->populate_generic_placeholder_context(info, generic_context);
         GenericContext* const previous_generic_context = this->current_generic_context_;
         const GenericSideTableScope previous_side_tables = this->current_side_tables_;
@@ -541,7 +541,7 @@ void SemanticAnalyzer::populate_generic_placeholder_context(
 ) {
     context.params.clear();
     context.param_identities.clear();
-    context.constraints = info.constraints;
+    this->copy_capability_map(context.constraints, info.constraints);
     context.constraints_by_identity.clear();
     context.params.reserve(info.params.size());
     context.param_identities.reserve(info.params.size());
@@ -552,7 +552,7 @@ void SemanticAnalyzer::populate_generic_placeholder_context(
         context.params.emplace(param_id, this->generic_param_placeholder(info, i));
         context.param_identities.emplace(param_id, identity);
         if (const auto constraints = info.constraints.find(info.params[i]); constraints != info.constraints.end()) {
-            context.constraints_by_identity.emplace(identity, constraints->second);
+            context.constraints_by_identity.emplace(identity, this->copy_capability_set(constraints->second));
         }
     }
 }
@@ -564,7 +564,7 @@ void SemanticAnalyzer::populate_generic_concrete_context(
 ) {
     context.params.clear();
     context.param_identities.clear();
-    context.constraints = info.constraints;
+    this->copy_capability_map(context.constraints, info.constraints);
     context.constraints_by_identity.clear();
     context.params.reserve(info.params.size());
     context.param_identities.reserve(info.params.size());
@@ -578,14 +578,15 @@ void SemanticAnalyzer::populate_generic_concrete_context(
         if (constraints == info.constraints.end()) {
             continue;
         }
-        context.constraints_by_identity.emplace(identity, constraints->second);
+        context.constraints_by_identity.emplace(identity, this->copy_capability_set(constraints->second));
         if (is_valid(args[i])) {
             const TypeInfo& arg_info = this->checked_.types.get(args[i]);
             if (arg_info.kind == TypeKind::generic_param) {
-                context.constraints_by_identity[this->generic_param_identity_key(arg_info)].insert(
-                    constraints->second.begin(),
-                    constraints->second.end()
+                CapabilitySet& inherited = this->capability_bucket(
+                    context.constraints_by_identity,
+                    this->generic_param_identity_key(arg_info)
                 );
+                inherited.insert(constraints->second.begin(), constraints->second.end());
             }
         }
     }
@@ -1098,7 +1099,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     this->generic_struct_instances_[instance_key] = handle;
     this->type_visibilities_[instance_key] = info.visibility;
 
-    StructInfo struct_info;
+    StructInfo struct_info = this->checked_.make_struct_info();
     struct_info.name = std::string(item.name);
     struct_info.c_name = c_name;
     struct_info.module = info.module;
@@ -1113,7 +1114,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     );
 
     const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
     GenericContext* const previous_body_generic_context = this->current_generic_context_;
     const GenericSideTableScope previous_side_tables = this->current_side_tables_;
@@ -1198,7 +1199,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     this->type_visibilities_[instance_key] = info.visibility;
 
     const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
     GenericContext* const previous_generic_context = this->current_generic_context_;
     const GenericSideTableScope previous_side_tables = this->current_side_tables_;
@@ -1260,7 +1261,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
     const syntax::ItemNode item = this->module_.items[info.item.value];
     this->resolving_type_aliases_.push_back(instance_key);
     const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
     GenericContext* const previous_generic_context = this->current_generic_context_;
     const GenericSideTableScope previous_side_tables = this->current_side_tables_;
@@ -1398,7 +1399,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
         return false;
     }
 
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
 
     const syntax::ModuleId previous_module = this->current_module_;
@@ -1466,7 +1467,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
         }
     }
 
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext* const previous_generic_context = this->current_generic_context_;
@@ -1475,11 +1476,11 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     this->current_generic_context_ = &generic_context;
     this->current_side_tables_.cache_syntax_types = false;
 
-    FunctionSignature signature;
+    FunctionSignature signature = this->checked_.make_function_signature();
     signature.name = info.name;
     signature.name_id = info.name_id;
     signature.c_name = signature.name;
-    signature.generic_args = args;
+    signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
         ? this->resolve_type(function.return_type)
@@ -1591,7 +1592,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     }
     const syntax::ItemNode function = this->module_.items[info.item.value];
 
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext* const previous_generic_context = this->current_generic_context_;
@@ -1600,7 +1601,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->current_generic_context_ = &generic_context;
     this->current_side_tables_.cache_syntax_types = false;
 
-    FunctionSignature signature;
+    FunctionSignature signature = this->checked_.make_function_signature();
     signature.name = info.name;
     signature.name_id = info.name_id;
     signature.semantic_key = key;
@@ -1608,7 +1609,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         info.module,
         info.name + this->generic_instance_abi_suffix(args)
     );
-    signature.generic_args = args;
+    signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
     signature.return_type = syntax::is_valid(function.return_type)
         ? this->resolve_type(function.return_type)
@@ -1638,7 +1639,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         }
         this->function_body_states_[key] = FunctionBodyState::not_started;
         GenericSideTables transient_side_tables = make_generic_side_tables(this->module_);
-        GenericContext body_context;
+        GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
         GenericContext* const previous_body_generic_context = this->current_generic_context_;
         const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
@@ -1675,7 +1676,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         this->internal_function_lookup_exclusions_ += 1;
     }
     this->function_body_states_[key] = FunctionBodyState::not_started;
-    GenericContext body_context;
+    GenericContext body_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, body_context);
     GenericContext* const previous_body_generic_context = this->current_generic_context_;
     const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
@@ -1724,7 +1725,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     }
 
     const syntax::ItemNode function = this->module_.items[info.item.value];
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext* const previous_generic_context = this->current_generic_context_;
@@ -1733,12 +1734,12 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->current_generic_context_ = &generic_context;
     this->current_side_tables_.cache_syntax_types = false;
 
-    FunctionSignature signature;
+    FunctionSignature signature = this->checked_.make_function_signature();
     signature.name = info.name;
     signature.name_id = info.name_id;
     signature.semantic_key = key;
     signature.c_name = this->method_c_symbol_name(owner_type, info.name);
-    signature.generic_args = args;
+    signature.generic_args = this->checked_.copy_type_handle_list(args);
     signature.module = info.module;
     signature.method_owner_type = owner_type;
     signature.return_type = syntax::is_valid(function.return_type)
@@ -1773,7 +1774,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
         this->function_body_states_[key] = FunctionBodyState::not_started;
 
         GenericSideTables transient_side_tables = make_generic_side_tables(this->module_);
-        GenericContext body_context;
+        GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
         GenericContext* const previous_body_generic_context = this->current_generic_context_;
         const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
@@ -1811,7 +1812,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->index_function_value(function_inserted.first->second);
     this->function_body_states_[key] = FunctionBodyState::not_started;
 
-    GenericContext body_context;
+    GenericContext body_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, body_context);
     GenericContext* const previous_body_generic_context = this->current_generic_context_;
     const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
@@ -1921,7 +1922,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
 
 void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplateInfo& info) {
     const syntax::ItemNode function = this->module_.items[info.item.value];
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
 
     const syntax::ModuleId previous_module = this->current_module_;
@@ -1931,7 +1932,7 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     this->current_generic_context_ = &generic_context;
     this->current_side_tables_.cache_syntax_types = false;
 
-    FunctionSignature signature;
+    FunctionSignature signature = this->checked_.make_function_signature();
     signature.name = info.name;
     signature.name_id = info.name_id;
     signature.c_name = info.name;
@@ -1946,7 +1947,10 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     for (const syntax::ParamDecl& param : function.params) {
         signature.param_types.push_back(this->resolve_type(param.type));
     }
-    this->generic_placeholder_functions_[info.key] = signature;
+    auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.key, signature);
+    if (!placeholder_inserted.second) {
+        placeholder_inserted.first->second = signature;
+    }
     this->current_module_ = previous_module;
     this->current_generic_context_ = previous_generic_context;
     this->current_side_tables_ = previous_side_tables;
@@ -1961,7 +1965,7 @@ void SemanticAnalyzer::analyze_generic_function_body(
     const FunctionSignature& signature,
     FunctionBodyState& state
 ) {
-    GenericContext generic_context;
+    GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext* const previous_generic_context = this->current_generic_context_;

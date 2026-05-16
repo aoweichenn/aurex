@@ -107,13 +107,13 @@ generic apply/struct literal/try 改写路径也直接写 compact payload。2026
 `TypeNodeList` / `ExprNodeList` / `PatternNodeList` / `StmtNodeList` / `ItemNodeList` 的 header vector 和
 per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的 text vector、hash bucket/node
 也进入同一个 bump arena；parser 会根据 token 形态估算 statement/item/type/pattern/identifier 规模，并在 AST
-模块创建初期按 token 形态对 expression header 和每类 payload 计算保守容量上界，直接从 bump arena 取好 vector backing storage 并 page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。当前
+模块创建初期按 token 形态对 expression header 和每类 payload 计算保守容量上界，直接从 bump arena 取好 vector backing storage 并 page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。后续 lexer/sema bump pass 已把 lexer token 输出改为 `TokenBuffer`，token vector backing storage 由 bump arena 持有并在 reserve 时 page pre-touch；sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、`FunctionSignature` 参数/generic args、`StructInfo` 字段、`EnumCaseInfo` payload 列表、`TypeInfo` tuple/function/generic args 和 generic constraint bucket 也改为 bump-backed storage，generic function instance 列表使用 bump-backed deque 保持元素地址稳定，generic method / enum-case / visible-module cache bucket 不再由 `operator[]` 创建普通 heap vector。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
 从约 575 MiB RSS / 135 ms 收敛到约 158.4 MiB RSS / 74.4 ms；Google Benchmark `sema_ast_bulk/1024`
 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、
 generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms。
-2000 generic instance stress 当前约 124.4 MiB RSS / 389.8 ms；剩余内存大头已不在 AST header/payload 主存储，
-而在 payload 内部小 vector 和 generic side table 生命周期。跨模块 stable hash / 并行全局 ID 和 CI perf 阈值仍是后续性能任务。
+2000 generic instance stress 当前约 124.4 MiB RSS / 389.8 ms；剩余内存大头已不在 AST header/payload 主存储或 sema value-payload 存储，
+后续集中在 generic side table 生命周期/释放策略、跨模块 stable hash / 并行全局 ID、2M 节点跨机器 RSS/耗时阈值和 CI perf lane。
 2026-05-16 后续 match 性能/正确性线又把结构化穷尽检查从“枚举 bool / enum 叶子笛卡尔积 + 4096 组合上限”替换为
 pattern matrix / usefulness witness search：bool、enum payload、tuple、struct 和 fixed array 通过 constructor
 specialization 与 default matrix 判定覆盖和 unreachable arm，guarded arm 不计入穷尽覆盖，动态 slice/open integer domain

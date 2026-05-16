@@ -10,6 +10,7 @@
 #include <aurex/syntax/ast.hpp>
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -72,25 +73,28 @@ private:
         std::vector<syntax::StmtId> pending_null_returns;
     };
 
+    using CapabilitySet = SemaSet<CapabilityKind, CapabilityKindHash>;
+    using CapabilityMap = SemaMap<std::string, CapabilitySet>;
+
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
         std::string name;
         IdentId name_id = INVALID_IDENT_ID;
         std::string key;
-        std::vector<std::string> params;
-        std::vector<IdentId> param_ids;
-        std::vector<std::string> param_identity_keys;
-        std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
+        SemaVector<std::string> params;
+        SemaVector<IdentId> param_ids;
+        SemaVector<std::string> param_identity_keys;
+        CapabilityMap constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
     };
 
     struct GenericContext {
-        std::unordered_map<IdentId, TypeHandle, IdentIdHash> params;
-        std::unordered_map<IdentId, std::string, IdentIdHash> param_identities;
-        std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
-        std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints_by_identity;
+        SemaMap<IdentId, TypeHandle, IdentIdHash> params;
+        SemaMap<IdentId, std::string, IdentIdHash> param_identities;
+        CapabilityMap constraints;
+        CapabilityMap constraints_by_identity;
     };
 
     struct GenericSideTableScope {
@@ -228,6 +232,12 @@ private:
         bool allow_refutable = false;
     };
 
+    using GenericTemplateList = SemaVector<const GenericTemplateInfo*>;
+    using EnumCaseList = SemaVector<const EnumCaseInfo*>;
+    using ModuleIdList = SemaVector<syntax::ModuleId>;
+    using ModuleLookupList = SemaVector<ModuleLookupKey>;
+    using ModuleLookupSet = SemaSet<ModuleLookupKey, ModuleLookupKeyHash>;
+
     struct TypeAbiLayout {
         base::u64 size = SEMA_TYPE_ABI_INVALID_SIZE;
         base::u64 align = SEMA_TYPE_ABI_MIN_ALIGNMENT;
@@ -237,6 +247,12 @@ private:
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
+    [[nodiscard]] GenericTemplateInfo make_generic_template_info() const;
+    [[nodiscard]] GenericContext make_generic_context() const;
+    [[nodiscard]] CapabilitySet make_capability_set() const;
+    [[nodiscard]] CapabilitySet copy_capability_set(const CapabilitySet& source) const;
+    void copy_capability_map(CapabilityMap& target, const CapabilityMap& source) const;
+    [[nodiscard]] CapabilitySet& capability_bucket(CapabilityMap& map, std::string key) const;
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
     [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
@@ -404,7 +420,7 @@ private:
     void validate_call_arguments(
         const ExprView& expr,
         std::string_view name,
-        const std::vector<TypeHandle>& param_types,
+        std::span<const TypeHandle> param_types,
         base::usize receiver_count,
         bool is_variadic
     );
@@ -607,7 +623,7 @@ private:
         base::SourceRange range,
         TypeHandle expected_type
     );
-    [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, std::unordered_set<std::string>& dependencies);
+    [[nodiscard]] bool is_const_evaluable_expr(syntax::ExprId expr, ModuleLookupSet& dependencies);
     [[nodiscard]] TypeAbiLayout abi_layout(TypeHandle type) const;
     [[nodiscard]] base::u64 abi_size(TypeHandle type) const;
     [[nodiscard]] base::u64 abi_align(TypeHandle type) const;
@@ -681,9 +697,9 @@ private:
     [[nodiscard]] std::vector<std::string_view> type_scope_parts(const syntax::TypeNode& type) const;
     [[nodiscard]] syntax::ModuleId resolve_type_scope(const syntax::TypeNode& type, bool report_unknown);
     [[nodiscard]] syntax::ModuleId find_visible_module_path(const std::vector<std::string_view>& parts) const;
-    [[nodiscard]] const std::vector<syntax::ModuleId>& visible_modules(syntax::ModuleId module) const;
-    [[nodiscard]] const std::vector<syntax::ModuleId>& module_export_modules(syntax::ModuleId module) const;
-    void append_public_reexports(syntax::ModuleId module, std::vector<syntax::ModuleId>& result, std::unordered_set<base::u32>& seen) const;
+    [[nodiscard]] const ModuleIdList& visible_modules(syntax::ModuleId module) const;
+    [[nodiscard]] const ModuleIdList& module_export_modules(syntax::ModuleId module) const;
+    void append_public_reexports(syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
@@ -766,7 +782,7 @@ private:
         IdentId case_name_id,
         std::string_view case_name
     ) const;
-    [[nodiscard]] const std::vector<const EnumCaseInfo*>* find_enum_cases_by_type(TypeHandle enum_type) const noexcept;
+    [[nodiscard]] const EnumCaseList* find_enum_cases_by_type(TypeHandle enum_type) const noexcept;
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
         IdentId enum_name_id,
         std::string_view enum_name,
@@ -799,63 +815,67 @@ private:
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
     [[nodiscard]] std::string_view cached_expr_c_name(syntax::ExprId expr) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
-    [[nodiscard]] std::vector<TypeHandle>& active_expr_types() noexcept;
-    [[nodiscard]] std::vector<TypeHandle>& active_expr_expected_types() noexcept;
-    [[nodiscard]] std::vector<IdentId>& active_expr_c_name_ids() noexcept;
-    [[nodiscard]] std::vector<IdentId>& active_pattern_c_name_ids() noexcept;
-    [[nodiscard]] std::unordered_map<base::u32, CNameIdSet>& active_pattern_case_name_ids() noexcept;
-    [[nodiscard]] std::vector<TypeHandle>& active_syntax_type_handles() noexcept;
-    [[nodiscard]] std::vector<TypeHandle>& active_stmt_local_types() noexcept;
+    [[nodiscard]] SemaTypeTable& active_expr_types() noexcept;
+    [[nodiscard]] SemaTypeTable& active_expr_expected_types() noexcept;
+    [[nodiscard]] SemaIdentTable& active_expr_c_name_ids() noexcept;
+    [[nodiscard]] SemaIdentTable& active_pattern_c_name_ids() noexcept;
+    [[nodiscard]] PatternCaseNameTable& active_pattern_case_name_ids() noexcept;
+    [[nodiscard]] SemaTypeTable& active_syntax_type_handles() noexcept;
+    [[nodiscard]] SemaTypeTable& active_stmt_local_types() noexcept;
     [[nodiscard]] PlaceInfo analyze_place_info(syntax::ExprId expr_id, bool emit_diagnostics);
     void require_place_projection_safety(const PlaceInfo& place, base::SourceRange range);
     [[nodiscard]] syntax::TypeId push_synthetic_type(syntax::TypeNode node);
     void ensure_expr_side_table_size(base::usize size);
     void ensure_type_side_table_size(base::usize size);
     void index_enum_case(const EnumCaseInfo& info);
+    [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
+    [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
+    [[nodiscard]] ModuleIdList make_module_id_list() const;
     void report(base::SourceRange range, std::string message);
 
     std::optional<syntax::AstModule> owned_module_;
     syntax::AstModule& module_;
     base::DiagnosticSink& diagnostics_;
     SemanticOptions options_;
+    std::unique_ptr<base::BumpAllocator> arena_;
     CheckedModule checked_;
     SymbolTable symbols_;
-    std::unordered_map<std::string, TypeHandle> named_types_;
-    std::unordered_map<std::string, syntax::Visibility> type_visibilities_;
-    std::unordered_map<std::string, GenericTemplateInfo> generic_struct_templates_;
-    std::unordered_map<std::string, GenericTemplateInfo> generic_enum_templates_;
-    std::unordered_map<std::string, GenericTemplateInfo> generic_type_alias_templates_;
-    std::unordered_map<std::string, GenericTemplateInfo> generic_function_templates_;
-    std::unordered_map<std::string, GenericTemplateInfo> generic_method_templates_;
-    std::unordered_map<std::string, TypeHandle> generic_struct_instances_;
-    std::unordered_map<std::string, TypeHandle> generic_enum_instances_;
-    std::unordered_map<std::string, TypeHandle> resolved_generic_type_aliases_;
-    std::unordered_map<std::string, base::usize> generic_function_instances_;
-    std::unordered_map<std::string, FunctionSignature> generic_placeholder_functions_;
-    std::unordered_map<std::string, TypeHandle> resolved_type_aliases_;
-    std::vector<std::string> resolving_type_aliases_;
-    std::unordered_map<std::string, Symbol> global_values_;
-    std::unordered_map<std::string, syntax::ItemId> function_definition_items_;
-    std::unordered_map<std::string, FunctionBodyState> function_body_states_;
-    std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
-    std::unordered_map<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash> named_types_by_name_;
-    std::unordered_map<ModuleLookupKey, const TypeAliasInfo*, ModuleLookupKeyHash> type_aliases_by_name_;
-    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_struct_templates_by_name_;
-    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_enum_templates_by_name_;
-    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_type_alias_templates_by_name_;
-    std::unordered_map<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_function_templates_by_name_;
-    std::unordered_map<ModuleLookupKey, std::vector<const GenericTemplateInfo*>, ModuleLookupKeyHash> generic_method_templates_by_name_;
+    SemaMap<std::string, TypeHandle> named_types_;
+    SemaMap<std::string, syntax::Visibility> type_visibilities_;
+    SemaMap<std::string, GenericTemplateInfo> generic_struct_templates_;
+    SemaMap<std::string, GenericTemplateInfo> generic_enum_templates_;
+    SemaMap<std::string, GenericTemplateInfo> generic_type_alias_templates_;
+    SemaMap<std::string, GenericTemplateInfo> generic_function_templates_;
+    SemaMap<std::string, GenericTemplateInfo> generic_method_templates_;
+    SemaMap<std::string, TypeHandle> generic_struct_instances_;
+    SemaMap<std::string, TypeHandle> generic_enum_instances_;
+    SemaMap<std::string, TypeHandle> resolved_generic_type_aliases_;
+    SemaMap<std::string, base::usize> generic_function_instances_;
+    SemaMap<std::string, FunctionSignature> generic_placeholder_functions_;
+    SemaMap<std::string, TypeHandle> resolved_type_aliases_;
+    SemaVector<std::string> resolving_type_aliases_;
+    SemaMap<std::string, Symbol> global_values_;
+    SemaMap<std::string, syntax::ItemId> function_definition_items_;
+    SemaMap<std::string, FunctionBodyState> function_body_states_;
+    SemaMap<base::u32, const StructInfo*> struct_infos_by_type_;
+    SemaMap<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash> named_types_by_name_;
+    SemaMap<ModuleLookupKey, const TypeAliasInfo*, ModuleLookupKeyHash> type_aliases_by_name_;
+    SemaMap<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_struct_templates_by_name_;
+    SemaMap<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_enum_templates_by_name_;
+    SemaMap<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_type_alias_templates_by_name_;
+    SemaMap<ModuleLookupKey, const GenericTemplateInfo*, ModuleLookupKeyHash> generic_function_templates_by_name_;
+    SemaMap<ModuleLookupKey, GenericTemplateList, ModuleLookupKeyHash> generic_method_templates_by_name_;
     base::usize generic_method_lookup_indexed_count_ = 0;
-    std::unordered_map<ModuleLookupKey, const FunctionSignature*, ModuleLookupKeyHash> functions_by_name_;
-    std::unordered_map<MethodLookupKey, const FunctionSignature*, MethodLookupKeyHash> methods_by_name_;
+    SemaMap<ModuleLookupKey, const FunctionSignature*, ModuleLookupKeyHash> functions_by_name_;
+    SemaMap<MethodLookupKey, const FunctionSignature*, MethodLookupKeyHash> methods_by_name_;
     base::usize internal_function_lookup_exclusions_ = 0;
-    std::unordered_map<ModuleLookupKey, const Symbol*, ModuleLookupKeyHash> global_values_by_name_;
-    std::unordered_map<MethodLookupKey, const Symbol*, MethodLookupKeyHash> method_global_values_by_name_;
-    std::unordered_map<ModuleLookupKey, const EnumCaseInfo*, ModuleLookupKeyHash> enum_cases_by_module_name_;
-    std::unordered_map<EnumCaseLookupKey, const EnumCaseInfo*, EnumCaseLookupKeyHash> enum_cases_by_type_and_case_;
-    std::unordered_map<base::u32, std::vector<const EnumCaseInfo*>> enum_cases_by_type_;
-    mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> visible_modules_cache_;
-    mutable std::unordered_map<base::u32, std::vector<syntax::ModuleId>> module_export_modules_cache_;
+    SemaMap<ModuleLookupKey, const Symbol*, ModuleLookupKeyHash> global_values_by_name_;
+    SemaMap<MethodLookupKey, const Symbol*, MethodLookupKeyHash> method_global_values_by_name_;
+    SemaMap<ModuleLookupKey, const EnumCaseInfo*, ModuleLookupKeyHash> enum_cases_by_module_name_;
+    SemaMap<EnumCaseLookupKey, const EnumCaseInfo*, EnumCaseLookupKeyHash> enum_cases_by_type_and_case_;
+    SemaMap<base::u32, EnumCaseList> enum_cases_by_type_;
+    mutable SemaMap<base::u32, ModuleIdList> visible_modules_cache_;
+    mutable SemaMap<base::u32, ModuleIdList> module_export_modules_cache_;
     syntax::ModuleId current_module_ = syntax::INVALID_MODULE_ID;
     TypeHandle current_function_return_type_ = INVALID_TYPE_HANDLE;
     ReturnTypeInference* current_return_inference_ = nullptr;

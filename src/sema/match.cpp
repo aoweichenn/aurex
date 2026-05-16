@@ -671,7 +671,11 @@ private:
 
         const TypeInfo& info = this->analyzer_.checked_.types.get(type);
         if (info.kind == TypeKind::tuple) {
-            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::tuple, info.tuple_elements, nullptr});
+            constructors.push_back(MatrixConstructor {
+                MatrixConstructor::Kind::tuple,
+                std::vector<TypeHandle>(info.tuple_elements.begin(), info.tuple_elements.end()),
+                nullptr,
+            });
             return constructors;
         }
         if (info.kind == TypeKind::struct_) {
@@ -697,10 +701,10 @@ private:
         }
         if (info.kind == TypeKind::enum_) {
             std::vector<const EnumCaseInfo*> cases;
-            if (const std::vector<const EnumCaseInfo*>* indexed_cases =
+            if (const EnumCaseList* indexed_cases =
                     this->analyzer_.find_enum_cases_by_type(type);
                 indexed_cases != nullptr) {
-                cases = *indexed_cases;
+                cases.assign(indexed_cases->begin(), indexed_cases->end());
             } else {
                 for (const auto& entry : this->analyzer_.checked_.enum_cases) {
                     const EnumCaseInfo& case_info = entry.second;
@@ -722,7 +726,7 @@ private:
                 }
                 MatrixConstructor constructor;
                 constructor.kind = MatrixConstructor::Kind::enum_case;
-                constructor.fields = case_info->payload_types;
+                constructor.fields.assign(case_info->payload_types.begin(), case_info->payload_types.end());
                 constructor.enum_case = case_info;
                 constructors.push_back(std::move(constructor));
             }
@@ -753,7 +757,11 @@ private:
 
         const TypeInfo& info = this->analyzer_.checked_.types.get(type);
         if (info.kind == TypeKind::tuple && pattern->kind == syntax::PatternKind::tuple) {
-            return MatrixConstructor {MatrixConstructor::Kind::tuple, info.tuple_elements, nullptr};
+            return MatrixConstructor {
+                MatrixConstructor::Kind::tuple,
+                std::vector<TypeHandle>(info.tuple_elements.begin(), info.tuple_elements.end()),
+                nullptr,
+            };
         }
         if (info.kind == TypeKind::struct_ && pattern->kind == syntax::PatternKind::struct_) {
             const StructInfo* struct_info = this->analyzer_.find_struct(type);
@@ -786,7 +794,7 @@ private:
             }
             MatrixConstructor constructor;
             constructor.kind = MatrixConstructor::Kind::enum_case;
-            constructor.fields = case_info->payload_types;
+            constructor.fields.assign(case_info->payload_types.begin(), case_info->payload_types.end());
             constructor.enum_case = case_info;
             return constructor;
         }
@@ -1229,7 +1237,7 @@ private:
     SemanticAnalyzer& analyzer_;
     TypeHandle matched_ = INVALID_TYPE_HANDLE;
     bool enum_match_ = false;
-    std::vector<std::string> covered_enum_cases_;
+    std::vector<std::string_view> covered_enum_cases_;
     PatternMatrix coverage_matrix_;
 };
 

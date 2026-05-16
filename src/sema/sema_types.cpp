@@ -736,7 +736,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                     this->report(this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
                 }
             }
-            const TypeHandle resolved = this->checked_.types.tuple(std::move(elements));
+            const TypeHandle resolved = this->checked_.types.tuple(elements);
             this->record_syntax_type_handle(action.type, resolved);
             values.push_back(resolved);
             break;
@@ -782,7 +782,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 map_function_call_conv(action.function_call_conv),
                 action.function_is_unsafe,
                 action.function_is_variadic,
-                std::move(params),
+                params,
                 return_type
             );
             this->record_syntax_type_handle(action.type, resolved);

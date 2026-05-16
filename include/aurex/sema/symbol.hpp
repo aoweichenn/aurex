@@ -3,16 +3,16 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/result.hpp>
 #include <aurex/sema/identifier.hpp>
+#include <aurex/sema/storage.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
 #include <aurex/syntax/ast_ids.hpp>
 
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <vector>
 
 namespace aurex::sema {
 
@@ -48,11 +48,16 @@ struct Symbol {
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
-using IdentSymbolMap = std::unordered_map<IdentId, SymbolId, IdentIdHash>;
+using IdentSymbolMap = SemaMap<IdentId, SymbolId, IdentIdHash>;
 
 class SymbolTable final {
 public:
     SymbolTable();
+    SymbolTable(const SymbolTable& other);
+    SymbolTable& operator=(const SymbolTable& other);
+    SymbolTable(SymbolTable&& other) noexcept;
+    SymbolTable& operator=(SymbolTable&& other) noexcept;
+    ~SymbolTable() = default;
 
     void push_scope(base::usize expected_symbols = 0);
     void pop_scope() noexcept;
@@ -62,8 +67,13 @@ public:
     [[nodiscard]] const Symbol* get(SymbolId id) const noexcept;
 
 private:
-    std::vector<Symbol> symbols_;
-    std::vector<IdentSymbolMap> scopes_;
+    [[nodiscard]] IdentSymbolMap make_scope(base::usize expected_symbols);
+    void copy_from(const SymbolTable& other);
+    void swap(SymbolTable& other) noexcept;
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    SemaVector<Symbol> symbols_;
+    SemaVector<IdentSymbolMap> scopes_;
 };
 
 } // namespace aurex::sema

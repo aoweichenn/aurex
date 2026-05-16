@@ -92,8 +92,8 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
     return resolved;
 }
 
-const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syntax::ModuleId module) const {
-    static const std::vector<syntax::ModuleId> empty;
+const SemanticAnalyzer::ModuleIdList& SemanticAnalyzer::visible_modules(const syntax::ModuleId module) const {
+    static const ModuleIdList empty;
     if (!syntax::is_valid(module)) {
         return empty;
     }
@@ -102,14 +102,14 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::visible_modules(const syn
         return found->second;
     }
     if (module.value >= this->module_.modules.size()) {
-        std::vector<syntax::ModuleId> result;
+        ModuleIdList result = this->make_module_id_list();
         result.reserve(1);
         result.push_back(module);
         auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
     const base::usize import_count = this->module_.modules[module.value].imports.size();
-    std::vector<syntax::ModuleId> result;
+    ModuleIdList result = this->make_module_id_list();
     result.reserve(import_count + 1);
     result.push_back(module);
     std::unordered_set<base::u32> seen;
@@ -220,8 +220,8 @@ syntax::ModuleId SemanticAnalyzer::resolve_type_scope(
     return module;
 }
 
-const std::vector<syntax::ModuleId>& SemanticAnalyzer::module_export_modules(const syntax::ModuleId module) const {
-    static const std::vector<syntax::ModuleId> empty;
+const SemanticAnalyzer::ModuleIdList& SemanticAnalyzer::module_export_modules(const syntax::ModuleId module) const {
+    static const ModuleIdList empty;
     if (!syntax::is_valid(module)) {
         return empty;
     }
@@ -230,14 +230,14 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::module_export_modules(con
         return found->second;
     }
     if (module.value >= this->module_.modules.size()) {
-        std::vector<syntax::ModuleId> result;
+        ModuleIdList result = this->make_module_id_list();
         result.reserve(1);
         result.push_back(module);
         auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
     const base::usize import_count = this->module_.modules[module.value].imports.size();
-    std::vector<syntax::ModuleId> result;
+    ModuleIdList result = this->make_module_id_list();
     result.reserve(import_count + 1);
     result.push_back(module);
     std::unordered_set<base::u32> seen;
@@ -250,10 +250,10 @@ const std::vector<syntax::ModuleId>& SemanticAnalyzer::module_export_modules(con
 
 void SemanticAnalyzer::append_public_reexports(
     const syntax::ModuleId module,
-    std::vector<syntax::ModuleId>& result,
+    ModuleIdList& result,
     std::unordered_set<base::u32>& seen
 ) const {
-    std::vector<syntax::ModuleId> pending;
+    ModuleIdList pending = this->make_module_id_list();
     pending.reserve(result.size());
     pending.push_back(module);
     while (!pending.empty()) {
@@ -442,7 +442,7 @@ void SemanticAnalyzer::index_generic_function_template(const GenericTemplateInfo
 
 void SemanticAnalyzer::index_generic_method_template(const GenericTemplateInfo& info) {
     const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->generic_method_templates_by_name_[key].push_back(&info);
+    this->generic_method_template_bucket(key).push_back(&info);
     this->generic_method_lookup_indexed_count_ += 1;
 }
 
@@ -1098,7 +1098,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_type_and_case(
     return found->second;
 }
 
-const std::vector<const EnumCaseInfo*>* SemanticAnalyzer::find_enum_cases_by_type(
+const SemanticAnalyzer::EnumCaseList* SemanticAnalyzer::find_enum_cases_by_type(
     const TypeHandle enum_type
 ) const noexcept {
     if (!is_valid(enum_type)) {
@@ -1120,7 +1120,7 @@ void SemanticAnalyzer::index_enum_case(const EnumCaseInfo& info) {
     if (is_valid(module_key)) {
         this->enum_cases_by_module_name_[module_key] = &info;
     }
-    this->enum_cases_by_type_[info.type.value].push_back(&info);
+    this->enum_case_type_bucket(info.type).push_back(&info);
 }
 
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(

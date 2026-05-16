@@ -5,6 +5,7 @@
 #include <aurex/base/source.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -212,6 +213,46 @@ TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors) {
     EXPECT_EQ(copied.front(), 1);
     EXPECT_EQ(copied.back(), 3);
     EXPECT_GT(copy_arena.allocated_bytes(), 0U);
+}
+
+TEST(CoreUnit, BumpAllocatorAdapterBacksStandardContainers) {
+    base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+
+    base::BumpDeque<int> queue {base::BumpAllocatorAdapter<int> {arena}};
+    queue.push_back(7);
+    queue.push_front(3);
+    ASSERT_EQ(queue.size(), 2U);
+    EXPECT_EQ(queue.front(), 3);
+    EXPECT_EQ(queue.back(), 7);
+
+    base::BumpString text {base::BumpAllocatorAdapter<char> {arena}};
+    text.assign("arena-text");
+    EXPECT_EQ(text, "arena-text");
+
+    base::BumpUnorderedMap<int, int> values {
+        0,
+        std::hash<int> {},
+        std::equal_to<int> {},
+        base::BumpAllocatorAdapter<std::pair<const int, int>> {arena}
+    };
+    values.emplace(1, 11);
+    values.emplace(2, 22);
+    ASSERT_EQ(values.size(), 2U);
+    EXPECT_EQ(values.at(2), 22);
+
+    base::BumpUnorderedSet<int> keys {
+        0,
+        std::hash<int> {},
+        std::equal_to<int> {},
+        base::BumpAllocatorAdapter<int> {arena}
+    };
+    keys.insert(5);
+    keys.insert(9);
+    EXPECT_TRUE(keys.contains(5));
+    EXPECT_TRUE(keys.contains(9));
+
+    EXPECT_GT(arena.allocated_bytes(), 0U);
+    EXPECT_GT(arena.block_count(), 0U);
 }
 
 } // namespace aurex::test

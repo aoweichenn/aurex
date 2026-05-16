@@ -1,11 +1,14 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/sema/storage.hpp>
 
+#include <initializer_list>
 #include <limits>
+#include <memory>
+#include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace aurex::sema {
@@ -16,6 +19,8 @@ struct TypeHandle {
 };
 
 inline constexpr TypeHandle INVALID_TYPE_HANDLE {TypeHandle::INVALID_VALUE};
+
+using TypeHandleList = SemaVector<TypeHandle>;
 
 [[nodiscard]] inline constexpr bool is_valid(const TypeHandle handle) noexcept {
     return handle.value != TypeHandle::INVALID_VALUE;
@@ -73,11 +78,11 @@ struct TypeInfo {
     TypeHandle array_element = INVALID_TYPE_HANDLE;
     PointerMutability slice_mutability = PointerMutability::const_;
     TypeHandle slice_element = INVALID_TYPE_HANDLE;
-    std::vector<TypeHandle> tuple_elements;
+    TypeHandleList tuple_elements;
     FunctionCallConv function_call_conv = FunctionCallConv::aurex;
     bool function_is_unsafe = false;
     bool function_is_variadic = false;
-    std::vector<TypeHandle> function_params;
+    TypeHandleList function_params;
     TypeHandle function_return = INVALID_TYPE_HANDLE;
     TypeHandle enum_underlying = INVALID_TYPE_HANDLE;
     TypeHandle enum_payload_storage = INVALID_TYPE_HANDLE;
@@ -87,31 +92,64 @@ struct TypeInfo {
     std::string c_name;
     std::string generic_identity_key;
     std::string generic_origin_key;
-    std::vector<TypeHandle> generic_args;
+    TypeHandleList generic_args;
     bool contains_array = false;
 };
 
 class TypeTable final {
 public:
     TypeTable();
+    TypeTable(const TypeTable& other);
+    TypeTable& operator=(const TypeTable& other);
+    TypeTable(TypeTable&& other) noexcept;
+    TypeTable& operator=(TypeTable&& other) noexcept;
+    ~TypeTable() = default;
 
     [[nodiscard]] TypeHandle builtin(BuiltinType type) const noexcept;
     [[nodiscard]] TypeHandle pointer(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle reference(PointerMutability mutability, TypeHandle pointee);
     [[nodiscard]] TypeHandle array(base::u64 count, TypeHandle element);
     [[nodiscard]] TypeHandle slice(PointerMutability mutability, TypeHandle element);
-    [[nodiscard]] TypeHandle tuple(std::vector<TypeHandle> elements);
+    [[nodiscard]] TypeHandle tuple(std::span<const TypeHandle> elements);
+    [[nodiscard]] TypeHandle tuple(const std::vector<TypeHandle>& elements);
+    [[nodiscard]] TypeHandle tuple(std::initializer_list<TypeHandle> elements);
     [[nodiscard]] TypeHandle function(
         FunctionCallConv call_conv,
         bool is_unsafe,
         bool is_variadic,
-        std::vector<TypeHandle> params,
+        std::span<const TypeHandle> params,
+        TypeHandle return_type
+    );
+    [[nodiscard]] TypeHandle function(
+        FunctionCallConv call_conv,
+        bool is_unsafe,
+        bool is_variadic,
+        const std::vector<TypeHandle>& params,
+        TypeHandle return_type
+    );
+    [[nodiscard]] TypeHandle function(
+        FunctionCallConv call_conv,
+        bool is_unsafe,
+        bool is_variadic,
+        std::initializer_list<TypeHandle> params,
         TypeHandle return_type
     );
     [[nodiscard]] TypeHandle function(
         FunctionCallConv call_conv,
         bool is_variadic,
-        std::vector<TypeHandle> params,
+        std::span<const TypeHandle> params,
+        TypeHandle return_type
+    );
+    [[nodiscard]] TypeHandle function(
+        FunctionCallConv call_conv,
+        bool is_variadic,
+        const std::vector<TypeHandle>& params,
+        TypeHandle return_type
+    );
+    [[nodiscard]] TypeHandle function(
+        FunctionCallConv call_conv,
+        bool is_variadic,
+        std::initializer_list<TypeHandle> params,
         TypeHandle return_type
     );
     [[nodiscard]] TypeHandle named_struct(std::string name, std::string c_name, bool contains_array);
@@ -123,7 +161,9 @@ public:
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
     void set_enum_payload_layout(TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
-    void set_generic_instance(TypeHandle handle, std::string origin_key, std::vector<TypeHandle> args);
+    void set_generic_instance(TypeHandle handle, std::string origin_key, std::span<const TypeHandle> args);
+    void set_generic_instance(TypeHandle handle, std::string origin_key, const std::vector<TypeHandle>& args);
+    void set_generic_instance(TypeHandle handle, std::string origin_key, std::initializer_list<TypeHandle> args);
 
     [[nodiscard]] bool same(TypeHandle lhs, TypeHandle rhs) const noexcept;
     [[nodiscard]] bool is_integer(TypeHandle type) const noexcept;
@@ -140,7 +180,7 @@ public:
     [[nodiscard]] bool is_function(TypeHandle type) const noexcept;
     [[nodiscard]] bool contains_array(TypeHandle type) const noexcept;
     [[nodiscard]] std::string display_name(TypeHandle type) const;
-    [[nodiscard]] std::string display_name(std::string_view base_name, const std::vector<TypeHandle>& generic_args) const;
+    [[nodiscard]] std::string display_name(std::string_view base_name, std::span<const TypeHandle> generic_args) const;
     [[nodiscard]] std::string c_name(TypeHandle type) const;
     [[nodiscard]] const TypeInfo& get(TypeHandle handle) const noexcept;
     [[nodiscard]] base::usize size() const noexcept;
@@ -177,7 +217,7 @@ private:
         FunctionCallConv call_conv = FunctionCallConv::aurex;
         bool is_unsafe = false;
         bool is_variadic = false;
-        std::vector<base::u32> params;
+        SemaVector<base::u32> params;
         base::u32 return_type = TypeHandle::INVALID_VALUE;
 
         [[nodiscard]] bool operator==(const FunctionKey& other) const noexcept {
@@ -190,7 +230,7 @@ private:
     };
 
     struct TupleKey {
-        std::vector<base::u32> elements;
+        SemaVector<base::u32> elements;
 
         [[nodiscard]] bool operator==(const TupleKey& other) const noexcept {
             return elements == other.elements;
@@ -217,16 +257,29 @@ private:
         [[nodiscard]] std::size_t operator()(const TupleKey& key) const noexcept;
     };
 
+    void initialize_builtins();
+    void swap(TypeTable& other) noexcept;
+    void copy_from(const TypeTable& other);
+    [[nodiscard]] TypeHandleList make_type_handle_list() const;
+    [[nodiscard]] TypeHandleList copy_type_handles(std::span<const TypeHandle> values) const;
+    [[nodiscard]] SemaVector<base::u32> make_type_key_list() const;
+    [[nodiscard]] SemaVector<base::u32> copy_type_key_values(std::span<const TypeHandle> values) const;
+    [[nodiscard]] SemaVector<base::u32> copy_u32_values(const SemaVector<base::u32>& values) const;
+    [[nodiscard]] TypeInfo make_type_info() const;
+    [[nodiscard]] TypeInfo clone_type_info(const TypeInfo& other) const;
+    [[nodiscard]] FunctionKey clone_function_key(const FunctionKey& other) const;
+    [[nodiscard]] TupleKey clone_tuple_key(const TupleKey& other) const;
     [[nodiscard]] TypeHandle push(TypeInfo info);
 
-    std::vector<TypeInfo> types_;
-    std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
-    std::unordered_map<PointerKey, TypeHandle, PointerKeyHash> reference_types_;
-    std::unordered_map<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
-    std::unordered_map<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
-    std::unordered_map<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;
-    std::unordered_map<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
-    std::unordered_map<std::string, TypeHandle> generic_param_types_;
+    std::unique_ptr<base::BumpAllocator> arena_;
+    SemaVector<TypeInfo> types_;
+    SemaMap<PointerKey, TypeHandle, PointerKeyHash> pointer_types_;
+    SemaMap<PointerKey, TypeHandle, PointerKeyHash> reference_types_;
+    SemaMap<ArrayKey, TypeHandle, ArrayKeyHash> array_types_;
+    SemaMap<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
+    SemaMap<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;
+    SemaMap<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
+    SemaMap<std::string, TypeHandle> generic_param_types_;
 };
 
 } // namespace aurex::sema

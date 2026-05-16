@@ -4,10 +4,10 @@
 #include <aurex/base/result.hpp>
 #include <aurex/base/source.hpp>
 #include <aurex/lex/lexer_cursor.hpp>
+#include <aurex/lex/token_buffer.hpp>
 #include <aurex/syntax/token.hpp>
 
 #include <string_view>
-#include <vector>
 
 namespace aurex::base {
 enum class StringLiteralKind;
@@ -30,7 +30,7 @@ public:
         LexerOptions options = {}
     ) noexcept;
 
-    [[nodiscard]] base::Result<std::vector<syntax::Token>> tokenize();
+    [[nodiscard]] base::Result<TokenBuffer> tokenize();
 
 private:
     struct DigitScanResult {
@@ -89,7 +89,7 @@ private:
     detail::LexerCursor cursor_;
     base::DiagnosticSink& diagnostics_;
     LexerOptions options_;
-    std::vector<syntax::Token> tokens_;
+    TokenBuffer tokens_;
     base::usize lexical_error_count_ = 0;
     bool lexical_error_budget_reported_ = false;
 };

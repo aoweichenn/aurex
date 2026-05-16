@@ -96,7 +96,7 @@ enum class ConstEvalStage : base::u8 {
 };
 
 struct ConstDependencyFrame {
-    std::string key;
+    ModuleLookupKey key;
     bool entered = false;
 };
 
@@ -115,6 +115,16 @@ struct AbiFunctionInfo {
     bool is_extern_c = false;
     bool is_variadic = false;
 };
+
+[[nodiscard]] ModuleLookupKey const_dependency_key(
+    const syntax::ModuleId module,
+    const IdentId name_id
+) noexcept {
+    return ModuleLookupKey {
+        syntax::is_valid(module) ? module.value : SEMA_LOOKUP_INVALID_KEY_PART,
+        name_id,
+    };
+}
 
 struct AbiSymbolInfo {
     std::string name;
@@ -269,7 +279,7 @@ void SemanticAnalyzer::register_type_names() {
         }
 
         if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::opaque_struct_decl) {
-            StructInfo info;
+            StructInfo info = this->checked_.make_struct_info();
             info.name = std::string(item.name);
             info.name_id = item.name_id;
             info.c_name = c_name;
@@ -378,7 +388,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                 payload_type_c_name,
                 payload_contains_array
             );
-            StructInfo payload_info;
+            StructInfo payload_info = this->checked_.make_struct_info();
             payload_info.name = payload_type_name;
             payload_info.c_name = payload_type_c_name;
             payload_info.module = owner;
@@ -442,21 +452,21 @@ void SemanticAnalyzer::register_enum_cases_for_item(
             payload_align = std::max(payload_align, case_align);
         }
 
-        const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, EnumCaseInfo {
-            full_name,
-            full_name_id,
-            this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)),
-            owner,
-            named_enum_type,
-            payload_type,
-            std::move(payload_types),
-            value_text,
-            enum_case.range,
-            enum_display_name,
-            std::string(enum_case.name),
-            enum_case.name_id,
-            visibility,
-        });
+        EnumCaseInfo case_info = this->checked_.make_enum_case_info();
+        case_info.name = full_name;
+        case_info.name_id = full_name_id;
+        case_info.c_name = this->c_symbol_name(owner, c_prefix + std::string(enum_case.name));
+        case_info.module = owner;
+        case_info.type = named_enum_type;
+        case_info.payload_type = payload_type;
+        case_info.payload_types = this->checked_.copy_type_handle_list(payload_types);
+        case_info.value_text = value_text;
+        case_info.range = enum_case.range;
+        case_info.enum_name = enum_display_name;
+        case_info.case_name = std::string(enum_case.name);
+        case_info.case_name_id = enum_case.name_id;
+        case_info.visibility = visibility;
+        const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
             this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
             continue;
@@ -583,7 +593,7 @@ void SemanticAnalyzer::register_value_names() {
                 c_name,
                 method_owner_type,
                 return_type,
-                std::move(param_types),
+                param_types,
                 syntax::ItemId {item_index}
             );
             if (const auto found = this->checked_.functions.find(key);
@@ -701,7 +711,7 @@ void SemanticAnalyzer::validate_abi_symbols() {
         insert_function(signature.c_name, AbiFunctionInfo {
             signature.name,
             signature.return_type,
-            signature.param_types,
+            std::vector<TypeHandle>(signature.param_types.begin(), signature.param_types.end()),
             signature.range,
             signature.is_extern_c,
             signature.is_variadic,
@@ -833,9 +843,21 @@ void SemanticAnalyzer::analyze_struct_properties() {
 }
 
 void SemanticAnalyzer::analyze_const_decls() {
-    std::unordered_map<std::string, std::vector<std::string>> dependencies_by_const;
-    std::unordered_map<std::string, base::SourceRange> const_ranges;
-    std::unordered_map<std::string, std::string> const_names;
+    SemaMap<ModuleLookupKey, ModuleLookupList, ModuleLookupKeyHash> dependencies_by_const =
+        make_sema_map<ModuleLookupKey, ModuleLookupList, ModuleLookupKeyHash>(
+            *this->arena_,
+            ModuleLookupKeyHash {}
+        );
+    SemaMap<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash> const_ranges =
+        make_sema_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash>(
+            *this->arena_,
+            ModuleLookupKeyHash {}
+        );
+    SemaMap<ModuleLookupKey, std::string, ModuleLookupKeyHash> const_names =
+        make_sema_map<ModuleLookupKey, std::string, ModuleLookupKeyHash>(
+            *this->arena_,
+            ModuleLookupKeyHash {}
+        );
     dependencies_by_const.reserve(this->module_.items.size());
     const_ranges.reserve(this->module_.items.size());
     const_names.reserve(this->module_.items.size());
@@ -846,7 +868,13 @@ void SemanticAnalyzer::analyze_const_decls() {
         }
         const syntax::ItemNode item = this->module_.items[index];
         this->current_module_ = this->item_module(syntax::ItemId {index});
-        const std::string const_key = this->module_key(this->current_module_, item.name);
+        const IdentId const_name_id = is_valid(item.name_id)
+            ? item.name_id
+            : this->module_.identifiers.find(item.name);
+        const ModuleLookupKey const_key = const_dependency_key(this->current_module_, const_name_id);
+        if (!is_valid(const_key)) {
+            continue;
+        }
         const_ranges[const_key] = item.range;
         const_names[const_key] = this->qualified_name(this->current_module_, item.name);
         const TypeHandle declared = this->resolve_type(item.const_type);
@@ -854,7 +882,10 @@ void SemanticAnalyzer::analyze_const_decls() {
         this->in_const_initializer_ = true;
         const TypeHandle actual = this->analyze_expr(item.const_value, declared);
         this->in_const_initializer_ = previous_const_initializer;
-        std::unordered_set<std::string> dependencies;
+        ModuleLookupSet dependencies = make_sema_set<ModuleLookupKey, ModuleLookupKeyHash>(
+            *this->arena_,
+            ModuleLookupKeyHash {}
+        );
         if (!this->is_const_evaluable_expr(item.const_value, dependencies)) {
             const base::SourceRange range =
                 syntax::is_valid(item.const_value) && item.const_value.value < this->module_.exprs.size()
@@ -862,7 +893,14 @@ void SemanticAnalyzer::analyze_const_decls() {
                     : item.range;
             this->report(range, std::string(SEMA_CONST_NOT_COMPILE_TIME));
         }
-        dependencies_by_const[const_key] = std::vector<std::string>(dependencies.begin(), dependencies.end());
+        ModuleLookupList dependency_list = make_sema_vector<ModuleLookupKey>(*this->arena_);
+        dependency_list.reserve(dependencies.size());
+        dependency_list.insert(dependency_list.end(), dependencies.begin(), dependencies.end());
+        if (const auto found = dependencies_by_const.find(const_key); found != dependencies_by_const.end()) {
+            found->second = std::move(dependency_list);
+        } else {
+            dependencies_by_const.emplace(const_key, std::move(dependency_list));
+        }
         if (!this->is_valid_storage_type(declared)) {
             this->report(item.range, std::string(SEMA_CONST_TYPE_STORAGE));
         }
@@ -874,7 +912,8 @@ void SemanticAnalyzer::analyze_const_decls() {
     constexpr base::u8 SEMA_CONST_DEP_STATE_VISITING = static_cast<base::u8>(ConstDependencyState::VISITING);
     constexpr base::u8 SEMA_CONST_DEP_STATE_VISITED = static_cast<base::u8>(ConstDependencyState::VISITED);
 
-    std::unordered_map<std::string, base::u8> states;
+    SemaMap<ModuleLookupKey, base::u8, ModuleLookupKeyHash> states =
+        make_sema_map<ModuleLookupKey, base::u8, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {});
     std::vector<ConstDependencyFrame> stack;
     states.reserve(dependencies_by_const.size());
     stack.reserve(dependencies_by_const.size());
@@ -897,11 +936,13 @@ void SemanticAnalyzer::analyze_const_decls() {
             }
             if (state == SEMA_CONST_DEP_STATE_VISITING) {
                 const auto range = const_ranges.find(frame.key);
+                const auto name = const_names.find(frame.key);
+                const std::string_view display_name = name == const_names.end()
+                    ? this->module_.identifiers.text(frame.key.name)
+                    : std::string_view {name->second};
                 this->report(
                     range == const_ranges.end() ? base::SourceRange {} : range->second,
-                    sema_cyclic_const_initializer_message(
-                        const_names.contains(frame.key) ? const_names[frame.key] : frame.key
-                    )
+                    sema_cyclic_const_initializer_message(display_name)
                 );
                 state = SEMA_CONST_DEP_STATE_VISITED;
                 continue;
@@ -922,7 +963,7 @@ void SemanticAnalyzer::analyze_const_decls() {
 
 bool SemanticAnalyzer::is_const_evaluable_expr(
     const syntax::ExprId expr_id,
-    std::unordered_set<std::string>& dependencies
+    ModuleLookupSet& dependencies
 ) {
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return false;
@@ -984,7 +1025,13 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
                     values.push_back(false);
                     break;
                 }
-                dependencies.insert(this->module_key(symbol->module, symbol->name_id, symbol->name));
+                const IdentId dependency_name_id = is_valid(symbol->name_id)
+                    ? symbol->name_id
+                    : this->module_.identifiers.find(symbol->name);
+                const ModuleLookupKey dependency_key = const_dependency_key(symbol->module, dependency_name_id);
+                if (is_valid(dependency_key)) {
+                    dependencies.insert(dependency_key);
+                }
                 values.push_back(true);
                 break;
             }

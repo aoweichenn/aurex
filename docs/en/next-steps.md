@@ -92,6 +92,20 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    Separate check/IR/native tests, and only build/run binaries when runtime
    behavior is the actual subject.
 
+10. Frontend storage performance
+
+   The current M2 storage line has closed the main AST/Sema copying and page-fault
+   hot spots: parser-owned AST nodes use compact header/payload arenas, lexer
+   tokens are returned through bump-backed `TokenBuffer`, checked-module side
+   tables store `IdentId` instead of per-node strings, sema persistent
+   side-table / lookup-cache buckets are bump-backed, and sema value payload
+   lists (`FunctionSignature` params/generic args, `StructInfo` fields,
+   `EnumCaseInfo` payloads, `TypeInfo` tuple/function/generic args, and generic
+   constraint buckets) are arena-backed. Keep future work focused on cross-module
+   stable identifiers, generic side-table lifetime/release policy, and CI
+   performance thresholds rather than reintroducing whole-AST copies or per-node
+   heap string/vector side tables.
+
 ## Explicitly Deferred
 
 - std containers, file/dir/process/console APIs.

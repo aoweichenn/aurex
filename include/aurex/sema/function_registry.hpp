@@ -2,10 +2,11 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/sema/function.hpp>
+#include <aurex/sema/storage.hpp>
 #include <aurex/syntax/ast.hpp>
 
+#include <span>
 #include <string>
-#include <unordered_map>
 
 namespace aurex::sema {
 
@@ -16,7 +17,7 @@ class FunctionRegistry final {
 public:
     FunctionRegistry(
         CheckedModule& checked,
-        std::unordered_map<std::string, Symbol>& global_values,
+        SemaMap<std::string, Symbol>& global_values,
         base::DiagnosticSink& diagnostics
     ) noexcept;
 
@@ -27,7 +28,7 @@ public:
         std::string c_name,
         TypeHandle method_owner_type,
         TypeHandle return_type,
-        std::vector<TypeHandle> param_types,
+        std::span<const TypeHandle> param_types,
         syntax::ItemId item_id
     );
 
@@ -35,7 +36,7 @@ private:
     [[nodiscard]] bool same_signature(
         const FunctionSignature& existing,
         TypeHandle return_type,
-        const std::vector<TypeHandle>& param_types,
+        std::span<const TypeHandle> param_types,
         bool is_variadic
     ) const noexcept;
     void merge_function(std::string key, FunctionSignature signature, bool is_prototype);
@@ -44,7 +45,7 @@ private:
     void report(base::SourceRange range, std::string message);
 
     CheckedModule& checked_;
-    std::unordered_map<std::string, Symbol>& global_values_;
+    SemaMap<std::string, Symbol>& global_values_;
     base::DiagnosticSink& diagnostics_;
 };
 

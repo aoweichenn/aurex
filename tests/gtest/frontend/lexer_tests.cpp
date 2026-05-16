@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -22,7 +24,9 @@ using base::ErrorCode;
 using syntax::Token;
 using syntax::TokenKind;
 
-std::vector<TokenKind> token_kinds(const std::vector<Token>& tokens) {
+constexpr base::usize LEXER_TEST_TOKEN_BUFFER_RESERVE = 128;
+
+std::vector<TokenKind> token_kinds(const std::span<const Token> tokens) {
     std::vector<TokenKind> kinds;
     kinds.reserve(tokens.size());
     for (const Token& token : tokens) {
@@ -43,6 +47,61 @@ void expect_contains_all(const std::string_view text, const std::vector<std::str
 }
 
 } // namespace
+
+TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
+    lex::TokenBuffer buffer;
+    buffer.reserve(LEXER_TEST_TOKEN_BUFFER_RESERVE);
+    EXPECT_GT(buffer.arena_bytes(), 0U);
+    EXPECT_GT(buffer.arena_blocks(), 0U);
+
+    buffer.push_back(Token {TokenKind::identifier, {{1}, 0, 5}, "alpha"});
+    buffer.push_back(Token {TokenKind::eof, {{1}, 5, 5}, {}});
+    ASSERT_EQ(buffer.size(), 2U);
+    EXPECT_EQ(buffer.front().text, "alpha");
+    EXPECT_EQ(buffer.back().kind, TokenKind::eof);
+
+    const std::span<const Token> span = buffer.span();
+    ASSERT_EQ(span.size(), 2U);
+    EXPECT_EQ(span[0].kind, TokenKind::identifier);
+    const std::span<const Token> converted_span = static_cast<std::span<const Token>>(buffer);
+    ASSERT_EQ(converted_span.size(), 2U);
+    EXPECT_EQ(converted_span[1].kind, TokenKind::eof);
+
+    lex::TokenBuffer copied = buffer;
+    ASSERT_EQ(copied.size(), buffer.size());
+    EXPECT_EQ(copied.front().text, "alpha");
+    EXPECT_GT(copied.arena_bytes(), 0U);
+
+    lex::TokenBuffer moved = std::move(buffer);
+    ASSERT_EQ(moved.size(), 2U);
+    EXPECT_EQ(moved.front().kind, TokenKind::identifier);
+    EXPECT_GT(moved.arena_bytes(), 0U);
+    EXPECT_EQ(moved[0].text, "alpha");
+    EXPECT_EQ(std::distance(moved.begin(), moved.end()), 2);
+
+    EXPECT_TRUE(buffer.empty());
+    EXPECT_EQ(buffer.arena_blocks(), 0U);
+    buffer.push_back(Token {TokenKind::identifier, {{1}, 0, 4}, "beta"});
+    ASSERT_EQ(buffer.size(), 1U);
+    EXPECT_EQ(buffer.front().text, "beta");
+    EXPECT_GT(buffer.arena_blocks(), 0U);
+
+    lex::TokenBuffer copy_assigned;
+    copy_assigned = moved;
+    ASSERT_EQ(copy_assigned.size(), 2U);
+    EXPECT_EQ(copy_assigned.back().kind, TokenKind::eof);
+    lex::TokenBuffer* const copy_assigned_ref = &copy_assigned;
+    copy_assigned = *copy_assigned_ref;
+    EXPECT_EQ(copy_assigned.front().text, "alpha");
+
+    lex::TokenBuffer move_assigned;
+    move_assigned = std::move(copy_assigned);
+    ASSERT_FALSE(move_assigned.empty());
+    EXPECT_EQ(move_assigned.front().text, "alpha");
+    lex::TokenBuffer* const move_assigned_ref = &move_assigned;
+    move_assigned = std::move(*move_assigned_ref);
+    EXPECT_EQ(move_assigned.back().kind, TokenKind::eof);
+}
 
 TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     DiagnosticSink diagnostics;

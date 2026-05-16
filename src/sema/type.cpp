@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <memory>
 #include <string_view>
 #include <utility>
 
@@ -92,7 +93,7 @@ struct TypeDisplayTask {
     return "<unknown>";
 }
 
-void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const std::vector<TypeHandle>& args) {
+void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const std::span<const TypeHandle> args) {
     if (args.empty()) {
         return;
     }
@@ -119,14 +120,188 @@ void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const
 
 } // namespace
 
-TypeTable::TypeTable() {
+TypeTable::TypeTable()
+    : arena_(std::make_unique<base::BumpAllocator>()),
+      types_(make_sema_vector<TypeInfo>(*this->arena_)),
+      pointer_types_(make_sema_map<PointerKey, TypeHandle, PointerKeyHash>(*this->arena_, PointerKeyHash {})),
+      reference_types_(make_sema_map<PointerKey, TypeHandle, PointerKeyHash>(*this->arena_, PointerKeyHash {})),
+      array_types_(make_sema_map<ArrayKey, TypeHandle, ArrayKeyHash>(*this->arena_, ArrayKeyHash {})),
+      slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash {})),
+      tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash {})),
+      function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash {})),
+      generic_param_types_(make_sema_map<std::string, TypeHandle>(*this->arena_)) {
+    this->initialize_builtins();
+}
+
+TypeTable::TypeTable(const TypeTable& other)
+    : arena_(std::make_unique<base::BumpAllocator>()),
+      types_(make_sema_vector<TypeInfo>(*this->arena_)),
+      pointer_types_(make_sema_map<PointerKey, TypeHandle, PointerKeyHash>(*this->arena_, PointerKeyHash {})),
+      reference_types_(make_sema_map<PointerKey, TypeHandle, PointerKeyHash>(*this->arena_, PointerKeyHash {})),
+      array_types_(make_sema_map<ArrayKey, TypeHandle, ArrayKeyHash>(*this->arena_, ArrayKeyHash {})),
+      slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash {})),
+      tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash {})),
+      function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash {})),
+      generic_param_types_(make_sema_map<std::string, TypeHandle>(*this->arena_)) {
+    this->copy_from(other);
+}
+
+TypeTable& TypeTable::operator=(const TypeTable& other) {
+    if (this == &other) {
+        return *this;
+    }
+    TypeTable copy(other);
+    *this = std::move(copy);
+    return *this;
+}
+
+TypeTable::TypeTable(TypeTable&& other) noexcept
+    : arena_(std::move(other.arena_)),
+      types_(std::move(other.types_)),
+      pointer_types_(std::move(other.pointer_types_)),
+      reference_types_(std::move(other.reference_types_)),
+      array_types_(std::move(other.array_types_)),
+      slice_types_(std::move(other.slice_types_)),
+      tuple_types_(std::move(other.tuple_types_)),
+      function_types_(std::move(other.function_types_)),
+      generic_param_types_(std::move(other.generic_param_types_)) {}
+
+TypeTable& TypeTable::operator=(TypeTable&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    this->swap(other);
+    return *this;
+}
+
+void TypeTable::initialize_builtins() {
     this->types_.reserve(SEMA_TYPE_TABLE_INITIAL_CAPACITY);
     for (base::u32 i = 0; i < SEMA_BUILTIN_TYPE_COUNT; ++i) {
-        TypeInfo info;
+        TypeInfo info = this->make_type_info();
         info.kind = TypeKind::builtin;
         info.builtin = static_cast<BuiltinType>(i);
         this->types_.push_back(std::move(info));
     }
+}
+
+void TypeTable::swap(TypeTable& other) noexcept {
+    using std::swap;
+    this->types_.swap(other.types_);
+    this->pointer_types_.swap(other.pointer_types_);
+    this->reference_types_.swap(other.reference_types_);
+    this->array_types_.swap(other.array_types_);
+    this->slice_types_.swap(other.slice_types_);
+    this->tuple_types_.swap(other.tuple_types_);
+    this->function_types_.swap(other.function_types_);
+    this->generic_param_types_.swap(other.generic_param_types_);
+    swap(this->arena_, other.arena_);
+}
+
+void TypeTable::copy_from(const TypeTable& other) {
+    this->types_.clear();
+    this->types_.reserve(other.types_.size());
+    for (const TypeInfo& info : other.types_) {
+        this->types_.push_back(this->clone_type_info(info));
+    }
+    this->pointer_types_ = other.pointer_types_;
+    this->reference_types_ = other.reference_types_;
+    this->array_types_ = other.array_types_;
+    this->slice_types_ = other.slice_types_;
+    this->tuple_types_.clear();
+    this->tuple_types_.reserve(other.tuple_types_.size());
+    for (const auto& entry : other.tuple_types_) {
+        this->tuple_types_.emplace(this->clone_tuple_key(entry.first), entry.second);
+    }
+    this->function_types_.clear();
+    this->function_types_.reserve(other.function_types_.size());
+    for (const auto& entry : other.function_types_) {
+        this->function_types_.emplace(this->clone_function_key(entry.first), entry.second);
+    }
+    this->generic_param_types_ = other.generic_param_types_;
+}
+
+TypeHandleList TypeTable::make_type_handle_list() const {
+    return make_sema_vector<TypeHandle>(*this->arena_);
+}
+
+TypeHandleList TypeTable::copy_type_handles(const std::span<const TypeHandle> values) const {
+    TypeHandleList copy = this->make_type_handle_list();
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
+SemaVector<base::u32> TypeTable::make_type_key_list() const {
+    return make_sema_vector<base::u32>(*this->arena_);
+}
+
+SemaVector<base::u32> TypeTable::copy_type_key_values(const std::span<const TypeHandle> values) const {
+    SemaVector<base::u32> copy = this->make_type_key_list();
+    copy.reserve(values.size());
+    for (const TypeHandle value : values) {
+        copy.push_back(value.value);
+    }
+    return copy;
+}
+
+SemaVector<base::u32> TypeTable::copy_u32_values(const SemaVector<base::u32>& values) const {
+    SemaVector<base::u32> copy = this->make_type_key_list();
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
+TypeInfo TypeTable::make_type_info() const {
+    TypeInfo info;
+    info.tuple_elements = this->make_type_handle_list();
+    info.function_params = this->make_type_handle_list();
+    info.generic_args = this->make_type_handle_list();
+    return info;
+}
+
+TypeInfo TypeTable::clone_type_info(const TypeInfo& other) const {
+    TypeInfo copy = this->make_type_info();
+    copy.kind = other.kind;
+    copy.builtin = other.builtin;
+    copy.pointer_mutability = other.pointer_mutability;
+    copy.pointee = other.pointee;
+    copy.array_count = other.array_count;
+    copy.array_element = other.array_element;
+    copy.slice_mutability = other.slice_mutability;
+    copy.slice_element = other.slice_element;
+    copy.tuple_elements = this->copy_type_handles(other.tuple_elements);
+    copy.function_call_conv = other.function_call_conv;
+    copy.function_is_unsafe = other.function_is_unsafe;
+    copy.function_is_variadic = other.function_is_variadic;
+    copy.function_params = this->copy_type_handles(other.function_params);
+    copy.function_return = other.function_return;
+    copy.enum_underlying = other.enum_underlying;
+    copy.enum_payload_storage = other.enum_payload_storage;
+    copy.enum_payload_size = other.enum_payload_size;
+    copy.enum_payload_align = other.enum_payload_align;
+    copy.name = other.name;
+    copy.c_name = other.c_name;
+    copy.generic_identity_key = other.generic_identity_key;
+    copy.generic_origin_key = other.generic_origin_key;
+    copy.generic_args = this->copy_type_handles(other.generic_args);
+    copy.contains_array = other.contains_array;
+    return copy;
+}
+
+TypeTable::FunctionKey TypeTable::clone_function_key(const FunctionKey& other) const {
+    FunctionKey copy;
+    copy.call_conv = other.call_conv;
+    copy.is_unsafe = other.is_unsafe;
+    copy.is_variadic = other.is_variadic;
+    copy.params = this->copy_u32_values(other.params);
+    copy.return_type = other.return_type;
+    return copy;
+}
+
+TypeTable::TupleKey TypeTable::clone_tuple_key(const TupleKey& other) const {
+    TupleKey copy;
+    copy.elements = this->copy_u32_values(other.elements);
+    return copy;
 }
 
 TypeHandle TypeTable::builtin(BuiltinType type) const noexcept {
@@ -139,7 +314,7 @@ TypeHandle TypeTable::pointer(const PointerMutability mutability, const TypeHand
         return found->second;
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::pointer;
     info.pointer_mutability = mutability;
     info.pointee = pointee;
@@ -154,7 +329,7 @@ TypeHandle TypeTable::reference(const PointerMutability mutability, const TypeHa
         return found->second;
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::reference;
     info.pointer_mutability = mutability;
     info.pointee = pointee;
@@ -169,7 +344,7 @@ TypeHandle TypeTable::array(const base::u64 count, const TypeHandle element) {
         return found->second;
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::array;
     info.array_count = count;
     info.array_element = element;
@@ -185,7 +360,7 @@ TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle
         return found->second;
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::slice;
     info.slice_mutability = mutability;
     info.slice_element = element;
@@ -194,12 +369,9 @@ TypeHandle TypeTable::slice(const PointerMutability mutability, const TypeHandle
     return handle;
 }
 
-TypeHandle TypeTable::tuple(std::vector<TypeHandle> elements) {
+TypeHandle TypeTable::tuple(const std::span<const TypeHandle> elements) {
     TupleKey key;
-    key.elements.reserve(elements.size());
-    for (const TypeHandle element : elements) {
-        key.elements.push_back(element.value);
-    }
+    key.elements = this->copy_type_key_values(elements);
     if (const auto found = this->tuple_types_.find(key); found != this->tuple_types_.end()) {
         return found->second;
     }
@@ -209,41 +381,46 @@ TypeHandle TypeTable::tuple(std::vector<TypeHandle> elements) {
         contains_array = contains_array || this->contains_array(element);
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::tuple;
-    info.tuple_elements = std::move(elements);
+    info.tuple_elements = this->copy_type_handles(elements);
     info.contains_array = contains_array;
     const TypeHandle handle = this->push(std::move(info));
     this->tuple_types_.emplace(std::move(key), handle);
     return handle;
 }
 
+TypeHandle TypeTable::tuple(const std::vector<TypeHandle>& elements) {
+    return this->tuple(std::span<const TypeHandle>(elements.data(), elements.size()));
+}
+
+TypeHandle TypeTable::tuple(const std::initializer_list<TypeHandle> elements) {
+    return this->tuple(std::span<const TypeHandle>(elements.begin(), elements.size()));
+}
+
 TypeHandle TypeTable::function(
     const FunctionCallConv call_conv,
     const bool is_unsafe,
     const bool is_variadic,
-    std::vector<TypeHandle> params,
+    const std::span<const TypeHandle> params,
     const TypeHandle return_type
 ) {
     FunctionKey key;
     key.call_conv = call_conv;
     key.is_unsafe = is_unsafe;
     key.is_variadic = is_variadic;
-    key.params.reserve(params.size());
-    for (const TypeHandle param : params) {
-        key.params.push_back(param.value);
-    }
+    key.params = this->copy_type_key_values(params);
     key.return_type = return_type.value;
     if (const auto found = this->function_types_.find(key); found != this->function_types_.end()) {
         return found->second;
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::function;
     info.function_call_conv = call_conv;
     info.function_is_unsafe = is_unsafe;
     info.function_is_variadic = is_variadic;
-    info.function_params = std::move(params);
+    info.function_params = this->copy_type_handles(params);
     info.function_return = return_type;
     const TypeHandle handle = this->push(std::move(info));
     this->function_types_.emplace(std::move(key), handle);
@@ -252,15 +429,77 @@ TypeHandle TypeTable::function(
 
 TypeHandle TypeTable::function(
     const FunctionCallConv call_conv,
+    const bool is_unsafe,
     const bool is_variadic,
-    std::vector<TypeHandle> params,
+    const std::vector<TypeHandle>& params,
     const TypeHandle return_type
 ) {
-    return this->function(call_conv, false, is_variadic, std::move(params), return_type);
+    return this->function(
+        call_conv,
+        is_unsafe,
+        is_variadic,
+        std::span<const TypeHandle>(params.data(), params.size()),
+        return_type
+    );
+}
+
+TypeHandle TypeTable::function(
+    const FunctionCallConv call_conv,
+    const bool is_unsafe,
+    const bool is_variadic,
+    const std::initializer_list<TypeHandle> params,
+    const TypeHandle return_type
+) {
+    return this->function(
+        call_conv,
+        is_unsafe,
+        is_variadic,
+        std::span<const TypeHandle>(params.begin(), params.size()),
+        return_type
+    );
+}
+
+TypeHandle TypeTable::function(
+    const FunctionCallConv call_conv,
+    const bool is_variadic,
+    const std::span<const TypeHandle> params,
+    const TypeHandle return_type
+) {
+    return this->function(call_conv, false, is_variadic, params, return_type);
+}
+
+TypeHandle TypeTable::function(
+    const FunctionCallConv call_conv,
+    const bool is_variadic,
+    const std::vector<TypeHandle>& params,
+    const TypeHandle return_type
+) {
+    return this->function(
+        call_conv,
+        false,
+        is_variadic,
+        std::span<const TypeHandle>(params.data(), params.size()),
+        return_type
+    );
+}
+
+TypeHandle TypeTable::function(
+    const FunctionCallConv call_conv,
+    const bool is_variadic,
+    const std::initializer_list<TypeHandle> params,
+    const TypeHandle return_type
+) {
+    return this->function(
+        call_conv,
+        false,
+        is_variadic,
+        std::span<const TypeHandle>(params.begin(), params.size()),
+        return_type
+    );
 }
 
 TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const bool contains_array) {
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::struct_;
     info.name = std::move(name);
     info.c_name = std::move(c_name);
@@ -269,7 +508,7 @@ TypeHandle TypeTable::named_struct(std::string name, std::string c_name, const b
 }
 
 TypeHandle TypeTable::named_enum(std::string name, std::string c_name) {
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::enum_;
     info.name = std::move(name);
     info.c_name = std::move(c_name);
@@ -277,7 +516,7 @@ TypeHandle TypeTable::named_enum(std::string name, std::string c_name) {
 }
 
 TypeHandle TypeTable::opaque_struct(std::string name, std::string c_name) {
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::opaque_struct;
     info.name = std::move(name);
     info.c_name = std::move(c_name);
@@ -294,7 +533,7 @@ TypeHandle TypeTable::generic_param(std::string identity_key, std::string displa
         return found->second;
     }
 
-    TypeInfo info;
+    TypeInfo info = this->make_type_info();
     info.kind = TypeKind::generic_param;
     info.name = std::move(display_name);
     info.generic_identity_key = identity_key;
@@ -328,11 +567,35 @@ void TypeTable::set_enum_payload_layout(
 void TypeTable::set_generic_instance(
     const TypeHandle handle,
     std::string origin_key,
-    std::vector<TypeHandle> args
+    const std::span<const TypeHandle> args
 ) {
     assert(handle.value < this->types_.size());
     this->types_[handle.value].generic_origin_key = std::move(origin_key);
-    this->types_[handle.value].generic_args = std::move(args);
+    this->types_[handle.value].generic_args = this->copy_type_handles(args);
+}
+
+void TypeTable::set_generic_instance(
+    const TypeHandle handle,
+    std::string origin_key,
+    const std::vector<TypeHandle>& args
+) {
+    this->set_generic_instance(
+        handle,
+        std::move(origin_key),
+        std::span<const TypeHandle>(args.data(), args.size())
+    );
+}
+
+void TypeTable::set_generic_instance(
+    const TypeHandle handle,
+    std::string origin_key,
+    const std::initializer_list<TypeHandle> args
+) {
+    this->set_generic_instance(
+        handle,
+        std::move(origin_key),
+        std::span<const TypeHandle>(args.begin(), args.size())
+    );
 }
 
 bool TypeTable::same(const TypeHandle lhs, const TypeHandle rhs) const noexcept {
@@ -553,7 +816,7 @@ std::string TypeTable::display_name(const TypeHandle type) const {
 
 std::string TypeTable::display_name(
     const std::string_view base_name,
-    const std::vector<TypeHandle>& generic_args
+    const std::span<const TypeHandle> generic_args
 ) const {
     if (generic_args.empty()) {
         return std::string(base_name);

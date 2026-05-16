@@ -181,7 +181,7 @@ constexpr string_view SEMA_CAPABILITY_EQ = "Eq";  // ❌ 硬编码字符串
 ```cpp
 // 每次泛型实例化分配全模块 side table
 side_tables.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);  // 全模块！
-side_tables.pattern_c_names.assign(module.patterns.size(), {});          // 全模块！
+// 旧 pattern C-name string table 也按全模块 pattern 数分配。
 ```
 
 **实测验证：** 2000 泛型实例 → **1.15 GB**，超线性增长
@@ -244,7 +244,9 @@ find_symbol(name_id, name, range);
 
 **实测：** 2M AST 节点 → **3.0 GB** 🚨
 
-**建议：** Sema 用引用不复制；normalized_ast 改 overlay 且不拥有 AST；节点级 C symbol side table 用 `IdentId` + C-name interner；长期改 compact AST (header + per-kind payload)。
+**当前修复状态：** 当前主线已按该建议落地：Sema 读取 parser/module AST 引用，`CheckedModule::normalized_ast` 是轻量 overlay 且不拥有 AST；节点级 C symbol side table 已改为 `IdentId` + checked C-name interner；AST 主存储已改为 compact header + per-kind payload arena；parser 表达式创建直接写 compact payload 并按 token 形态预留/预触页；lexer token 输出已改为 bump-backed `TokenBuffer`；sema 的 checked side tables、generic side tables、pattern case table、type/symbol table、lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args 和 generic constraint bucket 均接入 bump-backed storage，generic function instance 存储用 bump-backed deque 保持 side table 地址稳定。
+
+**剩余边界：** 后续性能工作集中在 generic side table 生命周期/释放策略、跨模块 stable identifier/hash、2M 节点跨机器 RSS/耗时阈值和 CI perf 阈值，不再是整树复制、per-node string side table 或 sema value-payload heap vector。
 
 ---
 

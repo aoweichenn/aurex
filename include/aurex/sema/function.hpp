@@ -7,7 +7,6 @@
 #include <aurex/syntax/ast_ids.hpp>
 
 #include <string>
-#include <vector>
 
 namespace aurex::sema {
 
@@ -19,8 +18,8 @@ struct FunctionSignature {
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
-    std::vector<TypeHandle> param_types;
-    std::vector<TypeHandle> generic_args;
+    TypeHandleList param_types;
+    TypeHandleList generic_args;
     base::SourceRange range {};
     bool is_extern_c = false;
     bool is_export_c = false;

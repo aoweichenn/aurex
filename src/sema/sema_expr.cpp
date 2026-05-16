@@ -263,7 +263,7 @@ SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle
         this->checked_.types.get(type).kind != TypeKind::enum_) {
         return {};
     }
-    const std::vector<const EnumCaseInfo*>* const cases = this->find_enum_cases_by_type(type);
+    const EnumCaseList* const cases = this->find_enum_cases_by_type(type);
     if (cases == nullptr || cases->size() != SEMA_TRY_SHAPE_CASE_COUNT) {
         return {};
     }
@@ -1117,7 +1117,7 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
             if (expected.tuple_elements.size() != expr.tuple_elements.size()) {
                 this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_ARITY));
             }
-            element_types = expected.tuple_elements;
+            element_types.assign(expected.tuple_elements.begin(), expected.tuple_elements.end());
         }
     }
 
@@ -1156,7 +1156,7 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
 
     const TypeHandle tuple_type = has_expected_tuple
         ? expected_type
-        : this->checked_.types.tuple(std::move(element_types));
+        : this->checked_.types.tuple(element_types);
     if (is_valid(tuple_type) && !this->is_valid_storage_type(tuple_type)) {
         this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_STORAGE));
     }

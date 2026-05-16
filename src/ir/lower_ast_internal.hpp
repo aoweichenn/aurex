@@ -24,11 +24,11 @@ namespace aurex::ir::detail {
 
 struct ActiveSideTables {
     const sema::GenericSideTables* generic = nullptr;
-    const std::vector<sema::TypeHandle>* expr_types = nullptr;
-    const std::vector<sema::IdentId>* expr_c_name_ids = nullptr;
-    const std::vector<sema::IdentId>* pattern_c_name_ids = nullptr;
-    const std::vector<sema::TypeHandle>* syntax_type_handles = nullptr;
-    const std::vector<sema::TypeHandle>* stmt_local_types = nullptr;
+    const sema::SemaTypeTable* expr_types = nullptr;
+    const sema::SemaIdentTable* expr_c_name_ids = nullptr;
+    const sema::SemaIdentTable* pattern_c_name_ids = nullptr;
+    const sema::SemaTypeTable* syntax_type_handles = nullptr;
+    const sema::SemaTypeTable* stmt_local_types = nullptr;
 };
 
 struct CallTarget {

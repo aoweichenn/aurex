@@ -3,10 +3,15 @@
 #include <aurex/base/integer.hpp>
 
 #include <cstddef>
+#include <deque>
+#include <functional>
 #include <limits>
 #include <new>
+#include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace aurex::base {
@@ -119,5 +124,32 @@ private:
 
 template <typename T>
 using BumpVector = std::vector<T, BumpAllocatorAdapter<T>>;
+
+template <typename T>
+using BumpDeque = std::deque<T, BumpAllocatorAdapter<T>>;
+
+using BumpString = std::basic_string<char, std::char_traits<char>, BumpAllocatorAdapter<char>>;
+
+template <
+    typename Key,
+    typename Value,
+    typename Hash = std::hash<Key>,
+    typename KeyEqual = std::equal_to<Key>>
+using BumpUnorderedMap = std::unordered_map<
+    Key,
+    Value,
+    Hash,
+    KeyEqual,
+    BumpAllocatorAdapter<std::pair<const Key, Value>>>;
+
+template <
+    typename Key,
+    typename Hash = std::hash<Key>,
+    typename KeyEqual = std::equal_to<Key>>
+using BumpUnorderedSet = std::unordered_set<
+    Key,
+    Hash,
+    KeyEqual,
+    BumpAllocatorAdapter<Key>>;
 
 } // namespace aurex::base

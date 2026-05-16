@@ -36,7 +36,7 @@ namespace {
 
 FunctionRegistry::FunctionRegistry(
     CheckedModule& checked,
-    std::unordered_map<std::string, Symbol>& global_values,
+    SemaMap<std::string, Symbol>& global_values,
     base::DiagnosticSink& diagnostics
 ) noexcept
     : checked_(checked),
@@ -50,12 +50,12 @@ void FunctionRegistry::register_function(
     const std::string c_name,
     const TypeHandle method_owner_type,
     const TypeHandle return_type,
-    std::vector<TypeHandle> param_types,
+    const std::span<const TypeHandle> param_types,
     const syntax::ItemId item_id
 ) {
     const bool is_prototype = item.is_prototype;
 
-    FunctionSignature signature;
+    FunctionSignature signature = this->checked_.make_function_signature();
     signature.name = std::string(item.name);
     signature.name_id = item.name_id;
     signature.semantic_key = key;
@@ -63,7 +63,7 @@ void FunctionRegistry::register_function(
     signature.module = owner;
     signature.method_owner_type = method_owner_type;
     signature.return_type = return_type;
-    signature.param_types = std::move(param_types);
+    signature.param_types = this->checked_.copy_type_handle_list(param_types);
     signature.range = item.range;
     signature.is_extern_c = item.is_extern_c;
     signature.is_export_c = item.is_export_c;
@@ -145,7 +145,7 @@ void FunctionRegistry::merge_function(
 bool FunctionRegistry::same_signature(
     const FunctionSignature& existing,
     const TypeHandle return_type,
-    const std::vector<TypeHandle>& param_types,
+    const std::span<const TypeHandle> param_types,
     const bool is_variadic
 ) const noexcept {
     if (!this->checked_.types.same(existing.return_type, return_type)) {

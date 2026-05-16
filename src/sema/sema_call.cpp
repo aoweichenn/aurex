@@ -768,7 +768,7 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
 void SemanticAnalyzer::validate_call_arguments(
     const SemanticAnalyzer::ExprView& expr,
     const std::string_view name,
-    const std::vector<TypeHandle>& param_types,
+    const std::span<const TypeHandle> param_types,
     const base::usize receiver_count,
     const bool is_variadic
 ) {

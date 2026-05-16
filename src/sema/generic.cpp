@@ -6,7 +6,6 @@
 #include <array>
 #include <charconv>
 #include <optional>
-#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>

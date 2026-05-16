@@ -1026,6 +1026,16 @@ std::string Lowerer::call_symbol(const syntax::ExprId callee) const {
     if (syntax::is_valid(callee) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_expr_index(callee);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            this->active_side_tables_.expr_c_name_ids != nullptr &&
+            local < this->active_side_tables_.expr_c_name_ids->size()) {
+            if (const std::string_view c_name =
+                    this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[local]);
+                !c_name.empty()) {
+                return std::string(c_name);
+            }
+        }
         const auto found = this->active_side_tables_.generic->sparse_expr_c_name_ids.find(callee.value);
         if (found != this->active_side_tables_.generic->sparse_expr_c_name_ids.end()) {
             if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {
@@ -1051,6 +1061,16 @@ std::string Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& 
     if (syntax::is_valid(expr_id) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_expr_index(expr_id);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            this->active_side_tables_.expr_c_name_ids != nullptr &&
+            local < this->active_side_tables_.expr_c_name_ids->size()) {
+            if (const std::string_view c_name =
+                    this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[local]);
+                !c_name.empty()) {
+                return std::string(c_name);
+            }
+        }
         const auto found = this->active_side_tables_.generic->sparse_expr_c_name_ids.find(expr_id.value);
         if (found != this->active_side_tables_.generic->sparse_expr_c_name_ids.end()) {
             if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {
@@ -1109,6 +1129,15 @@ sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
     if (syntax::is_valid(expr) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_expr_index(expr);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            this->active_side_tables_.expr_types != nullptr &&
+            local < this->active_side_tables_.expr_types->size()) {
+            const sema::TypeHandle type = (*this->active_side_tables_.expr_types)[local];
+            if (sema::is_valid(type)) {
+                return type;
+            }
+        }
         const auto found = this->active_side_tables_.generic->sparse_expr_types.find(expr.value);
         if (found != this->active_side_tables_.generic->sparse_expr_types.end()) {
             return found->second;
@@ -1126,6 +1155,15 @@ sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept 
     if (syntax::is_valid(type) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_type_index(type);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            this->active_side_tables_.syntax_type_handles != nullptr &&
+            local < this->active_side_tables_.syntax_type_handles->size()) {
+            const sema::TypeHandle resolved = (*this->active_side_tables_.syntax_type_handles)[local];
+            if (sema::is_valid(resolved)) {
+                return resolved;
+            }
+        }
         const auto found = this->active_side_tables_.generic->sparse_syntax_type_handles.find(type.value);
         if (found != this->active_side_tables_.generic->sparse_syntax_type_handles.end()) {
             return found->second;
@@ -1143,6 +1181,15 @@ sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexc
     if (syntax::is_valid(stmt) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_stmt_index(stmt);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            this->active_side_tables_.stmt_local_types != nullptr &&
+            local < this->active_side_tables_.stmt_local_types->size()) {
+            const sema::TypeHandle type = (*this->active_side_tables_.stmt_local_types)[local];
+            if (sema::is_valid(type)) {
+                return type;
+            }
+        }
         const auto found = this->active_side_tables_.generic->sparse_stmt_local_types.find(stmt.value);
         if (found != this->active_side_tables_.generic->sparse_stmt_local_types.end()) {
             return found->second;

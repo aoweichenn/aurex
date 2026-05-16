@@ -103,6 +103,16 @@ std::string Lowerer::pattern_case_symbol(const syntax::PatternId id) const {
     if (syntax::is_valid(id) &&
         this->active_side_tables_.generic != nullptr &&
         this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_pattern_index(id);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
+            this->active_side_tables_.pattern_c_name_ids != nullptr &&
+            local < this->active_side_tables_.pattern_c_name_ids->size()) {
+            if (const std::string_view c_name =
+                    this->checked_.c_name_text((*this->active_side_tables_.pattern_c_name_ids)[local]);
+                !c_name.empty()) {
+                return std::string(c_name);
+            }
+        }
         const auto found = this->active_side_tables_.generic->sparse_pattern_c_name_ids.find(id.value);
         if (found != this->active_side_tables_.generic->sparse_pattern_c_name_ids.end()) {
             if (const std::string_view c_name = this->checked_.c_name_text(found->second); !c_name.empty()) {

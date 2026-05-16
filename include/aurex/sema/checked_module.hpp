@@ -5,6 +5,7 @@
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <span>
 #include <string>
@@ -15,6 +16,9 @@ namespace aurex::sema {
 using CNameIdSet = SemaSet<IdentId, IdentIdHash>;
 using SemaTypeTable = SemaVector<TypeHandle>;
 using SemaIdentTable = SemaVector<IdentId>;
+using SemaIndexTable = SemaVector<base::u32>;
+
+inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX = static_cast<base::usize>(-1);
 
 class PatternCaseNameTable final {
 public:
@@ -124,6 +128,25 @@ struct CoercionRecord {
     CoercionKind kind = CoercionKind::contextual_integer_literal;
 };
 
+struct GenericNodeSpan {
+    base::u32 begin = 0;
+    base::u32 count = 0;
+
+    [[nodiscard]] bool empty() const noexcept {
+        return this->count == 0;
+    }
+
+    [[nodiscard]] bool contains(const base::u32 value) const noexcept {
+        return value >= this->begin && value - this->begin < this->count;
+    }
+
+    [[nodiscard]] base::usize local_index(const base::u32 value) const noexcept {
+        return this->contains(value)
+            ? static_cast<base::usize>(value - this->begin)
+            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    }
+};
+
 struct GenericSideTables {
 private:
     std::unique_ptr<base::BumpAllocator> arena_;
@@ -137,6 +160,15 @@ public:
     ~GenericSideTables() = default;
 
     bool sparse = false;
+    bool local_dense = false;
+    GenericNodeSpan expr_span;
+    GenericNodeSpan pattern_span;
+    GenericNodeSpan type_span;
+    GenericNodeSpan stmt_span;
+    SemaIndexTable expr_node_ids;
+    SemaIndexTable pattern_node_ids;
+    SemaIndexTable type_node_ids;
+    SemaIndexTable stmt_node_ids;
     SemaTypeTable expr_types;
     SemaTypeTable expr_expected_types;
     SemaIdentTable expr_c_name_ids;
@@ -153,8 +185,62 @@ public:
 
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;
+    void configure_local_dense(
+        GenericNodeSpan expr,
+        GenericNodeSpan pattern,
+        GenericNodeSpan type,
+        GenericNodeSpan stmt
+    );
+    void configure_local_dense(
+        GenericNodeSpan expr,
+        GenericNodeSpan pattern,
+        GenericNodeSpan type,
+        GenericNodeSpan stmt,
+        std::span<const base::u32> expr_ids,
+        std::span<const base::u32> pattern_ids,
+        std::span<const base::u32> type_ids,
+        std::span<const base::u32> stmt_ids
+    );
+
+    [[nodiscard]] base::usize local_expr_index(syntax::ExprId expr) const noexcept {
+        return syntax::is_valid(expr) && this->local_dense
+            ? this->local_index(expr.value, this->expr_span, this->expr_node_ids)
+            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    }
+
+    [[nodiscard]] base::usize local_pattern_index(syntax::PatternId pattern) const noexcept {
+        return syntax::is_valid(pattern) && this->local_dense
+            ? this->local_index(pattern.value, this->pattern_span, this->pattern_node_ids)
+            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    }
+
+    [[nodiscard]] base::usize local_type_index(syntax::TypeId type) const noexcept {
+        return syntax::is_valid(type) && this->local_dense
+            ? this->local_index(type.value, this->type_span, this->type_node_ids)
+            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    }
+
+    [[nodiscard]] base::usize local_stmt_index(syntax::StmtId stmt) const noexcept {
+        return syntax::is_valid(stmt) && this->local_dense
+            ? this->local_index(stmt.value, this->stmt_span, this->stmt_node_ids)
+            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    }
 
 private:
+    [[nodiscard]] static base::usize local_index(
+        base::u32 value,
+        GenericNodeSpan span,
+        const SemaIndexTable& ids
+    ) noexcept {
+        if (ids.empty()) {
+            return span.local_index(value);
+        }
+        const auto found = std::ranges::lower_bound(ids, value);
+        return found != ids.end() && *found == value
+            ? static_cast<base::usize>(found - ids.begin())
+            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    }
+
     void swap(GenericSideTables& other) noexcept;
     void copy_from(const GenericSideTables& other);
 };

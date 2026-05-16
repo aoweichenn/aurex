@@ -220,6 +220,10 @@ SemanticAnalyzer::GenericTemplateInfo SemanticAnalyzer::make_generic_template_in
     info.params = make_sema_vector<IdentId>(*this->arena_);
     info.param_identity_ids = make_sema_vector<IdentId>(*this->arena_);
     info.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
+    info.expr_node_ids = make_sema_vector<base::u32>(*this->arena_);
+    info.pattern_node_ids = make_sema_vector<base::u32>(*this->arena_);
+    info.type_node_ids = make_sema_vector<base::u32>(*this->arena_);
+    info.stmt_node_ids = make_sema_vector<base::u32>(*this->arena_);
     return info;
 }
 

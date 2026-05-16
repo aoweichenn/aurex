@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <limits>
 #include <string>
@@ -1934,7 +1935,311 @@ TEST(CoreUnit, SemanticWhiteBoxPostfixMaterializationEdges) {
     EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(one_expr)));
 }
 
-TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
+TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly) {
+    syntax::AstModule module;
+    module.modules = {module_info({"generic_span"})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    const TypeId unused_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::f64));
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+
+    syntax::TypeNode pointer_type;
+    pointer_type.kind = syntax::TypeKind::pointer;
+    pointer_type.pointee = generic_type;
+    const TypeId pointer_generic_type = module.push_type(pointer_type);
+
+    syntax::TypeNode array_type;
+    array_type.kind = syntax::TypeKind::array;
+    array_type.array_count = SEMA_TEST_SMALL_ARRAY_COUNT;
+    array_type.array_element = i32_type;
+    const TypeId array_i32_type = module.push_type(array_type);
+
+    syntax::TypeNode slice_type;
+    slice_type.kind = syntax::TypeKind::slice;
+    slice_type.slice_element = generic_type;
+    const TypeId slice_generic_type = module.push_type(slice_type);
+
+    syntax::TypeNode tuple_type;
+    tuple_type.kind = syntax::TypeKind::tuple;
+    tuple_type.tuple_elements = {i32_type, generic_type};
+    const TypeId tuple_i32_generic_type = module.push_type(tuple_type);
+
+    syntax::TypeNode function_type;
+    function_type.kind = syntax::TypeKind::function;
+    function_type.function_params = {pointer_generic_type, slice_generic_type, tuple_i32_generic_type};
+    function_type.function_return = array_i32_type;
+    const TypeId function_handle_type = module.push_type(function_type);
+
+    syntax::TypeNode box_type_node = named_node("Box");
+    box_type_node.type_args = {function_handle_type};
+    const TypeId box_function_type = module.push_type(box_type_node);
+
+    syntax::PatternNode binding_pattern;
+    binding_pattern.kind = syntax::PatternKind::binding;
+    binding_pattern.binding_name = "value";
+    const syntax::PatternId binding_pattern_id = module.push_pattern(binding_pattern);
+
+    syntax::PatternNode unused_pattern;
+    unused_pattern.kind = syntax::PatternKind::wildcard;
+    const syntax::PatternId unused_pattern_id = module.push_pattern(unused_pattern);
+
+    syntax::PatternNode enum_pattern;
+    enum_pattern.kind = syntax::PatternKind::enum_case;
+    enum_pattern.enum_type = box_function_type;
+    enum_pattern.payload_patterns = {binding_pattern_id};
+    const syntax::PatternId enum_pattern_id = module.push_pattern(enum_pattern);
+
+    syntax::PatternNode tuple_pattern;
+    tuple_pattern.kind = syntax::PatternKind::tuple;
+    tuple_pattern.elements = {binding_pattern_id, enum_pattern_id};
+    const syntax::PatternId tuple_pattern_id = module.push_pattern(tuple_pattern);
+
+    syntax::PatternNode slice_pattern;
+    slice_pattern.kind = syntax::PatternKind::slice;
+    slice_pattern.elements = {tuple_pattern_id};
+    slice_pattern.has_slice_rest = true;
+    const syntax::PatternId slice_pattern_id = module.push_pattern(slice_pattern);
+
+    syntax::PatternNode struct_pattern;
+    struct_pattern.kind = syntax::PatternKind::struct_;
+    struct_pattern.struct_name = "Box";
+    struct_pattern.field_patterns = {syntax::FieldPattern {"field", slice_pattern_id, {}}};
+    const syntax::PatternId struct_pattern_id = module.push_pattern(struct_pattern);
+
+    syntax::PatternNode literal_pattern;
+    literal_pattern.kind = syntax::PatternKind::literal;
+    literal_pattern.case_name = "1";
+    const syntax::PatternId literal_pattern_id = module.push_pattern(literal_pattern);
+
+    syntax::PatternNode or_pattern;
+    or_pattern.kind = syntax::PatternKind::or_pattern;
+    or_pattern.alternatives = {struct_pattern_id, literal_pattern_id};
+    const syntax::PatternId or_pattern_id = module.push_pattern(or_pattern);
+
+    const ExprId name_with_type_arg = module.push_name_expr({}, "value", std::vector<TypeId> {generic_type});
+    const ExprId unused_expr = push_integer_text(module, "99");
+    const ExprId callee = module.push_name_expr({}, "callee", std::vector<TypeId> {function_handle_type});
+    const ExprId generic_apply = push_generic_apply(module, callee, {i32_type});
+    const ExprId try_expr = module.push_unary_expr(syntax::ExprKind::try_expr, {}, syntax::UnaryOp::logical_not, generic_apply);
+    const ExprId bool_expr = push_bool(module, "true");
+    const ExprId binary_expr = push_binary(module, syntax::BinaryOp::add, name_with_type_arg, generic_apply);
+    const ExprId call_expr = push_call(module, callee, {binary_expr, try_expr});
+
+    syntax::CallExprPayload string_call_payload;
+    string_call_payload.callee = callee;
+    string_call_payload.args.assign({name_with_type_arg, generic_apply});
+    const ExprId string_call_expr = module.push_call_expr(
+        syntax::ExprKind::str_from_bytes_unchecked,
+        {},
+        std::move(string_call_payload)
+    );
+
+    const ExprId if_expr = module.push_if_expr({}, bool_expr, or_pattern_id, call_expr, string_call_expr);
+
+    syntax::StmtNode inner_expr_stmt;
+    inner_expr_stmt.kind = syntax::StmtKind::expr;
+    inner_expr_stmt.init = binary_expr;
+    const syntax::StmtId inner_expr_stmt_id = module.push_stmt(inner_expr_stmt);
+    const syntax::StmtId inner_block_id = push_block(module, {inner_expr_stmt_id});
+    const ExprId block_expr = module.push_block_expr(syntax::ExprKind::block_expr, {}, inner_block_id, if_expr);
+    const ExprId unsafe_block_expr = module.push_block_expr(syntax::ExprKind::unsafe_block, {}, inner_block_id, block_expr);
+
+    const ExprId match_guard_expr = push_bool(module, "false");
+    const ExprId match_value_expr = push_integer(module);
+    const ExprId match_expr = module.push_match_expr(
+        {},
+        name_with_type_arg,
+        std::vector<syntax::MatchArm> {
+            syntax::MatchArm {or_pattern_id, match_guard_expr, match_value_expr, {}},
+        }
+    );
+
+    const ExprId array_expr = module.push_array_expr(
+        {},
+        std::vector<ExprId> {block_expr, unsafe_block_expr},
+        match_value_expr,
+        name_with_type_arg
+    );
+    const ExprId tuple_expr = module.push_tuple_expr({}, std::vector<ExprId> {array_expr, match_expr});
+
+    syntax::PostfixOp postfix_op;
+    postfix_op.kind = syntax::PostfixOpKind::struct_literal;
+    postfix_op.bracket_args.assign({
+        bracket_expr_arg(name_with_type_arg),
+        bracket_type_arg(box_function_type),
+    });
+    postfix_op.slice_start = match_guard_expr;
+    postfix_op.slice_end = match_value_expr;
+    postfix_op.args.assign({call_expr});
+    postfix_op.field_inits.assign({syntax::FieldInit {"field", tuple_expr, {}}});
+    const ExprId postfix_expr = push_postfix_chain(module, tuple_expr, {postfix_op});
+    const ExprId field_expr = push_field(module, postfix_expr, "field");
+    const ExprId index_expr = module.push_index_expr({}, syntax::IndexExprPayload {field_expr, match_value_expr});
+    const ExprId slice_expr = module.push_slice_expr({}, syntax::SliceExprPayload {index_expr, match_guard_expr, match_value_expr});
+    const ExprId struct_literal_expr = module.push_struct_literal_expr(
+        {},
+        push_name(module, "Box"),
+        {},
+        {},
+        "Box",
+        std::vector<TypeId> {box_function_type},
+        std::vector<syntax::FieldInit> {syntax::FieldInit {"field", slice_expr, {}}},
+        syntax::INVALID_IDENT_ID,
+        syntax::INVALID_IDENT_ID
+    );
+    const ExprId cast_expr = module.push_cast_like_expr(
+        syntax::ExprKind::cast,
+        {},
+        syntax::CastExprPayload {i32_type, struct_literal_expr}
+    );
+
+    syntax::StmtNode unused_stmt;
+    unused_stmt.kind = syntax::StmtKind::expr;
+    unused_stmt.init = unused_expr;
+    const syntax::StmtId unused_stmt_id = module.push_stmt(unused_stmt);
+
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = if_expr;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+
+    const syntax::StmtId then_block_id = push_block(module, {inner_expr_stmt_id});
+    const syntax::StmtId else_block_id = push_block(module, {return_stmt_id});
+
+    syntax::StmtNode else_if_stmt;
+    else_if_stmt.kind = syntax::StmtKind::if_;
+    else_if_stmt.condition = bool_expr;
+    else_if_stmt.then_block = then_block_id;
+    const syntax::StmtId else_if_stmt_id = module.push_stmt(else_if_stmt);
+
+    syntax::StmtNode if_stmt;
+    if_stmt.kind = syntax::StmtKind::if_;
+    if_stmt.condition = call_expr;
+    if_stmt.pattern = or_pattern_id;
+    if_stmt.then_block = then_block_id;
+    if_stmt.else_block = else_block_id;
+    if_stmt.else_if = else_if_stmt_id;
+    const syntax::StmtId if_stmt_id = module.push_stmt(if_stmt);
+
+    syntax::StmtNode let_stmt;
+    let_stmt.kind = syntax::StmtKind::let;
+    let_stmt.pattern = struct_pattern_id;
+    let_stmt.declared_type = box_function_type;
+    let_stmt.init = struct_literal_expr;
+    let_stmt.else_block = else_block_id;
+    const syntax::StmtId let_stmt_id = module.push_stmt(let_stmt);
+
+    syntax::StmtNode assign_stmt;
+    assign_stmt.kind = syntax::StmtKind::assign;
+    assign_stmt.lhs = field_expr;
+    assign_stmt.rhs = cast_expr;
+    const syntax::StmtId assign_stmt_id = module.push_stmt(assign_stmt);
+
+    syntax::StmtNode for_init_stmt;
+    for_init_stmt.kind = syntax::StmtKind::expr;
+    for_init_stmt.init = array_expr;
+    const syntax::StmtId for_init_stmt_id = module.push_stmt(for_init_stmt);
+
+    syntax::StmtNode for_update_stmt;
+    for_update_stmt.kind = syntax::StmtKind::expr;
+    for_update_stmt.init = tuple_expr;
+    const syntax::StmtId for_update_stmt_id = module.push_stmt(for_update_stmt);
+    const syntax::StmtId loop_body_id = push_block(module, {assign_stmt_id});
+
+    syntax::StmtNode for_stmt;
+    for_stmt.kind = syntax::StmtKind::for_;
+    for_stmt.for_init = for_init_stmt_id;
+    for_stmt.condition = bool_expr;
+    for_stmt.for_update = for_update_stmt_id;
+    for_stmt.body = loop_body_id;
+    const syntax::StmtId for_stmt_id = module.push_stmt(for_stmt);
+
+    syntax::StmtNode for_range_stmt;
+    for_range_stmt.kind = syntax::StmtKind::for_range;
+    for_range_stmt.range_start = name_with_type_arg;
+    for_range_stmt.range_end = match_value_expr;
+    for_range_stmt.range_step = match_guard_expr;
+    for_range_stmt.body = loop_body_id;
+    const syntax::StmtId for_range_stmt_id = module.push_stmt(for_range_stmt);
+
+    syntax::StmtNode while_stmt;
+    while_stmt.kind = syntax::StmtKind::while_;
+    while_stmt.condition = bool_expr;
+    while_stmt.pattern = or_pattern_id;
+    while_stmt.body = loop_body_id;
+    const syntax::StmtId while_stmt_id = module.push_stmt(while_stmt);
+
+    syntax::StmtNode defer_stmt;
+    defer_stmt.kind = syntax::StmtKind::defer;
+    defer_stmt.init = match_expr;
+    const syntax::StmtId defer_stmt_id = module.push_stmt(defer_stmt);
+
+    const syntax::StmtId body_id = push_block(
+        module,
+        {
+            let_stmt_id,
+            assign_stmt_id,
+            if_stmt_id,
+            for_stmt_id,
+            for_range_stmt_id,
+            while_stmt_id,
+            defer_stmt_id,
+            return_stmt_id,
+        }
+    );
+
+    syntax::ItemNode generic_function;
+    generic_function.kind = syntax::ItemKind::fn_decl;
+    generic_function.name = "span";
+    generic_function.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    generic_function.params = {syntax::ParamDecl {"param", box_function_type, {}}};
+    generic_function.return_type = function_handle_type;
+    generic_function.impl_type = pointer_generic_type;
+    generic_function.body = body_id;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzer::GenericTemplateInfo info = analyzer.make_generic_template_info();
+    analyzer.populate_generic_template_node_spans(info, generic_function);
+
+    const auto contains_id = [](const sema::SemaIndexTable& ids, const base::u32 value) {
+        return std::ranges::find(ids, value) != ids.end();
+    };
+    EXPECT_TRUE(info.expr_span.contains(cast_expr.value));
+    EXPECT_TRUE(info.pattern_span.contains(or_pattern_id.value));
+    EXPECT_TRUE(info.type_span.contains(box_function_type.value));
+    EXPECT_TRUE(info.stmt_span.contains(body_id.value));
+    ASSERT_FALSE(info.expr_node_ids.empty());
+    ASSERT_FALSE(info.pattern_node_ids.empty());
+    ASSERT_FALSE(info.type_node_ids.empty());
+    ASSERT_FALSE(info.stmt_node_ids.empty());
+    EXPECT_FALSE(contains_id(info.expr_node_ids, unused_expr.value));
+    EXPECT_FALSE(contains_id(info.pattern_node_ids, unused_pattern_id.value));
+    EXPECT_FALSE(contains_id(info.type_node_ids, unused_type.value));
+    EXPECT_FALSE(contains_id(info.stmt_node_ids, unused_stmt_id.value));
+
+    sema::GenericSideTables side_tables;
+    side_tables.configure_local_dense(
+        info.expr_span,
+        info.pattern_span,
+        info.type_span,
+        info.stmt_span,
+        info.expr_node_ids,
+        info.pattern_node_ids,
+        info.type_node_ids,
+        info.stmt_node_ids
+    );
+    EXPECT_EQ(side_tables.local_expr_index(unused_expr), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    EXPECT_EQ(side_tables.local_pattern_index(unused_pattern_id), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    EXPECT_EQ(side_tables.local_type_index(unused_type), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    EXPECT_EQ(side_tables.local_stmt_index(unused_stmt_id), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    EXPECT_EQ(side_tables.expr_types.size(), info.expr_node_ids.size());
+    EXPECT_EQ(side_tables.pattern_c_name_ids.size(), info.pattern_node_ids.size());
+    EXPECT_EQ(side_tables.syntax_type_handles.size(), info.type_node_ids.size());
+    EXPECT_EQ(side_tables.stmt_local_types.size(), info.stmt_node_ids.size());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables) {
     syntax::AstModule module;
     module.modules = {module_info({"generic_sparse"})};
 
@@ -1996,15 +2301,22 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
 
     const sema::GenericSideTables& side_tables = checked.generic_function_instances.front().side_tables;
     EXPECT_TRUE(side_tables.sparse);
-    EXPECT_TRUE(side_tables.expr_types.empty());
-    EXPECT_TRUE(side_tables.expr_expected_types.empty());
-    EXPECT_TRUE(side_tables.expr_c_name_ids.empty());
-    EXPECT_TRUE(side_tables.pattern_c_name_ids.empty());
+    EXPECT_TRUE(side_tables.local_dense);
+    EXPECT_TRUE(side_tables.expr_span.contains(value.value));
+    EXPECT_TRUE(side_tables.stmt_span.contains(return_stmt_id.value));
+    EXPECT_EQ(side_tables.expr_types.size(), side_tables.expr_span.count);
+    EXPECT_EQ(side_tables.expr_expected_types.size(), side_tables.expr_span.count);
+    EXPECT_EQ(side_tables.expr_c_name_ids.size(), side_tables.expr_span.count);
+    EXPECT_EQ(side_tables.pattern_c_name_ids.size(), side_tables.pattern_span.count);
     EXPECT_TRUE(side_tables.pattern_case_name_ids.empty());
-    EXPECT_TRUE(side_tables.syntax_type_handles.empty());
-    EXPECT_TRUE(side_tables.stmt_local_types.empty());
-    EXPECT_FALSE(side_tables.sparse_expr_types.empty());
-    EXPECT_FALSE(side_tables.sparse_expr_expected_types.empty());
+    EXPECT_EQ(side_tables.syntax_type_handles.size(), side_tables.type_span.count);
+    EXPECT_EQ(side_tables.stmt_local_types.size(), side_tables.stmt_span.count);
+    const base::usize value_local = side_tables.local_expr_index(value);
+    ASSERT_NE(value_local, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    ASSERT_LT(value_local, side_tables.expr_types.size());
+    EXPECT_TRUE(sema::is_valid(side_tables.expr_types[value_local]));
+    EXPECT_TRUE(side_tables.sparse_expr_types.empty());
+    EXPECT_TRUE(side_tables.sparse_expr_expected_types.empty());
 
     sema::SemanticOptions discard_options;
     discard_options.retain_generic_side_tables = false;
@@ -2216,6 +2528,68 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges) {
     EXPECT_GT(sparse_side_tables.arena_bytes(), 0U);
     EXPECT_GT(sparse_side_tables.arena_blocks(), 0U);
     EXPECT_GT(sparse_side_tables.pattern_case_name_ids.arena_bytes(), 0U);
+
+    sema::GenericSideTables local_side_tables;
+    local_side_tables.configure_local_dense(
+        sema::GenericNodeSpan {expr_id.value, 1U},
+        sema::GenericNodeSpan {pattern_id.value, 1U},
+        sema::GenericNodeSpan {type_id.value, 1U},
+        sema::GenericNodeSpan {stmt_id.value, 1U}
+    );
+    analyzer.current_side_tables_.side_tables = &local_side_tables;
+    analyzer.current_side_tables_.cache_syntax_types = true;
+    static_cast<void>(analyzer.record_expr_type(expr_id, i32));
+    analyzer.record_expr_expected_type(expr_id, i64);
+    analyzer.record_expr_c_name(expr_id, "local_expr");
+    analyzer.record_pattern_c_name(pattern_id, "local_pattern");
+    analyzer.record_syntax_type_handle(type_id, i32);
+    analyzer.record_stmt_local_type(stmt_id, i64);
+
+    const base::usize local_expr = local_side_tables.local_expr_index(expr_id);
+    const base::usize local_pattern = local_side_tables.local_pattern_index(pattern_id);
+    const base::usize local_type = local_side_tables.local_type_index(type_id);
+    const base::usize local_stmt = local_side_tables.local_stmt_index(stmt_id);
+    ASSERT_NE(local_expr, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    ASSERT_NE(local_pattern, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    ASSERT_NE(local_type, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    ASSERT_NE(local_stmt, sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
+    EXPECT_TRUE(types.same(local_side_tables.expr_types[local_expr], i32));
+    EXPECT_TRUE(types.same(local_side_tables.expr_expected_types[local_expr], i64));
+    EXPECT_EQ(analyzer.checked_.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
+    EXPECT_EQ(analyzer.checked_.c_name_text(local_side_tables.pattern_c_name_ids[local_pattern]), "local_pattern");
+    EXPECT_TRUE(types.same(local_side_tables.syntax_type_handles[local_type], i32));
+    EXPECT_TRUE(types.same(local_side_tables.stmt_local_types[local_stmt], i64));
+    EXPECT_TRUE(local_side_tables.sparse_expr_types.empty());
+    EXPECT_TRUE(local_side_tables.sparse_expr_expected_types.empty());
+    EXPECT_TRUE(local_side_tables.sparse_expr_c_name_ids.empty());
+    EXPECT_TRUE(local_side_tables.sparse_pattern_c_name_ids.empty());
+    EXPECT_TRUE(local_side_tables.sparse_syntax_type_handles.empty());
+    EXPECT_TRUE(local_side_tables.sparse_stmt_local_types.empty());
+
+    sema::GenericSideTables sparse_local_side_tables;
+    constexpr base::u32 SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN = 10U;
+    constexpr base::u32 SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT = 91U;
+    const std::array<base::u32, 2> sparse_expr_ids {
+        SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN,
+        SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN + SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT - 1U,
+    };
+    sparse_local_side_tables.configure_local_dense(
+        sema::GenericNodeSpan {SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
+        {},
+        {},
+        {},
+        sparse_expr_ids,
+        {},
+        {},
+        {}
+    );
+    EXPECT_EQ(sparse_local_side_tables.expr_types.size(), sparse_expr_ids.size());
+    EXPECT_EQ(sparse_local_side_tables.local_expr_index(ExprId {sparse_expr_ids.front()}), 0U);
+    EXPECT_EQ(sparse_local_side_tables.local_expr_index(ExprId {sparse_expr_ids.back()}), 1U);
+    EXPECT_EQ(
+        sparse_local_side_tables.local_expr_index(ExprId {sparse_expr_ids.front() + 1U}),
+        sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+    );
 }
 
 TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {

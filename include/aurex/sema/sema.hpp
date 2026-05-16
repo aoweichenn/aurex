@@ -88,6 +88,14 @@ private:
         CapabilityMap constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
+        GenericNodeSpan expr_span;
+        GenericNodeSpan pattern_span;
+        GenericNodeSpan type_span;
+        GenericNodeSpan stmt_span;
+        SemaIndexTable expr_node_ids;
+        SemaIndexTable pattern_node_ids;
+        SemaIndexTable type_node_ids;
+        SemaIndexTable stmt_node_ids;
     };
 
     struct GenericContext {
@@ -248,6 +256,7 @@ private:
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
     [[nodiscard]] GenericTemplateInfo make_generic_template_info() const;
+    void populate_generic_template_node_spans(GenericTemplateInfo& info, const syntax::ItemNode& item) const;
     [[nodiscard]] GenericContext make_generic_context() const;
     [[nodiscard]] CapabilitySet make_capability_set() const;
     [[nodiscard]] CapabilitySet copy_capability_set(const CapabilitySet& source) const;

@@ -66,7 +66,7 @@ private:
 };
 
 template <typename T>
-class BumpAllocatorAdapter final {
+class BumpAllocatorAdapter {
 public:
     using value_type = T;
     using propagate_on_container_move_assignment = std::true_type;

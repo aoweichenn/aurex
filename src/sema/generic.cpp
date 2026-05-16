@@ -28,12 +28,432 @@ constexpr base::usize SEMA_DECIMAL_U64_MAX_DIGITS = 20;
 constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
 constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
 
-[[nodiscard]] GenericSideTables make_generic_side_tables(const syntax::AstModule& module) {
-    static_cast<void>(module);
+[[nodiscard]] GenericSideTables make_generic_side_tables(
+    const GenericNodeSpan expr,
+    const GenericNodeSpan pattern,
+    const GenericNodeSpan type,
+    const GenericNodeSpan stmt,
+    const std::span<const base::u32> expr_ids,
+    const std::span<const base::u32> pattern_ids,
+    const std::span<const base::u32> type_ids,
+    const std::span<const base::u32> stmt_ids
+) {
     GenericSideTables side_tables;
-    side_tables.sparse = true;
+    side_tables.configure_local_dense(expr, pattern, type, stmt, expr_ids, pattern_ids, type_ids, stmt_ids);
     return side_tables;
 }
+
+template <typename Info>
+[[nodiscard]] GenericSideTables make_generic_side_tables(const Info& info) {
+    return make_generic_side_tables(
+        info.expr_span,
+        info.pattern_span,
+        info.type_span,
+        info.stmt_span,
+        info.expr_node_ids,
+        info.pattern_node_ids,
+        info.type_node_ids,
+        info.stmt_node_ids
+    );
+}
+
+struct GenericNodeSpanBuilder {
+    explicit GenericNodeSpanBuilder(const syntax::AstModule& ast_module)
+        : module(ast_module) {}
+
+    const syntax::AstModule& module;
+    std::vector<syntax::ExprId> exprs;
+    std::vector<syntax::PatternId> patterns;
+    std::vector<syntax::TypeId> types;
+    std::vector<syntax::StmtId> stmts;
+    std::unordered_set<base::u32> seen_exprs;
+    std::unordered_set<base::u32> seen_patterns;
+    std::unordered_set<base::u32> seen_types;
+    std::unordered_set<base::u32> seen_stmts;
+
+    void add_type(const syntax::TypeId type) {
+        this->add_id(type, this->module.types.size(), this->seen_types, this->types);
+    }
+
+    void add_expr(const syntax::ExprId expr) {
+        this->add_id(expr, this->module.exprs.size(), this->seen_exprs, this->exprs);
+    }
+
+    void add_pattern(const syntax::PatternId pattern) {
+        this->add_id(pattern, this->module.patterns.size(), this->seen_patterns, this->patterns);
+    }
+
+    void add_stmt(const syntax::StmtId stmt) {
+        this->add_id(stmt, this->module.stmts.size(), this->seen_stmts, this->stmts);
+    }
+
+    void collect(const syntax::ItemNode& item) {
+        for (const syntax::ParamDecl& param : item.params) {
+            this->add_type(param.type);
+        }
+        this->add_type(item.return_type);
+        this->add_type(item.impl_type);
+        this->add_stmt(item.body);
+        this->drain();
+    }
+
+    [[nodiscard]] GenericNodeSpan expr_span() {
+        return make_span(this->exprs);
+    }
+
+    [[nodiscard]] GenericNodeSpan pattern_span() {
+        return make_span(this->patterns);
+    }
+
+    [[nodiscard]] GenericNodeSpan type_span() {
+        return make_span(this->types);
+    }
+
+    [[nodiscard]] GenericNodeSpan stmt_span() {
+        return make_span(this->stmts);
+    }
+
+    [[nodiscard]] std::vector<base::u32> expr_ids() const {
+        return make_sparse_ids(this->exprs);
+    }
+
+    [[nodiscard]] std::vector<base::u32> pattern_ids() const {
+        return make_sparse_ids(this->patterns);
+    }
+
+    [[nodiscard]] std::vector<base::u32> type_ids() const {
+        return make_sparse_ids(this->types);
+    }
+
+    [[nodiscard]] std::vector<base::u32> stmt_ids() const {
+        return make_sparse_ids(this->stmts);
+    }
+
+private:
+    template <typename Id>
+    void add_id(
+        const Id id,
+        const base::usize node_count,
+        std::unordered_set<base::u32>& seen,
+        std::vector<Id>& ids
+    ) {
+        if (!syntax::is_valid(id) || id.value >= node_count || !seen.insert(id.value).second) {
+            return;
+        }
+        ids.push_back(id);
+    }
+
+    template <typename Id>
+    [[nodiscard]] static std::vector<base::u32> make_sparse_ids(const std::vector<Id>& ids) {
+        if (ids.empty()) {
+            return {};
+        }
+        std::vector<base::u32> values;
+        values.reserve(ids.size());
+        bool contiguous = true;
+        base::u32 expected = ids.front().value;
+        for (const Id id : ids) {
+            contiguous = contiguous && id.value == expected;
+            values.push_back(id.value);
+            ++expected;
+        }
+        if (contiguous) {
+            values.clear();
+        }
+        return values;
+    }
+
+    template <typename Id>
+    [[nodiscard]] static GenericNodeSpan make_span(std::vector<Id>& ids) {
+        std::ranges::sort(ids, {}, &Id::value);
+        const auto last = std::ranges::unique(ids, {}, &Id::value).begin();
+        ids.erase(last, ids.end());
+        if (ids.empty()) {
+            return {};
+        }
+        const base::u32 begin = ids.front().value;
+        const base::u32 end = ids.back().value + 1U;
+        return GenericNodeSpan {begin, end - begin};
+    }
+
+    void drain() {
+        base::usize type_cursor = 0;
+        base::usize expr_cursor = 0;
+        base::usize pattern_cursor = 0;
+        base::usize stmt_cursor = 0;
+        while (type_cursor < this->types.size() ||
+               expr_cursor < this->exprs.size() ||
+               pattern_cursor < this->patterns.size() ||
+               stmt_cursor < this->stmts.size()) {
+            while (type_cursor < this->types.size()) {
+                this->visit_type(this->types[type_cursor]);
+                ++type_cursor;
+            }
+            while (expr_cursor < this->exprs.size()) {
+                this->visit_expr(this->exprs[expr_cursor]);
+                ++expr_cursor;
+            }
+            while (pattern_cursor < this->patterns.size()) {
+                this->visit_pattern(this->patterns[pattern_cursor]);
+                ++pattern_cursor;
+            }
+            while (stmt_cursor < this->stmts.size()) {
+                this->visit_stmt(this->stmts[stmt_cursor]);
+                ++stmt_cursor;
+            }
+        }
+    }
+
+    void visit_type(const syntax::TypeId type_id) {
+        if (!syntax::is_valid(type_id) || type_id.value >= this->module.types.size()) {
+            return;
+        }
+        const syntax::TypeNode type = this->module.types[type_id.value];
+        for (const syntax::TypeId arg : type.type_args) {
+            this->add_type(arg);
+        }
+        this->add_type(type.pointee);
+        this->add_type(type.array_element);
+        this->add_type(type.slice_element);
+        for (const syntax::TypeId element : type.tuple_elements) {
+            this->add_type(element);
+        }
+        for (const syntax::TypeId param : type.function_params) {
+            this->add_type(param);
+        }
+        this->add_type(type.function_return);
+    }
+
+    void visit_postfix_op(const syntax::PostfixOp& op) {
+        for (const syntax::PostfixBracketArg& arg : op.bracket_args) {
+            this->add_expr(arg.expr);
+            this->add_type(arg.type);
+        }
+        this->add_expr(op.slice_start);
+        this->add_expr(op.slice_end);
+        for (const syntax::ExprId arg : op.args) {
+            this->add_expr(arg);
+        }
+        for (const syntax::FieldInit& init : op.field_inits) {
+            this->add_expr(init.value);
+        }
+    }
+
+    void visit_expr(const syntax::ExprId expr_id) {
+        if (!syntax::is_valid(expr_id) || expr_id.value >= this->module.exprs.size()) {
+            return;
+        }
+        switch (this->module.exprs.kind(expr_id.value)) {
+        case syntax::ExprKind::name:
+            if (const syntax::NameExprPayload* const payload = this->module.exprs.name_payload(expr_id.value);
+                payload != nullptr) {
+                for (const syntax::TypeId arg : payload->type_args) {
+                    this->add_type(arg);
+                }
+            }
+            break;
+        case syntax::ExprKind::generic_apply:
+            if (const syntax::GenericApplyExprPayload* const payload = this->module.exprs.generic_apply_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->callee);
+                for (const syntax::TypeId arg : payload->type_args) {
+                    this->add_type(arg);
+                }
+            }
+            break;
+        case syntax::ExprKind::unary:
+        case syntax::ExprKind::try_expr:
+            if (const syntax::UnaryExprPayload* const payload = this->module.exprs.unary_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->operand);
+            }
+            break;
+        case syntax::ExprKind::binary:
+            if (const syntax::BinaryExprPayload* const payload = this->module.exprs.binary_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->lhs);
+                this->add_expr(payload->rhs);
+            }
+            break;
+        case syntax::ExprKind::call:
+        case syntax::ExprKind::str_from_bytes_unchecked:
+            if (const syntax::CallExprPayload* const payload = this->module.exprs.call_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->callee);
+                for (const syntax::ExprId arg : payload->args) {
+                    this->add_expr(arg);
+                }
+            }
+            break;
+        case syntax::ExprKind::if_expr:
+            if (const syntax::IfExprPayload* const payload = this->module.exprs.if_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->condition);
+                this->add_pattern(payload->condition_pattern);
+                this->add_expr(payload->then_expr);
+                this->add_expr(payload->else_expr);
+            }
+            break;
+        case syntax::ExprKind::block_expr:
+        case syntax::ExprKind::unsafe_block:
+            if (const syntax::BlockExprPayload* const payload = this->module.exprs.block_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_stmt(payload->block);
+                this->add_expr(payload->result);
+            }
+            break;
+        case syntax::ExprKind::match_expr:
+            if (const syntax::MatchExprPayload* const payload = this->module.exprs.match_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->value);
+                for (const syntax::MatchArm& arm : payload->arms) {
+                    this->add_pattern(arm.pattern);
+                    this->add_expr(arm.guard);
+                    this->add_expr(arm.value);
+                }
+            }
+            break;
+        case syntax::ExprKind::array_literal:
+            if (const syntax::ArrayExprPayload* const payload = this->module.exprs.array_payload(expr_id.value);
+                payload != nullptr) {
+                for (const syntax::ExprId element : payload->elements) {
+                    this->add_expr(element);
+                }
+                this->add_expr(payload->repeat_value);
+                this->add_expr(payload->repeat_count);
+            }
+            break;
+        case syntax::ExprKind::tuple_literal:
+            if (const syntax::AstArenaVector<syntax::ExprId>* const payload =
+                    this->module.exprs.tuple_elements(expr_id.value);
+                payload != nullptr) {
+                for (const syntax::ExprId element : *payload) {
+                    this->add_expr(element);
+                }
+            }
+            break;
+        case syntax::ExprKind::postfix_chain:
+            if (const syntax::PostfixChainExprPayload* const payload =
+                    this->module.exprs.postfix_chain_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->base);
+                for (const syntax::PostfixOp& op : payload->ops) {
+                    this->visit_postfix_op(op);
+                }
+            }
+            break;
+        case syntax::ExprKind::field:
+            if (const syntax::FieldExprPayload* const payload = this->module.exprs.field_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->object);
+            }
+            break;
+        case syntax::ExprKind::index:
+            if (const syntax::IndexExprPayload* const payload = this->module.exprs.index_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->object);
+                this->add_expr(payload->index);
+            }
+            break;
+        case syntax::ExprKind::slice:
+            if (const syntax::SliceExprPayload* const payload = this->module.exprs.slice_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->object);
+                this->add_expr(payload->start);
+                this->add_expr(payload->end);
+            }
+            break;
+        case syntax::ExprKind::struct_literal:
+            if (const syntax::StructLiteralExprPayload* const payload =
+                    this->module.exprs.struct_literal_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->object);
+                for (const syntax::TypeId arg : payload->type_args) {
+                    this->add_type(arg);
+                }
+                for (const syntax::FieldInit& init : payload->field_inits) {
+                    this->add_expr(init.value);
+                }
+            }
+            break;
+        case syntax::ExprKind::cast:
+        case syntax::ExprKind::pcast:
+        case syntax::ExprKind::bcast:
+        case syntax::ExprKind::size_of:
+        case syntax::ExprKind::align_of:
+        case syntax::ExprKind::ptr_addr:
+        case syntax::ExprKind::paddr:
+        case syntax::ExprKind::str_data:
+        case syntax::ExprKind::str_byte_len:
+        case syntax::ExprKind::str_is_valid_utf8:
+        case syntax::ExprKind::str_from_utf8_checked:
+            if (const syntax::CastExprPayload* const payload = this->module.exprs.cast_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_type(payload->type);
+                this->add_expr(payload->expr);
+            }
+            break;
+        case syntax::ExprKind::invalid:
+        case syntax::ExprKind::integer_literal:
+        case syntax::ExprKind::float_literal:
+        case syntax::ExprKind::bool_literal:
+        case syntax::ExprKind::null_literal:
+        case syntax::ExprKind::string_literal:
+        case syntax::ExprKind::c_string_literal:
+        case syntax::ExprKind::raw_string_literal:
+        case syntax::ExprKind::byte_string_literal:
+        case syntax::ExprKind::byte_literal:
+        case syntax::ExprKind::char_literal:
+            break;
+        }
+    }
+
+    void visit_pattern(const syntax::PatternId pattern_id) {
+        if (!syntax::is_valid(pattern_id) || pattern_id.value >= this->module.patterns.size()) {
+            return;
+        }
+        const syntax::PatternNode pattern = this->module.patterns[pattern_id.value];
+        this->add_type(pattern.enum_type);
+        for (const syntax::PatternId payload : pattern.payload_patterns) {
+            this->add_pattern(payload);
+        }
+        for (const syntax::PatternId element : pattern.elements) {
+            this->add_pattern(element);
+        }
+        for (const syntax::FieldPattern& field : pattern.field_patterns) {
+            this->add_pattern(field.pattern);
+        }
+        for (const syntax::PatternId alternative : pattern.alternatives) {
+            this->add_pattern(alternative);
+        }
+    }
+
+    void visit_stmt(const syntax::StmtId stmt_id) {
+        if (!syntax::is_valid(stmt_id) || stmt_id.value >= this->module.stmts.size()) {
+            return;
+        }
+        const syntax::StmtNode stmt = this->module.stmts[stmt_id.value];
+        this->add_pattern(stmt.pattern);
+        this->add_type(stmt.declared_type);
+        this->add_expr(stmt.init);
+        this->add_expr(stmt.lhs);
+        this->add_expr(stmt.rhs);
+        this->add_expr(stmt.condition);
+        this->add_expr(stmt.range_start);
+        this->add_expr(stmt.range_end);
+        this->add_expr(stmt.range_step);
+        this->add_stmt(stmt.then_block);
+        this->add_stmt(stmt.else_block);
+        this->add_stmt(stmt.else_if);
+        this->add_stmt(stmt.body);
+        this->add_stmt(stmt.for_init);
+        this->add_stmt(stmt.for_update);
+        this->add_expr(stmt.return_value);
+        for (const syntax::StmtId child : stmt.statements) {
+            this->add_stmt(child);
+        }
+    }
+};
 
 [[nodiscard]] std::optional<CapabilityKind> parse_capability_kind(const std::string_view name) noexcept {
     if (name == capability_name(CapabilityKind::sized)) {
@@ -71,6 +491,10 @@ void append_generic_instance_key_suffix(std::string& output, const std::vector<T
         }
         append_decimal(output, args[i].value);
     }
+}
+
+void assign_node_ids(SemaIndexTable& target, const std::vector<base::u32>& source) {
+    target.assign(source.begin(), source.end());
 }
 
 } // namespace
@@ -289,6 +713,22 @@ bool SemanticAnalyzer::validate_generic_arguments(
     return ok;
 }
 
+void SemanticAnalyzer::populate_generic_template_node_spans(
+    GenericTemplateInfo& info,
+    const syntax::ItemNode& item
+) const {
+    GenericNodeSpanBuilder builder(this->module_);
+    builder.collect(item);
+    info.expr_span = builder.expr_span();
+    info.pattern_span = builder.pattern_span();
+    info.type_span = builder.type_span();
+    info.stmt_span = builder.stmt_span();
+    assign_node_ids(info.expr_node_ids, builder.expr_ids());
+    assign_node_ids(info.pattern_node_ids, builder.pattern_ids());
+    assign_node_ids(info.type_node_ids, builder.type_ids());
+    assign_node_ids(info.stmt_node_ids, builder.stmt_ids());
+}
+
 void SemanticAnalyzer::register_generic_template(
     const syntax::ItemNode& item,
     const syntax::ItemId item_id
@@ -307,6 +747,7 @@ void SemanticAnalyzer::register_generic_template(
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         info.params.push_back(param.name_id);
     }
+    this->populate_generic_template_node_spans(info, item);
     this->populate_generic_param_identity_keys(info);
     this->validate_generic_constraints(item, info);
 
@@ -1677,7 +2118,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
             this->internal_function_lookup_exclusions_ += 1;
         }
         this->function_body_states_[key] = FunctionBodyState::not_started;
-        GenericSideTables transient_side_tables = make_generic_side_tables(this->module_);
+        GenericSideTables transient_side_tables = make_generic_side_tables(info);
         GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
         GenericContext* const previous_body_generic_context = this->current_generic_context_;
@@ -1702,7 +2143,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     instance.key = key;
     instance.item = info.item;
     instance.signature = std::move(signature);
-    instance.side_tables = make_generic_side_tables(this->module_);
+    instance.side_tables = make_generic_side_tables(info);
     const base::usize instance_index = this->checked_.generic_function_instances.size();
     this->checked_.generic_function_instances.push_back(std::move(instance));
     this->generic_function_instances_[key] = instance_index;
@@ -1812,7 +2253,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
         this->index_function_value(function_inserted.first->second);
         this->function_body_states_[key] = FunctionBodyState::not_started;
 
-        GenericSideTables transient_side_tables = make_generic_side_tables(this->module_);
+        GenericSideTables transient_side_tables = make_generic_side_tables(info);
         GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
         GenericContext* const previous_body_generic_context = this->current_generic_context_;
@@ -1837,7 +2278,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     instance.key = key;
     instance.item = info.item;
     instance.signature = std::move(signature);
-    instance.side_tables = make_generic_side_tables(this->module_);
+    instance.side_tables = make_generic_side_tables(info);
     const base::usize instance_index = this->checked_.generic_function_instances.size();
     this->checked_.generic_function_instances.push_back(std::move(instance));
     this->generic_function_instances_[key] = instance_index;
@@ -2009,7 +2450,7 @@ void SemanticAnalyzer::analyze_generic_function_body(
     this->populate_generic_placeholder_context(info, generic_context);
     const syntax::ModuleId previous_module = this->current_module_;
     GenericContext* const previous_generic_context = this->current_generic_context_;
-    GenericSideTables side_tables = make_generic_side_tables(this->module_);
+    GenericSideTables side_tables = make_generic_side_tables(info);
     GenericSideTableScope previous_side_tables = this->current_side_tables_;
     this->current_generic_context_ = &generic_context;
     this->current_side_tables_.side_tables = &side_tables;

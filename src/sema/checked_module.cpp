@@ -143,6 +143,10 @@ void PatternCaseNameTable::copy_from(const PatternCaseNameTable& other) {
 
 GenericSideTables::GenericSideTables()
     : arena_(std::make_unique<base::BumpAllocator>()),
+      expr_node_ids(make_sema_vector<base::u32>(*this->arena_)),
+      pattern_node_ids(make_sema_vector<base::u32>(*this->arena_)),
+      type_node_ids(make_sema_vector<base::u32>(*this->arena_)),
+      stmt_node_ids(make_sema_vector<base::u32>(*this->arena_)),
       expr_types(make_sema_vector<TypeHandle>(*this->arena_)),
       expr_expected_types(make_sema_vector<TypeHandle>(*this->arena_)),
       expr_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
@@ -173,6 +177,15 @@ GenericSideTables& GenericSideTables::operator=(const GenericSideTables& other) 
 GenericSideTables::GenericSideTables(GenericSideTables&& other) noexcept
     : arena_(std::move(other.arena_)),
       sparse(other.sparse),
+      local_dense(other.local_dense),
+      expr_span(other.expr_span),
+      pattern_span(other.pattern_span),
+      type_span(other.type_span),
+      stmt_span(other.stmt_span),
+      expr_node_ids(std::move(other.expr_node_ids)),
+      pattern_node_ids(std::move(other.pattern_node_ids)),
+      type_node_ids(std::move(other.type_node_ids)),
+      stmt_node_ids(std::move(other.stmt_node_ids)),
       expr_types(std::move(other.expr_types)),
       expr_expected_types(std::move(other.expr_expected_types)),
       expr_c_name_ids(std::move(other.expr_c_name_ids)),
@@ -203,9 +216,65 @@ base::usize GenericSideTables::arena_blocks() const noexcept {
     return this->arena_ == nullptr ? 0 : this->arena_->block_count();
 }
 
+void GenericSideTables::configure_local_dense(
+    const GenericNodeSpan expr,
+    const GenericNodeSpan pattern,
+    const GenericNodeSpan type,
+    const GenericNodeSpan stmt
+) {
+    this->configure_local_dense(expr, pattern, type, stmt, {}, {}, {}, {});
+}
+
+void GenericSideTables::configure_local_dense(
+    const GenericNodeSpan expr,
+    const GenericNodeSpan pattern,
+    const GenericNodeSpan type,
+    const GenericNodeSpan stmt,
+    const std::span<const base::u32> expr_ids,
+    const std::span<const base::u32> pattern_ids,
+    const std::span<const base::u32> type_ids,
+    const std::span<const base::u32> stmt_ids
+) {
+    this->sparse = true;
+    this->local_dense = true;
+    this->expr_span = expr;
+    this->pattern_span = pattern;
+    this->type_span = type;
+    this->stmt_span = stmt;
+    this->expr_node_ids.assign(expr_ids.begin(), expr_ids.end());
+    this->pattern_node_ids.assign(pattern_ids.begin(), pattern_ids.end());
+    this->type_node_ids.assign(type_ids.begin(), type_ids.end());
+    this->stmt_node_ids.assign(stmt_ids.begin(), stmt_ids.end());
+    const base::usize expr_count = this->expr_node_ids.empty() ? expr.count : this->expr_node_ids.size();
+    const base::usize pattern_count = this->pattern_node_ids.empty() ? pattern.count : this->pattern_node_ids.size();
+    const base::usize type_count = this->type_node_ids.empty() ? type.count : this->type_node_ids.size();
+    const base::usize stmt_count = this->stmt_node_ids.empty() ? stmt.count : this->stmt_node_ids.size();
+    this->expr_types.assign(expr_count, INVALID_TYPE_HANDLE);
+    this->expr_expected_types.assign(expr_count, INVALID_TYPE_HANDLE);
+    this->expr_c_name_ids.assign(expr_count, INVALID_IDENT_ID);
+    this->pattern_c_name_ids.assign(pattern_count, INVALID_IDENT_ID);
+    this->syntax_type_handles.assign(type_count, INVALID_TYPE_HANDLE);
+    this->stmt_local_types.assign(stmt_count, INVALID_TYPE_HANDLE);
+    this->sparse_expr_types.clear();
+    this->sparse_expr_expected_types.clear();
+    this->sparse_expr_c_name_ids.clear();
+    this->sparse_pattern_c_name_ids.clear();
+    this->sparse_syntax_type_handles.clear();
+    this->sparse_stmt_local_types.clear();
+}
+
 void GenericSideTables::swap(GenericSideTables& other) noexcept {
     using std::swap;
     swap(this->sparse, other.sparse);
+    swap(this->local_dense, other.local_dense);
+    swap(this->expr_span, other.expr_span);
+    swap(this->pattern_span, other.pattern_span);
+    swap(this->type_span, other.type_span);
+    swap(this->stmt_span, other.stmt_span);
+    this->expr_node_ids.swap(other.expr_node_ids);
+    this->pattern_node_ids.swap(other.pattern_node_ids);
+    this->type_node_ids.swap(other.type_node_ids);
+    this->stmt_node_ids.swap(other.stmt_node_ids);
     this->expr_types.swap(other.expr_types);
     this->expr_expected_types.swap(other.expr_expected_types);
     this->expr_c_name_ids.swap(other.expr_c_name_ids);
@@ -224,6 +293,15 @@ void GenericSideTables::swap(GenericSideTables& other) noexcept {
 
 void GenericSideTables::copy_from(const GenericSideTables& other) {
     this->sparse = other.sparse;
+    this->local_dense = other.local_dense;
+    this->expr_span = other.expr_span;
+    this->pattern_span = other.pattern_span;
+    this->type_span = other.type_span;
+    this->stmt_span = other.stmt_span;
+    this->expr_node_ids.assign(other.expr_node_ids.begin(), other.expr_node_ids.end());
+    this->pattern_node_ids.assign(other.pattern_node_ids.begin(), other.pattern_node_ids.end());
+    this->type_node_ids.assign(other.type_node_ids.begin(), other.type_node_ids.end());
+    this->stmt_node_ids.assign(other.stmt_node_ids.begin(), other.stmt_node_ids.end());
     this->expr_types.assign(other.expr_types.begin(), other.expr_types.end());
     this->expr_expected_types.assign(other.expr_expected_types.begin(), other.expr_expected_types.end());
     this->expr_c_name_ids.assign(other.expr_c_name_ids.begin(), other.expr_c_name_ids.end());

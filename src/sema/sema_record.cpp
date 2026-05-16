@@ -303,7 +303,7 @@ SemaTypeTable& SemanticAnalyzer::active_stmt_local_types() noexcept {
         : this->current_side_tables_.side_tables->stmt_local_types;
 }
 
-void SemanticAnalyzer::report(base::SourceRange range, std::string message) {
+void SemanticAnalyzer::report(const base::SourceRange& range, std::string message) {
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,

@@ -47,7 +47,7 @@ void FunctionRegistry::register_function(
     const syntax::ItemNode& item,
     const syntax::ModuleId owner,
     std::string key,
-    const std::string c_name,
+    const std::string& c_name,
     const TypeHandle method_owner_type,
     const TypeHandle return_type,
     const std::span<const TypeHandle> param_types,
@@ -193,7 +193,7 @@ void FunctionRegistry::refresh_function_value(const std::string& key, const Func
     found->second.range = signature.range;
 }
 
-void FunctionRegistry::report(base::SourceRange range, std::string message) {
+void FunctionRegistry::report(const base::SourceRange& range, std::string message) {
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,

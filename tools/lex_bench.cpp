@@ -304,7 +304,7 @@ bool apply_option(
     };
 }
 
-void print_summary(const std::string_view label, const MetricSummary summary) {
+void print_summary(const std::string_view label, const MetricSummary& summary) {
     std::cout << label << "_min: " << summary.min << '\n'
               << label << "_median: " << summary.median << '\n'
               << label << "_max: " << summary.max << '\n'

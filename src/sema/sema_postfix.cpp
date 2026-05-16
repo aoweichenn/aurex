@@ -10,7 +10,7 @@ namespace {
 [[nodiscard]] base::SourceRange expr_range_or(
     const syntax::AstModule& module,
     const syntax::ExprId expr,
-    const base::SourceRange fallback
+    const base::SourceRange& fallback
 ) noexcept {
     if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
         return fallback;
@@ -19,8 +19,8 @@ namespace {
 }
 
 [[nodiscard]] base::SourceRange merge_ranges(
-    const base::SourceRange begin,
-    const base::SourceRange end
+    const base::SourceRange& begin,
+    const base::SourceRange& end
 ) noexcept {
     return base::SourceRange {begin.source, begin.begin, end.end};
 }
@@ -32,7 +32,7 @@ namespace {
 
 [[nodiscard]] syntax::TypeNode copy_named_type_selector(
     const syntax::TypeNode& source,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::named;
@@ -341,7 +341,7 @@ syntax::TypeId SemanticAnalyzer::postfix_chain_expr_to_type(const syntax::ExprId
 syntax::TypeId SemanticAnalyzer::append_postfix_type_selector(
     const syntax::TypeId current,
     const std::string_view name,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (!syntax::is_valid(current) || current.value >= this->module_.types.size()) {
         return syntax::INVALID_TYPE_ID;

@@ -18,7 +18,7 @@ public:
     ~TokenBuffer() = default;
 
     void reserve(base::usize token_count);
-    void push_back(syntax::Token token);
+    void push_back(const syntax::Token& token);
 
     [[nodiscard]] base::usize size() const noexcept;
     [[nodiscard]] bool empty() const noexcept;

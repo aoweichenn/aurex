@@ -2679,7 +2679,7 @@ TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
     EXPECT_EQ(merged.begin, begin_range.begin);
     EXPECT_EQ(merged.end, end_range.end);
 
-    const auto expect_range = [](const base::SourceRange actual, const base::SourceRange expected) {
+    const auto expect_range = [](const base::SourceRange& actual, const base::SourceRange& expected) {
         EXPECT_EQ(actual.source.value, expected.source.value);
         EXPECT_EQ(actual.begin, expected.begin);
         EXPECT_EQ(actual.end, expected.end);

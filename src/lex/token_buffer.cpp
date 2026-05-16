@@ -42,7 +42,7 @@ void TokenBuffer::reserve(const base::usize token_count) {
     this->tokens_.reserve(token_count);
 }
 
-void TokenBuffer::push_back(syntax::Token token) {
+void TokenBuffer::push_back(const syntax::Token& token) {
     this->ensure_storage();
     this->tokens_.push_back(token);
 }

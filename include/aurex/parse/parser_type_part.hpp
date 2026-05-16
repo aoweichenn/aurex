@@ -19,7 +19,7 @@ private:
     [[nodiscard]] const syntax::Token& expect_tuple_type_end();
     [[nodiscard]] syntax::TypeId parse_function_type();
     [[nodiscard]] syntax::TypeId parse_function_type_after_fn(
-        base::SourceRange begin_range,
+        const base::SourceRange& begin_range,
         syntax::FunctionCallConv call_conv,
         bool is_unsafe
     );

@@ -84,7 +84,7 @@ struct FunctionBuilder {
 
 [[nodiscard]] inline Function make_function(
     Module&,
-    std::string name,
+    const std::string& name,
     const TypeHandle return_type,
     const Linkage linkage = Linkage::internal,
     const AbiCallConv call_conv = AbiCallConv::aurex
@@ -102,7 +102,7 @@ struct FunctionBuilder {
     Module& module,
     const std::string& name,
     const TypeHandle return_type,
-    const Value return_value
+    const Value& return_value
 ) {
     Function function = make_function(module, name, return_type);
     FunctionBuilder builder {module, function};

@@ -457,7 +457,7 @@ struct ParsedOption {
     return "option requires native output: " + std::string(option);
 }
 
-[[nodiscard]] base::Error cli_argument_error(std::string message) {
+[[nodiscard]] base::Error cli_argument_error(const std::string& message) {
     return {base::ErrorCode::invalid_source, cli_argument_error_message(message)};
 }
 

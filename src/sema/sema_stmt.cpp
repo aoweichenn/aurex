@@ -52,7 +52,7 @@ struct ControlFlowFrame {
 [[nodiscard]] base::SourceRange expr_range_or(
     const syntax::AstModule& module,
     const syntax::ExprId expr,
-    const base::SourceRange fallback
+    const base::SourceRange& fallback
 ) noexcept {
     if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
         return fallback;
@@ -1031,7 +1031,7 @@ void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& fun
 
 void SemanticAnalyzer::ensure_function_return_known(
     const FunctionSignature& signature,
-    const base::SourceRange use_range
+    const base::SourceRange& use_range
 ) {
     if (is_valid(signature.return_type) || signature.is_extern_c) {
         return;

@@ -14,7 +14,7 @@ public:
 private:
     [[nodiscard]] syntax::ExprId parse_if_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_match_expr(ExprContext context);
-    [[nodiscard]] syntax::MatchArm parse_match_arm(ExprContext context, base::SourceRange fallback_range);
+    [[nodiscard]] syntax::MatchArm parse_match_arm(ExprContext context, const base::SourceRange& fallback_range);
     [[nodiscard]] bool recover_match_arm_separator();
     [[nodiscard]] syntax::ExprId parse_binary_expr(ExprContext context);
     [[nodiscard]] syntax::ExprId parse_unary(ExprContext context);

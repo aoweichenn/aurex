@@ -209,7 +209,7 @@ syntax::TypeId PatternParser::push_explicit_enum_case_type(
     const std::vector<syntax::Token>& parts,
     const base::usize type_part_count,
     std::vector<syntax::TypeId> type_args,
-    const base::SourceRange type_range
+    const base::SourceRange& type_range
 ) {
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::named;

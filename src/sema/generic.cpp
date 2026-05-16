@@ -265,7 +265,7 @@ bool SemanticAnalyzer::type_supports_hash_capability(const TypeHandle type) cons
 bool SemanticAnalyzer::validate_generic_arguments(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange use_range
+    const base::SourceRange& use_range
 ) {
     bool ok = true;
     for (base::usize i = 0; i < info.params.size() && i < args.size(); ++i) {
@@ -305,7 +305,7 @@ void SemanticAnalyzer::register_generic_template(
     info.params.reserve(item.generic_params.size());
     info.param_ids.reserve(item.generic_params.size());
     for (const syntax::GenericParamDecl& param : item.generic_params) {
-        info.params.push_back(std::string(param.name));
+        info.params.emplace_back(param.name);
         info.param_ids.push_back(param.name_id);
     }
     this->populate_generic_param_identity_keys(info);
@@ -657,7 +657,7 @@ std::string SemanticAnalyzer::generic_function_instance_key(
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_struct_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
@@ -678,7 +678,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(module)) {
@@ -731,7 +731,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
@@ -752,7 +752,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(module)) {
@@ -805,7 +805,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type_alias_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
@@ -826,7 +826,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(module)) {
@@ -921,7 +921,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_any_generic_
 bool SemanticAnalyzer::report_generic_type_requires_args_if_visible(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (const GenericTemplateInfo* const found =
             this->find_any_generic_type_template_in_module(this->current_module_, name_id, name);
@@ -936,7 +936,7 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (!syntax::is_valid(module)) {
         this->report(range, sema_unknown_generic_type_message(name));
@@ -988,7 +988,7 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
@@ -1009,7 +1009,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(module)) {
@@ -1450,7 +1450,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
 FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange use_range
+    const base::SourceRange& use_range
 ) {
     if (args.size() != info.params.size()) {
         this->report(
@@ -1558,7 +1558,7 @@ bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const 
 FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     const GenericTemplateInfo& info,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange use_range
+    const base::SourceRange& use_range
 ) {
     if (args.size() != info.params.size()) {
         this->report(
@@ -1701,7 +1701,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     const GenericTemplateInfo& info,
     const TypeHandle owner_type,
     const std::vector<TypeHandle>& args,
-    const base::SourceRange use_range
+    const base::SourceRange& use_range
 ) {
     if (args.size() != info.params.size()) {
         this->report(
@@ -1837,7 +1837,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
     const TypeHandle owner_type,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool require_self,
     const bool report_unknown
 ) {

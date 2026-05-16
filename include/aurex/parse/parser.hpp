@@ -54,7 +54,7 @@ private:
     void report_here(std::string message);
     void report_at(const syntax::Token& token, std::string message);
 
-    [[nodiscard]] base::SourceRange merge(base::SourceRange begin, base::SourceRange end) const noexcept;
+    [[nodiscard]] base::SourceRange merge(const base::SourceRange& begin, const base::SourceRange& end) const noexcept;
     void reset_panic() noexcept;
 
     friend class ExprParser;

@@ -31,7 +31,7 @@ constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
 [[nodiscard]] base::SourceRange call_expr_range_or(
     const syntax::AstModule& module,
     const syntax::ExprId expr,
-    const base::SourceRange fallback
+    const base::SourceRange& fallback
 ) noexcept {
     return syntax::is_valid(expr) && expr.value < module.exprs.size()
         ? module.exprs.range(expr.value)
@@ -50,7 +50,7 @@ TypeHandle SemanticAnalyzer::function_type_from_signature(const FunctionSignatur
     );
 }
 
-TypeHandle SemanticAnalyzer::function_type_from_symbol(const Symbol& symbol, const base::SourceRange range) {
+TypeHandle SemanticAnalyzer::function_type_from_symbol(const Symbol& symbol, const base::SourceRange& range) {
     const FunctionSignature* signature = syntax::is_valid(symbol.module)
         ? this->find_function_in_module(symbol.module, symbol.name_id, symbol.name, range, false)
         : nullptr;
@@ -66,7 +66,7 @@ bool SemanticAnalyzer::in_unsafe_context() const noexcept {
 }
 
 void SemanticAnalyzer::require_unsafe_context(
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const std::string_view operation
 ) {
     if (!this->in_unsafe_context()) {
@@ -76,7 +76,7 @@ void SemanticAnalyzer::require_unsafe_context(
 
 void SemanticAnalyzer::validate_unsafe_call(
     const FunctionSignature& signature,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (signature.is_unsafe && !this->in_unsafe_context()) {
         this->report(range, sema_unsafe_function_call_message(signature.name));
@@ -85,7 +85,7 @@ void SemanticAnalyzer::validate_unsafe_call(
 
 void SemanticAnalyzer::validate_unsafe_function_value_call(
     const TypeHandle callee_type,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (!this->checked_.types.is_function(callee_type)) {
         return;
@@ -411,7 +411,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_selector(
     const syntax::ExprId callee,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (syntax::is_valid(callee) && callee.value < this->module_.exprs.size()) {
@@ -434,7 +434,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_selector(
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_selector(
     const NamedTypeSelector& selector,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (selector.name.empty()) {

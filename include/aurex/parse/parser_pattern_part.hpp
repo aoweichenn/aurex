@@ -25,7 +25,7 @@ private:
         const std::vector<syntax::Token>& parts,
         base::usize type_part_count,
         std::vector<syntax::TypeId> type_args,
-        base::SourceRange type_range
+        const base::SourceRange& type_range
     );
     [[nodiscard]] syntax::PatternId parse_tuple_pattern();
     [[nodiscard]] syntax::PatternId parse_slice_pattern();

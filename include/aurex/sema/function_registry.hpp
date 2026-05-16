@@ -25,7 +25,7 @@ public:
         const syntax::ItemNode& item,
         syntax::ModuleId owner,
         std::string key,
-        std::string c_name,
+        const std::string& c_name,
         TypeHandle method_owner_type,
         TypeHandle return_type,
         std::span<const TypeHandle> param_types,
@@ -42,7 +42,7 @@ private:
     void merge_function(std::string key, FunctionSignature signature, bool is_prototype);
     void insert_function_value(const std::string& key, const FunctionSignature& signature);
     void refresh_function_value(const std::string& key, const FunctionSignature& signature);
-    void report(base::SourceRange range, std::string message);
+    void report(const base::SourceRange& range, std::string message);
 
     CheckedModule& checked_;
     SemaMap<std::string, Symbol>& global_values_;

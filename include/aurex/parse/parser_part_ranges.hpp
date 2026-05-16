@@ -10,11 +10,11 @@ protected:
     explicit ParserPartRangeReader(Parser& parser) noexcept
         : ParserPartRouter(parser) {}
 
-    [[nodiscard]] base::SourceRange merge(base::SourceRange begin, base::SourceRange end) const noexcept;
-    [[nodiscard]] base::SourceRange expr_range_or(syntax::ExprId id, base::SourceRange fallback) const noexcept;
-    [[nodiscard]] base::SourceRange stmt_range_or(syntax::StmtId id, base::SourceRange fallback) const noexcept;
-    [[nodiscard]] base::SourceRange type_range_or(syntax::TypeId id, base::SourceRange fallback) const noexcept;
-    [[nodiscard]] base::SourceRange pattern_range_or(syntax::PatternId id, base::SourceRange fallback) const noexcept;
+    [[nodiscard]] base::SourceRange merge(const base::SourceRange& begin, const base::SourceRange& end) const noexcept;
+    [[nodiscard]] base::SourceRange expr_range_or(syntax::ExprId id, const base::SourceRange& fallback) const noexcept;
+    [[nodiscard]] base::SourceRange stmt_range_or(syntax::StmtId id, const base::SourceRange& fallback) const noexcept;
+    [[nodiscard]] base::SourceRange type_range_or(syntax::TypeId id, const base::SourceRange& fallback) const noexcept;
+    [[nodiscard]] base::SourceRange pattern_range_or(syntax::PatternId id, const base::SourceRange& fallback) const noexcept;
 };
 
 } // namespace aurex::parse

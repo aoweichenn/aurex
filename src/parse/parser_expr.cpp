@@ -159,7 +159,7 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
 
 syntax::MatchArm ExprParser::parse_match_arm(
     const ExprContext context,
-    const base::SourceRange fallback_range
+    const base::SourceRange& fallback_range
 ) {
     const syntax::PatternId pattern = this->parse_pattern();
     syntax::ExprId guard = syntax::INVALID_EXPR_ID;

@@ -180,7 +180,7 @@ template <typename T>
 [[nodiscard]] base::SourceRange expr_range_or(
     const syntax::AstModule& module,
     const syntax::ExprId expr,
-    const base::SourceRange fallback
+    const base::SourceRange& fallback
 ) noexcept {
     return syntax::is_valid(expr) && expr.value < module.exprs.size()
         ? module.exprs.range(expr.value)
@@ -622,7 +622,7 @@ TypeHandle SemanticAnalyzer::analyze_name_expr(
 bool SemanticAnalyzer::record_no_payload_enum_case_expr(
     const syntax::ExprId expr_id,
     const EnumCaseInfo& enum_case,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (is_valid(enum_case.payload_type)) {
         this->report(

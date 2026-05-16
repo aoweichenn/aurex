@@ -64,7 +64,7 @@ syntax::ModuleId SemanticAnalyzer::item_module(const syntax::ItemId item) const 
 
 syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
     const std::string_view alias,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(current_module_) || current_module_.value >= module_.modules.size()) {
@@ -613,7 +613,7 @@ bool SemanticAnalyzer::visible_type_name_exists(
 bool SemanticAnalyzer::can_define_local_name(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (name.empty()) {
         return true;
@@ -786,7 +786,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
     const TypeHandle owner_type,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool require_self,
     const bool report_unknown
 ) {
@@ -846,7 +846,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
 TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool opaque_allowed_as_pointee,
     const bool report_unknown
 ) {
@@ -872,7 +872,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool opaque_allowed_as_pointee,
     const bool report_unknown
 ) {
@@ -937,7 +937,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
 const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
@@ -958,7 +958,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(module)) {
@@ -1008,7 +1008,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     if (!syntax::is_valid(module)) {
@@ -1057,7 +1057,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
 const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
@@ -1128,7 +1128,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     const std::string_view enum_name,
     const IdentId case_name_id,
     const std::string_view case_name,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const bool report_unknown
 ) {
     const ModuleLookupKey enum_lookup_key = this->find_module_lookup_key(this->current_module_, enum_name_id);
@@ -1162,7 +1162,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
     const syntax::TypeId enum_type_id,
     const IdentId case_name_id,
     const std::string_view case_name,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     const TypeHandle enum_type = this->resolve_type(enum_type_id);
     if (!is_valid(enum_type)) {
@@ -1217,7 +1217,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
 const Symbol* SemanticAnalyzer::find_symbol(
     const IdentId name_id,
     const std::string_view name,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (const Symbol* local = this->symbols_.find(name_id); local != nullptr) {
         return local;

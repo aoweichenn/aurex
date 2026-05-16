@@ -469,7 +469,7 @@ syntax::TypeId TypeParser::parse_function_type() {
 }
 
 syntax::TypeId TypeParser::parse_function_type_after_fn(
-    const base::SourceRange begin_range,
+    const base::SourceRange& begin_range,
     const syntax::FunctionCallConv call_conv,
     const bool is_unsafe
 ) {

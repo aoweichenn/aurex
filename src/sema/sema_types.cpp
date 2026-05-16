@@ -140,7 +140,7 @@ struct PlaceIntegerLiteralExpr {
 [[nodiscard]] base::SourceRange place_expr_range_or(
     const syntax::AstModule& module,
     const syntax::ExprId expr,
-    const base::SourceRange fallback
+    const base::SourceRange& fallback
 ) noexcept {
     return syntax::is_valid(expr) && expr.value < module.exprs.size()
         ? module.exprs.range(expr.value)
@@ -984,7 +984,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         return found == results.end() ? LayoutResult {} : found->second;
     };
 
-    const auto finish_type = [&](const TypeHandle type, const base::SourceRange range) -> LayoutResult {
+    const auto finish_type = [&](const TypeHandle type, const base::SourceRange& range) -> LayoutResult {
         LayoutResult result;
         result.ok = true;
         const TypeInfo& info = this->checked_.types.get(type);
@@ -1127,7 +1127,7 @@ void SemanticAnalyzer::validate_type_layouts() {
     const auto push_dependency = [&](
         std::vector<TypeLayoutFrame>& stack,
         const TypeHandle dependency,
-        const base::SourceRange dependency_range
+        const base::SourceRange& dependency_range
     ) {
         if (!is_valid(dependency)) {
             return;
@@ -1159,7 +1159,7 @@ void SemanticAnalyzer::validate_type_layouts() {
     const auto push_children = [&](
         std::vector<TypeLayoutFrame>& stack,
         const TypeHandle type,
-        const base::SourceRange range
+        const base::SourceRange& range
     ) {
         const TypeInfo& info = this->checked_.types.get(type);
         if (info.kind == TypeKind::array) {
@@ -1193,7 +1193,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         }
     };
 
-    const auto compute = [&](const TypeHandle type, const base::SourceRange range) -> LayoutResult {
+    const auto compute = [&](const TypeHandle type, const base::SourceRange& range) -> LayoutResult {
         if (!is_valid(type)) {
             return {};
         }
@@ -1284,7 +1284,7 @@ bool SemanticAnalyzer::negative_integer_literal_fits_type(
 TypeHandle SemanticAnalyzer::analyze_integer_literal(
     const syntax::ExprId expr_id,
     const std::string_view text,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const TypeHandle expected_type
 ) {
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
@@ -1332,7 +1332,7 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
 TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
     const syntax::ExprId expr_id,
     const std::string_view text,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const TypeHandle expected_type
 ) {
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
@@ -1380,7 +1380,7 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
 TypeHandle SemanticAnalyzer::analyze_float_literal(
     const syntax::ExprId expr_id,
     const std::string_view text,
-    const base::SourceRange range,
+    const base::SourceRange& range,
     const TypeHandle expected_type
 ) {
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::f64);
@@ -1939,7 +1939,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
 
 void SemanticAnalyzer::require_place_projection_safety(
     const PlaceInfo& place,
-    const base::SourceRange range
+    const base::SourceRange& range
 ) {
     if (place.crosses_raw_pointer) {
         this->require_unsafe_context(range, SEMA_UNSAFE_RAW_POINTER_PROJECTION);

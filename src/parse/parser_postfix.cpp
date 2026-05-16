@@ -261,7 +261,7 @@ syntax::PostfixOp PostfixExprParser::parse_field_suffix() {
     return op;
 }
 
-syntax::PostfixOp PostfixExprParser::parse_rejected_legacy_scope_suffix(const base::SourceRange fallback_range) {
+syntax::PostfixOp PostfixExprParser::parse_rejected_legacy_scope_suffix(const base::SourceRange& fallback_range) {
     const syntax::Token& scope = this->advance();
     this->report_at(scope, std::string(PARSER_DOT_ONLY_SELECTOR));
     syntax::PostfixOp op;
@@ -331,7 +331,7 @@ bool PostfixExprParser::recover_struct_field_separator() {
     return token_starts_struct_field(this->peek().kind);
 }
 
-syntax::PostfixOp PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(const base::SourceRange fallback_range) {
+syntax::PostfixOp PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(const base::SourceRange& fallback_range) {
     const syntax::Token& field = this->advance();
     this->report_at(field, std::string(PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED));
     syntax::PostfixOp op;
@@ -413,7 +413,7 @@ syntax::PostfixOp PostfixExprParser::parse_try_suffix() {
 }
 
 syntax::PostfixOp PostfixExprParser::parse_rejected_update_suffix(
-    const base::SourceRange fallback_range,
+    const base::SourceRange& fallback_range,
     const TokenKind kind,
     std::string message
 ) {

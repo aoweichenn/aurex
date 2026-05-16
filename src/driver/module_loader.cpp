@@ -27,7 +27,7 @@ namespace {
     return std::filesystem::absolute(path);
 }
 
-void push_error(base::DiagnosticSink& diagnostics, base::SourceRange range, std::string message) {
+void push_error(base::DiagnosticSink& diagnostics, const base::SourceRange& range, std::string message) {
     diagnostics.push(base::Diagnostic {
         base::Severity::error,
         range,

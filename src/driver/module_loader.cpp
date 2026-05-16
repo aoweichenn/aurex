@@ -126,25 +126,29 @@ void remap_type_node(syntax::TypeNode& node, const IdMap& map) {
     node.function_return = remap_type(node.function_return, map);
 }
 
-void remap_expr_ids(std::vector<syntax::ExprId>& args, const IdMap& map) {
+template <typename Allocator>
+void remap_expr_ids(std::vector<syntax::ExprId, Allocator>& args, const IdMap& map) {
     for (syntax::ExprId& arg : args) {
         arg = remap_expr(arg, map);
     }
 }
 
-void remap_type_ids(std::vector<syntax::TypeId>& args, const IdMap& map) {
+template <typename Allocator>
+void remap_type_ids(std::vector<syntax::TypeId, Allocator>& args, const IdMap& map) {
     for (syntax::TypeId& arg : args) {
         arg = remap_type(arg, map);
     }
 }
 
-void remap_field_inits(std::vector<syntax::FieldInit>& inits, const IdMap& map) {
+template <typename Allocator>
+void remap_field_inits(std::vector<syntax::FieldInit, Allocator>& inits, const IdMap& map) {
     for (syntax::FieldInit& init : inits) {
         init.value = remap_expr(init.value, map);
     }
 }
 
-void remap_match_arms(std::vector<syntax::MatchArm>& arms, const IdMap& map) {
+template <typename Allocator>
+void remap_match_arms(std::vector<syntax::MatchArm, Allocator>& arms, const IdMap& map) {
     for (syntax::MatchArm& arm : arms) {
         arm.pattern = remap_pattern(arm.pattern, map);
         arm.guard = remap_expr(arm.guard, map);
@@ -152,7 +156,8 @@ void remap_match_arms(std::vector<syntax::MatchArm>& arms, const IdMap& map) {
     }
 }
 
-void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
+template <typename Allocator>
+void remap_postfix_ops(std::vector<syntax::PostfixOp, Allocator>& ops, const IdMap& map) {
     for (syntax::PostfixOp& op : ops) {
         for (syntax::PostfixBracketArg& arg : op.bracket_args) {
             arg.expr = remap_expr(arg.expr, map);
@@ -163,6 +168,48 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
         remap_expr_ids(op.args, map);
         remap_field_inits(op.field_inits, map);
     }
+}
+
+template <typename T, typename Allocator>
+[[nodiscard]] syntax::AstArenaVector<T> copy_expr_arena_list(
+    syntax::AstModule& destination,
+    const std::vector<T, Allocator>& values
+) {
+    syntax::AstArenaVector<T> copy = destination.make_expr_list<T>();
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
+[[nodiscard]] syntax::PostfixOp copy_expr_arena_postfix_op(
+    syntax::AstModule& destination,
+    const syntax::PostfixOp& op
+) {
+    syntax::PostfixOp copy = destination.make_postfix_op();
+    copy.kind = op.kind;
+    copy.range = op.range;
+    copy.name = op.name;
+    copy.name_id = op.name_id;
+    copy.bracket_args = copy_expr_arena_list(destination, op.bracket_args);
+    copy.bracket_is_slice = op.bracket_is_slice;
+    copy.slice_start = op.slice_start;
+    copy.slice_end = op.slice_end;
+    copy.args = copy_expr_arena_list(destination, op.args);
+    copy.field_inits = copy_expr_arena_list(destination, op.field_inits);
+    return copy;
+}
+
+template <typename Allocator>
+[[nodiscard]] syntax::AstArenaVector<syntax::PostfixOp> copy_expr_arena_postfix_ops(
+    syntax::AstModule& destination,
+    const std::vector<syntax::PostfixOp, Allocator>& ops
+) {
+    syntax::AstArenaVector<syntax::PostfixOp> copy = destination.make_expr_list<syntax::PostfixOp>();
+    copy.reserve(ops.size());
+    for (const syntax::PostfixOp& op : ops) {
+        copy.push_back(copy_expr_arena_postfix_op(destination, op));
+    }
+    return copy;
 }
 
 [[nodiscard]] syntax::ExprId append_remapped_expr(
@@ -195,7 +242,7 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
         std::string_view text;
         syntax::IdentId scope_name_id = syntax::INVALID_IDENT_ID;
         syntax::IdentId text_id = syntax::INVALID_IDENT_ID;
-        std::vector<syntax::TypeId> type_args;
+        syntax::AstArenaVector<syntax::TypeId> type_args = destination.make_expr_list<syntax::TypeId>();
         if (syntax::NameExprPayload* const source_payload = source.exprs.name_payload(index);
             source_payload != nullptr) {
             scope_name = source_payload->scope_name;
@@ -203,7 +250,7 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
             text = source_payload->text;
             scope_name_id = source_payload->scope_name_id;
             text_id = source_payload->text_id;
-            type_args = std::move(source_payload->type_args);
+            type_args = copy_expr_arena_list(destination, source_payload->type_args);
             remap_type_ids(type_args, map);
         }
         return destination.push_name_expr(
@@ -244,11 +291,11 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
     }
     case syntax::ExprKind::str_from_bytes_unchecked: {
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
-        std::vector<syntax::ExprId> args;
+        syntax::AstArenaVector<syntax::ExprId> args = destination.make_expr_list<syntax::ExprId>();
         if (syntax::CallExprPayload* const source_payload = source.exprs.call_payload(index);
             source_payload != nullptr) {
             callee = source_payload->callee;
-            args = std::move(source_payload->args);
+            args = copy_expr_arena_list(destination, source_payload->args);
         }
         callee = remap_expr(callee, map);
         remap_expr_ids(args, map);
@@ -287,23 +334,23 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
     }
     case syntax::ExprKind::match_expr: {
         syntax::ExprId value = syntax::INVALID_EXPR_ID;
-        std::vector<syntax::MatchArm> arms;
+        syntax::AstArenaVector<syntax::MatchArm> arms = destination.make_expr_list<syntax::MatchArm>();
         if (syntax::MatchExprPayload* const source_payload = source.exprs.match_payload(index);
             source_payload != nullptr) {
             value = source_payload->value;
-            arms = std::move(source_payload->arms);
+            arms = copy_expr_arena_list(destination, source_payload->arms);
         }
         value = remap_expr(value, map);
         remap_match_arms(arms, map);
         return destination.push_match_expr(range, value, std::move(arms));
     }
     case syntax::ExprKind::array_literal: {
-        std::vector<syntax::ExprId> elements;
+        syntax::AstArenaVector<syntax::ExprId> elements = destination.make_expr_list<syntax::ExprId>();
         syntax::ExprId repeat_value = syntax::INVALID_EXPR_ID;
         syntax::ExprId repeat_count = syntax::INVALID_EXPR_ID;
         if (syntax::ArrayExprPayload* const source_payload = source.exprs.array_payload(index);
             source_payload != nullptr) {
-            elements = std::move(source_payload->elements);
+            elements = copy_expr_arena_list(destination, source_payload->elements);
             repeat_value = source_payload->repeat_value;
             repeat_count = source_payload->repeat_count;
         }
@@ -313,22 +360,22 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
         return destination.push_array_expr(range, std::move(elements), repeat_value, repeat_count);
     }
     case syntax::ExprKind::tuple_literal: {
-        std::vector<syntax::ExprId> elements;
-        if (std::vector<syntax::ExprId>* const source_payload = source.exprs.tuple_elements(index);
+        syntax::AstArenaVector<syntax::ExprId> elements = destination.make_expr_list<syntax::ExprId>();
+        if (syntax::AstArenaVector<syntax::ExprId>* const source_payload = source.exprs.tuple_elements(index);
             source_payload != nullptr) {
-            elements = std::move(*source_payload);
+            elements = copy_expr_arena_list(destination, *source_payload);
         }
         remap_expr_ids(elements, map);
         return destination.push_tuple_expr(range, std::move(elements));
     }
     case syntax::ExprKind::postfix_chain: {
         syntax::ExprId base = syntax::INVALID_EXPR_ID;
-        std::vector<syntax::PostfixOp> ops;
+        syntax::AstArenaVector<syntax::PostfixOp> ops = destination.make_expr_list<syntax::PostfixOp>();
         if (syntax::PostfixChainExprPayload* const source_payload =
-                source.exprs.postfix_chain_payload(index);
+            source.exprs.postfix_chain_payload(index);
             source_payload != nullptr) {
             base = source_payload->base;
-            ops = std::move(source_payload->ops);
+            ops = copy_expr_arena_postfix_ops(destination, source_payload->ops);
         }
         base = remap_expr(base, map);
         remap_postfix_ops(ops, map);

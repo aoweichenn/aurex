@@ -378,7 +378,8 @@ syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type() {
     return this->session_.module.push_type(std::move(type));
 }
 
-bool TypeParser::recover_tuple_type_separator() {
+bool TypeParser::recover_tuple_type_separator() const
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -399,7 +400,8 @@ bool TypeParser::recover_tuple_type_separator() {
     return false;
 }
 
-const syntax::Token& TypeParser::expect_tuple_type_end() {
+const syntax::Token& TypeParser::expect_tuple_type_end() const
+{
     return this->expect_recovered(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_TUPLE_TYPE_END),
@@ -417,7 +419,8 @@ void TypeParser::parse_generic_type_args(std::vector<syntax::TypeId>& args) {
     }
 }
 
-bool TypeParser::recover_generic_type_arg_separator() {
+bool TypeParser::recover_generic_type_arg_separator() const
+{
     if (this->check(TokenKind::r_bracket)) {
         return false;
     }
@@ -528,7 +531,8 @@ void TypeParser::parse_function_type_params(std::vector<syntax::TypeId>& params,
     }
 }
 
-bool TypeParser::recover_function_type_param_separator(bool& is_variadic) {
+bool TypeParser::recover_function_type_param_separator(bool& is_variadic) const
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -557,7 +561,8 @@ bool TypeParser::recover_function_type_param_separator(bool& is_variadic) {
     return false;
 }
 
-void TypeParser::reject_legacy_angle_type_args() {
+void TypeParser::reject_legacy_angle_type_args() const
+{
     const syntax::Token& begin = this->expect(TokenKind::less, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
     this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
@@ -577,7 +582,8 @@ void TypeParser::reject_legacy_angle_type_args() {
     }
 }
 
-void TypeParser::expect_array_length_end() {
+void TypeParser::expect_array_length_end() const
+{
     this->expect_recovered(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_ARRAY_LENGTH_END),
@@ -585,7 +591,8 @@ void TypeParser::expect_array_length_end() {
     );
 }
 
-syntax::TypeId TypeParser::parse_primitive_type() {
+syntax::TypeId TypeParser::parse_primitive_type() const
+{
     const syntax::Token& token = this->advance();
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::primitive;

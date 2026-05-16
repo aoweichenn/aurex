@@ -91,7 +91,8 @@ const Symbol* SymbolTable::get(const SymbolId id) const noexcept {
     return &this->symbols_[id.value];
 }
 
-IdentSymbolMap SymbolTable::make_scope(const base::usize expected_symbols) {
+IdentSymbolMap SymbolTable::make_scope(const base::usize expected_symbols) const
+{
     IdentSymbolMap scope = make_sema_map<IdentId, SymbolId, IdentIdHash>(*this->arena_, IdentIdHash {});
     scope.reserve(expected_symbols);
     return scope;

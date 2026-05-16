@@ -291,7 +291,8 @@ bool BlockParser::next_unsafe_block_is_tail_expression() const noexcept {
            this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
 }
 
-const syntax::Token& BlockParser::expect_block_start(std::string message) {
+const syntax::Token& BlockParser::expect_block_start(std::string message) const
+{
     return this->expect_recovered(
         TokenKind::l_brace,
         std::move(message),
@@ -299,7 +300,8 @@ const syntax::Token& BlockParser::expect_block_start(std::string message) {
     );
 }
 
-const syntax::Token& BlockParser::expect_block_end(std::string message) {
+const syntax::Token& BlockParser::expect_block_end(std::string message) const
+{
     return this->expect_recovered(
         TokenKind::r_brace,
         std::move(message),

@@ -66,7 +66,8 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
     const std::string_view alias,
     const base::SourceRange& range,
     const bool report_unknown
-) {
+) const
+{
     if (!syntax::is_valid(current_module_) || current_module_.value >= module_.modules.size()) {
         if (report_unknown) {
             report(range, sema_unknown_import_alias_message(alias));
@@ -296,61 +297,36 @@ std::string SemanticAnalyzer::c_symbol_name(const syntax::ModuleId module, const
     return syntax::mangle_c_symbol(module_.modules[module.value].path, name);
 }
 
-std::string SemanticAnalyzer::module_key(const syntax::ModuleId module, const std::string_view name) const {
-    std::string key = std::to_string(module.value);
-    key.reserve(key.size() + 1 + name.size());
-    key.push_back(':');
-    key += name;
-    return key;
-}
-
-std::string SemanticAnalyzer::module_key(
+std::string SemanticAnalyzer::generic_template_key_prefix(
     const syntax::ModuleId module,
     const IdentId name_id,
     const std::string_view fallback_name
 ) const {
     const std::string_view name = this->module_.identifier_text(name_id);
-    return this->module_key(module, name.empty() ? fallback_name : name);
+    const std::string_view key_name = name.empty() ? fallback_name : name;
+    std::string key = std::to_string(module.value);
+    key.reserve(key.size() + 1 + key_name.size());
+    key.push_back(':');
+    key += key_name;
+    return key;
 }
 
-std::string SemanticAnalyzer::function_key(
+FunctionLookupKey SemanticAnalyzer::function_key(
     const syntax::ItemNode& function,
     const syntax::ItemId function_id
 ) const {
     const syntax::ModuleId module = this->item_module(function_id);
     if (this->has_generic_params(function)) {
-        return this->module_key(module, function.name_id, function.name);
+        return this->function_lookup_key(module, function.name_id);
     }
     if (!syntax::is_valid(function.impl_type)) {
-        return this->module_key(module, function.name_id, function.name);
+        return this->function_lookup_key(module, function.name_id);
     }
     const TypeHandle owner_type =
         function.impl_type.value < this->checked_.syntax_type_handles.size()
             ? this->checked_.syntax_type_handles[function.impl_type.value]
             : INVALID_TYPE_HANDLE;
-    return this->method_key(module, owner_type, function.name_id, function.name);
-}
-
-std::string SemanticAnalyzer::method_key(
-    const syntax::ModuleId module,
-    const TypeHandle owner_type,
-    const std::string_view name
-) const {
-    std::string method_name = "#";
-    method_name += std::to_string(owner_type.value);
-    method_name.push_back('.');
-    method_name += name;
-    return module_key(module, method_name);
-}
-
-std::string SemanticAnalyzer::method_key(
-    const syntax::ModuleId module,
-    const TypeHandle owner_type,
-    const IdentId name_id,
-    const std::string_view fallback_name
-) const {
-    const std::string_view name = this->module_.identifier_text(name_id);
-    return this->method_key(module, owner_type, name.empty() ? fallback_name : name);
+    return this->method_function_lookup_key(module, owner_type, function.name_id);
 }
 
 ModuleLookupKey SemanticAnalyzer::module_lookup_key(
@@ -373,6 +349,43 @@ MethodLookupKey SemanticAnalyzer::method_lookup_key(
         owner_type.value,
         name,
     };
+}
+
+FunctionLookupKey SemanticAnalyzer::function_lookup_key(
+    const syntax::ModuleId module,
+    const IdentId name
+) const noexcept {
+    return FunctionLookupKey {
+        module.value,
+        SEMA_LOOKUP_INVALID_KEY_PART,
+        name,
+    };
+}
+
+FunctionLookupKey SemanticAnalyzer::method_function_lookup_key(
+    const syntax::ModuleId module,
+    const TypeHandle owner_type,
+    const IdentId name
+) const noexcept {
+    return FunctionLookupKey {
+        module.value,
+        owner_type.value,
+        name,
+    };
+}
+
+FunctionLookupKey SemanticAnalyzer::function_lookup_key_from_method(
+    const MethodLookupKey key
+) const noexcept {
+    return FunctionLookupKey {
+        key.module,
+        key.owner_type,
+        key.name,
+    };
+}
+
+IdentId SemanticAnalyzer::intern_generated_key(const std::string_view key) {
+    return this->module_.intern_identifier(key);
 }
 
 ModuleLookupKey SemanticAnalyzer::intern_module_lookup_key(
@@ -614,7 +627,8 @@ bool SemanticAnalyzer::can_define_local_name(
     const IdentId name_id,
     const std::string_view name,
     const base::SourceRange& range
-) {
+) const
+{
     if (name.empty()) {
         return true;
     }

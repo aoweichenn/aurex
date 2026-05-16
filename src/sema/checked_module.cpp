@@ -249,10 +249,22 @@ CheckedModule::CheckedModule()
       stmt_local_types(make_sema_vector<TypeHandle>(*this->arena_)),
       item_c_name_ids(make_sema_vector<IdentId>(*this->arena_)),
       coercions(make_sema_vector<CoercionRecord>(*this->arena_)),
-      functions(make_sema_map<std::string, FunctionSignature>(*this->arena_)),
-      structs(make_sema_map<std::string, StructInfo>(*this->arena_)),
-      enum_cases(make_sema_map<std::string, EnumCaseInfo>(*this->arena_)),
-      type_aliases(make_sema_map<std::string, TypeAliasInfo>(*this->arena_)),
+      functions(make_sema_map<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>(
+          *this->arena_,
+          FunctionLookupKeyHash {}
+      )),
+      structs(make_sema_map<ModuleLookupKey, StructInfo, ModuleLookupKeyHash>(
+          *this->arena_,
+          ModuleLookupKeyHash {}
+      )),
+      enum_cases(make_sema_map<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>(
+          *this->arena_,
+          ModuleLookupKeyHash {}
+      )),
+      type_aliases(make_sema_map<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>(
+          *this->arena_,
+          ModuleLookupKeyHash {}
+      )),
       generic_function_instances(make_sema_deque<GenericFunctionInstanceInfo>(*this->arena_)) {}
 
 CheckedModule::CheckedModule(const CheckedModule& other)
@@ -362,7 +374,8 @@ void CheckedModule::copy_from(const CheckedModule& other) {
     this->normalized_ast = other.normalized_ast;
 }
 
-TypeHandleList CheckedModule::make_type_handle_list() {
+TypeHandleList CheckedModule::make_type_handle_list() const
+{
     return make_sema_vector<TypeHandle>(*this->arena_);
 }
 
@@ -373,7 +386,8 @@ TypeHandleList CheckedModule::copy_type_handle_list(const std::span<const TypeHa
     return copy;
 }
 
-SemaVector<StructFieldInfo> CheckedModule::make_struct_field_list() {
+SemaVector<StructFieldInfo> CheckedModule::make_struct_field_list() const
+{
     return make_sema_vector<StructFieldInfo>(*this->arena_);
 }
 
@@ -481,7 +495,8 @@ void CheckedModule::reserve_side_table_storage(
     const base::usize type_count,
     const base::usize stmt_count,
     const base::usize item_count
-) {
+) const
+{
     const base::usize type_handle_slots = expr_count + expr_count + type_count + stmt_count;
     const base::usize ident_slots = expr_count + pattern_count + item_count;
     const base::usize bytes =
@@ -521,15 +536,17 @@ std::string dump_checked_module(const CheckedModule& checked) {
     out << "checked_module\n";
     out << "  expr_types " << checked.expr_types.size() << "\n";
 
-    std::vector<std::string> function_names;
+    std::vector<const FunctionSignature*> function_names;
     function_names.reserve(checked.functions.size());
     for (const auto& entry : checked.functions) {
-        function_names.push_back(entry.first);
+        function_names.push_back(&entry.second);
     }
-    std::sort(function_names.begin(), function_names.end());
+    std::sort(function_names.begin(), function_names.end(), [&](const FunctionSignature* lhs, const FunctionSignature* rhs) {
+        return function_display_name(checked.types, *lhs) < function_display_name(checked.types, *rhs);
+    });
     out << "  functions " << function_names.size() << "\n";
-    for (const std::string& name : function_names) {
-        const FunctionSignature& fn = checked.functions.at(name);
+    for (const FunctionSignature* const fn_ptr : function_names) {
+        const FunctionSignature& fn = *fn_ptr;
         const std::string display_name = function_display_name(checked.types, fn);
         out << "    fn ";
         if (fn.visibility == syntax::Visibility::private_) {
@@ -557,15 +574,17 @@ std::string dump_checked_module(const CheckedModule& checked) {
         out << "\n";
     }
 
-    std::vector<std::string> struct_names;
+    std::vector<const StructInfo*> struct_names;
     struct_names.reserve(checked.structs.size());
     for (const auto& entry : checked.structs) {
-        struct_names.push_back(entry.first);
+        struct_names.push_back(&entry.second);
     }
-    std::sort(struct_names.begin(), struct_names.end());
+    std::sort(struct_names.begin(), struct_names.end(), [&](const StructInfo* lhs, const StructInfo* rhs) {
+        return struct_display_name(checked.types, *lhs) < struct_display_name(checked.types, *rhs);
+    });
     out << "  structs " << struct_names.size() << "\n";
-    for (const std::string& name : struct_names) {
-        const StructInfo& info = checked.structs.at(name);
+    for (const StructInfo* const info_ptr : struct_names) {
+        const StructInfo& info = *info_ptr;
         out << "    struct ";
         if (info.visibility == syntax::Visibility::private_) {
             out << "priv ";
@@ -580,15 +599,17 @@ std::string dump_checked_module(const CheckedModule& checked) {
         out << " fields=" << info.fields.size() << "\n";
     }
 
-    std::vector<std::string> alias_names;
+    std::vector<const TypeAliasInfo*> alias_names;
     alias_names.reserve(checked.type_aliases.size());
     for (const auto& entry : checked.type_aliases) {
-        alias_names.push_back(entry.first);
+        alias_names.push_back(&entry.second);
     }
-    std::sort(alias_names.begin(), alias_names.end());
+    std::sort(alias_names.begin(), alias_names.end(), [](const TypeAliasInfo* lhs, const TypeAliasInfo* rhs) {
+        return lhs->name < rhs->name;
+    });
     out << "  type_aliases " << alias_names.size() << "\n";
-    for (const std::string& name : alias_names) {
-        const TypeAliasInfo& alias = checked.type_aliases.at(name);
+    for (const TypeAliasInfo* const alias_ptr : alias_names) {
+        const TypeAliasInfo& alias = *alias_ptr;
         TypeHandle resolved = INVALID_TYPE_HANDLE;
         if (alias.target.value < checked.syntax_type_handles.size()) {
             resolved = checked.syntax_type_handles[alias.target.value];
@@ -601,14 +622,16 @@ std::string dump_checked_module(const CheckedModule& checked) {
     }
 
     out << "  enum_cases " << checked.enum_cases.size() << "\n";
-    std::vector<std::string> enum_case_names;
+    std::vector<const EnumCaseInfo*> enum_case_names;
     enum_case_names.reserve(checked.enum_cases.size());
     for (const auto& entry : checked.enum_cases) {
-        enum_case_names.push_back(entry.first);
+        enum_case_names.push_back(&entry.second);
     }
-    std::sort(enum_case_names.begin(), enum_case_names.end());
-    for (const std::string& name : enum_case_names) {
-        const EnumCaseInfo& info = checked.enum_cases.at(name);
+    std::sort(enum_case_names.begin(), enum_case_names.end(), [&](const EnumCaseInfo* lhs, const EnumCaseInfo* rhs) {
+        return enum_case_display_name(checked.types, *lhs) < enum_case_display_name(checked.types, *rhs);
+    });
+    for (const EnumCaseInfo* const info_ptr : enum_case_names) {
+        const EnumCaseInfo& info = *info_ptr;
         out << "    case " << enum_case_display_name(checked.types, info) << " : " << checked.types.display_name(info.type);
         if (!info.payload_types.empty()) {
             out << "(";

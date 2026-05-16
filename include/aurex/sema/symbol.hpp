@@ -67,7 +67,7 @@ public:
     [[nodiscard]] const Symbol* get(SymbolId id) const noexcept;
 
 private:
-    [[nodiscard]] IdentSymbolMap make_scope(base::usize expected_symbols);
+    [[nodiscard]] IdentSymbolMap make_scope(base::usize expected_symbols) const;
     void copy_from(const SymbolTable& other);
     void swap(SymbolTable& other) noexcept;
 

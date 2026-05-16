@@ -60,6 +60,7 @@ private:
 
 struct StructFieldInfo {
     std::string name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::string c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
@@ -103,6 +104,11 @@ struct TypeAliasInfo {
     base::SourceRange range {};
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
+
+using CheckedFunctionMap = SemaMap<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>;
+using CheckedModuleInfoMap = SemaMap<ModuleLookupKey, StructInfo, ModuleLookupKeyHash>;
+using CheckedEnumCaseMap = SemaMap<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>;
+using CheckedTypeAliasMap = SemaMap<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>;
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -154,7 +160,7 @@ private:
 };
 
 struct GenericFunctionInstanceInfo {
-    std::string key;
+    FunctionLookupKey key;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
     FunctionSignature signature;
     GenericSideTables side_tables;
@@ -199,10 +205,10 @@ public:
     SemaTypeTable stmt_local_types;
     SemaIdentTable item_c_name_ids;
     SemaVector<CoercionRecord> coercions;
-    SemaMap<std::string, FunctionSignature> functions;
-    SemaMap<std::string, StructInfo> structs;
-    SemaMap<std::string, EnumCaseInfo> enum_cases;
-    SemaMap<std::string, TypeAliasInfo> type_aliases;
+    CheckedFunctionMap functions;
+    CheckedModuleInfoMap structs;
+    CheckedEnumCaseMap enum_cases;
+    CheckedTypeAliasMap type_aliases;
     SemaDeque<GenericFunctionInstanceInfo> generic_function_instances;
     NormalizedAstOverlay normalized_ast;
 
@@ -214,9 +220,9 @@ public:
         return this->c_names.text(id);
     }
 
-    [[nodiscard]] TypeHandleList make_type_handle_list();
+    [[nodiscard]] TypeHandleList make_type_handle_list() const;
     [[nodiscard]] TypeHandleList copy_type_handle_list(std::span<const TypeHandle> values);
-    [[nodiscard]] SemaVector<StructFieldInfo> make_struct_field_list();
+    [[nodiscard]] SemaVector<StructFieldInfo> make_struct_field_list() const;
     [[nodiscard]] SemaVector<StructFieldInfo> copy_struct_field_list(std::span<const StructFieldInfo> values);
     [[nodiscard]] FunctionSignature make_function_signature();
     [[nodiscard]] StructInfo make_struct_info();
@@ -231,7 +237,7 @@ public:
         base::usize type_count,
         base::usize stmt_count,
         base::usize item_count
-    );
+    ) const;
 
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;

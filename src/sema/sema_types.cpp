@@ -840,7 +840,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
 }
 
 TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee) {
-    const std::string key = module_key(alias.module, alias.name_id, alias.name);
+    const ModuleLookupKey key = this->module_lookup_key(alias.module, alias.name_id);
     if (const auto found = resolved_type_aliases_.find(key); found != resolved_type_aliases_.end()) {
         return found->second;
     }
@@ -1811,6 +1811,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             const syntax::FieldExprPayload* const projection_expr =
                 this->module_.exprs.field_payload(projection->expr.value);
             const std::string_view field_name = projection_expr == nullptr ? std::string_view {} : projection_expr->field_name;
+            const IdentId field_name_id = projection_expr == nullptr ? INVALID_IDENT_ID : projection_expr->field_name_id;
             TypeHandle object_type = input_type;
             bool projection_is_indirect = false;
             output_is_writable = place.is_writable;
@@ -1833,7 +1834,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             } else if (const StructInfo* info = this->find_struct(object_type); info != nullptr && !info->is_opaque) {
                 bool saw_field = false;
                 for (const StructFieldInfo& field : info->fields) {
-                    if (field.name != field_name) {
+                    if (field.name_id != field_name_id) {
                         continue;
                     }
                     saw_field = true;

@@ -142,8 +142,8 @@ void indent(std::ostringstream& out, const int depth) {
     }
 }
 
-template <typename T>
-[[nodiscard]] std::span<const T> readonly_span(const std::vector<T>& values) noexcept {
+template <typename T, typename Allocator>
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T, Allocator>& values) noexcept {
     return {values.data(), values.size()};
 }
 
@@ -265,7 +265,7 @@ struct ExprDumpView {
         break;
     }
     case ExprKind::tuple_literal: {
-        const std::vector<ExprId>& payload = *module.exprs.tuple_elements(id.value);
+        const AstArenaVector<ExprId>& payload = *module.exprs.tuple_elements(id.value);
         view.tuple_elements = readonly_span(payload);
         break;
     }

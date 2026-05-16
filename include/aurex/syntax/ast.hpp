@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -18,6 +19,57 @@ namespace aurex::syntax {
 
 template <typename T>
 using AstArenaVector = base::BumpVector<T>;
+
+template <typename T>
+[[nodiscard]] AstArenaVector<T> make_ast_arena_vector(base::BumpAllocator& arena) {
+    return AstArenaVector<T>(base::BumpAllocatorAdapter<T> {arena});
+}
+
+template <typename T>
+[[nodiscard]] bool ast_arena_vector_uses_arena(
+    const AstArenaVector<T>& values,
+    base::BumpAllocator& arena
+) noexcept {
+    return values.get_allocator() == base::BumpAllocatorAdapter<T> {arena};
+}
+
+template <typename T, typename Allocator>
+[[nodiscard]] AstArenaVector<T> copy_ast_arena_vector(
+    base::BumpAllocator& arena,
+    const std::vector<T, Allocator>& values
+) {
+    AstArenaVector<T> copy = make_ast_arena_vector<T>(arena);
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
+template <typename T>
+[[nodiscard]] AstArenaVector<T> move_or_copy_ast_arena_vector(
+    base::BumpAllocator& arena,
+    AstArenaVector<T>&& values
+) {
+    if (ast_arena_vector_uses_arena(values, arena)) {
+        return std::move(values);
+    }
+    return copy_ast_arena_vector(arena, values);
+}
+
+template <typename T, typename Allocator>
+[[nodiscard]] std::vector<T> copy_std_vector(const std::vector<T, Allocator>& values) {
+    std::vector<T> copy;
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
+
+template <typename T, typename Allocator>
+[[nodiscard]] AstArenaVector<T> copy_detached_ast_vector(const std::vector<T, Allocator>& values) {
+    AstArenaVector<T> copy;
+    copy.reserve(values.size());
+    copy.insert(copy.end(), values.begin(), values.end());
+    return copy;
+}
 
 inline constexpr base::usize SYNTAX_AST_RESERVE_EXPR_TOKEN_DIVISOR = 8;
 inline constexpr base::usize SYNTAX_AST_RESERVE_STMT_TOKEN_DIVISOR = 16;
@@ -166,11 +218,11 @@ struct GenericParamDecl {
 struct GenericConstraintDecl {
     std::string_view param_name;
     base::SourceRange param_range {};
-    std::vector<std::string_view> capability_names;
-    std::vector<base::SourceRange> capability_ranges;
+    AstArenaVector<std::string_view> capability_names;
+    AstArenaVector<base::SourceRange> capability_ranges;
     base::SourceRange range {};
     IdentId param_name_id = INVALID_IDENT_ID;
-    std::vector<IdentId> capability_name_ids;
+    AstArenaVector<IdentId> capability_name_ids;
 };
 
 struct TypeNode {
@@ -354,12 +406,12 @@ struct PostfixOp {
     base::SourceRange range {};
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<PostfixBracketArg> bracket_args;
+    AstArenaVector<PostfixBracketArg> bracket_args;
     bool bracket_is_slice = false;
     ExprId slice_start = INVALID_EXPR_ID;
     ExprId slice_end = INVALID_EXPR_ID;
-    std::vector<ExprId> args;
-    std::vector<FieldInit> field_inits;
+    AstArenaVector<ExprId> args;
+    AstArenaVector<FieldInit> field_inits;
 };
 
 struct MatchArm {
@@ -378,12 +430,12 @@ struct TypeNodeHeader {
 struct NamedTypePayload {
     std::string_view scope_name;
     base::SourceRange scope_range {};
-    std::vector<std::string_view> scope_parts;
+    AstArenaVector<std::string_view> scope_parts;
     std::string_view name;
     IdentId scope_name_id = INVALID_IDENT_ID;
-    std::vector<IdentId> scope_part_ids;
+    AstArenaVector<IdentId> scope_part_ids;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<TypeId> type_args;
+    AstArenaVector<TypeId> type_args;
 };
 
 struct PointerTypePayload {
@@ -405,7 +457,7 @@ struct FunctionTypePayload {
     FunctionCallConv call_conv = FunctionCallConv::aurex;
     bool is_unsafe = false;
     bool is_variadic = false;
-    std::vector<TypeId> params;
+    AstArenaVector<TypeId> params;
     TypeId return_type = INVALID_TYPE_ID;
 };
 
@@ -419,7 +471,7 @@ struct TypeNodePayloadArena {
           references(base::BumpAllocatorAdapter<PointerTypePayload> {arena}),
           arrays(base::BumpAllocatorAdapter<ArrayTypePayload> {arena}),
           slices(base::BumpAllocatorAdapter<SliceTypePayload> {arena}),
-          tuples(base::BumpAllocatorAdapter<std::vector<TypeId>> {arena}),
+          tuples(base::BumpAllocatorAdapter<AstArenaVector<TypeId>> {arena}),
           functions(base::BumpAllocatorAdapter<FunctionTypePayload> {arena}) {}
 
     void swap(TypeNodePayloadArena& other) noexcept {
@@ -439,7 +491,7 @@ struct TypeNodePayloadArena {
     AstArenaVector<PointerTypePayload> references;
     AstArenaVector<ArrayTypePayload> arrays;
     AstArenaVector<SliceTypePayload> slices;
-    AstArenaVector<std::vector<TypeId>> tuples;
+    AstArenaVector<AstArenaVector<TypeId>> tuples;
     AstArenaVector<FunctionTypePayload> functions;
 };
 
@@ -554,6 +606,11 @@ public:
     }
 
 private:
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+        return copy_ast_arena_vector(*this->arena_, values);
+    }
+
     [[nodiscard]] base::u32 store_payload(TypeNode node) {
         switch (node.kind) {
         case TypeKind::primitive:
@@ -562,12 +619,12 @@ private:
             return this->push_payload(this->payloads_.named, NamedTypePayload {
                 node.scope_name,
                 node.scope_range,
-                std::move(node.scope_parts),
+                this->copy_list(node.scope_parts),
                 node.name,
                 node.scope_name_id,
-                std::move(node.scope_part_ids),
+                this->copy_list(node.scope_part_ids),
                 node.name_id,
-                std::move(node.type_args),
+                this->copy_list(node.type_args),
             });
         case TypeKind::pointer:
             return this->push_payload(this->payloads_.pointers, PointerTypePayload {
@@ -590,13 +647,13 @@ private:
                 node.slice_element,
             });
         case TypeKind::tuple:
-            return this->push_payload(this->payloads_.tuples, std::move(node.tuple_elements));
+            return this->push_payload(this->payloads_.tuples, this->copy_list(node.tuple_elements));
         case TypeKind::function:
             return this->push_payload(this->payloads_.functions, FunctionTypePayload {
                 node.function_call_conv,
                 node.function_is_unsafe,
                 node.function_is_variadic,
-                std::move(node.function_params),
+                this->copy_list(node.function_params),
                 node.function_return,
             });
         }
@@ -616,12 +673,12 @@ private:
             const NamedTypePayload& payload = this->payloads_.named[header.payload];
             node.scope_name = payload.scope_name;
             node.scope_range = payload.scope_range;
-            node.scope_parts = payload.scope_parts;
+            node.scope_parts = copy_std_vector(payload.scope_parts);
             node.name = payload.name;
             node.scope_name_id = payload.scope_name_id;
-            node.scope_part_ids = payload.scope_part_ids;
+            node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
             node.name_id = payload.name_id;
-            node.type_args = payload.type_args;
+            node.type_args = copy_std_vector(payload.type_args);
             break;
         }
         case TypeKind::pointer: {
@@ -649,14 +706,14 @@ private:
             break;
         }
         case TypeKind::tuple:
-            node.tuple_elements = this->payloads_.tuples[header.payload];
+            node.tuple_elements = copy_std_vector(this->payloads_.tuples[header.payload]);
             break;
         case TypeKind::function: {
             const FunctionTypePayload& payload = this->payloads_.functions[header.payload];
             node.function_call_conv = payload.call_conv;
             node.function_is_unsafe = payload.is_unsafe;
             node.function_is_variadic = payload.is_variadic;
-            node.function_params = payload.params;
+            node.function_params = copy_std_vector(payload.params);
             node.function_return = payload.return_type;
             break;
         }
@@ -677,12 +734,12 @@ private:
             NamedTypePayload& payload = this->payloads_.named[header.payload];
             node.scope_name = payload.scope_name;
             node.scope_range = payload.scope_range;
-            node.scope_parts = std::move(payload.scope_parts);
+            node.scope_parts = copy_std_vector(payload.scope_parts);
             node.name = payload.name;
             node.scope_name_id = payload.scope_name_id;
-            node.scope_part_ids = std::move(payload.scope_part_ids);
+            node.scope_part_ids = copy_std_vector(payload.scope_part_ids);
             node.name_id = payload.name_id;
-            node.type_args = std::move(payload.type_args);
+            node.type_args = copy_std_vector(payload.type_args);
             break;
         }
         case TypeKind::pointer: {
@@ -710,14 +767,14 @@ private:
             break;
         }
         case TypeKind::tuple:
-            node.tuple_elements = std::move(this->payloads_.tuples[header.payload]);
+            node.tuple_elements = copy_std_vector(this->payloads_.tuples[header.payload]);
             break;
         case TypeKind::function: {
             FunctionTypePayload& payload = this->payloads_.functions[header.payload];
             node.function_call_conv = payload.call_conv;
             node.function_is_unsafe = payload.is_unsafe;
             node.function_is_variadic = payload.is_variadic;
-            node.function_params = std::move(payload.params);
+            node.function_params = copy_std_vector(payload.params);
             node.function_return = payload.return_type;
             break;
         }
@@ -733,8 +790,10 @@ private:
     }
 
     void copy_from(const TypeNodeList& other) {
-        this->headers_.assign(other.headers_.begin(), other.headers_.end());
-        this->payloads_ = other.payloads_;
+        this->reserve(other.size());
+        for (base::usize i = 0; i < other.size(); ++i) {
+            static_cast<void>(this->append(other.load(i)));
+        }
     }
 
     void swap(TypeNodeList& other) noexcept {
@@ -759,12 +818,12 @@ struct NameExprPayload {
     std::string_view text;
     IdentId scope_name_id = INVALID_IDENT_ID;
     IdentId text_id = INVALID_IDENT_ID;
-    std::vector<TypeId> type_args;
+    AstArenaVector<TypeId> type_args;
 };
 
 struct GenericApplyExprPayload {
     ExprId callee = INVALID_EXPR_ID;
-    std::vector<TypeId> type_args;
+    AstArenaVector<TypeId> type_args;
 };
 
 struct UnaryExprPayload {
@@ -780,7 +839,7 @@ struct BinaryExprPayload {
 
 struct CallExprPayload {
     ExprId callee = INVALID_EXPR_ID;
-    std::vector<ExprId> args;
+    AstArenaVector<ExprId> args;
 };
 
 struct IfExprPayload {
@@ -797,18 +856,18 @@ struct BlockExprPayload {
 
 struct MatchExprPayload {
     ExprId value = INVALID_EXPR_ID;
-    std::vector<MatchArm> arms;
+    AstArenaVector<MatchArm> arms;
 };
 
 struct ArrayExprPayload {
-    std::vector<ExprId> elements;
+    AstArenaVector<ExprId> elements;
     ExprId repeat_value = INVALID_EXPR_ID;
     ExprId repeat_count = INVALID_EXPR_ID;
 };
 
 struct PostfixChainExprPayload {
     ExprId base = INVALID_EXPR_ID;
-    std::vector<PostfixOp> ops;
+    AstArenaVector<PostfixOp> ops;
 };
 
 struct FieldExprPayload {
@@ -835,8 +894,8 @@ struct StructLiteralExprPayload {
     std::string_view name;
     IdentId scope_name_id = INVALID_IDENT_ID;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<TypeId> type_args;
-    std::vector<FieldInit> field_inits;
+    AstArenaVector<TypeId> type_args;
+    AstArenaVector<FieldInit> field_inits;
 };
 
 struct CastExprPayload {
@@ -864,7 +923,7 @@ struct ExprNodePayloadArena {
           blocks(base::BumpAllocatorAdapter<BlockExprPayload> {arena}),
           matches(base::BumpAllocatorAdapter<MatchExprPayload> {arena}),
           arrays(base::BumpAllocatorAdapter<ArrayExprPayload> {arena}),
-          tuples(base::BumpAllocatorAdapter<std::vector<ExprId>> {arena}),
+          tuples(base::BumpAllocatorAdapter<AstArenaVector<ExprId>> {arena}),
           postfix_chains(base::BumpAllocatorAdapter<PostfixChainExprPayload> {arena}),
           fields(base::BumpAllocatorAdapter<FieldExprPayload> {arena}),
           indexes(base::BumpAllocatorAdapter<IndexExprPayload> {arena}),
@@ -902,7 +961,7 @@ struct ExprNodePayloadArena {
     AstArenaVector<BlockExprPayload> blocks;
     AstArenaVector<MatchExprPayload> matches;
     AstArenaVector<ArrayExprPayload> arrays;
-    AstArenaVector<std::vector<ExprId>> tuples;
+    AstArenaVector<AstArenaVector<ExprId>> tuples;
     AstArenaVector<PostfixChainExprPayload> postfix_chains;
     AstArenaVector<FieldExprPayload> fields;
     AstArenaVector<IndexExprPayload> indexes;
@@ -975,6 +1034,19 @@ public:
 
     [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
         return this->headers_[index].range;
+    }
+
+    template <typename T>
+    [[nodiscard]] AstArenaVector<T> make_list() {
+        return make_ast_arena_vector<T>(*this->arena_);
+    }
+
+    [[nodiscard]] PostfixOp make_postfix_op() {
+        PostfixOp op;
+        op.bracket_args = this->make_list<PostfixBracketArg>();
+        op.args = this->make_list<ExprId>();
+        op.field_inits = this->make_list<FieldInit>();
+        return op;
     }
 
     [[nodiscard]] const LiteralExprPayload* literal_payload(const base::usize index) const noexcept {
@@ -1120,14 +1192,14 @@ public:
         return &this->payloads_.arrays[this->headers_[index].payload];
     }
 
-    [[nodiscard]] const std::vector<ExprId>* tuple_elements(const base::usize index) const noexcept {
+    [[nodiscard]] const AstArenaVector<ExprId>* tuple_elements(const base::usize index) const noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::tuple_literal) {
             return nullptr;
         }
         return &this->payloads_.tuples[this->headers_[index].payload];
     }
 
-    [[nodiscard]] std::vector<ExprId>* tuple_elements(const base::usize index) noexcept {
+    [[nodiscard]] AstArenaVector<ExprId>* tuple_elements(const base::usize index) noexcept {
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::tuple_literal) {
             return nullptr;
         }
@@ -1152,7 +1224,11 @@ public:
         if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
             return {};
         }
-        return std::move(this->payloads_.postfix_chains[this->headers_[index].payload]);
+        PostfixChainExprPayload& payload = this->payloads_.postfix_chains[this->headers_[index].payload];
+        return PostfixChainExprPayload {
+            payload.base,
+            std::move(payload.ops),
+        };
     }
 
     [[nodiscard]] const FieldExprPayload* field_payload(const base::usize index) const noexcept {
@@ -1271,6 +1347,7 @@ public:
         );
     }
 
+    template <typename TypeArgAllocator>
     [[nodiscard]] ExprId append_name(
         const base::SourceRange& range,
         const std::string_view scope_name,
@@ -1278,7 +1355,7 @@ public:
         const std::string_view text,
         const IdentId scope_name_id,
         const IdentId text_id,
-        std::vector<TypeId> type_args
+        std::vector<TypeId, TypeArgAllocator> type_args
     ) {
         return this->append_header(
             ExprKind::name,
@@ -1290,7 +1367,7 @@ public:
                 text,
                 scope_name_id,
                 text_id,
-                std::move(type_args)
+                this->copy_or_move_list(std::move(type_args))
             )
         );
     }
@@ -1299,15 +1376,16 @@ public:
         return this->append_generic_apply(range, payload.callee, std::move(payload.type_args));
     }
 
+    template <typename TypeArgAllocator>
     [[nodiscard]] ExprId append_generic_apply(
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<TypeId> type_args
+        std::vector<TypeId, TypeArgAllocator> type_args
     ) {
         return this->append_header(
             ExprKind::generic_apply,
             range,
-            this->emplace_payload(this->payloads_.generic_applies, callee, std::move(type_args))
+            this->emplace_payload(this->payloads_.generic_applies, callee, this->copy_or_move_list(std::move(type_args)))
         );
     }
 
@@ -1349,13 +1427,18 @@ public:
         return this->append_call(kind, range, payload.callee, std::move(payload.args));
     }
 
+    template <typename ArgAllocator>
     [[nodiscard]] ExprId append_call(
         const ExprKind kind,
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<ExprId> args
+        std::vector<ExprId, ArgAllocator> args
     ) {
-        return this->append_header(kind, range, this->emplace_payload(this->payloads_.calls, callee, std::move(args)));
+        return this->append_header(
+            kind,
+            range,
+            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args)))
+        );
     }
 
     [[nodiscard]] ExprId append_if(const base::SourceRange& range, const IfExprPayload payload) {
@@ -1397,48 +1480,60 @@ public:
         return this->append_match(range, payload.value, std::move(payload.arms));
     }
 
+    template <typename ArmAllocator>
     [[nodiscard]] ExprId append_match(
         const base::SourceRange& range,
         const ExprId value,
-        std::vector<MatchArm> arms
+        std::vector<MatchArm, ArmAllocator> arms
     ) {
-        return this->append_header(ExprKind::match_expr, range, this->emplace_payload(this->payloads_.matches, value, std::move(arms)));
+        return this->append_header(
+            ExprKind::match_expr,
+            range,
+            this->emplace_payload(this->payloads_.matches, value, this->copy_or_move_list(std::move(arms)))
+        );
     }
 
     [[nodiscard]] ExprId append_array(const base::SourceRange& range, ArrayExprPayload payload) {
         return this->append_array(range, std::move(payload.elements), payload.repeat_value, payload.repeat_count);
     }
 
+    template <typename ElementAllocator>
     [[nodiscard]] ExprId append_array(
         const base::SourceRange& range,
-        std::vector<ExprId> elements,
+        std::vector<ExprId, ElementAllocator> elements,
         const ExprId repeat_value,
         const ExprId repeat_count
     ) {
         return this->append_header(
             ExprKind::array_literal,
             range,
-            this->emplace_payload(this->payloads_.arrays, std::move(elements), repeat_value, repeat_count)
+            this->emplace_payload(this->payloads_.arrays, this->copy_or_move_list(std::move(elements)), repeat_value, repeat_count)
         );
     }
 
-    [[nodiscard]] ExprId append_tuple(const base::SourceRange& range, std::vector<ExprId> elements) {
-        return this->append_header(ExprKind::tuple_literal, range, this->emplace_payload(this->payloads_.tuples, std::move(elements)));
+    template <typename ElementAllocator>
+    [[nodiscard]] ExprId append_tuple(const base::SourceRange& range, std::vector<ExprId, ElementAllocator> elements) {
+        return this->append_header(
+            ExprKind::tuple_literal,
+            range,
+            this->emplace_payload(this->payloads_.tuples, this->copy_or_move_list(std::move(elements)))
+        );
     }
 
     [[nodiscard]] ExprId append_postfix_chain(const base::SourceRange& range, PostfixChainExprPayload payload) {
         return this->append_postfix_chain(range, payload.base, std::move(payload.ops));
     }
 
+    template <typename OpAllocator>
     [[nodiscard]] ExprId append_postfix_chain(
         const base::SourceRange& range,
         const ExprId base,
-        std::vector<PostfixOp> ops
+        std::vector<PostfixOp, OpAllocator> ops
     ) {
         return this->append_header(
             ExprKind::postfix_chain,
             range,
-            this->emplace_payload(this->payloads_.postfix_chains, base, std::move(ops))
+            this->emplace_payload(this->payloads_.postfix_chains, base, this->copy_or_move_postfix_ops(std::move(ops)))
         );
     }
 
@@ -1494,6 +1589,7 @@ public:
         );
     }
 
+    template <typename TypeArgAllocator, typename FieldInitAllocator>
     [[nodiscard]] ExprId append_struct_literal(
         const base::SourceRange& range,
         const ExprId object,
@@ -1502,8 +1598,8 @@ public:
         const std::string_view name,
         const IdentId scope_name_id,
         const IdentId name_id,
-        std::vector<TypeId> type_args,
-        std::vector<FieldInit> field_inits
+        std::vector<TypeId, TypeArgAllocator> type_args,
+        std::vector<FieldInit, FieldInitAllocator> field_inits
     ) {
         return this->append_header(
             ExprKind::struct_literal,
@@ -1516,8 +1612,8 @@ public:
                 name,
                 scope_name_id,
                 name_id,
-                std::move(type_args),
-                std::move(field_inits)
+                this->copy_or_move_list(std::move(type_args)),
+                this->copy_or_move_list(std::move(field_inits))
             )
         );
     }
@@ -1547,17 +1643,18 @@ public:
         this->set_generic_apply(index, range, payload.callee, std::move(payload.type_args));
     }
 
+    template <typename TypeArgAllocator>
     void set_generic_apply(
         const base::usize index,
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<TypeId> type_args
+        std::vector<TypeId, TypeArgAllocator> type_args
     ) {
         this->set_header(
             index,
             ExprKind::generic_apply,
             range,
-            this->emplace_payload(this->payloads_.generic_applies, callee, std::move(type_args))
+            this->emplace_payload(this->payloads_.generic_applies, callee, this->copy_or_move_list(std::move(type_args)))
         );
     }
 
@@ -1579,14 +1676,20 @@ public:
         this->set_call(index, kind, range, payload.callee, std::move(payload.args));
     }
 
+    template <typename ArgAllocator>
     void set_call(
         const base::usize index,
         const ExprKind kind,
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<ExprId> args
+        std::vector<ExprId, ArgAllocator> args
     ) {
-        this->set_header(index, kind, range, this->emplace_payload(this->payloads_.calls, callee, std::move(args)));
+        this->set_header(
+            index,
+            kind,
+            range,
+            this->emplace_payload(this->payloads_.calls, callee, this->copy_or_move_list(std::move(args)))
+        );
     }
 
     void set_field(const base::usize index, const base::SourceRange& range, const FieldExprPayload& payload) {
@@ -1650,6 +1753,7 @@ public:
         );
     }
 
+    template <typename TypeArgAllocator, typename FieldInitAllocator>
     void set_struct_literal(
         const base::usize index,
         const base::SourceRange& range,
@@ -1659,8 +1763,8 @@ public:
         const std::string_view name,
         const IdentId scope_name_id,
         const IdentId name_id,
-        std::vector<TypeId> type_args,
-        std::vector<FieldInit> field_inits
+        std::vector<TypeId, TypeArgAllocator> type_args,
+        std::vector<FieldInit, FieldInitAllocator> field_inits
     ) {
         this->set_header(
             index,
@@ -1674,8 +1778,8 @@ public:
                 name,
                 scope_name_id,
                 name_id,
-                std::move(type_args),
-                std::move(field_inits)
+                this->copy_or_move_list(std::move(type_args)),
+                this->copy_or_move_list(std::move(field_inits))
             )
         );
     }
@@ -1785,7 +1889,7 @@ private:
                allocation_bytes(plan.blocks, sizeof(BlockExprPayload)) +
                allocation_bytes(plan.matches, sizeof(MatchExprPayload)) +
                allocation_bytes(plan.arrays, sizeof(ArrayExprPayload)) +
-               allocation_bytes(plan.tuples, sizeof(std::vector<ExprId>)) +
+               allocation_bytes(plan.tuples, sizeof(AstArenaVector<ExprId>)) +
                allocation_bytes(plan.postfix_chains, sizeof(PostfixChainExprPayload)) +
                allocation_bytes(plan.fields, sizeof(FieldExprPayload)) +
                allocation_bytes(plan.indexes, sizeof(IndexExprPayload)) +
@@ -1826,9 +1930,289 @@ private:
         return index;
     }
 
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+        return copy_ast_arena_vector(*this->arena_, values);
+    }
+
+    template <typename T>
+    [[nodiscard]] AstArenaVector<T> copy_or_move_list(AstArenaVector<T>&& values) {
+        return move_or_copy_ast_arena_vector(*this->arena_, std::move(values));
+    }
+
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_or_move_list(std::vector<T, Allocator>&& values) {
+        return this->copy_list(values);
+    }
+
+    [[nodiscard]] bool postfix_op_lists_use_this_arena(const PostfixOp& op) const noexcept {
+        return ast_arena_vector_uses_arena(op.bracket_args, *this->arena_) &&
+               ast_arena_vector_uses_arena(op.args, *this->arena_) &&
+               ast_arena_vector_uses_arena(op.field_inits, *this->arena_);
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] bool postfix_ops_use_this_arena(const std::vector<PostfixOp, Allocator>& ops) const noexcept {
+        for (const PostfixOp& op : ops) {
+            if (!this->postfix_op_lists_use_this_arena(op)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] PostfixOp copy_postfix_op(const PostfixOp& op) {
+        PostfixOp copy;
+        copy.kind = op.kind;
+        copy.range = op.range;
+        copy.name = op.name;
+        copy.name_id = op.name_id;
+        copy.bracket_args = this->copy_list(op.bracket_args);
+        copy.bracket_is_slice = op.bracket_is_slice;
+        copy.slice_start = op.slice_start;
+        copy.slice_end = op.slice_end;
+        copy.args = this->copy_list(op.args);
+        copy.field_inits = this->copy_list(op.field_inits);
+        return copy;
+    }
+
+    [[nodiscard]] PostfixOp copy_or_move_postfix_op(PostfixOp&& op) {
+        PostfixOp copy;
+        copy.kind = op.kind;
+        copy.range = op.range;
+        copy.name = op.name;
+        copy.name_id = op.name_id;
+        copy.bracket_args = this->copy_or_move_list(std::move(op.bracket_args));
+        copy.bracket_is_slice = op.bracket_is_slice;
+        copy.slice_start = op.slice_start;
+        copy.slice_end = op.slice_end;
+        copy.args = this->copy_or_move_list(std::move(op.args));
+        copy.field_inits = this->copy_or_move_list(std::move(op.field_inits));
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<PostfixOp> copy_postfix_ops(const std::vector<PostfixOp, Allocator>& ops) {
+        AstArenaVector<PostfixOp> copy = make_ast_arena_vector<PostfixOp>(*this->arena_);
+        copy.reserve(ops.size());
+        for (const PostfixOp& op : ops) {
+            copy.push_back(this->copy_postfix_op(op));
+        }
+        return copy;
+    }
+
+    [[nodiscard]] AstArenaVector<PostfixOp> copy_or_move_postfix_ops(AstArenaVector<PostfixOp>&& ops) {
+        if (ast_arena_vector_uses_arena(ops, *this->arena_) && this->postfix_ops_use_this_arena(ops)) {
+            return std::move(ops);
+        }
+        AstArenaVector<PostfixOp> copy = make_ast_arena_vector<PostfixOp>(*this->arena_);
+        copy.reserve(ops.size());
+        for (PostfixOp& op : ops) {
+            copy.push_back(this->copy_or_move_postfix_op(std::move(op)));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<PostfixOp> copy_or_move_postfix_ops(std::vector<PostfixOp, Allocator>&& ops) {
+        return this->copy_postfix_ops(ops);
+    }
+
+    [[nodiscard]] PostfixChainExprPayload copy_postfix_chain_payload(const PostfixChainExprPayload& payload) {
+        return PostfixChainExprPayload {
+            payload.base,
+            this->copy_postfix_ops(payload.ops),
+        };
+    }
+
+    void copy_append_from(const ExprNodeList& other, const base::usize index) {
+        const ExprKind kind = other.kind(index);
+        const base::SourceRange range = other.range(index);
+        if (kind == ExprKind::invalid) {
+            static_cast<void>(this->append_invalid(range));
+            return;
+        }
+        if (this->is_literal(kind)) {
+            const LiteralExprPayload* const payload = other.literal_payload(index);
+            static_cast<void>(this->append_literal(kind, range, payload != nullptr ? payload->text : std::string_view {}));
+            return;
+        }
+        switch (kind) {
+        case ExprKind::name: {
+            const NameExprPayload* const payload = other.name_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_name(
+                      range,
+                      {},
+                      {},
+                      {},
+                      INVALID_IDENT_ID,
+                      INVALID_IDENT_ID,
+                      std::vector<TypeId> {}
+                  )
+                : this->append_name(
+                      range,
+                      payload->scope_name,
+                      payload->scope_range,
+                      payload->text,
+                      payload->scope_name_id,
+                      payload->text_id,
+                      copy_std_vector(payload->type_args)
+                  ));
+            break;
+        }
+        case ExprKind::generic_apply: {
+            const GenericApplyExprPayload* const payload = other.generic_apply_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_generic_apply(range, INVALID_EXPR_ID, std::vector<TypeId> {})
+                : this->append_generic_apply(range, payload->callee, copy_std_vector(payload->type_args)));
+            break;
+        }
+        case ExprKind::unary:
+        case ExprKind::try_expr: {
+            const UnaryExprPayload* const payload = other.unary_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_unary(kind, range, UnaryOp::logical_not, INVALID_EXPR_ID)
+                : this->append_unary(kind, range, payload->op, payload->operand));
+            break;
+        }
+        case ExprKind::binary: {
+            const BinaryExprPayload* const payload = other.binary_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_binary(range, BinaryOp::add, INVALID_EXPR_ID, INVALID_EXPR_ID)
+                : this->append_binary(range, payload->op, payload->lhs, payload->rhs));
+            break;
+        }
+        case ExprKind::call:
+        case ExprKind::str_from_bytes_unchecked: {
+            const CallExprPayload* const payload = other.call_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_call(kind, range, INVALID_EXPR_ID, std::vector<ExprId> {})
+                : this->append_call(kind, range, payload->callee, copy_std_vector(payload->args)));
+            break;
+        }
+        case ExprKind::if_expr: {
+            const IfExprPayload* const payload = other.if_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_if(range, INVALID_EXPR_ID, INVALID_PATTERN_ID, INVALID_EXPR_ID, INVALID_EXPR_ID)
+                : this->append_if(range, payload->condition, payload->condition_pattern, payload->then_expr, payload->else_expr));
+            break;
+        }
+        case ExprKind::block_expr:
+        case ExprKind::unsafe_block: {
+            const BlockExprPayload* const payload = other.block_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_block(kind, range, INVALID_STMT_ID, INVALID_EXPR_ID)
+                : this->append_block(kind, range, payload->block, payload->result));
+            break;
+        }
+        case ExprKind::match_expr: {
+            const MatchExprPayload* const payload = other.match_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_match(range, INVALID_EXPR_ID, std::vector<MatchArm> {})
+                : this->append_match(range, payload->value, copy_std_vector(payload->arms)));
+            break;
+        }
+        case ExprKind::array_literal: {
+            const ArrayExprPayload* const payload = other.array_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_array(range, std::vector<ExprId> {}, INVALID_EXPR_ID, INVALID_EXPR_ID)
+                : this->append_array(
+                      range,
+                      copy_std_vector(payload->elements),
+                      payload->repeat_value,
+                      payload->repeat_count
+                  ));
+            break;
+        }
+        case ExprKind::tuple_literal: {
+            const AstArenaVector<ExprId>* const payload = other.tuple_elements(index);
+            static_cast<void>(this->append_tuple(range, payload == nullptr ? std::vector<ExprId> {} : copy_std_vector(*payload)));
+            break;
+        }
+        case ExprKind::postfix_chain: {
+            const PostfixChainExprPayload* const payload = other.postfix_chain_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_postfix_chain(range, INVALID_EXPR_ID, std::vector<PostfixOp> {})
+                : this->append_postfix_chain(range, payload->base, copy_std_vector(payload->ops)));
+            break;
+        }
+        case ExprKind::field: {
+            const FieldExprPayload* const payload = other.field_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_field(range, INVALID_EXPR_ID, {}, INVALID_IDENT_ID)
+                : this->append_field(range, payload->object, payload->field_name, payload->field_name_id));
+            break;
+        }
+        case ExprKind::index: {
+            const IndexExprPayload* const payload = other.index_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_index(range, INVALID_EXPR_ID, INVALID_EXPR_ID)
+                : this->append_index(range, payload->object, payload->index));
+            break;
+        }
+        case ExprKind::slice: {
+            const SliceExprPayload* const payload = other.slice_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_slice(range, INVALID_EXPR_ID, INVALID_EXPR_ID, INVALID_EXPR_ID)
+                : this->append_slice(range, payload->object, payload->start, payload->end));
+            break;
+        }
+        case ExprKind::struct_literal: {
+            const StructLiteralExprPayload* const payload = other.struct_literal_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_struct_literal(
+                      range,
+                      INVALID_EXPR_ID,
+                      {},
+                      {},
+                      {},
+                      INVALID_IDENT_ID,
+                      INVALID_IDENT_ID,
+                      std::vector<TypeId> {},
+                      std::vector<FieldInit> {}
+                  )
+                : this->append_struct_literal(
+                      range,
+                      payload->object,
+                      payload->scope_name,
+                      payload->scope_range,
+                      payload->name,
+                      payload->scope_name_id,
+                      payload->name_id,
+                      copy_std_vector(payload->type_args),
+                      copy_std_vector(payload->field_inits)
+                  ));
+            break;
+        }
+        case ExprKind::cast:
+        case ExprKind::pcast:
+        case ExprKind::bcast:
+        case ExprKind::size_of:
+        case ExprKind::align_of:
+        case ExprKind::ptr_addr:
+        case ExprKind::paddr:
+        case ExprKind::str_data:
+        case ExprKind::str_byte_len:
+        case ExprKind::str_is_valid_utf8:
+        case ExprKind::str_from_utf8_checked: {
+            const CastExprPayload* const payload = other.cast_payload(index);
+            static_cast<void>(payload == nullptr
+                ? this->append_cast_like(kind, range, INVALID_TYPE_ID, INVALID_EXPR_ID)
+                : this->append_cast_like(kind, range, payload->type, payload->expr));
+            break;
+        }
+        default:
+            static_cast<void>(this->append_invalid(range));
+            break;
+        }
+    }
+
     void copy_from(const ExprNodeList& other) {
-        this->headers_.assign(other.headers_.begin(), other.headers_.end());
-        this->payloads_ = other.payloads_;
+        this->reserve(other.size());
+        for (base::usize i = 0; i < other.size(); ++i) {
+            this->copy_append_from(other, i);
+        }
     }
 
     void swap(ExprNodeList& other) noexcept {
@@ -1858,30 +2242,30 @@ struct EnumCasePatternPayload {
     std::string_view enum_name;
     std::string_view case_name;
     TypeId enum_type = INVALID_TYPE_ID;
-    std::vector<PatternId> payload_patterns;
-    std::vector<std::string_view> binding_names;
+    AstArenaVector<PatternId> payload_patterns;
+    AstArenaVector<std::string_view> binding_names;
     IdentId enum_name_id = INVALID_IDENT_ID;
     IdentId case_name_id = INVALID_IDENT_ID;
-    std::vector<IdentId> binding_name_ids;
+    AstArenaVector<IdentId> binding_name_ids;
     bool scoped = false;
 };
 
 struct LiteralPatternPayload {
     std::string_view case_name;
-    std::vector<std::string_view> binding_names;
+    AstArenaVector<std::string_view> binding_names;
     IdentId case_name_id = INVALID_IDENT_ID;
-    std::vector<IdentId> binding_name_ids;
+    AstArenaVector<IdentId> binding_name_ids;
 };
 
 struct SlicePatternPayload {
-    std::vector<PatternId> elements;
+    AstArenaVector<PatternId> elements;
     base::usize rest_index = 0;
     bool has_rest = false;
 };
 
 struct StructPatternPayload {
     std::string_view name;
-    std::vector<FieldPattern> fields;
+    AstArenaVector<FieldPattern> fields;
     IdentId name_id = INVALID_IDENT_ID;
 };
 
@@ -1892,10 +2276,10 @@ struct PatternNodePayloadArena {
         : bindings(base::BumpAllocatorAdapter<BindingPatternPayload> {arena}),
           literals(base::BumpAllocatorAdapter<LiteralPatternPayload> {arena}),
           enum_cases(base::BumpAllocatorAdapter<EnumCasePatternPayload> {arena}),
-          tuples(base::BumpAllocatorAdapter<std::vector<PatternId>> {arena}),
+          tuples(base::BumpAllocatorAdapter<AstArenaVector<PatternId>> {arena}),
           slices(base::BumpAllocatorAdapter<SlicePatternPayload> {arena}),
           structs(base::BumpAllocatorAdapter<StructPatternPayload> {arena}),
-          alternatives(base::BumpAllocatorAdapter<std::vector<PatternId>> {arena}) {}
+          alternatives(base::BumpAllocatorAdapter<AstArenaVector<PatternId>> {arena}) {}
 
     void swap(PatternNodePayloadArena& other) noexcept {
         this->bindings.swap(other.bindings);
@@ -1910,10 +2294,10 @@ struct PatternNodePayloadArena {
     AstArenaVector<BindingPatternPayload> bindings;
     AstArenaVector<LiteralPatternPayload> literals;
     AstArenaVector<EnumCasePatternPayload> enum_cases;
-    AstArenaVector<std::vector<PatternId>> tuples;
+    AstArenaVector<AstArenaVector<PatternId>> tuples;
     AstArenaVector<SlicePatternPayload> slices;
     AstArenaVector<StructPatternPayload> structs;
-    AstArenaVector<std::vector<PatternId>> alternatives;
+    AstArenaVector<AstArenaVector<PatternId>> alternatives;
 };
 
 class PatternNodeList final {
@@ -2038,6 +2422,11 @@ public:
     }
 
 private:
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+        return copy_ast_arena_vector(*this->arena_, values);
+    }
+
     [[nodiscard]] base::u32 store_payload(PatternNode node) {
         switch (node.kind) {
         case PatternKind::binding:
@@ -2049,38 +2438,38 @@ private:
         case PatternKind::literal:
             return this->push_payload(this->payloads_.literals, LiteralPatternPayload {
                 node.case_name,
-                std::move(node.binding_names),
+                this->copy_list(node.binding_names),
                 node.case_name_id,
-                std::move(node.binding_name_ids),
+                this->copy_list(node.binding_name_ids),
             });
         case PatternKind::enum_case:
             return this->push_payload(this->payloads_.enum_cases, EnumCasePatternPayload {
                 node.enum_name,
                 node.case_name,
                 node.enum_type,
-                std::move(node.payload_patterns),
-                std::move(node.binding_names),
+                this->copy_list(node.payload_patterns),
+                this->copy_list(node.binding_names),
                 node.enum_name_id,
                 node.case_name_id,
-                std::move(node.binding_name_ids),
+                this->copy_list(node.binding_name_ids),
                 node.scoped,
             });
         case PatternKind::tuple:
-            return this->push_payload(this->payloads_.tuples, std::move(node.elements));
+            return this->push_payload(this->payloads_.tuples, this->copy_list(node.elements));
         case PatternKind::slice:
             return this->push_payload(this->payloads_.slices, SlicePatternPayload {
-                std::move(node.elements),
+                this->copy_list(node.elements),
                 node.slice_rest_index,
                 node.has_slice_rest,
             });
         case PatternKind::struct_:
             return this->push_payload(this->payloads_.structs, StructPatternPayload {
                 node.struct_name,
-                std::move(node.field_patterns),
+                this->copy_list(node.field_patterns),
                 node.struct_name_id,
             });
         case PatternKind::or_pattern:
-            return this->push_payload(this->payloads_.alternatives, std::move(node.alternatives));
+            return this->push_payload(this->payloads_.alternatives, this->copy_list(node.alternatives));
         case PatternKind::wildcard:
             break;
         }
@@ -2101,9 +2490,9 @@ private:
         case PatternKind::literal: {
             const LiteralPatternPayload& payload = this->payloads_.literals[header.payload];
             node.case_name = payload.case_name;
-            node.binding_names = payload.binding_names;
+            node.binding_names = copy_std_vector(payload.binding_names);
             node.case_name_id = payload.case_name_id;
-            node.binding_name_ids = payload.binding_name_ids;
+            node.binding_name_ids = copy_std_vector(payload.binding_name_ids);
             break;
         }
         case PatternKind::enum_case: {
@@ -2111,20 +2500,20 @@ private:
             node.enum_name = payload.enum_name;
             node.case_name = payload.case_name;
             node.enum_type = payload.enum_type;
-            node.payload_patterns = payload.payload_patterns;
-            node.binding_names = payload.binding_names;
+            node.payload_patterns = copy_std_vector(payload.payload_patterns);
+            node.binding_names = copy_std_vector(payload.binding_names);
             node.enum_name_id = payload.enum_name_id;
             node.case_name_id = payload.case_name_id;
-            node.binding_name_ids = payload.binding_name_ids;
+            node.binding_name_ids = copy_std_vector(payload.binding_name_ids);
             node.scoped = payload.scoped;
             break;
         }
         case PatternKind::tuple:
-            node.elements = this->payloads_.tuples[header.payload];
+            node.elements = copy_std_vector(this->payloads_.tuples[header.payload]);
             break;
         case PatternKind::slice: {
             const SlicePatternPayload& payload = this->payloads_.slices[header.payload];
-            node.elements = payload.elements;
+            node.elements = copy_std_vector(payload.elements);
             node.slice_rest_index = payload.rest_index;
             node.has_slice_rest = payload.has_rest;
             break;
@@ -2132,12 +2521,12 @@ private:
         case PatternKind::struct_: {
             const StructPatternPayload& payload = this->payloads_.structs[header.payload];
             node.struct_name = payload.name;
-            node.field_patterns = payload.fields;
+            node.field_patterns = copy_std_vector(payload.fields);
             node.struct_name_id = payload.name_id;
             break;
         }
         case PatternKind::or_pattern:
-            node.alternatives = this->payloads_.alternatives[header.payload];
+            node.alternatives = copy_std_vector(this->payloads_.alternatives[header.payload]);
             break;
         case PatternKind::wildcard:
             break;
@@ -2159,9 +2548,9 @@ private:
         case PatternKind::literal: {
             LiteralPatternPayload& payload = this->payloads_.literals[header.payload];
             node.case_name = payload.case_name;
-            node.binding_names = std::move(payload.binding_names);
+            node.binding_names = copy_std_vector(payload.binding_names);
             node.case_name_id = payload.case_name_id;
-            node.binding_name_ids = std::move(payload.binding_name_ids);
+            node.binding_name_ids = copy_std_vector(payload.binding_name_ids);
             break;
         }
         case PatternKind::enum_case: {
@@ -2169,20 +2558,20 @@ private:
             node.enum_name = payload.enum_name;
             node.case_name = payload.case_name;
             node.enum_type = payload.enum_type;
-            node.payload_patterns = std::move(payload.payload_patterns);
-            node.binding_names = std::move(payload.binding_names);
+            node.payload_patterns = copy_std_vector(payload.payload_patterns);
+            node.binding_names = copy_std_vector(payload.binding_names);
             node.enum_name_id = payload.enum_name_id;
             node.case_name_id = payload.case_name_id;
-            node.binding_name_ids = std::move(payload.binding_name_ids);
+            node.binding_name_ids = copy_std_vector(payload.binding_name_ids);
             node.scoped = payload.scoped;
             break;
         }
         case PatternKind::tuple:
-            node.elements = std::move(this->payloads_.tuples[header.payload]);
+            node.elements = copy_std_vector(this->payloads_.tuples[header.payload]);
             break;
         case PatternKind::slice: {
             SlicePatternPayload& payload = this->payloads_.slices[header.payload];
-            node.elements = std::move(payload.elements);
+            node.elements = copy_std_vector(payload.elements);
             node.slice_rest_index = payload.rest_index;
             node.has_slice_rest = payload.has_rest;
             break;
@@ -2190,12 +2579,12 @@ private:
         case PatternKind::struct_: {
             StructPatternPayload& payload = this->payloads_.structs[header.payload];
             node.struct_name = payload.name;
-            node.field_patterns = std::move(payload.fields);
+            node.field_patterns = copy_std_vector(payload.fields);
             node.struct_name_id = payload.name_id;
             break;
         }
         case PatternKind::or_pattern:
-            node.alternatives = std::move(this->payloads_.alternatives[header.payload]);
+            node.alternatives = copy_std_vector(this->payloads_.alternatives[header.payload]);
             break;
         case PatternKind::wildcard:
             break;
@@ -2221,7 +2610,8 @@ private:
         }
     }
 
-    void invalidate_materialized(const base::usize index) {
+    void invalidate_materialized(const base::usize index) const
+    {
         if (index < this->materialized_valid_.size()) {
             this->materialized_valid_[index] = false;
         }
@@ -2235,8 +2625,10 @@ private:
     }
 
     void copy_from(const PatternNodeList& other) {
-        this->headers_.assign(other.headers_.begin(), other.headers_.end());
-        this->payloads_ = other.payloads_;
+        this->reserve(other.size());
+        for (base::usize i = 0; i < other.size(); ++i) {
+            static_cast<void>(this->append(other.load(i)));
+        }
     }
 
     void swap(PatternNodeList& other) noexcept {
@@ -2364,7 +2756,7 @@ struct StmtNodePayloadArena {
           exprs(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
           defers(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
           returns(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
-          blocks(base::BumpAllocatorAdapter<std::vector<StmtId>> {arena}),
+          blocks(base::BumpAllocatorAdapter<AstArenaVector<StmtId>> {arena}),
           unknowns(base::BumpAllocatorAdapter<StmtNode> {arena}) {}
 
     void swap(StmtNodePayloadArena& other) noexcept {
@@ -2390,7 +2782,7 @@ struct StmtNodePayloadArena {
     AstArenaVector<ExprStmtPayload> exprs;
     AstArenaVector<ExprStmtPayload> defers;
     AstArenaVector<ExprStmtPayload> returns;
-    AstArenaVector<std::vector<StmtId>> blocks;
+    AstArenaVector<AstArenaVector<StmtId>> blocks;
     AstArenaVector<StmtNode> unknowns;
 };
 
@@ -2456,7 +2848,7 @@ public:
         return this->headers_[index].range;
     }
 
-    [[nodiscard]] const std::vector<StmtId>* block_statements(const base::usize index) const noexcept {
+    [[nodiscard]] const AstArenaVector<StmtId>* block_statements(const base::usize index) const noexcept {
         if (this->kind(index) != StmtKind::block) {
             return nullptr;
         }
@@ -2520,6 +2912,11 @@ public:
     }
 
 private:
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+        return copy_ast_arena_vector(*this->arena_, values);
+    }
+
     [[nodiscard]] static base::u8 pack_kind(const StmtKind kind) noexcept {
         return static_cast<base::u8>(kind);
     }
@@ -2579,7 +2976,7 @@ private:
         case StmtKind::return_:
             return this->push_payload(this->payloads_.returns, ExprStmtPayload {node.return_value});
         case StmtKind::block:
-            return this->push_payload(this->payloads_.blocks, std::move(node.statements));
+            return this->push_payload(this->payloads_.blocks, this->copy_list(node.statements));
         case StmtKind::break_:
         case StmtKind::continue_:
             break;
@@ -2659,7 +3056,7 @@ private:
             node.return_value = this->payloads_.returns[header.payload].value;
             break;
         case StmtKind::block:
-            node.statements = this->payloads_.blocks[header.payload];
+            node.statements = copy_std_vector(this->payloads_.blocks[header.payload]);
             break;
         case StmtKind::break_:
         case StmtKind::continue_:
@@ -2739,7 +3136,7 @@ private:
             node.return_value = this->payloads_.returns[header.payload].value;
             break;
         case StmtKind::block:
-            node.statements = std::move(this->payloads_.blocks[header.payload]);
+            node.statements = copy_std_vector(this->payloads_.blocks[header.payload]);
             break;
         case StmtKind::break_:
         case StmtKind::continue_:
@@ -2760,8 +3157,10 @@ private:
     }
 
     void copy_from(const StmtNodeList& other) {
-        this->headers_.assign(other.headers_.begin(), other.headers_.end());
-        this->payloads_ = other.payloads_;
+        this->reserve(other.size());
+        for (base::usize i = 0; i < other.size(); ++i) {
+            static_cast<void>(this->append(other.load(i)));
+        }
     }
 
     void swap(StmtNodeList& other) noexcept {
@@ -2794,7 +3193,7 @@ struct FieldDecl {
 struct EnumCaseDecl {
     std::string_view name;
     TypeId payload_type = INVALID_TYPE_ID;
-    std::vector<TypeId> payload_types;
+    AstArenaVector<TypeId> payload_types;
     std::string_view value_text;
     base::SourceRange range {};
     IdentId name_id = INVALID_IDENT_ID;
@@ -2857,26 +3256,26 @@ struct ConstItemPayload {
 struct TypeAliasItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<GenericParamDecl> generic_params;
-    std::vector<GenericConstraintDecl> where_constraints;
+    AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId target = INVALID_TYPE_ID;
 };
 
 struct StructItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<GenericParamDecl> generic_params;
-    std::vector<GenericConstraintDecl> where_constraints;
-    std::vector<FieldDecl> fields;
+    AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<GenericConstraintDecl> where_constraints;
+    AstArenaVector<FieldDecl> fields;
 };
 
 struct EnumItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<GenericParamDecl> generic_params;
-    std::vector<GenericConstraintDecl> where_constraints;
+    AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId base_type = INVALID_TYPE_ID;
-    std::vector<EnumCaseDecl> cases;
+    AstArenaVector<EnumCaseDecl> cases;
 };
 
 struct OpaqueStructItemPayload {
@@ -2887,9 +3286,9 @@ struct OpaqueStructItemPayload {
 struct FunctionItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
-    std::vector<GenericParamDecl> generic_params;
-    std::vector<GenericConstraintDecl> where_constraints;
-    std::vector<ParamDecl> params;
+    AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<GenericConstraintDecl> where_constraints;
+    AstArenaVector<ParamDecl> params;
     TypeId return_type = INVALID_TYPE_ID;
     StmtId body = INVALID_STMT_ID;
     TypeId impl_type = INVALID_TYPE_ID;
@@ -2897,14 +3296,14 @@ struct FunctionItemPayload {
 };
 
 struct ExternBlockItemPayload {
-    std::vector<ItemId> items;
+    AstArenaVector<ItemId> items;
 };
 
 struct ImplBlockItemPayload {
-    std::vector<GenericParamDecl> generic_params;
-    std::vector<GenericConstraintDecl> where_constraints;
+    AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId impl_type = INVALID_TYPE_ID;
-    std::vector<ItemId> items;
+    AstArenaVector<ItemId> items;
 };
 
 struct ItemNodePayloadArena {
@@ -3010,6 +3409,11 @@ public:
 
     [[nodiscard]] Visibility visibility(const base::usize index) const noexcept {
         return static_cast<Visibility>(this->headers_[index].visibility);
+    }
+
+    template <typename T>
+    [[nodiscard]] AstArenaVector<T> make_list() {
+        return make_ast_arena_vector<T>(*this->arena_);
     }
 
     void reserve(const base::usize size) {
@@ -3124,6 +3528,162 @@ private:
         return flags;
     }
 
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+        return copy_ast_arena_vector(*this->arena_, values);
+    }
+
+    template <typename T>
+    [[nodiscard]] AstArenaVector<T> copy_or_move_list(AstArenaVector<T>&& values) {
+        return move_or_copy_ast_arena_vector(*this->arena_, std::move(values));
+    }
+
+    template <typename T, typename Allocator>
+    [[nodiscard]] AstArenaVector<T> copy_or_move_list(std::vector<T, Allocator>&& values) {
+        return this->copy_list(values);
+    }
+
+    [[nodiscard]] GenericConstraintDecl copy_generic_constraint(const GenericConstraintDecl& constraint) {
+        GenericConstraintDecl copy;
+        copy.param_name = constraint.param_name;
+        copy.param_range = constraint.param_range;
+        copy.capability_names = this->copy_list(constraint.capability_names);
+        copy.capability_ranges = this->copy_list(constraint.capability_ranges);
+        copy.range = constraint.range;
+        copy.param_name_id = constraint.param_name_id;
+        copy.capability_name_ids = this->copy_list(constraint.capability_name_ids);
+        return copy;
+    }
+
+    [[nodiscard]] GenericConstraintDecl copy_or_move_generic_constraint(GenericConstraintDecl&& constraint) {
+        GenericConstraintDecl copy;
+        copy.param_name = constraint.param_name;
+        copy.param_range = constraint.param_range;
+        copy.capability_names = this->copy_or_move_list(std::move(constraint.capability_names));
+        copy.capability_ranges = this->copy_or_move_list(std::move(constraint.capability_ranges));
+        copy.range = constraint.range;
+        copy.param_name_id = constraint.param_name_id;
+        copy.capability_name_ids = this->copy_or_move_list(std::move(constraint.capability_name_ids));
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_generic_constraints(
+        const std::vector<GenericConstraintDecl, Allocator>& constraints
+    ) {
+        AstArenaVector<GenericConstraintDecl> copy = make_ast_arena_vector<GenericConstraintDecl>(*this->arena_);
+        copy.reserve(constraints.size());
+        for (const GenericConstraintDecl& constraint : constraints) {
+            copy.push_back(this->copy_generic_constraint(constraint));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_or_move_generic_constraints(
+        std::vector<GenericConstraintDecl, Allocator>&& constraints
+    ) {
+        AstArenaVector<GenericConstraintDecl> copy = make_ast_arena_vector<GenericConstraintDecl>(*this->arena_);
+        copy.reserve(constraints.size());
+        for (GenericConstraintDecl& constraint : constraints) {
+            copy.push_back(this->copy_or_move_generic_constraint(std::move(constraint)));
+        }
+        return copy;
+    }
+
+    [[nodiscard]] EnumCaseDecl copy_enum_case(const EnumCaseDecl& enum_case) {
+        EnumCaseDecl copy;
+        copy.name = enum_case.name;
+        copy.payload_type = enum_case.payload_type;
+        copy.payload_types = this->copy_list(enum_case.payload_types);
+        copy.value_text = enum_case.value_text;
+        copy.range = enum_case.range;
+        copy.name_id = enum_case.name_id;
+        return copy;
+    }
+
+    [[nodiscard]] EnumCaseDecl copy_or_move_enum_case(EnumCaseDecl&& enum_case) {
+        EnumCaseDecl copy;
+        copy.name = enum_case.name;
+        copy.payload_type = enum_case.payload_type;
+        copy.payload_types = this->copy_or_move_list(std::move(enum_case.payload_types));
+        copy.value_text = enum_case.value_text;
+        copy.range = enum_case.range;
+        copy.name_id = enum_case.name_id;
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_enum_cases(
+        const std::vector<EnumCaseDecl, Allocator>& cases
+    ) {
+        AstArenaVector<EnumCaseDecl> copy = make_ast_arena_vector<EnumCaseDecl>(*this->arena_);
+        copy.reserve(cases.size());
+        for (const EnumCaseDecl& enum_case : cases) {
+            copy.push_back(this->copy_enum_case(enum_case));
+        }
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_or_move_enum_cases(
+        std::vector<EnumCaseDecl, Allocator>&& cases
+    ) {
+        AstArenaVector<EnumCaseDecl> copy = make_ast_arena_vector<EnumCaseDecl>(*this->arena_);
+        copy.reserve(cases.size());
+        for (EnumCaseDecl& enum_case : cases) {
+            copy.push_back(this->copy_or_move_enum_case(std::move(enum_case)));
+        }
+        return copy;
+    }
+
+    [[nodiscard]] GenericConstraintDecl detach_generic_constraint(const GenericConstraintDecl& constraint) const {
+        GenericConstraintDecl copy;
+        copy.param_name = constraint.param_name;
+        copy.param_range = constraint.param_range;
+        copy.capability_names = copy_detached_ast_vector(constraint.capability_names);
+        copy.capability_ranges = copy_detached_ast_vector(constraint.capability_ranges);
+        copy.range = constraint.range;
+        copy.param_name_id = constraint.param_name_id;
+        copy.capability_name_ids = copy_detached_ast_vector(constraint.capability_name_ids);
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] std::vector<GenericConstraintDecl> detach_generic_constraints(
+        const std::vector<GenericConstraintDecl, Allocator>& constraints
+    ) const {
+        std::vector<GenericConstraintDecl> copy;
+        copy.reserve(constraints.size());
+        for (const GenericConstraintDecl& constraint : constraints) {
+            copy.push_back(this->detach_generic_constraint(constraint));
+        }
+        return copy;
+    }
+
+    [[nodiscard]] EnumCaseDecl detach_enum_case(const EnumCaseDecl& enum_case) const {
+        EnumCaseDecl copy;
+        copy.name = enum_case.name;
+        copy.payload_type = enum_case.payload_type;
+        copy.payload_types = copy_detached_ast_vector(enum_case.payload_types);
+        copy.value_text = enum_case.value_text;
+        copy.range = enum_case.range;
+        copy.name_id = enum_case.name_id;
+        return copy;
+    }
+
+    template <typename Allocator>
+    [[nodiscard]] std::vector<EnumCaseDecl> detach_enum_cases(
+        const std::vector<EnumCaseDecl, Allocator>& cases
+    ) const {
+        std::vector<EnumCaseDecl> copy;
+        copy.reserve(cases.size());
+        for (const EnumCaseDecl& enum_case : cases) {
+            copy.push_back(this->detach_enum_case(enum_case));
+        }
+        return copy;
+    }
+
     [[nodiscard]] base::u32 store_payload(ItemNode node) {
         switch (node.kind) {
         case ItemKind::const_decl:
@@ -3137,26 +3697,26 @@ private:
             return this->push_payload(this->payloads_.type_aliases, TypeAliasItemPayload {
                 node.name,
                 node.name_id,
-                std::move(node.generic_params),
-                std::move(node.where_constraints),
+                this->copy_list(node.generic_params),
+                this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                 node.alias_type,
             });
         case ItemKind::struct_decl:
             return this->push_payload(this->payloads_.structs, StructItemPayload {
                 node.name,
                 node.name_id,
-                std::move(node.generic_params),
-                std::move(node.where_constraints),
-                std::move(node.fields),
+                this->copy_list(node.generic_params),
+                this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                this->copy_list(node.fields),
             });
         case ItemKind::enum_decl:
             return this->push_payload(this->payloads_.enums, EnumItemPayload {
                 node.name,
                 node.name_id,
-                std::move(node.generic_params),
-                std::move(node.where_constraints),
+                this->copy_list(node.generic_params),
+                this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                 node.enum_base_type,
-                std::move(node.enum_cases),
+                this->copy_or_move_enum_cases(std::move(node.enum_cases)),
             });
         case ItemKind::opaque_struct_decl:
             return this->push_payload(this->payloads_.opaque_structs, OpaqueStructItemPayload {
@@ -3167,9 +3727,9 @@ private:
             return this->push_payload(this->payloads_.functions, FunctionItemPayload {
                 node.name,
                 node.name_id,
-                std::move(node.generic_params),
-                std::move(node.where_constraints),
-                std::move(node.params),
+                this->copy_list(node.generic_params),
+                this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                this->copy_list(node.params),
                 node.return_type,
                 node.body,
                 node.impl_type,
@@ -3177,14 +3737,14 @@ private:
             });
         case ItemKind::extern_block:
             return this->push_payload(this->payloads_.extern_blocks, ExternBlockItemPayload {
-                std::move(node.extern_items),
+                this->copy_list(node.extern_items),
             });
         case ItemKind::impl_block:
             return this->push_payload(this->payloads_.impl_blocks, ImplBlockItemPayload {
-                std::move(node.generic_params),
-                std::move(node.where_constraints),
+                this->copy_list(node.generic_params),
+                this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                 node.impl_type,
-                std::move(node.impl_items),
+                this->copy_list(node.impl_items),
             });
         }
         return this->push_payload(this->payloads_.unknowns, std::move(node));
@@ -3218,8 +3778,8 @@ private:
             const TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = payload.generic_params;
-            node.where_constraints = payload.where_constraints;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.alias_type = payload.target;
             break;
         }
@@ -3227,19 +3787,19 @@ private:
             const StructItemPayload& payload = this->payloads_.structs[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = payload.generic_params;
-            node.where_constraints = payload.where_constraints;
-            node.fields = payload.fields;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.fields = copy_std_vector(payload.fields);
             break;
         }
         case ItemKind::enum_decl: {
             const EnumItemPayload& payload = this->payloads_.enums[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = payload.generic_params;
-            node.where_constraints = payload.where_constraints;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.enum_base_type = payload.base_type;
-            node.enum_cases = payload.cases;
+            node.enum_cases = this->detach_enum_cases(payload.cases);
             break;
         }
         case ItemKind::opaque_struct_decl:
@@ -3250,9 +3810,9 @@ private:
             const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = payload.generic_params;
-            node.where_constraints = payload.where_constraints;
-            node.params = payload.params;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.params = copy_std_vector(payload.params);
             node.return_type = payload.return_type;
             node.body = payload.body;
             node.impl_type = payload.impl_type;
@@ -3260,14 +3820,14 @@ private:
             break;
         }
         case ItemKind::extern_block:
-            node.extern_items = this->payloads_.extern_blocks[header.payload].items;
+            node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
             break;
         case ItemKind::impl_block: {
             const ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
-            node.generic_params = payload.generic_params;
-            node.where_constraints = payload.where_constraints;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.impl_type = payload.impl_type;
-            node.impl_items = payload.items;
+            node.impl_items = copy_std_vector(payload.items);
             break;
         }
         default:
@@ -3295,8 +3855,8 @@ private:
             TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = std::move(payload.generic_params);
-            node.where_constraints = std::move(payload.where_constraints);
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.alias_type = payload.target;
             break;
         }
@@ -3304,19 +3864,19 @@ private:
             StructItemPayload& payload = this->payloads_.structs[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = std::move(payload.generic_params);
-            node.where_constraints = std::move(payload.where_constraints);
-            node.fields = std::move(payload.fields);
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.fields = copy_std_vector(payload.fields);
             break;
         }
         case ItemKind::enum_decl: {
             EnumItemPayload& payload = this->payloads_.enums[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = std::move(payload.generic_params);
-            node.where_constraints = std::move(payload.where_constraints);
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.enum_base_type = payload.base_type;
-            node.enum_cases = std::move(payload.cases);
+            node.enum_cases = this->detach_enum_cases(payload.cases);
             break;
         }
         case ItemKind::opaque_struct_decl:
@@ -3327,9 +3887,9 @@ private:
             FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
             node.name_id = payload.name_id;
-            node.generic_params = std::move(payload.generic_params);
-            node.where_constraints = std::move(payload.where_constraints);
-            node.params = std::move(payload.params);
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.params = copy_std_vector(payload.params);
             node.return_type = payload.return_type;
             node.body = payload.body;
             node.impl_type = payload.impl_type;
@@ -3337,14 +3897,14 @@ private:
             break;
         }
         case ItemKind::extern_block:
-            node.extern_items = std::move(this->payloads_.extern_blocks[header.payload].items);
+            node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
             break;
         case ItemKind::impl_block: {
             ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
-            node.generic_params = std::move(payload.generic_params);
-            node.where_constraints = std::move(payload.where_constraints);
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.impl_type = payload.impl_type;
-            node.impl_items = std::move(payload.items);
+            node.impl_items = copy_std_vector(payload.items);
             break;
         }
         default:
@@ -3373,7 +3933,8 @@ private:
         }
     }
 
-    void invalidate_materialized(const base::usize index) {
+    void invalidate_materialized(const base::usize index) const
+    {
         if (index < this->materialized_valid_.size()) {
             this->materialized_valid_[index] = false;
         }
@@ -3387,8 +3948,10 @@ private:
     }
 
     void copy_from(const ItemNodeList& other) {
-        this->headers_.assign(other.headers_.begin(), other.headers_.end());
-        this->payloads_ = other.payloads_;
+        this->reserve(other.size());
+        for (base::usize i = 0; i < other.size(); ++i) {
+            static_cast<void>(this->append(other.load(i)));
+        }
     }
 
     void swap(ItemNodeList& other) noexcept {
@@ -3587,12 +4150,13 @@ struct AstModule {
         );
     }
 
+    template <typename TypeArgAllocator = std::allocator<TypeId>>
     [[nodiscard]] ExprId push_name_expr(
         const base::SourceRange& range,
         std::string_view scope_name,
         const base::SourceRange& scope_range,
         std::string_view text,
-        std::vector<TypeId> type_args = {},
+        std::vector<TypeId, TypeArgAllocator> type_args = std::vector<TypeId, TypeArgAllocator> {},
         IdentId scope_name_id = INVALID_IDENT_ID,
         IdentId text_id = INVALID_IDENT_ID
     ) {
@@ -3609,10 +4173,11 @@ struct AstModule {
         );
     }
 
+    template <typename TypeArgAllocator = std::allocator<TypeId>>
     [[nodiscard]] ExprId push_name_expr(
         const base::SourceRange& range,
         const std::string_view text,
-        std::vector<TypeId> type_args = {}
+        std::vector<TypeId, TypeArgAllocator> type_args = std::vector<TypeId, TypeArgAllocator> {}
     ) {
         return this->push_name_expr(range, {}, {}, text, std::move(type_args));
     }
@@ -3621,10 +4186,11 @@ struct AstModule {
         return this->push_generic_apply_expr(range, payload.callee, std::move(payload.type_args));
     }
 
+    template <typename TypeArgAllocator>
     [[nodiscard]] ExprId push_generic_apply_expr(
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<TypeId> type_args
+        std::vector<TypeId, TypeArgAllocator> type_args
     ) {
         return this->exprs.append_generic_apply(range, callee, std::move(type_args));
     }
@@ -3667,11 +4233,12 @@ struct AstModule {
         return this->push_call_expr(kind, range, payload.callee, std::move(payload.args));
     }
 
+    template <typename ArgAllocator>
     [[nodiscard]] ExprId push_call_expr(
         const ExprKind kind,
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<ExprId> args
+        std::vector<ExprId, ArgAllocator> args
     ) {
         return this->exprs.append_call(kind, range, callee, std::move(args));
     }
@@ -3717,10 +4284,11 @@ struct AstModule {
         return this->push_match_expr(range, payload.value, std::move(payload.arms));
     }
 
+    template <typename ArmAllocator>
     [[nodiscard]] ExprId push_match_expr(
         const base::SourceRange& range,
         const ExprId value,
-        std::vector<MatchArm> arms
+        std::vector<MatchArm, ArmAllocator> arms
     ) {
         return this->exprs.append_match(range, value, std::move(arms));
     }
@@ -3734,16 +4302,18 @@ struct AstModule {
         );
     }
 
+    template <typename ElementAllocator>
     [[nodiscard]] ExprId push_array_expr(
         const base::SourceRange& range,
-        std::vector<ExprId> elements,
+        std::vector<ExprId, ElementAllocator> elements,
         const ExprId repeat_value = INVALID_EXPR_ID,
         const ExprId repeat_count = INVALID_EXPR_ID
     ) {
         return this->exprs.append_array(range, std::move(elements), repeat_value, repeat_count);
     }
 
-    [[nodiscard]] ExprId push_tuple_expr(const base::SourceRange& range, std::vector<ExprId> elements) {
+    template <typename ElementAllocator>
+    [[nodiscard]] ExprId push_tuple_expr(const base::SourceRange& range, std::vector<ExprId, ElementAllocator> elements) {
         return this->exprs.append_tuple(range, std::move(elements));
     }
 
@@ -3751,10 +4321,11 @@ struct AstModule {
         return this->push_postfix_chain_expr(range, payload.base, std::move(payload.ops));
     }
 
+    template <typename OpAllocator>
     [[nodiscard]] ExprId push_postfix_chain_expr(
         const base::SourceRange& range,
         const ExprId base,
-        std::vector<PostfixOp> ops
+        std::vector<PostfixOp, OpAllocator> ops
     ) {
         this->intern_postfix_ops(ops);
         return this->exprs.append_postfix_chain(range, base, std::move(ops));
@@ -3813,14 +4384,15 @@ struct AstModule {
         );
     }
 
+    template <typename TypeArgAllocator, typename FieldInitAllocator>
     [[nodiscard]] ExprId push_struct_literal_expr(
         const base::SourceRange& range,
         const ExprId object,
         std::string_view scope_name,
         const base::SourceRange& scope_range,
         std::string_view name,
-        std::vector<TypeId> type_args,
-        std::vector<FieldInit> field_inits,
+        std::vector<TypeId, TypeArgAllocator> type_args,
+        std::vector<FieldInit, FieldInitAllocator> field_inits,
         IdentId scope_name_id = INVALID_IDENT_ID,
         IdentId name_id = INVALID_IDENT_ID
     ) {
@@ -3886,11 +4458,12 @@ struct AstModule {
         this->exprs.set_generic_apply(index, range, std::move(payload));
     }
 
+    template <typename TypeArgAllocator>
     void set_generic_apply_expr(
         const base::usize index,
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<TypeId> type_args
+        std::vector<TypeId, TypeArgAllocator> type_args
     ) {
         this->exprs.set_generic_apply(index, range, callee, std::move(type_args));
     }
@@ -3918,12 +4491,13 @@ struct AstModule {
         this->exprs.set_call(index, kind, range, std::move(payload));
     }
 
+    template <typename ArgAllocator>
     void set_call_expr(
         const base::usize index,
         const ExprKind kind,
         const base::SourceRange& range,
         const ExprId callee,
-        std::vector<ExprId> args
+        std::vector<ExprId, ArgAllocator> args
     ) {
         this->exprs.set_call(index, kind, range, callee, std::move(args));
     }
@@ -3976,6 +4550,7 @@ struct AstModule {
         this->exprs.set_struct_literal(index, range, std::move(payload));
     }
 
+    template <typename TypeArgAllocator, typename FieldInitAllocator>
     void set_struct_literal_expr(
         const base::usize index,
         const base::SourceRange& range,
@@ -3983,8 +4558,8 @@ struct AstModule {
         std::string_view scope_name,
         const base::SourceRange& scope_range,
         std::string_view name,
-        std::vector<TypeId> type_args,
-        std::vector<FieldInit> field_inits,
+        std::vector<TypeId, TypeArgAllocator> type_args,
+        std::vector<FieldInit, FieldInitAllocator> field_inits,
         IdentId scope_name_id = INVALID_IDENT_ID,
         IdentId name_id = INVALID_IDENT_ID
     ) {
@@ -4020,6 +4595,20 @@ struct AstModule {
 
     [[nodiscard]] std::string_view identifier_text(const IdentId id) const noexcept {
         return this->identifiers.text(id);
+    }
+
+    template <typename T>
+    [[nodiscard]] AstArenaVector<T> make_expr_list() {
+        return this->exprs.make_list<T>();
+    }
+
+    [[nodiscard]] PostfixOp make_postfix_op() {
+        return this->exprs.make_postfix_op();
+    }
+
+    template <typename T>
+    [[nodiscard]] AstArenaVector<T> make_item_list() {
+        return this->items.make_list<T>();
     }
 
     [[nodiscard]] bool identifiers_ready() const noexcept {
@@ -4078,20 +4667,26 @@ private:
         text = this->identifiers.text(id);
     }
 
-    void intern_identifier_list(std::vector<std::string_view>& texts, std::vector<IdentId>& ids) {
+    template <typename TextAllocator, typename IdAllocator>
+    void intern_identifier_list(
+        std::vector<std::string_view, TextAllocator>& texts,
+        std::vector<IdentId, IdAllocator>& ids
+    ) {
         ids.resize(texts.size(), INVALID_IDENT_ID);
         for (base::usize i = 0; i < texts.size(); ++i) {
             this->intern_identifier_text(texts[i], ids[i]);
         }
     }
 
-    void intern_generic_params(std::vector<GenericParamDecl>& params) {
+    template <typename Allocator>
+    void intern_generic_params(std::vector<GenericParamDecl, Allocator>& params) {
         for (GenericParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
         }
     }
 
-    void intern_generic_constraints(std::vector<GenericConstraintDecl>& constraints) {
+    template <typename Allocator>
+    void intern_generic_constraints(std::vector<GenericConstraintDecl, Allocator>& constraints) {
         for (GenericConstraintDecl& constraint : constraints) {
             this->intern_identifier_text(constraint.param_name, constraint.param_name_id);
             this->intern_identifier_list(constraint.capability_names, constraint.capability_name_ids);
@@ -4104,13 +4699,15 @@ private:
         this->intern_identifier_text(node.name, node.name_id);
     }
 
-    void intern_field_inits(std::vector<FieldInit>& inits) {
+    template <typename Allocator>
+    void intern_field_inits(std::vector<FieldInit, Allocator>& inits) {
         for (FieldInit& init : inits) {
             this->intern_identifier_text(init.name, init.name_id);
         }
     }
 
-    void intern_postfix_ops(std::vector<PostfixOp>& ops) {
+    template <typename Allocator>
+    void intern_postfix_ops(std::vector<PostfixOp, Allocator>& ops) {
         for (PostfixOp& op : ops) {
             this->intern_identifier_text(op.name, op.name_id);
             this->intern_field_inits(op.field_inits);
@@ -4155,7 +4752,8 @@ private:
         }
     }
 
-    void intern_field_patterns(std::vector<FieldPattern>& fields) {
+    template <typename Allocator>
+    void intern_field_patterns(std::vector<FieldPattern, Allocator>& fields) {
         for (FieldPattern& field : fields) {
             this->intern_identifier_text(field.name, field.name_id);
         }
@@ -4176,19 +4774,22 @@ private:
         this->intern_identifier_text(node.name, node.name_id);
     }
 
-    void intern_param_decls(std::vector<ParamDecl>& params) {
+    template <typename Allocator>
+    void intern_param_decls(std::vector<ParamDecl, Allocator>& params) {
         for (ParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
         }
     }
 
-    void intern_field_decls(std::vector<FieldDecl>& fields) {
+    template <typename Allocator>
+    void intern_field_decls(std::vector<FieldDecl, Allocator>& fields) {
         for (FieldDecl& field : fields) {
             this->intern_identifier_text(field.name, field.name_id);
         }
     }
 
-    void intern_enum_case_decls(std::vector<EnumCaseDecl>& cases) {
+    template <typename Allocator>
+    void intern_enum_case_decls(std::vector<EnumCaseDecl, Allocator>& cases) {
         for (EnumCaseDecl& enum_case : cases) {
             this->intern_identifier_text(enum_case.name, enum_case.name_id);
         }

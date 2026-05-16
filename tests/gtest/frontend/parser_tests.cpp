@@ -86,7 +86,7 @@ public:
     explicit ParserPartRangeReaderProbe(parse::Parser& parser) noexcept
         : parse::ParserPartRangeReader(parser) {}
 
-    [[nodiscard]] syntax::AstModule& module() noexcept {
+    [[nodiscard]] syntax::AstModule& module() const noexcept {
         return this->session_.module;
     }
 
@@ -287,7 +287,8 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve) {
     const syntax::AstModule module = parsed.take_value();
     EXPECT_GT(module.exprs.size(), 0U);
     EXPECT_EQ(module.exprs.arena_bytes(), arena_bytes_after_reserve);
-    EXPECT_EQ(module.exprs.arena_used_bytes(), arena_used_after_reserve);
+    EXPECT_GE(module.exprs.arena_used_bytes(), arena_used_after_reserve);
+    EXPECT_LE(module.exprs.arena_used_bytes(), module.exprs.arena_bytes());
     EXPECT_EQ(module.exprs.arena_blocks(), arena_blocks_after_reserve);
 }
 
@@ -554,7 +555,7 @@ TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring) {
     ASSERT_EQ(pair_stmt.kind, syntax::StmtKind::let);
     ASSERT_TRUE(syntax::is_valid(pair_stmt.init));
     ASSERT_EQ(module.exprs.kind(pair_stmt.init.value), syntax::ExprKind::tuple_literal);
-    const std::vector<syntax::ExprId>* const pair_init = module.exprs.tuple_elements(pair_stmt.init.value);
+    const syntax::AstArenaVector<syntax::ExprId>* const pair_init = module.exprs.tuple_elements(pair_stmt.init.value);
     ASSERT_NE(pair_init, nullptr);
     EXPECT_EQ(pair_init->size(), 2U);
 

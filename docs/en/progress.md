@@ -137,9 +137,10 @@ AST type/expr/pattern/stmt/item/module/import name-bearing fields now carry
 native `IdentId` payload fields, parser/module-loader/postfix writes intern
 through the current `AstModule`, and sema typed lookup keys reuse that AST
 module interner instead of maintaining a second private interner. Function,
-type, value, generic-template, enum-case, method/member, and local-scope lookup
-now use `IdentId` typed indexes; string keys remain only at checked semantic
-storage, ABI/display, dump, and diagnostic boundaries. The 2026-05-16
+type, value, generic-template, enum-case, struct-field, method/member, and
+local-scope lookup now use `IdentId` typed indexes; checked-module maps no
+longer keep parallel string-key lookup paths, and strings remain only as
+ABI/display, dump, and diagnostic payload text. The 2026-05-16
 performance line then removed the old fat `ExprNode` production type entirely:
 parser construction, `AstModule` storage, module-loader append, and postfix
 materialization now create compact expression headers plus per-kind payloads
@@ -153,30 +154,37 @@ compact payload storage. The follow-up bump pass backs the `TypeNodeList`, `Expr
 per-kind payload vectors with `BumpAllocatorAdapter`; the `IdentifierInterner`
 text vector and hash table buckets/nodes are also arena-backed. Parser startup now estimates expression header and per-kind payload capacities
 from token shape, takes the vector backing storage from the bump arena up front,
-and page-pre-touches it. Expression creation then only sequentially emplaces into
-those reserved ranges, avoiding parser-time vector growth and first touches of
-fresh pages on large modules.
+and page-pre-touches the expression arena. Expression creation then only
+sequentially emplaces into those reserved ranges, avoiding parser-time vector
+growth and first touches of fresh pages on large modules. The reserve estimate is
+payload-shaped rather than token-count-shaped, so unused rare payload vectors do
+not pre-touch broad empty capacity.
 The later lexer/sema bump pass moved lexer output to `TokenBuffer`, with token
-vector backing storage owned by a bump arena and page-pre-touched during
-reserve. Sema persistent storage now uses bump-backed containers for
+vector backing storage owned by a bump arena and reserved up front; token
+capacity is no longer capped at 262144, and the lexer no longer page-pre-touches
+estimated token capacity that will never be written. Sema persistent storage now uses bump-backed containers for
 `CheckedModule`, `GenericSideTables`, `PatternCaseNameTable`, `TypeTable`,
 `SymbolTable`, analyzer lookup/cache tables, sema value payload lists
 (`FunctionSignature` params/generic args, `StructInfo` fields, `EnumCaseInfo`
-payloads, `TypeInfo` tuple/function/generic args), and generic constraint
-buckets; generic function instances use a bump-backed deque so side-table
+payloads, `TypeInfo` tuple/function/generic args), generic template parameter
+lists, and generic constraint buckets; generic function instances use a
+bump-backed deque so side-table
 references remain stable during nested generic instantiation; generic-method,
 enum-case, and visible-module cache buckets are created explicitly from the
 analyzer arena instead of default heap vectors from `operator[]`.
+IR lowering source-local lookup and verifier symbol de-duplication now also use
+interned typed identifiers instead of persistent string-key maps.
 On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 158.4 MiB RSS / 74.4 ms. Google Benchmark `sema_ast_bulk/1024` is now
+roughly 140.8 MiB RSS / 72.4 ms. Google Benchmark `sema_ast_bulk/1024` is now
 roughly 128 ns/expr, and the local `tools/frontend_compare.py` baseline has
 Aurex `--check` at roughly 10.1 ms for lookup/96 and 9.6 ms for generics/96,
 versus Clang++ at roughly 21.2 ms / 24.3 ms and G++ at roughly 25.1 ms /
-24.3 ms. The current 2000 generic-instance stress case is roughly 124.4 MiB
-RSS / 389.8 ms; remaining memory work is in generic side-table lifetime/release
-policy rather than the main AST header/payload or sema value-payload storage.
+24.3 ms. The current 2000 generic-instance stress case is roughly 148.4 MiB
+RSS / 439.8 ms, still below the M2.1 target of about 150 MiB; remaining memory
+work is in generic side-table lifetime/release policy rather than the main AST
+header/payload or sema value-payload storage.
 Cross-module stable hashes / parallel global IDs, 2M-node cross-machine
 RSS/time thresholds, and CI perf thresholds remain later performance work.
 The follow-up match-exhaustiveness pass replaced the former structural

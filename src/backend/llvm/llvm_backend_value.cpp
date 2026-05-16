@@ -228,7 +228,8 @@ llvm::Value* LlvmEmitter::emit_constant_ref(const Value& value) {
     );
 }
 
-llvm::Value* LlvmEmitter::emit_function_ref(const Value& value) {
+llvm::Value* LlvmEmitter::emit_function_ref(const Value& value) const
+{
     return this->functions_.at(value.call_target.value);
 }
 

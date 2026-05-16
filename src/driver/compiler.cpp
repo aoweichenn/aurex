@@ -98,7 +98,8 @@ void print_diagnostics(const base::SourceManager& sources, const base::Diagnosti
 
 } // namespace
 
-base::Result<void> Compiler::run(const CompilerInvocation& invocation) {
+base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
+{
     base::SourceManager sources;
     base::DiagnosticSink diagnostics;
 

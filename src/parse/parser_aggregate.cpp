@@ -100,7 +100,8 @@ std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
     };
 }
 
-bool ItemParser::recover_struct_field_decl_separator() {
+bool ItemParser::recover_struct_field_decl_separator() const
+{
     if (this->check(TokenKind::r_brace)) {
         return false;
     }
@@ -124,7 +125,7 @@ bool ItemParser::recover_struct_field_decl_separator() {
 std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
     const syntax::Token& case_name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_NAME));
     syntax::TypeId payload_type = syntax::INVALID_TYPE_ID;
-    std::vector<syntax::TypeId> payload_types;
+    syntax::AstArenaVector<syntax::TypeId> payload_types = this->session_.module.make_item_list<syntax::TypeId>();
     base::SourceRange payload_end_range = case_name.range;
     if (this->match(TokenKind::l_paren)) {
         if (this->check(TokenKind::r_paren)) {
@@ -170,7 +171,8 @@ std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
     };
 }
 
-bool ItemParser::recover_enum_case_separator() {
+bool ItemParser::recover_enum_case_separator() const
+{
     if (this->check(TokenKind::r_brace)) {
         return false;
     }

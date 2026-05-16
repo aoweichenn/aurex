@@ -65,12 +65,12 @@ private:
     void declare_main_wrapper();
     void emit_function(FunctionId function_id, const Function& function);
     void emit_block_phi_nodes(const Function& function, base::u32 block_index);
-    void populate_phi_edges();
+    void populate_phi_edges() const;
 
     [[nodiscard]] llvm::Value* emit_value(ValueId id);
     [[nodiscard]] llvm::Value* emit_runtime_value(const Value& value);
     [[nodiscard]] llvm::Value* emit_constant_ref(const Value& value);
-    [[nodiscard]] llvm::Value* emit_function_ref(const Value& value);
+    [[nodiscard]] llvm::Value* emit_function_ref(const Value& value) const;
     [[nodiscard]] llvm::Constant* emit_constant_initializer(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_unary(const Value& value);
     [[nodiscard]] llvm::Constant* emit_constant_binary(const Value& value);

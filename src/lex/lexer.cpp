@@ -17,7 +17,6 @@ namespace aurex::lex {
 namespace {
 
 constexpr base::usize LEXER_ESTIMATED_BYTES_PER_TOKEN = 2;
-constexpr base::usize LEXER_MAX_ESTIMATED_TOKEN_CAPACITY = 262'144;
 constexpr base::usize LEXER_MAX_ERROR_DIAGNOSTICS = 128;
 constexpr std::string_view LEXER_ERROR_BUDGET_EXHAUSTED_MESSAGE =
     "too many lexical errors; suppressing further lexer diagnostics";
@@ -103,7 +102,7 @@ inline constexpr std::array TOKEN_START_ACTIONS = build_token_start_actions();
 [[nodiscard]] base::usize initial_token_capacity(const base::usize source_size) noexcept {
     const base::usize configured_minimum = base::config::AUREX_INITIAL_TOKEN_CAPACITY;
     const base::usize estimated_capacity = (source_size / LEXER_ESTIMATED_BYTES_PER_TOKEN) + 1;
-    return std::min(std::max(configured_minimum, estimated_capacity), LEXER_MAX_ESTIMATED_TOKEN_CAPACITY);
+    return std::max(configured_minimum, estimated_capacity);
 }
 
 } // namespace

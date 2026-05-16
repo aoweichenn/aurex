@@ -36,7 +36,7 @@ namespace {
 
 FunctionRegistry::FunctionRegistry(
     CheckedModule& checked,
-    SemaMap<std::string, Symbol>& global_values,
+    SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values,
     base::DiagnosticSink& diagnostics
 ) noexcept
     : checked_(checked),
@@ -46,7 +46,7 @@ FunctionRegistry::FunctionRegistry(
 void FunctionRegistry::register_function(
     const syntax::ItemNode& item,
     const syntax::ModuleId owner,
-    std::string key,
+    const FunctionLookupKey key,
     const std::string& c_name,
     const TypeHandle method_owner_type,
     const TypeHandle return_type,
@@ -81,17 +81,17 @@ void FunctionRegistry::register_function(
         this->checked_.item_c_name_ids[item_id.value] = this->checked_.intern_c_name(signature.c_name);
     }
 
-    this->merge_function(std::move(key), std::move(signature), is_prototype);
+    this->merge_function(key, std::move(signature), is_prototype);
 }
 
 void FunctionRegistry::merge_function(
-    std::string key,
+    const FunctionLookupKey key,
     FunctionSignature signature,
     const bool is_prototype
 ) {
     const auto existing = this->checked_.functions.find(key);
     if (existing == this->checked_.functions.end()) {
-        auto inserted = this->checked_.functions.emplace(std::move(key), std::move(signature));
+        auto inserted = this->checked_.functions.emplace(key, std::move(signature));
         this->insert_function_value(inserted.first->first, inserted.first->second);
         return;
     }
@@ -165,7 +165,7 @@ bool FunctionRegistry::same_signature(
     return true;
 }
 
-void FunctionRegistry::insert_function_value(const std::string& key, const FunctionSignature& signature) {
+void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature) {
     const auto value_inserted = this->global_values_.emplace(key, Symbol {
         SymbolKind::function,
         signature.name,
@@ -182,7 +182,7 @@ void FunctionRegistry::insert_function_value(const std::string& key, const Funct
     }
 }
 
-void FunctionRegistry::refresh_function_value(const std::string& key, const FunctionSignature& signature) {
+void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature) {
     const auto found = this->global_values_.find(key);
     if (found == this->global_values_.end()) {
         this->insert_function_value(key, signature);
@@ -193,7 +193,8 @@ void FunctionRegistry::refresh_function_value(const std::string& key, const Func
     found->second.range = signature.range;
 }
 
-void FunctionRegistry::report(const base::SourceRange& range, std::string message) {
+void FunctionRegistry::report(const base::SourceRange& range, std::string message) const
+{
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,

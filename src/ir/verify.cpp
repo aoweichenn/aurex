@@ -1,6 +1,7 @@
 #include <aurex/ir/verify.hpp>
 
 #include <aurex/ir/ir_messages.hpp>
+#include <aurex/syntax/identifier.hpp>
 
 #include <sstream>
 #include <string>
@@ -12,6 +13,12 @@
 namespace aurex::ir {
 
 namespace {
+
+struct IrVerifyIdentHash {
+    [[nodiscard]] std::size_t operator()(const syntax::IdentId id) const noexcept {
+        return std::hash<base::u32> {}(id.value);
+    }
+};
 
 enum class ConstantWorkItemKind {
     value,
@@ -217,9 +224,12 @@ private:
             this->fail(std::string(IR_VERIFY_AGGREGATE_RESULT_RECORD));
             return;
         }
-        std::unordered_set<std::string> seen;
+        syntax::IdentifierInterner seen_names;
+        seen_names.reserve(value.fields.size());
+        std::unordered_set<syntax::IdentId, IrVerifyIdentHash> seen;
+        seen.reserve(value.fields.size());
         for (auto field = value.fields.rbegin(); field != value.fields.rend(); ++field) {
-            if (!seen.insert(field->name).second) {
+            if (!seen.insert(seen_names.intern(field->name)).second) {
                 this->fail(ir_verify_duplicate_aggregate_field_message(field->name));
             }
             const RecordField* expected = find_record_field(this->module_, value.type, field->name);
@@ -318,9 +328,10 @@ private:
             this->fail(std::string(IR_VERIFY_FUNCTION_EMPTY_ABI_SYMBOL));
             return;
         }
-        const auto existing = this->function_symbols_.find(function.symbol);
+        const syntax::IdentId symbol_id = this->symbol_ids_.intern(function.symbol);
+        const auto existing = this->function_symbols_.find(symbol_id);
         if (existing == this->function_symbols_.end()) {
-            this->function_symbols_.emplace(function.symbol, function_id);
+            this->function_symbols_.emplace(symbol_id, function_id);
             return;
         }
 
@@ -1004,9 +1015,12 @@ private:
             this->fail(std::string(IR_VERIFY_AGGREGATE_RESULT_RECORD));
             return;
         }
-        std::unordered_set<std::string> seen;
+        syntax::IdentifierInterner seen_names;
+        seen_names.reserve(value.fields.size());
+        std::unordered_set<syntax::IdentId, IrVerifyIdentHash> seen;
+        seen.reserve(value.fields.size());
         for (const FieldValue& field : value.fields) {
-            if (!seen.insert(field.name).second) {
+            if (!seen.insert(seen_names.intern(field.name)).second) {
                 this->fail(ir_verify_duplicate_aggregate_field_message(field.name));
             }
             const RecordField* expected = find_record_field(this->module_, value.type, field.name);
@@ -1285,7 +1299,8 @@ private:
 
     const Module& module_;
     std::vector<std::string> errors_;
-    std::unordered_map<std::string, FunctionId> function_symbols_;
+    syntax::IdentifierInterner symbol_ids_;
+    std::unordered_map<syntax::IdentId, FunctionId, IrVerifyIdentHash> function_symbols_;
 };
 
 } // namespace

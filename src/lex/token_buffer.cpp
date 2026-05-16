@@ -38,7 +38,7 @@ TokenBuffer& TokenBuffer::operator=(TokenBuffer&& other) noexcept {
 
 void TokenBuffer::reserve(const base::usize token_count) {
     this->ensure_storage();
-    this->arena_->reserve_touched(token_count * sizeof(syntax::Token));
+    this->arena_->reserve(token_count * sizeof(syntax::Token));
     this->tokens_.reserve(token_count);
 }
 

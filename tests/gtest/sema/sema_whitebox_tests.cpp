@@ -181,21 +181,29 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     return analyzer.module_.intern_identifier(name);
 }
 
-[[nodiscard]] std::string semantic_module_key(
+[[nodiscard]] sema::ModuleLookupKey semantic_module_key(
     sema::SemanticAnalyzer& analyzer,
     const ModuleId module,
     const std::string_view name
 ) {
-    return analyzer.module_key(module, intern_identifier(analyzer, name), name);
+    return analyzer.module_lookup_key(module, intern_identifier(analyzer, name));
 }
 
-[[nodiscard]] std::string semantic_method_key(
+[[nodiscard]] sema::FunctionLookupKey semantic_function_key(
+    sema::SemanticAnalyzer& analyzer,
+    const ModuleId module,
+    const std::string_view name
+) {
+    return analyzer.function_lookup_key(module, intern_identifier(analyzer, name));
+}
+
+[[nodiscard]] sema::FunctionLookupKey semantic_method_key(
     sema::SemanticAnalyzer& analyzer,
     const ModuleId module,
     const TypeHandle owner_type,
     const std::string_view name
 ) {
-    return analyzer.method_key(module, owner_type, intern_identifier(analyzer, name), name);
+    return analyzer.method_function_lookup_key(module, owner_type, intern_identifier(analyzer, name));
 }
 
 [[nodiscard]] FunctionSignature indexed_function_signature(
@@ -219,7 +227,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     return symbol(kind, name, module, type, is_mutable, visibility, intern_identifier(analyzer, name));
 }
 
-[[nodiscard]] std::string add_named_type(
+[[nodiscard]] sema::ModuleLookupKey add_named_type(
     sema::SemanticAnalyzer& analyzer,
     const ModuleId module,
     const std::string_view name,
@@ -227,39 +235,44 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const syntax::Visibility visibility = syntax::Visibility::public_
 ) {
     const IdentId name_id = intern_identifier(analyzer, name);
-    const std::string key = analyzer.module_key(module, name_id, name);
+    const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, name_id);
     analyzer.named_types_.emplace(key, type);
-    analyzer.type_visibilities_.emplace(key, visibility);
     analyzer.index_named_type(module, name_id, type, visibility);
     return key;
 }
 
-[[nodiscard]] std::string add_function(
+[[nodiscard]] sema::FunctionLookupKey add_function(
     sema::SemanticAnalyzer& analyzer,
     FunctionSignature signature
 ) {
-    const std::string key = analyzer.module_key(signature.module, signature.name_id, signature.name);
+    if (!is_valid(signature.name_id)) {
+        signature.name_id = intern_identifier(analyzer, signature.name);
+    }
+    const sema::FunctionLookupKey key = analyzer.function_lookup_key(signature.module, signature.name_id);
     signature.semantic_key = key;
     const auto inserted = analyzer.checked_.functions.emplace(key, std::move(signature));
     analyzer.index_function_lookup(inserted.first->second);
     return inserted.first->first;
 }
 
-[[nodiscard]] std::string add_method(
+[[nodiscard]] sema::FunctionLookupKey add_method(
     sema::SemanticAnalyzer& analyzer,
     FunctionSignature signature,
     const TypeHandle owner_type
 ) {
+    if (!is_valid(signature.name_id)) {
+        signature.name_id = intern_identifier(analyzer, signature.name);
+    }
     signature.is_method = true;
     signature.method_owner_type = owner_type;
-    const std::string key = analyzer.method_key(signature.module, owner_type, signature.name_id, signature.name);
+    const sema::FunctionLookupKey key = analyzer.method_function_lookup_key(signature.module, owner_type, signature.name_id);
     signature.semantic_key = key;
     const auto inserted = analyzer.checked_.functions.emplace(key, std::move(signature));
     analyzer.index_function_lookup(inserted.first->second);
     return inserted.first->first;
 }
 
-[[nodiscard]] std::pair<std::string, const Symbol*> add_global_value(
+[[nodiscard]] std::pair<sema::FunctionLookupKey, const Symbol*> add_global_value(
     sema::SemanticAnalyzer& analyzer,
     const ModuleId module,
     const std::string_view name,
@@ -269,7 +282,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     const syntax::Visibility visibility = syntax::Visibility::public_
 ) {
     const IdentId name_id = intern_identifier(analyzer, name);
-    const std::string key = analyzer.module_key(module, name_id, name);
+    const sema::FunctionLookupKey key = analyzer.function_lookup_key(module, name_id);
     auto inserted = analyzer.global_values_.emplace(
         key,
         symbol(kind, name, module, type, is_mutable, visibility, name_id)
@@ -288,14 +301,14 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     info.module = module;
     info.name = std::string(name);
     info.name_id = intern_identifier(analyzer, name);
-    info.key = analyzer.module_key(module, info.name_id, name);
-    info.params = {"T"};
-    info.param_ids = {intern_identifier(analyzer, "T")};
+    info.key = analyzer.module_lookup_key(module, info.name_id);
+    info.function_key = analyzer.function_lookup_key(module, info.name_id);
+    info.params = {intern_identifier(analyzer, "T")};
     info.visibility = visibility;
     return info;
 }
 
-[[nodiscard]] std::pair<std::string, const EnumCaseInfo*> add_enum_case(
+[[nodiscard]] std::pair<sema::ModuleLookupKey, const EnumCaseInfo*> add_enum_case(
     sema::SemanticAnalyzer& analyzer,
     const ModuleId module,
     const std::string_view name,
@@ -315,7 +328,7 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     info.case_name = std::string(case_name);
     info.case_name_id = intern_identifier(analyzer, case_name);
 
-    const std::string key = analyzer.module_key(module, info.name_id, name);
+    const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, info.name_id);
     auto inserted = analyzer.checked_.enum_cases.emplace(key, std::move(info));
     analyzer.index_enum_case(inserted.first->second);
     return {inserted.first->first, &inserted.first->second};
@@ -570,8 +583,8 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     record.module = module_id(1);
     record.type = record_type;
     record.fields = {
-        StructFieldInfo {"tag", "tag", module_id(1), u8},
-        StructFieldInfo {"value", "value", module_id(1), u64},
+        StructFieldInfo {"tag", intern_identifier(analyzer, "tag"), "tag", module_id(1), u8},
+        StructFieldInfo {"value", intern_identifier(analyzer, "value"), "value", module_id(1), u64},
     };
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(1), "Record"), record);
 
@@ -581,7 +594,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     place_record.module = module_id(0);
     place_record.type = place_record_type;
     place_record.fields = {
-        StructFieldInfo {"field", "field", module_id(0), place_record_type},
+        StructFieldInfo {"field", intern_identifier(analyzer, "field"), "field", module_id(0), place_record_type},
     };
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "PlaceRecord"), place_record);
 
@@ -1245,7 +1258,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
     const IdentId yes_id = intern_identifier(analyzer, "yes");
     const IdentId missing_id = intern_identifier(analyzer, "missing");
 
-    const std::string record_key = add_named_type(
+    const sema::ModuleLookupKey record_key = add_named_type(
         analyzer,
         module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
         "Record",
@@ -1301,17 +1314,27 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
     generic_method.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     generic_method.name = "generic_method";
     generic_method.name_id = generic_method_id;
-    generic_method.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "#generic_method:test.generic_method");
+    generic_method.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "generic_method");
+    generic_method.function_key = semantic_method_key(
+        analyzer,
+        module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
+        record_type,
+        "generic_method"
+    );
     generic_method.impl_type_pattern = record_type;
     generic_method.visibility = syntax::Visibility::public_;
-    const auto generic_method_inserted = analyzer.generic_method_templates_.emplace(generic_method.key, generic_method);
+    const auto generic_method_inserted = analyzer.generic_method_templates_.emplace(
+        generic_method.function_key,
+        generic_method
+    );
     ASSERT_TRUE(generic_method_inserted.second);
     analyzer.index_generic_method_template(generic_method_inserted.first->second);
 
     FunctionSignature run = indexed_function_signature(analyzer, "run", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
     run.visibility = syntax::Visibility::public_;
+    run.semantic_key = semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "run");
     const auto run_inserted = analyzer.checked_.functions.emplace(
-        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "run"),
+        run.semantic_key,
         run
     );
     ASSERT_TRUE(run_inserted.second);
@@ -1322,15 +1345,16 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths) {
     method.has_self_param = true;
     method.method_owner_type = record_type;
     method.visibility = syntax::Visibility::public_;
+    method.semantic_key = semantic_method_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "method");
     const auto method_inserted = analyzer.checked_.functions.emplace(
-        semantic_method_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "method"),
+        method.semantic_key,
         method
     );
     ASSERT_TRUE(method_inserted.second);
     analyzer.index_method_lookup(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, method_id, method_inserted.first->second);
 
     const auto value_inserted = analyzer.global_values_.emplace(
-        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE"),
+        semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE"),
         indexed_symbol(analyzer, SymbolKind::const_, "VALUE", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32)
     );
     ASSERT_TRUE(value_inserted.second);
@@ -1416,9 +1440,9 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
     const IdentId yes_id = intern_identifier(analyzer, "yes");
     const IdentId missing_id = intern_identifier(analyzer, "missing");
 
-    const std::string record_key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyRecord");
+    const sema::ModuleLookupKey record_key =
+        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyRecord");
     analyzer.named_types_.emplace(record_key, record_type);
-    analyzer.type_visibilities_.emplace(record_key, syntax::Visibility::public_);
 
     StructInfo record_info;
     record_info.name = "LegacyRecord";
@@ -1465,8 +1489,10 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
     FunctionSignature fallback_function =
         indexed_function_signature(analyzer, "legacy_fn", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
     fallback_function.visibility = syntax::Visibility::public_;
+    fallback_function.semantic_key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn");
     analyzer.checked_.functions.emplace(
-        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn"),
+        fallback_function.semantic_key,
         fallback_function
     );
 
@@ -1477,14 +1503,16 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
     owner_method.method_owner_type = record_type;
     owner_method.visibility = syntax::Visibility::public_;
     owner_method.param_types = {record_type};
+    owner_method.semantic_key =
+        semantic_method_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "owner_method");
     const auto owner_method_inserted = analyzer.checked_.functions.emplace(
-        semantic_method_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "owner_method"),
+        owner_method.semantic_key,
         owner_method
     );
     ASSERT_TRUE(owner_method_inserted.second);
 
     const auto value_inserted = analyzer.global_values_.emplace(
-        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LEGACY_VALUE"),
+        semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LEGACY_VALUE"),
         indexed_symbol(analyzer, SymbolKind::const_, "LEGACY_VALUE", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32)
     );
     ASSERT_TRUE(value_inserted.second);
@@ -1551,7 +1579,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyMake")
     )->second);
     analyzer.index_function_lookup(analyzer.checked_.functions.find(
-        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn")
+        semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn")
     )->second);
     analyzer.index_method_lookup(
         module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
@@ -1580,7 +1608,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps) {
     EXPECT_EQ(analyzer.find_generic_struct_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), private_box_id, "PrivateBox", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_generic_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "missing", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_function_in_visible_modules(legacy_fn_id, "legacy_fn", {}, false), &analyzer.checked_.functions.find(
-        semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn")
+        semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn")
     )->second);
     EXPECT_EQ(
         analyzer.find_method_in_owner_module(record_type, owner_method_id, "owner_method", true),
@@ -1633,19 +1661,21 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     const TypeHandle plain_type = analyzer.checked_.types.named_struct("Plain", "Plain", false);
     static_cast<void>(add_named_type(analyzer, module_id(0), "Plain", plain_type));
 
-    FunctionSignature conflict_signature = function_signature("infer", module_id(0), INVALID_TYPE_HANDLE);
+    const sema::FunctionLookupKey infer_key = semantic_function_key(analyzer, module_id(0), "infer");
+    FunctionSignature conflict_signature = indexed_function_signature(analyzer, "infer", module_id(0), INVALID_TYPE_HANDLE);
+    conflict_signature.semantic_key = infer_key;
     sema::SemanticAnalyzer::FunctionBodyState state = sema::SemanticAnalyzer::FunctionBodyState::analyzing;
-    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state);
+    analyzer.analyze_function_body_with_signature(function, infer_key, conflict_signature, state);
     state = sema::SemanticAnalyzer::FunctionBodyState::analyzed;
-    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state);
+    analyzer.analyze_function_body_with_signature(function, infer_key, conflict_signature, state);
     state = sema::SemanticAnalyzer::FunctionBodyState::not_started;
     conflict_signature.has_conflict = true;
-    analyzer.analyze_function_body_with_signature(function, "0:infer", conflict_signature, state);
+    analyzer.analyze_function_body_with_signature(function, infer_key, conflict_signature, state);
 
     analyzer.analyze_block(syntax::INVALID_STMT_ID, i32, nullptr);
     analyzer.analyze_stmt(syntax::INVALID_STMT_ID, i32, nullptr);
     sema::SemanticAnalyzer::ReturnTypeInference inference;
-    analyzer.finalize_inferred_return(function, "0:infer", inference);
+    analyzer.finalize_inferred_return(function, infer_key, inference);
 
     sema::SemanticAnalyzer::ReturnTypeInference invalid_pending_null_return;
     invalid_pending_null_return.inferred_type = ptr_i32;
@@ -1957,7 +1987,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseSparseSideTables) {
     ASSERT_EQ(checked.generic_function_instances.size(), 1U);
     const sema::FunctionSignature& signature = checked.generic_function_instances.front().signature;
     EXPECT_EQ(signature.name, "id");
-    EXPECT_FALSE(signature.semantic_key.empty());
+    EXPECT_TRUE(sema::is_valid(signature.semantic_key));
     ASSERT_EQ(signature.generic_args.size(), 1U);
     EXPECT_TRUE(checked.types.same(signature.generic_args.front(), checked.types.builtin(sema::BuiltinType::i32)));
     EXPECT_EQ(sema::function_display_name(checked.types, signature), "id[i32]");
@@ -2266,7 +2296,11 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     FunctionSignature signature = checked.make_function_signature();
     signature.name = "f";
     signature.name_id = alpha_id;
-    signature.semantic_key = "0:f";
+    signature.semantic_key = sema::FunctionLookupKey {
+        module_id(0).value,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        alpha_id,
+    };
     signature.c_name = "m0_f";
     signature.param_types.push_back(i32);
     signature.generic_args.push_back(i64);
@@ -2278,7 +2312,8 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     struct_info.c_name = "m0_S";
     struct_info.module = module_id(0);
     struct_info.type = i32;
-    checked.structs.emplace("0:S", struct_info);
+    const sema::ModuleLookupKey struct_key {module_id(0).value, alpha_id};
+    checked.structs.emplace(struct_key, struct_info);
     EnumCaseInfo enum_case = checked.make_enum_case_info();
     enum_case.name = "E_case";
     enum_case.name_id = beta_id;
@@ -2287,16 +2322,22 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     enum_case.c_name = "m0_E_case";
     enum_case.type = i64;
     enum_case.payload_types.push_back(i32);
-    checked.enum_cases.emplace("0:E_case", enum_case);
+    const sema::ModuleLookupKey enum_case_key {module_id(0).value, beta_id};
+    checked.enum_cases.emplace(enum_case_key, enum_case);
     sema::TypeAliasInfo alias_info;
     alias_info.name = "Alias";
     alias_info.name_id = alpha_id;
     alias_info.module = module_id(0);
     alias_info.target = TypeId {0};
-    checked.type_aliases.emplace("0:Alias", alias_info);
+    const sema::ModuleLookupKey alias_key {module_id(0).value, alpha_id};
+    checked.type_aliases.emplace(alias_key, alias_info);
 
     sema::GenericFunctionInstanceInfo instance;
-    instance.key = "0:f[i32]";
+    instance.key = sema::FunctionLookupKey {
+        module_id(0).value,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        checked.intern_c_name("f[i32]"),
+    };
     instance.item = syntax::ItemId {0};
     instance.signature = checked.clone_function_signature(signature);
     instance.side_tables.expr_types.push_back(i32);
@@ -2308,12 +2349,12 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves) {
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.name, "f");
     sema::CheckedModule checked_assigned;
     checked_assigned = checked;
-    EXPECT_EQ(checked_assigned.enum_cases.at("0:E_case").payload_types.front().value, i32.value);
+    EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).payload_types.front().value, i32.value);
     sema::CheckedModule checked_moved(std::move(checked_copy));
-    EXPECT_EQ(checked_moved.structs.at("0:S").name, "S");
+    EXPECT_EQ(checked_moved.structs.at(struct_key).name, "S");
     sema::CheckedModule checked_move_assigned;
     checked_move_assigned = std::move(checked_assigned);
-    EXPECT_EQ(checked_move_assigned.type_aliases.at("0:Alias").name, "Alias");
+    EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).name, "Alias");
 }
 
 TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
@@ -2329,8 +2370,6 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
         decltype(std::declval<sema::SemanticAnalyzer&>().visible_modules_cache_);
     using GenericTemplateParams =
         decltype(std::declval<sema::SemanticAnalyzer::GenericTemplateInfo&>().params);
-    using GenericTemplateParamIds =
-        decltype(std::declval<sema::SemanticAnalyzer::GenericTemplateInfo&>().param_ids);
     using GenericTemplateConstraints =
         decltype(std::declval<sema::SemanticAnalyzer::GenericTemplateInfo&>().constraints);
     using FunctionParamTypes = decltype(std::declval<sema::FunctionSignature&>().param_types);
@@ -2348,8 +2387,7 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized) {
     static_assert(std::is_same_v<AnalyzerGenericMethodIndex::mapped_type, sema::SemanticAnalyzer::GenericTemplateList>);
     static_assert(std::is_same_v<AnalyzerEnumCaseTypeIndex::mapped_type, sema::SemanticAnalyzer::EnumCaseList>);
     static_assert(std::is_same_v<AnalyzerVisibleModuleCache::mapped_type, sema::SemanticAnalyzer::ModuleIdList>);
-    static_assert(std::is_same_v<GenericTemplateParams, sema::SemaVector<std::string>>);
-    static_assert(std::is_same_v<GenericTemplateParamIds, sema::SemaVector<sema::IdentId>>);
+    static_assert(std::is_same_v<GenericTemplateParams, sema::SemaVector<sema::IdentId>>);
     static_assert(std::is_same_v<GenericTemplateConstraints, sema::SemanticAnalyzer::CapabilityMap>);
     static_assert(std::is_same_v<FunctionParamTypes, sema::TypeHandleList>);
     static_assert(std::is_same_v<FunctionGenericArgs, sema::TypeHandleList>);
@@ -2528,21 +2566,21 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     const TypeHandle const_u8_ptr = types.pointer(PointerMutability::const_, u8);
     analyzer.checked_.syntax_type_handles[u8_type_id.value] = u8;
     analyzer.checked_.syntax_type_handles[const_u8_ptr_type_id.value] = const_u8_ptr;
-    const std::string text_key = add_global_value(
+    const sema::FunctionLookupKey text_key = add_global_value(
         analyzer,
         module_id(0),
         "text",
         str,
         SymbolKind::local
     ).first;
-    const std::string data_key = add_global_value(
+    const sema::FunctionLookupKey data_key = add_global_value(
         analyzer,
         module_id(0),
         "data",
         const_u8_ptr,
         SymbolKind::local
     ).first;
-    const std::string len_key = add_global_value(
+    const sema::FunctionLookupKey len_key = add_global_value(
         analyzer,
         module_id(0),
         "len",
@@ -2748,8 +2786,8 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges) {
     overflow_struct.module = module_id(0);
     overflow_struct.type = overflow_struct_type;
     overflow_struct.fields = {
-        StructFieldInfo {"huge", "huge", module_id(0), max_array_u8},
-        StructFieldInfo {"tail", "tail", module_id(0), u64},
+        StructFieldInfo {"huge", intern_identifier(analyzer, "huge"), "huge", module_id(0), max_array_u8},
+        StructFieldInfo {"tail", intern_identifier(analyzer, "tail"), "tail", module_id(0), u64},
     };
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "OverflowStruct"), overflow_struct);
 
@@ -3195,7 +3233,13 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal) {
 
     sema::EnumCaseInfo case_info;
     case_info.c_name = SEMA_TEST_ENUM_CASE_C_NAME;
-    analyzer.checked_.enum_cases.emplace(std::string(SEMA_TEST_ENUM_CASE_C_NAME), case_info);
+    case_info.name = std::string(SEMA_TEST_ENUM_CASE_C_NAME);
+    case_info.name_id = intern_identifier(analyzer, SEMA_TEST_ENUM_CASE_C_NAME);
+    case_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    analyzer.checked_.enum_cases.emplace(
+        sema::ModuleLookupKey {case_info.module.value, case_info.name_id},
+        case_info
+    );
     analyzer.checked_.expr_c_name_ids[field_expr_id.value] = analyzer.checked_.intern_c_name(SEMA_TEST_ENUM_CASE_C_NAME);
 
     dependencies.clear();

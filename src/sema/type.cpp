@@ -129,7 +129,7 @@ TypeTable::TypeTable()
       slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash {})),
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash {})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash {})),
-      generic_param_types_(make_sema_map<std::string, TypeHandle>(*this->arena_)) {
+      generic_param_types_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})) {
     this->initialize_builtins();
 }
 
@@ -142,7 +142,7 @@ TypeTable::TypeTable(const TypeTable& other)
       slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash {})),
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash {})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash {})),
-      generic_param_types_(make_sema_map<std::string, TypeHandle>(*this->arena_)) {
+      generic_param_types_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})) {
     this->copy_from(other);
 }
 
@@ -164,6 +164,7 @@ TypeTable::TypeTable(TypeTable&& other) noexcept
       slice_types_(std::move(other.slice_types_)),
       tuple_types_(std::move(other.tuple_types_)),
       function_types_(std::move(other.function_types_)),
+      generic_identifiers_(std::move(other.generic_identifiers_)),
       generic_param_types_(std::move(other.generic_param_types_)) {}
 
 TypeTable& TypeTable::operator=(TypeTable&& other) noexcept {
@@ -193,6 +194,7 @@ void TypeTable::swap(TypeTable& other) noexcept {
     this->slice_types_.swap(other.slice_types_);
     this->tuple_types_.swap(other.tuple_types_);
     this->function_types_.swap(other.function_types_);
+    swap(this->generic_identifiers_, other.generic_identifiers_);
     this->generic_param_types_.swap(other.generic_param_types_);
     swap(this->arena_, other.arena_);
 }
@@ -217,6 +219,7 @@ void TypeTable::copy_from(const TypeTable& other) {
     for (const auto& entry : other.function_types_) {
         this->function_types_.emplace(this->clone_function_key(entry.first), entry.second);
     }
+    this->generic_identifiers_ = other.generic_identifiers_;
     this->generic_param_types_ = other.generic_param_types_;
 }
 
@@ -529,7 +532,8 @@ TypeHandle TypeTable::generic_param(std::string name) {
 }
 
 TypeHandle TypeTable::generic_param(std::string identity_key, std::string display_name) {
-    if (const auto found = this->generic_param_types_.find(identity_key); found != this->generic_param_types_.end()) {
+    const IdentId identity_id = this->generic_identifiers_.intern(identity_key);
+    if (const auto found = this->generic_param_types_.find(identity_id); found != this->generic_param_types_.end()) {
         return found->second;
     }
 
@@ -538,7 +542,7 @@ TypeHandle TypeTable::generic_param(std::string identity_key, std::string displa
     info.name = std::move(display_name);
     info.generic_identity_key = identity_key;
     const TypeHandle handle = this->push(std::move(info));
-    this->generic_param_types_.emplace(std::move(identity_key), handle);
+    this->generic_param_types_.emplace(identity_id, handle);
     return handle;
 }
 

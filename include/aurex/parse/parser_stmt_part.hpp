@@ -31,9 +31,9 @@ public:
     );
 
 private:
-    [[nodiscard]] syntax::StmtId parse_unsafe_block_stmt();
+    [[nodiscard]] syntax::StmtId parse_unsafe_block_stmt() const;
     [[nodiscard]] bool starts_local_pattern() const noexcept;
-    [[nodiscard]] bool match_assignment_operator(syntax::AssignOp& op) noexcept;
+    [[nodiscard]] bool match_assignment_operator(syntax::AssignOp& op) const noexcept;
     [[nodiscard]] syntax::StmtId parse_assignment_tail(
         syntax::ExprId lhs,
         ExprContext context,
@@ -44,7 +44,7 @@ private:
     [[nodiscard]] const syntax::Token& expect_statement_semicolon(
         std::string message,
         StatementTerminatorRecovery recovery
-    );
+    ) const;
 };
 
 } // namespace aurex::parse

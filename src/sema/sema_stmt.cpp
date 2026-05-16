@@ -217,7 +217,7 @@ void evaluate_control_flow_block(
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
         return;
     }
-    const std::vector<syntax::StmtId>* const statements = module.stmts.block_statements(frame.stmt.value);
+    const syntax::AstArenaVector<syntax::StmtId>* const statements = module.stmts.block_statements(frame.stmt.value);
     if (statements == nullptr) {
         frame.kind = ControlFlowFrameKind::statement;
         return;
@@ -349,7 +349,7 @@ void SemanticAnalyzer::analyze_function_body(
     const syntax::ItemNode& function,
     const syntax::ItemId function_id
 ) {
-    const std::string key = this->function_key(function, function_id);
+    const FunctionLookupKey key = this->function_key(function, function_id);
     const auto found = this->checked_.functions.find(key);
     if (found == this->checked_.functions.end()) {
         return;
@@ -359,7 +359,7 @@ void SemanticAnalyzer::analyze_function_body(
 
 void SemanticAnalyzer::analyze_function_body_with_signature(
     const syntax::ItemNode& function,
-    const std::string& key,
+    const FunctionLookupKey& key,
     const FunctionSignature& signature,
     FunctionBodyState& state
 ) {
@@ -557,11 +557,12 @@ void SemanticAnalyzer::analyze_statement_action(
 void SemanticAnalyzer::analyze_statement_block(
     const syntax::StmtId block,
     std::vector<StatementAnalysisAction>& stack
-) {
+) const
+{
     if (!syntax::is_valid(block) || block.value >= this->module_.stmts.size()) {
         return;
     }
-    const std::vector<syntax::StmtId>* const statements = this->module_.stmts.block_statements(block.value);
+    const syntax::AstArenaVector<syntax::StmtId>* const statements = this->module_.stmts.block_statements(block.value);
     if (statements == nullptr) {
         return;
     }
@@ -963,7 +964,7 @@ void SemanticAnalyzer::record_inferred_return(
 
 void SemanticAnalyzer::finalize_inferred_return(
     const syntax::ItemNode& function,
-    const std::string& key,
+    const FunctionLookupKey& key,
     ReturnTypeInference& inference
 ) {
     this->resolve_pending_null_returns(inference);
@@ -1012,7 +1013,8 @@ void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inferen
 void SemanticAnalyzer::report_return_inference_diagnostic(
     const syntax::StmtId stmt_id,
     const std::string_view message
-) {
+) const
+{
     const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
     if (!stmt.has_value()) {
         return;
@@ -1020,7 +1022,8 @@ void SemanticAnalyzer::report_return_inference_diagnostic(
     this->report(stmt->range, std::string(message));
 }
 
-void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) {
+void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) const
+{
     if (this->checked_.types.is_array(return_type)) {
         this->report(function.range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
     }
@@ -1036,11 +1039,11 @@ void SemanticAnalyzer::ensure_function_return_known(
     if (is_valid(signature.return_type) || signature.is_extern_c) {
         return;
     }
-    std::string key = signature.semantic_key;
-    if (key.empty()) {
+    FunctionLookupKey key = signature.semantic_key;
+    if (!is_valid(key)) {
         key = signature.is_method
-            ? this->method_key(signature.module, signature.method_owner_type, signature.name)
-            : this->module_key(signature.module, signature.name);
+            ? this->method_function_lookup_key(signature.module, signature.method_owner_type, signature.name_id)
+            : this->function_lookup_key(signature.module, signature.name_id);
     }
     const FunctionBodyState state = this->function_body_states_.contains(key)
         ? this->function_body_states_.at(key)

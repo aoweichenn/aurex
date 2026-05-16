@@ -212,7 +212,7 @@ syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext cont
 
 syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
     const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ARRAY_LITERAL_START));
-    std::vector<syntax::ExprId> elements;
+    syntax::AstArenaVector<syntax::ExprId> elements = this->session_.module.make_expr_list<syntax::ExprId>();
     syntax::ExprId repeat_value = syntax::INVALID_EXPR_ID;
     syntax::ExprId repeat_count = syntax::INVALID_EXPR_ID;
 
@@ -297,7 +297,7 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
         return first;
     }
 
-    std::vector<syntax::ExprId> elements;
+    syntax::AstArenaVector<syntax::ExprId> elements = this->session_.module.make_expr_list<syntax::ExprId>();
     elements.push_back(first);
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
         elements.push_back(this->parse_expr(ExprContext::normal));
@@ -378,7 +378,8 @@ void PrimaryExprParser::skip_grouped_expression_remainder() {
     }
 }
 
-syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) {
+syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) const
+{
     const syntax::Token& token = this->previous();
     return this->session_.module.push_literal_expr(kind, token.range, token.text);
 }

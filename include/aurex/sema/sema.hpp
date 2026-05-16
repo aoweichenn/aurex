@@ -74,17 +74,17 @@ private:
     };
 
     using CapabilitySet = SemaSet<CapabilityKind, CapabilityKindHash>;
-    using CapabilityMap = SemaMap<std::string, CapabilitySet>;
+    using CapabilityMap = SemaMap<IdentId, CapabilitySet, IdentIdHash>;
 
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
         std::string name;
         IdentId name_id = INVALID_IDENT_ID;
-        std::string key;
-        SemaVector<std::string> params;
-        SemaVector<IdentId> param_ids;
-        SemaVector<std::string> param_identity_keys;
+        ModuleLookupKey key;
+        FunctionLookupKey function_key;
+        SemaVector<IdentId> params;
+        SemaVector<IdentId> param_identity_ids;
         CapabilityMap constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
@@ -252,7 +252,7 @@ private:
     [[nodiscard]] CapabilitySet make_capability_set() const;
     [[nodiscard]] CapabilitySet copy_capability_set(const CapabilitySet& source) const;
     void copy_capability_map(CapabilityMap& target, const CapabilityMap& source) const;
-    [[nodiscard]] CapabilitySet& capability_bucket(CapabilityMap& map, std::string key) const;
+    [[nodiscard]] CapabilitySet& capability_bucket(CapabilityMap& map, IdentId key) const;
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
     [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
@@ -278,18 +278,18 @@ private:
         std::string c_prefix,
         syntax::Visibility visibility
     );
-    void validate_function_prototypes();
-    void validate_abi_symbols();
+    void validate_function_prototypes() const;
+    void validate_abi_symbols() const;
     void validate_type_layouts();
-    void validate_module_namespace_conflicts();
-    void analyze_entry_points();
+    void validate_module_namespace_conflicts() const;
+    void analyze_entry_points() const;
     void resolve_type_alias_decls();
     void analyze_struct_properties();
     void analyze_const_decls();
     void analyze_function_body(const syntax::ItemNode& function, syntax::ItemId function_id);
     void analyze_function_body_with_signature(
         const syntax::ItemNode& function,
-        const std::string& key,
+        const FunctionLookupKey& key,
         const FunctionSignature& signature,
         FunctionBodyState& state
     );
@@ -321,7 +321,7 @@ private:
         TypeHandle expected_return,
         ReturnTypeInference* return_inference
     );
-    void analyze_statement_block(syntax::StmtId block, std::vector<StatementAnalysisAction>& stack);
+    void analyze_statement_block(syntax::StmtId block, std::vector<StatementAnalysisAction>& stack) const;
     void analyze_pattern_scoped_block(
         syntax::PatternId pattern,
         TypeHandle pattern_type,
@@ -337,10 +337,10 @@ private:
     [[nodiscard]] bool block_may_fallthrough(syntax::StmtId block) const;
     [[nodiscard]] bool stmt_may_fallthrough(syntax::StmtId stmt) const;
     void record_inferred_return(syntax::StmtId stmt, TypeHandle actual, ReturnTypeInference& inference);
-    void finalize_inferred_return(const syntax::ItemNode& function, const std::string& key, ReturnTypeInference& inference);
+    void finalize_inferred_return(const syntax::ItemNode& function, const FunctionLookupKey& key, ReturnTypeInference& inference);
     void resolve_pending_null_returns(ReturnTypeInference& inference);
-    void report_return_inference_diagnostic(syntax::StmtId stmt, std::string_view message);
-    void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type);
+    void report_return_inference_diagnostic(syntax::StmtId stmt, std::string_view message) const;
+    void validate_function_return_type(const syntax::ItemNode& function, TypeHandle return_type) const;
     void ensure_function_return_known(const FunctionSignature& signature, const base::SourceRange& use_range);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr);
     [[nodiscard]] TypeHandle analyze_expr(syntax::ExprId expr, TypeHandle expected_type);
@@ -445,7 +445,7 @@ private:
         bool& covered_true,
         bool& covered_false,
         bool& saw_wildcard
-    );
+    ) const;
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type);
     [[nodiscard]] TypeHandle resolve_type(syntax::TypeId type, bool opaque_allowed_as_pointee);
     [[nodiscard]] TypeHandle resolve_named_type(
@@ -481,7 +481,7 @@ private:
     [[nodiscard]] bool unify_generic_type(
         TypeHandle pattern,
         TypeHandle actual,
-        std::unordered_map<std::string, TypeHandle>& inferred
+        std::unordered_map<IdentId, TypeHandle, IdentIdHash>& inferred
     ) const;
     [[nodiscard]] const GenericTemplateInfo* find_generic_function_in_visible_modules(
         IdentId name_id,
@@ -581,10 +581,12 @@ private:
         bool report_unknown = true
     );
     [[nodiscard]] bool type_contains_generic_param(TypeHandle type) const;
-    void populate_generic_param_identity_keys(GenericTemplateInfo& info) const;
+    void populate_generic_param_identity_keys(GenericTemplateInfo& info);
     [[nodiscard]] std::string make_generic_param_identity_key(const GenericTemplateInfo& info, base::usize index) const;
-    [[nodiscard]] std::string generic_param_identity_key(const GenericTemplateInfo& info, base::usize index) const;
-    [[nodiscard]] std::string generic_param_identity_key(const TypeInfo& info) const;
+    [[nodiscard]] std::string_view generic_param_name(const GenericTemplateInfo& info, base::usize index) const;
+    [[nodiscard]] IdentId make_generic_param_identity_id(const GenericTemplateInfo& info, base::usize index);
+    [[nodiscard]] IdentId generic_param_identity_id(const GenericTemplateInfo& info, base::usize index) const;
+    [[nodiscard]] IdentId generic_param_identity_id(const TypeInfo& info) const;
     [[nodiscard]] TypeHandle generic_param_placeholder(const GenericTemplateInfo& info, base::usize index);
     void populate_generic_placeholder_context(const GenericTemplateInfo& info, GenericContext& context);
     void populate_generic_concrete_context(
@@ -634,7 +636,7 @@ private:
     [[nodiscard]] bool is_writable_place(syntax::ExprId expr);
     [[nodiscard]] bool is_array_containing_value_type(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* find_struct(TypeHandle type) const noexcept;
-    [[nodiscard]] ModuleSelector resolve_module_selector(syntax::ExprId expr, bool report_unknown);
+    [[nodiscard]] ModuleSelector resolve_module_selector(syntax::ExprId expr, bool report_unknown) const;
     [[nodiscard]] NamedTypeSelector resolve_named_type_selector(syntax::ExprId expr, bool report_unknown);
     [[nodiscard]] TypeHandle resolve_type_selector(syntax::ExprId expr, bool report_unknown);
     [[nodiscard]] TypeHandle resolve_named_type_selector_type(
@@ -655,7 +657,7 @@ private:
     [[nodiscard]] ModuleSelectorPath expr_selector_path(syntax::ExprId expr) const;
     [[nodiscard]] bool current_generic_param_exists(IdentId name_id, std::string_view name) const;
     [[nodiscard]] bool visible_type_name_exists(IdentId name_id, std::string_view name) const;
-    [[nodiscard]] bool can_define_local_name(IdentId name_id, std::string_view name, const base::SourceRange& range);
+    [[nodiscard]] bool can_define_local_name(IdentId name_id, std::string_view name, const base::SourceRange& range) const;
     [[nodiscard]] bool module_type_or_value_name_exists(syntax::ModuleId module, IdentId name_id, std::string_view name) const;
     [[nodiscard]] bool top_level_value_name_exists(syntax::ModuleId module, IdentId name_id, std::string_view name) const;
     [[nodiscard]] bool type_member_name_exists(TypeHandle owner_type, IdentId name_id, std::string_view name) const;
@@ -687,13 +689,13 @@ private:
     [[nodiscard]] TypeHandle function_type_from_symbol(const Symbol& symbol, const base::SourceRange& range);
     [[nodiscard]] TryShape classify_try_shape(TypeHandle type) const noexcept;
     [[nodiscard]] bool in_unsafe_context() const noexcept;
-    void require_unsafe_context(const base::SourceRange& range, std::string_view operation);
-    void validate_unsafe_call(const FunctionSignature& signature, const base::SourceRange& range);
-    void validate_unsafe_function_value_call(TypeHandle callee_type, const base::SourceRange& range);
+    void require_unsafe_context(const base::SourceRange& range, std::string_view operation) const;
+    void validate_unsafe_call(const FunctionSignature& signature, const base::SourceRange& range) const;
+    void validate_unsafe_function_value_call(TypeHandle callee_type, const base::SourceRange& range) const;
     [[nodiscard]] syntax::ModuleId item_module(syntax::ItemId item) const noexcept;
     void normalize_parser_only_module_contract();
-    [[nodiscard]] bool validate_ast_contract();
-    [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] bool validate_ast_contract() const;
+    [[nodiscard]] syntax::ModuleId resolve_import_alias(std::string_view alias, const base::SourceRange& range, bool report_unknown = true) const;
     [[nodiscard]] std::vector<std::string_view> type_scope_parts(const syntax::TypeNode& type) const;
     [[nodiscard]] syntax::ModuleId resolve_type_scope(const syntax::TypeNode& type, bool report_unknown);
     [[nodiscard]] syntax::ModuleId find_visible_module_path(const std::vector<std::string_view>& parts) const;
@@ -703,14 +705,19 @@ private:
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
-    [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
-    [[nodiscard]] std::string module_key(syntax::ModuleId module, IdentId name_id, std::string_view fallback_name = {}) const;
-    [[nodiscard]] std::string function_key(const syntax::ItemNode& function, syntax::ItemId function_id) const;
-    [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
-    [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name_id, std::string_view fallback_name = {}) const;
+    [[nodiscard]] std::string generic_template_key_prefix(
+        syntax::ModuleId module,
+        IdentId name_id,
+        std::string_view fallback_name = {}
+    ) const;
+    [[nodiscard]] FunctionLookupKey function_key(const syntax::ItemNode& function, syntax::ItemId function_id) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] ModuleLookupKey module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] MethodLookupKey method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
+    [[nodiscard]] FunctionLookupKey function_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
+    [[nodiscard]] FunctionLookupKey method_function_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
+    [[nodiscard]] FunctionLookupKey function_lookup_key_from_method(MethodLookupKey key) const noexcept;
+    [[nodiscard]] IdentId intern_generated_key(std::string_view key);
     [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] MethodLookupKey intern_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
@@ -831,7 +838,7 @@ private:
     [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
-    void report(const base::SourceRange& range, std::string message);
+    void report(const base::SourceRange& range, std::string message) const;
 
     std::optional<syntax::AstModule> owned_module_;
     syntax::AstModule& module_;
@@ -840,23 +847,22 @@ private:
     std::unique_ptr<base::BumpAllocator> arena_;
     CheckedModule checked_;
     SymbolTable symbols_;
-    SemaMap<std::string, TypeHandle> named_types_;
-    SemaMap<std::string, syntax::Visibility> type_visibilities_;
-    SemaMap<std::string, GenericTemplateInfo> generic_struct_templates_;
-    SemaMap<std::string, GenericTemplateInfo> generic_enum_templates_;
-    SemaMap<std::string, GenericTemplateInfo> generic_type_alias_templates_;
-    SemaMap<std::string, GenericTemplateInfo> generic_function_templates_;
-    SemaMap<std::string, GenericTemplateInfo> generic_method_templates_;
-    SemaMap<std::string, TypeHandle> generic_struct_instances_;
-    SemaMap<std::string, TypeHandle> generic_enum_instances_;
-    SemaMap<std::string, TypeHandle> resolved_generic_type_aliases_;
-    SemaMap<std::string, base::usize> generic_function_instances_;
-    SemaMap<std::string, FunctionSignature> generic_placeholder_functions_;
-    SemaMap<std::string, TypeHandle> resolved_type_aliases_;
-    SemaVector<std::string> resolving_type_aliases_;
-    SemaMap<std::string, Symbol> global_values_;
-    SemaMap<std::string, syntax::ItemId> function_definition_items_;
-    SemaMap<std::string, FunctionBodyState> function_body_states_;
+    SemaMap<ModuleLookupKey, TypeHandle, ModuleLookupKeyHash> named_types_;
+    SemaMap<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash> generic_struct_templates_;
+    SemaMap<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash> generic_enum_templates_;
+    SemaMap<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash> generic_type_alias_templates_;
+    SemaMap<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash> generic_function_templates_;
+    SemaMap<FunctionLookupKey, GenericTemplateInfo, FunctionLookupKeyHash> generic_method_templates_;
+    SemaMap<IdentId, TypeHandle, IdentIdHash> generic_struct_instances_;
+    SemaMap<IdentId, TypeHandle, IdentIdHash> generic_enum_instances_;
+    SemaMap<IdentId, TypeHandle, IdentIdHash> resolved_generic_type_aliases_;
+    SemaMap<FunctionLookupKey, base::usize, FunctionLookupKeyHash> generic_function_instances_;
+    SemaMap<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash> generic_placeholder_functions_;
+    SemaMap<ModuleLookupKey, TypeHandle, ModuleLookupKeyHash> resolved_type_aliases_;
+    SemaVector<ModuleLookupKey> resolving_type_aliases_;
+    SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash> global_values_;
+    SemaMap<FunctionLookupKey, syntax::ItemId, FunctionLookupKeyHash> function_definition_items_;
+    SemaMap<FunctionLookupKey, FunctionBodyState, FunctionLookupKeyHash> function_body_states_;
     SemaMap<base::u32, const StructInfo*> struct_infos_by_type_;
     SemaMap<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash> named_types_by_name_;
     SemaMap<ModuleLookupKey, const TypeAliasInfo*, ModuleLookupKeyHash> type_aliases_by_name_;

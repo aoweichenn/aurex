@@ -11,13 +11,37 @@ namespace aurex::parse {
 
 namespace detail {
 
+inline constexpr base::usize PARSER_EXPR_RESERVE_SLACK_TOKEN_DIVISOR = 64;
+
 [[nodiscard]] constexpr base::usize parser_expr_extra_capacity_for_tokens(
     const base::usize token_count
 ) noexcept {
     return syntax::ast_reserve_fraction(
         token_count,
-        syntax::SYNTAX_AST_RESERVE_EXPR_TOKEN_DIVISOR
+        PARSER_EXPR_RESERVE_SLACK_TOKEN_DIVISOR
     );
+}
+
+[[nodiscard]] constexpr base::usize parser_expr_reserved_node_count(
+    const syntax::AstReserveEstimate::Exprs& exprs
+) noexcept {
+    return exprs.literals +
+           exprs.names +
+           exprs.generic_applies +
+           exprs.unaries +
+           exprs.binaries +
+           exprs.calls +
+           exprs.ifs +
+           exprs.blocks +
+           exprs.matches +
+           exprs.arrays +
+           exprs.tuples +
+           exprs.postfix_chains +
+           exprs.fields +
+           exprs.indexes +
+           exprs.slices +
+           exprs.struct_literals +
+           exprs.casts;
 }
 
 inline void count_parser_primary_expr_token(
@@ -87,15 +111,17 @@ inline void count_parser_expr_operator_token(
 ) noexcept {
     switch (kind) {
     case syntax::TokenKind::plus:
-    case syntax::TokenKind::minus:
-    case syntax::TokenKind::star:
     case syntax::TokenKind::slash:
     case syntax::TokenKind::percent:
-    case syntax::TokenKind::amp:
     case syntax::TokenKind::pipe:
     case syntax::TokenKind::caret:
     case syntax::TokenKind::less:
     case syntax::TokenKind::greater:
+        ++exprs.binaries;
+        break;
+    case syntax::TokenKind::minus:
+    case syntax::TokenKind::star:
+    case syntax::TokenKind::amp:
         ++exprs.binaries;
         ++exprs.unaries;
         break;
@@ -137,30 +163,14 @@ inline void finalize_parser_expr_reserve(
     const base::usize token_count
 ) noexcept {
     const base::usize extra = parser_expr_extra_capacity_for_tokens(token_count);
-    exprs.headers = token_count + extra;
     exprs.postfix_chains += exprs.calls +
                             exprs.fields +
                             exprs.indexes +
                             exprs.slices +
                             exprs.generic_applies +
                             exprs.struct_literals +
-                            exprs.unaries +
                             extra;
-    exprs.literals += extra;
-    exprs.names += extra;
-    exprs.unaries += extra;
-    exprs.binaries += extra;
-    exprs.calls += extra;
-    exprs.ifs += extra;
-    exprs.blocks += extra;
-    exprs.matches += extra;
-    exprs.arrays += extra;
-    exprs.tuples += extra;
-    exprs.fields += extra;
-    exprs.indexes += extra;
-    exprs.slices += extra;
-    exprs.struct_literals += extra;
-    exprs.casts += extra;
+    exprs.headers = parser_expr_reserved_node_count(exprs) + extra;
 }
 
 } // namespace detail

@@ -17,14 +17,14 @@ class FunctionRegistry final {
 public:
     FunctionRegistry(
         CheckedModule& checked,
-        SemaMap<std::string, Symbol>& global_values,
+        SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values,
         base::DiagnosticSink& diagnostics
     ) noexcept;
 
     void register_function(
         const syntax::ItemNode& item,
         syntax::ModuleId owner,
-        std::string key,
+        FunctionLookupKey key,
         const std::string& c_name,
         TypeHandle method_owner_type,
         TypeHandle return_type,
@@ -39,13 +39,13 @@ private:
         std::span<const TypeHandle> param_types,
         bool is_variadic
     ) const noexcept;
-    void merge_function(std::string key, FunctionSignature signature, bool is_prototype);
-    void insert_function_value(const std::string& key, const FunctionSignature& signature);
-    void refresh_function_value(const std::string& key, const FunctionSignature& signature);
-    void report(const base::SourceRange& range, std::string message);
+    void merge_function(FunctionLookupKey key, FunctionSignature signature, bool is_prototype);
+    void insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
+    void refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
+    void report(const base::SourceRange& range, std::string message) const;
 
     CheckedModule& checked_;
-    SemaMap<std::string, Symbol>& global_values_;
+    SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values_;
     base::DiagnosticSink& diagnostics_;
 };
 

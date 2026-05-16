@@ -149,7 +149,8 @@ struct AbiSymbolInfo {
 
 } // namespace
 
-void SemanticAnalyzer::validate_module_namespace_conflicts() {
+void SemanticAnalyzer::validate_module_namespace_conflicts() const
+{
     std::unordered_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash> type_names;
     std::unordered_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash> value_names;
     type_names.reserve(this->module_.items.size());
@@ -181,10 +182,10 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() {
         const syntax::ModuleId owner {
             static_cast<base::u32>(&module_info - begin)
         };
-        std::unordered_set<std::string> module_aliases;
+        std::unordered_set<IdentId, IdentIdHash> module_aliases;
         module_aliases.reserve(module_info.imports.size());
         for (const syntax::ResolvedImport& import : module_info.imports) {
-            if (!module_aliases.insert(std::string(import.alias)).second) {
+            if (!module_aliases.insert(import.alias_id).second) {
                 this->report(import.alias_range, sema_ambiguous_import_alias_message(import.alias));
             }
             const ModuleLookupKey key = this->module_lookup_key(owner, import.alias_id);
@@ -211,7 +212,7 @@ void SemanticAnalyzer::register_type_names() {
             }
         }
         const syntax::ModuleId owner = this->item_module(syntax::ItemId {item_index});
-        const std::string key = this->module_key(owner, item.name_id, item.name);
+        const ModuleLookupKey key = this->module_lookup_key(owner, item.name_id);
         const std::string qualified = this->qualified_name(owner, item.name);
         const std::string c_name = this->c_symbol_name(owner, item.name);
         TypeHandle handle = INVALID_TYPE_HANDLE;
@@ -271,7 +272,6 @@ void SemanticAnalyzer::register_type_names() {
             this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             continue;
         }
-        this->type_visibilities_[key] = item.visibility;
         this->index_named_type(owner, item.name_id, handle, item.visibility);
         if (this->checked_.type_aliases.contains(key)) {
             this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
@@ -319,10 +319,10 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         const TypeInfo& enum_info = this->checked_.types.get(named_enum_type);
         return this->checked_.types.display_name(enum_display_name, enum_info.generic_args);
     };
-    std::unordered_set<std::string> seen_cases;
+    std::unordered_set<IdentId, IdentIdHash> seen_cases;
     seen_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
-        if (!seen_cases.insert(std::string(enum_case.name)).second) {
+        if (!seen_cases.insert(enum_case.name_id).second) {
             this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
         }
     }
@@ -344,16 +344,16 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     base::u64 payload_align = 1;
     bool contains_array_payload = false;
     base::u64 next_discriminant = 0;
-    std::unordered_set<std::string> registered_cases;
+    std::unordered_set<IdentId, IdentIdHash> registered_cases;
     registered_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
-        const bool duplicate_case_name = !registered_cases.insert(std::string(enum_case.name)).second;
+        const bool duplicate_case_name = !registered_cases.insert(enum_case.name_id).second;
         if (!duplicate_case_name && this->type_member_name_exists(named_enum_type, enum_case.name_id, enum_case.name)) {
             this->report(enum_case.range, sema_duplicate_type_member_message(make_enum_display_name(), enum_case.name));
         }
         const std::string full_name = case_prefix + std::string(enum_case.name);
         const IdentId full_name_id = this->module_.intern_identifier(full_name);
-        const std::string enum_case_key = this->module_key(owner, full_name);
+        const ModuleLookupKey enum_case_key = this->module_lookup_key(owner, full_name_id);
         const bool has_payload = !enum_case.payload_types.empty() || syntax::is_valid(enum_case.payload_type);
         std::vector<TypeHandle> payload_types;
         payload_types.reserve(enum_case.payload_types.empty() ? 1 : enum_case.payload_types.size());
@@ -400,6 +400,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                     std::string(SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
                 payload_info.fields.push_back(StructFieldInfo {
                     field_name,
+                    this->module_.intern_identifier(field_name),
                     field_name,
                     owner,
                     payload_types[i],
@@ -408,7 +409,10 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                 });
             }
             const auto payload_inserted = this->checked_.structs.emplace(
-                this->module_key(owner, full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX),
+                this->module_lookup_key(
+                    owner,
+                    this->module_.intern_identifier(full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX)
+                ),
                 std::move(payload_info)
             );
             if (payload_inserted.second) {
@@ -494,12 +498,13 @@ void SemanticAnalyzer::register_value_names() {
             continue;
         }
         this->current_module_ = this->item_module(syntax::ItemId {item_index});
-        std::string key = this->module_key(this->current_module_, item.name_id, item.name);
+        const ModuleLookupKey item_type_key = this->module_lookup_key(this->current_module_, item.name_id);
+        FunctionLookupKey key = this->function_lookup_key(this->current_module_, item.name_id);
         std::string c_name = this->c_symbol_name(this->current_module_, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
-            if (!is_method && this->generic_function_templates_.contains(key)) {
+            if (!is_method && this->generic_function_templates_.contains(item_type_key)) {
                 this->report(
                     item.range,
                     sema_duplicate_function_definition_message(this->module_name(this->current_module_), item.name)
@@ -519,7 +524,7 @@ void SemanticAnalyzer::register_value_names() {
                         this->report(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
                     }
                 }
-                key = this->method_key(this->current_module_, method_owner_type, item.name_id, item.name);
+                key = this->method_function_lookup_key(this->current_module_, method_owner_type, item.name_id);
                 c_name = this->method_c_symbol_name(method_owner_type, item.name);
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
@@ -630,7 +635,7 @@ void SemanticAnalyzer::register_value_names() {
                 this->index_global_value(inserted.first->second);
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
-            const auto type_found = this->named_types_.find(key);
+            const auto type_found = this->named_types_.find(item_type_key);
             this->register_enum_cases_for_item(
                 item,
                 this->current_module_,
@@ -645,7 +650,8 @@ void SemanticAnalyzer::register_value_names() {
     this->current_module_ = syntax::INVALID_MODULE_ID;
 }
 
-void SemanticAnalyzer::validate_function_prototypes() {
+void SemanticAnalyzer::validate_function_prototypes() const
+{
     for (const auto& entry : checked_.functions) {
         const FunctionSignature& signature = entry.second;
         if (signature.is_extern_c) {
@@ -660,8 +666,11 @@ void SemanticAnalyzer::validate_function_prototypes() {
     }
 }
 
-void SemanticAnalyzer::validate_abi_symbols() {
-    std::unordered_map<std::string, AbiSymbolInfo> symbols;
+void SemanticAnalyzer::validate_abi_symbols() const
+{
+    IdentifierInterner symbol_ids;
+    symbol_ids.reserve(this->checked_.functions.size() + this->global_values_.size());
+    std::unordered_map<IdentId, AbiSymbolInfo, IdentIdHash> symbols;
     symbols.reserve(this->checked_.functions.size() + this->global_values_.size());
 
     const auto same_function_type = [&](const AbiFunctionInfo& lhs, const AbiFunctionInfo& rhs) {
@@ -682,14 +691,15 @@ void SemanticAnalyzer::validate_abi_symbols() {
         if (symbol.empty()) {
             return;
         }
-        const auto found = symbols.find(symbol);
+        const IdentId symbol_id = symbol_ids.intern(symbol);
+        const auto found = symbols.find(symbol_id);
         if (found == symbols.end()) {
             AbiSymbolInfo info;
             info.name = function.name;
             info.range = function.range;
             info.is_function = true;
             info.function = std::move(function);
-            symbols.emplace(symbol, std::move(info));
+            symbols.emplace(symbol_id, std::move(info));
             return;
         }
 
@@ -723,20 +733,22 @@ void SemanticAnalyzer::validate_abi_symbols() {
         if (symbol.kind == SymbolKind::function || symbol.c_name.empty()) {
             continue;
         }
-        const auto found = symbols.find(symbol.c_name);
+        const IdentId symbol_id = symbol_ids.intern(symbol.c_name);
+        const auto found = symbols.find(symbol_id);
         if (found == symbols.end()) {
             AbiSymbolInfo info;
             info.name = symbol.name;
             info.range = symbol.range;
             info.is_function = false;
-            symbols.emplace(symbol.c_name, std::move(info));
+            symbols.emplace(symbol_id, std::move(info));
             continue;
         }
         report(symbol.range, sema_duplicate_abi_symbol_message(symbol.c_name));
     }
 }
 
-void SemanticAnalyzer::analyze_entry_points() {
+void SemanticAnalyzer::analyze_entry_points() const
+{
     const syntax::ModuleId root_module {0};
     const FunctionSignature* aurex_entry = nullptr;
     const FunctionSignature* c_entry = nullptr;
@@ -801,9 +813,9 @@ void SemanticAnalyzer::analyze_struct_properties() {
             continue;
         }
         this->current_module_ = this->item_module(syntax::ItemId {index});
-        const std::string key = this->module_key(this->current_module_, item.name);
+        const ModuleLookupKey key = this->module_lookup_key(this->current_module_, item.name_id);
         bool contains_array = false;
-        std::unordered_set<std::string> seen_fields;
+        std::unordered_set<IdentId, IdentIdHash> seen_fields;
         seen_fields.reserve(item.fields.size());
         StructInfo* struct_info = nullptr;
         if (const auto struct_found = this->checked_.structs.find(key);
@@ -812,7 +824,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
             struct_info->fields.reserve(item.fields.size());
         }
         for (const syntax::FieldDecl& field : item.fields) {
-            if (!seen_fields.insert(std::string(field.name)).second) {
+            if (!seen_fields.insert(field.name_id).second) {
                 this->report(field.range, sema_duplicate_struct_field_message(field.name));
                 continue;
             }
@@ -823,6 +835,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
             if (struct_info != nullptr) {
                 struct_info->fields.push_back(StructFieldInfo {
                     std::string(field.name),
+                    field.name_id,
                     {},
                     syntax::INVALID_MODULE_ID,
                     field_type,

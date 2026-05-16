@@ -82,7 +82,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_chain(const syntax::ExprId 
         const syntax::ExprId chain_id = chains.back();
         chains.pop_back();
         syntax::PostfixChainExprPayload chain = this->module_.exprs.take_postfix_chain_payload(chain_id.value);
-        std::vector<syntax::PostfixOp> postfix_ops = std::move(chain.ops);
+        syntax::AstArenaVector<syntax::PostfixOp> postfix_ops = std::move(chain.ops);
         if (postfix_ops.empty()) {
             continue;
         }
@@ -171,7 +171,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
                 {},
                 {},
                 {},
-                {},
+                std::vector<syntax::TypeId> {},
                 std::move(op.field_inits)
             );
             return chain_expr;
@@ -182,7 +182,7 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
             {},
             {},
             {},
-            {},
+            std::vector<syntax::TypeId> {},
             std::move(op.field_inits)
         );
         this->ensure_expr_side_table_size(this->module_.exprs.size());
@@ -427,7 +427,7 @@ syntax::TypeId SemanticAnalyzer::postfix_arg_expr_to_type(const syntax::ExprId e
             break;
         }
         syntax::TypeNode type = copy_named_type_selector(callee_type, this->module_.exprs.range(expr.value));
-        type.type_args = node->type_args;
+        type.type_args = syntax::copy_std_vector(node->type_args);
         return this->push_synthetic_type(std::move(type));
     }
     case syntax::ExprKind::postfix_chain:

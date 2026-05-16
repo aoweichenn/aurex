@@ -33,23 +33,22 @@ SemanticAnalyzer::SemanticAnalyzer(
       diagnostics_(diagnostics),
       options_(options),
       arena_(std::make_unique<base::BumpAllocator>()),
-      named_types_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      type_visibilities_(make_sema_map<std::string, syntax::Visibility>(*this->arena_)),
-      generic_struct_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_enum_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_type_alias_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_function_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_method_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_struct_instances_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      generic_enum_instances_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      resolved_generic_type_aliases_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      generic_function_instances_(make_sema_map<std::string, base::usize>(*this->arena_)),
-      generic_placeholder_functions_(make_sema_map<std::string, FunctionSignature>(*this->arena_)),
-      resolved_type_aliases_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      resolving_type_aliases_(make_sema_vector<std::string>(*this->arena_)),
-      global_values_(make_sema_map<std::string, Symbol>(*this->arena_)),
-      function_definition_items_(make_sema_map<std::string, syntax::ItemId>(*this->arena_)),
-      function_body_states_(make_sema_map<std::string, FunctionBodyState>(*this->arena_)),
+      named_types_(make_sema_map<ModuleLookupKey, TypeHandle, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_struct_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_enum_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_type_alias_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_function_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_method_templates_(make_sema_map<FunctionLookupKey, GenericTemplateInfo, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      generic_struct_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})),
+      generic_enum_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})),
+      resolved_generic_type_aliases_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})),
+      generic_function_instances_(make_sema_map<FunctionLookupKey, base::usize, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      generic_placeholder_functions_(make_sema_map<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      resolved_type_aliases_(make_sema_map<ModuleLookupKey, TypeHandle, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      resolving_type_aliases_(make_sema_vector<ModuleLookupKey>(*this->arena_)),
+      global_values_(make_sema_map<FunctionLookupKey, Symbol, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      function_definition_items_(make_sema_map<FunctionLookupKey, syntax::ItemId, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      function_body_states_(make_sema_map<FunctionLookupKey, FunctionBodyState, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
       struct_infos_by_type_(make_sema_map<base::u32, const StructInfo*>(*this->arena_)),
       named_types_by_name_(make_sema_map<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash>(
           *this->arena_,
@@ -117,23 +116,22 @@ SemanticAnalyzer::SemanticAnalyzer(
       diagnostics_(diagnostics),
       options_(options),
       arena_(std::make_unique<base::BumpAllocator>()),
-      named_types_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      type_visibilities_(make_sema_map<std::string, syntax::Visibility>(*this->arena_)),
-      generic_struct_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_enum_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_type_alias_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_function_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_method_templates_(make_sema_map<std::string, GenericTemplateInfo>(*this->arena_)),
-      generic_struct_instances_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      generic_enum_instances_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      resolved_generic_type_aliases_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      generic_function_instances_(make_sema_map<std::string, base::usize>(*this->arena_)),
-      generic_placeholder_functions_(make_sema_map<std::string, FunctionSignature>(*this->arena_)),
-      resolved_type_aliases_(make_sema_map<std::string, TypeHandle>(*this->arena_)),
-      resolving_type_aliases_(make_sema_vector<std::string>(*this->arena_)),
-      global_values_(make_sema_map<std::string, Symbol>(*this->arena_)),
-      function_definition_items_(make_sema_map<std::string, syntax::ItemId>(*this->arena_)),
-      function_body_states_(make_sema_map<std::string, FunctionBodyState>(*this->arena_)),
+      named_types_(make_sema_map<ModuleLookupKey, TypeHandle, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_struct_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_enum_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_type_alias_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_function_templates_(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      generic_method_templates_(make_sema_map<FunctionLookupKey, GenericTemplateInfo, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      generic_struct_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})),
+      generic_enum_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})),
+      resolved_generic_type_aliases_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})),
+      generic_function_instances_(make_sema_map<FunctionLookupKey, base::usize, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      generic_placeholder_functions_(make_sema_map<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      resolved_type_aliases_(make_sema_map<ModuleLookupKey, TypeHandle, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash {})),
+      resolving_type_aliases_(make_sema_vector<ModuleLookupKey>(*this->arena_)),
+      global_values_(make_sema_map<FunctionLookupKey, Symbol, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      function_definition_items_(make_sema_map<FunctionLookupKey, syntax::ItemId, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
+      function_body_states_(make_sema_map<FunctionLookupKey, FunctionBodyState, FunctionLookupKeyHash>(*this->arena_, FunctionLookupKeyHash {})),
       struct_infos_by_type_(make_sema_map<base::u32, const StructInfo*>(*this->arena_)),
       named_types_by_name_(make_sema_map<ModuleLookupKey, IndexedTypeInfo, ModuleLookupKeyHash>(
           *this->arena_,
@@ -219,10 +217,9 @@ SemanticAnalyzer::ModuleIdList SemanticAnalyzer::make_module_id_list() const {
 
 SemanticAnalyzer::GenericTemplateInfo SemanticAnalyzer::make_generic_template_info() const {
     GenericTemplateInfo info;
-    info.params = make_sema_vector<std::string>(*this->arena_);
-    info.param_ids = make_sema_vector<IdentId>(*this->arena_);
-    info.param_identity_keys = make_sema_vector<std::string>(*this->arena_);
-    info.constraints = make_sema_map<std::string, CapabilitySet>(*this->arena_);
+    info.params = make_sema_vector<IdentId>(*this->arena_);
+    info.param_identity_ids = make_sema_vector<IdentId>(*this->arena_);
+    info.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
     return info;
 }
 
@@ -230,8 +227,8 @@ SemanticAnalyzer::GenericContext SemanticAnalyzer::make_generic_context() const 
     GenericContext context;
     context.params = make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {});
     context.param_identities = make_sema_map<IdentId, std::string, IdentIdHash>(*this->arena_, IdentIdHash {});
-    context.constraints = make_sema_map<std::string, CapabilitySet>(*this->arena_);
-    context.constraints_by_identity = make_sema_map<std::string, CapabilitySet>(*this->arena_);
+    context.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
+    context.constraints_by_identity = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
     return context;
 }
 
@@ -256,12 +253,12 @@ void SemanticAnalyzer::copy_capability_map(CapabilityMap& target, const Capabili
 
 SemanticAnalyzer::CapabilitySet& SemanticAnalyzer::capability_bucket(
     CapabilityMap& map,
-    std::string key
+    const IdentId key
 ) const {
     if (const auto found = map.find(key); found != map.end()) {
         return found->second;
     }
-    auto inserted = map.emplace(std::move(key), this->make_capability_set());
+    auto inserted = map.emplace(key, this->make_capability_set());
     return inserted.first->second;
 }
 
@@ -297,7 +294,6 @@ base::Result<CheckedModule> SemanticAnalyzer::analyze() {
     this->checked_.enum_cases.reserve(enum_cases);
     this->checked_.type_aliases.reserve(this->module_.items.size());
     this->named_types_.reserve(this->module_.items.size());
-    this->type_visibilities_.reserve(this->module_.items.size());
     this->generic_struct_templates_.reserve(this->module_.items.size());
     this->generic_enum_templates_.reserve(this->module_.items.size());
     this->generic_type_alias_templates_.reserve(this->module_.items.size());
@@ -387,7 +383,8 @@ void SemanticAnalyzer::normalize_parser_only_module_contract() {
     this->checked_.normalized_ast.parser_only_module_contract_added = true;
 }
 
-bool SemanticAnalyzer::validate_ast_contract() {
+bool SemanticAnalyzer::validate_ast_contract() const
+{
     bool valid = true;
     if (this->module_.item_modules.size() != this->module_.items.size()) {
         this->report({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));

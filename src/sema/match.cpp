@@ -40,10 +40,10 @@ constexpr base::u64 SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS = 4096;
 
 [[nodiscard]] const StructFieldInfo* find_struct_field(
     const StructInfo& info,
-    const std::string_view name
+    const IdentId name_id
 ) noexcept {
     for (const StructFieldInfo& field : info.fields) {
-        if (field.name == name) {
+        if (field.name_id == name_id) {
             return &field;
         }
     }
@@ -173,7 +173,7 @@ bool SemanticAnalyzer::pattern_is_irrefutable(
                 break;
             }
             for (auto field = pattern->field_patterns.rbegin(); field != pattern->field_patterns.rend(); ++field) {
-                const StructFieldInfo* field_info = find_struct_field(*info, field->name);
+                const StructFieldInfo* field_info = find_struct_field(*info, field->name_id);
                 pending.push_back(IrrefutableFrame {
                     field->pattern,
                     field_info == nullptr ? INVALID_TYPE_HANDLE : field_info->type,
@@ -325,13 +325,13 @@ bool SemanticAnalyzer::analyze_pattern(
                     this->report(pattern->range, std::string(SEMA_STRUCT_PATTERN_TYPE));
                     break;
                 }
-                std::unordered_set<std::string_view> seen_fields;
+                std::unordered_set<IdentId, IdentIdHash> seen_fields;
                 for (auto field = pattern->field_patterns.rbegin(); field != pattern->field_patterns.rend(); ++field) {
-                    if (!seen_fields.insert(field->name).second) {
+                    if (!seen_fields.insert(field->name_id).second) {
                         this->report(field->range, std::string(SEMA_STRUCT_PATTERN_DUPLICATE_FIELD));
                         continue;
                     }
-                    const StructFieldInfo* field_info = find_struct_field(*info, field->name);
+                    const StructFieldInfo* field_info = find_struct_field(*info, field->name_id);
                     if (field_info == nullptr) {
                         this->report(field->range, std::string(SEMA_STRUCT_PATTERN_FIELD));
                         pending.push_back(PatternFrame {field->pattern, INVALID_TYPE_HANDLE});
@@ -432,16 +432,16 @@ bool SemanticAnalyzer::analyze_pattern(
     }
 
     std::vector<PatternBinding> unified_bindings;
-    std::unordered_map<std::string, PatternBinding> expected_bindings;
+    std::unordered_map<IdentId, PatternBinding, IdentIdHash> expected_bindings;
     bool have_expected = false;
     bool bindings_consistent = true;
     for (const syntax::PatternId alternative : root_pattern->alternatives) {
         std::vector<PatternBinding> alternative_bindings;
         analyze_pattern_tree(alternative, matched, alternative_bindings);
 
-        std::unordered_map<std::string, PatternBinding> actual_bindings;
+        std::unordered_map<IdentId, PatternBinding, IdentIdHash> actual_bindings;
         for (const PatternBinding& binding : alternative_bindings) {
-            actual_bindings.emplace(binding.name, binding);
+            actual_bindings.emplace(binding.name_id, binding);
         }
         if (!have_expected) {
             expected_bindings = std::move(actual_bindings);
@@ -859,15 +859,15 @@ private:
         if (struct_info == nullptr) {
             return std::nullopt;
         }
-        std::unordered_map<std::string_view, syntax::PatternId> field_patterns;
+        std::unordered_map<IdentId, syntax::PatternId, IdentIdHash> field_patterns;
         field_patterns.reserve(pattern.field_patterns.size());
         for (const syntax::FieldPattern& field : pattern.field_patterns) {
-            field_patterns.emplace(field.name, field.pattern);
+            field_patterns.emplace(field.name_id, field.pattern);
         }
         MatrixRow row;
         row.reserve(struct_info->fields.size());
         for (const StructFieldInfo& field : struct_info->fields) {
-            if (const auto found = field_patterns.find(field.name); found != field_patterns.end()) {
+            if (const auto found = field_patterns.find(field.name_id); found != field_patterns.end()) {
                 row.push_back(MatchUsefulnessChecker::pattern_slot(found->second));
             } else {
                 row.push_back(MatchUsefulnessChecker::wildcard_slot());
@@ -1353,7 +1353,8 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
     bool& covered_true,
     bool& covered_false,
     bool& saw_wildcard
-) {
+) const
+{
     if (!syntax::is_valid(pattern_id) || pattern_id.value >= this->module_.patterns.size()) {
         return nullptr;
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/sema/identifier.hpp>
 #include <aurex/sema/storage.hpp>
 
 #include <initializer_list>
@@ -279,7 +280,8 @@ private:
     SemaMap<SliceKey, TypeHandle, SliceKeyHash> slice_types_;
     SemaMap<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;
     SemaMap<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
-    SemaMap<std::string, TypeHandle> generic_param_types_;
+    IdentifierInterner generic_identifiers_;
+    SemaMap<IdentId, TypeHandle, IdentIdHash> generic_param_types_;
 };
 
 } // namespace aurex::sema

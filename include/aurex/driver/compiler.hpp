@@ -7,7 +7,7 @@ namespace aurex::driver {
 
 class Compiler final {
 public:
-    [[nodiscard]] base::Result<void> run(const CompilerInvocation& invocation);
+    [[nodiscard]] base::Result<void> run(const CompilerInvocation& invocation) const;
 };
 
 } // namespace aurex::driver

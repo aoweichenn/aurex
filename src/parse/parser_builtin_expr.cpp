@@ -161,7 +161,7 @@ syntax::ExprId BuiltinExprParser::parse_strraw(const ExprContext context) {
         std::string(PARSER_EXPECT_BUILTIN_STRRAW_END)
     );
 
-    std::vector<syntax::ExprId> args;
+    syntax::AstArenaVector<syntax::ExprId> args = this->session_.module.make_expr_list<syntax::ExprId>();
     args.reserve(PARSER_STRRAW_ARG_COUNT);
     args.push_back(data);
     args.push_back(len);

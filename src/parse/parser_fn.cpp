@@ -101,7 +101,8 @@ std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params(
     return params;
 }
 
-void ItemParser::reject_legacy_angle_generic_params() {
+void ItemParser::reject_legacy_angle_generic_params() const
+{
     const syntax::Token& begin = this->expect(TokenKind::less, std::string(PARSER_EXPECT_LEGACY_GENERIC_BEGIN));
     this->report_at(begin, std::string(PARSER_M2_LEGACY_ANGLE_GENERIC_UNSUPPORTED));
     while (!this->is_eof()) {
@@ -148,7 +149,8 @@ std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param() {
     };
 }
 
-bool ItemParser::recover_generic_param_separator() {
+bool ItemParser::recover_generic_param_separator() const
+{
     if (this->check(TokenKind::r_bracket)) {
         return false;
     }
@@ -169,7 +171,8 @@ bool ItemParser::recover_generic_param_separator() {
     return false;
 }
 
-void ItemParser::expect_param_list_start(std::string message) {
+void ItemParser::expect_param_list_start(std::string message) const
+{
     this->expect_recovered(
         TokenKind::l_paren,
         std::move(message),
@@ -213,7 +216,8 @@ std::optional<syntax::ParamDecl> ItemParser::parse_param() {
     };
 }
 
-bool ItemParser::recover_param_separator(bool& is_variadic) {
+bool ItemParser::recover_param_separator(bool& is_variadic) const
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -242,7 +246,8 @@ bool ItemParser::recover_param_separator(bool& is_variadic) {
     return token_starts_parameter(this->peek().kind);
 }
 
-syntax::TypeId ItemParser::parse_optional_return_type() {
+syntax::TypeId ItemParser::parse_optional_return_type() const
+{
     if (!this->match(TokenKind::arrow)) {
         return syntax::INVALID_TYPE_ID;
     }
@@ -303,6 +308,9 @@ std::optional<syntax::GenericConstraintDecl> ItemParser::parse_where_constraint(
     syntax::GenericConstraintDecl constraint;
     constraint.param_name = param.text;
     constraint.param_range = param.range;
+    constraint.capability_names = this->session_.module.make_item_list<std::string_view>();
+    constraint.capability_ranges = this->session_.module.make_item_list<base::SourceRange>();
+    constraint.capability_name_ids = this->session_.module.make_item_list<syntax::IdentId>();
     constraint.range = param.range;
     this->parse_where_capabilities(constraint);
     if (!constraint.capability_ranges.empty()) {
@@ -325,7 +333,8 @@ void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constra
     }
 }
 
-bool ItemParser::recover_where_constraint_separator() {
+bool ItemParser::recover_where_constraint_separator() const
+{
     if (this->check(TokenKind::l_brace) ||
         this->check(TokenKind::semicolon) ||
         this->check(TokenKind::equal)) {
@@ -350,7 +359,8 @@ bool ItemParser::recover_where_constraint_separator() {
     return false;
 }
 
-void ItemParser::expect_abi_attribute_argument_start() {
+void ItemParser::expect_abi_attribute_argument_start() const
+{
     this->expect_recovered(
         TokenKind::l_paren,
         std::string(PARSER_EXPECT_ABI_ATTRIBUTE_START),
@@ -358,14 +368,16 @@ void ItemParser::expect_abi_attribute_argument_start() {
     );
 }
 
-void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) {
+void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) const
+{
     const syntax::Token& value = this->expect(TokenKind::string_literal, std::string(PARSER_EXPECT_ABI_NAME_STRING));
     if (value.kind == TokenKind::string_literal) {
         item.abi_name = unquote_string_literal(value.text);
     }
 }
 
-void ItemParser::recover_abi_attribute_argument_end() {
+void ItemParser::recover_abi_attribute_argument_end() const
+{
     if (this->match(TokenKind::r_paren)) {
         return;
     }

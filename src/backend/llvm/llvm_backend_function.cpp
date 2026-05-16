@@ -58,7 +58,8 @@ void LlvmEmitter::emit_block_phi_nodes(const Function& function, const base::u32
     }
 }
 
-void LlvmEmitter::populate_phi_edges() {
+void LlvmEmitter::populate_phi_edges() const
+{
     for (const auto& entry : pending_phis_) {
         const Value& value = source_.values[entry.first];
         for (const PhiInput& incoming : value.incoming) {

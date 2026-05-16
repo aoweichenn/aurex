@@ -139,7 +139,7 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         RecoveryContext::block_start
     );
 
-    std::vector<syntax::MatchArm> arms;
+    syntax::AstArenaVector<syntax::MatchArm> arms = this->session_.module.make_expr_list<syntax::MatchArm>();
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         arms.push_back(this->parse_match_arm(context, begin.range));
@@ -184,7 +184,8 @@ syntax::MatchArm ExprParser::parse_match_arm(
     };
 }
 
-bool ExprParser::recover_match_arm_separator() {
+bool ExprParser::recover_match_arm_separator() const
+{
     if (this->check(TokenKind::r_brace)) {
         return false;
     }
@@ -239,7 +240,8 @@ syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context) {
     return operands.back();
 }
 
-syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
+syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
+{
     struct PrefixOperator {
         syntax::TokenKind token_kind = TokenKind::invalid;
         syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
@@ -311,7 +313,8 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
     return expr;
 }
 
-syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) {
+syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) const
+{
     const base::SourceRange lhs_range = this->expr_range_or(lhs, this->expr_range_or(rhs, this->peek().range));
     const base::SourceRange rhs_range = this->expr_range_or(rhs, lhs_range);
     return this->session_.module.push_binary_expr(this->merge(lhs_range, rhs_range), op, lhs, rhs);

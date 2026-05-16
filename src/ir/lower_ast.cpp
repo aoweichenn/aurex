@@ -90,6 +90,11 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     this->module_.types = this->checked_.types;
     this->item_functions_.assign(this->ast_.items.size(), INVALID_FUNCTION_ID);
     this->generic_instance_functions_.assign(this->checked_.generic_function_instances.size(), INVALID_FUNCTION_ID);
+    this->ir_symbol_ids_.reserve(
+        this->ast_.items.size() +
+        this->checked_.enum_cases.size() +
+        this->checked_.generic_function_instances.size()
+    );
     this->active_side_tables_ = ActiveSideTables {
         nullptr,
         &this->checked_.expr_types,
@@ -189,8 +194,8 @@ void Lowerer::index_enum_cases() {
     enum_cases_by_type_and_case_.reserve(checked_.enum_cases.size());
     for (const auto& entry : checked_.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        enum_cases_by_name_.emplace(std::string_view(info.name), &info);
-        enum_cases_by_c_name_.emplace(std::string_view(info.c_name), &info);
+        enum_cases_by_name_.emplace(info.name_id, &info);
+        enum_cases_by_c_name_.emplace(this->ir_symbol_ids_.intern(info.c_name), &info);
         enum_cases_by_type_and_case_.emplace(EnumCaseTypeKey {info.type.value, info.case_name}, &info);
     }
 }
@@ -208,7 +213,7 @@ void Lowerer::declare_global_constants() {
             constant.symbol = item_symbol(index, item);
             constant.type = syntax_type(item.const_type);
             const GlobalConstantId id = add_global_constant(module_, std::move(constant));
-            constant_symbols_[module_.constants[id.value].symbol] = id;
+            constant_symbols_[this->ir_symbol_ids_.intern(module_.constants[id.value].symbol)] = id;
             pending_constants_.push_back(PendingConstant {
                 id,
                 item.const_value,
@@ -234,7 +239,7 @@ void Lowerer::declare_global_constants() {
             constant.symbol = enum_case_symbol(index, item, enum_case);
             constant.type = case_type;
             const GlobalConstantId id = add_global_constant(module_, std::move(constant));
-            constant_symbols_[module_.constants[id.value].symbol] = id;
+            constant_symbols_[this->ir_symbol_ids_.intern(module_.constants[id.value].symbol)] = id;
             pending_constants_.push_back(PendingConstant {
                 id,
                 syntax::INVALID_EXPR_ID,
@@ -250,7 +255,7 @@ void Lowerer::declare_global_constants() {
         if (is_payload_enum(module_.types, enum_case.type) || sema::is_valid(enum_case.payload_type)) {
             continue;
         }
-        if (constant_symbols_.contains(enum_case.c_name)) {
+        if (constant_symbols_.contains(this->ir_symbol_ids_.find(enum_case.c_name))) {
             continue;
         }
         GlobalConstant constant;
@@ -258,7 +263,7 @@ void Lowerer::declare_global_constants() {
         constant.symbol = enum_case.c_name;
         constant.type = enum_case.type;
         const GlobalConstantId id = add_global_constant(module_, std::move(constant));
-        constant_symbols_[module_.constants[id.value].symbol] = id;
+        constant_symbols_[this->ir_symbol_ids_.intern(module_.constants[id.value].symbol)] = id;
         pending_constants_.push_back(PendingConstant {
             id,
             syntax::INVALID_EXPR_ID,
@@ -297,7 +302,7 @@ void Lowerer::lower_function_declarations() {
         }
         const FunctionId function_id {static_cast<base::u32>(this->module_.functions.size())};
         this->item_functions_[index] = function_id;
-        this->function_symbols_[function.symbol] = function_id;
+        this->function_symbols_[this->ir_symbol_ids_.intern(function.symbol)] = function_id;
         this->module_.functions.push_back(std::move(function));
     }
 
@@ -326,7 +331,7 @@ void Lowerer::lower_function_declarations() {
         }
         const FunctionId function_id {static_cast<base::u32>(this->module_.functions.size())};
         this->generic_instance_functions_[index] = function_id;
-        this->function_symbols_[function.symbol] = function_id;
+        this->function_symbols_[this->ir_symbol_ids_.intern(function.symbol)] = function_id;
         this->module_.functions.push_back(std::move(function));
     }
 }

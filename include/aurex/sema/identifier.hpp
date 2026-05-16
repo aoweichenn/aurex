@@ -58,6 +58,25 @@ struct MethodLookupKeyHash {
     [[nodiscard]] std::size_t operator()(MethodLookupKey key) const noexcept;
 };
 
+struct FunctionLookupKey {
+    base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;
+    base::u32 owner_type = SEMA_LOOKUP_INVALID_KEY_PART;
+    IdentId name = INVALID_IDENT_ID;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        FunctionLookupKey lhs,
+        FunctionLookupKey rhs
+    ) noexcept = default;
+};
+
+[[nodiscard]] inline constexpr bool is_valid(const FunctionLookupKey key) noexcept {
+    return key.module != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.name);
+}
+
+struct FunctionLookupKeyHash {
+    [[nodiscard]] std::size_t operator()(FunctionLookupKey key) const noexcept;
+};
+
 struct EnumCaseLookupKey {
     base::u32 enum_type = SEMA_LOOKUP_INVALID_KEY_PART;
     IdentId case_name = INVALID_IDENT_ID;

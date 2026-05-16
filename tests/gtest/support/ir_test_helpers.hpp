@@ -49,11 +49,13 @@ struct FunctionBuilder {
     Module& module;
     Function& function;
 
-    [[nodiscard]] ValueId add(Value value) {
+    [[nodiscard]] ValueId add(Value value) const
+    {
         return add_value(module, std::move(value));
     }
 
-    [[nodiscard]] BlockId block(std::string name) {
+    [[nodiscard]] BlockId block(std::string name) const
+    {
         return add_block(function, std::move(name));
     }
 };

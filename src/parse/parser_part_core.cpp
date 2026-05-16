@@ -37,19 +37,20 @@ base::usize ParserPartCore::mark() const noexcept {
     return this->parser_.mark();
 }
 
-void ParserPartCore::rewind(const base::usize position) noexcept {
+void ParserPartCore::rewind(const base::usize position) const noexcept {
     this->parser_.rewind(position);
 }
 
-bool ParserPartCore::match(const syntax::TokenKind kind) noexcept {
+bool ParserPartCore::match(const syntax::TokenKind kind) const noexcept {
     return this->parser_.match(kind);
 }
 
-const syntax::Token& ParserPartCore::advance() noexcept {
+const syntax::Token& ParserPartCore::advance() const noexcept {
     return this->parser_.advance();
 }
 
-const syntax::Token& ParserPartCore::expect(const syntax::TokenKind kind, std::string message) {
+const syntax::Token& ParserPartCore::expect(const syntax::TokenKind kind, std::string message) const
+{
     return this->parser_.expect(kind, std::move(message));
 }
 
@@ -57,7 +58,8 @@ const syntax::Token& ParserPartCore::expect_recovered(
     const syntax::TokenKind kind,
     std::string message,
     const RecoveryContext context
-) {
+) const
+{
     return this->parser_.expect_recovered(kind, std::move(message), context);
 }
 
@@ -85,19 +87,22 @@ const syntax::Token& ParserPartCore::expect_initializer_equal(std::string messag
     );
 }
 
-void ParserPartCore::synchronize(const RecoveryContext context) {
+void ParserPartCore::synchronize(const RecoveryContext context) const
+{
     this->parser_.synchronize(context);
 }
 
-void ParserPartCore::report_here(std::string message) {
+void ParserPartCore::report_here(std::string message) const
+{
     this->parser_.report_here(std::move(message));
 }
 
-void ParserPartCore::report_at(const syntax::Token& token, std::string message) {
+void ParserPartCore::report_at(const syntax::Token& token, std::string message) const
+{
     this->parser_.report_at(token, std::move(message));
 }
 
-void ParserPartCore::reset_panic() noexcept {
+void ParserPartCore::reset_panic() const noexcept {
     this->parser_.reset_panic();
 }
 

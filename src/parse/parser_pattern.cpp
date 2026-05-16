@@ -188,7 +188,8 @@ syntax::PatternId PatternParser::parse_shorthand_enum_case_pattern(const syntax:
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-syntax::PatternId PatternParser::parse_literal_pattern(const syntax::Token& token) {
+syntax::PatternId PatternParser::parse_literal_pattern(const syntax::Token& token) const
+{
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::literal;
     pattern.case_name = token.text;
@@ -196,7 +197,8 @@ syntax::PatternId PatternParser::parse_literal_pattern(const syntax::Token& toke
     return this->session_.module.push_pattern(pattern);
 }
 
-syntax::PatternId PatternParser::parse_fallback_wildcard_pattern() {
+syntax::PatternId PatternParser::parse_fallback_wildcard_pattern() const
+{
     this->report_here(std::string(PARSER_EXPECT_MATCH_PATTERN));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::wildcard;
@@ -210,7 +212,8 @@ syntax::TypeId PatternParser::push_explicit_enum_case_type(
     const base::usize type_part_count,
     std::vector<syntax::TypeId> type_args,
     const base::SourceRange& type_range
-) {
+) const
+{
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::named;
     type.range = type_range;
@@ -327,7 +330,8 @@ syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name)
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-bool PatternParser::recover_tuple_pattern_separator() {
+bool PatternParser::recover_tuple_pattern_separator() const
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -348,7 +352,8 @@ bool PatternParser::recover_tuple_pattern_separator() {
     return false;
 }
 
-bool PatternParser::recover_slice_pattern_separator() {
+bool PatternParser::recover_slice_pattern_separator() const
+{
     if (this->check(TokenKind::r_bracket)) {
         return false;
     }
@@ -369,7 +374,8 @@ bool PatternParser::recover_slice_pattern_separator() {
     return false;
 }
 
-bool PatternParser::recover_struct_pattern_separator() {
+bool PatternParser::recover_struct_pattern_separator() const
+{
     if (this->check(TokenKind::r_brace)) {
         return false;
     }
@@ -390,7 +396,8 @@ bool PatternParser::recover_struct_pattern_separator() {
     return false;
 }
 
-bool PatternParser::recover_generic_type_arg_separator() {
+bool PatternParser::recover_generic_type_arg_separator() const
+{
     if (this->check(TokenKind::r_bracket)) {
         return false;
     }
@@ -411,7 +418,8 @@ bool PatternParser::recover_generic_type_arg_separator() {
     return false;
 }
 
-bool PatternParser::match_slice_rest_marker() {
+bool PatternParser::match_slice_rest_marker() const
+{
     if (!this->check(TokenKind::dot) || !this->check_next(TokenKind::dot)) {
         return false;
     }
@@ -472,7 +480,8 @@ void PatternParser::consume_bare_enum_case_payload_recovery(
     range = this->merge(range, recovery.range);
 }
 
-const syntax::Token& PatternParser::expect_generic_type_args_end() {
+const syntax::Token& PatternParser::expect_generic_type_args_end() const
+{
     return this->expect_recovered(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
@@ -480,7 +489,8 @@ const syntax::Token& PatternParser::expect_generic_type_args_end() {
     );
 }
 
-const syntax::Token& PatternParser::expect_tuple_pattern_end() {
+const syntax::Token& PatternParser::expect_tuple_pattern_end() const
+{
     return this->expect_recovered(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_TUPLE_PATTERN_END),
@@ -488,7 +498,8 @@ const syntax::Token& PatternParser::expect_tuple_pattern_end() {
     );
 }
 
-const syntax::Token& PatternParser::expect_slice_pattern_end() {
+const syntax::Token& PatternParser::expect_slice_pattern_end() const
+{
     return this->expect_recovered(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_SLICE_PATTERN_END),
@@ -496,7 +507,8 @@ const syntax::Token& PatternParser::expect_slice_pattern_end() {
     );
 }
 
-const syntax::Token& PatternParser::expect_payload_pattern_end() {
+const syntax::Token& PatternParser::expect_payload_pattern_end() const
+{
     return this->expect_recovered(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_PAYLOAD_BINDING_END),
@@ -504,7 +516,8 @@ const syntax::Token& PatternParser::expect_payload_pattern_end() {
     );
 }
 
-const syntax::Token& PatternParser::expect_struct_pattern_end() {
+const syntax::Token& PatternParser::expect_struct_pattern_end() const
+{
     return this->expect_recovered(
         TokenKind::r_brace,
         std::string(PARSER_EXPECT_STRUCT_PATTERN_END),

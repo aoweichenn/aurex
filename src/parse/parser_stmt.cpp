@@ -72,7 +72,8 @@ bool StmtParser::starts_local_pattern() const noexcept {
            this->check_next(TokenKind::l_paren);
 }
 
-syntax::StmtId StmtParser::parse_unsafe_block_stmt() {
+syntax::StmtId StmtParser::parse_unsafe_block_stmt() const
+{
     const syntax::ExprId expr = this->parse_expr(ExprContext::normal);
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::expr;
@@ -178,7 +179,7 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-bool StmtParser::match_assignment_operator(syntax::AssignOp& op) noexcept {
+bool StmtParser::match_assignment_operator(syntax::AssignOp& op) const noexcept {
     if (this->match(TokenKind::equal)) {
         op = syntax::AssignOp::assign;
         return true;
@@ -254,7 +255,8 @@ syntax::StmtId StmtParser::parse_assignment_tail(
 const syntax::Token& StmtParser::expect_statement_semicolon(
     std::string message,
     const StatementTerminatorRecovery recovery
-) {
+) const
+{
     switch (recovery) {
     case StatementTerminatorRecovery::direct:
         return this->expect(TokenKind::semicolon, std::move(message));

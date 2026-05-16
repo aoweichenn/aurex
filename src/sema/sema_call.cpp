@@ -68,7 +68,8 @@ bool SemanticAnalyzer::in_unsafe_context() const noexcept {
 void SemanticAnalyzer::require_unsafe_context(
     const base::SourceRange& range,
     const std::string_view operation
-) {
+) const
+{
     if (!this->in_unsafe_context()) {
         this->report(range, std::string(operation));
     }
@@ -77,7 +78,8 @@ void SemanticAnalyzer::require_unsafe_context(
 void SemanticAnalyzer::validate_unsafe_call(
     const FunctionSignature& signature,
     const base::SourceRange& range
-) {
+) const
+{
     if (signature.is_unsafe && !this->in_unsafe_context()) {
         this->report(range, sema_unsafe_function_call_message(signature.name));
     }
@@ -86,7 +88,8 @@ void SemanticAnalyzer::validate_unsafe_call(
 void SemanticAnalyzer::validate_unsafe_function_value_call(
     const TypeHandle callee_type,
     const base::SourceRange& range
-) {
+) const
+{
     if (!this->checked_.types.is_function(callee_type)) {
         return;
     }
@@ -146,7 +149,8 @@ SemanticAnalyzer::ModuleSelectorPath SemanticAnalyzer::expr_selector_path(
 SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
     const syntax::ExprId expr_id,
     const bool report_unknown
-) {
+) const
+{
     const ModuleSelectorPath path = this->expr_selector_path(expr_id);
     if (path.parts.empty()) {
         return {};

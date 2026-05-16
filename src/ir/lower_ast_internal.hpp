@@ -47,11 +47,12 @@ struct LocalBinding {
 };
 
 struct LocalScopeFrame {
-    std::unordered_map<std::string, std::optional<LocalBinding>> previous_bindings;
+    std::unordered_map<sema::IdentId, std::optional<LocalBinding>, sema::IdentIdHash> previous_bindings;
 };
 
 struct PatternBindingSlot {
     std::string name;
+    sema::IdentId name_id = sema::INVALID_IDENT_ID;
     ValueId slot = INVALID_VALUE_ID;
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
 };
@@ -112,6 +113,8 @@ private:
         std::string_view scope_name;
         base::SourceRange scope_range {};
         std::string_view text;
+        sema::IdentId scope_name_id = sema::INVALID_IDENT_ID;
+        sema::IdentId text_id = sema::INVALID_IDENT_ID;
         syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
         syntax::ExprId unary_operand = syntax::INVALID_EXPR_ID;
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
@@ -133,6 +136,7 @@ private:
         syntax::ExprId array_repeat_count = syntax::INVALID_EXPR_ID;
         syntax::ExprId object = syntax::INVALID_EXPR_ID;
         std::string_view field_name;
+        sema::IdentId field_name_id = sema::INVALID_IDENT_ID;
         syntax::ExprId index = syntax::INVALID_EXPR_ID;
         syntax::ExprId slice_start = syntax::INVALID_EXPR_ID;
         syntax::ExprId slice_end = syntax::INVALID_EXPR_ID;
@@ -236,13 +240,13 @@ private:
         syntax::PatternId pattern,
         sema::TypeHandle source_type,
         bool is_mutable,
-        std::unordered_map<std::string, PatternBindingSlot>& slots
+        std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots
     );
     void store_pattern_bindings(
         syntax::PatternId pattern,
         ValueId source_address,
         sema::TypeHandle source_type,
-        const std::unordered_map<std::string, PatternBindingSlot>& slots
+        const std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots
     );
 
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id);
@@ -269,7 +273,7 @@ private:
     void emit_deferred_scopes(base::usize keep_depth);
     void push_local_scope();
     void pop_local_scope();
-    void bind_local(std::string name, LocalBinding binding);
+    void bind_local(sema::IdentId name_id, LocalBinding binding);
     [[nodiscard]] ValueId lower_place_addr(syntax::ExprId expr_id);
     [[nodiscard]] PlaceAddress lower_place_address(syntax::ExprId expr_id);
     [[nodiscard]] PlaceAddress lower_object_place_or_value(syntax::ExprId expr_id);
@@ -299,7 +303,7 @@ private:
     void append_store(ValueId target, ValueId source);
     void append_branch_if_open(BlockId target);
     [[nodiscard]] bool has_terminator(BlockId block) const;
-    void set_terminator(BlockId block, const Terminator& terminator);
+    void set_terminator(BlockId block, const Terminator& terminator) const;
 
     const syntax::AstModule& ast_;
     const sema::CheckedModule& checked_;
@@ -308,12 +312,13 @@ private:
     Function* current_function_ = nullptr;
     BlockId current_block_ = INVALID_BLOCK_ID;
     bool lowering_constant_initializer_ = false;
-    std::unordered_map<std::string, LocalBinding> locals_;
+    std::unordered_map<sema::IdentId, LocalBinding, sema::IdentIdHash> locals_;
     std::vector<LocalScopeFrame> local_scopes_;
-    std::unordered_map<std::string, FunctionId> function_symbols_;
-    std::unordered_map<std::string, GlobalConstantId> constant_symbols_;
-    std::unordered_map<std::string_view, const sema::EnumCaseInfo*> enum_cases_by_name_;
-    std::unordered_map<std::string_view, const sema::EnumCaseInfo*> enum_cases_by_c_name_;
+    sema::IdentifierInterner ir_symbol_ids_;
+    std::unordered_map<sema::IdentId, FunctionId, sema::IdentIdHash> function_symbols_;
+    std::unordered_map<sema::IdentId, GlobalConstantId, sema::IdentIdHash> constant_symbols_;
+    std::unordered_map<sema::IdentId, const sema::EnumCaseInfo*, sema::IdentIdHash> enum_cases_by_name_;
+    std::unordered_map<sema::IdentId, const sema::EnumCaseInfo*, sema::IdentIdHash> enum_cases_by_c_name_;
     std::unordered_map<EnumCaseTypeKey, const sema::EnumCaseInfo*, EnumCaseTypeKeyHash> enum_cases_by_type_and_case_;
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;

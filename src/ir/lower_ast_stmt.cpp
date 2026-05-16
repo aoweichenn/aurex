@@ -59,7 +59,7 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
         slot.name = std::string(param.name);
         slot.type = this->module_.types.pointer(sema::PointerMutability::mut, param_value.type);
         const ValueId slot_id = this->append_value(slot);
-        this->bind_local(std::string(param.name), LocalBinding {slot_id, false});
+        this->bind_local(param.name_id, LocalBinding {slot_id, false});
         this->append_store(slot_id, param_id);
     }
 
@@ -112,7 +112,7 @@ void Lowerer::lower_block_contents(const syntax::StmtId block_id) {
     if (!syntax::is_valid(block_id) || block_id.value >= ast_.stmts.size()) {
         return;
     }
-    const std::vector<syntax::StmtId>* const statements = ast_.stmts.block_statements(block_id.value);
+    const syntax::AstArenaVector<syntax::StmtId>* const statements = ast_.stmts.block_statements(block_id.value);
     if (statements == nullptr) {
         return;
     }
@@ -172,7 +172,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id) {
         slot.name = std::string(stmt.name);
         slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
         const ValueId slot_id = append_value(slot);
-        this->bind_local(std::string(stmt.name), LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var});
+        this->bind_local(stmt.name_id, LocalBinding {slot_id, stmt.kind == syntax::StmtKind::var});
         append_store(slot_id, lower_expr(stmt.init, local_type));
         break;
     }
@@ -500,7 +500,7 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     this->current_block_ = body_block;
     const ValueId loop_value = this->append_load(cursor_slot, range_type, std::string(stmt.name));
     const ValueId loop_slot = this->append_temp_alloca(std::string(stmt.name), range_type);
-    this->bind_local(std::string(stmt.name), LocalBinding {loop_slot, false});
+    this->bind_local(stmt.name_id, LocalBinding {loop_slot, false});
     this->append_store(loop_slot, loop_value);
     this->lower_block(stmt.body);
     this->append_branch_if_open(update_block);
@@ -541,27 +541,30 @@ void Lowerer::pop_local_scope() {
     }
     LocalScopeFrame frame = std::move(this->local_scopes_.back());
     this->local_scopes_.pop_back();
-    for (const auto& [name, previous] : frame.previous_bindings) {
+    for (const auto& [name_id, previous] : frame.previous_bindings) {
         if (previous.has_value()) {
-            this->locals_[name] = *previous;
+            this->locals_[name_id] = *previous;
         } else {
-            this->locals_.erase(name);
+            this->locals_.erase(name_id);
         }
     }
 }
 
-void Lowerer::bind_local(std::string name, const LocalBinding binding) {
+void Lowerer::bind_local(
+    const sema::IdentId name_id,
+    const LocalBinding binding
+) {
     if (!this->local_scopes_.empty()) {
         LocalScopeFrame& scope = this->local_scopes_.back();
-        if (!scope.previous_bindings.contains(name)) {
-            if (const auto found = this->locals_.find(name); found != this->locals_.end()) {
-                scope.previous_bindings.emplace(name, found->second);
+        if (!scope.previous_bindings.contains(name_id)) {
+            if (const auto found = this->locals_.find(name_id); found != this->locals_.end()) {
+                scope.previous_bindings.emplace(name_id, found->second);
             } else {
-                scope.previous_bindings.emplace(name, std::nullopt);
+                scope.previous_bindings.emplace(name_id, std::nullopt);
             }
         }
     }
-    this->locals_[std::move(name)] = binding;
+    this->locals_[name_id] = binding;
 }
 
 } // namespace aurex::ir::detail

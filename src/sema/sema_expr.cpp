@@ -30,8 +30,8 @@ struct IntegerLiteralExpr {
     bool negated = false;
 };
 
-template <typename T>
-[[nodiscard]] std::span<const T> readonly_span(const std::vector<T>& values) noexcept {
+template <typename T, typename Allocator>
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T, Allocator>& values) noexcept {
     return {values.data(), values.size()};
 }
 
@@ -396,7 +396,7 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
         break;
     }
     case syntax::ExprKind::tuple_literal: {
-        const std::vector<syntax::ExprId>& payload = *this->module_.exprs.tuple_elements(expr_id.value);
+        const syntax::AstArenaVector<syntax::ExprId>& payload = *this->module_.exprs.tuple_elements(expr_id.value);
         view.tuple_elements = readonly_span(payload);
         break;
     }
@@ -1188,15 +1188,15 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         this->report(expr.range, std::string(SEMA_STRUCT_LITERAL_TYPE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    std::unordered_set<std::string> initialized_fields;
+    std::unordered_set<IdentId, IdentIdHash> initialized_fields;
     for (const syntax::FieldInit& init : expr.field_inits) {
-        if (!initialized_fields.insert(std::string(init.name)).second) {
+        if (!initialized_fields.insert(init.name_id).second) {
             this->report(init.range, sema_duplicate_struct_literal_field_message(init.name));
             continue;
         }
         const StructFieldInfo* field_info = nullptr;
         for (const StructFieldInfo& field : info->fields) {
-            if (field.name == init.name) {
+            if (field.name_id == init.name_id) {
                 field_info = &field;
                 break;
             }
@@ -1215,7 +1215,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         }
     }
     for (const StructFieldInfo& field : info->fields) {
-        if (!initialized_fields.contains(field.name)) {
+        if (!initialized_fields.contains(field.name_id)) {
             this->report(expr.range, sema_struct_literal_missing_field_message(field.name));
         }
     }

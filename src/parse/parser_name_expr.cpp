@@ -15,7 +15,8 @@ syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext co
     return this->make_name_expr(this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_EXPRESSION_NAME)));
 }
 
-syntax::ExprId NameExprParser::make_name_expr(const syntax::Token& name) {
+syntax::ExprId NameExprParser::make_name_expr(const syntax::Token& name) const
+{
     return this->session_.module.push_name_expr(name.range, name.text);
 }
 

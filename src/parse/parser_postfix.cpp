@@ -60,7 +60,7 @@ constexpr char PARSER_TUPLE_FIELD_LAST_DIGIT = '9';
 
 syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
     const syntax::ExprId base = PrimaryExprParser(this->parser_).parse_primary(context);
-    std::vector<syntax::PostfixOp> ops;
+    syntax::AstArenaVector<syntax::PostfixOp> ops = this->session_.module.make_expr_list<syntax::PostfixOp>();
     while (std::optional<syntax::PostfixOp> next = this->parse_next_suffix(context)) {
         ops.push_back(std::move(next.value()));
         this->reset_panic();
@@ -118,7 +118,7 @@ std::optional<syntax::PostfixOp> PostfixExprParser::parse_next_suffix(const Expr
 
 syntax::PostfixOp PostfixExprParser::parse_bracket_suffix(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::bracket;
     op.range = begin.range;
 
@@ -254,7 +254,7 @@ syntax::PostfixOp PostfixExprParser::parse_field_suffix() {
         return this->parse_rejected_numeric_tuple_field_suffix(this->peek().range);
     }
     const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::select;
     op.name = field.text;
     op.range = field.range;
@@ -264,7 +264,7 @@ syntax::PostfixOp PostfixExprParser::parse_field_suffix() {
 syntax::PostfixOp PostfixExprParser::parse_rejected_legacy_scope_suffix(const base::SourceRange& fallback_range) {
     const syntax::Token& scope = this->advance();
     this->report_at(scope, std::string(PARSER_DOT_ONLY_SELECTOR));
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::select;
     op.range = this->merge(fallback_range, scope.range);
     return op;
@@ -272,7 +272,7 @@ syntax::PostfixOp PostfixExprParser::parse_rejected_legacy_scope_suffix(const ba
 
 syntax::PostfixOp PostfixExprParser::parse_struct_literal_suffix(const ExprContext context) {
     const syntax::Token& begin = this->expect(TokenKind::l_brace, std::string(PARSER_EXPECT_STRUCT_LITERAL_END));
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::struct_literal;
     op.range = begin.range;
     this->parse_struct_fields(op.field_inits, context);
@@ -286,7 +286,7 @@ syntax::PostfixOp PostfixExprParser::parse_struct_literal_suffix(const ExprConte
 }
 
 void PostfixExprParser::parse_struct_fields(
-    std::vector<syntax::FieldInit>& fields,
+    syntax::AstArenaVector<syntax::FieldInit>& fields,
     const ExprContext context
 ) {
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
@@ -334,7 +334,7 @@ bool PostfixExprParser::recover_struct_field_separator() {
 syntax::PostfixOp PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(const base::SourceRange& fallback_range) {
     const syntax::Token& field = this->advance();
     this->report_at(field, std::string(PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED));
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::select;
     op.range = this->merge(fallback_range, field.range);
     return op;
@@ -358,7 +358,7 @@ const syntax::Token& PostfixExprParser::expect_slice_suffix_end() {
 
 syntax::PostfixOp PostfixExprParser::parse_call_suffix(const ExprContext context) {
     const syntax::Token& begin = this->previous();
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::call;
     this->parse_call_args(op.args, context);
     const syntax::Token& end = this->expect_recovered(
@@ -371,7 +371,7 @@ syntax::PostfixOp PostfixExprParser::parse_call_suffix(const ExprContext context
 }
 
 void PostfixExprParser::parse_call_args(
-    std::vector<syntax::ExprId>& args,
+    syntax::AstArenaVector<syntax::ExprId>& args,
     const ExprContext
 ) {
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
@@ -404,9 +404,10 @@ bool PostfixExprParser::recover_call_arg_separator() {
     return false;
 }
 
-syntax::PostfixOp PostfixExprParser::parse_try_suffix() {
+syntax::PostfixOp PostfixExprParser::parse_try_suffix() const
+{
     const syntax::Token& question = this->previous();
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::try_;
     op.range = question.range;
     return op;
@@ -420,7 +421,7 @@ syntax::PostfixOp PostfixExprParser::parse_rejected_update_suffix(
     const syntax::Token& op_token = this->expect(kind, std::string(PARSER_EXPECT_UNSUPPORTED_UPDATE));
     this->report_at(op_token, std::move(message));
 
-    syntax::PostfixOp op;
+    syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::select;
     op.range = this->merge(fallback_range, op_token.range);
     return op;

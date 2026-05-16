@@ -12,8 +12,8 @@ namespace {
 constexpr base::usize IR_METHOD_RECEIVER_PARAM_COUNT = 1;
 constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
 
-template <typename T>
-[[nodiscard]] std::span<const T> readonly_span(const std::vector<T>& values) noexcept {
+template <typename T, typename Allocator>
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T, Allocator>& values) noexcept {
     return {values.data(), values.size()};
 }
 
@@ -81,6 +81,8 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
         view.scope_name = payload.scope_name;
         view.scope_range = payload.scope_range;
         view.text = payload.text;
+        view.scope_name_id = payload.scope_name_id;
+        view.text_id = payload.text_id;
         break;
     }
     case syntax::ExprKind::unary:
@@ -133,7 +135,7 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
         break;
     }
     case syntax::ExprKind::tuple_literal: {
-        const std::vector<syntax::ExprId>& payload = *this->ast_.exprs.tuple_elements(expr_id.value);
+        const syntax::AstArenaVector<syntax::ExprId>& payload = *this->ast_.exprs.tuple_elements(expr_id.value);
         view.tuple_elements = readonly_span(payload);
         break;
     }
@@ -141,6 +143,7 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
         const syntax::FieldExprPayload& payload = *this->ast_.exprs.field_payload(expr_id.value);
         view.object = payload.object;
         view.field_name = payload.field_name;
+        view.field_name_id = payload.field_name_id;
         break;
     }
     case syntax::ExprKind::index: {
@@ -162,6 +165,8 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
         view.scope_name = payload.scope_name;
         view.scope_range = payload.scope_range;
         view.text = payload.name;
+        view.scope_name_id = payload.scope_name_id;
+        view.text_id = payload.name_id;
         view.field_inits = readonly_span(payload.field_inits);
         break;
     }
@@ -432,7 +437,8 @@ ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const std::
         is_payload_enum(this->module_.types, enum_case->type)) {
         return this->lower_enum_constructor(*enum_case, syntax::INVALID_EXPR_ID);
     }
-    if (const auto constant = this->constant_symbols_.find(symbol); constant != this->constant_symbols_.end()) {
+    if (const auto constant = this->constant_symbols_.find(this->ir_symbol_ids_.find(symbol));
+        constant != this->constant_symbols_.end()) {
         Value value;
         value.kind = ValueKind::constant_ref;
         value.name = symbol;
@@ -440,7 +446,8 @@ ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const std::
         value.type = this->module_.constants[constant->second.value].type;
         return this->append_value(value);
     }
-    if (const auto function = this->function_symbols_.find(symbol); function != this->function_symbols_.end()) {
+    if (const auto function = this->function_symbols_.find(this->ir_symbol_ids_.find(symbol));
+        function != this->function_symbols_.end()) {
         Value value;
         value.kind = ValueKind::function_ref;
         value.name = symbol;
@@ -453,7 +460,7 @@ ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const std::
 
 ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const ExprView& expr) {
     const std::string name(expr.text);
-    const auto local = expr.scope_name.empty() ? this->locals_.find(name) : this->locals_.end();
+    const auto local = expr.scope_name.empty() ? this->locals_.find(expr.text_id) : this->locals_.end();
     if (local != this->locals_.end()) {
         Value value;
         value.kind = ValueKind::load;
@@ -882,7 +889,7 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
     }
     const ExprView expr = this->expr_view(expr_id);
     if (expr.kind == syntax::ExprKind::name && expr.scope_name.empty()) {
-        const auto found = this->locals_.find(std::string(expr.text));
+        const auto found = this->locals_.find(expr.text_id);
         if (found == this->locals_.end()) {
             return {};
         }
@@ -1008,7 +1015,7 @@ ValueId Lowerer::append_slice_len(const ValueId slice_value) {
 
 CallTarget Lowerer::call_target(const syntax::ExprId callee) const {
     const std::string symbol = call_symbol(callee);
-    const auto found = function_symbols_.find(symbol);
+    const auto found = function_symbols_.find(this->ir_symbol_ids_.find(symbol));
     if (found != function_symbols_.end()) {
         return CallTarget {found->second, symbol};
     }
@@ -1290,7 +1297,8 @@ bool Lowerer::has_terminator(const BlockId block) const {
     return current_function_->blocks[block.value].terminator.kind != TerminatorKind::none;
 }
 
-void Lowerer::set_terminator(const BlockId block, const Terminator& terminator) {
+void Lowerer::set_terminator(const BlockId block, const Terminator& terminator) const
+{
     if (current_function_ == nullptr || !is_valid(block) || block.value >= current_function_->blocks.size()) {
         return;
     }

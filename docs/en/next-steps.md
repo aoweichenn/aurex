@@ -96,12 +96,15 @@ after core syntax, types, modules, and ABI boundaries stabilize.
 
    The current M2 storage line has closed the main AST/Sema copying and page-fault
    hot spots: parser-owned AST nodes use compact header/payload arenas, lexer
-   tokens are returned through bump-backed `TokenBuffer`, checked-module side
-   tables store `IdentId` instead of per-node strings, sema persistent
-   side-table / lookup-cache buckets are bump-backed, and sema value payload
-   lists (`FunctionSignature` params/generic args, `StructInfo` fields,
-   `EnumCaseInfo` payloads, `TypeInfo` tuple/function/generic args, and generic
-   constraint buckets) are arena-backed. Keep future work focused on cross-module
+   tokens are returned through bump-backed `TokenBuffer` with one upfront reserve
+   and no pre-touch of unwritten estimated slack, checked-module side tables
+   store `IdentId` instead of per-node strings, sema persistent side-table /
+   lookup-cache buckets are bump-backed, sema lookup maps no longer keep
+   parallel string-key fallback paths, and sema value payload lists
+   (`FunctionSignature` params/generic args, `StructInfo` fields, `EnumCaseInfo`
+   payloads, `TypeInfo` tuple/function/generic args, generic template params,
+   and generic constraint buckets) are arena-backed. IR lowering source-local
+   lookup also uses interned typed identifiers. Keep future work focused on cross-module
    stable identifiers, generic side-table lifetime/release policy, and CI
    performance thresholds rather than reintroducing whole-AST copies or per-node
    heap string/vector side tables.

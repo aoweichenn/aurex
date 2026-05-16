@@ -16,25 +16,29 @@ constexpr base::usize IR_TRY_SHAPE_CASE_COUNT = 2;
 
 GlobalConstantId Lowerer::enum_case_constant(const std::string_view name) const noexcept {
     const std::string symbol = enum_case_symbol(name);
-    const auto found = constant_symbols_.find(symbol);
+    const auto found = constant_symbols_.find(this->ir_symbol_ids_.find(symbol));
     return found == constant_symbols_.end() ? INVALID_GLOBAL_CONSTANT_ID : found->second;
 }
 
 std::string Lowerer::enum_case_symbol(const std::string_view name) const noexcept {
-    if (const auto found = enum_cases_by_name_.find(name); found != enum_cases_by_name_.end()) {
+    if (const auto found = enum_cases_by_name_.find(this->ast_.find_identifier(name));
+        found != enum_cases_by_name_.end()) {
         return found->second->c_name;
     }
-    if (const auto found = enum_cases_by_c_name_.find(name); found != enum_cases_by_c_name_.end()) {
+    if (const auto found = enum_cases_by_c_name_.find(this->ir_symbol_ids_.find(name));
+        found != enum_cases_by_c_name_.end()) {
         return found->second->c_name;
     }
     return std::string(name);
 }
 
 const sema::EnumCaseInfo* Lowerer::enum_case_info(const std::string_view name) const noexcept {
-    if (const auto found = enum_cases_by_name_.find(name); found != enum_cases_by_name_.end()) {
+    if (const auto found = enum_cases_by_name_.find(this->ast_.find_identifier(name));
+        found != enum_cases_by_name_.end()) {
         return found->second;
     }
-    if (const auto found = enum_cases_by_c_name_.find(name); found != enum_cases_by_c_name_.end()) {
+    if (const auto found = enum_cases_by_c_name_.find(this->ir_symbol_ids_.find(name));
+        found != enum_cases_by_c_name_.end()) {
         return found->second;
     }
     return nullptr;
@@ -335,7 +339,7 @@ ValueId Lowerer::append_pattern_condition(
     }
     if (pattern->kind == syntax::PatternKind::const_) {
         const std::string const_symbol = this->pattern_case_symbol(id);
-        const auto constant = this->constant_symbols_.find(const_symbol);
+        const auto constant = this->constant_symbols_.find(this->ir_symbol_ids_.find(const_symbol));
         if (constant == this->constant_symbols_.end()) {
             return this->append_true_value();
         }
@@ -867,7 +871,7 @@ void Lowerer::collect_pattern_binding_slots(
     const syntax::PatternId pattern_id,
     const sema::TypeHandle source_type,
     const bool is_mutable,
-    std::unordered_map<std::string, PatternBindingSlot>& slots
+    std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots
 ) {
     struct PatternTypeFrame {
         syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
@@ -890,12 +894,15 @@ void Lowerer::collect_pattern_binding_slots(
             break;
         case syntax::PatternKind::binding: {
             const std::string local_name(pattern->binding_name);
-            if (slots.contains(local_name)) {
+            if (slots.contains(pattern->binding_name_id)) {
                 break;
             }
             const ValueId slot = this->append_temp_alloca(local_name, frame.type);
-            this->bind_local(local_name, LocalBinding {slot, is_mutable});
-            slots.emplace(local_name, PatternBindingSlot {local_name, slot, frame.type});
+            this->bind_local(pattern->binding_name_id, LocalBinding {slot, is_mutable});
+            slots.emplace(
+                pattern->binding_name_id,
+                PatternBindingSlot {local_name, pattern->binding_name_id, slot, frame.type}
+            );
             break;
         }
         case syntax::PatternKind::tuple: {
@@ -972,7 +979,7 @@ void Lowerer::store_pattern_bindings(
     const syntax::PatternId pattern_id,
     const ValueId source_address,
     const sema::TypeHandle source_type,
-    const std::unordered_map<std::string, PatternBindingSlot>& slots
+    const std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots
 ) {
     struct PatternFrame {
         syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
@@ -996,7 +1003,7 @@ void Lowerer::store_pattern_bindings(
             break;
         case syntax::PatternKind::binding: {
             const std::string local_name(pattern->binding_name);
-            const auto slot = slots.find(local_name);
+            const auto slot = slots.find(pattern->binding_name_id);
             if (slot != slots.end()) {
                 this->append_store(slot->second.slot, this->append_load(frame.address, frame.type, local_name));
             }
@@ -1133,7 +1140,7 @@ void Lowerer::bind_pattern_locals_with_mutability(
         return;
     }
 
-    std::unordered_map<std::string, PatternBindingSlot> slots;
+    std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash> slots;
     this->collect_pattern_binding_slots(pattern_id, source_type, is_mutable, slots);
     if (pattern->kind != syntax::PatternKind::or_pattern) {
         this->store_pattern_bindings(pattern_id, source_address, source_type, slots);

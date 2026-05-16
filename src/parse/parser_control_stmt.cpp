@@ -57,7 +57,8 @@ syntax::StmtId ControlStmtParser::parse_if_stmt() {
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-syntax::StmtId ControlStmtParser::parse_while_stmt() {
+syntax::StmtId ControlStmtParser::parse_while_stmt() const
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_while, std::string(PARSER_EXPECT_WHILE));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
     syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
@@ -161,7 +162,8 @@ void ControlStmtParser::parse_range_args(std::vector<syntax::ExprId>& args) {
     }
 }
 
-bool ControlStmtParser::recover_range_arg_separator() {
+bool ControlStmtParser::recover_range_arg_separator() const
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -180,7 +182,8 @@ bool ControlStmtParser::recover_range_arg_separator() {
     return false;
 }
 
-syntax::StmtId ControlStmtParser::parse_break_stmt() {
+syntax::StmtId ControlStmtParser::parse_break_stmt() const
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_break, std::string(PARSER_EXPECT_BREAK));
     const syntax::Token& end = this->expect_recovered(
         TokenKind::semicolon,
@@ -193,7 +196,8 @@ syntax::StmtId ControlStmtParser::parse_break_stmt() {
     return this->session_.module.push_stmt(stmt);
 }
 
-syntax::StmtId ControlStmtParser::parse_continue_stmt() {
+syntax::StmtId ControlStmtParser::parse_continue_stmt() const
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_continue, std::string(PARSER_EXPECT_CONTINUE));
     const syntax::Token& end = this->expect_recovered(
         TokenKind::semicolon,
@@ -206,7 +210,8 @@ syntax::StmtId ControlStmtParser::parse_continue_stmt() {
     return this->session_.module.push_stmt(stmt);
 }
 
-syntax::StmtId ControlStmtParser::parse_defer_stmt() {
+syntax::StmtId ControlStmtParser::parse_defer_stmt() const
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_defer, std::string(PARSER_EXPECT_DEFER));
     const syntax::ExprId value = this->parse_expr();
     const syntax::Token& end = this->expect_recovered(
@@ -222,7 +227,8 @@ syntax::StmtId ControlStmtParser::parse_defer_stmt() {
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-syntax::StmtId ControlStmtParser::parse_return_stmt() {
+syntax::StmtId ControlStmtParser::parse_return_stmt() const
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_return, std::string(PARSER_EXPECT_RETURN));
     syntax::ExprId value = syntax::INVALID_EXPR_ID;
     if (!this->check(TokenKind::semicolon)) {
@@ -240,7 +246,8 @@ syntax::StmtId ControlStmtParser::parse_return_stmt() {
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-syntax::StmtId ControlStmtParser::parse_for_init_clause() {
+syntax::StmtId ControlStmtParser::parse_for_init_clause() const
+{
     if (this->match(TokenKind::semicolon)) {
         return syntax::INVALID_STMT_ID;
     }
@@ -253,7 +260,8 @@ syntax::StmtId ControlStmtParser::parse_for_init_clause() {
     return StmtParser(this->parser_).parse_expr_or_assign_stmt(true);
 }
 
-syntax::StmtId ControlStmtParser::parse_for_update_clause() {
+syntax::StmtId ControlStmtParser::parse_for_update_clause() const
+{
     if (this->check(TokenKind::l_brace)) {
         return syntax::INVALID_STMT_ID;
     }

@@ -31,6 +31,13 @@ std::size_t MethodLookupKeyHash::operator()(const MethodLookupKey key) const noe
     return module_name_hash ^ (owner_hash << SEMA_LOOKUP_HASH_OWNER_SHIFT);
 }
 
+std::size_t FunctionLookupKeyHash::operator()(const FunctionLookupKey key) const noexcept {
+    const std::size_t module_name_hash =
+        std::hash<base::u64> {}(pack_lookup_key_parts(key.module, key.name.value));
+    const std::size_t owner_hash = std::hash<base::u32> {}(key.owner_type);
+    return module_name_hash ^ (owner_hash << SEMA_LOOKUP_HASH_OWNER_SHIFT);
+}
+
 std::size_t EnumCaseLookupKeyHash::operator()(const EnumCaseLookupKey key) const noexcept {
     return std::hash<base::u64> {}(pack_lookup_key_parts(key.enum_type, key.case_name.value));
 }

@@ -57,7 +57,8 @@ syntax::ImportDecl ItemParser::parse_import_decl() {
     return import;
 }
 
-const syntax::Token& ItemParser::expect_item_terminator(std::string message) {
+const syntax::Token& ItemParser::expect_item_terminator(std::string message) const
+{
     return this->expect_recovered(
         TokenKind::semicolon,
         std::move(message),
@@ -65,7 +66,8 @@ const syntax::Token& ItemParser::expect_item_terminator(std::string message) {
     );
 }
 
-void ItemParser::expect_item_container_start(std::string message) {
+void ItemParser::expect_item_container_start(std::string message) const
+{
     this->expect_recovered(
         TokenKind::l_brace,
         std::move(message),
@@ -73,7 +75,8 @@ void ItemParser::expect_item_container_start(std::string message) {
     );
 }
 
-const syntax::Token& ItemParser::expect_item_container_end(std::string message) {
+const syntax::Token& ItemParser::expect_item_container_end(std::string message) const
+{
     return this->expect_recovered(
         TokenKind::r_brace,
         std::move(message),
@@ -81,7 +84,8 @@ const syntax::Token& ItemParser::expect_item_container_end(std::string message) 
     );
 }
 
-std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message) {
+std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message) const
+{
     if (token_starts_path_segment(this->peek().kind)) {
         return this->advance();
     }
@@ -111,13 +115,15 @@ void ItemParser::parse_import_alias(syntax::ImportDecl& import) {
     this->recover_import_alias();
 }
 
-void ItemParser::recover_import_alias() {
+void ItemParser::recover_import_alias() const
+{
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::import_alias)) {
         this->synchronize(RecoveryContext::import_alias);
     }
 }
 
-ParsedVisibility ItemParser::parse_visibility() {
+ParsedVisibility ItemParser::parse_visibility() const
+{
     if (this->match(syntax::TokenKind::kw_pub)) {
         return ParsedVisibility {syntax::Visibility::public_, true};
     }

@@ -40,11 +40,7 @@ constexpr std::size_t AST_FAT_NODE_HEADER_RATIO = 4;
     const std::string_view scope_name = {},
     std::vector<syntax::TypeId> type_args = {}
 ) {
-    syntax::NameExprPayload payload;
-    payload.scope_name = scope_name;
-    payload.text = text;
-    payload.type_args = std::move(type_args);
-    return module.push_name_expr({}, std::move(payload));
+    return module.push_name_expr({}, scope_name, {}, text, std::move(type_args));
 }
 
 [[nodiscard]] syntax::ExprId push_float_literal(syntax::AstModule& module, const std::string_view text) {
@@ -539,7 +535,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     array.repeat_count = binary_id;
     const syntax::ExprId array_id = exprs.append_array({}, array);
 
-    const syntax::ExprId tuple_id = exprs.append_tuple({}, {literal_id, call_id});
+    const syntax::ExprId tuple_id = exprs.append_tuple({}, std::vector<syntax::ExprId> {literal_id, call_id});
 
     syntax::PostfixOp postfix_op;
     postfix_op.kind = syntax::PostfixOpKind::call;
@@ -648,7 +644,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     EXPECT_EQ(array_payload->repeat_value.value, unary_id.value);
     EXPECT_EQ(array_payload->repeat_count.value, binary_id.value);
 
-    const std::vector<syntax::ExprId>* const tuple_payload = exprs.tuple_elements(tuple_id.value);
+    const syntax::AstArenaVector<syntax::ExprId>* const tuple_payload = exprs.tuple_elements(tuple_id.value);
     ASSERT_NE(tuple_payload, nullptr);
     ASSERT_EQ(tuple_payload->size(), 2U);
     EXPECT_EQ(tuple_payload->back().value, call_id.value);

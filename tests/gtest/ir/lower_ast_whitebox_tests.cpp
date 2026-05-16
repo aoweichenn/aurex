@@ -97,12 +97,14 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
 
     EnumCaseInfo none_case;
     none_case.name = "None";
+    none_case.name_id = ast.intern_identifier("None");
     none_case.c_name = "OptionI32_None";
     none_case.type = enum_type;
     none_case.value_text = "0";
     none_case.enum_name = "OptionI32";
     none_case.case_name = "None";
-    checked.enum_cases.emplace(none_case.c_name, none_case);
+    none_case.case_name_id = none_case.name_id;
+    checked.enum_cases.emplace(sema::ModuleLookupKey {0, none_case.name_id}, none_case);
 
     const ExprId missing_name = push_name(ast, "missing");
     const ExprId none_name = push_name(ast, "None");
@@ -207,7 +209,7 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     slot_value.kind = ValueKind::alloca;
     slot_value.type = ptr_i32;
     const ValueId slot_id = lowerer.append_value(slot_value);
-    lowerer.locals_.emplace("slot", ir::detail::LocalBinding {slot_id, true});
+    lowerer.locals_.emplace(ast.find_identifier("slot"), ir::detail::LocalBinding {slot_id, true});
     const ir::detail::PlaceAddress slot_address = lowerer.lower_place_address(missing_place);
     EXPECT_EQ(slot_address.address.value, slot_id.value);
     EXPECT_TRUE(slot_address.is_mutable);

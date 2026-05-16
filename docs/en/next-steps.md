@@ -110,11 +110,16 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    use the checked bump-backed interner instead of heap-backed `std::string`
    buffers. ABI symbol validation borrows those strings through `std::string_view`
    keys rather than building a second interner. IR lowering source-local
-   lookup also uses interned typed identifiers. Keep future work focused on cross-module
-   stable identifiers and heavier release stress thresholds (2M AST, 5000
-   generic, 5000 errors) rather than reintroducing whole-AST copies or per-node
-   heap string/vector side tables. The light generic/AST threshold gate is
-   already available through `make perf-stress-threshold` and CI.
+   lookup also uses interned typed identifiers. The driver now has a concrete
+   incremental cache file path: `--incremental-cache <path>` records
+   schema/version, root and import paths, source content fingerprints, loaded
+   modules, and checked stable/incremental definition rows; `--check` reuses the
+   cache only when every recorded source fingerprint still matches. Keep future
+   work focused on query-level reuse, lossless syntax, IDE-native incrementality,
+   and heavier release stress threshold calibration (2M AST, 5000 generic, 5000
+   errors) rather than reintroducing whole-AST copies or per-node heap
+   string/vector side tables. The light generic/AST threshold gate is already
+   available through `make perf-stress-threshold` and CI.
 
 11. Expression type-cache closure
 

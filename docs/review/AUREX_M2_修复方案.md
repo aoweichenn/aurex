@@ -15,8 +15,8 @@
 | P0 语义安全 | 已关闭 | raw pointer projection unsafe、`&expr` 双语义、contextual expression cache、`[]` 多义、capability predicate、数组常量越界均已收口 |
 | P0 性能爆点 | 已关闭当前主爆点 | compact AST、bump-backed AST/token/sema storage、`IdentId` typed lookup、normalized AST overlay、generic side table 局部化、pattern matrix、diagnostic budget/line table、release perf gate 已落地 |
 | 过渡态清理 | 当前主路径不保留双逻辑 | 旧胖 `ExprNode` 生产路径、旧 raw postfix lowering、string-key lookup fallback、per-node C-name string side table、Sema AST 整树复制已删除 |
-| 本次补充修复 | 已纳入 | `syntax::Token` 不再持有 `std::string_view` 大字段；token text 由 source pointer + range 计算；`ModuleLoader` 的 lex+parse 局部化，parse 后立即释放 token arena |
-| 后续保留 | 非当前阻塞 | 增量编译缓存文件格式、LSP 结构化诊断 protocol、跨机器 release 阈值最终数值校准、M2.5 query/lossless syntax/IDE-native 方向 |
+| 本次补充修复 | 已纳入 | `syntax::Token` 不再持有 `std::string_view` 大字段；token text 由 source pointer + range 计算；`ModuleLoader` 的 lex+parse 局部化，parse 后立即释放 token arena；`--incremental-cache` 已提供跨进程 cache 文件格式、read/write/reuse 路径和 `--check` 命中跳过 parse/sema |
+| 后续保留 | 非当前阻塞 | LSP 结构化诊断 protocol、跨机器 release 阈值最终数值校准、M2.5 query/lossless syntax/IDE-native 方向 |
 
 ---
 
@@ -1112,7 +1112,7 @@ P1 性能缺陷:  6/6  ✅（当前 M2.1 边界已收口）
 
 ### 一句话
 
-> **M2 语法表面已接近可用；当前 M2.1 主线已经关闭 P0 语义安全、P0 性能爆点、P1 当前边界和主要攻击面。后续工作集中在增量编译缓存文件格式、LSP 结构化诊断 protocol、跨机器 perf 阈值校准，以及 M2.5 query / lossless syntax / IDE-native 架构。**
+> **M2 语法表面已接近可用；当前 M2.1 主线已经关闭 P0 语义安全、P0 性能爆点、P1 当前边界、主要攻击面，以及增量编译 cache 文件格式 / read-write-reuse 路径。后续工作集中在 LSP 结构化诊断 protocol、跨机器 perf 阈值校准，以及 M2.5 query / lossless syntax / IDE-native 架构。**
 
 ### 开发者响应评价
 
@@ -1480,7 +1480,7 @@ QueryKey = ExprId / ItemId / SyntaxNode* ❌
 
 ### 一句话
 
-> **M2 语法表面已接近可用；当前 M2.1 主线已经关闭 P0 语义安全、P0 性能爆点、P1 当前边界和主要攻击面。后续工作集中在增量编译缓存文件格式、LSP 结构化诊断 protocol、跨机器 perf 阈值校准，以及 M2.5 query / lossless syntax / IDE-native 架构。**
+> **M2 语法表面已接近可用；当前 M2.1 主线已经关闭 P0 语义安全、P0 性能爆点、P1 当前边界、主要攻击面，以及增量编译 cache 文件格式 / read-write-reuse 路径。后续工作集中在 LSP 结构化诊断 protocol、跨机器 perf 阈值校准，以及 M2.5 query / lossless syntax / IDE-native 架构。**
 
 ### 开发者响应评价
 

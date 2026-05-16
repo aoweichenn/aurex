@@ -3,6 +3,7 @@
 #include <aurex/base/integer.hpp>
 #include <aurex/base/text.hpp>
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,6 +51,7 @@ class SourceManager {
 public:
     [[nodiscard]] SourceId add_source(std::string path, std::string text);
     [[nodiscard]] const SourceFile& get(SourceId id) const noexcept;
+    [[nodiscard]] std::span<const SourceFile> files() const noexcept;
     [[nodiscard]] std::string_view text(SourceId id) const noexcept;
 
 private:

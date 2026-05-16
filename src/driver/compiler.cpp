@@ -6,6 +6,7 @@
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/module_loader.hpp>
 #include <aurex/driver/file_cache.hpp>
+#include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/native_toolchain.hpp>
 #include <aurex/ir/ir_dump.hpp>
 #include <aurex/ir/lower_ast.hpp>
@@ -214,6 +215,16 @@ void print_diagnostics(const base::SourceManager& sources, const base::Diagnosti
 
 base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
 {
+    if (invocation.emit_kind == EmitKind::check) {
+        auto cache_result = try_reuse_incremental_check_cache(invocation);
+        if (!cache_result) {
+            return base::Result<void>::fail(cache_result.error());
+        }
+        if (cache_result.value()) {
+            return base::Result<void>::ok();
+        }
+    }
+
     base::SourceManager sources;
     base::DiagnosticSink diagnostics;
 
@@ -264,6 +275,12 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     if (!checked_result) {
         print_diagnostics(sources, diagnostics);
         return base::Result<void>::fail(checked_result.error());
+    }
+
+    auto incremental_cache_result =
+        write_incremental_cache(invocation, sources, loader.modules(), checked_result.value());
+    if (!incremental_cache_result) {
+        return base::Result<void>::fail(incremental_cache_result.error());
     }
 
     if (invocation.emit_kind == EmitKind::check) {

@@ -493,6 +493,10 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
 }
 
 [[nodiscard]] std::optional<std::string> compiler_cache_key(const driver::CompilerInvocation& invocation) {
+    if (!invocation.incremental_cache_path.empty()) {
+        return std::nullopt;
+    }
+
     std::string key;
     key += "emit=";
     key += std::to_string(static_cast<int>(invocation.emit_kind));

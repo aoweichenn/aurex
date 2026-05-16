@@ -59,6 +59,12 @@ repeated `--clang-arg <arg>` / `--clang-arg=<arg>` options pass raw arguments
 such as `-O2` or `-g` to clang. Native backend options are rejected for
 non-native emit modes such as `--emit=ir`.
 
+`--incremental-cache <path>` enables the driver cache path. Successful semantic
+analysis writes source content fingerprints, import paths, loaded modules, and
+checked stable/incremental definition keys to the cache file; later `--check`
+invocations reuse it only when the root file, import-path list, and every
+recorded dependency fingerprint still match.
+
 The IR path is visible with:
 
 ```sh

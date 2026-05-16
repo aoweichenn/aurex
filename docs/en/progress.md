@@ -233,8 +233,13 @@ non-contiguous NodeSpan sparse ID mappings are shared per template, and tiny
 per-instance side-table arenas use 1 KiB blocks instead of the default 64 KiB
 floor. The stress lane now includes 5000 generic instances; exact RSS/time
 baselines are measurement work rather than a known retained-storage design gap.
-Cross-module stable hashes / parallel global IDs plus 2M-node, 5000-generic,
-and 5000-error cross-machine release thresholds remain later performance work.
+Cross-module stable hashes / parallel global IDs now feed the driver
+incremental cache: `--incremental-cache <path>` writes schema/version, root and
+import paths, source content fingerprints, module rows, and checked
+stable/incremental definition rows, and `--check` safely reuses the cache when
+all recorded source fingerprints still match. Query-level reuse, lossless
+syntax, LSP-native incrementality, and 2M-node / 5000-generic / 5000-error
+cross-machine threshold calibration remain later work.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
 usefulness witness search. Bool, enum payloads, tuples, structs, and fixed

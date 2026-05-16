@@ -92,6 +92,10 @@ const SourceFile& SourceManager::get(const SourceId id) const noexcept {
     return this->files_[id.value];
 }
 
+std::span<const SourceFile> SourceManager::files() const noexcept {
+    return this->files_;
+}
+
 std::string_view SourceManager::text(const SourceId id) const noexcept {
     return this->get(id).text();
 }

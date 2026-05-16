@@ -38,6 +38,7 @@ enum class OptionGroup {
     frontend_debug_output,
     output,
     search_path,
+    incremental,
     optimization,
     native_backend,
 };
@@ -65,6 +66,7 @@ enum class OptionEffectKind {
     parse_emit_kind,
     set_output_path,
     append_import_path,
+    set_incremental_cache_path,
     set_clang_path,
     append_clang_arg,
     parse_optimization_level,
@@ -176,6 +178,7 @@ inline constexpr OptionEffect CLI_EFFECT_PARSE_EMIT_KIND {
 };
 inline constexpr OptionEffect CLI_EFFECT_SET_OUTPUT_PATH {OptionEffectKind::set_output_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH {OptionEffectKind::append_import_path};
+inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH {OptionEffectKind::set_incremental_cache_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_CLANG_PATH {OptionEffectKind::set_clang_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_CLANG_ARG {OptionEffectKind::append_clang_arg};
 inline constexpr OptionEffect CLI_EFFECT_PARSE_OPTIMIZATION_LEVEL {OptionEffectKind::parse_optimization_level};
@@ -191,6 +194,7 @@ inline constexpr auto OPTION_GROUP_SPECS = std::to_array<OptionGroupSpec>({
     {OptionLevel::primary, OptionGroup::frontend_debug_output, "frontend and debug output"},
     {OptionLevel::secondary, OptionGroup::output, "output"},
     {OptionLevel::secondary, OptionGroup::search_path, "search paths"},
+    {OptionLevel::secondary, OptionGroup::incremental, "incremental"},
     {OptionLevel::secondary, OptionGroup::optimization, "optimization"},
     {OptionLevel::secondary, OptionGroup::native_backend, "native backend"},
 });
@@ -377,6 +381,16 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         CLI_EFFECT_APPEND_IMPORT_PATH,
         "path",
         "add an import search path",
+    },
+    {
+        OptionLevel::secondary,
+        OptionGroup::incremental,
+        OptionApplicability::any,
+        "--incremental-cache",
+        OptionValueStyle::separate,
+        CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH,
+        "path",
+        "read and write a source-fingerprint checked incremental cache",
     },
     {
         OptionLevel::secondary,
@@ -726,6 +740,9 @@ private:
             return base::Result<void>::ok();
         case OptionEffectKind::append_import_path:
             result.invocation.import_paths.push_back(std::filesystem::path(option.value));
+            return base::Result<void>::ok();
+        case OptionEffectKind::set_incremental_cache_path:
+            result.invocation.incremental_cache_path = std::filesystem::path(option.value);
             return base::Result<void>::ok();
         case OptionEffectKind::set_clang_path:
             result.invocation.clang_path = option.value;

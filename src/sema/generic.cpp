@@ -1321,12 +1321,6 @@ bool SemanticAnalyzer::unify_generic_type(
             }
             break;
         case TypeKind::pointer:
-            if (pattern_info.pointer_mutability == PointerMutability::mut &&
-                actual_info.pointer_mutability != PointerMutability::mut) {
-                return false;
-            }
-            pending.emplace_back(pattern_info.pointee, actual_info.pointee);
-            break;
         case TypeKind::reference:
             if (pattern_info.pointer_mutability == PointerMutability::mut &&
                 actual_info.pointer_mutability != PointerMutability::mut) {

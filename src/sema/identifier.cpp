@@ -20,6 +20,10 @@ std::size_t ModuleLookupKeyHash::operator()(const ModuleLookupKey key) const noe
     return std::hash<base::u64> {}(pack_lookup_key_parts(key.module, key.name.value));
 }
 
+std::size_t IdentIdHash::operator()(const IdentId id) const noexcept {
+    return std::hash<base::u32> {}(id.value);
+}
+
 std::size_t MethodLookupKeyHash::operator()(const MethodLookupKey key) const noexcept {
     const std::size_t module_name_hash =
         std::hash<base::u64> {}(pack_lookup_key_parts(key.module, key.name.value));

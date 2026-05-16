@@ -20,6 +20,10 @@ constexpr base::u32 SEMA_I64_BIT_WIDTH = 64;
 constexpr base::u32 SEMA_I64_SIGN_BIT_INDEX = 63;
 constexpr base::u32 SEMA_SIGN_BIT_OFFSET = 1;
 constexpr base::usize SEMA_TRY_SHAPE_CASE_COUNT = 2;
+constexpr std::string_view SEMA_RESULT_OK_CASE_NAME = "ok";
+constexpr std::string_view SEMA_RESULT_ERR_CASE_NAME = "err";
+constexpr std::string_view SEMA_OPTION_SOME_CASE_NAME = "some";
+constexpr std::string_view SEMA_OPTION_NONE_CASE_NAME = "none";
 
 struct IntegerLiteralExpr {
     syntax::ExprId literal = syntax::INVALID_EXPR_ID;
@@ -264,8 +268,12 @@ SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle
         return {};
     }
 
-    const EnumCaseInfo* const ok_case = this->find_enum_case_by_type_and_case(type, "ok");
-    const EnumCaseInfo* const err_case = this->find_enum_case_by_type_and_case(type, "err");
+    const IdentId ok_id = this->module_.find_identifier(SEMA_RESULT_OK_CASE_NAME);
+    const IdentId err_id = this->module_.find_identifier(SEMA_RESULT_ERR_CASE_NAME);
+    const EnumCaseInfo* const ok_case =
+        this->find_enum_case_by_type_and_case(type, ok_id, SEMA_RESULT_OK_CASE_NAME);
+    const EnumCaseInfo* const err_case =
+        this->find_enum_case_by_type_and_case(type, err_id, SEMA_RESULT_ERR_CASE_NAME);
     if (ok_case != nullptr || err_case != nullptr) {
         TryShape shape;
         shape.kind = ok_case != nullptr &&
@@ -279,8 +287,12 @@ SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle
         return shape;
     }
 
-    const EnumCaseInfo* const some_case = this->find_enum_case_by_type_and_case(type, "some");
-    const EnumCaseInfo* const none_case = this->find_enum_case_by_type_and_case(type, "none");
+    const IdentId some_id = this->module_.find_identifier(SEMA_OPTION_SOME_CASE_NAME);
+    const IdentId none_id = this->module_.find_identifier(SEMA_OPTION_NONE_CASE_NAME);
+    const EnumCaseInfo* const some_case =
+        this->find_enum_case_by_type_and_case(type, some_id, SEMA_OPTION_SOME_CASE_NAME);
+    const EnumCaseInfo* const none_case =
+        this->find_enum_case_by_type_and_case(type, none_id, SEMA_OPTION_NONE_CASE_NAME);
     if (some_case != nullptr || none_case != nullptr) {
         TryShape shape;
         shape.kind = some_case != nullptr &&
@@ -922,10 +934,10 @@ TypeHandle SemanticAnalyzer::analyze_module_member_expr(
     if (is_valid(this->find_type_in_module(module, expr.field_name_id, expr.field_name, expr.range, false, false))) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    if (this->generic_type_template_exists_in_module(module, expr.field_name)) {
+    if (this->generic_type_template_exists_in_module(module, expr.field_name_id, expr.field_name)) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
-    static_cast<void>(this->find_symbol_in_module(module, expr.field_name, expr.range, true));
+    static_cast<void>(this->find_symbol_in_module(module, expr.field_name_id, expr.field_name, expr.range, true));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 

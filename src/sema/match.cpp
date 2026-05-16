@@ -224,6 +224,7 @@ bool SemanticAnalyzer::analyze_pattern(
             case syntax::PatternKind::binding:
                 out.push_back(PatternBinding {
                     std::string(pattern->binding_name),
+                    pattern->binding_name_id,
                     frame.type,
                     pattern->range,
                 });
@@ -250,7 +251,11 @@ bool SemanticAnalyzer::analyze_pattern(
                     this->report(pattern->range, std::string(SEMA_ENUM_MATCH_PATTERN));
                     break;
                 }
-                const Symbol* const symbol = this->find_symbol(pattern->binding_name, pattern->range);
+                const Symbol* const symbol = this->find_symbol(
+                    pattern->binding_name_id,
+                    pattern->binding_name,
+                    pattern->range
+                );
                 if (symbol == nullptr) {
                     break;
                 }
@@ -486,10 +491,11 @@ void SemanticAnalyzer::define_pattern_bindings(
         if (binding.name.empty()) {
             continue;
         }
-        static_cast<void>(this->can_define_local_name(binding.name, binding.range));
+        static_cast<void>(this->can_define_local_name(binding.name_id, binding.name, binding.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,
             binding.name,
+            binding.name_id,
             {},
             syntax::INVALID_MODULE_ID,
             binding.type,

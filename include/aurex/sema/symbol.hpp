@@ -2,6 +2,7 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/result.hpp>
+#include <aurex/sema/identifier.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
 #include <aurex/syntax/ast_ids.hpp>
@@ -38,6 +39,7 @@ inline constexpr SymbolId INVALID_SYMBOL_ID {SymbolId::INVALID_VALUE};
 struct Symbol {
     SymbolKind kind = SymbolKind::local;
     std::string name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::string c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
@@ -46,15 +48,7 @@ struct Symbol {
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
-struct StringHash {
-    using is_transparent = void;
-
-    [[nodiscard]] std::size_t operator()(std::string_view value) const noexcept;
-    [[nodiscard]] std::size_t operator()(const std::string& value) const noexcept;
-    [[nodiscard]] std::size_t operator()(const char* value) const noexcept;
-};
-
-using StringSymbolMap = std::unordered_map<std::string, SymbolId, StringHash, std::equal_to<>>;
+using IdentSymbolMap = std::unordered_map<IdentId, SymbolId, IdentIdHash>;
 
 class SymbolTable final {
 public:
@@ -64,12 +58,12 @@ public:
     void pop_scope() noexcept;
 
     [[nodiscard]] base::Result<SymbolId> insert(Symbol symbol, base::DiagnosticSink& diagnostics);
-    [[nodiscard]] const Symbol* find(std::string_view name) const noexcept;
+    [[nodiscard]] const Symbol* find(IdentId name) const noexcept;
     [[nodiscard]] const Symbol* get(SymbolId id) const noexcept;
 
 private:
     std::vector<Symbol> symbols_;
-    std::vector<StringSymbolMap> scopes_;
+    std::vector<IdentSymbolMap> scopes_;
 };
 
 } // namespace aurex::sema

@@ -111,7 +111,10 @@ item owner lookup has been replaced with explicit `ItemId` ownership. Identifier
 storage now uses a reusable global bump allocator through the syntax-layer
 `IdentifierInterner`; AST identifier-bearing nodes carry native `IdentId`
 payload fields, and sema typed lookup keys use the AST module interner instead
-of a second private interner. Compact AST header/payload vectors and identifier
+of a second private interner. Function, type, value, generic, enum-case,
+method/member, and local-scope lookup now use `IdentId` typed indexes; string
+semantic keys remain only for checked storage, ABI/display, dumps, and
+diagnostics. Compact AST header/payload vectors and identifier
 interner vectors/hash nodes are now bump-backed; parser construction, module
 loading, and postfix materialization write compact expression headers plus
 per-kind payloads directly. Parser startup estimates AST storage from token

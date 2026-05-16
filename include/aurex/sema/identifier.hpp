@@ -33,6 +33,10 @@ struct ModuleLookupKeyHash {
     [[nodiscard]] std::size_t operator()(ModuleLookupKey key) const noexcept;
 };
 
+struct IdentIdHash {
+    [[nodiscard]] std::size_t operator()(IdentId id) const noexcept;
+};
+
 struct MethodLookupKey {
     base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;
     base::u32 owner_type = SEMA_LOOKUP_INVALID_KEY_PART;

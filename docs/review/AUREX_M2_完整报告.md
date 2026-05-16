@@ -217,17 +217,16 @@ for (const std::string& prefix : combinations) {
 
 ---
 
-### 🔥 P0-Perf-3 名字查找大量构造临时 string
+### ✅ P0-Perf-3 名字查找大量构造临时 string（已修复）
 
-**严重性：** 🔴 热路径慢
+**状态：** 生产 lookup 路径已迁移到 `IdentifierInterner` + `IdentId` typed index
 
 ```cpp
-// 每次 lookup 分配+释放 string
-checked_.functions.find(module_key(current_module_, name));
-scope->find(std::string(name));  // 每层 scope 构造
+find_function_in_module(module, name_id, name, range);
+find_symbol(name_id, name, range);
 ```
 
-**建议：** 引入 Identifier interning + typed key (`IdentId` / `QualifiedNameKey`)。
+函数、类型、变量、泛型模板、方法、enum case 和本地 scope lookup 已移除生产 string overload/string-map fallback。`module_key`/`method_key` 等 string semantic key 保留给 checked storage、ABI/display、dump 和诊断，不再承担 lookup 热路径。
 
 ---
 

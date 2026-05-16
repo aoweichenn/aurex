@@ -57,6 +57,7 @@ void FunctionRegistry::register_function(
 
     FunctionSignature signature;
     signature.name = std::string(item.name);
+    signature.name_id = item.name_id;
     signature.semantic_key = key;
     signature.c_name = abi_or_c_name(item, c_name);
     signature.module = owner;
@@ -168,6 +169,7 @@ void FunctionRegistry::insert_function_value(const std::string& key, const Funct
     const auto value_inserted = this->global_values_.emplace(key, Symbol {
         SymbolKind::function,
         signature.name,
+        signature.name_id,
         signature.c_name,
         signature.module,
         signature_function_type(this->checked_.types, signature),

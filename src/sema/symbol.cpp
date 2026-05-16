@@ -3,29 +3,16 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <cassert>
-#include <functional>
 #include <utility>
 
 namespace aurex::sema {
-
-std::size_t StringHash::operator()(const std::string_view value) const noexcept {
-    return std::hash<std::string_view> {}(value);
-}
-
-std::size_t StringHash::operator()(const std::string& value) const noexcept {
-    return (*this)(std::string_view {value});
-}
-
-std::size_t StringHash::operator()(const char* value) const noexcept {
-    return (*this)(std::string_view {value});
-}
 
 SymbolTable::SymbolTable() {
     this->push_scope();
 }
 
 void SymbolTable::push_scope(const base::usize expected_symbols) {
-    StringSymbolMap& scope = this->scopes_.emplace_back();
+    IdentSymbolMap& scope = this->scopes_.emplace_back();
     scope.reserve(expected_symbols);
 }
 
@@ -36,7 +23,7 @@ void SymbolTable::pop_scope() noexcept {
 
 base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& diagnostics) {
     assert(!this->scopes_.empty());
-    if (this->scopes_.back().contains(symbol.name)) {
+    if (this->scopes_.back().contains(symbol.name_id)) {
         diagnostics.push(base::Diagnostic {
             base::Severity::error,
             symbol.range,
@@ -46,13 +33,16 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
     }
 
     const SymbolId id {static_cast<base::u32>(this->symbols_.size())};
-    const std::string name = symbol.name;
+    const IdentId name = symbol.name_id;
     this->symbols_.push_back(std::move(symbol));
     this->scopes_.back().emplace(name, id);
     return base::Result<SymbolId>::ok(id);
 }
 
-const Symbol* SymbolTable::find(const std::string_view name) const noexcept {
+const Symbol* SymbolTable::find(const IdentId name) const noexcept {
+    if (!is_valid(name)) {
+        return nullptr;
+    }
     for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
         const auto found = scope->find(name);
         if (found != scope->end()) {

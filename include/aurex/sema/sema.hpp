@@ -77,8 +77,10 @@ private:
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
         std::string name;
+        IdentId name_id = INVALID_IDENT_ID;
         std::string key;
         std::vector<std::string> params;
+        std::vector<IdentId> param_ids;
         std::vector<std::string> param_identity_keys;
         std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
@@ -86,8 +88,8 @@ private:
     };
 
     struct GenericContext {
-        std::unordered_map<std::string, TypeHandle> params;
-        std::unordered_map<std::string, std::string> param_identities;
+        std::unordered_map<IdentId, TypeHandle, IdentIdHash> params;
+        std::unordered_map<IdentId, std::string, IdentIdHash> param_identities;
         std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints;
         std::unordered_map<std::string, std::unordered_set<CapabilityKind, CapabilityKindHash>> constraints_by_identity;
     };
@@ -130,6 +132,7 @@ private:
 
     struct ModuleSelectorPath {
         std::vector<std::string_view> parts;
+        std::vector<IdentId> part_ids;
         base::SourceRange range {};
     };
 
@@ -187,6 +190,7 @@ private:
 
     struct PatternBinding {
         std::string name;
+        IdentId name_id = INVALID_IDENT_ID;
         TypeHandle type = INVALID_TYPE_HANDLE;
         base::SourceRange range {};
     };
@@ -465,63 +469,75 @@ private:
         std::unordered_map<std::string, TypeHandle>& inferred
     ) const;
     [[nodiscard]] const GenericTemplateInfo* find_generic_function_in_visible_modules(
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_function_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_struct_in_visible_modules(
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_struct_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_enum_in_visible_modules(
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_enum_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_type_alias_in_visible_modules(
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] const GenericTemplateInfo* find_generic_type_alias_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown = true
     );
     [[nodiscard]] bool generic_type_template_exists_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name
     ) const;
     [[nodiscard]] const GenericTemplateInfo* find_any_generic_type_template_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name
     ) const;
     [[nodiscard]] bool report_generic_type_requires_args_if_visible(
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range
     );
     void report_generic_type_template_in_module(
         syntax::ModuleId module,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range
     );
@@ -543,6 +559,7 @@ private:
     );
     [[nodiscard]] FunctionSignature* find_generic_method_in_visible_modules(
         TypeHandle owner_type,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool require_self,
@@ -616,19 +633,20 @@ private:
         bool opaque_allowed_as_pointee,
         bool report_unknown
     );
-    [[nodiscard]] bool selector_base_has_non_module_meaning(std::string_view name) const;
+    [[nodiscard]] bool selector_base_has_non_module_meaning(IdentId name_id, std::string_view name) const;
     [[nodiscard]] bool module_alias_visible(std::string_view name) const;
     [[nodiscard]] bool visible_root_module_name_exists(std::string_view name) const;
     [[nodiscard]] bool visible_module_path_prefix_exists(const std::vector<std::string_view>& parts) const;
     [[nodiscard]] ModuleSelectorPath expr_selector_path(syntax::ExprId expr) const;
-    [[nodiscard]] bool current_generic_param_exists(std::string_view name) const;
-    [[nodiscard]] bool visible_type_name_exists(std::string_view name) const;
-    [[nodiscard]] bool can_define_local_name(std::string_view name, base::SourceRange range);
-    [[nodiscard]] bool module_type_or_value_name_exists(syntax::ModuleId module, std::string_view name) const;
-    [[nodiscard]] bool top_level_value_name_exists(syntax::ModuleId module, std::string_view name) const;
-    [[nodiscard]] bool type_member_name_exists(TypeHandle owner_type, std::string_view name) const;
+    [[nodiscard]] bool current_generic_param_exists(IdentId name_id, std::string_view name) const;
+    [[nodiscard]] bool visible_type_name_exists(IdentId name_id, std::string_view name) const;
+    [[nodiscard]] bool can_define_local_name(IdentId name_id, std::string_view name, base::SourceRange range);
+    [[nodiscard]] bool module_type_or_value_name_exists(syntax::ModuleId module, IdentId name_id, std::string_view name) const;
+    [[nodiscard]] bool top_level_value_name_exists(syntax::ModuleId module, IdentId name_id, std::string_view name) const;
+    [[nodiscard]] bool type_member_name_exists(TypeHandle owner_type, IdentId name_id, std::string_view name) const;
     [[nodiscard]] const FunctionSignature* find_function_selector(
         syntax::ExprId callee,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool report_unknown
@@ -671,29 +689,27 @@ private:
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string module_key(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string module_key(syntax::ModuleId module, IdentId name_id, std::string_view fallback_name = {}) const;
     [[nodiscard]] std::string function_key(const syntax::ItemNode& function, syntax::ItemId function_id) const;
     [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const;
+    [[nodiscard]] std::string method_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name_id, std::string_view fallback_name = {}) const;
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
     [[nodiscard]] ModuleLookupKey module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] MethodLookupKey method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
-    [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, std::string_view name);
     [[nodiscard]] ModuleLookupKey intern_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
-    [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, std::string_view name) const noexcept;
     [[nodiscard]] ModuleLookupKey find_module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
-    [[nodiscard]] MethodLookupKey intern_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name);
     [[nodiscard]] MethodLookupKey intern_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
-    [[nodiscard]] MethodLookupKey find_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, std::string_view name) const noexcept;
     [[nodiscard]] MethodLookupKey find_method_lookup_key(syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;
-    void index_named_type(syntax::ModuleId module, std::string_view name, TypeHandle type, syntax::Visibility visibility);
+    void index_named_type(syntax::ModuleId module, IdentId name_id, TypeHandle type, syntax::Visibility visibility);
     void index_type_alias(const TypeAliasInfo& info);
     void index_generic_struct_template(const GenericTemplateInfo& info);
     void index_generic_enum_template(const GenericTemplateInfo& info);
     void index_generic_type_alias_template(const GenericTemplateInfo& info);
     void index_generic_function_template(const GenericTemplateInfo& info);
     void index_generic_method_template(const GenericTemplateInfo& info);
-    void index_function_lookup(std::string_view lookup_name, const FunctionSignature& signature);
-    void index_method_lookup(syntax::ModuleId module, TypeHandle owner_type, std::string_view lookup_name, const FunctionSignature& signature);
-    void index_function_value(std::string_view lookup_name, const FunctionSignature& signature);
+    void index_function_lookup(const FunctionSignature& signature);
+    void index_method_lookup(syntax::ModuleId module, TypeHandle owner_type, IdentId name_id, const FunctionSignature& signature);
+    void index_function_value(const FunctionSignature& signature);
     void index_global_value(const Symbol& symbol);
     [[nodiscard]] bool named_type_lookup_complete() const noexcept;
     [[nodiscard]] bool type_alias_lookup_complete() const noexcept;
@@ -716,31 +732,20 @@ private:
     [[nodiscard]] syntax::ModuleId owner_module(TypeHandle owner_type) const noexcept;
     [[nodiscard]] const FunctionSignature* find_method_in_owner_module(
         TypeHandle owner_type,
+        IdentId name_id,
         std::string_view name,
         bool require_self
     ) const;
     [[nodiscard]] const FunctionSignature* find_method_in_visible_modules(
         TypeHandle owner_type,
+        IdentId name_id,
         std::string_view name,
         base::SourceRange range,
         bool require_self,
         bool report_unknown = true
     );
     [[nodiscard]] TypeHandle find_type_in_visible_modules(
-        std::string_view name,
-        base::SourceRange range,
-        bool opaque_allowed_as_pointee,
-        bool report_unknown = true
-    );
-    [[nodiscard]] TypeHandle find_type_in_visible_modules(
         IdentId name_id,
-        std::string_view name,
-        base::SourceRange range,
-        bool opaque_allowed_as_pointee,
-        bool report_unknown = true
-    );
-    [[nodiscard]] TypeHandle find_type_in_module(
-        syntax::ModuleId module,
         std::string_view name,
         base::SourceRange range,
         bool opaque_allowed_as_pointee,
@@ -754,22 +759,15 @@ private:
         bool opaque_allowed_as_pointee,
         bool report_unknown = true
     );
-    [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const FunctionSignature* find_function_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(std::string_view name, base::SourceRange range, bool report_unknown = true);
-    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(TypeHandle enum_type, std::string_view case_name) const;
+    [[nodiscard]] const FunctionSignature* find_function_in_visible_modules(IdentId name_id, std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const FunctionSignature* find_function_in_module(syntax::ModuleId module, IdentId name_id, std::string_view name, base::SourceRange range, bool report_unknown = true);
+    [[nodiscard]] const EnumCaseInfo* find_enum_case_in_visible_modules(IdentId name_id, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_type_and_case(
         TypeHandle enum_type,
         IdentId case_name_id,
         std::string_view case_name
     ) const;
     [[nodiscard]] const std::vector<const EnumCaseInfo*>* find_enum_cases_by_type(TypeHandle enum_type) const noexcept;
-    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
-        std::string_view enum_name,
-        std::string_view case_name,
-        base::SourceRange range,
-        bool report_unknown = true
-    );
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_scoped_name(
         IdentId enum_name_id,
         std::string_view enum_name,
@@ -780,19 +778,12 @@ private:
     );
     [[nodiscard]] const EnumCaseInfo* find_enum_case_by_pattern_type(
         syntax::TypeId enum_type,
-        std::string_view case_name,
-        base::SourceRange range
-    );
-    [[nodiscard]] const EnumCaseInfo* find_enum_case_by_pattern_type(
-        syntax::TypeId enum_type,
         IdentId case_name_id,
         std::string_view case_name,
         base::SourceRange range
     );
     [[nodiscard]] const EnumCaseInfo* find_enum_constructor(syntax::ExprId callee, bool report_unknown);
-    [[nodiscard]] const Symbol* find_symbol(std::string_view name, base::SourceRange range);
     [[nodiscard]] const Symbol* find_symbol(IdentId name_id, std::string_view name, base::SourceRange range);
-    [[nodiscard]] const Symbol* find_symbol_in_module(syntax::ModuleId module, std::string_view name, base::SourceRange range, bool report_unknown = true);
     [[nodiscard]] const Symbol* find_symbol_in_module(
         syntax::ModuleId module,
         IdentId name_id,

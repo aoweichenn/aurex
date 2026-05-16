@@ -412,10 +412,11 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         const TypeHandle param_type = i < signature.param_types.size()
             ? signature.param_types[i]
             : this->resolve_type(param.type);
-        static_cast<void>(this->can_define_local_name(param.name, param.range));
+        static_cast<void>(this->can_define_local_name(param.name_id, param.name, param.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::parameter,
             std::string(param.name),
+            param.name_id,
             {},
             syntax::INVALID_MODULE_ID,
             param_type,
@@ -468,7 +469,7 @@ TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr
         return this->analyze_expr(expr_id);
     }
     const base::SourceRange expr_range = this->module_.exprs.range(expr_id.value);
-    const Symbol* symbol = this->find_symbol(expr->text, expr_range);
+    const Symbol* symbol = this->find_symbol(expr->text_id, expr->text, expr_range);
     if (symbol == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
@@ -682,10 +683,11 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
 }
 
 void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type) {
-    static_cast<void>(this->can_define_local_name(stmt.name, stmt.range));
+    static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
     const auto inserted = this->symbols_.insert(Symbol {
         SymbolKind::local,
         std::string(stmt.name),
+        stmt.name_id,
         {},
         syntax::INVALID_MODULE_ID,
         type,
@@ -765,10 +767,11 @@ void SemanticAnalyzer::analyze_statement_node(
             }
             stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
         }
-        static_cast<void>(this->can_define_local_name(stmt.name, stmt.range));
+        static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
         const auto inserted = this->symbols_.insert(Symbol {
             SymbolKind::local,
             std::string(stmt.name),
+            stmt.name_id,
             {},
             syntax::INVALID_MODULE_ID,
             local_type,

@@ -228,19 +228,16 @@ for (const std::string& prefix : combinations) {
 
 ---
 
-### 🔥 P0-Perf-3 名字查找大量构造临时 string
+### ✅ P0-Perf-3 名字查找大量构造临时 string（已修复）
 
-**严重性：** 🔴 热路径慢
+**状态：** 生产 lookup 路径已迁移到 `IdentifierInterner` + `IdentId` typed index
 
 ```cpp
-checked_.functions.find(module_key(current_module_, name));
-scope->find(std::string(name));  // 每层 scope 构造
+find_function_in_module(module, name_id, name, range);
+find_symbol(name_id, name, range);
 ```
 
-**开发者修复状态：** ✅ 当前主热路径已修
-**方案：** 引入 Identifier interning + typed key (`IdentId` / `QualifiedNameKey`)
-
-**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix materialization set 和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，module/function/value/generic/enum-case lookup key 直接复用 AST `IdentId`，字符串 key 只保留在 ABI、diagnostic、dump 和不完整索引 fallback 边界。跨模块 stable hash / parallel global ID 仍后置。
+**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix materialization set 和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，函数、类型、值、generic template、enum case、method/member 和局部 scope lookup 直接使用 `{ModuleId, IdentId}` / `{ModuleId, TypeHandle, IdentId}` typed key；生产查找 API 已移除 string lookup fallback，string key 只保留在 checked semantic storage、ABI/dump/display 和诊断文本边界。跨模块 stable hash / parallel global ID 仍后置。
 
 ---
 

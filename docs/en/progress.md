@@ -132,7 +132,10 @@ reusable global bump allocator behind the syntax-layer `IdentifierInterner`;
 AST type/expr/pattern/stmt/item/module/import name-bearing fields now carry
 native `IdentId` payload fields, parser/module-loader/postfix writes intern
 through the current `AstModule`, and sema typed lookup keys reuse that AST
-module interner instead of maintaining a second private interner. The 2026-05-16
+module interner instead of maintaining a second private interner. Function,
+type, value, generic-template, enum-case, method/member, and local-scope lookup
+now use `IdentId` typed indexes; string keys remain only at checked semantic
+storage, ABI/display, dump, and diagnostic boundaries. The 2026-05-16
 performance line then removed the old fat `ExprNode` production type entirely:
 parser construction, `AstModule` storage, module-loader append, and postfix
 materialization now create compact expression headers plus per-kind payloads

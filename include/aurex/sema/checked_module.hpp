@@ -24,6 +24,7 @@ struct StructFieldInfo {
 
 struct StructInfo {
     std::string name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::string c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
@@ -35,6 +36,7 @@ struct StructInfo {
 
 struct EnumCaseInfo {
     std::string name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::string c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
@@ -44,11 +46,13 @@ struct EnumCaseInfo {
     base::SourceRange range {};
     std::string enum_name;
     std::string case_name;
+    IdentId case_name_id = INVALID_IDENT_ID;
     syntax::Visibility visibility = syntax::Visibility::public_;
 };
 
 struct TypeAliasInfo {
     std::string name;
+    IdentId name_id = INVALID_IDENT_ID;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::TypeId target = syntax::INVALID_TYPE_ID;
     base::SourceRange range {};

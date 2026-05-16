@@ -812,7 +812,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         }
     }
     if (!qualified && this->current_generic_context_ != nullptr) {
-        if (const auto found = this->current_generic_context_->params.find(std::string(type.name));
+        if (const auto found = this->current_generic_context_->params.find(type.name_id);
             found != this->current_generic_context_->params.end()) {
             if (!type.type_args.empty()) {
                 this->report(type.range, sema_generic_param_type_args_message(type.name));
@@ -832,15 +832,15 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     if (!selector.type_args.empty()) {
         return this->resolve_generic_type_selector(selector, type_id, opaque_allowed_as_pointee, true);
     }
-    if (qualified && this->generic_type_template_exists_in_module(scope_module, type.name)) {
-        this->report_generic_type_template_in_module(scope_module, type.name, type.range);
+    if (qualified && this->generic_type_template_exists_in_module(scope_module, type.name_id, type.name)) {
+        this->report_generic_type_template_in_module(scope_module, type.name_id, type.name, type.range);
         return INVALID_TYPE_HANDLE;
     }
     return this->resolve_named_type_selector_type(selector, opaque_allowed_as_pointee, true);
 }
 
 TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee) {
-    const std::string key = module_key(alias.module, alias.name);
+    const std::string key = module_key(alias.module, alias.name_id, alias.name);
     if (const auto found = resolved_type_aliases_.find(key); found != resolved_type_aliases_.end()) {
         return found->second;
     }
@@ -1753,19 +1753,13 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
 
     const syntax::NameExprPayload* const base_expr = this->module_.exprs.name_payload(current.value);
     if (base_expr != nullptr && base_expr->scope_name.empty()) {
-        const Symbol* symbol = this->symbols_.find(base_expr->text);
+        const Symbol* symbol = this->symbols_.find(base_expr->text_id);
         if (symbol == nullptr) {
             const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr->text_id);
             if (is_valid(lookup_key)) {
                 if (const auto global = this->global_values_by_name_.find(lookup_key);
                     global != this->global_values_by_name_.end()) {
                     symbol = global->second;
-                }
-            }
-            if (symbol == nullptr && !this->global_value_lookup_complete()) {
-                const auto global = this->global_values_.find(this->module_key(this->current_module_, base_expr->text));
-                if (global != this->global_values_.end()) {
-                    symbol = &global->second;
                 }
             }
         }

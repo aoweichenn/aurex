@@ -253,7 +253,7 @@ bool SemanticAnalyzer::postfix_bracket_is_generic_apply(
     const syntax::NameExprPayload* const base_name = this->module_.exprs.name_payload(base.value);
     if (base_name != nullptr &&
         base_name->scope_name.empty() &&
-        this->symbols_.find(base_name->text) != nullptr) {
+        this->symbols_.find(base_name->text_id) != nullptr) {
         return false;
     }
 
@@ -263,12 +263,12 @@ bool SemanticAnalyzer::postfix_bracket_is_generic_apply(
     }
 
     const bool has_generic_type = selector.qualified
-        ? this->find_generic_struct_in_module(selector.module, selector.name, selector.range, false) != nullptr ||
-              this->find_generic_enum_in_module(selector.module, selector.name, selector.range, false) != nullptr ||
-              this->find_generic_type_alias_in_module(selector.module, selector.name, selector.range, false) != nullptr
-        : this->find_generic_struct_in_visible_modules(selector.name, selector.range, false) != nullptr ||
-              this->find_generic_enum_in_visible_modules(selector.name, selector.range, false) != nullptr ||
-              this->find_generic_type_alias_in_visible_modules(selector.name, selector.range, false) != nullptr;
+        ? this->find_generic_struct_in_module(selector.module, selector.name_id, selector.name, selector.range, false) != nullptr ||
+              this->find_generic_enum_in_module(selector.module, selector.name_id, selector.name, selector.range, false) != nullptr ||
+              this->find_generic_type_alias_in_module(selector.module, selector.name_id, selector.name, selector.range, false) != nullptr
+        : this->find_generic_struct_in_visible_modules(selector.name_id, selector.name, selector.range, false) != nullptr ||
+              this->find_generic_enum_in_visible_modules(selector.name_id, selector.name, selector.range, false) != nullptr ||
+              this->find_generic_type_alias_in_visible_modules(selector.name_id, selector.name, selector.range, false) != nullptr;
     if (has_generic_type) {
         return true;
     }
@@ -279,7 +279,7 @@ bool SemanticAnalyzer::postfix_bracket_is_generic_apply(
     if (this->find_generic_function_selector(selector, selector.range, false) != nullptr) {
         return true;
     }
-    return this->find_function_selector(base, selector.name, selector.range, false) != nullptr;
+    return this->find_function_selector(base, selector.name_id, selector.name, selector.range, false) != nullptr;
 }
 
 std::vector<syntax::TypeId> SemanticAnalyzer::postfix_bracket_type_args(const syntax::PostfixOp& op) {

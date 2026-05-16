@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/source.hpp>
+#include <aurex/sema/identifier.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
 #include <aurex/syntax/ast_ids.hpp>
@@ -12,6 +13,7 @@ namespace aurex::sema {
 
 struct FunctionSignature {
     std::string name;
+    IdentId name_id = INVALID_IDENT_ID;
     std::string semantic_key;
     std::string c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;

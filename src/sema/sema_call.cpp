@@ -52,7 +52,7 @@ TypeHandle SemanticAnalyzer::function_type_from_signature(const FunctionSignatur
 
 TypeHandle SemanticAnalyzer::function_type_from_symbol(const Symbol& symbol, const base::SourceRange range) {
     const FunctionSignature* signature = syntax::is_valid(symbol.module)
-        ? this->find_function_in_module(symbol.module, symbol.name, range, false)
+        ? this->find_function_in_module(symbol.module, symbol.name_id, symbol.name, range, false)
         : nullptr;
     if (signature == nullptr) {
         return symbol.type;
@@ -127,12 +127,15 @@ SemanticAnalyzer::ModuleSelectorPath SemanticAnalyzer::expr_selector_path(
                 return {};
             }
             path.parts.push_back(expr.field_name);
+            path.part_ids.push_back(expr.field_name_id);
             current = expr.object;
             continue;
         }
         if (expr.kind == syntax::ExprKind::name && expr.scope_name.empty()) {
             path.parts.push_back(expr.text);
+            path.part_ids.push_back(expr.text_id);
             std::reverse(path.parts.begin(), path.parts.end());
+            std::reverse(path.part_ids.begin(), path.part_ids.end());
             return path;
         }
         return {};
@@ -151,6 +154,7 @@ SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
 
     if (path.parts.size() == 1) {
         const std::string_view name = path.parts.front();
+        const IdentId name_id = path.part_ids.front();
         const syntax::ModuleId alias_module = this->resolve_import_alias(name, path.range, false);
         if (syntax::is_valid(alias_module)) {
             return ModuleSelector {alias_module, false};
@@ -159,7 +163,7 @@ SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
         if (syntax::is_valid(path_module)) {
             return ModuleSelector {path_module, false};
         }
-        const bool failed_selector = !this->selector_base_has_non_module_meaning(name);
+        const bool failed_selector = !this->selector_base_has_non_module_meaning(name_id, name);
         if (failed_selector && report_unknown) {
             if (this->visible_root_module_name_exists(name)) {
                 this->report(path.range, sema_unknown_module_path_message(std::string(name)));
@@ -176,8 +180,9 @@ SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
     }
 
     const std::string_view root = path.parts.front();
+    const IdentId root_id = path.part_ids.front();
     const bool failed_selector =
-        !this->selector_base_has_non_module_meaning(root) &&
+        !this->selector_base_has_non_module_meaning(root_id, root) &&
         !this->module_alias_visible(root) &&
         !this->visible_module_path_prefix_exists(path.parts);
     if (failed_selector && report_unknown) {
@@ -268,7 +273,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type_selector_type(
         return INVALID_TYPE_HANDLE;
     }
     if (!selector.qualified && selector.type_args.empty() && this->current_generic_context_ != nullptr) {
-        if (const auto found = this->current_generic_context_->params.find(std::string(selector.name));
+        if (const auto found = this->current_generic_context_->params.find(selector.name_id);
             found != this->current_generic_context_->params.end()) {
             return found->second;
         }
@@ -284,7 +289,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type_selector_type(
     const bool reported_missing_generic_args =
         !selector.qualified &&
         report_unknown &&
-        this->report_generic_type_requires_args_if_visible(selector.name, selector.range);
+        this->report_generic_type_requires_args_if_visible(selector.name_id, selector.name, selector.range);
     const TypeHandle resolved = selector.qualified
         ? this->find_type_in_module(
               selector.module,
@@ -309,11 +314,14 @@ TypeHandle SemanticAnalyzer::resolve_named_type_selector_type(
     return resolved;
 }
 
-bool SemanticAnalyzer::selector_base_has_non_module_meaning(const std::string_view name) const {
-    if (this->symbols_.find(name) != nullptr) {
+bool SemanticAnalyzer::selector_base_has_non_module_meaning(
+    const IdentId name_id,
+    const std::string_view name
+) const {
+    if (this->symbols_.find(name_id) != nullptr) {
         return true;
     }
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name);
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
     if (is_valid(lookup_key)) {
         if (this->global_values_by_name_.contains(lookup_key) ||
             this->named_types_by_name_.contains(lookup_key) ||
@@ -321,17 +329,7 @@ bool SemanticAnalyzer::selector_base_has_non_module_meaning(const std::string_vi
             return true;
         }
     }
-    if (!this->global_value_lookup_complete() ||
-        !this->named_type_lookup_complete() ||
-        !this->type_alias_lookup_complete()) {
-        const std::string key = this->module_key(this->current_module_, name);
-        if (this->global_values_.contains(key) ||
-            this->named_types_.contains(key) ||
-            this->checked_.type_aliases.contains(key)) {
-            return true;
-        }
-    }
-    if (this->find_any_generic_type_template_in_module(this->current_module_, name) != nullptr) {
+    if (this->find_any_generic_type_template_in_module(this->current_module_, name_id, name) != nullptr) {
         return true;
     }
     return false;
@@ -359,20 +357,20 @@ TypeHandle SemanticAnalyzer::resolve_generic_type_selector(
     use_type.type_args = selector.type_args;
 
     const GenericTemplateInfo* generic_struct = selector.qualified
-        ? this->find_generic_struct_in_module(selector.module, selector.name, selector.range, false)
-        : this->find_generic_struct_in_visible_modules(selector.name, selector.range, false);
+        ? this->find_generic_struct_in_module(selector.module, selector.name_id, selector.name, selector.range, false)
+        : this->find_generic_struct_in_visible_modules(selector.name_id, selector.name, selector.range, false);
     if (generic_struct != nullptr) {
         return this->instantiate_generic_struct(*generic_struct, use_type, use_type_id, args);
     }
     const GenericTemplateInfo* generic_enum = selector.qualified
-        ? this->find_generic_enum_in_module(selector.module, selector.name, selector.range, false)
-        : this->find_generic_enum_in_visible_modules(selector.name, selector.range, false);
+        ? this->find_generic_enum_in_module(selector.module, selector.name_id, selector.name, selector.range, false)
+        : this->find_generic_enum_in_visible_modules(selector.name_id, selector.name, selector.range, false);
     if (generic_enum != nullptr) {
         return this->instantiate_generic_enum(*generic_enum, use_type, use_type_id, args);
     }
     const GenericTemplateInfo* generic_alias = selector.qualified
-        ? this->find_generic_type_alias_in_module(selector.module, selector.name, selector.range, false)
-        : this->find_generic_type_alias_in_visible_modules(selector.name, selector.range, false);
+        ? this->find_generic_type_alias_in_module(selector.module, selector.name_id, selector.name, selector.range, false)
+        : this->find_generic_type_alias_in_visible_modules(selector.name_id, selector.name, selector.range, false);
     if (generic_alias != nullptr) {
         return this->instantiate_generic_type_alias(*generic_alias, use_type, use_type_id, args, opaque_allowed_as_pointee);
     }
@@ -401,9 +399,9 @@ TypeHandle SemanticAnalyzer::resolve_generic_type_selector(
     }
     if (report_unknown) {
         if (selector.qualified) {
-            this->report_generic_type_template_in_module(selector.module, selector.name, selector.range);
+            this->report_generic_type_template_in_module(selector.module, selector.name_id, selector.name, selector.range);
         } else {
-            static_cast<void>(this->find_generic_struct_in_visible_modules(selector.name, selector.range, true));
+            static_cast<void>(this->find_generic_struct_in_visible_modules(selector.name_id, selector.name, selector.range, true));
         }
     }
     return INVALID_TYPE_HANDLE;
@@ -411,6 +409,7 @@ TypeHandle SemanticAnalyzer::resolve_generic_type_selector(
 
 const FunctionSignature* SemanticAnalyzer::find_function_selector(
     const syntax::ExprId callee,
+    const IdentId name_id,
     const std::string_view name,
     const base::SourceRange range,
     const bool report_unknown
@@ -419,16 +418,18 @@ const FunctionSignature* SemanticAnalyzer::find_function_selector(
         const SemanticAnalyzer::ExprView expr = this->expr_view(callee);
         if (expr.kind == syntax::ExprKind::name && !expr.scope_name.empty()) {
             const syntax::ModuleId module = this->resolve_import_alias(expr.scope_name, expr.scope_range, report_unknown);
-            return syntax::is_valid(module) ? this->find_function_in_module(module, name, range, report_unknown) : nullptr;
+            return syntax::is_valid(module)
+                ? this->find_function_in_module(module, name_id, name, range, report_unknown)
+                : nullptr;
         }
         if (expr.kind == syntax::ExprKind::field) {
             const ModuleSelector module = this->resolve_module_selector(expr.object, false);
             if (syntax::is_valid(module.module)) {
-                return this->find_function_in_module(module.module, name, range, report_unknown);
+                return this->find_function_in_module(module.module, name_id, name, range, report_unknown);
             }
         }
     }
-    return this->find_function_in_visible_modules(name, range, report_unknown);
+    return this->find_function_in_visible_modules(name_id, name, range, report_unknown);
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_selector(
@@ -440,8 +441,8 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
         return nullptr;
     }
     return selector.qualified
-        ? this->find_generic_function_in_module(selector.module, selector.name, range, report_unknown)
-        : this->find_generic_function_in_visible_modules(selector.name, range, report_unknown);
+        ? this->find_generic_function_in_module(selector.module, selector.name_id, selector.name, range, report_unknown)
+        : this->find_generic_function_in_visible_modules(selector.name_id, selector.name, range, report_unknown);
 }
 
 TypeHandle SemanticAnalyzer::analyze_call_expr(
@@ -479,7 +480,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
         );
     }
     if (callee.kind == syntax::ExprKind::name && callee.scope_name.empty()) {
-        if (const Symbol* local = this->symbols_.find(callee.text); local != nullptr) {
+        if (const Symbol* local = this->symbols_.find(callee.text_id); local != nullptr) {
             return this->analyze_function_value_call_expr(expr_id, expr, callee.text);
         }
     }
@@ -524,8 +525,8 @@ TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
         NamedTypeSelector generic_lookup = selector;
         generic_lookup.type_args.clear();
         const FunctionSignature* signature = selector.qualified
-            ? this->find_function_in_module(selector.module, name, callee_range, false)
-            : this->find_function_in_visible_modules(name, callee_range, false);
+            ? this->find_function_in_module(selector.module, selector.name_id, name, callee_range, false)
+            : this->find_function_in_visible_modules(selector.name_id, name, callee_range, false);
         if (signature != nullptr) {
             this->report(callee_range, sema_function_not_generic_message(name));
         } else if (generic_lookup.qualified) {
@@ -608,20 +609,34 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
     if (syntax::is_valid(callee.object) && callee.object.value < this->module_.exprs.size()) {
         const TypeHandle associated_owner = this->resolve_type_selector(callee.object, false);
         if (is_valid(associated_owner)) {
-            signature = this->find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false, false);
-            if (signature == nullptr) {
-                signature = this->find_generic_method_in_visible_modules(
-                    associated_owner,
-                    callee.field_name,
-                    callee.range,
-                    false,
+        signature = this->find_method_in_visible_modules(
+            associated_owner,
+            callee.field_name_id,
+            callee.field_name,
+            callee.range,
+            false,
+            false
+        );
+        if (signature == nullptr) {
+            signature = this->find_generic_method_in_visible_modules(
+                associated_owner,
+                callee.field_name_id,
+                callee.field_name,
+                callee.range,
+                false,
                     false
                 );
-            }
-            if (signature == nullptr) {
-                signature = this->find_method_in_visible_modules(associated_owner, callee.field_name, callee.range, false);
-                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-            }
+        }
+        if (signature == nullptr) {
+            signature = this->find_method_in_visible_modules(
+                associated_owner,
+                callee.field_name_id,
+                callee.field_name,
+                callee.range,
+                false
+            );
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
             if (signature->has_self_param) {
                 this->report(
                     callee.range,
@@ -638,10 +653,18 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
         if (this->checked_.types.is_pointer(owner_type) || this->checked_.types.is_reference(owner_type)) {
             owner_type = this->checked_.types.get(owner_type).pointee;
         }
-        signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true, false);
+        signature = this->find_method_in_visible_modules(
+            owner_type,
+            callee.field_name_id,
+            callee.field_name,
+            callee.range,
+            true,
+            false
+        );
         if (signature == nullptr) {
             signature = this->find_generic_method_in_visible_modules(
                 owner_type,
+                callee.field_name_id,
                 callee.field_name,
                 callee.range,
                 true,
@@ -653,7 +676,13 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
             if (this->checked_.types.is_function(callee_type)) {
                 return this->analyze_function_value_call_expr(expr_id, expr, name);
             }
-            signature = this->find_method_in_visible_modules(owner_type, callee.field_name, callee.range, true);
+            signature = this->find_method_in_visible_modules(
+                owner_type,
+                callee.field_name_id,
+                callee.field_name,
+                callee.range,
+                true
+            );
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         receiver_valid = this->method_receiver_matches(*signature, receiver_type, callee.object);
@@ -719,7 +748,13 @@ TypeHandle SemanticAnalyzer::analyze_function_call_expr(
         this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
         return this->record_expr_type(expr_id, signature->return_type);
     }
-    signature = this->find_function_selector(expr.callee, name, callee_range, true);
+    signature = this->find_function_selector(
+        expr.callee,
+        callee.kind == syntax::ExprKind::field ? callee.field_name_id : callee.text_id,
+        name,
+        callee_range,
+        true
+    );
     if (signature == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }

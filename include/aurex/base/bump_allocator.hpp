@@ -29,6 +29,7 @@ public:
     void reset() noexcept;
 
     [[nodiscard]] usize allocated_bytes() const noexcept;
+    [[nodiscard]] usize used_bytes() const noexcept;
     [[nodiscard]] usize block_count() const noexcept;
 
 private:

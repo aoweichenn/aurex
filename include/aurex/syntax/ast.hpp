@@ -57,13 +57,60 @@ inline constexpr base::usize SYNTAX_AST_ARENA_ALLOCATION_PADDING_BYTES = alignof
 }
 
 struct AstReserveEstimate {
+    struct Exprs {
+        base::usize headers = 0;
+        base::usize literals = 0;
+        base::usize names = 0;
+        base::usize generic_applies = 0;
+        base::usize unaries = 0;
+        base::usize binaries = 0;
+        base::usize calls = 0;
+        base::usize ifs = 0;
+        base::usize blocks = 0;
+        base::usize matches = 0;
+        base::usize arrays = 0;
+        base::usize tuples = 0;
+        base::usize postfix_chains = 0;
+        base::usize fields = 0;
+        base::usize indexes = 0;
+        base::usize slices = 0;
+        base::usize struct_literals = 0;
+        base::usize casts = 0;
+    };
+
     base::usize tokens = 0;
     base::usize statements = 0;
     base::usize items = 0;
     base::usize type_sites = 0;
     base::usize pattern_sites = 0;
     base::usize identifier_tokens = 0;
+    Exprs exprs;
 };
+
+[[nodiscard]] constexpr AstReserveEstimate::Exprs ast_expr_reserve_for_node_capacity(
+    const base::usize size
+) noexcept {
+    return AstReserveEstimate::Exprs {
+        size,
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+    };
+}
 
 enum class PrimitiveTypeKind {
     void_,
@@ -865,13 +912,6 @@ struct ExprNodePayloadArena {
 };
 
 class ExprNodeList final {
-    struct PayloadReservePlan {
-        base::usize names = 0;
-        base::usize primary = 0;
-        base::usize secondary = 0;
-        base::usize rare = 0;
-    };
-
 public:
     ExprNodeList()
         : arena_(std::make_unique<base::BumpAllocator>()),
@@ -923,6 +963,10 @@ public:
 
     [[nodiscard]] base::usize arena_bytes() const noexcept {
         return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_used_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->used_bytes();
     }
 
     [[nodiscard]] base::usize arena_blocks() const noexcept {
@@ -1182,17 +1226,20 @@ public:
     }
 
     void reserve(const base::usize size) {
-        const PayloadReservePlan plan = payload_reserve_plan(size);
-        this->reserve_headers(size);
+        const AstReserveEstimate::Exprs plan = ast_expr_reserve_for_node_capacity(size);
+        this->reserve_headers(plan.headers);
         this->reserve_payloads(plan);
     }
 
     void reserve_touched(const base::usize size) {
-        const PayloadReservePlan plan = payload_reserve_plan(size);
+        this->reserve_touched(ast_expr_reserve_for_node_capacity(size));
+    }
+
+    void reserve_touched(const AstReserveEstimate::Exprs plan) {
         if (this->arena_ != nullptr) {
-            this->arena_->reserve_touched(estimated_arena_bytes(size, plan));
+            this->arena_->reserve_touched(estimated_arena_bytes(plan));
         }
-        this->reserve_headers(size);
+        this->reserve_headers(plan.headers);
         this->reserve_payloads(plan);
     }
 
@@ -1714,15 +1761,6 @@ private:
         return kind == ExprKind::block_expr || kind == ExprKind::unsafe_block;
     }
 
-    [[nodiscard]] static PayloadReservePlan payload_reserve_plan(const base::usize size) noexcept {
-        return PayloadReservePlan {
-            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR),
-            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
-            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
-            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
-        };
-    }
-
     [[nodiscard]] static base::usize allocation_bytes(
         const base::usize count,
         const base::usize element_size
@@ -1734,47 +1772,46 @@ private:
     }
 
     [[nodiscard]] static base::usize estimated_arena_bytes(
-        const base::usize header_count,
-        const PayloadReservePlan plan
+        const AstReserveEstimate::Exprs plan
     ) noexcept {
-        return allocation_bytes(header_count, sizeof(ExprNodeHeader)) +
-               allocation_bytes(plan.primary, sizeof(LiteralExprPayload)) +
+        return allocation_bytes(plan.headers, sizeof(ExprNodeHeader)) +
+               allocation_bytes(plan.literals, sizeof(LiteralExprPayload)) +
                allocation_bytes(plan.names, sizeof(NameExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(GenericApplyExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(UnaryExprPayload)) +
-               allocation_bytes(plan.primary, sizeof(BinaryExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(CallExprPayload)) +
-               allocation_bytes(plan.rare, sizeof(IfExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(BlockExprPayload)) +
-               allocation_bytes(plan.rare, sizeof(MatchExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(ArrayExprPayload)) +
-               allocation_bytes(plan.rare, sizeof(std::vector<ExprId>)) +
-               allocation_bytes(plan.secondary, sizeof(PostfixChainExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(FieldExprPayload)) +
-               allocation_bytes(plan.rare, sizeof(IndexExprPayload)) +
-               allocation_bytes(plan.rare, sizeof(SliceExprPayload)) +
-               allocation_bytes(plan.secondary, sizeof(StructLiteralExprPayload)) +
-               allocation_bytes(plan.rare, sizeof(CastExprPayload));
+               allocation_bytes(plan.generic_applies, sizeof(GenericApplyExprPayload)) +
+               allocation_bytes(plan.unaries, sizeof(UnaryExprPayload)) +
+               allocation_bytes(plan.binaries, sizeof(BinaryExprPayload)) +
+               allocation_bytes(plan.calls, sizeof(CallExprPayload)) +
+               allocation_bytes(plan.ifs, sizeof(IfExprPayload)) +
+               allocation_bytes(plan.blocks, sizeof(BlockExprPayload)) +
+               allocation_bytes(plan.matches, sizeof(MatchExprPayload)) +
+               allocation_bytes(plan.arrays, sizeof(ArrayExprPayload)) +
+               allocation_bytes(plan.tuples, sizeof(std::vector<ExprId>)) +
+               allocation_bytes(plan.postfix_chains, sizeof(PostfixChainExprPayload)) +
+               allocation_bytes(plan.fields, sizeof(FieldExprPayload)) +
+               allocation_bytes(plan.indexes, sizeof(IndexExprPayload)) +
+               allocation_bytes(plan.slices, sizeof(SliceExprPayload)) +
+               allocation_bytes(plan.struct_literals, sizeof(StructLiteralExprPayload)) +
+               allocation_bytes(plan.casts, sizeof(CastExprPayload));
     }
 
-    void reserve_payloads(const PayloadReservePlan plan) {
-        this->payloads_.literals.reserve(plan.primary);
+    void reserve_payloads(const AstReserveEstimate::Exprs plan) {
+        this->payloads_.literals.reserve(plan.literals);
         this->payloads_.names.reserve(plan.names);
-        this->payloads_.generic_applies.reserve(plan.secondary);
-        this->payloads_.unaries.reserve(plan.secondary);
-        this->payloads_.binaries.reserve(plan.primary);
-        this->payloads_.calls.reserve(plan.secondary);
-        this->payloads_.ifs.reserve(plan.rare);
-        this->payloads_.blocks.reserve(plan.secondary);
-        this->payloads_.matches.reserve(plan.rare);
-        this->payloads_.arrays.reserve(plan.secondary);
-        this->payloads_.tuples.reserve(plan.rare);
-        this->payloads_.postfix_chains.reserve(plan.secondary);
-        this->payloads_.fields.reserve(plan.secondary);
-        this->payloads_.indexes.reserve(plan.rare);
-        this->payloads_.slices.reserve(plan.rare);
-        this->payloads_.struct_literals.reserve(plan.secondary);
-        this->payloads_.casts.reserve(plan.rare);
+        this->payloads_.generic_applies.reserve(plan.generic_applies);
+        this->payloads_.unaries.reserve(plan.unaries);
+        this->payloads_.binaries.reserve(plan.binaries);
+        this->payloads_.calls.reserve(plan.calls);
+        this->payloads_.ifs.reserve(plan.ifs);
+        this->payloads_.blocks.reserve(plan.blocks);
+        this->payloads_.matches.reserve(plan.matches);
+        this->payloads_.arrays.reserve(plan.arrays);
+        this->payloads_.tuples.reserve(plan.tuples);
+        this->payloads_.postfix_chains.reserve(plan.postfix_chains);
+        this->payloads_.fields.reserve(plan.fields);
+        this->payloads_.indexes.reserve(plan.indexes);
+        this->payloads_.slices.reserve(plan.slices);
+        this->payloads_.struct_literals.reserve(plan.struct_literals);
+        this->payloads_.casts.reserve(plan.casts);
     }
 
     template <typename T>
@@ -3433,10 +3470,15 @@ struct AstModule {
             estimate.type_sites * SYNTAX_AST_RESERVE_TYPES_PER_TYPE_SITE,
             estimate.items * SYNTAX_AST_RESERVE_TYPES_PER_ITEM
         );
-        const base::usize expr_capacity = ast_reserve_larger(
+        const base::usize fallback_expr_capacity = ast_reserve_larger(
             estimate.statements * SYNTAX_AST_RESERVE_EXPRS_PER_STATEMENT,
             ast_reserve_fraction(estimate.tokens, SYNTAX_AST_RESERVE_EXPR_TOKEN_DIVISOR)
         );
+        AstReserveEstimate::Exprs expr_capacity = estimate.exprs;
+        if (expr_capacity.headers == 0) {
+            expr_capacity = ast_expr_reserve_for_node_capacity(fallback_expr_capacity);
+        }
+        expr_capacity.headers = ast_reserve_at_least(INITIAL_CAPACITY, expr_capacity.headers);
         const base::usize pattern_capacity =
             estimate.pattern_sites * SYNTAX_AST_RESERVE_PATTERNS_PER_PATTERN_SITE;
         this->types.reserve(ast_reserve_at_least(
@@ -3446,10 +3488,7 @@ struct AstModule {
                 SYNTAX_AST_RESERVE_TYPE_TOKEN_DIVISOR
             ))
         ));
-        this->exprs.reserve_touched(ast_reserve_at_least(
-            INITIAL_CAPACITY,
-            expr_capacity
-        ));
+        this->exprs.reserve_touched(expr_capacity);
         this->patterns.reserve(ast_reserve_at_least(
             INITIAL_CAPACITY,
             ast_reserve_larger(pattern_capacity, ast_reserve_fraction(

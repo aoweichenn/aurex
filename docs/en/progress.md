@@ -147,10 +147,11 @@ call/field/index/slice/generic-apply/struct-literal/try expressions directly int
 compact payload storage. The follow-up bump pass backs the `TypeNodeList`, `ExprNodeList`,
 `PatternNodeList`, `StmtNodeList`, and `ItemNodeList` header vectors and
 per-kind payload vectors with `BumpAllocatorAdapter`; the `IdentifierInterner`
-text vector and hash table buckets/nodes are also arena-backed. Parser startup
-now estimates AST storage from token shape and reserves hot payload arenas up
-front with page pre-touch for the expression arena, avoiding parser-time first
-touches of fresh pages and repeated bump-vector growth buffers on large modules.
+text vector and hash table buckets/nodes are also arena-backed. Parser startup now estimates expression header and per-kind payload capacities
+from token shape, takes the vector backing storage from the bump arena up front,
+and page-pre-touches it. Expression creation then only sequentially emplaces into
+those reserved ranges, avoiding parser-time vector growth and first touches of
+fresh pages on large modules.
 On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to

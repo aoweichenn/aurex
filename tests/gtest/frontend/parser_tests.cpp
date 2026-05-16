@@ -251,6 +251,46 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     });
 }
 
+TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve) {
+    constexpr std::string_view source =
+        "module parser.expr_arena;\n"
+        "struct Pair { left: i32; right: i32; }\n"
+        "fn callee(value: i32, other: i32) -> i32 { return value + other; }\n"
+        "fn main(input: i32, flag: bool, values: []const i32) -> i32 {\n"
+        "  let pair: Pair = Pair { left: input, right: 3 };\n"
+        "  let raw: str = unsafe { strraw(strptr(\"abc\"), strblen(\"abc\")) };\n"
+        "  let slice = values[0:2];\n"
+        "  let idx = values[1];\n"
+        "  let computed = -input + callee(pair.left, idx) * cast[i32](sizeof[*const i32]);\n"
+        "  return if flag { computed } else { pair.right };\n"
+        "}\n";
+
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({90}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    syntax::AstModule reserved_module;
+    reserved_module.reserve_for_estimate(parse::ParseSession::estimate_ast_reserve(tokens.value()));
+    const base::usize arena_bytes_after_reserve = reserved_module.exprs.arena_bytes();
+    const base::usize arena_used_after_reserve = reserved_module.exprs.arena_used_bytes();
+    const base::usize arena_blocks_after_reserve = reserved_module.exprs.arena_blocks();
+    ASSERT_GT(arena_bytes_after_reserve, 0U);
+    ASSERT_GT(arena_used_after_reserve, 0U);
+
+    parse::Parser parser(tokens.value(), diagnostics);
+
+    auto parsed = parser.parse_module();
+    ASSERT_TRUE(parsed) << parsed.error().message;
+    EXPECT_FALSE(diagnostics.has_error());
+
+    const syntax::AstModule module = parsed.take_value();
+    EXPECT_GT(module.exprs.size(), 0U);
+    EXPECT_EQ(module.exprs.arena_bytes(), arena_bytes_after_reserve);
+    EXPECT_EQ(module.exprs.arena_used_bytes(), arena_used_after_reserve);
+    EXPECT_EQ(module.exprs.arena_blocks(), arena_blocks_after_reserve);
+}
+
 TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions) {
     constexpr std::string_view source =
         "module parser.slices;\n"

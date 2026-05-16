@@ -104,7 +104,7 @@ generic apply/struct literal/try 改写路径也直接写 compact payload。2026
 `TypeNodeList` / `ExprNodeList` / `PatternNodeList` / `StmtNodeList` / `ItemNodeList` 的 header vector 和
 per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的 text vector、hash bucket/node
 也进入同一个 bump arena；parser 会根据 token 形态估算 statement/item/type/pattern/identifier 规模，并在 AST
-模块创建初期对表达式 arena 做源规模 reserve + page pre-touch，再 reserve header/payload vectors，避免解析过程中逐节点首次触达新页，也避免 bump-backed vector 扩容后保留旧 buffer 造成 RSS 放大。当前
+模块创建初期按 token 形态对 expression header 和每类 payload 计算保守容量上界，直接从 bump arena 取好 vector backing storage 并 page pre-touch；parser 创建表达式节点时只在这些已分配区间内顺序 emplace，不再依赖 vector 热路径自动扩容，也避免解析过程中逐节点首次触达新页。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
 从约 575 MiB RSS / 135 ms 收敛到约 158.4 MiB RSS / 74.4 ms；Google Benchmark `sema_ast_bulk/1024`
 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、

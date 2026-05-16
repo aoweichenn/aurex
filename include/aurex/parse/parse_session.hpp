@@ -9,6 +9,162 @@
 
 namespace aurex::parse {
 
+namespace detail {
+
+[[nodiscard]] constexpr base::usize parser_expr_extra_capacity_for_tokens(
+    const base::usize token_count
+) noexcept {
+    return syntax::ast_reserve_fraction(
+        token_count,
+        syntax::SYNTAX_AST_RESERVE_EXPR_TOKEN_DIVISOR
+    );
+}
+
+inline void count_parser_primary_expr_token(
+    syntax::AstReserveEstimate::Exprs& exprs,
+    const syntax::TokenKind kind
+) noexcept {
+    switch (kind) {
+    case syntax::TokenKind::identifier:
+        ++exprs.names;
+        break;
+    case syntax::TokenKind::integer_literal:
+    case syntax::TokenKind::float_literal:
+    case syntax::TokenKind::string_literal:
+    case syntax::TokenKind::c_string_literal:
+    case syntax::TokenKind::raw_string_literal:
+    case syntax::TokenKind::byte_string_literal:
+    case syntax::TokenKind::byte_literal:
+    case syntax::TokenKind::char_literal:
+    case syntax::TokenKind::kw_true:
+    case syntax::TokenKind::kw_false:
+    case syntax::TokenKind::kw_null:
+        ++exprs.literals;
+        break;
+    case syntax::TokenKind::kw_if:
+        ++exprs.ifs;
+        break;
+    case syntax::TokenKind::kw_match:
+        ++exprs.matches;
+        break;
+    case syntax::TokenKind::l_brace:
+    case syntax::TokenKind::kw_unsafe:
+        ++exprs.blocks;
+        break;
+    case syntax::TokenKind::l_bracket:
+        ++exprs.arrays;
+        ++exprs.slices;
+        ++exprs.indexes;
+        ++exprs.generic_applies;
+        break;
+    case syntax::TokenKind::l_paren:
+        ++exprs.tuples;
+        break;
+    case syntax::TokenKind::kw_cast:
+    case syntax::TokenKind::kw_ptrcast:
+    case syntax::TokenKind::kw_bitcast:
+    case syntax::TokenKind::kw_sizeof:
+    case syntax::TokenKind::kw_alignof:
+    case syntax::TokenKind::kw_ptraddr:
+    case syntax::TokenKind::kw_ptrat:
+    case syntax::TokenKind::kw_strptr:
+    case syntax::TokenKind::kw_strblen:
+    case syntax::TokenKind::kw_strvalid:
+    case syntax::TokenKind::kw_strfromutf8:
+        ++exprs.casts;
+        break;
+    case syntax::TokenKind::kw_strraw:
+        ++exprs.calls;
+        break;
+    default:
+        break;
+    }
+}
+
+inline void count_parser_expr_operator_token(
+    syntax::AstReserveEstimate::Exprs& exprs,
+    const syntax::TokenKind kind
+) noexcept {
+    switch (kind) {
+    case syntax::TokenKind::plus:
+    case syntax::TokenKind::minus:
+    case syntax::TokenKind::star:
+    case syntax::TokenKind::slash:
+    case syntax::TokenKind::percent:
+    case syntax::TokenKind::amp:
+    case syntax::TokenKind::pipe:
+    case syntax::TokenKind::caret:
+    case syntax::TokenKind::less:
+    case syntax::TokenKind::greater:
+        ++exprs.binaries;
+        ++exprs.unaries;
+        break;
+    case syntax::TokenKind::bang:
+    case syntax::TokenKind::tilde:
+    case syntax::TokenKind::plus_plus:
+    case syntax::TokenKind::minus_minus:
+        ++exprs.unaries;
+        break;
+    case syntax::TokenKind::equal_equal:
+    case syntax::TokenKind::bang_equal:
+    case syntax::TokenKind::less_equal:
+    case syntax::TokenKind::greater_equal:
+    case syntax::TokenKind::less_less:
+    case syntax::TokenKind::greater_greater:
+    case syntax::TokenKind::amp_amp:
+    case syntax::TokenKind::pipe_pipe:
+        ++exprs.binaries;
+        break;
+    case syntax::TokenKind::dot:
+        ++exprs.fields;
+        break;
+    case syntax::TokenKind::l_paren:
+        ++exprs.calls;
+        break;
+    case syntax::TokenKind::l_brace:
+        ++exprs.struct_literals;
+        break;
+    case syntax::TokenKind::question:
+        ++exprs.unaries;
+        break;
+    default:
+        break;
+    }
+}
+
+inline void finalize_parser_expr_reserve(
+    syntax::AstReserveEstimate::Exprs& exprs,
+    const base::usize token_count
+) noexcept {
+    const base::usize extra = parser_expr_extra_capacity_for_tokens(token_count);
+    exprs.headers = token_count + extra;
+    exprs.postfix_chains += exprs.calls +
+                            exprs.fields +
+                            exprs.indexes +
+                            exprs.slices +
+                            exprs.generic_applies +
+                            exprs.struct_literals +
+                            exprs.unaries +
+                            extra;
+    exprs.literals += extra;
+    exprs.names += extra;
+    exprs.unaries += extra;
+    exprs.binaries += extra;
+    exprs.calls += extra;
+    exprs.ifs += extra;
+    exprs.blocks += extra;
+    exprs.matches += extra;
+    exprs.arrays += extra;
+    exprs.tuples += extra;
+    exprs.fields += extra;
+    exprs.indexes += extra;
+    exprs.slices += extra;
+    exprs.struct_literals += extra;
+    exprs.casts += extra;
+}
+
+} // namespace detail
+
 struct ParseSession final {
     TokenCursor cursor;
     ParseDiagnostics diagnostics;
@@ -29,6 +185,8 @@ struct ParseSession final {
         syntax::AstReserveEstimate estimate;
         estimate.tokens = tokens.size();
         for (const syntax::Token& token : tokens) {
+            detail::count_parser_primary_expr_token(estimate.exprs, token.kind);
+            detail::count_parser_expr_operator_token(estimate.exprs, token.kind);
             switch (token.kind) {
             case syntax::TokenKind::identifier:
                 ++estimate.identifier_tokens;
@@ -65,6 +223,7 @@ struct ParseSession final {
                 break;
             }
         }
+        detail::finalize_parser_expr_reserve(estimate.exprs, tokens.size());
         return estimate;
     }
 };

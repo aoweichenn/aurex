@@ -144,6 +144,14 @@ usize BumpAllocator::allocated_bytes() const noexcept {
     return this->allocated_bytes_;
 }
 
+usize BumpAllocator::used_bytes() const noexcept {
+    usize used = 0;
+    for (const Block& block : this->blocks_) {
+        used += block.used;
+    }
+    return used;
+}
+
 usize BumpAllocator::block_count() const noexcept {
     return this->blocks_.size();
 }

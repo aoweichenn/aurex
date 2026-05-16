@@ -591,7 +591,7 @@ private:
         const GenericTemplateInfo& info,
         const std::vector<TypeHandle>& args,
         GenericContext& context
-    );
+    ) const;
     [[nodiscard]] std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;

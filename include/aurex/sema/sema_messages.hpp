@@ -220,6 +220,12 @@ inline constexpr std::string_view SEMA_ARRAY_INDEX_OUT_OF_BOUNDS =
 inline constexpr std::string_view SEMA_SLICE_BOUND_INTEGER =
     "slice bound must be an integer";
 
+inline constexpr std::string_view SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS =
+    "array constant slice bound is out of bounds";
+
+inline constexpr std::string_view SEMA_ARRAY_SLICE_BOUNDS_ORDER =
+    "array constant slice start exceeds end";
+
 inline constexpr std::string_view SEMA_LOGICAL_NOT_BOOL =
     "logical not requires bool operand";
 

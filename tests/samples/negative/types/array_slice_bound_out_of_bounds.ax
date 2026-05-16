@@ -1,0 +1,7 @@
+module array_slice_bound_out_of_bounds;
+
+fn main() -> i32 {
+    let values: [2]i32 = [1, 2];
+    let high = values[:3];
+    return high[0];
+}

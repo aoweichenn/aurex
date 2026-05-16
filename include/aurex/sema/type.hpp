@@ -89,9 +89,9 @@ struct TypeInfo {
     TypeHandle enum_payload_storage = INVALID_TYPE_HANDLE;
     base::u64 enum_payload_size = 0;
     base::u64 enum_payload_align = 1;
+    GenericParamIdentity generic_identity = INVALID_GENERIC_PARAM_IDENTITY;
     InternedText name;
     InternedText c_name;
-    InternedText generic_identity_key;
     InternedText generic_origin_key;
     TypeHandleList generic_args;
     bool contains_array = false;
@@ -157,7 +157,7 @@ public:
     [[nodiscard]] TypeHandle named_enum(std::string_view name, std::string_view c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string_view name, std::string_view c_name);
     [[nodiscard]] TypeHandle generic_param(std::string_view name);
-    [[nodiscard]] TypeHandle generic_param(std::string_view identity_key, std::string_view display_name);
+    [[nodiscard]] TypeHandle generic_param(GenericParamIdentity identity, std::string_view display_name);
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
@@ -283,7 +283,7 @@ private:
     SemaMap<TupleKey, TypeHandle, TupleKeyHash> tuple_types_;
     SemaMap<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
     IdentifierInterner texts_;
-    SemaMap<IdentId, TypeHandle, IdentIdHash> generic_param_types_;
+    SemaMap<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> generic_param_types_;
 };
 
 } // namespace aurex::sema

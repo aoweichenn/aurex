@@ -24,7 +24,7 @@ the narrowest parser part that owns the relevant grammar surface.
 | `ExprParser` | High-level expression dispatch, conditional/match expressions, unary operators, and table-driven binary precedence parsing. |
 | `PrimaryExprParser` | Primary expression dispatch, literals, grouped expressions, block expressions, and builtin keyword dispatch. |
 | `NameExprParser` | Identifier expressions, scoped names, and struct literals. |
-| `PostfixExprParser` | Raw postfix chains: selector `.name`, bracket `[...]`, call `(...)`, struct literal `{...}`, and `?` suffix ops. |
+| `PostfixExprParser` | Postfix suffixes: selector `.name`, bracket `[...]`, call `(...)`, struct literal `{...}`, and `?` suffix ops, emitted as explicit AST nodes. |
 | `BuiltinExprParser` | Builtin expressions such as casts, pointer/address operations, and string helpers. |
 | `PatternParser` | Match patterns. |
 
@@ -53,11 +53,13 @@ The shared parser-part bridge is layered deliberately:
 - `parser_diagnostics.cpp` owns `expect`, recovered `expect`, synchronization,
   and diagnostic forwarding.
 - `parser_source_ranges.cpp` owns source-range composition.
-- Postfix `[]` is intentionally not classified as generic apply or index in
-  the parser. `parser_postfix.cpp` records it as a bracket op in a
-  `postfix_chain`; semantic analysis materializes that chain as
-  `generic_apply`, `index`, `slice`, `field`, `call`, or `try_expr` according
-  to the resolved base kind.
+- Postfix suffixes are emitted directly as compact AST nodes. `parser_postfix.cpp`
+  keeps `[]` disambiguation local: slice syntax always emits `slice`, clear
+  type-argument continuations emit `generic_apply`, and value-shaped bracket
+  syntax emits `index`. Selector continuations only force generic type-selector
+  parsing for type-shaped bases/arguments, so `Type[T].case` remains a generic
+  selector while `items[index].field` remains value indexing. Later stages
+  consume those explicit nodes instead of a second materialization path.
 
 Recovery token sets are split into source-private start-token, list-boundary,
 and delimiter-boundary files. The public recovery API should stay limited to
@@ -204,10 +206,12 @@ it represents. Do not inline a long token switch into a grammar parser part.
 
 ## Ambiguous Syntax Guardrails
 
-Postfix `[]` is represented as an unresolved bracket op because the same
-delimiter is used by generic type arguments and value indexing. The parser only
-keeps enough syntax to recover and to preserve obvious type-only arguments such
-as primitive types, pointer types, array/slice types, and function types.
+Postfix `[]` uses one delimiter for generic type arguments and value indexing,
+so the parser applies conservative syntactic guardrails before emitting the
+final AST node. Type-only arguments and generic-call/type-literal continuations
+become `generic_apply`; selector continuations become `generic_apply` only when
+the base and arguments are type-shaped; colon syntax becomes `slice`; the
+remaining value form becomes `index`.
 
 Protected cases:
 
@@ -216,10 +220,9 @@ Protected cases:
 - Index expressions such as `items[index]`, including selector chains such as
   `items[index].field`.
 - Builtin type arguments such as `cast[i32](value)` and `sizeof[T]`.
-- Explicit generic function calls such as `id[i32](value)`. The parser records
-  this as `postfix_chain(name id, bracket [i32], call ...)`; semantic analysis
-  materializes the bracket as `generic_apply` because `id` resolves as a
-  generic function.
+- Explicit generic function calls such as `id[i32](value)`. The parser emits a
+  `generic_apply` callee followed by a `call` suffix, so sema no longer owns a
+  second raw-chain lowering step.
 - Generic struct literals such as `Wrap[Wrap[i32]] { ... }`.
 - Conditions where struct literals must not be parsed as the condition value.
 - Legacy `<...>` syntax is not a recovery target for generics. `<` and `>` are

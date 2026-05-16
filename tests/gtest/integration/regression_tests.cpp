@@ -568,6 +568,14 @@ TEST_F(AurexIntegrationTest, SliceRegressions) {
         "slice bound must be an integer"
     );
     expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_slice_bound_out_of_bounds.ax"))).output,
+        "array constant slice bound is out of bounds"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(negative_sample("types", "array_slice_bounds_order.ax"))).output,
+        "array constant slice start exceeds end"
+    );
+    expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("types", "slice_const_write.ax"))).output,
         "left side of assignment must be writable"
     );

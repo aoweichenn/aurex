@@ -18,7 +18,15 @@ namespace {
 
 constexpr std::string_view SEMA_MATCH_BOOL_TRUE_NAME = "true";
 constexpr std::string_view SEMA_MATCH_BOOL_FALSE_NAME = "false";
+constexpr base::u64 SEMA_MATCH_U8_DOMAIN_SIZE = 256;
 constexpr base::u64 SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS = 4096;
+
+enum class MatchGuardTruth {
+    none,
+    always_true,
+    always_false,
+    dynamic,
+};
 
 [[nodiscard]] const syntax::PatternNode* pattern_node(
     const syntax::AstModule& module,
@@ -48,6 +56,29 @@ constexpr base::u64 SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS = 4096;
         }
     }
     return nullptr;
+}
+
+[[nodiscard]] MatchGuardTruth match_guard_truth(
+    const syntax::AstModule& module,
+    const syntax::ExprId guard
+) noexcept {
+    if (!syntax::is_valid(guard) || guard.value >= module.exprs.size()) {
+        return MatchGuardTruth::none;
+    }
+    if (module.exprs.kind(guard.value) != syntax::ExprKind::bool_literal) {
+        return MatchGuardTruth::dynamic;
+    }
+    const syntax::LiteralExprPayload* const payload = module.exprs.literal_payload(guard.value);
+    if (payload == nullptr) {
+        return MatchGuardTruth::dynamic;
+    }
+    if (payload->text == SEMA_MATCH_BOOL_TRUE_NAME) {
+        return MatchGuardTruth::always_true;
+    }
+    if (payload->text == SEMA_MATCH_BOOL_FALSE_NAME) {
+        return MatchGuardTruth::always_false;
+    }
+    return MatchGuardTruth::dynamic;
 }
 
 } // namespace
@@ -517,6 +548,7 @@ struct SemanticAnalyzer::MatchUsefulnessChecker final {
         enum class Kind {
             bool_true,
             bool_false,
+            integer_literal,
             tuple,
             struct_,
             array,
@@ -524,6 +556,7 @@ struct SemanticAnalyzer::MatchUsefulnessChecker final {
         };
 
         Kind kind = Kind::tuple;
+        base::u64 integer_value = 0;
         std::vector<TypeHandle> fields;
         const EnumCaseInfo* enum_case = nullptr;
     };
@@ -638,6 +671,9 @@ private:
         if (lhs.kind == MatrixConstructor::Kind::enum_case) {
             return lhs.enum_case == rhs.enum_case;
         }
+        if (lhs.kind == MatrixConstructor::Kind::integer_literal) {
+            return lhs.integer_value == rhs.integer_value;
+        }
         return true;
     }
 
@@ -664,15 +700,28 @@ private:
             return constructors;
         }
         if (this->analyzer_.checked_.types.is_bool(type)) {
-            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::bool_true, {}, nullptr});
-            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::bool_false, {}, nullptr});
+            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::bool_true, 0, {}, nullptr});
+            constructors.push_back(MatrixConstructor {MatrixConstructor::Kind::bool_false, 0, {}, nullptr});
             return constructors;
         }
 
         const TypeInfo& info = this->analyzer_.checked_.types.get(type);
+        if (info.kind == TypeKind::builtin && info.builtin == BuiltinType::u8) {
+            constructors.reserve(static_cast<base::usize>(SEMA_MATCH_U8_DOMAIN_SIZE));
+            for (base::u64 value = 0; value < SEMA_MATCH_U8_DOMAIN_SIZE; ++value) {
+                constructors.push_back(MatrixConstructor {
+                    MatrixConstructor::Kind::integer_literal,
+                    value,
+                    {},
+                    nullptr,
+                });
+            }
+            return constructors;
+        }
         if (info.kind == TypeKind::tuple) {
             constructors.push_back(MatrixConstructor {
                 MatrixConstructor::Kind::tuple,
+                0,
                 std::vector<TypeHandle>(info.tuple_elements.begin(), info.tuple_elements.end()),
                 nullptr,
             });
@@ -747,18 +796,38 @@ private:
         }
         if (this->analyzer_.checked_.types.is_bool(type) && pattern->kind == syntax::PatternKind::literal) {
             if (pattern->case_name == SEMA_MATCH_BOOL_TRUE_NAME) {
-                return MatrixConstructor {MatrixConstructor::Kind::bool_true, {}, nullptr};
+                return MatrixConstructor {MatrixConstructor::Kind::bool_true, 0, {}, nullptr};
             }
             if (pattern->case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
-                return MatrixConstructor {MatrixConstructor::Kind::bool_false, {}, nullptr};
+                return MatrixConstructor {MatrixConstructor::Kind::bool_false, 0, {}, nullptr};
             }
             return std::nullopt;
         }
 
         const TypeInfo& info = this->analyzer_.checked_.types.get(type);
+        if (info.kind == TypeKind::builtin &&
+            info.builtin == BuiltinType::u8 &&
+            pattern->kind == syntax::PatternKind::literal) {
+            if (pattern->case_name == SEMA_MATCH_BOOL_TRUE_NAME ||
+                pattern->case_name == SEMA_MATCH_BOOL_FALSE_NAME ||
+                !this->analyzer_.integer_literal_fits_type(type, pattern->case_name)) {
+                return std::nullopt;
+            }
+            base::u64 value = 0;
+            if (!this->analyzer_.parse_integer_literal_text(pattern->case_name, value)) {
+                return std::nullopt;
+            }
+            return MatrixConstructor {
+                MatrixConstructor::Kind::integer_literal,
+                value,
+                {},
+                nullptr,
+            };
+        }
         if (info.kind == TypeKind::tuple && pattern->kind == syntax::PatternKind::tuple) {
             return MatrixConstructor {
                 MatrixConstructor::Kind::tuple,
+                0,
                 std::vector<TypeHandle>(info.tuple_elements.begin(), info.tuple_elements.end()),
                 nullptr,
             };
@@ -822,6 +891,7 @@ private:
         switch (constructor.kind) {
         case MatrixConstructor::Kind::bool_true:
         case MatrixConstructor::Kind::bool_false:
+        case MatrixConstructor::Kind::integer_literal:
             return MatrixRow {};
         case MatrixConstructor::Kind::tuple:
             return this->specialize_tuple_pattern(*pattern, constructor);
@@ -1283,10 +1353,11 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     };
     MatchUsefulnessChecker usefulness(*this, matched, enum_match);
     for (const syntax::MatchArm& arm : expr.match_arms) {
-        const bool guarded = syntax::is_valid(arm.guard);
+        const MatchGuardTruth guard_truth = match_guard_truth(this->module_, arm.guard);
+        const bool guarded = guard_truth != MatchGuardTruth::none;
         std::vector<PatternBinding> bindings;
         static_cast<void>(this->analyze_pattern(arm.pattern, matched, bindings));
-        if (!guarded) {
+        if (guard_truth == MatchGuardTruth::none || guard_truth == MatchGuardTruth::always_true) {
             usefulness.add_unguarded_arm(arm.pattern);
         }
         const auto analyze_guard_and_arm_value = [&]() {

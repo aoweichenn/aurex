@@ -5,8 +5,12 @@ enum Choice: u8 {
   two = 2,
 }
 
-fn main() -> i32 {
-  return match Choice.one {
-    _ if true => 1,
+fn score(choice: Choice, enabled: bool) -> i32 {
+  return match choice {
+    _ if enabled => 1,
   };
+}
+
+fn main() -> i32 {
+  return score(Choice.one, false);
 }

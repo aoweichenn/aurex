@@ -23,6 +23,12 @@ struct IdentId {
 
 inline constexpr IdentId INVALID_IDENT_ID {IdentId::INVALID_VALUE};
 
+struct StableHash64 {
+    base::u64 value = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(StableHash64 lhs, StableHash64 rhs) noexcept = default;
+};
+
 [[nodiscard]] inline constexpr bool is_valid(const IdentId id) noexcept {
     return id.value != IdentId::INVALID_VALUE;
 }
@@ -30,6 +36,8 @@ inline constexpr IdentId INVALID_IDENT_ID {IdentId::INVALID_VALUE};
 struct IdentifierTextHash {
     [[nodiscard]] std::size_t operator()(std::string_view value) const noexcept;
 };
+
+[[nodiscard]] StableHash64 stable_hash_text(std::string_view text) noexcept;
 
 class IdentifierInterner final {
 public:
@@ -45,6 +53,7 @@ public:
     [[nodiscard]] IdentId intern(std::string_view text);
     [[nodiscard]] IdentId find(std::string_view text) const noexcept;
     [[nodiscard]] std::string_view text(IdentId id) const noexcept;
+    [[nodiscard]] StableHash64 stable_hash(IdentId id) const noexcept;
     [[nodiscard]] base::usize size() const noexcept;
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;

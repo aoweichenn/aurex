@@ -5,6 +5,7 @@ namespace {
 
 constexpr base::u64 SEMA_LOOKUP_KEY_U32_SHIFT = 32;
 constexpr std::size_t SEMA_LOOKUP_HASH_OWNER_SHIFT = 1;
+constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_HASH_SHIFT = 32;
 
 [[nodiscard]] base::u64 pack_lookup_key_parts(
     const base::u32 high,
@@ -22,6 +23,12 @@ std::size_t ModuleLookupKeyHash::operator()(const ModuleLookupKey key) const noe
 
 std::size_t IdentIdHash::operator()(const IdentId id) const noexcept {
     return std::hash<base::u32> {}(id.value);
+}
+
+std::size_t GenericParamIdentityHash::operator()(const GenericParamIdentity identity) const noexcept {
+    return static_cast<std::size_t>(
+        identity.value ^ (identity.value >> SEMA_GENERIC_PARAM_IDENTITY_HASH_SHIFT)
+    );
 }
 
 std::size_t MethodLookupKeyHash::operator()(const MethodLookupKey key) const noexcept {

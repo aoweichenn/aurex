@@ -333,7 +333,7 @@ SemanticAnalyzer::ModuleIdList SemanticAnalyzer::make_module_id_list() const {
 SemanticAnalyzer::GenericTemplateInfo SemanticAnalyzer::make_generic_template_info() const {
     GenericTemplateInfo info;
     info.params = make_sema_vector<IdentId>(*this->arena_);
-    info.param_identity_ids = make_sema_vector<IdentId>(*this->arena_);
+    info.param_identities = make_sema_vector<GenericParamIdentity>(*this->arena_);
     info.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
     info.expr_node_ids = make_sema_vector<base::u32>(*this->arena_);
     info.pattern_node_ids = make_sema_vector<base::u32>(*this->arena_);
@@ -345,9 +345,13 @@ SemanticAnalyzer::GenericTemplateInfo SemanticAnalyzer::make_generic_template_in
 SemanticAnalyzer::GenericContext SemanticAnalyzer::make_generic_context() const {
     GenericContext context;
     context.params = make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {});
-    context.param_identities = make_sema_map<IdentId, InternedText, IdentIdHash>(*this->arena_, IdentIdHash {});
+    context.param_identities = make_sema_map<IdentId, GenericParamIdentity, IdentIdHash>(*this->arena_, IdentIdHash {});
     context.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
-    context.constraints_by_identity = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->arena_, IdentIdHash {});
+    context.constraints_by_identity =
+        make_sema_map<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>(
+            *this->arena_,
+            GenericParamIdentityHash {}
+        );
     return context;
 }
 
@@ -373,6 +377,17 @@ void SemanticAnalyzer::copy_capability_map(CapabilityMap& target, const Capabili
 SemanticAnalyzer::CapabilitySet& SemanticAnalyzer::capability_bucket(
     CapabilityMap& map,
     const IdentId key
+) const {
+    if (const auto found = map.find(key); found != map.end()) {
+        return found->second;
+    }
+    auto inserted = map.emplace(key, this->make_capability_set());
+    return inserted.first->second;
+}
+
+SemanticAnalyzer::CapabilitySet& SemanticAnalyzer::capability_bucket(
+    CapabilityIdentityMap& map,
+    const GenericParamIdentity key
 ) const {
     if (const auto found = map.find(key); found != map.end()) {
         return found->second;

@@ -399,12 +399,16 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_EQ(module.types.c_name(out_of_range), "void");
 }
 
-TEST(CoreUnit, TypeTableGenericParamsUseIdentityKeys) {
+TEST(CoreUnit, TypeTableGenericParamsUseStableIdentities) {
     Module module;
 
-    const TypeHandle first = module.types.generic_param("template_a#param:0:T", "T");
-    const TypeHandle second = module.types.generic_param("template_b#param:0:T", "T");
-    const TypeHandle first_again = module.types.generic_param("template_a#param:0:T", "T");
+    const sema::GenericParamIdentity first_identity =
+        sema::generic_param_identity_from_text("template_a#param:0:T");
+    const sema::GenericParamIdentity second_identity =
+        sema::generic_param_identity_from_text("template_b#param:0:T");
+    const TypeHandle first = module.types.generic_param(first_identity, "T");
+    const TypeHandle second = module.types.generic_param(second_identity, "T");
+    const TypeHandle first_again = module.types.generic_param(first_identity, "T");
     const TypeHandle legacy = module.types.generic_param("T");
 
     EXPECT_EQ(first.value, first_again.value);
@@ -412,9 +416,9 @@ TEST(CoreUnit, TypeTableGenericParamsUseIdentityKeys) {
     EXPECT_NE(first.value, legacy.value);
     EXPECT_EQ(module.types.display_name(first), "T");
     EXPECT_EQ(module.types.display_name(second), "T");
-    EXPECT_EQ(module.types.get(first).generic_identity_key, "template_a#param:0:T");
-    EXPECT_EQ(module.types.get(second).generic_identity_key, "template_b#param:0:T");
-    EXPECT_EQ(module.types.get(legacy).generic_identity_key, "T");
+    EXPECT_EQ(module.types.get(first).generic_identity, first_identity);
+    EXPECT_EQ(module.types.get(second).generic_identity, second_identity);
+    EXPECT_EQ(module.types.get(legacy).generic_identity, sema::generic_param_identity_from_text("T"));
 }
 
 } // namespace aurex::test

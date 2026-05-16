@@ -121,9 +121,9 @@ if (types.is_pointer(object)) {
 
 #### P0-4 [] 语法承担 generic / index / slice 三种语义
 
-`parser_postfix.cpp` 把 `[something]` 统一解析，sema 再猜。诊断差、语法语义耦合、未来扩展冲突。
+原始问题是 `parser_postfix.cpp` 把 `[something]` 统一解析，sema 再猜。诊断差、语法语义耦合、未来扩展冲突。
 
-**建议：** AST 层拆出 `GenericApplyExpr` / `IndexExpr` / `SliceExpr` / `TypeApply`。
+**当前修复状态：** ✅ 旧 raw postfix 链路和 sema 二次 lowering 路径已删除；parser 直接生成 `generic_apply`、`index`、`slice`、`field`、`call`、`struct_literal`、`try_expr` 等显式 compact 节点，并用保守 guardrail 保证 `Type[T].case` 和 `items[index].field` 分流。
 
 ---
 
@@ -149,7 +149,7 @@ constexpr string_view SEMA_CAPABILITY_EQ = "Eq";  // ❌ 硬编码字符串
 | # | 问题 | 说明 |
 |:-:|:-----|:------|
 | P1-6 | generic 与普通 type lookup 不一致 | 泛型 visible_modules 与普通 lookup 走不同 resolver |
-| P1-7 | Generic param identity 仅按名字 | 所有 T 共用 TypeHandle，应改为 `(template_key, param_index)` |
+| P1-7 | Generic param identity 仅按名字 | 已改为 `GenericParamIdentity` 稳定数值身份，混入 template module/name、param index/name 和 source range |
 | P1-8 | Mangling 依赖 display string | 字符清洗导致 `a.b.C` 和 `a_b.C` 可能碰撞 |
 | P1-9 | ? try-like 是 name-based magic | 根据 ok/err 名字判断，用户定义同名 enum 会被误识别 |
 | P1-10 | Backend limit 伪装成 language semantics | 诊断未区分 M2Unsupported vs SemanticError |

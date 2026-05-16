@@ -36,7 +36,6 @@ inline constexpr base::usize PARSER_EXPR_RESERVE_SLACK_TOKEN_DIVISOR = 64;
            exprs.matches +
            exprs.arrays +
            exprs.tuples +
-           exprs.postfix_chains +
            exprs.fields +
            exprs.indexes +
            exprs.slices +
@@ -163,13 +162,6 @@ inline void finalize_parser_expr_reserve(
     const base::usize token_count
 ) noexcept {
     const base::usize extra = parser_expr_extra_capacity_for_tokens(token_count);
-    exprs.postfix_chains += exprs.calls +
-                            exprs.fields +
-                            exprs.indexes +
-                            exprs.slices +
-                            exprs.generic_applies +
-                            exprs.struct_literals +
-                            extra;
     exprs.headers = parser_expr_reserved_node_count(exprs) + extra;
 }
 

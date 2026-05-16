@@ -129,7 +129,12 @@ TypeTable::TypeTable()
       slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash {})),
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash {})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash {})),
-      generic_param_types_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})) {
+      generic_param_types_(
+          make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
+              *this->arena_,
+              GenericParamIdentityHash {}
+          )
+      ) {
     this->initialize_builtins();
 }
 
@@ -142,7 +147,12 @@ TypeTable::TypeTable(const TypeTable& other)
       slice_types_(make_sema_map<SliceKey, TypeHandle, SliceKeyHash>(*this->arena_, SliceKeyHash {})),
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash {})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash {})),
-      generic_param_types_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash {})) {
+      generic_param_types_(
+          make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
+              *this->arena_,
+              GenericParamIdentityHash {}
+          )
+      ) {
     this->copy_from(other);
 }
 
@@ -226,8 +236,8 @@ void TypeTable::copy_from(const TypeTable& other) {
     this->generic_param_types_.clear();
     for (base::u32 index = 0; index < this->types_.size(); ++index) {
         const TypeInfo& info = this->types_[index];
-        if (info.kind == TypeKind::generic_param && is_valid(info.generic_identity_key.id)) {
-            this->generic_param_types_.emplace(info.generic_identity_key.id, TypeHandle {index});
+        if (info.kind == TypeKind::generic_param && is_valid(info.generic_identity)) {
+            this->generic_param_types_.emplace(info.generic_identity, TypeHandle {index});
         }
     }
 }
@@ -236,7 +246,6 @@ void TypeTable::rebind_interned_texts() noexcept {
     for (TypeInfo& info : this->types_) {
         rebind_interned_text(info.name, this->texts_);
         rebind_interned_text(info.c_name, this->texts_);
-        rebind_interned_text(info.generic_identity_key, this->texts_);
         rebind_interned_text(info.generic_origin_key, this->texts_);
     }
 }
@@ -304,9 +313,9 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other) {
     copy.enum_payload_storage = other.enum_payload_storage;
     copy.enum_payload_size = other.enum_payload_size;
     copy.enum_payload_align = other.enum_payload_align;
+    copy.generic_identity = other.generic_identity;
     copy.name = this->intern_text(other.name);
     copy.c_name = this->intern_text(other.c_name);
-    copy.generic_identity_key = this->intern_text(other.generic_identity_key);
     copy.generic_origin_key = this->intern_text(other.generic_origin_key);
     copy.generic_args = this->copy_type_handles(other.generic_args);
     copy.contains_array = other.contains_array;
@@ -549,22 +558,26 @@ TypeHandle TypeTable::opaque_struct(const std::string_view name, const std::stri
 }
 
 TypeHandle TypeTable::generic_param(const std::string_view name) {
-    return this->generic_param(name, name);
+    return this->generic_param(generic_param_identity_from_text(name), name);
 }
 
-TypeHandle TypeTable::generic_param(const std::string_view identity_key, const std::string_view display_name) {
-    const InternedText identity = this->intern_text(identity_key);
-    const IdentId identity_id = identity.id;
-    if (const auto found = this->generic_param_types_.find(identity_id); found != this->generic_param_types_.end()) {
+TypeHandle TypeTable::generic_param(
+    const GenericParamIdentity identity,
+    const std::string_view display_name
+) {
+    if (!is_valid(identity)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    if (const auto found = this->generic_param_types_.find(identity); found != this->generic_param_types_.end()) {
         return found->second;
     }
 
     TypeInfo info = this->make_type_info();
     info.kind = TypeKind::generic_param;
     info.name = this->intern_text(display_name);
-    info.generic_identity_key = identity;
+    info.generic_identity = identity;
     const TypeHandle handle = this->push(std::move(info));
-    this->generic_param_types_.emplace(identity_id, handle);
+    this->generic_param_types_.emplace(identity, handle);
     return handle;
 }
 

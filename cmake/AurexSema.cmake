@@ -11,7 +11,6 @@ add_library(aurex_sema
     src/sema/sema_decls.cpp
     src/sema/sema_expr.cpp
     src/sema/sema_lookup.cpp
-    src/sema/sema_postfix.cpp
     src/sema/sema_record.cpp
     src/sema/sema_stmt.cpp
     src/sema/sema_types.cpp

@@ -6,5 +6,6 @@ struct Box {
 
 fn main() -> i32 {
     let boxes: [1]Box = [Box { value: 41 }];
-    return boxes[0].value - 41;
+    let index: usize = 0;
+    return boxes[index].value - 41;
 }

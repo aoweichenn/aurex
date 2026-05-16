@@ -1714,15 +1714,8 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
         syntax::ExprId expr = syntax::INVALID_EXPR_ID;
     };
 
-    syntax::ExprId root = expr_id;
-    if (syntax::is_valid(root) &&
-        root.value < this->module_.exprs.size() &&
-        this->module_.exprs.kind(root.value) == syntax::ExprKind::postfix_chain) {
-        root = this->materialize_postfix_chain(root);
-    }
-
     std::vector<PendingProjection> pending;
-    syntax::ExprId current = root;
+    syntax::ExprId current = expr_id;
     while (syntax::is_valid(current) && current.value < this->module_.exprs.size()) {
         const syntax::ExprKind kind = this->module_.exprs.kind(current.value);
         if (const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(current.value);

@@ -615,7 +615,7 @@ enum Token {
 
 ## P1 已补：最小非资源类 `where` 约束
 
-M2 基础泛型现在包含类型参数、类型实参、sema materialized `generic_apply`、generic enum、generic type alias、owner generic impl，以及最小非资源类 `where` capability。raw parser AST 会先把 `id[T](x)` 记录成 `postfix_chain`，由 sema 根据 base kind 决定 bracket 是泛型实参还是 value index。仍不混入用户 trait、associated type、const generic 或资源 capability。
+M2 基础泛型现在包含类型参数、类型实参、parser 显式 `generic_apply` AST、generic enum、generic type alias、owner generic impl，以及最小非资源类 `where` capability。parser 会直接把 `id[T](x)` 写成 `generic_apply` callee 后接 `call`，把 value bracket 写成 `index` / `slice`，不再保留 raw chain 让 sema 二次 materialize。仍不混入用户 trait、associated type、const generic 或资源 capability。
 
 现状：
 
@@ -957,7 +957,7 @@ M2 不建议马上做包管理。原因是 package 设计会反向影响 module 
 
 第三批暂缓：
 
-1. 继续完善 guard、slice 和开放域 structural exhaustiveness / unreachable diagnostics。
+1. 继续完善 slice 和开放域 structural exhaustiveness / unreachable diagnostics，并保持 guard literal truth 规则的覆盖。
 2. package manifest 和包管理。
 3. octal / hex float 等更复杂数值字面量。
 

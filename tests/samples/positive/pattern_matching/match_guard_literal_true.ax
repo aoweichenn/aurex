@@ -1,0 +1,18 @@
+module match_guard_literal_true;
+
+fn score(value: bool) -> i32 {
+    return match value {
+        true if true => 1,
+        false => 0,
+    };
+}
+
+fn main() -> i32 {
+    if score(true) != 1 {
+        return 1;
+    }
+    if score(false) != 0 {
+        return 2;
+    }
+    return 0;
+}

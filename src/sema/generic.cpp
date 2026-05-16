@@ -21,9 +21,12 @@ constexpr std::string_view SEMA_GENERIC_ABI_SUFFIX_PREFIX = "__aurexg";
 constexpr std::string_view SEMA_GENERIC_ABI_ARG_PREFIX = "_t";
 constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
-constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "#param:";
-constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR = ":";
-constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER = "@";
+constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
+constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_OFFSET = 14695981039346656037ULL;
+constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_PRIME = 1099511628211ULL;
+constexpr base::u32 SEMA_GENERIC_PARAM_IDENTITY_U64_BITS = 64;
+constexpr base::u32 SEMA_GENERIC_PARAM_IDENTITY_BYTE_BITS = 8;
+constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_BYTE_MASK = 0xFFU;
 constexpr base::usize SEMA_DECIMAL_U64_MAX_DIGITS = 20;
 constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
 constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
@@ -56,6 +59,44 @@ template <typename Info>
         info.type_node_ids,
         info.stmt_node_ids
     );
+}
+
+[[nodiscard]] base::u64 mix_generic_identity_byte(base::u64 hash, const unsigned char byte) noexcept {
+    hash ^= static_cast<base::u64>(byte);
+    hash *= SEMA_GENERIC_PARAM_IDENTITY_PRIME;
+    return hash;
+}
+
+[[nodiscard]] base::u64 mix_generic_identity_text(
+    base::u64 hash,
+    const std::string_view text
+) noexcept {
+    for (const unsigned char byte : text) {
+        hash = mix_generic_identity_byte(hash, byte);
+    }
+    return hash;
+}
+
+[[nodiscard]] base::u64 mix_generic_identity_u64(
+    base::u64 hash,
+    const base::u64 value
+) noexcept {
+    for (base::u32 shift = 0;
+         shift < SEMA_GENERIC_PARAM_IDENTITY_U64_BITS;
+         shift += SEMA_GENERIC_PARAM_IDENTITY_BYTE_BITS) {
+        hash = mix_generic_identity_byte(
+            hash,
+            static_cast<unsigned char>((value >> shift) & SEMA_GENERIC_PARAM_IDENTITY_BYTE_MASK)
+        );
+    }
+    return hash;
+}
+
+[[nodiscard]] GenericParamIdentity finish_generic_param_identity(base::u64 hash) noexcept {
+    if (hash == 0) {
+        hash = SEMA_GENERIC_PARAM_IDENTITY_OFFSET;
+    }
+    return GenericParamIdentity {hash};
 }
 
 struct GenericNodeSpanBuilder {
@@ -250,21 +291,6 @@ private:
         this->add_type(type.function_return);
     }
 
-    void visit_postfix_op(const syntax::PostfixOp& op) {
-        for (const syntax::PostfixBracketArg& arg : op.bracket_args) {
-            this->add_expr(arg.expr);
-            this->add_type(arg.type);
-        }
-        this->add_expr(op.slice_start);
-        this->add_expr(op.slice_end);
-        for (const syntax::ExprId arg : op.args) {
-            this->add_expr(arg);
-        }
-        for (const syntax::FieldInit& init : op.field_inits) {
-            this->add_expr(init.value);
-        }
-    }
-
     void visit_expr(const syntax::ExprId expr_id) {
         if (!syntax::is_valid(expr_id) || expr_id.value >= this->module.exprs.size()) {
             return;
@@ -355,16 +381,6 @@ private:
                 payload != nullptr) {
                 for (const syntax::ExprId element : *payload) {
                     this->add_expr(element);
-                }
-            }
-            break;
-        case syntax::ExprKind::postfix_chain:
-            if (const syntax::PostfixChainExprPayload* const payload =
-                    this->module.exprs.postfix_chain_payload(expr_id.value);
-                payload != nullptr) {
-                this->add_expr(payload->base);
-                for (const syntax::PostfixOp& op : payload->ops) {
-                    this->visit_postfix_op(op);
                 }
             }
             break;
@@ -610,8 +626,7 @@ bool SemanticAnalyzer::generic_param_has_capability(
     const IdentId param_id = this->module_.find_identifier(param);
     const auto identity = this->current_generic_context_->param_identities.find(param_id);
     if (identity != this->current_generic_context_->param_identities.end()) {
-        const IdentId identity_id = this->module_.find_identifier(identity->second);
-        const auto by_identity = this->current_generic_context_->constraints_by_identity.find(identity_id);
+        const auto by_identity = this->current_generic_context_->constraints_by_identity.find(identity->second);
         if (by_identity != this->current_generic_context_->constraints_by_identity.end()) {
             return by_identity->second.contains(capability);
         }
@@ -632,7 +647,7 @@ bool SemanticAnalyzer::generic_param_has_capability(
     if (info.kind != TypeKind::generic_param) {
         return false;
     }
-    const IdentId identity = this->generic_param_identity_id(info);
+    const GenericParamIdentity identity = this->generic_param_identity(info);
     if (is_valid(identity)) {
         const auto found = this->current_generic_context_->constraints_by_identity.find(identity);
         if (found != this->current_generic_context_->constraints_by_identity.end()) {
@@ -811,7 +826,7 @@ void SemanticAnalyzer::register_generic_template(
         info.params.push_back(param.name_id);
     }
     this->populate_generic_template_node_spans(info, item);
-    this->populate_generic_param_identity_keys(info);
+    this->populate_generic_param_identities(info);
     this->validate_generic_constraints(item, info);
 
     if (item.kind == syntax::ItemKind::struct_decl) {
@@ -892,7 +907,7 @@ void SemanticAnalyzer::register_generic_template(
             return;
         }
         info.function_key = this->method_function_lookup_key(owner, info.impl_type_pattern, item.name_id);
-        this->populate_generic_param_identity_keys(info);
+        this->populate_generic_param_identities(info);
         const TypeKind impl_type_kind = this->checked_.types.get(info.impl_type_pattern).kind;
         if (impl_type_kind != TypeKind::struct_ &&
             impl_type_kind != TypeKind::enum_ &&
@@ -901,7 +916,7 @@ void SemanticAnalyzer::register_generic_template(
             return;
         }
 
-        std::unordered_set<IdentId, IdentIdHash> owner_params;
+        std::unordered_set<GenericParamIdentity, GenericParamIdentityHash> owner_params;
         std::vector<TypeHandle> pending;
         pending.push_back(info.impl_type_pattern);
         while (!pending.empty()) {
@@ -912,7 +927,7 @@ void SemanticAnalyzer::register_generic_template(
             }
             const TypeInfo& type_info = this->checked_.types.get(current);
             if (type_info.kind == TypeKind::generic_param) {
-                owner_params.insert(this->generic_param_identity_id(type_info));
+                owner_params.insert(this->generic_param_identity(type_info));
                 continue;
             }
             if (type_info.kind == TypeKind::pointer || type_info.kind == TypeKind::reference) {
@@ -938,7 +953,7 @@ void SemanticAnalyzer::register_generic_template(
         }
         bool method_local_generic = false;
         for (base::usize i = 0; i < info.params.size(); ++i) {
-            if (!owner_params.contains(this->generic_param_identity_id(info, i))) {
+            if (!owner_params.contains(this->generic_param_identity(info, i))) {
                 method_local_generic = true;
             }
         }
@@ -972,44 +987,39 @@ void SemanticAnalyzer::register_generic_template(
     }
 }
 
-void SemanticAnalyzer::populate_generic_param_identity_keys(GenericTemplateInfo& info) {
-    info.param_identity_ids.clear();
-    info.param_identity_ids.reserve(info.params.size());
+void SemanticAnalyzer::populate_generic_param_identities(GenericTemplateInfo& info) {
+    info.param_identities.clear();
+    info.param_identities.reserve(info.params.size());
     for (base::usize index = 0; index < info.params.size(); ++index) {
-        info.param_identity_ids.push_back(this->make_generic_param_identity_id(info, index));
+        info.param_identities.push_back(this->make_generic_param_identity(info, index));
     }
 }
 
-std::string SemanticAnalyzer::make_generic_param_identity_key(
+GenericParamIdentity SemanticAnalyzer::make_generic_param_identity(
     const GenericTemplateInfo& info,
     const base::usize index
 ) const {
-    std::string key;
-    key.reserve(SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE + info.name.size());
-    append_decimal(key, info.key.module);
-    key.push_back(':');
-    key += this->module_.identifier_text(info.name_id).empty()
+    base::u64 hash = SEMA_GENERIC_PARAM_IDENTITY_OFFSET;
+    hash = mix_generic_identity_text(hash, SEMA_GENERIC_PARAM_IDENTITY_MARKER);
+    hash = mix_generic_identity_u64(hash, info.key.module);
+    const std::string_view template_name = this->module_.identifier_text(info.name_id).empty()
         ? info.name.view()
         : this->module_.identifier_text(info.name_id);
-    key += SEMA_GENERIC_PARAM_IDENTITY_MARKER;
-    append_decimal(key, index);
+    hash = mix_generic_identity_text(hash, template_name);
+    hash = mix_generic_identity_u64(hash, index);
     if (index < info.params.size()) {
-        key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
-        key += this->generic_param_name(info, index);
+        hash = mix_generic_identity_text(hash, this->generic_param_name(info, index));
     }
     if (syntax::is_valid(info.item) && info.item.value < this->module_.items.size()) {
         const syntax::ItemNode item = this->module_.items[info.item.value];
         if (index < item.generic_params.size()) {
             const base::SourceRange range = item.generic_params[index].range;
-            key += SEMA_GENERIC_PARAM_IDENTITY_RANGE_MARKER;
-            append_decimal(key, range.source.value);
-            key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
-            append_decimal(key, range.begin);
-            key += SEMA_GENERIC_PARAM_IDENTITY_NAME_SEPARATOR;
-            append_decimal(key, range.end);
+            hash = mix_generic_identity_u64(hash, range.source.value);
+            hash = mix_generic_identity_u64(hash, range.begin);
+            hash = mix_generic_identity_u64(hash, range.end);
         }
     }
-    return key;
+    return finish_generic_param_identity(hash);
 }
 
 std::string_view SemanticAnalyzer::generic_param_name(
@@ -1032,28 +1042,21 @@ std::string_view SemanticAnalyzer::generic_param_name(
     return {};
 }
 
-IdentId SemanticAnalyzer::make_generic_param_identity_id(
-    const GenericTemplateInfo& info,
-    const base::usize index
-) {
-    return this->intern_generated_key(this->make_generic_param_identity_key(info, index));
-}
-
-IdentId SemanticAnalyzer::generic_param_identity_id(
+GenericParamIdentity SemanticAnalyzer::generic_param_identity(
     const GenericTemplateInfo& info,
     const base::usize index
 ) const {
-    if (index < info.param_identity_ids.size()) {
-        return info.param_identity_ids[index];
+    if (index < info.param_identities.size()) {
+        return info.param_identities[index];
     }
-    return this->module_.find_identifier(this->make_generic_param_identity_key(info, index));
+    return this->make_generic_param_identity(info, index);
 }
 
-IdentId SemanticAnalyzer::generic_param_identity_id(const TypeInfo& info) const {
-    if (!info.generic_identity_key.empty()) {
-        return this->module_.find_identifier(info.generic_identity_key);
+GenericParamIdentity SemanticAnalyzer::generic_param_identity(const TypeInfo& info) const {
+    if (is_valid(info.generic_identity)) {
+        return info.generic_identity;
     }
-    return this->module_.find_identifier(info.name);
+    return generic_param_identity_from_text(info.name);
 }
 
 TypeHandle SemanticAnalyzer::generic_param_placeholder(
@@ -1064,7 +1067,7 @@ TypeHandle SemanticAnalyzer::generic_param_placeholder(
         return INVALID_TYPE_HANDLE;
     }
     return this->checked_.types.generic_param(
-        this->make_generic_param_identity_key(info, index),
+        this->generic_param_identity(info, index),
         this->generic_param_name(info, index)
     );
 }
@@ -1081,12 +1084,12 @@ void SemanticAnalyzer::populate_generic_placeholder_context(
     context.param_identities.reserve(info.params.size());
     context.constraints_by_identity.reserve(info.params.size());
     for (base::usize i = 0; i < info.params.size(); ++i) {
-        const IdentId identity_id = this->generic_param_identity_id(info, i);
+        const GenericParamIdentity identity = this->generic_param_identity(info, i);
         const IdentId param_id = info.params[i];
         context.params.emplace(param_id, this->generic_param_placeholder(info, i));
-        context.param_identities.emplace(param_id, InternedText {identity_id, &this->module_.identifiers});
+        context.param_identities.emplace(param_id, identity);
         if (const auto constraints = info.constraints.find(param_id); constraints != info.constraints.end()) {
-            context.constraints_by_identity.emplace(identity_id, this->copy_capability_set(constraints->second));
+            context.constraints_by_identity.emplace(identity, this->copy_capability_set(constraints->second));
         }
     }
 }
@@ -1105,21 +1108,21 @@ void SemanticAnalyzer::populate_generic_concrete_context(
     context.param_identities.reserve(info.params.size());
     context.constraints_by_identity.reserve(info.params.size());
     for (base::usize i = 0; i < info.params.size() && i < args.size(); ++i) {
-        const IdentId identity_id = this->generic_param_identity_id(info, i);
+        const GenericParamIdentity identity = this->generic_param_identity(info, i);
         const IdentId param_id = info.params[i];
         context.params.emplace(param_id, args[i]);
-        context.param_identities.emplace(param_id, InternedText {identity_id, &this->module_.identifiers});
+        context.param_identities.emplace(param_id, identity);
         const auto constraints = info.constraints.find(param_id);
         if (constraints == info.constraints.end()) {
             continue;
         }
-        context.constraints_by_identity.emplace(identity_id, this->copy_capability_set(constraints->second));
+        context.constraints_by_identity.emplace(identity, this->copy_capability_set(constraints->second));
         if (is_valid(args[i])) {
             const TypeInfo& arg_info = this->checked_.types.get(args[i]);
             if (arg_info.kind == TypeKind::generic_param) {
                 CapabilitySet& inherited = this->capability_bucket(
                     context.constraints_by_identity,
-                    this->generic_param_identity_id(arg_info)
+                    this->generic_param_identity(arg_info)
                 );
                 inherited.insert(constraints->second.begin(), constraints->second.end());
             }
@@ -1824,7 +1827,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
 bool SemanticAnalyzer::unify_generic_type(
     const TypeHandle pattern,
     const TypeHandle actual,
-    std::unordered_map<IdentId, TypeHandle, IdentIdHash>& inferred
+    std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& inferred
 ) const {
     if (!is_valid(pattern) || !is_valid(actual)) {
         return false;
@@ -1840,7 +1843,7 @@ bool SemanticAnalyzer::unify_generic_type(
         }
         const TypeInfo& pattern_info = this->checked_.types.get(current_pattern);
         if (pattern_info.kind == TypeKind::generic_param) {
-            const IdentId identity = this->generic_param_identity_id(pattern_info);
+            const GenericParamIdentity identity = this->generic_param_identity(pattern_info);
             const auto found = inferred.find(identity);
             if (found == inferred.end()) {
                 inferred.emplace(identity, current_actual);
@@ -1955,7 +1958,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     this->current_generic_context_ = previous_body_generic_context;
     this->current_side_tables_ = previous_side_tables;
 
-    std::unordered_map<IdentId, TypeHandle, IdentIdHash> inferred;
+    std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> inferred;
     for (base::usize i = 0; i < call.args.size(); ++i) {
         const TypeHandle actual = this->analyze_expr(call.args[i], pattern_param_types[i]);
         if (!this->unify_generic_type(pattern_param_types[i], actual, inferred)) {
@@ -1970,7 +1973,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     args.clear();
     args.reserve(info.params.size());
     for (base::usize i = 0; i < info.params.size(); ++i) {
-        const auto found = inferred.find(this->generic_param_identity_id(info, i));
+        const auto found = inferred.find(this->generic_param_identity(info, i));
         if (found == inferred.end() || !is_valid(found->second)) {
             this->report(
                 call.range,
@@ -2437,7 +2440,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
             if (!this->can_access(module, info.visibility)) {
                 continue;
             }
-            std::unordered_map<IdentId, TypeHandle, IdentIdHash> inferred;
+            std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> inferred;
             if (!this->unify_generic_type(info.impl_type_pattern, owner_type, inferred)) {
                 continue;
             }
@@ -2445,7 +2448,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
             args.reserve(info.params.size());
             bool all_inferred = true;
             for (base::usize i = 0; i < info.params.size(); ++i) {
-                const auto found = inferred.find(this->generic_param_identity_id(info, i));
+                const auto found = inferred.find(this->generic_param_identity(info, i));
                 if (found == inferred.end() || !is_valid(found->second)) {
                     all_inferred = false;
                     break;

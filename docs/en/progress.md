@@ -147,7 +147,7 @@ parser/module AST and passes a mutable reference through sema and IR lowering,
 `SemanticAnalyzer(const AstModule&)` is deleted to prevent implicit whole-tree
 copies, `CheckedModule::normalized_ast` is a lightweight normalization overlay
 and never owns an `AstModule`, sema construction no longer reserves
-`exprs/types` as `size+4096`, and postfix materialization no longer copies fat
+`exprs/types` as `size+4096`, and postfix suffix creation no longer copies fat
 `ExprNode` / `TypeNode` values by value. Per-node C symbol side tables now store
 `IdentId` entries in `expr_c_name_ids`, `pattern_c_name_ids`, and
 `item_c_name_ids`, with the actual text deduplicated in the checked module
@@ -163,7 +163,7 @@ and direct payload reads, removing compatibility wrappers and literal fat-node
 reconstruction from the sema hot path. The same 2026-05-16 line also landed a
 reusable global bump allocator behind the syntax-layer `IdentifierInterner`;
 AST type/expr/pattern/stmt/item/module/import name-bearing fields now carry
-native `IdentId` payload fields, parser/module-loader/postfix writes intern
+native `IdentId` payload fields, parser/module-loader/postfix suffix writes intern
 through the current `AstModule`, and sema typed lookup keys reuse that AST
 module interner instead of maintaining a second private interner. Function,
 type, value, generic-template, enum-case, struct-field, method/member, and
@@ -174,11 +174,11 @@ stored through the bump-backed `IdentifierInterner`; `FunctionSignature`,
 `InternedText` / typed ids instead of heap-backed `std::string` payloads. The 2026-05-16
 performance line then removed the old fat `ExprNode` production type entirely:
 parser construction, `AstModule` storage, module-loader append, and postfix
-materialization now create compact expression headers plus per-kind payloads
+suffix creation now creates compact expression headers plus per-kind payloads
 directly. The expression creation path now uses field-level append/set APIs for
-name, unary/binary, call, if/block/match, array, postfix-chain, field/index/slice,
+name, unary/binary, call, if/block/match, array, field/index/slice,
 struct literal, and cast-like nodes, so the parser no longer builds payload
-struct temporaries before arena storage; postfix materialization also rewrites
+struct temporaries before arena storage; postfix suffix parsing also writes
 call/field/index/slice/generic-apply/struct-literal/try expressions directly into
 compact payload storage. The follow-up bump pass backs the `TypeNodeList`, `ExprNodeList`,
 `PatternNodeList`, `StmtNodeList`, and `ItemNodeList` header vectors and
@@ -239,7 +239,8 @@ The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
 usefulness witness search. Bool, enum payloads, tuples, structs, and fixed
 arrays are checked through constructor specialization and default matrices;
-guarded arms do not contribute to exhaustiveness, while dynamic slices and open
+unguarded arms and literal `if true` guards contribute to exhaustiveness,
+literal `if false` and dynamic guards do not, while dynamic slices and open
 integer domains still require a wildcard or irrefutable arm under the current
 M2 boundary.
 

@@ -44,6 +44,25 @@ void expect_parse_error(const std::string_view source, const std::string_view me
     EXPECT_TRUE(found) << "missing diagnostic: " << message;
 }
 
+void expect_parse_diagnostic(const std::string_view source, const std::string_view message) {
+    DiagnosticSink diagnostics;
+    lex::Lexer lexer({6}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    static_cast<void>(parser.parse_module());
+    ASSERT_TRUE(diagnostics.has_error());
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        if (diagnostic.message.find(message) != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found) << "missing diagnostic: " << message;
+}
+
 [[nodiscard]] syntax::AstModule parse_success(const std::string_view source) {
     DiagnosticSink diagnostics;
     lex::Lexer lexer({7}, source, diagnostics);
@@ -224,7 +243,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "fn unchecked_string unsafe",
         "fn inc for Counter",
         "fn exported export_c @name=exported",
-        "postfix_op struct_literal",
+        "struct_literal",
         "stmt #",
         "while",
         "for",
@@ -242,7 +261,7 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "array_literal",
         "array_repeat_value",
         "array_repeat_count",
-        "postfix_op bracket",
+        "index",
         "ptrcast",
         "bitcast",
         "alignof",
@@ -313,7 +332,7 @@ TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions) {
         "slice",
         "slice_start",
         "slice_end",
-        "postfix_op bracket",
+        "index",
     });
 }
 
@@ -468,8 +487,8 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
             "alias [10]u8",
             "alias [10]u8",
             "alias [1000]u8",
-            "postfix_op struct_literal",
-            "postfix_op try",
+            "struct_literal",
+            "try_expr",
             "binary",
         });
     }
@@ -1879,35 +1898,39 @@ TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
 
     const syntax::StmtNode& call_stmt = module.stmts[body.statements[0].value];
     ASSERT_TRUE(syntax::is_valid(call_stmt.init));
-    ASSERT_EQ(module.exprs.kind(call_stmt.init.value), syntax::ExprKind::postfix_chain);
-    const syntax::PostfixChainExprPayload* const call_chain =
-        module.exprs.postfix_chain_payload(call_stmt.init.value);
-    ASSERT_NE(call_chain, nullptr);
-    ASSERT_TRUE(syntax::is_valid(call_chain->base));
-    ASSERT_EQ(module.exprs.kind(call_chain->base.value), syntax::ExprKind::name);
-    const syntax::NameExprPayload* const result_name = module.exprs.name_payload(call_chain->base.value);
+    ASSERT_EQ(module.exprs.kind(call_stmt.init.value), syntax::ExprKind::try_expr);
+    const syntax::UnaryExprPayload* const try_expr = module.exprs.unary_payload(call_stmt.init.value);
+    ASSERT_NE(try_expr, nullptr);
+    ASSERT_EQ(try_expr->op, syntax::UnaryOp::logical_not);
+    ASSERT_TRUE(syntax::is_valid(try_expr->operand));
+    ASSERT_EQ(module.exprs.kind(try_expr->operand.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(try_expr->operand.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call->callee));
+    ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::field);
+    const syntax::FieldExprPayload* const field = module.exprs.field_payload(call->callee.value);
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(field->field_name, "ok");
+    ASSERT_TRUE(syntax::is_valid(field->object));
+    ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::name);
+    const syntax::NameExprPayload* const result_name = module.exprs.name_payload(field->object.value);
     ASSERT_NE(result_name, nullptr);
     EXPECT_EQ(result_name->text, "ResultI32");
-    ASSERT_EQ(call_chain->ops.size(), 3U);
-    EXPECT_EQ(call_chain->ops[0].kind, syntax::PostfixOpKind::select);
-    EXPECT_EQ(call_chain->ops[0].name, "ok");
-    EXPECT_EQ(call_chain->ops[1].kind, syntax::PostfixOpKind::call);
-    ASSERT_EQ(call_chain->ops[1].args.size(), 1U);
-    EXPECT_EQ(call_chain->ops[2].kind, syntax::PostfixOpKind::try_);
+    ASSERT_EQ(call->args.size(), 1U);
 
     const syntax::StmtNode& literal_stmt = module.stmts[body.statements[1].value];
     ASSERT_TRUE(syntax::is_valid(literal_stmt.init));
-    ASSERT_EQ(module.exprs.kind(literal_stmt.init.value), syntax::ExprKind::postfix_chain);
-    const syntax::PostfixChainExprPayload* const literal_chain =
-        module.exprs.postfix_chain_payload(literal_stmt.init.value);
-    ASSERT_NE(literal_chain, nullptr);
-    ASSERT_TRUE(syntax::is_valid(literal_chain->base));
-    ASSERT_EQ(module.exprs.kind(literal_chain->base.value), syntax::ExprKind::name);
-    const syntax::NameExprPayload* const literal_type = module.exprs.name_payload(literal_chain->base.value);
+    ASSERT_EQ(module.exprs.kind(literal_stmt.init.value), syntax::ExprKind::struct_literal);
+    const syntax::StructLiteralExprPayload* const literal =
+        module.exprs.struct_literal_payload(literal_stmt.init.value);
+    ASSERT_NE(literal, nullptr);
+    ASSERT_TRUE(syntax::is_valid(literal->object));
+    ASSERT_EQ(module.exprs.kind(literal->object.value), syntax::ExprKind::name);
+    const syntax::NameExprPayload* const literal_type = module.exprs.name_payload(literal->object.value);
     ASSERT_NE(literal_type, nullptr);
     EXPECT_EQ(literal_type->text, "Wrap");
-    ASSERT_EQ(literal_chain->ops.size(), 1U);
-    EXPECT_EQ(literal_chain->ops[0].kind, syntax::PostfixOpKind::struct_literal);
+    ASSERT_EQ(literal->field_inits.size(), 1U);
+    EXPECT_EQ(literal->field_inits.front().name, "value");
 
     const syntax::StmtNode& shifted_stmt = module.stmts[body.statements[2].value];
     ASSERT_TRUE(syntax::is_valid(shifted_stmt.init));
@@ -2789,7 +2812,20 @@ TEST(CoreUnit, ParserM2GenericSyntax) {
         "struct Box[T] { value: T; }\n"
         "struct Pair[A, B] { first: A; second: B; }\n"
         "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
+        "type Unary[T] = fn(T) -> T;\n"
+        "extern c { fn cfunc(value: i32, ...) -> i32; }\n"
         "fn id[T](x: T) -> T { return x; }\n"
+        "fn keep_fn[T](value: Unary[T]) -> Unary[T] { return id[Unary[T]](value); }\n"
+        "fn keep_ref[T](value: &T) -> &T { return id[&T](value); }\n"
+        "fn keep_mut_ref[T](value: &mut T) -> &mut T { return id[&mut T](value); }\n"
+        "fn keep_tuple[T](value: (T, (bool, i32))) -> (T, (bool, i32)) {\n"
+        "  return id[(T, (bool, i32))](value);\n"
+        "}\n"
+        "fn fn_arg(value: fn(i32) -> i32) -> fn(i32) -> i32 { return id[fn(i32) -> i32](value); }\n"
+        "fn unsafe_arg(value: unsafe fn() -> i32) -> unsafe fn() -> i32 { return id[unsafe fn() -> i32](value); }\n"
+        "fn extern_arg(value: extern c fn(i32, ...) -> i32) -> extern c fn(i32, ...) -> i32 {\n"
+        "  return id[extern c fn(i32, ...) -> i32](value);\n"
+        "}\n"
         "fn main() -> i32 {\n"
         "  let a: Box[i32] = Box[i32] { value: id[i32](1) };\n"
         "  let p: Pair[i32, bool] = Pair[i32, bool] { first: a.value, second: true };\n"
@@ -2808,14 +2844,95 @@ TEST(CoreUnit, ParserM2GenericSyntax) {
         "struct Pair[A, B]",
         "enum Maybe[T]",
         "case some(T) = 1",
+        "type_alias Unary[T]",
         "fn id[T]",
+        "fn keep_fn[T]",
+        "fn keep_ref[T]",
+        "fn keep_mut_ref[T]",
+        "fn keep_tuple[T]",
         "param x : T",
         "return T",
         "Box[i32]",
         "Pair[i32, bool]",
-        "type_arg i32",
-        "postfix_op bracket",
+        "Unary[T]",
+        "generic_apply[Unary[T]]",
+        "generic_apply[&T]",
+        "generic_apply[&mut T]",
+        "generic_apply[(T, (bool, i32))]",
+        "generic_apply[i32]",
     });
+}
+
+TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex) {
+    constexpr std::string_view source =
+        "module parser.index_field;\n"
+        "struct Box { value: i32; }\n"
+        "fn main() -> i32 {\n"
+        "  let boxes: [1]Box = [Box { value: 41 }];\n"
+        "  let index: usize = 0;\n"
+        "  return boxes[index].value;\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 3U);
+
+    const syntax::StmtNode& return_stmt = module.stmts[body.statements[2].value];
+    ASSERT_EQ(return_stmt.kind, syntax::StmtKind::return_);
+    ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
+    ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::field);
+    const syntax::FieldExprPayload* const field =
+        module.exprs.field_payload(return_stmt.return_value.value);
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(field->field_name, "value");
+    ASSERT_TRUE(syntax::is_valid(field->object));
+    ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::index);
+
+    const syntax::IndexExprPayload* const index = module.exprs.index_payload(field->object.value);
+    ASSERT_NE(index, nullptr);
+    ASSERT_TRUE(syntax::is_valid(index->index));
+    ASSERT_EQ(module.exprs.kind(index->index.value), syntax::ExprKind::name);
+    const syntax::NameExprPayload* const index_name = module.exprs.name_payload(index->index.value);
+    ASSERT_NE(index_name, nullptr);
+    EXPECT_EQ(index_name->text, "index");
+}
+
+TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField) {
+    constexpr std::string_view source =
+        "module parser.generic_selector;\n"
+        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
+        "fn make_some[T](value: T) -> Maybe[T] {\n"
+        "  return Maybe[T].some(value);\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const syntax::ItemNode* const make_some = find_item(module, "make_some");
+    ASSERT_NE(make_some, nullptr);
+    ASSERT_TRUE(syntax::is_valid(make_some->body));
+    const syntax::StmtNode& body = module.stmts[make_some->body.value];
+    ASSERT_EQ(body.statements.size(), 1U);
+
+    const syntax::StmtNode& return_stmt = module.stmts[body.statements.front().value];
+    ASSERT_EQ(return_stmt.kind, syntax::StmtKind::return_);
+    ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
+    ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(return_stmt.return_value.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call->callee));
+    ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::field);
+
+    const syntax::FieldExprPayload* const field = module.exprs.field_payload(call->callee.value);
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(field->field_name, "some");
+    ASSERT_TRUE(syntax::is_valid(field->object));
+    ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::generic_apply);
+    const syntax::GenericApplyExprPayload* const apply =
+        module.exprs.generic_apply_payload(field->object.value);
+    ASSERT_NE(apply, nullptr);
+    ASSERT_EQ(apply->type_args.size(), 1U);
 }
 
 TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
@@ -2845,6 +2962,46 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
         "module parser.empty_struct_literal_args;\n"
         "struct Box[T] { value: T; }\n"
         "fn main() -> i32 { let value = Box[] { value: 1 }; return value.value; }\n",
+        "expected generic type argument"
+    );
+    expect_parse_error(
+        "module parser.empty_index_args;\n"
+        "fn main() -> i32 { let values: [1]i32 = [1]; return values[]; }\n",
+        "expected generic type argument"
+    );
+    expect_parse_error(
+        "module parser.multi_index_args;\n"
+        "fn main() -> i32 { let values: [2]i32 = [1, 2]; return values[0, 1]; }\n",
+        "index expression expects one argument"
+    );
+    expect_parse_error(
+        "module parser.type_slice_start;\n"
+        "fn main() -> []const i32 { let values: [2]i32 = [1, 2]; return values[i32:]; }\n",
+        "expected expression"
+    );
+    expect_parse_diagnostic(
+        "module parser.literal_generic_arg;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id[1](1); }\n",
+        "expected generic type argument"
+    );
+    expect_parse_diagnostic(
+        "module parser.parenthesized_generic_arg;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id[(1)](1); }\n",
+        "expected generic type argument"
+    );
+    expect_parse_diagnostic(
+        "module parser.unary_expr_generic_arg;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { let value = 1; return id[-value](value); }\n",
+        "expected generic type argument"
+    );
+    expect_parse_diagnostic(
+        "module parser.invalid_selected_generic_arg;\n"
+        "struct Box[T] { value: T; }\n"
+        "fn id[T](value: i32) -> i32 { return value; }\n"
+        "fn main() -> i32 { return id[Box[i32].Inner](1); }\n",
         "expected generic type argument"
     );
 }

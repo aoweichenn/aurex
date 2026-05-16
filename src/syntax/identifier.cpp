@@ -4,6 +4,12 @@
 #include <utility>
 
 namespace aurex::syntax {
+namespace {
+
+constexpr base::u64 SYNTAX_STABLE_HASH_OFFSET = 14695981039346656037ULL;
+constexpr base::u64 SYNTAX_STABLE_HASH_PRIME = 1099511628211ULL;
+
+} // namespace
 
 IdentifierInterner::IdentifierInterner()
     : arena_(std::make_unique<base::BumpAllocator>()),
@@ -58,6 +64,15 @@ std::size_t IdentifierTextHash::operator()(const std::string_view value) const n
     return std::hash<std::string_view> {}(value);
 }
 
+StableHash64 stable_hash_text(const std::string_view text) noexcept {
+    base::u64 hash = SYNTAX_STABLE_HASH_OFFSET;
+    for (const unsigned char byte : text) {
+        hash ^= static_cast<base::u64>(byte);
+        hash *= SYNTAX_STABLE_HASH_PRIME;
+    }
+    return StableHash64 {hash};
+}
+
 void IdentifierInterner::reserve(const base::usize expected_identifiers) {
     this->ensure_storage();
     this->texts_.reserve(expected_identifiers);
@@ -90,6 +105,10 @@ std::string_view IdentifierInterner::text(const IdentId id) const noexcept {
         return {};
     }
     return this->texts_[id.value];
+}
+
+StableHash64 IdentifierInterner::stable_hash(const IdentId id) const noexcept {
+    return stable_hash_text(this->text(id));
 }
 
 base::usize IdentifierInterner::size() const noexcept {

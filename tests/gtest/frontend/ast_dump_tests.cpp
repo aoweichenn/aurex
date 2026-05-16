@@ -100,13 +100,7 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     struct_literal.field_inits = {count_init};
     const syntax::ExprId struct_literal_id = module.push_struct_literal_expr({}, std::move(struct_literal));
 
-    syntax::PostfixOp postfix_select;
-    postfix_select.kind = syntax::PostfixOpKind::select;
-    postfix_select.name = "next";
-    syntax::PostfixChainExprPayload postfix_expr;
-    postfix_expr.base = name_expr_id;
-    postfix_expr.ops = {postfix_select};
-    const syntax::ExprId postfix_expr_id = module.push_postfix_chain_expr({}, std::move(postfix_expr));
+    const syntax::ExprId next_field_expr_id = module.push_field_expr({}, name_expr_id, "next");
 
     syntax::PatternNode binding_pattern;
     binding_pattern.kind = syntax::PatternKind::binding;
@@ -203,11 +197,9 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     ASSERT_EQ(struct_payload->field_inits.size(), 1U);
     EXPECT_EQ(struct_payload->field_inits.front().name_id, module.find_identifier("count"));
 
-    const syntax::PostfixChainExprPayload* const postfix_payload =
-        module.exprs.postfix_chain_payload(postfix_expr_id.value);
-    ASSERT_NE(postfix_payload, nullptr);
-    ASSERT_EQ(postfix_payload->ops.size(), 1U);
-    EXPECT_EQ(postfix_payload->ops.front().name_id, module.find_identifier("next"));
+    const syntax::FieldExprPayload* const next_field_payload = module.exprs.field_payload(next_field_expr_id.value);
+    ASSERT_NE(next_field_payload, nullptr);
+    EXPECT_EQ(next_field_payload->field_name_id, module.find_identifier("next"));
 
     EXPECT_EQ(module.patterns[pattern_id.value].binding_name_id, value_id);
     const syntax::PatternNode stored_literal = module.patterns[literal_pattern_id.value];
@@ -537,14 +529,6 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
 
     const syntax::ExprId tuple_id = exprs.append_tuple({}, std::vector<syntax::ExprId> {literal_id, call_id});
 
-    syntax::PostfixOp postfix_op;
-    postfix_op.kind = syntax::PostfixOpKind::call;
-    postfix_op.args = {literal_id, name_id};
-    syntax::PostfixChainExprPayload postfix;
-    postfix.base = name_id;
-    postfix.ops = {postfix_op};
-    const syntax::ExprId postfix_id = exprs.append_postfix_chain({}, postfix);
-
     syntax::FieldExprPayload field;
     field.object = name_id;
     field.field_name = "value";
@@ -648,17 +632,6 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     ASSERT_NE(tuple_payload, nullptr);
     ASSERT_EQ(tuple_payload->size(), 2U);
     EXPECT_EQ(tuple_payload->back().value, call_id.value);
-
-    const syntax::PostfixChainExprPayload* const postfix_payload = exprs.postfix_chain_payload(postfix_id.value);
-    ASSERT_NE(postfix_payload, nullptr);
-    EXPECT_EQ(postfix_payload->base.value, name_id.value);
-    ASSERT_EQ(postfix_payload->ops.size(), 1U);
-    EXPECT_EQ(postfix_payload->ops.front().args.back().value, name_id.value);
-    syntax::PostfixChainExprPayload moved_postfix = exprs.take_postfix_chain_payload(postfix_id.value);
-    EXPECT_EQ(moved_postfix.base.value, name_id.value);
-    ASSERT_EQ(moved_postfix.ops.size(), 1U);
-    EXPECT_EQ(moved_postfix.ops.front().args.front().value, literal_id.value);
-    EXPECT_TRUE(exprs.take_postfix_chain_payload(literal_id.value).ops.empty());
 
     const syntax::FieldExprPayload* const field_payload = exprs.field_payload(field_id.value);
     ASSERT_NE(field_payload, nullptr);

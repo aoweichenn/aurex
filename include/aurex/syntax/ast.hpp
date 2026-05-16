@@ -122,7 +122,6 @@ struct AstReserveEstimate {
         base::usize matches = 0;
         base::usize arrays = 0;
         base::usize tuples = 0;
-        base::usize postfix_chains = 0;
         base::usize fields = 0;
         base::usize indexes = 0;
         base::usize slices = 0;
@@ -155,7 +154,6 @@ struct AstReserveEstimate {
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
-        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
@@ -275,7 +273,6 @@ enum class ExprKind {
     match_expr,
     array_literal,
     tuple_literal,
-    postfix_chain,
     field,
     index,
     slice,
@@ -385,33 +382,6 @@ struct FieldInit {
     ExprId value = INVALID_EXPR_ID;
     base::SourceRange range {};
     IdentId name_id = INVALID_IDENT_ID;
-};
-
-enum class PostfixOpKind {
-    select,
-    bracket,
-    call,
-    try_,
-    struct_literal,
-};
-
-struct PostfixBracketArg {
-    ExprId expr = INVALID_EXPR_ID;
-    TypeId type = INVALID_TYPE_ID;
-    base::SourceRange range {};
-};
-
-struct PostfixOp {
-    PostfixOpKind kind = PostfixOpKind::select;
-    base::SourceRange range {};
-    std::string_view name;
-    IdentId name_id = INVALID_IDENT_ID;
-    AstArenaVector<PostfixBracketArg> bracket_args;
-    bool bracket_is_slice = false;
-    ExprId slice_start = INVALID_EXPR_ID;
-    ExprId slice_end = INVALID_EXPR_ID;
-    AstArenaVector<ExprId> args;
-    AstArenaVector<FieldInit> field_inits;
 };
 
 struct MatchArm {
@@ -865,11 +835,6 @@ struct ArrayExprPayload {
     ExprId repeat_count = INVALID_EXPR_ID;
 };
 
-struct PostfixChainExprPayload {
-    ExprId base = INVALID_EXPR_ID;
-    AstArenaVector<PostfixOp> ops;
-};
-
 struct FieldExprPayload {
     ExprId object = INVALID_EXPR_ID;
     std::string_view field_name;
@@ -924,7 +889,6 @@ struct ExprNodePayloadArena {
           matches(base::BumpAllocatorAdapter<MatchExprPayload> {arena}),
           arrays(base::BumpAllocatorAdapter<ArrayExprPayload> {arena}),
           tuples(base::BumpAllocatorAdapter<AstArenaVector<ExprId>> {arena}),
-          postfix_chains(base::BumpAllocatorAdapter<PostfixChainExprPayload> {arena}),
           fields(base::BumpAllocatorAdapter<FieldExprPayload> {arena}),
           indexes(base::BumpAllocatorAdapter<IndexExprPayload> {arena}),
           slices(base::BumpAllocatorAdapter<SliceExprPayload> {arena}),
@@ -943,7 +907,6 @@ struct ExprNodePayloadArena {
         this->matches.swap(other.matches);
         this->arrays.swap(other.arrays);
         this->tuples.swap(other.tuples);
-        this->postfix_chains.swap(other.postfix_chains);
         this->fields.swap(other.fields);
         this->indexes.swap(other.indexes);
         this->slices.swap(other.slices);
@@ -962,7 +925,6 @@ struct ExprNodePayloadArena {
     AstArenaVector<MatchExprPayload> matches;
     AstArenaVector<ArrayExprPayload> arrays;
     AstArenaVector<AstArenaVector<ExprId>> tuples;
-    AstArenaVector<PostfixChainExprPayload> postfix_chains;
     AstArenaVector<FieldExprPayload> fields;
     AstArenaVector<IndexExprPayload> indexes;
     AstArenaVector<SliceExprPayload> slices;
@@ -1039,14 +1001,6 @@ public:
     template <typename T>
     [[nodiscard]] AstArenaVector<T> make_list() {
         return make_ast_arena_vector<T>(*this->arena_);
-    }
-
-    [[nodiscard]] PostfixOp make_postfix_op() {
-        PostfixOp op;
-        op.bracket_args = this->make_list<PostfixBracketArg>();
-        op.args = this->make_list<ExprId>();
-        op.field_inits = this->make_list<FieldInit>();
-        return op;
     }
 
     [[nodiscard]] const LiteralExprPayload* literal_payload(const base::usize index) const noexcept {
@@ -1204,31 +1158,6 @@ public:
             return nullptr;
         }
         return &this->payloads_.tuples[this->headers_[index].payload];
-    }
-
-    [[nodiscard]] const PostfixChainExprPayload* postfix_chain_payload(const base::usize index) const noexcept {
-        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
-            return nullptr;
-        }
-        return &this->payloads_.postfix_chains[this->headers_[index].payload];
-    }
-
-    [[nodiscard]] PostfixChainExprPayload* postfix_chain_payload(const base::usize index) noexcept {
-        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
-            return nullptr;
-        }
-        return &this->payloads_.postfix_chains[this->headers_[index].payload];
-    }
-
-    [[nodiscard]] PostfixChainExprPayload take_postfix_chain_payload(const base::usize index) {
-        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::postfix_chain) {
-            return {};
-        }
-        PostfixChainExprPayload& payload = this->payloads_.postfix_chains[this->headers_[index].payload];
-        return PostfixChainExprPayload {
-            payload.base,
-            std::move(payload.ops),
-        };
     }
 
     [[nodiscard]] const FieldExprPayload* field_payload(const base::usize index) const noexcept {
@@ -1517,23 +1446,6 @@ public:
             ExprKind::tuple_literal,
             range,
             this->emplace_payload(this->payloads_.tuples, this->copy_or_move_list(std::move(elements)))
-        );
-    }
-
-    [[nodiscard]] ExprId append_postfix_chain(const base::SourceRange& range, PostfixChainExprPayload payload) {
-        return this->append_postfix_chain(range, payload.base, std::move(payload.ops));
-    }
-
-    template <typename OpAllocator>
-    [[nodiscard]] ExprId append_postfix_chain(
-        const base::SourceRange& range,
-        const ExprId base,
-        std::vector<PostfixOp, OpAllocator> ops
-    ) {
-        return this->append_header(
-            ExprKind::postfix_chain,
-            range,
-            this->emplace_payload(this->payloads_.postfix_chains, base, this->copy_or_move_postfix_ops(std::move(ops)))
         );
     }
 
@@ -1890,7 +1802,6 @@ private:
                allocation_bytes(plan.matches, sizeof(MatchExprPayload)) +
                allocation_bytes(plan.arrays, sizeof(ArrayExprPayload)) +
                allocation_bytes(plan.tuples, sizeof(AstArenaVector<ExprId>)) +
-               allocation_bytes(plan.postfix_chains, sizeof(PostfixChainExprPayload)) +
                allocation_bytes(plan.fields, sizeof(FieldExprPayload)) +
                allocation_bytes(plan.indexes, sizeof(IndexExprPayload)) +
                allocation_bytes(plan.slices, sizeof(SliceExprPayload)) +
@@ -1910,7 +1821,6 @@ private:
         this->payloads_.matches.reserve(plan.matches);
         this->payloads_.arrays.reserve(plan.arrays);
         this->payloads_.tuples.reserve(plan.tuples);
-        this->payloads_.postfix_chains.reserve(plan.postfix_chains);
         this->payloads_.fields.reserve(plan.fields);
         this->payloads_.indexes.reserve(plan.indexes);
         this->payloads_.slices.reserve(plan.slices);
@@ -1943,86 +1853,6 @@ private:
     template <typename T, typename Allocator>
     [[nodiscard]] AstArenaVector<T> copy_or_move_list(std::vector<T, Allocator>&& values) {
         return this->copy_list(values);
-    }
-
-    [[nodiscard]] bool postfix_op_lists_use_this_arena(const PostfixOp& op) const noexcept {
-        return ast_arena_vector_uses_arena(op.bracket_args, *this->arena_) &&
-               ast_arena_vector_uses_arena(op.args, *this->arena_) &&
-               ast_arena_vector_uses_arena(op.field_inits, *this->arena_);
-    }
-
-    template <typename Allocator>
-    [[nodiscard]] bool postfix_ops_use_this_arena(const std::vector<PostfixOp, Allocator>& ops) const noexcept {
-        for (const PostfixOp& op : ops) {
-            if (!this->postfix_op_lists_use_this_arena(op)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    [[nodiscard]] PostfixOp copy_postfix_op(const PostfixOp& op) {
-        PostfixOp copy;
-        copy.kind = op.kind;
-        copy.range = op.range;
-        copy.name = op.name;
-        copy.name_id = op.name_id;
-        copy.bracket_args = this->copy_list(op.bracket_args);
-        copy.bracket_is_slice = op.bracket_is_slice;
-        copy.slice_start = op.slice_start;
-        copy.slice_end = op.slice_end;
-        copy.args = this->copy_list(op.args);
-        copy.field_inits = this->copy_list(op.field_inits);
-        return copy;
-    }
-
-    [[nodiscard]] PostfixOp copy_or_move_postfix_op(PostfixOp&& op) {
-        PostfixOp copy;
-        copy.kind = op.kind;
-        copy.range = op.range;
-        copy.name = op.name;
-        copy.name_id = op.name_id;
-        copy.bracket_args = this->copy_or_move_list(std::move(op.bracket_args));
-        copy.bracket_is_slice = op.bracket_is_slice;
-        copy.slice_start = op.slice_start;
-        copy.slice_end = op.slice_end;
-        copy.args = this->copy_or_move_list(std::move(op.args));
-        copy.field_inits = this->copy_or_move_list(std::move(op.field_inits));
-        return copy;
-    }
-
-    template <typename Allocator>
-    [[nodiscard]] AstArenaVector<PostfixOp> copy_postfix_ops(const std::vector<PostfixOp, Allocator>& ops) {
-        AstArenaVector<PostfixOp> copy = make_ast_arena_vector<PostfixOp>(*this->arena_);
-        copy.reserve(ops.size());
-        for (const PostfixOp& op : ops) {
-            copy.push_back(this->copy_postfix_op(op));
-        }
-        return copy;
-    }
-
-    [[nodiscard]] AstArenaVector<PostfixOp> copy_or_move_postfix_ops(AstArenaVector<PostfixOp>&& ops) {
-        if (ast_arena_vector_uses_arena(ops, *this->arena_) && this->postfix_ops_use_this_arena(ops)) {
-            return std::move(ops);
-        }
-        AstArenaVector<PostfixOp> copy = make_ast_arena_vector<PostfixOp>(*this->arena_);
-        copy.reserve(ops.size());
-        for (PostfixOp& op : ops) {
-            copy.push_back(this->copy_or_move_postfix_op(std::move(op)));
-        }
-        return copy;
-    }
-
-    template <typename Allocator>
-    [[nodiscard]] AstArenaVector<PostfixOp> copy_or_move_postfix_ops(std::vector<PostfixOp, Allocator>&& ops) {
-        return this->copy_postfix_ops(ops);
-    }
-
-    [[nodiscard]] PostfixChainExprPayload copy_postfix_chain_payload(const PostfixChainExprPayload& payload) {
-        return PostfixChainExprPayload {
-            payload.base,
-            this->copy_postfix_ops(payload.ops),
-        };
     }
 
     void copy_append_from(const ExprNodeList& other, const base::usize index) {
@@ -2128,13 +1958,6 @@ private:
         case ExprKind::tuple_literal: {
             const AstArenaVector<ExprId>* const payload = other.tuple_elements(index);
             static_cast<void>(this->append_tuple(range, payload == nullptr ? std::vector<ExprId> {} : copy_std_vector(*payload)));
-            break;
-        }
-        case ExprKind::postfix_chain: {
-            const PostfixChainExprPayload* const payload = other.postfix_chain_payload(index);
-            static_cast<void>(payload == nullptr
-                ? this->append_postfix_chain(range, INVALID_EXPR_ID, std::vector<PostfixOp> {})
-                : this->append_postfix_chain(range, payload->base, copy_std_vector(payload->ops)));
             break;
         }
         case ExprKind::field: {
@@ -4317,20 +4140,6 @@ struct AstModule {
         return this->exprs.append_tuple(range, std::move(elements));
     }
 
-    [[nodiscard]] ExprId push_postfix_chain_expr(const base::SourceRange& range, PostfixChainExprPayload payload) {
-        return this->push_postfix_chain_expr(range, payload.base, std::move(payload.ops));
-    }
-
-    template <typename OpAllocator>
-    [[nodiscard]] ExprId push_postfix_chain_expr(
-        const base::SourceRange& range,
-        const ExprId base,
-        std::vector<PostfixOp, OpAllocator> ops
-    ) {
-        this->intern_postfix_ops(ops);
-        return this->exprs.append_postfix_chain(range, base, std::move(ops));
-    }
-
     [[nodiscard]] ExprId push_field_expr(const base::SourceRange& range, const FieldExprPayload& payload) {
         return this->push_field_expr(range, payload.object, payload.field_name, payload.field_name_id);
     }
@@ -4602,10 +4411,6 @@ struct AstModule {
         return this->exprs.make_list<T>();
     }
 
-    [[nodiscard]] PostfixOp make_postfix_op() {
-        return this->exprs.make_postfix_op();
-    }
-
     template <typename T>
     [[nodiscard]] AstArenaVector<T> make_item_list() {
         return this->items.make_list<T>();
@@ -4706,14 +4511,6 @@ private:
         }
     }
 
-    template <typename Allocator>
-    void intern_postfix_ops(std::vector<PostfixOp, Allocator>& ops) {
-        for (PostfixOp& op : ops) {
-            this->intern_identifier_text(op.name, op.name_id);
-            this->intern_field_inits(op.field_inits);
-        }
-    }
-
     void intern_name_expr_payload(NameExprPayload& payload) {
         this->intern_identifier_text(payload.scope_name, payload.scope_name_id);
         this->intern_identifier_text(payload.text, payload.text_id);
@@ -4730,11 +4527,6 @@ private:
         case ExprKind::name:
             if (NameExprPayload* const payload = this->exprs.name_payload(index); payload != nullptr) {
                 this->intern_name_expr_payload(*payload);
-            }
-            break;
-        case ExprKind::postfix_chain:
-            if (PostfixChainExprPayload* const payload = this->exprs.postfix_chain_payload(index); payload != nullptr) {
-                this->intern_postfix_ops(payload->ops);
             }
             break;
         case ExprKind::field:

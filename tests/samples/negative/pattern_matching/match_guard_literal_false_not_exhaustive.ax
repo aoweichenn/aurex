@@ -1,0 +1,8 @@
+module match_guard_literal_false_not_exhaustive;
+
+fn score(value: bool) -> i32 {
+    return match value {
+        true if false => 1,
+        false => 0,
+    };
+}

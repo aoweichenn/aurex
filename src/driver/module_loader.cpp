@@ -156,20 +156,6 @@ void remap_match_arms(std::vector<syntax::MatchArm, Allocator>& arms, const IdMa
     }
 }
 
-template <typename Allocator>
-void remap_postfix_ops(std::vector<syntax::PostfixOp, Allocator>& ops, const IdMap& map) {
-    for (syntax::PostfixOp& op : ops) {
-        for (syntax::PostfixBracketArg& arg : op.bracket_args) {
-            arg.expr = remap_expr(arg.expr, map);
-            arg.type = remap_type(arg.type, map);
-        }
-        op.slice_start = remap_expr(op.slice_start, map);
-        op.slice_end = remap_expr(op.slice_end, map);
-        remap_expr_ids(op.args, map);
-        remap_field_inits(op.field_inits, map);
-    }
-}
-
 template <typename T, typename Allocator>
 [[nodiscard]] syntax::AstArenaVector<T> copy_expr_arena_list(
     syntax::AstModule& destination,
@@ -178,37 +164,6 @@ template <typename T, typename Allocator>
     syntax::AstArenaVector<T> copy = destination.make_expr_list<T>();
     copy.reserve(values.size());
     copy.insert(copy.end(), values.begin(), values.end());
-    return copy;
-}
-
-[[nodiscard]] syntax::PostfixOp copy_expr_arena_postfix_op(
-    syntax::AstModule& destination,
-    const syntax::PostfixOp& op
-) {
-    syntax::PostfixOp copy = destination.make_postfix_op();
-    copy.kind = op.kind;
-    copy.range = op.range;
-    copy.name = op.name;
-    copy.name_id = op.name_id;
-    copy.bracket_args = copy_expr_arena_list(destination, op.bracket_args);
-    copy.bracket_is_slice = op.bracket_is_slice;
-    copy.slice_start = op.slice_start;
-    copy.slice_end = op.slice_end;
-    copy.args = copy_expr_arena_list(destination, op.args);
-    copy.field_inits = copy_expr_arena_list(destination, op.field_inits);
-    return copy;
-}
-
-template <typename Allocator>
-[[nodiscard]] syntax::AstArenaVector<syntax::PostfixOp> copy_expr_arena_postfix_ops(
-    syntax::AstModule& destination,
-    const std::vector<syntax::PostfixOp, Allocator>& ops
-) {
-    syntax::AstArenaVector<syntax::PostfixOp> copy = destination.make_expr_list<syntax::PostfixOp>();
-    copy.reserve(ops.size());
-    for (const syntax::PostfixOp& op : ops) {
-        copy.push_back(copy_expr_arena_postfix_op(destination, op));
-    }
     return copy;
 }
 
@@ -263,6 +218,18 @@ template <typename Allocator>
             text_id
         );
     }
+    case syntax::ExprKind::generic_apply: {
+        syntax::ExprId callee = syntax::INVALID_EXPR_ID;
+        syntax::AstArenaVector<syntax::TypeId> type_args = destination.make_expr_list<syntax::TypeId>();
+        if (syntax::GenericApplyExprPayload* const source_payload = source.exprs.generic_apply_payload(index);
+            source_payload != nullptr) {
+            callee = source_payload->callee;
+            type_args = copy_expr_arena_list(destination, source_payload->type_args);
+        }
+        callee = remap_expr(callee, map);
+        remap_type_ids(type_args, map);
+        return destination.push_generic_apply_expr(range, callee, std::move(type_args));
+    }
     case syntax::ExprKind::unary:
     case syntax::ExprKind::try_expr: {
         syntax::UnaryOp op = syntax::UnaryOp::logical_not;
@@ -289,6 +256,7 @@ template <typename Allocator>
         rhs = remap_expr(rhs, map);
         return destination.push_binary_expr(range, op, lhs, rhs);
     }
+    case syntax::ExprKind::call:
     case syntax::ExprKind::str_from_bytes_unchecked: {
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
         syntax::AstArenaVector<syntax::ExprId> args = destination.make_expr_list<syntax::ExprId>();
@@ -368,18 +336,83 @@ template <typename Allocator>
         remap_expr_ids(elements, map);
         return destination.push_tuple_expr(range, std::move(elements));
     }
-    case syntax::ExprKind::postfix_chain: {
-        syntax::ExprId base = syntax::INVALID_EXPR_ID;
-        syntax::AstArenaVector<syntax::PostfixOp> ops = destination.make_expr_list<syntax::PostfixOp>();
-        if (syntax::PostfixChainExprPayload* const source_payload =
-            source.exprs.postfix_chain_payload(index);
+    case syntax::ExprKind::field: {
+        syntax::ExprId object = syntax::INVALID_EXPR_ID;
+        std::string_view field_name;
+        syntax::IdentId field_name_id = syntax::INVALID_IDENT_ID;
+        if (syntax::FieldExprPayload* const source_payload = source.exprs.field_payload(index);
             source_payload != nullptr) {
-            base = source_payload->base;
-            ops = copy_expr_arena_postfix_ops(destination, source_payload->ops);
+            object = source_payload->object;
+            field_name = source_payload->field_name;
+            field_name_id = source_payload->field_name_id;
         }
-        base = remap_expr(base, map);
-        remap_postfix_ops(ops, map);
-        return destination.push_postfix_chain_expr(range, base, std::move(ops));
+        object = remap_expr(object, map);
+        return destination.push_field_expr(range, object, field_name, field_name_id);
+    }
+    case syntax::ExprKind::index: {
+        syntax::ExprId object = syntax::INVALID_EXPR_ID;
+        syntax::ExprId index_expr = syntax::INVALID_EXPR_ID;
+        if (syntax::IndexExprPayload* const source_payload = source.exprs.index_payload(index);
+            source_payload != nullptr) {
+            object = source_payload->object;
+            index_expr = source_payload->index;
+        }
+        object = remap_expr(object, map);
+        index_expr = remap_expr(index_expr, map);
+        return destination.push_index_expr(range, object, index_expr);
+    }
+    case syntax::ExprKind::slice: {
+        syntax::ExprId object = syntax::INVALID_EXPR_ID;
+        syntax::ExprId start = syntax::INVALID_EXPR_ID;
+        syntax::ExprId end = syntax::INVALID_EXPR_ID;
+        if (syntax::SliceExprPayload* const source_payload = source.exprs.slice_payload(index);
+            source_payload != nullptr) {
+            object = source_payload->object;
+            start = source_payload->start;
+            end = source_payload->end;
+        }
+        object = remap_expr(object, map);
+        start = remap_expr(start, map);
+        end = remap_expr(end, map);
+        return destination.push_slice_expr(range, object, start, end);
+    }
+    case syntax::ExprKind::struct_literal: {
+        syntax::ExprId object = syntax::INVALID_EXPR_ID;
+        std::string_view scope_name;
+        base::SourceRange scope_range;
+        std::string_view name;
+        syntax::IdentId scope_name_id = syntax::INVALID_IDENT_ID;
+        syntax::IdentId name_id = syntax::INVALID_IDENT_ID;
+        syntax::AstArenaVector<syntax::TypeId> type_args =
+            destination.make_expr_list<syntax::TypeId>();
+        syntax::AstArenaVector<syntax::FieldInit> field_inits =
+            destination.make_expr_list<syntax::FieldInit>();
+        if (syntax::StructLiteralExprPayload* const source_payload =
+                source.exprs.struct_literal_payload(index);
+            source_payload != nullptr) {
+            object = source_payload->object;
+            scope_name = source_payload->scope_name;
+            scope_range = source_payload->scope_range;
+            name = source_payload->name;
+            scope_name_id = source_payload->scope_name_id;
+            name_id = source_payload->name_id;
+            type_args = copy_expr_arena_list(destination, source_payload->type_args);
+            field_inits = copy_expr_arena_list(destination, source_payload->field_inits);
+        }
+        object = remap_expr(object, map);
+        remap_type_ids(type_args, map);
+        remap_field_inits(field_inits, map);
+        return destination.push_struct_literal_expr(
+            range,
+            object,
+            scope_name,
+            scope_range,
+            name,
+            std::move(type_args),
+            std::move(field_inits),
+            scope_name_id,
+            name_id
+        );
     }
     case syntax::ExprKind::cast:
     case syntax::ExprKind::pcast:

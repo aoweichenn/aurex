@@ -532,12 +532,14 @@ generic_fn[T](arg)
 expr?
 ```
 
-Parser note: postfix expressions are stored as a raw `postfix_chain`
-(`base + ops`). A bracket op is not classified as `generic_apply` or `index`
-until semantic analysis resolves the base kind. For example, `id[i32](1)`,
-`Option[i32].some(1)`, and `values[0].field` share the same raw bracket syntax
-but materialize to generic function call, generic type selector, and value
-index respectively.
+Parser note: postfix expressions are stored as explicit compact AST nodes.
+Bracket syntax is classified in the parser by conservative syntactic
+guardrails: type-only arguments and generic call/type-literal continuations
+emit `generic_apply`; selector continuations emit `generic_apply` only for
+type-shaped bases and arguments, preserving value selectors such as
+`items[index].field`; colon syntax emits `slice`; remaining value syntax emits
+`index`. Later stages consume those nodes directly instead of running any second
+raw-chain lowering step.
 
 The postfix `?` operator is accepted only for structurally recognized
 result-like and option-like enums. A result-like enum must have exactly
@@ -767,7 +769,8 @@ Rules:
   open integer domains. Bool supports full `true`/`false` coverage.
 - Tuple, struct, and fixed-array matches can be proven exhaustive when all
   structural slots are finite leaf domains such as `bool` or no-payload enum
-  values. Guarded arms do not contribute to exhaustiveness. Other tuple,
+  values. Unguarded arms and literal `if true` guards contribute to
+  exhaustiveness; literal `if false` and dynamic guards do not. Other tuple,
   struct, array, and slice shapes still require an irrefutable arm.
 
 ## 13. Basic Generics
@@ -785,8 +788,7 @@ GenericTypeArgs
 ExplicitGenericCall
   = SelectorExpr GenericTypeArgs "(" [ ArgumentList ] ")" ;
 
-; In the raw AST, this is parsed as a postfix chain and materialized during
-; semantic analysis after the selector base resolves as a generic function.
+; The parser emits an explicit generic_apply callee before the call suffix.
 
 WhereClause
   = "where" WhereConstraint { "," WhereConstraint } ;
@@ -815,11 +817,12 @@ Supported generic positions:
 | `where T: Eq + Hash` | yes | Built-in non-resource capabilities only |
 | `<>` generics | no | Aurex uses `[]` |
 
-Postfix brackets are kept raw by the parser and materialized by semantic
-analysis from the resolved base kind. A value base makes `name[index]` an index
-expression, while a generic function or type base makes the same bracket syntax
-type arguments. Explicit generic calls use `name[T](...)` or
-`module.name[T](...)`.
+Postfix brackets are emitted as explicit parser AST nodes. Type-only arguments
+and generic call/type-literal continuations emit `generic_apply`, colon syntax
+emits `slice`, and the remaining value-shaped form emits `index`. Selector
+continuations only force `generic_apply` for type-shaped bases and arguments, so
+`Type[T].case` stays a type selector while `items[index].field` stays value
+indexing. Explicit generic calls use `name[T](...)` or `module.name[T](...)`.
 
 The M2 `where` clause is deliberately small. `Sized`, `Eq`, `Ord`, and `Hash`
 are built-in non-resource capability predicates used for type checking and

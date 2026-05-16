@@ -58,6 +58,7 @@ constexpr base::u64 SEMA_TEST_ZERO_ALIGN_ENUM_PAYLOAD_ALIGN = 0;
 constexpr base::u64 SEMA_TEST_NESTED_ARRAY_COUNT = 5;
 constexpr base::u64 SEMA_TEST_INVALID_ARRAY_COUNT = 2;
 constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
+constexpr base::u32 SEMA_TEST_U8_DOMAIN_SIZE = 256;
 constexpr int SEMA_TEST_UNKNOWN_EXPR_KIND_VALUE = 255;
 constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
 constexpr base::usize SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT = 70;
@@ -447,61 +448,6 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     payload.callee = callee;
     payload.args.assign(args.begin(), args.end());
     return module.push_call_expr(syntax::ExprKind::call, {}, std::move(payload));
-}
-
-[[nodiscard]] syntax::PostfixBracketArg bracket_expr_arg(const ExprId expr) {
-    syntax::PostfixBracketArg arg;
-    arg.expr = expr;
-    return arg;
-}
-
-[[nodiscard]] syntax::PostfixBracketArg bracket_type_arg(const TypeId type) {
-    syntax::PostfixBracketArg arg;
-    arg.type = type;
-    return arg;
-}
-
-[[nodiscard]] syntax::PostfixOp select_op(const std::string_view name) {
-    syntax::PostfixOp op;
-    op.kind = syntax::PostfixOpKind::select;
-    op.name = name;
-    return op;
-}
-
-[[nodiscard]] syntax::PostfixOp call_op(const std::initializer_list<ExprId> args = {}) {
-    syntax::PostfixOp op;
-    op.kind = syntax::PostfixOpKind::call;
-    op.args.assign(args.begin(), args.end());
-    return op;
-}
-
-[[nodiscard]] syntax::PostfixOp bracket_op(
-    const std::initializer_list<syntax::PostfixBracketArg> args
-) {
-    syntax::PostfixOp op;
-    op.kind = syntax::PostfixOpKind::bracket;
-    op.bracket_args.assign(args.begin(), args.end());
-    return op;
-}
-
-[[nodiscard]] syntax::PostfixOp slice_op(const ExprId start, const ExprId end) {
-    syntax::PostfixOp op;
-    op.kind = syntax::PostfixOpKind::bracket;
-    op.bracket_is_slice = true;
-    op.slice_start = start;
-    op.slice_end = end;
-    return op;
-}
-
-[[nodiscard]] ExprId push_postfix_chain(
-    syntax::AstModule& module,
-    const ExprId base,
-    const std::initializer_list<syntax::PostfixOp> ops
-) {
-    syntax::PostfixChainExprPayload payload;
-    payload.base = base;
-    payload.ops.assign(ops.begin(), ops.end());
-    return module.push_postfix_chain_expr({}, std::move(payload));
 }
 
 [[nodiscard]] ExprId push_integer(syntax::AstModule& module) {
@@ -1747,233 +1693,6 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges) {
     analyzer.checked_.syntax_type_handles[plain_type_id.value] = INVALID_TYPE_HANDLE;
 }
 
-TEST(CoreUnit, SemanticWhiteBoxPostfixMaterializationEdges) {
-    syntax::AstModule module;
-    module.modules = {
-        module_info({"root"}),
-        module_info({"lib"}),
-    };
-    module.modules[0].imports = {
-        resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "lib"),
-    };
-
-    base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(0);
-    auto sync_side_tables = [&analyzer] {
-        analyzer.checked_.expr_types.resize(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
-        analyzer.checked_.expr_c_name_ids.resize(analyzer.module_.exprs.size(), sema::INVALID_IDENT_ID);
-        analyzer.checked_.syntax_type_handles.resize(analyzer.module_.types.size(), INVALID_TYPE_HANDLE);
-    };
-
-    sema::TypeTable& types = analyzer.checked_.types;
-    const TypeHandle i32 = types.builtin(BuiltinType::i32);
-    const TypeHandle record_type = types.named_struct("lib.Record", "lib_Record", false);
-    static_cast<void>(add_named_type(analyzer, module_id(0), "Concrete", record_type));
-    static_cast<void>(add_named_type(
-        analyzer,
-        module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
-        "Record",
-        record_type
-    ));
-
-    const auto generic_struct = generic_template_info(
-        analyzer,
-        module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
-        "GenericStruct"
-    );
-    const auto generic_struct_inserted =
-        analyzer.generic_struct_templates_.emplace(generic_struct.key, generic_struct);
-    ASSERT_TRUE(generic_struct_inserted.second);
-    analyzer.index_generic_struct_template(generic_struct_inserted.first->second);
-
-    const auto generic_enum = generic_template_info(
-        analyzer,
-        module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
-        "GenericEnum"
-    );
-    const auto generic_enum_inserted =
-        analyzer.generic_enum_templates_.emplace(generic_enum.key, generic_enum);
-    ASSERT_TRUE(generic_enum_inserted.second);
-    analyzer.index_generic_enum_template(generic_enum_inserted.first->second);
-
-    const auto generic_alias = generic_template_info(
-        analyzer,
-        module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX),
-        "GenericAlias"
-    );
-    const auto generic_alias_inserted =
-        analyzer.generic_type_alias_templates_.emplace(generic_alias.key, generic_alias);
-    ASSERT_TRUE(generic_alias_inserted.second);
-    analyzer.index_generic_type_alias_template(generic_alias_inserted.first->second);
-
-    static_cast<void>(add_function(analyzer, indexed_function_signature(analyzer, "plain", module_id(0), i32)));
-
-    const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
-    const ExprId value_expr = push_name(analyzer.module_, "value");
-    const ExprId one_expr = push_integer(analyzer.module_);
-    const ExprId two_expr = push_integer_text(analyzer.module_, "2");
-    const ExprId t_name = push_name(analyzer.module_, "T");
-    EXPECT_TRUE(analyzer.symbols_.insert(indexed_symbol(analyzer, SymbolKind::local, "value", module_id(0), i32), diagnostics));
-    sync_side_tables();
-
-    EXPECT_EQ(analyzer.materialize_postfix_chain(syntax::INVALID_EXPR_ID).value, syntax::INVALID_EXPR_ID.value);
-    EXPECT_EQ(analyzer.materialize_postfix_chain(value_expr).value, value_expr.value);
-
-    const ExprId empty_chain = push_postfix_chain(analyzer.module_, one_expr, {});
-    sync_side_tables();
-    EXPECT_TRUE(types.same(analyzer.analyze_postfix_chain_expr(empty_chain, INVALID_TYPE_HANDLE), i32));
-
-    const ExprId invalid_base_chain =
-        push_postfix_chain(analyzer.module_, syntax::INVALID_EXPR_ID, {select_op("missing")});
-    const ExprId empty_select_chain = push_postfix_chain(analyzer.module_, value_expr, {select_op({})});
-    const ExprId inner_chain = push_postfix_chain(analyzer.module_, value_expr, {select_op("field")});
-    const ExprId outer_chain = push_postfix_chain(analyzer.module_, inner_chain, {call_op()});
-    const ExprId multi_index_chain = push_postfix_chain(
-        analyzer.module_,
-        value_expr,
-        {bracket_op({bracket_expr_arg(one_expr), bracket_expr_arg(two_expr)})}
-    );
-    sync_side_tables();
-
-    EXPECT_EQ(analyzer.materialize_postfix_chain(invalid_base_chain).value, invalid_base_chain.value);
-    EXPECT_EQ(analyzer.module_.exprs.kind(invalid_base_chain.value), syntax::ExprKind::field);
-    EXPECT_EQ(analyzer.materialize_postfix_chain(empty_select_chain).value, empty_select_chain.value);
-    EXPECT_EQ(analyzer.module_.exprs.kind(empty_select_chain.value), syntax::ExprKind::invalid);
-    EXPECT_EQ(analyzer.materialize_postfix_chain(outer_chain).value, outer_chain.value);
-    ASSERT_EQ(analyzer.module_.exprs.kind(outer_chain.value), syntax::ExprKind::call);
-    const syntax::CallExprPayload* const outer_call = analyzer.module_.exprs.call_payload(outer_chain.value);
-    ASSERT_NE(outer_call, nullptr);
-    ASSERT_TRUE(syntax::is_valid(outer_call->callee));
-    EXPECT_EQ(
-        analyzer.module_.exprs.kind(outer_call->callee.value),
-        syntax::ExprKind::field
-    );
-    EXPECT_EQ(analyzer.materialize_postfix_chain(multi_index_chain).value, multi_index_chain.value);
-    EXPECT_EQ(analyzer.module_.exprs.kind(multi_index_chain.value), syntax::ExprKind::index);
-
-    const syntax::PostfixOp unresolved_type_bracket = bracket_op({bracket_expr_arg(t_name)});
-    const syntax::PostfixOp concrete_type_bracket = bracket_op({bracket_type_arg(i32_type_id)});
-    EXPECT_FALSE(analyzer.postfix_bracket_is_generic_apply(value_expr, slice_op(one_expr, two_expr), nullptr));
-    EXPECT_FALSE(analyzer.postfix_bracket_is_generic_apply(syntax::INVALID_EXPR_ID, unresolved_type_bracket, nullptr));
-    EXPECT_TRUE(analyzer.postfix_bracket_is_generic_apply(value_expr, concrete_type_bracket, nullptr));
-
-    const ExprId concrete_name = push_name(analyzer.module_, "Concrete");
-    const ExprId plain_function_name = push_name(analyzer.module_, "plain");
-    const ExprId value_member = push_field(analyzer.module_, value_expr, "member");
-    const ExprId lib_name_for_struct = push_name(analyzer.module_, "lib");
-    const ExprId lib_struct = push_field(analyzer.module_, lib_name_for_struct, "GenericStruct");
-    const ExprId lib_name_for_enum = push_name(analyzer.module_, "lib");
-    const ExprId lib_enum = push_field(analyzer.module_, lib_name_for_enum, "GenericEnum");
-    const ExprId lib_name_for_alias = push_name(analyzer.module_, "lib");
-    const ExprId lib_alias = push_field(analyzer.module_, lib_name_for_alias, "GenericAlias");
-    sync_side_tables();
-
-    EXPECT_TRUE(analyzer.postfix_bracket_is_generic_apply(concrete_name, unresolved_type_bracket, nullptr));
-    EXPECT_TRUE(analyzer.postfix_bracket_is_generic_apply(plain_function_name, unresolved_type_bracket, nullptr));
-    EXPECT_FALSE(analyzer.postfix_bracket_is_generic_apply(value_member, unresolved_type_bracket, nullptr));
-    EXPECT_TRUE(analyzer.postfix_bracket_is_generic_apply(lib_struct, unresolved_type_bracket, nullptr));
-    EXPECT_TRUE(analyzer.postfix_bracket_is_generic_apply(lib_enum, unresolved_type_bracket, nullptr));
-    EXPECT_TRUE(analyzer.postfix_bracket_is_generic_apply(lib_alias, unresolved_type_bracket, nullptr));
-
-    const std::vector<TypeId> direct_type_args = analyzer.postfix_bracket_type_args(concrete_type_bracket);
-    ASSERT_EQ(direct_type_args.size(), 1U);
-    EXPECT_EQ(direct_type_args.front().value, i32_type_id.value);
-
-    const ExprId lib_name_for_type_arg = push_name(analyzer.module_, "lib");
-    const ExprId lib_record_field = push_field(analyzer.module_, lib_name_for_type_arg, "Record");
-    const ExprId box_name = push_name(analyzer.module_, "Box");
-    const ExprId box_apply = push_generic_apply(analyzer.module_, box_name, {i32_type_id});
-    const ExprId ref_t = push_unary(analyzer.module_, syntax::UnaryOp::address_of, t_name);
-    const ExprId mut_ref_t = push_unary(analyzer.module_, syntax::UnaryOp::address_of_mut, t_name);
-    const ExprId selector_chain = push_postfix_chain(
-        analyzer.module_,
-        push_name(analyzer.module_, "lib"),
-        {select_op("Record")}
-    );
-    const ExprId multi_selector_chain = push_postfix_chain(
-        analyzer.module_,
-        push_name(analyzer.module_, "core"),
-        {select_op("mem"), select_op("File")}
-    );
-    const ExprId generic_selector_chain = push_postfix_chain(
-        analyzer.module_,
-        push_name(analyzer.module_, "Box"),
-        {bracket_op({bracket_type_arg(i32_type_id)})}
-    );
-    sync_side_tables();
-
-    const TypeId field_type = analyzer.postfix_arg_expr_to_type(lib_record_field);
-    ASSERT_TRUE(syntax::is_valid(field_type));
-    EXPECT_EQ(analyzer.module_.types[field_type.value].scope_name, "lib");
-    EXPECT_EQ(analyzer.module_.types[field_type.value].name, "Record");
-
-    const TypeId apply_type = analyzer.postfix_arg_expr_to_type(box_apply);
-    ASSERT_TRUE(syntax::is_valid(apply_type));
-    EXPECT_EQ(analyzer.module_.types[apply_type.value].name, "Box");
-    ASSERT_EQ(analyzer.module_.types[apply_type.value].type_args.size(), 1U);
-    EXPECT_EQ(analyzer.module_.types[apply_type.value].type_args.front().value, i32_type_id.value);
-
-    const TypeId ref_type = analyzer.postfix_arg_expr_to_type(ref_t);
-    ASSERT_TRUE(syntax::is_valid(ref_type));
-    EXPECT_EQ(analyzer.module_.types[ref_type.value].kind, syntax::TypeKind::reference);
-    EXPECT_EQ(analyzer.module_.types[ref_type.value].pointer_mutability, syntax::PointerMutability::const_);
-
-    const TypeId mut_ref_type = analyzer.postfix_arg_expr_to_type(mut_ref_t);
-    ASSERT_TRUE(syntax::is_valid(mut_ref_type));
-    EXPECT_EQ(analyzer.module_.types[mut_ref_type.value].kind, syntax::TypeKind::reference);
-    EXPECT_EQ(analyzer.module_.types[mut_ref_type.value].pointer_mutability, syntax::PointerMutability::mut);
-
-    const TypeId selector_type = analyzer.postfix_chain_expr_to_type(selector_chain);
-    ASSERT_TRUE(syntax::is_valid(selector_type));
-    EXPECT_EQ(analyzer.module_.types[selector_type.value].scope_name, "lib");
-    EXPECT_EQ(analyzer.module_.types[selector_type.value].name, "Record");
-
-    const TypeId multi_selector_type = analyzer.postfix_chain_expr_to_type(multi_selector_chain);
-    ASSERT_TRUE(syntax::is_valid(multi_selector_type));
-    const syntax::TypeNode& multi_selector_node = analyzer.module_.types[multi_selector_type.value];
-    EXPECT_EQ(multi_selector_node.scope_name, "core");
-    ASSERT_EQ(multi_selector_node.scope_parts.size(), 2U);
-    EXPECT_EQ(multi_selector_node.scope_parts[0], "core");
-    EXPECT_EQ(multi_selector_node.scope_parts[1], "mem");
-    EXPECT_EQ(multi_selector_node.name, "File");
-
-    const TypeId generic_selector_type = analyzer.postfix_chain_expr_to_type(generic_selector_chain);
-    ASSERT_TRUE(syntax::is_valid(generic_selector_type));
-    EXPECT_EQ(analyzer.module_.types[generic_selector_type.value].name, "Box");
-    ASSERT_EQ(analyzer.module_.types[generic_selector_type.value].type_args.size(), 1U);
-    EXPECT_EQ(analyzer.module_.types[generic_selector_type.value].type_args.front().value, i32_type_id.value);
-
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(syntax::INVALID_EXPR_ID)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_chain_expr_to_type(syntax::INVALID_EXPR_ID)));
-
-    const TypeId plain_name_type = analyzer.postfix_chain_expr_to_type(push_name(analyzer.module_, "Plain"));
-    ASSERT_TRUE(syntax::is_valid(plain_name_type));
-    EXPECT_EQ(analyzer.module_.types[plain_name_type.value].name, "Plain");
-
-    const ExprId invalid_type_base_chain = push_postfix_chain(analyzer.module_, one_expr, {select_op("Type")});
-    const ExprId invalid_type_op_chain = push_postfix_chain(
-        analyzer.module_,
-        push_name(analyzer.module_, "Plain"),
-        {call_op()}
-    );
-    const ExprId invalid_object_field = push_field(analyzer.module_, syntax::INVALID_EXPR_ID, "bad");
-    const ExprId non_name_object_field = push_field(analyzer.module_, one_expr, "bad");
-    const ExprId invalid_apply = push_generic_apply(analyzer.module_, syntax::INVALID_EXPR_ID, {i32_type_id});
-    const ExprId invalid_ref = push_unary(analyzer.module_, syntax::UnaryOp::address_of, syntax::INVALID_EXPR_ID);
-    const ExprId not_ref = push_unary(analyzer.module_, syntax::UnaryOp::logical_not, t_name);
-    sync_side_tables();
-
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_chain_expr_to_type(invalid_type_base_chain)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_chain_expr_to_type(invalid_type_op_chain)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(invalid_object_field)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(non_name_object_field)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(invalid_apply)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(invalid_ref)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(not_ref)));
-    EXPECT_FALSE(syntax::is_valid(analyzer.postfix_arg_expr_to_type(one_expr)));
-}
-
 TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly) {
     syntax::AstModule module;
     module.modules = {module_info({"generic_span"})};
@@ -2101,17 +1820,22 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly) {
     );
     const ExprId tuple_expr = module.push_tuple_expr({}, std::vector<ExprId> {array_expr, match_expr});
 
-    syntax::PostfixOp postfix_op;
-    postfix_op.kind = syntax::PostfixOpKind::struct_literal;
-    postfix_op.bracket_args.assign({
-        bracket_expr_arg(name_with_type_arg),
-        bracket_type_arg(box_function_type),
-    });
-    postfix_op.slice_start = match_guard_expr;
-    postfix_op.slice_end = match_value_expr;
-    postfix_op.args.assign({call_expr});
-    postfix_op.field_inits.assign({syntax::FieldInit {"field", tuple_expr, {}}});
-    const ExprId postfix_expr = push_postfix_chain(module, tuple_expr, {postfix_op});
+    const ExprId tuple_generic =
+        push_generic_apply(module, tuple_expr, {box_function_type});
+    const ExprId tuple_call = push_call(module, tuple_generic, {call_expr});
+    const ExprId tuple_slice =
+        module.push_slice_expr({}, syntax::SliceExprPayload {tuple_call, match_guard_expr, match_value_expr});
+    const ExprId postfix_expr = module.push_struct_literal_expr(
+        {},
+        tuple_slice,
+        {},
+        {},
+        {},
+        std::vector<TypeId> {},
+        std::vector<syntax::FieldInit> {syntax::FieldInit {"field", tuple_expr, {}}},
+        syntax::INVALID_IDENT_ID,
+        syntax::INVALID_IDENT_ID
+    );
     const ExprId field_expr = push_field(module, postfix_expr, "field");
     const ExprId index_expr = module.push_index_expr({}, syntax::IndexExprPayload {field_expr, match_value_expr});
     const ExprId slice_expr = module.push_slice_expr({}, syntax::SliceExprPayload {index_expr, match_guard_expr, match_value_expr});
@@ -3445,7 +3169,10 @@ TEST(CoreUnit, SemanticWhiteBoxBinaryOperatorSplitCoversGenericIntegerPath) {
     sema::SemanticAnalyzer::ExprView expr;
     expr.kind = syntax::ExprKind::binary;
     expr.binary_op = syntax::BinaryOp::bit_and;
-    const TypeHandle generic = analyzer.checked_.types.generic_param("test.T", "T");
+    const TypeHandle generic = analyzer.checked_.types.generic_param(
+        sema::generic_param_identity_from_text("test.T"),
+        "T"
+    );
 
     EXPECT_TRUE(analyzer.checked_.types.same(
         analyzer.record_integer_binary_expr(
@@ -3960,6 +3687,152 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     ), nullptr);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxMatchGuardTruthAndU8FiniteDomain) {
+    {
+        syntax::AstModule module;
+        module.modules = {module_info({"root"})};
+        const ExprId subject = push_name(module, "flag");
+        const ExprId one = push_integer(module);
+        const ExprId zero = push_integer_text(module, "0");
+        const ExprId true_guard = push_bool(module, "true");
+
+        syntax::PatternNode true_pattern;
+        true_pattern.kind = syntax::PatternKind::literal;
+        true_pattern.case_name = "true";
+        const syntax::PatternId true_pattern_id = module.push_pattern(true_pattern);
+
+        syntax::PatternNode false_pattern;
+        false_pattern.kind = syntax::PatternKind::literal;
+        false_pattern.case_name = "false";
+        const syntax::PatternId false_pattern_id = module.push_pattern(false_pattern);
+
+        const ExprId match_id = module.push_match_expr(
+            {},
+            syntax::MatchExprPayload {
+                subject,
+                {
+                    syntax::MatchArm {true_pattern_id, true_guard, one, {}},
+                    syntax::MatchArm {false_pattern_id, syntax::INVALID_EXPR_ID, zero, {}},
+                },
+            }
+        );
+
+        base::DiagnosticSink diagnostics;
+        sema::SemanticAnalyzer analyzer(module, diagnostics);
+        analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+        analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+        analyzer.current_module_ = module_id(0);
+        const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
+        EXPECT_TRUE(analyzer.symbols_.insert(
+            indexed_symbol(analyzer, SymbolKind::local, "flag", module_id(0), bool_type),
+            diagnostics
+        ));
+
+        EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(
+            match_id,
+            analyzer.expr_view(match_id),
+            INVALID_TYPE_HANDLE
+        )));
+        EXPECT_FALSE(diagnostics.has_error());
+    }
+
+    {
+        syntax::AstModule module;
+        module.modules = {module_info({"root"})};
+        const ExprId subject = push_name(module, "flag");
+        const ExprId one = push_integer(module);
+        const ExprId zero = push_integer_text(module, "0");
+        const ExprId false_guard = push_bool(module, "false");
+
+        syntax::PatternNode true_pattern;
+        true_pattern.kind = syntax::PatternKind::literal;
+        true_pattern.case_name = "true";
+        const syntax::PatternId true_pattern_id = module.push_pattern(true_pattern);
+
+        syntax::PatternNode false_pattern;
+        false_pattern.kind = syntax::PatternKind::literal;
+        false_pattern.case_name = "false";
+        const syntax::PatternId false_pattern_id = module.push_pattern(false_pattern);
+
+        const ExprId match_id = module.push_match_expr(
+            {},
+            syntax::MatchExprPayload {
+                subject,
+                {
+                    syntax::MatchArm {true_pattern_id, false_guard, one, {}},
+                    syntax::MatchArm {false_pattern_id, syntax::INVALID_EXPR_ID, zero, {}},
+                },
+            }
+        );
+
+        base::DiagnosticSink diagnostics;
+        sema::SemanticAnalyzer analyzer(module, diagnostics);
+        analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+        analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+        analyzer.current_module_ = module_id(0);
+        const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
+        EXPECT_TRUE(analyzer.symbols_.insert(
+            indexed_symbol(analyzer, SymbolKind::local, "flag", module_id(0), bool_type),
+            diagnostics
+        ));
+
+        static_cast<void>(analyzer.analyze_match_expr(
+            match_id,
+            analyzer.expr_view(match_id),
+            INVALID_TYPE_HANDLE
+        ));
+        ASSERT_TRUE(diagnostics.has_error());
+        std::string messages;
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            messages += diagnostic.message;
+            messages += '\n';
+        }
+        EXPECT_NE(
+            messages.find("match expression over integer or bool requires a wildcard arm"),
+            std::string::npos
+        );
+    }
+
+    {
+        syntax::AstModule module;
+        module.modules = {module_info({"root"})};
+        const ExprId subject = push_name(module, "byte");
+        const ExprId result = push_integer(module);
+        std::vector<syntax::MatchArm> arms;
+        std::vector<std::string> pattern_names;
+        arms.reserve(SEMA_TEST_U8_DOMAIN_SIZE);
+        pattern_names.reserve(SEMA_TEST_U8_DOMAIN_SIZE);
+        for (base::u32 value = 0; value < SEMA_TEST_U8_DOMAIN_SIZE; ++value) {
+            pattern_names.push_back(std::to_string(value));
+            syntax::PatternNode pattern;
+            pattern.kind = syntax::PatternKind::literal;
+            pattern.case_name = pattern_names.back();
+            const syntax::PatternId pattern_id = module.push_pattern(pattern);
+            arms.push_back(syntax::MatchArm {pattern_id, syntax::INVALID_EXPR_ID, result, {}});
+        }
+
+        const ExprId match_id = module.push_match_expr({}, subject, std::move(arms));
+
+        base::DiagnosticSink diagnostics;
+        sema::SemanticAnalyzer analyzer(module, diagnostics);
+        analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+        analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+        analyzer.current_module_ = module_id(0);
+        const TypeHandle u8 = analyzer.checked_.types.builtin(BuiltinType::u8);
+        EXPECT_TRUE(analyzer.symbols_.insert(
+            indexed_symbol(analyzer, SymbolKind::local, "byte", module_id(0), u8),
+            diagnostics
+        ));
+
+        EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(
+            match_id,
+            analyzer.expr_view(match_id),
+            INVALID_TYPE_HANDLE
+        )));
+        EXPECT_FALSE(diagnostics.has_error());
+    }
+}
+
 TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal) {
     syntax::AstModule module;
     module.modules = {
@@ -4141,7 +4014,10 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
         {i32, pointer},
         bool_type
     );
-    const TypeHandle generic = storage_table.generic_param("test.T", "T");
+    const TypeHandle generic = storage_table.generic_param(
+        sema::generic_param_identity_from_text("test.T"),
+        "T"
+    );
     storage_table.set_generic_instance(tuple, "tuple.origin", {generic});
     storage_table.set_record_contains_array(tuple, true);
     storage_table.set_enum_underlying(function, i32);
@@ -4179,7 +4055,10 @@ TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
     EXPECT_EQ(interner.find("beta"), beta);
     EXPECT_EQ(interner.text(alpha), "alpha");
     EXPECT_EQ(interner.text(beta), "beta");
+    EXPECT_EQ(interner.stable_hash(alpha), syntax::stable_hash_text("alpha"));
+    EXPECT_NE(interner.stable_hash(alpha), interner.stable_hash(beta));
     EXPECT_EQ(interner.text(sema::INVALID_IDENT_ID), "");
+    EXPECT_EQ(interner.stable_hash(sema::INVALID_IDENT_ID), syntax::stable_hash_text(""));
     EXPECT_EQ(interner.text(IdentId {IdentId::INVALID_VALUE - 1}), "");
     EXPECT_EQ(interner.find("missing"), sema::INVALID_IDENT_ID);
     EXPECT_EQ(interner.size(), 2U);

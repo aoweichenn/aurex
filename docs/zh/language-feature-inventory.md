@@ -313,7 +313,7 @@ M2 基础泛型语法：
 GenericParams = "[" GenericParam ("," GenericParam)* ","? "]"
 GenericParam  = identifier
 TypeArgs      = "[" Type ("," Type)* ","? "]"
-GenericApply  = Callee TypeArgs  // sema materialized from postfix_chain bracket op
+GenericApply  = Callee TypeArgs  // parser emits an explicit postfix AST node
 WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 ```
 
@@ -325,9 +325,9 @@ WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 - 命名类型后的 `TypeArgs` 用于泛型类型实例化，例如 `Pair[i32, bool]`。
 - 泛型类型声明覆盖 `struct Pair[T, U]`、`enum Option[T]`、`type Ptr[T] = *const T`。
 - `impl[T] Box[T]` 这类 owner generic impl 支持；method-local generic parameter 仍不支持。
-- parser 阶段不再把 `[]` 立即分成 `GenericApply` 或 index；表达式后缀统一记录成 `postfix_chain(base + ops)`。
-- sema 根据 base kind 再 materialize：`id[i32](value)` 变成显式泛型函数调用，`Option[i32].some` 变成泛型类型选择 + enum case，`values[0].field` 变成 value index 后接字段选择。
-- `name[index]` 是否是 index 由 `name` 的语义种类决定；局部 value base 会走 index，泛型函数/type base 会走 type args。
+- parser 阶段直接生成显式 postfix AST：`generic_apply`、`index`、`slice`、`field`、`call`、`struct_literal` 和 `try_expr`。
+- `id[i32](value)` 解析为 `generic_apply` callee 后接 `call`；`Option[i32].some` 和 `Option[T].some` 这类 type-shaped selector 解析为泛型类型选择后接字段/enum case 选择；`values[0].field` 和 `values[index].field` 解析为 value `index` 后接字段选择。
+- `name[index]` 默认是 value index；只有 type-only argument 或明显的 call / struct literal / selector 延续会把 bracket 作为 type args。
 - 类型注解支持 `Name`、`alias.Name` 和可见模块路径形式 `core.mem.File` / `core.mem.Box[i32]`；表达式侧同样支持 `core.mem.PAGE_SIZE`、`core.mem.make()`、`core.mem.File.new()` 这类多段模块 selector。一段 qualifier 仍按 import alias 解析，多段 qualifier 按 visible module path 解析。
 
 enum：
@@ -810,7 +810,7 @@ M2 已删除：
 
 - range pattern。
 - string/byte pattern。
-- match guard exhaustiveness 更精确建模。
+- match guard 已区分无 guard、字面量 true/false 和动态表达式；slice / 开放域 exhaustiveness 仍可继续细化。
 - lambda / closure。
 - operator overloading。
 - user-defined implicit conversion。
@@ -965,7 +965,7 @@ let all = bytes[:];
    }
    ```
 
-   `let ... else`、slice pattern、binding or-pattern alternatives 和有限结构化穷尽性已补齐；后续继续改进 guard、slice 和开放域 structural exhaustiveness / unreachable 诊断。
+   `let ... else`、slice pattern、binding or-pattern alternatives、guard literal truth 建模和有限结构化穷尽性已补齐；后续继续改进 slice 和开放域 structural exhaustiveness / unreachable 诊断。
 
 ### P2：已冻结或中等优先级
 
@@ -1025,7 +1025,7 @@ let all = bytes[:];
 
 1. 保持当前 grammar 的 EBNF、syntax matrix、parser/sema tests 同步。
 2. 继续保持最小 `where` capability 的文档、测试和诊断同步；资源语义和完整 borrow/lifetime 体系暂缓。
-3. 继续完善 guard、slice 和开放域 structural exhaustiveness / unreachable 诊断。
+3. 继续完善 slice 和开放域 structural exhaustiveness / unreachable 诊断，并保持 guard 精确覆盖规则的测试。
 4. 继续把 unsafe 维持在最小边界，不扩展到 unsafe trait/impl/extern block 或资源模型。
 
 ## 参考

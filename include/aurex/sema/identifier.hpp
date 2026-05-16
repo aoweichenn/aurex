@@ -15,7 +15,30 @@ inline constexpr base::u32 SEMA_LOOKUP_INVALID_KEY_PART = std::numeric_limits<ba
 using syntax::IdentId;
 using syntax::IdentifierInterner;
 using syntax::INVALID_IDENT_ID;
+using syntax::StableHash64;
 using syntax::is_valid;
+
+struct GenericParamIdentity {
+    base::u64 value = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        GenericParamIdentity lhs,
+        GenericParamIdentity rhs
+    ) noexcept = default;
+};
+
+inline constexpr GenericParamIdentity INVALID_GENERIC_PARAM_IDENTITY {};
+
+[[nodiscard]] inline constexpr bool is_valid(const GenericParamIdentity identity) noexcept {
+    return identity.value != 0;
+}
+
+[[nodiscard]] inline GenericParamIdentity generic_param_identity_from_text(
+    const std::string_view text
+) noexcept {
+    const StableHash64 hash = syntax::stable_hash_text(text);
+    return GenericParamIdentity {hash.value == 0 ? 1 : hash.value};
+}
 
 struct InternedText {
     IdentId id = INVALID_IDENT_ID;
@@ -140,6 +163,10 @@ struct ModuleLookupKeyHash {
 
 struct IdentIdHash {
     [[nodiscard]] std::size_t operator()(IdentId id) const noexcept;
+};
+
+struct GenericParamIdentityHash {
+    [[nodiscard]] std::size_t operator()(GenericParamIdentity identity) const noexcept;
 };
 
 struct MethodLookupKey {

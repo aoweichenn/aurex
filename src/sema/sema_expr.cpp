@@ -145,7 +145,6 @@ template <typename T, typename Allocator>
     case syntax::ExprKind::match_expr:
     case syntax::ExprKind::array_literal:
     case syntax::ExprKind::tuple_literal:
-    case syntax::ExprKind::postfix_chain:
     case syntax::ExprKind::slice:
         return true;
     default:
@@ -180,7 +179,6 @@ template <typename T, typename Allocator>
     case syntax::ExprKind::tuple_literal:
     case syntax::ExprKind::struct_literal:
         return ExprAnalysisCategory::aggregate;
-    case syntax::ExprKind::postfix_chain:
     case syntax::ExprKind::field:
     case syntax::ExprKind::index:
     case syntax::ExprKind::slice:
@@ -486,12 +484,6 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
         view.tuple_elements = readonly_span(payload);
         break;
     }
-    case syntax::ExprKind::postfix_chain: {
-        const syntax::PostfixChainExprPayload& payload = *this->module_.exprs.postfix_chain_payload(expr_id.value);
-        view.postfix_base = payload.base;
-        view.postfix_ops = readonly_span(payload.ops);
-        break;
-    }
     case syntax::ExprKind::field: {
         const syntax::FieldExprPayload& payload = *this->module_.exprs.field_payload(expr_id.value);
         view.object = payload.object;
@@ -719,8 +711,6 @@ TypeHandle SemanticAnalyzer::analyze_projection_expr(
     const TypeHandle expected_type
 ) {
     switch (expr.kind) {
-    case syntax::ExprKind::postfix_chain:
-        return this->analyze_postfix_chain_expr(expr_id, expected_type);
     case syntax::ExprKind::field:
         return this->analyze_field_expr(expr_id, expr, expected_type);
     case syntax::ExprKind::index:
@@ -1275,6 +1265,14 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
     const SemanticAnalyzer::ExprView& expr,
     const TypeHandle expected_type
 ) {
+    struct ConstantSliceBound {
+        bool present = false;
+        bool valid = false;
+        bool negated = false;
+        base::u64 value = 0;
+        base::SourceRange range;
+    };
+
     const TypeHandle usize_type = this->checked_.types.builtin(BuiltinType::usize);
     const auto analyze_bound = [&](const syntax::ExprId bound) {
         if (!syntax::is_valid(bound)) {
@@ -1288,6 +1286,51 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
             );
         }
     };
+    const auto constant_bound = [&](const syntax::ExprId bound) {
+        ConstantSliceBound result;
+        if (!syntax::is_valid(bound)) {
+            return result;
+        }
+        result.present = true;
+        result.range = expr_range_or(this->module_, bound, expr.range);
+        const IntegerLiteralExpr literal = integer_literal_expr(this->module_, bound);
+        if (!syntax::is_valid(literal.literal)) {
+            return result;
+        }
+        const syntax::LiteralExprPayload* const literal_expr =
+            this->module_.exprs.literal_payload(literal.literal.value);
+        result.negated = literal.negated;
+        result.valid = literal_expr != nullptr &&
+            this->parse_integer_literal_text(literal_expr->text, result.value);
+        return result;
+    };
+    const auto check_array_slice_bounds = [&](const base::u64 array_count) {
+        const ConstantSliceBound start = constant_bound(expr.slice_start);
+        const ConstantSliceBound end = constant_bound(expr.slice_end);
+        const auto bound_is_out_of_bounds = [array_count](const ConstantSliceBound& bound) {
+            return bound.present &&
+                bound.valid &&
+                ((bound.negated && bound.value != 0) ||
+                 (!bound.negated && bound.value > array_count));
+        };
+        if (bound_is_out_of_bounds(start)) {
+            this->report(start.range, std::string(SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS));
+        }
+        if (bound_is_out_of_bounds(end)) {
+            this->report(end.range, std::string(SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS));
+        }
+        if (start.present &&
+            end.present &&
+            start.valid &&
+            end.valid &&
+            !start.negated &&
+            !end.negated &&
+            start.value <= array_count &&
+            end.value <= array_count &&
+            start.value > end.value) {
+            this->report(expr.range, std::string(SEMA_ARRAY_SLICE_BOUNDS_ORDER));
+        }
+    };
 
     const TypeHandle object = this->analyze_expr(expr.object);
     analyze_bound(expr.slice_start);
@@ -1299,7 +1342,9 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
     TypeHandle element = INVALID_TYPE_HANDLE;
     PointerMutability mutability = PointerMutability::const_;
     if (this->checked_.types.is_array(object)) {
-        element = this->checked_.types.get(object).array_element;
+        const TypeInfo& array = this->checked_.types.get(object);
+        check_array_slice_bounds(array.array_count);
+        element = array.array_element;
         mutability = this->is_writable_place(expr.object) ? PointerMutability::mut : PointerMutability::const_;
     } else if (this->checked_.types.is_slice(object)) {
         const TypeInfo& slice = this->checked_.types.get(object);

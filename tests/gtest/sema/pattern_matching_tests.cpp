@@ -321,11 +321,21 @@ TEST_F(AurexIntegrationTest, MatchGuard) {
 
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
+    const fs::path literal_true = positive_sample("pattern_matching", "match_guard_literal_true.ax");
+    require_success(aurexc() + " --check " + q(literal_true));
+
     const fs::path non_bool = negative_sample("pattern_matching", "match_guard_non_bool.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(non_bool)).output, "match guard must be bool");
 
     const fs::path not_exhaustive = negative_sample("pattern_matching", "match_guard_not_exhaustive.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(not_exhaustive)).output, "match expression is not exhaustive");
+
+    const fs::path literal_false =
+        negative_sample("pattern_matching", "match_guard_literal_false_not_exhaustive.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(literal_false)).output,
+        "match expression over integer or bool requires a wildcard arm"
+    );
 
     const fs::path unknown_binding = negative_sample("pattern_matching", "match_guard_unknown_binding.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(unknown_binding)).output, "unknown name: missing");

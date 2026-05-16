@@ -136,10 +136,10 @@ if (types.is_pointer(object)) {
 
 #### P0-4 [] 语法承担 generic / index / slice 三种语义
 
-**问题：** `parser_postfix.cpp` 把 `[something]` 统一解析，sema 再猜。诊断差、语法语义耦合、未来扩展冲突。
+**原始问题：** `parser_postfix.cpp` 把 `[something]` 统一解析，sema 再猜。诊断差、语法语义耦合、未来扩展冲突。
 
-**开发者修复状态：** ⚠️ 部分错误 — 已将字符串改为 `enum class CapabilityKind`，Eq/Ord/Hash 拆为独立函数统一规则表（正确 ✅），但 **Eq 和 Ord 仍包含 float**（错误 ❌）  
-**方案：** AST 层拆出 `GenericApplyExpr` / `IndexExpr` / `SliceExpr` / `TypeApply`。Parser 根据 type/expr context 初判。
+**当前修复状态：** ✅ 已关闭 — 旧 raw postfix 链路和 sema 二次 lowering 路径已删除。Parser 现在直接生成 `generic_apply`、`index`、`slice`、`field`、`call`、`struct_literal`、`try_expr` 等显式 compact 节点；`[]` 通过 type-only 参数、call/struct-literal continuation、selector continuation 的 type-shaped guardrail 消歧，保留 `Type[T].case`，同时保证 `items[index].field` 仍是 value index。
+**剩余边界：** 后续只保留更细诊断和跨模块语义消歧增强，不再保留第二套 postfix lowering。
 
 ---
 
@@ -166,7 +166,7 @@ constexpr string_view SEMA_CAPABILITY_EQ = "Eq";  // ❌ 硬编码字符串
 | # | 问题 | 说明 | 状态 |
 |:-:|:-----|:------|:----:|
 | P1-6 | generic 与普通 type lookup 不一致 | 泛型 visible_modules 与普通 lookup 走不同 resolver | ❌ |
-| P1-7 | Generic param identity 仅按名字 | 所有 T 共用 TypeHandle | ❌ |
+| P1-7 | Generic param identity 仅按名字 | 已改为 `GenericParamIdentity` 稳定数值身份，混入 template module/name、param index/name 和 source range；`TypeInfo` 不再保存 string identity key | ✅ |
 | P1-8 | Mangling 依赖 display string | 字符清洗导致 `a.b.C` 和 `a_b.C` 可能碰撞 | ❌ |
 | P1-9 | ? try-like 是 name-based magic | 根据 ok/err 名字判断，用户定义同名 enum 会被误识别 | ❌ |
 | P1-10 | Backend limit 伪装成 language semantics | 诊断未区分 M2Unsupported vs SemanticError | ❌ |
@@ -223,7 +223,7 @@ for (const std::string& prefix : combinations) {
 
 **理论爆炸：** 32 个 bool 字段 → 2³² ≈ 4.3B 组合
 
-**开发者修复状态：** ✅ 已替换为正确主线 — `src/sema/match.cpp` 使用 pattern matrix / usefulness witness search，按 constructor specialization 和 default matrix 检查 bool、enum payload、tuple、struct 和 fixed array，不再生成结构化叶子笛卡尔积字符串，也不再依赖 4096 组合上限。guarded arm 不计入穷尽覆盖；动态 slice/open integer domain 仍按 M2 边界保守处理。
+**开发者修复状态：** ✅ 已替换为正确主线 — `src/sema/match.cpp` 使用 pattern matrix / usefulness witness search，按 constructor specialization 和 default matrix 检查 bool、enum payload、tuple、struct 和 fixed array，不再生成结构化叶子笛卡尔积字符串，也不再依赖 4096 组合上限。无 guard 和字面量 true guard 计入穷尽覆盖，字面量 false 和动态 guard 不计入；动态 slice/open integer domain 仍按 M2 边界保守处理。
 **已验证：** 13 bool 字段结构体的 partial-field 穷尽正例通过；13 bool 字段全字段少量 case 的非穷尽负例报错；enum bool payload split 正例通过，缺 payload witness 负例报错。
 
 ---
@@ -237,7 +237,7 @@ find_function_in_module(module, name_id, name, range);
 find_symbol(name_id, name, range);
 ```
 
-**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix materialization set 和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，函数、类型、值、generic template、enum case、struct field、method/member 和局部 scope lookup 直接使用 `{ModuleId, IdentId}` / `{ModuleId, TypeHandle, IdentId}` typed key；生产查找 API 已移除 string lookup fallback，checked-module map 不再保留并行 string-key lookup 路径；source name 持久字段借用 AST `IdentifierInterner`，生成的 ABI/dump/display 文本才进入 checked bump-backed `IdentifierInterner` + `InternedText` / typed id；ABI symbol 校验借用 `std::string_view` key，不再复制第二套 C symbol interner；输出和诊断只在边界按需格式化字符串；IR lowering 源码 local lookup 也使用 interned typed id。跨模块 stable hash / parallel global ID 仍后置。
+**已落地边界：** syntax 层新增 `IdentifierInterner`，identifier 文本由 reusable global bump allocator 持有；AST 的 type/expr/pattern/stmt/item/module/import 名字字段携带原生 `IdentId`；parser push、module loader append、postfix suffix 创建和 sema 入口都会把节点/metadata 收口到当前 `AstModule` 的 identifier arena；sema 删除私有 session interner，函数、类型、值、generic template、enum case、struct field、method/member 和局部 scope lookup 直接使用 `{ModuleId, IdentId}` / `{ModuleId, TypeHandle, IdentId}` typed key；生产查找 API 已移除 string lookup fallback，checked-module map 不再保留并行 string-key lookup 路径；source name 持久字段借用 AST `IdentifierInterner`，生成的 ABI/dump/display 文本才进入 checked bump-backed `IdentifierInterner` + `InternedText` / typed id；ABI symbol 校验借用 `std::string_view` key，不再复制第二套 C symbol interner；输出和诊断只在边界按需格式化字符串；IR lowering 源码 local lookup 也使用 interned typed id。跨模块 stable hash / parallel global ID 仍后置。
 
 ---
 
@@ -258,7 +258,7 @@ find_symbol(name_id, name, range);
 **开发者修复状态：** ✅ 已修当前整树复制爆点；`TypeNode` / `ExprNode` / `PatternNode` / `StmtNode` / `ItemNode` 已落 compact layout
 **方案：** Sema 用引用不复制；normalized_ast 改轻量 overlay 且不拥有 AST snapshot；节点级 C symbol side table 用 `IdentId` + C-name interner；AST 主存储使用 compact header + per-kind payload arena
 
-**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；`CheckedModule::normalized_ast` 已改为轻量 normalization overlay，彻底不拥有 `AstModule` snapshot；`expr_c_name_ids` / `pattern_c_name_ids` / `item_c_name_ids` 只保存 `IdentId`，实际 C symbol 文本进入 checked module C-name interner 去重，避免 per-node `std::string` 堆分配；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena；旧胖 `ExprNode` 生产类型已删除，parser 创建、`AstModule` 存储、module loader append 和 postfix materialization 都直接写 compact expression header + per-kind payload；module loader 按 source payload remap 并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，postfix chain 直接 move payload、unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径；AST list header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并由 parser token-shape estimate 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer；lexer token 输出已改为 bump-backed `TokenBuffer`，一次性 reserve 且不再被 262144 token 上限截断，也不再预触不会写入的估算余量页；sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args、generic template 参数列表、generic constraint bucket 和持久 name/c_name/generic key 文本字段已接入 bump arena / interner，复制 checked/type/symbol storage 时重新 intern 到目标 arena，不再复制字符串 buffer；generic function instance 存储使用 bump-backed deque 维持嵌套实例化时的 side table 地址稳定，generic method / enum-case / visible-module cache bucket 不再由默认 heap vector 创建；IR lowering 源码 local lookup 和 IR verifier symbol 去重使用 interned typed id，不再保留持久 string-key map。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 140.8 MiB RSS / 72.4 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 10.1 ms、generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms；2000 generic instance stress 当前约 148.4 MiB RSS / 439.8 ms，仍低于 M2.1 约 150 MiB 目标，剩余后续集中在 generic side table 生命周期/释放策略、跨模块 stable ID、2M AST 跨机器阈值和后续 CI 阈值。
+**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；`CheckedModule::normalized_ast` 已改为轻量 normalization overlay，彻底不拥有 `AstModule` snapshot；`expr_c_name_ids` / `pattern_c_name_ids` / `item_c_name_ids` 只保存 `IdentId`，实际 C symbol 文本进入 checked module C-name interner 去重，避免 per-node `std::string` 堆分配；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；旧 raw postfix lowering 路径已删除；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena；旧胖 `ExprNode` 生产类型已删除，parser 创建、`AstModule` 存储、module loader append 和 postfix suffix 都直接写 compact expression header + per-kind payload；module loader 按 source payload remap 并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径；AST list header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并由 parser token-shape estimate 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer；lexer token 输出已改为 bump-backed `TokenBuffer`，一次性 reserve 且不再被 262144 token 上限截断，也不再预触不会写入的估算余量页；sema 的 `CheckedModule`、`GenericSideTables`、`PatternCaseNameTable`、`TypeTable`、`SymbolTable`、analyzer lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args、generic template 参数列表、generic constraint bucket 和持久 name/c_name/generic key 文本字段已接入 bump arena / interner，复制 checked/type/symbol storage 时重新 intern 到目标 arena，不再复制字符串 buffer；generic function instance 存储使用 bump-backed deque 维持嵌套实例化时的 side table 地址稳定，generic method / enum-case / visible-module cache bucket 不再由默认 heap vector 创建；IR lowering 源码 local lookup 和 IR verifier symbol 去重使用 interned typed id，不再保留持久 string-key map。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 140.8 MiB RSS / 72.4 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 10.1 ms、generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms；2000 generic instance stress 当前约 148.4 MiB RSS / 439.8 ms，仍低于 M2.1 约 150 MiB 目标，剩余后续集中在 generic side table 生命周期/释放策略、跨模块 stable ID、2M AST 跨机器阈值和后续 CI 阈值。
 
 ---
 
@@ -962,7 +962,7 @@ def useful(matrix, vector, column_types):
 
 **当前实现边界：**
 - bool、enum payload、tuple、struct、fixed array 使用 constructor specialization / default matrix。
-- guarded arm 不计入穷尽覆盖。
+- 无 guard 和字面量 true guard 计入穷尽覆盖；字面量 false 和动态 guard 不计入。
 - dynamic slice 和 open integer domain 仍要求 wildcard 或 irrefutable arm。
 - C++ 实现使用显式 worklist，避免递归遍历。
 

@@ -75,6 +75,8 @@ private:
 
     using CapabilitySet = SemaSet<CapabilityKind, CapabilityKindHash>;
     using CapabilityMap = SemaMap<IdentId, CapabilitySet, IdentIdHash>;
+    using CapabilityIdentityMap =
+        SemaMap<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>;
 
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
@@ -84,7 +86,7 @@ private:
         ModuleLookupKey key;
         FunctionLookupKey function_key;
         SemaVector<IdentId> params;
-        SemaVector<IdentId> param_identity_ids;
+        SemaVector<GenericParamIdentity> param_identities;
         CapabilityMap constraints;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
@@ -103,9 +105,9 @@ private:
 
     struct GenericContext {
         SemaMap<IdentId, TypeHandle, IdentIdHash> params;
-        SemaMap<IdentId, InternedText, IdentIdHash> param_identities;
+        SemaMap<IdentId, GenericParamIdentity, IdentIdHash> param_identities;
         CapabilityMap constraints;
-        CapabilityMap constraints_by_identity;
+        CapabilityIdentityMap constraints_by_identity;
     };
 
     struct GenericSideTableScope {
@@ -186,8 +188,6 @@ private:
         std::span<const syntax::ExprId> tuple_elements {};
         syntax::ExprId array_repeat_value = syntax::INVALID_EXPR_ID;
         syntax::ExprId array_repeat_count = syntax::INVALID_EXPR_ID;
-        syntax::ExprId postfix_base = syntax::INVALID_EXPR_ID;
-        std::span<const syntax::PostfixOp> postfix_ops {};
         syntax::ExprId object = syntax::INVALID_EXPR_ID;
         std::string_view field_name;
         IdentId field_name_id = INVALID_IDENT_ID;
@@ -275,6 +275,10 @@ private:
     [[nodiscard]] CapabilitySet copy_capability_set(const CapabilitySet& source) const;
     void copy_capability_map(CapabilityMap& target, const CapabilityMap& source) const;
     [[nodiscard]] CapabilitySet& capability_bucket(CapabilityMap& map, IdentId key) const;
+    [[nodiscard]] CapabilitySet& capability_bucket(
+        CapabilityIdentityMap& map,
+        GenericParamIdentity key
+    ) const;
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
     [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;
@@ -380,35 +384,6 @@ private:
     [[nodiscard]] TypeHandle analyze_projection_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_aggregate_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_builtin_expr(syntax::ExprId expr_id, const ExprView& expr);
-    [[nodiscard]] TypeHandle analyze_postfix_chain_expr(syntax::ExprId expr_id, TypeHandle expected_type);
-    [[nodiscard]] syntax::ExprId materialize_postfix_chain(syntax::ExprId expr_id);
-    [[nodiscard]] syntax::ExprId materialize_postfix_op(
-        syntax::ExprId chain_expr,
-        syntax::ExprId base,
-        syntax::PostfixOp&& op,
-        const syntax::PostfixOp* next_op,
-        bool is_last
-    );
-    [[nodiscard]] syntax::ExprId materialize_postfix_bracket_op(
-        syntax::ExprId chain_expr,
-        syntax::ExprId base,
-        syntax::PostfixOp&& op,
-        const syntax::PostfixOp* next_op,
-        bool is_last
-    );
-    [[nodiscard]] bool postfix_bracket_is_generic_apply(
-        syntax::ExprId base,
-        const syntax::PostfixOp& op,
-        const syntax::PostfixOp* next_op
-    );
-    [[nodiscard]] std::vector<syntax::TypeId> postfix_bracket_type_args(const syntax::PostfixOp& op);
-    [[nodiscard]] syntax::TypeId postfix_arg_expr_to_type(syntax::ExprId expr);
-    [[nodiscard]] syntax::TypeId postfix_chain_expr_to_type(syntax::ExprId expr);
-    [[nodiscard]] syntax::TypeId append_postfix_type_selector(
-        syntax::TypeId current,
-        std::string_view name,
-        const base::SourceRange& range
-    );
     [[nodiscard]] TypeHandle analyze_name_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_generic_apply_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_unary_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
@@ -550,7 +525,7 @@ private:
     [[nodiscard]] bool unify_generic_type(
         TypeHandle pattern,
         TypeHandle actual,
-        std::unordered_map<IdentId, TypeHandle, IdentIdHash>& inferred
+        std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& inferred
     ) const;
     [[nodiscard]] const GenericTemplateInfo* find_generic_function_in_visible_modules(
         IdentId name_id,
@@ -650,12 +625,11 @@ private:
         bool report_unknown = true
     );
     [[nodiscard]] bool type_contains_generic_param(TypeHandle type) const;
-    void populate_generic_param_identity_keys(GenericTemplateInfo& info);
-    [[nodiscard]] std::string make_generic_param_identity_key(const GenericTemplateInfo& info, base::usize index) const;
+    void populate_generic_param_identities(GenericTemplateInfo& info);
+    [[nodiscard]] GenericParamIdentity make_generic_param_identity(const GenericTemplateInfo& info, base::usize index) const;
     [[nodiscard]] std::string_view generic_param_name(const GenericTemplateInfo& info, base::usize index) const;
-    [[nodiscard]] IdentId make_generic_param_identity_id(const GenericTemplateInfo& info, base::usize index);
-    [[nodiscard]] IdentId generic_param_identity_id(const GenericTemplateInfo& info, base::usize index) const;
-    [[nodiscard]] IdentId generic_param_identity_id(const TypeInfo& info) const;
+    [[nodiscard]] GenericParamIdentity generic_param_identity(const GenericTemplateInfo& info, base::usize index) const;
+    [[nodiscard]] GenericParamIdentity generic_param_identity(const TypeInfo& info) const;
     [[nodiscard]] TypeHandle generic_param_placeholder(const GenericTemplateInfo& info, base::usize index);
     void populate_generic_placeholder_context(const GenericTemplateInfo& info, GenericContext& context);
     void populate_generic_concrete_context(

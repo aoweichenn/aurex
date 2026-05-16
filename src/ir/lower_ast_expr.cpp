@@ -182,7 +182,6 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
     case syntax::ExprKind::byte_string_literal:
     case syntax::ExprKind::byte_literal:
     case syntax::ExprKind::char_literal:
-    case syntax::ExprKind::postfix_chain:
     case syntax::ExprKind::cast:
     case syntax::ExprKind::pcast:
     case syntax::ExprKind::bcast:
@@ -344,8 +343,6 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
         return this->lower_array_literal_expr(expr_id, expr);
     case syntax::ExprKind::tuple_literal:
         return this->lower_tuple_literal_expr(expr_id, expr);
-    case syntax::ExprKind::postfix_chain:
-        return INVALID_VALUE_ID;
     case syntax::ExprKind::slice:
         return this->lower_slice_expr(expr_id, expr);
     case syntax::ExprKind::field:

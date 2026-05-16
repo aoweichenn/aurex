@@ -6,9 +6,9 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 namespace aurex::syntax {
 
@@ -33,7 +33,7 @@ struct IdentifierTextHash {
 
 class IdentifierInterner final {
 public:
-    IdentifierInterner() = default;
+    IdentifierInterner();
     IdentifierInterner(const IdentifierInterner& other);
     IdentifierInterner& operator=(const IdentifierInterner& other);
     IdentifierInterner(IdentifierInterner&& other) noexcept;
@@ -50,9 +50,21 @@ public:
     [[nodiscard]] base::usize arena_blocks() const noexcept;
 
 private:
-    base::BumpAllocator arena_;
-    std::vector<std::string_view> texts_;
-    std::unordered_map<std::string_view, IdentId, IdentifierTextHash, std::equal_to<>> ids_;
+    using TextVector = base::BumpVector<std::string_view>;
+    using IdMapEntry = std::pair<const std::string_view, IdentId>;
+    using IdMap = std::unordered_map<
+        std::string_view,
+        IdentId,
+        IdentifierTextHash,
+        std::equal_to<>,
+        base::BumpAllocatorAdapter<IdMapEntry>
+    >;
+
+    void ensure_storage();
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    TextVector texts_;
+    IdMap ids_;
 };
 
 } // namespace aurex::syntax

@@ -111,15 +111,21 @@ item owner lookup has been replaced with explicit `ItemId` ownership. Identifier
 storage now uses a reusable global bump allocator through the syntax-layer
 `IdentifierInterner`; AST identifier-bearing nodes carry native `IdentId`
 payload fields, and sema typed lookup keys use the AST module interner instead
-of a second private interner. The old fat `ExprNode` production type has been
-removed; parser construction, module loading, and postfix materialization now
-write compact expression headers plus per-kind payloads directly. On the local
-AST bulk stress lane, the 100000-statement case is now roughly 180.1 MiB RSS /
-70.9 ms after compact syntax storage plus AST-native identifiers; Google
-Benchmark `sema_ast_bulk/1024` is roughly 117 ns/expr, and the local
-`tools/frontend_compare.py` baseline has Aurex `--check` at about 8.1 ms for
-lookup/96 and 8.6 ms for generics/96 versus Clang++ at about 20.1 ms / 22.9 ms
-and G++ at about 22.4 ms / 23.1 ms.
+of a second private interner. Compact AST header/payload vectors and identifier
+interner vectors/hash nodes are now bump-backed; parser construction, module
+loading, and postfix materialization write compact expression headers plus
+per-kind payloads directly. Parser startup estimates AST storage from token
+shape and reserves hot payload arenas up front so bump-backed vectors do not
+retain repeated growth buffers on large modules. On the local AST bulk stress
+lane, the 100000-statement case is now roughly 158.4 MiB RSS / 74.4 ms after
+compact syntax storage, AST-native identifiers, and bump-backed AST arenas;
+Google Benchmark `sema_ast_bulk/1024` is roughly 128 ns/expr, and the local
+`tools/frontend_compare.py` baseline has Aurex `--check` at about 10.1 ms for
+lookup/96 and 9.6 ms for generics/96 versus Clang++ at about 21.2 ms / 24.3 ms
+and G++ at about 25.1 ms / 24.3 ms. The current 2000 generic-instance stress
+case is about 124.4 MiB RSS / 389.8 ms; the remaining memory work is inside
+payload-local small vectors and generic side-table lifetime, not the main AST
+header/payload storage.
 
 ## Stage Status
 

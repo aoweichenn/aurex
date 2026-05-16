@@ -28,7 +28,7 @@
 ---
 
 > **文档状态：** 持续更新中 · 随开发者修复进度同步  
-> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径。
+> **最新同步：** 开发者已继续推进性能线，compact AST 已覆盖 Type / Expr / Pattern / Stmt / Item 主存储；global bump allocator 和 AST 原生 `IdentId` 已接入 parser/module/sema 主路径；AST header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并增加 parser token-shape 预留来避免 bump vector 扩容放大 RSS。
 
 ---
 
@@ -263,7 +263,7 @@ scope->find(std::string(name));  // 每层 scope 构造
 **开发者修复状态：** ✅ 已修当前整树复制爆点；`TypeNode` / `ExprNode` / `PatternNode` / `StmtNode` / `ItemNode` 已落 compact layout
 **方案：** Sema 用引用不复制；normalized_ast 默认不保留 AST snapshot；AST 主存储使用 compact header + per-kind payload arena
 
-**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena；旧胖 `ExprNode` 生产类型已删除，parser 创建、`AstModule` 存储、module loader append 和 postfix materialization 都直接写 compact expression header + per-kind payload；module loader 按 source payload remap 并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，postfix chain 直接 move payload、unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 180.1 MiB RSS / 70.9 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 117 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 8.1 ms、generics/96 约 8.6 ms，Clang++ 分别约 20.1 ms / 22.9 ms，G++ 分别约 22.4 ms / 23.1 ms。CI 阈值和 2M AST 跨机器阈值仍后续。
+**已落地边界：** driver 持有 parser/module AST，并把 mutable 引用传给 sema 和 IR lowering；`SemanticAnalyzer(const AstModule&)` 删除，避免隐式整树复制；sema 构造期不再对 `exprs/types` 做 `size+4096` reserve；postfix materialization 不再按值复制胖 `ExprNode` / `TypeNode`；`AstModule::types` / `exprs` / `patterns` / `stmts` / `items` 已从胖节点 vector 改为 32B header + per-kind payload arena；旧胖 `ExprNode` 生产类型已删除，parser 创建、`AstModule` 存储、module loader append 和 postfix materialization 都直接写 compact expression header + per-kind payload；module loader 按 source payload remap 并重新 intern 到目标 module identifier arena，不再依赖 `.data()` 指针；sema、IR lowering 和 AST dump 的 `ExprNode` 热路径已迁到 compact view / payload 直读，postfix chain 直接 move payload、unsafe block 只 retag compact header，literal 分析不再重建胖节点；sema item owner 查询改为显式 `ItemId`，不再用 `items.data()` 地址反推；block statement 遍历直接读 payload arena，避免 compact 后把大 block 的 `statements` vector 反复 materialize 成 O(n²)；global bump allocator 和 AST 原生 `IdentId` 已接入当前 parser/module/sema 主路径；AST list header/payload vectors 与 identifier interner text/hash 存储已改为 bump-backed，并由 parser token-shape estimate 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer。新增 Google Benchmark AST bulk case 和 `tools/ast_stress.py` RSS/time lane。本机 100000 AST bulk statements baseline 约从 575 MiB RSS / 135 ms 收敛到 158.4 MiB RSS / 74.4 ms；Google Benchmark `sema_ast_bulk/1024` 当前约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex lookup/96 约 10.1 ms、generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms；2000 generic instance stress 当前约 124.4 MiB RSS / 389.8 ms，剩余内存大头转移到 payload 内部小 vector 和 generic side table 生命周期。CI 阈值和 2M AST 跨机器阈值仍后续。
 
 ---
 
@@ -1132,7 +1132,7 @@ P1 性能缺陷:  6/6  ❌（未开始）
 |:-----|:----|:----------|
 | raw pointer safety | `p.x`/`p[i]` 需 unsafe | ✅ 已达标 |
 | `&expr` 语义 | `&x` 只产生 reference | ✅ 已达标 |
-| 泛型 2000 实例 RSS | 1.15 GB | ~150 MB |
+| 泛型 2000 实例 RSS | ~124.4 MB | ~150 MB 已达；继续向 <100 MB 收紧 |
 | match exhaustiveness | 硬上限 4096 有漏报 | witness search 不漏报 |
 | parser 3000 token 链 | SIGSEGV | ✅ 不崩溃 |
 | 二进制 10KB 拒绝 | 12s | ✅ <50ms |

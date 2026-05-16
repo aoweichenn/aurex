@@ -1,10 +1,22 @@
 #include <aurex/syntax/identifier.hpp>
 
+#include <memory>
 #include <utility>
 
 namespace aurex::syntax {
 
-IdentifierInterner::IdentifierInterner(const IdentifierInterner& other) {
+IdentifierInterner::IdentifierInterner()
+    : arena_(std::make_unique<base::BumpAllocator>()),
+      texts_(base::BumpAllocatorAdapter<std::string_view> {*this->arena_}),
+      ids_(
+          0,
+          IdentifierTextHash {},
+          std::equal_to<> {},
+          base::BumpAllocatorAdapter<IdMapEntry> {*this->arena_}
+      ) {}
+
+IdentifierInterner::IdentifierInterner(const IdentifierInterner& other)
+    : IdentifierInterner() {
     this->reserve(other.size());
     for (const std::string_view text : other.texts_) {
         static_cast<void>(this->intern(text));
@@ -15,13 +27,8 @@ IdentifierInterner& IdentifierInterner::operator=(const IdentifierInterner& othe
     if (this == &other) {
         return *this;
     }
-    this->texts_.clear();
-    this->ids_.clear();
-    this->arena_.reset();
-    this->reserve(other.size());
-    for (const std::string_view text : other.texts_) {
-        static_cast<void>(this->intern(text));
-    }
+    IdentifierInterner copy(other);
+    *this = std::move(copy);
     return *this;
 }
 
@@ -52,6 +59,7 @@ std::size_t IdentifierTextHash::operator()(const std::string_view value) const n
 }
 
 void IdentifierInterner::reserve(const base::usize expected_identifiers) {
+    this->ensure_storage();
     this->texts_.reserve(expected_identifiers);
     this->ids_.reserve(expected_identifiers);
 }
@@ -64,8 +72,9 @@ IdentId IdentifierInterner::intern(const std::string_view text) {
         return existing;
     }
 
+    this->ensure_storage();
     const IdentId id {static_cast<base::u32>(this->texts_.size())};
-    const std::string_view stable_text = this->arena_.copy_string(text);
+    const std::string_view stable_text = this->arena_->copy_string(text);
     this->texts_.push_back(stable_text);
     this->ids_.emplace(stable_text, id);
     return id;
@@ -88,11 +97,25 @@ base::usize IdentifierInterner::size() const noexcept {
 }
 
 base::usize IdentifierInterner::arena_bytes() const noexcept {
-    return this->arena_.allocated_bytes();
+    return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
 }
 
 base::usize IdentifierInterner::arena_blocks() const noexcept {
-    return this->arena_.block_count();
+    return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+}
+
+void IdentifierInterner::ensure_storage() {
+    if (this->arena_ != nullptr) {
+        return;
+    }
+    this->arena_ = std::make_unique<base::BumpAllocator>();
+    this->texts_ = TextVector(base::BumpAllocatorAdapter<std::string_view> {*this->arena_});
+    this->ids_ = IdMap(
+        0,
+        IdentifierTextHash {},
+        std::equal_to<> {},
+        base::BumpAllocatorAdapter<IdMapEntry> {*this->arena_}
+    );
 }
 
 } // namespace aurex::syntax

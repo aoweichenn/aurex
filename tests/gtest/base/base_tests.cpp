@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -167,6 +168,28 @@ TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats) {
     EXPECT_GE(assigned.allocated_bytes(), allocated);
     EXPECT_EQ(assigned.copy_string("assigned"), "assigned");
     EXPECT_EQ(moved.allocated_bytes(), 0U);
+}
+
+TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors) {
+    base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+    base::BumpVector<int> values {base::BumpAllocatorAdapter<int> {arena}};
+    values.reserve(4);
+    values.push_back(1);
+    values.push_back(2);
+    values.push_back(3);
+
+    EXPECT_GT(arena.allocated_bytes(), 0U);
+    EXPECT_GT(arena.block_count(), 0U);
+    EXPECT_EQ(values.back(), 3);
+
+    base::BumpAllocator copy_arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+    base::BumpVector<int> copied {base::BumpAllocatorAdapter<int> {copy_arena}};
+    copied = values;
+
+    ASSERT_EQ(copied.size(), values.size());
+    EXPECT_EQ(copied.front(), 1);
+    EXPECT_EQ(copied.back(), 3);
+    EXPECT_GT(copy_arena.allocated_bytes(), 0U);
 }
 
 } // namespace aurex::test

@@ -95,12 +95,17 @@ global bump allocator + syntax 层 `IdentifierInterner`，AST 的 type/expr/patt
 名字字段携带原生 `IdentId`，parser、module loader、postfix materialization 和 sema 入口都会把节点/metadata
 重新收口到当前 `AstModule` 的 identifier arena，sema typed lookup key 不再维护第二套私有 interner。2026-05-16
 性能线随后删除旧胖 `ExprNode` 生产类型，parser 创建、`AstModule` 存储、module loader append 和 postfix
-materialization 都直接写 compact expression header + per-kind payload。当前
+materialization 都直接写 compact expression header + per-kind payload。2026-05-16 后续 bump pass 又把
+`TypeNodeList` / `ExprNodeList` / `PatternNodeList` / `StmtNodeList` / `ItemNodeList` 的 header vector 和
+per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的 text vector、hash bucket/node
+也进入同一个 bump arena；parser 会根据 token 形态估算 statement/item/type/pattern/identifier 规模，并在 AST
+模块创建初期对热 payload arena 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer 造成 RSS 放大。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
-从约 575 MiB RSS / 135 ms 收敛到约 180.1 MiB RSS / 70.9 ms；Google Benchmark `sema_ast_bulk/1024`
-约 117 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 8.1 ms、
-generics/96 约 8.6 ms，Clang++ 分别约 20.1 ms / 22.9 ms，G++ 分别约 22.4 ms / 23.1 ms。
-跨模块 stable hash / 并行全局 ID 和 CI perf 阈值仍是后续性能任务。
+从约 575 MiB RSS / 135 ms 收敛到约 158.4 MiB RSS / 74.4 ms；Google Benchmark `sema_ast_bulk/1024`
+约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、
+generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms。
+2000 generic instance stress 当前约 124.4 MiB RSS / 389.8 ms；剩余内存大头已不在 AST header/payload 主存储，
+而在 payload 内部小 vector 和 generic side table 生命周期。跨模块 stable hash / 并行全局 ID 和 CI perf 阈值仍是后续性能任务。
 
 当前 `build` 目录可能不是完整测试配置；可信验证应以 `tools/run_tests.sh` 重新 configure/build/ctest 为准。
 

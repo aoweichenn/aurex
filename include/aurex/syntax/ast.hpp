@@ -1,5 +1,6 @@
 #pragma once
 
+#include <aurex/base/bump_allocator.hpp>
 #include <aurex/base/config.hpp>
 #include <aurex/base/source.hpp>
 #include <aurex/syntax/ast_ids.hpp>
@@ -7,11 +8,60 @@
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 namespace aurex::syntax {
+
+template <typename T>
+using AstArenaVector = base::BumpVector<T>;
+
+inline constexpr base::usize SYNTAX_AST_RESERVE_EXPR_TOKEN_DIVISOR = 8;
+inline constexpr base::usize SYNTAX_AST_RESERVE_STMT_TOKEN_DIVISOR = 16;
+inline constexpr base::usize SYNTAX_AST_RESERVE_TYPE_TOKEN_DIVISOR = 16;
+inline constexpr base::usize SYNTAX_AST_RESERVE_PATTERN_TOKEN_DIVISOR = 32;
+inline constexpr base::usize SYNTAX_AST_RESERVE_ITEM_TOKEN_DIVISOR = 64;
+inline constexpr base::usize SYNTAX_AST_RESERVE_IDENTIFIER_TOKEN_DIVISOR = 8;
+inline constexpr base::usize SYNTAX_AST_RESERVE_EXPRS_PER_STATEMENT = 6;
+inline constexpr base::usize SYNTAX_AST_RESERVE_TYPES_PER_TYPE_SITE = 2;
+inline constexpr base::usize SYNTAX_AST_RESERVE_TYPES_PER_ITEM = 4;
+inline constexpr base::usize SYNTAX_AST_RESERVE_PATTERNS_PER_PATTERN_SITE = 2;
+inline constexpr base::usize SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR = 2;
+inline constexpr base::usize SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR = 3;
+inline constexpr base::usize SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR = 8;
+inline constexpr base::usize SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR = 32;
+
+[[nodiscard]] constexpr base::usize ast_reserve_fraction(
+    const base::usize size,
+    const base::usize divisor
+) noexcept {
+    return size == 0 ? 0 : ((size - 1) / divisor) + 1;
+}
+
+[[nodiscard]] constexpr base::usize ast_reserve_at_least(
+    const base::usize minimum,
+    const base::usize estimated
+) noexcept {
+    return estimated < minimum ? minimum : estimated;
+}
+
+[[nodiscard]] constexpr base::usize ast_reserve_larger(
+    const base::usize lhs,
+    const base::usize rhs
+) noexcept {
+    return lhs < rhs ? rhs : lhs;
+}
+
+struct AstReserveEstimate {
+    base::usize tokens = 0;
+    base::usize statements = 0;
+    base::usize items = 0;
+    base::usize type_sites = 0;
+    base::usize pattern_sites = 0;
+    base::usize identifier_tokens = 0;
+};
 
 enum class PrimitiveTypeKind {
     void_,
@@ -311,18 +361,77 @@ struct FunctionTypePayload {
 };
 
 struct TypeNodePayloadArena {
-    std::vector<PrimitiveTypeKind> primitives;
-    std::vector<NamedTypePayload> named;
-    std::vector<PointerTypePayload> pointers;
-    std::vector<PointerTypePayload> references;
-    std::vector<ArrayTypePayload> arrays;
-    std::vector<SliceTypePayload> slices;
-    std::vector<std::vector<TypeId>> tuples;
-    std::vector<FunctionTypePayload> functions;
+    TypeNodePayloadArena() = default;
+
+    explicit TypeNodePayloadArena(base::BumpAllocator& arena)
+        : primitives(base::BumpAllocatorAdapter<PrimitiveTypeKind> {arena}),
+          named(base::BumpAllocatorAdapter<NamedTypePayload> {arena}),
+          pointers(base::BumpAllocatorAdapter<PointerTypePayload> {arena}),
+          references(base::BumpAllocatorAdapter<PointerTypePayload> {arena}),
+          arrays(base::BumpAllocatorAdapter<ArrayTypePayload> {arena}),
+          slices(base::BumpAllocatorAdapter<SliceTypePayload> {arena}),
+          tuples(base::BumpAllocatorAdapter<std::vector<TypeId>> {arena}),
+          functions(base::BumpAllocatorAdapter<FunctionTypePayload> {arena}) {}
+
+    void swap(TypeNodePayloadArena& other) noexcept {
+        this->primitives.swap(other.primitives);
+        this->named.swap(other.named);
+        this->pointers.swap(other.pointers);
+        this->references.swap(other.references);
+        this->arrays.swap(other.arrays);
+        this->slices.swap(other.slices);
+        this->tuples.swap(other.tuples);
+        this->functions.swap(other.functions);
+    }
+
+    AstArenaVector<PrimitiveTypeKind> primitives;
+    AstArenaVector<NamedTypePayload> named;
+    AstArenaVector<PointerTypePayload> pointers;
+    AstArenaVector<PointerTypePayload> references;
+    AstArenaVector<ArrayTypePayload> arrays;
+    AstArenaVector<SliceTypePayload> slices;
+    AstArenaVector<std::vector<TypeId>> tuples;
+    AstArenaVector<FunctionTypePayload> functions;
 };
 
 class TypeNodeList final {
 public:
+    TypeNodeList()
+        : arena_(std::make_unique<base::BumpAllocator>()),
+          headers_(base::BumpAllocatorAdapter<TypeNodeHeader> {*this->arena_}),
+          payloads_(*this->arena_) {}
+
+    TypeNodeList(const TypeNodeList& other)
+        : TypeNodeList() {
+        this->copy_from(other);
+    }
+
+    TypeNodeList& operator=(const TypeNodeList& other) {
+        if (this == &other) {
+            return *this;
+        }
+        TypeNodeList copy(other);
+        *this = std::move(copy);
+        return *this;
+    }
+
+    TypeNodeList(TypeNodeList&& other) noexcept
+        : arena_(std::move(other.arena_)),
+          headers_(std::move(other.headers_)),
+          payloads_(std::move(other.payloads_)) {
+        other.headers_ = AstArenaVector<TypeNodeHeader> {};
+        other.payloads_ = TypeNodePayloadArena {};
+    }
+
+    TypeNodeList& operator=(TypeNodeList&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        this->swap(other);
+        return *this;
+    }
+    ~TypeNodeList() = default;
+
     [[nodiscard]] base::usize size() const noexcept {
         return this->headers_.size();
     }
@@ -335,11 +444,33 @@ public:
         return this->headers_[index].kind;
     }
 
+    [[nodiscard]] base::usize arena_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_blocks() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+    }
+
     [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
         return this->headers_[index].range;
     }
 
     void reserve(const base::usize size) {
+        this->reserve_headers(size);
+        const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
+        const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
+        this->payloads_.primitives.reserve(secondary);
+        this->payloads_.named.reserve(primary);
+        this->payloads_.pointers.reserve(secondary);
+        this->payloads_.references.reserve(secondary);
+        this->payloads_.arrays.reserve(secondary);
+        this->payloads_.slices.reserve(secondary);
+        this->payloads_.tuples.reserve(secondary);
+        this->payloads_.functions.reserve(secondary);
+    }
+
+    void reserve_headers(const base::usize size) {
         this->headers_.reserve(size);
     }
 
@@ -546,13 +677,26 @@ private:
     }
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;
     }
 
-    std::vector<TypeNodeHeader> headers_;
+    void copy_from(const TypeNodeList& other) {
+        this->headers_.assign(other.headers_.begin(), other.headers_.end());
+        this->payloads_ = other.payloads_;
+    }
+
+    void swap(TypeNodeList& other) noexcept {
+        using std::swap;
+        swap(this->arena_, other.arena_);
+        this->headers_.swap(other.headers_);
+        this->payloads_.swap(other.payloads_);
+    }
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    AstArenaVector<TypeNodeHeader> headers_;
     TypeNodePayloadArena payloads_;
 };
 
@@ -658,27 +802,104 @@ struct ExprNodeHeader {
 };
 
 struct ExprNodePayloadArena {
-    std::vector<LiteralExprPayload> literals;
-    std::vector<NameExprPayload> names;
-    std::vector<GenericApplyExprPayload> generic_applies;
-    std::vector<UnaryExprPayload> unaries;
-    std::vector<BinaryExprPayload> binaries;
-    std::vector<CallExprPayload> calls;
-    std::vector<IfExprPayload> ifs;
-    std::vector<BlockExprPayload> blocks;
-    std::vector<MatchExprPayload> matches;
-    std::vector<ArrayExprPayload> arrays;
-    std::vector<std::vector<ExprId>> tuples;
-    std::vector<PostfixChainExprPayload> postfix_chains;
-    std::vector<FieldExprPayload> fields;
-    std::vector<IndexExprPayload> indexes;
-    std::vector<SliceExprPayload> slices;
-    std::vector<StructLiteralExprPayload> struct_literals;
-    std::vector<CastExprPayload> casts;
+    ExprNodePayloadArena() = default;
+
+    explicit ExprNodePayloadArena(base::BumpAllocator& arena)
+        : literals(base::BumpAllocatorAdapter<LiteralExprPayload> {arena}),
+          names(base::BumpAllocatorAdapter<NameExprPayload> {arena}),
+          generic_applies(base::BumpAllocatorAdapter<GenericApplyExprPayload> {arena}),
+          unaries(base::BumpAllocatorAdapter<UnaryExprPayload> {arena}),
+          binaries(base::BumpAllocatorAdapter<BinaryExprPayload> {arena}),
+          calls(base::BumpAllocatorAdapter<CallExprPayload> {arena}),
+          ifs(base::BumpAllocatorAdapter<IfExprPayload> {arena}),
+          blocks(base::BumpAllocatorAdapter<BlockExprPayload> {arena}),
+          matches(base::BumpAllocatorAdapter<MatchExprPayload> {arena}),
+          arrays(base::BumpAllocatorAdapter<ArrayExprPayload> {arena}),
+          tuples(base::BumpAllocatorAdapter<std::vector<ExprId>> {arena}),
+          postfix_chains(base::BumpAllocatorAdapter<PostfixChainExprPayload> {arena}),
+          fields(base::BumpAllocatorAdapter<FieldExprPayload> {arena}),
+          indexes(base::BumpAllocatorAdapter<IndexExprPayload> {arena}),
+          slices(base::BumpAllocatorAdapter<SliceExprPayload> {arena}),
+          struct_literals(base::BumpAllocatorAdapter<StructLiteralExprPayload> {arena}),
+          casts(base::BumpAllocatorAdapter<CastExprPayload> {arena}) {}
+
+    void swap(ExprNodePayloadArena& other) noexcept {
+        this->literals.swap(other.literals);
+        this->names.swap(other.names);
+        this->generic_applies.swap(other.generic_applies);
+        this->unaries.swap(other.unaries);
+        this->binaries.swap(other.binaries);
+        this->calls.swap(other.calls);
+        this->ifs.swap(other.ifs);
+        this->blocks.swap(other.blocks);
+        this->matches.swap(other.matches);
+        this->arrays.swap(other.arrays);
+        this->tuples.swap(other.tuples);
+        this->postfix_chains.swap(other.postfix_chains);
+        this->fields.swap(other.fields);
+        this->indexes.swap(other.indexes);
+        this->slices.swap(other.slices);
+        this->struct_literals.swap(other.struct_literals);
+        this->casts.swap(other.casts);
+    }
+
+    AstArenaVector<LiteralExprPayload> literals;
+    AstArenaVector<NameExprPayload> names;
+    AstArenaVector<GenericApplyExprPayload> generic_applies;
+    AstArenaVector<UnaryExprPayload> unaries;
+    AstArenaVector<BinaryExprPayload> binaries;
+    AstArenaVector<CallExprPayload> calls;
+    AstArenaVector<IfExprPayload> ifs;
+    AstArenaVector<BlockExprPayload> blocks;
+    AstArenaVector<MatchExprPayload> matches;
+    AstArenaVector<ArrayExprPayload> arrays;
+    AstArenaVector<std::vector<ExprId>> tuples;
+    AstArenaVector<PostfixChainExprPayload> postfix_chains;
+    AstArenaVector<FieldExprPayload> fields;
+    AstArenaVector<IndexExprPayload> indexes;
+    AstArenaVector<SliceExprPayload> slices;
+    AstArenaVector<StructLiteralExprPayload> struct_literals;
+    AstArenaVector<CastExprPayload> casts;
 };
 
 class ExprNodeList final {
 public:
+    ExprNodeList()
+        : arena_(std::make_unique<base::BumpAllocator>()),
+          headers_(base::BumpAllocatorAdapter<ExprNodeHeader> {*this->arena_}),
+          payloads_(*this->arena_) {}
+
+    ExprNodeList(const ExprNodeList& other)
+        : ExprNodeList() {
+        this->copy_from(other);
+    }
+
+    ExprNodeList& operator=(const ExprNodeList& other) {
+        if (this == &other) {
+            return *this;
+        }
+        ExprNodeList copy(other);
+        *this = std::move(copy);
+        return *this;
+    }
+
+    ExprNodeList(ExprNodeList&& other) noexcept
+        : arena_(std::move(other.arena_)),
+          headers_(std::move(other.headers_)),
+          payloads_(std::move(other.payloads_)) {
+        other.headers_ = AstArenaVector<ExprNodeHeader> {};
+        other.payloads_ = ExprNodePayloadArena {};
+    }
+
+    ExprNodeList& operator=(ExprNodeList&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        this->swap(other);
+        return *this;
+    }
+    ~ExprNodeList() = default;
+
     [[nodiscard]] base::usize size() const noexcept {
         return this->headers_.size();
     }
@@ -689,6 +910,14 @@ public:
 
     [[nodiscard]] ExprKind kind(const base::usize index) const noexcept {
         return this->headers_[index].kind;
+    }
+
+    [[nodiscard]] base::usize arena_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_blocks() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->block_count();
     }
 
     [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
@@ -944,6 +1173,31 @@ public:
     }
 
     void reserve(const base::usize size) {
+        this->reserve_headers(size);
+        const base::usize names = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR);
+        const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
+        const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
+        const base::usize rare = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR);
+        this->payloads_.literals.reserve(primary);
+        this->payloads_.names.reserve(names);
+        this->payloads_.generic_applies.reserve(secondary);
+        this->payloads_.unaries.reserve(secondary);
+        this->payloads_.binaries.reserve(primary);
+        this->payloads_.calls.reserve(secondary);
+        this->payloads_.ifs.reserve(rare);
+        this->payloads_.blocks.reserve(secondary);
+        this->payloads_.matches.reserve(rare);
+        this->payloads_.arrays.reserve(secondary);
+        this->payloads_.tuples.reserve(rare);
+        this->payloads_.postfix_chains.reserve(secondary);
+        this->payloads_.fields.reserve(secondary);
+        this->payloads_.indexes.reserve(rare);
+        this->payloads_.slices.reserve(rare);
+        this->payloads_.struct_literals.reserve(secondary);
+        this->payloads_.casts.reserve(rare);
+    }
+
+    void reserve_headers(const base::usize size) {
         this->headers_.reserve(size);
     }
 
@@ -1175,13 +1429,26 @@ private:
     }
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;
     }
 
-    std::vector<ExprNodeHeader> headers_;
+    void copy_from(const ExprNodeList& other) {
+        this->headers_.assign(other.headers_.begin(), other.headers_.end());
+        this->payloads_ = other.payloads_;
+    }
+
+    void swap(ExprNodeList& other) noexcept {
+        using std::swap;
+        swap(this->arena_, other.arena_);
+        this->headers_.swap(other.headers_);
+        this->payloads_.swap(other.payloads_);
+    }
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    AstArenaVector<ExprNodeHeader> headers_;
     ExprNodePayloadArena payloads_;
 };
 
@@ -1228,17 +1495,76 @@ struct StructPatternPayload {
 };
 
 struct PatternNodePayloadArena {
-    std::vector<BindingPatternPayload> bindings;
-    std::vector<LiteralPatternPayload> literals;
-    std::vector<EnumCasePatternPayload> enum_cases;
-    std::vector<std::vector<PatternId>> tuples;
-    std::vector<SlicePatternPayload> slices;
-    std::vector<StructPatternPayload> structs;
-    std::vector<std::vector<PatternId>> alternatives;
+    PatternNodePayloadArena() = default;
+
+    explicit PatternNodePayloadArena(base::BumpAllocator& arena)
+        : bindings(base::BumpAllocatorAdapter<BindingPatternPayload> {arena}),
+          literals(base::BumpAllocatorAdapter<LiteralPatternPayload> {arena}),
+          enum_cases(base::BumpAllocatorAdapter<EnumCasePatternPayload> {arena}),
+          tuples(base::BumpAllocatorAdapter<std::vector<PatternId>> {arena}),
+          slices(base::BumpAllocatorAdapter<SlicePatternPayload> {arena}),
+          structs(base::BumpAllocatorAdapter<StructPatternPayload> {arena}),
+          alternatives(base::BumpAllocatorAdapter<std::vector<PatternId>> {arena}) {}
+
+    void swap(PatternNodePayloadArena& other) noexcept {
+        this->bindings.swap(other.bindings);
+        this->literals.swap(other.literals);
+        this->enum_cases.swap(other.enum_cases);
+        this->tuples.swap(other.tuples);
+        this->slices.swap(other.slices);
+        this->structs.swap(other.structs);
+        this->alternatives.swap(other.alternatives);
+    }
+
+    AstArenaVector<BindingPatternPayload> bindings;
+    AstArenaVector<LiteralPatternPayload> literals;
+    AstArenaVector<EnumCasePatternPayload> enum_cases;
+    AstArenaVector<std::vector<PatternId>> tuples;
+    AstArenaVector<SlicePatternPayload> slices;
+    AstArenaVector<StructPatternPayload> structs;
+    AstArenaVector<std::vector<PatternId>> alternatives;
 };
 
 class PatternNodeList final {
 public:
+    PatternNodeList()
+        : arena_(std::make_unique<base::BumpAllocator>()),
+          headers_(base::BumpAllocatorAdapter<PatternNodeHeader> {*this->arena_}),
+          payloads_(*this->arena_) {}
+
+    PatternNodeList(const PatternNodeList& other)
+        : PatternNodeList() {
+        this->copy_from(other);
+    }
+
+    PatternNodeList& operator=(const PatternNodeList& other) {
+        if (this == &other) {
+            return *this;
+        }
+        PatternNodeList copy(other);
+        *this = std::move(copy);
+        return *this;
+    }
+
+    PatternNodeList(PatternNodeList&& other) noexcept
+        : arena_(std::move(other.arena_)),
+          headers_(std::move(other.headers_)),
+          payloads_(std::move(other.payloads_)) {
+        other.headers_ = AstArenaVector<PatternNodeHeader> {};
+        other.payloads_ = PatternNodePayloadArena {};
+        other.materialized_.clear();
+        other.materialized_valid_.clear();
+    }
+
+    PatternNodeList& operator=(PatternNodeList&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        this->swap(other);
+        return *this;
+    }
+    ~PatternNodeList() = default;
+
     [[nodiscard]] base::usize size() const noexcept {
         return this->headers_.size();
     }
@@ -1251,11 +1577,33 @@ public:
         return this->headers_[index].kind;
     }
 
+    [[nodiscard]] base::usize arena_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_blocks() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+    }
+
     [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
         return this->headers_[index].range;
     }
 
     void reserve(const base::usize size) {
+        this->reserve_headers(size);
+        const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
+        const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
+        const base::usize rare = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR);
+        this->payloads_.bindings.reserve(primary);
+        this->payloads_.literals.reserve(secondary);
+        this->payloads_.enum_cases.reserve(primary);
+        this->payloads_.tuples.reserve(secondary);
+        this->payloads_.slices.reserve(secondary);
+        this->payloads_.structs.reserve(secondary);
+        this->payloads_.alternatives.reserve(rare);
+    }
+
+    void reserve_headers(const base::usize size) {
         this->headers_.reserve(size);
     }
 
@@ -1489,13 +1837,28 @@ private:
     }
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;
     }
 
-    std::vector<PatternNodeHeader> headers_;
+    void copy_from(const PatternNodeList& other) {
+        this->headers_.assign(other.headers_.begin(), other.headers_.end());
+        this->payloads_ = other.payloads_;
+    }
+
+    void swap(PatternNodeList& other) noexcept {
+        using std::swap;
+        swap(this->arena_, other.arena_);
+        this->headers_.swap(other.headers_);
+        this->payloads_.swap(other.payloads_);
+        this->materialized_.swap(other.materialized_);
+        this->materialized_valid_.swap(other.materialized_valid_);
+    }
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    AstArenaVector<PatternNodeHeader> headers_;
     PatternNodePayloadArena payloads_;
     mutable std::deque<PatternNode> materialized_;
     mutable std::vector<bool> materialized_valid_;
@@ -1598,21 +1961,86 @@ struct ExprStmtPayload {
 };
 
 struct StmtNodePayloadArena {
-    std::vector<LocalStmtPayload> locals;
-    std::vector<AssignStmtPayload> assigns;
-    std::vector<IfStmtPayload> ifs;
-    std::vector<ForStmtPayload> fors;
-    std::vector<ForRangeStmtPayload> for_ranges;
-    std::vector<WhileStmtPayload> whiles;
-    std::vector<ExprStmtPayload> exprs;
-    std::vector<ExprStmtPayload> defers;
-    std::vector<ExprStmtPayload> returns;
-    std::vector<std::vector<StmtId>> blocks;
-    std::vector<StmtNode> unknowns;
+    StmtNodePayloadArena() = default;
+
+    explicit StmtNodePayloadArena(base::BumpAllocator& arena)
+        : locals(base::BumpAllocatorAdapter<LocalStmtPayload> {arena}),
+          assigns(base::BumpAllocatorAdapter<AssignStmtPayload> {arena}),
+          ifs(base::BumpAllocatorAdapter<IfStmtPayload> {arena}),
+          fors(base::BumpAllocatorAdapter<ForStmtPayload> {arena}),
+          for_ranges(base::BumpAllocatorAdapter<ForRangeStmtPayload> {arena}),
+          whiles(base::BumpAllocatorAdapter<WhileStmtPayload> {arena}),
+          exprs(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
+          defers(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
+          returns(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
+          blocks(base::BumpAllocatorAdapter<std::vector<StmtId>> {arena}),
+          unknowns(base::BumpAllocatorAdapter<StmtNode> {arena}) {}
+
+    void swap(StmtNodePayloadArena& other) noexcept {
+        this->locals.swap(other.locals);
+        this->assigns.swap(other.assigns);
+        this->ifs.swap(other.ifs);
+        this->fors.swap(other.fors);
+        this->for_ranges.swap(other.for_ranges);
+        this->whiles.swap(other.whiles);
+        this->exprs.swap(other.exprs);
+        this->defers.swap(other.defers);
+        this->returns.swap(other.returns);
+        this->blocks.swap(other.blocks);
+        this->unknowns.swap(other.unknowns);
+    }
+
+    AstArenaVector<LocalStmtPayload> locals;
+    AstArenaVector<AssignStmtPayload> assigns;
+    AstArenaVector<IfStmtPayload> ifs;
+    AstArenaVector<ForStmtPayload> fors;
+    AstArenaVector<ForRangeStmtPayload> for_ranges;
+    AstArenaVector<WhileStmtPayload> whiles;
+    AstArenaVector<ExprStmtPayload> exprs;
+    AstArenaVector<ExprStmtPayload> defers;
+    AstArenaVector<ExprStmtPayload> returns;
+    AstArenaVector<std::vector<StmtId>> blocks;
+    AstArenaVector<StmtNode> unknowns;
 };
 
 class StmtNodeList final {
 public:
+    StmtNodeList()
+        : arena_(std::make_unique<base::BumpAllocator>()),
+          headers_(base::BumpAllocatorAdapter<StmtNodeHeader> {*this->arena_}),
+          payloads_(*this->arena_) {}
+
+    StmtNodeList(const StmtNodeList& other)
+        : StmtNodeList() {
+        this->copy_from(other);
+    }
+
+    StmtNodeList& operator=(const StmtNodeList& other) {
+        if (this == &other) {
+            return *this;
+        }
+        StmtNodeList copy(other);
+        *this = std::move(copy);
+        return *this;
+    }
+
+    StmtNodeList(StmtNodeList&& other) noexcept
+        : arena_(std::move(other.arena_)),
+          headers_(std::move(other.headers_)),
+          payloads_(std::move(other.payloads_)) {
+        other.headers_ = AstArenaVector<StmtNodeHeader> {};
+        other.payloads_ = StmtNodePayloadArena {};
+    }
+
+    StmtNodeList& operator=(StmtNodeList&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        this->swap(other);
+        return *this;
+    }
+    ~StmtNodeList() = default;
+
     [[nodiscard]] base::usize size() const noexcept {
         return this->headers_.size();
     }
@@ -1623,6 +2051,14 @@ public:
 
     [[nodiscard]] StmtKind kind(const base::usize index) const noexcept {
         return static_cast<StmtKind>(this->headers_[index].kind);
+    }
+
+    [[nodiscard]] base::usize arena_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_blocks() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->block_count();
     }
 
     [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
@@ -1637,6 +2073,24 @@ public:
     }
 
     void reserve(const base::usize size) {
+        this->reserve_headers(size);
+        const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
+        const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
+        const base::usize rare = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR);
+        this->payloads_.locals.reserve(primary);
+        this->payloads_.assigns.reserve(size);
+        this->payloads_.ifs.reserve(secondary);
+        this->payloads_.fors.reserve(rare);
+        this->payloads_.for_ranges.reserve(rare);
+        this->payloads_.whiles.reserve(rare);
+        this->payloads_.exprs.reserve(primary);
+        this->payloads_.defers.reserve(rare);
+        this->payloads_.returns.reserve(secondary);
+        this->payloads_.blocks.reserve(secondary);
+        this->payloads_.unknowns.reserve(rare);
+    }
+
+    void reserve_headers(const base::usize size) {
         this->headers_.reserve(size);
     }
 
@@ -1908,13 +2362,26 @@ private:
     }
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;
     }
 
-    std::vector<StmtNodeHeader> headers_;
+    void copy_from(const StmtNodeList& other) {
+        this->headers_.assign(other.headers_.begin(), other.headers_.end());
+        this->payloads_ = other.payloads_;
+    }
+
+    void swap(StmtNodeList& other) noexcept {
+        using std::swap;
+        swap(this->arena_, other.arena_);
+        this->headers_.swap(other.headers_);
+        this->payloads_.swap(other.payloads_);
+    }
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    AstArenaVector<StmtNodeHeader> headers_;
     StmtNodePayloadArena payloads_;
 };
 
@@ -2050,19 +2517,82 @@ struct ImplBlockItemPayload {
 };
 
 struct ItemNodePayloadArena {
-    std::vector<ConstItemPayload> consts;
-    std::vector<TypeAliasItemPayload> type_aliases;
-    std::vector<StructItemPayload> structs;
-    std::vector<EnumItemPayload> enums;
-    std::vector<OpaqueStructItemPayload> opaque_structs;
-    std::vector<FunctionItemPayload> functions;
-    std::vector<ExternBlockItemPayload> extern_blocks;
-    std::vector<ImplBlockItemPayload> impl_blocks;
-    std::vector<ItemNode> unknowns;
+    ItemNodePayloadArena() = default;
+
+    explicit ItemNodePayloadArena(base::BumpAllocator& arena)
+        : consts(base::BumpAllocatorAdapter<ConstItemPayload> {arena}),
+          type_aliases(base::BumpAllocatorAdapter<TypeAliasItemPayload> {arena}),
+          structs(base::BumpAllocatorAdapter<StructItemPayload> {arena}),
+          enums(base::BumpAllocatorAdapter<EnumItemPayload> {arena}),
+          opaque_structs(base::BumpAllocatorAdapter<OpaqueStructItemPayload> {arena}),
+          functions(base::BumpAllocatorAdapter<FunctionItemPayload> {arena}),
+          extern_blocks(base::BumpAllocatorAdapter<ExternBlockItemPayload> {arena}),
+          impl_blocks(base::BumpAllocatorAdapter<ImplBlockItemPayload> {arena}),
+          unknowns(base::BumpAllocatorAdapter<ItemNode> {arena}) {}
+
+    void swap(ItemNodePayloadArena& other) noexcept {
+        this->consts.swap(other.consts);
+        this->type_aliases.swap(other.type_aliases);
+        this->structs.swap(other.structs);
+        this->enums.swap(other.enums);
+        this->opaque_structs.swap(other.opaque_structs);
+        this->functions.swap(other.functions);
+        this->extern_blocks.swap(other.extern_blocks);
+        this->impl_blocks.swap(other.impl_blocks);
+        this->unknowns.swap(other.unknowns);
+    }
+
+    AstArenaVector<ConstItemPayload> consts;
+    AstArenaVector<TypeAliasItemPayload> type_aliases;
+    AstArenaVector<StructItemPayload> structs;
+    AstArenaVector<EnumItemPayload> enums;
+    AstArenaVector<OpaqueStructItemPayload> opaque_structs;
+    AstArenaVector<FunctionItemPayload> functions;
+    AstArenaVector<ExternBlockItemPayload> extern_blocks;
+    AstArenaVector<ImplBlockItemPayload> impl_blocks;
+    AstArenaVector<ItemNode> unknowns;
 };
 
 class ItemNodeList final {
 public:
+    ItemNodeList()
+        : arena_(std::make_unique<base::BumpAllocator>()),
+          headers_(base::BumpAllocatorAdapter<ItemNodeHeader> {*this->arena_}),
+          payloads_(*this->arena_) {}
+
+    ItemNodeList(const ItemNodeList& other)
+        : ItemNodeList() {
+        this->copy_from(other);
+    }
+
+    ItemNodeList& operator=(const ItemNodeList& other) {
+        if (this == &other) {
+            return *this;
+        }
+        ItemNodeList copy(other);
+        *this = std::move(copy);
+        return *this;
+    }
+
+    ItemNodeList(ItemNodeList&& other) noexcept
+        : arena_(std::move(other.arena_)),
+          headers_(std::move(other.headers_)),
+          payloads_(std::move(other.payloads_)) {
+        other.headers_ = AstArenaVector<ItemNodeHeader> {};
+        other.payloads_ = ItemNodePayloadArena {};
+        other.materialized_.clear();
+        other.materialized_valid_.clear();
+    }
+
+    ItemNodeList& operator=(ItemNodeList&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        this->swap(other);
+        return *this;
+    }
+    ~ItemNodeList() = default;
+
     [[nodiscard]] base::usize size() const noexcept {
         return this->headers_.size();
     }
@@ -2075,6 +2605,14 @@ public:
         return static_cast<ItemKind>(this->headers_[index].kind);
     }
 
+    [[nodiscard]] base::usize arena_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_blocks() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->block_count();
+    }
+
     [[nodiscard]] base::SourceRange range(const base::usize index) const noexcept {
         return this->headers_[index].range;
     }
@@ -2084,6 +2622,22 @@ public:
     }
 
     void reserve(const base::usize size) {
+        this->reserve_headers(size);
+        const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
+        const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
+        const base::usize rare = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR);
+        this->payloads_.consts.reserve(secondary);
+        this->payloads_.type_aliases.reserve(secondary);
+        this->payloads_.structs.reserve(primary);
+        this->payloads_.enums.reserve(primary);
+        this->payloads_.opaque_structs.reserve(rare);
+        this->payloads_.functions.reserve(primary);
+        this->payloads_.extern_blocks.reserve(rare);
+        this->payloads_.impl_blocks.reserve(secondary);
+        this->payloads_.unknowns.reserve(rare);
+    }
+
+    void reserve_headers(const base::usize size) {
         this->headers_.reserve(size);
     }
 
@@ -2435,13 +2989,28 @@ private:
     }
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(std::vector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;
     }
 
-    std::vector<ItemNodeHeader> headers_;
+    void copy_from(const ItemNodeList& other) {
+        this->headers_.assign(other.headers_.begin(), other.headers_.end());
+        this->payloads_ = other.payloads_;
+    }
+
+    void swap(ItemNodeList& other) noexcept {
+        using std::swap;
+        swap(this->arena_, other.arena_);
+        this->headers_.swap(other.headers_);
+        this->payloads_.swap(other.payloads_);
+        this->materialized_.swap(other.materialized_);
+        this->materialized_valid_.swap(other.materialized_valid_);
+    }
+
+    std::unique_ptr<base::BumpAllocator> arena_;
+    AstArenaVector<ItemNodeHeader> headers_;
     ItemNodePayloadArena payloads_;
     mutable std::deque<ItemNode> materialized_;
     mutable std::vector<bool> materialized_valid_;
@@ -2491,11 +3060,72 @@ struct AstModule {
     IdentifierInterner identifiers;
 
     AstModule() {
-        this->types.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        this->exprs.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        this->patterns.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        this->stmts.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
-        this->items.reserve(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->types.reserve_headers(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->exprs.reserve_headers(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->patterns.reserve_headers(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->stmts.reserve_headers(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+        this->items.reserve_headers(base::config::AUREX_INITIAL_AST_NODE_CAPACITY);
+    }
+
+    void reserve_for_tokens(const base::usize token_count) {
+        AstReserveEstimate estimate;
+        estimate.tokens = token_count;
+        this->reserve_for_estimate(estimate);
+    }
+
+    void reserve_for_estimate(const AstReserveEstimate estimate) {
+        constexpr base::usize INITIAL_CAPACITY = base::config::AUREX_INITIAL_AST_NODE_CAPACITY;
+        const base::usize type_capacity = ast_reserve_larger(
+            estimate.type_sites * SYNTAX_AST_RESERVE_TYPES_PER_TYPE_SITE,
+            estimate.items * SYNTAX_AST_RESERVE_TYPES_PER_ITEM
+        );
+        const base::usize expr_capacity = ast_reserve_larger(
+            estimate.statements * SYNTAX_AST_RESERVE_EXPRS_PER_STATEMENT,
+            ast_reserve_fraction(estimate.tokens, SYNTAX_AST_RESERVE_EXPR_TOKEN_DIVISOR)
+        );
+        const base::usize pattern_capacity =
+            estimate.pattern_sites * SYNTAX_AST_RESERVE_PATTERNS_PER_PATTERN_SITE;
+        this->types.reserve(ast_reserve_at_least(
+            INITIAL_CAPACITY,
+            ast_reserve_larger(type_capacity, ast_reserve_fraction(
+                estimate.tokens,
+                SYNTAX_AST_RESERVE_TYPE_TOKEN_DIVISOR
+            ))
+        ));
+        this->exprs.reserve(ast_reserve_at_least(
+            INITIAL_CAPACITY,
+            expr_capacity
+        ));
+        this->patterns.reserve(ast_reserve_at_least(
+            INITIAL_CAPACITY,
+            ast_reserve_larger(pattern_capacity, ast_reserve_fraction(
+                estimate.tokens,
+                SYNTAX_AST_RESERVE_PATTERN_TOKEN_DIVISOR
+            ))
+        ));
+        this->stmts.reserve(ast_reserve_at_least(
+            INITIAL_CAPACITY,
+            ast_reserve_larger(estimate.statements, ast_reserve_fraction(
+                estimate.tokens,
+                SYNTAX_AST_RESERVE_STMT_TOKEN_DIVISOR
+            ))
+        ));
+        const base::usize item_capacity = ast_reserve_at_least(
+            INITIAL_CAPACITY,
+            ast_reserve_larger(estimate.items, ast_reserve_fraction(
+                estimate.tokens,
+                SYNTAX_AST_RESERVE_ITEM_TOKEN_DIVISOR
+            ))
+        );
+        this->items.reserve(item_capacity);
+        this->item_modules.reserve(item_capacity);
+        this->identifiers.reserve(ast_reserve_at_least(
+            INITIAL_CAPACITY,
+            ast_reserve_fraction(
+                estimate.identifier_tokens,
+                SYNTAX_AST_RESERVE_IDENTIFIER_TOKEN_DIVISOR
+            )
+        ));
     }
 
     AstModule(const AstModule& other)

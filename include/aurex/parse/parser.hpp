@@ -29,7 +29,7 @@ public:
     Parser(
         std::span<const syntax::Token> tokens,
         base::DiagnosticSink& diagnostics
-    ) noexcept;
+    );
 
     [[nodiscard]] base::Result<syntax::AstModule> parse_module();
 

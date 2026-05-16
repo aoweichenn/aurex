@@ -136,15 +136,23 @@ module interner instead of maintaining a second private interner. The 2026-05-16
 performance line then removed the old fat `ExprNode` production type entirely:
 parser construction, `AstModule` storage, module-loader append, and postfix
 materialization now create compact expression headers plus per-kind payloads
-directly. On the local
+directly. The follow-up bump pass backs the `TypeNodeList`, `ExprNodeList`,
+`PatternNodeList`, `StmtNodeList`, and `ItemNodeList` header vectors and
+per-kind payload vectors with `BumpAllocatorAdapter`; the `IdentifierInterner`
+text vector and hash table buckets/nodes are also arena-backed. Parser startup
+now estimates AST storage from token shape and reserves hot payload arenas up
+front, avoiding repeated bump-vector growth buffers on large modules. On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 180.1 MiB RSS / 70.9 ms. Google Benchmark `sema_ast_bulk/1024` is now
-roughly 117 ns/expr, and the local `tools/frontend_compare.py` baseline has
-Aurex `--check` at roughly 8.1 ms for lookup/96 and 8.6 ms for generics/96,
-versus Clang++ at roughly 20.1 ms / 22.9 ms and G++ at roughly 22.4 ms /
-23.1 ms. Cross-module stable hashes / parallel global IDs and CI perf
-thresholds remain later performance work.
+roughly 158.4 MiB RSS / 74.4 ms. Google Benchmark `sema_ast_bulk/1024` is now
+roughly 128 ns/expr, and the local `tools/frontend_compare.py` baseline has
+Aurex `--check` at roughly 10.1 ms for lookup/96 and 9.6 ms for generics/96,
+versus Clang++ at roughly 21.2 ms / 24.3 ms and G++ at roughly 25.1 ms /
+24.3 ms. The current 2000 generic-instance stress case is roughly 124.4 MiB
+RSS / 389.8 ms; remaining memory work is in payload-local small vectors and
+generic side-table lifetime rather than the main AST header/payload storage.
+Cross-module stable hashes / parallel global IDs and CI perf thresholds remain
+later performance work.
 
 ## M2 Gaps
 

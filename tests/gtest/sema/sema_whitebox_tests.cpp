@@ -2731,6 +2731,8 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks) {
 TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
     IdentifierInterner interner;
     interner.reserve(2);
+    EXPECT_GT(interner.arena_blocks(), 0U);
+    EXPECT_GT(interner.arena_bytes(), 0U);
 
     EXPECT_FALSE(sema::is_valid(interner.find("alpha")));
     const IdentId alpha = interner.intern("alpha");
@@ -2770,6 +2772,13 @@ TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
     EXPECT_EQ(moved.text(beta), "beta");
     EXPECT_EQ(assigned.size(), 0U);
     EXPECT_EQ(assigned.find("alpha"), sema::INVALID_IDENT_ID);
+    EXPECT_EQ(assigned.arena_blocks(), 0U);
+
+    const IdentId gamma = assigned.intern("gamma");
+    EXPECT_EQ(gamma.value, 0U);
+    EXPECT_EQ(assigned.find("gamma"), gamma);
+    EXPECT_EQ(assigned.text(gamma), "gamma");
+    EXPECT_GT(assigned.arena_blocks(), 0U);
 
     IdentifierInterner move_assigned;
     static_cast<void>(move_assigned.intern("stale"));
@@ -2778,7 +2787,14 @@ TEST(CoreUnit, IdentifierInternerStableIdsAndNonAllocatingMisses) {
     EXPECT_EQ(move_assigned.find("stale"), sema::INVALID_IDENT_ID);
     EXPECT_EQ(move_assigned.text(beta), "beta");
     EXPECT_EQ(moved.size(), 0U);
+    EXPECT_EQ(moved.arena_blocks(), 0U);
+    moved.reserve(1);
+    EXPECT_GT(moved.arena_blocks(), 0U);
     EXPECT_EQ(move_assigned.intern(""), sema::INVALID_IDENT_ID);
+
+    IdentifierInterner* const move_assigned_ref = &move_assigned;
+    move_assigned = std::move(*move_assigned_ref);
+    EXPECT_EQ(move_assigned.find("alpha"), alpha);
 }
 
 TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {

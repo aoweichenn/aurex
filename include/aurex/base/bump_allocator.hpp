@@ -3,7 +3,10 @@
 #include <aurex/base/integer.hpp>
 
 #include <cstddef>
+#include <limits>
+#include <new>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace aurex::base {
@@ -53,5 +56,65 @@ private:
     std::vector<Block> blocks_;
     usize allocated_bytes_ = 0;
 };
+
+template <typename T>
+class BumpAllocatorAdapter final {
+public:
+    using value_type = T;
+    using propagate_on_container_move_assignment = std::true_type;
+    using propagate_on_container_swap = std::true_type;
+    using is_always_equal = std::false_type;
+
+    BumpAllocatorAdapter() noexcept = default;
+
+    explicit BumpAllocatorAdapter(BumpAllocator& arena) noexcept
+        : arena_(&arena) {}
+
+    template <typename U>
+    BumpAllocatorAdapter(const BumpAllocatorAdapter<U>& other) noexcept
+        : arena_(other.arena_) {}
+
+    [[nodiscard]] T* allocate(const std::size_t count) {
+        if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
+            throw std::bad_array_new_length();
+        }
+        const std::size_t bytes = count * sizeof(T);
+        if (this->arena_ == nullptr) {
+            return static_cast<T*>(::operator new(bytes, std::align_val_t {alignof(T)}));
+        }
+        return static_cast<T*>(this->arena_->allocate(bytes, alignof(T)));
+    }
+
+    void deallocate(T* const pointer, const std::size_t) noexcept {
+        if (this->arena_ == nullptr) {
+            ::operator delete(pointer, std::align_val_t {alignof(T)});
+        }
+    }
+
+    template <typename U>
+    [[nodiscard]] friend bool operator==(
+        const BumpAllocatorAdapter& lhs,
+        const BumpAllocatorAdapter<U>& rhs
+    ) noexcept {
+        return lhs.arena_ == rhs.arena_;
+    }
+
+    template <typename U>
+    [[nodiscard]] friend bool operator!=(
+        const BumpAllocatorAdapter& lhs,
+        const BumpAllocatorAdapter<U>& rhs
+    ) noexcept {
+        return !(lhs == rhs);
+    }
+
+private:
+    template <typename>
+    friend class BumpAllocatorAdapter;
+
+    BumpAllocator* arena_ = nullptr;
+};
+
+template <typename T>
+using BumpVector = std::vector<T, BumpAllocatorAdapter<T>>;
 
 } // namespace aurex::base

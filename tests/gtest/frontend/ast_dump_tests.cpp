@@ -275,6 +275,8 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 
     syntax::TypeNodeList types;
     types.push_back(function_type);
+    EXPECT_GT(types.arena_blocks(), 0U);
+    EXPECT_GT(types.arena_bytes(), 0U);
     EXPECT_TRUE(types[0].function_is_unsafe);
     EXPECT_EQ(types[0].function_params.size(), 2U);
     syntax::TypeNode moved_type = types.take(0);
@@ -287,6 +289,8 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 
     syntax::ExprNodeList exprs;
     const syntax::ExprId call_id = exprs.append_call(syntax::ExprKind::call, {}, call_expr);
+    EXPECT_GT(exprs.arena_blocks(), 0U);
+    EXPECT_GT(exprs.arena_bytes(), 0U);
     const syntax::CallExprPayload* const stored_call = exprs.call_payload(call_id.value);
     ASSERT_NE(stored_call, nullptr);
     EXPECT_EQ(stored_call->args.size(), 2U);
@@ -320,6 +324,8 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 
     syntax::PatternNodeList patterns;
     patterns.push_back(enum_pattern);
+    EXPECT_GT(patterns.arena_blocks(), 0U);
+    EXPECT_GT(patterns.arena_bytes(), 0U);
     EXPECT_EQ(patterns[0].binding_names.front(), "value");
     syntax::PatternNode moved_pattern = patterns.take(0);
     EXPECT_TRUE(moved_pattern.scoped);
@@ -331,6 +337,8 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     block_stmt.statements = {syntax::StmtId {10}, syntax::StmtId {11}, syntax::StmtId {12}};
     syntax::StmtNodeList stmts;
     stmts.push_back(block_stmt);
+    EXPECT_GT(stmts.arena_blocks(), 0U);
+    EXPECT_GT(stmts.arena_bytes(), 0U);
     EXPECT_EQ(stmts[0].statements.size(), 3U);
     syntax::StmtNode moved_stmt = stmts.take(0);
     EXPECT_EQ(moved_stmt.statements.back().value, 12U);
@@ -352,6 +360,8 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 
     syntax::ItemNodeList items;
     items.push_back(function_item);
+    EXPECT_GT(items.arena_blocks(), 0U);
+    EXPECT_GT(items.arena_bytes(), 0U);
     items.set_visibility(0, syntax::Visibility::public_);
     EXPECT_EQ(items[0].visibility, syntax::Visibility::public_);
     EXPECT_TRUE(items[0].is_unsafe);
@@ -376,6 +386,69 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     syntax::ItemNode moved_enum = enum_items.take(0);
     EXPECT_EQ(moved_enum.enum_base_type.value, 17U);
     EXPECT_EQ(moved_enum.enum_cases.back().value_text, "0");
+}
+
+TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads) {
+    syntax::TypeNode function_type;
+    function_type.kind = syntax::TypeKind::function;
+    function_type.function_params = {syntax::TypeId {1}, syntax::TypeId {2}};
+    function_type.function_return = syntax::TypeId {3};
+    syntax::TypeNodeList source_types;
+    source_types.push_back(function_type);
+    syntax::TypeNodeList target_types;
+    target_types.push_back(syntax::TypeNode {});
+    target_types = std::move(source_types);
+    EXPECT_GT(target_types.arena_blocks(), 0U);
+    EXPECT_EQ(target_types[0].function_params.back().value, 2U);
+
+    syntax::CallExprPayload call;
+    call.callee = syntax::ExprId {4};
+    call.args = {syntax::ExprId {5}, syntax::ExprId {6}};
+    syntax::ExprNodeList source_exprs;
+    const syntax::ExprId source_call = source_exprs.append_call(syntax::ExprKind::call, {}, call);
+    syntax::ExprNodeList target_exprs;
+    static_cast<void>(target_exprs.append_literal(syntax::ExprKind::integer_literal, {}, "0"));
+    target_exprs = std::move(source_exprs);
+    const syntax::CallExprPayload* const moved_call = target_exprs.call_payload(source_call.value);
+    ASSERT_NE(moved_call, nullptr);
+    EXPECT_EQ(moved_call->args.back().value, 6U);
+
+    syntax::PatternNode enum_pattern;
+    enum_pattern.kind = syntax::PatternKind::enum_case;
+    enum_pattern.case_name = "some";
+    enum_pattern.payload_patterns = {syntax::PatternId {7}};
+    enum_pattern.binding_names = {"value"};
+    syntax::PatternNodeList source_patterns;
+    source_patterns.push_back(enum_pattern);
+    syntax::PatternNodeList target_patterns;
+    target_patterns.push_back(syntax::PatternNode {});
+    target_patterns = std::move(source_patterns);
+    EXPECT_EQ(target_patterns[0].payload_patterns.front().value, 7U);
+    EXPECT_EQ(target_patterns[0].binding_names.front(), "value");
+
+    syntax::StmtNode block_stmt;
+    block_stmt.kind = syntax::StmtKind::block;
+    block_stmt.statements = {syntax::StmtId {8}, syntax::StmtId {9}};
+    syntax::StmtNodeList source_stmts;
+    source_stmts.push_back(block_stmt);
+    syntax::StmtNodeList target_stmts;
+    target_stmts.push_back(syntax::StmtNode {});
+    target_stmts = std::move(source_stmts);
+    EXPECT_EQ(target_stmts[0].statements.back().value, 9U);
+
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "map";
+    function_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    function_item.params = {syntax::ParamDecl {"value", syntax::TypeId {10}, {}}};
+    function_item.return_type = syntax::TypeId {11};
+    syntax::ItemNodeList source_items;
+    source_items.push_back(function_item);
+    syntax::ItemNodeList target_items;
+    target_items.push_back(syntax::ItemNode {});
+    target_items = std::move(source_items);
+    EXPECT_EQ(target_items[0].generic_params.front().name, "T");
+    EXPECT_EQ(target_items[0].params.front().type.value, 10U);
 }
 
 TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {

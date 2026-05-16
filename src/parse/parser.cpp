@@ -16,7 +16,7 @@ using syntax::TokenKind;
 Parser::Parser(
     const std::span<const syntax::Token> tokens,
     base::DiagnosticSink& diagnostics
-) noexcept
+)
     : session_(tokens, diagnostics) {}
 
 base::Result<syntax::AstModule> Parser::parse_module() {

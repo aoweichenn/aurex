@@ -55,10 +55,9 @@ TEST_F(AurexIntegrationTest, StructAndEnumValidationRegressions) {
         "struct Pair { left: i32; left: i32; }\n"
         "fn main() -> i32 { return 0; }\n"
     );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(duplicate_decl)).output,
-        "duplicate struct field: left"
-    );
+    const std::string duplicate_decl_output = require_failure(aurexc() + " --check " + q(duplicate_decl)).output;
+    expect_contains(duplicate_decl_output, "duplicate struct field: left");
+    expect_contains(duplicate_decl_output, "note: previous declaration of `left` is here");
 
     const fs::path duplicate_case = write_source_file(
         tmp_root() / "duplicate_case.ax",
@@ -69,11 +68,167 @@ TEST_F(AurexIntegrationTest, StructAndEnumValidationRegressions) {
         "}\n"
         "fn main() -> i32 { return 0; }\n"
     );
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(duplicate_case)).output,
-        "duplicate enum case: Payload.some"
+    const std::string duplicate_case_output = require_failure(aurexc() + " --check " + q(duplicate_case)).output;
+    expect_contains(duplicate_case_output, "duplicate enum case: Payload.some");
+    expect_contains(duplicate_case_output, "note: previous declaration of `some` is here");
+}
+
+TEST_F(AurexIntegrationTest, DiagnosticQualityRegressions) {
+    const fs::path type_mismatch = write_source_file(
+        tmp_root() / "diagnostic_type_mismatch.ax",
+        "module diagnostic_type_mismatch;\n"
+        "fn main() -> i32 {\n"
+        "  let value: i32 = true;\n"
+        "  return value;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(type_mismatch)).output,
+        {
+            "initializer type does not match declared type",
+            "note: expected type: i32",
+            "note: actual type: bool",
+        }
     );
 
+    const fs::path suggestion = write_source_file(
+        tmp_root() / "diagnostic_suggestion.ax",
+        "module diagnostic_suggestion;\n"
+        "fn main() -> i32 {\n"
+        "  let count: i32 = 1;\n"
+        "  return coutn;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(suggestion)).output,
+        {
+            "unknown name: coutn",
+            "help: did you mean `count`?",
+        }
+    );
+
+    const fs::path type_suggestion = write_source_file(
+        tmp_root() / "diagnostic_type_suggestion.ax",
+        "module diagnostic_type_suggestion;\n"
+        "struct Point { value: i32; }\n"
+        "fn main() -> i32 {\n"
+        "  let value: Piont = Point { value: 1 };\n"
+        "  return value.value;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(type_suggestion)).output,
+        {
+            "unknown type: Piont",
+            "help: did you mean `Point`?",
+        }
+    );
+
+    const fs::path function_suggestion = write_source_file(
+        tmp_root() / "diagnostic_function_suggestion.ax",
+        "module diagnostic_function_suggestion;\n"
+        "fn compute(value: i32) -> i32 { return value; }\n"
+        "fn main() -> i32 { return cmopute(1); }\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(function_suggestion)).output,
+        {
+            "unknown function: cmopute",
+            "help: did you mean `compute`?",
+        }
+    );
+
+    const fs::path duplicate = write_source_file(
+        tmp_root() / "diagnostic_previous_declaration.ax",
+        "module diagnostic_previous_declaration;\n"
+        "fn main() -> i32 {\n"
+        "  let value: i32 = 1;\n"
+        "  let value: i32 = 2;\n"
+        "  return value;\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(duplicate)).output,
+        {
+            "duplicate definition or shadowing is not allowed: value",
+            "note: previous declaration of `value` is here",
+        }
+    );
+
+    const fs::path qualified_suggestions = write_source_file(
+        tmp_root() / "diagnostic_qualified_suggestions.ax",
+        "module diagnostic_qualified_suggestions;\n"
+        "import samplelib.visibility as vis;\n"
+        "fn main() -> i32 {\n"
+        "  let value: vis.PubicInt = vis.answe;\n"
+        "  return vis.exproted(value);\n"
+        "}\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " " + sample_import_flags() + " --check " + q(qualified_suggestions)).output,
+        {
+            "unknown type in module samplelib.visibility: PubicInt",
+            "help: did you mean `PublicInt`?",
+            "unknown name in module samplelib.visibility: answe",
+            "help: did you mean `answer`?",
+            "unknown function in module samplelib.visibility: exproted",
+            "help: did you mean `exported`?",
+        }
+    );
+}
+
+TEST_F(AurexIntegrationTest, DiagnosticDeclarationQualityRegressions) {
+    const fs::path duplicate_type_alias = write_source_file(
+        tmp_root() / "diagnostic_duplicate_type_alias.ax",
+        "module diagnostic_duplicate_type_alias;\n"
+        "type Value = i32;\n"
+        "type Value = bool;\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(duplicate_type_alias)).output,
+        {
+            "duplicate type definition in module diagnostic_duplicate_type_alias: Value",
+            "note: previous declaration of `Value` is here",
+        }
+    );
+
+    const fs::path unknown_where_param = write_source_file(
+        tmp_root() / "diagnostic_unknown_where_param.ax",
+        "module diagnostic_unknown_where_param;\n"
+        "fn id[T](value: T) -> T where U: Eq { return value; }\n"
+        "fn main() -> i32 { return id(1); }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(unknown_where_param)).output,
+        "where constraint references unknown generic parameter `U`"
+    );
+
+    const fs::path enum_discriminant = write_source_file(
+        tmp_root() / "diagnostic_enum_discriminant.ax",
+        "module diagnostic_enum_discriminant;\n"
+        "enum Choice: u8 { too_big = 18446744073709551616 }\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(enum_discriminant)).output,
+        "enum discriminant literal is out of range"
+    );
+
+    const fs::path function_value_collision = write_source_file(
+        tmp_root() / "diagnostic_function_value_collision.ax",
+        "module diagnostic_function_value_collision;\n"
+        "const value: i32 = 1;\n"
+        "fn value() -> i32 { return 2; }\n"
+        "fn main() -> i32 { return value; }\n"
+    );
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + q(function_value_collision)).output,
+        {
+            "duplicate value definition in module: value",
+            "note: previous declaration of `value` is here",
+        }
+    );
 }
 
 TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
@@ -114,6 +269,15 @@ TEST_F(AurexIntegrationTest, IntegerLiteralRegressions) {
         "}\n"
     );
     require_success(aurexc() + " --check " + q(shift_widths));
+
+    const fs::path aggregate_consts = write_source_file(
+        tmp_root() / "aggregate_consts.ax",
+        "module aggregate_consts;\n"
+        "const REPEATED: [3]i32 = [1; 3];\n"
+        "const PAIR: (i32, bool) = (1, true);\n"
+        "fn main() -> i32 { return 0; }\n"
+    );
+    require_success(aurexc() + " --check " + q(aggregate_consts));
 }
 
 TEST_F(AurexIntegrationTest, M2UnsafeBoundaries) {

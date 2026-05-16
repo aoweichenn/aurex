@@ -1139,15 +1139,17 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
     if (is_repeat_literal) {
         const TypeHandle actual = this->analyze_expr(expr.array_repeat_value, element_type);
         if (!this->can_assign(element_type, actual, expr.array_repeat_value)) {
-            this->report(expr.range, std::string(SEMA_ARRAY_REPEAT_TYPE_MISMATCH));
+            this->report_type_mismatch(expr.range, std::string(SEMA_ARRAY_REPEAT_TYPE_MISMATCH), element_type, actual);
         }
     } else {
         for (const syntax::ExprId element : expr.array_elements) {
             const TypeHandle actual = this->analyze_expr(element, element_type);
             if (!this->can_assign(element_type, actual, element)) {
-                this->report(
+                this->report_type_mismatch(
                     expr_range_or(this->module_, element, expr.range),
-                    std::string(SEMA_ARRAY_LITERAL_ELEMENT_TYPE_MISMATCH)
+                    std::string(SEMA_ARRAY_LITERAL_ELEMENT_TYPE_MISMATCH),
+                    element_type,
+                    actual
                 );
             }
         }
@@ -1215,9 +1217,11 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
         }
         if (has_expected_tuple) {
             if (!this->can_assign(element_types[i], actual, expr.tuple_elements[i])) {
-                this->report(
+                this->report_type_mismatch(
                     expr_range_or(this->module_, expr.tuple_elements[i], expr.range),
-                    std::string(SEMA_TUPLE_LITERAL_ELEMENT_TYPE_MISMATCH)
+                    std::string(SEMA_TUPLE_LITERAL_ELEMENT_TYPE_MISMATCH),
+                    element_types[i],
+                    actual
                 );
             }
         } else {
@@ -1308,7 +1312,12 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         }
         const TypeHandle actual = this->analyze_expr(init.value, field_info->type);
         if (!this->can_assign(field_info->type, actual, init.value)) {
-            this->report(init.range, std::string(SEMA_STRUCT_LITERAL_FIELD_TYPE_MISMATCH));
+            this->report_type_mismatch(
+                init.range,
+                std::string(SEMA_STRUCT_LITERAL_FIELD_TYPE_MISMATCH),
+                field_info->type,
+                actual
+            );
         }
     }
     for (const StructFieldInfo& field : info->fields) {

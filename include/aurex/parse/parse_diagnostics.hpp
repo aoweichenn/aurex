@@ -29,6 +29,14 @@ public:
         });
     }
 
+    void report_note_at(const syntax::Token& token, std::string message) {
+        this->sink_.push(base::Diagnostic {
+            base::Severity::note,
+            token.range,
+            std::move(message),
+        });
+    }
+
     void reset_panic() noexcept {
         this->panic_ = false;
     }

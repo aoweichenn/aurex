@@ -109,15 +109,16 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
         pattern.scoped = true;
         pattern.range = this->merge(first.range, case_name.range);
         if (this->match(TokenKind::l_paren)) {
-            this->parse_payload_patterns(pattern);
+            this->parse_payload_patterns(pattern, this->previous());
         }
         return this->session_.module.push_pattern(std::move(pattern));
     };
 
     if (this->match(TokenKind::l_bracket)) {
+        const syntax::Token& generic_begin = this->previous();
         std::vector<syntax::TypeId> type_args;
         this->parse_pattern_generic_type_args(type_args);
-        const syntax::Token& end = this->expect_generic_type_args_end();
+        const syntax::Token& end = this->expect_generic_type_args_end(generic_begin);
         const syntax::TypeId enum_type = this->push_explicit_enum_case_type(
             parts,
             parts.size(),
@@ -140,9 +141,10 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
     while (this->match(TokenKind::dot)) {
         parts.push_back(this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT)));
         if (this->match(TokenKind::l_bracket)) {
+            const syntax::Token& generic_begin = this->previous();
             std::vector<syntax::TypeId> type_args;
             this->parse_pattern_generic_type_args(type_args);
-            const syntax::Token& end = this->expect_generic_type_args_end();
+            const syntax::Token& end = this->expect_generic_type_args_end(generic_begin);
             const syntax::TypeId enum_type = this->push_explicit_enum_case_type(
                 parts,
                 parts.size(),
@@ -183,7 +185,7 @@ syntax::PatternId PatternParser::parse_shorthand_enum_case_pattern(const syntax:
     pattern.scoped = true;
     pattern.range = this->merge(dot.range, case_name.range);
     if (this->match(TokenKind::l_paren)) {
-        this->parse_payload_patterns(pattern);
+        this->parse_payload_patterns(pattern, this->previous());
     }
     return this->session_.module.push_pattern(std::move(pattern));
 }
@@ -234,7 +236,7 @@ syntax::PatternId PatternParser::parse_tuple_pattern() {
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_TUPLE_PATTERN_END));
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_PATTERN_UNSUPPORTED));
-        const syntax::Token& end = this->expect_tuple_pattern_end();
+        const syntax::Token& end = this->expect_tuple_pattern_end(begin);
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::wildcard;
         pattern.range = this->merge(begin.range, end.range);
@@ -243,7 +245,7 @@ syntax::PatternId PatternParser::parse_tuple_pattern() {
 
     const syntax::PatternId first = this->parse_destructure_pattern_atom();
     if (!this->match(TokenKind::comma)) {
-        static_cast<void>(this->expect_tuple_pattern_end());
+        static_cast<void>(this->expect_tuple_pattern_end(begin));
         return first;
     }
 
@@ -257,7 +259,7 @@ syntax::PatternId PatternParser::parse_tuple_pattern() {
             break;
         }
     }
-    const syntax::Token& end = this->expect_tuple_pattern_end();
+    const syntax::Token& end = this->expect_tuple_pattern_end(begin);
     pattern.range = this->merge(begin.range, end.range);
     return this->session_.module.push_pattern(std::move(pattern));
 }
@@ -291,7 +293,7 @@ syntax::PatternId PatternParser::parse_slice_pattern() {
         }
     }
 
-    const syntax::Token& end = this->expect_slice_pattern_end();
+    const syntax::Token& end = this->expect_slice_pattern_end(begin);
     pattern.range = this->merge(begin.range, end.range);
     return this->session_.module.push_pattern(std::move(pattern));
 }
@@ -325,7 +327,7 @@ syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name)
             break;
         }
     }
-    const syntax::Token& end = this->expect_struct_pattern_end();
+    const syntax::Token& end = this->expect_struct_pattern_end(begin);
     pattern.range = this->merge(name.range, end.range);
     return this->session_.module.push_pattern(std::move(pattern));
 }
@@ -442,7 +444,7 @@ void PatternParser::parse_pattern_generic_type_args(std::vector<syntax::TypeId>&
     }
 }
 
-void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern) {
+void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern, const syntax::Token& opening) {
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EXPECT_PAYLOAD_BINDING));
     } else {
@@ -463,7 +465,7 @@ void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern) {
             }
         }
     }
-    const syntax::Token& end = this->expect_payload_pattern_end();
+    const syntax::Token& end = this->expect_payload_pattern_end(opening);
     pattern.range = this->merge(pattern.range, end.range);
 }
 
@@ -476,52 +478,57 @@ void PatternParser::consume_bare_enum_case_payload_recovery(
     recovery.case_name = first.text;
     recovery.range = first.range;
     this->advance();
-    this->parse_payload_patterns(recovery);
+    this->parse_payload_patterns(recovery, this->previous());
     range = this->merge(range, recovery.range);
 }
 
-const syntax::Token& PatternParser::expect_generic_type_args_end() const
+const syntax::Token& PatternParser::expect_generic_type_args_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered(
+    return this->expect_recovered_after(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
-        RecoveryContext::generic_type_argument
+        RecoveryContext::generic_type_argument,
+        opening
     );
 }
 
-const syntax::Token& PatternParser::expect_tuple_pattern_end() const
+const syntax::Token& PatternParser::expect_tuple_pattern_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered(
+    return this->expect_recovered_after(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_TUPLE_PATTERN_END),
-        RecoveryContext::pattern_payload
+        RecoveryContext::pattern_payload,
+        opening
     );
 }
 
-const syntax::Token& PatternParser::expect_slice_pattern_end() const
+const syntax::Token& PatternParser::expect_slice_pattern_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered(
+    return this->expect_recovered_after(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_SLICE_PATTERN_END),
-        RecoveryContext::pattern_payload
+        RecoveryContext::pattern_payload,
+        opening
     );
 }
 
-const syntax::Token& PatternParser::expect_payload_pattern_end() const
+const syntax::Token& PatternParser::expect_payload_pattern_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered(
+    return this->expect_recovered_after(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_PAYLOAD_BINDING_END),
-        RecoveryContext::pattern_payload
+        RecoveryContext::pattern_payload,
+        opening
     );
 }
 
-const syntax::Token& PatternParser::expect_struct_pattern_end() const
+const syntax::Token& PatternParser::expect_struct_pattern_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered(
+    return this->expect_recovered_after(
         TokenKind::r_brace,
         std::string(PARSER_EXPECT_STRUCT_PATTERN_END),
-        RecoveryContext::pattern_payload
+        RecoveryContext::pattern_payload,
+        opening
     );
 }
 

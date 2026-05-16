@@ -16,7 +16,7 @@ private:
     [[nodiscard]] syntax::TypeId parse_named_type();
     [[nodiscard]] syntax::TypeId parse_tuple_or_parenthesized_type();
     [[nodiscard]] bool recover_tuple_type_separator() const;
-    [[nodiscard]] const syntax::Token& expect_tuple_type_end() const;
+    [[nodiscard]] const syntax::Token& expect_tuple_type_end(const syntax::Token& opening) const;
     [[nodiscard]] syntax::TypeId parse_function_type();
     [[nodiscard]] syntax::TypeId parse_function_type_after_fn(
         const base::SourceRange& begin_range,

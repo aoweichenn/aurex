@@ -757,7 +757,7 @@ fn push(self: &mut Buffer, value: u8) -> void
 
 - C FFI raw pointer。
 - method receiver。
-- 旧 raw address-of 兼容路径。
+- raw pointer 地址入口继续收窄到显式 builtin / FFI 边界。
 - 未来 borrow / lifetime / alias 语义。
 - buffer/span 类数据结构的内部引用。
 
@@ -782,7 +782,7 @@ extern c {
 
 - `&T` / `&mut T` 是 safe borrow。
 - `*const T` / `*mut T` 是 raw pointer，主要用于 FFI 和 unsafe 内部实现。
-- `&place` 产生 safe reference；明确期望 raw pointer 的位置暂时保留兼容路径。
+- `&place` 只产生 safe reference；raw pointer 地址必须显式通过 `ptraddr(...)`、`ptrat[T](...)` 等 raw/unsafe 边界取得。
 - `&mut place` 产生 `&mut T`，要求 writable place，且不会退化成 raw pointer。
 - `*ref` 是 safe 解引用；`*raw_pointer` 仍需要 unsafe。
 

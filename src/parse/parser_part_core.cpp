@@ -75,6 +75,16 @@ const syntax::Token& ParserPartCore::expect_recovered(
     return this->parser_.expect_recovered(kind, std::move(message), context);
 }
 
+const syntax::Token& ParserPartCore::expect_recovered_after(
+    const syntax::TokenKind kind,
+    std::string message,
+    const RecoveryContext context,
+    const syntax::Token& opening
+) const
+{
+    return this->parser_.expect_recovered_after(kind, std::move(message), context, opening);
+}
+
 const syntax::Token& ParserPartCore::expect_identifier_recovered(std::string message) {
     return this->expect_recovered(
         syntax::TokenKind::identifier,
@@ -112,6 +122,11 @@ void ParserPartCore::report_here(std::string message) const
 void ParserPartCore::report_at(const syntax::Token& token, std::string message) const
 {
     this->parser_.report_at(token, std::move(message));
+}
+
+void ParserPartCore::report_note_at(const syntax::Token& token, std::string message) const
+{
+    this->parser_.report_note_at(token, std::move(message));
 }
 
 void ParserPartCore::reset_panic() const noexcept {

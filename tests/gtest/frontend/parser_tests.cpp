@@ -1589,6 +1589,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
     expect_contains(messages, "expected ',' or ']' after generic type argument");
     expect_contains(messages, "expected ')' after ptraddr argument");
     expect_contains(messages, "expected ',' or ')' after argument");
+    expect_contains(messages, "opening delimiter is here");
     expect_contains(messages, "expected expression");
 }
 

@@ -718,6 +718,12 @@ private:
     void append_public_reexports(syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
     [[nodiscard]] std::string qualified_name(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_visible_value_name(std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_value_name_in_module(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_visible_type_name(std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_type_name_in_module(syntax::ModuleId module, std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_visible_function_name(std::string_view name) const;
+    [[nodiscard]] std::string_view nearest_function_name_in_module(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string generic_template_key_prefix(
         syntax::ModuleId module,
@@ -858,6 +864,15 @@ private:
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
     void report(const base::SourceRange& range, std::string message) const;
+    void report_note(const base::SourceRange& range, std::string message) const;
+    void report_help(const base::SourceRange& range, std::string message) const;
+    void report_type_mismatch(
+        const base::SourceRange& range,
+        std::string message,
+        TypeHandle expected,
+        TypeHandle actual
+    ) const;
+    void report_lookup_suggestion(const base::SourceRange& range, std::string_view suggestion) const;
 
     std::optional<syntax::AstModule> owned_module_;
     syntax::AstModule& module_;

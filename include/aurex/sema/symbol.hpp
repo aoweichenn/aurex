@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aurex::sema {
 
@@ -65,6 +66,7 @@ public:
     [[nodiscard]] base::Result<SymbolId> insert(Symbol symbol, base::DiagnosticSink& diagnostics);
     [[nodiscard]] const Symbol* find(IdentId name) const noexcept;
     [[nodiscard]] const Symbol* get(SymbolId id) const noexcept;
+    void append_visible_names(std::vector<std::string_view>& names) const;
 
 private:
     [[nodiscard]] IdentSymbolMap make_scope(base::usize expected_symbols) const;

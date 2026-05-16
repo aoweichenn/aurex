@@ -124,7 +124,7 @@ syntax::PostfixOp PostfixExprParser::parse_bracket_suffix(const ExprContext cont
 
     if (this->check(TokenKind::r_bracket)) {
         this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
-        const syntax::Token& end = this->expect_index_suffix_end();
+        const syntax::Token& end = this->expect_index_suffix_end(begin);
         op.range = this->merge(begin.range, end.range);
         return op;
     }
@@ -142,7 +142,7 @@ syntax::PostfixOp PostfixExprParser::parse_bracket_suffix(const ExprContext cont
         if (!this->check(TokenKind::r_bracket)) {
             op.slice_end = this->parse_expr(context);
         }
-        const syntax::Token& end = this->expect_slice_suffix_end();
+        const syntax::Token& end = this->expect_slice_suffix_end(begin);
         op.range = this->merge(begin.range, end.range);
         return op;
     }
@@ -155,7 +155,7 @@ syntax::PostfixOp PostfixExprParser::parse_bracket_suffix(const ExprContext cont
         op.bracket_args.push_back(this->parse_bracket_arg(context));
     }
 
-    const syntax::Token& end = this->expect_index_suffix_end();
+    const syntax::Token& end = this->expect_index_suffix_end(begin);
     op.range = this->merge(begin.range, end.range);
     return op;
 }
@@ -340,19 +340,21 @@ syntax::PostfixOp PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(c
     return op;
 }
 
-const syntax::Token& PostfixExprParser::expect_index_suffix_end() {
-    return this->expect_recovered(
+const syntax::Token& PostfixExprParser::expect_index_suffix_end(const syntax::Token& opening) {
+    return this->expect_recovered_after(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_INDEX_END),
-        RecoveryContext::index_expression
+        RecoveryContext::index_expression,
+        opening
     );
 }
 
-const syntax::Token& PostfixExprParser::expect_slice_suffix_end() {
-    return this->expect_recovered(
+const syntax::Token& PostfixExprParser::expect_slice_suffix_end(const syntax::Token& opening) {
+    return this->expect_recovered_after(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_SLICE_END),
-        RecoveryContext::index_expression
+        RecoveryContext::index_expression,
+        opening
     );
 }
 
@@ -361,10 +363,11 @@ syntax::PostfixOp PostfixExprParser::parse_call_suffix(const ExprContext context
     syntax::PostfixOp op = this->session_.module.make_postfix_op();
     op.kind = syntax::PostfixOpKind::call;
     this->parse_call_args(op.args, context);
-    const syntax::Token& end = this->expect_recovered(
+    const syntax::Token& end = this->expect_recovered_after(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_CALL_ARGUMENTS_END),
-        RecoveryContext::call_argument
+        RecoveryContext::call_argument,
+        begin
     );
     op.range = this->merge(begin.range, end.range);
     return op;

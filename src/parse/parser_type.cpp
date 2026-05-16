@@ -329,14 +329,16 @@ syntax::TypeId TypeParser::parse_named_type() {
     }
 
     if (this->match(TokenKind::l_bracket)) {
+        const syntax::Token& generic_begin = this->previous();
         if (this->check(TokenKind::r_bracket)) {
             this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
         }
         this->parse_generic_type_args(type.type_args);
-        const syntax::Token& end = this->expect_recovered(
+        const syntax::Token& end = this->expect_recovered_after(
             TokenKind::r_bracket,
             std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
-            RecoveryContext::generic_type_argument
+            RecoveryContext::generic_type_argument,
+            generic_begin
         );
         type.range = this->merge(type.range, end.range);
     } else if (this->check(TokenKind::less)) {
@@ -349,7 +351,7 @@ syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type() {
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_TUPLE_TYPE_END));
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_TYPE_UNSUPPORTED));
-        const syntax::Token& end = this->expect_tuple_type_end();
+        const syntax::Token& end = this->expect_tuple_type_end(begin);
         syntax::TypeNode type;
         type.kind = syntax::TypeKind::primitive;
         type.primitive = syntax::PrimitiveTypeKind::void_;
@@ -359,7 +361,7 @@ syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type() {
 
     const syntax::TypeId first = this->parse_type();
     if (!this->match(TokenKind::comma)) {
-        static_cast<void>(this->expect_tuple_type_end());
+        static_cast<void>(this->expect_tuple_type_end(begin));
         return first;
     }
 
@@ -373,7 +375,7 @@ syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type() {
             break;
         }
     }
-    const syntax::Token& end = this->expect_tuple_type_end();
+    const syntax::Token& end = this->expect_tuple_type_end(begin);
     type.range = this->merge(begin.range, end.range);
     return this->session_.module.push_type(std::move(type));
 }
@@ -400,12 +402,13 @@ bool TypeParser::recover_tuple_type_separator() const
     return false;
 }
 
-const syntax::Token& TypeParser::expect_tuple_type_end() const
+const syntax::Token& TypeParser::expect_tuple_type_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered(
+    return this->expect_recovered_after(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_TUPLE_TYPE_END),
-        RecoveryContext::type_annotation
+        RecoveryContext::type_annotation,
+        opening
     );
 }
 

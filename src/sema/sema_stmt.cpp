@@ -739,7 +739,7 @@ void SemanticAnalyzer::analyze_statement_node(
             this->report(stmt.range, std::string(SEMA_LOCAL_STORAGE));
         }
         if (has_declared_type && !this->can_assign(local_type, init, stmt.init)) {
-            this->report(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH));
+            this->report_type_mismatch(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH), local_type, init);
         }
         if (syntax::is_valid(stmt.pattern)) {
             if (syntax::is_valid(stmt.else_block)) {
@@ -798,12 +798,12 @@ void SemanticAnalyzer::analyze_statement_node(
             binary.binary_rhs = stmt.rhs;
             const TypeHandle result = this->analyze_expr(syntax::INVALID_EXPR_ID, binary, lhs);
             if (!this->can_assign(lhs, result, stmt.rhs)) {
-                this->report(stmt.range, std::string(SEMA_COMPOUND_ASSIGNMENT_TYPE_MISMATCH));
+                this->report_type_mismatch(stmt.range, std::string(SEMA_COMPOUND_ASSIGNMENT_TYPE_MISMATCH), lhs, result);
             }
         } else {
             const TypeHandle rhs = this->analyze_expr(stmt.rhs, lhs);
             if (!this->can_assign(lhs, rhs, stmt.rhs)) {
-                this->report(stmt.range, std::string(SEMA_ASSIGNMENT_TYPE_MISMATCH));
+                this->report_type_mismatch(stmt.range, std::string(SEMA_ASSIGNMENT_TYPE_MISMATCH), lhs, rhs);
             }
         }
         if (this->checked_.types.contains_array(lhs)) {
@@ -889,7 +889,7 @@ void SemanticAnalyzer::analyze_statement_node(
         } else if (is_valid(actual) &&
             is_valid(expected_return) &&
             !this->can_assign(expected_return, actual, stmt.return_value)) {
-            this->report(stmt.range, std::string(SEMA_RETURN_TYPE_MISMATCH));
+            this->report_type_mismatch(stmt.range, std::string(SEMA_RETURN_TYPE_MISMATCH), expected_return, actual);
         }
         break;
     }

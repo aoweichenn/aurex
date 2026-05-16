@@ -111,9 +111,10 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    buffers. ABI symbol validation borrows those strings through `std::string_view`
    keys rather than building a second interner. IR lowering source-local
    lookup also uses interned typed identifiers. Keep future work focused on cross-module
-   stable identifiers, measured generic/AST stress thresholds, and CI
-   performance thresholds rather than reintroducing whole-AST copies or per-node
-   heap string/vector side tables.
+   stable identifiers and heavier release stress thresholds (2M AST, 5000
+   generic, 5000 errors) rather than reintroducing whole-AST copies or per-node
+   heap string/vector side tables. The light generic/AST threshold gate is
+   already available through `make perf-stress-threshold` and CI.
 
 11. Expression type-cache closure
 

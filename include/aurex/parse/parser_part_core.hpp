@@ -35,12 +35,19 @@ protected:
         std::string message,
         RecoveryContext context
     ) const;
+    const syntax::Token& expect_recovered_after(
+        syntax::TokenKind kind,
+        std::string message,
+        RecoveryContext context,
+        const syntax::Token& opening
+    ) const;
     const syntax::Token& expect_identifier_recovered(std::string message);
     const syntax::Token& expect_type_annotation_colon(std::string message);
     const syntax::Token& expect_initializer_equal(std::string message);
     void synchronize(RecoveryContext context) const;
     void report_here(std::string message) const;
     void report_at(const syntax::Token& token, std::string message) const;
+    void report_note_at(const syntax::Token& token, std::string message) const;
     void reset_panic() const noexcept;
 
     Parser& parser_;

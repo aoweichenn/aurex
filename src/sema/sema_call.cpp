@@ -582,9 +582,11 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
         const TypeHandle expected = enum_case.payload_types[i];
         const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
         if (!this->can_assign(expected, actual, expr.args[i])) {
-            this->report(
+            this->report_type_mismatch(
                 call_expr_range_or(this->module_, expr.args[i], expr.range),
-                std::string(SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH)
+                std::string(SEMA_ENUM_PAYLOAD_ARGUMENT_TYPE_MISMATCH),
+                expected,
+                actual
             );
         }
         if (this->checked_.types.contains_array(expected)) {
@@ -788,7 +790,12 @@ void SemanticAnalyzer::validate_call_arguments(
         const TypeHandle expected = param_types[i + receiver_count];
         const TypeHandle actual = this->analyze_expr(expr.args[i], expected);
         if (!this->can_assign(expected, actual, expr.args[i])) {
-            this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), sema_argument_type_message(name));
+            this->report_type_mismatch(
+                call_expr_range_or(this->module_, expr.args[i], expr.range),
+                sema_argument_type_message(name),
+                expected,
+                actual
+            );
         }
         if (this->checked_.types.contains_array(expected)) {
             this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));

@@ -768,13 +768,13 @@ M2 当前值语义：
 *mut T    // raw mutable pointer，只在 unsafe/FFI 边界使用
 ```
 
-最小 M2 规则已经落地：`&place` 产生 `&T`，`&mut place` 产生 `&mut T` 并要求 writable place，reference 解引用是 safe；raw pointer 解引用仍需要 `unsafe`。为了不一次性打断旧样例，明确期望 raw pointer 的位置仍保留旧 `&place -> *const/*mut` 兼容路径。
+最小 M2 规则已经落地：`&place` 只产生 `&T`，`&mut place` 产生 `&mut T` 并要求 writable place，reference 解引用是 safe；raw pointer 解引用仍需要 `unsafe`。需要 raw pointer 地址时必须显式走 `ptraddr(...)`、`ptrat[T](...)` 等 raw/unsafe 边界，不再保留 `&place -> *const/*mut` 兼容路径。
 
 剩余需要继续收紧的是：
 
 - C FFI raw pointer。
 - method receiver。
-- 旧 raw address-of 兼容路径。
+- raw pointer 地址入口继续收窄到显式 builtin / FFI 边界。
 - mutable place access。
 - 未来库层内部 buffer / span。
 

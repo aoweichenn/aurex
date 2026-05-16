@@ -12,6 +12,8 @@ using syntax::TokenKind;
 namespace {
 
 constexpr std::string_view PARSER_CONTEXTUAL_C_KEYWORD_TEXT = "c";
+constexpr std::string_view PARSER_OPENING_DELIMITER_NOTE =
+    "opening delimiter is here";
 
 } // namespace
 
@@ -84,6 +86,31 @@ const syntax::Token& Parser::expect_recovered(
     return fallback;
 }
 
+const syntax::Token& Parser::expect_recovered_after(
+    const TokenKind kind,
+    std::string message,
+    const RecoveryContext context,
+    const syntax::Token& opening
+) {
+    if (this->check(kind)) {
+        return this->advance();
+    }
+
+    this->report_here(std::move(message));
+    this->report_note_at(opening, std::string(PARSER_OPENING_DELIMITER_NOTE));
+    if (!token_matches_recovery_context(this->peek().kind, context)) {
+        this->synchronize(context);
+    }
+    if (this->check(kind)) {
+        const syntax::Token& token = this->advance();
+        this->reset_panic();
+        return token;
+    }
+    this->reset_panic();
+    static const syntax::Token fallback {};
+    return fallback;
+}
+
 void Parser::synchronize(const RecoveryContext context) {
     this->reset_panic();
     if (this->is_eof()) {
@@ -107,6 +134,10 @@ void Parser::report_here(std::string message) {
 
 void Parser::report_at(const syntax::Token& token, std::string message) {
     this->session_.diagnostics.report_at(token, std::move(message));
+}
+
+void Parser::report_note_at(const syntax::Token& token, std::string message) {
+    this->session_.diagnostics.report_note_at(token, std::move(message));
 }
 
 void Parser::reset_panic() noexcept {

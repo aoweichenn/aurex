@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Generic instantiation RSS/time stress baseline for Aurex.
+"""Generic instantiation RSS/time stress baseline and threshold gate for Aurex.
 
-This is a report-only perf lane. It generates large generic-heavy Aurex
-modules, runs `aurexc`, and records elapsed time plus peak RSS. Keep threshold
-policy out of this script until the baseline is stable across machines and
-compiler configurations.
+It generates large generic-heavy Aurex modules, runs `aurexc`, records elapsed
+time plus peak RSS, and optionally enforces RSS/time thresholds for local or CI
+quality gates.
 """
 
 from __future__ import annotations
@@ -62,6 +61,12 @@ class StressRow:
     elapsed_ms: float
     max_rss_mib: float | None
     source: str
+
+
+@dataclass(frozen=True)
+class StressThresholds:
+    max_elapsed_ms: float | None
+    max_rss_mib: float | None
 
 
 def configure() -> None:
@@ -261,6 +266,15 @@ def parse_shape(text: str | None) -> str:
     return shape
 
 
+def parse_optional_float(text: str | None, name: str) -> float | None:
+    if text is None or not text.strip():
+        return None
+    value = float(text)
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
 def display_path(path: pathlib.Path) -> str:
     try:
         return str(path.relative_to(ROOT))
@@ -287,7 +301,30 @@ def run_stress(counts: list[int], emit_kind: str, shape: str) -> list[StressRow]
     return rows
 
 
-def write_json(rows: list[StressRow]) -> None:
+def threshold_violations(rows: list[StressRow], thresholds: StressThresholds) -> list[str]:
+    violations: list[str] = []
+    for row in rows:
+        if thresholds.max_elapsed_ms is not None and row.elapsed_ms > thresholds.max_elapsed_ms:
+            violations.append(
+                f"{row.instances} {row.shape}/{row.emit_kind} elapsed {row.elapsed_ms:.3f} ms "
+                f"exceeds {thresholds.max_elapsed_ms:.3f} ms"
+            )
+        if thresholds.max_rss_mib is None:
+            continue
+        if row.max_rss_mib is None:
+            violations.append(
+                f"{row.instances} {row.shape}/{row.emit_kind} peak RSS unavailable; "
+                f"cannot enforce {thresholds.max_rss_mib:.1f} MiB"
+            )
+        elif row.max_rss_mib > thresholds.max_rss_mib:
+            violations.append(
+                f"{row.instances} {row.shape}/{row.emit_kind} peak RSS {row.max_rss_mib:.1f} MiB "
+                f"exceeds {thresholds.max_rss_mib:.1f} MiB"
+            )
+    return violations
+
+
+def write_json(rows: list[StressRow], thresholds: StressThresholds, violations: list[str]) -> None:
     payload = {
         "build": str(BUILD),
         "aurexc": str(AUREXC),
@@ -297,18 +334,27 @@ def write_json(rows: list[StressRow]) -> None:
             "machine": platform.machine(),
             "processor": platform.processor(),
         },
+        "thresholds": asdict(thresholds),
+        "threshold_violations": violations,
         "rows": [asdict(row) for row in rows],
     }
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_JSON.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def print_report(rows: list[StressRow]) -> None:
-    print("Aurex generic instantiation stress baseline")
+def print_report(rows: list[StressRow], thresholds: StressThresholds, violations: list[str]) -> None:
+    print("Aurex generic instantiation stress")
     print(f"build: {BUILD}")
     print(f"raw_json: {OUTPUT_JSON}")
     print()
-    print("No thresholds are enforced. RSS is peak process resident set size when /usr/bin/time exposes it.")
+    threshold_parts: list[str] = []
+    if thresholds.max_elapsed_ms is not None:
+        threshold_parts.append(f"elapsed <= {thresholds.max_elapsed_ms:.3f} ms")
+    if thresholds.max_rss_mib is not None:
+        threshold_parts.append(f"RSS <= {thresholds.max_rss_mib:.1f} MiB")
+    threshold_text = ", ".join(threshold_parts) if threshold_parts else "none"
+    print(f"thresholds: {threshold_text}")
+    print("RSS is peak process resident set size when /usr/bin/time exposes it.")
     print()
     print(f"{'instances':>10} {'emit':>8} {'shape':>10} {'source_KiB':>12} {'elapsed_ms':>12} {'peak_RSS_MiB':>14} {'source':<36}")
     print(f"{'-' * 10} {'-' * 8} {'-' * 10} {'-' * 12} {'-' * 12} {'-' * 14} {'-' * 36}")
@@ -323,6 +369,11 @@ def print_report(rows: list[StressRow]) -> None:
             f"{rss:>14} "
             f"{row.source:<36}"
         )
+    if violations:
+        print()
+        print("Threshold violations:")
+        for violation in violations:
+            print(f"- {violation}")
 
 
 def main() -> int:
@@ -347,19 +398,34 @@ def main() -> int:
         action="store_true",
         help="reuse the existing build-perf aurexc binary",
     )
+    parser.add_argument(
+        "--max-elapsed-ms",
+        default=os.environ.get("AUREX_GENERIC_STRESS_MAX_ELAPSED_MS"),
+        help="fail if any row exceeds this elapsed time in milliseconds",
+    )
+    parser.add_argument(
+        "--max-rss-mib",
+        default=os.environ.get("AUREX_GENERIC_STRESS_MAX_RSS_MIB"),
+        help="fail if any row exceeds this peak RSS in MiB",
+    )
     args = parser.parse_args()
 
     counts = parse_counts(args.counts)
     emit_kind = parse_emit_kind(args.emit)
     shape = parse_shape(args.shape)
+    thresholds = StressThresholds(
+        max_elapsed_ms=parse_optional_float(args.max_elapsed_ms, "--max-elapsed-ms"),
+        max_rss_mib=parse_optional_float(args.max_rss_mib, "--max-rss-mib"),
+    )
     if not args.skip_build:
         build_compiler()
     if not AUREXC.exists():
         raise RuntimeError(f"missing aurexc binary: {AUREXC}")
     rows = run_stress(counts, emit_kind, shape)
-    write_json(rows)
-    print_report(rows)
-    return 0
+    violations = threshold_violations(rows, thresholds)
+    write_json(rows, thresholds, violations)
+    print_report(rows, thresholds, violations)
+    return 1 if violations else 0
 
 
 if __name__ == "__main__":

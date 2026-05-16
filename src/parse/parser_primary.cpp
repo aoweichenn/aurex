@@ -217,7 +217,7 @@ syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
     syntax::ExprId repeat_count = syntax::INVALID_EXPR_ID;
 
     if (this->check(TokenKind::r_bracket)) {
-        const syntax::Token& end = this->expect_array_literal_end();
+        const syntax::Token& end = this->expect_array_literal_end(begin);
         return this->session_.module.push_array_expr(this->merge(begin.range, end.range), std::move(elements));
     }
 
@@ -237,7 +237,7 @@ syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
         }
     }
 
-    const syntax::Token& end = this->expect_array_literal_end();
+    const syntax::Token& end = this->expect_array_literal_end(begin);
     this->reset_panic();
     return this->session_.module.push_array_expr(
         this->merge(begin.range, end.range),
@@ -268,11 +268,12 @@ bool PrimaryExprParser::recover_array_literal_separator() {
     return false;
 }
 
-const syntax::Token& PrimaryExprParser::expect_array_literal_end() {
-    return this->expect_recovered(
+const syntax::Token& PrimaryExprParser::expect_array_literal_end(const syntax::Token& opening) {
+    return this->expect_recovered_after(
         TokenKind::r_bracket,
         std::string(PARSER_EXPECT_ARRAY_LITERAL_END),
-        RecoveryContext::array_literal
+        RecoveryContext::array_literal,
+        opening
     );
 }
 
@@ -287,13 +288,13 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
     const ExpressionNestingGuard nesting_guard(this->session_);
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_LITERAL_UNSUPPORTED));
-        const syntax::Token& end = this->expect_tuple_literal_end();
+        const syntax::Token& end = this->expect_tuple_literal_end(begin);
         return this->session_.module.push_invalid_expr(this->merge(begin.range, end.range));
     }
 
     const syntax::ExprId first = this->parse_expr(context);
     if (!this->match(TokenKind::comma)) {
-        this->expect_grouped_expression_end();
+        this->expect_grouped_expression_end(begin);
         return first;
     }
 
@@ -307,7 +308,7 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
         }
     }
 
-    const syntax::Token& end = this->expect_tuple_literal_end();
+    const syntax::Token& end = this->expect_tuple_literal_end(begin);
     this->reset_panic();
     return this->session_.module.push_tuple_expr(this->merge(begin.range, end.range), std::move(elements));
 }
@@ -333,19 +334,21 @@ bool PrimaryExprParser::recover_tuple_literal_separator() {
     return false;
 }
 
-const syntax::Token& PrimaryExprParser::expect_tuple_literal_end() {
-    return this->expect_recovered(
+const syntax::Token& PrimaryExprParser::expect_tuple_literal_end(const syntax::Token& opening) {
+    return this->expect_recovered_after(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_TUPLE_LITERAL_END),
-        RecoveryContext::grouped_expression
+        RecoveryContext::grouped_expression,
+        opening
     );
 }
 
-void PrimaryExprParser::expect_grouped_expression_end() {
-    this->expect_recovered(
+void PrimaryExprParser::expect_grouped_expression_end(const syntax::Token& opening) {
+    this->expect_recovered_after(
         TokenKind::r_paren,
         std::string(PARSER_EXPECT_GROUPED_EXPR_END),
-        RecoveryContext::grouped_expression
+        RecoveryContext::grouped_expression,
+        opening
     );
 }
 

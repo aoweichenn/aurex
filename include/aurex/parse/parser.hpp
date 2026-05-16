@@ -56,9 +56,16 @@ private:
         std::string message,
         RecoveryContext context
     );
+    const syntax::Token& expect_recovered_after(
+        syntax::TokenKind kind,
+        std::string message,
+        RecoveryContext context,
+        const syntax::Token& opening
+    );
     void synchronize(RecoveryContext context);
     void report_here(std::string message);
     void report_at(const syntax::Token& token, std::string message);
+    void report_note_at(const syntax::Token& token, std::string message);
 
     [[nodiscard]] base::SourceRange merge(const base::SourceRange& begin, const base::SourceRange& end) const noexcept;
     void reset_panic() noexcept;

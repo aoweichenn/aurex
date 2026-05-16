@@ -254,7 +254,7 @@ safe reference 已作为 M2 基础类型落地：
 
 规则：
 
-- `&place` 产生 `&T`；为了兼容现有 raw pointer 样例，在明确期望 `*const T` / `*mut T` 的位置仍允许旧式 raw address-of。
+- `&place` 只产生 `&T`；需要 raw pointer 地址时必须显式使用 `ptraddr(...)`、`ptrat[T](...)` 等 raw/unsafe 边界，不存在按 expected type 退化成 raw pointer 的兼容路径。
 - `&mut place` 产生 `&mut T`，要求 operand 是 writable place，且不会退化成 raw pointer。
 - `*ref` 是 safe 解引用；`*raw_pointer` 仍需要 `unsafe`。
 - `&mut T` 可赋给 `&T`，反向不允许。

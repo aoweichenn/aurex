@@ -102,6 +102,7 @@ void FunctionRegistry::merge_function(
     if (!this->same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
         prior.has_conflict = true;
         this->report(signature.range, sema_function_signature_mismatch_message(signature.name));
+        this->report_previous_declaration(prior);
         return;
     }
     if (prior.is_extern_c ||
@@ -111,17 +112,20 @@ void FunctionRegistry::merge_function(
         prior.c_name != signature.c_name) {
         prior.has_conflict = true;
         this->report(signature.range, sema_function_declaration_conflict_message(signature.name));
+        this->report_previous_declaration(prior);
         return;
     }
     if (is_prototype) {
         if (prior.has_prototype) {
             prior.has_conflict = true;
             this->report(signature.range, sema_duplicate_function_prototype_message(signature.name));
+            this->report_previous_declaration(prior);
             return;
         }
         if (prior.has_definition) {
             prior.has_conflict = true;
             this->report(signature.range, sema_function_prototype_order_message(signature.name));
+            this->report_previous_declaration(prior);
             return;
         }
         prior.has_prototype = true;
@@ -134,6 +138,7 @@ void FunctionRegistry::merge_function(
     if (prior.has_definition) {
         prior.has_conflict = true;
         this->report(signature.range, sema_duplicate_function_definition_simple_message(signature.name));
+        this->report_previous_declaration(prior);
         return;
     }
     prior.has_definition = true;
@@ -191,6 +196,11 @@ void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const
     });
     if (!value_inserted.second) {
         this->report(signature.range, sema_duplicate_value_definition_in_module_message(signature.name));
+        this->diagnostics_.push(base::Diagnostic {
+            base::Severity::note,
+            value_inserted.first->second.range,
+            sema_previous_declaration_note_message(signature.name),
+        });
     }
 }
 
@@ -211,6 +221,15 @@ void FunctionRegistry::report(const base::SourceRange& range, std::string messag
         base::Severity::error,
         range,
         std::move(message),
+    });
+}
+
+void FunctionRegistry::report_previous_declaration(const FunctionSignature& signature) const
+{
+    this->diagnostics_.push(base::Diagnostic {
+        base::Severity::note,
+        signature.range,
+        sema_previous_declaration_note_message(signature.name),
     });
 }
 

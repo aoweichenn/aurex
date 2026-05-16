@@ -200,6 +200,23 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() const
 }
 
 void SemanticAnalyzer::register_type_names() {
+    const auto report_duplicate_type = [&](const ModuleLookupKey key,
+                                           const syntax::ModuleId owner,
+                                           const base::SourceRange& range,
+                                           const std::string_view name) {
+        this->report(range, sema_duplicate_type_definition_message(this->module_name(owner), name));
+        for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
+            const syntax::ItemNode candidate = this->module_.items[index];
+            if (candidate.name_id != key.name ||
+                this->item_module(syntax::ItemId {index}).value != key.module ||
+                candidate.range.begin >= range.begin) {
+                continue;
+            }
+            this->report_note(candidate.range, sema_previous_declaration_note_message(name));
+            return;
+        }
+    };
+
     for (base::u32 item_index = 0; item_index < this->module_.items.size(); ++item_index) {
         const syntax::ItemNode item = this->module_.items[item_index];
         if (this->has_generic_params(item)) {
@@ -226,18 +243,18 @@ void SemanticAnalyzer::register_type_names() {
             alias.visibility = item.visibility;
             auto alias_inserted = this->checked_.type_aliases.emplace(key, std::move(alias));
             if (!alias_inserted.second) {
-                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                report_duplicate_type(key, owner, item.range, item.name);
             } else {
                 this->index_type_alias(alias_inserted.first->second);
             }
             if (this->named_types_.contains(key)) {
-                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                report_duplicate_type(key, owner, item.range, item.name);
             }
             if (this->generic_struct_templates_.contains(key)) {
-                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                report_duplicate_type(key, owner, item.range, item.name);
             }
             if (this->generic_enum_templates_.contains(key) || this->generic_type_alias_templates_.contains(key)) {
-                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                report_duplicate_type(key, owner, item.range, item.name);
             }
             continue;
         }
@@ -245,7 +262,7 @@ void SemanticAnalyzer::register_type_names() {
             if (this->generic_struct_templates_.contains(key) ||
                 this->generic_enum_templates_.contains(key) ||
                 this->generic_type_alias_templates_.contains(key)) {
-                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                report_duplicate_type(key, owner, item.range, item.name);
                 continue;
             }
             handle = this->checked_.types.named_struct(qualified, c_name, false);
@@ -253,7 +270,7 @@ void SemanticAnalyzer::register_type_names() {
             if (this->generic_struct_templates_.contains(key) ||
                 this->generic_enum_templates_.contains(key) ||
                 this->generic_type_alias_templates_.contains(key)) {
-                this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+                report_duplicate_type(key, owner, item.range, item.name);
                 continue;
             }
             handle = this->checked_.types.named_enum(qualified, c_name);
@@ -269,12 +286,12 @@ void SemanticAnalyzer::register_type_names() {
         }
         auto inserted = this->named_types_.emplace(key, handle);
         if (!inserted.second) {
-            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            report_duplicate_type(key, owner, item.range, item.name);
             continue;
         }
         this->index_named_type(owner, item.name_id, handle, item.visibility);
         if (this->checked_.type_aliases.contains(key)) {
-            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            report_duplicate_type(key, owner, item.range, item.name);
             continue;
         }
 
@@ -319,11 +336,13 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         const TypeInfo& enum_info = this->checked_.types.get(named_enum_type);
         return this->checked_.types.display_name(enum_display_name, enum_info.generic_args);
     };
-    std::unordered_set<IdentId, IdentIdHash> seen_cases;
+    std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_cases;
     seen_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
-        if (!seen_cases.insert(enum_case.name_id).second) {
+        auto inserted_case = seen_cases.emplace(enum_case.name_id, enum_case.range);
+        if (!inserted_case.second) {
             this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
+            this->report_note(inserted_case.first->second, sema_previous_declaration_note_message(enum_case.name));
         }
     }
 
@@ -344,10 +363,11 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     base::u64 payload_align = 1;
     bool contains_array_payload = false;
     base::u64 next_discriminant = 0;
-    std::unordered_set<IdentId, IdentIdHash> registered_cases;
+    std::unordered_map<IdentId, base::SourceRange, IdentIdHash> registered_cases;
     registered_cases.reserve(item.enum_cases.size());
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
-        const bool duplicate_case_name = !registered_cases.insert(enum_case.name_id).second;
+        auto registered_case = registered_cases.emplace(enum_case.name_id, enum_case.range);
+        const bool duplicate_case_name = !registered_case.second;
         if (!duplicate_case_name && this->type_member_name_exists(named_enum_type, enum_case.name_id, enum_case.name)) {
             this->report(enum_case.range, sema_duplicate_type_member_message(make_enum_display_name(), enum_case.name));
         }
@@ -473,6 +493,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
             this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
+            this->report_note(case_inserted.first->second.range, sema_previous_declaration_note_message(enum_case.name));
             continue;
         }
         this->index_enum_case(case_inserted.first->second);
@@ -636,6 +657,7 @@ void SemanticAnalyzer::register_value_names() {
                     item.range,
                     sema_duplicate_value_definition_message(this->module_name(this->current_module_), item.name)
                 );
+                this->report_note(inserted.first->second.range, sema_previous_declaration_note_message(item.name));
             } else {
                 this->index_global_value(inserted.first->second);
             }
@@ -817,7 +839,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
         this->current_module_ = this->item_module(syntax::ItemId {index});
         const ModuleLookupKey key = this->module_lookup_key(this->current_module_, item.name_id);
         bool contains_array = false;
-        std::unordered_set<IdentId, IdentIdHash> seen_fields;
+        std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_fields;
         seen_fields.reserve(item.fields.size());
         StructInfo* struct_info = nullptr;
         if (const auto struct_found = this->checked_.structs.find(key);
@@ -826,8 +848,10 @@ void SemanticAnalyzer::analyze_struct_properties() {
             struct_info->fields.reserve(item.fields.size());
         }
         for (const syntax::FieldDecl& field : item.fields) {
-            if (!seen_fields.insert(field.name_id).second) {
+            auto inserted_field = seen_fields.emplace(field.name_id, field.range);
+            if (!inserted_field.second) {
                 this->report(field.range, sema_duplicate_struct_field_message(field.name));
+                this->report_note(inserted_field.first->second, sema_previous_declaration_note_message(field.name));
                 continue;
             }
             const TypeHandle field_type = this->resolve_type(field.type);
@@ -920,7 +944,7 @@ void SemanticAnalyzer::analyze_const_decls() {
             this->report(item.range, std::string(SEMA_CONST_TYPE_STORAGE));
         }
         if (!this->can_assign(declared, actual, item.const_value)) {
-            this->report(item.range, std::string(SEMA_CONST_TYPE_MISMATCH));
+            this->report_type_mismatch(item.range, std::string(SEMA_CONST_TYPE_MISMATCH), declared, actual);
         }
     }
 

@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          dnf install -y clang cmake gcc-c++ git gtest-devel llvm llvm-devel make
+          dnf install -y clang cmake gcc-c++ git gtest-devel llvm llvm-devel make time
       - name: Configure tool paths
         run: |
           {
@@ -28,3 +28,27 @@ jobs:
           AUREX_COVERAGE_FUNCTION_THRESHOLD: "90"
           AUREX_COVERAGE_REGION_THRESHOLD: "90"
         run: tools/check_coverage.sh
+  stress-thresholds:
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          dnf install -y clang cmake gcc-c++ git gtest-devel llvm llvm-devel make time
+      - name: Configure tool paths
+        run: |
+          {
+            echo "CC=$(command -v clang)"
+            echo "CXX=$(command -v clang++)"
+          } >> "${GITHUB_ENV}"
+      - name: Check stress thresholds
+        env:
+          AUREX_GENERIC_STRESS_COUNTS: "100,200"
+          AUREX_GENERIC_STRESS_MAX_RSS_MIB: "512"
+          AUREX_GENERIC_STRESS_MAX_ELAPSED_MS: "30000"
+          AUREX_AST_STRESS_COUNTS: "1000,5000"
+          AUREX_AST_STRESS_MAX_RSS_MIB: "512"
+          AUREX_AST_STRESS_MAX_ELAPSED_MS: "30000"
+        run: make perf-stress-threshold

@@ -558,6 +558,22 @@ inline constexpr std::string_view SEMA_ENUM_STORAGE_OVERFLOW =
     return "first declaration of generic parameter `" + std::string(name) + "`";
 }
 
+[[nodiscard]] inline std::string sema_did_you_mean_message(const std::string_view name) {
+    return "did you mean `" + std::string(name) + "`?";
+}
+
+[[nodiscard]] inline std::string sema_expected_type_note_message(const std::string_view name) {
+    return "expected type: " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_actual_type_note_message(const std::string_view name) {
+    return "actual type: " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_previous_declaration_note_message(const std::string_view name) {
+    return "previous declaration of `" + std::string(name) + "` is here";
+}
+
 [[nodiscard]] inline std::string sema_duplicate_type_definition_message(
     const std::string_view module,
     const std::string_view name

@@ -3,13 +3,96 @@
 #include <aurex/sema/sema_messages.hpp>
 #include <aurex/syntax/module.hpp>
 
+#include <algorithm>
 #include <array>
+#include <limits>
+#include <vector>
 
 namespace aurex::sema {
 
 namespace {
 
 constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
+constexpr base::usize SEMA_LOOKUP_SHORT_SUGGESTION_NAME_LENGTH = 4;
+constexpr base::usize SEMA_LOOKUP_MEDIUM_SUGGESTION_NAME_LENGTH = 8;
+constexpr base::usize SEMA_LOOKUP_SHORT_SUGGESTION_MAX_DISTANCE = 1;
+constexpr base::usize SEMA_LOOKUP_MEDIUM_SUGGESTION_MAX_DISTANCE = 2;
+constexpr base::usize SEMA_LOOKUP_LONG_SUGGESTION_MAX_DISTANCE = 3;
+
+struct NameSuggestion {
+    std::string_view name;
+    base::usize distance = std::numeric_limits<base::usize>::max();
+};
+
+[[nodiscard]] base::usize suggestion_distance_limit(const std::string_view name) noexcept {
+    if (name.size() < SEMA_LOOKUP_SHORT_SUGGESTION_NAME_LENGTH) {
+        return SEMA_LOOKUP_SHORT_SUGGESTION_MAX_DISTANCE;
+    }
+    if (name.size() < SEMA_LOOKUP_MEDIUM_SUGGESTION_NAME_LENGTH) {
+        return SEMA_LOOKUP_MEDIUM_SUGGESTION_MAX_DISTANCE;
+    }
+    return SEMA_LOOKUP_LONG_SUGGESTION_MAX_DISTANCE;
+}
+
+[[nodiscard]] base::usize bounded_edit_distance(
+    const std::string_view lhs,
+    const std::string_view rhs,
+    const base::usize limit
+) {
+    if (lhs == rhs) {
+        return 0;
+    }
+    const base::usize lhs_size = lhs.size();
+    const base::usize rhs_size = rhs.size();
+    const base::usize size_delta = lhs_size > rhs_size ? lhs_size - rhs_size : rhs_size - lhs_size;
+    if (size_delta > limit) {
+        return limit + 1;
+    }
+
+    std::vector<base::usize> previous(rhs_size + 1);
+    std::vector<base::usize> current(rhs_size + 1);
+    for (base::usize column = 0; column <= rhs_size; ++column) {
+        previous[column] = column;
+    }
+
+    for (base::usize row = 1; row <= lhs_size; ++row) {
+        current[0] = row;
+        base::usize row_minimum = current[0];
+        for (base::usize column = 1; column <= rhs_size; ++column) {
+            const base::usize substitution_cost = lhs[row - 1] == rhs[column - 1] ? 0 : 1;
+            current[column] = std::min({
+                previous[column] + 1,
+                current[column - 1] + 1,
+                previous[column - 1] + substitution_cost,
+            });
+            row_minimum = std::min(row_minimum, current[column]);
+        }
+        if (row_minimum > limit) {
+            return limit + 1;
+        }
+        previous.swap(current);
+    }
+    return previous[rhs_size];
+}
+
+void consider_suggestion(
+    NameSuggestion& best,
+    const std::string_view requested,
+    const std::string_view candidate
+) {
+    if (candidate.empty() || candidate == requested) {
+        return;
+    }
+    const base::usize limit = suggestion_distance_limit(requested);
+    const base::usize distance = bounded_edit_distance(requested, candidate, limit);
+    if (distance > limit) {
+        return;
+    }
+    if (distance < best.distance ||
+        (distance == best.distance && (best.name.empty() || candidate < best.name))) {
+        best = NameSuggestion {candidate, distance};
+    }
+}
 
 [[nodiscard]] bool module_path_matches_parts(
     const syntax::ModulePath& path,
@@ -288,6 +371,170 @@ std::string SemanticAnalyzer::qualified_name(const syntax::ModuleId module, cons
         return std::string(name);
     }
     return module_text + "." + std::string(name);
+}
+
+std::string_view SemanticAnalyzer::nearest_visible_value_name(const std::string_view name) const {
+    NameSuggestion best;
+    std::vector<std::string_view> local_names;
+    this->symbols_.append_visible_names(local_names);
+    for (const std::string_view candidate : local_names) {
+        consider_suggestion(best, name, candidate);
+    }
+    if (syntax::is_valid(this->current_module_)) {
+        for (const auto& entry : this->global_values_by_name_) {
+            if (entry.first.module != this->current_module_.value) {
+                continue;
+            }
+            const std::string_view candidate = this->module_.identifier_text(entry.first.name);
+            consider_suggestion(best, name, candidate);
+        }
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_value_name_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name
+) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(module)) {
+        return best.name;
+    }
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        for (const auto& entry : this->global_values_by_name_) {
+            if (entry.first.module != candidate_module.value || entry.second == nullptr) {
+                continue;
+            }
+            if (!this->can_access(candidate_module, entry.second->visibility)) {
+                continue;
+            }
+            const std::string_view candidate = this->module_.identifier_text(entry.first.name);
+            consider_suggestion(best, name, candidate);
+        }
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_visible_type_name(const std::string_view name) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(this->current_module_)) {
+        return best.name;
+    }
+    const auto consider_current_module_key = [&](const ModuleLookupKey key) {
+        if (key.module == this->current_module_.value) {
+            consider_suggestion(best, name, this->module_.identifier_text(key.name));
+        }
+    };
+    for (const auto& entry : this->named_types_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    for (const auto& entry : this->type_aliases_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    for (const auto& entry : this->generic_struct_templates_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    for (const auto& entry : this->generic_enum_templates_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    for (const auto& entry : this->generic_type_alias_templates_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_type_name_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name
+) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(module)) {
+        return best.name;
+    }
+    const auto consider_module_key = [&](const ModuleLookupKey key, const syntax::Visibility visibility) {
+        const syntax::ModuleId owner {key.module};
+        if (this->can_access(owner, visibility)) {
+            consider_suggestion(best, name, this->module_.identifier_text(key.name));
+        }
+    };
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        for (const auto& entry : this->named_types_by_name_) {
+            if (entry.first.module == candidate_module.value) {
+                consider_module_key(entry.first, entry.second.visibility);
+            }
+        }
+        for (const auto& entry : this->type_aliases_by_name_) {
+            if (entry.first.module == candidate_module.value && entry.second != nullptr) {
+                consider_module_key(entry.first, entry.second->visibility);
+            }
+        }
+        for (const auto& entry : this->generic_struct_templates_by_name_) {
+            if (entry.first.module == candidate_module.value && entry.second != nullptr) {
+                consider_module_key(entry.first, entry.second->visibility);
+            }
+        }
+        for (const auto& entry : this->generic_enum_templates_by_name_) {
+            if (entry.first.module == candidate_module.value && entry.second != nullptr) {
+                consider_module_key(entry.first, entry.second->visibility);
+            }
+        }
+        for (const auto& entry : this->generic_type_alias_templates_by_name_) {
+            if (entry.first.module == candidate_module.value && entry.second != nullptr) {
+                consider_module_key(entry.first, entry.second->visibility);
+            }
+        }
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_visible_function_name(const std::string_view name) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(this->current_module_)) {
+        return best.name;
+    }
+    const auto consider_current_module_key = [&](const ModuleLookupKey key) {
+        if (key.module == this->current_module_.value) {
+            consider_suggestion(best, name, this->module_.identifier_text(key.name));
+        }
+    };
+    for (const auto& entry : this->functions_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    for (const auto& entry : this->generic_function_templates_by_name_) {
+        consider_current_module_key(entry.first);
+    }
+    return best.name;
+}
+
+std::string_view SemanticAnalyzer::nearest_function_name_in_module(
+    const syntax::ModuleId module,
+    const std::string_view name
+) const {
+    NameSuggestion best;
+    if (!syntax::is_valid(module)) {
+        return best.name;
+    }
+    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+        for (const auto& entry : this->functions_by_name_) {
+            if (entry.first.module != candidate_module.value || entry.second == nullptr) {
+                continue;
+            }
+            if (!this->can_access(candidate_module, entry.second->visibility)) {
+                continue;
+            }
+            consider_suggestion(best, name, this->module_.identifier_text(entry.first.name));
+        }
+        for (const auto& entry : this->generic_function_templates_by_name_) {
+            if (entry.first.module != candidate_module.value || entry.second == nullptr) {
+                continue;
+            }
+            if (!this->can_access(candidate_module, entry.second->visibility)) {
+                continue;
+            }
+            consider_suggestion(best, name, this->module_.identifier_text(entry.first.name));
+        }
+    }
+    return best.name;
 }
 
 std::string SemanticAnalyzer::c_symbol_name(const syntax::ModuleId module, const std::string_view name) const {
@@ -889,7 +1136,8 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     }
 
     if (report_unknown) {
-        report(range, sema_unknown_type_message(name));
+        this->report(range, sema_unknown_type_message(name));
+        this->report_lookup_suggestion(range, this->nearest_visible_type_name(name));
     }
     return INVALID_TYPE_HANDLE;
 }
@@ -904,7 +1152,8 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            report(range, sema_unknown_type_message(name));
+            this->report(range, sema_unknown_type_message(name));
+            this->report_lookup_suggestion(range, this->nearest_visible_type_name(name));
         }
         return INVALID_TYPE_HANDLE;
     }
@@ -956,6 +1205,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
 
     if (report_unknown) {
         this->report(range, sema_unknown_type_in_module_message(this->module_name(module), name));
+        this->report_lookup_suggestion(range, this->nearest_type_name_in_module(module, name));
     }
     return INVALID_TYPE_HANDLE;
 }
@@ -976,6 +1226,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
 
     if (report_unknown) {
         this->report(range, sema_unknown_function_message(name));
+        this->report_lookup_suggestion(range, this->nearest_visible_function_name(name));
     }
     return nullptr;
 }
@@ -990,6 +1241,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
             this->report(range, sema_unknown_function_in_module_message(this->module_name(module), name));
+            this->report_lookup_suggestion(range, this->nearest_visible_function_name(name));
         }
         return nullptr;
     }
@@ -1026,6 +1278,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
     }
     if (result == nullptr && report_unknown) {
         this->report(range, sema_unknown_function_in_module_message(this->module_name(module), name));
+        this->report_lookup_suggestion(range, this->nearest_function_name_in_module(module, name));
     }
     return result;
 }
@@ -1040,6 +1293,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
             this->report(range, sema_unknown_name_in_module_message(this->module_name(module), name));
+            this->report_lookup_suggestion(range, this->nearest_visible_value_name(name));
         }
         return nullptr;
     }
@@ -1076,6 +1330,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
     }
     if (result == nullptr && report_unknown) {
         this->report(range, sema_unknown_name_in_module_message(this->module_name(module), name));
+        this->report_lookup_suggestion(range, this->nearest_value_name_in_module(module, name));
     }
     return result;
 }
@@ -1258,6 +1513,7 @@ const Symbol* SemanticAnalyzer::find_symbol(
     }
 
     this->report(range, sema_unknown_name_message(name));
+    this->report_lookup_suggestion(range, this->nearest_visible_value_name(name));
     return nullptr;
 }
 

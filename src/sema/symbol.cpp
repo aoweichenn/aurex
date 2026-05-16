@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
 namespace aurex::sema {
@@ -55,12 +56,20 @@ void SymbolTable::pop_scope() noexcept {
 
 base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& diagnostics) {
     assert(!this->scopes_.empty());
-    if (this->scopes_.back().contains(symbol.name_id)) {
+    const auto existing = this->scopes_.back().find(symbol.name_id);
+    if (existing != this->scopes_.back().end()) {
         diagnostics.push(base::Diagnostic {
             base::Severity::error,
             symbol.range,
             std::string(SEMA_DUPLICATE_DEFINITION_OR_SHADOWING) + std::string(symbol.name.view()),
         });
+        if (const Symbol* previous = this->get(existing->second); previous != nullptr) {
+            diagnostics.push(base::Diagnostic {
+                base::Severity::note,
+                previous->range,
+                sema_previous_declaration_note_message(symbol.name.view()),
+            });
+        }
         return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, std::string(SEMA_DUPLICATE_SYMBOL)});
     }
 
@@ -89,6 +98,22 @@ const Symbol* SymbolTable::get(const SymbolId id) const noexcept {
         return nullptr;
     }
     return &this->symbols_[id.value];
+}
+
+void SymbolTable::append_visible_names(std::vector<std::string_view>& names) const {
+    std::unordered_set<IdentId, IdentIdHash> seen;
+    for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+        seen.reserve(seen.size() + scope->size());
+        for (const auto& entry : *scope) {
+            if (!seen.insert(entry.first).second) {
+                continue;
+            }
+            const Symbol* symbol = this->get(entry.second);
+            if (symbol != nullptr && !symbol->name.empty()) {
+                names.push_back(symbol->name.view());
+            }
+        }
+    }
 }
 
 IdentSymbolMap SymbolTable::make_scope(const base::usize expected_symbols) const

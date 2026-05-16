@@ -10,6 +10,7 @@ namespace aurex::base {
 
 enum class Severity {
     note,
+    help,
     warning,
     error,
     fatal,

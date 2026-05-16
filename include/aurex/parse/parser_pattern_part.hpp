@@ -36,13 +36,13 @@ private:
     [[nodiscard]] bool recover_generic_type_arg_separator() const;
     [[nodiscard]] bool match_slice_rest_marker() const;
     void parse_pattern_generic_type_args(std::vector<syntax::TypeId>& args);
-    void parse_payload_patterns(syntax::PatternNode& pattern);
+    void parse_payload_patterns(syntax::PatternNode& pattern, const syntax::Token& opening);
     void consume_bare_enum_case_payload_recovery(const syntax::Token& first, base::SourceRange& range);
-    [[nodiscard]] const syntax::Token& expect_generic_type_args_end() const;
-    [[nodiscard]] const syntax::Token& expect_tuple_pattern_end() const;
-    [[nodiscard]] const syntax::Token& expect_slice_pattern_end() const;
-    [[nodiscard]] const syntax::Token& expect_payload_pattern_end() const;
-    [[nodiscard]] const syntax::Token& expect_struct_pattern_end() const;
+    [[nodiscard]] const syntax::Token& expect_generic_type_args_end(const syntax::Token& opening) const;
+    [[nodiscard]] const syntax::Token& expect_tuple_pattern_end(const syntax::Token& opening) const;
+    [[nodiscard]] const syntax::Token& expect_slice_pattern_end(const syntax::Token& opening) const;
+    [[nodiscard]] const syntax::Token& expect_payload_pattern_end(const syntax::Token& opening) const;
+    [[nodiscard]] const syntax::Token& expect_struct_pattern_end(const syntax::Token& opening) const;
 };
 
 } // namespace aurex::parse

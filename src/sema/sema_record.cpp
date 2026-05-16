@@ -1,5 +1,7 @@
 #include <aurex/sema/sema.hpp>
 
+#include <aurex/sema/sema_messages.hpp>
+
 #include <utility>
 
 namespace aurex::sema {
@@ -549,6 +551,50 @@ void SemanticAnalyzer::report(const base::SourceRange& range, std::string messag
         range,
         std::move(message),
     });
+}
+
+void SemanticAnalyzer::report_note(const base::SourceRange& range, std::string message) const
+{
+    this->diagnostics_.push(base::Diagnostic {
+        base::Severity::note,
+        range,
+        std::move(message),
+    });
+}
+
+void SemanticAnalyzer::report_help(const base::SourceRange& range, std::string message) const
+{
+    this->diagnostics_.push(base::Diagnostic {
+        base::Severity::help,
+        range,
+        std::move(message),
+    });
+}
+
+void SemanticAnalyzer::report_type_mismatch(
+    const base::SourceRange& range,
+    std::string message,
+    const TypeHandle expected,
+    const TypeHandle actual
+) const
+{
+    this->report(range, std::move(message));
+    if (is_valid(expected)) {
+        this->report_note(range, sema_expected_type_note_message(this->checked_.types.display_name(expected)));
+    }
+    if (is_valid(actual)) {
+        this->report_note(range, sema_actual_type_note_message(this->checked_.types.display_name(actual)));
+    }
+}
+
+void SemanticAnalyzer::report_lookup_suggestion(
+    const base::SourceRange& range,
+    const std::string_view suggestion
+) const
+{
+    if (!suggestion.empty()) {
+        this->report_help(range, sema_did_you_mean_message(suggestion));
+    }
 }
 
 } // namespace aurex::sema

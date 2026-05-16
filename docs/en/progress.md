@@ -29,7 +29,12 @@ notes are design input only, not current progress.
 - Handwritten lexer/parser with ID-backed AST and dump paths for tokens, AST,
   modules, checked summaries, Aurex IR, and LLVM IR.
 - Semantic analysis for types, symbols, functions, ABI names, structs, enums,
-  generics, expression types, visibility, and pattern matching.
+  generics, expression types, visibility, and pattern matching. Diagnostics now
+  support error/warning/note/help severities; lookup misses for values,
+  functions, and types emit `did you mean` help where a scoped candidate exists;
+  common type mismatches emit expected/actual notes; duplicate main paths emit
+  previous-declaration notes; parser paired-delimiter recovery emits opening
+  delimiter notes.
 - M2 baseline generics with `[]` syntax only, including explicit `id[T](x)`
   calls and non-empty generic parameter/type-argument lists.
 - Literal system support for ordinary strings, C strings, raw/multiline raw
@@ -86,6 +91,7 @@ tools/run_tests.sh
 tools/bench.py
 make perf
 make perf-stress
+make perf-stress-threshold
 make perf-ast-stress
 ```
 
@@ -98,13 +104,16 @@ for frontend hot-path measurements. `make perf` prints the lightweight
 JSON-derived Aurex frontend baseline for lexer, lookup-heavy sema, and
 generic-instantiation-heavy sema paths plus the AST bulk sema path, then runs a Google Benchmark
 process-level comparison against available modern frontend drivers (`clang++`,
-`g++`, and `rustc`) without enforcing thresholds yet. `make perf-compare` runs
-only the cross-frontend comparison lane.
+`g++`, and `rustc`). `make perf-compare` runs only the cross-frontend
+comparison lane.
 `make perf-stress` runs `tools/generic_stress.py` and `tools/ast_stress.py`,
 generating 500/1000/2000/5000 generic-instantiation sources and
 10000/50000/100000 AST bulk statement sources, then recording `aurexc --check`
 elapsed time plus peak RSS baselines. `make perf-ast-stress` runs only the AST
-bulk RSS/time lane. Generic function instance signatures, generic struct/enum
+bulk RSS/time lane. Both stress scripts accept `--max-elapsed-ms` and
+`--max-rss-mib`; `make perf-stress-threshold` runs the default light gate
+(100/200 generic plus 1000/5000 AST bulk), and CI runs the same gate in the
+`stress-thresholds` job. Generic function instance signatures, generic struct/enum
 `TypeInfo`, and checked enum case display now keep internal semantic keys and
 TypeHandle arguments separate from display names, so `--check` does not format
 names such as `id[i32]`, `Box[i32]`, or `Maybe[i32]_some` on the hot path;
@@ -216,9 +225,8 @@ non-contiguous NodeSpan sparse ID mappings are shared per template, and tiny
 per-instance side-table arenas use 1 KiB blocks instead of the default 64 KiB
 floor. The stress lane now includes 5000 generic instances; exact RSS/time
 baselines are measurement work rather than a known retained-storage design gap.
-Cross-module stable hashes / parallel global IDs, 2M-node cross-machine
-RSS/time thresholds, generic stress thresholds, and CI perf thresholds remain
-later performance work.
+Cross-module stable hashes / parallel global IDs plus 2M-node, 5000-generic,
+and 5000-error cross-machine release thresholds remain later performance work.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
 usefulness witness search. Bool, enum payloads, tuples, structs, and fixed

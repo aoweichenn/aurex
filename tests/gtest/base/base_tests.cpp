@@ -58,14 +58,16 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     DiagnosticSink diagnostics;
     EXPECT_FALSE(diagnostics.has_error());
     diagnostics.push(Diagnostic {Severity::note, forward, "note"});
+    diagnostics.push(Diagnostic {Severity::help, forward, "help"});
     diagnostics.push(Diagnostic {Severity::warning, forward, "warning"});
     EXPECT_FALSE(diagnostics.has_error());
     diagnostics.push(Diagnostic {Severity::error, forward, "error"});
     EXPECT_TRUE(diagnostics.has_error());
     diagnostics.push(Diagnostic {Severity::fatal, forward, "fatal"});
-    ASSERT_EQ(diagnostics.diagnostics().size(), 4U);
+    ASSERT_EQ(diagnostics.diagnostics().size(), 5U);
 
     EXPECT_EQ(base::severity_name(Severity::note), "note");
+    EXPECT_EQ(base::severity_name(Severity::help), "help");
     EXPECT_EQ(base::severity_name(Severity::warning), "warning");
     EXPECT_EQ(base::severity_name(Severity::error), "error");
     EXPECT_EQ(base::severity_name(Severity::fatal), "fatal");

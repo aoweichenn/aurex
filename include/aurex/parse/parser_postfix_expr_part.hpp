@@ -28,8 +28,8 @@ private:
     [[nodiscard]] syntax::FieldInit parse_struct_field(ExprContext context);
     [[nodiscard]] bool recover_struct_field_separator();
     [[nodiscard]] syntax::PostfixOp parse_rejected_numeric_tuple_field_suffix(const base::SourceRange& fallback_range);
-    [[nodiscard]] const syntax::Token& expect_index_suffix_end();
-    [[nodiscard]] const syntax::Token& expect_slice_suffix_end();
+    [[nodiscard]] const syntax::Token& expect_index_suffix_end(const syntax::Token& opening);
+    [[nodiscard]] const syntax::Token& expect_slice_suffix_end(const syntax::Token& opening);
     [[nodiscard]] syntax::PostfixOp parse_call_suffix(ExprContext context);
     void parse_call_args(syntax::AstArenaVector<syntax::ExprId>& args, ExprContext context);
     [[nodiscard]] bool recover_call_arg_separator();

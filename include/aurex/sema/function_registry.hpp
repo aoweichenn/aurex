@@ -45,6 +45,7 @@ private:
     void insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
     void refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
     void report(const base::SourceRange& range, std::string message) const;
+    void report_previous_declaration(const FunctionSignature& signature) const;
 
     CheckedModule& checked_;
     SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values_;

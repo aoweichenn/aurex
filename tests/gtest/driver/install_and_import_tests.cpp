@@ -1,9 +1,25 @@
 #include <support/test_support.hpp>
 
+#include <fstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
 namespace aurex::test {
+
+namespace {
+
+fs::path write_import_test_source(const fs::path& path, const std::string_view text) {
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("failed to open " + path.string());
+    }
+    out << text;
+    return path;
+}
+
+} // namespace
 
 TEST_F(AurexIntegrationTest, InstallAndImportPaths) {
     const fs::path install_root = work_root() / "install";
@@ -33,6 +49,51 @@ TEST_F(AurexIntegrationTest, InstallAndImportPaths) {
     expect_contains(collision_ll, "@m0_module_name_collision_helper");
     expect_contains(collision_ll, "@m0_collide_a_helper");
 
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes) {
+    const fs::path import_dir = tmp_root() / "module-loader-remap";
+    const fs::path library = write_import_test_source(
+        import_dir / "stress" / "exprs.ax",
+        "module stress.exprs;\n"
+        "struct Box { value: i32; }\n"
+        "enum Maybe { some(i32), none, }\n"
+        "fn id(value: i32) -> i32 { return value; }\n"
+        "fn choose(value: Maybe) -> i32 {\n"
+        "  return match value {\n"
+        "    .some(inner) => inner,\n"
+        "    .none => 0,\n"
+        "  };\n"
+        "}\n"
+        "pub fn compute(seed: i32) -> i32 {\n"
+        "  let box: Box = Box { value: seed };\n"
+        "  let values: [3]i32 = [box.value, id(seed + 1), cast[i32](2)];\n"
+        "  let view: []const i32 = values[:];\n"
+        "  let selected: Maybe = Maybe.some(view[0]);\n"
+        "  let block_value: i32 = { let local = choose(selected); local };\n"
+        "  if block_value == seed {\n"
+        "    return view[1] + values[2] - 3;\n"
+        "  }\n"
+        "  return 0;\n"
+        "}\n"
+    );
+    static_cast<void>(library);
+    const fs::path main = write_import_test_source(
+        tmp_root() / "module_loader_remap_main.ax",
+        "module module_loader_remap_main;\n"
+        "import stress.exprs;\n"
+        "fn main() -> i32 {\n"
+        "  return exprs.compute(41) - 41;\n"
+        "}\n"
+    );
+
+    const std::string llvm_ir =
+        require_success(aurexc() + " -I " + q(import_dir) + " --emit=llvm-ir " + q(main)).output;
+    expect_contains_all(llvm_ir, {
+        "@m0_module_loader_remap_main_main",
+        "@m0_stress_exprs_compute",
+        "@m0_stress_exprs_choose",
+    });
 }
 
 } // namespace aurex::test

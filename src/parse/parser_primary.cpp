@@ -212,32 +212,39 @@ syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext cont
 
 syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
     const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ARRAY_LITERAL_START));
-    syntax::ArrayExprPayload payload;
+    std::vector<syntax::ExprId> elements;
+    syntax::ExprId repeat_value = syntax::INVALID_EXPR_ID;
+    syntax::ExprId repeat_count = syntax::INVALID_EXPR_ID;
 
     if (this->check(TokenKind::r_bracket)) {
         const syntax::Token& end = this->expect_array_literal_end();
-        return this->session_.module.push_array_expr(this->merge(begin.range, end.range), std::move(payload));
+        return this->session_.module.push_array_expr(this->merge(begin.range, end.range), std::move(elements));
     }
 
     const syntax::ExprId first = this->parse_expr(ExprContext::normal);
     if (this->match(TokenKind::semicolon)) {
-        payload.repeat_value = first;
+        repeat_value = first;
         if (this->check(TokenKind::r_bracket)) {
             this->report_here(std::string(PARSER_EXPECT_ARRAY_REPEAT_COUNT));
         } else {
-            payload.repeat_count = this->parse_expr(ExprContext::normal);
+            repeat_count = this->parse_expr(ExprContext::normal);
         }
     } else {
-        payload.elements.push_back(first);
+        elements.push_back(first);
         while (this->recover_array_literal_separator()) {
-            payload.elements.push_back(this->parse_expr(ExprContext::normal));
+            elements.push_back(this->parse_expr(ExprContext::normal));
             this->reset_panic();
         }
     }
 
     const syntax::Token& end = this->expect_array_literal_end();
     this->reset_panic();
-    return this->session_.module.push_array_expr(this->merge(begin.range, end.range), std::move(payload));
+    return this->session_.module.push_array_expr(
+        this->merge(begin.range, end.range),
+        std::move(elements),
+        repeat_value,
+        repeat_count
+    );
 }
 
 bool PrimaryExprParser::recover_array_literal_separator() {

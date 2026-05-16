@@ -25,6 +25,7 @@ public:
     [[nodiscard]] void* allocate(usize size, usize alignment = alignof(std::max_align_t));
     [[nodiscard]] std::string_view copy_string(std::string_view text);
     void reserve(usize bytes);
+    void reserve_touched(usize bytes);
     void reset() noexcept;
 
     [[nodiscard]] usize allocated_bytes() const noexcept;
@@ -50,7 +51,8 @@ private:
 
     [[nodiscard]] static usize align_address(usize address, usize alignment) noexcept;
     [[nodiscard]] static usize normalize_alignment(usize alignment) noexcept;
-    void add_block(usize min_capacity, usize alignment);
+    static void touch_memory(std::byte* data, usize bytes) noexcept;
+    void add_block(usize min_capacity, usize alignment, bool touch_pages = false);
 
     usize block_size_ = BASE_BUMP_DEFAULT_BLOCK_BYTES;
     std::vector<Block> blocks_;

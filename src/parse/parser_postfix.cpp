@@ -72,10 +72,8 @@ syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
     const base::SourceRange last_op_range = ops.back().range;
     return this->session_.module.push_postfix_chain_expr(
         this->merge(this->expr_range_or(base, last_op_range), last_op_range),
-        syntax::PostfixChainExprPayload {
-            base,
-            std::move(ops),
-        }
+        base,
+        std::move(ops)
     );
 }
 

@@ -123,12 +123,10 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
 
     return this->session_.module.push_if_expr(
         this->merge(begin.range, this->expr_range_or(else_expr, begin.range)),
-        syntax::IfExprPayload {
-            condition,
-            condition_pattern,
-            then_expr,
-            else_expr,
-        }
+        condition,
+        condition_pattern,
+        then_expr,
+        else_expr
     );
 }
 
@@ -156,13 +154,7 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         RecoveryContext::match_arm
     );
     this->reset_panic();
-    return this->session_.module.push_match_expr(
-        this->merge(begin.range, end.range),
-        syntax::MatchExprPayload {
-            value,
-            std::move(arms),
-        }
-    );
+    return this->session_.module.push_match_expr(this->merge(begin.range, end.range), value, std::move(arms));
 }
 
 syntax::MatchArm ExprParser::parse_match_arm(
@@ -314,14 +306,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
             expr = this->session_.module.push_invalid_expr(range);
             continue;
         }
-        expr = this->session_.module.push_unary_expr(
-            syntax::ExprKind::unary,
-            range,
-            syntax::UnaryExprPayload {
-                prefix.unary_op,
-                expr,
-            }
-        );
+        expr = this->session_.module.push_unary_expr(syntax::ExprKind::unary, range, prefix.unary_op, expr);
     }
     return expr;
 }
@@ -329,14 +314,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) {
 syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) {
     const base::SourceRange lhs_range = this->expr_range_or(lhs, this->expr_range_or(rhs, this->peek().range));
     const base::SourceRange rhs_range = this->expr_range_or(rhs, lhs_range);
-    return this->session_.module.push_binary_expr(
-        this->merge(lhs_range, rhs_range),
-        syntax::BinaryExprPayload {
-            op,
-            lhs,
-            rhs,
-        }
-    );
+    return this->session_.module.push_binary_expr(this->merge(lhs_range, rhs_range), op, lhs, rhs);
 }
 
 } // namespace aurex::parse

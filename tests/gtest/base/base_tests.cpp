@@ -25,6 +25,8 @@ constexpr base::usize BASE_TEST_BUMP_ALIGNMENT = 16;
 constexpr base::usize BASE_TEST_BUMP_NON_POWER_ALIGNMENT = 24;
 constexpr base::usize BASE_TEST_BUMP_NORMALIZED_ALIGNMENT = 32;
 constexpr base::usize BASE_TEST_BUMP_LARGE_TEXT_BYTES = 4096;
+constexpr base::usize BASE_TEST_BUMP_TOUCHED_RESERVE_BYTES = 256;
+constexpr base::usize BASE_TEST_BUMP_TOUCHED_ALLOC_BYTES = 64;
 constexpr char BASE_TEST_BUMP_FILL_CHAR = 'x';
 
 } // namespace
@@ -168,6 +170,26 @@ TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats) {
     EXPECT_GE(assigned.allocated_bytes(), allocated);
     EXPECT_EQ(assigned.copy_string("assigned"), "assigned");
     EXPECT_EQ(moved.allocated_bytes(), 0U);
+}
+
+TEST(CoreUnit, BumpAllocatorTouchedReservePreallocatesWritableStorage) {
+    base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
+
+    arena.reserve_touched(0);
+    EXPECT_EQ(arena.block_count(), 0U);
+
+    arena.reserve_touched(BASE_TEST_BUMP_TOUCHED_RESERVE_BYTES);
+    EXPECT_EQ(arena.block_count(), 1U);
+    EXPECT_GE(arena.allocated_bytes(), BASE_TEST_BUMP_TOUCHED_RESERVE_BYTES);
+
+    const base::usize blocks_after_reserve = arena.block_count();
+    void* const first = arena.allocate(BASE_TEST_BUMP_TOUCHED_ALLOC_BYTES);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(arena.block_count(), blocks_after_reserve);
+
+    const base::usize blocks_after_first_alloc = arena.block_count();
+    arena.reserve_touched(BASE_TEST_BUMP_TOUCHED_ALLOC_BYTES);
+    EXPECT_EQ(arena.block_count(), blocks_after_first_alloc);
 }
 
 TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors) {

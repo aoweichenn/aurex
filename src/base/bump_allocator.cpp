@@ -12,6 +12,8 @@ namespace {
 constexpr usize BASE_BUMP_MIN_BLOCK_BYTES = 1024U;
 constexpr usize BASE_BUMP_STRING_NUL_BYTES = 1U;
 constexpr usize BASE_BUMP_ALIGNMENT_FLOOR = alignof(std::max_align_t);
+constexpr usize BASE_BUMP_TOUCH_PAGE_BYTES = 4096U;
+constexpr std::byte BASE_BUMP_TOUCH_VALUE {0};
 
 } // namespace
 
@@ -119,6 +121,20 @@ void BumpAllocator::reserve(const usize bytes) {
     this->add_block(bytes, BASE_BUMP_ALIGNMENT_FLOOR);
 }
 
+void BumpAllocator::reserve_touched(const usize bytes) {
+    if (bytes == 0) {
+        return;
+    }
+    if (!this->blocks_.empty()) {
+        Block& block = this->blocks_.back();
+        if (block.capacity - block.used >= bytes) {
+            touch_memory(block.data + block.used, bytes);
+            return;
+        }
+    }
+    this->add_block(bytes, BASE_BUMP_ALIGNMENT_FLOOR, true);
+}
+
 void BumpAllocator::reset() noexcept {
     this->blocks_.clear();
     this->allocated_bytes_ = 0;
@@ -149,12 +165,26 @@ usize BumpAllocator::normalize_alignment(const usize alignment) noexcept {
     return power;
 }
 
-void BumpAllocator::add_block(const usize min_capacity, const usize alignment) {
+void BumpAllocator::touch_memory(std::byte* const data, const usize bytes) noexcept {
+    if (data == nullptr || bytes == 0) {
+        return;
+    }
+    volatile std::byte* const touched = data;
+    for (usize offset = 0; offset < bytes; offset += BASE_BUMP_TOUCH_PAGE_BYTES) {
+        touched[offset] = BASE_BUMP_TOUCH_VALUE;
+    }
+    touched[bytes - 1U] = BASE_BUMP_TOUCH_VALUE;
+}
+
+void BumpAllocator::add_block(const usize min_capacity, const usize alignment, const bool touch_pages) {
     const usize block_alignment = normalize_alignment(alignment);
     const usize capacity = std::max(this->block_size_, min_capacity);
     auto* const data = static_cast<std::byte*>(
         ::operator new(capacity, std::align_val_t {block_alignment})
     );
+    if (touch_pages) {
+        touch_memory(data, capacity);
+    }
     this->blocks_.push_back(Block {data, capacity, block_alignment});
     this->allocated_bytes_ += capacity;
 }

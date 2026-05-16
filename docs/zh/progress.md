@@ -97,11 +97,14 @@ global bump allocator + syntax 层 `IdentifierInterner`，AST 的 type/expr/patt
 generic template、enum case、method/member 和局部 scope lookup 都使用 `IdentId` typed 索引，string key 只保留在
 checked semantic storage、ABI/display、dump 和诊断边界。2026-05-16
 性能线随后删除旧胖 `ExprNode` 生产类型，parser 创建、`AstModule` 存储、module loader append 和 postfix
-materialization 都直接写 compact expression header + per-kind payload。2026-05-16 后续 bump pass 又把
+materialization 都直接写 compact expression header + per-kind payload。随后又把 parser 表达式创建 API
+收紧到字段级 append/set：name、unary/binary、call、if/block/match、array、postfix chain、field/index/slice、
+struct literal 和 cast-like 节点都不再先构造 payload 大临时对象；postfix materialization 的 call/field/index/slice/
+generic apply/struct literal/try 改写路径也直接写 compact payload。2026-05-16 后续 bump pass 又把
 `TypeNodeList` / `ExprNodeList` / `PatternNodeList` / `StmtNodeList` / `ItemNodeList` 的 header vector 和
 per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的 text vector、hash bucket/node
 也进入同一个 bump arena；parser 会根据 token 形态估算 statement/item/type/pattern/identifier 规模，并在 AST
-模块创建初期对热 payload arena 做源规模 reserve，避免 bump-backed vector 扩容后保留旧 buffer 造成 RSS 放大。当前
+模块创建初期对表达式 arena 做源规模 reserve + page pre-touch，再 reserve header/payload vectors，避免解析过程中逐节点首次触达新页，也避免 bump-backed vector 扩容后保留旧 buffer 造成 RSS 放大。当前
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
 从约 575 MiB RSS / 135 ms 收敛到约 158.4 MiB RSS / 74.4 ms；Google Benchmark `sema_ast_bulk/1024`
 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、

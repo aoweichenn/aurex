@@ -122,54 +122,69 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_op(
             this->ensure_expr_side_table_size(this->module_.exprs.size());
             return id;
         }
-        syntax::FieldExprPayload payload;
-        payload.object = base;
-        payload.field_name = op.name;
-        payload.field_name_id = op.name_id;
         if (is_last) {
-            this->module_.set_field_expr(chain_expr.value, range, payload);
+            this->module_.set_field_expr(chain_expr.value, range, base, op.name, op.name_id);
             return chain_expr;
         }
-        const syntax::ExprId id = this->module_.push_field_expr(range, payload);
+        const syntax::ExprId id = this->module_.push_field_expr(range, base, op.name, op.name_id);
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     }
     case syntax::PostfixOpKind::call: {
-        syntax::CallExprPayload payload;
-        payload.callee = base;
-        payload.args = std::move(op.args);
         if (is_last) {
-            this->module_.set_call_expr(chain_expr.value, syntax::ExprKind::call, range, std::move(payload));
+            this->module_.set_call_expr(
+                chain_expr.value,
+                syntax::ExprKind::call,
+                range,
+                base,
+                std::move(op.args)
+            );
             return chain_expr;
         }
         const syntax::ExprId id =
-            this->module_.push_call_expr(syntax::ExprKind::call, range, std::move(payload));
+            this->module_.push_call_expr(syntax::ExprKind::call, range, base, std::move(op.args));
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     }
     case syntax::PostfixOpKind::try_: {
-        const syntax::UnaryExprPayload payload {
-            syntax::UnaryOp::logical_not,
-            base,
-        };
         if (is_last) {
-            this->module_.set_unary_expr(chain_expr.value, syntax::ExprKind::try_expr, range, payload);
+            this->module_.set_unary_expr(
+                chain_expr.value,
+                syntax::ExprKind::try_expr,
+                range,
+                syntax::UnaryOp::logical_not,
+                base
+            );
             return chain_expr;
         }
         const syntax::ExprId id =
-            this->module_.push_unary_expr(syntax::ExprKind::try_expr, range, payload);
+            this->module_.push_unary_expr(syntax::ExprKind::try_expr, range, syntax::UnaryOp::logical_not, base);
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     }
     case syntax::PostfixOpKind::struct_literal: {
-        syntax::StructLiteralExprPayload payload;
-        payload.object = base;
-        payload.field_inits = std::move(op.field_inits);
         if (is_last) {
-            this->module_.set_struct_literal_expr(chain_expr.value, range, std::move(payload));
+            this->module_.set_struct_literal_expr(
+                chain_expr.value,
+                range,
+                base,
+                {},
+                {},
+                {},
+                {},
+                std::move(op.field_inits)
+            );
             return chain_expr;
         }
-        const syntax::ExprId id = this->module_.push_struct_literal_expr(range, std::move(payload));
+        const syntax::ExprId id = this->module_.push_struct_literal_expr(
+            range,
+            base,
+            {},
+            {},
+            {},
+            {},
+            std::move(op.field_inits)
+        );
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     }
@@ -187,27 +202,20 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
     const base::SourceRange range = merge_ranges(expr_range_or(this->module_, base, op.range), op.range);
 
     if (op.bracket_is_slice) {
-        const syntax::SliceExprPayload payload {
-            base,
-            op.slice_start,
-            op.slice_end,
-        };
         if (is_last) {
-            this->module_.set_slice_expr(chain_expr.value, range, payload);
+            this->module_.set_slice_expr(chain_expr.value, range, base, op.slice_start, op.slice_end);
             return chain_expr;
         }
-        const syntax::ExprId id = this->module_.push_slice_expr(range, payload);
+        const syntax::ExprId id = this->module_.push_slice_expr(range, base, op.slice_start, op.slice_end);
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     } else if (this->postfix_bracket_is_generic_apply(base, op, next_op)) {
-        syntax::GenericApplyExprPayload payload;
-        payload.callee = base;
-        payload.type_args = this->postfix_bracket_type_args(op);
+        std::vector<syntax::TypeId> type_args = this->postfix_bracket_type_args(op);
         if (is_last) {
-            this->module_.set_generic_apply_expr(chain_expr.value, range, std::move(payload));
+            this->module_.set_generic_apply_expr(chain_expr.value, range, base, std::move(type_args));
             return chain_expr;
         }
-        const syntax::ExprId id = this->module_.push_generic_apply_expr(range, std::move(payload));
+        const syntax::ExprId id = this->module_.push_generic_apply_expr(range, base, std::move(type_args));
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     } else {
@@ -218,15 +226,11 @@ syntax::ExprId SemanticAnalyzer::materialize_postfix_bracket_op(
         if (op.bracket_args.size() > 1) {
             this->report(op.range, "index expression expects one argument");
         }
-        const syntax::IndexExprPayload payload {
-            base,
-            index,
-        };
         if (is_last) {
-            this->module_.set_index_expr(chain_expr.value, range, payload);
+            this->module_.set_index_expr(chain_expr.value, range, base, index);
             return chain_expr;
         }
-        const syntax::ExprId id = this->module_.push_index_expr(range, payload);
+        const syntax::ExprId id = this->module_.push_index_expr(range, base, index);
         this->ensure_expr_side_table_size(this->module_.exprs.size());
         return id;
     }

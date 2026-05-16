@@ -113,14 +113,7 @@ syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
 
     const base::SourceRange block_range = this->stmt_range_or(body.block, this->previous().range);
     this->reset_panic();
-    return this->session_.module.push_block_expr(
-        syntax::ExprKind::block_expr,
-        block_range,
-        syntax::BlockExprPayload {
-            body.block,
-            body.result,
-        }
-    );
+    return this->session_.module.push_block_expr(syntax::ExprKind::block_expr, block_range, body.block, body.result);
 }
 
 BlockParser::BlockBody BlockParser::parse_block_body(

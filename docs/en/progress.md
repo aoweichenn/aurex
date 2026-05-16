@@ -139,12 +139,19 @@ storage, ABI/display, dump, and diagnostic boundaries. The 2026-05-16
 performance line then removed the old fat `ExprNode` production type entirely:
 parser construction, `AstModule` storage, module-loader append, and postfix
 materialization now create compact expression headers plus per-kind payloads
-directly. The follow-up bump pass backs the `TypeNodeList`, `ExprNodeList`,
+directly. The expression creation path now uses field-level append/set APIs for
+name, unary/binary, call, if/block/match, array, postfix-chain, field/index/slice,
+struct literal, and cast-like nodes, so the parser no longer builds payload
+struct temporaries before arena storage; postfix materialization also rewrites
+call/field/index/slice/generic-apply/struct-literal/try expressions directly into
+compact payload storage. The follow-up bump pass backs the `TypeNodeList`, `ExprNodeList`,
 `PatternNodeList`, `StmtNodeList`, and `ItemNodeList` header vectors and
 per-kind payload vectors with `BumpAllocatorAdapter`; the `IdentifierInterner`
 text vector and hash table buckets/nodes are also arena-backed. Parser startup
 now estimates AST storage from token shape and reserves hot payload arenas up
-front, avoiding repeated bump-vector growth buffers on large modules. On the local
+front with page pre-touch for the expression arena, avoiding parser-time first
+touches of fresh pages and repeated bump-vector growth buffers on large modules.
+On the local
 `tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
 100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
 roughly 158.4 MiB RSS / 74.4 ms. Google Benchmark `sema_ast_bulk/1024` is now

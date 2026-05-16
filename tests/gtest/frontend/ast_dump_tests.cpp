@@ -451,6 +451,30 @@ TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads) {
     EXPECT_EQ(target_items[0].params.front().type.value, 10U);
 }
 
+TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena) {
+    constexpr base::usize ESTIMATED_EXPR_COUNT = 128;
+
+    syntax::AstModule module;
+    syntax::AstReserveEstimate estimate;
+    estimate.statements = ESTIMATED_EXPR_COUNT / syntax::SYNTAX_AST_RESERVE_EXPRS_PER_STATEMENT;
+    module.reserve_for_estimate(estimate);
+
+    const base::usize blocks_after_reserve = module.exprs.arena_blocks();
+    EXPECT_GT(blocks_after_reserve, 0U);
+    EXPECT_GT(module.exprs.arena_bytes(), 0U);
+
+    for (base::usize index = 0; index < ESTIMATED_EXPR_COUNT; ++index) {
+        static_cast<void>(module.push_binary_expr(
+            {},
+            syntax::BinaryOp::add,
+            syntax::ExprId {0},
+            syntax::ExprId {0}
+        ));
+    }
+
+    EXPECT_EQ(module.exprs.arena_blocks(), blocks_after_reserve);
+}
+
 TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     syntax::ExprNodeList exprs;
 

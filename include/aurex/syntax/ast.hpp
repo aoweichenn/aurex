@@ -6,6 +6,7 @@
 #include <aurex/syntax/ast_ids.hpp>
 #include <aurex/syntax/identifier.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -32,6 +33,7 @@ inline constexpr base::usize SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR = 2;
 inline constexpr base::usize SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR = 3;
 inline constexpr base::usize SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR = 8;
 inline constexpr base::usize SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR = 32;
+inline constexpr base::usize SYNTAX_AST_ARENA_ALLOCATION_PADDING_BYTES = alignof(std::max_align_t);
 
 [[nodiscard]] constexpr base::usize ast_reserve_fraction(
     const base::usize size,
@@ -863,6 +865,13 @@ struct ExprNodePayloadArena {
 };
 
 class ExprNodeList final {
+    struct PayloadReservePlan {
+        base::usize names = 0;
+        base::usize primary = 0;
+        base::usize secondary = 0;
+        base::usize rare = 0;
+    };
+
 public:
     ExprNodeList()
         : arena_(std::make_unique<base::BumpAllocator>()),
@@ -1173,28 +1182,18 @@ public:
     }
 
     void reserve(const base::usize size) {
+        const PayloadReservePlan plan = payload_reserve_plan(size);
         this->reserve_headers(size);
-        const base::usize names = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR);
-        const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
-        const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
-        const base::usize rare = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR);
-        this->payloads_.literals.reserve(primary);
-        this->payloads_.names.reserve(names);
-        this->payloads_.generic_applies.reserve(secondary);
-        this->payloads_.unaries.reserve(secondary);
-        this->payloads_.binaries.reserve(primary);
-        this->payloads_.calls.reserve(secondary);
-        this->payloads_.ifs.reserve(rare);
-        this->payloads_.blocks.reserve(secondary);
-        this->payloads_.matches.reserve(rare);
-        this->payloads_.arrays.reserve(secondary);
-        this->payloads_.tuples.reserve(rare);
-        this->payloads_.postfix_chains.reserve(secondary);
-        this->payloads_.fields.reserve(secondary);
-        this->payloads_.indexes.reserve(rare);
-        this->payloads_.slices.reserve(rare);
-        this->payloads_.struct_literals.reserve(secondary);
-        this->payloads_.casts.reserve(rare);
+        this->reserve_payloads(plan);
+    }
+
+    void reserve_touched(const base::usize size) {
+        const PayloadReservePlan plan = payload_reserve_plan(size);
+        if (this->arena_ != nullptr) {
+            this->arena_->reserve_touched(estimated_arena_bytes(size, plan));
+        }
+        this->reserve_headers(size);
+        this->reserve_payloads(plan);
     }
 
     void reserve_headers(const base::usize size) {
@@ -1210,18 +1209,58 @@ public:
         const base::SourceRange range,
         const std::string_view text
     ) {
-        return this->append_header(kind, range, this->push_payload(this->payloads_.literals, LiteralExprPayload {text}));
+        return this->append_header(kind, range, this->emplace_payload(this->payloads_.literals, text));
     }
 
     [[nodiscard]] ExprId append_name(const base::SourceRange range, NameExprPayload payload) {
-        return this->append_header(ExprKind::name, range, this->push_payload(this->payloads_.names, std::move(payload)));
+        return this->append_name(
+            range,
+            payload.scope_name,
+            payload.scope_range,
+            payload.text,
+            payload.scope_name_id,
+            payload.text_id,
+            std::move(payload.type_args)
+        );
+    }
+
+    [[nodiscard]] ExprId append_name(
+        const base::SourceRange range,
+        const std::string_view scope_name,
+        const base::SourceRange scope_range,
+        const std::string_view text,
+        const IdentId scope_name_id,
+        const IdentId text_id,
+        std::vector<TypeId> type_args
+    ) {
+        return this->append_header(
+            ExprKind::name,
+            range,
+            this->emplace_payload(
+                this->payloads_.names,
+                scope_name,
+                scope_range,
+                text,
+                scope_name_id,
+                text_id,
+                std::move(type_args)
+            )
+        );
     }
 
     [[nodiscard]] ExprId append_generic_apply(const base::SourceRange range, GenericApplyExprPayload payload) {
+        return this->append_generic_apply(range, payload.callee, std::move(payload.type_args));
+    }
+
+    [[nodiscard]] ExprId append_generic_apply(
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<TypeId> type_args
+    ) {
         return this->append_header(
             ExprKind::generic_apply,
             range,
-            this->push_payload(this->payloads_.generic_applies, std::move(payload))
+            this->emplace_payload(this->payloads_.generic_applies, callee, std::move(type_args))
         );
     }
 
@@ -1230,11 +1269,29 @@ public:
         const base::SourceRange range,
         const UnaryExprPayload payload
     ) {
-        return this->append_header(kind, range, this->push_payload(this->payloads_.unaries, payload));
+        return this->append_unary(kind, range, payload.op, payload.operand);
+    }
+
+    [[nodiscard]] ExprId append_unary(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryOp op,
+        const ExprId operand
+    ) {
+        return this->append_header(kind, range, this->emplace_payload(this->payloads_.unaries, op, operand));
     }
 
     [[nodiscard]] ExprId append_binary(const base::SourceRange range, const BinaryExprPayload payload) {
-        return this->append_header(ExprKind::binary, range, this->push_payload(this->payloads_.binaries, payload));
+        return this->append_binary(range, payload.op, payload.lhs, payload.rhs);
+    }
+
+    [[nodiscard]] ExprId append_binary(
+        const base::SourceRange range,
+        const BinaryOp op,
+        const ExprId lhs,
+        const ExprId rhs
+    ) {
+        return this->append_header(ExprKind::binary, range, this->emplace_payload(this->payloads_.binaries, op, lhs, rhs));
     }
 
     [[nodiscard]] ExprId append_call(
@@ -1242,11 +1299,34 @@ public:
         const base::SourceRange range,
         CallExprPayload payload
     ) {
-        return this->append_header(kind, range, this->push_payload(this->payloads_.calls, std::move(payload)));
+        return this->append_call(kind, range, payload.callee, std::move(payload.args));
+    }
+
+    [[nodiscard]] ExprId append_call(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<ExprId> args
+    ) {
+        return this->append_header(kind, range, this->emplace_payload(this->payloads_.calls, callee, std::move(args)));
     }
 
     [[nodiscard]] ExprId append_if(const base::SourceRange range, const IfExprPayload payload) {
-        return this->append_header(ExprKind::if_expr, range, this->push_payload(this->payloads_.ifs, payload));
+        return this->append_if(range, payload.condition, payload.condition_pattern, payload.then_expr, payload.else_expr);
+    }
+
+    [[nodiscard]] ExprId append_if(
+        const base::SourceRange range,
+        const ExprId condition,
+        const PatternId condition_pattern,
+        const ExprId then_expr,
+        const ExprId else_expr
+    ) {
+        return this->append_header(
+            ExprKind::if_expr,
+            range,
+            this->emplace_payload(this->payloads_.ifs, condition, condition_pattern, then_expr, else_expr)
+        );
     }
 
     [[nodiscard]] ExprId append_block(
@@ -1254,46 +1334,144 @@ public:
         const base::SourceRange range,
         const BlockExprPayload payload
     ) {
-        return this->append_header(kind, range, this->push_payload(this->payloads_.blocks, payload));
+        return this->append_block(kind, range, payload.block, payload.result);
+    }
+
+    [[nodiscard]] ExprId append_block(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const StmtId block,
+        const ExprId result
+    ) {
+        return this->append_header(kind, range, this->emplace_payload(this->payloads_.blocks, block, result));
     }
 
     [[nodiscard]] ExprId append_match(const base::SourceRange range, MatchExprPayload payload) {
-        return this->append_header(ExprKind::match_expr, range, this->push_payload(this->payloads_.matches, std::move(payload)));
+        return this->append_match(range, payload.value, std::move(payload.arms));
+    }
+
+    [[nodiscard]] ExprId append_match(
+        const base::SourceRange range,
+        const ExprId value,
+        std::vector<MatchArm> arms
+    ) {
+        return this->append_header(ExprKind::match_expr, range, this->emplace_payload(this->payloads_.matches, value, std::move(arms)));
     }
 
     [[nodiscard]] ExprId append_array(const base::SourceRange range, ArrayExprPayload payload) {
-        return this->append_header(ExprKind::array_literal, range, this->push_payload(this->payloads_.arrays, std::move(payload)));
+        return this->append_array(range, std::move(payload.elements), payload.repeat_value, payload.repeat_count);
+    }
+
+    [[nodiscard]] ExprId append_array(
+        const base::SourceRange range,
+        std::vector<ExprId> elements,
+        const ExprId repeat_value,
+        const ExprId repeat_count
+    ) {
+        return this->append_header(
+            ExprKind::array_literal,
+            range,
+            this->emplace_payload(this->payloads_.arrays, std::move(elements), repeat_value, repeat_count)
+        );
     }
 
     [[nodiscard]] ExprId append_tuple(const base::SourceRange range, std::vector<ExprId> elements) {
-        return this->append_header(ExprKind::tuple_literal, range, this->push_payload(this->payloads_.tuples, std::move(elements)));
+        return this->append_header(ExprKind::tuple_literal, range, this->emplace_payload(this->payloads_.tuples, std::move(elements)));
     }
 
     [[nodiscard]] ExprId append_postfix_chain(const base::SourceRange range, PostfixChainExprPayload payload) {
+        return this->append_postfix_chain(range, payload.base, std::move(payload.ops));
+    }
+
+    [[nodiscard]] ExprId append_postfix_chain(
+        const base::SourceRange range,
+        const ExprId base,
+        std::vector<PostfixOp> ops
+    ) {
         return this->append_header(
             ExprKind::postfix_chain,
             range,
-            this->push_payload(this->payloads_.postfix_chains, std::move(payload))
+            this->emplace_payload(this->payloads_.postfix_chains, base, std::move(ops))
         );
     }
 
     [[nodiscard]] ExprId append_field(const base::SourceRange range, const FieldExprPayload payload) {
-        return this->append_header(ExprKind::field, range, this->push_payload(this->payloads_.fields, payload));
+        return this->append_field(range, payload.object, payload.field_name, payload.field_name_id);
+    }
+
+    [[nodiscard]] ExprId append_field(
+        const base::SourceRange range,
+        const ExprId object,
+        const std::string_view field_name,
+        const IdentId field_name_id
+    ) {
+        return this->append_header(ExprKind::field, range, this->emplace_payload(this->payloads_.fields, object, field_name, field_name_id));
     }
 
     [[nodiscard]] ExprId append_index(const base::SourceRange range, const IndexExprPayload payload) {
-        return this->append_header(ExprKind::index, range, this->push_payload(this->payloads_.indexes, payload));
+        return this->append_index(range, payload.object, payload.index);
+    }
+
+    [[nodiscard]] ExprId append_index(
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId index
+    ) {
+        return this->append_header(ExprKind::index, range, this->emplace_payload(this->payloads_.indexes, object, index));
     }
 
     [[nodiscard]] ExprId append_slice(const base::SourceRange range, const SliceExprPayload payload) {
-        return this->append_header(ExprKind::slice, range, this->push_payload(this->payloads_.slices, payload));
+        return this->append_slice(range, payload.object, payload.start, payload.end);
+    }
+
+    [[nodiscard]] ExprId append_slice(
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId start,
+        const ExprId end
+    ) {
+        return this->append_header(ExprKind::slice, range, this->emplace_payload(this->payloads_.slices, object, start, end));
     }
 
     [[nodiscard]] ExprId append_struct_literal(const base::SourceRange range, StructLiteralExprPayload payload) {
+        return this->append_struct_literal(
+            range,
+            payload.object,
+            payload.scope_name,
+            payload.scope_range,
+            payload.name,
+            payload.scope_name_id,
+            payload.name_id,
+            std::move(payload.type_args),
+            std::move(payload.field_inits)
+        );
+    }
+
+    [[nodiscard]] ExprId append_struct_literal(
+        const base::SourceRange range,
+        const ExprId object,
+        const std::string_view scope_name,
+        const base::SourceRange scope_range,
+        const std::string_view name,
+        const IdentId scope_name_id,
+        const IdentId name_id,
+        std::vector<TypeId> type_args,
+        std::vector<FieldInit> field_inits
+    ) {
         return this->append_header(
             ExprKind::struct_literal,
             range,
-            this->push_payload(this->payloads_.struct_literals, std::move(payload))
+            this->emplace_payload(
+                this->payloads_.struct_literals,
+                object,
+                scope_name,
+                scope_range,
+                name,
+                scope_name_id,
+                name_id,
+                std::move(type_args),
+                std::move(field_inits)
+            )
         );
     }
 
@@ -1302,7 +1480,16 @@ public:
         const base::SourceRange range,
         const CastExprPayload payload
     ) {
-        return this->append_header(kind, range, this->push_payload(this->payloads_.casts, payload));
+        return this->append_cast_like(kind, range, payload.type, payload.expr);
+    }
+
+    [[nodiscard]] ExprId append_cast_like(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const TypeId type,
+        const ExprId expr
+    ) {
+        return this->append_header(kind, range, this->emplace_payload(this->payloads_.casts, type, expr));
     }
 
     void set_invalid(const base::usize index, const base::SourceRange range) {
@@ -1310,40 +1497,139 @@ public:
     }
 
     void set_generic_apply(const base::usize index, const base::SourceRange range, GenericApplyExprPayload payload) {
+        this->set_generic_apply(index, range, payload.callee, std::move(payload.type_args));
+    }
+
+    void set_generic_apply(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<TypeId> type_args
+    ) {
         this->set_header(
             index,
             ExprKind::generic_apply,
             range,
-            this->push_payload(this->payloads_.generic_applies, std::move(payload))
+            this->emplace_payload(this->payloads_.generic_applies, callee, std::move(type_args))
         );
     }
 
     void set_unary(const base::usize index, const ExprKind kind, const base::SourceRange range, const UnaryExprPayload payload) {
-        this->set_header(index, kind, range, this->push_payload(this->payloads_.unaries, payload));
+        this->set_unary(index, kind, range, payload.op, payload.operand);
+    }
+
+    void set_unary(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryOp op,
+        const ExprId operand
+    ) {
+        this->set_header(index, kind, range, this->emplace_payload(this->payloads_.unaries, op, operand));
     }
 
     void set_call(const base::usize index, const ExprKind kind, const base::SourceRange range, CallExprPayload payload) {
-        this->set_header(index, kind, range, this->push_payload(this->payloads_.calls, std::move(payload)));
+        this->set_call(index, kind, range, payload.callee, std::move(payload.args));
+    }
+
+    void set_call(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<ExprId> args
+    ) {
+        this->set_header(index, kind, range, this->emplace_payload(this->payloads_.calls, callee, std::move(args)));
     }
 
     void set_field(const base::usize index, const base::SourceRange range, const FieldExprPayload payload) {
-        this->set_header(index, ExprKind::field, range, this->push_payload(this->payloads_.fields, payload));
+        this->set_field(index, range, payload.object, payload.field_name, payload.field_name_id);
+    }
+
+    void set_field(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        const std::string_view field_name,
+        const IdentId field_name_id
+    ) {
+        this->set_header(
+            index,
+            ExprKind::field,
+            range,
+            this->emplace_payload(this->payloads_.fields, object, field_name, field_name_id)
+        );
     }
 
     void set_index(const base::usize index, const base::SourceRange range, const IndexExprPayload payload) {
-        this->set_header(index, ExprKind::index, range, this->push_payload(this->payloads_.indexes, payload));
+        this->set_index(index, range, payload.object, payload.index);
+    }
+
+    void set_index(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId index_expr
+    ) {
+        this->set_header(index, ExprKind::index, range, this->emplace_payload(this->payloads_.indexes, object, index_expr));
     }
 
     void set_slice(const base::usize index, const base::SourceRange range, const SliceExprPayload payload) {
-        this->set_header(index, ExprKind::slice, range, this->push_payload(this->payloads_.slices, payload));
+        this->set_slice(index, range, payload.object, payload.start, payload.end);
+    }
+
+    void set_slice(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId start,
+        const ExprId end
+    ) {
+        this->set_header(index, ExprKind::slice, range, this->emplace_payload(this->payloads_.slices, object, start, end));
     }
 
     void set_struct_literal(const base::usize index, const base::SourceRange range, StructLiteralExprPayload payload) {
+        this->set_struct_literal(
+            index,
+            range,
+            payload.object,
+            payload.scope_name,
+            payload.scope_range,
+            payload.name,
+            payload.scope_name_id,
+            payload.name_id,
+            std::move(payload.type_args),
+            std::move(payload.field_inits)
+        );
+    }
+
+    void set_struct_literal(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        const std::string_view scope_name,
+        const base::SourceRange scope_range,
+        const std::string_view name,
+        const IdentId scope_name_id,
+        const IdentId name_id,
+        std::vector<TypeId> type_args,
+        std::vector<FieldInit> field_inits
+    ) {
         this->set_header(
             index,
             ExprKind::struct_literal,
             range,
-            this->push_payload(this->payloads_.struct_literals, std::move(payload))
+            this->emplace_payload(
+                this->payloads_.struct_literals,
+                object,
+                scope_name,
+                scope_range,
+                name,
+                scope_name_id,
+                name_id,
+                std::move(type_args),
+                std::move(field_inits)
+            )
         );
     }
 
@@ -1428,10 +1714,78 @@ private:
         return kind == ExprKind::block_expr || kind == ExprKind::unsafe_block;
     }
 
+    [[nodiscard]] static PayloadReservePlan payload_reserve_plan(const base::usize size) noexcept {
+        return PayloadReservePlan {
+            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR),
+            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
+            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+            ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
+        };
+    }
+
+    [[nodiscard]] static base::usize allocation_bytes(
+        const base::usize count,
+        const base::usize element_size
+    ) noexcept {
+        if (count == 0) {
+            return 0;
+        }
+        return count * element_size + SYNTAX_AST_ARENA_ALLOCATION_PADDING_BYTES;
+    }
+
+    [[nodiscard]] static base::usize estimated_arena_bytes(
+        const base::usize header_count,
+        const PayloadReservePlan plan
+    ) noexcept {
+        return allocation_bytes(header_count, sizeof(ExprNodeHeader)) +
+               allocation_bytes(plan.primary, sizeof(LiteralExprPayload)) +
+               allocation_bytes(plan.names, sizeof(NameExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(GenericApplyExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(UnaryExprPayload)) +
+               allocation_bytes(plan.primary, sizeof(BinaryExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(CallExprPayload)) +
+               allocation_bytes(plan.rare, sizeof(IfExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(BlockExprPayload)) +
+               allocation_bytes(plan.rare, sizeof(MatchExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(ArrayExprPayload)) +
+               allocation_bytes(plan.rare, sizeof(std::vector<ExprId>)) +
+               allocation_bytes(plan.secondary, sizeof(PostfixChainExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(FieldExprPayload)) +
+               allocation_bytes(plan.rare, sizeof(IndexExprPayload)) +
+               allocation_bytes(plan.rare, sizeof(SliceExprPayload)) +
+               allocation_bytes(plan.secondary, sizeof(StructLiteralExprPayload)) +
+               allocation_bytes(plan.rare, sizeof(CastExprPayload));
+    }
+
+    void reserve_payloads(const PayloadReservePlan plan) {
+        this->payloads_.literals.reserve(plan.primary);
+        this->payloads_.names.reserve(plan.names);
+        this->payloads_.generic_applies.reserve(plan.secondary);
+        this->payloads_.unaries.reserve(plan.secondary);
+        this->payloads_.binaries.reserve(plan.primary);
+        this->payloads_.calls.reserve(plan.secondary);
+        this->payloads_.ifs.reserve(plan.rare);
+        this->payloads_.blocks.reserve(plan.secondary);
+        this->payloads_.matches.reserve(plan.rare);
+        this->payloads_.arrays.reserve(plan.secondary);
+        this->payloads_.tuples.reserve(plan.rare);
+        this->payloads_.postfix_chains.reserve(plan.secondary);
+        this->payloads_.fields.reserve(plan.secondary);
+        this->payloads_.indexes.reserve(plan.rare);
+        this->payloads_.slices.reserve(plan.rare);
+        this->payloads_.struct_literals.reserve(plan.secondary);
+        this->payloads_.casts.reserve(plan.rare);
+    }
+
     template <typename T>
     [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
+        return this->emplace_payload(payloads, std::move(payload));
+    }
+
+    template <typename T, typename... Args>
+    [[nodiscard]] base::u32 emplace_payload(AstArenaVector<T>& payloads, Args&&... args) {
         const base::u32 index = static_cast<base::u32>(payloads.size());
-        payloads.push_back(std::move(payload));
+        payloads.emplace_back(std::forward<Args>(args)...);
         return index;
     }
 
@@ -3092,7 +3446,7 @@ struct AstModule {
                 SYNTAX_AST_RESERVE_TYPE_TOKEN_DIVISOR
             ))
         ));
-        this->exprs.reserve(ast_reserve_at_least(
+        this->exprs.reserve_touched(ast_reserve_at_least(
             INITIAL_CAPACITY,
             expr_capacity
         ));
@@ -3183,12 +3537,57 @@ struct AstModule {
     }
 
     [[nodiscard]] ExprId push_name_expr(const base::SourceRange range, NameExprPayload payload) {
-        this->intern_name_expr_payload(payload);
-        return this->exprs.append_name(range, std::move(payload));
+        return this->push_name_expr(
+            range,
+            payload.scope_name,
+            payload.scope_range,
+            payload.text,
+            std::move(payload.type_args),
+            payload.scope_name_id,
+            payload.text_id
+        );
+    }
+
+    [[nodiscard]] ExprId push_name_expr(
+        const base::SourceRange range,
+        std::string_view scope_name,
+        const base::SourceRange scope_range,
+        std::string_view text,
+        std::vector<TypeId> type_args = {},
+        IdentId scope_name_id = INVALID_IDENT_ID,
+        IdentId text_id = INVALID_IDENT_ID
+    ) {
+        this->intern_identifier_text(scope_name, scope_name_id);
+        this->intern_identifier_text(text, text_id);
+        return this->exprs.append_name(
+            range,
+            scope_name,
+            scope_range,
+            text,
+            scope_name_id,
+            text_id,
+            std::move(type_args)
+        );
+    }
+
+    [[nodiscard]] ExprId push_name_expr(
+        const base::SourceRange range,
+        const std::string_view text,
+        std::vector<TypeId> type_args = {}
+    ) {
+        return this->push_name_expr(range, {}, {}, text, std::move(type_args));
     }
 
     [[nodiscard]] ExprId push_generic_apply_expr(const base::SourceRange range, GenericApplyExprPayload payload) {
-        return this->exprs.append_generic_apply(range, std::move(payload));
+        return this->push_generic_apply_expr(range, payload.callee, std::move(payload.type_args));
+    }
+
+    [[nodiscard]] ExprId push_generic_apply_expr(
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<TypeId> type_args
+    ) {
+        return this->exprs.append_generic_apply(range, callee, std::move(type_args));
     }
 
     [[nodiscard]] ExprId push_unary_expr(
@@ -3196,11 +3595,29 @@ struct AstModule {
         const base::SourceRange range,
         const UnaryExprPayload payload
     ) {
-        return this->exprs.append_unary(kind, range, payload);
+        return this->push_unary_expr(kind, range, payload.op, payload.operand);
+    }
+
+    [[nodiscard]] ExprId push_unary_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryOp op,
+        const ExprId operand
+    ) {
+        return this->exprs.append_unary(kind, range, op, operand);
     }
 
     [[nodiscard]] ExprId push_binary_expr(const base::SourceRange range, const BinaryExprPayload payload) {
-        return this->exprs.append_binary(range, payload);
+        return this->push_binary_expr(range, payload.op, payload.lhs, payload.rhs);
+    }
+
+    [[nodiscard]] ExprId push_binary_expr(
+        const base::SourceRange range,
+        const BinaryOp op,
+        const ExprId lhs,
+        const ExprId rhs
+    ) {
+        return this->exprs.append_binary(range, op, lhs, rhs);
     }
 
     [[nodiscard]] ExprId push_call_expr(
@@ -3208,11 +3625,36 @@ struct AstModule {
         const base::SourceRange range,
         CallExprPayload payload
     ) {
-        return this->exprs.append_call(kind, range, std::move(payload));
+        return this->push_call_expr(kind, range, payload.callee, std::move(payload.args));
+    }
+
+    [[nodiscard]] ExprId push_call_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<ExprId> args
+    ) {
+        return this->exprs.append_call(kind, range, callee, std::move(args));
     }
 
     [[nodiscard]] ExprId push_if_expr(const base::SourceRange range, const IfExprPayload payload) {
-        return this->exprs.append_if(range, payload);
+        return this->push_if_expr(
+            range,
+            payload.condition,
+            payload.condition_pattern,
+            payload.then_expr,
+            payload.else_expr
+        );
+    }
+
+    [[nodiscard]] ExprId push_if_expr(
+        const base::SourceRange range,
+        const ExprId condition,
+        const PatternId condition_pattern,
+        const ExprId then_expr,
+        const ExprId else_expr
+    ) {
+        return this->exprs.append_if(range, condition, condition_pattern, then_expr, else_expr);
     }
 
     [[nodiscard]] ExprId push_block_expr(
@@ -3220,15 +3662,46 @@ struct AstModule {
         const base::SourceRange range,
         const BlockExprPayload payload
     ) {
-        return this->exprs.append_block(kind, range, payload);
+        return this->push_block_expr(kind, range, payload.block, payload.result);
+    }
+
+    [[nodiscard]] ExprId push_block_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const StmtId block,
+        const ExprId result
+    ) {
+        return this->exprs.append_block(kind, range, block, result);
     }
 
     [[nodiscard]] ExprId push_match_expr(const base::SourceRange range, MatchExprPayload payload) {
-        return this->exprs.append_match(range, std::move(payload));
+        return this->push_match_expr(range, payload.value, std::move(payload.arms));
+    }
+
+    [[nodiscard]] ExprId push_match_expr(
+        const base::SourceRange range,
+        const ExprId value,
+        std::vector<MatchArm> arms
+    ) {
+        return this->exprs.append_match(range, value, std::move(arms));
     }
 
     [[nodiscard]] ExprId push_array_expr(const base::SourceRange range, ArrayExprPayload payload) {
-        return this->exprs.append_array(range, std::move(payload));
+        return this->push_array_expr(
+            range,
+            std::move(payload.elements),
+            payload.repeat_value,
+            payload.repeat_count
+        );
+    }
+
+    [[nodiscard]] ExprId push_array_expr(
+        const base::SourceRange range,
+        std::vector<ExprId> elements,
+        const ExprId repeat_value = INVALID_EXPR_ID,
+        const ExprId repeat_count = INVALID_EXPR_ID
+    ) {
+        return this->exprs.append_array(range, std::move(elements), repeat_value, repeat_count);
     }
 
     [[nodiscard]] ExprId push_tuple_expr(const base::SourceRange range, std::vector<ExprId> elements) {
@@ -3236,26 +3709,96 @@ struct AstModule {
     }
 
     [[nodiscard]] ExprId push_postfix_chain_expr(const base::SourceRange range, PostfixChainExprPayload payload) {
-        this->intern_postfix_ops(payload.ops);
-        return this->exprs.append_postfix_chain(range, std::move(payload));
+        return this->push_postfix_chain_expr(range, payload.base, std::move(payload.ops));
+    }
+
+    [[nodiscard]] ExprId push_postfix_chain_expr(
+        const base::SourceRange range,
+        const ExprId base,
+        std::vector<PostfixOp> ops
+    ) {
+        this->intern_postfix_ops(ops);
+        return this->exprs.append_postfix_chain(range, base, std::move(ops));
     }
 
     [[nodiscard]] ExprId push_field_expr(const base::SourceRange range, FieldExprPayload payload) {
-        this->intern_identifier_text(payload.field_name, payload.field_name_id);
-        return this->exprs.append_field(range, payload);
+        return this->push_field_expr(range, payload.object, payload.field_name, payload.field_name_id);
+    }
+
+    [[nodiscard]] ExprId push_field_expr(
+        const base::SourceRange range,
+        const ExprId object,
+        std::string_view field_name,
+        IdentId field_name_id = INVALID_IDENT_ID
+    ) {
+        this->intern_identifier_text(field_name, field_name_id);
+        return this->exprs.append_field(range, object, field_name, field_name_id);
     }
 
     [[nodiscard]] ExprId push_index_expr(const base::SourceRange range, const IndexExprPayload payload) {
-        return this->exprs.append_index(range, payload);
+        return this->push_index_expr(range, payload.object, payload.index);
+    }
+
+    [[nodiscard]] ExprId push_index_expr(
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId index
+    ) {
+        return this->exprs.append_index(range, object, index);
     }
 
     [[nodiscard]] ExprId push_slice_expr(const base::SourceRange range, const SliceExprPayload payload) {
-        return this->exprs.append_slice(range, payload);
+        return this->push_slice_expr(range, payload.object, payload.start, payload.end);
+    }
+
+    [[nodiscard]] ExprId push_slice_expr(
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId start,
+        const ExprId end
+    ) {
+        return this->exprs.append_slice(range, object, start, end);
     }
 
     [[nodiscard]] ExprId push_struct_literal_expr(const base::SourceRange range, StructLiteralExprPayload payload) {
-        this->intern_struct_literal_payload(payload);
-        return this->exprs.append_struct_literal(range, std::move(payload));
+        return this->push_struct_literal_expr(
+            range,
+            payload.object,
+            payload.scope_name,
+            payload.scope_range,
+            payload.name,
+            std::move(payload.type_args),
+            std::move(payload.field_inits),
+            payload.scope_name_id,
+            payload.name_id
+        );
+    }
+
+    [[nodiscard]] ExprId push_struct_literal_expr(
+        const base::SourceRange range,
+        const ExprId object,
+        std::string_view scope_name,
+        const base::SourceRange scope_range,
+        std::string_view name,
+        std::vector<TypeId> type_args,
+        std::vector<FieldInit> field_inits,
+        IdentId scope_name_id = INVALID_IDENT_ID,
+        IdentId name_id = INVALID_IDENT_ID
+    ) {
+        this->intern_identifier_text(scope_name, scope_name_id);
+        this->intern_identifier_text(name, name_id);
+        this->intern_field_inits(field_inits);
+        return this->exprs.append_struct_literal(
+            range,
+            object,
+            scope_name,
+            scope_range,
+            name,
+            scope_name_id,
+            name_id,
+            std::move(type_args),
+            std::move(field_inits)
+        );
     }
 
     [[nodiscard]] ExprId push_cast_like_expr(
@@ -3263,7 +3806,16 @@ struct AstModule {
         const base::SourceRange range,
         const CastExprPayload payload
     ) {
-        return this->exprs.append_cast_like(kind, range, payload);
+        return this->push_cast_like_expr(kind, range, payload.type, payload.expr);
+    }
+
+    [[nodiscard]] ExprId push_cast_like_expr(
+        const ExprKind kind,
+        const base::SourceRange range,
+        const TypeId type,
+        const ExprId expr
+    ) {
+        return this->exprs.append_cast_like(kind, range, type, expr);
     }
 
     [[nodiscard]] PatternId push_pattern(PatternNode node) {
@@ -3295,6 +3847,15 @@ struct AstModule {
         this->exprs.set_generic_apply(index, range, std::move(payload));
     }
 
+    void set_generic_apply_expr(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<TypeId> type_args
+    ) {
+        this->exprs.set_generic_apply(index, range, callee, std::move(type_args));
+    }
+
     void set_unary_expr(
         const base::usize index,
         const ExprKind kind,
@@ -3304,8 +3865,28 @@ struct AstModule {
         this->exprs.set_unary(index, kind, range, payload);
     }
 
+    void set_unary_expr(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range,
+        const UnaryOp op,
+        const ExprId operand
+    ) {
+        this->exprs.set_unary(index, kind, range, op, operand);
+    }
+
     void set_call_expr(const base::usize index, const ExprKind kind, const base::SourceRange range, CallExprPayload payload) {
         this->exprs.set_call(index, kind, range, std::move(payload));
+    }
+
+    void set_call_expr(
+        const base::usize index,
+        const ExprKind kind,
+        const base::SourceRange range,
+        const ExprId callee,
+        std::vector<ExprId> args
+    ) {
+        this->exprs.set_call(index, kind, range, callee, std::move(args));
     }
 
     void set_field_expr(const base::usize index, const base::SourceRange range, FieldExprPayload payload) {
@@ -3313,17 +3894,76 @@ struct AstModule {
         this->exprs.set_field(index, range, payload);
     }
 
+    void set_field_expr(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        std::string_view field_name,
+        IdentId field_name_id = INVALID_IDENT_ID
+    ) {
+        this->intern_identifier_text(field_name, field_name_id);
+        this->exprs.set_field(index, range, object, field_name, field_name_id);
+    }
+
     void set_index_expr(const base::usize index, const base::SourceRange range, const IndexExprPayload payload) {
         this->exprs.set_index(index, range, payload);
+    }
+
+    void set_index_expr(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId index_expr
+    ) {
+        this->exprs.set_index(index, range, object, index_expr);
     }
 
     void set_slice_expr(const base::usize index, const base::SourceRange range, const SliceExprPayload payload) {
         this->exprs.set_slice(index, range, payload);
     }
 
+    void set_slice_expr(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        const ExprId start,
+        const ExprId end
+    ) {
+        this->exprs.set_slice(index, range, object, start, end);
+    }
+
     void set_struct_literal_expr(const base::usize index, const base::SourceRange range, StructLiteralExprPayload payload) {
         this->intern_struct_literal_payload(payload);
         this->exprs.set_struct_literal(index, range, std::move(payload));
+    }
+
+    void set_struct_literal_expr(
+        const base::usize index,
+        const base::SourceRange range,
+        const ExprId object,
+        std::string_view scope_name,
+        const base::SourceRange scope_range,
+        std::string_view name,
+        std::vector<TypeId> type_args,
+        std::vector<FieldInit> field_inits,
+        IdentId scope_name_id = INVALID_IDENT_ID,
+        IdentId name_id = INVALID_IDENT_ID
+    ) {
+        this->intern_identifier_text(scope_name, scope_name_id);
+        this->intern_identifier_text(name, name_id);
+        this->intern_field_inits(field_inits);
+        this->exprs.set_struct_literal(
+            index,
+            range,
+            object,
+            scope_name,
+            scope_range,
+            name,
+            scope_name_id,
+            name_id,
+            std::move(type_args),
+            std::move(field_inits)
+        );
     }
 
     void set_item(const base::usize index, ItemNode node) {

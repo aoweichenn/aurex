@@ -190,99 +190,127 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
         return destination.push_literal_expr(kind, range, payload != nullptr ? payload->text : std::string_view {});
     }
     case syntax::ExprKind::name: {
-        syntax::NameExprPayload payload;
+        std::string_view scope_name;
+        base::SourceRange scope_range;
+        std::string_view text;
+        syntax::IdentId scope_name_id = syntax::INVALID_IDENT_ID;
+        syntax::IdentId text_id = syntax::INVALID_IDENT_ID;
+        std::vector<syntax::TypeId> type_args;
         if (syntax::NameExprPayload* const source_payload = source.exprs.name_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
-            remap_type_ids(payload.type_args, map);
+            scope_name = source_payload->scope_name;
+            scope_range = source_payload->scope_range;
+            text = source_payload->text;
+            scope_name_id = source_payload->scope_name_id;
+            text_id = source_payload->text_id;
+            type_args = std::move(source_payload->type_args);
+            remap_type_ids(type_args, map);
         }
-        return destination.push_name_expr(range, std::move(payload));
-    }
-    case syntax::ExprKind::generic_apply: {
-        syntax::GenericApplyExprPayload payload;
-        if (syntax::GenericApplyExprPayload* const source_payload =
-                source.exprs.generic_apply_payload(index);
-            source_payload != nullptr) {
-            payload = std::move(*source_payload);
-        }
-        payload.callee = remap_expr(payload.callee, map);
-        remap_type_ids(payload.type_args, map);
-        return destination.push_generic_apply_expr(range, std::move(payload));
+        return destination.push_name_expr(
+            range,
+            scope_name,
+            scope_range,
+            text,
+            std::move(type_args),
+            scope_name_id,
+            text_id
+        );
     }
     case syntax::ExprKind::unary:
     case syntax::ExprKind::try_expr: {
-        syntax::UnaryExprPayload payload;
+        syntax::UnaryOp op = syntax::UnaryOp::logical_not;
+        syntax::ExprId operand = syntax::INVALID_EXPR_ID;
         if (syntax::UnaryExprPayload* const source_payload = source.exprs.unary_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            op = source_payload->op;
+            operand = source_payload->operand;
         }
-        payload.operand = remap_expr(payload.operand, map);
-        return destination.push_unary_expr(kind, range, payload);
+        operand = remap_expr(operand, map);
+        return destination.push_unary_expr(kind, range, op, operand);
     }
     case syntax::ExprKind::binary: {
-        syntax::BinaryExprPayload payload;
+        syntax::BinaryOp op = syntax::BinaryOp::add;
+        syntax::ExprId lhs = syntax::INVALID_EXPR_ID;
+        syntax::ExprId rhs = syntax::INVALID_EXPR_ID;
         if (syntax::BinaryExprPayload* const source_payload = source.exprs.binary_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            op = source_payload->op;
+            lhs = source_payload->lhs;
+            rhs = source_payload->rhs;
         }
-        payload.lhs = remap_expr(payload.lhs, map);
-        payload.rhs = remap_expr(payload.rhs, map);
-        return destination.push_binary_expr(range, payload);
+        lhs = remap_expr(lhs, map);
+        rhs = remap_expr(rhs, map);
+        return destination.push_binary_expr(range, op, lhs, rhs);
     }
-    case syntax::ExprKind::call:
     case syntax::ExprKind::str_from_bytes_unchecked: {
-        syntax::CallExprPayload payload;
+        syntax::ExprId callee = syntax::INVALID_EXPR_ID;
+        std::vector<syntax::ExprId> args;
         if (syntax::CallExprPayload* const source_payload = source.exprs.call_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            callee = source_payload->callee;
+            args = std::move(source_payload->args);
         }
-        payload.callee = remap_expr(payload.callee, map);
-        remap_expr_ids(payload.args, map);
-        return destination.push_call_expr(kind, range, std::move(payload));
+        callee = remap_expr(callee, map);
+        remap_expr_ids(args, map);
+        return destination.push_call_expr(kind, range, callee, std::move(args));
     }
     case syntax::ExprKind::if_expr: {
-        syntax::IfExprPayload payload;
+        syntax::ExprId condition = syntax::INVALID_EXPR_ID;
+        syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
+        syntax::ExprId then_expr = syntax::INVALID_EXPR_ID;
+        syntax::ExprId else_expr = syntax::INVALID_EXPR_ID;
         if (syntax::IfExprPayload* const source_payload = source.exprs.if_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            condition = source_payload->condition;
+            condition_pattern = source_payload->condition_pattern;
+            then_expr = source_payload->then_expr;
+            else_expr = source_payload->else_expr;
         }
-        payload.condition = remap_expr(payload.condition, map);
-        payload.condition_pattern = remap_pattern(payload.condition_pattern, map);
-        payload.then_expr = remap_expr(payload.then_expr, map);
-        payload.else_expr = remap_expr(payload.else_expr, map);
-        return destination.push_if_expr(range, payload);
+        condition = remap_expr(condition, map);
+        condition_pattern = remap_pattern(condition_pattern, map);
+        then_expr = remap_expr(then_expr, map);
+        else_expr = remap_expr(else_expr, map);
+        return destination.push_if_expr(range, condition, condition_pattern, then_expr, else_expr);
     }
     case syntax::ExprKind::block_expr:
     case syntax::ExprKind::unsafe_block: {
-        syntax::BlockExprPayload payload;
+        syntax::StmtId block = syntax::INVALID_STMT_ID;
+        syntax::ExprId result = syntax::INVALID_EXPR_ID;
         if (syntax::BlockExprPayload* const source_payload = source.exprs.block_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            block = source_payload->block;
+            result = source_payload->result;
         }
-        payload.block = remap_stmt(payload.block, map);
-        payload.result = remap_expr(payload.result, map);
-        return destination.push_block_expr(kind, range, payload);
+        block = remap_stmt(block, map);
+        result = remap_expr(result, map);
+        return destination.push_block_expr(kind, range, block, result);
     }
     case syntax::ExprKind::match_expr: {
-        syntax::MatchExprPayload payload;
+        syntax::ExprId value = syntax::INVALID_EXPR_ID;
+        std::vector<syntax::MatchArm> arms;
         if (syntax::MatchExprPayload* const source_payload = source.exprs.match_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            value = source_payload->value;
+            arms = std::move(source_payload->arms);
         }
-        payload.value = remap_expr(payload.value, map);
-        remap_match_arms(payload.arms, map);
-        return destination.push_match_expr(range, std::move(payload));
+        value = remap_expr(value, map);
+        remap_match_arms(arms, map);
+        return destination.push_match_expr(range, value, std::move(arms));
     }
     case syntax::ExprKind::array_literal: {
-        syntax::ArrayExprPayload payload;
+        std::vector<syntax::ExprId> elements;
+        syntax::ExprId repeat_value = syntax::INVALID_EXPR_ID;
+        syntax::ExprId repeat_count = syntax::INVALID_EXPR_ID;
         if (syntax::ArrayExprPayload* const source_payload = source.exprs.array_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            elements = std::move(source_payload->elements);
+            repeat_value = source_payload->repeat_value;
+            repeat_count = source_payload->repeat_count;
         }
-        remap_expr_ids(payload.elements, map);
-        payload.repeat_value = remap_expr(payload.repeat_value, map);
-        payload.repeat_count = remap_expr(payload.repeat_count, map);
-        return destination.push_array_expr(range, std::move(payload));
+        remap_expr_ids(elements, map);
+        repeat_value = remap_expr(repeat_value, map);
+        repeat_count = remap_expr(repeat_count, map);
+        return destination.push_array_expr(range, std::move(elements), repeat_value, repeat_count);
     }
     case syntax::ExprKind::tuple_literal: {
         std::vector<syntax::ExprId> elements;
@@ -294,57 +322,17 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
         return destination.push_tuple_expr(range, std::move(elements));
     }
     case syntax::ExprKind::postfix_chain: {
-        syntax::PostfixChainExprPayload payload;
+        syntax::ExprId base = syntax::INVALID_EXPR_ID;
+        std::vector<syntax::PostfixOp> ops;
         if (syntax::PostfixChainExprPayload* const source_payload =
                 source.exprs.postfix_chain_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            base = source_payload->base;
+            ops = std::move(source_payload->ops);
         }
-        payload.base = remap_expr(payload.base, map);
-        remap_postfix_ops(payload.ops, map);
-        return destination.push_postfix_chain_expr(range, std::move(payload));
-    }
-    case syntax::ExprKind::field: {
-        syntax::FieldExprPayload payload;
-        if (syntax::FieldExprPayload* const source_payload = source.exprs.field_payload(index);
-            source_payload != nullptr) {
-            payload = std::move(*source_payload);
-        }
-        payload.object = remap_expr(payload.object, map);
-        return destination.push_field_expr(range, payload);
-    }
-    case syntax::ExprKind::index: {
-        syntax::IndexExprPayload payload;
-        if (syntax::IndexExprPayload* const source_payload = source.exprs.index_payload(index);
-            source_payload != nullptr) {
-            payload = std::move(*source_payload);
-        }
-        payload.object = remap_expr(payload.object, map);
-        payload.index = remap_expr(payload.index, map);
-        return destination.push_index_expr(range, payload);
-    }
-    case syntax::ExprKind::slice: {
-        syntax::SliceExprPayload payload;
-        if (syntax::SliceExprPayload* const source_payload = source.exprs.slice_payload(index);
-            source_payload != nullptr) {
-            payload = std::move(*source_payload);
-        }
-        payload.object = remap_expr(payload.object, map);
-        payload.start = remap_expr(payload.start, map);
-        payload.end = remap_expr(payload.end, map);
-        return destination.push_slice_expr(range, payload);
-    }
-    case syntax::ExprKind::struct_literal: {
-        syntax::StructLiteralExprPayload payload;
-        if (syntax::StructLiteralExprPayload* const source_payload =
-                source.exprs.struct_literal_payload(index);
-            source_payload != nullptr) {
-            payload = std::move(*source_payload);
-        }
-        payload.object = remap_expr(payload.object, map);
-        remap_type_ids(payload.type_args, map);
-        remap_field_inits(payload.field_inits, map);
-        return destination.push_struct_literal_expr(range, std::move(payload));
+        base = remap_expr(base, map);
+        remap_postfix_ops(ops, map);
+        return destination.push_postfix_chain_expr(range, base, std::move(ops));
     }
     case syntax::ExprKind::cast:
     case syntax::ExprKind::pcast:
@@ -357,17 +345,20 @@ void remap_postfix_ops(std::vector<syntax::PostfixOp>& ops, const IdMap& map) {
     case syntax::ExprKind::str_byte_len:
     case syntax::ExprKind::str_is_valid_utf8:
     case syntax::ExprKind::str_from_utf8_checked: {
-        syntax::CastExprPayload payload;
+        syntax::TypeId type = syntax::INVALID_TYPE_ID;
+        syntax::ExprId expr = syntax::INVALID_EXPR_ID;
         if (syntax::CastExprPayload* const source_payload = source.exprs.cast_payload(index);
             source_payload != nullptr) {
-            payload = std::move(*source_payload);
+            type = source_payload->type;
+            expr = source_payload->expr;
         }
-        payload.type = remap_type(payload.type, map);
-        payload.expr = remap_expr(payload.expr, map);
-        return destination.push_cast_like_expr(kind, range, payload);
+        type = remap_type(type, map);
+        expr = remap_expr(expr, map);
+        return destination.push_cast_like_expr(kind, range, type, expr);
     }
+    default:
+        return destination.push_invalid_expr(range);
     }
-    return destination.push_invalid_expr(range);
 }
 
 void remap_pattern_node(syntax::PatternNode& node, const IdMap& map) {

@@ -63,10 +63,8 @@ syntax::ExprId BuiltinExprParser::parse_cast(const syntax::ExprKind kind, const 
     return this->session_.module.push_cast_like_expr(
         kind,
         this->merge(begin.range, end.range),
-        syntax::CastExprPayload {
-            type,
-            value,
-        }
+        type,
+        value
     );
 }
 
@@ -80,10 +78,8 @@ syntax::ExprId BuiltinExprParser::parse_type_builtin(const syntax::ExprKind kind
     return this->session_.module.push_cast_like_expr(
         kind,
         this->merge(begin.range, end.range),
-        syntax::CastExprPayload {
-            type,
-            syntax::INVALID_EXPR_ID,
-        }
+        type,
+        syntax::INVALID_EXPR_ID
     );
 }
 
@@ -96,10 +92,8 @@ syntax::ExprId BuiltinExprParser::parse_ptraddr(const ExprContext context) {
     return this->session_.module.push_cast_like_expr(
         syntax::ExprKind::ptr_addr,
         this->merge(begin.range, end.range),
-        syntax::CastExprPayload {
-            syntax::INVALID_TYPE_ID,
-            value,
-        }
+        syntax::INVALID_TYPE_ID,
+        value
     );
 }
 
@@ -116,10 +110,8 @@ syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context) {
     return this->session_.module.push_cast_like_expr(
         syntax::ExprKind::paddr,
         this->merge(begin.range, end.range),
-        syntax::CastExprPayload {
-            type,
-            value,
-        }
+        type,
+        value
     );
 }
 
@@ -136,10 +128,8 @@ syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     return this->session_.module.push_cast_like_expr(
         kind,
         this->merge(begin.range, end.range),
-        syntax::CastExprPayload {
-            syntax::INVALID_TYPE_ID,
-            value,
-        }
+        syntax::INVALID_TYPE_ID,
+        value
     );
 }
 
@@ -156,10 +146,8 @@ syntax::ExprId BuiltinExprParser::parse_str_slice_unary(
     return this->session_.module.push_cast_like_expr(
         kind,
         this->merge(begin.range, end.range),
-        syntax::CastExprPayload {
-            syntax::INVALID_TYPE_ID,
-            value,
-        }
+        syntax::INVALID_TYPE_ID,
+        value
     );
 }
 
@@ -180,10 +168,8 @@ syntax::ExprId BuiltinExprParser::parse_strraw(const ExprContext context) {
     return this->session_.module.push_call_expr(
         syntax::ExprKind::str_from_bytes_unchecked,
         this->merge(begin.range, end.range),
-        syntax::CallExprPayload {
-            syntax::INVALID_EXPR_ID,
-            std::move(args),
-        }
+        syntax::INVALID_EXPR_ID,
+        std::move(args)
     );
 }
 

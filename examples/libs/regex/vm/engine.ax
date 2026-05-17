@@ -4,7 +4,7 @@ import regex.config.limits as limits;
 import regex.core.results as results;
 import regex.core.types as t;
 import regex.runtime.alloc as alloc;
-import regex.syntax.ascii as ascii;
+import unicode.ucd as unicode;
 
 const ACCEPT_NONE: u8 = 0u8;
 const ACCEPT_DEFERRED: u8 = 1u8;
@@ -101,7 +101,7 @@ fn search_with_workspace(compiled: &t.Regex, input: str, start_offset: usize, wo
         }
         return run_at(compiled, input, 0usize, false, workspace);
     }
-    var start: usize = start_offset;
+    var start: usize = unicode.align_forward_boundary(input, start_offset);
     while start <= input_len {
         let result: t.MatchResult = run_at(compiled, input, start, false, workspace);
         if result.status != t.RegexStatus.ok && result.status != t.RegexStatus.no_match {
@@ -110,7 +110,10 @@ fn search_with_workspace(compiled: &t.Regex, input: str, start_offset: usize, wo
         if result.matched {
             return result;
         }
-        start += 1usize;
+        if start == input_len {
+            break;
+        }
+        start = unicode.next_boundary(input, start);
     }
     return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
 }
@@ -180,7 +183,9 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
         }
         stamp += 1usize;
         next_len = 0usize;
-        let value: u8 = ascii.byte_at(input, position);
+        let decoded: unicode.Decode = unicode.decode_at(input, position);
+        let value: usize = decoded.value;
+        let next_position: usize = decoded.next;
         var index: usize = 0usize;
         while index < current_len {
             let state_id: usize = unsafe { workspace.current[index] };
@@ -194,7 +199,7 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
                     workspace,
                     stamp,
                     out1,
-                    position + 1usize,
+                    next_position,
                     input,
                     input_len,
                     capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
@@ -207,7 +212,7 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
         }
         swap_lists(workspace);
         current_len = next_len;
-        position += 1usize;
+        position = next_position;
     }
     if best_matched {
         if !require_end || best_end == input_len {
@@ -381,7 +386,7 @@ fn has_higher_priority_consumer(
     if position >= input_len {
         return false;
     }
-    let value: u8 = ascii.byte_at(input, position);
+    let value: usize = unicode.decode_at(input, position).value;
     var index: usize = 0usize;
     while index < accept_index {
         let state_id: usize = unsafe { list[index] };
@@ -393,17 +398,17 @@ fn has_higher_priority_consumer(
     return false;
 }
 
-fn state_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
+fn state_matches(compiled: &t.Regex, state_id: usize, value: usize) -> bool {
     let opcode: u8 = unsafe { compiled.states[state_id].opcode };
     if opcode == t.OP_LITERAL {
-        let expected: u8 = unsafe { compiled.states[state_id].value };
+        let expected: usize = unsafe { compiled.states[state_id].value };
         if has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
-            return ascii.to_lower(expected) == ascii.to_lower(value);
+            return unicode.simple_fold(expected) == unicode.simple_fold(value);
         }
         return expected == value;
     }
     if opcode == t.OP_ANY {
-        return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || value != ascii.LINE_FEED;
+        return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || !unicode.is_line_break_scalar(value);
     }
     if opcode == t.OP_CLASS {
         return class_matches(compiled, state_id, value);
@@ -411,20 +416,14 @@ fn state_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
     return false;
 }
 
-fn class_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
+fn class_matches(compiled: &t.Regex, state_id: usize, value: usize) -> bool {
     let class_start: usize = unsafe { compiled.states[state_id].class_start };
     let class_len: usize = unsafe { compiled.states[state_id].class_len };
     let flags: u8 = unsafe { compiled.states[state_id].flags };
     let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
     var matched: bool = class_ranges_match(compiled, class_start, class_len, value);
     if !matched && has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
-        if ascii.is_alpha(value) {
-            if ascii.is_lower(value) {
-                matched = class_ranges_match(compiled, class_start, class_len, ascii.to_upper(value));
-            } else {
-                matched = class_ranges_match(compiled, class_start, class_len, ascii.to_lower(value));
-            }
-        }
+        matched = class_ranges_fold_match(compiled, class_start, class_len, value);
     }
     if negated {
         return !matched;
@@ -432,13 +431,41 @@ fn class_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
     return matched;
 }
 
-fn class_ranges_match(compiled: &t.Regex, class_start: usize, class_len: usize, value: u8) -> bool {
+fn class_ranges_match(compiled: &t.Regex, class_start: usize, class_len: usize, value: usize) -> bool {
     var offset: usize = 0usize;
     while offset < class_len {
         let range_index: usize = class_start + offset;
-        let first: u8 = unsafe { compiled.ranges[range_index].first };
-        let last: u8 = unsafe { compiled.ranges[range_index].last };
-        if first <= value && value <= last {
+        let kind: u8 = unsafe { compiled.ranges[range_index].kind };
+        let first: usize = unsafe { compiled.ranges[range_index].first };
+        let last: usize = unsafe { compiled.ranges[range_index].last };
+        if kind == t.CLASS_RANGE_SCALAR && first <= value && value <= last {
+            return true;
+        }
+        if kind == t.CLASS_RANGE_PROPERTY && unicode.property_matches(first, value) {
+            return true;
+        }
+        if kind == t.CLASS_RANGE_PROPERTY_NEGATED && !unicode.property_matches(first, value) {
+            return true;
+        }
+        offset += 1usize;
+    }
+    return false;
+}
+
+fn class_ranges_fold_match(compiled: &t.Regex, class_start: usize, class_len: usize, value: usize) -> bool {
+    var offset: usize = 0usize;
+    while offset < class_len {
+        let range_index: usize = class_start + offset;
+        let kind: u8 = unsafe { compiled.ranges[range_index].kind };
+        let first: usize = unsafe { compiled.ranges[range_index].first };
+        let last: usize = unsafe { compiled.ranges[range_index].last };
+        if kind == t.CLASS_RANGE_SCALAR && unicode.fold_equivalent_in_range(value, first, last) {
+            return true;
+        }
+        if kind == t.CLASS_RANGE_PROPERTY && unicode.property_case_fold_matches(first, value) {
+            return true;
+        }
+        if kind == t.CLASS_RANGE_PROPERTY_NEGATED && !unicode.property_case_fold_matches(first, value) {
             return true;
         }
         offset += 1usize;
@@ -454,19 +481,23 @@ fn is_line_start(input: str, position: usize) -> bool {
     if position == 0usize {
         return true;
     }
-    return ascii.byte_at(input, position - 1usize) == ascii.LINE_FEED;
+    let previous: unicode.Decode = unicode.previous_decode(input, position);
+    return previous.valid && unicode.is_line_break_scalar(previous.value);
 }
 
 fn is_line_end(input: str, position: usize, input_len: usize) -> bool {
     if position == input_len {
         return true;
     }
-    return ascii.byte_at(input, position) == ascii.LINE_FEED;
+    let current: unicode.Decode = unicode.decode_at(input, position);
+    return current.valid && unicode.is_line_break_scalar(current.value);
 }
 
 fn is_word_boundary(input: str, position: usize, input_len: usize) -> bool {
-    let left_is_word: bool = position > 0usize && ascii.is_word(ascii.byte_at(input, position - 1usize));
-    let right_is_word: bool = position < input_len && ascii.is_word(ascii.byte_at(input, position));
+    let left: unicode.Decode = unicode.previous_decode(input, position);
+    let right: unicode.Decode = unicode.decode_at(input, position);
+    let left_is_word: bool = position > 0usize && left.valid && unicode.is_word(left.value);
+    let right_is_word: bool = position < input_len && right.valid && unicode.is_word(right.value);
     return left_is_word != right_is_word;
 }
 

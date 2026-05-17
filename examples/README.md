@@ -25,8 +25,9 @@ the language-core layer.
   `find_iter`, `captures_iter`, `replace_all`, `split_iter`, and error
   diagnostics.
 - `regex_industrial.ax`: exercises the safer industrial regex surface:
-  flags, lazy/ungreedy matching, boundaries, expanded escapes, POSIX/property
-  classes, convenience APIs, and invalid escape diagnostics.
+  flags, lazy/ungreedy matching, boundaries, expanded escapes, Unicode scalar
+  matching, Unicode properties/case folding, convenience APIs, and invalid
+  escape diagnostics.
 - `regex_stress.ax`: runs repeated compiled regex searches/fullmatches and
   checks the regex resource budget APIs.
 

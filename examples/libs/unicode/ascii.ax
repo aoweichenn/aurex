@@ -1,0 +1,192 @@
+module unicode.ascii;
+
+pub const NUL: u8 = 0u8;
+pub const BELL: u8 = 0x07u8;
+pub const TAB: u8 = b'\t';
+pub const LINE_FEED: u8 = b'\n';
+pub const VERTICAL_TAB: u8 = 0x0bu8;
+pub const FORM_FEED: u8 = 0x0cu8;
+pub const CARRIAGE_RETURN: u8 = b'\r';
+pub const ESCAPE: u8 = 0x1bu8;
+pub const SPACE: u8 = b' ';
+pub const EXCLAMATION: u8 = b'!';
+pub const HASH: u8 = b'#';
+pub const DOLLAR: u8 = b'$';
+pub const LPAREN: u8 = b'(';
+pub const RPAREN: u8 = b')';
+pub const STAR: u8 = b'*';
+pub const PLUS: u8 = b'+';
+pub const COMMA: u8 = b',';
+pub const HYPHEN: u8 = b'-';
+pub const DOT: u8 = b'.';
+pub const SLASH: u8 = b'/';
+pub const DIGIT_0: u8 = b'0';
+pub const DIGIT_9: u8 = b'9';
+pub const COLON: u8 = b':';
+pub const LESS: u8 = b'<';
+pub const EQUAL: u8 = b'=';
+pub const GREATER: u8 = b'>';
+pub const QUESTION: u8 = b'?';
+pub const AT: u8 = b'@';
+pub const UPPER_A: u8 = b'A';
+pub const UPPER_B: u8 = b'B';
+pub const UPPER_D: u8 = b'D';
+pub const UPPER_E: u8 = b'E';
+pub const UPPER_F: u8 = b'F';
+pub const UPPER_G: u8 = b'G';
+pub const UPPER_I: u8 = b'I';
+pub const UPPER_M: u8 = b'M';
+pub const UPPER_N: u8 = b'N';
+pub const UPPER_P: u8 = b'P';
+pub const UPPER_Q: u8 = b'Q';
+pub const UPPER_R: u8 = b'R';
+pub const UPPER_S: u8 = b'S';
+pub const UPPER_U: u8 = b'U';
+pub const UPPER_W: u8 = b'W';
+pub const UPPER_X: u8 = b'X';
+pub const UPPER_Z: u8 = b'Z';
+pub const LBRACKET: u8 = b'[';
+pub const BACKSLASH: u8 = b'\\';
+pub const RBRACKET: u8 = b']';
+pub const CARET: u8 = b'^';
+pub const UNDERSCORE: u8 = b'_';
+pub const BACKTICK: u8 = b'`';
+pub const LOWER_A: u8 = b'a';
+pub const LOWER_B: u8 = b'b';
+pub const LOWER_D: u8 = b'd';
+pub const LOWER_E: u8 = b'e';
+pub const LOWER_F: u8 = b'f';
+pub const LOWER_G: u8 = b'g';
+pub const LOWER_I: u8 = b'i';
+pub const LOWER_L: u8 = b'l';
+pub const LOWER_M: u8 = b'm';
+pub const LOWER_N: u8 = b'n';
+pub const LOWER_P: u8 = b'p';
+pub const LOWER_Q: u8 = b'q';
+pub const LOWER_R: u8 = b'r';
+pub const LOWER_S: u8 = b's';
+pub const LOWER_T: u8 = b't';
+pub const LOWER_U: u8 = b'u';
+pub const LOWER_V: u8 = b'v';
+pub const LOWER_W: u8 = b'w';
+pub const LOWER_X: u8 = b'x';
+pub const LOWER_Z: u8 = b'z';
+pub const LBRACE: u8 = b'{';
+pub const PIPE: u8 = b'|';
+pub const RBRACE: u8 = b'}';
+pub const TILDE: u8 = b'~';
+
+pub fn byte_at(text_value: str, index: usize) -> u8 {
+    let data: *const u8 = strptr(text_value);
+    return unsafe { data[index] };
+}
+
+pub fn is_digit(value: u8) -> bool {
+    return DIGIT_0 <= value && value <= DIGIT_9;
+}
+
+pub fn is_alpha(value: u8) -> bool {
+    return (UPPER_A <= value && value <= UPPER_Z) || (LOWER_A <= value && value <= LOWER_Z);
+}
+
+pub fn is_lower(value: u8) -> bool {
+    return LOWER_A <= value && value <= LOWER_Z;
+}
+
+pub fn is_upper(value: u8) -> bool {
+    return UPPER_A <= value && value <= UPPER_Z;
+}
+
+pub fn to_lower(value: u8) -> u8 {
+    if is_upper(value) {
+        return value + (LOWER_A - UPPER_A);
+    }
+    return value;
+}
+
+pub fn to_upper(value: u8) -> u8 {
+    if is_lower(value) {
+        return value - (LOWER_A - UPPER_A);
+    }
+    return value;
+}
+
+pub fn is_word(value: u8) -> bool {
+    return is_alpha(value) || is_digit(value) || value == UNDERSCORE;
+}
+
+pub fn is_ascii_whitespace(value: u8) -> bool {
+    return value == SPACE ||
+        value == TAB ||
+        value == LINE_FEED ||
+        value == CARRIAGE_RETURN ||
+        value == FORM_FEED ||
+        value == VERTICAL_TAB;
+}
+
+pub fn is_hex_digit(value: u8) -> bool {
+    return is_digit(value) ||
+        (UPPER_A <= value && value <= UPPER_F) ||
+        (LOWER_A <= value && value <= LOWER_F);
+}
+
+pub fn hex_value(value: u8) -> usize {
+    if is_digit(value) {
+        return decimal_value(value);
+    }
+    if UPPER_A <= value && value <= UPPER_F {
+        return cast[usize](value - UPPER_A) + 10usize;
+    }
+    return cast[usize](value - LOWER_A) + 10usize;
+}
+
+pub fn is_name_start(value: u8) -> bool {
+    return is_alpha(value) || value == UNDERSCORE;
+}
+
+pub fn is_name_continue(value: u8) -> bool {
+    return is_name_start(value) || is_digit(value);
+}
+
+pub fn decimal_value(value: u8) -> usize {
+    return cast[usize](value - DIGIT_0);
+}
+
+pub fn escaped_byte(value: u8) -> u8 {
+    if value == LOWER_A {
+        return BELL;
+    }
+    if value == LOWER_E {
+        return ESCAPE;
+    }
+    if value == LOWER_F {
+        return FORM_FEED;
+    }
+    if value == LOWER_N {
+        return LINE_FEED;
+    }
+    if value == LOWER_R {
+        return CARRIAGE_RETURN;
+    }
+    if value == LOWER_T {
+        return TAB;
+    }
+    if value == LOWER_V {
+        return VERTICAL_TAB;
+    }
+    if value == DIGIT_0 {
+        return NUL;
+    }
+    return value;
+}
+
+pub fn is_simple_escape(value: u8) -> bool {
+    return value == LOWER_A ||
+        value == LOWER_E ||
+        value == LOWER_F ||
+        value == LOWER_N ||
+        value == LOWER_R ||
+        value == LOWER_T ||
+        value == LOWER_V ||
+        value == DIGIT_0;
+}

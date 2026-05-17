@@ -47,13 +47,13 @@ build/tests/regex_stress
 这个库的目标不是复刻 PCRE，而是在当前 Aurex M2 能力范围内实现一个结构完整、可编译、可运行、可测试，并能继续向工业级推进的正则库：
 
 - API 独立：调用方只面对 `regex.api`。
-- 实现分层：parser、program、engine、types、results、ops、alloc、ascii 各自负责一类问题。
+- 实现分层：parser、program、engine、types、results、ops、alloc、ascii 各自负责一类问题；Unicode 标量、属性和 case fold 复用独立的 `unicode.ucd` 模块。
 - 编译型：`compile` 把 pattern 编译成 NFA 状态表，匹配阶段运行 VM。
 - 显式所有权：`Regex` 和 `Captures` 都持有 FFI 堆内存，分别用 `destroy` 和 `destroy_captures` 释放。
 - 无魔法数字：ASCII byte、opcode、flag、错误 kind、容量策略、资源上限和 repeat 上限都使用命名常量。
 - 资源可见：公开状态数、range 数、捕获数、编译后程序内存估算和 VM 工作区内存估算。
 - API 可组合：提供 compiled API、便利 API、find/captures 游标、split 游标、替换到调用方 buffer 的接口。
-- 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute anchors、hex/unicode byte encoding escapes、quoted literal、newline escape、POSIX/ASCII property classes，同时继续拒绝反向引用和 lookaround。
+- 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute anchors、hex/unicode escapes、quoted literal、newline escape、POSIX/Unicode property classes，同时继续拒绝反向引用和 lookaround。
 - 向工业级演进：当前实现明确约束 pattern/program/workspace/capture 上限，避免灾难性回溯，并用 demo、phase1、industrial、stress 样例锁住行为。
 
 当前版本仍是 Aurex 语言能力验证库，不声称达到 RE2、Rust regex、PCRE2 或 Hyperscan 的生产成熟度。本文后面单独列出工业级目标和对比。
@@ -91,6 +91,12 @@ build/tests/regex_stress
 - 集中定义 ASCII byte 常量，例如 `CARET`、`DOLLAR`、`DOT`、`BACKSLASH`、`LESS`、`GREATER`、`DIGIT_0`、`LOWER_D`。
 - 提供 `byte_at`、`is_digit`、`is_alpha`、`is_name_start`、`is_name_continue`、`decimal_value`、`escaped_byte`。
 
+`unicode.ascii` / `unicode.ucd`
+
+- 独立于 regex 的可复用 Unicode 底层模块。
+- `unicode.ascii` 提供基础 ASCII byte helper；`unicode.ucd` 提供 UTF-8 scalar 解码、前后边界推进、Unicode 17.0 属性表、script/script extensions、simple case folding 和 Unicode word 判断。
+- regex 只保存 byte offset，对 literal、`.`、量词、字符类、`\b` / `\B` 的消费单位则统一使用 Unicode scalar value。
+
 `regex.runtime.alloc`
 
 - 声明 C ABI `calloc` 和 `free`。
@@ -107,7 +113,7 @@ build/tests/regex_stress
 `regex.compile.parser`
 
 - 递归下降解析 pattern。
-- 支持捕获组、命名捕获组、非捕获组、inline flags/scoped flags、交替、字符类、POSIX/ASCII property 类、转义、绝对锚点、word boundary、greedy/lazy/ungreedy 量词、bounded repeat。
+- 支持捕获组、命名捕获组、非捕获组、inline flags/scoped flags、交替、Unicode 字符类、POSIX/Unicode property 类、转义、绝对锚点、word boundary、greedy/lazy/ungreedy 量词、bounded repeat。
 - 将 pattern 编译为 `regex.core.types.Regex`。
 - 将语法错误写入 `Regex.status`、`Regex.error_offset`、`Regex.error_kind`。
 
@@ -365,15 +371,15 @@ hello
 \Q...\E     quoted literal，区间内元字符按字面量处理
 ```
 
-预定义 ASCII 类：
+预定义 Unicode 类：
 
 ```text
-\d    [0-9]
-\D    [^0-9]
-\w    [0-9A-Za-z_]
-\W    [^0-9A-Za-z_]
-\s    [ \t\n\r\f\v]
-\S    [^ \t\n\r\f\v]
+\d    Unicode Decimal_Number / Nd
+\D    非 Unicode Decimal_Number
+\w    Unicode word
+\W    非 Unicode word
+\s    Unicode White_Space
+\S    非 Unicode White_Space
 ```
 
 零宽断言和换行相关转义：
@@ -382,10 +388,10 @@ hello
 \A    输入绝对开头
 \z    输入绝对结尾
 \Z    当前实现等同 \z
-\b    ASCII word boundary，word = [0-9A-Za-z_]
+\b    Unicode word boundary
 \B    非 word boundary
-\N    任意非 LF byte
-\R    LF、CRLF 或 CR
+\N    任意非 Unicode line break scalar
+\R    CRLF 或单个 Unicode line break scalar
 ```
 
 未知字母转义会被诊断为 `unsupported` + `invalid_escape`，避免 typo 被静默当字面量。未知标点转义仍按标点字面量处理，例如 `\.`。
@@ -393,9 +399,9 @@ hello
 ### 5.4 通配和锚点
 
 ```text
-.     默认匹配除 LF 外任意一个 byte；`(?s)` dotall 下匹配任意 byte
-^     默认仅在输入开头成功；`(?m)` multiline 下也在 LF 后成功
-$     默认仅在输入结尾成功；`(?m)` multiline 下也在 LF 前成功
+.     默认匹配除 Unicode line break 外任意一个 scalar；`(?s)` dotall 下匹配任意 scalar
+^     默认仅在输入开头成功；`(?m)` multiline 下也在 Unicode line break 后成功
+$     默认仅在输入结尾成功；`(?m)` multiline 下也在 Unicode line break 前成功
 ```
 
 锚点是零宽断言，不消耗输入。
@@ -405,7 +411,7 @@ $     默认仅在输入结尾成功；`(?m)` multiline 下也在 LF 前成功
 支持全局后续生效和 scoped 两种形式：
 
 ```text
-(?i)abc          // 从当前位置开始忽略 ASCII 大小写
+(?i)abc          // 从当前位置开始使用 Unicode simple case folding
 (?i:a)b          // 只在 scoped group 内忽略大小写
 (?i)abc(?-i:de)  // 局部关闭 i
 ```
@@ -414,12 +420,12 @@ $     默认仅在输入结尾成功；`(?m)` multiline 下也在 LF 前成功
 
 | flag | 语义 |
 | --- | --- |
-| `i` | ASCII case-insensitive，用 `A-Z`/`a-z` 折叠 literal 和 class |
+| `i` | Unicode simple case-insensitive，用 Unicode 17.0 simple case folding 比较 literal 和 class |
 | `m` | multiline，使 `^`/`$` 识别行首/行尾 |
-| `s` | dotall，使 `.` 匹配 LF |
-| `x` | extended，忽略 pattern 中 ASCII 空白，`#` 到行尾为注释；转义空格 `\ ` 仍是字面量 |
+| `s` | dotall，使 `.` 匹配任意 Unicode scalar |
+| `x` | extended，忽略 pattern 中 Unicode `White_Space`，`#` 到行尾为注释；转义空格 `\ ` 仍是字面量 |
 | `U` | ungreedy，默认量词改为 lazy，显式 `?` 后缀会反转回来 |
-| `u` | 保留 flag；当前匹配模型仍是 UTF-8 byte 级，不启用完整 Unicode 属性语义 |
+| `u` | text regex 兼容 flag；当前实现本来就固定启用 UTF-8 Unicode scalar 语义 |
 
 ### 5.6 字符类
 
@@ -450,33 +456,30 @@ $     默认仅在输入结尾成功；`(?m)` multiline 下也在 LF 前成功
 \\
 ```
 
-类内范围两端必须是 byte 字面量，不能用预定义类当范围端点：
+类内范围两端必须是 scalar 字面量，不能用预定义类当范围端点：
 
 ```text
 [a-z]      // 合法
+[\u{0400}-\u{04ff}] // 合法
 [a-\d]     // 非法
 ```
 
 如果预定义类后面跟 `-`，该 `-` 会作为普通字面量处理，而不是把预定义类作为 range 起点。
 
-当前 POSIX/property 名称是 ASCII-mapped 子集，不是完整 Unicode property 数据库。已支持：
+POSIX 名称会映射到 Unicode 属性；`\p{...}` / `\P{...}` 支持 Unicode 17.0 general category、binary property、script 和 keyed 语法，例如：
 
 ```text
-digit, nd, decimal, decimal_number
-w, word
-s, space, whitespace, white_space
-l, letter, alpha, alphabetic
-alnum, alphanumeric
-ascii
-blank
-cntrl, control
-graph
-lower, lowercase
-print
-punct, punctuation
-upper, uppercase
-xdigit, hex, hex_digit
+\p{L}
+\p{Lu}
+\p{Alphabetic}
+\p{White_Space}
+\p{Greek}
+\p{gc=Nd}
+\p{sc=Greek}
+\p{scx=Hira}
 ```
+
+兼容别名仍支持 `digit`、`word`、`space`、`alpha`、`alnum`、`ascii`、`blank`、`cntrl`、`graph`、`lower`、`print`、`punct`、`upper`、`xdigit` 等传统名称，但它们现在按 Unicode 属性工作，不再退化成 ASCII-only。
 
 ### 5.7 分组、捕获和交替
 
@@ -541,19 +544,30 @@ a{2,4}?   lazy bounded repeat
 - 必须从 input byte offset `0` 开始。
 - 必须在 input byte length 处结束。
 - pattern 自身不需要显式写 `^...$`。
+- 匹配消费单位是 UTF-8 Unicode scalar value，不是 raw byte；例如 `.` 对 `"é"` 只消费一次，`".."` 不会把它拆成两个 byte。
 
 `search(pattern, input)`：
 
-- 从 byte offset `0` 到 `strblen(input)` 逐个尝试起点。
+- 从 byte offset `0` 到 `strblen(input)` 按 UTF-8 scalar boundary 尝试起点。
 - 返回第一个能匹配的起点。
 - 在同一个起点下，VM 按 NFA split 顺序维护有序线程。greedy 量词优先继续消费，并保存后备接受点；lazy/ungreedy 量词优先退出，可在更短位置接受。
 
 `search_compiled_from(compiled, input, start_offset)`：
 
 - 从指定 byte offset 开始搜索。
+- 如果 `start_offset` 落在 UTF-8 continuation byte 中，会先前进到下一个 scalar boundary，不会在字符中间启动匹配。
 - `start_offset > strblen(input)` 时返回 `no_match`。
 
-`MatchResult.start`、`MatchResult.end`、`CaptureSpan.start`、`CaptureSpan.end` 都是 byte offset。由于 `str` 是 UTF-8 文本，offset 不一定是 Unicode 字符下标。
+`MatchResult.start`、`MatchResult.end`、`CaptureSpan.start`、`CaptureSpan.end` 都是 byte offset。这个 API 选择与 C++ `std::regex` / iterator 风格相近：位置仍指向原始输入序列，消费语义则由 regex locale/traits 层决定；在 Aurex 文本 regex 中，这一层固定为 UTF-8 scalar value。由于 `str` 是 UTF-8 文本，offset 不一定是 Unicode 字符下标。
+
+Unicode 语义：
+
+- literal、`.`、量词和字符类都按 Unicode scalar value 工作；`\x{...}`、`\uNNNN`、`\u{...}` 直接编译成一个 scalar literal。
+- `.` 默认拒绝 Unicode line break scalar，`(?s)` 下匹配任意 scalar。
+- `\d` / `\D` 使用 Unicode `Nd`；`\w` / `\W` 使用 Unicode word 定义；`\s` / `\S` 使用 Unicode `White_Space`。
+- `\p{...}` / `\P{...}` 支持 Unicode general category、binary property、script、`gc=...`、`sc=...` 和 `scx=...`；POSIX 名称会映射到 Unicode 属性而不是旧的 ASCII 子集。
+- `(?i)` 使用 Unicode simple case folding，覆盖 Unicode 17.0 `CaseFolding.txt` 中的一对一 `C` / `S` fold；多 scalar full fold 不在单 scalar regex 语义里展开。
+- `\b` / `\B` 基于 Unicode word 判断；public span 继续保留 byte offset，便于对原始 UTF-8 `str` 做切片。
 
 捕获实现说明：
 
@@ -671,8 +685,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 编译期内存：`program_bytes = state_capacity * sizeof[State] + range_capacity * sizeof[ClassRange] + capture_capacity * sizeof[CaptureInfo]`。
 - 匹配工作区：`workspace_bytes = state_count * 4 * sizeof[usize] + state_count * capture_slots * 4 * sizeof[usize]`。
 - `capture_slots = capture_count * 2`，每个捕获含 start/end 两个 slot，`capture_count` 包含 `$0`。
-- `fullmatch_compiled` 匹配时间：`O(input_bytes * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
-- `search_compiled` 匹配时间：当前会尝试多个起点，最坏是 `O(input_bytes * input_bytes * active_state_count * capture_slots)`；当 pattern 以非 multiline `^` 或 `\A` 开头时只尝试起点 `0`。
+- `fullmatch_compiled` 匹配时间：`O(input_scalars * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
+- `search_compiled` 匹配时间：当前会尝试多个 scalar 起点，最坏是 `O(input_scalars * input_scalars * active_state_count * capture_slots)`；当 pattern 以非 multiline `^` 或 `\A` 开头时只尝试起点 `0`。
 - 同一起点采用有序线程接受策略：greedy 量词保留后备较长结果，lazy/ungreedy 量词可优先接受较短结果。
 - `search` / `fullmatch` convenience API 会每次重新编译，性能敏感路径必须使用 `compile` 后复用。
 - `replace_all` 只写调用方 buffer，不分配输出字符串；捕获结果当前逐 match 分配，后续可优化为复用 scratch captures。
@@ -681,7 +695,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 
 - `examples/regex_demo.ax`：基础语法和 compiled API。
 - `examples/regex_phase1.ax`：捕获、命名捕获、find/captures iterator、replace、split、错误 offset/kind。
-- `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、POSIX/property class、便利 API 和非法 escape 诊断。
+- `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、Unicode scalar/property/case-fold、便利 API 和非法 escape 诊断。
 - `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、资源预算和错误路径。
 
 后续向工业级继续推进时，优先级如下：
@@ -689,18 +703,18 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 将 `search_compiled` 从多起点 NFA 扫描推进到真正线性时间搜索，加入 literal prefix / start byte 加速。
 - 给捕获优先级定义完整 submatch precedence，并增加差分测试。
 - `replace_all` 增加 scratch capture 复用，避免每个 match 分配。
-- 扩展 Unicode 时需要明确 byte、scalar、grapheme 三层语义，避免和当前 byte offset API 混淆。
+- 如果后续增加 grapheme API，需要继续把 byte offset、scalar 消费和 grapheme cluster 三层语义分开，不把当前 text regex 的 scalar 规则偷偷改成用户可见的 grapheme 规则。
 - 增加 fuzz、差分测试和长输入基准，把正确性、峰值内存和吞吐纳入自动化。
 
 ## 10. 与工业级引擎对比
 
 | 引擎 | 核心定位 | 复杂度/性能特点 | 功能范围 | Aurex 当前差距 |
 | --- | --- | --- | --- | --- |
-| RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并补齐安全语法面核心子集，但缺少成熟 DFA/NFA 混合优化、Unicode 数据库、完整 submatch 语义和多年工程验证 |
-| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API | Aurex API 方向接近，已补 flags/边界/类/escape/lazy 子集，但目前只有 byte 级语义，没有 literal acceleration、完整 Unicode、bytes/text 双 API 和成熟差分测试 |
+| RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并有 Unicode 17.0 scalar/property/case-fold 层，但仍缺少成熟 DFA/NFA 混合优化、完整 submatch precedence 和多年工程验证 |
+| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API | Aurex API 方向接近，已有 text regex 的 scalar/property 语义，但还没有 literal acceleration、bytes/text 双 API、完整差分测试和成熟优化器 |
 | PCRE2 | Perl-compatible 功能优先引擎 | 功能很全，可使用 JIT；回溯模型需要限制资源避免病态 pattern | 捕获、命名组、反向引用、lookaround、条件、丰富选项 | Aurex 不追求 PCRE 兼容，暂不支持这些会明显增加复杂度或破坏线性保证的语法 |
 | Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 没有多 pattern database、SIMD、streaming 状态和平台级优化 |
-| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial 样例 | ASCII byte 子集、flags、lazy/ungreedy、边界、锚点、捕获/命名捕获、迭代、替换、分割、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成工业级完成品 |
+| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial 样例 | UTF-8 scalar text regex、Unicode 17.0 general category/binary/script properties、simple case folding、flags、lazy/ungreedy、边界、锚点、捕获/命名捕获、迭代、替换、分割、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成工业级完成品 |
 
 这个对比用于确定路线：Aurex 当前应优先学习 RE2/Rust regex 的“可界定复杂度、拒绝破坏线性时间的语法、显式资源预算、稳定 API”路线，而不是先追 PCRE2 的全部语法。
 
@@ -726,7 +740,9 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | `\x41+` | `AAA` | `fullmatch` | true | hex escape |
 | `\Q.^$*\E` | `.^$*` | `fullmatch` | true | quoted literal |
 | `[[:alpha:]]+` | `abcXYZ` | `fullmatch` | true | POSIX ASCII class |
-| `\p{Alpha}+` | `abcXYZ` | `fullmatch` | true | ASCII-mapped property class |
+| `\p{Alpha}+` | `éΩЖ汉` | `fullmatch` | true | Unicode property class |
+| `\p{sc=Greek}+` | `Ωω` | `fullmatch` | true | Unicode script property |
+| `.` | `é` | `fullmatch` | true | 单个 UTF-8 scalar，不按 byte 拆分 |
 | `[abc` | `a` | `compile` | `syntax_error`, offset `0` | 未闭合 class |
 | `abc[` | `a` | `compile` | `syntax_error`, offset `3` | 错误 offset |
 | `a{33}` | `a` | `compile` | `repeat_too_large` | repeat 展开保护 |
@@ -762,7 +778,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - greedy/lazy/ungreedy span 行为：`a.*b`、`a.*?b`、`(?U)a.*b`。
 - 边界断言：`\A`、`\z`、`\b`、`\B`。
 - 扩展 escape：`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`。
-- 类语法：类内 `\D`、POSIX class、ASCII property class、case-insensitive class。
+- 类语法：类内 `\D`、POSIX class、Unicode general category / script property、case-insensitive class。
+- Unicode 语义：scalar `.`、Unicode range、`\p{L}` / `\p{sc=Greek}`、Unicode `\d`、simple case folding、Unicode word boundary 和 byte span 保持。
 - convenience API：`is_match`、`find`、`captures`、`replace`。
 - invalid escape 诊断：`\y`、不完整 `\x`。
 
@@ -782,8 +799,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - lookahead/lookbehind。
 - possessive 量词。
 - 原子组、条件组、递归/子例程调用等 PCRE-only 高复杂度语法。
-- 完整 Unicode property 数据库，例如真正的 `\p{Greek}`、`\p{Script=Han}`；当前 `\p{Alpha}` 等是 ASCII-mapped 子集。
-- Unicode scalar/grapheme 级匹配；当前 offset 和匹配单位都是 UTF-8 byte。
+- full case folding 的多 scalar 展开，例如 `ß` 到 `ss`；当前 `(?i)` 固定使用一对一 simple fold。
+- grapheme cluster 级匹配；当前 text regex 的消费单位是 Unicode scalar，公开 offset 仍是 UTF-8 byte offset。
 - replacement 中的复杂转义、条件替换、函数式替换。
 - 标准库风格 RAII；当前必须手动 destroy。
 

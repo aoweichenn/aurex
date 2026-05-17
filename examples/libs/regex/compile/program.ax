@@ -95,18 +95,18 @@ pub fn set_error(compiled: &mut t.Regex, status: t.RegexStatus, offset: usize, k
 }
 
 pub fn add_epsilon(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_EPSILON, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_EPSILON, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_split(compiled: &mut t.Regex, out1: usize, out2: usize) -> usize {
-    return add_state(compiled, t.OP_SPLIT, t.FLAGS_NONE, 0u8, 0u8, out1, out2, 0usize, 0usize);
+    return add_state(compiled, t.OP_SPLIT, t.FLAGS_NONE, 0usize, 0usize, out1, out2, 0usize, 0usize);
 }
 
-pub fn add_literal(compiled: &mut t.Regex, value: u8) -> usize {
+pub fn add_literal(compiled: &mut t.Regex, value: usize) -> usize {
     return add_literal_flags(compiled, value, t.FLAGS_NONE);
 }
 
-pub fn add_literal_flags(compiled: &mut t.Regex, value: u8, flags: u8) -> usize {
+pub fn add_literal_flags(compiled: &mut t.Regex, value: usize, flags: u8) -> usize {
     return add_state(compiled, t.OP_LITERAL, flags, value, value, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
@@ -115,7 +115,7 @@ pub fn add_any(compiled: &mut t.Regex) -> usize {
 }
 
 pub fn add_any_flags(compiled: &mut t.Regex, flags: u8) -> usize {
-    return add_state(compiled, t.OP_ANY, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ANY, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_class(compiled: &mut t.Regex, class_start: usize, class_len: usize, negated: bool) -> usize {
@@ -127,7 +127,7 @@ pub fn add_class_flags(compiled: &mut t.Regex, class_start: usize, class_len: us
     if negated {
         flags = flags | t.FLAG_CLASS_NEGATED;
     }
-    return add_state(compiled, t.OP_CLASS, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, class_start, class_len);
+    return add_state(compiled, t.OP_CLASS, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, class_start, class_len);
 }
 
 pub fn add_assert_start(compiled: &mut t.Regex) -> usize {
@@ -135,7 +135,7 @@ pub fn add_assert_start(compiled: &mut t.Regex) -> usize {
 }
 
 pub fn add_assert_start_flags(compiled: &mut t.Regex, flags: u8) -> usize {
-    return add_state(compiled, t.OP_ASSERT_START, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ASSERT_START, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_end(compiled: &mut t.Regex) -> usize {
@@ -143,41 +143,56 @@ pub fn add_assert_end(compiled: &mut t.Regex) -> usize {
 }
 
 pub fn add_assert_end_flags(compiled: &mut t.Regex, flags: u8) -> usize {
-    return add_state(compiled, t.OP_ASSERT_END, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ASSERT_END, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_absolute_start(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_ABSOLUTE_START, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ASSERT_ABSOLUTE_START, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_absolute_end(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_ABSOLUTE_END, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ASSERT_ABSOLUTE_END, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_word_boundary(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_WORD_BOUNDARY, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ASSERT_WORD_BOUNDARY, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_not_word_boundary(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_NOT_WORD_BOUNDARY, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_ASSERT_NOT_WORD_BOUNDARY, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_save(compiled: &mut t.Regex, slot: usize) -> usize {
-    return add_state(compiled, t.OP_SAVE, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, slot, 0usize);
+    return add_state(compiled, t.OP_SAVE, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, slot, 0usize);
 }
 
 pub fn add_match(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_MATCH, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_state(compiled, t.OP_MATCH, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
-pub fn add_range(compiled: &mut t.Regex, first: u8, last: u8) -> bool {
+pub fn add_range(compiled: &mut t.Regex, first: usize, last: usize) -> bool {
     if !ensure_range_capacity(compiled, 1usize) {
         return false;
     }
     let index: usize = compiled.range_len;
     unsafe {
+        compiled.ranges[index].kind = t.CLASS_RANGE_SCALAR;
         compiled.ranges[index].first = first;
         compiled.ranges[index].last = last;
+    }
+    compiled.range_len += 1usize;
+    return true;
+}
+
+pub fn add_property(compiled: &mut t.Regex, property_kind: usize, negated: bool) -> bool {
+    if !ensure_range_capacity(compiled, 1usize) {
+        return false;
+    }
+    let index: usize = compiled.range_len;
+    unsafe {
+        compiled.ranges[index].kind = if negated { t.CLASS_RANGE_PROPERTY_NEGATED } else { t.CLASS_RANGE_PROPERTY };
+        compiled.ranges[index].first = property_kind;
+        compiled.ranges[index].last = property_kind;
     }
     compiled.range_len += 1usize;
     return true;
@@ -339,8 +354,8 @@ fn add_state(
     compiled: &mut t.Regex,
     opcode: u8,
     flags: u8,
-    value: u8,
-    value_to: u8,
+    value: usize,
+    value_to: usize,
     out1: usize,
     out2: usize,
     class_start: usize,
@@ -445,6 +460,7 @@ fn copy_ranges(dst: *mut t.ClassRange, src: *mut t.ClassRange, count: usize) -> 
     var index: usize = 0usize;
     while index < count {
         unsafe {
+            dst[index].kind = src[index].kind;
             dst[index].first = src[index].first;
             dst[index].last = src[index].last;
         }

@@ -1065,22 +1065,22 @@ fn main() -> i32 {
 - `defer`：示例和 API convenience 函数用它保证释放。
 - match：状态码和演示结果判定使用 enum pattern。
 - 函数类型：演示中使用 `type Matcher = fn(str, str) -> bool`。
-- `str` 内建：`strblen`、`strptr` 参与 byte 级解析和匹配。
+- `str` 内建：`strblen`、`strptr` 保留 UTF-8 byte offset；regex 自身按 Unicode scalar value 解析和匹配。
 - 资源预算 API：`state_count`、`range_count`、`capture_count`、`program_bytes`、`workspace_bytes`。
 - 第一阶段 API：`captures_compiled`、`find_iter`、`captures_iter`、`replace_all`、`split_iter`、`error_offset`。
-- 工业安全语法面：inline flags/scoped flags、greedy/lazy/ungreedy、word boundary、absolute anchors、hex/unicode byte escape、quoted literal、POSIX/ASCII property class。
+- 工业安全语法面：inline flags/scoped flags、greedy/lazy/ungreedy、word boundary、absolute anchors、hex/unicode escape、quoted literal、POSIX/Unicode property class。
 - 压力测试：`regex_stress.ax` 通过数百次重复匹配验证 compiled API 复用、内存预算和错误路径。
 
-当前正则语法是一个明确的 ASCII byte 级语法，详细定义见
+当前正则语法是 UTF-8 text regex 语法，详细定义见
 `docs/zh/regex.md`。概要如下：
 
-- 字面量：普通 byte 字面量按自身匹配。
+- 字面量：普通字面量按 Unicode scalar value 匹配。
 - 转义：`\a`、`\e`、`\f`、`\n`、`\r`、`\t`、`\v`、`\0`、`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`。
-- 预定义类：`\d`、`\D`、`\w`、`\W`、`\s`、`\S`。
-- 通配：`.` 默认不匹配 LF，`(?s)` dotall 下匹配任意 byte。
+- 预定义类：`\d`、`\D`、`\w`、`\W`、`\s`、`\S` 采用 Unicode 17.0 属性语义。
+- 通配：`.` 默认不匹配 Unicode line break，`(?s)` dotall 下匹配任意 scalar。
 - 锚点：`^` / `$`，`(?m)` 下识别行首/行尾；`\A` / `\z` 匹配绝对开头/结尾。
-- 边界：`\b` / `\B` 使用 ASCII word 定义。
-- 字符类：`[abc]`、`[^abc]`、`[a-z]`，类内支持 `\d`、`\D`、`\w`、`\W`、`\s`、`\S`、POSIX class 和 ASCII property class。
+- 边界：`\b` / `\B` 使用 Unicode word 定义。
+- 字符类：`[abc]`、`[^abc]`、`[a-z]`、`[\u{0400}-\u{04ff}]`，类内支持 `\d`、`\D`、`\w`、`\W`、`\s`、`\S`、POSIX class 和 Unicode `\p{...}` / `\P{...}`。
 - 分组：`(...)` 捕获，`(?:...)` 不捕获，`(?<name>...)` 命名捕获，`(?i:...)` scoped flags。
 - 交替：`a|b`，支持在分组内使用。
 - flags：`(?i)`、`(?m)`、`(?s)`、`(?x)`、`(?U)`、`(?u)`。
@@ -1089,7 +1089,7 @@ fn main() -> i32 {
 当前正则库的有意边界：
 
 - 不支持反向引用、lookaround、原子组、条件组、递归/子例程调用和复杂替换回调。
-- 不支持完整 Unicode scalar/grapheme/property 数据库；当前 `\p{Alpha}` 等是 ASCII-mapped 子集，匹配单位是 `str` 的 UTF-8 byte。
+- `unicode.ucd` 模块提供可复用 UTF-8 scalar 解码、Unicode 17.0 general category/binary/script property 和 simple case folding；当前尚不做 grapheme cluster 级匹配，也不做多 scalar full case fold。
 - 不支持 possessive 量词。
 - `{m,n}` 展开上限是实现常量，超出返回 `RegexStatus.repeat_too_large`。
 - pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。

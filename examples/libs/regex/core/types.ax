@@ -25,6 +25,10 @@ pub const OP_ASSERT_NOT_WORD_BOUNDARY: u8 = 11u8;
 pub const OP_MATCH: u8 = 12u8;
 pub const OP_SAVE: u8 = 13u8;
 
+pub const CLASS_RANGE_SCALAR: u8 = 0u8;
+pub const CLASS_RANGE_PROPERTY: u8 = 1u8;
+pub const CLASS_RANGE_PROPERTY_NEGATED: u8 = 2u8;
+
 pub const CAPTURE_MISSING: usize = 18446744073709551615usize;
 pub const CAPTURE_WHOLE_MATCH: usize = 0usize;
 pub const NO_CAPTURE: usize = CAPTURE_MISSING;
@@ -64,8 +68,8 @@ pub enum RegexStatus: u8 {
 pub struct State {
     pub opcode: u8;
     pub flags: u8;
-    pub value: u8;
-    pub value_to: u8;
+    pub value: usize;
+    pub value_to: usize;
     pub out1: usize;
     pub out2: usize;
     pub class_start: usize;
@@ -73,8 +77,9 @@ pub struct State {
 }
 
 pub struct ClassRange {
-    pub first: u8;
-    pub last: u8;
+    pub kind: u8;
+    pub first: usize;
+    pub last: usize;
 }
 
 pub struct CaptureInfo {

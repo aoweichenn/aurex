@@ -2,6 +2,7 @@ module regex.ops.split;
 
 import regex.core.types as t;
 import regex.vm.engine as engine;
+import unicode.ucd as unicode;
 
 pub fn split_iter(compiled: &t.Regex, input: str) -> t.SplitIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
@@ -64,5 +65,5 @@ fn next_split_start(input: str, start: usize, end: usize) -> usize {
     if end >= input_len {
         return input_len + 1usize;
     }
-    return end + 1usize;
+    return unicode.next_boundary(input, end);
 }

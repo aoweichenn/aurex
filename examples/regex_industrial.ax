@@ -9,6 +9,7 @@ const CASE_ESCAPES: i32 = 400;
 const CASE_CLASSES: i32 = 500;
 const CASE_API: i32 = 600;
 const CASE_ERRORS: i32 = 700;
+const CASE_UNICODE: i32 = 800;
 
 const FIRST_LAZY_END: usize = 4usize;
 const GREEDY_END: usize = 7usize;
@@ -18,6 +19,8 @@ const WORD_START: usize = 2usize;
 const WORD_END: usize = 6usize;
 const INNER_WORD_START: usize = 1usize;
 const INNER_WORD_END: usize = 3usize;
+const UNICODE_BOUNDARY_START: usize = 1usize;
+const UNICODE_BOUNDARY_END: usize = 3usize;
 const REPLACE_CAPACITY: usize = 64usize;
 
 fn same_text(left: str, right: str) -> bool {
@@ -188,7 +191,15 @@ fn require_escapes() -> i32 {
     if lf_sequence != 0 {
         return lf_sequence;
     }
-    return require_true(CASE_ESCAPES + 61, regex.fullmatch("\\R", "\r\n"));
+    let crlf_sequence: i32 = require_true(CASE_ESCAPES + 61, regex.fullmatch("\\R", "\r\n"));
+    if crlf_sequence != 0 {
+        return crlf_sequence;
+    }
+    let unicode_line_break: i32 = require_true(CASE_ESCAPES + 62, regex.fullmatch("\\R", "\u{2028}"));
+    if unicode_line_break != 0 {
+        return unicode_line_break;
+    }
+    return require_false(CASE_ESCAPES + 63, regex.fullmatch("\\N", "\u{2028}"));
 }
 
 fn require_classes() -> i32 {
@@ -221,6 +232,85 @@ fn require_classes() -> i32 {
         return case_class;
     }
     return require_false(CASE_CLASSES + 61, regex.fullmatch("(?i)[^a-f]+", "FACE"));
+}
+
+fn require_unicode() -> i32 {
+    let scalar_dot: i32 = require_true(CASE_UNICODE + 1, regex.fullmatch(".", "é"));
+    if scalar_dot != 0 {
+        return scalar_dot;
+    }
+    let no_byte_split: i32 = require_false(CASE_UNICODE + 2, regex.fullmatch("..", "é"));
+    if no_byte_split != 0 {
+        return no_byte_split;
+    }
+    let literal_escape: i32 = require_true(CASE_UNICODE + 3, regex.fullmatch("\\u{00E9}", "é"));
+    if literal_escape != 0 {
+        return literal_escape;
+    }
+    let cyrillic_range: i32 = require_true(CASE_UNICODE + 4, regex.fullmatch("[\\u{0400}-\\u{04FF}]+", "Ж"));
+    if cyrillic_range != 0 {
+        return cyrillic_range;
+    }
+    let greek_script: i32 = require_true(CASE_UNICODE + 5, regex.fullmatch("\\p{Greek}+", "Ω"));
+    if greek_script != 0 {
+        return greek_script;
+    }
+    let greek_script_keyed: i32 = require_true(CASE_UNICODE + 6, regex.fullmatch("\\p{sc=Greek}+", "Ω"));
+    if greek_script_keyed != 0 {
+        return greek_script_keyed;
+    }
+    let upper_category_keyed: i32 = require_true(CASE_UNICODE + 7, regex.fullmatch("\\p{gc=Lu}+", "Ω"));
+    if upper_category_keyed != 0 {
+        return upper_category_keyed;
+    }
+    let hira_extension: i32 = require_true(CASE_UNICODE + 8, regex.fullmatch("\\p{scx=Hira}", "ー"));
+    if hira_extension != 0 {
+        return hira_extension;
+    }
+    let emoji_binary: i32 = require_true(CASE_UNICODE + 9, regex.fullmatch("\\p{Emoji}", "😀"));
+    if emoji_binary != 0 {
+        return emoji_binary;
+    }
+    let han_script: i32 = require_true(CASE_UNICODE + 10, regex.fullmatch("\\p{Han}+", "汉字"));
+    if han_script != 0 {
+        return han_script;
+    }
+    let letters: i32 = require_true(CASE_UNICODE + 11, regex.fullmatch("\\p{L}+", "éΩЖ汉"));
+    if letters != 0 {
+        return letters;
+    }
+    let decimal_digit: i32 = require_true(CASE_UNICODE + 12, regex.fullmatch("\\d+", "٣"));
+    if decimal_digit != 0 {
+        return decimal_digit;
+    }
+    let latin_fold: i32 = require_true(CASE_UNICODE + 13, regex.fullmatch("(?i)é", "É"));
+    if latin_fold != 0 {
+        return latin_fold;
+    }
+    let greek_fold: i32 = require_true(CASE_UNICODE + 14, regex.fullmatch("(?i)Ω", "ω"));
+    if greek_fold != 0 {
+        return greek_fold;
+    }
+    let cyrillic_fold: i32 = require_true(CASE_UNICODE + 15, regex.fullmatch("(?i)Ж", "ж"));
+    if cyrillic_fold != 0 {
+        return cyrillic_fold;
+    }
+    let boundary: regex.MatchResult = regex.find("\\bé\\b", " é!");
+    let boundary_code: i32 = require_span(CASE_UNICODE + 20, boundary, UNICODE_BOUNDARY_START, UNICODE_BOUNDARY_END);
+    if boundary_code != 0 {
+        return boundary_code;
+    }
+    var captures: regex.Captures = regex.captures("(.)", "é");
+    defer regex.destroy_captures(&mut captures);
+    if !captures.ok() || captures.start != 0usize || captures.end != strblen("é") {
+        return CASE_UNICODE + 40;
+    }
+    let capture: regex.CaptureSpan = regex.capture_at(&captures, 1usize);
+    if !capture.matched || capture.start != 0usize || capture.end != strblen("é") ||
+        !same_text(regex.capture_text("é", &captures, 1usize), "é") {
+        return CASE_UNICODE + 41;
+    }
+    return 0;
 }
 
 fn require_convenience_api() -> i32 {
@@ -289,6 +379,10 @@ fn main() -> i32 {
     let class_code: i32 = require_classes();
     if class_code != 0 {
         return class_code;
+    }
+    let unicode_code: i32 = require_unicode();
+    if unicode_code != 0 {
+        return unicode_code;
     }
     let api_code: i32 = require_convenience_api();
     if api_code != 0 {

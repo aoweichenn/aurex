@@ -131,6 +131,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexIndustrialSurfaceCompilesAndRuns) {
         "fn priv require_boundaries -> i32",
         "fn priv require_escapes -> i32",
         "fn priv require_classes -> i32",
+        "fn priv require_unicode -> i32",
         "fn priv require_convenience_api -> i32",
         "fn is_match -> bool",
         "fn find -> regex.core.types.MatchResult",

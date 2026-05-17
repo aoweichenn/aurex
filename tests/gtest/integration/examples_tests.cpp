@@ -65,14 +65,22 @@ TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns) {
     const std::string checked =
         require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_demo.ax")).output;
     expect_contains_all(checked, {
-        "struct Regex fields=10",
+        "struct Regex fields=15",
         "struct MatchResult fields=4",
+        "struct Captures fields=7",
+        "struct CaptureSpan fields=3",
+        "struct FindIter fields=5",
+        "struct SplitIter fields=6",
+        "struct ReplaceResult fields=4",
         "case RegexStatus_pattern_too_large",
         "case RegexStatus_program_too_large",
         "case RegexStatus_repeat_too_large",
         "case RegexStatus_workspace_too_large",
+        "case RegexStatus_buffer_too_small",
         "fn compile -> regex.core.types.Regex",
         "fn search_compiled -> regex.core.types.MatchResult",
+        "fn captures_compiled -> regex.core.types.Captures",
+        "fn replace_all -> regex.core.types.ReplaceResult",
         "fn program_bytes -> usize",
         "fn workspace_bytes -> usize",
         "fn max_bounded_repeat -> usize",
@@ -81,6 +89,31 @@ TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns) {
         "type priv Matcher = fn(str, str) -> bool",
     });
     require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_demo.ax") + " -o " + q(output));
+    EXPECT_EQ(require_success(q(output)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, ExamplesRegexPhase1CompilesAndRuns) {
+    const fs::path output = test_bin_root() / "regex_phase1";
+    const std::string checked =
+        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_phase1.ax")).output;
+    expect_contains_all(checked, {
+        "struct Captures fields=7",
+        "struct FindIter fields=5",
+        "struct CaptureIter fields=5",
+        "struct SplitPart fields=4",
+        "struct ReplaceResult fields=4",
+        "case RegexStatus_invalid_group_name",
+        "case RegexStatus_buffer_too_small",
+        "fn capture_index -> usize",
+        "fn capture_text -> str",
+        "fn find_iter -> regex.core.types.FindIter",
+        "fn captures_iter -> regex.core.types.CaptureIter",
+        "fn split_iter -> regex.core.types.SplitIter",
+        "fn replace_all -> regex.core.types.ReplaceResult",
+        "fn error_offset -> usize",
+        "fn error_kind_code -> i32",
+    });
+    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_phase1.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
@@ -183,7 +216,11 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent) {
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "parser.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "compile" / "program.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "config" / "limits.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "core" / "results.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "core" / "types.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "iter.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "replace.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "ops" / "split.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "runtime" / "alloc.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "syntax" / "ascii.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "libs" / "regex" / "vm" / "engine.ax"));
@@ -195,6 +232,7 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent) {
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "regex" / "types.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "text" / "regex.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_demo.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "regex_phase1.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_stress.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "system"));
     EXPECT_FALSE(fs::exists(examples_root() / "m1"));

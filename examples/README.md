@@ -12,12 +12,17 @@ the language-core layer.
   methods, aliases, recursion, and match guards.
 - `libs/regex`: multi-directory compiled regex library written in Aurex. Its
   stable facade is `regex.api`; internals are split across `core`, `config`,
-  `syntax`, `runtime`, `compile`, and `vm`. It uses FFI heap allocation for
-  the compiled NFA program and supports anchors, `.`, escaped literals,
-  character classes, predefined ASCII classes, grouping, alternation, and `*`,
-  `+`, `?`, `{m}`, `{m,n}`, `{m,}` quantifiers.
+  `syntax`, `runtime`, `compile`, `vm`, and `ops`. It uses FFI heap allocation
+  for the compiled NFA program and supports anchors, `.`, escaped literals,
+  character classes, predefined ASCII classes, capturing groups, named captures,
+  non-capturing groups, alternation, `*`, `+`, `?`, `{m}`, `{m,n}`, `{m,}`
+  quantifiers, find/captures cursors, buffer-based replacement, split cursors,
+  and compile error offsets.
 - `regex_demo.ax`: imports `regex.api` and runs full-match/search cases against
   both convenience APIs and a precompiled regex object.
+- `regex_phase1.ax`: exercises first-phase regex APIs: named captures,
+  `find_iter`, `captures_iter`, `replace_all`, `split_iter`, and error
+  diagnostics.
 - `regex_stress.ax`: runs repeated compiled regex searches/fullmatches and
   checks the regex resource budget APIs.
 
@@ -46,6 +51,8 @@ Build and run the regex example with:
 ```sh
 build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
+build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
+build/tests/regex_phase1
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```

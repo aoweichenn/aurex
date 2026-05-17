@@ -1,0 +1,68 @@
+module regex.ops.split;
+
+import regex.core.types as t;
+import regex.vm.engine as engine;
+
+pub fn split_iter(compiled: &t.Regex, input: str) -> t.SplitIter {
+    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
+    return t.SplitIter {
+        compiled: compiled_ptr,
+        input: input,
+        next_start: 0usize,
+        pending_tail: true,
+        finished: false,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn split_next(iter: &mut t.SplitIter) -> t.SplitPart {
+    if iter.finished {
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    let compiled: *const t.Regex = iter.compiled;
+    if compiled == null {
+        iter.finished = true;
+        iter.status = t.RegexStatus.unsupported;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
+    let input_len: usize = strblen(iter.input);
+    if !iter.pending_tail {
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    if iter.next_start > input_len {
+        iter.pending_tail = false;
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    let found: t.MatchResult = unsafe { engine.search_compiled_from(&*compiled, iter.input, iter.next_start) };
+    iter.status = found.status;
+    if found.status != t.RegexStatus.ok {
+        if found.status == t.RegexStatus.no_match {
+            let tail: t.SplitPart = t.split_part(true, iter.next_start, input_len, t.RegexStatus.ok);
+            iter.pending_tail = false;
+            return tail;
+        }
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, found.status);
+    }
+    if !found.matched {
+        let tail_part: t.SplitPart = t.split_part(true, iter.next_start, input_len, t.RegexStatus.ok);
+        iter.pending_tail = false;
+        return tail_part;
+    }
+    let part: t.SplitPart = t.split_part(true, iter.next_start, found.start, t.RegexStatus.ok);
+    iter.next_start = next_split_start(iter.input, found.start, found.end);
+    return part;
+}
+
+fn next_split_start(input: str, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    let input_len: usize = strblen(input);
+    if end >= input_len {
+        return input_len + 1usize;
+    }
+    return end + 1usize;
+}

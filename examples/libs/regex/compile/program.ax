@@ -27,6 +27,20 @@ pub fn create(pattern: str) -> t.Regex {
         alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
         return empty_with_status(pattern, t.RegexStatus.out_of_memory);
     }
+    let captures: *mut t.CaptureInfo = unsafe {
+        ptrcast[*mut t.CaptureInfo](alloc.alloc_zeroed_bytes(limits.MAX_CAPTURE_INFOS, sizeof[t.CaptureInfo]))
+    };
+    if captures == null {
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
+        return empty_with_status(pattern, t.RegexStatus.out_of_memory);
+    }
+    unsafe {
+        captures[t.CAPTURE_WHOLE_MATCH].name_start = 0usize;
+        captures[t.CAPTURE_WHOLE_MATCH].name_len = 0usize;
+        captures[t.CAPTURE_WHOLE_MATCH].source_start = 0usize;
+        captures[t.CAPTURE_WHOLE_MATCH].source_end = pattern_len;
+    }
     return t.Regex {
         pattern: pattern,
         states: states,
@@ -35,29 +49,48 @@ pub fn create(pattern: str) -> t.Regex {
         ranges: ranges,
         range_len: 0usize,
         range_capacity: range_capacity,
+        captures: captures,
+        capture_len: limits.RESERVED_CAPTURE_INFO_COUNT,
+        capture_capacity: limits.MAX_CAPTURE_INFOS,
         start: t.NO_STATE,
         accept: t.NO_STATE,
         status: t.RegexStatus.ok,
+        error_offset: t.ERROR_OFFSET_NONE,
+        error_kind: t.ERROR_KIND_NONE,
     };
 }
 
 pub fn destroy(compiled: &mut t.Regex) -> void {
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.captures) });
     compiled.states = null;
     compiled.ranges = null;
+    compiled.captures = null;
     compiled.state_len = 0usize;
     compiled.state_capacity = 0usize;
     compiled.range_len = 0usize;
     compiled.range_capacity = 0usize;
+    compiled.capture_len = 0usize;
+    compiled.capture_capacity = 0usize;
     compiled.start = t.NO_STATE;
     compiled.accept = t.NO_STATE;
     compiled.status = t.RegexStatus.unsupported;
+    compiled.error_offset = t.ERROR_OFFSET_NONE;
+    compiled.error_kind = t.ERROR_KIND_NONE;
 }
 
 pub fn set_status(compiled: &mut t.Regex, status: t.RegexStatus) -> void {
     if compiled.status == t.RegexStatus.ok {
         compiled.status = status;
+    }
+}
+
+pub fn set_error(compiled: &mut t.Regex, status: t.RegexStatus, offset: usize, kind: u8) -> void {
+    if compiled.status == t.RegexStatus.ok {
+        compiled.status = status;
+        compiled.error_offset = offset;
+        compiled.error_kind = kind;
     }
 }
 
@@ -94,6 +127,10 @@ pub fn add_assert_end(compiled: &mut t.Regex) -> usize {
     return add_state(compiled, t.OP_ASSERT_END, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
+pub fn add_save(compiled: &mut t.Regex, slot: usize) -> usize {
+    return add_state(compiled, t.OP_SAVE, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, slot, 0usize);
+}
+
 pub fn add_match(compiled: &mut t.Regex) -> usize {
     return add_state(compiled, t.OP_MATCH, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
@@ -111,6 +148,28 @@ pub fn add_range(compiled: &mut t.Regex, first: u8, last: u8) -> bool {
     return true;
 }
 
+pub fn add_capture_info(
+    compiled: &mut t.Regex,
+    name_start: usize,
+    name_len: usize,
+    source_start: usize,
+    source_end: usize
+) -> usize {
+    if compiled.capture_len >= compiled.capture_capacity || compiled.capture_len >= limits.MAX_CAPTURE_INFOS {
+        set_error(compiled, t.RegexStatus.capture_too_large, source_start, t.ERROR_KIND_CAPTURE_TOO_LARGE);
+        return t.NO_CAPTURE;
+    }
+    let index: usize = compiled.capture_len;
+    unsafe {
+        compiled.captures[index].name_start = name_start;
+        compiled.captures[index].name_len = name_len;
+        compiled.captures[index].source_start = source_start;
+        compiled.captures[index].source_end = source_end;
+    }
+    compiled.capture_len += 1usize;
+    return index;
+}
+
 pub fn state_count(compiled: &t.Regex) -> usize {
     return compiled.state_len;
 }
@@ -120,7 +179,9 @@ pub fn range_count(compiled: &t.Regex) -> usize {
 }
 
 pub fn program_bytes(compiled: &t.Regex) -> usize {
-    return compiled.state_capacity * sizeof[t.State] + compiled.range_capacity * sizeof[t.ClassRange];
+    return compiled.state_capacity * sizeof[t.State]
+        + compiled.range_capacity * sizeof[t.ClassRange]
+        + compiled.capture_capacity * sizeof[t.CaptureInfo];
 }
 
 pub fn patch(compiled: &mut t.Regex, state_id: usize, target: usize) -> void {
@@ -190,6 +251,14 @@ pub fn zero_or_one(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
     return fragment(start, end, body.source_start, body.source_end);
 }
 
+pub fn capture(compiled: &mut t.Regex, body: t.Fragment, capture_index: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let start: usize = add_save(compiled, capture_index * 2usize);
+    let end: usize = add_save(compiled, capture_index * 2usize + 1usize);
+    patch(compiled, start, body.start);
+    patch(compiled, body.end, end);
+    return fragment(start, end, source_start, source_end);
+}
+
 fn empty_with_status(pattern: str, status: t.RegexStatus) -> t.Regex {
     return t.Regex {
         pattern: pattern,
@@ -199,9 +268,14 @@ fn empty_with_status(pattern: str, status: t.RegexStatus) -> t.Regex {
         ranges: null,
         range_len: 0usize,
         range_capacity: 0usize,
+        captures: null,
+        capture_len: 0usize,
+        capture_capacity: 0usize,
         start: t.NO_STATE,
         accept: t.NO_STATE,
         status: status,
+        error_offset: t.ERROR_OFFSET_NONE,
+        error_kind: t.ERROR_KIND_NONE,
     };
 }
 

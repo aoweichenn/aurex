@@ -3,15 +3,30 @@ module regex.api;
 import regex.compile.parser as parser;
 import regex.compile.program as program;
 import regex.config.limits as limits;
+import regex.core.results as results;
 import regex.core.types as t;
+import regex.ops.iter as iter_ops;
+import regex.ops.replace as replace_ops;
+import regex.ops.split as split_ops;
 import regex.vm.engine as engine;
 
 pub type Regex = t.Regex;
 pub type MatchResult = t.MatchResult;
 pub type RegexStatus = t.RegexStatus;
+pub type CaptureSpan = t.CaptureSpan;
+pub type Captures = t.Captures;
+pub type FindIter = t.FindIter;
+pub type CaptureIter = t.CaptureIter;
+pub type SplitIter = t.SplitIter;
+pub type SplitPart = t.SplitPart;
+pub type ReplaceResult = t.ReplaceResult;
 
 pub fn compile(pattern: str) -> t.Regex {
     return parser.compile(pattern);
+}
+
+pub fn no_capture() -> usize {
+    return t.NO_CAPTURE;
 }
 
 pub fn destroy(compiled: &mut t.Regex) -> void {
@@ -58,12 +73,88 @@ pub fn max_bounded_repeat() -> usize {
     return limits.MAX_BOUNDED_REPEAT;
 }
 
+pub fn max_capture_groups() -> usize {
+    return limits.MAX_CAPTURE_GROUPS;
+}
+
 pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
     return engine.search_compiled(compiled, input);
 }
 
+pub fn search_compiled_from(compiled: &t.Regex, input: str, start_offset: usize) -> t.MatchResult {
+    return engine.search_compiled_from(compiled, input, start_offset);
+}
+
 pub fn fullmatch_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
     return engine.fullmatch_compiled(compiled, input);
+}
+
+pub fn captures_compiled(compiled: &t.Regex, input: str) -> t.Captures {
+    return engine.captures_compiled(compiled, input);
+}
+
+pub fn captures_fullmatch_compiled(compiled: &t.Regex, input: str) -> t.Captures {
+    return engine.captures_fullmatch_compiled(compiled, input);
+}
+
+pub fn destroy_captures(captures: &mut t.Captures) -> void {
+    results.destroy_captures(captures);
+}
+
+pub fn capture_at(captures: &t.Captures, index: usize) -> t.CaptureSpan {
+    return results.capture_at(captures, index);
+}
+
+pub fn capture_text(input: str, captures: &t.Captures, index: usize) -> str {
+    return results.capture_text(input, captures, index);
+}
+
+pub fn capture_name(compiled: &t.Regex, index: usize) -> str {
+    return results.capture_name(compiled, index);
+}
+
+pub fn capture_index(compiled: &t.Regex, name: str) -> usize {
+    return results.capture_index(compiled, name);
+}
+
+pub fn capture_count(compiled: &t.Regex) -> usize {
+    return compiled.capture_len;
+}
+
+pub fn error_offset(compiled: &t.Regex) -> usize {
+    return compiled.error_offset;
+}
+
+pub fn error_kind(compiled: &t.Regex) -> u8 {
+    return compiled.error_kind;
+}
+
+pub fn find_iter(compiled: &t.Regex, input: str) -> t.FindIter {
+    return iter_ops.find_iter(compiled, input);
+}
+
+pub fn find_next(iter: &mut t.FindIter) -> t.MatchResult {
+    return iter_ops.find_next(iter);
+}
+
+pub fn captures_iter(compiled: &t.Regex, input: str) -> t.CaptureIter {
+    return iter_ops.captures_iter(compiled, input);
+}
+
+pub fn captures_next(iter: &mut t.CaptureIter) -> t.Captures {
+    return iter_ops.captures_next(iter);
+}
+
+pub fn split_iter(compiled: &t.Regex, input: str) -> t.SplitIter {
+    return split_ops.split_iter(compiled, input);
+}
+
+pub fn split_next(iter: &mut t.SplitIter) -> t.SplitPart {
+    return split_ops.split_next(iter);
+}
+
+pub fn replace_all(compiled: &t.Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
+    return replace_ops.replace_all(compiled, input, replacement, out, out_capacity);
 }
 
 pub fn search(pattern: str, input: str) -> bool {
@@ -91,5 +182,52 @@ pub fn status_code(status: t.RegexStatus) -> i32 {
         .pattern_too_large => 6,
         .program_too_large => 7,
         .workspace_too_large => 8,
+        .capture_too_large => 9,
+        .invalid_group_name => 10,
+        .buffer_too_small => 11,
+        .replacement_error => 12,
     };
+}
+
+pub fn error_kind_code(kind: u8) -> i32 {
+    if kind == t.ERROR_KIND_NONE {
+        return 0;
+    }
+    if kind == t.ERROR_KIND_UNEXPECTED_TOKEN {
+        return 1;
+    }
+    if kind == t.ERROR_KIND_UNCLOSED_GROUP {
+        return 2;
+    }
+    if kind == t.ERROR_KIND_UNCLOSED_CLASS {
+        return 3;
+    }
+    if kind == t.ERROR_KIND_INVALID_REPEAT {
+        return 4;
+    }
+    if kind == t.ERROR_KIND_REPEAT_TOO_LARGE {
+        return 5;
+    }
+    if kind == t.ERROR_KIND_INVALID_RANGE {
+        return 6;
+    }
+    if kind == t.ERROR_KIND_UNSUPPORTED_ESCAPE {
+        return 7;
+    }
+    if kind == t.ERROR_KIND_TRAILING_INPUT {
+        return 8;
+    }
+    if kind == t.ERROR_KIND_CAPTURE_TOO_LARGE {
+        return 9;
+    }
+    if kind == t.ERROR_KIND_INVALID_GROUP_NAME {
+        return 10;
+    }
+    if kind == t.ERROR_KIND_UNEXPECTED_EOF {
+        return 11;
+    }
+    if kind == t.ERROR_KIND_PROGRAM_TOO_LARGE {
+        return 12;
+    }
+    return -1;
 }

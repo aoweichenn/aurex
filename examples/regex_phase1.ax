@@ -1,0 +1,263 @@
+module regex_phase1;
+
+import regex.api as regex;
+
+const CASE_COMPILE: i32 = 10;
+const CASE_CAPTURE_COUNT: i32 = 20;
+const CASE_CAPTURE_WHOLE: i32 = 30;
+const CASE_CAPTURE_NAME: i32 = 40;
+const CASE_CAPTURE_TEXT: i32 = 50;
+const CASE_FIND_ITER: i32 = 100;
+const CASE_CAPTURE_ITER: i32 = 200;
+const CASE_REPLACE: i32 = 300;
+const CASE_REPLACE_TEXT: i32 = 320;
+const CASE_REPLACE_SMALL: i32 = 340;
+const CASE_SPLIT: i32 = 400;
+const CASE_ERROR_OFFSET: i32 = 500;
+const CASE_ERROR_KIND: i32 = 520;
+const CASE_INVALID_NAME: i32 = 540;
+const CASE_REPEAT_CAPTURE: i32 = 560;
+
+const EXPECTED_CAPTURE_COUNT: usize = 3usize;
+const INPUT_DOMAIN_START: usize = 11usize;
+const INPUT_DOMAIN_END: usize = 22usize;
+const FIND_SECOND_START: usize = 17usize;
+const FIND_SECOND_END: usize = 30usize;
+const REPLACE_REQUIRED: usize = 30usize;
+const REPLACE_WRITTEN: usize = 30usize;
+const REPLACE_COUNT: usize = 2usize;
+const SMALL_BUFFER_CAPACITY: usize = 8usize;
+const LARGE_BUFFER_CAPACITY: usize = 64usize;
+const ERROR_UNCLOSED_CLASS_OFFSET: usize = 3usize;
+const INVALID_NAME_OFFSET: usize = 3usize;
+
+fn same_text(left: str, right: str) -> bool {
+    if strblen(left) != strblen(right) {
+        return false;
+    }
+    let left_ptr: *const u8 = strptr(left);
+    let right_ptr: *const u8 = strptr(right);
+    var offset: usize = 0usize;
+    while offset < strblen(left) {
+        if unsafe { left_ptr[offset] } != unsafe { right_ptr[offset] } {
+            return false;
+        }
+        offset += 1usize;
+    }
+    return true;
+}
+
+fn buffer_text(buffer: &mut [64]u8, len: usize) -> str {
+    let ptr: *const u8 = unsafe { ptrcast[*const u8](ptrat[*mut [64]u8](ptraddr(buffer))) };
+    return unsafe { strraw(ptr, len) };
+}
+
+fn buffer_ptr(buffer: &mut [64]u8) -> *mut u8 {
+    return unsafe { ptrcast[*mut u8](ptrat[*mut [64]u8](ptraddr(buffer))) };
+}
+
+fn require_captures(compiled: &regex.Regex) -> i32 {
+    var captures: regex.Captures = regex.captures_compiled(compiled, "mail: team@example.com; cc: root@test.net");
+    defer regex.destroy_captures(&mut captures);
+    if !captures.ok() {
+        return CASE_CAPTURE_WHOLE + regex.status_code(captures.status);
+    }
+    let whole: regex.CaptureSpan = regex.capture_at(&captures, 0usize);
+    if !whole.matched || whole.start != strblen("mail: ") || whole.end != strblen("mail: team@example.com") {
+        return CASE_CAPTURE_WHOLE;
+    }
+    if !same_text(regex.capture_text("mail: team@example.com; cc: root@test.net", &captures, 1usize), "team") {
+        return CASE_CAPTURE_TEXT + 1;
+    }
+    let domain_index: usize = regex.capture_index(compiled, "domain");
+    if domain_index != 2usize {
+        return CASE_CAPTURE_NAME;
+    }
+    if !same_text(regex.capture_name(compiled, domain_index), "domain") {
+        return CASE_CAPTURE_NAME + 1;
+    }
+    let domain: regex.CaptureSpan = regex.capture_at(&captures, domain_index);
+    if !domain.matched || domain.start != INPUT_DOMAIN_START || domain.end != INPUT_DOMAIN_END {
+        return CASE_CAPTURE_TEXT + 2;
+    }
+    if regex.capture_index(compiled, "missing") != regex.no_capture() {
+        return CASE_CAPTURE_NAME + 2;
+    }
+    return 0;
+}
+
+fn require_find_iter(compiled: &regex.Regex) -> i32 {
+    var iter: regex.FindIter = regex.find_iter(compiled, "team@example.com root@test.net");
+    let first: regex.MatchResult = regex.find_next(&mut iter);
+    if !first.ok() || first.start != 0usize || first.end != strblen("team@example.com") {
+        return CASE_FIND_ITER + 1;
+    }
+    let second: regex.MatchResult = regex.find_next(&mut iter);
+    if !second.ok() || second.start != FIND_SECOND_START || second.end != FIND_SECOND_END {
+        return CASE_FIND_ITER + 2;
+    }
+    let done: regex.MatchResult = regex.find_next(&mut iter);
+    if done.status != regex.RegexStatus.no_match {
+        return CASE_FIND_ITER + 3;
+    }
+    return 0;
+}
+
+fn require_captures_iter(compiled: &regex.Regex) -> i32 {
+    var iter: regex.CaptureIter = regex.captures_iter(compiled, "team@example.com root@test.net");
+    var first: regex.Captures = regex.captures_next(&mut iter);
+    defer regex.destroy_captures(&mut first);
+    if !first.ok() || !same_text(regex.capture_text("team@example.com root@test.net", &first, 1usize), "team") {
+        return CASE_CAPTURE_ITER + 1;
+    }
+    var second: regex.Captures = regex.captures_next(&mut iter);
+    defer regex.destroy_captures(&mut second);
+    if !second.ok() || !same_text(regex.capture_text("team@example.com root@test.net", &second, 1usize), "root") {
+        return CASE_CAPTURE_ITER + 2;
+    }
+    var done: regex.Captures = regex.captures_next(&mut iter);
+    defer regex.destroy_captures(&mut done);
+    if done.status != regex.RegexStatus.no_match {
+        return CASE_CAPTURE_ITER + 3;
+    }
+    return 0;
+}
+
+fn require_replace(compiled: &regex.Regex) -> i32 {
+    var buffer: [64]u8 = [0; 64];
+    let result: regex.ReplaceResult = regex.replace_all(
+        compiled,
+        "team@example.com root@test.net",
+        "${domain}/$1",
+        buffer_ptr(&mut buffer),
+        LARGE_BUFFER_CAPACITY
+    );
+    if !result.ok() || result.replacements != REPLACE_COUNT || result.required != REPLACE_REQUIRED || result.written != REPLACE_WRITTEN {
+        return CASE_REPLACE + regex.status_code(result.status);
+    }
+    if !same_text(buffer_text(&mut buffer, result.written), "example.com/team test.net/root") {
+        return CASE_REPLACE_TEXT;
+    }
+    var small: [64]u8 = [0; 64];
+    let small_result: regex.ReplaceResult = regex.replace_all(
+        compiled,
+        "team@example.com root@test.net",
+        "${domain}/$1",
+        buffer_ptr(&mut small),
+        SMALL_BUFFER_CAPACITY
+    );
+    if small_result.status != regex.RegexStatus.buffer_too_small || small_result.required != REPLACE_REQUIRED {
+        return CASE_REPLACE_SMALL + regex.status_code(small_result.status);
+    }
+    return 0;
+}
+
+fn require_split() -> i32 {
+    var comma: regex.Regex = regex.compile("\\s*,\\s*");
+    defer regex.destroy(&mut comma);
+    if !comma.valid() {
+        return CASE_SPLIT + regex.status_code(comma.status);
+    }
+    let input: str = "alpha, beta,gamma";
+    var iter: regex.SplitIter = regex.split_iter(&comma, input);
+    let first: regex.SplitPart = regex.split_next(&mut iter);
+    if !first.ok() || !same_text(input[first.start:first.end], "alpha") {
+        return CASE_SPLIT + 1;
+    }
+    let second: regex.SplitPart = regex.split_next(&mut iter);
+    if !second.ok() || !same_text(input[second.start:second.end], "beta") {
+        return CASE_SPLIT + 2;
+    }
+    let third: regex.SplitPart = regex.split_next(&mut iter);
+    if !third.ok() || !same_text(input[third.start:third.end], "gamma") {
+        return CASE_SPLIT + 3;
+    }
+    let done: regex.SplitPart = regex.split_next(&mut iter);
+    if done.status != regex.RegexStatus.no_match {
+        return CASE_SPLIT + 4;
+    }
+    return 0;
+}
+
+fn require_errors() -> i32 {
+    var bad_class: regex.Regex = regex.compile("abc[");
+    defer regex.destroy(&mut bad_class);
+    if bad_class.status != regex.RegexStatus.syntax_error {
+        return CASE_ERROR_OFFSET + regex.status_code(bad_class.status);
+    }
+    if regex.error_offset(&bad_class) != ERROR_UNCLOSED_CLASS_OFFSET {
+        return CASE_ERROR_OFFSET + 1;
+    }
+    if regex.error_kind_code(regex.error_kind(&bad_class)) != 3 {
+        return CASE_ERROR_KIND;
+    }
+    var bad_name: regex.Regex = regex.compile("(?<1bad>a)");
+    defer regex.destroy(&mut bad_name);
+    if bad_name.status != regex.RegexStatus.invalid_group_name {
+        return CASE_INVALID_NAME + regex.status_code(bad_name.status);
+    }
+    if regex.error_offset(&bad_name) != INVALID_NAME_OFFSET {
+        return CASE_INVALID_NAME + 1;
+    }
+    return 0;
+}
+
+fn require_repeated_capture_reuses_slot() -> i32 {
+    var repeated: regex.Regex = regex.compile("(ab){2,3}");
+    defer regex.destroy(&mut repeated);
+    if !repeated.valid() {
+        return CASE_REPEAT_CAPTURE + regex.status_code(repeated.status);
+    }
+    if regex.capture_count(&repeated) != 2usize {
+        return CASE_REPEAT_CAPTURE + 1;
+    }
+    var captures: regex.Captures = regex.captures_fullmatch_compiled(&repeated, "ababab");
+    defer regex.destroy_captures(&mut captures);
+    if !captures.ok() {
+        return CASE_REPEAT_CAPTURE + 2 + regex.status_code(captures.status);
+    }
+    if !same_text(regex.capture_text("ababab", &captures, 1usize), "ab") {
+        return CASE_REPEAT_CAPTURE + 3;
+    }
+    let span: regex.CaptureSpan = regex.capture_at(&captures, 1usize);
+    if span.start != 4usize || span.end != 6usize {
+        return CASE_REPEAT_CAPTURE + 4;
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    var compiled: regex.Regex = regex.compile("(?<user>\\w+)@(?<domain>\\w+\\.(?:com|net))");
+    defer regex.destroy(&mut compiled);
+    if !compiled.valid() {
+        return CASE_COMPILE + regex.status_code(compiled.status);
+    }
+    if regex.capture_count(&compiled) != EXPECTED_CAPTURE_COUNT {
+        return CASE_CAPTURE_COUNT;
+    }
+    let capture_code: i32 = require_captures(&compiled);
+    if capture_code != 0 {
+        return capture_code;
+    }
+    let find_code: i32 = require_find_iter(&compiled);
+    if find_code != 0 {
+        return find_code;
+    }
+    let captures_iter_code: i32 = require_captures_iter(&compiled);
+    if captures_iter_code != 0 {
+        return captures_iter_code;
+    }
+    let replace_code: i32 = require_replace(&compiled);
+    if replace_code != 0 {
+        return replace_code;
+    }
+    let split_code: i32 = require_split();
+    if split_code != 0 {
+        return split_code;
+    }
+    let repeat_capture_code: i32 = require_repeated_capture_reuses_slot();
+    if repeat_capture_code != 0 {
+        return repeat_capture_code;
+    }
+    return require_errors();
+}

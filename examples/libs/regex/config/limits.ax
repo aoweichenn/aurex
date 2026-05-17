@@ -6,11 +6,15 @@ pub const STATES_PER_PATTERN_BYTE: usize = 4usize;
 pub const RANGES_PER_PATTERN_BYTE: usize = 2usize;
 pub const CAPACITY_GROWTH_FACTOR: usize = 2usize;
 pub const RESERVED_STATE_COUNT: usize = 1usize;
+pub const RESERVED_CAPTURE_INFO_COUNT: usize = 1usize;
 
 pub const MAX_PATTERN_BYTES: usize = 4096usize;
 pub const MAX_STATE_CAPACITY: usize = 65536usize;
 pub const MAX_RANGE_CAPACITY: usize = 32768usize;
 pub const MAX_WORKSPACE_STATES: usize = MAX_STATE_CAPACITY;
 pub const MAX_BOUNDED_REPEAT: usize = 32usize;
+pub const MAX_CAPTURE_GROUPS: usize = 64usize;
+pub const MAX_CAPTURE_INFOS: usize = MAX_CAPTURE_GROUPS + RESERVED_CAPTURE_INFO_COUNT;
 
 pub const WORKSPACE_LIST_COUNT: usize = 4usize;
+pub const WORKSPACE_CAPTURE_ROW_COUNT: usize = 4usize;

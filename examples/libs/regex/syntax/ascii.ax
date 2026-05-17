@@ -16,8 +16,13 @@ pub const PLUS: u8 = b'+';
 pub const COMMA: u8 = b',';
 pub const HYPHEN: u8 = b'-';
 pub const DOT: u8 = b'.';
+pub const SLASH: u8 = b'/';
 pub const DIGIT_0: u8 = b'0';
 pub const DIGIT_9: u8 = b'9';
+pub const COLON: u8 = b':';
+pub const LESS: u8 = b'<';
+pub const EQUAL: u8 = b'=';
+pub const GREATER: u8 = b'>';
 pub const QUESTION: u8 = b'?';
 pub const UPPER_A: u8 = b'A';
 pub const UPPER_D: u8 = b'D';
@@ -40,6 +45,7 @@ pub const LOWER_Z: u8 = b'z';
 pub const LBRACE: u8 = b'{';
 pub const PIPE: u8 = b'|';
 pub const RBRACE: u8 = b'}';
+pub const TILDE: u8 = b'~';
 
 pub fn byte_at(text_value: str, index: usize) -> u8 {
     let data: *const u8 = strptr(text_value);
@@ -48,6 +54,18 @@ pub fn byte_at(text_value: str, index: usize) -> u8 {
 
 pub fn is_digit(value: u8) -> bool {
     return DIGIT_0 <= value && value <= DIGIT_9;
+}
+
+pub fn is_alpha(value: u8) -> bool {
+    return (UPPER_A <= value && value <= UPPER_Z) || (LOWER_A <= value && value <= LOWER_Z);
+}
+
+pub fn is_name_start(value: u8) -> bool {
+    return is_alpha(value) || value == UNDERSCORE;
+}
+
+pub fn is_name_continue(value: u8) -> bool {
+    return is_name_start(value) || is_digit(value);
 }
 
 pub fn decimal_value(value: u8) -> usize {

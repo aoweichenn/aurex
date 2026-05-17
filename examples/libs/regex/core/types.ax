@@ -13,6 +13,26 @@ pub const OP_CLASS: u8 = 5u8;
 pub const OP_ASSERT_START: u8 = 6u8;
 pub const OP_ASSERT_END: u8 = 7u8;
 pub const OP_MATCH: u8 = 8u8;
+pub const OP_SAVE: u8 = 9u8;
+
+pub const CAPTURE_MISSING: usize = 18446744073709551615usize;
+pub const CAPTURE_WHOLE_MATCH: usize = 0usize;
+pub const NO_CAPTURE: usize = CAPTURE_MISSING;
+pub const ERROR_OFFSET_NONE: usize = CAPTURE_MISSING;
+
+pub const ERROR_KIND_NONE: u8 = 0u8;
+pub const ERROR_KIND_UNEXPECTED_TOKEN: u8 = 1u8;
+pub const ERROR_KIND_UNCLOSED_GROUP: u8 = 2u8;
+pub const ERROR_KIND_UNCLOSED_CLASS: u8 = 3u8;
+pub const ERROR_KIND_INVALID_REPEAT: u8 = 4u8;
+pub const ERROR_KIND_REPEAT_TOO_LARGE: u8 = 5u8;
+pub const ERROR_KIND_INVALID_RANGE: u8 = 6u8;
+pub const ERROR_KIND_UNSUPPORTED_ESCAPE: u8 = 7u8;
+pub const ERROR_KIND_TRAILING_INPUT: u8 = 8u8;
+pub const ERROR_KIND_CAPTURE_TOO_LARGE: u8 = 9u8;
+pub const ERROR_KIND_INVALID_GROUP_NAME: u8 = 10u8;
+pub const ERROR_KIND_UNEXPECTED_EOF: u8 = 11u8;
+pub const ERROR_KIND_PROGRAM_TOO_LARGE: u8 = 12u8;
 
 pub enum RegexStatus: u8 {
     ok = 0,
@@ -24,6 +44,10 @@ pub enum RegexStatus: u8 {
     pattern_too_large = 6,
     program_too_large = 7,
     workspace_too_large = 8,
+    capture_too_large = 9,
+    invalid_group_name = 10,
+    buffer_too_small = 11,
+    replacement_error = 12,
 }
 
 pub struct State {
@@ -42,6 +66,19 @@ pub struct ClassRange {
     pub last: u8;
 }
 
+pub struct CaptureInfo {
+    pub name_start: usize;
+    pub name_len: usize;
+    pub source_start: usize;
+    pub source_end: usize;
+}
+
+pub struct CaptureSpan {
+    pub matched: bool;
+    pub start: usize;
+    pub end: usize;
+}
+
 pub struct Fragment {
     pub start: usize;
     pub end: usize;
@@ -57,9 +94,14 @@ pub struct Regex {
     pub ranges: *mut ClassRange;
     pub range_len: usize;
     pub range_capacity: usize;
+    pub captures: *mut CaptureInfo;
+    pub capture_len: usize;
+    pub capture_capacity: usize;
     pub start: usize;
     pub accept: usize;
     pub status: RegexStatus;
+    pub error_offset: usize;
+    pub error_kind: u8;
 }
 
 pub struct MatchResult {
@@ -67,6 +109,55 @@ pub struct MatchResult {
     pub start: usize;
     pub end: usize;
     pub status: RegexStatus;
+}
+
+pub struct Captures {
+    pub matched: bool;
+    pub start: usize;
+    pub end: usize;
+    pub status: RegexStatus;
+    pub spans: *mut CaptureSpan;
+    pub span_len: usize;
+    pub span_capacity: usize;
+}
+
+pub struct FindIter {
+    pub compiled: *const Regex;
+    pub input: str;
+    pub next_start: usize;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
+pub struct CaptureIter {
+    pub compiled: *const Regex;
+    pub input: str;
+    pub next_start: usize;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
+pub struct SplitIter {
+    pub compiled: *const Regex;
+    pub input: str;
+    pub next_start: usize;
+    pub pending_tail: bool;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
+pub struct SplitPart {
+    pub matched: bool;
+    pub start: usize;
+    pub end: usize;
+    pub status: RegexStatus;
+}
+
+pub struct ReplaceResult {
+    pub status: RegexStatus;
+    pub written: usize;
+    pub required: usize;
+    pub replacements: usize;
 }
 
 pub fn invalid_fragment() -> Fragment {
@@ -87,6 +178,44 @@ pub fn match_result(matched: bool, start: usize, end: usize, status: RegexStatus
     };
 }
 
+pub fn capture_span(matched: bool, start: usize, end: usize) -> CaptureSpan {
+    return CaptureSpan {
+        matched: matched,
+        start: start,
+        end: end,
+    };
+}
+
+pub fn empty_captures(status: RegexStatus) -> Captures {
+    return Captures {
+        matched: false,
+        start: 0usize,
+        end: 0usize,
+        status: status,
+        spans: null,
+        span_len: 0usize,
+        span_capacity: 0usize,
+    };
+}
+
+pub fn split_part(matched: bool, start: usize, end: usize, status: RegexStatus) -> SplitPart {
+    return SplitPart {
+        matched: matched,
+        start: start,
+        end: end,
+        status: status,
+    };
+}
+
+pub fn replace_result(status: RegexStatus, written: usize, required: usize, replacements: usize) -> ReplaceResult {
+    return ReplaceResult {
+        status: status,
+        written: written,
+        required: required,
+        replacements: replacements,
+    };
+}
+
 impl Regex {
     pub fn valid(self: &Regex) -> bool {
         return self.status == RegexStatus.ok;
@@ -96,5 +225,23 @@ impl Regex {
 impl MatchResult {
     pub fn ok(self: &MatchResult) -> bool {
         return self.status == RegexStatus.ok && self.matched;
+    }
+}
+
+impl Captures {
+    pub fn ok(self: &Captures) -> bool {
+        return self.status == RegexStatus.ok && self.matched;
+    }
+}
+
+impl SplitPart {
+    pub fn ok(self: &SplitPart) -> bool {
+        return self.status == RegexStatus.ok && self.matched;
+    }
+}
+
+impl ReplaceResult {
+    pub fn ok(self: &ReplaceResult) -> bool {
+        return self.status == RegexStatus.ok;
     }
 }

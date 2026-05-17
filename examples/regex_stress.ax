@@ -10,14 +10,19 @@ const CASE_FULLMATCH_BASE: i32 = 200;
 const CASE_SYNTAX_BASE: i32 = 300;
 const CASE_LIMIT_BASE: i32 = 400;
 const CASE_FEATURE_BASE: i32 = 500;
+const CASE_CAPTURE_BASE: i32 = 600;
 
 const STRESS_SEARCH_ITERATIONS: usize = 512usize;
 const STRESS_FULLMATCH_ITERATIONS: usize = 256usize;
+const STRESS_CAPTURE_ITERATIONS: usize = 128usize;
 const MAX_STRESS_PROGRAM_BYTES: usize = 131072usize;
-const MAX_STRESS_WORKSPACE_BYTES: usize = 65536usize;
+const MAX_STRESS_WORKSPACE_BYTES: usize = 262144usize;
 const MIN_REQUIRED_STATE_COUNT: usize = 8usize;
 const MIN_REQUIRED_RANGE_COUNT: usize = 4usize;
 const MAX_REQUIRED_BOUNDED_REPEAT: usize = 32usize;
+const MAX_REQUIRED_CAPTURE_GROUPS: usize = 64usize;
+const REPLACE_BUFFER_CAPACITY: usize = 128usize;
+const EXPECTED_REPLACE_BYTES: usize = 29usize;
 
 struct StressCase {
     pattern: str;
@@ -65,6 +70,9 @@ fn require_budget(code: i32, compiled: &regex.Regex) -> i32 {
     }
     if regex.max_bounded_repeat() < MAX_REQUIRED_BOUNDED_REPEAT {
         return code + 7;
+    }
+    if regex.max_capture_groups() < MAX_REQUIRED_CAPTURE_GROUPS {
+        return code + 8;
     }
     return 0;
 }
@@ -157,6 +165,43 @@ fn require_feature_matrix() -> i32 {
     return require_match_span(CASE_FEATURE_BASE + 60, dot_result, 0usize, strblen("file.txt"));
 }
 
+fn require_capture_pressure() -> i32 {
+    var email: regex.Regex = regex.compile("(?<user>\\w+)@(?<domain>\\w+\\.(?:com|net|org))");
+    defer regex.destroy(&mut email);
+    let ready: i32 = require_compiled(CASE_CAPTURE_BASE, &email);
+    if ready != 0 {
+        return ready;
+    }
+    var iteration: usize = 0usize;
+    while iteration < STRESS_CAPTURE_ITERATIONS {
+        var iter: regex.CaptureIter = regex.captures_iter(&email, "ops@example.com root@test.net audit@example.org");
+        var first: regex.Captures = regex.captures_next(&mut iter);
+        defer regex.destroy_captures(&mut first);
+        if !first.ok() || regex.capture_index(&email, "domain") != 2usize {
+            return CASE_CAPTURE_BASE + 1;
+        }
+        var second: regex.Captures = regex.captures_next(&mut iter);
+        defer regex.destroy_captures(&mut second);
+        if !second.ok() {
+            return CASE_CAPTURE_BASE + 2;
+        }
+        iteration += 1usize;
+    }
+    var buffer: [128]u8 = [0; 128];
+    let out: *mut u8 = unsafe { ptrcast[*mut u8](ptrat[*mut [128]u8](ptraddr(&mut buffer))) };
+    let replaced: regex.ReplaceResult = regex.replace_all(
+        &email,
+        "ops@example.com root@test.net",
+        "${domain}:$1",
+        out,
+        REPLACE_BUFFER_CAPACITY
+    );
+    if !replaced.ok() || replaced.replacements != 2usize || replaced.required != EXPECTED_REPLACE_BYTES {
+        return CASE_CAPTURE_BASE + 3 + regex.status_code(replaced.status);
+    }
+    return 0;
+}
+
 fn main() -> i32 {
     var search_pattern: regex.Regex = regex.compile("(error|warn|info|debug):\\s+\\w+@\\w+\\.(com|net|org)");
     defer regex.destroy(&mut search_pattern);
@@ -202,5 +247,9 @@ fn main() -> i32 {
     if syntax_code != 0 {
         return syntax_code;
     }
-    return require_feature_matrix();
+    let feature_code: i32 = require_feature_matrix();
+    if feature_code != 0 {
+        return feature_code;
+    }
+    return require_capture_pressure();
 }

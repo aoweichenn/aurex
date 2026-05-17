@@ -998,8 +998,10 @@ value++              // 不支持自增
   `regex/syntax` 放 ASCII byte 语法工具，
   `regex/runtime` 放 FFI 分配，
   `regex/compile` 放 parser 和 NFA program 构造，
-  `regex/vm` 放匹配引擎。
+  `regex/vm` 放匹配引擎，
+  `regex/ops` 放 find/captures iterator、replace 和 split 操作。
 - 演示程序：`examples/regex_demo.ax`
+- 第一阶段 API 程序：`examples/regex_phase1.ax`
 - 压力程序：`examples/regex_stress.ax`
 - 详细语法/API/模块说明：`docs/zh/regex.md`
 
@@ -1008,6 +1010,8 @@ value++              // 不支持自增
 ```sh
 build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
+build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
+build/tests/regex_phase1
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```
@@ -1027,7 +1031,7 @@ fn main() -> i32 {
         return 2;
     }
 
-    var compiled: regex.Regex = regex.compile("^\\d{2,4}$");
+    var compiled: regex.Regex = regex.compile("(?<year>\\d{2,4})");
     defer regex.destroy(&mut compiled);
     if !regex.is_valid(&compiled) {
         return 3 + regex.status_code(compiled.status);
@@ -1036,6 +1040,11 @@ fn main() -> i32 {
     if !result.ok() {
         return 10 + regex.status_code(result.status);
     }
+    var captures: regex.Captures = regex.captures_fullmatch_compiled(&compiled, "2026");
+    defer regex.destroy_captures(&mut captures);
+    if !captures.ok() || !regex.capture_at(&captures, regex.capture_index(&compiled, "year")).matched {
+        return 20;
+    }
     return 0;
 }
 ```
@@ -1043,18 +1052,19 @@ fn main() -> i32 {
 这个库用来验证当前语言的实际工程表达能力：
 
 - 模块和 import：`import regex.api as regex;`
-- 多模块拆分：API facade、ASCII 常量、FFI 分配、程序表示、parser、VM engine、类型定义。
+- 多模块拆分：API facade、ASCII 常量、FFI 分配、程序表示、parser、VM engine、结果管理、操作层、类型定义。
 - public/private API：外部只需要 `regex.api`，内部 helper 保持 private。
-- type alias：`pub type Regex = t.Regex`、`pub type MatchResult = t.MatchResult`。
-- enum 和 struct：`RegexStatus`、`Regex`、`MatchResult`、`State`、`ClassRange` 等。
-- impl 方法：`Regex.valid`、`MatchResult.ok`。
-- FFI 和 unsafe：通过 `calloc/free` 分配状态表、字符类表和 VM 工作区。
+- type alias：`pub type Regex = t.Regex`、`pub type MatchResult = t.MatchResult`、`pub type Captures = t.Captures` 等。
+- enum 和 struct：`RegexStatus`、`Regex`、`MatchResult`、`Captures`、`FindIter`、`SplitIter`、`State`、`ClassRange` 等。
+- impl 方法：`Regex.valid`、`MatchResult.ok`、`Captures.ok`、`ReplaceResult.ok`。
+- FFI 和 unsafe：通过 `calloc/free` 分配状态表、字符类表、捕获结果和 VM 工作区。
 - raw pointer 字段/索引投影：编译程序和 VM 列表都用指针数组访问。
 - `defer`：示例和 API convenience 函数用它保证释放。
 - match：状态码和演示结果判定使用 enum pattern。
 - 函数类型：演示中使用 `type Matcher = fn(str, str) -> bool`。
 - `str` 内建：`strblen`、`strptr` 参与 byte 级解析和匹配。
-- 资源预算 API：`state_count`、`range_count`、`program_bytes`、`workspace_bytes`。
+- 资源预算 API：`state_count`、`range_count`、`capture_count`、`program_bytes`、`workspace_bytes`。
+- 第一阶段 API：`captures_compiled`、`find_iter`、`captures_iter`、`replace_all`、`split_iter`、`error_offset`。
 - 压力测试：`regex_stress.ax` 通过数百次重复匹配验证 compiled API 复用、内存预算和错误路径。
 
 当前正则语法是一个明确的 ASCII byte 级语法，详细定义见
@@ -1066,18 +1076,18 @@ fn main() -> i32 {
 - 通配：`.` 匹配任意一个 byte。
 - 锚点：`^` 匹配输入开头，`$` 匹配输入结尾。
 - 字符类：`[abc]`、`[^abc]`、`[a-z]`，类内支持 `\d`、`\w`、`\s`。
-- 分组：`(...)` 用于组合表达式，不产生捕获。
+- 分组：`(...)` 捕获，`(?:...)` 不捕获，`(?<name>...)` 命名捕获。
 - 交替：`a|b`，支持在分组内使用。
 - 量词：`*`、`+`、`?`、`{m}`、`{m,n}`、`{m,}`。
 
 当前正则库的有意边界：
 
-- 不支持捕获组、反向引用、lookaround、替换模板、命名组。
+- 不支持反向引用、lookaround、inline flags、复杂替换回调。
 - 不支持 Unicode scalar、grapheme、Unicode property；匹配单位是 `str` 的 UTF-8 byte。
 - 不支持懒惰量词或 possessive 量词。
 - `{m,n}` 展开上限是实现常量，超出返回 `RegexStatus.repeat_too_large`。
-- pattern、program 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large` 或 `workspace_too_large`。
-- 没有标准库 RAII，`compile` 得到的 `Regex` 必须手动 `destroy` 或 `defer destroy`。
+- pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。
+- 没有标准库 RAII，`compile` 得到的 `Regex` 必须手动 `destroy` 或 `defer destroy`；`Captures` 必须手动 `destroy_captures`。
 
 ## 16. 内建函数测试位置
 

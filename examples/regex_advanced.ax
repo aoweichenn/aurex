@@ -12,6 +12,7 @@ const CASE_REPLACE: i32 = 600;
 const CASE_SPLIT: i32 = 700;
 const CASE_STREAM: i32 = 800;
 const CASE_PRECEDENCE: i32 = 900;
+const CASE_LINEAR_SEARCH: i32 = 1000;
 
 const BUFFER_CAPACITY: usize = 256usize;
 const DATABASE_CAPACITY: usize = 4096usize;
@@ -400,6 +401,35 @@ fn require_submatch_precedence() -> i32 {
     return 0;
 }
 
+fn require_linear_search() -> i32 {
+    var greedy: regex.Regex = regex.compile("a*");
+    defer regex.destroy(&mut greedy);
+    let leftmost_greedy: regex.MatchResult = regex.search_compiled(&greedy, "aaXaa");
+    if !leftmost_greedy.ok() || leftmost_greedy.start != 0usize || leftmost_greedy.end != 2usize {
+        return CASE_LINEAR_SEARCH + 1 + regex.status_code(leftmost_greedy.status);
+    }
+
+    var fallback: regex.Regex = regex.compile("ab|b");
+    defer regex.destroy(&mut fallback);
+    let after_failed_start: regex.MatchResult = regex.search_compiled(&fallback, "axb");
+    if !after_failed_start.ok() || after_failed_start.start != 2usize || after_failed_start.end != 3usize {
+        return CASE_LINEAR_SEARCH + 2 + regex.status_code(after_failed_start.status);
+    }
+
+    var overlap: regex.Regex = regex.compile("a*ab");
+    defer regex.destroy(&mut overlap);
+    let ordered_overlap: regex.MatchResult = regex.search_compiled(&overlap, "zaaab");
+    if !ordered_overlap.ok() || ordered_overlap.start != 1usize || ordered_overlap.end != 5usize {
+        return CASE_LINEAR_SEARCH + 3 + regex.status_code(ordered_overlap.status);
+    }
+
+    let from_offset: regex.MatchResult = regex.search_compiled_from(&overlap, "zaaab zaab", 6usize);
+    if !from_offset.ok() || from_offset.start != 7usize || from_offset.end != 10usize {
+        return CASE_LINEAR_SEARCH + 4 + regex.status_code(from_offset.status);
+    }
+    return 0;
+}
+
 fn main() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
@@ -433,5 +463,9 @@ fn main() -> i32 {
     if stream_code != 0 {
         return stream_code;
     }
-    return require_submatch_precedence();
+    let precedence_code: i32 = require_submatch_precedence();
+    if precedence_code != 0 {
+        return precedence_code;
+    }
+    return require_linear_search();
 }

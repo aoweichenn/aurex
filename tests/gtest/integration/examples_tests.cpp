@@ -164,6 +164,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
         "fn priv require_class_set_algebra -> i32",
         "fn priv require_database_roundtrip -> i32",
         "fn priv require_submatch_precedence -> i32",
+        "fn priv require_linear_search -> i32",
     });
     require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_advanced.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
@@ -179,6 +180,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexStressCompilesAndRuns) {
         "fn priv run_repeated_searches -> i32",
         "fn priv run_repeated_fullmatches -> i32",
         "fn priv require_budget -> i32",
+        "fn priv require_linear_search_surface -> i32",
         "fn state_count -> usize",
         "fn range_count -> usize",
         "fn program_bytes -> usize",

@@ -11,6 +11,7 @@ const CASE_SYNTAX_BASE: i32 = 300;
 const CASE_LIMIT_BASE: i32 = 400;
 const CASE_FEATURE_BASE: i32 = 500;
 const CASE_CAPTURE_BASE: i32 = 600;
+const CASE_LINEAR_SEARCH_BASE: i32 = 700;
 
 const STRESS_SEARCH_ITERATIONS: usize = 512usize;
 const STRESS_FULLMATCH_ITERATIONS: usize = 256usize;
@@ -202,6 +203,25 @@ fn require_capture_pressure() -> i32 {
     return 0;
 }
 
+fn require_linear_search_surface() -> i32 {
+    var leftmost: regex.Regex = regex.compile("a*ab");
+    defer regex.destroy(&mut leftmost);
+    let ready: i32 = require_compiled(CASE_LINEAR_SEARCH_BASE, &leftmost);
+    if ready != 0 {
+        return ready;
+    }
+    let result: regex.MatchResult = regex.search_compiled(
+        &leftmost,
+        "trace trace trace trace trace trace trace trace trace trace aaaab"
+    );
+    return require_match_span(
+        CASE_LINEAR_SEARCH_BASE + 20,
+        result,
+        strblen("trace trace trace trace trace trace trace trace trace trace "),
+        strblen("trace trace trace trace trace trace trace trace trace trace aaaab")
+    );
+}
+
 fn main() -> i32 {
     var search_pattern: regex.Regex = regex.compile("(error|warn|info|debug):\\s+\\w+@\\w+\\.(com|net|org)");
     defer regex.destroy(&mut search_pattern);
@@ -251,5 +271,9 @@ fn main() -> i32 {
     if feature_code != 0 {
         return feature_code;
     }
-    return require_capture_pressure();
+    let capture_code: i32 = require_capture_pressure();
+    if capture_code != 0 {
+        return capture_code;
+    }
+    return require_linear_search_surface();
 }

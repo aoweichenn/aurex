@@ -19,5 +19,6 @@ pub const MAX_SET_PATTERNS: usize = 1024usize;
 
 pub const MIN_STREAM_CAPACITY: usize = 64usize;
 
-pub const WORKSPACE_LIST_COUNT: usize = 4usize;
-pub const WORKSPACE_CAPTURE_ROW_COUNT: usize = 4usize;
+pub const WORKSPACE_LIST_COUNT: usize = 5usize;
+pub const WORKSPACE_STATE_CAPTURE_ROW_COUNT: usize = 3usize;
+pub const WORKSPACE_FIXED_CAPTURE_ROW_COUNT: usize = 2usize;

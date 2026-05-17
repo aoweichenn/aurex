@@ -102,7 +102,7 @@ build/tests/regex_stress
 
 - 集中定义容量策略和资源上限。
 - 包含 `MAX_PATTERN_BYTES`、`MAX_STATE_CAPACITY`、`MAX_RANGE_CAPACITY`、`MAX_WORKSPACE_STATES`、`MAX_BOUNDED_REPEAT`、`MAX_CAPTURE_GROUPS`。
-- 包含工作区数组数量 `WORKSPACE_LIST_COUNT` 和捕获 row 数量 `WORKSPACE_CAPTURE_ROW_COUNT`，用于内存估算。
+- 包含工作区数组数量 `WORKSPACE_LIST_COUNT`、按 state 分配的捕获 row 数量 `WORKSPACE_STATE_CAPTURE_ROW_COUNT` 和固定捕获 row 数量 `WORKSPACE_FIXED_CAPTURE_ROW_COUNT`，用于内存估算。
 
 `regex.syntax.ascii`
 
@@ -150,7 +150,7 @@ build/tests/regex_stress
 
 - 运行 NFA VM。
 - 使用 current/next state 列表、visited marks、显式 stack，以及对应的 capture snapshot row。
-- `search_compiled` 扫描所有起点；`fullmatch_compiled` 要求从 0 到输入结尾。
+- `search_compiled` 对未锚定 pattern 使用单次共享 active-list 扫描：每个输入边界只注入一个新起点 closure；`fullmatch_compiled` 要求从 0 到输入结尾。
 - `captures_compiled` 和 `captures_fullmatch_compiled` 返回 owning `Captures`。
 - 在同一起点下使用有序 Thompson 线程。greedy 分支会保留后备较长结果，lazy/ungreedy 分支可提前接受较短结果。
 - 对非 multiline 的 `^` 和 `\A` 开头 pattern 做 anchored 起点优化，只尝试 offset `0`；`(?m)^` 仍会扫描行首。
@@ -878,18 +878,19 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | `MAX_CAPTURE_GROUPS` | 64 | 捕获组上限，不含 `$0` |
 | `MAX_SET_PATTERNS` | 1024 | 单个 `RegexSet` 的 pattern 数上限 |
 | `MIN_STREAM_CAPACITY` | 64 | stream 初始 buffer 容量 |
-| `WORKSPACE_LIST_COUNT` | 4 | current、next、marks、stack 四组 VM state 数组 |
-| `WORKSPACE_CAPTURE_ROW_COUNT` | 4 | current、next、stack、best 四组捕获 row |
+| `WORKSPACE_LIST_COUNT` | 5 | current、next、marks、stack、start_states 五组 VM state 数组 |
+| `WORKSPACE_STATE_CAPTURE_ROW_COUNT` | 3 | current、next、stack 三组按 state 分配的捕获 row |
+| `WORKSPACE_FIXED_CAPTURE_ROW_COUNT` | 2 | best、seed 两组固定捕获 row |
 
 复杂度和内存模型：
 
 - 编译时间目标：`O(pattern_bytes + emitted_states + class_ranges + capture_groups)`。
 - 编译期内存：`program_bytes = state_capacity * sizeof[State] + range_capacity * sizeof[ClassRange] + capture_capacity * sizeof[CaptureInfo]`。
-- 匹配工作区：`workspace_bytes = state_count * 4 * sizeof[usize] + state_count * capture_slots * 4 * sizeof[usize]`。
+- 匹配工作区：`workspace_bytes = state_count * 5 * sizeof[usize] + state_count * capture_slots * 3 * sizeof[usize] + capture_slots * 2 * sizeof[usize] + MAX_RANGE_CAPACITY * sizeof[bool]`。
 - `capture_slots = capture_count * 2`，每个捕获含 start/end 两个 slot，`capture_count` 包含 `$0`。
 - `fullmatch_compiled` 匹配时间：`O(input_scalars * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
-- `search_compiled` 匹配时间：当前会尝试多个 scalar 起点，最坏是 `O(input_scalars * input_scalars * active_state_count * capture_slots)`；当 pattern 以非 multiline `^` 或 `\A` 开头时只尝试起点 `0`。
-- `matches_set_compiled` 使用共享 set NFA，一次起点扫描可同时推进所有 pattern；结果去重后升序写出 pattern id。当前仍按多个起点扫描，尚未实现 DFA/literal prefix 加速。
+- `search_compiled` 匹配时间：未锚定 pattern 采用共享 active-list search，每个 scalar boundary 注入一次起点 closure，最坏为 `O(input_scalars * active_state_count * capture_slots)`；同一位置同一 state 只保留最高优先级线程，继续保持 leftmost + ordered Thompson 子匹配语义。以非 multiline `^` 或 `\A` 开头时仍只尝试起点 `0`。
+- `matches_set_compiled` 使用共享 set NFA 和同样的单次 active-list 扫描，同时推进所有 pattern；结果去重后升序写出 pattern id。
 - `serialize_set` 时间和输出大小都是 `O(state_len + range_len)`；deserialize 额外做同阶结构校验。
 - stream 当前保留内部 buffer，并在已消费前缀足够大时压缩；它是增量 API，不是 Hyperscan 级别的 bounded-history streaming automaton。
 - 同一起点采用有序线程接受策略：greedy 量词保留后备较长结果，lazy/ungreedy 量词可优先接受较短结果。
@@ -901,12 +902,12 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `examples/regex_demo.ax`：基础语法和 compiled API。
 - `examples/regex_phase1.ax`：捕获、命名捕获、find/captures iterator、replace、split、错误 offset/kind。
 - `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、Unicode scalar/property/case-fold、便利 API 和非法 escape 诊断。
-- `examples/regex_advanced.ax`：nested class set algebra、bytes API、RegexSet、database roundtrip、replace callback、splitn、stream 和 submatch precedence。
-- `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、资源预算和错误路径。
+- `examples/regex_advanced.ax`：nested class set algebra、bytes API、RegexSet、database roundtrip、replace callback、splitn、stream、submatch precedence 和线性 search 语义。
+- `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、长前缀线性 search、资源预算和错误路径。
 
 后续向工业级继续推进时，优先级如下：
 
-- 将 `search_compiled` 从多起点 NFA 扫描推进到真正线性时间搜索，加入 literal prefix / start byte 加速。
+- 在单次 active-list search 之上增加 literal prefix / start byte prefilter，降低 literal-heavy 输入的常数。
 - `replace_all` 增加 scratch capture 复用，避免每个 match 分配。
 - `RegexSet` 后续可继续增加 literal prefilter 和 bytes set 的专用 SIMD/bitset 加速。
 - stream 后续可演进为 bounded-history automaton，减少长流上内部 buffer 保留。
@@ -918,7 +919,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | 引擎 | 核心定位 | 复杂度/性能特点 | 功能范围 | Aurex 当前差距 |
 | --- | --- | --- | --- | --- |
 | RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并有 Unicode 17.0 scalar/property/case-fold、ordered Thompson 子匹配语义和资源预算，但仍缺少成熟 DFA/NFA 混合优化和多年工程验证 |
-| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback 和 database roundtrip，但还没有 literal acceleration、完整 fuzz/差分测试和成熟优化器 |
+| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback、database roundtrip 和线性 active-list search，但还没有 literal acceleration、完整 fuzz/差分测试和成熟优化器 |
 | PCRE2 | Perl-compatible 功能优先引擎 | 功能很全，可使用 JIT；回溯模型需要限制资源避免病态 pattern | 捕获、命名组、反向引用、lookaround、条件、丰富选项 | Aurex 不追求 PCRE 兼容，暂不支持这些会明显增加复杂度或破坏线性保证的语法 |
 | Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 现在已有共享 RegexSet、序列化 database 和 text stream API，但没有 SIMD、平台级向量化、vectored scan 或 bounded-history streaming automaton |
 | Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial/advanced 样例 | UTF-8 scalar text regex、raw bytes regex、Unicode 17.0 属性、simple case folding、flags、lazy/ungreedy、边界、锚点、nested class algebra、捕获/命名捕获、迭代、替换、分割、RegexSet、database、stream、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成已经经受多年生产流量验证的工业完成品 |
@@ -1006,6 +1007,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `splitn_iter`。
 - `RegexStream`：分块 feed、finish 前延后尾部 match。
 - submatch precedence：ordered Thompson 捕获行为。
+- linear search：leftmost、greedy deferred accept、失败早起点让位和 `search_compiled_from`。
 
 `examples/regex_stress.ax` 展示了：
 
@@ -1013,6 +1015,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 资源预算查询：`state_count`、`range_count`、`program_bytes`、`workspace_bytes`。
 - 上限查询：`max_state_capacity`、`max_range_capacity`、`max_bounded_repeat`。
 - 大规模循环压力：固定迭代次数重复 search/fullmatch。
+- 长前缀线性 search：验证共享 active-list 路径不依赖“每个起点重新跑一遍”的旧模型。
 - 错误状态验证：repeat 上限和非法/不支持字符类。
 
 ## 14. 已知不支持项

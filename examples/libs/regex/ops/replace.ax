@@ -37,6 +37,13 @@ pub fn replace_n(
     if compiled.status != t.RegexStatus.ok {
         return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
     }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    defer engine.destroy_match_workspace(&mut workspace);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
     var cursor: usize = 0usize;
     var written: usize = 0usize;
     var required: usize = 0usize;
@@ -47,8 +54,7 @@ pub fn replace_n(
             let limited_tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
             return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
         }
-        var captures: t.Captures = engine.captures_compiled_from(compiled, input, cursor);
-        defer results.destroy_captures(&mut captures);
+        engine.captures_compiled_from_into(compiled, input, cursor, &mut workspace, &mut captures);
         if captures.status == t.RegexStatus.no_match || !captures.matched {
             let tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
             written = tail.written;
@@ -104,6 +110,13 @@ pub fn replace_n_with(
     if compiled.status != t.RegexStatus.ok {
         return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
     }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    defer engine.destroy_match_workspace(&mut workspace);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
     var cursor: usize = 0usize;
     var written: usize = 0usize;
     var required: usize = 0usize;
@@ -114,8 +127,7 @@ pub fn replace_n_with(
             let limited_tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
             return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
         }
-        var captures: t.Captures = engine.captures_compiled_from(compiled, input, cursor);
-        defer results.destroy_captures(&mut captures);
+        engine.captures_compiled_from_into(compiled, input, cursor, &mut workspace, &mut captures);
         if captures.status == t.RegexStatus.no_match || !captures.matched {
             let tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
             written = tail.written;

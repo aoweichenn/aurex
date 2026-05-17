@@ -151,6 +151,8 @@ build/tests/regex_stress
 - 运行 NFA VM。
 - 使用 current/next state 列表、visited marks、显式 stack，以及对应的 capture snapshot row。
 - `search_compiled` 对未锚定 pattern 使用单次共享 active-list 扫描：每个输入边界只注入一个新起点 closure；`fullmatch_compiled` 要求从 0 到输入结尾。
+- 对确定性 literal prefix 的 pattern，搜索路径会先跳到下一处首 literal 候选，再验证完整 literal prefix，避免 literal-heavy 输入上反复构造无效起点 closure；同一机制也用于单 prefix 的 `RegexSet`。
+- 提供内部复用型 match workspace 和 `captures_compiled_from_into` / `captures_bytes_compiled_from_into`，让 replace 等循环型操作复用 VM workspace 和 capture span buffer。
 - `captures_compiled` 和 `captures_fullmatch_compiled` 返回 owning `Captures`。
 - 在同一起点下使用有序 Thompson 线程。greedy 分支会保留后备较长结果，lazy/ungreedy 分支可提前接受较短结果。
 - 对非 multiline 的 `^` 和 `\A` 开头 pattern 做 anchored 起点优化，只尝试 offset `0`；`(?m)^` 仍会扫描行首。
@@ -168,6 +170,7 @@ build/tests/regex_stress
 
 - 实现 `replace_all`、`replace_first`、`replace_n` 和 `replace_*_with` 回调替换。
 - 不创建拥有型字符串；调用方传入 `*mut u8` 和容量。
+- 循环替换路径复用 scratch captures 和 VM workspace，不再为每个 match 重新分配 capture span buffer / workspace。
 - 返回 `ReplaceResult { status, written, required, replacements }`。
 - 模板替换支持 literal replacement、`$$`、`$0`、多位编号 `$10`、braced 编号 `${10}` 和 `${name}`。
 
@@ -182,6 +185,7 @@ build/tests/regex_stress
 - 实现文本流式扫描状态。
 - `open_stream` 绑定一个 text `Regex`，`stream_feed` 追加 `str` chunk，`stream_next` 返回绝对 byte offset span，`stream_finish` 标记 EOF。
 - 未 finish 时，结束在当前 buffer 尾部的潜在可扩展 match 会延后，避免把跨 chunk match 截断。
+- 已消费前缀压缩时会按剩余数据收缩到 power-of-two 容量下界，长流不会永久保留历史峰值 buffer。
 
 ## 4. Public API
 
@@ -889,28 +893,27 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 匹配工作区：`workspace_bytes = state_count * 5 * sizeof[usize] + state_count * capture_slots * 3 * sizeof[usize] + capture_slots * 2 * sizeof[usize] + MAX_RANGE_CAPACITY * sizeof[bool]`。
 - `capture_slots = capture_count * 2`，每个捕获含 start/end 两个 slot，`capture_count` 包含 `$0`。
 - `fullmatch_compiled` 匹配时间：`O(input_scalars * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
-- `search_compiled` 匹配时间：未锚定 pattern 采用共享 active-list search，每个 scalar boundary 注入一次起点 closure，最坏为 `O(input_scalars * active_state_count * capture_slots)`；同一位置同一 state 只保留最高优先级线程，继续保持 leftmost + ordered Thompson 子匹配语义。以非 multiline `^` 或 `\A` 开头时仍只尝试起点 `0`。
-- `matches_set_compiled` 使用共享 set NFA 和同样的单次 active-list 扫描，同时推进所有 pattern；结果去重后升序写出 pattern id。
+- `search_compiled` 匹配时间：未锚定 pattern 采用共享 active-list search，每个 scalar boundary 至多注入一次起点 closure，最坏为 `O(input_scalars * active_state_count * capture_slots)`；同一位置同一 state 只保留最高优先级线程，继续保持 leftmost + ordered Thompson 子匹配语义。以非 multiline `^` 或 `\A` 开头时仍只尝试起点 `0`；确定性 literal prefix 会把无 active 线程区间快速推进到下一处首 literal 候选。
+- `matches_set_compiled` 使用共享 set NFA 和同样的单次 active-list 扫描，同时推进所有 pattern；结果去重后升序写出 pattern id。单确定性 literal prefix 的 set 同样走 prefix 候选跳转。
 - `serialize_set` 时间和输出大小都是 `O(state_len + range_len)`；deserialize 额外做同阶结构校验。
-- stream 当前保留内部 buffer，并在已消费前缀足够大时压缩；它是增量 API，不是 Hyperscan 级别的 bounded-history streaming automaton。
+- stream 当前保留内部 buffer，并在已消费前缀足够大时压缩和收缩容量；它是增量 API，不是 Hyperscan 级别的 bounded-history streaming automaton。
 - 同一起点采用有序线程接受策略：greedy 量词保留后备较长结果，lazy/ungreedy 量词可优先接受较短结果。
 - `search` / `fullmatch` convenience API 会每次重新编译，性能敏感路径必须使用 `compile` 后复用。
-- `replace_all` 只写调用方 buffer，不分配输出字符串；捕获结果当前逐 match 分配，后续可优化为复用 scratch captures。
+- `replace_all` 只写调用方 buffer，不分配输出字符串；循环替换复用 scratch captures 和 VM workspace，避免每个 match 重复分配。
 
 压力样例：
 
 - `examples/regex_demo.ax`：基础语法和 compiled API。
 - `examples/regex_phase1.ax`：捕获、命名捕获、find/captures iterator、replace、split、错误 offset/kind。
 - `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、Unicode scalar/property/case-fold、便利 API 和非法 escape 诊断。
-- `examples/regex_advanced.ax`：nested class set algebra、bytes API、RegexSet、database roundtrip、replace callback、splitn、stream、submatch precedence 和线性 search 语义。
-- `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、长前缀线性 search、资源预算和错误路径。
+- `examples/regex_advanced.ax`：nested class set algebra、bytes API、RegexSet、database roundtrip、replace callback、splitn、stream、submatch precedence、线性 search 和 literal prefix prefilter 语义。
+- `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、长前缀线性 search、literal prefix prefilter 压力、资源预算和错误路径。
 
 后续向工业级继续推进时，优先级如下：
 
-- 在单次 active-list search 之上增加 literal prefix / start byte prefilter，降低 literal-heavy 输入的常数。
-- `replace_all` 增加 scratch capture 复用，避免每个 match 分配。
-- `RegexSet` 后续可继续增加 literal prefilter 和 bytes set 的专用 SIMD/bitset 加速。
-- stream 后续可演进为 bounded-history automaton，减少长流上内部 buffer 保留。
+- 继续把 literal prefix prefilter 扩展到多 pattern literal trie / start-byte bitset，降低多前缀 `RegexSet` 的常数。
+- `RegexSet` 后续可继续增加 bytes set 的专用 SIMD/bitset 加速。
+- stream 后续可演进为 bounded-history automaton，进一步减少长流上对历史上下文的保留。
 - 如果后续增加 grapheme API，需要继续把 byte offset、scalar 消费和 grapheme cluster 三层语义分开，不把当前 text regex 的 scalar 规则偷偷改成用户可见的 grapheme 规则。
 - 增加 fuzz、差分测试和长输入基准，把正确性、峰值内存和吞吐纳入自动化。
 
@@ -1008,6 +1011,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `RegexStream`：分块 feed、finish 前延后尾部 match。
 - submatch precedence：ordered Thompson 捕获行为。
 - linear search：leftmost、greedy deferred accept、失败早起点让位和 `search_compiled_from`。
+- prefix prefilter：literal prefix 候选跳转、case-insensitive literal prefix 和单 prefix `RegexSet`。
 
 `examples/regex_stress.ax` 展示了：
 
@@ -1016,6 +1020,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 上限查询：`max_state_capacity`、`max_range_capacity`、`max_bounded_repeat`。
 - 大规模循环压力：固定迭代次数重复 search/fullmatch。
 - 长前缀线性 search：验证共享 active-list 路径不依赖“每个起点重新跑一遍”的旧模型。
+- literal prefix prefilter 压力：重复搜索长非候选前缀后面的 literal pattern。
 - 错误状态验证：repeat 上限和非法/不支持字符类。
 
 ## 14. 已知不支持项

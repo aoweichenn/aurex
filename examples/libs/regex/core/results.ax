@@ -4,17 +4,30 @@ import regex.core.types as t;
 import regex.runtime.alloc as alloc;
 
 pub fn create_captures(compiled: &t.Regex, match_start: usize, match_end: usize, capture_slots: *mut usize) -> t.Captures {
-    let span_count: usize = compiled.capture_len;
-    let spans: *mut t.CaptureSpan = unsafe {
-        ptrcast[*mut t.CaptureSpan](alloc.alloc_zeroed_bytes(span_count, sizeof[t.CaptureSpan]))
-    };
-    if spans == null {
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    let status: t.RegexStatus = fill_captures(compiled, match_start, match_end, capture_slots, &mut captures);
+    if status != t.RegexStatus.ok {
         return t.empty_captures(t.RegexStatus.out_of_memory);
     }
+    return captures;
+}
+
+pub fn fill_captures(
+    compiled: &t.Regex,
+    match_start: usize,
+    match_end: usize,
+    capture_slots: *mut usize,
+    captures: &mut t.Captures
+) -> t.RegexStatus {
+    let span_count: usize = compiled.capture_len;
+    if !ensure_capture_capacity(captures, span_count) {
+        reset_captures(captures, t.RegexStatus.out_of_memory);
+        return t.RegexStatus.out_of_memory;
+    }
     unsafe {
-        spans[t.CAPTURE_WHOLE_MATCH].matched = true;
-        spans[t.CAPTURE_WHOLE_MATCH].start = match_start;
-        spans[t.CAPTURE_WHOLE_MATCH].end = match_end;
+        captures.spans[t.CAPTURE_WHOLE_MATCH].matched = true;
+        captures.spans[t.CAPTURE_WHOLE_MATCH].start = match_start;
+        captures.spans[t.CAPTURE_WHOLE_MATCH].end = match_end;
     }
     var index: usize = 1usize;
     while index < span_count {
@@ -24,28 +37,33 @@ pub fn create_captures(compiled: &t.Regex, match_start: usize, match_end: usize,
         let end: usize = unsafe { capture_slots[end_slot] };
         if start != t.CAPTURE_MISSING && end != t.CAPTURE_MISSING && start <= end {
             unsafe {
-                spans[index].matched = true;
-                spans[index].start = start;
-                spans[index].end = end;
+                captures.spans[index].matched = true;
+                captures.spans[index].start = start;
+                captures.spans[index].end = end;
             }
         } else {
             unsafe {
-                spans[index].matched = false;
-                spans[index].start = 0usize;
-                spans[index].end = 0usize;
+                captures.spans[index].matched = false;
+                captures.spans[index].start = 0usize;
+                captures.spans[index].end = 0usize;
             }
         }
         index += 1usize;
     }
-    return t.Captures {
-        matched: true,
-        start: match_start,
-        end: match_end,
-        status: t.RegexStatus.ok,
-        spans: spans,
-        span_len: span_count,
-        span_capacity: span_count,
-    };
+    captures.matched = true;
+    captures.start = match_start;
+    captures.end = match_end;
+    captures.status = t.RegexStatus.ok;
+    captures.span_len = span_count;
+    return t.RegexStatus.ok;
+}
+
+pub fn reset_captures(captures: &mut t.Captures, status: t.RegexStatus) -> void {
+    captures.matched = false;
+    captures.start = 0usize;
+    captures.end = 0usize;
+    captures.status = status;
+    captures.span_len = 0usize;
 }
 
 pub fn destroy_captures(captures: &mut t.Captures) -> void {
@@ -57,6 +75,22 @@ pub fn destroy_captures(captures: &mut t.Captures) -> void {
     captures.spans = null;
     captures.span_len = 0usize;
     captures.span_capacity = 0usize;
+}
+
+fn ensure_capture_capacity(captures: &mut t.Captures, needed: usize) -> bool {
+    if captures.spans != null && captures.span_capacity >= needed {
+        return true;
+    }
+    let spans: *mut t.CaptureSpan = unsafe {
+        ptrcast[*mut t.CaptureSpan](alloc.alloc_zeroed_bytes(needed, sizeof[t.CaptureSpan]))
+    };
+    if spans == null {
+        return false;
+    }
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](captures.spans) });
+    captures.spans = spans;
+    captures.span_capacity = needed;
+    return true;
 }
 
 pub fn capture_at(captures: &t.Captures, index: usize) -> t.CaptureSpan {

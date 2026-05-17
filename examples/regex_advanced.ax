@@ -13,12 +13,14 @@ const CASE_SPLIT: i32 = 700;
 const CASE_STREAM: i32 = 800;
 const CASE_PRECEDENCE: i32 = 900;
 const CASE_LINEAR_SEARCH: i32 = 1000;
+const CASE_PREFILTER: i32 = 1100;
 
 const BUFFER_CAPACITY: usize = 256usize;
 const DATABASE_CAPACITY: usize = 4096usize;
 const DATABASE_MODE_OFFSET: usize = 9usize;
 const INVALID_DATABASE_MODE: u8 = 99u8;
 const SET_ID_CAPACITY: usize = 8usize;
+const STREAM_MIN_CAPACITY: usize = 64usize;
 
 struct CopyState {
     written: usize;
@@ -371,7 +373,25 @@ fn require_streaming() -> i32 {
     if !found.ok() || found.start != 0usize || found.end != 3usize {
         return CASE_STREAM + 7 + regex.status_code(found.status);
     }
-    return ensure(CASE_STREAM + 8, regex.stream_buffer_bytes(&stream) >= 3usize);
+    let small_buffer: i32 = ensure(CASE_STREAM + 8, regex.stream_buffer_bytes(&stream) >= 3usize);
+    if small_buffer != 0 {
+        return small_buffer;
+    }
+
+    var long_stream: regex.RegexStream = regex.open_stream(&compiled);
+    defer regex.destroy_stream(&mut long_stream);
+    let long_chunk: str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    if regex.stream_feed(&mut long_stream, long_chunk) != regex.RegexStatus.ok {
+        return CASE_STREAM + 9 + regex.status_code(long_stream.status);
+    }
+    if regex.stream_finish(&mut long_stream) != regex.RegexStatus.ok {
+        return CASE_STREAM + 10 + regex.status_code(long_stream.status);
+    }
+    let long_found: regex.MatchResult = regex.stream_next(&mut long_stream);
+    if !long_found.ok() || long_found.end != strblen(long_chunk) {
+        return CASE_STREAM + 11 + regex.status_code(long_found.status);
+    }
+    return ensure(CASE_STREAM + 12, regex.stream_buffer_bytes(&long_stream) == STREAM_MIN_CAPACITY);
 }
 
 fn require_submatch_precedence() -> i32 {
@@ -430,6 +450,42 @@ fn require_linear_search() -> i32 {
     return 0;
 }
 
+fn require_prefilter_surface() -> i32 {
+    var literal: regex.Regex = regex.compile("needleXYZ");
+    defer regex.destroy(&mut literal);
+    let literal_result: regex.MatchResult = regex.search_compiled(&literal, "xxxxx needleXYZ tail");
+    if !literal_result.ok() ||
+        literal_result.start != strblen("xxxxx ") ||
+        literal_result.end != strblen("xxxxx needleXYZ") {
+        return CASE_PREFILTER + 1 + regex.status_code(literal_result.status);
+    }
+
+    var folded: regex.Regex = regex.compile("(?i)abcdef");
+    defer regex.destroy(&mut folded);
+    let folded_result: regex.MatchResult = regex.search_compiled(&folded, "--AbCdEf");
+    if !folded_result.ok() || folded_result.start != 2usize || folded_result.end != 8usize {
+        return CASE_PREFILTER + 2 + regex.status_code(folded_result.status);
+    }
+
+    let patterns: [1]str = ["needleXYZ"];
+    var set: regex.RegexSet = regex.compile_set(patterns[:]);
+    defer regex.destroy_set(&mut set);
+    if !set.valid() {
+        return CASE_PREFILTER + 3 + regex.status_code(set.status);
+    }
+    var ids: [8]usize = [0usize; 8];
+    let matches: regex.SetMatchesResult = regex.matches_set_compiled(
+        &set,
+        "xxxxx needleXYZ tail",
+        ids_ptr(&mut ids),
+        SET_ID_CAPACITY
+    );
+    if matches.status != regex.RegexStatus.ok || matches.count != 1usize || ids[0usize] != 0usize {
+        return CASE_PREFILTER + 4 + regex.status_code(matches.status);
+    }
+    return 0;
+}
+
 fn main() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
@@ -467,5 +523,9 @@ fn main() -> i32 {
     if precedence_code != 0 {
         return precedence_code;
     }
-    return require_linear_search();
+    let linear_code: i32 = require_linear_search();
+    if linear_code != 0 {
+        return linear_code;
+    }
+    return require_prefilter_surface();
 }

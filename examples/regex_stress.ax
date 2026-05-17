@@ -12,6 +12,7 @@ const CASE_LIMIT_BASE: i32 = 400;
 const CASE_FEATURE_BASE: i32 = 500;
 const CASE_CAPTURE_BASE: i32 = 600;
 const CASE_LINEAR_SEARCH_BASE: i32 = 700;
+const CASE_PREFIX_SEARCH_BASE: i32 = 800;
 
 const STRESS_SEARCH_ITERATIONS: usize = 512usize;
 const STRESS_FULLMATCH_ITERATIONS: usize = 256usize;
@@ -222,6 +223,33 @@ fn require_linear_search_surface() -> i32 {
     );
 }
 
+fn require_prefix_prefilter_surface() -> i32 {
+    var literal: regex.Regex = regex.compile("needleXYZ");
+    defer regex.destroy(&mut literal);
+    let ready: i32 = require_compiled(CASE_PREFIX_SEARCH_BASE, &literal);
+    if ready != 0 {
+        return ready;
+    }
+    var iteration: usize = 0usize;
+    while iteration < STRESS_SEARCH_ITERATIONS {
+        let result: regex.MatchResult = regex.search_compiled(
+            &literal,
+            "trace trace trace trace trace trace trace trace trace trace needleXYZ"
+        );
+        let code: i32 = require_match_span(
+            CASE_PREFIX_SEARCH_BASE + 20,
+            result,
+            strblen("trace trace trace trace trace trace trace trace trace trace "),
+            strblen("trace trace trace trace trace trace trace trace trace trace needleXYZ")
+        );
+        if code != 0 {
+            return code;
+        }
+        iteration += 1usize;
+    }
+    return 0;
+}
+
 fn main() -> i32 {
     var search_pattern: regex.Regex = regex.compile("(error|warn|info|debug):\\s+\\w+@\\w+\\.(com|net|org)");
     defer regex.destroy(&mut search_pattern);
@@ -275,5 +303,9 @@ fn main() -> i32 {
     if capture_code != 0 {
         return capture_code;
     }
-    return require_linear_search_surface();
+    let linear_code: i32 = require_linear_search_surface();
+    if linear_code != 0 {
+        return linear_code;
+    }
+    return require_prefix_prefilter_surface();
 }

@@ -139,10 +139,32 @@ fn compact_stream(stream: &mut t.RegexStream) -> void {
         return;
     }
     let remaining: usize = stream.len - stream.next_start;
+    let target_capacity: usize = compact_capacity(remaining);
+    if target_capacity < stream.capacity {
+        let next: *mut u8 = alloc.alloc_zeroed_bytes(target_capacity, sizeof[u8]);
+        if next != null {
+            copy_bytes(next, 0usize, stream.buffer, stream.next_start, remaining);
+            alloc.free_bytes(stream.buffer);
+            stream.buffer = next;
+            stream.capacity = target_capacity;
+            stream.base_offset += stream.next_start;
+            stream.len = remaining;
+            stream.next_start = 0usize;
+            return;
+        }
+    }
     copy_bytes(stream.buffer, 0usize, stream.buffer, stream.next_start, remaining);
     stream.base_offset += stream.next_start;
     stream.len = remaining;
     stream.next_start = 0usize;
+}
+
+fn compact_capacity(remaining: usize) -> usize {
+    var target: usize = limits.MIN_STREAM_CAPACITY;
+    while target < remaining {
+        target *= limits.CAPACITY_GROWTH_FACTOR;
+    }
+    return target;
 }
 
 fn copy_chunk(dst: *mut u8, dst_start: usize, chunk: str, chunk_len: usize) -> void {

@@ -193,6 +193,8 @@ template <typename T, typename Allocator>
     case syntax::ExprKind::align_of:
     case syntax::ExprKind::ptr_addr:
     case syntax::ExprKind::paddr:
+    case syntax::ExprKind::slice_data:
+    case syntax::ExprKind::slice_len:
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
     case syntax::ExprKind::str_is_valid_utf8:
@@ -534,6 +536,8 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
     case syntax::ExprKind::align_of:
     case syntax::ExprKind::ptr_addr:
     case syntax::ExprKind::paddr:
+    case syntax::ExprKind::slice_data:
+    case syntax::ExprKind::slice_len:
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
     case syntax::ExprKind::str_is_valid_utf8:
@@ -753,6 +757,9 @@ TypeHandle SemanticAnalyzer::analyze_builtin_expr(
         return this->analyze_ptr_addr_expr(expr_id, expr);
     case syntax::ExprKind::paddr:
         return this->analyze_paddr_expr(expr_id, expr);
+    case syntax::ExprKind::slice_data:
+    case syntax::ExprKind::slice_len:
+        return this->analyze_slice_projection_expr(expr_id, expr);
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
         return this->analyze_str_projection_expr(expr_id, expr);
@@ -1725,6 +1732,36 @@ TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
         return this->record_expr_type(
             expr_id,
             this->checked_.types.pointer(PointerMutability::const_, this->checked_.types.builtin(BuiltinType::u8))
+        );
+    }
+    return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
+}
+
+TypeHandle SemanticAnalyzer::analyze_slice_projection_expr(
+    const syntax::ExprId expr_id,
+    const SemanticAnalyzer::ExprView& expr
+) {
+    const TypeHandle value = this->analyze_expr(expr.cast_expr);
+    if (!this->checked_.types.is_slice(value)) {
+        this->report_general(
+            expr.range,
+            expr.kind == syntax::ExprKind::slice_data
+                ? std::string(SEMA_SLICEPTR_SLICE)
+                : std::string(SEMA_SLICELEN_SLICE)
+        );
+        if (expr.kind == syntax::ExprKind::slice_data) {
+            return this->record_expr_type(
+                expr_id,
+                this->checked_.types.pointer(PointerMutability::const_, this->checked_.types.builtin(BuiltinType::u8))
+            );
+        }
+        return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
+    }
+    if (expr.kind == syntax::ExprKind::slice_data) {
+        const TypeInfo& slice = this->checked_.types.get(value);
+        return this->record_expr_type(
+            expr_id,
+            this->checked_.types.pointer(slice.slice_mutability, slice.slice_element)
         );
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));

@@ -10,6 +10,9 @@ pub const FLAG_EXTENDED: u8 = 16u8;
 pub const FLAG_UNGREEDY: u8 = 32u8;
 pub const FLAG_UNICODE: u8 = 64u8;
 
+pub const MODE_TEXT: u8 = 0u8;
+pub const MODE_BYTES: u8 = 1u8;
+
 pub const OP_EMPTY: u8 = 0u8;
 pub const OP_EPSILON: u8 = 1u8;
 pub const OP_SPLIT: u8 = 2u8;
@@ -22,12 +25,19 @@ pub const OP_ASSERT_ABSOLUTE_START: u8 = 8u8;
 pub const OP_ASSERT_ABSOLUTE_END: u8 = 9u8;
 pub const OP_ASSERT_WORD_BOUNDARY: u8 = 10u8;
 pub const OP_ASSERT_NOT_WORD_BOUNDARY: u8 = 11u8;
-pub const OP_MATCH: u8 = 12u8;
-pub const OP_SAVE: u8 = 13u8;
+pub const OP_ASSERT_WORD_START: u8 = 12u8;
+pub const OP_ASSERT_WORD_END: u8 = 13u8;
+pub const OP_MATCH: u8 = 14u8;
+pub const OP_SAVE: u8 = 15u8;
 
 pub const CLASS_RANGE_SCALAR: u8 = 0u8;
 pub const CLASS_RANGE_PROPERTY: u8 = 1u8;
 pub const CLASS_RANGE_PROPERTY_NEGATED: u8 = 2u8;
+pub const CLASS_EXPR_UNION: u8 = 3u8;
+pub const CLASS_EXPR_INTERSECTION: u8 = 4u8;
+pub const CLASS_EXPR_DIFFERENCE: u8 = 5u8;
+pub const CLASS_EXPR_SYMMETRIC_DIFFERENCE: u8 = 6u8;
+pub const CLASS_EXPR_COMPLEMENT: u8 = 7u8;
 
 pub const CAPTURE_MISSING: usize = 18446744073709551615usize;
 pub const CAPTURE_WHOLE_MATCH: usize = 0usize;
@@ -63,6 +73,7 @@ pub enum RegexStatus: u8 {
     invalid_group_name = 10,
     buffer_too_small = 11,
     replacement_error = 12,
+    database_error = 13,
 }
 
 pub struct State {
@@ -104,6 +115,7 @@ pub struct Fragment {
 
 pub struct Regex {
     pub pattern: str;
+    pub mode: u8;
     pub states: *mut State;
     pub state_len: usize;
     pub state_capacity: usize;
@@ -157,6 +169,7 @@ pub struct SplitIter {
     pub compiled: *const Regex;
     pub input: str;
     pub next_start: usize;
+    pub remaining_parts: usize;
     pub pending_tail: bool;
     pub finished: bool;
     pub status: RegexStatus;
@@ -174,6 +187,46 @@ pub struct ReplaceResult {
     pub written: usize;
     pub required: usize;
     pub replacements: usize;
+}
+
+pub type ReplaceCallback = fn(str, &Captures, *mut u8, usize) -> ReplaceResult;
+
+pub struct RegexSet {
+    pub mode: u8;
+    pub states: *mut State;
+    pub state_len: usize;
+    pub state_capacity: usize;
+    pub ranges: *mut ClassRange;
+    pub range_len: usize;
+    pub range_capacity: usize;
+    pub pattern_count: usize;
+    pub start: usize;
+    pub status: RegexStatus;
+    pub error_index: usize;
+}
+
+pub struct SetMatchesResult {
+    pub status: RegexStatus;
+    pub matched: bool;
+    pub count: usize;
+    pub written: usize;
+}
+
+pub struct RegexStream {
+    pub compiled: *const Regex;
+    pub buffer: *mut u8;
+    pub len: usize;
+    pub capacity: usize;
+    pub base_offset: usize;
+    pub next_start: usize;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
+pub struct DatabaseResult {
+    pub status: RegexStatus;
+    pub written: usize;
+    pub required: usize;
 }
 
 pub fn invalid_fragment() -> Fragment {
@@ -232,6 +285,23 @@ pub fn replace_result(status: RegexStatus, written: usize, required: usize, repl
     };
 }
 
+pub fn set_matches_result(status: RegexStatus, matched: bool, count: usize, written: usize) -> SetMatchesResult {
+    return SetMatchesResult {
+        status: status,
+        matched: matched,
+        count: count,
+        written: written,
+    };
+}
+
+pub fn database_result(status: RegexStatus, written: usize, required: usize) -> DatabaseResult {
+    return DatabaseResult {
+        status: status,
+        written: written,
+        required: required,
+    };
+}
+
 impl Regex {
     pub fn valid(self: &Regex) -> bool {
         return self.status == RegexStatus.ok;
@@ -258,6 +328,18 @@ impl SplitPart {
 
 impl ReplaceResult {
     pub fn ok(self: &ReplaceResult) -> bool {
+        return self.status == RegexStatus.ok;
+    }
+}
+
+impl RegexSet {
+    pub fn valid(self: &RegexSet) -> bool {
+        return self.status == RegexStatus.ok;
+    }
+}
+
+impl DatabaseResult {
+    pub fn ok(self: &DatabaseResult) -> bool {
         return self.status == RegexStatus.ok;
     }
 }

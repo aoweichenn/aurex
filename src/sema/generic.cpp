@@ -426,6 +426,8 @@ private:
         case syntax::ExprKind::align_of:
         case syntax::ExprKind::ptr_addr:
         case syntax::ExprKind::paddr:
+        case syntax::ExprKind::slice_data:
+        case syntax::ExprKind::slice_len:
         case syntax::ExprKind::str_data:
         case syntax::ExprKind::str_byte_len:
         case syntax::ExprKind::str_is_valid_utf8:

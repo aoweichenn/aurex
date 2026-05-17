@@ -394,6 +394,12 @@ inline constexpr std::string_view SEMA_PTRAT_POINTER =
 inline constexpr std::string_view SEMA_PTRAT_INTEGER =
     "ptrat address must be an integer";
 
+inline constexpr std::string_view SEMA_SLICEPTR_SLICE =
+    "sliceptr requires a slice value";
+
+inline constexpr std::string_view SEMA_SLICELEN_SLICE =
+    "slicelen requires a slice value";
+
 inline constexpr std::string_view SEMA_STRPTR_STR =
     "strptr requires a str value";
 

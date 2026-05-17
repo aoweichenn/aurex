@@ -10,14 +10,18 @@
 
 ```text
 examples/libs/regex/api.ax
+examples/libs/regex/bytes.ax
+examples/libs/regex/compile/database.ax
 examples/libs/regex/compile/parser.ax
 examples/libs/regex/compile/program.ax
+examples/libs/regex/compile/set.ax
 examples/libs/regex/config/limits.ax
 examples/libs/regex/core/results.ax
 examples/libs/regex/core/types.ax
 examples/libs/regex/ops/iter.ax
 examples/libs/regex/ops/replace.ax
 examples/libs/regex/ops/split.ax
+examples/libs/regex/ops/stream.ax
 examples/libs/regex/runtime/alloc.ax
 examples/libs/regex/syntax/ascii.ax
 examples/libs/regex/vm/engine.ax
@@ -29,6 +33,12 @@ examples/libs/regex/vm/engine.ax
 import regex.api as regex;
 ```
 
+需要 raw byte 语义时导入 bytes facade：
+
+```aurex
+import regex.bytes as bytes;
+```
+
 编译示例：
 
 ```sh
@@ -38,6 +48,8 @@ build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_
 build/tests/regex_phase1
 build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
 build/tests/regex_industrial
+build/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced
+build/tests/regex_advanced
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```
@@ -52,9 +64,9 @@ build/tests/regex_stress
 - 显式所有权：`Regex` 和 `Captures` 都持有 FFI 堆内存，分别用 `destroy` 和 `destroy_captures` 释放。
 - 无魔法数字：ASCII byte、opcode、flag、错误 kind、容量策略、资源上限和 repeat 上限都使用命名常量。
 - 资源可见：公开状态数、range 数、捕获数、编译后程序内存估算和 VM 工作区内存估算。
-- API 可组合：提供 compiled API、便利 API、find/captures 游标、split 游标、替换到调用方 buffer 的接口。
+- API 可组合：提供 compiled API、便利 API、text/bytes 双入口、find/captures 游标、split/splitn 游标、模板替换、回调替换、RegexSet 多模式扫描、可序列化 set database 和文本 stream 状态接口。
 - 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute anchors、hex/unicode escapes、quoted literal、newline escape、POSIX/Unicode property classes，同时继续拒绝反向引用和 lookaround。
-- 向工业级演进：当前实现明确约束 pattern/program/workspace/capture 上限，避免灾难性回溯，并用 demo、phase1、industrial、stress 样例锁住行为。
+- 向工业级演进：当前实现明确约束 pattern/program/workspace/capture/set 上限，避免灾难性回溯，并用 demo、phase1、industrial、advanced、stress 样例锁住行为。
 
 当前版本仍是 Aurex 语言能力验证库，不声称达到 RE2、Rust regex、PCRE2 或 Hyperscan 的生产成熟度。本文后面单独列出工业级目标和对比。
 
@@ -63,14 +75,20 @@ build/tests/regex_stress
 `regex.api`
 
 - 公开 facade。
-- 导出 `Regex`、`MatchResult`、`RegexStatus`、`Captures`、`CaptureSpan`、`FindIter`、`CaptureIter`、`SplitIter`、`SplitPart`、`ReplaceResult` 类型别名。
-- 提供编译、释放、匹配、捕获、迭代、替换、分割、错误诊断和资源查询 API。
-- `Regex.valid`、`MatchResult.ok`、`Captures.ok`、`SplitPart.ok`、`ReplaceResult.ok` 是定义在 `regex.core.types` 中的类型方法，通过 facade 暴露出的类型别名使用。
+- 导出 `Regex`、`MatchResult`、`RegexStatus`、`Captures`、`CaptureSpan`、`FindIter`、`CaptureIter`、`SplitIter`、`SplitPart`、`ReplaceResult`、`ReplaceCallback`、`RegexSet`、`SetMatchesResult`、`RegexStream`、`DatabaseResult` 类型别名。
+- 提供编译、释放、匹配、捕获、迭代、替换、分割、多模式 set、database 序列化、stream、错误诊断和资源查询 API。
+- `Regex.valid`、`RegexSet.valid`、`MatchResult.ok`、`Captures.ok`、`SplitPart.ok`、`ReplaceResult.ok`、`DatabaseResult.ok` 是定义在 `regex.core.types` 中的类型方法，通过 facade 暴露出的类型别名使用。
+
+`regex.bytes`
+
+- text facade 的 raw byte 版本。
+- `compile` 等价于 `regex.api.compile_bytes`，匹配函数接受 `[]const u8`。
+- 支持 bytes compiled regex、bytes captures 和 bytes RegexSet 扫描；`.` 和 literal 消费一个 raw byte，`\xNN` 在 bytes 模式匹配单个 byte。
 
 `regex.core.types`
 
 - 定义 `RegexStatus`。
-- 定义 VM 状态 `State`、字符类 range `ClassRange`、捕获元信息 `CaptureInfo`、捕获 span `CaptureSpan`、编译片段 `Fragment`、持有型 `Regex`、匹配结果 `MatchResult`、捕获结果 `Captures`、游标和替换结果。
+- 定义 VM 状态 `State`、字符类 range `ClassRange`、捕获元信息 `CaptureInfo`、捕获 span `CaptureSpan`、编译片段 `Fragment`、持有型 `Regex`、持有型 `RegexSet`、stream 状态、匹配结果 `MatchResult`、捕获结果 `Captures`、游标、替换结果和 database 结果。
 - 定义 opcode、flag、错误 kind、`NO_STATE`、`NO_CAPTURE`、`CAPTURE_MISSING` 等程序表示常量。
 
 `regex.core.results`
@@ -110,6 +128,17 @@ build/tests/regex_stress
 - 提供构造片段的 helper：literal、any、class、assert、split、epsilon、save、match、concat、alternate、repeat、capture。
 - 提供 `state_count`、`range_count`、`program_bytes`。
 
+`regex.compile.set`
+
+- 将 `[]const str` 多个 pattern 编译为共享 `RegexSet` 状态表。
+- 每个 pattern 单独解析成安全 NFA，再复制到同一个 set program；set 起点用 split 串联多个 pattern 起点，accept state 的 `value` 保存 pattern id。
+- 支持 text set 和 bytes set；释放使用 `destroy_set`。
+
+`regex.compile.database`
+
+- 将 `RegexSet` 序列化为稳定 little-endian byte database，字段逐项编码，不依赖 C struct ABI。
+- `deserialize_set` 从 `[]const u8` 还原 `RegexSet`，验证 magic、version、mode、容量、state 引用、class range 边界和 match pattern id。
+
 `regex.compile.parser`
 
 - 递归下降解析 pattern。
@@ -125,27 +154,34 @@ build/tests/regex_stress
 - `captures_compiled` 和 `captures_fullmatch_compiled` 返回 owning `Captures`。
 - 在同一起点下使用有序 Thompson 线程。greedy 分支会保留后备较长结果，lazy/ungreedy 分支可提前接受较短结果。
 - 对非 multiline 的 `^` 和 `\A` 开头 pattern 做 anchored 起点优化，只尝试 offset `0`；`(?m)^` 仍会扫描行首。
-- 检查工作区容量，提供 `workspace_bytes`。
+- 检查工作区容量，提供 `workspace_bytes` 和 `set_workspace_bytes`。
+- `matches_set_compiled` / `matches_bytes_set_compiled` 在共享 set program 上扫描输入，把匹配到的 pattern id 以升序写入调用方 `usize` buffer。
 
 `regex.ops.iter`
 
 - 提供 C++ iterator 风格的显式游标 API。
 - `find_iter` / `find_next` 返回连续 `MatchResult`。
 - `captures_iter` / `captures_next` 返回连续 `Captures`，每个返回值需要调用 `destroy_captures`。
-- 对零长度匹配做 1 byte 前进，避免无限循环。
+- 对零长度匹配按下一个 Unicode scalar boundary 前进，避免无限循环。
 
 `regex.ops.replace`
 
-- 实现 `replace_all`。
+- 实现 `replace_all`、`replace_first`、`replace_n` 和 `replace_*_with` 回调替换。
 - 不创建拥有型字符串；调用方传入 `*mut u8` 和容量。
 - 返回 `ReplaceResult { status, written, required, replacements }`。
-- 支持 literal replacement、`$$`、`$0`..`$9`、`${name}`。
+- 模板替换支持 literal replacement、`$$`、`$0`、多位编号 `$10`、braced 编号 `${10}` 和 `${name}`。
 
 `regex.ops.split`
 
-- 实现 `split_iter` / `split_next`。
+- 实现 `split_iter` / `splitn_iter` / `split_next`。
 - 返回 input 的 byte span，不分配字符串。
-- 对零长度分隔符做 1 byte 前进，避免无限循环。
+- 对零长度分隔符按下一个 Unicode scalar boundary 前进，避免无限循环。
+
+`regex.ops.stream`
+
+- 实现文本流式扫描状态。
+- `open_stream` 绑定一个 text `Regex`，`stream_feed` 追加 `str` chunk，`stream_next` 返回绝对 byte offset span，`stream_finish` 标记 EOF。
+- 未 finish 时，结束在当前 buffer 尾部的潜在可扩展 match 会延后，避免把跨 chunk match 截断。
 
 ## 4. Public API
 
@@ -160,16 +196,31 @@ pub type CaptureIter = regex.core.types.CaptureIter;
 pub type SplitIter = regex.core.types.SplitIter;
 pub type SplitPart = regex.core.types.SplitPart;
 pub type ReplaceResult = regex.core.types.ReplaceResult;
+pub type ReplaceCallback = regex.core.types.ReplaceCallback;
+pub type RegexSet = regex.core.types.RegexSet;
+pub type SetMatchesResult = regex.core.types.SetMatchesResult;
+pub type RegexStream = regex.core.types.RegexStream;
+pub type DatabaseResult = regex.core.types.DatabaseResult;
 
 pub fn compile(pattern: str) -> Regex;
+pub fn compile_bytes(pattern: str) -> Regex;
+pub fn compile_set(patterns: []const str) -> RegexSet;
+pub fn compile_set_bytes(patterns: []const str) -> RegexSet;
 pub fn destroy(compiled: &mut Regex) -> void;
+pub fn destroy_set(compiled: &mut RegexSet) -> void;
 pub fn is_valid(compiled: &Regex) -> bool;
+pub fn set_is_valid(compiled: &RegexSet) -> bool;
 
 pub fn state_count(compiled: &Regex) -> usize;
 pub fn range_count(compiled: &Regex) -> usize;
 pub fn program_bytes(compiled: &Regex) -> usize;
 pub fn workspace_bytes(compiled: &Regex) -> usize;
 pub fn capture_count(compiled: &Regex) -> usize;
+pub fn set_state_count(compiled: &RegexSet) -> usize;
+pub fn set_range_count(compiled: &RegexSet) -> usize;
+pub fn set_program_bytes(compiled: &RegexSet) -> usize;
+pub fn set_workspace_bytes(compiled: &RegexSet) -> usize;
+pub fn database_bytes(compiled: &RegexSet) -> usize;
 
 pub fn max_pattern_bytes() -> usize;
 pub fn max_state_capacity() -> usize;
@@ -190,6 +241,13 @@ pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_cap
 
 pub fn captures_compiled(compiled: &Regex, input: str) -> Captures;
 pub fn captures_fullmatch_compiled(compiled: &Regex, input: str) -> Captures;
+pub fn search_bytes_compiled(compiled: &Regex, input: []const u8) -> MatchResult;
+pub fn fullmatch_bytes_compiled(compiled: &Regex, input: []const u8) -> MatchResult;
+pub fn captures_bytes_compiled(compiled: &Regex, input: []const u8) -> Captures;
+pub fn matches_set_compiled(compiled: &RegexSet, input: str, out_pattern_ids: *mut usize, out_capacity: usize) -> SetMatchesResult;
+pub fn matches_bytes_set_compiled(compiled: &RegexSet, input: []const u8, out_pattern_ids: *mut usize, out_capacity: usize) -> SetMatchesResult;
+pub fn serialize_set(compiled: &RegexSet, out: *mut u8, out_capacity: usize) -> DatabaseResult;
+pub fn deserialize_set(bytes: []const u8) -> RegexSet;
 pub fn destroy_captures(captures: &mut Captures) -> void;
 pub fn capture_at(captures: &Captures, index: usize) -> CaptureSpan;
 pub fn capture_text(input: str, captures: &Captures, index: usize) -> str;
@@ -203,9 +261,22 @@ pub fn captures_iter(compiled: &Regex, input: str) -> CaptureIter;
 pub fn captures_next(iter: &mut CaptureIter) -> Captures;
 
 pub fn split_iter(compiled: &Regex, input: str) -> SplitIter;
+pub fn splitn_iter(compiled: &Regex, input: str, limit: usize) -> SplitIter;
 pub fn split_next(iter: &mut SplitIter) -> SplitPart;
 
 pub fn replace_all(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn replace_first(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn replace_n(compiled: &Regex, input: str, replacement: str, limit: usize, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn replace_all_with(compiled: &Regex, input: str, callback: ReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn replace_first_with(compiled: &Regex, input: str, callback: ReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn replace_n_with(compiled: &Regex, input: str, callback: ReplaceCallback, limit: usize, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+
+pub fn open_stream(compiled: &Regex) -> RegexStream;
+pub fn stream_feed(stream: &mut RegexStream, chunk: str) -> RegexStatus;
+pub fn stream_next(stream: &mut RegexStream) -> MatchResult;
+pub fn stream_finish(stream: &mut RegexStream) -> RegexStatus;
+pub fn destroy_stream(stream: &mut RegexStream) -> void;
+pub fn stream_buffer_bytes(stream: &RegexStream) -> usize;
 
 pub fn error_offset(compiled: &Regex) -> usize;
 pub fn error_kind(compiled: &Regex) -> u8;
@@ -230,6 +301,7 @@ pub enum RegexStatus: u8 {
     invalid_group_name = 10,
     buffer_too_small = 11,
     replacement_error = 12,
+    database_error = 13,
 }
 ```
 
@@ -265,6 +337,44 @@ pub struct ReplaceResult {
     pub required: usize;
     pub replacements: usize;
 }
+
+pub struct RegexSet {
+    pub mode: u8;
+    pub states: *mut State;
+    pub state_len: usize;
+    pub state_capacity: usize;
+    pub ranges: *mut ClassRange;
+    pub range_len: usize;
+    pub range_capacity: usize;
+    pub pattern_count: usize;
+    pub start: usize;
+    pub status: RegexStatus;
+    pub error_index: usize;
+}
+
+pub struct SetMatchesResult {
+    pub status: RegexStatus;
+    pub matched: bool;
+    pub count: usize;
+    pub written: usize;
+}
+
+pub struct RegexStream {
+    pub compiled: *const Regex;
+    pub buffer: *mut u8;
+    pub len: usize;
+    pub capacity: usize;
+    pub base_offset: usize;
+    pub next_start: usize;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
+pub struct DatabaseResult {
+    pub status: RegexStatus;
+    pub written: usize;
+    pub required: usize;
+}
 ```
 
 调用规则：
@@ -274,21 +384,27 @@ pub struct ReplaceResult {
 - `captures` 是 owning capture convenience API，调用方仍必须 `destroy_captures`。
 - `replace` 是 buffer replacement convenience API，内部 compile、replace、destroy。
 - `compile` 返回持有 FFI 分配内存的 `Regex`，调用方必须 `destroy(&mut compiled)`。
+- `compile_set` / `compile_set_bytes` 返回持有 FFI 分配内存的 `RegexSet`，调用方必须 `destroy_set(&mut compiled_set)`。
+- `deserialize_set` 返回持有 FFI 分配内存的 `RegexSet`，调用方同样必须 `destroy_set`。
+- `open_stream` 返回持有 FFI buffer 的 `RegexStream`，调用方必须 `destroy_stream(&mut stream)`。
 - `captures_compiled`、`captures_fullmatch_compiled` 和 `captures_next` 返回持有 FFI 分配内存的 `Captures`，调用方必须 `destroy_captures(&mut captures)`。
 - 推荐写 `defer regex.destroy(&mut compiled);` 和 `defer regex.destroy_captures(&mut captures);`，避免早返回泄漏。
 - `compiled.valid()` 等价于 `regex.is_valid(&compiled)`。
+- `compiled_set.valid()` 等价于 `regex.set_is_valid(&compiled_set)`。
 - `result.ok()` 表示 `result.status == RegexStatus.ok && result.matched`。
 - `captures.ok()` 表示 `captures.status == RegexStatus.ok && captures.matched`。
 - `replace_result.ok()` 表示输出缓冲区容量足够且状态为 `ok`。
+- `database_result.ok()` 表示 database 序列化容量足够且状态为 `ok`。
 - `compiled.status != RegexStatus.ok` 时，匹配函数直接返回对应状态。
 - 没有匹配是正常运行结果：`MatchResult { matched: false, status: no_match }` 或 `Captures { matched: false, status: no_match }`。
 - `program_bytes` 是状态表容量、字符类 range 表容量、捕获元信息表容量的估算字节数。
 - `workspace_bytes` 是一次匹配需要的 VM 工作区估算字节数，包括 capture snapshot row。
+- `set_program_bytes` 是 `RegexSet` 状态表和字符类表容量估算；`set_workspace_bytes` 包含 set VM 工作区和 pattern id bitset。
 - convenience API 每次调用都会 compile/destroy；循环、大量输入或服务端路径应优先使用 compiled API。
 
 ## 5. 正则语法
 
-本库匹配单位是 UTF-8 `str` 的 byte，不是 Unicode scalar 或 grapheme。
+Text regex 的匹配消费单位是 UTF-8 `str` 的 Unicode scalar value，公开 span 仍是 byte offset；bytes regex 的匹配消费单位是 `[]const u8` 的 raw byte。两者都不是 grapheme cluster 级 API。
 
 ### 5.1 顶层文法
 
@@ -306,6 +422,8 @@ atom        = literal
             | "(" alternation ")"
             | "(?:" alternation ")"
             | "(?<" name ">" alternation ")"
+            | "(?P<" name ">" alternation ")"
+            | "(?#" comment ")"
             | "(?" flags ")"
             | "(?" flags ":" alternation ")"
 quantifier  = "*"
@@ -368,8 +486,12 @@ hello
 \x{H...}    braced hex codepoint，编译成 UTF-8 byte 序列
 \uNNNN      4 位 hex codepoint，编译成 UTF-8 byte 序列
 \u{H...}    braced Unicode codepoint，编译成 UTF-8 byte 序列
+\UNNNNNNNN  8 位 Unicode codepoint
+\U{H...}    braced Unicode codepoint
 \Q...\E     quoted literal，区间内元字符按字面量处理
 ```
+
+在 `compile_bytes` / `regex.bytes.compile` 中，literal、`.` 和字符类都按 raw byte 消费；`\xNN` 对 `0x00..0xff` 匹配单个 byte，超过 `0xff` 的 braced Unicode codepoint 会按 UTF-8 byte 序列展开。
 
 预定义 Unicode 类：
 
@@ -390,6 +512,8 @@ hello
 \Z    当前实现等同 \z
 \b    Unicode word boundary
 \B    非 word boundary
+\b{start} Unicode word start
+\b{end}   Unicode word end
 \N    任意非 Unicode line break scalar
 \R    CRLF 或单个 Unicode line break scalar
 ```
@@ -437,6 +561,17 @@ $     默认仅在输入结尾成功；`(?m)` multiline 下也在 Unicode line b
 [A-Za-z0-9_]
 [^0-9]
 ```
+
+支持嵌套字符类和 set algebra，表达式以 postfix class program 保存，不展开成巨型 range 表：
+
+```text
+[a-z&&[aeiou]]        intersection
+[a-z--[aeiou]]        difference
+[a-f~~[d-z]]          symmetric difference
+[[\p{L}]--[\p{Greek}]] nested Unicode class difference
+```
+
+取反 `[^...]` 会编译成 class expression complement；在 `(?i)` 下，case folding 先应用到 primitive class，再应用 complement，因此 `(?i)[^a-f]` 不会匹配 `F`。
 
 类内支持：
 
@@ -499,6 +634,7 @@ POSIX 名称会映射到 Unicode 属性；`\p{...}` / `\P{...}` 支持 Unicode 1
 
 ```text
 (?<user>\w+)@(?<domain>\w+\.(?:com|net))
+(?P<user>\w+)
 ```
 
 捕获编号从 `0` 开始：
@@ -575,7 +711,7 @@ Unicode 语义：
 - VM 每个活动 state 携带一行 capture snapshot。
 - 到达 accept 时复制当前 capture row 为 best capture row。
 - 被 bounded repeat 复制的捕获组复用同一个 capture slot；多次迭代时保留最后一次参与匹配的 span。
-- 当前 VM 仍按 state id 去重活动列表，并用捕获 row 记录可接受结果。多数常规模式能得到稳定结果，greedy/lazy 的外部 span 已被测试锁住；复杂交替中的完整 submatch precedence 还没有做到 PCRE/Rust/RE2 级精确兼容。后续若要工业级精确兼容，需要定义并测试完整子匹配优先级。
+- 子匹配优先级采用左最先、同一起点下按 NFA split 顺序的 ordered Thompson 语义：每个 state id 只保留最高优先级线程，greedy split 先继续消费，lazy/ungreedy split 先退出。`regex_advanced.ax` 锁住了 `(a*)(a*)`、`(a|ab)(b?)` 等子匹配 precedence 回归。
 
 ## 7. Iterator、replace、split
 
@@ -589,7 +725,7 @@ let second: regex.MatchResult = regex.find_next(&mut iter);
 
 - 每次返回下一个 match span。
 - 结束时返回 `status == no_match`。
-- 零长度匹配会至少前进 1 byte。
+- 零长度匹配会至少前进到下一个 Unicode scalar boundary。
 
 `captures_iter` / `captures_next`：
 
@@ -602,7 +738,7 @@ defer regex.destroy_captures(&mut captures);
 - 每次返回一个 owning `Captures`。
 - 调用方必须释放每个成功或失败返回的 `Captures`；空结果释放是安全的。
 
-`replace_all`：
+`replace_all` / `replace_first` / `replace_n`：
 
 ```aurex
 var buffer: [64]u8 = [0; 64];
@@ -616,9 +752,12 @@ let result: regex.ReplaceResult = regex.replace_all(&compiled, input, "${domain}
 - replacement 模板支持：
   - `$$`：字面量 `$`
   - `$0`：整体匹配
-  - `$1`..`$9`：编号捕获
+  - `$1`、`$10`：编号捕获，支持多位编号
+  - `${10}`：braced 编号捕获
   - `${name}`：命名捕获
 - 无效模板或未知 name 返回 `replacement_error`。
+- `replace_first` 等价于 `replace_n(..., 1usize, ...)`。
+- `replace_all_with` / `replace_first_with` / `replace_n_with` 接受 `ReplaceCallback = fn(str, &Captures, *mut u8, usize) -> ReplaceResult`，用于函数式替换。callback 负责写入提供的 replacement 子 buffer，并用 `required` 报告完整 replacement byte 数；外层仍会累计总 `required` 和 `replacements`。
 
 `split_iter` / `split_next`：
 
@@ -629,10 +768,71 @@ let part: regex.SplitPart = regex.split_next(&mut iter);
 
 - pattern 是分隔符。
 - 返回 input 的 byte span，不分配字符串。
+- `splitn_iter(compiled, input, limit)` 最多返回 `limit` 个 part；`limit == 1` 时直接返回剩余 tail。
 - 结束时返回 `status == no_match`。
-- 零长度分隔符会至少前进 1 byte。
+- 零长度分隔符会至少前进到下一个 Unicode scalar boundary。
 
-## 8. 错误诊断
+## 8. Bytes、RegexSet、Database、Stream
+
+Bytes facade：
+
+```aurex
+import regex.bytes as bytes;
+
+let raw: [2]u8 = [0xc3u8, 0xa9u8];
+let view: []const u8 = raw[:];
+let ok: bool = bytes.fullmatch("..", view);
+```
+
+- `regex.api.compile_bytes` 和 `regex.bytes.compile` 产生 bytes mode `Regex`。
+- bytes mode 只接受 `[]const u8` 输入；text mode API 调用 bytes regex 会返回 `unsupported`。
+- bytes mode 中 `.` 消费一个 byte，`\xNN` 匹配一个 byte；Unicode 属性仍可解析，但输入值只有 `0..255`。
+
+RegexSet：
+
+```aurex
+let patterns: [3]str = ["error:\\s+\\w+", "warn:\\s+\\w+", "\\p{Greek}+"];
+var set: regex.RegexSet = regex.compile_set(patterns[:]);
+defer regex.destroy_set(&mut set);
+
+var ids: [8]usize = [0usize; 8];
+let result: regex.SetMatchesResult =
+    regex.matches_set_compiled(&set, "trace Ω warn: ops", ids_ptr, 8usize);
+```
+
+- `RegexSet` 是多 pattern 共享 NFA program，不是循环调用多个 `Regex`。
+- `matches_set_compiled` 在一次 set VM 扫描中标记所有匹配的 pattern id，并按升序写入调用方 `usize` buffer。
+- `result.count` 是匹配到的 pattern 总数，`result.written` 是实际写入的 id 数；buffer 小时仍可通过 `count` 判断还有多少结果。
+- `compile_set_bytes` / `matches_bytes_set_compiled` 提供 raw byte 版本。
+
+Database：
+
+```aurex
+let bytes_needed: usize = regex.database_bytes(&set);
+let serialized: regex.DatabaseResult = regex.serialize_set(&set, out, cap);
+var loaded: regex.RegexSet = regex.deserialize_set(serialized_bytes);
+defer regex.destroy_set(&mut loaded);
+```
+
+- database 格式有 magic/version/mode/header，并以 little-endian 编码 state/range 字段。
+- `deserialize_set` 会验证 mode、容量、state 引用、class range 边界和 match pattern id；格式错误返回 `RegexStatus.database_error`。
+- database 表示的是 `RegexSet`，用于多模式预编译产物传递；单 pattern `Regex` 如需复用仍直接持有 compiled object。
+
+Stream：
+
+```aurex
+var stream: regex.RegexStream = regex.open_stream(&compiled);
+defer regex.destroy_stream(&mut stream);
+regex.stream_feed(&mut stream, chunk);
+let found: regex.MatchResult = regex.stream_next(&mut stream);
+regex.stream_finish(&mut stream);
+```
+
+- 当前 stream API 是 text regex stream，输入 chunk 类型为 `str`。
+- `stream_next` 返回从 stream 开头计算的绝对 byte offset。
+- 未 `stream_finish` 时，如果最优 match 正好结束在当前 buffer 尾部，会返回 `no_match` 并等待后续 chunk，以避免截断可继续扩展的 match。
+
+## 9. 错误诊断
 
 `compile` 失败时可读：
 
@@ -662,7 +862,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | 12 | program_too_large | 程序容量超限 |
 | 13 | invalid_escape | 非法 hex/unicode escape 或未知字母转义 |
 
-## 9. 性能和内存要求
+## 10. 性能和内存要求
 
 当前实现采用 Thompson 风格 NFA 程序和列表式 VM，不使用递归回溯，因此不会出现 PCRE 风格回溯引擎常见的指数级灾难性回溯。
 
@@ -676,6 +876,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | `MAX_WORKSPACE_STATES` | 65536 | 单次 VM 工作区可容纳的 state 上限 |
 | `MAX_BOUNDED_REPEAT` | 32 | `{m,n}` 展开上限 |
 | `MAX_CAPTURE_GROUPS` | 64 | 捕获组上限，不含 `$0` |
+| `MAX_SET_PATTERNS` | 1024 | 单个 `RegexSet` 的 pattern 数上限 |
+| `MIN_STREAM_CAPACITY` | 64 | stream 初始 buffer 容量 |
 | `WORKSPACE_LIST_COUNT` | 4 | current、next、marks、stack 四组 VM state 数组 |
 | `WORKSPACE_CAPTURE_ROW_COUNT` | 4 | current、next、stack、best 四组捕获 row |
 
@@ -687,6 +889,9 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `capture_slots = capture_count * 2`，每个捕获含 start/end 两个 slot，`capture_count` 包含 `$0`。
 - `fullmatch_compiled` 匹配时间：`O(input_scalars * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
 - `search_compiled` 匹配时间：当前会尝试多个 scalar 起点，最坏是 `O(input_scalars * input_scalars * active_state_count * capture_slots)`；当 pattern 以非 multiline `^` 或 `\A` 开头时只尝试起点 `0`。
+- `matches_set_compiled` 使用共享 set NFA，一次起点扫描可同时推进所有 pattern；结果去重后升序写出 pattern id。当前仍按多个起点扫描，尚未实现 DFA/literal prefix 加速。
+- `serialize_set` 时间和输出大小都是 `O(state_len + range_len)`；deserialize 额外做同阶结构校验。
+- stream 当前保留内部 buffer，并在已消费前缀足够大时压缩；它是增量 API，不是 Hyperscan 级别的 bounded-history streaming automaton。
 - 同一起点采用有序线程接受策略：greedy 量词保留后备较长结果，lazy/ungreedy 量词可优先接受较短结果。
 - `search` / `fullmatch` convenience API 会每次重新编译，性能敏感路径必须使用 `compile` 后复用。
 - `replace_all` 只写调用方 buffer，不分配输出字符串；捕获结果当前逐 match 分配，后续可优化为复用 scratch captures。
@@ -696,29 +901,31 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `examples/regex_demo.ax`：基础语法和 compiled API。
 - `examples/regex_phase1.ax`：捕获、命名捕获、find/captures iterator、replace、split、错误 offset/kind。
 - `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、Unicode scalar/property/case-fold、便利 API 和非法 escape 诊断。
+- `examples/regex_advanced.ax`：nested class set algebra、bytes API、RegexSet、database roundtrip、replace callback、splitn、stream 和 submatch precedence。
 - `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、资源预算和错误路径。
 
 后续向工业级继续推进时，优先级如下：
 
 - 将 `search_compiled` 从多起点 NFA 扫描推进到真正线性时间搜索，加入 literal prefix / start byte 加速。
-- 给捕获优先级定义完整 submatch precedence，并增加差分测试。
 - `replace_all` 增加 scratch capture 复用，避免每个 match 分配。
+- `RegexSet` 后续可继续增加 literal prefilter 和 bytes set 的专用 SIMD/bitset 加速。
+- stream 后续可演进为 bounded-history automaton，减少长流上内部 buffer 保留。
 - 如果后续增加 grapheme API，需要继续把 byte offset、scalar 消费和 grapheme cluster 三层语义分开，不把当前 text regex 的 scalar 规则偷偷改成用户可见的 grapheme 规则。
 - 增加 fuzz、差分测试和长输入基准，把正确性、峰值内存和吞吐纳入自动化。
 
-## 10. 与工业级引擎对比
+## 11. 与工业级引擎对比
 
 | 引擎 | 核心定位 | 复杂度/性能特点 | 功能范围 | Aurex 当前差距 |
 | --- | --- | --- | --- | --- |
-| RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并有 Unicode 17.0 scalar/property/case-fold 层，但仍缺少成熟 DFA/NFA 混合优化、完整 submatch precedence 和多年工程验证 |
-| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API | Aurex API 方向接近，已有 text regex 的 scalar/property 语义，但还没有 literal acceleration、bytes/text 双 API、完整差分测试和成熟优化器 |
+| RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并有 Unicode 17.0 scalar/property/case-fold、ordered Thompson 子匹配语义和资源预算，但仍缺少成熟 DFA/NFA 混合优化和多年工程验证 |
+| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback 和 database roundtrip，但还没有 literal acceleration、完整 fuzz/差分测试和成熟优化器 |
 | PCRE2 | Perl-compatible 功能优先引擎 | 功能很全，可使用 JIT；回溯模型需要限制资源避免病态 pattern | 捕获、命名组、反向引用、lookaround、条件、丰富选项 | Aurex 不追求 PCRE 兼容，暂不支持这些会明显增加复杂度或破坏线性保证的语法 |
-| Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 没有多 pattern database、SIMD、streaming 状态和平台级优化 |
-| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial 样例 | UTF-8 scalar text regex、Unicode 17.0 general category/binary/script properties、simple case folding、flags、lazy/ungreedy、边界、锚点、捕获/命名捕获、迭代、替换、分割、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成工业级完成品 |
+| Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 现在已有共享 RegexSet、序列化 database 和 text stream API，但没有 SIMD、平台级向量化、vectored scan 或 bounded-history streaming automaton |
+| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial/advanced 样例 | UTF-8 scalar text regex、raw bytes regex、Unicode 17.0 属性、simple case folding、flags、lazy/ungreedy、边界、锚点、nested class algebra、捕获/命名捕获、迭代、替换、分割、RegexSet、database、stream、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成已经经受多年生产流量验证的工业完成品 |
 
 这个对比用于确定路线：Aurex 当前应优先学习 RE2/Rust regex 的“可界定复杂度、拒绝破坏线性时间的语法、显式资源预算、稳定 API”路线，而不是先追 PCRE2 的全部语法。
 
-## 11. 示例矩阵
+## 12. 示例矩阵
 
 | Pattern | Input | API | 结果 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -743,12 +950,17 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | `\p{Alpha}+` | `éΩЖ汉` | `fullmatch` | true | Unicode property class |
 | `\p{sc=Greek}+` | `Ωω` | `fullmatch` | true | Unicode script property |
 | `.` | `é` | `fullmatch` | true | 单个 UTF-8 scalar，不按 byte 拆分 |
+| `[a-z&&[aeiou]]+` | `aei` | `fullmatch` | true | class intersection |
+| `[a-z--[aeiou]]+` | `bcdf` | `fullmatch` | true | class difference |
+| `(?P<word>\w+)` | `word` | `captures_compiled` | `${word}=word` | Python 风格命名捕获兼容 |
+| `..` bytes mode | `[0xc3, 0xa9]` | `bytes.fullmatch` | true | raw byte 消费 |
+| `["alpha", "beta"]` set | `xx beta yy` | `matches_set_compiled` | id `1` | 多模式扫描 |
 | `[abc` | `a` | `compile` | `syntax_error`, offset `0` | 未闭合 class |
 | `abc[` | `a` | `compile` | `syntax_error`, offset `3` | 错误 offset |
 | `a{33}` | `a` | `compile` | `repeat_too_large` | repeat 展开保护 |
 | `\y` | `a` | `compile` | `unsupported`, kind `invalid_escape` | 未知字母转义 |
 
-## 12. 完整演示
+## 13. 完整演示
 
 `examples/regex_demo.ax` 展示了：
 
@@ -783,6 +995,18 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - convenience API：`is_match`、`find`、`captures`、`replace`。
 - invalid escape 诊断：`\y`、不完整 `\x`。
 
+`examples/regex_advanced.ax` 展示了：
+
+- nested class set algebra：`&&`、`--`、`~~` 和 Unicode class 差集。
+- 兼容语法：`(?P<name>...)`、`(?#...)`、`\U00000041` / `\U{...}`、`\b{start}` / `\b{end}`。
+- `regex.bytes`：raw byte 模式下 `.` 不按 UTF-8 scalar 合并。
+- `RegexSet`：共享多 pattern program、升序 pattern id 输出、set 资源查询。
+- database：`serialize_set` / `deserialize_set` roundtrip。
+- replacement：`$10`、`${10}`、`replace_first`、`replace_n` 和 `replace_all_with`。
+- `splitn_iter`。
+- `RegexStream`：分块 feed、finish 前延后尾部 match。
+- submatch precedence：ordered Thompson 捕获行为。
+
 `examples/regex_stress.ax` 展示了：
 
 - compiled API 在重复匹配中的复用。
@@ -791,7 +1015,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 大规模循环压力：固定迭代次数重复 search/fullmatch。
 - 错误状态验证：repeat 上限和非法/不支持字符类。
 
-## 13. 已知不支持项
+## 14. 已知不支持项
 
 这些语法不是遗漏，而是当前实现边界：
 
@@ -801,10 +1025,11 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 原子组、条件组、递归/子例程调用等 PCRE-only 高复杂度语法。
 - full case folding 的多 scalar 展开，例如 `ß` 到 `ss`；当前 `(?i)` 固定使用一对一 simple fold。
 - grapheme cluster 级匹配；当前 text regex 的消费单位是 Unicode scalar，公开 offset 仍是 UTF-8 byte offset。
-- replacement 中的复杂转义、条件替换、函数式替换。
+- replacement 中的复杂转义和条件替换；当前函数式替换已支持非捕获函数指针 callback，但没有 closure 捕获。
+- Hyperscan 级 vectored scan、SIMD codegen/JIT 和 bounded-history streaming automaton。
 - 标准库风格 RAII；当前必须手动 destroy。
 
-## 14. 测试入口
+## 15. 测试入口
 
 正则示例测试位于：
 
@@ -824,12 +1049,15 @@ build/tests/regex_phase1
 build/bin/aurexc -I examples/libs examples/regex_industrial.ax --emit=checked
 build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
 build/tests/regex_industrial
+build/bin/aurexc -I examples/libs examples/regex_advanced.ax --emit=checked
+build/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced
+build/tests/regex_advanced
 build/bin/aurexc -I examples/libs examples/regex_stress.ax --emit=checked
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```
 
-## 15. 参考资料
+## 16. 参考资料
 
 工业级对比参考的是这些官方资料：
 

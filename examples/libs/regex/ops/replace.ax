@@ -13,6 +13,27 @@ pub fn replace_all(
     out: *mut u8,
     out_capacity: usize
 ) -> t.ReplaceResult {
+    return replace_n(compiled, input, replacement, t.CAPTURE_MISSING, out, out_capacity);
+}
+
+pub fn replace_first(
+    compiled: &t.Regex,
+    input: str,
+    replacement: str,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_n(compiled, input, replacement, 1usize, out, out_capacity);
+}
+
+pub fn replace_n(
+    compiled: &t.Regex,
+    input: str,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
     if compiled.status != t.RegexStatus.ok {
         return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
     }
@@ -22,6 +43,10 @@ pub fn replace_all(
     var replacements: usize = 0usize;
     let input_len: usize = strblen(input);
     while cursor <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
         var captures: t.Captures = engine.captures_compiled_from(compiled, input, cursor);
         defer results.destroy_captures(&mut captures);
         if captures.status == t.RegexStatus.no_match || !captures.matched {
@@ -48,10 +73,104 @@ pub fn replace_all(
     return finish_result(written, required, replacements, out_capacity);
 }
 
+pub fn replace_all_with(
+    compiled: &t.Regex,
+    input: str,
+    callback: t.ReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_n_with(compiled, input, callback, t.CAPTURE_MISSING, out, out_capacity);
+}
+
+pub fn replace_first_with(
+    compiled: &t.Regex,
+    input: str,
+    callback: t.ReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_n_with(compiled, input, callback, 1usize, out, out_capacity);
+}
+
+pub fn replace_n_with(
+    compiled: &t.Regex,
+    input: str,
+    callback: t.ReplaceCallback,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
+    }
+    var cursor: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    var replacements: usize = 0usize;
+    let input_len: usize = strblen(input);
+    while cursor <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
+        var captures: t.Captures = engine.captures_compiled_from(compiled, input, cursor);
+        defer results.destroy_captures(&mut captures);
+        if captures.status == t.RegexStatus.no_match || !captures.matched {
+            let tail: CopyState = copy_input_range(input, cursor, input_len, out, out_capacity, written, required);
+            written = tail.written;
+            required = tail.required;
+            return finish_result(written, required, replacements, out_capacity);
+        }
+        if captures.status != t.RegexStatus.ok {
+            return t.replace_result(captures.status, written, required, replacements);
+        }
+        let prefix: CopyState = copy_input_range(input, cursor, captures.start, out, out_capacity, written, required);
+        written = prefix.written;
+        required = prefix.required;
+
+        let replacement_out: *mut u8 = output_tail(out, out_capacity, written);
+        let replacement_capacity: usize = remaining_capacity(out_capacity, written);
+        let callback_result: t.ReplaceResult = callback(input, &captures, replacement_out, replacement_capacity);
+        if callback_result.status != t.RegexStatus.ok && callback_result.status != t.RegexStatus.buffer_too_small {
+            return t.replace_result(callback_result.status, written, required, replacements);
+        }
+        written = append_callback_written(written, callback_result.written, out_capacity);
+        required += callback_result.required;
+        replacements += 1usize;
+        cursor = next_search_start(input, captures.start, captures.end);
+    }
+    return finish_result(written, required, replacements, out_capacity);
+}
+
 struct CopyState {
     written: usize;
     required: usize;
     status: t.RegexStatus;
+}
+
+fn output_tail(out: *mut u8, out_capacity: usize, written: usize) -> *mut u8 {
+    if out == null || written >= out_capacity {
+        return null;
+    }
+    return unsafe {
+        ptrat[*mut u8](ptraddr(out) + written)
+    };
+}
+
+fn remaining_capacity(out_capacity: usize, written: usize) -> usize {
+    if written >= out_capacity {
+        return 0usize;
+    }
+    return out_capacity - written;
+}
+
+fn append_callback_written(written: usize, callback_written: usize, out_capacity: usize) -> usize {
+    let available: usize = remaining_capacity(out_capacity, written);
+    if callback_written > available {
+        return out_capacity;
+    }
+    return written + callback_written;
 }
 
 fn finish_result(written: usize, required: usize, replacements: usize, out_capacity: usize) -> t.ReplaceResult {
@@ -150,9 +269,10 @@ fn expand_template(
         return template_result(copied_dollar, next_at + 1usize, t.RegexStatus.ok);
     }
     if ascii.is_digit(marker) {
-        let capture_index: usize = ascii.decimal_value(marker);
+        let parsed: ParsedCaptureIndex = parse_capture_index(replacement, next_at, replacement_len);
+        let capture_index: usize = parsed.value;
         let copied_capture: CopyState = copy_capture(input, captures, capture_index, out, out_capacity, written, required);
-        return template_result(copied_capture, next_at + 1usize, copied_capture.status);
+        return template_result(copied_capture, parsed.next_at, copied_capture.status);
     }
     if marker == ascii.LBRACE {
         return expand_named_template(compiled, input, captures, replacement, next_at + 1usize, out, out_capacity, written, required);
@@ -189,8 +309,12 @@ fn expand_named_template(
             status: t.RegexStatus.replacement_error,
         };
     }
-    let name: str = replacement[name_start:at];
-    let capture_index: usize = results.capture_index(compiled, name);
+    let capture_index: usize = if replacement_slice_is_digits(replacement, name_start, at) {
+        parse_capture_index_range(replacement, name_start, at)
+    } else {
+        let name: str = replacement[name_start:at];
+        results.capture_index(compiled, name)
+    };
     if capture_index == t.NO_CAPTURE {
         return TemplateExpansion {
             written: written,
@@ -201,6 +325,45 @@ fn expand_named_template(
     }
     let copied: CopyState = copy_capture(input, captures, capture_index, out, out_capacity, written, required);
     return template_result(copied, at + 1usize, copied.status);
+}
+
+struct ParsedCaptureIndex {
+    value: usize;
+    next_at: usize;
+}
+
+fn parse_capture_index(replacement: str, start: usize, end: usize) -> ParsedCaptureIndex {
+    var at: usize = start;
+    var value: usize = 0usize;
+    while at < end && ascii.is_digit(ascii.byte_at(replacement, at)) {
+        value = value * 10usize + ascii.decimal_value(ascii.byte_at(replacement, at));
+        at += 1usize;
+    }
+    return ParsedCaptureIndex { value: value, next_at: at };
+}
+
+fn replacement_slice_is_digits(replacement: str, start: usize, end: usize) -> bool {
+    if start >= end {
+        return false;
+    }
+    var at: usize = start;
+    while at < end {
+        if !ascii.is_digit(ascii.byte_at(replacement, at)) {
+            return false;
+        }
+        at += 1usize;
+    }
+    return true;
+}
+
+fn parse_capture_index_range(replacement: str, start: usize, end: usize) -> usize {
+    var at: usize = start;
+    var value: usize = 0usize;
+    while at < end {
+        value = value * 10usize + ascii.decimal_value(ascii.byte_at(replacement, at));
+        at += 1usize;
+    }
+    return value;
 }
 
 fn template_result(state: CopyState, next_at: usize, status: t.RegexStatus) -> TemplateExpansion {

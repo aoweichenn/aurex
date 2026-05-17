@@ -189,6 +189,8 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
     case syntax::ExprKind::align_of:
     case syntax::ExprKind::ptr_addr:
     case syntax::ExprKind::paddr:
+    case syntax::ExprKind::slice_data:
+    case syntax::ExprKind::slice_len:
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
     case syntax::ExprKind::str_is_valid_utf8:
@@ -363,6 +365,9 @@ ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle
     case syntax::ExprKind::size_of:
     case syntax::ExprKind::align_of:
         return this->lower_size_or_align_expr(expr_id, expr);
+    case syntax::ExprKind::slice_data:
+    case syntax::ExprKind::slice_len:
+        return this->lower_slice_projection_expr(expr_id, expr);
     case syntax::ExprKind::str_data:
     case syntax::ExprKind::str_byte_len:
         return this->lower_str_projection_expr(expr_id, expr);
@@ -846,6 +851,19 @@ ValueId Lowerer::lower_str_projection_expr(
     value.type = this->expr_type(expr_id);
     value.object = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
     return this->append_value(value);
+}
+
+ValueId Lowerer::lower_slice_projection_expr(
+    const syntax::ExprId expr_id,
+    const ExprView& expr
+) {
+    const ValueId slice = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
+    if (expr.kind == syntax::ExprKind::slice_data) {
+        const sema::TypeHandle result_type = this->expr_type(expr_id);
+        const sema::TypeInfo& pointer = this->module_.types.get(result_type);
+        return this->append_slice_data(slice, pointer.pointer_mutability, pointer.pointee);
+    }
+    return this->append_slice_len(slice);
 }
 
 ValueId Lowerer::lower_str_utf8_slice_expr(

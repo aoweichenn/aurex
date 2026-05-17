@@ -20,6 +20,7 @@ enum class BuiltinExprShape {
     TYPE,
     PTRADDR,
     PTRAT,
+    SLICE_UNARY,
     STR_UNARY,
     STR_SLICE_UNARY,
     STRRAW,
@@ -46,6 +47,8 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
         BuiltinExprShape::PTRAT,
         syntax::ExprKind::paddr,
     },
+    {TokenKind::kw_sliceptr, BuiltinExprShape::SLICE_UNARY, syntax::ExprKind::slice_data},
+    {TokenKind::kw_slicelen, BuiltinExprShape::SLICE_UNARY, syntax::ExprKind::slice_len},
     {TokenKind::kw_strptr, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_data},
     {TokenKind::kw_strblen, BuiltinExprShape::STR_UNARY, syntax::ExprKind::str_byte_len},
     {TokenKind::kw_strvalid, BuiltinExprShape::STR_SLICE_UNARY, syntax::ExprKind::str_is_valid_utf8},
@@ -183,6 +186,8 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
         return parser.parse_ptraddr(context);
     case BuiltinExprShape::PTRAT:
         return parser.parse_ptrat(context);
+    case BuiltinExprShape::SLICE_UNARY:
+        return parser.parse_slice_unary(builtin->expr_kind, context);
     case BuiltinExprShape::STR_UNARY:
         return parser.parse_str_unary(context);
     case BuiltinExprShape::STR_SLICE_UNARY:

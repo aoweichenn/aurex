@@ -12,6 +12,7 @@ pub const SPACE: u8 = b' ';
 pub const EXCLAMATION: u8 = b'!';
 pub const HASH: u8 = b'#';
 pub const DOLLAR: u8 = b'$';
+pub const AMPERSAND: u8 = b'&';
 pub const LPAREN: u8 = b'(';
 pub const RPAREN: u8 = b')';
 pub const STAR: u8 = b'*';

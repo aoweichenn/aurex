@@ -51,6 +51,8 @@ bool token_starts_expression(const TokenKind kind) noexcept {
     case TokenKind::kw_alignof:
     case TokenKind::kw_ptraddr:
     case TokenKind::kw_ptrat:
+    case TokenKind::kw_sliceptr:
+    case TokenKind::kw_slicelen:
     case TokenKind::kw_strptr:
     case TokenKind::kw_strblen:
     case TokenKind::kw_strvalid:

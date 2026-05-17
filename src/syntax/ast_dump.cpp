@@ -75,6 +75,8 @@ std::string_view token_kind_name(const TokenKind kind) noexcept {
     case TokenKind::kw_alignof: return "kw_alignof";
     case TokenKind::kw_ptraddr: return "kw_ptraddr";
     case TokenKind::kw_ptrat: return "kw_ptrat";
+    case TokenKind::kw_sliceptr: return "kw_sliceptr";
+    case TokenKind::kw_slicelen: return "kw_slicelen";
     case TokenKind::kw_strptr: return "kw_strptr";
     case TokenKind::kw_strblen: return "kw_strblen";
     case TokenKind::kw_strvalid: return "kw_strvalid";
@@ -312,6 +314,8 @@ struct ExprDumpView {
     case ExprKind::align_of:
     case ExprKind::ptr_addr:
     case ExprKind::paddr:
+    case ExprKind::slice_data:
+    case ExprKind::slice_len:
     case ExprKind::str_data:
     case ExprKind::str_byte_len:
     case ExprKind::str_is_valid_utf8:
@@ -621,6 +625,8 @@ std::string_view expr_kind_name(const ExprKind kind) {
     case ExprKind::align_of: return "alignof";
     case ExprKind::ptr_addr: return "ptraddr";
     case ExprKind::paddr: return "ptrat";
+    case ExprKind::slice_data: return "sliceptr";
+    case ExprKind::slice_len: return "slicelen";
     case ExprKind::str_data: return "strptr";
     case ExprKind::str_byte_len: return "strblen";
     case ExprKind::str_is_valid_utf8: return "strvalid";

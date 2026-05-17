@@ -284,6 +284,8 @@ enum class ExprKind {
     align_of,
     ptr_addr,
     paddr,
+    slice_data,
+    slice_len,
     str_data,
     str_byte_len,
     str_is_valid_utf8,
@@ -1763,6 +1765,8 @@ private:
         case ExprKind::align_of:
         case ExprKind::ptr_addr:
         case ExprKind::paddr:
+        case ExprKind::slice_data:
+        case ExprKind::slice_len:
         case ExprKind::str_data:
         case ExprKind::str_byte_len:
         case ExprKind::str_is_valid_utf8:
@@ -2015,6 +2019,8 @@ private:
         case ExprKind::align_of:
         case ExprKind::ptr_addr:
         case ExprKind::paddr:
+        case ExprKind::slice_data:
+        case ExprKind::slice_len:
         case ExprKind::str_data:
         case ExprKind::str_byte_len:
         case ExprKind::str_is_valid_utf8:

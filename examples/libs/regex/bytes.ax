@@ -1,0 +1,91 @@
+module regex.bytes;
+
+import regex.api as api;
+import regex.core.types as t;
+
+pub type Regex = t.Regex;
+pub type MatchResult = t.MatchResult;
+pub type Captures = t.Captures;
+pub type CaptureSpan = t.CaptureSpan;
+pub type RegexStatus = t.RegexStatus;
+pub type RegexSet = t.RegexSet;
+pub type SetMatchesResult = t.SetMatchesResult;
+
+pub fn compile(pattern: str) -> t.Regex {
+    return api.compile_bytes(pattern);
+}
+
+pub fn compile_set(patterns: []const str) -> t.RegexSet {
+    return api.compile_set_bytes(patterns);
+}
+
+pub fn destroy(compiled: &mut t.Regex) -> void {
+    api.destroy(compiled);
+}
+
+pub fn destroy_set(compiled: &mut t.RegexSet) -> void {
+    api.destroy_set(compiled);
+}
+
+pub fn is_valid(compiled: &t.Regex) -> bool {
+    return api.is_valid(compiled);
+}
+
+pub fn search_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+    return api.search_bytes_compiled(compiled, input);
+}
+
+pub fn search_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.MatchResult {
+    return api.search_bytes_compiled_from(compiled, input, start_offset);
+}
+
+pub fn fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+    return api.fullmatch_bytes_compiled(compiled, input);
+}
+
+pub fn captures_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+    return api.captures_bytes_compiled(compiled, input);
+}
+
+pub fn captures_fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+    return api.captures_bytes_fullmatch_compiled(compiled, input);
+}
+
+pub fn matches_set_compiled(
+    compiled: &t.RegexSet,
+    input: []const u8,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    return api.matches_bytes_set_compiled(compiled, input, out_pattern_ids, out_capacity);
+}
+
+pub fn destroy_captures(captures: &mut t.Captures) -> void {
+    api.destroy_captures(captures);
+}
+
+pub fn capture_at(captures: &t.Captures, index: usize) -> t.CaptureSpan {
+    return api.capture_at(captures, index);
+}
+
+pub fn no_capture() -> usize {
+    return api.no_capture();
+}
+
+pub fn status_code(status: t.RegexStatus) -> i32 {
+    return api.status_code(status);
+}
+
+pub fn search(pattern: str, input: []const u8) -> bool {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    let result: t.MatchResult = search_compiled(&compiled, input);
+    return result.status == t.RegexStatus.ok && result.matched;
+}
+
+pub fn fullmatch(pattern: str, input: []const u8) -> bool {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    let result: t.MatchResult = fullmatch_compiled(&compiled, input);
+    return result.status == t.RegexStatus.ok && result.matched;
+}

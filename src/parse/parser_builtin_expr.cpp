@@ -115,6 +115,24 @@ syntax::ExprId BuiltinExprParser::parse_ptrat(const ExprContext context) {
     );
 }
 
+syntax::ExprId BuiltinExprParser::parse_slice_unary(
+    const syntax::ExprKind kind,
+    const ExprContext context
+) {
+    const syntax::Token& begin = this->previous();
+    const std::string name {begin.text()};
+    this->expect_builtin_arg_list_start(parser_builtin_arg_start_message(name));
+    const syntax::ExprId value = this->parse_expr(context);
+    const syntax::Token& end = this->expect_builtin_arg_list_end(parser_builtin_arg_end_message(name));
+
+    return this->session_.module.push_cast_like_expr(
+        kind,
+        this->merge(begin.range, end.range),
+        syntax::INVALID_TYPE_ID,
+        value
+    );
+}
+
 syntax::ExprId BuiltinExprParser::parse_str_unary(const ExprContext context) {
     const syntax::Token& begin = this->previous();
     const std::string name {begin.text()};

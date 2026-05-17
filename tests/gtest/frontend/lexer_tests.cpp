@@ -283,7 +283,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
         "module import as pub priv extern export fn struct opaque enum const type impl match "
         "let var if else for in is while break continue defer return true false null "
         "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut unsafe cast "
-        "ptrcast bitcast sizeof alignof ptraddr ptrat strptr strblen strvalid strfromutf8 strraw";
+        "ptrcast bitcast sizeof alignof ptraddr ptrat sliceptr slicelen strptr strblen strvalid strfromutf8 strraw";
     lex::Lexer lexer({8}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
@@ -345,6 +345,8 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
         TokenKind::kw_alignof,
         TokenKind::kw_ptraddr,
         TokenKind::kw_ptrat,
+        TokenKind::kw_sliceptr,
+        TokenKind::kw_slicelen,
         TokenKind::kw_strptr,
         TokenKind::kw_strblen,
         TokenKind::kw_strvalid,

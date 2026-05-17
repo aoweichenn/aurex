@@ -4,6 +4,7 @@ import regex.config.limits as limits;
 import regex.core.results as results;
 import regex.core.types as t;
 import regex.runtime.alloc as alloc;
+import regex.syntax.ascii as ascii;
 import unicode.ucd as unicode;
 
 const ACCEPT_NONE: u8 = 0u8;
@@ -19,9 +20,24 @@ struct Workspace {
     next_caps: *mut usize;
     stack_caps: *mut usize;
     best_caps: *mut usize;
+    class_stack: *mut bool;
     capacity: usize;
+    class_capacity: usize;
     capture_slot_count: usize;
     status: t.RegexStatus;
+}
+
+struct InputView {
+    text: str;
+    data: *const u8;
+    len: usize;
+    mode: u8;
+}
+
+struct InputDecode {
+    value: usize;
+    next: usize;
+    valid: bool;
 }
 
 pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
@@ -32,24 +48,30 @@ pub fn search_compiled_from(compiled: &t.Regex, input: str, start_offset: usize)
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
+    if compiled.mode != t.MODE_TEXT {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
     var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
     defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
-    return search_with_workspace(compiled, input, start_offset, &mut workspace);
+    return search_with_workspace(compiled, text_input(input), start_offset, &mut workspace);
 }
 
 pub fn fullmatch_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
+    if compiled.mode != t.MODE_TEXT {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
     var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
     defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
-    return run_at(compiled, input, 0usize, true, &mut workspace);
+    return run_at(compiled, text_input(input), 0usize, true, &mut workspace);
 }
 
 pub fn captures_compiled(compiled: &t.Regex, input: str) -> t.Captures {
@@ -60,12 +82,15 @@ pub fn captures_compiled_from(compiled: &t.Regex, input: str, start_offset: usiz
     if compiled.status != t.RegexStatus.ok {
         return t.empty_captures(compiled.status);
     }
+    if compiled.mode != t.MODE_TEXT {
+        return t.empty_captures(t.RegexStatus.unsupported);
+    }
     var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
     defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
-    let found: t.MatchResult = search_with_workspace(compiled, input, start_offset, &mut workspace);
+    let found: t.MatchResult = search_with_workspace(compiled, text_input(input), start_offset, &mut workspace);
     return captures_from_match(compiled, found, workspace.best_caps);
 }
 
@@ -73,12 +98,15 @@ pub fn captures_fullmatch_compiled(compiled: &t.Regex, input: str) -> t.Captures
     if compiled.status != t.RegexStatus.ok {
         return t.empty_captures(compiled.status);
     }
+    if compiled.mode != t.MODE_TEXT {
+        return t.empty_captures(t.RegexStatus.unsupported);
+    }
     var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
     defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
-    let found: t.MatchResult = run_at(compiled, input, 0usize, true, &mut workspace);
+    let found: t.MatchResult = run_at(compiled, text_input(input), 0usize, true, &mut workspace);
     return captures_from_match(compiled, found, workspace.best_caps);
 }
 
@@ -90,8 +118,112 @@ pub fn workspace_bytes_for_states(state_count: usize) -> usize {
     return workspace_bytes_for(state_count, 2usize);
 }
 
-fn search_with_workspace(compiled: &t.Regex, input: str, start_offset: usize, workspace: &mut Workspace) -> t.MatchResult {
-    let input_len: usize = strblen(input);
+pub fn search_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+    return search_bytes_compiled_from(compiled, input, 0usize);
+}
+
+pub fn search_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.MatchResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.match_result(false, 0usize, 0usize, compiled.status);
+    }
+    if compiled.mode != t.MODE_BYTES {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
+    var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
+    defer destroy_workspace(&mut workspace);
+    if workspace.status != t.RegexStatus.ok {
+        return t.match_result(false, 0usize, 0usize, workspace.status);
+    }
+    return search_with_workspace(compiled, bytes_input(input), start_offset, &mut workspace);
+}
+
+pub fn fullmatch_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.match_result(false, 0usize, 0usize, compiled.status);
+    }
+    if compiled.mode != t.MODE_BYTES {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
+    var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
+    defer destroy_workspace(&mut workspace);
+    if workspace.status != t.RegexStatus.ok {
+        return t.match_result(false, 0usize, 0usize, workspace.status);
+    }
+    return run_at(compiled, bytes_input(input), 0usize, true, &mut workspace);
+}
+
+pub fn captures_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+    return captures_bytes_compiled_from(compiled, input, 0usize);
+}
+
+pub fn captures_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.Captures {
+    if compiled.status != t.RegexStatus.ok {
+        return t.empty_captures(compiled.status);
+    }
+    if compiled.mode != t.MODE_BYTES {
+        return t.empty_captures(t.RegexStatus.unsupported);
+    }
+    var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
+    defer destroy_workspace(&mut workspace);
+    if workspace.status != t.RegexStatus.ok {
+        return t.empty_captures(workspace.status);
+    }
+    let found: t.MatchResult = search_with_workspace(compiled, bytes_input(input), start_offset, &mut workspace);
+    return captures_from_match(compiled, found, workspace.best_caps);
+}
+
+pub fn captures_bytes_fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+    if compiled.status != t.RegexStatus.ok {
+        return t.empty_captures(compiled.status);
+    }
+    if compiled.mode != t.MODE_BYTES {
+        return t.empty_captures(t.RegexStatus.unsupported);
+    }
+    var workspace: Workspace = create_workspace(compiled.state_len, capture_slot_count(compiled));
+    defer destroy_workspace(&mut workspace);
+    if workspace.status != t.RegexStatus.ok {
+        return t.empty_captures(workspace.status);
+    }
+    let found: t.MatchResult = run_at(compiled, bytes_input(input), 0usize, true, &mut workspace);
+    return captures_from_match(compiled, found, workspace.best_caps);
+}
+
+pub fn set_workspace_bytes(compiled: &t.RegexSet) -> usize {
+    return workspace_bytes_for(compiled.state_len, 2usize) + compiled.pattern_count * sizeof[bool];
+}
+
+pub fn matches_set_compiled(
+    compiled: &t.RegexSet,
+    input: str,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.set_matches_result(compiled.status, false, 0usize, 0usize);
+    }
+    if compiled.mode != t.MODE_TEXT {
+        return t.set_matches_result(t.RegexStatus.unsupported, false, 0usize, 0usize);
+    }
+    return matches_set_input(compiled, text_input(input), out_pattern_ids, out_capacity);
+}
+
+pub fn matches_bytes_set_compiled(
+    compiled: &t.RegexSet,
+    input: []const u8,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.set_matches_result(compiled.status, false, 0usize, 0usize);
+    }
+    if compiled.mode != t.MODE_BYTES {
+        return t.set_matches_result(t.RegexStatus.unsupported, false, 0usize, 0usize);
+    }
+    return matches_set_input(compiled, bytes_input(input), out_pattern_ids, out_capacity);
+}
+
+fn search_with_workspace(compiled: &t.Regex, input: InputView, start_offset: usize, workspace: &mut Workspace) -> t.MatchResult {
+    let input_len: usize = input.len;
     if start_offset > input_len {
         return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
     }
@@ -101,7 +233,7 @@ fn search_with_workspace(compiled: &t.Regex, input: str, start_offset: usize, wo
         }
         return run_at(compiled, input, 0usize, false, workspace);
     }
-    var start: usize = unicode.align_forward_boundary(input, start_offset);
+    var start: usize = align_forward_boundary(input, start_offset);
     while start <= input_len {
         let result: t.MatchResult = run_at(compiled, input, start, false, workspace);
         if result.status != t.RegexStatus.ok && result.status != t.RegexStatus.no_match {
@@ -113,9 +245,220 @@ fn search_with_workspace(compiled: &t.Regex, input: str, start_offset: usize, wo
         if start == input_len {
             break;
         }
-        start = unicode.next_boundary(input, start);
+        start = next_boundary(input, start);
     }
     return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+}
+
+fn matches_set_input(
+    compiled: &t.RegexSet,
+    input: InputView,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    if compiled.pattern_count == 0usize {
+        return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+    }
+    let matched: *mut bool = unsafe {
+        ptrcast[*mut bool](alloc.alloc_zeroed_bytes(compiled.pattern_count, sizeof[bool]))
+    };
+    if matched == null {
+        return t.set_matches_result(t.RegexStatus.out_of_memory, false, 0usize, 0usize);
+    }
+    defer alloc.free_bytes(unsafe { ptrcast[*mut u8](matched) });
+
+    var workspace: Workspace = create_workspace(compiled.state_len, 2usize);
+    defer destroy_workspace(&mut workspace);
+    if workspace.status != t.RegexStatus.ok {
+        return t.set_matches_result(workspace.status, false, 0usize, 0usize);
+    }
+
+    var matched_count: usize = 0usize;
+    let matched_count_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut matched_count)) };
+    var start: usize = 0usize;
+    let input_len: usize = input.len;
+    while start <= input_len && matched_count < compiled.pattern_count {
+        run_set_at(compiled, input, start, &mut workspace, matched, matched_count_ptr);
+        if workspace.status != t.RegexStatus.ok {
+            return t.set_matches_result(workspace.status, false, matched_count, 0usize);
+        }
+        if start == input_len {
+            break;
+        }
+        start = next_boundary(input, start);
+    }
+    if matched_count == 0usize {
+        return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+    }
+    let written: usize = write_set_matches(matched, compiled.pattern_count, out_pattern_ids, out_capacity);
+    return t.set_matches_result(t.RegexStatus.ok, true, matched_count, written);
+}
+
+fn run_set_at(
+    compiled: &t.RegexSet,
+    input: InputView,
+    start: usize,
+    workspace: &mut Workspace,
+    matched: *mut bool,
+    matched_count: *mut usize
+) -> void {
+    workspace.status = t.RegexStatus.ok;
+    clear_marks(workspace);
+    var stamp: usize = 1usize;
+    var current_len: usize = 0usize;
+    var next_len: usize = 0usize;
+    let input_len: usize = input.len;
+    let current_len_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut current_len)) };
+    let next_len_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut next_len)) };
+    add_set_closure(compiled, workspace.current, current_len_ptr, workspace, stamp, compiled.start, start, input, input_len);
+    if workspace.status != t.RegexStatus.ok {
+        return;
+    }
+    var position: usize = start;
+    while true {
+        update_set_accepts(compiled, workspace.current, current_len, matched, matched_count);
+        if unsafe { *matched_count } >= compiled.pattern_count {
+            return;
+        }
+        if position >= input_len || current_len == 0usize {
+            return;
+        }
+        stamp += 1usize;
+        next_len = 0usize;
+        let decoded: InputDecode = decode_at(input, position);
+        let value: usize = decoded.value;
+        let next_position: usize = decoded.next;
+        var index: usize = 0usize;
+        while index < current_len {
+            let state_id: usize = unsafe { workspace.current[index] };
+            if set_state_matches(compiled, state_id, value, workspace) {
+                let out1: usize = unsafe { compiled.states[state_id].out1 };
+                add_set_closure(compiled, workspace.next, next_len_ptr, workspace, stamp, out1, next_position, input, input_len);
+                if workspace.status != t.RegexStatus.ok {
+                    return;
+                }
+            }
+            index += 1usize;
+        }
+        swap_set_lists(workspace);
+        current_len = next_len;
+        position = next_position;
+    }
+}
+
+fn add_set_closure(
+    compiled: &t.RegexSet,
+    list: *mut usize,
+    list_len: *mut usize,
+    workspace: &mut Workspace,
+    stamp: usize,
+    first_state: usize,
+    position: usize,
+    input: InputView,
+    input_len: usize
+) -> void {
+    var stack_len: usize = 0usize;
+    let stack_len_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut stack_len)) };
+    push_set_state(workspace, stack_len_ptr, stamp, first_state);
+    while stack_len > 0usize {
+        stack_len -= 1usize;
+        let state_id: usize = unsafe { workspace.stack[stack_len] };
+        if state_id == t.NO_STATE || state_id >= compiled.state_len {
+            continue;
+        }
+        let opcode: u8 = unsafe { compiled.states[state_id].opcode };
+        if opcode == t.OP_EPSILON || opcode == t.OP_SAVE {
+            push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+        } else if opcode == t.OP_SPLIT {
+            push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out2 });
+            push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+        } else if opcode == t.OP_ASSERT_START {
+            if position == 0usize || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_start(input, position)) {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_END {
+            if position == input_len || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_end(input, position, input_len)) {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_ABSOLUTE_START {
+            if position == 0usize {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_ABSOLUTE_END {
+            if position == input_len {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_WORD_BOUNDARY {
+            if is_word_boundary(input, position, input_len) {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_NOT_WORD_BOUNDARY {
+            if !is_word_boundary(input, position, input_len) {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_WORD_START {
+            if is_word_start(input, position, input_len) {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else if opcode == t.OP_ASSERT_WORD_END {
+            if is_word_end(input, position, input_len) {
+                push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 });
+            }
+        } else {
+            if unsafe { *list_len } >= workspace.capacity {
+                workspace.status = t.RegexStatus.workspace_too_large;
+                return;
+            }
+            unsafe {
+                list[*list_len] = state_id;
+                *list_len = *list_len + 1usize;
+            }
+        }
+        if workspace.status != t.RegexStatus.ok {
+            return;
+        }
+    }
+}
+
+fn push_set_state(workspace: &mut Workspace, stack_len: *mut usize, stamp: usize, state_id: usize) -> void {
+    if state_id == t.NO_STATE || state_id >= workspace.capacity {
+        return;
+    }
+    if unsafe { workspace.marks[state_id] } == stamp {
+        return;
+    }
+    if unsafe { *stack_len } >= workspace.capacity {
+        workspace.status = t.RegexStatus.workspace_too_large;
+        return;
+    }
+    unsafe {
+        workspace.marks[state_id] = stamp;
+        workspace.stack[*stack_len] = state_id;
+        *stack_len = *stack_len + 1usize;
+    }
+}
+
+fn update_set_accepts(
+    compiled: &t.RegexSet,
+    list: *mut usize,
+    list_len: usize,
+    matched: *mut bool,
+    matched_count: *mut usize
+) -> void {
+    var index: usize = 0usize;
+    while index < list_len {
+        let state_id: usize = unsafe { list[index] };
+        if state_id < compiled.state_len && unsafe { compiled.states[state_id].opcode } == t.OP_MATCH {
+            let pattern_id: usize = unsafe { compiled.states[state_id].value };
+            if pattern_id < compiled.pattern_count && !unsafe { matched[pattern_id] } {
+                unsafe {
+                    matched[pattern_id] = true;
+                    *matched_count = *matched_count + 1usize;
+                }
+            }
+        }
+        index += 1usize;
+    }
 }
 
 fn captures_from_match(compiled: &t.Regex, found: t.MatchResult, capture_slots: *mut usize) -> t.Captures {
@@ -128,7 +471,7 @@ fn captures_from_match(compiled: &t.Regex, found: t.MatchResult, capture_slots: 
     return results.create_captures(compiled, found.start, found.end, capture_slots);
 }
 
-fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, workspace: &mut Workspace) -> t.MatchResult {
+fn run_at(compiled: &t.Regex, input: InputView, start: usize, require_end: bool, workspace: &mut Workspace) -> t.MatchResult {
     workspace.status = t.RegexStatus.ok;
     clear_marks(workspace);
     init_capture_seed(workspace.best_caps, workspace.capture_slot_count, start);
@@ -137,7 +480,7 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
     var next_len: usize = 0usize;
     var best_matched: bool = false;
     var best_end: usize = start;
-    let input_len: usize = strblen(input);
+    let input_len: usize = input.len;
     let current_len_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut current_len)) };
     let next_len_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut next_len)) };
     add_closure(
@@ -183,13 +526,13 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
         }
         stamp += 1usize;
         next_len = 0usize;
-        let decoded: unicode.Decode = unicode.decode_at(input, position);
+        let decoded: InputDecode = decode_at(input, position);
         let value: usize = decoded.value;
         let next_position: usize = decoded.next;
         var index: usize = 0usize;
         while index < current_len {
             let state_id: usize = unsafe { workspace.current[index] };
-            if state_matches(compiled, state_id, value) {
+            if state_matches(compiled, state_id, value, workspace) {
                 let out1: usize = unsafe { compiled.states[state_id].out1 };
                 add_closure(
                     compiled,
@@ -231,7 +574,7 @@ fn add_closure(
     stamp: usize,
     first_state: usize,
     position: usize,
-    input: str,
+    input: InputView,
     input_len: usize,
     source_caps: *mut usize
 ) -> void {
@@ -283,6 +626,14 @@ fn add_closure(
             }
         } else if opcode == t.OP_ASSERT_NOT_WORD_BOUNDARY {
             if !is_word_boundary(input, position, input_len) {
+                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
+            }
+        } else if opcode == t.OP_ASSERT_WORD_START {
+            if is_word_start(input, position, input_len) {
+                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
+            }
+        } else if opcode == t.OP_ASSERT_WORD_END {
+            if is_word_end(input, position, input_len) {
                 push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else {
@@ -352,7 +703,7 @@ fn update_best_accept(
     list_caps: *mut usize,
     list_len: usize,
     position: usize,
-    input: str,
+    input: InputView,
     input_len: usize
 ) -> u8 {
     var index: usize = 0usize;
@@ -365,7 +716,7 @@ fn update_best_accept(
                     workspace.best_caps[1usize] = position;
                 }
             }
-            if has_higher_priority_consumer(compiled, list, index, input, position, input_len) {
+            if has_higher_priority_consumer(compiled, list, index, input, position, input_len, workspace) {
                 return ACCEPT_DEFERRED;
             }
             return ACCEPT_READY;
@@ -379,18 +730,19 @@ fn has_higher_priority_consumer(
     compiled: &t.Regex,
     list: *mut usize,
     accept_index: usize,
-    input: str,
+    input: InputView,
     position: usize,
-    input_len: usize
+    input_len: usize,
+    workspace: &mut Workspace
 ) -> bool {
     if position >= input_len {
         return false;
     }
-    let value: usize = unicode.decode_at(input, position).value;
+    let value: usize = decode_at(input, position).value;
     var index: usize = 0usize;
     while index < accept_index {
         let state_id: usize = unsafe { list[index] };
-        if state_matches(compiled, state_id, value) {
+        if state_matches(compiled, state_id, value, workspace) {
             return true;
         }
         index += 1usize;
@@ -398,7 +750,7 @@ fn has_higher_priority_consumer(
     return false;
 }
 
-fn state_matches(compiled: &t.Regex, state_id: usize, value: usize) -> bool {
+fn state_matches(compiled: &t.Regex, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
     let opcode: u8 = unsafe { compiled.states[state_id].opcode };
     if opcode == t.OP_LITERAL {
         let expected: usize = unsafe { compiled.states[state_id].value };
@@ -411,64 +763,184 @@ fn state_matches(compiled: &t.Regex, state_id: usize, value: usize) -> bool {
         return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || !unicode.is_line_break_scalar(value);
     }
     if opcode == t.OP_CLASS {
-        return class_matches(compiled, state_id, value);
+        return class_matches(compiled, state_id, value, workspace);
     }
     return false;
 }
 
-fn class_matches(compiled: &t.Regex, state_id: usize, value: usize) -> bool {
+fn set_state_matches(compiled: &t.RegexSet, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
+    let opcode: u8 = unsafe { compiled.states[state_id].opcode };
+    if opcode == t.OP_LITERAL {
+        let expected: usize = unsafe { compiled.states[state_id].value };
+        if has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
+            return unicode.simple_fold(expected) == unicode.simple_fold(value);
+        }
+        return expected == value;
+    }
+    if opcode == t.OP_ANY {
+        return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || !unicode.is_line_break_scalar(value);
+    }
+    if opcode == t.OP_CLASS {
+        return set_class_matches(compiled, state_id, value, workspace);
+    }
+    return false;
+}
+
+fn class_matches(compiled: &t.Regex, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
     let class_start: usize = unsafe { compiled.states[state_id].class_start };
     let class_len: usize = unsafe { compiled.states[state_id].class_len };
     let flags: u8 = unsafe { compiled.states[state_id].flags };
     let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
-    var matched: bool = class_ranges_match(compiled, class_start, class_len, value);
-    if !matched && has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
-        matched = class_ranges_fold_match(compiled, class_start, class_len, value);
-    }
+    let matched: bool = class_expr_matches(compiled, class_start, class_len, value, workspace, has_flag(flags, t.FLAG_CASE_INSENSITIVE));
     if negated {
         return !matched;
     }
     return matched;
 }
 
-fn class_ranges_match(compiled: &t.Regex, class_start: usize, class_len: usize, value: usize) -> bool {
+fn set_class_matches(compiled: &t.RegexSet, state_id: usize, value: usize, workspace: &mut Workspace) -> bool {
+    let class_start: usize = unsafe { compiled.states[state_id].class_start };
+    let class_len: usize = unsafe { compiled.states[state_id].class_len };
+    let flags: u8 = unsafe { compiled.states[state_id].flags };
+    let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
+    let matched: bool = set_class_expr_matches(compiled, class_start, class_len, value, workspace, has_flag(flags, t.FLAG_CASE_INSENSITIVE));
+    if negated {
+        return !matched;
+    }
+    return matched;
+}
+
+fn class_expr_matches(
+    compiled: &t.Regex,
+    class_start: usize,
+    class_len: usize,
+    value: usize,
+    workspace: &mut Workspace,
+    folded: bool
+) -> bool {
+    var depth: usize = 0usize;
     var offset: usize = 0usize;
     while offset < class_len {
         let range_index: usize = class_start + offset;
         let kind: u8 = unsafe { compiled.ranges[range_index].kind };
         let first: usize = unsafe { compiled.ranges[range_index].first };
         let last: usize = unsafe { compiled.ranges[range_index].last };
-        if kind == t.CLASS_RANGE_SCALAR && first <= value && value <= last {
-            return true;
-        }
-        if kind == t.CLASS_RANGE_PROPERTY && unicode.property_matches(first, value) {
-            return true;
-        }
-        if kind == t.CLASS_RANGE_PROPERTY_NEGATED && !unicode.property_matches(first, value) {
-            return true;
+        if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
+            if depth >= workspace.class_capacity {
+                workspace.status = t.RegexStatus.workspace_too_large;
+                return false;
+            }
+            unsafe {
+                workspace.class_stack[depth] = class_primitive_matches(kind, first, last, value, folded);
+            }
+            depth += 1usize;
+        } else if kind == t.CLASS_EXPR_COMPLEMENT {
+            if depth == 0usize {
+                return false;
+            }
+            unsafe {
+                workspace.class_stack[depth - 1usize] = !workspace.class_stack[depth - 1usize];
+            }
+        } else {
+            if depth < 2usize {
+                return false;
+            }
+            let right: bool = unsafe { workspace.class_stack[depth - 1usize] };
+            let left: bool = unsafe { workspace.class_stack[depth - 2usize] };
+            depth -= 1usize;
+            unsafe {
+                workspace.class_stack[depth - 1usize] = apply_class_expr_op(kind, left, right);
+            }
         }
         offset += 1usize;
     }
-    return false;
+    if depth != 1usize {
+        return false;
+    }
+    return unsafe { workspace.class_stack[0usize] };
 }
 
-fn class_ranges_fold_match(compiled: &t.Regex, class_start: usize, class_len: usize, value: usize) -> bool {
+fn set_class_expr_matches(
+    compiled: &t.RegexSet,
+    class_start: usize,
+    class_len: usize,
+    value: usize,
+    workspace: &mut Workspace,
+    folded: bool
+) -> bool {
+    var depth: usize = 0usize;
     var offset: usize = 0usize;
     while offset < class_len {
         let range_index: usize = class_start + offset;
         let kind: u8 = unsafe { compiled.ranges[range_index].kind };
         let first: usize = unsafe { compiled.ranges[range_index].first };
         let last: usize = unsafe { compiled.ranges[range_index].last };
-        if kind == t.CLASS_RANGE_SCALAR && unicode.fold_equivalent_in_range(value, first, last) {
-            return true;
-        }
-        if kind == t.CLASS_RANGE_PROPERTY && unicode.property_case_fold_matches(first, value) {
-            return true;
-        }
-        if kind == t.CLASS_RANGE_PROPERTY_NEGATED && !unicode.property_case_fold_matches(first, value) {
-            return true;
+        if kind == t.CLASS_RANGE_SCALAR || kind == t.CLASS_RANGE_PROPERTY || kind == t.CLASS_RANGE_PROPERTY_NEGATED {
+            if depth >= workspace.class_capacity {
+                workspace.status = t.RegexStatus.workspace_too_large;
+                return false;
+            }
+            unsafe {
+                workspace.class_stack[depth] = class_primitive_matches(kind, first, last, value, folded);
+            }
+            depth += 1usize;
+        } else if kind == t.CLASS_EXPR_COMPLEMENT {
+            if depth == 0usize {
+                return false;
+            }
+            unsafe {
+                workspace.class_stack[depth - 1usize] = !workspace.class_stack[depth - 1usize];
+            }
+        } else {
+            if depth < 2usize {
+                return false;
+            }
+            let right: bool = unsafe { workspace.class_stack[depth - 1usize] };
+            let left: bool = unsafe { workspace.class_stack[depth - 2usize] };
+            depth -= 1usize;
+            unsafe {
+                workspace.class_stack[depth - 1usize] = apply_class_expr_op(kind, left, right);
+            }
         }
         offset += 1usize;
+    }
+    if depth != 1usize {
+        return false;
+    }
+    return unsafe { workspace.class_stack[0usize] };
+}
+
+fn class_primitive_matches(kind: u8, first: usize, last: usize, value: usize, folded: bool) -> bool {
+    if kind == t.CLASS_RANGE_SCALAR {
+        if folded {
+            return unicode.fold_equivalent_in_range(value, first, last);
+        }
+        return first <= value && value <= last;
+    }
+    if kind == t.CLASS_RANGE_PROPERTY {
+        if folded {
+            return unicode.property_case_fold_matches(first, value);
+        }
+        return unicode.property_matches(first, value);
+    }
+    if folded {
+        return !unicode.property_case_fold_matches(first, value);
+    }
+    return !unicode.property_matches(first, value);
+}
+
+fn apply_class_expr_op(kind: u8, left: bool, right: bool) -> bool {
+    if kind == t.CLASS_EXPR_UNION {
+        return left || right;
+    }
+    if kind == t.CLASS_EXPR_INTERSECTION {
+        return left && right;
+    }
+    if kind == t.CLASS_EXPR_DIFFERENCE {
+        return left && !right;
+    }
+    if kind == t.CLASS_EXPR_SYMMETRIC_DIFFERENCE {
+        return left != right;
     }
     return false;
 }
@@ -477,28 +949,50 @@ fn has_flag(flags: u8, flag: u8) -> bool {
     return (flags & flag) != t.FLAGS_NONE;
 }
 
-fn is_line_start(input: str, position: usize) -> bool {
+fn is_line_start(input: InputView, position: usize) -> bool {
     if position == 0usize {
         return true;
     }
-    let previous: unicode.Decode = unicode.previous_decode(input, position);
+    let previous: InputDecode = previous_decode(input, position);
     return previous.valid && unicode.is_line_break_scalar(previous.value);
 }
 
-fn is_line_end(input: str, position: usize, input_len: usize) -> bool {
+fn is_line_end(input: InputView, position: usize, input_len: usize) -> bool {
     if position == input_len {
         return true;
     }
-    let current: unicode.Decode = unicode.decode_at(input, position);
+    let current: InputDecode = decode_at(input, position);
     return current.valid && unicode.is_line_break_scalar(current.value);
 }
 
-fn is_word_boundary(input: str, position: usize, input_len: usize) -> bool {
-    let left: unicode.Decode = unicode.previous_decode(input, position);
-    let right: unicode.Decode = unicode.decode_at(input, position);
-    let left_is_word: bool = position > 0usize && left.valid && unicode.is_word(left.value);
-    let right_is_word: bool = position < input_len && right.valid && unicode.is_word(right.value);
+fn is_word_boundary(input: InputView, position: usize, input_len: usize) -> bool {
+    let left: InputDecode = previous_decode(input, position);
+    let right: InputDecode = decode_at(input, position);
+    let left_is_word: bool = position > 0usize && left.valid && is_word(input, left.value);
+    let right_is_word: bool = position < input_len && right.valid && is_word(input, right.value);
     return left_is_word != right_is_word;
+}
+
+fn is_word_start(input: InputView, position: usize, input_len: usize) -> bool {
+    if position >= input_len {
+        return false;
+    }
+    let left: InputDecode = previous_decode(input, position);
+    let right: InputDecode = decode_at(input, position);
+    let left_is_word: bool = position > 0usize && left.valid && is_word(input, left.value);
+    let right_is_word: bool = right.valid && is_word(input, right.value);
+    return !left_is_word && right_is_word;
+}
+
+fn is_word_end(input: InputView, position: usize, input_len: usize) -> bool {
+    if position == 0usize {
+        return false;
+    }
+    let left: InputDecode = previous_decode(input, position);
+    let right: InputDecode = decode_at(input, position);
+    let left_is_word: bool = left.valid && is_word(input, left.value);
+    let right_is_word: bool = position < input_len && right.valid && is_word(input, right.value);
+    return left_is_word && !right_is_word;
 }
 
 fn create_workspace(capacity: usize, slots: usize) -> Workspace {
@@ -550,6 +1044,14 @@ fn create_workspace(capacity: usize, slots: usize) -> Workspace {
         alloc.free_bytes(unsafe { ptrcast[*mut u8](stack_caps) });
         return free_base_workspace(current, next, marks, stack, t.RegexStatus.out_of_memory);
     }
+    let class_stack: *mut bool = alloc_bool_array(limits.MAX_RANGE_CAPACITY);
+    if class_stack == null {
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](current_caps) });
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](next_caps) });
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](stack_caps) });
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](best_caps) });
+        return free_base_workspace(current, next, marks, stack, t.RegexStatus.out_of_memory);
+    }
     return Workspace {
         current: current,
         next: next,
@@ -559,7 +1061,9 @@ fn create_workspace(capacity: usize, slots: usize) -> Workspace {
         next_caps: next_caps,
         stack_caps: stack_caps,
         best_caps: best_caps,
+        class_stack: class_stack,
         capacity: capacity,
+        class_capacity: limits.MAX_RANGE_CAPACITY,
         capture_slot_count: slots,
         status: t.RegexStatus.ok,
     };
@@ -574,6 +1078,7 @@ fn destroy_workspace(workspace: &mut Workspace) -> void {
     alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.next_caps) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.stack_caps) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.best_caps) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.class_stack) });
     workspace.current = null;
     workspace.next = null;
     workspace.marks = null;
@@ -582,7 +1087,9 @@ fn destroy_workspace(workspace: &mut Workspace) -> void {
     workspace.next_caps = null;
     workspace.stack_caps = null;
     workspace.best_caps = null;
+    workspace.class_stack = null;
     workspace.capacity = 0usize;
+    workspace.class_capacity = 0usize;
     workspace.capture_slot_count = 0usize;
     workspace.status = t.RegexStatus.unsupported;
 }
@@ -611,7 +1118,9 @@ fn empty_workspace(status: t.RegexStatus) -> Workspace {
         next_caps: null,
         stack_caps: null,
         best_caps: null,
+        class_stack: null,
         capacity: 0usize,
+        class_capacity: 0usize,
         capture_slot_count: 0usize,
         status: status,
     };
@@ -636,9 +1145,41 @@ fn swap_lists(workspace: &mut Workspace) -> void {
     workspace.next_caps = old_current_caps;
 }
 
+fn swap_set_lists(workspace: &mut Workspace) -> void {
+    let old_current: *mut usize = workspace.current;
+    workspace.current = workspace.next;
+    workspace.next = old_current;
+}
+
+fn write_set_matches(matched: *mut bool, pattern_count: usize, out_pattern_ids: *mut usize, out_capacity: usize) -> usize {
+    var index: usize = 0usize;
+    var written: usize = 0usize;
+    while index < pattern_count {
+        if unsafe { matched[index] } {
+            if written < out_capacity && out_pattern_ids != null {
+                unsafe {
+                    out_pattern_ids[written] = index;
+                }
+            }
+            written += 1usize;
+        }
+        index += 1usize;
+    }
+    if written > out_capacity {
+        return out_capacity;
+    }
+    return written;
+}
+
 fn alloc_usize_array(count: usize) -> *mut usize {
     return unsafe {
         ptrcast[*mut usize](alloc.alloc_zeroed_bytes(count, sizeof[usize]))
+    };
+}
+
+fn alloc_bool_array(count: usize) -> *mut bool {
+    return unsafe {
+        ptrcast[*mut bool](alloc.alloc_zeroed_bytes(count, sizeof[bool]))
     };
 }
 
@@ -679,5 +1220,76 @@ fn capture_slot_count(compiled: &t.Regex) -> usize {
 
 fn workspace_bytes_for(state_count: usize, slots: usize) -> usize {
     return state_count * limits.WORKSPACE_LIST_COUNT * sizeof[usize]
-        + state_count * slots * limits.WORKSPACE_CAPTURE_ROW_COUNT * sizeof[usize];
+        + state_count * slots * limits.WORKSPACE_CAPTURE_ROW_COUNT * sizeof[usize]
+        + limits.MAX_RANGE_CAPACITY * sizeof[bool];
+}
+
+fn text_input(input: str) -> InputView {
+    return InputView {
+        text: input,
+        data: strptr(input),
+        len: strblen(input),
+        mode: t.MODE_TEXT,
+    };
+}
+
+fn bytes_input(input: []const u8) -> InputView {
+    return InputView {
+        text: "",
+        data: sliceptr(input),
+        len: slicelen(input),
+        mode: t.MODE_BYTES,
+    };
+}
+
+fn decode_at(input: InputView, position: usize) -> InputDecode {
+    if input.mode == t.MODE_TEXT {
+        let decoded: unicode.Decode = unicode.decode_at(input.text, position);
+        return InputDecode { value: decoded.value, next: decoded.next, valid: decoded.valid };
+    }
+    if position >= input.len {
+        return InputDecode { value: 0usize, next: position, valid: false };
+    }
+    return InputDecode {
+        value: cast[usize](unsafe { input.data[position] }),
+        next: position + 1usize,
+        valid: true,
+    };
+}
+
+fn previous_decode(input: InputView, position: usize) -> InputDecode {
+    if input.mode == t.MODE_TEXT {
+        let decoded: unicode.Decode = unicode.previous_decode(input.text, position);
+        return InputDecode { value: decoded.value, next: decoded.next, valid: decoded.valid };
+    }
+    if position == 0usize || position > input.len {
+        return InputDecode { value: 0usize, next: position, valid: false };
+    }
+    let previous: usize = position - 1usize;
+    return InputDecode {
+        value: cast[usize](unsafe { input.data[previous] }),
+        next: previous,
+        valid: true,
+    };
+}
+
+fn align_forward_boundary(input: InputView, position: usize) -> usize {
+    if input.mode == t.MODE_TEXT {
+        return unicode.align_forward_boundary(input.text, position);
+    }
+    return position;
+}
+
+fn next_boundary(input: InputView, position: usize) -> usize {
+    if input.mode == t.MODE_TEXT {
+        return unicode.next_boundary(input.text, position);
+    }
+    return position + 1usize;
+}
+
+fn is_word(input: InputView, value: usize) -> bool {
+    if input.mode == t.MODE_TEXT {
+        return unicode.is_word(value);
+    }
+    return value <= 0xffusize && ascii.is_word(cast[u8](value));
 }

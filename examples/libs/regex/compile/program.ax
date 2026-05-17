@@ -4,7 +4,7 @@ import regex.config.limits as limits;
 import regex.core.types as t;
 import regex.runtime.alloc as alloc;
 
-pub fn create(pattern: str) -> t.Regex {
+pub fn create(pattern: str, mode: u8) -> t.Regex {
     let pattern_len: usize = strblen(pattern);
     if pattern_len > limits.MAX_PATTERN_BYTES {
         return empty_with_status(pattern, t.RegexStatus.pattern_too_large);
@@ -43,6 +43,7 @@ pub fn create(pattern: str) -> t.Regex {
     }
     return t.Regex {
         pattern: pattern,
+        mode: mode,
         states: states,
         state_len: limits.RESERVED_STATE_COUNT,
         state_capacity: state_capacity,
@@ -67,6 +68,7 @@ pub fn destroy(compiled: &mut t.Regex) -> void {
     compiled.states = null;
     compiled.ranges = null;
     compiled.captures = null;
+    compiled.mode = t.MODE_TEXT;
     compiled.state_len = 0usize;
     compiled.state_capacity = 0usize;
     compiled.range_len = 0usize;
@@ -162,6 +164,14 @@ pub fn add_assert_not_word_boundary(compiled: &mut t.Regex) -> usize {
     return add_state(compiled, t.OP_ASSERT_NOT_WORD_BOUNDARY, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
+pub fn add_assert_word_start(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_WORD_START, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_word_end(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_WORD_END, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
 pub fn add_save(compiled: &mut t.Regex, slot: usize) -> usize {
     return add_state(compiled, t.OP_SAVE, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, slot, 0usize);
 }
@@ -193,6 +203,20 @@ pub fn add_property(compiled: &mut t.Regex, property_kind: usize, negated: bool)
         compiled.ranges[index].kind = if negated { t.CLASS_RANGE_PROPERTY_NEGATED } else { t.CLASS_RANGE_PROPERTY };
         compiled.ranges[index].first = property_kind;
         compiled.ranges[index].last = property_kind;
+    }
+    compiled.range_len += 1usize;
+    return true;
+}
+
+pub fn add_class_expr_op(compiled: &mut t.Regex, kind: u8) -> bool {
+    if !ensure_range_capacity(compiled, 1usize) {
+        return false;
+    }
+    let index: usize = compiled.range_len;
+    unsafe {
+        compiled.ranges[index].kind = kind;
+        compiled.ranges[index].first = 0usize;
+        compiled.ranges[index].last = 0usize;
     }
     compiled.range_len += 1usize;
     return true;
@@ -333,6 +357,7 @@ pub fn capture(compiled: &mut t.Regex, body: t.Fragment, capture_index: usize, s
 fn empty_with_status(pattern: str, status: t.RegexStatus) -> t.Regex {
     return t.Regex {
         pattern: pattern,
+        mode: t.MODE_TEXT,
         states: null,
         state_len: 0usize,
         state_capacity: 0usize,

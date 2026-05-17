@@ -1,0 +1,429 @@
+module regex.compile.database;
+
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+
+const MAGIC_0: u8 = 0x41u8;
+const MAGIC_1: u8 = 0x52u8;
+const MAGIC_2: u8 = 0x58u8;
+const MAGIC_3: u8 = 0x52u8;
+const MAGIC_4: u8 = 0x53u8;
+const MAGIC_5: u8 = 0x44u8;
+const MAGIC_6: u8 = 0x42u8;
+const MAGIC_7: u8 = 0x31u8;
+const MAGIC_BYTES: usize = 8usize;
+const DATABASE_VERSION: u8 = 1u8;
+const USIZE_BYTES: usize = 8usize;
+const STATE_ENCODED_BYTES: usize = 50usize;
+const RANGE_ENCODED_BYTES: usize = 17usize;
+const HEADER_BYTES: usize = MAGIC_BYTES + 2usize + USIZE_BYTES * 4usize;
+const BYTE_MASK: usize = 0xffusize;
+const BYTE_BITS: usize = 8usize;
+
+struct ReadUsize {
+    value: usize;
+    next: usize;
+    valid: bool;
+}
+
+pub fn database_bytes(compiled: &t.RegexSet) -> usize {
+    if compiled.status != t.RegexStatus.ok {
+        return 0usize;
+    }
+    return HEADER_BYTES
+        + compiled.state_len * STATE_ENCODED_BYTES
+        + compiled.range_len * RANGE_ENCODED_BYTES;
+}
+
+pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.database_result(compiled.status, 0usize, 0usize);
+    }
+    let required: usize = database_bytes(compiled);
+    var cursor: usize = 0usize;
+    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    write_magic(out, out_capacity, cursor_ptr);
+    write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
+    write_u8(out, out_capacity, cursor_ptr, compiled.mode);
+    write_usize(out, out_capacity, cursor_ptr, compiled.pattern_count);
+    write_usize(out, out_capacity, cursor_ptr, compiled.start);
+    write_usize(out, out_capacity, cursor_ptr, compiled.state_len);
+    write_usize(out, out_capacity, cursor_ptr, compiled.range_len);
+    var state: usize = 0usize;
+    while state < compiled.state_len {
+        write_state(out, out_capacity, cursor_ptr, unsafe { compiled.states[state] });
+        state += 1usize;
+    }
+    var range: usize = 0usize;
+    while range < compiled.range_len {
+        write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range] });
+        range += 1usize;
+    }
+    if required > out_capacity {
+        return t.database_result(t.RegexStatus.buffer_too_small, out_capacity, required);
+    }
+    return t.database_result(t.RegexStatus.ok, required, required);
+}
+
+pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
+    let data: *const u8 = sliceptr(bytes);
+    let len: usize = slicelen(bytes);
+    if len < HEADER_BYTES || !has_magic(data, len) {
+        return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
+    }
+    var cursor: usize = MAGIC_BYTES;
+    let header_cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let version: u8 = read_u8(data, len, header_cursor_ptr);
+    if version != DATABASE_VERSION {
+        return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
+    }
+    let mode: u8 = read_u8(data, len, header_cursor_ptr);
+    if mode != t.MODE_TEXT && mode != t.MODE_BYTES {
+        return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
+    }
+    let pattern_count_read: ReadUsize = read_usize(data, len, cursor);
+    if !pattern_count_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = pattern_count_read.next;
+    let start_read: ReadUsize = read_usize(data, len, cursor);
+    if !start_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = start_read.next;
+    let state_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !state_len_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = state_len_read.next;
+    let range_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !range_len_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = range_len_read.next;
+    let pattern_count: usize = pattern_count_read.value;
+    let start: usize = start_read.value;
+    let state_len: usize = state_len_read.value;
+    let range_len: usize = range_len_read.value;
+    if !database_shape_is_valid(pattern_count, start, state_len, range_len, len) {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    var compiled: t.RegexSet = allocate_set(mode, pattern_count, state_len, range_len);
+    if compiled.status != t.RegexStatus.ok {
+        return compiled;
+    }
+    compiled.start = start;
+    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    var state: usize = 0usize;
+    while state < state_len {
+        if !read_state(data, len, cursor_ptr, unsafe { ptrat[*mut t.State](ptraddr(compiled.states) + state * sizeof[t.State]) }) {
+            destroy_set_storage(&mut compiled);
+            return empty_set(mode, t.RegexStatus.database_error);
+        }
+        state += 1usize;
+    }
+    var range: usize = 0usize;
+    while range < range_len {
+        if !read_range(data, len, cursor_ptr, unsafe { ptrat[*mut t.ClassRange](ptraddr(compiled.ranges) + range * sizeof[t.ClassRange]) }) {
+            destroy_set_storage(&mut compiled);
+            return empty_set(mode, t.RegexStatus.database_error);
+        }
+        range += 1usize;
+    }
+    if cursor != len || !validate_set_program(&compiled) {
+        destroy_set_storage(&mut compiled);
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    return compiled;
+}
+
+fn write_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
+    write_u8(out, out_capacity, cursor, MAGIC_0);
+    write_u8(out, out_capacity, cursor, MAGIC_1);
+    write_u8(out, out_capacity, cursor, MAGIC_2);
+    write_u8(out, out_capacity, cursor, MAGIC_3);
+    write_u8(out, out_capacity, cursor, MAGIC_4);
+    write_u8(out, out_capacity, cursor, MAGIC_5);
+    write_u8(out, out_capacity, cursor, MAGIC_6);
+    write_u8(out, out_capacity, cursor, MAGIC_7);
+}
+
+fn write_state(out: *mut u8, out_capacity: usize, cursor: *mut usize, state: t.State) -> void {
+    write_u8(out, out_capacity, cursor, state.opcode);
+    write_u8(out, out_capacity, cursor, state.flags);
+    write_usize(out, out_capacity, cursor, state.value);
+    write_usize(out, out_capacity, cursor, state.value_to);
+    write_usize(out, out_capacity, cursor, state.out1);
+    write_usize(out, out_capacity, cursor, state.out2);
+    write_usize(out, out_capacity, cursor, state.class_start);
+    write_usize(out, out_capacity, cursor, state.class_len);
+}
+
+fn write_range(out: *mut u8, out_capacity: usize, cursor: *mut usize, range: t.ClassRange) -> void {
+    write_u8(out, out_capacity, cursor, range.kind);
+    write_usize(out, out_capacity, cursor, range.first);
+    write_usize(out, out_capacity, cursor, range.last);
+}
+
+fn write_u8(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: u8) -> void {
+    if unsafe { *cursor } < out_capacity && out != null {
+        unsafe {
+            out[*cursor] = value;
+        }
+    }
+    unsafe {
+        *cursor = *cursor + 1usize;
+    }
+}
+
+fn write_usize(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: usize) -> void {
+    var offset: usize = 0usize;
+    while offset < USIZE_BYTES {
+        let shift: usize = offset * BYTE_BITS;
+        write_u8(out, out_capacity, cursor, cast[u8]((value >> shift) & BYTE_MASK));
+        offset += 1usize;
+    }
+}
+
+fn read_u8(data: *const u8, len: usize, cursor: *mut usize) -> u8 {
+    if unsafe { *cursor } >= len {
+        return 0u8;
+    }
+    let value: u8 = unsafe { data[*cursor] };
+    unsafe {
+        *cursor = *cursor + 1usize;
+    }
+    return value;
+}
+
+fn read_usize(data: *const u8, len: usize, cursor: usize) -> ReadUsize {
+    if cursor + USIZE_BYTES > len {
+        return ReadUsize { value: 0usize, next: cursor, valid: false };
+    }
+    var value: usize = 0usize;
+    var offset: usize = 0usize;
+    while offset < USIZE_BYTES {
+        let shift: usize = offset * BYTE_BITS;
+        value = value | (cast[usize](unsafe { data[cursor + offset] }) << shift);
+        offset += 1usize;
+    }
+    return ReadUsize { value: value, next: cursor + USIZE_BYTES, valid: true };
+}
+
+fn read_state(data: *const u8, len: usize, cursor: *mut usize, state: *mut t.State) -> bool {
+    if unsafe { *cursor } + STATE_ENCODED_BYTES > len {
+        return false;
+    }
+    unsafe {
+        state.opcode = read_u8(data, len, cursor);
+        state.flags = read_u8(data, len, cursor);
+    }
+    let value: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !value.valid {
+        return false;
+    }
+    unsafe {
+        state.value = value.value;
+        *cursor = value.next;
+    }
+    let value_to: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !value_to.valid {
+        return false;
+    }
+    unsafe {
+        state.value_to = value_to.value;
+        *cursor = value_to.next;
+    }
+    let out1: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !out1.valid {
+        return false;
+    }
+    unsafe {
+        state.out1 = out1.value;
+        *cursor = out1.next;
+    }
+    let out2: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !out2.valid {
+        return false;
+    }
+    unsafe {
+        state.out2 = out2.value;
+        *cursor = out2.next;
+    }
+    let class_start: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !class_start.valid {
+        return false;
+    }
+    unsafe {
+        state.class_start = class_start.value;
+        *cursor = class_start.next;
+    }
+    let class_len: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !class_len.valid {
+        return false;
+    }
+    unsafe {
+        state.class_len = class_len.value;
+        *cursor = class_len.next;
+    }
+    return true;
+}
+
+fn read_range(data: *const u8, len: usize, cursor: *mut usize, range: *mut t.ClassRange) -> bool {
+    if unsafe { *cursor } + RANGE_ENCODED_BYTES > len {
+        return false;
+    }
+    unsafe {
+        range.kind = read_u8(data, len, cursor);
+    }
+    let first: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !first.valid {
+        return false;
+    }
+    unsafe {
+        range.first = first.value;
+        *cursor = first.next;
+    }
+    let last: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !last.valid {
+        return false;
+    }
+    unsafe {
+        range.last = last.value;
+        *cursor = last.next;
+    }
+    return true;
+}
+
+fn has_magic(data: *const u8, len: usize) -> bool {
+    if len < MAGIC_BYTES {
+        return false;
+    }
+    return unsafe { data[0usize] } == MAGIC_0
+        && unsafe { data[1usize] } == MAGIC_1
+        && unsafe { data[2usize] } == MAGIC_2
+        && unsafe { data[3usize] } == MAGIC_3
+        && unsafe { data[4usize] } == MAGIC_4
+        && unsafe { data[5usize] } == MAGIC_5
+        && unsafe { data[6usize] } == MAGIC_6
+        && unsafe { data[7usize] } == MAGIC_7;
+}
+
+fn database_shape_is_valid(
+    pattern_count: usize,
+    start: usize,
+    state_len: usize,
+    range_len: usize,
+    bytes_len: usize
+) -> bool {
+    if pattern_count > limits.MAX_SET_PATTERNS ||
+        state_len > limits.MAX_STATE_CAPACITY ||
+        range_len > limits.MAX_RANGE_CAPACITY {
+        return false;
+    }
+    if start != t.NO_STATE && start >= state_len {
+        return false;
+    }
+    if pattern_count == 0usize && (state_len != 0usize || range_len != 0usize || start != t.NO_STATE) {
+        return false;
+    }
+    return bytes_len == HEADER_BYTES + state_len * STATE_ENCODED_BYTES + range_len * RANGE_ENCODED_BYTES;
+}
+
+fn allocate_set(mode: u8, pattern_count: usize, state_len: usize, range_len: usize) -> t.RegexSet {
+    var states: *mut t.State = null;
+    var ranges: *mut t.ClassRange = null;
+    if state_len > 0usize {
+        states = unsafe {
+            ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_len, sizeof[t.State]))
+        };
+        if states == null {
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if range_len > 0usize {
+        ranges = unsafe {
+            ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_len, sizeof[t.ClassRange]))
+        };
+        if ranges == null {
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    return t.RegexSet {
+        mode: mode,
+        states: states,
+        state_len: state_len,
+        state_capacity: state_len,
+        ranges: ranges,
+        range_len: range_len,
+        range_capacity: range_len,
+        pattern_count: pattern_count,
+        start: t.NO_STATE,
+        status: t.RegexStatus.ok,
+        error_index: t.CAPTURE_MISSING,
+    };
+}
+
+fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
+    return t.RegexSet {
+        mode: mode,
+        states: null,
+        state_len: 0usize,
+        state_capacity: 0usize,
+        ranges: null,
+        range_len: 0usize,
+        range_capacity: 0usize,
+        pattern_count: 0usize,
+        start: t.NO_STATE,
+        status: status,
+        error_index: t.CAPTURE_MISSING,
+    };
+}
+
+fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.state_len = 0usize;
+    compiled.state_capacity = 0usize;
+    compiled.range_len = 0usize;
+    compiled.range_capacity = 0usize;
+}
+
+fn validate_set_program(compiled: &t.RegexSet) -> bool {
+    if compiled.state_len == 0usize {
+        return compiled.start == t.NO_STATE;
+    }
+    var state: usize = 0usize;
+    while state < compiled.state_len {
+        if !validate_state(compiled, unsafe { compiled.states[state] }) {
+            return false;
+        }
+        state += 1usize;
+    }
+    return true;
+}
+
+fn validate_state(compiled: &t.RegexSet, state: t.State) -> bool {
+    if state.out1 != t.NO_STATE && state.out1 >= compiled.state_len {
+        return false;
+    }
+    if state.out2 != t.NO_STATE && state.out2 >= compiled.state_len {
+        return false;
+    }
+    if state.opcode == t.OP_CLASS {
+        if state.class_start > compiled.range_len {
+            return false;
+        }
+        if state.class_len > compiled.range_len - state.class_start {
+            return false;
+        }
+    }
+    if state.opcode == t.OP_MATCH && state.value >= compiled.pattern_count {
+        return false;
+    }
+    return state.opcode <= t.OP_SAVE;
+}

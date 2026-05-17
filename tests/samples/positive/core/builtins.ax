@@ -60,6 +60,13 @@ fn main() -> i32 {
     if sum_checked_text(ascii) != 2 {
         return 7;
     }
+    if slicelen(ascii) != 2usize {
+        return 11;
+    }
+    let ascii_ptr: *const u8 = sliceptr(ascii);
+    if unsafe { ascii_ptr[0usize] } != b'o' {
+        return 12;
+    }
 
     let invalid_bytes: [1]u8 = [0x80u8];
     let invalid: []const u8 = invalid_bytes[:];

@@ -1,0 +1,181 @@
+module regex.ops.stream;
+
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
+import regex.vm.engine as engine;
+import unicode.ucd as unicode;
+
+pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {
+    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
+    if compiled.status != t.RegexStatus.ok {
+        return empty_stream(compiled_ptr, compiled.status);
+    }
+    if compiled.mode != t.MODE_TEXT {
+        return empty_stream(compiled_ptr, t.RegexStatus.unsupported);
+    }
+    let buffer: *mut u8 = alloc.alloc_zeroed_bytes(limits.MIN_STREAM_CAPACITY, sizeof[u8]);
+    if buffer == null {
+        return empty_stream(compiled_ptr, t.RegexStatus.out_of_memory);
+    }
+    return t.RegexStream {
+        compiled: compiled_ptr,
+        buffer: buffer,
+        len: 0usize,
+        capacity: limits.MIN_STREAM_CAPACITY,
+        base_offset: 0usize,
+        next_start: 0usize,
+        finished: false,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn destroy_stream(stream: &mut t.RegexStream) -> void {
+    alloc.free_bytes(stream.buffer);
+    stream.compiled = null;
+    stream.buffer = null;
+    stream.len = 0usize;
+    stream.capacity = 0usize;
+    stream.base_offset = 0usize;
+    stream.next_start = 0usize;
+    stream.finished = true;
+    stream.status = t.RegexStatus.unsupported;
+}
+
+pub fn stream_feed(stream: &mut t.RegexStream, chunk: str) -> t.RegexStatus {
+    if stream.status != t.RegexStatus.ok {
+        return stream.status;
+    }
+    if stream.finished {
+        stream.status = t.RegexStatus.unsupported;
+        return stream.status;
+    }
+    let chunk_len: usize = strblen(chunk);
+    if !ensure_capacity(stream, stream.len + chunk_len) {
+        return stream.status;
+    }
+    copy_chunk(stream.buffer, stream.len, chunk, chunk_len);
+    stream.len += chunk_len;
+    return stream.status;
+}
+
+pub fn stream_finish(stream: &mut t.RegexStream) -> t.RegexStatus {
+    if stream.status == t.RegexStatus.ok {
+        stream.finished = true;
+    }
+    return stream.status;
+}
+
+pub fn stream_next(stream: &mut t.RegexStream) -> t.MatchResult {
+    if stream.status != t.RegexStatus.ok {
+        return t.match_result(false, stream.base_offset, stream.base_offset, stream.status);
+    }
+    if stream.compiled == null {
+        stream.status = t.RegexStatus.unsupported;
+        return t.match_result(false, stream.base_offset, stream.base_offset, stream.status);
+    }
+    if stream.buffer == null || stream.next_start > stream.len {
+        return t.match_result(false, stream.base_offset + stream.len, stream.base_offset + stream.len, t.RegexStatus.no_match);
+    }
+    let text_ptr: *const u8 = unsafe { ptrcast[*const u8](stream.buffer) };
+    let text: str = unsafe { strraw(text_ptr, stream.len) };
+    var found: t.MatchResult = unsafe { engine.search_compiled_from(&*stream.compiled, text, stream.next_start) };
+    if found.status != t.RegexStatus.ok || !found.matched {
+        return found;
+    }
+    if !stream.finished && found.end == stream.len {
+        return t.match_result(false, stream.base_offset + found.start, stream.base_offset + found.end, t.RegexStatus.no_match);
+    }
+    stream.next_start = next_search_start(text, found.start, found.end);
+    found.start += stream.base_offset;
+    found.end += stream.base_offset;
+    compact_stream(stream);
+    return found;
+}
+
+pub fn stream_buffer_bytes(stream: &t.RegexStream) -> usize {
+    return stream.capacity;
+}
+
+fn empty_stream(compiled: *const t.Regex, status: t.RegexStatus) -> t.RegexStream {
+    return t.RegexStream {
+        compiled: compiled,
+        buffer: null,
+        len: 0usize,
+        capacity: 0usize,
+        base_offset: 0usize,
+        next_start: 0usize,
+        finished: false,
+        status: status,
+    };
+}
+
+fn ensure_capacity(stream: &mut t.RegexStream, needed: usize) -> bool {
+    if needed <= stream.capacity {
+        return true;
+    }
+    var next_capacity: usize = if stream.capacity == 0usize {
+        limits.MIN_STREAM_CAPACITY
+    } else {
+        stream.capacity * limits.CAPACITY_GROWTH_FACTOR
+    };
+    while next_capacity < needed {
+        next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
+    }
+    let next: *mut u8 = alloc.alloc_zeroed_bytes(next_capacity, sizeof[u8]);
+    if next == null {
+        stream.status = t.RegexStatus.out_of_memory;
+        return false;
+    }
+    copy_bytes(next, 0usize, stream.buffer, 0usize, stream.len);
+    alloc.free_bytes(stream.buffer);
+    stream.buffer = next;
+    stream.capacity = next_capacity;
+    return true;
+}
+
+fn compact_stream(stream: &mut t.RegexStream) -> void {
+    if stream.next_start < limits.MIN_STREAM_CAPACITY || stream.next_start > stream.len || stream.buffer == null {
+        return;
+    }
+    let remaining: usize = stream.len - stream.next_start;
+    copy_bytes(stream.buffer, 0usize, stream.buffer, stream.next_start, remaining);
+    stream.base_offset += stream.next_start;
+    stream.len = remaining;
+    stream.next_start = 0usize;
+}
+
+fn copy_chunk(dst: *mut u8, dst_start: usize, chunk: str, chunk_len: usize) -> void {
+    let src: *const u8 = strptr(chunk);
+    var index: usize = 0usize;
+    while index < chunk_len {
+        unsafe {
+            dst[dst_start + index] = src[index];
+        }
+        index += 1usize;
+    }
+}
+
+fn copy_bytes(dst: *mut u8, dst_start: usize, src: *mut u8, src_start: usize, len: usize) -> void {
+    if dst == null || src == null {
+        return;
+    }
+    var index: usize = 0usize;
+    while index < len {
+        unsafe {
+            dst[dst_start + index] = src[src_start + index];
+        }
+        index += 1usize;
+    }
+}
+
+fn next_search_start(input: str, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    let input_len: usize = strblen(input);
+    if end >= input_len {
+        return input_len + 1usize;
+    }
+    return unicode.next_boundary(input, end);
+}

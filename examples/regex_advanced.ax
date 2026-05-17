@@ -1,0 +1,437 @@
+module regex_advanced;
+
+import regex.api as regex;
+import regex.bytes as bytes;
+
+const CASE_CLASS_SET: i32 = 100;
+const CASE_COMPAT: i32 = 200;
+const CASE_BYTES: i32 = 300;
+const CASE_SET: i32 = 400;
+const CASE_DATABASE: i32 = 500;
+const CASE_REPLACE: i32 = 600;
+const CASE_SPLIT: i32 = 700;
+const CASE_STREAM: i32 = 800;
+const CASE_PRECEDENCE: i32 = 900;
+
+const BUFFER_CAPACITY: usize = 256usize;
+const DATABASE_CAPACITY: usize = 4096usize;
+const DATABASE_MODE_OFFSET: usize = 9usize;
+const INVALID_DATABASE_MODE: u8 = 99u8;
+const SET_ID_CAPACITY: usize = 8usize;
+
+struct CopyState {
+    written: usize;
+    required: usize;
+}
+
+fn same_text(left: str, right: str) -> bool {
+    if strblen(left) != strblen(right) {
+        return false;
+    }
+    let left_ptr: *const u8 = strptr(left);
+    let right_ptr: *const u8 = strptr(right);
+    var offset: usize = 0usize;
+    while offset < strblen(left) {
+        if unsafe { left_ptr[offset] } != unsafe { right_ptr[offset] } {
+            return false;
+        }
+        offset += 1usize;
+    }
+    return true;
+}
+
+fn buffer_text(buffer: &mut [256]u8, len: usize) -> str {
+    let ptr: *const u8 = unsafe { ptrcast[*const u8](ptrat[*mut [256]u8](ptraddr(buffer))) };
+    return unsafe { strraw(ptr, len) };
+}
+
+fn buffer_ptr(buffer: &mut [256]u8) -> *mut u8 {
+    return unsafe { ptrcast[*mut u8](ptrat[*mut [256]u8](ptraddr(buffer))) };
+}
+
+fn database_ptr(buffer: &mut [4096]u8) -> *mut u8 {
+    return unsafe { ptrcast[*mut u8](ptrat[*mut [4096]u8](ptraddr(buffer))) };
+}
+
+fn ids_ptr(ids: &mut [8]usize) -> *mut usize {
+    return unsafe { ptrcast[*mut usize](ptrat[*mut [8]usize](ptraddr(ids))) };
+}
+
+fn ensure(code: i32, passed: bool) -> i32 {
+    if passed {
+        return 0;
+    }
+    return code;
+}
+
+fn copy_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    if required < out_capacity && out != null {
+        unsafe {
+            out[required] = value;
+        }
+    }
+    let next_written: usize = if required < out_capacity { written + 1usize } else { written };
+    return CopyState { written: next_written, required: required + 1usize };
+}
+
+fn copy_text(text: str, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    let data: *const u8 = strptr(text);
+    var next_written: usize = written;
+    var next_required: usize = required;
+    var offset: usize = 0usize;
+    while offset < strblen(text) {
+        let copied: CopyState = copy_byte(unsafe { data[offset] }, out, out_capacity, next_written, next_required);
+        next_written = copied.written;
+        next_required = copied.required;
+        offset += 1usize;
+    }
+    return CopyState { written: next_written, required: next_required };
+}
+
+fn swap_callback(input: str, captures: &regex.Captures, out: *mut u8, out_capacity: usize) -> regex.ReplaceResult {
+    let left: str = regex.capture_text(input, captures, 1usize);
+    let right: str = regex.capture_text(input, captures, 2usize);
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    let first: CopyState = copy_text(right, out, out_capacity, written, required);
+    written = first.written;
+    required = first.required;
+    let slash: CopyState = copy_byte(0x2fu8, out, out_capacity, written, required);
+    written = slash.written;
+    required = slash.required;
+    let second: CopyState = copy_text(left, out, out_capacity, written, required);
+    written = second.written;
+    required = second.required;
+    let status: regex.RegexStatus = if required > out_capacity {
+        regex.RegexStatus.buffer_too_small
+    } else {
+        regex.RegexStatus.ok
+    };
+    return regex.ReplaceResult {
+        status: status,
+        written: written,
+        required: required,
+        replacements: 1usize,
+    };
+}
+
+fn require_class_set_algebra() -> i32 {
+    let intersection: i32 = ensure(CASE_CLASS_SET + 1, regex.fullmatch("[a-z&&[aeiou]]+", "aeiou"));
+    if intersection != 0 {
+        return intersection;
+    }
+    let intersection_rejects: i32 = ensure(CASE_CLASS_SET + 2, !regex.fullmatch("[a-z&&[aeiou]]+", "abc"));
+    if intersection_rejects != 0 {
+        return intersection_rejects;
+    }
+    let difference: i32 = ensure(CASE_CLASS_SET + 3, regex.fullmatch("[a-z--[aeiou]]+", "bcdfg"));
+    if difference != 0 {
+        return difference;
+    }
+    let difference_rejects: i32 = ensure(CASE_CLASS_SET + 4, !regex.fullmatch("[a-z--[aeiou]]+", "face"));
+    if difference_rejects != 0 {
+        return difference_rejects;
+    }
+    let symmetric: i32 = ensure(CASE_CLASS_SET + 5, regex.fullmatch("[a-f~~[d-z]]+", "abcxyz"));
+    if symmetric != 0 {
+        return symmetric;
+    }
+    let symmetric_rejects: i32 = ensure(CASE_CLASS_SET + 6, !regex.fullmatch("[a-f~~[d-z]]+", "de"));
+    if symmetric_rejects != 0 {
+        return symmetric_rejects;
+    }
+    let nested_unicode: i32 = ensure(CASE_CLASS_SET + 7, regex.fullmatch("[[\\p{L}]--[\\p{Greek}]]+", "abcЖ汉"));
+    if nested_unicode != 0 {
+        return nested_unicode;
+    }
+    return ensure(CASE_CLASS_SET + 8, !regex.fullmatch("[[\\p{L}]--[\\p{Greek}]]+", "Ω"));
+}
+
+fn require_compat_syntax() -> i32 {
+    var named: regex.Regex = regex.compile("(?P<word>\\w+)");
+    defer regex.destroy(&mut named);
+    if !named.valid() || regex.capture_index(&named, "word") != 1usize {
+        return CASE_COMPAT + 1 + regex.status_code(named.status);
+    }
+    let comment: i32 = ensure(CASE_COMPAT + 2, regex.fullmatch("a(?#ignored)b", "ab"));
+    if comment != 0 {
+        return comment;
+    }
+    let long_escape: i32 = ensure(CASE_COMPAT + 3, regex.fullmatch("\\U00000041\\U{00000042}", "AB"));
+    if long_escape != 0 {
+        return long_escape;
+    }
+    let start_boundary: regex.MatchResult = regex.find("\\b{start}word", "a word");
+    if !start_boundary.ok() || start_boundary.start != 2usize || start_boundary.end != 6usize {
+        return CASE_COMPAT + 4 + regex.status_code(start_boundary.status);
+    }
+    let end_boundary: regex.MatchResult = regex.find("word\\b{end}", "word!");
+    if !end_boundary.ok() || end_boundary.start != 0usize || end_boundary.end != 4usize {
+        return CASE_COMPAT + 5 + regex.status_code(end_boundary.status);
+    }
+    return 0;
+}
+
+fn require_bytes_api() -> i32 {
+    let bytes_value: [2]u8 = [0xc3u8, 0xa9u8];
+    let view: []const u8 = bytes_value[:];
+    let raw_match: i32 = ensure(CASE_BYTES + 1, bytes.fullmatch("..", view));
+    if raw_match != 0 {
+        return raw_match;
+    }
+    let text_rejects: i32 = ensure(CASE_BYTES + 2, !regex.fullmatch("..", "é"));
+    if text_rejects != 0 {
+        return text_rejects;
+    }
+    var compiled: bytes.Regex = bytes.compile("\\xc3\\xa9");
+    defer bytes.destroy(&mut compiled);
+    if !compiled.valid() {
+        return CASE_BYTES + 3 + bytes.status_code(compiled.status);
+    }
+    let result: bytes.MatchResult = bytes.fullmatch_compiled(&compiled, view);
+    let escaped_match: i32 = ensure(CASE_BYTES + 4 + bytes.status_code(result.status), result.ok());
+    if escaped_match != 0 {
+        return escaped_match;
+    }
+    var quoted: bytes.Regex = bytes.compile("\\Qé\\E");
+    defer bytes.destroy(&mut quoted);
+    if !quoted.valid() {
+        return CASE_BYTES + 5 + bytes.status_code(quoted.status);
+    }
+    let quoted_result: bytes.MatchResult = bytes.fullmatch_compiled(&quoted, view);
+    if !quoted_result.ok() {
+        return CASE_BYTES + 6 + bytes.status_code(quoted_result.status);
+    }
+    let patterns: [2]str = ["\\xc3.", "xx"];
+    var set: bytes.RegexSet = bytes.compile_set(patterns[:]);
+    defer bytes.destroy_set(&mut set);
+    if !set.valid() {
+        return CASE_BYTES + 7 + bytes.status_code(set.status);
+    }
+    var ids: [8]usize = [0usize; 8];
+    let set_result: bytes.SetMatchesResult = bytes.matches_set_compiled(&set, view, ids_ptr(&mut ids), SET_ID_CAPACITY);
+    if set_result.status != bytes.RegexStatus.ok || set_result.count != 1usize || ids[0usize] != 0usize {
+        return CASE_BYTES + 8 + bytes.status_code(set_result.status);
+    }
+    let text_api_rejects: regex.MatchResult = regex.fullmatch_compiled(&compiled, "é");
+    return ensure(CASE_BYTES + 9 + regex.status_code(text_api_rejects.status), text_api_rejects.status == regex.RegexStatus.unsupported);
+}
+
+fn require_regex_set() -> i32 {
+    let patterns: [3]str = ["error:\\s+\\w+", "warn:\\s+\\w+", "\\p{Greek}+"];
+    var compiled: regex.RegexSet = regex.compile_set(patterns[:]);
+    defer regex.destroy_set(&mut compiled);
+    if !compiled.valid() {
+        return CASE_SET + 1 + regex.status_code(compiled.status);
+    }
+    var ids: [8]usize = [0usize; 8];
+    let matches: regex.SetMatchesResult = regex.matches_set_compiled(
+        &compiled,
+        "trace Ω warn: ops",
+        ids_ptr(&mut ids),
+        SET_ID_CAPACITY
+    );
+    if matches.status != regex.RegexStatus.ok || !matches.matched || matches.count != 2usize || matches.written != 2usize {
+        return CASE_SET + 2 + regex.status_code(matches.status);
+    }
+    if ids[0usize] != 1usize || ids[1usize] != 2usize {
+        return CASE_SET + 3;
+    }
+    if regex.set_state_count(&compiled) <= 1usize || regex.set_range_count(&compiled) == 0usize {
+        return CASE_SET + 4;
+    }
+    if regex.set_program_bytes(&compiled) == 0usize || regex.set_workspace_bytes(&compiled) == 0usize {
+        return CASE_SET + 5;
+    }
+    return 0;
+}
+
+fn require_database_roundtrip() -> i32 {
+    let patterns: [2]str = ["alpha", "beta"];
+    var compiled: regex.RegexSet = regex.compile_set(patterns[:]);
+    defer regex.destroy_set(&mut compiled);
+    if !compiled.valid() {
+        return CASE_DATABASE + 1 + regex.status_code(compiled.status);
+    }
+    var storage: [4096]u8 = [0u8; 4096];
+    let encoded: regex.DatabaseResult = regex.serialize_set(&compiled, database_ptr(&mut storage), DATABASE_CAPACITY);
+    if !encoded.ok() || encoded.required == 0usize {
+        return CASE_DATABASE + 2 + regex.status_code(encoded.status);
+    }
+    let bytes_view: []const u8 = storage[:encoded.written];
+    var decoded: regex.RegexSet = regex.deserialize_set(bytes_view);
+    defer regex.destroy_set(&mut decoded);
+    if !decoded.valid() {
+        return CASE_DATABASE + 3 + regex.status_code(decoded.status);
+    }
+    var ids: [8]usize = [0usize; 8];
+    let matches: regex.SetMatchesResult = regex.matches_set_compiled(&decoded, "xx beta yy", ids_ptr(&mut ids), SET_ID_CAPACITY);
+    if matches.status != regex.RegexStatus.ok || matches.count != 1usize || ids[0usize] != 1usize {
+        return CASE_DATABASE + 4 + regex.status_code(matches.status);
+    }
+    var too_small: [256]u8 = [0u8; 256];
+    let small: regex.DatabaseResult = regex.serialize_set(&compiled, buffer_ptr(&mut too_small), 4usize);
+    let small_result: i32 = ensure(CASE_DATABASE + 5 + regex.status_code(small.status), small.status == regex.RegexStatus.buffer_too_small);
+    if small_result != 0 {
+        return small_result;
+    }
+    storage[DATABASE_MODE_OFFSET] = INVALID_DATABASE_MODE;
+    let corrupt_view: []const u8 = storage[:encoded.written];
+    var corrupt: regex.RegexSet = regex.deserialize_set(corrupt_view);
+    defer regex.destroy_set(&mut corrupt);
+    return ensure(CASE_DATABASE + 6 + regex.status_code(corrupt.status), corrupt.status == regex.RegexStatus.database_error);
+}
+
+fn require_replacement_surface() -> i32 {
+    var ten: regex.Regex = regex.compile("(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)");
+    defer regex.destroy(&mut ten);
+    var buffer: [256]u8 = [0u8; 256];
+    let multi_digit: regex.ReplaceResult = regex.replace_all(
+        &ten,
+        "abcdefghij",
+        "$10-${10}-${1}",
+        buffer_ptr(&mut buffer),
+        BUFFER_CAPACITY
+    );
+    if !multi_digit.ok() || !same_text(buffer_text(&mut buffer, multi_digit.written), "j-j-a") {
+        return CASE_REPLACE + 1 + regex.status_code(multi_digit.status);
+    }
+
+    var words: regex.Regex = regex.compile("\\w+");
+    defer regex.destroy(&mut words);
+    var first_buffer: [256]u8 = [0u8; 256];
+    let first: regex.ReplaceResult = regex.replace_first(&words, "one two", "X", buffer_ptr(&mut first_buffer), BUFFER_CAPACITY);
+    if !first.ok() || first.replacements != 1usize || !same_text(buffer_text(&mut first_buffer, first.written), "X two") {
+        return CASE_REPLACE + 2 + regex.status_code(first.status);
+    }
+    var limited_buffer: [256]u8 = [0u8; 256];
+    let limited: regex.ReplaceResult = regex.replace_n(&words, "a b c", "x", 2usize, buffer_ptr(&mut limited_buffer), BUFFER_CAPACITY);
+    if !limited.ok() || limited.replacements != 2usize || !same_text(buffer_text(&mut limited_buffer, limited.written), "x x c") {
+        return CASE_REPLACE + 3 + regex.status_code(limited.status);
+    }
+
+    var pair: regex.Regex = regex.compile("(\\w+)-(\\w+)");
+    defer regex.destroy(&mut pair);
+    var callback_buffer: [256]u8 = [0u8; 256];
+    let callback: regex.ReplaceResult = regex.replace_all_with(
+        &pair,
+        "ab-cd",
+        swap_callback,
+        buffer_ptr(&mut callback_buffer),
+        BUFFER_CAPACITY
+    );
+    if !callback.ok() || !same_text(buffer_text(&mut callback_buffer, callback.written), "cd/ab") {
+        return CASE_REPLACE + 4 + regex.status_code(callback.status);
+    }
+    return 0;
+}
+
+fn require_splitn() -> i32 {
+    var comma: regex.Regex = regex.compile(",");
+    defer regex.destroy(&mut comma);
+    var iter: regex.SplitIter = regex.splitn_iter(&comma, "a,b,c", 2usize);
+    let first: regex.SplitPart = regex.split_next(&mut iter);
+    if !first.ok() || first.start != 0usize || first.end != 1usize {
+        return CASE_SPLIT + 1 + regex.status_code(first.status);
+    }
+    let second: regex.SplitPart = regex.split_next(&mut iter);
+    if !second.ok() || !same_text("a,b,c"[second.start:second.end], "b,c") {
+        return CASE_SPLIT + 2 + regex.status_code(second.status);
+    }
+    let done: regex.SplitPart = regex.split_next(&mut iter);
+    return ensure(CASE_SPLIT + 3 + regex.status_code(done.status), done.status == regex.RegexStatus.no_match);
+}
+
+fn require_streaming() -> i32 {
+    var compiled: regex.Regex = regex.compile("a+");
+    defer regex.destroy(&mut compiled);
+    if !compiled.valid() {
+        return CASE_STREAM + 1 + regex.status_code(compiled.status);
+    }
+    var stream: regex.RegexStream = regex.open_stream(&compiled);
+    defer regex.destroy_stream(&mut stream);
+    if stream.status != regex.RegexStatus.ok {
+        return CASE_STREAM + 2 + regex.status_code(stream.status);
+    }
+    if regex.stream_feed(&mut stream, "aa") != regex.RegexStatus.ok {
+        return CASE_STREAM + 3 + regex.status_code(stream.status);
+    }
+    if regex.stream_feed(&mut stream, "a") != regex.RegexStatus.ok {
+        return CASE_STREAM + 4 + regex.status_code(stream.status);
+    }
+    let deferred: regex.MatchResult = regex.stream_next(&mut stream);
+    if deferred.status != regex.RegexStatus.no_match {
+        return CASE_STREAM + 5 + regex.status_code(deferred.status);
+    }
+    if regex.stream_finish(&mut stream) != regex.RegexStatus.ok {
+        return CASE_STREAM + 6 + regex.status_code(stream.status);
+    }
+    let found: regex.MatchResult = regex.stream_next(&mut stream);
+    if !found.ok() || found.start != 0usize || found.end != 3usize {
+        return CASE_STREAM + 7 + regex.status_code(found.status);
+    }
+    return ensure(CASE_STREAM + 8, regex.stream_buffer_bytes(&stream) >= 3usize);
+}
+
+fn require_submatch_precedence() -> i32 {
+    var greedy: regex.Regex = regex.compile("(a*)(a*)");
+    defer regex.destroy(&mut greedy);
+    var captures: regex.Captures = regex.captures_fullmatch_compiled(&greedy, "aaa");
+    defer regex.destroy_captures(&mut captures);
+    if !captures.ok() {
+        return CASE_PRECEDENCE + 1 + regex.status_code(captures.status);
+    }
+    if !same_text(regex.capture_text("aaa", &captures, 1usize), "aaa") ||
+        !same_text(regex.capture_text("aaa", &captures, 2usize), "") {
+        return CASE_PRECEDENCE + 2;
+    }
+
+    var ordered: regex.Regex = regex.compile("(a|ab)(b?)");
+    defer regex.destroy(&mut ordered);
+    var ordered_caps: regex.Captures = regex.captures_fullmatch_compiled(&ordered, "ab");
+    defer regex.destroy_captures(&mut ordered_caps);
+    if !ordered_caps.ok() {
+        return CASE_PRECEDENCE + 3 + regex.status_code(ordered_caps.status);
+    }
+    if !same_text(regex.capture_text("ab", &ordered_caps, 1usize), "a") ||
+        !same_text(regex.capture_text("ab", &ordered_caps, 2usize), "b") {
+        return CASE_PRECEDENCE + 4;
+    }
+    return 0;
+}
+
+fn main() -> i32 {
+    let class_code: i32 = require_class_set_algebra();
+    if class_code != 0 {
+        return class_code;
+    }
+    let compat_code: i32 = require_compat_syntax();
+    if compat_code != 0 {
+        return compat_code;
+    }
+    let bytes_code: i32 = require_bytes_api();
+    if bytes_code != 0 {
+        return bytes_code;
+    }
+    let set_code: i32 = require_regex_set();
+    if set_code != 0 {
+        return set_code;
+    }
+    let database_code: i32 = require_database_roundtrip();
+    if database_code != 0 {
+        return database_code;
+    }
+    let replace_code: i32 = require_replacement_surface();
+    if replace_code != 0 {
+        return replace_code;
+    }
+    let split_code: i32 = require_splitn();
+    if split_code != 0 {
+        return split_code;
+    }
+    let stream_code: i32 = require_streaming();
+    if stream_code != 0 {
+        return stream_code;
+    }
+    return require_submatch_precedence();
+}

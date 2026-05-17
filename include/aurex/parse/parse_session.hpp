@@ -90,6 +90,8 @@ inline void count_parser_primary_expr_token(
     case syntax::TokenKind::kw_alignof:
     case syntax::TokenKind::kw_ptraddr:
     case syntax::TokenKind::kw_ptrat:
+    case syntax::TokenKind::kw_sliceptr:
+    case syntax::TokenKind::kw_slicelen:
     case syntax::TokenKind::kw_strptr:
     case syntax::TokenKind::kw_strblen:
     case syntax::TokenKind::kw_strvalid:

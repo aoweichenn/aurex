@@ -15,6 +15,9 @@ pub const MAX_WORKSPACE_STATES: usize = MAX_STATE_CAPACITY;
 pub const MAX_BOUNDED_REPEAT: usize = 32usize;
 pub const MAX_CAPTURE_GROUPS: usize = 64usize;
 pub const MAX_CAPTURE_INFOS: usize = MAX_CAPTURE_GROUPS + RESERVED_CAPTURE_INFO_COUNT;
+pub const MAX_SET_PATTERNS: usize = 1024usize;
+
+pub const MIN_STREAM_CAPACITY: usize = 64usize;
 
 pub const WORKSPACE_LIST_COUNT: usize = 4usize;
 pub const WORKSPACE_CAPTURE_ROW_COUNT: usize = 4usize;

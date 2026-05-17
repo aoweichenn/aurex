@@ -3016,6 +3016,54 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions) {
     EXPECT_GT(diagnostics.diagnostics().size(), 0U);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxSliceBuiltinExpressions) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId slice_value = push_name(module, "values");
+    const ExprId data_id = module.push_cast_like_expr(
+        syntax::ExprKind::slice_data,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, slice_value}
+    );
+    const ExprId len_id = module.push_cast_like_expr(
+        syntax::ExprKind::slice_len,
+        {},
+        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, slice_value}
+    );
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.current_module_ = module_id(0);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle u8 = types.builtin(BuiltinType::u8);
+    const TypeHandle usize = types.builtin(BuiltinType::usize);
+    const TypeHandle slice = types.slice(PointerMutability::const_, u8);
+    const TypeHandle const_u8_ptr = types.pointer(PointerMutability::const_, u8);
+    const sema::FunctionLookupKey value_key = add_global_value(
+        analyzer,
+        module_id(0),
+        "values",
+        slice,
+        SymbolKind::local
+    ).first;
+
+    EXPECT_TRUE(types.same(analyzer.analyze_slice_projection_expr(data_id, analyzer.expr_view(data_id)), const_u8_ptr));
+    EXPECT_TRUE(types.same(analyzer.analyze_slice_projection_expr(len_id, analyzer.expr_view(len_id)), usize));
+
+    analyzer.global_values_[value_key].type = usize;
+    const base::usize diagnostics_before_invalid_slice = diagnostics.diagnostics().size();
+    analyzer.checked_.expr_types[slice_value.value] = INVALID_TYPE_HANDLE;
+    analyzer.checked_.expr_types[data_id.value] = INVALID_TYPE_HANDLE;
+    analyzer.checked_.expr_types[len_id.value] = INVALID_TYPE_HANDLE;
+    static_cast<void>(analyzer.analyze_slice_projection_expr(data_id, analyzer.expr_view(data_id)));
+    static_cast<void>(analyzer.analyze_slice_projection_expr(len_id, analyzer.expr_view(len_id)));
+    EXPECT_GT(diagnostics.diagnostics().size(), diagnostics_before_invalid_slice);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};

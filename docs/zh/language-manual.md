@@ -37,7 +37,7 @@ true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char
 mut
 cast ptrcast bitcast sizeof alignof ptraddr ptrat
-strptr strblen strvalid strfromutf8 strraw
+sliceptr slicelen strptr strblen strvalid strfromutf8 strraw
 ```
 
 `c` 不是全局关键字。它只在 `extern c`、`export c fn` 和 `extern c fn(...) -> T` 这类 ABI 语法中作为上下文标记；在参数名、局部名、函数名和模块路径中仍可作为普通标识符。
@@ -767,6 +767,8 @@ enum 名字不特殊，形状才重要。
 | `alignof[T]` | safe | `usize` | 查询有效 storage type 的 ABI alignment。 |
 | `ptraddr(p_or_ref)` | safe | `usize` | 读取 raw pointer 或 reference 的地址值。 |
 | `ptrat[T](addr)` | unsafe | `T` | 从整数地址构造 raw pointer，`T` 必须是 pointer。 |
+| `sliceptr(slice)` | safe | `*const T` 或 `*mut T` | 返回 slice 底层 data pointer；`[]const T` 返回 `*const T`，`[]mut T` 返回 `*mut T`。 |
+| `slicelen(slice)` | safe | `usize` | 返回 slice element count。 |
 | `strptr(s)` | safe | `*const u8` | 返回 `str` 底层 byte pointer。 |
 | `strblen(s)` | safe | `usize` | 返回 `str` byte length。 |
 | `strvalid(bytes)` | safe | `bool` | 检查 `[]const u8` 或 `[]mut u8` 是否是有效 UTF-8。 |
@@ -787,6 +789,14 @@ fn raw_roundtrip(text_value: str) -> str {
     return unsafe { strraw(strptr(text_value), strblen(text_value)) };
 }
 
+fn first_byte(bytes: []const u8) -> u8 {
+    if slicelen(bytes) == 0usize {
+        return 0u8;
+    }
+    let data: *const u8 = sliceptr(bytes);
+    return unsafe { data[0usize] };
+}
+
 fn pointer_roundtrip(value: &mut i32) -> *mut i32 {
     let address: usize = ptraddr(value);
     return unsafe { ptrat[*mut i32](address) };
@@ -797,6 +807,7 @@ fn pointer_roundtrip(value: &mut i32) -> *mut i32 {
 
 - `strfromutf8` 失败返回空 `str`，所以需要区分“合法空输入”和“非法输入”时先调用 `strvalid`。
 - `strraw` 不做 UTF-8 检查，必须包在 `unsafe` 内。
+- `sliceptr` / `slicelen` 要求参数是 slice value，不接受 array、str、pointer 或普通 scalar；array 需要先通过 `values[:]` 形成 slice。
 - `sizeof[void]`、`sizeof[opaque]`、`sizeof` 非 storage type 会被拒绝。
 - `ptraddr(1)` 会被拒绝，因为参数不是 pointer/reference。
 
@@ -1088,8 +1099,8 @@ fn main() -> i32 {
 
 当前正则库的有意边界：
 
-- 不支持反向引用、lookaround、原子组、条件组、递归/子例程调用和复杂替换回调。
-- `unicode.ucd` 模块提供可复用 UTF-8 scalar 解码、Unicode 17.0 general category/binary/script property 和 simple case folding；当前尚不做 grapheme cluster 级匹配，也不做多 scalar full case fold。
+- 不支持反向引用、lookaround、原子组、条件组、递归/子例程调用和带 closure 捕获的复杂替换回调；当前支持非捕获函数指针 callback。
+- `unicode.ucd` 模块提供可复用 UTF-8 scalar 解码、Unicode 17.0 general category/binary/script property 和 simple case folding；当前 text regex 不做 grapheme cluster 级匹配，也不做多 scalar full case fold。regex 另有 raw byte facade 和 `RegexSet` / database / stream API。
 - 不支持 possessive 量词。
 - `{m,n}` 展开上限是实现常量，超出返回 `RegexStatus.repeat_too_large`。
 - pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。
@@ -1107,7 +1118,7 @@ tests/samples/positive/core/builtins.ax
 
 ```text
 cast ptrcast bitcast sizeof alignof ptraddr ptrat
-strptr strblen strvalid strfromutf8 strraw
+sliceptr slicelen strptr strblen strvalid strfromutf8 strraw
 ```
 
 集成测试会把该样例编译为可执行文件并运行：

@@ -187,6 +187,9 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "  let raw: str = unsafe { strraw(data, len) };\n"
         "  let raw_literal: str = r\"C:\\tmp\\a\";\n"
         "  let bytes: [3]u8 = b\"a\\n\\0\";\n"
+        "  let bytes_view: []const u8 = bytes[:];\n"
+        "  let bytes_data: *const u8 = sliceptr(bytes_view);\n"
+        "  let bytes_len: usize = slicelen(bytes_view);\n"
         "  let b: u8 = b'\\n';\n"
         "  let ch: char = '\\u{03BB}';\n"
         "  let nums: [3]i32 = [1, 2, 3];\n"
@@ -226,6 +229,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "kw_alignof",
         "kw_ptraddr",
         "kw_ptrat",
+        "kw_sliceptr",
+        "kw_slicelen",
         "ellipsis",
         "byte_literal",
         "byte_string_literal",
@@ -271,6 +276,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
         "alignof",
         "ptraddr",
         "ptrat",
+        "sliceptr",
+        "slicelen",
     });
 }
 
@@ -2518,6 +2525,8 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_alignof,
             TokenKind::kw_ptraddr,
             TokenKind::kw_ptrat,
+            TokenKind::kw_sliceptr,
+            TokenKind::kw_slicelen,
             TokenKind::kw_strptr,
             TokenKind::kw_strblen,
             TokenKind::kw_strvalid,

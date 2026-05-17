@@ -175,7 +175,10 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() const
         const syntax::ModuleId owner = this->item_module(syntax::ItemId {index});
         const ModuleLookupKey key = this->module_lookup_key(owner, item.name_id);
         if (type_names.contains(key)) {
-            this->report(item.range, sema_duplicate_namespace_member_message(this->module_name(owner), item.name));
+            this->report_duplicate(
+                item.range,
+                sema_duplicate_namespace_member_message(this->module_name(owner), item.name)
+            );
         }
     }
 
@@ -188,11 +191,11 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() const
         module_aliases.reserve(module_info.imports.size());
         for (const syntax::ResolvedImport& import : module_info.imports) {
             if (!module_aliases.insert(import.alias_id).second) {
-                this->report(import.alias_range, sema_ambiguous_import_alias_message(import.alias));
+                this->report_lookup(import.alias_range, sema_ambiguous_import_alias_message(import.alias));
             }
             const ModuleLookupKey key = this->module_lookup_key(owner, import.alias_id);
             if (type_names.contains(key) || value_names.contains(key)) {
-                this->report(
+                this->report_duplicate(
                     import.alias_range,
                     sema_duplicate_namespace_member_message(this->module_name(owner), import.alias)
                 );
@@ -206,7 +209,7 @@ void SemanticAnalyzer::register_type_names() {
                                            const syntax::ModuleId owner,
                                            const base::SourceRange& range,
                                            const std::string_view name) {
-        this->report(range, sema_duplicate_type_definition_message(this->module_name(owner), name));
+        this->report_duplicate(range, sema_duplicate_type_definition_message(this->module_name(owner), name));
         for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
             const syntax::ItemNode candidate = this->module_.items[index];
             if (candidate.name_id != key.name ||
@@ -214,7 +217,11 @@ void SemanticAnalyzer::register_type_names() {
                 candidate.range.begin >= range.begin) {
                 continue;
             }
-            this->report_note(candidate.range, sema_previous_declaration_note_message(name));
+            this->report_note(
+                candidate.range,
+                SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(name)
+            );
             return;
         }
     };
@@ -227,7 +234,10 @@ void SemanticAnalyzer::register_type_names() {
         }
         if (this->has_generic_constraints(item)) {
             for (const syntax::GenericConstraintDecl& constraint : item.where_constraints) {
-                this->report(constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
+                this->report_lookup(
+                    constraint.param_range,
+                    sema_unknown_generic_constraint_param_message(constraint.param_name)
+                );
             }
         }
         const syntax::ModuleId owner = this->item_module(syntax::ItemId {item_index});
@@ -328,7 +338,10 @@ void SemanticAnalyzer::register_type_names() {
             );
             auto struct_inserted = this->checked_.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
-                this->report(item.range, sema_duplicate_struct_definition_message(this->module_name(owner), item.name));
+                this->report_duplicate(
+                    item.range,
+                    sema_duplicate_struct_definition_message(this->module_name(owner), item.name)
+                );
             } else {
                 this->struct_infos_by_type_[handle.value] = &struct_inserted.first->second;
             }
@@ -363,8 +376,15 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     for (const syntax::EnumCaseDecl& enum_case : item.enum_cases) {
         auto inserted_case = seen_cases.emplace(enum_case.name_id, enum_case.range);
         if (!inserted_case.second) {
-            this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
-            this->report_note(inserted_case.first->second, sema_previous_declaration_note_message(enum_case.name));
+            this->report_duplicate(
+                enum_case.range,
+                sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name)
+            );
+            this->report_note(
+                inserted_case.first->second,
+                SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(enum_case.name)
+            );
         }
     }
 
@@ -372,7 +392,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         ? this->resolve_type(item.enum_base_type)
         : this->checked_.types.builtin(BuiltinType::u32);
     if (syntax::is_valid(item.enum_base_type) && !this->checked_.types.is_integer(enum_type)) {
-        this->report(item.range, std::string(SEMA_ENUM_BASE_INTEGER));
+        this->report_general(item.range, std::string(SEMA_ENUM_BASE_INTEGER));
     }
     if (is_valid(named_enum_type)) {
         this->checked_.types.set_enum_underlying(named_enum_type, enum_type);
@@ -391,7 +411,10 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         auto registered_case = registered_cases.emplace(enum_case.name_id, enum_case.range);
         const bool duplicate_case_name = !registered_case.second;
         if (!duplicate_case_name && this->type_member_name_exists(named_enum_type, enum_case.name_id, enum_case.name)) {
-            this->report(enum_case.range, sema_duplicate_type_member_message(make_enum_display_name(), enum_case.name));
+            this->report_duplicate(
+                enum_case.range,
+                sema_duplicate_type_member_message(make_enum_display_name(), enum_case.name)
+            );
         }
         const std::string full_name = case_prefix + std::string(enum_case.name);
         const IdentId full_name_id = this->module_.intern_identifier(full_name);
@@ -483,11 +506,14 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         base::u64 discriminant = next_discriminant;
         const bool parsed_discriminant = this->parse_integer_literal_text(value_text, discriminant);
         if (!parsed_discriminant) {
-            this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_OUT_OF_RANGE));
+            this->report_general(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_OUT_OF_RANGE));
         } else if (!this->integer_literal_fits_type(enum_type, value_text)) {
-            this->report(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_DOES_NOT_FIT));
+            this->report_general(enum_case.range, std::string(SEMA_ENUM_DISCRIMINANT_DOES_NOT_FIT));
         } else if (!seen_values.insert(discriminant).second) {
-            this->report(enum_case.range, sema_duplicate_enum_discriminant_message(make_enum_display_name()));
+            this->report_duplicate(
+                enum_case.range,
+                sema_duplicate_enum_discriminant_message(make_enum_display_name())
+            );
         }
         next_discriminant = discriminant == std::numeric_limits<base::u64>::max()
             ? discriminant
@@ -495,11 +521,11 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         if (has_payload) {
             for (const TypeHandle payload_field_type : payload_types) {
                 if (!this->is_valid_storage_type(payload_field_type)) {
-                    this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_STORAGE));
+                    this->report_general(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_STORAGE));
                 }
                 if (this->checked_.types.contains_array(payload_field_type)) {
                     contains_array_payload = true;
-                    this->report(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
+                    this->report_unsupported(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
                 }
             }
             const base::u64 case_size = this->abi_size(payload_type);
@@ -541,8 +567,15 @@ void SemanticAnalyzer::register_enum_cases_for_item(
         case_info.incremental_key = this->stable_incremental_key(case_info.stable_id, value_text);
         const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
-            this->report(enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
-            this->report_note(case_inserted.first->second.range, sema_previous_declaration_note_message(enum_case.name));
+            this->report_duplicate(
+                enum_case.range,
+                sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name)
+            );
+            this->report_note(
+                case_inserted.first->second.range,
+                SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(enum_case.name)
+            );
             continue;
         }
         this->index_enum_case(case_inserted.first->second);
@@ -580,14 +613,14 @@ void SemanticAnalyzer::register_value_names() {
             const bool is_method = syntax::is_valid(item.impl_type);
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
             if (!is_method && this->generic_function_templates_.contains(item_type_key)) {
-                this->report(
+                this->report_duplicate(
                     item.range,
                     sema_duplicate_function_definition_message(this->module_name(this->current_module_), item.name)
                 );
                 continue;
             }
             if (item.is_variadic && !item.is_extern_c) {
-                this->report(item.range, std::string(SEMA_VARIADIC_EXTERN_C_ONLY));
+                this->report_general(item.range, std::string(SEMA_VARIADIC_EXTERN_C_ONLY));
             }
             if (is_method) {
                 method_owner_type = this->resolve_type(item.impl_type);
@@ -596,7 +629,7 @@ void SemanticAnalyzer::register_value_names() {
                     if (owner_kind != TypeKind::struct_ &&
                         owner_kind != TypeKind::enum_ &&
                         owner_kind != TypeKind::opaque_struct) {
-                        this->report(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
+                        this->report_general(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
                     }
                 }
                 key = this->method_function_lookup_key(this->current_module_, method_owner_type, item.name_id);
@@ -607,26 +640,26 @@ void SemanticAnalyzer::register_value_names() {
             if (has_explicit_return) {
                 return_type = this->resolve_type(item.return_type);
             } else if (item.is_extern_c || item.is_export_c) {
-                this->report(item.range, std::string(SEMA_C_ABI_RETURN_TYPE_EXPLICIT));
+                this->report_general(item.range, std::string(SEMA_C_ABI_RETURN_TYPE_EXPLICIT));
                 return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else if (item.is_prototype) {
-                this->report(item.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
+                this->report_general(item.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
                 return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else if (item.visibility == syntax::Visibility::public_) {
-                this->report(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
+                this->report_general(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
             }
             std::vector<TypeHandle> param_types;
             param_types.reserve(item.params.size());
             for (const syntax::ParamDecl& param : item.params) {
                 TypeHandle param_type = this->resolve_type(param.type);
                 if (!this->is_valid_storage_type(param_type)) {
-                    this->report(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
+                    this->report_general(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
                 }
                 if (this->checked_.types.is_array(param_type)) {
-                    this->report(param.range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
+                    this->report_unsupported(param.range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
                 }
                 if (this->checked_.types.contains_array(param_type)) {
-                    this->report(param.range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
+                    this->report_unsupported(param.range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
                 }
                 param_types.push_back(param_type);
             }
@@ -637,7 +670,7 @@ void SemanticAnalyzer::register_value_names() {
                         continue;
                     }
                     if (i != 0) {
-                        this->report(item.params[i].range, std::string(SEMA_METHOD_SELF_FIRST));
+                        this->report_general(item.params[i].range, std::string(SEMA_METHOD_SELF_FIRST));
                     }
                     saw_self = true;
                 }
@@ -647,11 +680,11 @@ void SemanticAnalyzer::register_value_names() {
                         self_type = this->checked_.types.get(self_type).pointee;
                     }
                     if (!this->checked_.types.same(self_type, method_owner_type)) {
-                        this->report(item.params.front().range, std::string(SEMA_METHOD_SELF_TYPE));
+                        this->report_general(item.params.front().range, std::string(SEMA_METHOD_SELF_TYPE));
                     }
                 }
                 if (this->type_member_name_exists(method_owner_type, item.name_id, item.name)) {
-                    this->report(
+                    this->report_duplicate(
                         item.range,
                         sema_duplicate_type_member_message(
                             this->checked_.types.display_name(method_owner_type),
@@ -728,11 +761,15 @@ void SemanticAnalyzer::register_value_names() {
                 ),
             });
             if (!inserted.second) {
-                this->report(
+                this->report_duplicate(
                     item.range,
                     sema_duplicate_value_definition_message(this->module_name(this->current_module_), item.name)
                 );
-                this->report_note(inserted.first->second.range, sema_previous_declaration_note_message(item.name));
+                this->report_note(
+                    inserted.first->second.range,
+                    SemanticDiagnosticKind::duplicate,
+                    sema_previous_declaration_note_message(item.name)
+                );
             } else {
                 this->index_global_value(inserted.first->second);
             }
@@ -763,7 +800,7 @@ void SemanticAnalyzer::validate_function_prototypes() const
             continue;
         }
         if (signature.has_prototype && !signature.has_definition) {
-            report(signature.range, sema_function_prototype_missing_definition_message(signature.name));
+            this->report_duplicate(signature.range, sema_function_prototype_missing_definition_message(signature.name));
         }
     }
 }
@@ -788,11 +825,10 @@ void SemanticAnalyzer::validate_abi_symbols() const
     };
 
     const auto report_previous_abi_declaration = [&](const std::string_view symbol, const AbiSymbolInfo& prior) {
-        report_note(
+        this->report_note(
             prior.range,
-            sema_previous_declaration_note_message(symbol),
-            base::DiagnosticCategory::name_resolution,
-            base::DiagnosticCode::semantic_duplicate
+            SemanticDiagnosticKind::duplicate,
+            sema_previous_declaration_note_message(symbol)
         );
     };
 
@@ -814,12 +850,12 @@ void SemanticAnalyzer::validate_abi_symbols() const
         const AbiSymbolInfo& prior = found->second;
         if (prior.is_function && prior.function.is_extern_c && function.is_extern_c) {
             if (!same_function_type(prior.function, function)) {
-                report(function.range, sema_extern_c_abi_conflict_message(symbol));
+                this->report_type(function.range, sema_extern_c_abi_conflict_message(symbol));
                 report_previous_abi_declaration(symbol, prior);
             }
             return;
         }
-        report(function.range, sema_duplicate_abi_symbol_message(symbol));
+        this->report_duplicate(function.range, sema_duplicate_abi_symbol_message(symbol));
         report_previous_abi_declaration(symbol, prior);
     };
 
@@ -853,7 +889,7 @@ void SemanticAnalyzer::validate_abi_symbols() const
             symbols.emplace(symbol_name, std::move(info));
             continue;
         }
-        report(symbol.range, sema_duplicate_abi_symbol_message(symbol.c_name));
+        this->report_duplicate(symbol.range, sema_duplicate_abi_symbol_message(symbol.c_name));
         report_previous_abi_declaration(symbol_name, found->second);
     }
 }
@@ -888,13 +924,13 @@ void SemanticAnalyzer::analyze_entry_points() const
         return;
     }
     if (c_entry != nullptr) {
-        report(
+        this->report_general(
             aurex_entry->range,
             std::string(SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN)
         );
     }
     if (aurex_entry->c_name == "main") {
-        report(aurex_entry->range, std::string(SEMA_ORDINARY_MAIN_ABI_NAME));
+        this->report_general(aurex_entry->range, std::string(SEMA_ORDINARY_MAIN_ABI_NAME));
     }
     const TypeHandle i32_type = checked_.types.builtin(BuiltinType::i32);
     const TypeHandle void_type = checked_.types.builtin(BuiltinType::void_);
@@ -903,14 +939,14 @@ void SemanticAnalyzer::analyze_entry_points() const
     } else if (aurex_entry->param_types.size() == 2) {
         if (!checked_.types.same(aurex_entry->param_types[0], i32_type) ||
             !is_main_argv_type(checked_.types, aurex_entry->param_types[1])) {
-            report(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS_EXACT));
+            this->report_general(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS_EXACT));
         }
     } else {
-        report(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS));
+        this->report_general(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS));
     }
     if (!checked_.types.same(aurex_entry->return_type, i32_type) &&
         !checked_.types.same(aurex_entry->return_type, void_type)) {
-        report(aurex_entry->range, std::string(SEMA_MAIN_RETURN));
+        this->report_general(aurex_entry->range, std::string(SEMA_MAIN_RETURN));
     }
 }
 
@@ -937,13 +973,17 @@ void SemanticAnalyzer::analyze_struct_properties() {
         for (const syntax::FieldDecl& field : item.fields) {
             const auto inserted_field = seen_fields.emplace(field.name_id, field.range);
             if (!inserted_field.second) {
-                this->report(field.range, sema_duplicate_struct_field_message(field.name));
-                this->report_note(inserted_field.first->second, sema_previous_declaration_note_message(field.name));
+                this->report_duplicate(field.range, sema_duplicate_struct_field_message(field.name));
+                this->report_note(
+                    inserted_field.first->second,
+                    SemanticDiagnosticKind::duplicate,
+                    sema_previous_declaration_note_message(field.name)
+                );
                 continue;
             }
             const TypeHandle field_type = this->resolve_type(field.type);
             if (!this->is_valid_storage_type(field_type)) {
-                this->report(field.range, std::string(SEMA_FIELD_STORAGE));
+                this->report_general(field.range, std::string(SEMA_FIELD_STORAGE));
             }
             if (struct_info != nullptr) {
                 struct_info->fields.push_back(StructFieldInfo {
@@ -1023,7 +1063,7 @@ void SemanticAnalyzer::analyze_const_decls() {
                 syntax::is_valid(item.const_value) && item.const_value.value < this->module_.exprs.size()
                     ? this->module_.exprs.range(item.const_value.value)
                     : item.range;
-            this->report(range, std::string(SEMA_CONST_NOT_COMPILE_TIME));
+            this->report_general(range, std::string(SEMA_CONST_NOT_COMPILE_TIME));
         }
         ModuleLookupList dependency_list = make_sema_vector<ModuleLookupKey>(*this->arena_);
         dependency_list.reserve(dependencies.size());
@@ -1034,7 +1074,7 @@ void SemanticAnalyzer::analyze_const_decls() {
             dependencies_by_const.emplace(const_key, std::move(dependency_list));
         }
         if (!this->is_valid_storage_type(declared)) {
-            this->report(item.range, std::string(SEMA_CONST_TYPE_STORAGE));
+            this->report_general(item.range, std::string(SEMA_CONST_TYPE_STORAGE));
         }
         if (!this->can_assign(declared, actual, item.const_value)) {
             this->report_type_mismatch(item.range, std::string(SEMA_CONST_TYPE_MISMATCH), declared, actual);
@@ -1072,7 +1112,7 @@ void SemanticAnalyzer::analyze_const_decls() {
                 const std::string_view display_name = name == const_names.end()
                     ? this->module_.identifiers.text(frame.key.name)
                     : name->second.view();
-                this->report(
+                this->report_general(
                     range == const_ranges.end() ? base::SourceRange {} : range->second,
                     sema_cyclic_const_initializer_message(display_name)
                 );

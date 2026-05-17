@@ -624,7 +624,7 @@ TypeHandle SemanticAnalyzer::analyze_literal_expr(
         const base::StringLiteralDecode decoded =
             base::decode_string_literal(expr.text, base::StringLiteralKind::byte_string);
         for (const base::StringLiteralError& error : decoded.errors) {
-            this->report(
+            this->report_type(
                 base::SourceRange {
                     expr.range.source,
                     expr.range.begin + error.begin,
@@ -797,7 +797,7 @@ bool SemanticAnalyzer::record_no_payload_enum_case_expr(
     const base::SourceRange& range
 ) {
     if (is_valid(enum_case.payload_type)) {
-        this->report(
+        this->report_general(
             range,
             sema_enum_payload_constructor_call_message(enum_case_display_name(this->checked_.types, enum_case))
         );
@@ -813,7 +813,7 @@ TypeHandle SemanticAnalyzer::analyze_generic_apply_expr(
     const syntax::ExprId expr_id,
     const SemanticAnalyzer::ExprView& expr
 ) {
-    this->report(expr.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
+    this->report_general(expr.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
@@ -840,14 +840,14 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
         const PlaceInfo operand_place = this->analyze_place_info(expr.unary_operand, true);
         this->require_place_projection_safety(operand_place, expr.range);
         if (!operand_place.is_place) {
-            this->report(expr.range, std::string(SEMA_ADDRESS_OF_PLACE));
+            this->report_general(expr.range, std::string(SEMA_ADDRESS_OF_PLACE));
         }
         if (expr.unary_op == syntax::UnaryOp::address_of_mut) {
             if (!operand_place.is_writable) {
-                this->report(expr.range, std::string(SEMA_MUTABLE_REFERENCE_PLACE));
+                this->report_general(expr.range, std::string(SEMA_MUTABLE_REFERENCE_PLACE));
             }
             if (!this->is_valid_storage_type(operand_place.type)) {
-                this->report(expr.range, std::string(SEMA_REFERENCE_STORAGE));
+                this->report_general(expr.range, std::string(SEMA_REFERENCE_STORAGE));
             }
             const TypeHandle reference_type = this->checked_.types.reference(
                 PointerMutability::mut,
@@ -860,7 +860,7 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
             );
         }
         if (!this->is_valid_storage_type(operand_place.type)) {
-            this->report(expr.range, std::string(SEMA_REFERENCE_STORAGE));
+            this->report_general(expr.range, std::string(SEMA_REFERENCE_STORAGE));
         }
         const TypeHandle reference_type = this->checked_.types.reference(
             PointerMutability::const_,
@@ -881,27 +881,27 @@ TypeHandle SemanticAnalyzer::analyze_unary_expr(
             : INVALID_TYPE_HANDLE;
     const TypeHandle operand = this->analyze_expr(expr.unary_operand, operand_expected);
     if (expr.unary_op == syntax::UnaryOp::logical_not && !this->checked_.types.is_bool(operand)) {
-        this->report(expr.range, std::string(SEMA_LOGICAL_NOT_BOOL));
+        this->report_general(expr.range, std::string(SEMA_LOGICAL_NOT_BOOL));
     }
     if (expr.unary_op == syntax::UnaryOp::numeric_negate &&
         !is_signed_integer_type(this->checked_.types, operand) &&
         !this->checked_.types.is_float(operand)) {
-        this->report(expr.range, std::string(SEMA_NUMERIC_UNARY_OPERAND));
+        this->report_general(expr.range, std::string(SEMA_NUMERIC_UNARY_OPERAND));
     }
     if (expr.unary_op == syntax::UnaryOp::bitwise_not && !this->checked_.types.is_integer(operand)) {
-        this->report(expr.range, std::string(SEMA_BITWISE_NOT_INTEGER));
+        this->report_general(expr.range, std::string(SEMA_BITWISE_NOT_INTEGER));
     }
     if (expr.unary_op == syntax::UnaryOp::dereference) {
         if (this->checked_.types.is_pointer(operand)) {
             this->require_unsafe_context(expr.range, SEMA_UNSAFE_DEREF);
         }
         if (!is_pointer_or_reference(this->checked_.types, operand)) {
-            this->report(expr.range, std::string(SEMA_DEREF_POINTER));
+            this->report_general(expr.range, std::string(SEMA_DEREF_POINTER));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         const TypeHandle pointee = this->checked_.types.get(operand).pointee;
         if (!this->is_valid_storage_type(pointee)) {
-            this->report(expr.range, std::string(SEMA_DEREF_STORAGE));
+            this->report_general(expr.range, std::string(SEMA_DEREF_STORAGE));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         return this->record_expr_types(expr_id, pointee, pointee);
@@ -974,7 +974,7 @@ void SemanticAnalyzer::diagnose_binary_operand_mismatch(
     const SemanticAnalyzer::BinaryExprAnalysis& analysis
 ) const {
     if (!this->checked_.types.same(analysis.lhs, analysis.rhs) && !analysis.null_pointer_comparison) {
-        this->report(expr.range, std::string(SEMA_BINARY_OPERANDS_SAME_TYPE));
+        this->report_general(expr.range, std::string(SEMA_BINARY_OPERANDS_SAME_TYPE));
     }
 }
 
@@ -1006,7 +1006,7 @@ void SemanticAnalyzer::diagnose_binary_rhs_literal_hazards(
     if ((expr.binary_op == syntax::BinaryOp::div || expr.binary_op == syntax::BinaryOp::mod) &&
         this->checked_.types.is_integer(lhs) &&
         rhs_literal_value == 0) {
-        this->report(
+        this->report_general(
             rhs_range,
             expr.binary_op == syntax::BinaryOp::div
                 ? std::string(SEMA_INTEGER_DIVISION_BY_ZERO)
@@ -1020,11 +1020,11 @@ void SemanticAnalyzer::diagnose_binary_rhs_literal_hazards(
 
     const base::u32 bit_width = integer_bit_width(this->checked_.types, lhs);
     if (rhs_integer_literal.negated && rhs_literal_value != 0) {
-        this->report(rhs_range, std::string(SEMA_SHIFT_NEGATIVE));
+        this->report_general(rhs_range, std::string(SEMA_SHIFT_NEGATIVE));
     } else if (!rhs_integer_literal.negated &&
                bit_width != 0 &&
                rhs_literal_value >= bit_width) {
-        this->report(rhs_range, std::string(SEMA_SHIFT_OUT_OF_RANGE));
+        this->report_general(rhs_range, std::string(SEMA_SHIFT_OUT_OF_RANGE));
     }
 }
 
@@ -1061,7 +1061,7 @@ void SemanticAnalyzer::diagnose_signed_binary_literal_overflow(
         ) &&
         rhs_integer_literal.negated &&
         rhs_literal_value == 1) {
-        this->report(
+        this->report_general(
             expr.range,
             expr.binary_op == syntax::BinaryOp::div
                 ? std::string(SEMA_SIGNED_DIVISION_OVERFLOW)
@@ -1111,13 +1111,16 @@ TypeHandle SemanticAnalyzer::record_ordering_binary_expr(
 ) {
     if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
         if (!this->generic_param_has_capability(lhs, CapabilityKind::ord)) {
-            this->report(expr.range, sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs)));
+            this->report_capability(
+                expr.range,
+                sema_generic_comparison_operator_message(this->checked_.types.display_name(lhs))
+            );
         }
         const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
         return this->record_expr_types(expr_id, bool_type, bool_type);
     }
     if (!this->type_supports_ordering_operator(lhs)) {
-        this->report(expr.range, std::string(SEMA_COMPARISON_NUMERIC));
+        this->report_general(expr.range, std::string(SEMA_COMPARISON_NUMERIC));
     }
     const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
     return this->record_expr_types(expr_id, bool_type, bool_type);
@@ -1131,10 +1134,13 @@ TypeHandle SemanticAnalyzer::record_equality_binary_expr(
 ) {
     if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
         if (!this->generic_param_has_capability(lhs, CapabilityKind::eq)) {
-            this->report(expr.range, sema_generic_equality_operator_message(this->checked_.types.display_name(lhs)));
+            this->report_capability(
+                expr.range,
+                sema_generic_equality_operator_message(this->checked_.types.display_name(lhs))
+            );
         }
     } else if (!this->type_supports_equality_operator(lhs) && !null_pointer_comparison) {
-        this->report(expr.range, std::string(SEMA_EQUALITY_SCALAR));
+        this->report_general(expr.range, std::string(SEMA_EQUALITY_SCALAR));
     }
     const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
     return this->record_expr_types(expr_id, bool_type, bool_type);
@@ -1147,7 +1153,7 @@ TypeHandle SemanticAnalyzer::record_logical_binary_expr(
     const TypeHandle rhs
 ) {
     if (!this->checked_.types.is_bool(lhs) || !this->checked_.types.is_bool(rhs)) {
-        this->report(expr.range, std::string(SEMA_LOGICAL_BOOL));
+        this->report_general(expr.range, std::string(SEMA_LOGICAL_BOOL));
     }
     const TypeHandle bool_type = this->checked_.types.builtin(BuiltinType::bool_);
     return this->record_expr_types(expr_id, bool_type, bool_type);
@@ -1160,11 +1166,14 @@ TypeHandle SemanticAnalyzer::record_integer_binary_expr(
     const TypeHandle lhs
 ) {
     if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-        this->report(expr.range, sema_generic_integer_operator_message(this->checked_.types.display_name(lhs)));
+        this->report_capability(
+            expr.range,
+            sema_generic_integer_operator_message(this->checked_.types.display_name(lhs))
+        );
         return this->record_expr_types(expr_id, result_intrinsic, lhs);
     }
     if (!this->checked_.types.is_integer(lhs)) {
-        this->report(expr.range, std::string(SEMA_INTEGER_OPERATOR_INTEGER));
+        this->report_general(expr.range, std::string(SEMA_INTEGER_OPERATOR_INTEGER));
     }
     return this->record_expr_types(expr_id, result_intrinsic, lhs);
 }
@@ -1176,11 +1185,11 @@ TypeHandle SemanticAnalyzer::record_numeric_binary_expr(
     const TypeHandle lhs
 ) {
     if (is_valid(lhs) && this->checked_.types.get(lhs).kind == TypeKind::generic_param) {
-        this->report(expr.range, sema_generic_operator_message(this->checked_.types.display_name(lhs)));
+        this->report_capability(expr.range, sema_generic_operator_message(this->checked_.types.display_name(lhs)));
         return this->record_expr_types(expr_id, result_intrinsic, lhs);
     }
     if (!this->checked_.types.is_integer(lhs) && !this->checked_.types.is_float(lhs)) {
-        this->report(expr.range, std::string(SEMA_BINARY_NUMERIC));
+        this->report_general(expr.range, std::string(SEMA_BINARY_NUMERIC));
     }
     return this->record_expr_types(expr_id, result_intrinsic, lhs);
 }
@@ -1206,7 +1215,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
             const EnumCaseInfo* enum_case =
                 this->find_enum_case_by_type_and_case(enum_type, expr.field_name_id, expr.field_name);
             if (enum_case == nullptr) {
-                this->report(
+                this->report_lookup(
                     expr.range,
                     sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), expr.field_name)
                 );
@@ -1220,7 +1229,7 @@ TypeHandle SemanticAnalyzer::analyze_field_expr(
             return recorded ? enum_case->type : INVALID_TYPE_HANDLE;
         }
         if (object_is_plain_name && is_valid(enum_type)) {
-            this->report(expr.range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+            this->report_general(expr.range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
@@ -1284,7 +1293,7 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
         }
         const TypeHandle bound_type = this->analyze_expr(bound, usize_type);
         if (!this->checked_.types.is_integer(bound_type)) {
-            this->report(
+            this->report_general(
                 expr_range_or(this->module_, bound, expr.range),
                 std::string(SEMA_SLICE_BOUND_INTEGER)
             );
@@ -1318,10 +1327,10 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
                  (!bound.negated && bound.value > array_count));
         };
         if (bound_is_out_of_bounds(start)) {
-            this->report(start.range, std::string(SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS));
+            this->report_general(start.range, std::string(SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS));
         }
         if (bound_is_out_of_bounds(end)) {
-            this->report(end.range, std::string(SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS));
+            this->report_general(end.range, std::string(SEMA_ARRAY_SLICE_BOUND_OUT_OF_BOUNDS));
         }
         if (start.present &&
             end.present &&
@@ -1332,7 +1341,7 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
             start.value <= array_count &&
             end.value <= array_count &&
             start.value > end.value) {
-            this->report(expr.range, std::string(SEMA_ARRAY_SLICE_BOUNDS_ORDER));
+            this->report_general(expr.range, std::string(SEMA_ARRAY_SLICE_BOUNDS_ORDER));
         }
     };
 
@@ -1357,12 +1366,12 @@ TypeHandle SemanticAnalyzer::analyze_slice_expr(
     } else if (this->checked_.types.is_str(object)) {
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     } else {
-        this->report(expr.range, std::string(SEMA_SLICE_ARRAY_OR_SLICE));
+        this->report_general(expr.range, std::string(SEMA_SLICE_ARRAY_OR_SLICE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
     if (!this->is_valid_storage_type(element)) {
-        this->report(expr.range, std::string(SEMA_SLICE_ELEMENT_STORAGE));
+        this->report_general(expr.range, std::string(SEMA_SLICE_ELEMENT_STORAGE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const TypeHandle natural_slice = this->checked_.types.slice(mutability, element);
@@ -1384,7 +1393,7 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
     base::u64 expected_count = 0;
     if (is_valid(expected_type)) {
         if (!has_expected_array) {
-            this->report(expr.range, std::string(SEMA_ARRAY_LITERAL_EXPECTED_TYPE));
+            this->report_general(expr.range, std::string(SEMA_ARRAY_LITERAL_EXPECTED_TYPE));
         } else {
             const TypeInfo& expected = this->checked_.types.get(expected_type);
             element_type = expected.array_element;
@@ -1403,16 +1412,16 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
             syntax::is_valid(expr.array_repeat_count) &&
             expr.array_repeat_count.value < this->module_.exprs.size();
         if (!count_expr_valid) {
-            this->report(expr.range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
+            this->report_general(expr.range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
         } else {
             const base::SourceRange count_range = this->module_.exprs.range(expr.array_repeat_count.value);
             if (this->module_.exprs.kind(expr.array_repeat_count.value) != syntax::ExprKind::integer_literal) {
-                this->report(count_range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
+                this->report_general(count_range, std::string(SEMA_ARRAY_REPEAT_INTEGER));
             } else if (!this->parse_integer_literal_text(
                            expr_literal_text_or_empty(this->module_, expr.array_repeat_count),
                            literal_count
                        )) {
-                this->report(count_range, std::string(SEMA_ARRAY_REPEAT_OUT_OF_RANGE));
+                this->report_general(count_range, std::string(SEMA_ARRAY_REPEAT_OUT_OF_RANGE));
             } else {
                 count_known = true;
             }
@@ -1420,14 +1429,14 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
     }
 
     if (has_expected_array && count_known && literal_count != expected_count) {
-        this->report(
+        this->report_general(
             expr.range,
             sema_array_literal_length_mismatch_message(expected_count, literal_count)
         );
     }
 
     if (!has_expected_array && !is_repeat_literal && expr.array_elements.empty()) {
-        this->report(expr.range, std::string(SEMA_EMPTY_ARRAY_CONTEXT));
+        this->report_general(expr.range, std::string(SEMA_EMPTY_ARRAY_CONTEXT));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
@@ -1437,7 +1446,7 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
             : expr.array_elements.front();
         element_type = this->analyze_expr(first_value);
         if (!is_valid(element_type)) {
-            this->report(expr.range, std::string(SEMA_ARRAY_ELEMENT_INFER));
+            this->report_general(expr.range, std::string(SEMA_ARRAY_ELEMENT_INFER));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
     }
@@ -1485,7 +1494,7 @@ TypeHandle SemanticAnalyzer::analyze_array_literal_expr(
         ? this->checked_.types.array(literal_count, intrinsic_element_type)
         : INVALID_TYPE_HANDLE;
     if (!this->is_valid_storage_type(array_type)) {
-        this->report(expr.range, std::string(SEMA_ARRAY_LITERAL_STORAGE));
+        this->report_general(expr.range, std::string(SEMA_ARRAY_LITERAL_STORAGE));
     }
     return this->record_expr_types(expr_id, intrinsic_array_type, array_type);
 }
@@ -1499,11 +1508,11 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
     std::vector<TypeHandle> element_types;
     if (is_valid(expected_type)) {
         if (!has_expected_tuple) {
-            this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_EXPECTED_TYPE));
+            this->report_general(expr.range, std::string(SEMA_TUPLE_LITERAL_EXPECTED_TYPE));
         } else {
             const TypeInfo& expected = this->checked_.types.get(expected_type);
             if (expected.tuple_elements.size() != expr.tuple_elements.size()) {
-                this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_ARITY));
+                this->report_general(expr.range, std::string(SEMA_TUPLE_LITERAL_ARITY));
             }
             element_types.assign(expected.tuple_elements.begin(), expected.tuple_elements.end());
         }
@@ -1538,7 +1547,7 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
     if (!has_expected_tuple) {
         for (const TypeHandle element : element_types) {
             if (!is_valid(element)) {
-                this->report(expr.range, std::string(SEMA_LOCAL_TYPE_INFER));
+                this->report_general(expr.range, std::string(SEMA_LOCAL_TYPE_INFER));
                 return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
         }
@@ -1565,7 +1574,7 @@ TypeHandle SemanticAnalyzer::analyze_tuple_literal_expr(
         ? this->checked_.types.tuple(intrinsic_element_types)
         : INVALID_TYPE_HANDLE;
     if (is_valid(tuple_type) && !this->is_valid_storage_type(tuple_type)) {
-        this->report(expr.range, std::string(SEMA_TUPLE_LITERAL_STORAGE));
+        this->report_general(expr.range, std::string(SEMA_TUPLE_LITERAL_STORAGE));
     }
     return this->record_expr_types(expr_id, intrinsic_tuple_type, tuple_type);
 }
@@ -1592,13 +1601,13 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
     }
     const StructInfo* info = this->find_struct(struct_type);
     if (info == nullptr || info->is_opaque) {
-        this->report(expr.range, std::string(SEMA_STRUCT_LITERAL_TYPE));
+        this->report_general(expr.range, std::string(SEMA_STRUCT_LITERAL_TYPE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     std::unordered_set<IdentId, IdentIdHash> initialized_fields;
     for (const syntax::FieldInit& init : expr.field_inits) {
         if (!initialized_fields.insert(init.name_id).second) {
-            this->report(init.range, sema_duplicate_struct_literal_field_message(init.name));
+            this->report_duplicate(init.range, sema_duplicate_struct_literal_field_message(init.name));
             continue;
         }
         const StructFieldInfo* field_info = nullptr;
@@ -1609,12 +1618,12 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
             }
         }
         if (field_info == nullptr) {
-            this->report(init.range, sema_unknown_struct_literal_field_message(init.name));
+            this->report_lookup(init.range, sema_unknown_struct_literal_field_message(init.name));
             this->report_lookup_suggestion(init.range, this->nearest_field_name(*info, init.name));
             continue;
         }
         if (!this->can_access(info->module, field_info->visibility)) {
-            this->report(init.range, sema_private_field_message(init.name));
+            this->report_visibility(init.range, sema_private_field_message(init.name));
             continue;
         }
         const TypeHandle actual = this->analyze_expr(init.value, field_info->type);
@@ -1629,7 +1638,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
     }
     for (const StructFieldInfo& field : info->fields) {
         if (!initialized_fields.contains(field.name_id)) {
-            this->report(expr.range, sema_struct_literal_missing_field_message(field.name));
+            this->report_general(expr.range, sema_struct_literal_missing_field_message(field.name));
         }
     }
     return this->record_expr_type(expr_id, struct_type);
@@ -1649,7 +1658,7 @@ TypeHandle SemanticAnalyzer::analyze_cast_expr(
         ? this->analyze_expr(expr.cast_expr, target)
         : this->analyze_expr(expr.cast_expr);
     if (!this->is_valid_cast(expr.kind, target, source)) {
-        this->report(expr.range, std::string(SEMA_INVALID_CONVERSION));
+        this->report_general(expr.range, std::string(SEMA_INVALID_CONVERSION));
     }
     return this->record_expr_type(expr_id, target);
 }
@@ -1661,12 +1670,12 @@ TypeHandle SemanticAnalyzer::analyze_size_or_align_expr(
     const TypeHandle queried = this->resolve_type(expr.cast_type);
     if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::generic_param) {
         if (!this->generic_param_has_capability(queried, CapabilityKind::sized)) {
-            this->report(expr.range, std::string(SEMA_GENERIC_SIZEOF_ALIGNOF));
+            this->report_capability(expr.range, std::string(SEMA_GENERIC_SIZEOF_ALIGNOF));
         }
     } else if (is_valid(queried) && this->checked_.types.get(queried).kind == TypeKind::opaque_struct) {
-        this->report(expr.range, std::string(SEMA_OPAQUE_SIZEOF_ALIGNOF));
+        this->report_general(expr.range, std::string(SEMA_OPAQUE_SIZEOF_ALIGNOF));
     } else if (is_valid(queried) && !this->is_valid_storage_type(queried)) {
-        this->report(expr.range, std::string(SEMA_SIZEOF_ALIGNOF_STORAGE));
+        this->report_general(expr.range, std::string(SEMA_SIZEOF_ALIGNOF_STORAGE));
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
 }
@@ -1677,7 +1686,7 @@ TypeHandle SemanticAnalyzer::analyze_ptr_addr_expr(
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!is_pointer_or_reference(this->checked_.types, value)) {
-        this->report(expr.range, std::string(SEMA_PTRADDR_POINTER));
+        this->report_general(expr.range, std::string(SEMA_PTRADDR_POINTER));
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::usize));
 }
@@ -1690,10 +1699,13 @@ TypeHandle SemanticAnalyzer::analyze_paddr_expr(
     const TypeHandle target = this->resolve_type(expr.cast_type);
     const TypeHandle address = this->analyze_expr(expr.cast_expr, this->checked_.types.builtin(BuiltinType::usize));
     if (!this->checked_.types.is_pointer(target)) {
-        this->report(expr.range, std::string(SEMA_PTRAT_POINTER));
+        this->report_general(expr.range, std::string(SEMA_PTRAT_POINTER));
     }
     if (!this->checked_.types.is_integer(address)) {
-        this->report(expr_range_or(this->module_, expr.cast_expr, expr.range), std::string(SEMA_PTRAT_INTEGER));
+        this->report_general(
+            expr_range_or(this->module_, expr.cast_expr, expr.range),
+            std::string(SEMA_PTRAT_INTEGER)
+        );
     }
     return this->record_expr_type(expr_id, target);
 }
@@ -1704,7 +1716,7 @@ TypeHandle SemanticAnalyzer::analyze_str_projection_expr(
 ) {
     const TypeHandle value = this->analyze_expr(expr.cast_expr);
     if (!this->checked_.types.is_str(value)) {
-        this->report(
+        this->report_general(
             expr.range,
             expr.kind == syntax::ExprKind::str_data ? std::string(SEMA_STRPTR_STR) : std::string(SEMA_STRBLEN_STR)
         );
@@ -1724,7 +1736,7 @@ TypeHandle SemanticAnalyzer::analyze_str_utf8_slice_expr(
 ) {
     const TypeHandle bytes = this->analyze_expr(expr.cast_expr);
     if (!is_u8_slice(this->checked_.types, bytes)) {
-        this->report(expr.range, std::string(SEMA_STR_UTF8_SLICE));
+        this->report_general(expr.range, std::string(SEMA_STR_UTF8_SLICE));
     }
     if (expr.kind == syntax::ExprKind::str_is_valid_utf8) {
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::bool_));
@@ -1738,44 +1750,50 @@ TypeHandle SemanticAnalyzer::analyze_str_from_bytes_unchecked_expr(
 ) {
     this->require_unsafe_context(expr.range, SEMA_UNSAFE_STRRAW);
     if (expr.args.size() != 2) {
-        this->report(expr.range, std::string(SEMA_STRRAW_ARITY));
+        this->report_general(expr.range, std::string(SEMA_STRRAW_ARITY));
         return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
     }
     const TypeHandle data = this->analyze_expr(expr.args[0]);
     const TypeHandle len = this->analyze_expr(expr.args[1], this->checked_.types.builtin(BuiltinType::usize));
     if (!is_const_u8_pointer(this->checked_.types, data)) {
-        this->report(expr_range_or(this->module_, expr.args[0], expr.range), std::string(SEMA_STRRAW_DATA_POINTER));
+        this->report_general(
+            expr_range_or(this->module_, expr.args[0], expr.range),
+            std::string(SEMA_STRRAW_DATA_POINTER)
+        );
     }
     if (!this->checked_.types.is_integer(len)) {
-        this->report(expr_range_or(this->module_, expr.args[1], expr.range), std::string(SEMA_STRRAW_LENGTH_INTEGER));
+        this->report_general(
+            expr_range_or(this->module_, expr.args[1], expr.range),
+            std::string(SEMA_STRRAW_LENGTH_INTEGER)
+        );
     }
     return this->record_expr_type(expr_id, this->checked_.types.builtin(BuiltinType::str));
 }
 
 TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, const SemanticAnalyzer::ExprView& expr) {
     if (this->in_const_initializer_) {
-        this->report(expr.range, std::string(SEMA_TRY_CONST_INITIALIZER));
+        this->report_general(expr.range, std::string(SEMA_TRY_CONST_INITIALIZER));
     }
 
     const TypeHandle source_type = this->analyze_expr(expr.unary_operand);
     const TryShape source_shape = this->classify_try_shape(source_type);
     if (source_shape.kind == TryShape::Kind::malformed_result) {
-        this->report(expr.range, std::string(SEMA_TRY_RESULT_SHAPE));
+        this->report_general(expr.range, std::string(SEMA_TRY_RESULT_SHAPE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (source_shape.kind == TryShape::Kind::malformed_option) {
-        this->report(expr.range, std::string(SEMA_TRY_OPTION_SHAPE));
+        this->report_general(expr.range, std::string(SEMA_TRY_OPTION_SHAPE));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
     if (source_shape.kind == TryShape::Kind::result) {
         const TryShape return_shape = this->classify_try_shape(this->current_function_return_type_);
         if (return_shape.kind != TryShape::Kind::result || return_shape.failure_case == nullptr) {
-            this->report(expr.range, std::string(SEMA_TRY_RESULT_RETURN));
+            this->report_general(expr.range, std::string(SEMA_TRY_RESULT_RETURN));
             return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
         }
         if (!this->checked_.types.same(return_shape.failure_case->payload_type, source_shape.failure_case->payload_type)) {
-            this->report(expr.range, std::string(SEMA_TRY_RESULT_ERR_PAYLOAD));
+            this->report_general(expr.range, std::string(SEMA_TRY_RESULT_ERR_PAYLOAD));
         }
         return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
     }
@@ -1783,13 +1801,13 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
     if (source_shape.kind == TryShape::Kind::option) {
         const TryShape return_shape = this->classify_try_shape(this->current_function_return_type_);
         if (return_shape.kind != TryShape::Kind::option) {
-            this->report(expr.range, std::string(SEMA_TRY_OPTION_RETURN));
+            this->report_general(expr.range, std::string(SEMA_TRY_OPTION_RETURN));
             return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
         }
         return this->record_expr_type(expr_id, source_shape.success_case->payload_type);
     }
 
-    this->report(expr.range, std::string(SEMA_TRY_SHAPE));
+    this->report_general(expr.range, std::string(SEMA_TRY_SHAPE));
     return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
 }
 
@@ -1799,11 +1817,14 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
-        this->report(expr.range, std::string(SEMA_IF_EXPR_CONST_INITIALIZER));
+        this->report_general(expr.range, std::string(SEMA_IF_EXPR_CONST_INITIALIZER));
     }
     const TypeHandle condition = this->analyze_expr(expr.condition);
     if (!syntax::is_valid(expr.condition_pattern) && !this->checked_.types.is_bool(condition)) {
-        this->report(expr_range_or(this->module_, expr.condition, expr.range), std::string(SEMA_IF_EXPR_CONDITION_BOOL));
+        this->report_general(
+            expr_range_or(this->module_, expr.condition, expr.range),
+            std::string(SEMA_IF_EXPR_CONDITION_BOOL)
+        );
     }
     const auto analyze_then_branch = [&](const TypeHandle expected) {
         if (!syntax::is_valid(expr.condition_pattern)) {
@@ -1844,7 +1865,7 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (is_valid(then_type) && this->checked_.types.is_void(then_type)) {
-        this->report(expr.range, std::string(SEMA_IF_EXPR_VOID));
+        this->report_general(expr.range, std::string(SEMA_IF_EXPR_VOID));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const TypeHandle then_intrinsic = this->cached_expr_intrinsic_type(expr.then_expr);
@@ -1866,17 +1887,17 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
-        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_CONST_INITIALIZER));
+        this->report_general(expr.range, std::string(SEMA_BLOCK_EXPR_CONST_INITIALIZER));
     }
     if (!syntax::is_valid(expr.block_result)) {
-        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_FINAL));
+        this->report_general(expr.range, std::string(SEMA_BLOCK_EXPR_FINAL));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
 
     this->symbols_.push_scope();
     this->analyze_block_statements(expr.block, this->current_function_return_type_, this->current_return_inference_);
     if (!this->block_may_fallthrough(expr.block)) {
-        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
+        this->report_general(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
     }
     const TypeHandle result = this->analyze_expr(expr.block_result, expected_type);
     this->symbols_.pop_scope();
@@ -1885,7 +1906,7 @@ TypeHandle SemanticAnalyzer::analyze_block_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (this->checked_.types.is_void(result)) {
-        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
+        this->report_general(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const TypeHandle intrinsic_type = this->cached_expr_intrinsic_type(expr.block_result);
@@ -1902,7 +1923,7 @@ TypeHandle SemanticAnalyzer::analyze_unsafe_block_expr(
     const TypeHandle expected_type
 ) {
     if (this->in_const_initializer_) {
-        this->report(expr.range, std::string(SEMA_UNSAFE_BLOCK_CONST_INITIALIZER));
+        this->report_general(expr.range, std::string(SEMA_UNSAFE_BLOCK_CONST_INITIALIZER));
     }
 
     this->symbols_.push_scope();
@@ -1912,7 +1933,7 @@ TypeHandle SemanticAnalyzer::analyze_unsafe_block_expr(
     TypeHandle result = this->checked_.types.builtin(BuiltinType::void_);
     if (syntax::is_valid(expr.block_result)) {
         if (!this->block_may_fallthrough(expr.block)) {
-            this->report(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
+            this->report_general(expr.range, std::string(SEMA_BLOCK_EXPR_UNREACHABLE));
         }
         result = this->analyze_expr(expr.block_result, expected_type);
     }
@@ -1923,7 +1944,7 @@ TypeHandle SemanticAnalyzer::analyze_unsafe_block_expr(
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (syntax::is_valid(expr.block_result) && this->checked_.types.is_void(result)) {
-        this->report(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
+        this->report_general(expr.range, std::string(SEMA_BLOCK_EXPR_VOID));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const TypeHandle intrinsic_type = syntax::is_valid(expr.block_result)

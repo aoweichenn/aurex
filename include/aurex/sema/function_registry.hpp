@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/diagnostic.hpp>
+#include <aurex/sema/diagnostic_kind.hpp>
 #include <aurex/sema/function.hpp>
 #include <aurex/sema/storage.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -46,7 +47,11 @@ private:
     void merge_function(FunctionLookupKey key, FunctionSignature signature, bool is_prototype);
     void insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
     void refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature);
-    void report(const base::SourceRange& range, std::string message) const;
+    void report(
+        const base::SourceRange& range,
+        SemanticDiagnosticKind kind,
+        std::string message
+    ) const;
     void report_previous_declaration(const FunctionSignature& signature) const;
 
     CheckedModule& checked_;

@@ -3,6 +3,7 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/result.hpp>
 #include <aurex/sema/checked_module.hpp>
+#include <aurex/sema/diagnostic_kind.hpp>
 #include <aurex/sema/function.hpp>
 #include <aurex/sema/identifier.hpp>
 #include <aurex/sema/symbol.hpp>
@@ -927,7 +928,23 @@ private:
     [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
-    void report(const base::SourceRange& range, std::string message) const;
+    void report(
+        const base::SourceRange& range,
+        SemanticDiagnosticKind kind,
+        std::string message
+    ) const;
+    void report_general(const base::SourceRange& range, std::string message) const;
+    void report_type(const base::SourceRange& range, std::string message) const;
+    void report_lookup(const base::SourceRange& range, std::string message) const;
+    void report_duplicate(const base::SourceRange& range, std::string message) const;
+    void report_visibility(const base::SourceRange& range, std::string message) const;
+    void report_unsupported(const base::SourceRange& range, std::string message) const;
+    void report_unsafe_required(const base::SourceRange& range, std::string message) const;
+    void report_capability(const base::SourceRange& range, std::string message) const;
+    void report_pattern(const base::SourceRange& range, std::string message) const;
+    void report_pattern_exhaustiveness(const base::SourceRange& range, std::string message) const;
+    void report_pattern_unreachable(const base::SourceRange& range, std::string message) const;
+    void report_internal_contract(const base::SourceRange& range, std::string message) const;
     void report(
         const base::SourceRange& range,
         std::string message,
@@ -936,15 +953,13 @@ private:
     ) const;
     void report_note(
         const base::SourceRange& range,
-        std::string message,
-        base::DiagnosticCategory category = base::DiagnosticCategory::semantic,
-        base::DiagnosticCode code = base::DiagnosticCode::none
+        SemanticDiagnosticKind kind,
+        std::string message
     ) const;
     void report_help(
         const base::SourceRange& range,
-        std::string message,
-        base::DiagnosticCategory category = base::DiagnosticCategory::semantic,
-        base::DiagnosticCode code = base::DiagnosticCode::none
+        SemanticDiagnosticKind kind,
+        std::string message
     ) const;
     void report_type_mismatch(
         const base::SourceRange& range,

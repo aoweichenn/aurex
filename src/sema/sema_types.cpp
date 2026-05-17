@@ -560,7 +560,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             if (is_valid(cached)) {
                 if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct &&
                     !action.opaque_allowed_as_pointee) {
-                    this->report(
+                    this->report_general(
                         this->module_.types[action.type.value].range,
                         "opaque struct can only be used as a pointer target"
                     );
@@ -699,7 +699,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             const TypeHandle pointee = values.back();
             values.pop_back();
             if (!this->is_valid_storage_type(pointee)) {
-                this->report(this->module_.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
+                this->report_general(this->module_.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
             }
             const TypeHandle resolved = this->checked_.types.reference(map_mutability(action.pointer_mutability), pointee);
             this->record_syntax_type_handle(action.type, resolved);
@@ -733,7 +733,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             }
             for (const TypeHandle element : elements) {
                 if (!this->is_valid_storage_type(element)) {
-                    this->report(this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
+                    this->report_general(this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
                 }
             }
             const TypeHandle resolved = this->checked_.types.tuple(elements);
@@ -757,26 +757,38 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             }
             if (action.function_is_variadic &&
                 action.function_call_conv != syntax::FunctionCallConv::c) {
-                this->report(
+                this->report_general(
                     this->module_.types[action.type.value].range,
                     std::string(SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY)
                 );
             }
             for (const TypeHandle param : params) {
                 if (!this->is_valid_storage_type(param)) {
-                    this->report(this->module_.types[action.type.value].range, std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE));
+                    this->report_general(
+                        this->module_.types[action.type.value].range,
+                        std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE)
+                    );
                 }
                 if (this->checked_.types.is_array(param) || this->checked_.types.contains_array(param)) {
-                    this->report(this->module_.types[action.type.value].range, std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED));
+                    this->report_unsupported(
+                        this->module_.types[action.type.value].range,
+                        std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED)
+                    );
                 }
             }
             if (is_valid(return_type) &&
                 !this->checked_.types.is_void(return_type) &&
                 !this->is_valid_storage_type(return_type)) {
-                this->report(this->module_.types[action.type.value].range, std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE));
+                this->report_general(
+                    this->module_.types[action.type.value].range,
+                    std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE)
+                );
             }
             if (this->checked_.types.is_array(return_type) || this->checked_.types.contains_array(return_type)) {
-                this->report(this->module_.types[action.type.value].range, std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED));
+                this->report_unsupported(
+                    this->module_.types[action.type.value].range,
+                    std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED)
+                );
             }
             const TypeHandle resolved = this->checked_.types.function(
                 map_function_call_conv(action.function_call_conv),
@@ -815,7 +827,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
         if (const auto found = this->current_generic_context_->params.find(type.name_id);
             found != this->current_generic_context_->params.end()) {
             if (!type.type_args.empty()) {
-                this->report(type.range, sema_generic_param_type_args_message(type.name));
+                this->report_type(type.range, sema_generic_param_type_args_message(type.name));
                 return INVALID_TYPE_HANDLE;
             }
             return found->second;
@@ -845,7 +857,7 @@ TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, cons
         return found->second;
     }
     if (std::find(resolving_type_aliases_.begin(), resolving_type_aliases_.end(), key) != resolving_type_aliases_.end()) {
-        report(alias.range, sema_cyclic_type_alias_message(alias.name));
+        this->report_general(alias.range, sema_cyclic_type_alias_message(alias.name));
         resolved_type_aliases_[key] = INVALID_TYPE_HANDLE;
         return INVALID_TYPE_HANDLE;
     }
@@ -1000,7 +1012,7 @@ void SemanticAnalyzer::validate_type_layouts() {
             }
             base::u64 size = SEMA_ABI_INVALID_SIZE;
             if (!checked_mul_u64(info.array_count, element.size, size)) {
-                this->report(range, std::string(SEMA_ARRAY_STORAGE_OVERFLOW));
+                this->report_general(range, std::string(SEMA_ARRAY_STORAGE_OVERFLOW));
                 result = LayoutResult {size, element.align, false};
                 return result;
             }
@@ -1019,19 +1031,19 @@ void SemanticAnalyzer::validate_type_layouts() {
                 max_align = std::max(max_align, element.align);
                 base::u64 aligned_offset = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(offset, element.align, aligned_offset)) {
-                    this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    this->report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 base::u64 next_offset = SEMA_ABI_INVALID_SIZE;
                 if (!checked_add_u64(aligned_offset, element.size, next_offset)) {
-                    this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    this->report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 offset = next_offset;
             }
             base::u64 size = SEMA_ABI_INVALID_SIZE;
             if (!checked_align_forward(offset, max_align, size)) {
-                this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                this->report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                 result.ok = false;
             }
             result.size = size;
@@ -1054,19 +1066,19 @@ void SemanticAnalyzer::validate_type_layouts() {
                     max_align = std::max(max_align, field_layout.align);
                     base::u64 aligned_offset = SEMA_ABI_INVALID_SIZE;
                     if (!checked_align_forward(offset, field_layout.align, aligned_offset)) {
-                        this->report(field.range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                        this->report_general(field.range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                         result.ok = false;
                     }
                     base::u64 next_offset = SEMA_ABI_INVALID_SIZE;
                     if (!checked_add_u64(aligned_offset, field_layout.size, next_offset)) {
-                        this->report(field.range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                        this->report_general(field.range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                         result.ok = false;
                     }
                     offset = next_offset;
                 }
                 base::u64 size = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(offset, max_align, size)) {
-                    this->report(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
+                    this->report_general(range, std::string(SEMA_STRUCT_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 result.size = size;
@@ -1103,17 +1115,17 @@ void SemanticAnalyzer::validate_type_layouts() {
                 const base::u64 max_align = std::max(result.align, payload_align);
                 base::u64 storage_offset = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(result.size, payload_align, storage_offset)) {
-                    this->report(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
+                    this->report_general(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 base::u64 total = SEMA_ABI_INVALID_SIZE;
                 if (!checked_add_u64(storage_offset, payload_size, total)) {
-                    this->report(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
+                    this->report_general(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 base::u64 size = SEMA_ABI_INVALID_SIZE;
                 if (!checked_align_forward(total, max_align, size)) {
-                    this->report(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
+                    this->report_general(range, std::string(SEMA_ENUM_STORAGE_OVERFLOW));
                     result.ok = false;
                 }
                 result.size = size;
@@ -1145,7 +1157,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         }
         const auto state = states.find(dependency.value);
         if (state != states.end() && state->second == TypeLayoutVisitState::visiting) {
-            this->report(
+            this->report_general(
                 dependency_range,
                 "recursive value type is not valid storage: " + this->checked_.types.display_name(dependency)
             );
@@ -1298,12 +1310,12 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
         const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
         if (!suffix.has_value()) {
             suffix_valid = false;
-            report(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
+            this->report_general(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
         } else {
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
-                report(
+                this->report_type(
                     range,
                     sema_integer_literal_suffix_type_mismatch_message(
                         checked_.types.display_name(literal_type),
@@ -1314,7 +1326,7 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
         }
     }
     if (suffix_valid && !integer_literal_fits_type(literal_type, text)) {
-        report(
+        this->report_general(
             range,
             sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
@@ -1346,12 +1358,12 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
         const std::optional<BuiltinType> suffix = integer_suffix_type(parts.suffix);
         if (!suffix.has_value()) {
             suffix_valid = false;
-            report(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
+            this->report_general(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
         } else {
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
-                report(
+                this->report_type(
                     range,
                     sema_integer_literal_suffix_type_mismatch_message(
                         checked_.types.display_name(literal_type),
@@ -1362,7 +1374,7 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
         }
     }
     if (suffix_valid && !negative_integer_literal_fits_type(literal_type, text)) {
-        report(
+        this->report_general(
             range,
             sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
@@ -1394,12 +1406,12 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
         const std::optional<BuiltinType> suffix = float_suffix_type(parts.suffix);
         if (!suffix.has_value()) {
             suffix_valid = false;
-            report(range, sema_invalid_float_literal_suffix_message(parts.suffix));
+            this->report_general(range, sema_invalid_float_literal_suffix_message(parts.suffix));
         } else {
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_float(expected_type) && !checked_.types.same(literal_type, expected_type)) {
-                report(
+                this->report_type(
                     range,
                     sema_float_literal_suffix_type_mismatch_message(
                         checked_.types.display_name(literal_type),
@@ -1414,7 +1426,7 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
         ? parse_float_literal_checked<float>(text)
         : parse_float_literal_checked<double>(text));
     if (suffix_valid && !fits) {
-        report(
+        this->report_general(
             range,
             sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type))
         );
@@ -1798,7 +1810,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 output_is_place = true;
                 output_is_writable = reference.pointer_mutability == PointerMutability::mut;
             } else if (emit_diagnostics) {
-                this->report(projection_range, std::string(SEMA_DEREF_POINTER));
+                this->report_general(projection_range, std::string(SEMA_DEREF_POINTER));
             }
         } else if (projection->kind == PendingProjectionKind::field) {
             const syntax::FieldExprPayload* const projection_expr =
@@ -1822,7 +1834,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             }
             if (this->checked_.types.is_tuple(object_type)) {
                 if (emit_diagnostics) {
-                    this->report(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
+                    this->report_unsupported(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
                 }
             } else if (const StructInfo* info = this->find_struct(object_type); info != nullptr && !info->is_opaque) {
                 bool saw_field = false;
@@ -1833,7 +1845,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                     saw_field = true;
                     if (!this->can_access(info->module, field.visibility)) {
                         if (emit_diagnostics) {
-                            this->report(projection_range, sema_private_field_message(field_name));
+                            this->report_visibility(projection_range, sema_private_field_message(field_name));
                         }
                     } else {
                         output_type = field.type;
@@ -1842,14 +1854,14 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                     break;
                 }
                 if (!saw_field && emit_diagnostics) {
-                    this->report(projection_range, sema_unknown_field_message(field_name));
+                    this->report_lookup(projection_range, sema_unknown_field_message(field_name));
                     this->report_lookup_suggestion(
                         projection_range,
                         this->nearest_field_name(*info, field_name)
                     );
                 }
             } else if (emit_diagnostics) {
-                this->report(projection_range, std::string(SEMA_FIELD_STRUCT_VALUE));
+                this->report_general(projection_range, std::string(SEMA_FIELD_STRUCT_VALUE));
             }
         } else {
             const syntax::IndexExprPayload* const projection_expr =
@@ -1857,7 +1869,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             const syntax::ExprId index_expr = projection_expr == nullptr ? syntax::INVALID_EXPR_ID : projection_expr->index;
             const TypeHandle index_type = this->analyze_expr(index_expr);
             if (emit_diagnostics && !this->checked_.types.is_integer(index_type)) {
-                this->report(
+                this->report_general(
                     place_expr_range_or(this->module_, index_expr, projection_range),
                     std::string(SEMA_ARRAY_INDEX_INTEGER)
                 );
@@ -1874,7 +1886,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                             (literal_index.negated && index_value != 0) ||
                             (!literal_index.negated && index_value >= this->checked_.types.get(input_type).array_count);
                         if (out_of_bounds) {
-                            this->report(
+                            this->report_general(
                                 place_expr_range_or(this->module_, index_expr, projection_range),
                                 std::string(SEMA_ARRAY_INDEX_OUT_OF_BOUNDS)
                             );
@@ -1894,11 +1906,11 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 place.crosses_raw_pointer = true;
                 if (this->checked_.types.is_array(pointer.pointee)) {
                     if (emit_diagnostics) {
-                        this->report(projection_range, std::string(SEMA_INDEX_POINTER_ARRAY_DEREF));
+                        this->report_general(projection_range, std::string(SEMA_INDEX_POINTER_ARRAY_DEREF));
                     }
                 } else if (!this->is_valid_storage_type(pointer.pointee)) {
                     if (emit_diagnostics) {
-                        this->report(projection_range, std::string(SEMA_INDEX_POINTER_STORAGE));
+                        this->report_general(projection_range, std::string(SEMA_INDEX_POINTER_STORAGE));
                     }
                 } else {
                     output_type = pointer.pointee;
@@ -1917,10 +1929,10 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                     output_is_place = true;
                     output_is_writable = slice.slice_mutability == PointerMutability::mut;
                 } else if (emit_diagnostics) {
-                    this->report(projection_range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
+                    this->report_general(projection_range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
                 }
             } else if (emit_diagnostics) {
-                this->report(projection_range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
+                this->report_general(projection_range, std::string(SEMA_INDEX_ARRAY_OR_POINTER));
             }
         }
 

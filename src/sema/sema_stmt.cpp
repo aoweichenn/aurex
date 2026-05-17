@@ -415,7 +415,7 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     }
     if (state == FunctionBodyState::analyzing) {
         if (!is_valid(signature.return_type)) {
-            this->report(function.range, std::string(SEMA_RECURSIVE_RETURN_INFER));
+            this->report_general(function.range, std::string(SEMA_RECURSIVE_RETURN_INFER));
         }
         return;
     }
@@ -467,12 +467,12 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         if (is_valid(return_inference.inferred_type) &&
             !this->checked_.types.is_void(return_inference.inferred_type) &&
             !this->block_guarantees_return(function.body)) {
-            this->report(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
+            this->report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
         }
     } else if (is_valid(expected_return) &&
         !this->checked_.types.is_void(expected_return) &&
         !this->block_guarantees_return(function.body)) {
-        this->report(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
+        this->report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
     }
     state = FunctionBodyState::analyzed;
 }
@@ -628,7 +628,10 @@ void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
     }
     const TypeHandle condition = this->analyze_expr(stmt->condition);
     if (!this->checked_.types.is_bool(condition)) {
-        this->report(expr_range_or(this->module_, stmt->condition, stmt->range), std::string(SEMA_FOR_CONDITION_BOOL));
+        this->report_general(
+            expr_range_or(this->module_, stmt->condition, stmt->range),
+            std::string(SEMA_FOR_CONDITION_BOOL)
+        );
     }
 }
 
@@ -638,7 +641,7 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
 ) {
     if (!syntax::is_valid(stmt.range_end)) {
         this->record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
-        this->report(stmt.range, std::string(SEMA_FOR_RANGE_ARITY));
+        this->report_general(stmt.range, std::string(SEMA_FOR_RANGE_ARITY));
         return INVALID_TYPE_HANDLE;
     }
 
@@ -686,27 +689,39 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
     const TypeHandle step = has_step ? operand_types[step_index] : range_type;
 
     if (syntax::is_valid(stmt.range_start) && !this->checked_.types.is_integer(start)) {
-        this->report(expr_range_or(this->module_, stmt.range_start, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
+        this->report_general(
+            expr_range_or(this->module_, stmt.range_start, stmt.range),
+            std::string(SEMA_RANGE_BOUNDS_INTEGER)
+        );
     }
     if (!this->checked_.types.is_integer(end)) {
-        this->report(expr_range_or(this->module_, stmt.range_end, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
+        this->report_general(
+            expr_range_or(this->module_, stmt.range_end, stmt.range),
+            std::string(SEMA_RANGE_BOUNDS_INTEGER)
+        );
     }
     if (has_step && !this->checked_.types.is_integer(step)) {
-        this->report(expr_range_or(this->module_, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_INTEGER));
+        this->report_general(
+            expr_range_or(this->module_, stmt.range_step, stmt.range),
+            std::string(SEMA_RANGE_STEP_INTEGER)
+        );
     }
     const bool bounds_have_same_type =
         is_valid(start) &&
         is_valid(end) &&
         this->checked_.types.same(start, end);
     if (is_valid(start) && is_valid(end) && !bounds_have_same_type) {
-        this->report(stmt.range, std::string(SEMA_RANGE_BOUNDS_SAME_TYPE));
+        this->report_general(stmt.range, std::string(SEMA_RANGE_BOUNDS_SAME_TYPE));
     }
     if (has_step &&
         bounds_have_same_type &&
         this->checked_.types.is_integer(start) &&
         this->checked_.types.is_integer(step) &&
         !this->checked_.types.same(start, step)) {
-        this->report(expr_range_or(this->module_, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_SAME_TYPE));
+        this->report_general(
+            expr_range_or(this->module_, stmt.range_step, stmt.range),
+            std::string(SEMA_RANGE_STEP_SAME_TYPE)
+        );
     }
 
     const TypeHandle local_type = this->checked_.types.is_integer(start)
@@ -742,7 +757,10 @@ void SemanticAnalyzer::define_local_pattern(
     std::vector<PatternBinding> bindings;
     if (!this->analyze_pattern(pattern_id, type, bindings) && !allow_refutable) {
         const syntax::PatternNode* pattern = this->module_.patterns.ptr(pattern_id.value);
-        this->report(pattern == nullptr ? base::SourceRange {} : pattern->range, std::string(SEMA_LOCAL_PATTERN_REFUTABLE));
+        this->report_pattern(
+            pattern == nullptr ? base::SourceRange {} : pattern->range,
+            std::string(SEMA_LOCAL_PATTERN_REFUTABLE)
+        );
     }
     this->define_pattern_bindings(bindings, is_mutable);
 }
@@ -767,10 +785,10 @@ void SemanticAnalyzer::analyze_statement_node(
         const TypeHandle local_type = has_declared_type ? declared_type : init;
         this->record_stmt_local_type(stmt_id, local_type);
         if (!has_declared_type && !is_valid(local_type)) {
-            this->report(stmt.range, std::string(SEMA_LOCAL_TYPE_INFER));
+            this->report_general(stmt.range, std::string(SEMA_LOCAL_TYPE_INFER));
         }
         if (is_valid(local_type) && !this->is_valid_storage_type(local_type)) {
-            this->report(stmt.range, std::string(SEMA_LOCAL_STORAGE));
+            this->report_general(stmt.range, std::string(SEMA_LOCAL_STORAGE));
         }
         if (has_declared_type && !this->can_assign(local_type, init, stmt.init)) {
             this->report_type_mismatch(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH), local_type, init);
@@ -778,7 +796,7 @@ void SemanticAnalyzer::analyze_statement_node(
         if (syntax::is_valid(stmt.pattern)) {
             if (syntax::is_valid(stmt.else_block)) {
                 if (this->block_may_fallthrough(stmt.else_block)) {
-                    this->report(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
+                    this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
                 }
                 stack.push_back(StatementAnalysisAction {
                     StatementAnalysisActionKind::local_pattern,
@@ -796,9 +814,9 @@ void SemanticAnalyzer::analyze_statement_node(
             break;
         }
         if (syntax::is_valid(stmt.else_block)) {
-            this->report(stmt.range, std::string(SEMA_LET_ELSE_PATTERN));
+            this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_PATTERN));
             if (this->block_may_fallthrough(stmt.else_block)) {
-                this->report(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
+                this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
             }
             stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
         }
@@ -821,7 +839,10 @@ void SemanticAnalyzer::analyze_statement_node(
     case syntax::StmtKind::assign: {
         const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
         if (!this->is_writable_place(stmt.lhs)) {
-            this->report(expr_range_or(this->module_, stmt.lhs, stmt.range), std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
+            this->report_general(
+                expr_range_or(this->module_, stmt.lhs, stmt.range),
+                std::string(SEMA_ASSIGNMENT_LHS_WRITABLE)
+            );
         }
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
         if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
@@ -842,14 +863,17 @@ void SemanticAnalyzer::analyze_statement_node(
             }
         }
         if (this->checked_.types.contains_array(lhs)) {
-            this->report(stmt.range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
+            this->report_unsupported(stmt.range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
         }
         break;
     }
     case syntax::StmtKind::if_: {
         const TypeHandle condition = this->analyze_expr(stmt.condition);
         if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
-            this->report(expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_IF_CONDITION_BOOL));
+            this->report_general(
+                expr_range_or(this->module_, stmt.condition, stmt.range),
+                std::string(SEMA_IF_CONDITION_BOOL)
+            );
         }
         if (syntax::is_valid(stmt.else_if)) {
             stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.else_if});
@@ -873,7 +897,10 @@ void SemanticAnalyzer::analyze_statement_node(
     case syntax::StmtKind::while_: {
         const TypeHandle condition = this->analyze_expr(stmt.condition);
         if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
-            this->report(expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_WHILE_CONDITION_BOOL));
+            this->report_general(
+                expr_range_or(this->module_, stmt.condition, stmt.range),
+                std::string(SEMA_WHILE_CONDITION_BOOL)
+            );
         }
         stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
         if (syntax::is_valid(stmt.pattern)) {
@@ -933,7 +960,10 @@ void SemanticAnalyzer::analyze_statement_node(
         if (syntax::is_valid(stmt.init) &&
             stmt.init.value < this->module_.exprs.size() &&
             !is_allowed_expression_statement(this->module_, stmt.init)) {
-            this->report(this->module_.exprs.range(stmt.init.value), std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
+            this->report_general(
+                this->module_.exprs.range(stmt.init.value),
+                std::string(SEMA_EXPR_STMT_CALL_OR_TRY)
+            );
         }
         break;
     case syntax::StmtKind::block:
@@ -942,7 +972,7 @@ void SemanticAnalyzer::analyze_statement_node(
     case syntax::StmtKind::break_:
     case syntax::StmtKind::continue_:
         if (this->loop_depth_ == SEMA_NO_LOOP_DEPTH) {
-            this->report(stmt.range, std::string(SEMA_BREAK_CONTINUE_IN_LOOP));
+            this->report_general(stmt.range, std::string(SEMA_BREAK_CONTINUE_IN_LOOP));
         }
         break;
     case syntax::StmtKind::defer:
@@ -950,7 +980,7 @@ void SemanticAnalyzer::analyze_statement_node(
         if (!syntax::is_valid(stmt.init) ||
             stmt.init.value >= this->module_.exprs.size() ||
             this->module_.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
-            this->report(stmt.range, std::string(SEMA_DEFER_CALL));
+            this->report_general(stmt.range, std::string(SEMA_DEFER_CALL));
             break;
         }
         break;
@@ -1054,16 +1084,16 @@ void SemanticAnalyzer::report_return_inference_diagnostic(
     if (!stmt.has_value()) {
         return;
     }
-    this->report(stmt->range, std::string(message));
+    this->report_general(stmt->range, std::string(message));
 }
 
 void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) const
 {
     if (this->checked_.types.is_array(return_type)) {
-        this->report(function.range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
+        this->report_unsupported(function.range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
     }
     if (this->checked_.types.contains_array(return_type)) {
-        this->report(function.range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
+        this->report_unsupported(function.range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
     }
 }
 
@@ -1084,14 +1114,14 @@ void SemanticAnalyzer::ensure_function_return_known(
         ? this->function_body_states_.at(key)
         : FunctionBodyState::not_started;
     if (state == FunctionBodyState::analyzing) {
-        this->report(use_range, std::string(SEMA_RECURSIVE_RETURN_INFER));
+        this->report_general(use_range, std::string(SEMA_RECURSIVE_RETURN_INFER));
         return;
     }
     const auto item_found = this->function_definition_items_.find(key);
     if (item_found == this->function_definition_items_.end() ||
         !syntax::is_valid(item_found->second) ||
         item_found->second.value >= this->module_.items.size()) {
-        this->report(use_range, std::string(SEMA_RETURN_TYPE_INFER));
+        this->report_general(use_range, std::string(SEMA_RETURN_TYPE_INFER));
         return;
     }
     this->analyze_function_body(this->module_.items[item_found->second.value], item_found->second);

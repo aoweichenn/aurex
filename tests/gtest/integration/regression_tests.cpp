@@ -1086,9 +1086,27 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions) {
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "where_duplicate_capability.ax"))).output,
         "duplicate capability `Eq`"
     );
+    expect_contains_all(
+        require_failure(
+            aurexc() + " --check --diagnostics=json " + q(negative_sample("generics", "where_duplicate_capability.ax"))
+        ).output,
+        {
+            "\"category\": \"capability\"",
+            "\"code\": \"SEM0450\"",
+        }
+    );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "where_resource_capability.ax"))).output,
         "resource capabilities are not part of M2 where constraints"
+    );
+    expect_contains_all(
+        require_failure(
+            aurexc() + " --check --diagnostics=json " + q(negative_sample("generics", "where_resource_capability.ax"))
+        ).output,
+        {
+            "\"category\": \"unsupported\"",
+            "\"code\": \"SEM0300\"",
+        }
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "where_drop_resource_capability.ax"))).output,

@@ -486,39 +486,53 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
 
 } // namespace
 
-TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataClassifiesSemaReports) {
+TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataUsesExplicitKinds) {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzer analyzer(module, diagnostics);
     const base::SourceRange range {{1}, 0, 1};
 
-    analyzer.report(range, std::string(sema::SEMA_MATCH_DYNAMIC_SLICE_WITNESS));
-    analyzer.report(range, std::string(sema::SEMA_UNSAFE_DEREF));
+    analyzer.report_pattern_exhaustiveness(range, "same diagnostic text");
+    analyzer.report_unsafe_required(range, "same diagnostic text");
+    analyzer.report_capability(range, "same diagnostic text");
+    analyzer.report_unsupported(range, "same diagnostic text");
+    analyzer.report_internal_contract(range, "same diagnostic text");
     analyzer.report_type_mismatch(
         range,
         std::string(sema::SEMA_INITIALIZER_TYPE_MISMATCH),
         analyzer.checked_.types.builtin(BuiltinType::bool_),
         analyzer.checked_.types.builtin(BuiltinType::i32)
     );
-    analyzer.report_note(range, sema::sema_previous_declaration_note_message("value"));
+    analyzer.report_note(
+        range,
+        sema::SemanticDiagnosticKind::duplicate,
+        sema::sema_previous_declaration_note_message("value")
+    );
     analyzer.report_lookup_suggestion(range, "value");
 
-    ASSERT_EQ(diagnostics.diagnostics().size(), 7U);
+    ASSERT_EQ(diagnostics.diagnostics().size(), 10U);
     EXPECT_EQ(diagnostics.diagnostics()[0].category, DiagnosticCategory::pattern);
     EXPECT_EQ(diagnostics.diagnostics()[0].code, DiagnosticCode::semantic_pattern_exhaustiveness);
     EXPECT_EQ(diagnostics.diagnostics()[1].category, DiagnosticCategory::safety);
     EXPECT_EQ(diagnostics.diagnostics()[1].code, DiagnosticCode::semantic_unsafe_required);
-    EXPECT_EQ(diagnostics.diagnostics()[2].category, DiagnosticCategory::type);
-    EXPECT_EQ(diagnostics.diagnostics()[2].code, DiagnosticCode::semantic_type_mismatch);
-    EXPECT_EQ(diagnostics.diagnostics()[3].category, DiagnosticCategory::type);
-    EXPECT_EQ(diagnostics.diagnostics()[3].code, DiagnosticCode::semantic_type_mismatch);
-    EXPECT_EQ(diagnostics.diagnostics()[4].category, DiagnosticCategory::type);
-    EXPECT_EQ(diagnostics.diagnostics()[4].code, DiagnosticCode::semantic_type_mismatch);
-    EXPECT_EQ(diagnostics.diagnostics()[5].category, DiagnosticCategory::name_resolution);
-    EXPECT_EQ(diagnostics.diagnostics()[5].code, DiagnosticCode::semantic_duplicate);
-    EXPECT_EQ(diagnostics.diagnostics()[6].category, DiagnosticCategory::name_resolution);
-    EXPECT_EQ(diagnostics.diagnostics()[6].code, DiagnosticCode::semantic_lookup);
+    EXPECT_EQ(diagnostics.diagnostics()[2].category, DiagnosticCategory::capability);
+    EXPECT_EQ(diagnostics.diagnostics()[2].code, DiagnosticCode::semantic_capability);
+    EXPECT_EQ(diagnostics.diagnostics()[3].category, DiagnosticCategory::unsupported);
+    EXPECT_EQ(diagnostics.diagnostics()[3].code, DiagnosticCode::semantic_unsupported);
+    EXPECT_EQ(diagnostics.diagnostics()[4].category, DiagnosticCategory::internal);
+    EXPECT_EQ(diagnostics.diagnostics()[4].code, DiagnosticCode::internal_contract);
+    EXPECT_EQ(diagnostics.diagnostics()[5].category, DiagnosticCategory::type);
+    EXPECT_EQ(diagnostics.diagnostics()[5].code, DiagnosticCode::semantic_type_mismatch);
+    EXPECT_EQ(diagnostics.diagnostics()[6].category, DiagnosticCategory::type);
+    EXPECT_EQ(diagnostics.diagnostics()[6].code, DiagnosticCode::semantic_type_mismatch);
+    EXPECT_EQ(diagnostics.diagnostics()[7].category, DiagnosticCategory::type);
+    EXPECT_EQ(diagnostics.diagnostics()[7].code, DiagnosticCode::semantic_type_mismatch);
+    EXPECT_EQ(diagnostics.diagnostics()[8].category, DiagnosticCategory::name_resolution);
+    EXPECT_EQ(diagnostics.diagnostics()[8].code, DiagnosticCode::semantic_duplicate);
+    EXPECT_EQ(diagnostics.diagnostics()[9].category, DiagnosticCategory::name_resolution);
+    EXPECT_EQ(diagnostics.diagnostics()[9].code, DiagnosticCode::semantic_lookup);
+    EXPECT_EQ(diagnostics.diagnostics()[0].message, diagnostics.diagnostics()[1].message);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {

@@ -71,7 +71,7 @@ void SemanticAnalyzer::require_unsafe_context(
 ) const
 {
     if (!this->in_unsafe_context()) {
-        this->report(range, std::string(operation));
+        this->report_unsafe_required(range, std::string(operation));
     }
 }
 
@@ -81,7 +81,7 @@ void SemanticAnalyzer::validate_unsafe_call(
 ) const
 {
     if (signature.is_unsafe && !this->in_unsafe_context()) {
-        this->report(range, sema_unsafe_function_call_message(signature.name));
+        this->report_unsafe_required(range, sema_unsafe_function_call_message(signature.name));
     }
 }
 
@@ -95,7 +95,7 @@ void SemanticAnalyzer::validate_unsafe_function_value_call(
     }
     const TypeInfo& function = this->checked_.types.get(callee_type);
     if (function.function_is_unsafe && !this->in_unsafe_context()) {
-        this->report(range, sema_unsafe_function_call_message(SEMA_FUNCTION_VALUE_CALL_NAME));
+        this->report_unsafe_required(range, sema_unsafe_function_call_message(SEMA_FUNCTION_VALUE_CALL_NAME));
     }
 }
 
@@ -170,7 +170,7 @@ SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
         const bool failed_selector = !this->selector_base_has_non_module_meaning(name_id, name);
         if (failed_selector && report_unknown) {
             if (this->visible_root_module_name_exists(name)) {
-                this->report(path.range, sema_unknown_module_path_message(std::string(name)));
+                this->report_lookup(path.range, sema_unknown_module_path_message(std::string(name)));
             } else {
                 static_cast<void>(this->resolve_import_alias(name, path.range, true));
             }
@@ -191,7 +191,10 @@ SemanticAnalyzer::ModuleSelector SemanticAnalyzer::resolve_module_selector(
         !this->visible_module_path_prefix_exists(path.parts);
     if (failed_selector && report_unknown) {
         if (this->visible_root_module_name_exists(root)) {
-            this->report(path.range, sema_unknown_module_path_message(module_selector_path_name(path.parts)));
+            this->report_lookup(
+                path.range,
+                sema_unknown_module_path_message(module_selector_path_name(path.parts))
+            );
         } else {
             static_cast<void>(this->resolve_import_alias(root, path.range, true));
         }
@@ -313,7 +316,7 @@ TypeHandle SemanticAnalyzer::resolve_named_type_selector_type(
     if (is_valid(resolved) &&
         this->checked_.types.get(resolved).kind == TypeKind::opaque_struct &&
         !opaque_allowed_as_pointee) {
-        this->report(selector.range, std::string(SEMA_OPAQUE_POINTER_ONLY));
+        this->report_general(selector.range, std::string(SEMA_OPAQUE_POINTER_ONLY));
     }
     return resolved;
 }
@@ -397,7 +400,7 @@ TypeHandle SemanticAnalyzer::resolve_generic_type_selector(
           );
     if (is_valid(concrete)) {
         if (report_unknown) {
-            this->report(selector.range, sema_type_not_generic_message(selector.name));
+            this->report_type(selector.range, sema_type_not_generic_message(selector.name));
         }
         return INVALID_TYPE_HANDLE;
     }
@@ -456,7 +459,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
 ) {
     if (!syntax::is_valid(expr.callee) ||
         expr.callee.value >= this->module_.exprs.size()) {
-        this->report(expr.range, std::string(SEMA_CALLEE_FUNCTION_NAME));
+        this->report_general(expr.range, std::string(SEMA_CALLEE_FUNCTION_NAME));
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     const SemanticAnalyzer::ExprView callee = this->expr_view(expr.callee);
@@ -473,7 +476,7 @@ TypeHandle SemanticAnalyzer::analyze_call_expr(
                     }
                 }
             }
-            this->report(callee.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
+            this->report_general(callee.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         return this->analyze_explicit_generic_function_call_expr(
@@ -532,7 +535,7 @@ TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
             ? this->find_function_in_module(selector.module, selector.name_id, name, callee_range, false)
             : this->find_function_in_visible_modules(selector.name_id, name, callee_range, false);
         if (signature != nullptr) {
-            this->report(callee_range, sema_function_not_generic_message(name));
+            this->report_type(callee_range, sema_function_not_generic_message(name));
         } else {
             static_cast<void>(this->find_generic_function_selector(generic_lookup, callee_range, true));
         }
@@ -561,13 +564,13 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
 ) {
     const std::string case_display_name = enum_case_display_name(this->checked_.types, enum_case);
     if (enum_case.payload_types.empty()) {
-        this->report(expr.range, sema_enum_payload_constructor_case_message(case_display_name));
+        this->report_pattern(expr.range, sema_enum_payload_constructor_case_message(case_display_name));
     }
     if (expr.args.size() != enum_case.payload_types.size()) {
         if (enum_case.payload_types.size() == 1) {
-            this->report(expr.range, sema_enum_payload_constructor_arity_message(case_display_name));
+            this->report_type(expr.range, sema_enum_payload_constructor_arity_message(case_display_name));
         } else {
-            this->report(expr.range, sema_enum_payload_constructor_argument_count_message(
+            this->report_type(expr.range, sema_enum_payload_constructor_argument_count_message(
                 case_display_name,
                 enum_case.payload_types.size()
             ));
@@ -586,7 +589,7 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
             );
         }
         if (this->checked_.types.contains_array(expected)) {
-            this->report(
+            this->report_unsupported(
                 call_expr_range_or(this->module_, expr.args[i], expr.range),
                 std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED)
             );
@@ -640,7 +643,7 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
             if (signature->has_self_param) {
-                this->report(
+                this->report_general(
                     callee.range,
                     sema_method_requires_receiver_message(this->checked_.types.display_name(associated_owner), name)
                 );
@@ -707,7 +710,7 @@ TypeHandle SemanticAnalyzer::analyze_function_value_call_expr(
 ) {
     const TypeHandle callee_type = this->analyze_expr(expr.callee);
     if (!this->checked_.types.is_function(callee_type)) {
-        this->report(
+        this->report_general(
             expr.range,
             std::string(SEMA_CALLEE_FUNCTION_NAME)
         );
@@ -779,7 +782,7 @@ void SemanticAnalyzer::validate_call_arguments(
             ? param_types.size() - receiver_count
             : 0;
     if (is_variadic ? expr.args.size() < expected_count : expected_count != expr.args.size()) {
-        this->report(expr.range, sema_argument_count_message(name));
+        this->report_type(expr.range, sema_argument_count_message(name));
     }
     const base::usize count = expr.args.size() < expected_count ? expr.args.size() : expected_count;
     for (base::usize i = 0; i < count; ++i) {
@@ -794,19 +797,25 @@ void SemanticAnalyzer::validate_call_arguments(
             );
         }
         if (this->checked_.types.contains_array(expected)) {
-            this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+            this->report_unsupported(
+                call_expr_range_or(this->module_, expr.args[i], expr.range),
+                std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED)
+            );
         }
     }
     if (is_variadic) {
         for (base::usize i = count; i < expr.args.size(); ++i) {
             const TypeHandle actual = this->analyze_expr(expr.args[i]);
             if (!is_valid(actual)) {
-                this->report(
+                this->report_type(
                     call_expr_range_or(this->module_, expr.args[i], expr.range),
                     sema_variadic_argument_type_infer_message(name)
                 );
             } else if (this->is_array_containing_value_type(actual)) {
-                this->report(call_expr_range_or(this->module_, expr.args[i], expr.range), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+                this->report_unsupported(
+                    call_expr_range_or(this->module_, expr.args[i], expr.range),
+                    std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED)
+                );
             }
         }
     }

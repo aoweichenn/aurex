@@ -158,7 +158,7 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
 {
     if (!syntax::is_valid(this->current_module_) || this->current_module_.value >= this->module_.modules.size()) {
         if (report_unknown) {
-            this->report(range, sema_unknown_import_alias_message(alias));
+            this->report_lookup(range, sema_unknown_import_alias_message(alias));
         }
         return syntax::INVALID_MODULE_ID;
     }
@@ -169,14 +169,14 @@ syntax::ModuleId SemanticAnalyzer::resolve_import_alias(
         }
         if (syntax::is_valid(resolved)) {
             if (report_unknown) {
-                this->report(range, sema_ambiguous_import_alias_message(alias));
+                this->report_lookup(range, sema_ambiguous_import_alias_message(alias));
             }
             return syntax::INVALID_MODULE_ID;
         }
         resolved = import.module;
     }
     if (!syntax::is_valid(resolved) && report_unknown) {
-        this->report(range, sema_unknown_import_alias_message(alias));
+        this->report_lookup(range, sema_unknown_import_alias_message(alias));
         this->report_lookup_suggestion(range, this->nearest_import_alias_name(alias));
     }
     return resolved;
@@ -305,7 +305,7 @@ syntax::ModuleId SemanticAnalyzer::resolve_type_scope(
 
     const syntax::ModuleId module = this->find_visible_module_path(parts);
     if (!syntax::is_valid(module) && report_unknown) {
-        this->report(type.scope_range, sema_unknown_module_path_message(module_path_parts_name(parts)));
+        this->report_lookup(type.scope_range, sema_unknown_module_path_message(module_path_parts_name(parts)));
     }
     return module;
 }
@@ -1031,19 +1031,19 @@ bool SemanticAnalyzer::can_define_local_name(
         return true;
     }
     if (this->module_alias_visible(name)) {
-        this->report(range, sema_local_shadows_import_alias_message(name));
+        this->report_duplicate(range, sema_local_shadows_import_alias_message(name));
         return false;
     }
     if (this->visible_root_module_name_exists(name)) {
-        this->report(range, sema_local_shadows_root_module_message(name));
+        this->report_duplicate(range, sema_local_shadows_root_module_message(name));
         return false;
     }
     if (this->current_generic_param_exists(name_id, name)) {
-        this->report(range, sema_local_shadows_generic_type_parameter_message(name));
+        this->report_duplicate(range, sema_local_shadows_generic_type_parameter_message(name));
         return false;
     }
     if (this->visible_type_name_exists(name_id, name)) {
-        this->report(range, sema_local_shadows_type_name_message(name));
+        this->report_duplicate(range, sema_local_shadows_type_name_message(name));
         return false;
     }
     return true;
@@ -1152,7 +1152,10 @@ bool SemanticAnalyzer::method_receiver_matches(
     const TypeHandle self_type = signature.param_types.front();
     if (this->checked_.types.same(self_type, receiver_type)) {
         if (this->checked_.types.contains_array(self_type)) {
-            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+            this->report_unsupported(
+                this->module_.exprs.range(receiver.value),
+                std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED)
+            );
             return false;
         }
         return true;
@@ -1172,7 +1175,10 @@ bool SemanticAnalyzer::method_receiver_matches(
         }
         if (self_info.pointer_mutability == PointerMutability::mut &&
             receiver_info.pointer_mutability != PointerMutability::mut) {
-            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER));
+            this->report_general(
+                this->module_.exprs.range(receiver.value),
+                std::string(SEMA_MUTABLE_METHOD_RECEIVER_POINTER)
+            );
             return false;
         }
         return true;
@@ -1183,11 +1189,17 @@ bool SemanticAnalyzer::method_receiver_matches(
     const PointerMutability self_mutability = this->checked_.types.get(self_type).pointer_mutability;
     if (self_mutability == PointerMutability::mut) {
         if (!this->is_place_expr(receiver)) {
-            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_METHOD_RECEIVER_PLACE));
+            this->report_general(
+                this->module_.exprs.range(receiver.value),
+                std::string(SEMA_METHOD_RECEIVER_PLACE)
+            );
             return false;
         }
         if (!this->is_writable_place(receiver)) {
-            this->report(this->module_.exprs.range(receiver.value), std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE));
+            this->report_general(
+                this->module_.exprs.range(receiver.value),
+                std::string(SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE)
+            );
             return false;
         }
     }
@@ -1231,7 +1243,7 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
             continue;
         }
         if (result != nullptr) {
-            this->report(
+            this->report_lookup(
                 range,
                 sema_ambiguous_method_message(
                     this->checked_.types.display_name(owner_type),
@@ -1247,10 +1259,13 @@ const FunctionSignature* SemanticAnalyzer::find_method_in_visible_modules(
     }
     if (result == nullptr && report_unknown) {
         if (inaccessible_result != nullptr) {
-            this->report(range, sema_private_method_message(this->checked_.types.display_name(owner_type), name));
+            this->report_visibility(
+                range,
+                sema_private_method_message(this->checked_.types.display_name(owner_type), name)
+            );
             return nullptr;
         }
-        this->report(range, sema_unknown_method_message(this->checked_.types.display_name(owner_type), name));
+        this->report_lookup(range, sema_unknown_method_message(this->checked_.types.display_name(owner_type), name));
     }
     return result;
 }
@@ -1275,7 +1290,7 @@ TypeHandle SemanticAnalyzer::find_type_in_visible_modules(
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_type_message(name));
+        this->report_lookup(range, sema_unknown_type_message(name));
         this->report_lookup_suggestion(range, this->nearest_visible_type_name(name));
     }
     return INVALID_TYPE_HANDLE;
@@ -1291,7 +1306,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_type_message(name));
+            this->report_lookup(range, sema_unknown_type_message(name));
             this->report_lookup_suggestion(range, this->nearest_visible_type_name(name));
         }
         return INVALID_TYPE_HANDLE;
@@ -1307,7 +1322,10 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
                 found != this->named_types_by_name_.end()) {
                 if (!this->can_access(candidate_module, found->second.visibility)) {
                     if (candidate_module.value == module.value && report_unknown) {
-                        this->report(range, sema_private_type_message(this->module_name(candidate_module), name));
+                        this->report_visibility(
+                            range,
+                            sema_private_type_message(this->module_name(candidate_module), name)
+                        );
                         return INVALID_TYPE_HANDLE;
                     }
                     continue;
@@ -1318,7 +1336,10 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
                        alias_found->second != nullptr) {
                 if (!this->can_access(candidate_module, alias_found->second->visibility)) {
                     if (candidate_module.value == module.value && report_unknown) {
-                        this->report(range, sema_private_type_message(this->module_name(candidate_module), name));
+                        this->report_visibility(
+                            range,
+                            sema_private_type_message(this->module_name(candidate_module), name)
+                        );
                         return INVALID_TYPE_HANDLE;
                     }
                     continue;
@@ -1331,7 +1352,10 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
         }
         if (is_valid(result)) {
             if (report_unknown) {
-                this->report(range, sema_ambiguous_type_name_message(name, this->module_name(result_module), this->module_name(candidate_module)));
+                this->report_lookup(
+                    range,
+                    sema_ambiguous_type_name_message(name, this->module_name(result_module), this->module_name(candidate_module))
+                );
             }
             return INVALID_TYPE_HANDLE;
         }
@@ -1343,7 +1367,7 @@ TypeHandle SemanticAnalyzer::find_type_in_module(
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_type_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_type_in_module_message(this->module_name(module), name));
         this->report_lookup_suggestion(range, this->nearest_type_name_in_module(module, name));
     }
     return INVALID_TYPE_HANDLE;
@@ -1364,7 +1388,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_visible_modules(
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_function_message(name));
+        this->report_lookup(range, sema_unknown_function_message(name));
         this->report_lookup_suggestion(range, this->nearest_visible_function_name(name));
     }
     return nullptr;
@@ -1379,7 +1403,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_function_in_module_message(this->module_name(module), name));
+            this->report_lookup(range, sema_unknown_function_in_module_message(this->module_name(module), name));
             this->report_lookup_suggestion(range, this->nearest_visible_function_name(name));
         }
         return nullptr;
@@ -1401,14 +1425,24 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
         }
         if (!this->can_access(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
-                this->report(range, sema_private_function_message(this->module_name(candidate_module), name));
+                this->report_visibility(
+                    range,
+                    sema_private_function_message(this->module_name(candidate_module), name)
+                );
                 return nullptr;
             }
             continue;
         }
         if (result != nullptr) {
             if (report_unknown) {
-                this->report(range, sema_ambiguous_function_name_message(name, this->module_name(result_module), this->module_name(candidate_module)));
+                this->report_lookup(
+                    range,
+                    sema_ambiguous_function_name_message(
+                        name,
+                        this->module_name(result_module),
+                        this->module_name(candidate_module)
+                    )
+                );
             }
             return nullptr;
         }
@@ -1416,7 +1450,7 @@ const FunctionSignature* SemanticAnalyzer::find_function_in_module(
         result_module = candidate_module;
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_function_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_function_in_module_message(this->module_name(module), name));
         this->report_lookup_suggestion(range, this->nearest_function_name_in_module(module, name));
     }
     return result;
@@ -1431,7 +1465,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_name_in_module_message(this->module_name(module), name));
+            this->report_lookup(range, sema_unknown_name_in_module_message(this->module_name(module), name));
             this->report_lookup_suggestion(range, this->nearest_visible_value_name(name));
         }
         return nullptr;
@@ -1453,14 +1487,21 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
         }
         if (!this->can_access(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
-                this->report(range, sema_private_name_message(this->module_name(candidate_module), name));
+                this->report_visibility(range, sema_private_name_message(this->module_name(candidate_module), name));
                 return nullptr;
             }
             continue;
         }
         if (result != nullptr) {
             if (report_unknown) {
-                this->report(range, sema_ambiguous_name_message(name, this->module_name(result_module), this->module_name(candidate_module)));
+                this->report_lookup(
+                    range,
+                    sema_ambiguous_name_message(
+                        name,
+                        this->module_name(result_module),
+                        this->module_name(candidate_module)
+                    )
+                );
             }
             return nullptr;
         }
@@ -1468,7 +1509,7 @@ const Symbol* SemanticAnalyzer::find_symbol_in_module(
         result_module = candidate_module;
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_name_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_name_in_module_message(this->module_name(module), name));
         this->report_lookup_suggestion(range, this->nearest_value_name_in_module(module, name));
     }
     return result;
@@ -1489,7 +1530,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_in_visible_modules(
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_enum_case_message(name));
+        this->report_lookup(range, sema_unknown_enum_case_message(name));
         this->report_lookup_suggestion(range, this->nearest_visible_enum_case_name(name));
     }
     return nullptr;
@@ -1565,7 +1606,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
     const TypeHandle enum_type = this->find_type_in_visible_modules(enum_name_id, enum_name, range, false);
     if (!is_valid(enum_type) || this->checked_.types.get(enum_type).kind != TypeKind::enum_) {
         if (is_valid(enum_type) && report_unknown) {
-            this->report(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+            this->report_general(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
         }
         return nullptr;
     }
@@ -1574,7 +1615,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_scoped_name(
         return result;
     }
     if (report_unknown) {
-        this->report(range, sema_unknown_scoped_enum_case_message(enum_name, case_name));
+        this->report_lookup(range, sema_unknown_scoped_enum_case_message(enum_name, case_name));
         this->report_lookup_suggestion(range, this->nearest_enum_case_name(enum_type, case_name));
     }
     return nullptr;
@@ -1591,14 +1632,17 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_case_by_pattern_type(
         return nullptr;
     }
     if (this->checked_.types.get(enum_type).kind != TypeKind::enum_) {
-        this->report(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+        this->report_general(range, std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
         return nullptr;
     }
     if (const EnumCaseInfo* result = this->find_enum_case_by_type_and_case(enum_type, case_name_id, case_name);
         result != nullptr) {
         return result;
     }
-    this->report(range, sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), case_name));
+    this->report_lookup(
+        range,
+        sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), case_name)
+    );
     this->report_lookup_suggestion(range, this->nearest_enum_case_name(enum_type, case_name));
     return nullptr;
 }
@@ -1619,7 +1663,10 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
     }
     if (this->checked_.types.get(enum_type).kind != TypeKind::enum_) {
         if (report_unknown) {
-            this->report(this->module_.exprs.range(callee_id.value), std::string(SEMA_ENUM_CASE_SCOPE_TYPE));
+            this->report_general(
+                this->module_.exprs.range(callee_id.value),
+                std::string(SEMA_ENUM_CASE_SCOPE_TYPE)
+            );
         }
         return nullptr;
     }
@@ -1629,7 +1676,7 @@ const EnumCaseInfo* SemanticAnalyzer::find_enum_constructor(const syntax::ExprId
         return result;
     }
     if (report_unknown) {
-        this->report(
+        this->report_lookup(
             this->module_.exprs.range(callee_id.value),
             sema_unknown_scoped_enum_case_message(this->checked_.types.display_name(enum_type), callee->field_name)
         );
@@ -1658,7 +1705,7 @@ const Symbol* SemanticAnalyzer::find_symbol(
         }
     }
 
-    this->report(range, sema_unknown_name_message(name));
+    this->report_lookup(range, sema_unknown_name_message(name));
     this->report_lookup_suggestion(range, this->nearest_visible_value_name(name));
     return nullptr;
 }

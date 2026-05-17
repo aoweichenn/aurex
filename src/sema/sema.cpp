@@ -542,14 +542,17 @@ bool SemanticAnalyzer::validate_ast_contract() const
 {
     bool valid = true;
     if (this->module_.item_modules.size() != this->module_.items.size()) {
-        this->report({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
+        this->report_internal_contract({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
         valid = false;
     }
     const base::usize count = std::min(this->module_.item_modules.size(), this->module_.items.size());
     for (base::usize i = 0; i < count; ++i) {
         const syntax::ModuleId owner = this->module_.item_modules[i];
         if (!syntax::is_valid(owner) || owner.value >= this->module_.modules.size()) {
-            this->report(this->module_.items.range(i), std::string(SEMA_AST_ITEM_MODULE_INVALID));
+            this->report_internal_contract(
+                this->module_.items.range(i),
+                std::string(SEMA_AST_ITEM_MODULE_INVALID)
+            );
             valid = false;
         }
     }

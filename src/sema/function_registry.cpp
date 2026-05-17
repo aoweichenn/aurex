@@ -4,15 +4,11 @@
 #include <aurex/sema/sema.hpp>
 #include <aurex/sema/symbol.hpp>
 
-#include <string_view>
 #include <utility>
 
 namespace aurex::sema {
 
 namespace {
-
-constexpr std::string_view SEMA_FUNCTION_REGISTRY_SIGNATURE_MISMATCH_PREFIX =
-    "function prototype and definition signatures do not match";
 
 [[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name) {
     if (!item.abi_name.empty()) {
@@ -33,27 +29,6 @@ constexpr std::string_view SEMA_FUNCTION_REGISTRY_SIGNATURE_MISMATCH_PREFIX =
         signature.param_types,
         signature.return_type
     );
-}
-
-[[nodiscard]] bool function_registry_message_starts_with(
-    const std::string_view text,
-    const std::string_view prefix
-) noexcept {
-    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
-}
-
-[[nodiscard]] base::DiagnosticCode function_registry_code(const std::string_view message) noexcept {
-    if (function_registry_message_starts_with(message, SEMA_FUNCTION_REGISTRY_SIGNATURE_MISMATCH_PREFIX)) {
-        return base::DiagnosticCode::semantic_type_mismatch;
-    }
-    return base::DiagnosticCode::semantic_duplicate;
-}
-
-[[nodiscard]] base::DiagnosticCategory function_registry_category(const base::DiagnosticCode code) noexcept {
-    if (code == base::DiagnosticCode::semantic_type_mismatch) {
-        return base::DiagnosticCategory::type;
-    }
-    return base::DiagnosticCategory::name_resolution;
 }
 
 } // namespace
@@ -129,7 +104,11 @@ void FunctionRegistry::merge_function(
     FunctionSignature& prior = existing->second;
     if (!this->same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
         prior.has_conflict = true;
-        this->report(signature.range, sema_function_signature_mismatch_message(signature.name));
+        this->report(
+            signature.range,
+            SemanticDiagnosticKind::type_mismatch,
+            sema_function_signature_mismatch_message(signature.name)
+        );
         this->report_previous_declaration(prior);
         return;
     }
@@ -139,20 +118,32 @@ void FunctionRegistry::merge_function(
         prior.is_unsafe != signature.is_unsafe ||
         prior.c_name != signature.c_name) {
         prior.has_conflict = true;
-        this->report(signature.range, sema_function_declaration_conflict_message(signature.name));
+        this->report(
+            signature.range,
+            SemanticDiagnosticKind::duplicate,
+            sema_function_declaration_conflict_message(signature.name)
+        );
         this->report_previous_declaration(prior);
         return;
     }
     if (is_prototype) {
         if (prior.has_prototype) {
             prior.has_conflict = true;
-            this->report(signature.range, sema_duplicate_function_prototype_message(signature.name));
+            this->report(
+                signature.range,
+                SemanticDiagnosticKind::duplicate,
+                sema_duplicate_function_prototype_message(signature.name)
+            );
             this->report_previous_declaration(prior);
             return;
         }
         if (prior.has_definition) {
             prior.has_conflict = true;
-            this->report(signature.range, sema_function_prototype_order_message(signature.name));
+            this->report(
+                signature.range,
+                SemanticDiagnosticKind::duplicate,
+                sema_function_prototype_order_message(signature.name)
+            );
             this->report_previous_declaration(prior);
             return;
         }
@@ -165,7 +156,11 @@ void FunctionRegistry::merge_function(
     }
     if (prior.has_definition) {
         prior.has_conflict = true;
-        this->report(signature.range, sema_duplicate_function_definition_simple_message(signature.name));
+        this->report(
+            signature.range,
+            SemanticDiagnosticKind::duplicate,
+            sema_duplicate_function_definition_simple_message(signature.name)
+        );
         this->report_previous_declaration(prior);
         return;
     }
@@ -224,7 +219,11 @@ void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const
         signature.stable_id,
     });
     if (!value_inserted.second) {
-        this->report(signature.range, sema_duplicate_value_definition_in_module_message(signature.name));
+        this->report(
+            signature.range,
+            SemanticDiagnosticKind::duplicate,
+            sema_duplicate_value_definition_in_module_message(signature.name)
+        );
         this->diagnostics_.push(base::Diagnostic {
             base::Severity::note,
             value_inserted.first->second.range,
@@ -247,15 +246,19 @@ void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, cons
     found->second.stable_id = signature.stable_id;
 }
 
-void FunctionRegistry::report(const base::SourceRange& range, std::string message) const
+void FunctionRegistry::report(
+    const base::SourceRange& range,
+    const SemanticDiagnosticKind kind,
+    std::string message
+) const
 {
-    const base::DiagnosticCode code = function_registry_code(message);
+    const SemanticDiagnosticMetadata metadata = semantic_diagnostic_metadata(kind);
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,
         std::move(message),
-        function_registry_category(code),
-        code,
+        metadata.category,
+        metadata.code,
     });
 }
 

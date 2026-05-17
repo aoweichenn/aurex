@@ -605,12 +605,11 @@ void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& i
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         const auto [first, inserted] = seen.emplace(param.name_id, param.range);
         if (!inserted) {
-            this->report(param.range, sema_duplicate_generic_parameter_message(param.name));
+            this->report_duplicate(param.range, sema_duplicate_generic_parameter_message(param.name));
             this->report_note(
                 first->second,
-                sema_first_generic_parameter_message(param.name),
-                base::DiagnosticCategory::name_resolution,
-                base::DiagnosticCode::semantic_duplicate
+                SemanticDiagnosticKind::duplicate,
+                sema_first_generic_parameter_message(param.name)
             );
         }
     }
@@ -629,7 +628,10 @@ void SemanticAnalyzer::validate_generic_constraints(
 
     for (const syntax::GenericConstraintDecl& constraint : item.where_constraints) {
         if (!params.contains(constraint.param_name_id)) {
-            this->report(constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
+            this->report_lookup(
+                constraint.param_range,
+                sema_unknown_generic_constraint_param_message(constraint.param_name)
+            );
             continue;
         }
         CapabilitySet& capabilities = this->capability_bucket(info.constraints, constraint.param_name_id);
@@ -638,16 +640,22 @@ void SemanticAnalyzer::validate_generic_constraints(
             const base::SourceRange capability_range =
                 i < constraint.capability_ranges.size() ? constraint.capability_ranges[i] : constraint.range;
             if (is_resource_capability(capability_name)) {
-                this->report(capability_range, std::string(SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED));
+                this->report_unsupported(
+                    capability_range,
+                    std::string(SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED)
+                );
                 continue;
             }
             const std::optional<CapabilityKind> capability = parse_capability_kind(capability_name);
             if (!capability.has_value()) {
-                this->report(capability_range, sema_unknown_capability_message(capability_name));
+                this->report_capability(capability_range, sema_unknown_capability_message(capability_name));
                 continue;
             }
             if (!capabilities.insert(*capability).second) {
-                this->report(capability_range, sema_duplicate_capability_message(constraint.param_name, capability_name));
+                this->report_capability(
+                    capability_range,
+                    sema_duplicate_capability_message(constraint.param_name, capability_name)
+                );
             }
         }
     }
@@ -777,7 +785,7 @@ bool SemanticAnalyzer::validate_generic_arguments(
         }
         for (const CapabilityKind capability : found->second) {
             if (!this->type_satisfies_capability(args[i], capability)) {
-                this->report(
+                this->report_capability(
                     use_range,
                     sema_generic_capability_not_satisfied_message(
                         this->checked_.types.display_name(args[i]),
@@ -882,7 +890,10 @@ void SemanticAnalyzer::register_generic_template(
             this->generic_struct_templates_.contains(info.key) ||
             this->generic_enum_templates_.contains(info.key) ||
             this->generic_type_alias_templates_.contains(info.key)) {
-            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            this->report_duplicate(
+                item.range,
+                sema_duplicate_type_definition_message(this->module_name(owner), item.name)
+            );
             return;
         }
         const auto inserted = this->generic_struct_templates_.emplace(info.key, std::move(info));
@@ -898,7 +909,10 @@ void SemanticAnalyzer::register_generic_template(
             this->generic_struct_templates_.contains(info.key) ||
             this->generic_enum_templates_.contains(info.key) ||
             this->generic_type_alias_templates_.contains(info.key)) {
-            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            this->report_duplicate(
+                item.range,
+                sema_duplicate_type_definition_message(this->module_name(owner), item.name)
+            );
             return;
         }
         const auto inserted = this->generic_enum_templates_.emplace(info.key, std::move(info));
@@ -914,7 +928,10 @@ void SemanticAnalyzer::register_generic_template(
             this->generic_struct_templates_.contains(info.key) ||
             this->generic_enum_templates_.contains(info.key) ||
             this->generic_type_alias_templates_.contains(info.key)) {
-            this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
+            this->report_duplicate(
+                item.range,
+                sema_duplicate_type_definition_message(this->module_name(owner), item.name)
+            );
             return;
         }
         const auto inserted = this->generic_type_alias_templates_.emplace(info.key, std::move(info));
@@ -926,16 +943,16 @@ void SemanticAnalyzer::register_generic_template(
 
     if (item.kind != syntax::ItemKind::fn_decl) {
         if (item.kind != syntax::ItemKind::impl_block) {
-            this->report(item.range, std::string(SEMA_GENERIC_PARAMS_UNSUPPORTED_ON_ITEM));
+            this->report_unsupported(item.range, std::string(SEMA_GENERIC_PARAMS_UNSUPPORTED_ON_ITEM));
         }
         return;
     }
 
     if (item.visibility == syntax::Visibility::public_ && !syntax::is_valid(item.return_type)) {
-        this->report(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
+        this->report_general(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
     }
     if (item.is_extern_c || item.is_export_c || item.is_prototype) {
-        this->report(item.range, std::string(SEMA_GENERIC_C_ABI_OR_PROTOTYPE_UNSUPPORTED));
+        this->report_unsupported(item.range, std::string(SEMA_GENERIC_C_ABI_OR_PROTOTYPE_UNSUPPORTED));
     }
     if (syntax::is_valid(item.impl_type)) {
         GenericContext generic_context = this->make_generic_context();
@@ -953,7 +970,7 @@ void SemanticAnalyzer::register_generic_template(
         if (impl_type_kind != TypeKind::struct_ &&
             impl_type_kind != TypeKind::enum_ &&
             impl_type_kind != TypeKind::opaque_struct) {
-            this->report(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
+            this->report_general(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
             return;
         }
 
@@ -999,11 +1016,11 @@ void SemanticAnalyzer::register_generic_template(
             }
         }
         if (method_local_generic) {
-            this->report(item.range, std::string(SEMA_GENERIC_METHODS_UNSUPPORTED));
+            this->report_unsupported(item.range, std::string(SEMA_GENERIC_METHODS_UNSUPPORTED));
             return;
         }
         if (this->type_member_name_exists(info.impl_type_pattern, item.name_id, item.name)) {
-            this->report(
+            this->report_duplicate(
                 item.range,
                 sema_duplicate_type_member_message(
                     this->checked_.types.display_name(info.impl_type_pattern),
@@ -1019,7 +1036,10 @@ void SemanticAnalyzer::register_generic_template(
         return;
     }
     if (this->checked_.functions.contains(info.function_key) || this->generic_function_templates_.contains(info.key)) {
-        this->report(item.range, sema_duplicate_function_definition_message(this->module_name(owner), item.name));
+        this->report_duplicate(
+            item.range,
+            sema_duplicate_function_definition_message(this->module_name(owner), item.name)
+        );
         return;
     }
     const auto inserted = this->generic_function_templates_.emplace(info.key, std::move(info));
@@ -1249,7 +1269,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_generic_type_message(name));
+        this->report_lookup(range, sema_unknown_generic_type_message(name));
     }
     return nullptr;
 }
@@ -1263,7 +1283,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_generic_type_message(name));
+            this->report_lookup(range, sema_unknown_generic_type_message(name));
         }
         return nullptr;
     }
@@ -1283,13 +1303,16 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
         }
         if (!this->can_access(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
-                this->report(range, sema_private_generic_type_message(this->module_name(candidate_module), name));
+                this->report_visibility(
+                    range,
+                    sema_private_generic_type_message(this->module_name(candidate_module), name)
+                );
                 return nullptr;
             }
             continue;
         }
         if (result != nullptr) {
-            this->report(
+            this->report_lookup(
                 range,
                 sema_ambiguous_generic_type_name_message(
                     name,
@@ -1303,7 +1326,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
         result_module = candidate_module;
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
     }
     return result;
 }
@@ -1323,7 +1346,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_generic_type_message(name));
+        this->report_lookup(range, sema_unknown_generic_type_message(name));
     }
     return nullptr;
 }
@@ -1337,7 +1360,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_generic_type_message(name));
+            this->report_lookup(range, sema_unknown_generic_type_message(name));
         }
         return nullptr;
     }
@@ -1357,13 +1380,16 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
         }
         if (!this->can_access(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
-                this->report(range, sema_private_generic_type_message(this->module_name(candidate_module), name));
+                this->report_visibility(
+                    range,
+                    sema_private_generic_type_message(this->module_name(candidate_module), name)
+                );
                 return nullptr;
             }
             continue;
         }
         if (result != nullptr) {
-            this->report(
+            this->report_lookup(
                 range,
                 sema_ambiguous_generic_type_name_message(
                     name,
@@ -1377,7 +1403,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
         result_module = candidate_module;
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
     }
     return result;
 }
@@ -1397,7 +1423,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_generic_type_message(name));
+        this->report_lookup(range, sema_unknown_generic_type_message(name));
     }
     return nullptr;
 }
@@ -1411,7 +1437,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_generic_type_message(name));
+            this->report_lookup(range, sema_unknown_generic_type_message(name));
         }
         return nullptr;
     }
@@ -1431,13 +1457,16 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
         }
         if (!this->can_access(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
-                this->report(range, sema_private_generic_type_message(this->module_name(candidate_module), name));
+                this->report_visibility(
+                    range,
+                    sema_private_generic_type_message(this->module_name(candidate_module), name)
+                );
                 return nullptr;
             }
             continue;
         }
         if (result != nullptr) {
-            this->report(
+            this->report_lookup(
                 range,
                 sema_ambiguous_generic_type_name_message(
                     name,
@@ -1451,7 +1480,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
         result_module = candidate_module;
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
     }
     return result;
 }
@@ -1506,7 +1535,7 @@ bool SemanticAnalyzer::report_generic_type_requires_args_if_visible(
     if (const GenericTemplateInfo* const found =
             this->find_any_generic_type_template_in_module(this->current_module_, name_id, name);
         found != nullptr && this->can_access(this->current_module_, found->visibility)) {
-        this->report(range, sema_generic_type_requires_args_message(name));
+        this->report_type(range, sema_generic_type_requires_args_message(name));
         return true;
     }
     return false;
@@ -1519,7 +1548,7 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
     const base::SourceRange& range
 ) {
     if (!syntax::is_valid(module)) {
-        this->report(range, sema_unknown_generic_type_message(name));
+        this->report_lookup(range, sema_unknown_generic_type_message(name));
         return;
     }
 
@@ -1535,7 +1564,7 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
             if (const GenericTemplateInfo* info =
                     this->find_any_generic_type_template_in_module(candidate_module, name_id, name);
                 info != nullptr && this->can_access(candidate_module, info->visibility)) {
-                this->report(range, sema_generic_type_requires_args_message(name));
+                this->report_type(range, sema_generic_type_requires_args_message(name));
                 return;
             }
             static_cast<void>(this->find_generic_struct_in_module(module, name_id, name, range, true));
@@ -1545,7 +1574,7 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
             if (const GenericTemplateInfo* info =
                     this->find_any_generic_type_template_in_module(candidate_module, name_id, name);
                 info != nullptr && this->can_access(candidate_module, info->visibility)) {
-                this->report(range, sema_generic_type_requires_args_message(name));
+                this->report_type(range, sema_generic_type_requires_args_message(name));
                 return;
             }
             static_cast<void>(this->find_generic_enum_in_module(module, name_id, name, range, true));
@@ -1555,14 +1584,14 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
             if (const GenericTemplateInfo* info =
                     this->find_any_generic_type_template_in_module(candidate_module, name_id, name);
                 info != nullptr && this->can_access(candidate_module, info->visibility)) {
-                this->report(range, sema_generic_type_requires_args_message(name));
+                this->report_type(range, sema_generic_type_requires_args_message(name));
                 return;
             }
             static_cast<void>(this->find_generic_type_alias_in_module(module, name_id, name, range, true));
             return;
         }
     }
-    this->report(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
+    this->report_lookup(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
 }
 
 const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_in_visible_modules(
@@ -1580,7 +1609,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
     }
 
     if (report_unknown) {
-        this->report(range, sema_unknown_generic_function_message(name));
+        this->report_lookup(range, sema_unknown_generic_function_message(name));
     }
     return nullptr;
 }
@@ -1594,7 +1623,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
 ) {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->report(range, sema_unknown_generic_function_message(name));
+            this->report_lookup(range, sema_unknown_generic_function_message(name));
         }
         return nullptr;
     }
@@ -1614,13 +1643,16 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
         }
         if (!this->can_access(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
-                this->report(range, sema_private_generic_function_message(this->module_name(candidate_module), name));
+                this->report_visibility(
+                    range,
+                    sema_private_generic_function_message(this->module_name(candidate_module), name)
+                );
                 return nullptr;
             }
             continue;
         }
         if (result != nullptr) {
-            this->report(
+            this->report_lookup(
                 range,
                 sema_ambiguous_generic_function_name_message(
                     name,
@@ -1634,7 +1666,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
         result_module = candidate_module;
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_generic_function_in_module_message(this->module_name(module), name));
+        this->report_lookup(range, sema_unknown_generic_function_in_module_message(this->module_name(module), name));
     }
     return result;
 }
@@ -1646,7 +1678,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
     const std::vector<TypeHandle>& args
 ) {
     if (args.size() != info.params.size()) {
-        this->report(
+        this->report_type(
             use_type.range,
             sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size())
         );
@@ -1711,12 +1743,12 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
         std::unordered_set<IdentId, IdentIdHash> seen_fields;
         for (const syntax::FieldDecl& field : item.fields) {
             if (!seen_fields.insert(field.name_id).second) {
-                this->report(field.range, sema_duplicate_struct_field_message(field.name));
+                this->report_duplicate(field.range, sema_duplicate_struct_field_message(field.name));
                 continue;
             }
             const TypeHandle field_type = this->resolve_type(field.type);
             if (!this->is_valid_storage_type(field_type)) {
-                this->report(field.range, std::string(SEMA_FIELD_STORAGE));
+                this->report_general(field.range, std::string(SEMA_FIELD_STORAGE));
             }
             if (this->checked_.types.contains_array(field_type)) {
                 contains_array = true;
@@ -1754,7 +1786,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     const std::vector<TypeHandle>& args
 ) {
     if (args.size() != info.params.size()) {
-        this->report(
+        this->report_type(
             use_type.range,
             sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size())
         );
@@ -1817,7 +1849,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
     const bool opaque_allowed_as_pointee
 ) {
     if (args.size() != info.params.size()) {
-        this->report(
+        this->report_type(
             use_type.range,
             sema_generic_argument_count_message("generic type arguments", info.name, args.size(), info.params.size())
         );
@@ -1840,7 +1872,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
     }
     if (std::ranges::find(this->resolving_type_aliases_, ModuleLookupKey {info.module.value, instance_key_id}) !=
         this->resolving_type_aliases_.end()) {
-        this->report(use_type.range, sema_cyclic_type_alias_message(info.name));
+        this->report_general(use_type.range, sema_cyclic_type_alias_message(info.name));
         this->resolved_generic_type_aliases_[instance_key_id] = INVALID_TYPE_HANDLE;
         return INVALID_TYPE_HANDLE;
     }
@@ -1969,7 +2001,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
 ) {
     const syntax::ItemNode function = this->module_.items[info.item.value];
     if (call.args.size() != function.params.size()) {
-        this->report(call.range, sema_argument_count_message(info.name));
+        this->report_type(call.range, sema_argument_count_message(info.name));
         return false;
     }
 
@@ -1989,7 +2021,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     for (base::usize i = 0; i < call.args.size(); ++i) {
         const TypeHandle actual = this->analyze_expr(call.args[i], pattern_param_types[i]);
         if (!this->unify_generic_type(pattern_param_types[i], actual, inferred)) {
-            this->report(
+            this->report_type(
                 this->module_.exprs.range(call.args[i].value),
                 sema_generic_call_argument_unify_message(info.name)
             );
@@ -2002,7 +2034,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     for (base::usize i = 0; i < info.params.size(); ++i) {
         const auto found = inferred.find(this->generic_param_identity(info, i));
         if (found == inferred.end() || !is_valid(found->second)) {
-            this->report(
+            this->report_type(
                 call.range,
                 sema_generic_call_argument_infer_message(this->generic_param_name(info, i), info.name)
             );
@@ -2022,7 +2054,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     const base::SourceRange& use_range
 ) {
     if (args.size() != info.params.size()) {
-        this->report(
+        this->report_type(
             use_range,
             sema_generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
         );
@@ -2135,7 +2167,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     const base::SourceRange& use_range
 ) {
     if (args.size() != info.params.size()) {
-        this->report(
+        this->report_type(
             use_range,
             sema_generic_argument_count_message("generic function type arguments", info.name, args.size(), info.params.size())
         );
@@ -2291,7 +2323,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     const base::SourceRange& use_range
 ) {
     if (args.size() != info.params.size()) {
-        this->report(
+        this->report_type(
             use_range,
             sema_generic_argument_count_message("generic method type arguments", info.name, args.size(), info.params.size())
         );
@@ -2497,7 +2529,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
                 continue;
             }
             if (result != nullptr) {
-                this->report(
+                this->report_lookup(
                     range,
                     sema_ambiguous_method_message(
                         this->checked_.types.display_name(owner_type),
@@ -2513,7 +2545,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(
         }
     }
     if (result == nullptr && report_unknown) {
-        this->report(range, sema_unknown_method_message(this->checked_.types.display_name(owner_type), name));
+        this->report_lookup(range, sema_unknown_method_message(this->checked_.types.display_name(owner_type), name));
     }
     return result;
 }

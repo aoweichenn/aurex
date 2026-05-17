@@ -81,6 +81,10 @@ TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns) {
         "fn search_compiled -> regex.core.types.MatchResult",
         "fn captures_compiled -> regex.core.types.Captures",
         "fn replace_all -> regex.core.types.ReplaceResult",
+        "fn is_match -> bool",
+        "fn find -> regex.core.types.MatchResult",
+        "fn captures -> regex.core.types.Captures",
+        "fn replace -> regex.core.types.ReplaceResult",
         "fn program_bytes -> usize",
         "fn workspace_bytes -> usize",
         "fn max_bounded_repeat -> usize",
@@ -114,6 +118,27 @@ TEST_F(AurexIntegrationTest, ExamplesRegexPhase1CompilesAndRuns) {
         "fn error_kind_code -> i32",
     });
     require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_phase1.ax") + " -o " + q(output));
+    EXPECT_EQ(require_success(q(output)).output, "");
+}
+
+TEST_F(AurexIntegrationTest, ExamplesRegexIndustrialSurfaceCompilesAndRuns) {
+    const fs::path output = test_bin_root() / "regex_industrial";
+    const std::string checked =
+        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_industrial.ax")).output;
+    expect_contains_all(checked, {
+        "fn priv require_flags -> i32",
+        "fn priv require_lazy -> i32",
+        "fn priv require_boundaries -> i32",
+        "fn priv require_escapes -> i32",
+        "fn priv require_classes -> i32",
+        "fn priv require_convenience_api -> i32",
+        "fn is_match -> bool",
+        "fn find -> regex.core.types.MatchResult",
+        "fn captures -> regex.core.types.Captures",
+        "fn replace -> regex.core.types.ReplaceResult",
+        "case RegexStatus_unsupported",
+    });
+    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_industrial.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
@@ -233,6 +258,7 @@ TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent) {
     EXPECT_FALSE(fs::exists(examples_root() / "libs" / "text" / "regex.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_demo.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_phase1.ax"));
+    EXPECT_TRUE(fs::exists(examples_root() / "regex_industrial.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "regex_stress.ax"));
     EXPECT_FALSE(fs::exists(examples_root() / "system"));
     EXPECT_FALSE(fs::exists(examples_root() / "m1"));

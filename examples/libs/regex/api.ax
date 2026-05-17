@@ -164,11 +164,33 @@ pub fn search(pattern: str, input: str) -> bool {
     return result.status == t.RegexStatus.ok && result.matched;
 }
 
+pub fn is_match(pattern: str, input: str) -> bool {
+    return search(pattern, input);
+}
+
+pub fn find(pattern: str, input: str) -> t.MatchResult {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    return search_compiled(&compiled, input);
+}
+
 pub fn fullmatch(pattern: str, input: str) -> bool {
     var compiled: t.Regex = compile(pattern);
     defer destroy(&mut compiled);
     let result: t.MatchResult = fullmatch_compiled(&compiled, input);
     return result.status == t.RegexStatus.ok && result.matched;
+}
+
+pub fn captures(pattern: str, input: str) -> t.Captures {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    return captures_compiled(&compiled, input);
+}
+
+pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    return replace_all(&compiled, input, replacement, out, out_capacity);
 }
 
 pub fn status_code(status: t.RegexStatus) -> i32 {
@@ -228,6 +250,9 @@ pub fn error_kind_code(kind: u8) -> i32 {
     }
     if kind == t.ERROR_KIND_PROGRAM_TOO_LARGE {
         return 12;
+    }
+    if kind == t.ERROR_KIND_INVALID_ESCAPE {
+        return 13;
     }
     return -1;
 }

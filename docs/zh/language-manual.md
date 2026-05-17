@@ -1002,6 +1002,7 @@ value++              // 不支持自增
   `regex/ops` 放 find/captures iterator、replace 和 split 操作。
 - 演示程序：`examples/regex_demo.ax`
 - 第一阶段 API 程序：`examples/regex_phase1.ax`
+- 工业语法面程序：`examples/regex_industrial.ax`
 - 压力程序：`examples/regex_stress.ax`
 - 详细语法/API/模块说明：`docs/zh/regex.md`
 
@@ -1012,6 +1013,8 @@ build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_de
 build/tests/regex_demo
 build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
 build/tests/regex_phase1
+build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
+build/tests/regex_industrial
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```
@@ -1065,26 +1068,29 @@ fn main() -> i32 {
 - `str` 内建：`strblen`、`strptr` 参与 byte 级解析和匹配。
 - 资源预算 API：`state_count`、`range_count`、`capture_count`、`program_bytes`、`workspace_bytes`。
 - 第一阶段 API：`captures_compiled`、`find_iter`、`captures_iter`、`replace_all`、`split_iter`、`error_offset`。
+- 工业安全语法面：inline flags/scoped flags、greedy/lazy/ungreedy、word boundary、absolute anchors、hex/unicode byte escape、quoted literal、POSIX/ASCII property class。
 - 压力测试：`regex_stress.ax` 通过数百次重复匹配验证 compiled API 复用、内存预算和错误路径。
 
 当前正则语法是一个明确的 ASCII byte 级语法，详细定义见
 `docs/zh/regex.md`。概要如下：
 
 - 字面量：普通 byte 字面量按自身匹配。
-- 转义：`\n`、`\r`、`\t`、`\0`、`\x` 形式的转义字面量。
+- 转义：`\a`、`\e`、`\f`、`\n`、`\r`、`\t`、`\v`、`\0`、`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`。
 - 预定义类：`\d`、`\D`、`\w`、`\W`、`\s`、`\S`。
-- 通配：`.` 匹配任意一个 byte。
-- 锚点：`^` 匹配输入开头，`$` 匹配输入结尾。
-- 字符类：`[abc]`、`[^abc]`、`[a-z]`，类内支持 `\d`、`\w`、`\s`。
-- 分组：`(...)` 捕获，`(?:...)` 不捕获，`(?<name>...)` 命名捕获。
+- 通配：`.` 默认不匹配 LF，`(?s)` dotall 下匹配任意 byte。
+- 锚点：`^` / `$`，`(?m)` 下识别行首/行尾；`\A` / `\z` 匹配绝对开头/结尾。
+- 边界：`\b` / `\B` 使用 ASCII word 定义。
+- 字符类：`[abc]`、`[^abc]`、`[a-z]`，类内支持 `\d`、`\D`、`\w`、`\W`、`\s`、`\S`、POSIX class 和 ASCII property class。
+- 分组：`(...)` 捕获，`(?:...)` 不捕获，`(?<name>...)` 命名捕获，`(?i:...)` scoped flags。
 - 交替：`a|b`，支持在分组内使用。
-- 量词：`*`、`+`、`?`、`{m}`、`{m,n}`、`{m,}`。
+- flags：`(?i)`、`(?m)`、`(?s)`、`(?x)`、`(?U)`、`(?u)`。
+- 量词：`*`、`+`、`?`、`{m}`、`{m,n}`、`{m,}`，以及 `*?`、`+?`、`??`、`{m,n}?` lazy 形式。
 
 当前正则库的有意边界：
 
-- 不支持反向引用、lookaround、inline flags、复杂替换回调。
-- 不支持 Unicode scalar、grapheme、Unicode property；匹配单位是 `str` 的 UTF-8 byte。
-- 不支持懒惰量词或 possessive 量词。
+- 不支持反向引用、lookaround、原子组、条件组、递归/子例程调用和复杂替换回调。
+- 不支持完整 Unicode scalar/grapheme/property 数据库；当前 `\p{Alpha}` 等是 ASCII-mapped 子集，匹配单位是 `str` 的 UTF-8 byte。
+- 不支持 possessive 量词。
 - `{m,n}` 展开上限是实现常量，超出返回 `RegexStatus.repeat_too_large`。
 - pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。
 - 没有标准库 RAII，`compile` 得到的 `Regex` 必须手动 `destroy` 或 `defer destroy`；`Captures` 必须手动 `destroy_captures`。

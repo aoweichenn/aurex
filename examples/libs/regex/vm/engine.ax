@@ -6,6 +6,10 @@ import regex.core.types as t;
 import regex.runtime.alloc as alloc;
 import regex.syntax.ascii as ascii;
 
+const ACCEPT_NONE: u8 = 0u8;
+const ACCEPT_DEFERRED: u8 = 1u8;
+const ACCEPT_READY: u8 = 2u8;
+
 struct Workspace {
     current: *mut usize;
     next: *mut usize;
@@ -142,6 +146,7 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
         stamp,
         compiled.start,
         start,
+        input,
         input_len,
         workspace.best_caps
     );
@@ -150,10 +155,20 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
     }
     var position: usize = start;
     while true {
-        if update_best_accept(compiled, workspace, workspace.current, workspace.current_caps, current_len, position) {
+        let accept_state: u8 = update_best_accept(
+            compiled,
+            workspace,
+            workspace.current,
+            workspace.current_caps,
+            current_len,
+            position,
+            input,
+            input_len
+        );
+        if accept_state != ACCEPT_NONE {
             best_matched = true;
             best_end = position;
-            if !require_end && position == input_len {
+            if !require_end && accept_state == ACCEPT_READY {
                 return t.match_result(true, start, position, t.RegexStatus.ok);
             }
         }
@@ -180,6 +195,7 @@ fn run_at(compiled: &t.Regex, input: str, start: usize, require_end: bool, works
                     stamp,
                     out1,
                     position + 1usize,
+                    input,
                     input_len,
                     capture_row_ptr(workspace.current_caps, index, workspace.capture_slot_count)
                 );
@@ -210,6 +226,7 @@ fn add_closure(
     stamp: usize,
     first_state: usize,
     position: usize,
+    input: str,
     input_len: usize,
     source_caps: *mut usize
 ) -> void {
@@ -240,11 +257,27 @@ fn add_closure(
             }
             push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
         } else if opcode == t.OP_ASSERT_START {
-            if position == 0usize {
+            if position == 0usize || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_start(input, position)) {
                 push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else if opcode == t.OP_ASSERT_END {
+            if position == input_len || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_end(input, position, input_len)) {
+                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
+            }
+        } else if opcode == t.OP_ASSERT_ABSOLUTE_START {
+            if position == 0usize {
+                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
+            }
+        } else if opcode == t.OP_ASSERT_ABSOLUTE_END {
             if position == input_len {
+                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
+            }
+        } else if opcode == t.OP_ASSERT_WORD_BOUNDARY {
+            if is_word_boundary(input, position, input_len) {
+                push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
+            }
+        } else if opcode == t.OP_ASSERT_NOT_WORD_BOUNDARY {
+            if !is_word_boundary(input, position, input_len) {
                 push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else {
@@ -294,8 +327,10 @@ fn starts_with_input_start_assertion(compiled: &t.Regex) -> bool {
         let opcode: u8 = unsafe { compiled.states[state_id].opcode };
         if opcode == t.OP_EPSILON || opcode == t.OP_SAVE {
             state_id = unsafe { compiled.states[state_id].out1 };
+        } else if opcode == t.OP_ASSERT_START {
+            return !has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE);
         } else {
-            return opcode == t.OP_ASSERT_START;
+            return opcode == t.OP_ASSERT_ABSOLUTE_START;
         }
         steps += 1usize;
         if steps > compiled.state_len {
@@ -311,8 +346,10 @@ fn update_best_accept(
     list: *mut usize,
     list_caps: *mut usize,
     list_len: usize,
-    position: usize
-) -> bool {
+    position: usize,
+    input: str,
+    input_len: usize
+) -> u8 {
     var index: usize = 0usize;
     while index < list_len {
         let state_id: usize = unsafe { list[index] };
@@ -323,6 +360,32 @@ fn update_best_accept(
                     workspace.best_caps[1usize] = position;
                 }
             }
+            if has_higher_priority_consumer(compiled, list, index, input, position, input_len) {
+                return ACCEPT_DEFERRED;
+            }
+            return ACCEPT_READY;
+        }
+        index += 1usize;
+    }
+    return ACCEPT_NONE;
+}
+
+fn has_higher_priority_consumer(
+    compiled: &t.Regex,
+    list: *mut usize,
+    accept_index: usize,
+    input: str,
+    position: usize,
+    input_len: usize
+) -> bool {
+    if position >= input_len {
+        return false;
+    }
+    let value: u8 = ascii.byte_at(input, position);
+    var index: usize = 0usize;
+    while index < accept_index {
+        let state_id: usize = unsafe { list[index] };
+        if state_matches(compiled, state_id, value) {
             return true;
         }
         index += 1usize;
@@ -333,10 +396,14 @@ fn update_best_accept(
 fn state_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
     let opcode: u8 = unsafe { compiled.states[state_id].opcode };
     if opcode == t.OP_LITERAL {
-        return unsafe { compiled.states[state_id].value } == value;
+        let expected: u8 = unsafe { compiled.states[state_id].value };
+        if has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_CASE_INSENSITIVE) {
+            return ascii.to_lower(expected) == ascii.to_lower(value);
+        }
+        return expected == value;
     }
     if opcode == t.OP_ANY {
-        return true;
+        return has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_DOTALL) || value != ascii.LINE_FEED;
     }
     if opcode == t.OP_CLASS {
         return class_matches(compiled, state_id, value);
@@ -347,22 +414,60 @@ fn state_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
 fn class_matches(compiled: &t.Regex, state_id: usize, value: u8) -> bool {
     let class_start: usize = unsafe { compiled.states[state_id].class_start };
     let class_len: usize = unsafe { compiled.states[state_id].class_len };
-    let negated: bool = unsafe { compiled.states[state_id].flags } == t.FLAG_CLASS_NEGATED;
-    var matched: bool = false;
+    let flags: u8 = unsafe { compiled.states[state_id].flags };
+    let negated: bool = has_flag(flags, t.FLAG_CLASS_NEGATED);
+    var matched: bool = class_ranges_match(compiled, class_start, class_len, value);
+    if !matched && has_flag(flags, t.FLAG_CASE_INSENSITIVE) {
+        if ascii.is_alpha(value) {
+            if ascii.is_lower(value) {
+                matched = class_ranges_match(compiled, class_start, class_len, ascii.to_upper(value));
+            } else {
+                matched = class_ranges_match(compiled, class_start, class_len, ascii.to_lower(value));
+            }
+        }
+    }
+    if negated {
+        return !matched;
+    }
+    return matched;
+}
+
+fn class_ranges_match(compiled: &t.Regex, class_start: usize, class_len: usize, value: u8) -> bool {
     var offset: usize = 0usize;
     while offset < class_len {
         let range_index: usize = class_start + offset;
         let first: u8 = unsafe { compiled.ranges[range_index].first };
         let last: u8 = unsafe { compiled.ranges[range_index].last };
         if first <= value && value <= last {
-            matched = true;
+            return true;
         }
         offset += 1usize;
     }
-    if negated {
-        return !matched;
+    return false;
+}
+
+fn has_flag(flags: u8, flag: u8) -> bool {
+    return (flags & flag) != t.FLAGS_NONE;
+}
+
+fn is_line_start(input: str, position: usize) -> bool {
+    if position == 0usize {
+        return true;
     }
-    return matched;
+    return ascii.byte_at(input, position - 1usize) == ascii.LINE_FEED;
+}
+
+fn is_line_end(input: str, position: usize, input_len: usize) -> bool {
+    if position == input_len {
+        return true;
+    }
+    return ascii.byte_at(input, position) == ascii.LINE_FEED;
+}
+
+fn is_word_boundary(input: str, position: usize, input_len: usize) -> bool {
+    let left_is_word: bool = position > 0usize && ascii.is_word(ascii.byte_at(input, position - 1usize));
+    let right_is_word: bool = position < input_len && ascii.is_word(ascii.byte_at(input, position));
+    return left_is_word != right_is_word;
 }
 
 fn create_workspace(capacity: usize, slots: usize) -> Workspace {

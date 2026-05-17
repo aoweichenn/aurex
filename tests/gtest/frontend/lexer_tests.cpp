@@ -273,6 +273,7 @@ TEST(CoreUnit, LexerKeywordLookupCoversIdentifierEdges) {
     EXPECT_EQ(lex::keyword_kind("identifier_name"), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("\xFF"), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("c"), TokenKind::identifier);
+    EXPECT_EQ(lex::keyword_kind("modulf"), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("module"), TokenKind::kw_module);
 }
 

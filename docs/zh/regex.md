@@ -1,7 +1,7 @@
 # Aurex 正则库语法和实现说明
 
 日期：2026-05-17
-阶段：M2 language-core-no-std，第一阶段捕获/迭代/替换/分割已实现
+阶段：M2 language-core-no-std，安全工业路线语法面扩展已实现
 状态：按当前仓库 `examples/libs/regex` 实现编写。本文是正则库的语法、API、模块、性能和工业级差距说明，避免后续只靠上下文记忆查范围。
 
 ## 1. 位置和导入
@@ -36,6 +36,8 @@ build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_de
 build/tests/regex_demo
 build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
 build/tests/regex_phase1
+build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
+build/tests/regex_industrial
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```
@@ -50,8 +52,9 @@ build/tests/regex_stress
 - 显式所有权：`Regex` 和 `Captures` 都持有 FFI 堆内存，分别用 `destroy` 和 `destroy_captures` 释放。
 - 无魔法数字：ASCII byte、opcode、flag、错误 kind、容量策略、资源上限和 repeat 上限都使用命名常量。
 - 资源可见：公开状态数、range 数、捕获数、编译后程序内存估算和 VM 工作区内存估算。
-- API 可组合：提供 compiled API、find/captures 游标、split 游标、替换到调用方 buffer 的接口。
-- 向工业级演进：当前实现明确约束 pattern/program/workspace/capture 上限，避免灾难性回溯，并用 demo、phase1、stress 样例锁住行为。
+- API 可组合：提供 compiled API、便利 API、find/captures 游标、split 游标、替换到调用方 buffer 的接口。
+- 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute anchors、hex/unicode byte encoding escapes、quoted literal、newline escape、POSIX/ASCII property classes，同时继续拒绝反向引用和 lookaround。
+- 向工业级演进：当前实现明确约束 pattern/program/workspace/capture 上限，避免灾难性回溯，并用 demo、phase1、industrial、stress 样例锁住行为。
 
 当前版本仍是 Aurex 语言能力验证库，不声称达到 RE2、Rust regex、PCRE2 或 Hyperscan 的生产成熟度。本文后面单独列出工业级目标和对比。
 
@@ -104,7 +107,7 @@ build/tests/regex_stress
 `regex.compile.parser`
 
 - 递归下降解析 pattern。
-- 支持捕获组、命名捕获组、非捕获组、交替、字符类、转义、量词、bounded repeat。
+- 支持捕获组、命名捕获组、非捕获组、inline flags/scoped flags、交替、字符类、POSIX/ASCII property 类、转义、绝对锚点、word boundary、greedy/lazy/ungreedy 量词、bounded repeat。
 - 将 pattern 编译为 `regex.core.types.Regex`。
 - 将语法错误写入 `Regex.status`、`Regex.error_offset`、`Regex.error_kind`。
 
@@ -114,8 +117,8 @@ build/tests/regex_stress
 - 使用 current/next state 列表、visited marks、显式 stack，以及对应的 capture snapshot row。
 - `search_compiled` 扫描所有起点；`fullmatch_compiled` 要求从 0 到输入结尾。
 - `captures_compiled` 和 `captures_fullmatch_compiled` 返回 owning `Captures`。
-- 在同一起点下记录可到达的最长匹配终点和对应捕获快照。
-- 对 `^` 开头的 pattern 做 anchored 起点优化，只尝试 offset `0`。
+- 在同一起点下使用有序 Thompson 线程。greedy 分支会保留后备较长结果，lazy/ungreedy 分支可提前接受较短结果。
+- 对非 multiline 的 `^` 和 `\A` 开头 pattern 做 anchored 起点优化，只尝试 offset `0`；`(?m)^` 仍会扫描行首。
 - 检查工作区容量，提供 `workspace_bytes`。
 
 `regex.ops.iter`
@@ -173,7 +176,11 @@ pub fn search_compiled(compiled: &Regex, input: str) -> MatchResult;
 pub fn search_compiled_from(compiled: &Regex, input: str, start_offset: usize) -> MatchResult;
 pub fn fullmatch_compiled(compiled: &Regex, input: str) -> MatchResult;
 pub fn search(pattern: str, input: str) -> bool;
+pub fn is_match(pattern: str, input: str) -> bool;
+pub fn find(pattern: str, input: str) -> MatchResult;
 pub fn fullmatch(pattern: str, input: str) -> bool;
+pub fn captures(pattern: str, input: str) -> Captures;
+pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 
 pub fn captures_compiled(compiled: &Regex, input: str) -> Captures;
 pub fn captures_fullmatch_compiled(compiled: &Regex, input: str) -> Captures;
@@ -256,7 +263,10 @@ pub struct ReplaceResult {
 
 调用规则：
 
-- `search` / `fullmatch` 是 convenience API：内部 compile、match、destroy，返回 bool。
+- `search` / `is_match` / `fullmatch` 是 bool convenience API：内部 compile、match、destroy。
+- `find` 是 span convenience API，返回 `MatchResult`。
+- `captures` 是 owning capture convenience API，调用方仍必须 `destroy_captures`。
+- `replace` 是 buffer replacement convenience API，内部 compile、replace、destroy。
 - `compile` 返回持有 FFI 分配内存的 `Regex`，调用方必须 `destroy(&mut compiled)`。
 - `captures_compiled`、`captures_fullmatch_compiled` 和 `captures_next` 返回持有 FFI 分配内存的 `Captures`，调用方必须 `destroy_captures(&mut captures)`。
 - 推荐写 `defer regex.destroy(&mut compiled);` 和 `defer regex.destroy_captures(&mut captures);`，避免早返回泄漏。
@@ -290,12 +300,22 @@ atom        = literal
             | "(" alternation ")"
             | "(?:" alternation ")"
             | "(?<" name ">" alternation ")"
+            | "(?" flags ")"
+            | "(?" flags ":" alternation ")"
 quantifier  = "*"
             | "+"
             | "?"
             | "{" decimal "}"
             | "{" decimal "," decimal "}"
             | "{" decimal "," "}"
+            | "*?"
+            | "+?"
+            | "??"
+            | "{" decimal "}" "?"
+            | "{" decimal "," decimal "}" "?"
+            | "{" decimal "," "}" "?"
+flags       = flag* ("-" flag*)?
+flag        = "i" | "m" | "s" | "x" | "U" | "u"
 name        = [A-Za-z_][A-Za-z0-9_]*
 ```
 
@@ -330,11 +350,19 @@ hello
 字面量转义：
 
 ```text
+\a    bell
+\e    escape
+\f    form feed
 \n    line feed
 \r    carriage return
 \t    tab
+\v    vertical tab
 \0    NUL byte
-\x    其他 x 按 x 自身匹配
+\xNN        2 位 hex byte/codepoint
+\x{H...}    braced hex codepoint，编译成 UTF-8 byte 序列
+\uNNNN      4 位 hex codepoint，编译成 UTF-8 byte 序列
+\u{H...}    braced Unicode codepoint，编译成 UTF-8 byte 序列
+\Q...\E     quoted literal，区间内元字符按字面量处理
 ```
 
 预定义 ASCII 类：
@@ -348,17 +376,52 @@ hello
 \S    [^ \t\n\r\f\v]
 ```
 
+零宽断言和换行相关转义：
+
+```text
+\A    输入绝对开头
+\z    输入绝对结尾
+\Z    当前实现等同 \z
+\b    ASCII word boundary，word = [0-9A-Za-z_]
+\B    非 word boundary
+\N    任意非 LF byte
+\R    LF、CRLF 或 CR
+```
+
+未知字母转义会被诊断为 `unsupported` + `invalid_escape`，避免 typo 被静默当字面量。未知标点转义仍按标点字面量处理，例如 `\.`。
+
 ### 5.4 通配和锚点
 
 ```text
-.     匹配任意一个 byte
-^     仅在当前位置是输入开头时成功
-$     仅在当前位置是输入结尾时成功
+.     默认匹配除 LF 外任意一个 byte；`(?s)` dotall 下匹配任意 byte
+^     默认仅在输入开头成功；`(?m)` multiline 下也在 LF 后成功
+$     默认仅在输入结尾成功；`(?m)` multiline 下也在 LF 前成功
 ```
 
 锚点是零宽断言，不消耗输入。
 
-### 5.5 字符类
+### 5.5 Inline flags
+
+支持全局后续生效和 scoped 两种形式：
+
+```text
+(?i)abc          // 从当前位置开始忽略 ASCII 大小写
+(?i:a)b          // 只在 scoped group 内忽略大小写
+(?i)abc(?-i:de)  // 局部关闭 i
+```
+
+当前 flag：
+
+| flag | 语义 |
+| --- | --- |
+| `i` | ASCII case-insensitive，用 `A-Z`/`a-z` 折叠 literal 和 class |
+| `m` | multiline，使 `^`/`$` 识别行首/行尾 |
+| `s` | dotall，使 `.` 匹配 LF |
+| `x` | extended，忽略 pattern 中 ASCII 空白，`#` 到行尾为注释；转义空格 `\ ` 仍是字面量 |
+| `U` | ungreedy，默认量词改为 lazy，显式 `?` 后缀会反转回来 |
+| `u` | 保留 flag；当前匹配模型仍是 UTF-8 byte 级，不启用完整 Unicode 属性语义 |
+
+### 5.6 字符类
 
 支持普通集合、范围和取反：
 
@@ -373,8 +436,15 @@ $     仅在当前位置是输入结尾时成功
 
 ```text
 \d
+\D
 \w
+\W
 \s
+\S
+\p{Alpha}
+\P{Digit}
+[[:alpha:]]
+[[:^digit:]]
 \]
 \-
 \\
@@ -384,12 +454,31 @@ $     仅在当前位置是输入结尾时成功
 
 ```text
 [a-z]      // 合法
-[\d-z]     // 非法
+[a-\d]     // 非法
 ```
 
-当前类内不支持 `\D`、`\W`、`\S` 作为单项；需要写外层取反，例如 `[^0-9]`。
+如果预定义类后面跟 `-`，该 `-` 会作为普通字面量处理，而不是把预定义类作为 range 起点。
 
-### 5.6 分组、捕获和交替
+当前 POSIX/property 名称是 ASCII-mapped 子集，不是完整 Unicode property 数据库。已支持：
+
+```text
+digit, nd, decimal, decimal_number
+w, word
+s, space, whitespace, white_space
+l, letter, alpha, alphabetic
+alnum, alphanumeric
+ascii
+blank
+cntrl, control
+graph
+lower, lowercase
+print
+punct, punctuation
+upper, uppercase
+xdigit, hex, hex_digit
+```
+
+### 5.7 分组、捕获和交替
 
 普通分组默认捕获：
 
@@ -423,7 +512,7 @@ ab|cd      // 等价于 (ab)|(cd)
 a(b|c)d   // 匹配 abd 或 acd
 ```
 
-### 5.7 量词
+### 5.8 量词
 
 支持：
 
@@ -434,6 +523,11 @@ a?        0 次或 1 次
 a{3}      恰好 3 次
 a{2,4}    2 到 4 次
 a{2,}     至少 2 次
+a*?       lazy 0 次或多次
+a+?       lazy 1 次或多次
+a??       lazy 0 次或 1 次
+a{2,4}?   lazy bounded repeat
+(?U)a*    ungreedy flag 下默认 lazy
 ```
 
 量词只作用于前一个 atom。前一个 atom 可以是 literal、class、`.`、锚点或分组。
@@ -452,7 +546,7 @@ a{2,}     至少 2 次
 
 - 从 byte offset `0` 到 `strblen(input)` 逐个尝试起点。
 - 返回第一个能匹配的起点。
-- 在同一个起点下，VM 记录能到达的最长匹配终点。
+- 在同一个起点下，VM 按 NFA split 顺序维护有序线程。greedy 量词优先继续消费，并保存后备接受点；lazy/ungreedy 量词优先退出，可在更短位置接受。
 
 `search_compiled_from(compiled, input, start_offset)`：
 
@@ -467,7 +561,7 @@ a{2,}     至少 2 次
 - VM 每个活动 state 携带一行 capture snapshot。
 - 到达 accept 时复制当前 capture row 为 best capture row。
 - 被 bounded repeat 复制的捕获组复用同一个 capture slot；多次迭代时保留最后一次参与匹配的 span。
-- 当前 VM 仍按 state id 去重活动列表。多数常规模式能得到稳定结果，但复杂交替中与 PCRE/Rust/RE2 的捕获优先级细节可能不同。后续若要工业级精确兼容，需要定义并测试完整 submatch precedence。
+- 当前 VM 仍按 state id 去重活动列表，并用捕获 row 记录可接受结果。多数常规模式能得到稳定结果，greedy/lazy 的外部 span 已被测试锁住；复杂交替中的完整 submatch precedence 还没有做到 PCRE/Rust/RE2 级精确兼容。后续若要工业级精确兼容，需要定义并测试完整子匹配优先级。
 
 ## 7. Iterator、replace、split
 
@@ -546,12 +640,13 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | 4 | invalid_repeat | `{m,n}` 语法错误 |
 | 5 | repeat_too_large | bounded repeat 超过上限 |
 | 6 | invalid_range | 字符类 range 非法 |
-| 7 | unsupported_escape | 当前不支持的扩展语法或类内 `\D`/`\W`/`\S` |
+| 7 | unsupported_escape | 当前不支持的扩展语法或属性类 |
 | 8 | trailing_input | parser 完成后仍有未消费输入 |
 | 9 | capture_too_large | 捕获组数超过上限 |
 | 10 | invalid_group_name | 命名捕获组名字非法 |
 | 11 | unexpected_eof | 转义或扩展语法遇到 EOF |
 | 12 | program_too_large | 程序容量超限 |
+| 13 | invalid_escape | 非法 hex/unicode escape 或未知字母转义 |
 
 ## 9. 性能和内存要求
 
@@ -577,8 +672,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 匹配工作区：`workspace_bytes = state_count * 4 * sizeof[usize] + state_count * capture_slots * 4 * sizeof[usize]`。
 - `capture_slots = capture_count * 2`，每个捕获含 start/end 两个 slot，`capture_count` 包含 `$0`。
 - `fullmatch_compiled` 匹配时间：`O(input_bytes * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
-- `search_compiled` 匹配时间：当前会尝试多个起点，最坏是 `O(input_bytes * input_bytes * active_state_count * capture_slots)`；当 pattern 以 `^` 开头时只尝试起点 `0`。
-- 同一起点采用 leftmost-longest：找到最左起点后，在该起点记录可到达的最长结束位置。
+- `search_compiled` 匹配时间：当前会尝试多个起点，最坏是 `O(input_bytes * input_bytes * active_state_count * capture_slots)`；当 pattern 以非 multiline `^` 或 `\A` 开头时只尝试起点 `0`。
+- 同一起点采用有序线程接受策略：greedy 量词保留后备较长结果，lazy/ungreedy 量词可优先接受较短结果。
 - `search` / `fullmatch` convenience API 会每次重新编译，性能敏感路径必须使用 `compile` 后复用。
 - `replace_all` 只写调用方 buffer，不分配输出字符串；捕获结果当前逐 match 分配，后续可优化为复用 scratch captures。
 
@@ -586,6 +681,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 
 - `examples/regex_demo.ax`：基础语法和 compiled API。
 - `examples/regex_phase1.ax`：捕获、命名捕获、find/captures iterator、replace、split、错误 offset/kind。
+- `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、POSIX/property class、便利 API 和非法 escape 诊断。
 - `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、资源预算和错误路径。
 
 后续向工业级继续推进时，优先级如下：
@@ -600,11 +696,11 @@ regex.error_kind_code(regex.error_kind(&compiled))
 
 | 引擎 | 核心定位 | 复杂度/性能特点 | 功能范围 | Aurex 当前差距 |
 | --- | --- | --- | --- | --- |
-| RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，已补第一阶段 API，但缺少成熟 DFA/NFA 混合优化、Unicode 生态、完整 submatch 语义和多年工程验证 |
-| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、Unicode/bytes API | Aurex API 方向接近，但目前只有 byte 级子集，没有 literal acceleration、Unicode、flag、bytes/text 双 API 和成熟差分测试 |
+| RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并补齐安全语法面核心子集，但缺少成熟 DFA/NFA 混合优化、Unicode 数据库、完整 submatch 语义和多年工程验证 |
+| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API | Aurex API 方向接近，已补 flags/边界/类/escape/lazy 子集，但目前只有 byte 级语义，没有 literal acceleration、完整 Unicode、bytes/text 双 API 和成熟差分测试 |
 | PCRE2 | Perl-compatible 功能优先引擎 | 功能很全，可使用 JIT；回溯模型需要限制资源避免病态 pattern | 捕获、命名组、反向引用、lookaround、条件、丰富选项 | Aurex 不追求 PCRE 兼容，暂不支持这些会明显增加复杂度或破坏线性保证的语法 |
 | Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 没有多 pattern database、SIMD、streaming 状态和平台级优化 |
-| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + VM，无灾难性回溯；有资源上限和 stress 样例 | ASCII byte 子集、捕获/命名捕获、迭代、替换、分割、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成工业级完成品 |
+| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial 样例 | ASCII byte 子集、flags、lazy/ungreedy、边界、锚点、捕获/命名捕获、迭代、替换、分割、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成工业级完成品 |
 
 这个对比用于确定路线：Aurex 当前应优先学习 RE2/Rust regex 的“可界定复杂度、拒绝破坏线性时间的语法、显式资源预算、稳定 API”路线，而不是先追 PCRE2 的全部语法。
 
@@ -623,9 +719,18 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | `[^0-9]+` | `abc_` | `fullmatch` | true | 取反字符类 |
 | `\w+@\w+\.com` | `mail: team@example.com;` | `search` | true | 转义点和 word class |
 | `\s*,\s*` | `alpha, beta,gamma` | `split_iter` | `alpha`、`beta`、`gamma` | 分割 |
+| `(?i)abc` | `ABC` | `fullmatch` | true | inline case-insensitive |
+| `(?m)^warn$` | `info\nwarn\nend` | `find` | span `5..9` | multiline anchor |
+| `a.*?b` | `axxbxxb` | `find` | span `0..4` | lazy 量词 |
+| `\bword\b` | `a word!` | `find` | span `2..6` | word boundary |
+| `\x41+` | `AAA` | `fullmatch` | true | hex escape |
+| `\Q.^$*\E` | `.^$*` | `fullmatch` | true | quoted literal |
+| `[[:alpha:]]+` | `abcXYZ` | `fullmatch` | true | POSIX ASCII class |
+| `\p{Alpha}+` | `abcXYZ` | `fullmatch` | true | ASCII-mapped property class |
 | `[abc` | `a` | `compile` | `syntax_error`, offset `0` | 未闭合 class |
 | `abc[` | `a` | `compile` | `syntax_error`, offset `3` | 错误 offset |
 | `a{33}` | `a` | `compile` | `repeat_too_large` | repeat 展开保护 |
+| `\y` | `a` | `compile` | `unsupported`, kind `invalid_escape` | 未知字母转义 |
 
 ## 12. 完整演示
 
@@ -650,6 +755,17 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `split_iter` / `split_next`
 - 错误诊断：`error_offset`、`error_kind_code`
 
+`examples/regex_industrial.ax` 展示了：
+
+- inline flags：`(?i)`、`(?m)`、`(?s)`、`(?x)`、`(?U)`。
+- scoped flags：`(?i:a)` 和 `(?-i:...)`。
+- greedy/lazy/ungreedy span 行为：`a.*b`、`a.*?b`、`(?U)a.*b`。
+- 边界断言：`\A`、`\z`、`\b`、`\B`。
+- 扩展 escape：`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`。
+- 类语法：类内 `\D`、POSIX class、ASCII property class、case-insensitive class。
+- convenience API：`is_match`、`find`、`captures`、`replace`。
+- invalid escape 诊断：`\y`、不完整 `\x`。
+
 `examples/regex_stress.ax` 展示了：
 
 - compiled API 在重复匹配中的复用。
@@ -664,11 +780,10 @@ regex.error_kind_code(regex.error_kind(&compiled))
 
 - 反向引用。
 - lookahead/lookbehind。
-- 懒惰量词 `*?`、`+?`、`??`。
 - possessive 量词。
-- inline flags，例如 `(?i)`。
-- Unicode property，例如 `\p{L}`。
-- 多行模式、dotall 模式。
+- 原子组、条件组、递归/子例程调用等 PCRE-only 高复杂度语法。
+- 完整 Unicode property 数据库，例如真正的 `\p{Greek}`、`\p{Script=Han}`；当前 `\p{Alpha}` 等是 ASCII-mapped 子集。
+- Unicode scalar/grapheme 级匹配；当前 offset 和匹配单位都是 UTF-8 byte。
 - replacement 中的复杂转义、条件替换、函数式替换。
 - 标准库风格 RAII；当前必须手动 destroy。
 
@@ -689,6 +804,9 @@ build/tests/regex_demo
 build/bin/aurexc -I examples/libs examples/regex_phase1.ax --emit=checked
 build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
 build/tests/regex_phase1
+build/bin/aurexc -I examples/libs examples/regex_industrial.ax --emit=checked
+build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
+build/tests/regex_industrial
 build/bin/aurexc -I examples/libs examples/regex_stress.ax --emit=checked
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress

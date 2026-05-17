@@ -132,7 +132,7 @@ fn require_rejected_repeat() -> i32 {
 }
 
 fn require_rejected_syntax() -> i32 {
-    var invalid: regex.Regex = regex.compile("[\\D-a]");
+    var invalid: regex.Regex = regex.compile("[z-a]");
     defer regex.destroy(&mut invalid);
     let rejected: bool = match invalid.status {
         .unsupported => true,

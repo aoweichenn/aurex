@@ -103,28 +103,63 @@ pub fn add_split(compiled: &mut t.Regex, out1: usize, out2: usize) -> usize {
 }
 
 pub fn add_literal(compiled: &mut t.Regex, value: u8) -> usize {
-    return add_state(compiled, t.OP_LITERAL, t.FLAGS_NONE, value, value, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_literal_flags(compiled, value, t.FLAGS_NONE);
+}
+
+pub fn add_literal_flags(compiled: &mut t.Regex, value: u8, flags: u8) -> usize {
+    return add_state(compiled, t.OP_LITERAL, flags, value, value, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_any(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ANY, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_any_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_any_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ANY, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_class(compiled: &mut t.Regex, class_start: usize, class_len: usize, negated: bool) -> usize {
-    let flags: u8 = if negated {
-        t.FLAG_CLASS_NEGATED
-    } else {
-        t.FLAGS_NONE
-    };
+    return add_class_flags(compiled, class_start, class_len, negated, t.FLAGS_NONE);
+}
+
+pub fn add_class_flags(compiled: &mut t.Regex, class_start: usize, class_len: usize, negated: bool, state_flags: u8) -> usize {
+    var flags: u8 = state_flags;
+    if negated {
+        flags = flags | t.FLAG_CLASS_NEGATED;
+    }
     return add_state(compiled, t.OP_CLASS, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, class_start, class_len);
 }
 
 pub fn add_assert_start(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_START, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_assert_start_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_assert_start_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ASSERT_START, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_end(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_END, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_assert_end_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_assert_end_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ASSERT_END, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_absolute_start(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_ABSOLUTE_START, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_absolute_end(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_ABSOLUTE_END, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_word_boundary(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_WORD_BOUNDARY, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_not_word_boundary(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_NOT_WORD_BOUNDARY, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_save(compiled: &mut t.Regex, slot: usize) -> usize {
@@ -231,6 +266,13 @@ pub fn zero_or_more(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
     return fragment(start, end, body.source_start, body.source_end);
 }
 
+pub fn zero_or_more_lazy(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
+    let end: usize = add_epsilon(compiled);
+    let start: usize = add_split(compiled, end, body.start);
+    patch(compiled, body.end, start);
+    return fragment(start, end, body.source_start, body.source_end);
+}
+
 pub fn one_or_more(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
     let split: usize = add_split(compiled, body.start, t.NO_STATE);
     let end: usize = add_epsilon(compiled);
@@ -241,12 +283,26 @@ pub fn one_or_more(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
     return fragment(body.start, end, body.source_start, body.source_end);
 }
 
+pub fn one_or_more_lazy(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
+    let end: usize = add_epsilon(compiled);
+    let split: usize = add_split(compiled, end, body.start);
+    patch(compiled, body.end, split);
+    return fragment(body.start, end, body.source_start, body.source_end);
+}
+
 pub fn zero_or_one(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
     let start: usize = add_split(compiled, body.start, t.NO_STATE);
     let end: usize = add_epsilon(compiled);
     unsafe {
         compiled.states[start].out2 = end;
     }
+    patch(compiled, body.end, end);
+    return fragment(start, end, body.source_start, body.source_end);
+}
+
+pub fn zero_or_one_lazy(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
+    let end: usize = add_epsilon(compiled);
+    let start: usize = add_split(compiled, end, body.start);
     patch(compiled, body.end, end);
     return fragment(start, end, body.source_start, body.source_end);
 }

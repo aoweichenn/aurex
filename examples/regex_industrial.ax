@@ -1,0 +1,298 @@
+module regex_industrial;
+
+import regex.api as regex;
+
+const CASE_FLAGS: i32 = 100;
+const CASE_LAZY: i32 = 200;
+const CASE_BOUNDARY: i32 = 300;
+const CASE_ESCAPES: i32 = 400;
+const CASE_CLASSES: i32 = 500;
+const CASE_API: i32 = 600;
+const CASE_ERRORS: i32 = 700;
+
+const FIRST_LAZY_END: usize = 4usize;
+const GREEDY_END: usize = 7usize;
+const MULTILINE_START: usize = 5usize;
+const MULTILINE_END: usize = 9usize;
+const WORD_START: usize = 2usize;
+const WORD_END: usize = 6usize;
+const INNER_WORD_START: usize = 1usize;
+const INNER_WORD_END: usize = 3usize;
+const REPLACE_CAPACITY: usize = 64usize;
+
+fn same_text(left: str, right: str) -> bool {
+    if strblen(left) != strblen(right) {
+        return false;
+    }
+    let left_ptr: *const u8 = strptr(left);
+    let right_ptr: *const u8 = strptr(right);
+    var offset: usize = 0usize;
+    while offset < strblen(left) {
+        if unsafe { left_ptr[offset] } != unsafe { right_ptr[offset] } {
+            return false;
+        }
+        offset += 1usize;
+    }
+    return true;
+}
+
+fn buffer_text(buffer: &mut [64]u8, len: usize) -> str {
+    let ptr: *const u8 = unsafe { ptrcast[*const u8](ptrat[*mut [64]u8](ptraddr(buffer))) };
+    return unsafe { strraw(ptr, len) };
+}
+
+fn buffer_ptr(buffer: &mut [64]u8) -> *mut u8 {
+    return unsafe { ptrcast[*mut u8](ptrat[*mut [64]u8](ptraddr(buffer))) };
+}
+
+fn require_true(code: i32, value: bool) -> i32 {
+    if value {
+        return 0;
+    }
+    return code;
+}
+
+fn require_false(code: i32, value: bool) -> i32 {
+    if !value {
+        return 0;
+    }
+    return code;
+}
+
+fn require_span(code: i32, result: regex.MatchResult, expected_start: usize, expected_end: usize) -> i32 {
+    if !result.ok() {
+        return code + regex.status_code(result.status);
+    }
+    if result.start != expected_start {
+        return code + 20;
+    }
+    if result.end != expected_end {
+        return code + 21;
+    }
+    return 0;
+}
+
+fn require_flags() -> i32 {
+    let ci: i32 = require_true(CASE_FLAGS + 1, regex.fullmatch("(?i)abc", "ABC"));
+    if ci != 0 {
+        return ci;
+    }
+    let scoped: i32 = require_true(CASE_FLAGS + 2, regex.fullmatch("(?i:a)b", "Ab"));
+    if scoped != 0 {
+        return scoped;
+    }
+    let restored: i32 = require_false(CASE_FLAGS + 3, regex.fullmatch("(?i:a)b", "aB"));
+    if restored != 0 {
+        return restored;
+    }
+    let disabled: i32 = require_true(CASE_FLAGS + 4, regex.fullmatch("(?i)abc(?-i:de)", "ABCde"));
+    if disabled != 0 {
+        return disabled;
+    }
+    let disabled_rejects: i32 = require_false(CASE_FLAGS + 5, regex.fullmatch("(?i)abc(?-i:de)", "ABCDe"));
+    if disabled_rejects != 0 {
+        return disabled_rejects;
+    }
+    let multi: regex.MatchResult = regex.find("(?m)^warn$", "info\nwarn\nend");
+    let multi_code: i32 = require_span(CASE_FLAGS + 20, multi, MULTILINE_START, MULTILINE_END);
+    if multi_code != 0 {
+        return multi_code;
+    }
+    let dotall: i32 = require_true(CASE_FLAGS + 40, regex.fullmatch("(?s)a.b", "a\nb"));
+    if dotall != 0 {
+        return dotall;
+    }
+    let dot_rejects_newline: i32 = require_false(CASE_FLAGS + 41, regex.fullmatch("a.b", "a\nb"));
+    if dot_rejects_newline != 0 {
+        return dot_rejects_newline;
+    }
+    let extended: i32 = require_true(CASE_FLAGS + 60, regex.fullmatch("(?x)a # comment\n b", "ab"));
+    if extended != 0 {
+        return extended;
+    }
+    return require_true(CASE_FLAGS + 61, regex.fullmatch("(?x)a\\ b", "a b"));
+}
+
+fn require_lazy() -> i32 {
+    let lazy: regex.MatchResult = regex.find("a.*?b", "axxbxxb");
+    let lazy_code: i32 = require_span(CASE_LAZY + 1, lazy, 0usize, FIRST_LAZY_END);
+    if lazy_code != 0 {
+        return lazy_code;
+    }
+    let greedy: regex.MatchResult = regex.find("a.*b", "axxbxxb");
+    let greedy_code: i32 = require_span(CASE_LAZY + 20, greedy, 0usize, GREEDY_END);
+    if greedy_code != 0 {
+        return greedy_code;
+    }
+    let ungreedy: regex.MatchResult = regex.find("(?U)a.*b", "axxbxxb");
+    return require_span(CASE_LAZY + 40, ungreedy, 0usize, FIRST_LAZY_END);
+}
+
+fn require_boundaries() -> i32 {
+    let word: regex.MatchResult = regex.find("\\bword\\b", "a word!");
+    let word_code: i32 = require_span(CASE_BOUNDARY + 1, word, WORD_START, WORD_END);
+    if word_code != 0 {
+        return word_code;
+    }
+    let inner_word: regex.MatchResult = regex.find("\\Boo\\B", "xooz");
+    let inner_code: i32 = require_span(CASE_BOUNDARY + 20, inner_word, INNER_WORD_START, INNER_WORD_END);
+    if inner_code != 0 {
+        return inner_code;
+    }
+    let absolute_start: i32 = require_true(CASE_BOUNDARY + 40, regex.search("\\Aabc", "abcabc"));
+    if absolute_start != 0 {
+        return absolute_start;
+    }
+    let absolute_start_rejects: i32 = require_false(CASE_BOUNDARY + 41, regex.search("\\Aabc", "xabc"));
+    if absolute_start_rejects != 0 {
+        return absolute_start_rejects;
+    }
+    let absolute_end: regex.MatchResult = regex.find("abc\\z", "xabc");
+    let absolute_end_code: i32 = require_span(CASE_BOUNDARY + 60, absolute_end, 1usize, strblen("xabc"));
+    if absolute_end_code != 0 {
+        return absolute_end_code;
+    }
+    return require_false(CASE_BOUNDARY + 61, regex.search("abc\\z", "abc\n"));
+}
+
+fn require_escapes() -> i32 {
+    let hex_fixed: i32 = require_true(CASE_ESCAPES + 1, regex.fullmatch("\\x41+", "AAA"));
+    if hex_fixed != 0 {
+        return hex_fixed;
+    }
+    let hex_braced: i32 = require_true(CASE_ESCAPES + 2, regex.fullmatch("\\x{41}", "A"));
+    if hex_braced != 0 {
+        return hex_braced;
+    }
+    let unicode_fixed: i32 = require_true(CASE_ESCAPES + 3, regex.fullmatch("\\u0041", "A"));
+    if unicode_fixed != 0 {
+        return unicode_fixed;
+    }
+    let unicode_braced: i32 = require_true(CASE_ESCAPES + 4, regex.fullmatch("\\u{41}", "A"));
+    if unicode_braced != 0 {
+        return unicode_braced;
+    }
+    let quoted: i32 = require_true(CASE_ESCAPES + 20, regex.fullmatch("\\Q.^$*\\E", ".^$*"));
+    if quoted != 0 {
+        return quoted;
+    }
+    let not_newline: i32 = require_true(CASE_ESCAPES + 40, regex.fullmatch("\\N+", "abc"));
+    if not_newline != 0 {
+        return not_newline;
+    }
+    let rejects_newline: i32 = require_false(CASE_ESCAPES + 41, regex.fullmatch("\\N+", "a\nb"));
+    if rejects_newline != 0 {
+        return rejects_newline;
+    }
+    let lf_sequence: i32 = require_true(CASE_ESCAPES + 60, regex.fullmatch("\\R", "\n"));
+    if lf_sequence != 0 {
+        return lf_sequence;
+    }
+    return require_true(CASE_ESCAPES + 61, regex.fullmatch("\\R", "\r\n"));
+}
+
+fn require_classes() -> i32 {
+    let class_complement: i32 = require_true(CASE_CLASSES + 1, regex.fullmatch("[\\D]+", "abc"));
+    if class_complement != 0 {
+        return class_complement;
+    }
+    let posix_alpha: i32 = require_true(CASE_CLASSES + 20, regex.fullmatch("[[:alpha:]]+", "abcXYZ"));
+    if posix_alpha != 0 {
+        return posix_alpha;
+    }
+    let posix_negated: i32 = require_true(CASE_CLASSES + 21, regex.fullmatch("[[:^digit:]]+", "abc"));
+    if posix_negated != 0 {
+        return posix_negated;
+    }
+    let posix_negated_rejects: i32 = require_false(CASE_CLASSES + 22, regex.fullmatch("[[:^digit:]]+", "abc1"));
+    if posix_negated_rejects != 0 {
+        return posix_negated_rejects;
+    }
+    let property_alpha: i32 = require_true(CASE_CLASSES + 40, regex.fullmatch("\\p{Alpha}+", "abcXYZ"));
+    if property_alpha != 0 {
+        return property_alpha;
+    }
+    let property_not_digit: i32 = require_true(CASE_CLASSES + 41, regex.fullmatch("\\P{Digit}+", "abc"));
+    if property_not_digit != 0 {
+        return property_not_digit;
+    }
+    let case_class: i32 = require_true(CASE_CLASSES + 60, regex.fullmatch("(?i)[a-f]+", "FACE"));
+    if case_class != 0 {
+        return case_class;
+    }
+    return require_false(CASE_CLASSES + 61, regex.fullmatch("(?i)[^a-f]+", "FACE"));
+}
+
+fn require_convenience_api() -> i32 {
+    let alias: i32 = require_true(CASE_API + 1, regex.is_match("\\w+", "abc"));
+    if alias != 0 {
+        return alias;
+    }
+    let found: regex.MatchResult = regex.find("\\w+", "..abc");
+    let found_code: i32 = require_span(CASE_API + 20, found, 2usize, 5usize);
+    if found_code != 0 {
+        return found_code;
+    }
+    var captures: regex.Captures = regex.captures("(\\w+)", "abc");
+    defer regex.destroy_captures(&mut captures);
+    if !captures.ok() || !same_text(regex.capture_text("abc", &captures, 1usize), "abc") {
+        return CASE_API + 40;
+    }
+    var buffer: [64]u8 = [0; 64];
+    let replaced: regex.ReplaceResult = regex.replace("\\s+", "a b\tc", "-", buffer_ptr(&mut buffer), REPLACE_CAPACITY);
+    if !replaced.ok() || !same_text(buffer_text(&mut buffer, replaced.written), "a-b-c") {
+        return CASE_API + 60 + regex.status_code(replaced.status);
+    }
+    return 0;
+}
+
+fn require_errors() -> i32 {
+    var invalid_escape: regex.Regex = regex.compile("\\y");
+    defer regex.destroy(&mut invalid_escape);
+    if invalid_escape.status != regex.RegexStatus.unsupported {
+        return CASE_ERRORS + regex.status_code(invalid_escape.status);
+    }
+    if regex.error_kind_code(regex.error_kind(&invalid_escape)) != 13 {
+        return CASE_ERRORS + 20;
+    }
+    var invalid_hex: regex.Regex = regex.compile("\\x4");
+    defer regex.destroy(&mut invalid_hex);
+    if invalid_hex.status != regex.RegexStatus.syntax_error {
+        return CASE_ERRORS + 40 + regex.status_code(invalid_hex.status);
+    }
+    let invalid_hex_kind: i32 = require_true(CASE_ERRORS + 60, regex.error_kind_code(regex.error_kind(&invalid_hex)) == 13);
+    if invalid_hex_kind != 0 {
+        return invalid_hex_kind;
+    }
+    var invalid_flag: regex.Regex = regex.compile("(?i-)");
+    defer regex.destroy(&mut invalid_flag);
+    return require_true(CASE_ERRORS + 80, invalid_flag.status == regex.RegexStatus.syntax_error);
+}
+
+fn main() -> i32 {
+    let flags_code: i32 = require_flags();
+    if flags_code != 0 {
+        return flags_code;
+    }
+    let lazy_code: i32 = require_lazy();
+    if lazy_code != 0 {
+        return lazy_code;
+    }
+    let boundary_code: i32 = require_boundaries();
+    if boundary_code != 0 {
+        return boundary_code;
+    }
+    let escapes_code: i32 = require_escapes();
+    if escapes_code != 0 {
+        return escapes_code;
+    }
+    let class_code: i32 = require_classes();
+    if class_code != 0 {
+        return class_code;
+    }
+    let api_code: i32 = require_convenience_api();
+    if api_code != 0 {
+        return api_code;
+    }
+    return require_errors();
+}

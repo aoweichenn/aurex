@@ -3,6 +3,12 @@ module regex.core.types;
 pub const NO_STATE: usize = 0usize;
 pub const FLAGS_NONE: u8 = 0u8;
 pub const FLAG_CLASS_NEGATED: u8 = 1u8;
+pub const FLAG_CASE_INSENSITIVE: u8 = 2u8;
+pub const FLAG_MULTILINE: u8 = 4u8;
+pub const FLAG_DOTALL: u8 = 8u8;
+pub const FLAG_EXTENDED: u8 = 16u8;
+pub const FLAG_UNGREEDY: u8 = 32u8;
+pub const FLAG_UNICODE: u8 = 64u8;
 
 pub const OP_EMPTY: u8 = 0u8;
 pub const OP_EPSILON: u8 = 1u8;
@@ -12,8 +18,12 @@ pub const OP_ANY: u8 = 4u8;
 pub const OP_CLASS: u8 = 5u8;
 pub const OP_ASSERT_START: u8 = 6u8;
 pub const OP_ASSERT_END: u8 = 7u8;
-pub const OP_MATCH: u8 = 8u8;
-pub const OP_SAVE: u8 = 9u8;
+pub const OP_ASSERT_ABSOLUTE_START: u8 = 8u8;
+pub const OP_ASSERT_ABSOLUTE_END: u8 = 9u8;
+pub const OP_ASSERT_WORD_BOUNDARY: u8 = 10u8;
+pub const OP_ASSERT_NOT_WORD_BOUNDARY: u8 = 11u8;
+pub const OP_MATCH: u8 = 12u8;
+pub const OP_SAVE: u8 = 13u8;
 
 pub const CAPTURE_MISSING: usize = 18446744073709551615usize;
 pub const CAPTURE_WHOLE_MATCH: usize = 0usize;
@@ -33,6 +43,7 @@ pub const ERROR_KIND_CAPTURE_TOO_LARGE: u8 = 9u8;
 pub const ERROR_KIND_INVALID_GROUP_NAME: u8 = 10u8;
 pub const ERROR_KIND_UNEXPECTED_EOF: u8 = 11u8;
 pub const ERROR_KIND_PROGRAM_TOO_LARGE: u8 = 12u8;
+pub const ERROR_KIND_INVALID_ESCAPE: u8 = 13u8;
 
 pub enum RegexStatus: u8 {
     ok = 0,

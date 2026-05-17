@@ -102,7 +102,7 @@ inline constexpr base::usize KEYWORD_ASCII_FIRST_CHAR_BUCKET_COUNT = 128;
     return static_cast<unsigned char>(c);
 }
 
-[[nodiscard]] constexpr bool keyword_entry_less(const KeywordEntry& lhs, const KeywordEntry& rhs) noexcept {
+[[nodiscard]] consteval bool keyword_entry_less(const KeywordEntry& lhs, const KeywordEntry& rhs) noexcept {
     if (lhs.text.size() != rhs.text.size()) {
         return lhs.text.size() < rhs.text.size();
     }

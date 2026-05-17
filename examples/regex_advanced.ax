@@ -19,6 +19,7 @@ const CASE_SET_SCAN: i32 = 1300;
 const CASE_BYTES_PARITY: i32 = 1400;
 const CASE_UNICODE_CLUSTER: i32 = 1500;
 const CASE_SET_ALL_SPANS: i32 = 1600;
+const CASE_SET_LITERAL_TRIE: i32 = 1700;
 
 const BUFFER_CAPACITY: usize = 256usize;
 const DATABASE_CAPACITY: usize = 4096usize;
@@ -152,6 +153,29 @@ fn set_all_spans_callback(pattern_id: usize, start: usize, end: usize) -> regex.
     if pattern_id == 2usize && ((start == 0usize && end == 1usize) ||
         (start == 2usize && end == 3usize) ||
         (start == 4usize && end == 5usize)) {
+        return regex.RegexStatus.ok;
+    }
+    return regex.RegexStatus.replacement_error;
+}
+
+fn set_literal_trie_callback(pattern_id: usize, start: usize, end: usize) -> regex.RegexStatus {
+    if pattern_id == 0usize && start == 2usize && end == 4usize {
+        return regex.RegexStatus.ok;
+    }
+    if pattern_id == 1usize && start == 2usize && end == 5usize {
+        return regex.RegexStatus.ok;
+    }
+    if pattern_id == 2usize && start == 2usize && end == 6usize {
+        return regex.RegexStatus.ok;
+    }
+    if pattern_id == 3usize && start == 7usize && end == 10usize {
+        return regex.RegexStatus.ok;
+    }
+    return regex.RegexStatus.replacement_error;
+}
+
+fn set_literal_trie_duplicate_callback(pattern_id: usize, start: usize, end: usize) -> regex.RegexStatus {
+    if (pattern_id == 0usize || pattern_id == 1usize) && start == 1usize && end == 3usize {
         return regex.RegexStatus.ok;
     }
     return regex.RegexStatus.replacement_error;
@@ -921,6 +945,94 @@ fn require_regex_set_all_span_and_overlap() -> i32 {
     return ensure(CASE_SET_ALL_SPANS + 6 + bytes.status_code(byte_overlap.status), byte_overlap.status == bytes.RegexStatus.ok && byte_overlap.count == 4usize);
 }
 
+fn require_regex_set_literal_trie_optimizer() -> i32 {
+    let patterns: [4]str = ["he", "her", "hers", "his"];
+    var compiled: regex.RegexSet = regex.compile_set(patterns[:]);
+    defer regex.destroy_set(&mut compiled);
+    if !compiled.valid() {
+        return CASE_SET_LITERAL_TRIE + 1 + regex.status_code(compiled.status);
+    }
+    if regex.set_state_count(&compiled) > 16usize {
+        return CASE_SET_LITERAL_TRIE + 2;
+    }
+    var ids: [8]usize = [0usize; 8];
+    let matches: regex.SetMatchesResult = regex.matches_set_compiled(&compiled, "ushers history", ids_ptr(&mut ids), SET_ID_CAPACITY);
+    if matches.status != regex.RegexStatus.ok || matches.count != 4usize || ids[0usize] != 0usize || ids[1usize] != 1usize ||
+        ids[2usize] != 2usize || ids[3usize] != 3usize {
+        return CASE_SET_LITERAL_TRIE + 3 + regex.status_code(matches.status);
+    }
+    let found: regex.SetMatchSpan = regex.find_set_compiled(&compiled, "ushers history");
+    if found.status != regex.RegexStatus.ok || !found.matched || found.pattern_id != 0usize || found.start != 2usize || found.end != 4usize {
+        return CASE_SET_LITERAL_TRIE + 4 + regex.status_code(found.status);
+    }
+    let spans: regex.SetMatchesResult = regex.scan_set_spans_compiled(&compiled, "ushers history", set_literal_trie_callback);
+    if spans.status != regex.RegexStatus.ok || spans.count != 4usize {
+        return CASE_SET_LITERAL_TRIE + 5 + regex.status_code(spans.status);
+    }
+
+    var encoded: [2048]u8 = [0u8; 2048];
+    let out: *mut u8 = unsafe { ptrcast[*mut u8](ptrat[*mut [2048]u8](ptraddr(&mut encoded))) };
+    let database: regex.DatabaseResult = regex.serialize_set(&compiled, out, 2048usize);
+    if !database.ok() {
+        return CASE_SET_LITERAL_TRIE + 6 + regex.status_code(database.status);
+    }
+    let encoded_view: []const u8 = encoded[:database.written];
+    var decoded: regex.RegexSet = regex.deserialize_set(encoded_view);
+    defer regex.destroy_set(&mut decoded);
+    let decoded_found: regex.SetMatchSpan = regex.find_set_compiled(&decoded, "ushers history");
+    if decoded_found.status != regex.RegexStatus.ok || !decoded_found.matched || decoded_found.pattern_id != 0usize ||
+        decoded_found.start != 2usize || decoded_found.end != 4usize {
+        return CASE_SET_LITERAL_TRIE + 7 + regex.status_code(decoded_found.status);
+    }
+
+    var byte_set: bytes.RegexSet = bytes.compile_set(patterns[:]);
+    defer bytes.destroy_set(&mut byte_set);
+    if !byte_set.valid() {
+        return CASE_SET_LITERAL_TRIE + 8 + bytes.status_code(byte_set.status);
+    }
+    let byte_input: [7]u8 = [0x75u8, 0x73u8, 0x68u8, 0x65u8, 0x72u8, 0x73u8, 0x21u8];
+    let byte_view: []const u8 = byte_input[:];
+    let byte_found: bytes.SetMatchSpan = bytes.find_set_compiled(&byte_set, byte_view);
+    let byte_code: i32 = ensure(
+        CASE_SET_LITERAL_TRIE + 9 + bytes.status_code(byte_found.status),
+        byte_found.status == bytes.RegexStatus.ok && byte_found.matched && byte_found.pattern_id == 0usize &&
+            byte_found.start == 2usize && byte_found.end == 4usize
+    );
+    if byte_code != 0 {
+        return byte_code;
+    }
+
+    let duplicate_patterns: [3]str = ["aa", "aa", "ab"];
+    var duplicate_set: regex.RegexSet = regex.compile_set(duplicate_patterns[:]);
+    defer regex.destroy_set(&mut duplicate_set);
+    if !duplicate_set.valid() {
+        return CASE_SET_LITERAL_TRIE + 10 + regex.status_code(duplicate_set.status);
+    }
+    if regex.set_state_count(&duplicate_set) > 10usize {
+        return CASE_SET_LITERAL_TRIE + 11;
+    }
+    var duplicate_ids: [8]usize = [0usize; 8];
+    let duplicate_matches: regex.SetMatchesResult = regex.matches_set_compiled(&duplicate_set, "xaa", ids_ptr(&mut duplicate_ids), SET_ID_CAPACITY);
+    if duplicate_matches.status != regex.RegexStatus.ok || duplicate_matches.count != 2usize ||
+        duplicate_ids[0usize] != 0usize || duplicate_ids[1usize] != 1usize {
+        return CASE_SET_LITERAL_TRIE + 12 + regex.status_code(duplicate_matches.status);
+    }
+    let duplicate_found: regex.SetMatchSpan = regex.find_set_compiled(&duplicate_set, "xaa");
+    if duplicate_found.status != regex.RegexStatus.ok || !duplicate_found.matched || duplicate_found.pattern_id != 0usize ||
+        duplicate_found.start != 1usize || duplicate_found.end != 3usize {
+        return CASE_SET_LITERAL_TRIE + 13 + regex.status_code(duplicate_found.status);
+    }
+    let duplicate_spans: regex.SetMatchesResult = regex.scan_set_spans_compiled(
+        &duplicate_set,
+        "xaa",
+        set_literal_trie_duplicate_callback
+    );
+    return ensure(
+        CASE_SET_LITERAL_TRIE + 14 + regex.status_code(duplicate_spans.status),
+        duplicate_spans.status == regex.RegexStatus.ok && duplicate_spans.count == 2usize
+    );
+}
+
 fn main() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
@@ -982,5 +1094,9 @@ fn main() -> i32 {
     if unicode_code != 0 {
         return unicode_code;
     }
-    return require_regex_set_all_span_and_overlap();
+    let set_span_code: i32 = require_regex_set_all_span_and_overlap();
+    if set_span_code != 0 {
+        return set_span_code;
+    }
+    return require_regex_set_literal_trie_optimizer();
 }

@@ -66,7 +66,7 @@ build/tests/regex_stress
 - 资源可见：公开状态数、range 数、捕获数、编译后程序内存估算和 VM 工作区内存估算。
 - API 可组合：提供 compiled API、便利 API、`RegexOptions`/`RegexBuilder`、text/bytes 双入口、find/captures 游标、split/splitn 游标、模板替换、回调替换、RegexSet 多模式扫描、first-match scan、all-span/overlap callback scan、vectored scan、可序列化 set database 和 text/bytes stream 状态接口。
 - 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute/search-start anchors、hex/octal/control/unicode escapes、quoted literal、newline escape、POSIX/Unicode property classes，同时继续拒绝反向引用和 lookaround。
-- 向工业级演进：当前实现明确约束 pattern/program/workspace/capture/set 上限，避免灾难性回溯，并用 demo、phase1、industrial、advanced、stress 样例锁住行为。
+- 向工业级演进：当前实现明确约束 pattern/program/workspace/capture/set 上限，避免灾难性回溯，并用 demo、phase1、industrial、advanced、stress 样例，以及 Python `re` 差分、Unicode 17.0 `CaseFolding.txt` / `GraphemeBreakTest.txt` 官方数据生成测试锁住行为。
 
 当前版本仍是 Aurex 语言能力验证库，不声称达到 RE2、Rust regex、PCRE2 或 Hyperscan 的生产成熟度。本文后面单独列出工业级目标和对比。
 
@@ -131,7 +131,8 @@ build/tests/regex_stress
 `regex.compile.set`
 
 - 将 `[]const str` 多个 pattern 编译为共享 `RegexSet` 状态表。
-- 每个 pattern 单独解析成安全 NFA，再复制到同一个 set program；set 起点用 split 串联多个 pattern 起点，accept state 的 `value` 保存 pattern id。
+- 对无 regex 元字符、非 case-insensitive、非 extended mode 的 exact literal set，直接构建共享 prefix trie，并把 trie 编译成普通 `State` 程序：共享公共前缀、保留 pattern id 语义、保持 database 序列化兼容，不增加新的公开结构布局。
+- 非 exact literal set 仍走通用路径：每个 pattern 单独解析成安全 NFA，再复制到同一个 set program；set 起点用 split 串联多个 pattern 起点，accept state 的 `value` 保存 pattern id。
 - 支持 text set 和 bytes set；释放使用 `destroy_set`。
 
 `regex.compile.database`
@@ -153,6 +154,7 @@ build/tests/regex_stress
 - `search_compiled` 对未锚定 pattern 使用单次共享 active-list 扫描：每个输入边界只注入一个新起点 closure；`fullmatch_compiled` 要求从 0 到输入结尾。
 - 搜索路径会为首个消费状态构建 256-byte start-byte bitset：单 pattern 和多 pattern `RegexSet` 都会在 active list 为空时按 raw byte 快跳到 literal / class / any 的候选首字节，再用 NFA 起点状态做完整校验，避免在长非候选前缀上反复构造无效起点 closure。
 - 对确定性 literal prefix 的 pattern，候选命中后还会验证完整 literal prefix；同一机制也用于 prefix 可判定的 `RegexSet`。
+- exact literal `RegexSet` 会先被编译为共享 prefix trie，再进入同一个 VM 和 start-byte filter 路径；因此 `["he", "her", "hers", "his"]` 这类集合不再复制公共前缀状态，database roundtrip 后仍按普通 set program 执行。
 - 提供内部复用型 match workspace 和 `captures_compiled_from_into` / `captures_bytes_compiled_from_into`，让 replace 等循环型操作复用 VM workspace 和 capture span buffer。
 - `captures_compiled` 和 `captures_fullmatch_compiled` 返回 owning `Captures`。
 - 在同一起点下使用有序 Thompson 线程。greedy 分支会保留后备较长结果，lazy/ungreedy 分支可提前接受较短结果。
@@ -935,7 +937,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `capture_slots = capture_count * 2`，每个捕获含 start/end 两个 slot，`capture_count` 包含 `$0`。
 - `fullmatch_compiled` 匹配时间：`O(input_scalars * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
 - `search_compiled` 匹配时间：未锚定 pattern 采用共享 active-list search，每个 scalar boundary 至多注入一次起点 closure，最坏为 `O(input_scalars * active_state_count * capture_slots)`；同一位置同一 state 只保留最高优先级线程，继续保持 leftmost + ordered Thompson 子匹配语义。以非 multiline `^` 或 `\A` 开头时仍只尝试起点 `0`；确定性 literal prefix 和 start-byte bitset 会把无 active 线程区间快速推进到下一处候选起点。
-- `matches_set_compiled` 使用共享 set NFA 和同样的单次 active-list 扫描，同时推进所有 pattern；结果去重后升序写出 pattern id。多起点 `RegexSet` 共享 start-byte bitset，因此多个 literal/class/bytes pattern 不再需要在每个输入位置重复扫描起点状态。
+- `compile_set` 对 exact literal set 先构建 prefix trie，编译期额外临时内存为 `O(total_literal_bytes + pattern_count)`，输出 program 规模为 `O(unique_prefix_nodes + pattern_count + branch_splits)`；共享前缀越多，state 数越接近唯一前缀节点数，而不是所有 pattern NFA 的逐份复制。非 literal set 仍按通用共享 NFA 路径处理。
+- `matches_set_compiled` 使用共享 set NFA/trie program 和同样的单次 active-list 扫描，同时推进所有 pattern；结果去重后升序写出 pattern id。多起点 `RegexSet` 共享 start-byte bitset，因此多个 literal/class/bytes pattern 不再需要在每个输入位置重复扫描起点状态。
 - `scan_set_spans_compiled` / `scan_set_overlapping_compiled` 以输入边界为起点复用同一份 compiled set program 和 VM workspace，不循环调用多个单 pattern regex；这是面向审计、IDS、日志扫描等场景的 all-span/overlap 语义，结果量可能随 pattern 与输入本身增长。
 - `serialize_set` 时间和输出大小都是 `O(state_len + range_len)`；deserialize 额外做同阶结构校验。
 - stream 当前保留内部 buffer，并在已消费前缀足够大时压缩和收缩容量；`RegexOptions.stream_history_limit` 让保留历史有显式上限，超过预算返回 `workspace_too_large`。它是有内存预算的增量 API，不是 Hyperscan 级别的 streaming compiler。
@@ -953,19 +956,19 @@ regex.error_kind_code(regex.error_kind(&compiled))
 
 后续向工业级继续推进时，优先级如下：
 
-- `RegexSet` 后续可继续增加多 pattern literal trie、bytes set SIMD/bitset 专用加速，进一步降低候选命中后的常数。
+- `RegexSet` exact literal trie 已落地；后续可继续增加 Aho-Corasick/DFA hybrid、bytes set SIMD/bitset 专用加速，进一步降低候选命中后的常数。
 - stream 后续可演进为 bounded-history automaton，进一步减少长流上对历史上下文的保留。
 - grapheme 后续还可以增加 cluster iterator / split API；当前只把 `\X` 作为显式 atom，仍保持 byte offset、scalar 消费和 grapheme cluster 三层语义分开。
-- 增加 fuzz、差分测试和长输入基准，把正确性、峰值内存和吞吐纳入自动化。
+- 当前已有 `tools/regex_differential.py` 生成 Python `re` 差分、Unicode 17.0 full case-fold 和 UAX #29 grapheme break conformance 程序，并接入 CTest 慢速 conformance 入口；后续继续扩充随机 fuzz/property corpus、长输入吞吐和跨机器峰值内存基线。
 
 ## 11. 与工业级引擎对比
 
 | 引擎 | 核心定位 | 复杂度/性能特点 | 功能范围 | Aurex 当前差距 |
 | --- | --- | --- | --- | --- |
 | RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并有 Unicode 17.0 scalar/property/case-fold、ordered Thompson 子匹配语义和资源预算，但仍缺少成熟 DFA/NFA 混合优化和多年工程验证 |
-| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback、database roundtrip、RegexSet span/callback/all-span/overlap scan、vectored scan、Unicode full fold、`\X`、线性 active-list search 和 start-byte literal/class 候选加速，但还没有成熟 DFA/literal optimizer、完整 fuzz/差分测试和多年工程验证 |
+| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback、database roundtrip、RegexSet span/callback/all-span/overlap scan、vectored scan、Unicode full fold、`\X`、线性 active-list search、start-byte literal/class 候选加速、exact-literal RegexSet trie 和官方 Unicode 数据 conformance；仍缺成熟 DFA/Aho-Corasick 混合优化、随机 fuzz 长期语料和多年工程验证 |
 | PCRE2 | Perl-compatible 功能优先引擎 | 功能很全，可使用 JIT；回溯模型需要限制资源避免病态 pattern | 捕获、命名组、反向引用、lookaround、条件、丰富选项 | Aurex 不追求 PCRE 兼容，暂不支持这些会明显增加复杂度或破坏线性保证的语法 |
-| Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 现在已有共享 RegexSet、序列化 database、text/bytes stream、vectored block scan 和 stream history budget，但没有 SIMD、平台级向量化或 Hyperscan 级 streaming compiler |
+| Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 现在已有共享 RegexSet、exact-literal set trie、序列化 database、text/bytes stream、vectored block scan 和 stream history budget，但没有 SIMD、平台级向量化或 Hyperscan 级 streaming compiler |
 | Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial/advanced 样例 | UTF-8 scalar text regex、显式 `\X` grapheme cluster、raw bytes regex、Unicode 17.0 属性、simple/full case folding、flags、RegexOptions/Builder、lazy/ungreedy、边界、锚点、search-start anchor、nested class algebra、捕获/命名捕获、迭代、替换、分割、RegexSet、database、stream、vectored scan、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成已经经受多年生产流量验证的工业完成品 |
 
 这个对比用于确定路线：Aurex 当前应优先学习 RE2/Rust regex 的“可界定复杂度、拒绝破坏线性时间的语法、显式资源预算、稳定 API”路线，而不是先追 PCRE2 的全部语法。
@@ -1046,6 +1049,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 兼容语法：`(?P<name>...)`、`(?#...)`、`\U00000041` / `\U{...}`、`\b{start}` / `\b{end}`。
 - `regex.bytes`：raw byte 模式下 `.` 不按 UTF-8 scalar 合并。
 - `RegexSet`：共享多 pattern program、升序 pattern id 输出、set 资源查询。
+- RegexSet exact literal trie：纯字面量集合共享 prefix 状态，覆盖 text/bytes、重复 literal、database roundtrip 和 all-span callback。
 - RegexSet all-span / overlap scan：`scan_set_spans_compiled`、`scan_set_overlapping_compiled` 和 text/bytes vectored 入口。
 - Unicode 高级语义：full case folding 多 scalar 展开和 `\X` extended grapheme cluster。
 - database：`serialize_set` / `deserialize_set` roundtrip。
@@ -1063,7 +1067,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 上限查询：`max_state_capacity`、`max_range_capacity`、`max_bounded_repeat`。
 - 大规模循环压力：固定迭代次数重复 search/fullmatch。
 - 长前缀线性 search：验证共享 active-list 路径不依赖“每个起点重新跑一遍”的旧模型。
-- literal prefix 和 RegexSet start-byte prefilter 压力：重复搜索长非候选前缀后面的 literal pattern / 多 pattern set。
+- literal prefix、RegexSet exact-literal trie 和 start-byte prefilter 压力：重复搜索长非候选前缀后面的 literal pattern / 多 pattern set，并验证共享前缀不会破坏 set id、span 和 database roundtrip。
 - 错误状态验证：repeat 上限和非法/不支持字符类。
 
 ## 14. 已知不支持项
@@ -1075,7 +1079,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - possessive 量词。
 - 原子组、条件组、递归/子例程调用等 PCRE-only 高复杂度语法。
 - replacement 中的复杂转义和条件替换；当前函数式替换已支持非捕获函数指针 callback，但没有 closure 捕获。
-- Hyperscan 级 SIMD codegen/JIT、literal trie/DFA 混合优化和真正的多平台 streaming compiler；当前已有 vectored block scan 和 stream history budget，但不是 Hyperscan 级流式自动机。
+- Hyperscan 级 SIMD codegen/JIT、Aho-Corasick/DFA 混合优化和真正的多平台 streaming compiler；当前已有 exact-literal RegexSet trie、vectored block scan 和 stream history budget，但不是 Hyperscan 级流式自动机。
 - 标准库风格 RAII；当前必须手动 destroy。
 
 ## 15. 测试入口
@@ -1104,6 +1108,7 @@ build/tests/regex_advanced
 build/bin/aurexc -I examples/libs examples/regex_stress.ax --emit=checked
 build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
+python3 tools/regex_differential.py
 ```
 
 ## 16. 参考资料

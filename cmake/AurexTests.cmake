@@ -63,6 +63,8 @@ if(BUILD_TESTING)
     )
 
     if(NOT AUREX_FRONTEND_ONLY)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
         add_executable(aurex_tests
             tests/support/test_support.cpp
             tests/gtest/backend/llvm_constants_tests.cpp
@@ -173,6 +175,17 @@ if(BUILD_TESTING)
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             LABELS "slow;sample-suite"
             TIMEOUT 300
+        )
+        add_test(
+            NAME aurex_regex_differential_conformance
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/regex_differential.py"
+        )
+        set_tests_properties(
+            aurex_regex_differential_conformance
+            PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            LABELS "slow;regex;conformance"
+            TIMEOUT 900
         )
     endif()
 

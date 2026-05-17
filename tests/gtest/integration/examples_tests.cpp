@@ -179,6 +179,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
         "fn priv require_prefilter_surface -> i32",
         "fn priv require_unicode_full_fold_and_grapheme -> i32",
         "fn priv require_regex_set_all_span_and_overlap -> i32",
+        "fn priv require_regex_set_literal_trie_optimizer -> i32",
         "fn captures_compiled_from_into -> regex.core.types.RegexStatus",
         "fn match_workspace_status -> regex.core.types.RegexStatus",
     });

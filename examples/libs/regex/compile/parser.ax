@@ -1095,8 +1095,9 @@ fn grapheme_indic_extend_or_linker_atom(parser: &mut Parser, source_start: usize
 }
 
 fn grapheme_hangul_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let leading_only: t.Fragment = grapheme_hangul_leading_atom(parser, source_start, source_end);
     let leading: t.Fragment = grapheme_hangul_leading_atom(parser, source_start, source_end);
-    let vowel_or_syllable: t.Fragment = prog.zero_or_one(&mut parser.compiled, grapheme_hangul_vowel_or_syllable_atom(parser, source_start, source_end));
+    let vowel_or_syllable: t.Fragment = grapheme_hangul_vowel_or_syllable_atom(parser, source_start, source_end);
     let trailing_after_leading: t.Fragment = prog.zero_or_more(
         &mut parser.compiled,
         gcb_property_atom(parser, unicode.PROPERTY_GCB_T, source_start, source_end)
@@ -1148,7 +1149,11 @@ fn grapheme_hangul_atom(parser: &mut Parser, source_start: usize, source_end: us
         gcb_property_atom(parser, unicode.PROPERTY_GCB_T, source_start, source_end)
     );
     let trailing_branch: t.Fragment = prog.concat(&mut parser.compiled, lvt_or_t, extra_trailing);
-    return prog.alternate(&mut parser.compiled, prog.alternate(&mut parser.compiled, leading_branch, vowel_branch), trailing_branch);
+    return prog.alternate(
+        &mut parser.compiled,
+        prog.alternate(&mut parser.compiled, prog.alternate(&mut parser.compiled, leading_branch, vowel_branch), trailing_branch),
+        leading_only
+    );
 }
 
 fn grapheme_hangul_leading_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {

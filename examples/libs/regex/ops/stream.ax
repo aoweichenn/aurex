@@ -20,12 +20,40 @@ pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {
     }
     return t.RegexStream {
         compiled: compiled_ptr,
+        mode: t.MODE_TEXT,
         buffer: buffer,
         len: 0usize,
         capacity: limits.MIN_STREAM_CAPACITY,
         base_offset: 0usize,
         next_start: 0usize,
         finished: false,
+        history_limit: compiled.options.stream_history_limit,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn open_bytes_stream(compiled: &t.Regex) -> t.RegexStream {
+    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
+    if compiled.status != t.RegexStatus.ok {
+        return empty_stream(compiled_ptr, compiled.status);
+    }
+    if compiled.mode != t.MODE_BYTES {
+        return empty_stream(compiled_ptr, t.RegexStatus.unsupported);
+    }
+    let buffer: *mut u8 = alloc.alloc_zeroed_bytes(limits.MIN_STREAM_CAPACITY, sizeof[u8]);
+    if buffer == null {
+        return empty_stream(compiled_ptr, t.RegexStatus.out_of_memory);
+    }
+    return t.RegexStream {
+        compiled: compiled_ptr,
+        mode: t.MODE_BYTES,
+        buffer: buffer,
+        len: 0usize,
+        capacity: limits.MIN_STREAM_CAPACITY,
+        base_offset: 0usize,
+        next_start: 0usize,
+        finished: false,
+        history_limit: compiled.options.stream_history_limit,
         status: t.RegexStatus.ok,
     };
 }
@@ -33,12 +61,14 @@ pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {
 pub fn destroy_stream(stream: &mut t.RegexStream) -> void {
     alloc.free_bytes(stream.buffer);
     stream.compiled = null;
+    stream.mode = t.MODE_TEXT;
     stream.buffer = null;
     stream.len = 0usize;
     stream.capacity = 0usize;
     stream.base_offset = 0usize;
     stream.next_start = 0usize;
     stream.finished = true;
+    stream.history_limit = 0usize;
     stream.status = t.RegexStatus.unsupported;
 }
 
@@ -50,11 +80,38 @@ pub fn stream_feed(stream: &mut t.RegexStream, chunk: str) -> t.RegexStatus {
         stream.status = t.RegexStatus.unsupported;
         return stream.status;
     }
+    if stream.mode != t.MODE_TEXT {
+        stream.status = t.RegexStatus.unsupported;
+        return stream.status;
+    }
     let chunk_len: usize = strblen(chunk);
+    compact_stream(stream);
     if !ensure_capacity(stream, stream.len + chunk_len) {
         return stream.status;
     }
     copy_chunk(stream.buffer, stream.len, chunk, chunk_len);
+    stream.len += chunk_len;
+    return stream.status;
+}
+
+pub fn stream_feed_bytes(stream: &mut t.RegexStream, chunk: []const u8) -> t.RegexStatus {
+    if stream.status != t.RegexStatus.ok {
+        return stream.status;
+    }
+    if stream.finished {
+        stream.status = t.RegexStatus.unsupported;
+        return stream.status;
+    }
+    if stream.mode != t.MODE_BYTES {
+        stream.status = t.RegexStatus.unsupported;
+        return stream.status;
+    }
+    let chunk_len: usize = slicelen(chunk);
+    compact_stream(stream);
+    if !ensure_capacity(stream, stream.len + chunk_len) {
+        return stream.status;
+    }
+    copy_const_bytes(stream.buffer, stream.len, sliceptr(chunk), 0usize, chunk_len);
     stream.len += chunk_len;
     return stream.status;
 }
@@ -77,16 +134,25 @@ pub fn stream_next(stream: &mut t.RegexStream) -> t.MatchResult {
     if stream.buffer == null || stream.next_start > stream.len {
         return t.match_result(false, stream.base_offset + stream.len, stream.base_offset + stream.len, t.RegexStatus.no_match);
     }
-    let text_ptr: *const u8 = unsafe { ptrcast[*const u8](stream.buffer) };
-    let text: str = unsafe { strraw(text_ptr, stream.len) };
-    var found: t.MatchResult = unsafe { engine.search_compiled_from(&*stream.compiled, text, stream.next_start) };
+    let data_ptr: *const u8 = unsafe { ptrcast[*const u8](stream.buffer) };
+    var found: t.MatchResult = if stream.mode == t.MODE_BYTES {
+        unsafe { engine.search_bytes_raw_compiled_from(&*stream.compiled, data_ptr, stream.len, stream.next_start) }
+    } else {
+        let text: str = unsafe { strraw(data_ptr, stream.len) };
+        unsafe { engine.search_compiled_from(&*stream.compiled, text, stream.next_start) }
+    };
     if found.status != t.RegexStatus.ok || !found.matched {
         return found;
     }
     if !stream.finished && found.end == stream.len {
         return t.match_result(false, stream.base_offset + found.start, stream.base_offset + found.end, t.RegexStatus.no_match);
     }
-    stream.next_start = next_search_start(text, found.start, found.end);
+    stream.next_start = if stream.mode == t.MODE_BYTES {
+        next_bytes_search_start(stream.len, found.start, found.end)
+    } else {
+        let text_again: str = unsafe { strraw(data_ptr, stream.len) };
+        next_search_start(text_again, found.start, found.end)
+    };
     found.start += stream.base_offset;
     found.end += stream.base_offset;
     compact_stream(stream);
@@ -100,17 +166,23 @@ pub fn stream_buffer_bytes(stream: &t.RegexStream) -> usize {
 fn empty_stream(compiled: *const t.Regex, status: t.RegexStatus) -> t.RegexStream {
     return t.RegexStream {
         compiled: compiled,
+        mode: t.MODE_TEXT,
         buffer: null,
         len: 0usize,
         capacity: 0usize,
         base_offset: 0usize,
         next_start: 0usize,
         finished: false,
+        history_limit: 0usize,
         status: status,
     };
 }
 
 fn ensure_capacity(stream: &mut t.RegexStream, needed: usize) -> bool {
+    if stream.history_limit > 0usize && needed > stream.history_limit {
+        stream.status = t.RegexStatus.workspace_too_large;
+        return false;
+    }
     if needed <= stream.capacity {
         return true;
     }
@@ -121,6 +193,9 @@ fn ensure_capacity(stream: &mut t.RegexStream, needed: usize) -> bool {
     };
     while next_capacity < needed {
         next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
+    }
+    if stream.history_limit > 0usize && next_capacity > stream.history_limit {
+        next_capacity = stream.history_limit;
     }
     let next: *mut u8 = alloc.alloc_zeroed_bytes(next_capacity, sizeof[u8]);
     if next == null {
@@ -191,6 +266,19 @@ fn copy_bytes(dst: *mut u8, dst_start: usize, src: *mut u8, src_start: usize, le
     }
 }
 
+fn copy_const_bytes(dst: *mut u8, dst_start: usize, src: *const u8, src_start: usize, len: usize) -> void {
+    if dst == null || src == null {
+        return;
+    }
+    var index: usize = 0usize;
+    while index < len {
+        unsafe {
+            dst[dst_start + index] = src[src_start + index];
+        }
+        index += 1usize;
+    }
+}
+
 fn next_search_start(input: str, start: usize, end: usize) -> usize {
     if end > start {
         return end;
@@ -200,4 +288,14 @@ fn next_search_start(input: str, start: usize, end: usize) -> usize {
         return input_len + 1usize;
     }
     return unicode.next_boundary(input, end);
+}
+
+fn next_bytes_search_start(input_len: usize, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    if end >= input_len {
+        return input_len + 1usize;
+    }
+    return end + 1usize;
 }

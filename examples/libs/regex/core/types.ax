@@ -1,5 +1,7 @@
 module regex.core.types;
 
+import regex.config.limits as limits;
+
 pub const NO_STATE: usize = 0usize;
 pub const FLAGS_NONE: u8 = 0u8;
 pub const FLAG_CLASS_NEGATED: u8 = 1u8;
@@ -9,9 +11,14 @@ pub const FLAG_DOTALL: u8 = 8u8;
 pub const FLAG_EXTENDED: u8 = 16u8;
 pub const FLAG_UNGREEDY: u8 = 32u8;
 pub const FLAG_UNICODE: u8 = 64u8;
+pub const FLAG_ASCII: u8 = 128u8;
 
 pub const MODE_TEXT: u8 = 0u8;
 pub const MODE_BYTES: u8 = 1u8;
+
+pub const NEWLINE_UNICODE: u8 = 0u8;
+pub const NEWLINE_LF: u8 = 1u8;
+pub const NEWLINE_CRLF: u8 = 2u8;
 
 pub const OP_EMPTY: u8 = 0u8;
 pub const OP_EPSILON: u8 = 1u8;
@@ -27,8 +34,9 @@ pub const OP_ASSERT_WORD_BOUNDARY: u8 = 10u8;
 pub const OP_ASSERT_NOT_WORD_BOUNDARY: u8 = 11u8;
 pub const OP_ASSERT_WORD_START: u8 = 12u8;
 pub const OP_ASSERT_WORD_END: u8 = 13u8;
-pub const OP_MATCH: u8 = 14u8;
-pub const OP_SAVE: u8 = 15u8;
+pub const OP_ASSERT_SEARCH_START: u8 = 14u8;
+pub const OP_MATCH: u8 = 15u8;
+pub const OP_SAVE: u8 = 16u8;
 
 pub const CLASS_RANGE_SCALAR: u8 = 0u8;
 pub const CLASS_RANGE_PROPERTY: u8 = 1u8;
@@ -100,6 +108,24 @@ pub struct CaptureInfo {
     pub source_end: usize;
 }
 
+pub struct RegexOptions {
+    pub flags: u8;
+    pub newline_mode: u8;
+    pub max_pattern_bytes: usize;
+    pub max_state_capacity: usize;
+    pub max_range_capacity: usize;
+    pub max_workspace_states: usize;
+    pub max_bounded_repeat: usize;
+    pub max_capture_groups: usize;
+    pub stream_history_limit: usize;
+}
+
+pub struct RegexBuilder {
+    pub pattern: str;
+    pub mode: u8;
+    pub options: RegexOptions;
+}
+
 pub struct CaptureSpan {
     pub matched: bool;
     pub start: usize;
@@ -116,6 +142,7 @@ pub struct Fragment {
 pub struct Regex {
     pub pattern: str;
     pub mode: u8;
+    pub options: RegexOptions;
     pub states: *mut State;
     pub state_len: usize;
     pub state_capacity: usize;
@@ -157,6 +184,15 @@ pub struct FindIter {
     pub status: RegexStatus;
 }
 
+pub struct BytesFindIter {
+    pub compiled: *const Regex;
+    pub data: *const u8;
+    pub len: usize;
+    pub next_start: usize;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
 pub struct CaptureIter {
     pub compiled: *const Regex;
     pub input: str;
@@ -165,9 +201,29 @@ pub struct CaptureIter {
     pub status: RegexStatus;
 }
 
+pub struct BytesCaptureIter {
+    pub compiled: *const Regex;
+    pub data: *const u8;
+    pub len: usize;
+    pub next_start: usize;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
 pub struct SplitIter {
     pub compiled: *const Regex;
     pub input: str;
+    pub next_start: usize;
+    pub remaining_parts: usize;
+    pub pending_tail: bool;
+    pub finished: bool;
+    pub status: RegexStatus;
+}
+
+pub struct BytesSplitIter {
+    pub compiled: *const Regex;
+    pub data: *const u8;
+    pub len: usize;
     pub next_start: usize;
     pub remaining_parts: usize;
     pub pending_tail: bool;
@@ -190,9 +246,11 @@ pub struct ReplaceResult {
 }
 
 pub type ReplaceCallback = fn(str, &Captures, *mut u8, usize) -> ReplaceResult;
+pub type BytesReplaceCallback = fn(*const u8, usize, &Captures, *mut u8, usize) -> ReplaceResult;
 
 pub struct RegexSet {
     pub mode: u8;
+    pub options: RegexOptions;
     pub states: *mut State;
     pub state_len: usize;
     pub state_capacity: usize;
@@ -212,14 +270,35 @@ pub struct SetMatchesResult {
     pub written: usize;
 }
 
+pub struct SetMatchSpan {
+    pub matched: bool;
+    pub pattern_id: usize;
+    pub start: usize;
+    pub end: usize;
+    pub status: RegexStatus;
+}
+
+pub type SetScanCallback = fn(usize, usize, usize) -> RegexStatus;
+
+pub struct RegexChunk {
+    pub data: *const u8;
+    pub len: usize;
+}
+
+pub struct TextChunk {
+    pub text: str;
+}
+
 pub struct RegexStream {
     pub compiled: *const Regex;
+    pub mode: u8;
     pub buffer: *mut u8;
     pub len: usize;
     pub capacity: usize;
     pub base_offset: usize;
     pub next_start: usize;
     pub finished: bool;
+    pub history_limit: usize;
     pub status: RegexStatus;
 }
 
@@ -227,6 +306,38 @@ pub struct DatabaseResult {
     pub status: RegexStatus;
     pub written: usize;
     pub required: usize;
+}
+
+pub fn default_options() -> RegexOptions {
+    return RegexOptions {
+        flags: FLAGS_NONE,
+        newline_mode: NEWLINE_UNICODE,
+        max_pattern_bytes: limits.MAX_PATTERN_BYTES,
+        max_state_capacity: limits.MAX_STATE_CAPACITY,
+        max_range_capacity: limits.MAX_RANGE_CAPACITY,
+        max_workspace_states: limits.MAX_WORKSPACE_STATES,
+        max_bounded_repeat: limits.MAX_BOUNDED_REPEAT,
+        max_capture_groups: limits.MAX_CAPTURE_GROUPS,
+        stream_history_limit: limits.DEFAULT_STREAM_HISTORY_LIMIT,
+    };
+}
+
+pub fn builder(pattern: str, mode: u8) -> RegexBuilder {
+    return RegexBuilder {
+        pattern: pattern,
+        mode: mode,
+        options: default_options(),
+    };
+}
+
+pub fn set_match_span(matched: bool, pattern_id: usize, start: usize, end: usize, status: RegexStatus) -> SetMatchSpan {
+    return SetMatchSpan {
+        matched: matched,
+        pattern_id: pattern_id,
+        start: start,
+        end: end,
+        status: status,
+    };
 }
 
 pub fn invalid_fragment() -> Fragment {

@@ -4,19 +4,72 @@ import regex.api as api;
 import regex.core.types as t;
 
 pub type Regex = t.Regex;
+pub type RegexOptions = t.RegexOptions;
+pub type RegexBuilder = t.RegexBuilder;
 pub type MatchResult = t.MatchResult;
 pub type Captures = t.Captures;
 pub type CaptureSpan = t.CaptureSpan;
 pub type RegexStatus = t.RegexStatus;
 pub type RegexSet = t.RegexSet;
 pub type SetMatchesResult = t.SetMatchesResult;
+pub type SetMatchSpan = t.SetMatchSpan;
+pub type SetScanCallback = t.SetScanCallback;
+pub type FindIter = t.BytesFindIter;
+pub type CaptureIter = t.BytesCaptureIter;
+pub type SplitIter = t.BytesSplitIter;
+pub type SplitPart = t.SplitPart;
+pub type ReplaceResult = t.ReplaceResult;
+pub type ReplaceCallback = t.BytesReplaceCallback;
+pub type RegexStream = t.RegexStream;
+pub type DatabaseResult = t.DatabaseResult;
+pub type RegexChunk = t.RegexChunk;
 
 pub fn compile(pattern: str) -> t.Regex {
     return api.compile_bytes(pattern);
 }
 
+pub fn compile_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return api.compile_bytes_with_options(pattern, options);
+}
+
 pub fn compile_set(patterns: []const str) -> t.RegexSet {
     return api.compile_set_bytes(patterns);
+}
+
+pub fn compile_set_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+    return api.compile_set_bytes_with_options(patterns, options);
+}
+
+pub fn default_options() -> t.RegexOptions {
+    return api.default_options();
+}
+
+pub fn builder(pattern: str) -> t.RegexBuilder {
+    return api.builder_bytes(pattern);
+}
+
+pub fn builder_case_insensitive(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return api.builder_case_insensitive(value, enabled);
+}
+
+pub fn builder_multiline(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return api.builder_multiline(value, enabled);
+}
+
+pub fn builder_dotall(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return api.builder_dotall(value, enabled);
+}
+
+pub fn builder_ascii(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return api.builder_ascii(value, enabled);
+}
+
+pub fn builder_stream_history_limit(value: t.RegexBuilder, limit: usize) -> t.RegexBuilder {
+    return api.builder_stream_history_limit(value, limit);
+}
+
+pub fn builder_compile(value: &t.RegexBuilder) -> t.Regex {
+    return api.builder_compile(value);
 }
 
 pub fn destroy(compiled: &mut t.Regex) -> void {
@@ -29,6 +82,10 @@ pub fn destroy_set(compiled: &mut t.RegexSet) -> void {
 
 pub fn is_valid(compiled: &t.Regex) -> bool {
     return api.is_valid(compiled);
+}
+
+pub fn set_is_valid(compiled: &t.RegexSet) -> bool {
+    return api.set_is_valid(compiled);
 }
 
 pub fn search_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
@@ -58,6 +115,145 @@ pub fn matches_set_compiled(
     out_capacity: usize
 ) -> t.SetMatchesResult {
     return api.matches_bytes_set_compiled(compiled, input, out_pattern_ids, out_capacity);
+}
+
+pub fn find_set_compiled(compiled: &t.RegexSet, input: []const u8) -> t.SetMatchSpan {
+    return api.find_bytes_set_compiled(compiled, input);
+}
+
+pub fn find_set_compiled_from(compiled: &t.RegexSet, input: []const u8, start_offset: usize) -> t.SetMatchSpan {
+    return api.find_bytes_set_compiled_from(compiled, input, start_offset);
+}
+
+pub fn scan_set_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return api.scan_bytes_set_compiled(compiled, input, callback);
+}
+
+pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []const t.RegexChunk) -> t.MatchResult {
+    return api.search_bytes_vectored_compiled(compiled, chunks);
+}
+
+pub fn matches_set_vectored_compiled(
+    compiled: &t.RegexSet,
+    chunks: []const t.RegexChunk,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    return api.matches_bytes_set_vectored_compiled(compiled, chunks, out_pattern_ids, out_capacity);
+}
+
+pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk) -> t.SetMatchSpan {
+    return api.find_bytes_set_vectored_compiled(compiled, chunks);
+}
+
+pub fn find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter {
+    return api.bytes_find_iter(compiled, input);
+}
+
+pub fn find_next(iter: &mut t.BytesFindIter) -> t.MatchResult {
+    return api.bytes_find_next(iter);
+}
+
+pub fn captures_iter(compiled: &t.Regex, input: []const u8) -> t.BytesCaptureIter {
+    return api.bytes_captures_iter(compiled, input);
+}
+
+pub fn captures_next(iter: &mut t.BytesCaptureIter) -> t.Captures {
+    return api.bytes_captures_next(iter);
+}
+
+pub fn split_iter(compiled: &t.Regex, input: []const u8) -> t.BytesSplitIter {
+    return api.bytes_split_iter(compiled, input);
+}
+
+pub fn splitn_iter(compiled: &t.Regex, input: []const u8, limit: usize) -> t.BytesSplitIter {
+    return api.bytes_splitn_iter(compiled, input, limit);
+}
+
+pub fn split_next(iter: &mut t.BytesSplitIter) -> t.SplitPart {
+    return api.bytes_split_next(iter);
+}
+
+pub fn replace_all(compiled: &t.Regex, input: []const u8, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
+    return api.bytes_replace_all(compiled, input, replacement, out, out_capacity);
+}
+
+pub fn replace_first(compiled: &t.Regex, input: []const u8, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
+    return api.bytes_replace_first(compiled, input, replacement, out, out_capacity);
+}
+
+pub fn replace_n(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_n(compiled, input, replacement, limit, out, out_capacity);
+}
+
+pub fn replace_all_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_all_with(compiled, input, callback, out, out_capacity);
+}
+
+pub fn replace_first_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_first_with(compiled, input, callback, out, out_capacity);
+}
+
+pub fn replace_n_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_n_with(compiled, input, callback, limit, out, out_capacity);
+}
+
+pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
+    return api.serialize_set(compiled, out, out_capacity);
+}
+
+pub fn deserialize_set(input: []const u8) -> t.RegexSet {
+    return api.deserialize_set(input);
+}
+
+pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {
+    return api.open_bytes_stream(compiled);
+}
+
+pub fn stream_feed(stream: &mut t.RegexStream, chunk: []const u8) -> t.RegexStatus {
+    return api.stream_feed_bytes(stream, chunk);
+}
+
+pub fn stream_finish(stream: &mut t.RegexStream) -> t.RegexStatus {
+    return api.stream_finish(stream);
+}
+
+pub fn stream_next(stream: &mut t.RegexStream) -> t.MatchResult {
+    return api.stream_next(stream);
+}
+
+pub fn destroy_stream(stream: &mut t.RegexStream) -> void {
+    api.destroy_stream(stream);
+}
+
+pub fn stream_buffer_bytes(stream: &t.RegexStream) -> usize {
+    return api.stream_buffer_bytes(stream);
 }
 
 pub fn destroy_captures(captures: &mut t.Captures) -> void {

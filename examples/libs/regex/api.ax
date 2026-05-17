@@ -14,20 +14,122 @@ import regex.ops.stream as stream_ops;
 import regex.vm.engine as engine;
 
 pub type Regex = t.Regex;
+pub type RegexOptions = t.RegexOptions;
+pub type RegexBuilder = t.RegexBuilder;
 pub type MatchResult = t.MatchResult;
 pub type RegexStatus = t.RegexStatus;
 pub type CaptureSpan = t.CaptureSpan;
 pub type Captures = t.Captures;
 pub type FindIter = t.FindIter;
+pub type BytesFindIter = t.BytesFindIter;
 pub type CaptureIter = t.CaptureIter;
+pub type BytesCaptureIter = t.BytesCaptureIter;
 pub type SplitIter = t.SplitIter;
+pub type BytesSplitIter = t.BytesSplitIter;
 pub type SplitPart = t.SplitPart;
 pub type ReplaceResult = t.ReplaceResult;
 pub type ReplaceCallback = t.ReplaceCallback;
+pub type BytesReplaceCallback = t.BytesReplaceCallback;
 pub type RegexSet = t.RegexSet;
 pub type SetMatchesResult = t.SetMatchesResult;
+pub type SetMatchSpan = t.SetMatchSpan;
+pub type SetScanCallback = t.SetScanCallback;
+pub type RegexChunk = t.RegexChunk;
+pub type TextChunk = t.TextChunk;
 pub type RegexStream = t.RegexStream;
 pub type DatabaseResult = t.DatabaseResult;
+
+pub fn default_options() -> t.RegexOptions {
+    return t.default_options();
+}
+
+pub fn builder(pattern: str) -> t.RegexBuilder {
+    return t.builder(pattern, t.MODE_TEXT);
+}
+
+pub fn builder_bytes(pattern: str) -> t.RegexBuilder {
+    return t.builder(pattern, t.MODE_BYTES);
+}
+
+pub fn builder_case_insensitive(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return builder_flag(value, t.FLAG_CASE_INSENSITIVE, enabled);
+}
+
+pub fn builder_multiline(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return builder_flag(value, t.FLAG_MULTILINE, enabled);
+}
+
+pub fn builder_dotall(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return builder_flag(value, t.FLAG_DOTALL, enabled);
+}
+
+pub fn builder_extended(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return builder_flag(value, t.FLAG_EXTENDED, enabled);
+}
+
+pub fn builder_ungreedy(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    return builder_flag(value, t.FLAG_UNGREEDY, enabled);
+}
+
+pub fn builder_ascii(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    var next: t.RegexBuilder = builder_flag(value, t.FLAG_ASCII, enabled);
+    if enabled {
+        next.options.flags = clear_flag(next.options.flags, t.FLAG_UNICODE);
+    }
+    return next;
+}
+
+pub fn builder_unicode(value: t.RegexBuilder, enabled: bool) -> t.RegexBuilder {
+    var next: t.RegexBuilder = builder_flag(value, t.FLAG_UNICODE, enabled);
+    if enabled {
+        next.options.flags = clear_flag(next.options.flags, t.FLAG_ASCII);
+    }
+    return next;
+}
+
+pub fn builder_newline_unicode(value: t.RegexBuilder) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    next.options.newline_mode = t.NEWLINE_UNICODE;
+    return next;
+}
+
+pub fn builder_newline_lf(value: t.RegexBuilder) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    next.options.newline_mode = t.NEWLINE_LF;
+    return next;
+}
+
+pub fn builder_newline_crlf(value: t.RegexBuilder) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    next.options.newline_mode = t.NEWLINE_CRLF;
+    return next;
+}
+
+pub fn builder_stream_history_limit(value: t.RegexBuilder, limit: usize) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    next.options.stream_history_limit = limit;
+    return next;
+}
+
+pub fn builder_workspace_limit(value: t.RegexBuilder, limit: usize) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    next.options.max_workspace_states = limit;
+    return next;
+}
+
+pub fn builder_program_limits(value: t.RegexBuilder, max_states: usize, max_ranges: usize) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    next.options.max_state_capacity = max_states;
+    next.options.max_range_capacity = max_ranges;
+    return next;
+}
+
+pub fn builder_compile(value: &t.RegexBuilder) -> t.Regex {
+    if value.mode == t.MODE_BYTES {
+        return compile_bytes_with_options(value.pattern, value.options);
+    }
+    return compile_with_options(value.pattern, value.options);
+}
 
 pub fn compile(pattern: str) -> t.Regex {
     return parser.compile(pattern);
@@ -37,12 +139,28 @@ pub fn compile_bytes(pattern: str) -> t.Regex {
     return parser.compile_bytes(pattern);
 }
 
+pub fn compile_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return parser.compile_with_options(pattern, options);
+}
+
+pub fn compile_bytes_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return parser.compile_bytes_with_options(pattern, options);
+}
+
 pub fn compile_set(patterns: []const str) -> t.RegexSet {
     return set_compile.compile_set(patterns);
 }
 
 pub fn compile_set_bytes(patterns: []const str) -> t.RegexSet {
     return set_compile.compile_set_bytes(patterns);
+}
+
+pub fn compile_set_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+    return set_compile.compile_set_with_options(patterns, options);
+}
+
+pub fn compile_set_bytes_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+    return set_compile.compile_set_bytes_with_options(patterns, options);
 }
 
 pub fn no_capture() -> usize {
@@ -183,6 +301,64 @@ pub fn matches_bytes_set_compiled(
     return engine.matches_bytes_set_compiled(compiled, input, out_pattern_ids, out_capacity);
 }
 
+pub fn find_set_compiled(compiled: &t.RegexSet, input: str) -> t.SetMatchSpan {
+    return engine.find_set_compiled(compiled, input);
+}
+
+pub fn find_set_compiled_from(compiled: &t.RegexSet, input: str, start_offset: usize) -> t.SetMatchSpan {
+    return engine.find_set_compiled_from(compiled, input, start_offset);
+}
+
+pub fn find_bytes_set_compiled(compiled: &t.RegexSet, input: []const u8) -> t.SetMatchSpan {
+    return engine.find_bytes_set_compiled(compiled, input);
+}
+
+pub fn find_bytes_set_compiled_from(compiled: &t.RegexSet, input: []const u8, start_offset: usize) -> t.SetMatchSpan {
+    return engine.find_bytes_set_compiled_from(compiled, input, start_offset);
+}
+
+pub fn scan_set_compiled(compiled: &t.RegexSet, input: str, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_set_compiled(compiled, input, callback);
+}
+
+pub fn scan_bytes_set_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_bytes_set_compiled(compiled, input, callback);
+}
+
+pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []const t.TextChunk) -> t.MatchResult {
+    return engine.search_vectored_compiled(compiled, chunks);
+}
+
+pub fn search_bytes_vectored_compiled(compiled: &t.Regex, chunks: []const t.RegexChunk) -> t.MatchResult {
+    return engine.search_bytes_vectored_compiled(compiled, chunks);
+}
+
+pub fn matches_set_vectored_compiled(
+    compiled: &t.RegexSet,
+    chunks: []const t.TextChunk,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    return engine.matches_set_vectored_compiled(compiled, chunks, out_pattern_ids, out_capacity);
+}
+
+pub fn matches_bytes_set_vectored_compiled(
+    compiled: &t.RegexSet,
+    chunks: []const t.RegexChunk,
+    out_pattern_ids: *mut usize,
+    out_capacity: usize
+) -> t.SetMatchesResult {
+    return engine.matches_bytes_set_vectored_compiled(compiled, chunks, out_pattern_ids, out_capacity);
+}
+
+pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextChunk) -> t.SetMatchSpan {
+    return engine.find_set_vectored_compiled(compiled, chunks);
+}
+
+pub fn find_bytes_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk) -> t.SetMatchSpan {
+    return engine.find_bytes_set_vectored_compiled(compiled, chunks);
+}
+
 pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
     return database.serialize_set(compiled, out, out_capacity);
 }
@@ -231,12 +407,28 @@ pub fn find_next(iter: &mut t.FindIter) -> t.MatchResult {
     return iter_ops.find_next(iter);
 }
 
+pub fn bytes_find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter {
+    return iter_ops.bytes_find_iter(compiled, input);
+}
+
+pub fn bytes_find_next(iter: &mut t.BytesFindIter) -> t.MatchResult {
+    return iter_ops.bytes_find_next(iter);
+}
+
 pub fn captures_iter(compiled: &t.Regex, input: str) -> t.CaptureIter {
     return iter_ops.captures_iter(compiled, input);
 }
 
 pub fn captures_next(iter: &mut t.CaptureIter) -> t.Captures {
     return iter_ops.captures_next(iter);
+}
+
+pub fn bytes_captures_iter(compiled: &t.Regex, input: []const u8) -> t.BytesCaptureIter {
+    return iter_ops.bytes_captures_iter(compiled, input);
+}
+
+pub fn bytes_captures_next(iter: &mut t.BytesCaptureIter) -> t.Captures {
+    return iter_ops.bytes_captures_next(iter);
 }
 
 pub fn split_iter(compiled: &t.Regex, input: str) -> t.SplitIter {
@@ -249,6 +441,18 @@ pub fn splitn_iter(compiled: &t.Regex, input: str, limit: usize) -> t.SplitIter 
 
 pub fn split_next(iter: &mut t.SplitIter) -> t.SplitPart {
     return split_ops.split_next(iter);
+}
+
+pub fn bytes_split_iter(compiled: &t.Regex, input: []const u8) -> t.BytesSplitIter {
+    return split_ops.bytes_split_iter(compiled, input);
+}
+
+pub fn bytes_splitn_iter(compiled: &t.Regex, input: []const u8, limit: usize) -> t.BytesSplitIter {
+    return split_ops.bytes_splitn_iter(compiled, input, limit);
+}
+
+pub fn bytes_split_next(iter: &mut t.BytesSplitIter) -> t.SplitPart {
+    return split_ops.bytes_split_next(iter);
 }
 
 pub fn replace_all(compiled: &t.Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
@@ -301,12 +505,70 @@ pub fn replace_n_with(
     return replace_ops.replace_n_with(compiled, input, callback, limit, out, out_capacity);
 }
 
+pub fn bytes_replace_all(compiled: &t.Regex, input: []const u8, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
+    return replace_ops.bytes_replace_all(compiled, input, replacement, out, out_capacity);
+}
+
+pub fn bytes_replace_first(compiled: &t.Regex, input: []const u8, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {
+    return replace_ops.bytes_replace_first(compiled, input, replacement, out, out_capacity);
+}
+
+pub fn bytes_replace_n(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_ops.bytes_replace_n(compiled, input, replacement, limit, out, out_capacity);
+}
+
+pub fn bytes_replace_all_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_ops.bytes_replace_all_with(compiled, input, callback, out, out_capacity);
+}
+
+pub fn bytes_replace_first_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_ops.bytes_replace_first_with(compiled, input, callback, out, out_capacity);
+}
+
+pub fn bytes_replace_n_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return replace_ops.bytes_replace_n_with(compiled, input, callback, limit, out, out_capacity);
+}
+
 pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {
     return stream_ops.open_stream(compiled);
 }
 
+pub fn open_bytes_stream(compiled: &t.Regex) -> t.RegexStream {
+    return stream_ops.open_bytes_stream(compiled);
+}
+
 pub fn stream_feed(stream: &mut t.RegexStream, chunk: str) -> t.RegexStatus {
     return stream_ops.stream_feed(stream, chunk);
+}
+
+pub fn stream_feed_bytes(stream: &mut t.RegexStream, chunk: []const u8) -> t.RegexStatus {
+    return stream_ops.stream_feed_bytes(stream, chunk);
 }
 
 pub fn stream_finish(stream: &mut t.RegexStream) -> t.RegexStatus {
@@ -359,6 +621,20 @@ pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_cap
     var compiled: t.Regex = compile(pattern);
     defer destroy(&mut compiled);
     return replace_all(&compiled, input, replacement, out, out_capacity);
+}
+
+fn builder_flag(value: t.RegexBuilder, flag: u8, enabled: bool) -> t.RegexBuilder {
+    var next: t.RegexBuilder = value;
+    if enabled {
+        next.options.flags = next.options.flags | flag;
+    } else {
+        next.options.flags = clear_flag(next.options.flags, flag);
+    }
+    return next;
+}
+
+fn clear_flag(flags: u8, flag: u8) -> u8 {
+    return flags & ~flag;
 }
 
 pub fn status_code(status: t.RegexStatus) -> i32 {

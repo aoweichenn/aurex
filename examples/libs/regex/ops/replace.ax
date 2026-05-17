@@ -155,6 +155,157 @@ pub fn replace_n_with(
     return finish_result(written, required, replacements, out_capacity);
 }
 
+pub fn bytes_replace_all(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return bytes_replace_n(compiled, input, replacement, t.CAPTURE_MISSING, out, out_capacity);
+}
+
+pub fn bytes_replace_first(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return bytes_replace_n(compiled, input, replacement, 1usize, out, out_capacity);
+}
+
+pub fn bytes_replace_n(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
+    }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    defer engine.destroy_match_workspace(&mut workspace);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
+    let data: *const u8 = sliceptr(input);
+    let input_len: usize = slicelen(input);
+    var cursor: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    var replacements: usize = 0usize;
+    while cursor <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_bytes_input_range(data, cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
+        engine.captures_bytes_raw_compiled_from_into(compiled, data, input_len, cursor, &mut workspace, &mut captures);
+        if captures.status == t.RegexStatus.no_match || !captures.matched {
+            let tail: CopyState = copy_bytes_input_range(data, cursor, input_len, out, out_capacity, written, required);
+            written = tail.written;
+            required = tail.required;
+            return finish_result(written, required, replacements, out_capacity);
+        }
+        if captures.status != t.RegexStatus.ok {
+            return t.replace_result(captures.status, written, required, replacements);
+        }
+        let prefix: CopyState = copy_bytes_input_range(data, cursor, captures.start, out, out_capacity, written, required);
+        written = prefix.written;
+        required = prefix.required;
+        let replacement_copy: CopyState = expand_bytes_replacement(compiled, data, &captures, replacement, out, out_capacity, written, required);
+        if replacement_copy.status != t.RegexStatus.ok {
+            return t.replace_result(replacement_copy.status, written, required, replacements);
+        }
+        written = replacement_copy.written;
+        required = replacement_copy.required;
+        replacements += 1usize;
+        cursor = next_bytes_search_start(input_len, captures.start, captures.end);
+    }
+    return finish_result(written, required, replacements, out_capacity);
+}
+
+pub fn bytes_replace_all_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return bytes_replace_n_with(compiled, input, callback, t.CAPTURE_MISSING, out, out_capacity);
+}
+
+pub fn bytes_replace_first_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    return bytes_replace_n_with(compiled, input, callback, 1usize, out, out_capacity);
+}
+
+pub fn bytes_replace_n_with(
+    compiled: &t.Regex,
+    input: []const u8,
+    callback: t.BytesReplaceCallback,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize
+) -> t.ReplaceResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.replace_result(compiled.status, 0usize, 0usize, 0usize);
+    }
+    var workspace: engine.Workspace = engine.create_match_workspace(compiled);
+    defer engine.destroy_match_workspace(&mut workspace);
+    if engine.match_workspace_status(&workspace) != t.RegexStatus.ok {
+        return t.replace_result(engine.match_workspace_status(&workspace), 0usize, 0usize, 0usize);
+    }
+    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
+    defer results.destroy_captures(&mut captures);
+    let data: *const u8 = sliceptr(input);
+    let input_len: usize = slicelen(input);
+    var cursor: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    var replacements: usize = 0usize;
+    while cursor <= input_len {
+        if limit != t.CAPTURE_MISSING && replacements >= limit {
+            let limited_tail: CopyState = copy_bytes_input_range(data, cursor, input_len, out, out_capacity, written, required);
+            return finish_result(limited_tail.written, limited_tail.required, replacements, out_capacity);
+        }
+        engine.captures_bytes_raw_compiled_from_into(compiled, data, input_len, cursor, &mut workspace, &mut captures);
+        if captures.status == t.RegexStatus.no_match || !captures.matched {
+            let tail: CopyState = copy_bytes_input_range(data, cursor, input_len, out, out_capacity, written, required);
+            written = tail.written;
+            required = tail.required;
+            return finish_result(written, required, replacements, out_capacity);
+        }
+        if captures.status != t.RegexStatus.ok {
+            return t.replace_result(captures.status, written, required, replacements);
+        }
+        let prefix: CopyState = copy_bytes_input_range(data, cursor, captures.start, out, out_capacity, written, required);
+        written = prefix.written;
+        required = prefix.required;
+
+        let replacement_out: *mut u8 = output_tail(out, out_capacity, written);
+        let replacement_capacity: usize = remaining_capacity(out_capacity, written);
+        let callback_result: t.ReplaceResult = callback(data, input_len, &captures, replacement_out, replacement_capacity);
+        if callback_result.status != t.RegexStatus.ok && callback_result.status != t.RegexStatus.buffer_too_small {
+            return t.replace_result(callback_result.status, written, required, replacements);
+        }
+        written = append_callback_written(written, callback_result.written, out_capacity);
+        required += callback_result.required;
+        replacements += 1usize;
+        cursor = next_bytes_search_start(input_len, captures.start, captures.end);
+    }
+    return finish_result(written, required, replacements, out_capacity);
+}
+
 struct CopyState {
     written: usize;
     required: usize;
@@ -215,6 +366,28 @@ fn copy_input_range(
     return CopyState { written: next_written, required: next_required, status: t.RegexStatus.ok };
 }
 
+fn copy_bytes_input_range(
+    data: *const u8,
+    start: usize,
+    end: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    written: usize,
+    required: usize
+) -> CopyState {
+    var next_written: usize = written;
+    var next_required: usize = required;
+    var offset: usize = start;
+    while offset < end {
+        let value: u8 = unsafe { data[offset] };
+        let state: CopyState = copy_byte(value, out, out_capacity, next_written, next_required);
+        next_written = state.written;
+        next_required = state.required;
+        offset += 1usize;
+    }
+    return CopyState { written: next_written, required: next_required, status: t.RegexStatus.ok };
+}
+
 fn expand_replacement(
     compiled: &t.Regex,
     input: str,
@@ -239,6 +412,41 @@ fn expand_replacement(
             at += 1usize;
         } else {
             let expanded: TemplateExpansion = expand_template(compiled, input, captures, replacement, at, out, out_capacity, next_written, next_required);
+            if expanded.status != t.RegexStatus.ok {
+                return CopyState { written: next_written, required: next_required, status: expanded.status };
+            }
+            next_written = expanded.written;
+            next_required = expanded.required;
+            at = expanded.next_at;
+        }
+    }
+    return CopyState { written: next_written, required: next_required, status: t.RegexStatus.ok };
+}
+
+fn expand_bytes_replacement(
+    compiled: &t.Regex,
+    data: *const u8,
+    captures: &t.Captures,
+    replacement: str,
+    out: *mut u8,
+    out_capacity: usize,
+    written: usize,
+    required: usize
+) -> CopyState {
+    var next_written: usize = written;
+    var next_required: usize = required;
+    var at: usize = 0usize;
+    let replacement_len: usize = strblen(replacement);
+    let replacement_data: *const u8 = strptr(replacement);
+    while at < replacement_len {
+        let value: u8 = unsafe { replacement_data[at] };
+        if value != ascii.DOLLAR {
+            let copied: CopyState = copy_byte(value, out, out_capacity, next_written, next_required);
+            next_written = copied.written;
+            next_required = copied.required;
+            at += 1usize;
+        } else {
+            let expanded: TemplateExpansion = expand_bytes_template(compiled, data, captures, replacement, at, out, out_capacity, next_written, next_required);
             if expanded.status != t.RegexStatus.ok {
                 return CopyState { written: next_written, required: next_required, status: expanded.status };
             }
@@ -297,6 +505,45 @@ fn expand_template(
     };
 }
 
+fn expand_bytes_template(
+    compiled: &t.Regex,
+    data: *const u8,
+    captures: &t.Captures,
+    replacement: str,
+    dollar_at: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    written: usize,
+    required: usize
+) -> TemplateExpansion {
+    let replacement_len: usize = strblen(replacement);
+    let next_at: usize = dollar_at + 1usize;
+    if next_at >= replacement_len {
+        let copied: CopyState = copy_byte(ascii.DOLLAR, out, out_capacity, written, required);
+        return template_result(copied, replacement_len, t.RegexStatus.ok);
+    }
+    let replacement_data: *const u8 = strptr(replacement);
+    let marker: u8 = unsafe { replacement_data[next_at] };
+    if marker == ascii.DOLLAR {
+        let copied_dollar: CopyState = copy_byte(ascii.DOLLAR, out, out_capacity, written, required);
+        return template_result(copied_dollar, next_at + 1usize, t.RegexStatus.ok);
+    }
+    if ascii.is_digit(marker) {
+        let parsed: ParsedCaptureIndex = parse_capture_index(replacement, next_at, replacement_len);
+        let copied_capture: CopyState = copy_bytes_capture(data, captures, parsed.value, out, out_capacity, written, required);
+        return template_result(copied_capture, parsed.next_at, copied_capture.status);
+    }
+    if marker == ascii.LBRACE {
+        return expand_bytes_named_template(compiled, data, captures, replacement, next_at + 1usize, out, out_capacity, written, required);
+    }
+    return TemplateExpansion {
+        written: written,
+        required: required,
+        next_at: dollar_at,
+        status: t.RegexStatus.replacement_error,
+    };
+}
+
 fn expand_named_template(
     compiled: &t.Regex,
     input: str,
@@ -336,6 +583,48 @@ fn expand_named_template(
         };
     }
     let copied: CopyState = copy_capture(input, captures, capture_index, out, out_capacity, written, required);
+    return template_result(copied, at + 1usize, copied.status);
+}
+
+fn expand_bytes_named_template(
+    compiled: &t.Regex,
+    data: *const u8,
+    captures: &t.Captures,
+    replacement: str,
+    name_start: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    written: usize,
+    required: usize
+) -> TemplateExpansion {
+    var at: usize = name_start;
+    let replacement_len: usize = strblen(replacement);
+    while at < replacement_len && ascii.byte_at(replacement, at) != ascii.RBRACE {
+        at += 1usize;
+    }
+    if at >= replacement_len || at == name_start {
+        return TemplateExpansion {
+            written: written,
+            required: required,
+            next_at: name_start,
+            status: t.RegexStatus.replacement_error,
+        };
+    }
+    let capture_index: usize = if replacement_slice_is_digits(replacement, name_start, at) {
+        parse_capture_index_range(replacement, name_start, at)
+    } else {
+        let name: str = replacement[name_start:at];
+        results.capture_index(compiled, name)
+    };
+    if capture_index == t.NO_CAPTURE {
+        return TemplateExpansion {
+            written: written,
+            required: required,
+            next_at: at + 1usize,
+            status: t.RegexStatus.replacement_error,
+        };
+    }
+    let copied: CopyState = copy_bytes_capture(data, captures, capture_index, out, out_capacity, written, required);
     return template_result(copied, at + 1usize, copied.status);
 }
 
@@ -403,6 +692,22 @@ fn copy_capture(
     return copy_input_range(input, span.start, span.end, out, out_capacity, written, required);
 }
 
+fn copy_bytes_capture(
+    data: *const u8,
+    captures: &t.Captures,
+    capture_index: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    written: usize,
+    required: usize
+) -> CopyState {
+    let span: t.CaptureSpan = results.capture_at(captures, capture_index);
+    if !span.matched {
+        return CopyState { written: written, required: required, status: t.RegexStatus.ok };
+    }
+    return copy_bytes_input_range(data, span.start, span.end, out, out_capacity, written, required);
+}
+
 fn copy_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
     if required < out_capacity && out != null {
         unsafe {
@@ -432,4 +737,14 @@ fn next_search_start(input: str, start: usize, end: usize) -> usize {
         return input_len + 1usize;
     }
     return unicode.next_boundary(input, end);
+}
+
+fn next_bytes_search_start(input_len: usize, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    if end >= input_len {
+        return input_len + 1usize;
+    }
+    return end + 1usize;
 }

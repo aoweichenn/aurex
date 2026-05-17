@@ -5,35 +5,40 @@ import regex.core.types as t;
 import regex.runtime.alloc as alloc;
 
 pub fn create(pattern: str, mode: u8) -> t.Regex {
+    return create_with_options(pattern, mode, t.default_options());
+}
+
+pub fn create_with_options(pattern: str, mode: u8, options: t.RegexOptions) -> t.Regex {
     let pattern_len: usize = strblen(pattern);
-    if pattern_len > limits.MAX_PATTERN_BYTES {
-        return empty_with_status(pattern, t.RegexStatus.pattern_too_large);
+    if pattern_len > options.max_pattern_bytes {
+        return empty_with_status(pattern, mode, options, t.RegexStatus.pattern_too_large);
     }
     let state_capacity: usize = limits.MIN_STATE_CAPACITY + pattern_len * limits.STATES_PER_PATTERN_BYTE;
     let range_capacity: usize = limits.MIN_RANGE_CAPACITY + pattern_len * limits.RANGES_PER_PATTERN_BYTE;
-    if state_capacity > limits.MAX_STATE_CAPACITY || range_capacity > limits.MAX_RANGE_CAPACITY {
-        return empty_with_status(pattern, t.RegexStatus.program_too_large);
+    if state_capacity > options.max_state_capacity || range_capacity > options.max_range_capacity {
+        return empty_with_status(pattern, mode, options, t.RegexStatus.program_too_large);
     }
     let states: *mut t.State = unsafe {
         ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_capacity, sizeof[t.State]))
     };
     if states == null {
-        return empty_with_status(pattern, t.RegexStatus.out_of_memory);
+        return empty_with_status(pattern, mode, options, t.RegexStatus.out_of_memory);
     }
     let ranges: *mut t.ClassRange = unsafe {
         ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_capacity, sizeof[t.ClassRange]))
     };
     if ranges == null {
         alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
-        return empty_with_status(pattern, t.RegexStatus.out_of_memory);
+        return empty_with_status(pattern, mode, options, t.RegexStatus.out_of_memory);
     }
+    let capture_capacity: usize = options.max_capture_groups + limits.RESERVED_CAPTURE_INFO_COUNT;
     let captures: *mut t.CaptureInfo = unsafe {
-        ptrcast[*mut t.CaptureInfo](alloc.alloc_zeroed_bytes(limits.MAX_CAPTURE_INFOS, sizeof[t.CaptureInfo]))
+        ptrcast[*mut t.CaptureInfo](alloc.alloc_zeroed_bytes(capture_capacity, sizeof[t.CaptureInfo]))
     };
     if captures == null {
         alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
         alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
-        return empty_with_status(pattern, t.RegexStatus.out_of_memory);
+        return empty_with_status(pattern, mode, options, t.RegexStatus.out_of_memory);
     }
     unsafe {
         captures[t.CAPTURE_WHOLE_MATCH].name_start = 0usize;
@@ -44,6 +49,7 @@ pub fn create(pattern: str, mode: u8) -> t.Regex {
     return t.Regex {
         pattern: pattern,
         mode: mode,
+        options: options,
         states: states,
         state_len: limits.RESERVED_STATE_COUNT,
         state_capacity: state_capacity,
@@ -52,7 +58,7 @@ pub fn create(pattern: str, mode: u8) -> t.Regex {
         range_capacity: range_capacity,
         captures: captures,
         capture_len: limits.RESERVED_CAPTURE_INFO_COUNT,
-        capture_capacity: limits.MAX_CAPTURE_INFOS,
+        capture_capacity: capture_capacity,
         start: t.NO_STATE,
         accept: t.NO_STATE,
         status: t.RegexStatus.ok,
@@ -69,6 +75,7 @@ pub fn destroy(compiled: &mut t.Regex) -> void {
     compiled.ranges = null;
     compiled.captures = null;
     compiled.mode = t.MODE_TEXT;
+    compiled.options = t.default_options();
     compiled.state_len = 0usize;
     compiled.state_capacity = 0usize;
     compiled.range_len = 0usize;
@@ -157,19 +164,39 @@ pub fn add_assert_absolute_end(compiled: &mut t.Regex) -> usize {
 }
 
 pub fn add_assert_word_boundary(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_WORD_BOUNDARY, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_assert_word_boundary_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_assert_word_boundary_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ASSERT_WORD_BOUNDARY, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_not_word_boundary(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_NOT_WORD_BOUNDARY, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_assert_not_word_boundary_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_assert_not_word_boundary_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ASSERT_NOT_WORD_BOUNDARY, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_word_start(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_WORD_START, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_assert_word_start_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_assert_word_start_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ASSERT_WORD_START, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_assert_word_end(compiled: &mut t.Regex) -> usize {
-    return add_state(compiled, t.OP_ASSERT_WORD_END, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+    return add_assert_word_end_flags(compiled, t.FLAGS_NONE);
+}
+
+pub fn add_assert_word_end_flags(compiled: &mut t.Regex, flags: u8) -> usize {
+    return add_state(compiled, t.OP_ASSERT_WORD_END, flags, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_search_start(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_SEARCH_START, t.FLAGS_NONE, 0usize, 0usize, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
 }
 
 pub fn add_save(compiled: &mut t.Regex, slot: usize) -> usize {
@@ -229,7 +256,7 @@ pub fn add_capture_info(
     source_start: usize,
     source_end: usize
 ) -> usize {
-    if compiled.capture_len >= compiled.capture_capacity || compiled.capture_len >= limits.MAX_CAPTURE_INFOS {
+    if compiled.capture_len >= compiled.capture_capacity {
         set_error(compiled, t.RegexStatus.capture_too_large, source_start, t.ERROR_KIND_CAPTURE_TOO_LARGE);
         return t.NO_CAPTURE;
     }
@@ -354,10 +381,11 @@ pub fn capture(compiled: &mut t.Regex, body: t.Fragment, capture_index: usize, s
     return fragment(start, end, source_start, source_end);
 }
 
-fn empty_with_status(pattern: str, status: t.RegexStatus) -> t.Regex {
+fn empty_with_status(pattern: str, mode: u8, options: t.RegexOptions, status: t.RegexStatus) -> t.Regex {
     return t.Regex {
         pattern: pattern,
-        mode: t.MODE_TEXT,
+        mode: mode,
+        options: options,
         states: null,
         state_len: 0usize,
         state_capacity: 0usize,
@@ -409,7 +437,7 @@ fn ensure_state_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     if needed <= compiled.state_capacity {
         return true;
     }
-    if needed > limits.MAX_STATE_CAPACITY {
+    if needed > compiled.options.max_state_capacity {
         set_status(compiled, t.RegexStatus.program_too_large);
         return false;
     }
@@ -417,8 +445,8 @@ fn ensure_state_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     while next_capacity < needed {
         next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
     }
-    if next_capacity > limits.MAX_STATE_CAPACITY {
-        next_capacity = limits.MAX_STATE_CAPACITY;
+    if next_capacity > compiled.options.max_state_capacity {
+        next_capacity = compiled.options.max_state_capacity;
     }
     let next: *mut t.State = unsafe {
         ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.State]))
@@ -439,7 +467,7 @@ fn ensure_range_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     if needed <= compiled.range_capacity {
         return true;
     }
-    if needed > limits.MAX_RANGE_CAPACITY {
+    if needed > compiled.options.max_range_capacity {
         set_status(compiled, t.RegexStatus.program_too_large);
         return false;
     }
@@ -447,8 +475,8 @@ fn ensure_range_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     while next_capacity < needed {
         next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
     }
-    if next_capacity > limits.MAX_RANGE_CAPACITY {
-        next_capacity = limits.MAX_RANGE_CAPACITY;
+    if next_capacity > compiled.options.max_range_capacity {
+        next_capacity = compiled.options.max_range_capacity;
     }
     let next: *mut t.ClassRange = unsafe {
         ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.ClassRange]))

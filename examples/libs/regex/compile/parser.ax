@@ -52,22 +52,30 @@ struct CodepointSpec {
 }
 
 pub fn compile(pattern: str) -> t.Regex {
-    return compile_with_mode(pattern, t.MODE_TEXT);
+    return compile_with_options(pattern, t.default_options());
 }
 
 pub fn compile_bytes(pattern: str) -> t.Regex {
-    return compile_with_mode(pattern, t.MODE_BYTES);
+    return compile_bytes_with_options(pattern, t.default_options());
 }
 
-fn compile_with_mode(pattern: str, mode: u8) -> t.Regex {
-    let compiled: t.Regex = prog.create(pattern, mode);
+pub fn compile_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return compile_with_mode(pattern, t.MODE_TEXT, options);
+}
+
+pub fn compile_bytes_with_options(pattern: str, options: t.RegexOptions) -> t.Regex {
+    return compile_with_mode(pattern, t.MODE_BYTES, options);
+}
+
+fn compile_with_mode(pattern: str, mode: u8, options: t.RegexOptions) -> t.Regex {
+    let compiled: t.Regex = prog.create_with_options(pattern, mode, options);
     if compiled.status != t.RegexStatus.ok {
         return compiled;
     }
     var parser: Parser = Parser {
         pattern: pattern,
         at: 0usize,
-        flags: t.FLAGS_NONE,
+        flags: options.flags,
         reuse_captures: false,
         compiled: compiled,
     };
@@ -280,6 +288,9 @@ fn parse_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
     if escaped == ascii.UPPER_A {
         return single_state_atom(parser, prog.add_assert_absolute_start(&mut parser.compiled), source_start, parser.at);
     }
+    if escaped == ascii.UPPER_G {
+        return single_state_atom(parser, prog.add_assert_search_start(&mut parser.compiled), source_start, parser.at);
+    }
     if escaped == ascii.LOWER_Z || escaped == ascii.UPPER_Z {
         return single_state_atom(parser, prog.add_assert_absolute_end(&mut parser.compiled), source_start, parser.at);
     }
@@ -287,7 +298,7 @@ fn parse_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
         return word_boundary_atom(parser, source_start);
     }
     if escaped == ascii.UPPER_B {
-        return single_state_atom(parser, prog.add_assert_not_word_boundary(&mut parser.compiled), source_start, parser.at);
+        return single_state_atom(parser, prog.add_assert_not_word_boundary_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
     }
     if escaped == ascii.UPPER_N {
         return newline_negated_class_atom(parser, source_start, parser.at);
@@ -300,6 +311,12 @@ fn parse_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
     }
     if escaped == ascii.LOWER_X {
         return hex_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_O {
+        return octal_escape_atom(parser, source_start);
+    }
+    if escaped == ascii.LOWER_C {
+        return control_escape_atom(parser, source_start);
     }
     if escaped == ascii.LOWER_U {
         return unicode_escape_atom(parser, source_start);
@@ -501,6 +518,12 @@ fn parse_class_item(parser: &mut Parser) -> ClassItem {
         if escaped == ascii.LOWER_X {
             return parse_hex_class_item(parser);
         }
+        if escaped == ascii.LOWER_O {
+            return parse_octal_class_item(parser);
+        }
+        if escaped == ascii.LOWER_C {
+            return parse_control_class_item(parser);
+        }
         if escaped == ascii.LOWER_U {
             return parse_unicode_class_item(parser);
         }
@@ -524,7 +547,8 @@ fn parse_class_item(parser: &mut Parser) -> ClassItem {
 }
 
 fn apply_repeat(parser: &mut Parser, atom: t.Fragment, repeat: RepeatSpec, lazy: bool) -> t.Fragment {
-    if repeat.min > limits.MAX_BOUNDED_REPEAT || (!repeat.unbounded && repeat.max > limits.MAX_BOUNDED_REPEAT) {
+    if repeat.min > parser.compiled.options.max_bounded_repeat ||
+        (!repeat.unbounded && repeat.max > parser.compiled.options.max_bounded_repeat) {
         prog.set_error(&mut parser.compiled, t.RegexStatus.repeat_too_large, repeat.error_offset, t.ERROR_KIND_REPEAT_TOO_LARGE);
         return atom;
     }
@@ -597,7 +621,22 @@ fn compile_atom_copy(parser: &mut Parser, atom: t.Fragment) -> t.Fragment {
 fn parse_repeat_spec(parser: &mut Parser) -> RepeatSpec {
     let repeat_start: usize = parser.at;
     advance(parser);
-    if at_end(parser) || !ascii.is_digit(peek(parser)) {
+    if at_end(parser) {
+        return invalid_repeat(repeat_start);
+    }
+    if peek(parser) == ascii.COMMA {
+        advance(parser);
+        if at_end(parser) || !ascii.is_digit(peek(parser)) {
+            return invalid_repeat(repeat_start);
+        }
+        let max_only: usize = parse_decimal(parser);
+        if at_end(parser) || peek(parser) != ascii.RBRACE {
+            return invalid_repeat(repeat_start);
+        }
+        advance(parser);
+        return RepeatSpec { min: 0usize, max: max_only, unbounded: false, valid: true, error_offset: repeat_start };
+    }
+    if !ascii.is_digit(peek(parser)) {
         return invalid_repeat(repeat_start);
     }
     let min_count: usize = parse_decimal(parser);
@@ -747,6 +786,24 @@ fn parse_hex_class_item(parser: &mut Parser) -> ClassItem {
     return scalar_class_item(codepoint.value);
 }
 
+fn parse_octal_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = parse_octal_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
+fn parse_control_class_item(parser: &mut Parser) -> ClassItem {
+    let source_start: usize = parser.at - 2usize;
+    let codepoint: CodepointSpec = parse_control_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return scalar_class_item(0usize);
+    }
+    return scalar_class_item(codepoint.value);
+}
+
 fn parse_unicode_class_item(parser: &mut Parser) -> ClassItem {
     let source_start: usize = parser.at - 2usize;
     let codepoint: CodepointSpec = if !at_end(parser) && peek(parser) == ascii.LBRACE {
@@ -851,6 +908,14 @@ fn byte_scalar(value: u8) -> usize {
     return cast[usize](value);
 }
 
+fn is_octal_digit(value: u8) -> bool {
+    return ascii.DIGIT_0 <= value && value <= b'7';
+}
+
+fn octal_value(value: u8) -> usize {
+    return cast[usize](value - ascii.DIGIT_0);
+}
+
 fn newline_negated_class_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
     let range_start: usize = parser.compiled.range_len;
     var ranges: usize = 0usize;
@@ -913,15 +978,15 @@ fn word_boundary_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
         let name_len: usize = parser.at - name_start;
         advance(parser);
         if pattern_slice_equals(parser.pattern, name_start, name_len, "start") {
-            return single_state_atom(parser, prog.add_assert_word_start(&mut parser.compiled), source_start, parser.at);
+            return single_state_atom(parser, prog.add_assert_word_start_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
         }
         if pattern_slice_equals(parser.pattern, name_start, name_len, "end") {
-            return single_state_atom(parser, prog.add_assert_word_end(&mut parser.compiled), source_start, parser.at);
+            return single_state_atom(parser, prog.add_assert_word_end_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
         }
         prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
         return t.invalid_fragment();
     }
-    return single_state_atom(parser, prog.add_assert_word_boundary(&mut parser.compiled), source_start, parser.at);
+    return single_state_atom(parser, prog.add_assert_word_boundary_flags(&mut parser.compiled, class_flags(parser)), source_start, parser.at);
 }
 
 fn quoted_literal_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
@@ -967,6 +1032,22 @@ fn hex_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
     return codepoint_atom(parser, codepoint.value, source_start, parser.at);
 }
 
+fn octal_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = parse_octal_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
+fn control_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    let codepoint: CodepointSpec = parse_control_escape_value(parser, source_start);
+    if !codepoint.valid {
+        return t.invalid_fragment();
+    }
+    return codepoint_atom(parser, codepoint.value, source_start, parser.at);
+}
+
 fn unicode_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
     let codepoint: CodepointSpec = if !at_end(parser) && peek(parser) == ascii.LBRACE {
         parse_braced_codepoint(parser, source_start)
@@ -996,6 +1077,51 @@ fn parse_hex_escape_value(parser: &mut Parser, source_start: usize) -> Codepoint
         return parse_braced_codepoint(parser, source_start);
     }
     return parse_fixed_hex(parser, source_start, 2usize);
+}
+
+fn parse_octal_escape_value(parser: &mut Parser, source_start: usize) -> CodepointSpec {
+    if at_end(parser) || peek(parser) != ascii.LBRACE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    if at_end(parser) || !is_octal_digit(peek(parser)) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    var value: usize = 0usize;
+    while !at_end(parser) && peek(parser) != ascii.RBRACE {
+        if !is_octal_digit(peek(parser)) {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+        value = value * 8usize + octal_value(peek(parser));
+        advance(parser);
+        if value > unicode.CODEPOINT_MAX {
+            prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+            return CodepointSpec { value: 0usize, valid: false };
+        }
+    }
+    if at_end(parser) || peek(parser) != ascii.RBRACE {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    return validate_codepoint(parser, source_start, value);
+}
+
+fn parse_control_escape_value(parser: &mut Parser, source_start: usize) -> CodepointSpec {
+    if at_end(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    let value: u8 = peek(parser);
+    if value > 0x7fu8 {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.syntax_error, source_start, t.ERROR_KIND_INVALID_ESCAPE);
+        return CodepointSpec { value: 0usize, valid: false };
+    }
+    advance(parser);
+    return CodepointSpec { value: cast[usize](value & 0x1fu8), valid: true };
 }
 
 fn parse_fixed_hex(parser: &mut Parser, source_start: usize, count: usize) -> CodepointSpec {
@@ -1135,11 +1261,15 @@ fn parse_group_spec(parser: &mut Parser, source_start: usize) -> GroupSpec {
             return invalid_group_spec();
         }
         advance(parser);
-        return parse_named_group_spec(parser, source_start, restore_flags);
+        return parse_named_group_spec(parser, source_start, restore_flags, ascii.GREATER);
     }
     if peek(parser) == ascii.LESS {
         advance(parser);
-        return parse_named_group_spec(parser, source_start, restore_flags);
+        return parse_named_group_spec(parser, source_start, restore_flags, ascii.GREATER);
+    }
+    if peek(parser) == ascii.APOSTROPHE {
+        advance(parser);
+        return parse_named_group_spec(parser, source_start, restore_flags, ascii.APOSTROPHE);
     }
     if starts_flag_spec(peek(parser)) || peek(parser) == ascii.HYPHEN {
         let parsed_flags: u8 = parse_flag_spec(parser, restore_flags);
@@ -1179,7 +1309,7 @@ fn parse_group_spec(parser: &mut Parser, source_start: usize) -> GroupSpec {
     return invalid_group_spec();
 }
 
-fn parse_named_group_spec(parser: &mut Parser, source_start: usize, restore_flags: u8) -> GroupSpec {
+fn parse_named_group_spec(parser: &mut Parser, source_start: usize, restore_flags: u8, terminator: u8) -> GroupSpec {
     let name_start: usize = parser.at;
     if at_end(parser) || !ascii.is_name_start(peek(parser)) {
         prog.set_error(&mut parser.compiled, t.RegexStatus.invalid_group_name, parser.at, t.ERROR_KIND_INVALID_GROUP_NAME);
@@ -1189,7 +1319,7 @@ fn parse_named_group_spec(parser: &mut Parser, source_start: usize, restore_flag
         advance(parser);
     }
     let name_len: usize = parser.at - name_start;
-    if at_end(parser) || peek(parser) != ascii.GREATER {
+    if at_end(parser) || peek(parser) != terminator {
         prog.set_error(&mut parser.compiled, t.RegexStatus.invalid_group_name, parser.at, t.ERROR_KIND_INVALID_GROUP_NAME);
         return invalid_group_spec();
     }
@@ -1274,6 +1404,7 @@ fn invalid_repeat(offset: usize) -> RepeatSpec {
 
 fn starts_flag_spec(value: u8) -> bool {
     return value == ascii.LOWER_I ||
+        value == ascii.LOWER_A ||
         value == ascii.LOWER_M ||
         value == ascii.LOWER_S ||
         value == ascii.LOWER_X ||
@@ -1302,7 +1433,7 @@ fn parse_flag_spec(parser: &mut Parser, base_flags: u8) -> u8 {
                 flags = clear_flag(flags, flag);
                 removed_flag = true;
             } else {
-                flags = set_flag(flags, flag);
+                flags = set_flag_with_mode(flags, flag);
             }
             consumed = true;
             advance(parser);
@@ -1322,6 +1453,9 @@ fn parse_flag_spec(parser: &mut Parser, base_flags: u8) -> u8 {
 fn flag_for_byte(value: u8) -> u8 {
     if value == ascii.LOWER_I {
         return t.FLAG_CASE_INSENSITIVE;
+    }
+    if value == ascii.LOWER_A {
+        return t.FLAG_ASCII;
     }
     if value == ascii.LOWER_M {
         return t.FLAG_MULTILINE;
@@ -1346,6 +1480,16 @@ fn has_flag(flags: u8, flag: u8) -> bool {
 }
 
 fn set_flag(flags: u8, flag: u8) -> u8 {
+    return flags | flag;
+}
+
+fn set_flag_with_mode(flags: u8, flag: u8) -> u8 {
+    if flag == t.FLAG_ASCII {
+        return clear_flag(flags | flag, t.FLAG_UNICODE);
+    }
+    if flag == t.FLAG_UNICODE {
+        return clear_flag(flags | flag, t.FLAG_ASCII);
+    }
     return flags | flag;
 }
 
@@ -1374,10 +1518,14 @@ fn pattern_slice_equals(pattern: str, start: usize, len: usize, expected: str) -
 }
 
 fn literal_flags(parser: &Parser) -> u8 {
+    var flags: u8 = t.FLAGS_NONE;
     if has_flag(parser.flags, t.FLAG_CASE_INSENSITIVE) {
-        return t.FLAG_CASE_INSENSITIVE;
+        flags = flags | t.FLAG_CASE_INSENSITIVE;
     }
-    return t.FLAGS_NONE;
+    if has_flag(parser.flags, t.FLAG_ASCII) {
+        flags = flags | t.FLAG_ASCII;
+    }
+    return flags;
 }
 
 fn class_flags(parser: &Parser) -> u8 {

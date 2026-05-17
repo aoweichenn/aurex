@@ -6,17 +6,26 @@ import regex.core.types as t;
 import regex.runtime.alloc as alloc;
 
 pub fn compile_set(patterns: []const str) -> t.RegexSet {
-    return compile_set_with_mode(patterns, t.MODE_TEXT);
+    return compile_set_with_options(patterns, t.default_options());
 }
 
 pub fn compile_set_bytes(patterns: []const str) -> t.RegexSet {
-    return compile_set_with_mode(patterns, t.MODE_BYTES);
+    return compile_set_bytes_with_options(patterns, t.default_options());
+}
+
+pub fn compile_set_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+    return compile_set_with_mode(patterns, t.MODE_TEXT, options);
+}
+
+pub fn compile_set_bytes_with_options(patterns: []const str, options: t.RegexOptions) -> t.RegexSet {
+    return compile_set_with_mode(patterns, t.MODE_BYTES, options);
 }
 
 pub fn destroy_set(compiled: &mut t.RegexSet) -> void {
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
     compiled.mode = t.MODE_TEXT;
+    compiled.options = t.default_options();
     compiled.states = null;
     compiled.state_len = 0usize;
     compiled.state_capacity = 0usize;
@@ -42,10 +51,10 @@ pub fn program_bytes(compiled: &t.RegexSet) -> usize {
         + compiled.range_capacity * sizeof[t.ClassRange];
 }
 
-fn compile_set_with_mode(patterns: []const str, mode: u8) -> t.RegexSet {
+fn compile_set_with_mode(patterns: []const str, mode: u8, options: t.RegexOptions) -> t.RegexSet {
     let pattern_count: usize = slicelen(patterns);
     if pattern_count > limits.MAX_SET_PATTERNS {
-        return empty_set(pattern_count, mode, t.RegexStatus.program_too_large, limits.MAX_SET_PATTERNS);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.program_too_large, limits.MAX_SET_PATTERNS);
     }
     var total_pattern_bytes: usize = 0usize;
     var scan: usize = 0usize;
@@ -53,43 +62,44 @@ fn compile_set_with_mode(patterns: []const str, mode: u8) -> t.RegexSet {
         total_pattern_bytes += strblen(patterns[scan]);
         scan += 1usize;
     }
-    var compiled: t.RegexSet = create_set(pattern_count, mode, total_pattern_bytes);
+    var compiled: t.RegexSet = create_set(pattern_count, mode, total_pattern_bytes, options);
     if compiled.status != t.RegexStatus.ok {
         return compiled;
     }
     var index: usize = 0usize;
     while index < pattern_count {
         var item: t.Regex = if mode == t.MODE_BYTES {
-            parser.compile_bytes(patterns[index])
+            parser.compile_bytes_with_options(patterns[index], options)
         } else {
-            parser.compile(patterns[index])
+            parser.compile_with_options(patterns[index], options)
         };
         if item.status != t.RegexStatus.ok {
             let item_status: t.RegexStatus = item.status;
             destroy_regex(&mut item);
             destroy_set_storage(&mut compiled);
-            return empty_set(pattern_count, mode, item_status, index);
+            return empty_set(pattern_count, mode, options, item_status, index);
         }
         let start: usize = append_regex_program(&mut compiled, &item, index);
         destroy_regex(&mut item);
         if compiled.status != t.RegexStatus.ok {
             destroy_set_storage(&mut compiled);
-            return empty_set(pattern_count, mode, compiled.status, index);
+            return empty_set(pattern_count, mode, options, compiled.status, index);
         }
         append_pattern_start(&mut compiled, start);
         if compiled.status != t.RegexStatus.ok {
             destroy_set_storage(&mut compiled);
-            return empty_set(pattern_count, mode, compiled.status, index);
+            return empty_set(pattern_count, mode, options, compiled.status, index);
         }
         index += 1usize;
     }
     return compiled;
 }
 
-fn create_set(pattern_count: usize, mode: u8, total_pattern_bytes: usize) -> t.RegexSet {
+fn create_set(pattern_count: usize, mode: u8, total_pattern_bytes: usize, options: t.RegexOptions) -> t.RegexSet {
     if pattern_count == 0usize {
         return t.RegexSet {
             mode: mode,
+            options: options,
             states: null,
             state_len: 0usize,
             state_capacity: 0usize,
@@ -105,29 +115,30 @@ fn create_set(pattern_count: usize, mode: u8, total_pattern_bytes: usize) -> t.R
     var state_capacity: usize = limits.MIN_STATE_CAPACITY
         + total_pattern_bytes * limits.STATES_PER_PATTERN_BYTE
         + pattern_count;
-    if state_capacity > limits.MAX_STATE_CAPACITY {
-        state_capacity = limits.MAX_STATE_CAPACITY;
+    if state_capacity > options.max_state_capacity {
+        state_capacity = options.max_state_capacity;
     }
     var range_capacity: usize = limits.MIN_RANGE_CAPACITY
         + total_pattern_bytes * limits.RANGES_PER_PATTERN_BYTE;
-    if range_capacity > limits.MAX_RANGE_CAPACITY {
-        range_capacity = limits.MAX_RANGE_CAPACITY;
+    if range_capacity > options.max_range_capacity {
+        range_capacity = options.max_range_capacity;
     }
     let states: *mut t.State = unsafe {
         ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_capacity, sizeof[t.State]))
     };
     if states == null {
-        return empty_set(pattern_count, mode, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
     }
     let ranges: *mut t.ClassRange = unsafe {
         ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_capacity, sizeof[t.ClassRange]))
     };
     if ranges == null {
         alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
-        return empty_set(pattern_count, mode, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
+        return empty_set(pattern_count, mode, options, t.RegexStatus.out_of_memory, t.CAPTURE_MISSING);
     }
     return t.RegexSet {
         mode: mode,
+        options: options,
         states: states,
         state_len: limits.RESERVED_STATE_COUNT,
         state_capacity: state_capacity,
@@ -141,9 +152,10 @@ fn create_set(pattern_count: usize, mode: u8, total_pattern_bytes: usize) -> t.R
     };
 }
 
-fn empty_set(pattern_count: usize, mode: u8, status: t.RegexStatus, error_index: usize) -> t.RegexSet {
+fn empty_set(pattern_count: usize, mode: u8, options: t.RegexOptions, status: t.RegexStatus, error_index: usize) -> t.RegexSet {
     return t.RegexSet {
         mode: mode,
+        options: options,
         states: null,
         state_len: 0usize,
         state_capacity: 0usize,
@@ -274,7 +286,7 @@ fn ensure_state_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
     if needed <= compiled.state_capacity {
         return true;
     }
-    if needed > limits.MAX_STATE_CAPACITY {
+    if needed > compiled.options.max_state_capacity {
         set_status(compiled, t.RegexStatus.program_too_large);
         return false;
     }
@@ -282,8 +294,8 @@ fn ensure_state_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
     while next_capacity < needed {
         next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
     }
-    if next_capacity > limits.MAX_STATE_CAPACITY {
-        next_capacity = limits.MAX_STATE_CAPACITY;
+    if next_capacity > compiled.options.max_state_capacity {
+        next_capacity = compiled.options.max_state_capacity;
     }
     let next: *mut t.State = unsafe {
         ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.State]))
@@ -304,7 +316,7 @@ fn ensure_range_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
     if needed <= compiled.range_capacity {
         return true;
     }
-    if needed > limits.MAX_RANGE_CAPACITY {
+    if needed > compiled.options.max_range_capacity {
         set_status(compiled, t.RegexStatus.program_too_large);
         return false;
     }
@@ -312,8 +324,8 @@ fn ensure_range_capacity(compiled: &mut t.RegexSet, additional: usize) -> bool {
     while next_capacity < needed {
         next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
     }
-    if next_capacity > limits.MAX_RANGE_CAPACITY {
-        next_capacity = limits.MAX_RANGE_CAPACITY;
+    if next_capacity > compiled.options.max_range_capacity {
+        next_capacity = compiled.options.max_range_capacity;
     }
     let next: *mut t.ClassRange = unsafe {
         ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.ClassRange]))

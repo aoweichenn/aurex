@@ -13,11 +13,12 @@ const MAGIC_5: u8 = 0x44u8;
 const MAGIC_6: u8 = 0x42u8;
 const MAGIC_7: u8 = 0x31u8;
 const MAGIC_BYTES: usize = 8usize;
-const DATABASE_VERSION: u8 = 1u8;
+const DATABASE_VERSION: u8 = 2u8;
 const USIZE_BYTES: usize = 8usize;
 const STATE_ENCODED_BYTES: usize = 50usize;
 const RANGE_ENCODED_BYTES: usize = 17usize;
-const HEADER_BYTES: usize = MAGIC_BYTES + 2usize + USIZE_BYTES * 4usize;
+const OPTIONS_USIZE_COUNT: usize = 7usize;
+const HEADER_BYTES: usize = MAGIC_BYTES + 4usize + USIZE_BYTES * (4usize + OPTIONS_USIZE_COUNT);
 const BYTE_MASK: usize = 0xffusize;
 const BYTE_BITS: usize = 8usize;
 
@@ -46,6 +47,7 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     write_magic(out, out_capacity, cursor_ptr);
     write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
     write_u8(out, out_capacity, cursor_ptr, compiled.mode);
+    write_options(out, out_capacity, cursor_ptr, compiled.options);
     write_usize(out, out_capacity, cursor_ptr, compiled.pattern_count);
     write_usize(out, out_capacity, cursor_ptr, compiled.start);
     write_usize(out, out_capacity, cursor_ptr, compiled.state_len);
@@ -82,6 +84,10 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     if mode != t.MODE_TEXT && mode != t.MODE_BYTES {
         return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
     }
+    let options: t.RegexOptions = read_options(data, len, header_cursor_ptr);
+    if !options_shape_is_valid(options) {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
     let pattern_count_read: ReadUsize = read_usize(data, len, cursor);
     if !pattern_count_read.valid {
         return empty_set(mode, t.RegexStatus.database_error);
@@ -109,7 +115,7 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     if !database_shape_is_valid(pattern_count, start, state_len, range_len, len) {
         return empty_set(mode, t.RegexStatus.database_error);
     }
-    var compiled: t.RegexSet = allocate_set(mode, pattern_count, state_len, range_len);
+    var compiled: t.RegexSet = allocate_set(mode, options, pattern_count, state_len, range_len);
     if compiled.status != t.RegexStatus.ok {
         return compiled;
     }
@@ -164,6 +170,51 @@ fn write_range(out: *mut u8, out_capacity: usize, cursor: *mut usize, range: t.C
     write_u8(out, out_capacity, cursor, range.kind);
     write_usize(out, out_capacity, cursor, range.first);
     write_usize(out, out_capacity, cursor, range.last);
+}
+
+fn write_options(out: *mut u8, out_capacity: usize, cursor: *mut usize, options: t.RegexOptions) -> void {
+    write_u8(out, out_capacity, cursor, options.flags);
+    write_u8(out, out_capacity, cursor, options.newline_mode);
+    write_usize(out, out_capacity, cursor, options.max_pattern_bytes);
+    write_usize(out, out_capacity, cursor, options.max_state_capacity);
+    write_usize(out, out_capacity, cursor, options.max_range_capacity);
+    write_usize(out, out_capacity, cursor, options.max_workspace_states);
+    write_usize(out, out_capacity, cursor, options.max_bounded_repeat);
+    write_usize(out, out_capacity, cursor, options.max_capture_groups);
+    write_usize(out, out_capacity, cursor, options.stream_history_limit);
+}
+
+fn read_options(data: *const u8, len: usize, cursor: *mut usize) -> t.RegexOptions {
+    var options: t.RegexOptions = t.default_options();
+    options.flags = read_u8(data, len, cursor);
+    options.newline_mode = read_u8(data, len, cursor);
+    let max_pattern: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_pattern.next; }
+    let max_states: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_states.next; }
+    let max_ranges: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_ranges.next; }
+    let max_workspace: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_workspace.next; }
+    let max_repeat: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_repeat.next; }
+    let max_captures: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = max_captures.next; }
+    let stream_history: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    unsafe { *cursor = stream_history.next; }
+    if !max_pattern.valid || !max_states.valid || !max_ranges.valid || !max_workspace.valid ||
+        !max_repeat.valid || !max_captures.valid || !stream_history.valid {
+        options.newline_mode = 255u8;
+        return options;
+    }
+    options.max_pattern_bytes = max_pattern.value;
+    options.max_state_capacity = max_states.value;
+    options.max_range_capacity = max_ranges.value;
+    options.max_workspace_states = max_workspace.value;
+    options.max_bounded_repeat = max_repeat.value;
+    options.max_capture_groups = max_captures.value;
+    options.stream_history_limit = stream_history.value;
+    return options;
 }
 
 fn write_u8(out: *mut u8, out_capacity: usize, cursor: *mut usize, value: u8) -> void {
@@ -331,7 +382,20 @@ fn database_shape_is_valid(
     return bytes_len == HEADER_BYTES + state_len * STATE_ENCODED_BYTES + range_len * RANGE_ENCODED_BYTES;
 }
 
-fn allocate_set(mode: u8, pattern_count: usize, state_len: usize, range_len: usize) -> t.RegexSet {
+fn options_shape_is_valid(options: t.RegexOptions) -> bool {
+    if options.newline_mode != t.NEWLINE_UNICODE && options.newline_mode != t.NEWLINE_LF &&
+        options.newline_mode != t.NEWLINE_CRLF {
+        return false;
+    }
+    if options.max_pattern_bytes == 0usize || options.max_state_capacity == 0usize ||
+        options.max_range_capacity == 0usize || options.max_workspace_states == 0usize ||
+        options.max_capture_groups == 0usize {
+        return false;
+    }
+    return true;
+}
+
+fn allocate_set(mode: u8, options: t.RegexOptions, pattern_count: usize, state_len: usize, range_len: usize) -> t.RegexSet {
     var states: *mut t.State = null;
     var ranges: *mut t.ClassRange = null;
     if state_len > 0usize {
@@ -353,6 +417,7 @@ fn allocate_set(mode: u8, pattern_count: usize, state_len: usize, range_len: usi
     }
     return t.RegexSet {
         mode: mode,
+        options: options,
         states: states,
         state_len: state_len,
         state_capacity: state_len,
@@ -369,6 +434,7 @@ fn allocate_set(mode: u8, pattern_count: usize, state_len: usize, range_len: usi
 fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
     return t.RegexSet {
         mode: mode,
+        options: t.default_options(),
         states: null,
         state_len: 0usize,
         state_capacity: 0usize,

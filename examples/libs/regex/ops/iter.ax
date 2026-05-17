@@ -40,6 +40,44 @@ pub fn find_next(iter: &mut t.FindIter) -> t.MatchResult {
     return result;
 }
 
+pub fn bytes_find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter {
+    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
+    return t.BytesFindIter {
+        compiled: compiled_ptr,
+        data: sliceptr(input),
+        len: slicelen(input),
+        next_start: 0usize,
+        finished: false,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn bytes_find_next(iter: &mut t.BytesFindIter) -> t.MatchResult {
+    if iter.finished {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    let compiled: *const t.Regex = iter.compiled;
+    if compiled == null {
+        iter.finished = true;
+        iter.status = t.RegexStatus.unsupported;
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
+    let result: t.MatchResult = unsafe {
+        engine.search_bytes_raw_compiled_from(&*compiled, iter.data, iter.len, iter.next_start)
+    };
+    iter.status = result.status;
+    if result.status != t.RegexStatus.ok {
+        iter.finished = true;
+        return result;
+    }
+    if !result.matched {
+        iter.finished = true;
+        return result;
+    }
+    iter.next_start = next_bytes_search_start(iter.len, result.start, result.end);
+    return result;
+}
+
 pub fn captures_iter(compiled: &t.Regex, input: str) -> t.CaptureIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
     return t.CaptureIter {
@@ -75,6 +113,44 @@ pub fn captures_next(iter: &mut t.CaptureIter) -> t.Captures {
     return captures;
 }
 
+pub fn bytes_captures_iter(compiled: &t.Regex, input: []const u8) -> t.BytesCaptureIter {
+    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
+    return t.BytesCaptureIter {
+        compiled: compiled_ptr,
+        data: sliceptr(input),
+        len: slicelen(input),
+        next_start: 0usize,
+        finished: false,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn bytes_captures_next(iter: &mut t.BytesCaptureIter) -> t.Captures {
+    if iter.finished {
+        return t.empty_captures(t.RegexStatus.no_match);
+    }
+    let compiled: *const t.Regex = iter.compiled;
+    if compiled == null {
+        iter.finished = true;
+        iter.status = t.RegexStatus.unsupported;
+        return t.empty_captures(t.RegexStatus.unsupported);
+    }
+    var captures: t.Captures = unsafe {
+        engine.captures_bytes_raw_compiled_from(&*compiled, iter.data, iter.len, iter.next_start)
+    };
+    iter.status = captures.status;
+    if captures.status != t.RegexStatus.ok {
+        iter.finished = true;
+        return captures;
+    }
+    if !captures.matched {
+        iter.finished = true;
+        return captures;
+    }
+    iter.next_start = next_bytes_search_start(iter.len, captures.start, captures.end);
+    return captures;
+}
+
 fn next_search_start(input: str, start: usize, end: usize) -> usize {
     if end > start {
         return end;
@@ -84,4 +160,14 @@ fn next_search_start(input: str, start: usize, end: usize) -> usize {
         return input_len + 1usize;
     }
     return unicode.next_boundary(input, end);
+}
+
+fn next_bytes_search_start(input_len: usize, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    if end >= input_len {
+        return input_len + 1usize;
+    }
+    return end + 1usize;
 }

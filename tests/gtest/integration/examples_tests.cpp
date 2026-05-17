@@ -65,7 +65,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns) {
     const std::string checked =
         require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_demo.ax")).output;
     expect_contains_all(checked, {
-        "struct Regex fields=16",
+        "struct Regex fields=17",
         "struct MatchResult fields=4",
         "struct Captures fields=7",
         "struct CaptureSpan fields=3",
@@ -148,13 +148,18 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
     const std::string checked =
         require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_advanced.ax")).output;
     expect_contains_all(checked, {
-        "struct RegexSet fields=11",
+        "struct RegexSet fields=12",
         "struct SetMatchesResult fields=4",
-        "struct RegexStream fields=8",
+        "struct RegexStream fields=10",
+        "struct SetMatchSpan fields=5",
         "struct DatabaseResult fields=3",
         "type ReplaceCallback = fn(str, &regex.core.types.Captures, *mut u8, usize) -> regex.core.types.ReplaceResult",
+        "type BytesReplaceCallback = fn(*const u8, usize, &regex.core.types.Captures, *mut u8, usize) -> regex.core.types.ReplaceResult",
         "fn compile_set -> regex.core.types.RegexSet",
         "fn compile_set_bytes -> regex.core.types.RegexSet",
+        "fn find_set_compiled -> regex.core.types.SetMatchSpan",
+        "fn scan_set_compiled -> regex.core.types.SetMatchesResult",
+        "fn search_vectored_compiled -> regex.core.types.MatchResult",
         "fn matches_set_compiled -> regex.core.types.SetMatchesResult",
         "fn serialize_set -> regex.core.types.DatabaseResult",
         "fn deserialize_set -> regex.core.types.RegexSet",
@@ -162,6 +167,9 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
         "fn open_stream -> regex.core.types.RegexStream",
         "fn stream_next -> regex.core.types.MatchResult",
         "fn priv require_class_set_algebra -> i32",
+        "fn priv require_options_builder -> i32",
+        "fn priv require_bytes_parity -> i32",
+        "fn priv require_regex_set_scan_and_vectored -> i32",
         "fn priv require_database_roundtrip -> i32",
         "fn priv require_submatch_precedence -> i32",
         "fn priv require_linear_search -> i32",

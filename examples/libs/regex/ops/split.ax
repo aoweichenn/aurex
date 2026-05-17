@@ -82,6 +82,86 @@ pub fn split_next(iter: &mut t.SplitIter) -> t.SplitPart {
     return part;
 }
 
+pub fn bytes_split_iter(compiled: &t.Regex, input: []const u8) -> t.BytesSplitIter {
+    return bytes_splitn_iter(compiled, input, t.CAPTURE_MISSING);
+}
+
+pub fn bytes_splitn_iter(compiled: &t.Regex, input: []const u8, limit: usize) -> t.BytesSplitIter {
+    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
+    return t.BytesSplitIter {
+        compiled: compiled_ptr,
+        data: sliceptr(input),
+        len: slicelen(input),
+        next_start: 0usize,
+        remaining_parts: limit,
+        pending_tail: true,
+        finished: false,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn bytes_split_next(iter: &mut t.BytesSplitIter) -> t.SplitPart {
+    if iter.finished {
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    let compiled: *const t.Regex = iter.compiled;
+    if compiled == null {
+        iter.finished = true;
+        iter.status = t.RegexStatus.unsupported;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.unsupported);
+    }
+    if !iter.pending_tail {
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    if iter.remaining_parts == 0usize {
+        iter.pending_tail = false;
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    if iter.remaining_parts == 1usize {
+        let tail_limited: t.SplitPart = t.split_part(true, iter.next_start, iter.len, t.RegexStatus.ok);
+        iter.remaining_parts = 0usize;
+        iter.pending_tail = false;
+        return tail_limited;
+    }
+    if iter.next_start > iter.len {
+        iter.pending_tail = false;
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    let found: t.MatchResult = unsafe {
+        engine.search_bytes_raw_compiled_from(&*compiled, iter.data, iter.len, iter.next_start)
+    };
+    iter.status = found.status;
+    if found.status != t.RegexStatus.ok {
+        if found.status == t.RegexStatus.no_match {
+            let tail: t.SplitPart = t.split_part(true, iter.next_start, iter.len, t.RegexStatus.ok);
+            if iter.remaining_parts != t.CAPTURE_MISSING {
+                iter.remaining_parts -= 1usize;
+            }
+            iter.pending_tail = false;
+            return tail;
+        }
+        iter.finished = true;
+        return t.split_part(false, 0usize, 0usize, found.status);
+    }
+    if !found.matched {
+        let tail_part: t.SplitPart = t.split_part(true, iter.next_start, iter.len, t.RegexStatus.ok);
+        if iter.remaining_parts != t.CAPTURE_MISSING {
+            iter.remaining_parts -= 1usize;
+        }
+        iter.pending_tail = false;
+        return tail_part;
+    }
+    let part: t.SplitPart = t.split_part(true, iter.next_start, found.start, t.RegexStatus.ok);
+    if iter.remaining_parts != t.CAPTURE_MISSING {
+        iter.remaining_parts -= 1usize;
+    }
+    iter.next_start = next_bytes_split_start(iter.len, found.start, found.end);
+    return part;
+}
+
 fn next_split_start(input: str, start: usize, end: usize) -> usize {
     if end > start {
         return end;
@@ -91,4 +171,14 @@ fn next_split_start(input: str, start: usize, end: usize) -> usize {
         return input_len + 1usize;
     }
     return unicode.next_boundary(input, end);
+}
+
+fn next_bytes_split_start(input_len: usize, start: usize, end: usize) -> usize {
+    if end > start {
+        return end;
+    }
+    if end >= input_len {
+        return input_len + 1usize;
+    }
+    return end + 1usize;
 }

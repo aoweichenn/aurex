@@ -14,6 +14,7 @@
       <file path="$PROJECT_DIR$/build-fuzz" />
       <file path="$PROJECT_DIR$/build-fuzz-clang" />
       <file path="$PROJECT_DIR$/build-perf" />
+      <file path="$PROJECT_DIR$/build-perf-lto" />
     </excludeRoots>
   </component>
 </project>

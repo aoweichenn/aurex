@@ -1850,11 +1850,10 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
 
-    TypeHandle resolved = INVALID_TYPE_HANDLE;
-    {
+    const TypeHandle resolved = [&] {
         GenericAnalysisScope scope(*this, info.module, &generic_context);
-        resolved = this->resolve_type(item.alias_type, opaque_allowed_as_pointee);
-    }
+        return this->resolve_type(item.alias_type, opaque_allowed_as_pointee);
+    }();
     this->resolving_type_aliases_.pop_back();
     this->resolved_generic_type_aliases_[instance_key_id] = resolved;
     return resolved;

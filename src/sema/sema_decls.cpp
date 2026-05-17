@@ -614,9 +614,6 @@ void SemanticAnalyzer::register_value_names() {
                 return_type = this->checked_.types.builtin(BuiltinType::void_);
             } else if (item.visibility == syntax::Visibility::public_) {
                 this->report(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
-                return_type = INVALID_TYPE_HANDLE;
-            } else {
-                return_type = INVALID_TYPE_HANDLE;
             }
             std::vector<TypeHandle> param_types;
             param_types.reserve(item.params.size());
